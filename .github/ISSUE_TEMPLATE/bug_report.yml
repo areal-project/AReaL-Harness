@@ -1,0 +1,29 @@
+name: 缺陷报告 / Bug report
+description: 可复现的问题 / Reproducible bugs. 安全漏洞 / Vulnerabilities：see SECURITY.md.
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境 / Environment
+      description: 提交、系统、工具链；模型问题需协议与模型名。 / Commit, OS, toolchain; protocol and model for model issues.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 最小复现 / Minimal reproduction
+      description: 提供步骤并移除敏感信息。 / Provide steps without credentials, user content or private paths.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 预期与实际行为 / Expected and actual behavior
+      description: 并发问题附脱敏时间线。 / For concurrency, distinguish agent activity, model requests and commands with a redacted timeline.
+    validations:
+      required: true
+  - type: textarea
+    id: checks
+    attributes:
+      label: 已执行检查 / Checks performed
+      description: 测试、日志和退出码；未执行请说明。 / Tests, log excerpts and exit codes; state when not run.

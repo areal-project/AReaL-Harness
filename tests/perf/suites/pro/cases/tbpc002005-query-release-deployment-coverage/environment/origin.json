@@ -1,0 +1,16 @@
+{
+  "initial_files_sha256": {
+    "public/expected.tsv": "72f918585988171d18b0f8e7f6b1336963561234371986ae73b3625d84198e1b",
+    "public/graph.ttl": "93f065ff6d5552c1cc05714ec2a4fc1b042a20a59d8a42115db2238ca9888102",
+    "public/run_query.py": "d88a604de79c36e3bccd4df4bfd282901332423c0ebc26e4dc7011953041deb9",
+    "public/vocabulary.ttl": "8055056fed23719e4a5173f28819a4850c10473008db45ecfb01539303efa733",
+    "query.rq": "5f3e852ada3df90d981d784559368228bab0827e109adf65d20ae9320e9f8bdc"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "f4fa51afac3a5a744ed69f5c202abc238a5d1dd619aba9be8347f3cf2b1727b3",
+  "source_image_id": "sha256:d08e32614a044c106b7d5bbe2b82701e8b7d4802fd103c2212d0a835d0383136",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc002005-query-release-deployment-coverage@sha256:6ae4e28dadb1c76d71690628431327586745221fa6f652d8d42f6c96f2e3094c"
+  ],
+  "unredacted_source_env_sha256": "16c2a6ab164526d1c739db272e241bd15e59448ef9bc81e5250a85e4dad0c015"
+}

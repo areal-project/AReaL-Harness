@@ -1,0 +1,6 @@
+alpha unit=U-C317 note slot=S04 then slot=S48
+slot=S09 unit=U-H900 end
+unit=U-A099 slot=S02
+unit=U-B450 slot=S00 and slot=S49
+noise slot=S12 without qualifier
+unicode Ω unit=U-A100 xslot=S14 slot=S07!

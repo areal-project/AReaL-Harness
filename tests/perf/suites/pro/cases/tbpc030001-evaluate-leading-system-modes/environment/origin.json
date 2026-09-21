@@ -1,0 +1,16 @@
+{
+  "initial_files_sha256": {
+    "modes.py": "8278d45b5036662d76eea177710630e2338804257684f497052ebfe0b71a0abb",
+    "public/benchmark.py": "1c1b4679c2db56bc4fdf9d19f6292da1e2170344bf7f952380bd9ee37b0b739d",
+    "public/fixture_factory.py": "4159dbd3807ce0163e152b51844757ba07305639fdc821df4858334849935114",
+    "vendor/numpy-2.0.2-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl": "f26b258c385842546006213344c50655ff1555a9338e2e5e02a0756dc3e803dd",
+    "vendor/threadpoolctl-3.5.0-py3-none-any.whl": "56c1e26c150397e58c4926da8eeee87533b1e32bef131bd4bf6a2f45f3185467"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "bcf3c9d2dfe775524c058296330742efe5f03544d4cba92c001d10982a2b0b2d",
+  "source_image_id": "sha256:f0ea03d689aa4b87ac7beeab32475b24f50a145ac272df571226ff89c5c43edb",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc-evaluate-leading-system-modes@sha256:fdb02cb39700cda739678fa57545471269f5dc9a85d5defb4dab5d140dae5698"
+  ],
+  "unredacted_source_env_sha256": "8b881d451ae6ba04458c421d8c56b8018b2c858a2d0703c31835314ccb97be75"
+}

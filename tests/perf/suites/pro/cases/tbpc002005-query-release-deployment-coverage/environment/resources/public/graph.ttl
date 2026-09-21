@@ -1,0 +1,17 @@
+@prefix ex: <http://example.org/release#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+ex:R1 ex:releaseComponent ex:C1, ex:C2, ex:C3 ; ex:releaseDeployment ex:D1, ex:D2 .
+ex:C1 ex:componentVerification ex:V1, ex:V1b . ex:C2 ex:componentVerification ex:V2 . ex:C3 ex:componentVerification ex:V3 .
+ex:V1 ex:verificationStatus "pass" ; ex:verificationStarts "2029-01-01"^^xsd:date .
+ex:V1b ex:verificationStatus "pass" ; ex:verificationStarts "2030-03-31"^^xsd:date .
+ex:V2 ex:verificationStatus "pass" ; ex:verificationStarts "2030-01-01"^^xsd:date .
+ex:V3 ex:verificationStatus "pass" ; ex:verificationStarts "2029-07-01"^^xsd:date .
+ex:D1 ex:deploymentRegion ex:RegionNorth ; ex:deploymentStarts "2030-01-01"^^xsd:date .
+ex:D2 ex:deploymentRegion ex:RegionWest ; ex:deploymentStarts "2029-01-01"^^xsd:date .
+ex:RegionNorth ex:regionCode "NORTH" . ex:RegionWest ex:regionCode "WEST" .
+ex:R2 ex:releaseComponent ex:C4, ex:C5, ex:C6 ; ex:releaseDeployment ex:D3 .
+ex:C4 ex:componentVerification ex:V4 . ex:C5 ex:componentVerification ex:V5 . ex:C6 ex:componentVerification ex:V6 .
+ex:V4 ex:verificationStatus "pass" ; ex:verificationStarts "2029-01-01"^^xsd:date .
+ex:V5 ex:verificationStatus "pass" ; ex:verificationStarts "2029-01-01"^^xsd:date .
+ex:V6 ex:verificationStatus "pass" ; ex:verificationStarts "2029-01-01"^^xsd:date .
+ex:D3 ex:deploymentRegion ex:RegionWest ; ex:deploymentStarts "2029-01-01"^^xsd:date .

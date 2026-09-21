@@ -1,0 +1,16 @@
+{
+  "initial_files_sha256": {
+    "pattern.txt": "5847985689d68915a4756c66f02dae92249d66752ae0fdaa01b243ed8178ec3e",
+    "public/DIALECT.txt": "4b2f0973ce02c1ca8cf6f5a31cb347672709d939c28546e374d3f5126fd866bc",
+    "public/corpus.txt": "7b242b4673d1ca0495b3f1362dfb6be5f8201f6e6957a33521412a5c36e63c70",
+    "public/expected.json": "19676be1e41ad2a4d13c119415d1abb2fbb6dd1179254cac3f008028c2353fd5",
+    "public/run_pattern.py": "0e804df53735bb9dc1f4c5937cf1bdfe0a236bad6c2de55a11f83c9e96843d72"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "63f7452ebbf044fb482a1aee5eabe53a190de96d55a04aee2c526da6edadb89c",
+  "source_image_id": "sha256:b533e5bc7a753b97330801edc64a5da6d1e39af4fc76c649b7c7bdc4741b6426",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc002004-match-device-observation-lines@sha256:adafa8c72d649c3b6d137b9f2c57efeaf0acc050e03d4185495c30b717cbff73"
+  ],
+  "unredacted_source_env_sha256": "7f08788fbc20bd0e00107d1a6a9e71b1f94c09a62efbefb1c381552457b08062"
+}

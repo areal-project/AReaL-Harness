@@ -1,0 +1,29 @@
+{
+  "version": "0.3.22",
+  "revision": "12c2d58e18603bd7b7550a8d4fffc3fa3645e710",
+  "provider": "claude",
+  "command": "areal",
+  "fixedArgs": [],
+  "daemonArgs": [
+    "-p",
+    "--output-format",
+    "stream-json",
+    "--input-format",
+    "stream-json",
+    "--verbose",
+    "--strict-mcp-config",
+    "--permission-mode",
+    "bypassPermissions",
+    "--disallowedTools",
+    "AskUserQuestion"
+  ],
+  "optionalArgs": [
+    "--model",
+    "--effort",
+    "--max-turns",
+    "--append-system-prompt",
+    "--resume",
+    "--mcp-config"
+  ],
+  "liveDaemonAcceptance": "pending"
+}

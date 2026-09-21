@@ -1,0 +1,2145 @@
+{
+  "schema_version": 2,
+  "description": "Historical measurements, ordered by attempt. This snapshot supports offline aggregation; original trajectories and workspaces are not included.",
+  "qualified_cases": [
+    "tbpc002004-match-device-observation-lines",
+    "tbpc002005-query-release-deployment-coverage",
+    "tbpc030001-validate-kv-rpc-transcripts",
+    "tbpc002013-migrate-support-case-rollup",
+    "tbpc002013-migrate-warehouse-allocation-batch"
+  ],
+  "case_selection_rule": "Each runner has at least one valid strict score=1 artifact; completion is reported separately.",
+  "pair_selection_rule": "First normally completed correct attempt per case/runner, never fastest attempt.",
+  "screened_out": [
+    {
+      "case": "tbpc002006-revise-equipment-service-register",
+      "reason": "Codex returned an empty answer without tool calls in both independent attempts; each scored 1/3 tests, strict score 0. Retain all four attempts and costs.",
+      "attempts": [
+        "20260917T041808Z-2111b532/004-claudecode",
+        "20260917T041808Z-2111b532/008-harness",
+        "20260917T041808Z-2111b532/009-codex",
+        "20260917T080651Z-d4121ac6/001-codex"
+      ]
+    }
+  ],
+  "source_equivalence": {
+    "run_id": "20260917T041808Z-2111b532",
+    "source_sha256": "b9276d7c091a84f2962f4e57a3e1fadabe124285c94c66499d092ce7a3abae93",
+    "committed_equivalent": "5564dd873f582f876851869b31f155d8174101aa",
+    "original_provenance": {
+      "commit": "94a510fae71de34ed3eefa64645d56431d0771cf",
+      "dirty": true
+    },
+    "explanation": "Identical benchmark source was committed after run creation; original run metadata is preserved."
+  },
+  "cli_versions": {
+    "codex": "0.145.0",
+    "claudecode": "2.1.273"
+  },
+  "model_config": {
+    "api_key_env": "AREAL_PERF_API_KEY",
+    "base_url": "https://redacted.invalid/v1",
+    "model": "[REDACTED: internal model deployment]",
+    "parameters": {
+      "reasoning_effort": "xhigh"
+    },
+    "protocol": "responses",
+    "runner_upstreams": {
+      "claudecode": {
+        "base_url": "https://redacted.invalid/anthropic",
+        "protocol": "anthropic"
+      }
+    }
+  },
+  "cases": {
+    "tbpc002004-match-device-observation-lines": {
+      "environment_image": "redacted.invalid/source-image@sha256:612e713c53ff1aa3b2f957f625c07ca384241f513f7748a411c342af506489f4",
+      "runner_image_id": "sha256:13105ae374131310fbbea022c0769b5f1e813cde5ee8a9a53b9a5a9d6eb84e0d",
+      "limits": {
+        "timeout_seconds": 1200,
+        "cpus": 2.0,
+        "memory": "4g",
+        "pids": 512,
+        "network": "bridge"
+      },
+      "task_sha256": "dcb13cf6f57b5059d95e78035001c841e2c303be98342f33ca9978a39b01ade5",
+      "original_grader_source_sha256": "5d2eb1df32121f2034e0dae925526c334d3fafaaa86500497f19bc3cd7682c6b",
+      "title": "设备观测"
+    },
+    "tbpc002005-query-release-deployment-coverage": {
+      "environment_image": "redacted.invalid/source-image@sha256:afadf837138f7c5231dfd06b0a56e5a712e417de57a2bdde3ed59a4bf1536ebf",
+      "runner_image_id": "sha256:3a91d464dab982510d6357ad7b238777246c9c027647fb33cb3d33bb6395c530",
+      "limits": {
+        "timeout_seconds": 1200,
+        "cpus": 2.0,
+        "memory": "4g",
+        "pids": 512,
+        "network": "bridge"
+      },
+      "task_sha256": "37d8ab99bf571b7b7bd1d16ce0352229e9e74bf55a582a1074b8e927d6945815",
+      "original_grader_source_sha256": "5d2eb1df32121f2034e0dae925526c334d3fafaaa86500497f19bc3cd7682c6b",
+      "title": "部署覆盖查询"
+    },
+    "tbpc002006-revise-equipment-service-register": {
+      "environment_image": "redacted.invalid/source-image@sha256:c846ebab919ab9702bf2d36ffaadbefa3b56a675379b762f5761f95eb92cc37d",
+      "runner_image_id": "sha256:d0dd6edd73770d0de9c40ba5f9bb0f9b34e3a206b036dd21944ecd17624af8ef",
+      "limits": {
+        "timeout_seconds": 1200,
+        "cpus": 2.0,
+        "memory": "4g",
+        "pids": 512,
+        "network": "bridge"
+      },
+      "task_sha256": "a0d0d8f99d8d6955f403898ed012e1dee606e961619a1cf12dd6d6799a658b2d",
+      "original_grader_source_sha256": "5d2eb1df32121f2034e0dae925526c334d3fafaaa86500497f19bc3cd7682c6b"
+    },
+    "tbpc002013-migrate-support-case-rollup": {
+      "environment_image": "redacted.invalid/source-image@sha256:cb35d9dcd68c3998df39eea120f43e19b45cb5c01c9ccde8e905cfab614d29f1",
+      "runner_image_id": "sha256:a533f2a92ac439e0c00c7c402899465b4baf0cd9e587c29f4fb6ab8e56dec135",
+      "limits": {
+        "timeout_seconds": 1800,
+        "cpus": 2.0,
+        "memory": "4g",
+        "pids": 512,
+        "network": "bridge"
+      },
+      "task_sha256": "9d82979758545ef5f075c07a0aac0fd7a268b274faf6681686d09a378e8f5470",
+      "original_grader_source_sha256": "5d2eb1df32121f2034e0dae925526c334d3fafaaa86500497f19bc3cd7682c6b",
+      "title": "工单汇总迁移"
+    },
+    "tbpc002013-migrate-warehouse-allocation-batch": {
+      "environment_image": "redacted.invalid/source-image@sha256:f810e621cbb4ba812546603a9f02151dd87d31191edbf4eb2c7675c9c949e7fe",
+      "runner_image_id": "sha256:6f31852316194f1a8e64a16267a2564558cbf4c927357578f08bbb3a2e50ffc7",
+      "limits": {
+        "timeout_seconds": 1800,
+        "cpus": 2.0,
+        "memory": "4g",
+        "pids": 512,
+        "network": "bridge"
+      },
+      "task_sha256": "e46131bbebdf368a2e1bdb45b4a5a8751d8090cf161658871d32b7b0117f5c77",
+      "original_grader_source_sha256": "5d2eb1df32121f2034e0dae925526c334d3fafaaa86500497f19bc3cd7682c6b",
+      "title": "仓库批处理迁移"
+    },
+    "tbpc030001-validate-kv-rpc-transcripts": {
+      "environment_image": "redacted.invalid/source-image@sha256:2e989185de189719eadbc2dcde000a5a41cf11b9f4b1701f4ad068b430324b9e",
+      "runner_image_id": "sha256:6f204339a0860edc4461a4a239c98b86d45d1c6a1e9c01883ced4bbede98e713",
+      "limits": {
+        "timeout_seconds": 1200,
+        "cpus": 2.0,
+        "memory": "4g",
+        "pids": 512,
+        "network": "bridge"
+      },
+      "task_sha256": "02d7e832ffa76baee232027dfbde5e14222974e96217288cf317bbd2a9646192",
+      "original_grader_source_sha256": "5d2eb1df32121f2034e0dae925526c334d3fafaaa86500497f19bc3cd7682c6b",
+      "title": "KV RPC 校验"
+    }
+  },
+  "runs": [
+    {
+      "run_id": "20260917T041808Z-2111b532",
+      "git": {
+        "commit": "94a510fae71de34ed3eefa64645d56431d0771cf",
+        "dirty": true
+      },
+      "seed": 163,
+      "task_suite_sha256": "2a8fd3f53c8ee8d75de642199ac920ee6f815ce25ee8a9be9f0f642b46c27c5f",
+      "runner_snapshot_sha256": "966203f1d5034a7b1a856d00ae44a49f74eba8c226533b7fde41b9607f3b738a"
+    },
+    {
+      "run_id": "20260917T080651Z-d4121ac6",
+      "git": {
+        "commit": "5564dd873f582f876851869b31f155d8174101aa",
+        "dirty": false
+      },
+      "seed": 163,
+      "task_suite_sha256": "2a8fd3f53c8ee8d75de642199ac920ee6f815ce25ee8a9be9f0f642b46c27c5f",
+      "runner_snapshot_sha256": "966203f1d5034a7b1a856d00ae44a49f74eba8c226533b7fde41b9607f3b738a"
+    },
+    {
+      "run_id": "20260917T081109Z-3c2192c6",
+      "git": {
+        "commit": "5564dd873f582f876851869b31f155d8174101aa",
+        "dirty": false
+      },
+      "seed": 163,
+      "task_suite_sha256": "2a8fd3f53c8ee8d75de642199ac920ee6f815ce25ee8a9be9f0f642b46c27c5f",
+      "runner_snapshot_sha256": "966203f1d5034a7b1a856d00ae44a49f74eba8c226533b7fde41b9607f3b738a"
+    },
+    {
+      "run_id": "20260917T143433Z-75415e3b",
+      "git": {
+        "commit": "5564dd873f582f876851869b31f155d8174101aa",
+        "dirty": false
+      },
+      "seed": 163,
+      "task_suite_sha256": "2a8fd3f53c8ee8d75de642199ac920ee6f815ce25ee8a9be9f0f642b46c27c5f",
+      "runner_snapshot_sha256": "966203f1d5034a7b1a856d00ae44a49f74eba8c226533b7fde41b9607f3b738a"
+    },
+    {
+      "run_id": "20260917T144439Z-3435dbab",
+      "git": {
+        "commit": "5564dd873f582f876851869b31f155d8174101aa",
+        "dirty": false
+      },
+      "seed": 163,
+      "task_suite_sha256": "2a8fd3f53c8ee8d75de642199ac920ee6f815ce25ee8a9be9f0f642b46c27c5f",
+      "runner_snapshot_sha256": "966203f1d5034a7b1a856d00ae44a49f74eba8c226533b7fde41b9607f3b738a"
+    },
+    {
+      "run_id": "20260917T145734Z-5763efd8",
+      "git": {
+        "commit": "5564dd873f582f876851869b31f155d8174101aa",
+        "dirty": false
+      },
+      "seed": 163,
+      "task_suite_sha256": "2a8fd3f53c8ee8d75de642199ac920ee6f815ce25ee8a9be9f0f642b46c27c5f",
+      "runner_snapshot_sha256": "966203f1d5034a7b1a856d00ae44a49f74eba8c226533b7fde41b9607f3b738a"
+    },
+    {
+      "run_id": "20260917T150431Z-9c4828c4",
+      "git": {
+        "commit": "5564dd873f582f876851869b31f155d8174101aa",
+        "dirty": false
+      },
+      "seed": 163,
+      "task_suite_sha256": "2a8fd3f53c8ee8d75de642199ac920ee6f815ce25ee8a9be9f0f642b46c27c5f",
+      "runner_snapshot_sha256": "966203f1d5034a7b1a856d00ae44a49f74eba8c226533b7fde41b9607f3b738a"
+    },
+    {
+      "run_id": "20260917T151637Z-08ca0af7",
+      "git": {
+        "commit": "5564dd873f582f876851869b31f155d8174101aa",
+        "dirty": false
+      },
+      "seed": 163,
+      "task_suite_sha256": "2a8fd3f53c8ee8d75de642199ac920ee6f815ce25ee8a9be9f0f642b46c27c5f",
+      "runner_snapshot_sha256": "966203f1d5034a7b1a856d00ae44a49f74eba8c226533b7fde41b9607f3b738a"
+    },
+    {
+      "run_id": "20260917T152021Z-6edcca5f",
+      "git": {
+        "commit": "5564dd873f582f876851869b31f155d8174101aa",
+        "dirty": false
+      },
+      "seed": 163,
+      "task_suite_sha256": "2a8fd3f53c8ee8d75de642199ac920ee6f815ce25ee8a9be9f0f642b46c27c5f",
+      "runner_snapshot_sha256": "966203f1d5034a7b1a856d00ae44a49f74eba8c226533b7fde41b9607f3b738a"
+    }
+  ],
+  "attempts": [
+    {
+      "attempt_id": "20260917T041808Z-2111b532/001-claudecode",
+      "task_id": "tbpc002004-match-device-observation-lines",
+      "runner": "claudecode",
+      "agent_status": "completed",
+      "agent_duration_ms": 79786.467,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 0,
+          "other": 0,
+          "passed": 3,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 1.0,
+          "tests": 3
+        },
+        "score": 1.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 70016,
+        "input_tokens": 85162,
+        "output_tokens": 12606
+      },
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 31159173,
+        "io_read_bytes": 226083840,
+        "io_write_bytes": 17408,
+        "memory_peak_bytes": 400785408,
+        "pids_peak": 21
+      },
+      "activity": {
+        "assistant_turns": 9,
+        "tool_calls": 10,
+        "tool_failures": 0,
+        "tool_successes": 10,
+        "turns": 1
+      },
+      "evidence_sha256": "f042a52350c9ae1948e105d05c025cf8c3deb25fe2efc16d50b6fd861cf9f872",
+      "original_sha256": "f042a52350c9ae1948e105d05c025cf8c3deb25fe2efc16d50b6fd861cf9f872",
+      "model_requests": 9,
+      "observed_model_ms": 56845.79405200044,
+      "trace_metrics": {
+        "archived_requests": 9,
+        "terminal_requests": 9,
+        "usage_requests": 0,
+        "observed_usage": {},
+        "first_request_usage": {},
+        "http_status_counts": {
+          "200": 9
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 745.0002099999438,
+        "source_sha256": {
+          "model-requests.jsonl": "1dc97bdbbb7e9fbd06d9f502a5c8631bc96d463a4a7ab9c1baeaa587ee996e5a",
+          "agent-events.jsonl": "92bf9ab1367839b0f3ce7a366dbb2675553e59922e6ecf3a5976d715207fece2"
+        },
+        "tool_breakdown": {
+          "Bash": 10
+        }
+      }
+    },
+    {
+      "attempt_id": "20260917T041808Z-2111b532/002-claudecode",
+      "task_id": "tbpc002013-migrate-warehouse-allocation-batch",
+      "runner": "claudecode",
+      "agent_status": "completed",
+      "agent_duration_ms": 847386.931,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 0,
+          "other": 0,
+          "passed": 5,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 1.0,
+          "tests": 5
+        },
+        "score": 1.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 862336,
+        "input_tokens": 878043,
+        "output_tokens": 28246
+      },
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 721724325,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 481660928,
+        "pids_peak": 30
+      },
+      "activity": {
+        "assistant_turns": 35,
+        "tool_calls": 36,
+        "tool_failures": 3,
+        "tool_successes": 33,
+        "turns": 1
+      },
+      "evidence_sha256": "74867eb6bbd8cdb58654f0d8267f134653476e8bbf80e7bf78ae8567136cec1a",
+      "original_sha256": "74867eb6bbd8cdb58654f0d8267f134653476e8bbf80e7bf78ae8567136cec1a",
+      "model_requests": 35,
+      "observed_model_ms": 134631.30665800013,
+      "trace_metrics": {
+        "archived_requests": 35,
+        "terminal_requests": 35,
+        "usage_requests": 0,
+        "observed_usage": {},
+        "first_request_usage": {},
+        "http_status_counts": {
+          "200": 35
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 754.0533009998853,
+        "source_sha256": {
+          "model-requests.jsonl": "7d263975e0329d92523e34d4b448989053082e69ed1a0f9cd40ec55f3fa4c389",
+          "agent-events.jsonl": "dd65e880147731bc29b7f60e05b04ff76093f37a1d8ca81d0d7f8aebd58340ac"
+        },
+        "tool_breakdown": {
+          "Bash": 29,
+          "Edit": 3,
+          "Read": 4
+        }
+      }
+    },
+    {
+      "attempt_id": "20260917T041808Z-2111b532/003-harness",
+      "task_id": "tbpc002005-query-release-deployment-coverage",
+      "runner": "harness",
+      "agent_status": "completed",
+      "agent_duration_ms": 1102828.432,
+      "evaluation": {
+        "valid": true,
+        "score": 1.0,
+        "metrics": {
+          "tests": 3,
+          "passed": 3,
+          "failed": 0,
+          "skipped": 0,
+          "pending": 0,
+          "other": 0,
+          "test_pass_rate": 1.0
+        },
+        "invalid_reason": null
+      },
+      "usage": {
+        "cached_input_tokens": 2576512,
+        "input_tokens": 2645362,
+        "output_tokens": 74381
+      },
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 951926438,
+        "io_read_bytes": 6478848,
+        "io_write_bytes": 18952192,
+        "memory_peak_bytes": 141631488,
+        "pids_peak": 82
+      },
+      "activity": {
+        "assistant_turns": 91,
+        "tool_calls": 92,
+        "tool_failures": 19,
+        "tool_successes": 73,
+        "turns": 1
+      },
+      "evidence_sha256": "64baaedd4af14c022883ff8119f970ce99adab609e30e84cca34582a7fc73064",
+      "original_sha256": "db93595b432f26f64106cdcc934fbe42f871fcb06aa5fe327f4832da3073557c",
+      "model_requests": 91,
+      "observed_model_ms": 349526.3541339984,
+      "grading_correction": {
+        "workspace_sha256": "af0524ae1a820ccd8f3a5e430655fccb387f40998bc61f67cecdd7f1120eaa10",
+        "driver_sha256": "8a67c68f7d899092088a5db0c46bf5454cb2443ee37639e356e44acc959d991f",
+        "oracle_sha256": "3d49c249986bdeaa79e793a27fffcaa91dbdb00752ce3fe86286d4708eddd801",
+        "reason": "Restore interpreter system site-packages hidden by RHEL PYTHONNOUSERSITE; unchanged original assertions and agent artifacts.",
+        "rescore_duration_ms": 9638.386
+      },
+      "tool_trace_summary": {
+        "tool_breakdown": {
+          "fs_list": 3,
+          "fs_read": 9,
+          "run_command": 34,
+          "fs_write": 16,
+          "read_process": 26,
+          "fs_apply_patch": 4
+        },
+        "tool_error_breakdown": {
+          "INVALID_ARGUMENT": 6,
+          "command_exit": 8,
+          "NOT_FOUND": 4,
+          "PERMISSION_DENIED": 1
+        },
+        "empty_running_polls": 13,
+        "empty_running_poll_duration_ms": 390846
+      },
+      "trace_metrics": {
+        "archived_requests": 90,
+        "terminal_requests": 90,
+        "usage_requests": 90,
+        "observed_usage": {
+          "input_tokens": 2591294,
+          "cached_input_tokens": 2522816,
+          "output_tokens": 73143
+        },
+        "first_request_usage": {
+          "input_tokens": 2399,
+          "cached_input_tokens": 2048,
+          "output_tokens": 125
+        },
+        "http_status_counts": {
+          "200": 90
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 776.2132534999182,
+        "source_sha256": {
+          "model-requests.jsonl": "7b099481dc2f4a52c0740b85007f07486fe56ee1ff9570aa24e047e11c89d955",
+          "agent-events.jsonl": "866ec86bff5ba83a1da2fa2dd503dd229108ad69b68641438725169b9611ddad",
+          "core-thread.json": "5d6c7566462b1fb49897c2cfac9fb98d5d782f99160c4705a663d5dbd5dbe9c9"
+        },
+        "tool_breakdown": {
+          "fs_apply_patch": 4,
+          "fs_list": 3,
+          "fs_read": 9,
+          "fs_write": 16,
+          "read_process": 26,
+          "run_command": 34
+        },
+        "model_reply_rounds": 91,
+        "tool_rounds": 90,
+        "multi_tool_rounds": 2,
+        "rounds_with_tool_failure": 18,
+        "poll_only_rounds": 26,
+        "context_compactions": 0,
+        "compaction_duration_ms": 0,
+        "compaction_usage": {}
+      }
+    },
+    {
+      "attempt_id": "20260917T041808Z-2111b532/004-claudecode",
+      "task_id": "tbpc002006-revise-equipment-service-register",
+      "runner": "claudecode",
+      "agent_status": "completed",
+      "agent_duration_ms": 496054.799,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 0,
+          "other": 0,
+          "passed": 3,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 1.0,
+          "tests": 3
+        },
+        "score": 1.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 112064,
+        "input_tokens": 120910,
+        "output_tokens": 7906
+      },
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 488247456,
+        "io_read_bytes": 272030720,
+        "io_write_bytes": 4948992,
+        "memory_peak_bytes": 367788032,
+        "pids_peak": 20
+      },
+      "activity": {
+        "assistant_turns": 14,
+        "tool_calls": 16,
+        "tool_failures": 2,
+        "tool_successes": 14,
+        "turns": 1
+      },
+      "evidence_sha256": "31ff791e45d9c2186e46133d6c44d5c8d56c2cad50ff8992c27e311eeb0ae713",
+      "original_sha256": "31ff791e45d9c2186e46133d6c44d5c8d56c2cad50ff8992c27e311eeb0ae713",
+      "model_requests": 23,
+      "observed_model_ms": 42131.43981199896,
+      "trace_metrics": {
+        "archived_requests": 23,
+        "terminal_requests": 14,
+        "usage_requests": 0,
+        "observed_usage": {},
+        "first_request_usage": {},
+        "http_status_counts": {
+          "200": 14,
+          "502": 9
+        },
+        "identical_request_repeats": 9,
+        "first_byte_ms_p50": 774.4198854998103,
+        "source_sha256": {
+          "model-requests.jsonl": "223bed1c114fbe5947eb7d6b31d2c333a8875aeaea26852ae482f8a3ee1e029e",
+          "agent-events.jsonl": "137de8cbafc78bacfa547430af0655098661b4f05ca7b022661fc9b86cc19966"
+        },
+        "tool_breakdown": {
+          "Bash": 12,
+          "Read": 4
+        }
+      }
+    },
+    {
+      "attempt_id": "20260917T041808Z-2111b532/005-harness",
+      "task_id": "tbpc002013-migrate-support-case-rollup",
+      "runner": "harness",
+      "agent_status": "failed",
+      "agent_error": "model stream idle timeout",
+      "agent_duration_ms": 242435.04,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 7,
+          "other": 0,
+          "passed": 1,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 0.125,
+          "tests": 8
+        },
+        "score": 0.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 28864,
+        "input_tokens": 35659,
+        "output_tokens": 12983
+      },
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 26894326,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 34168832,
+        "pids_peak": 31
+      },
+      "activity": {
+        "assistant_turns": 10,
+        "tool_calls": 11,
+        "tool_failures": 1,
+        "tool_successes": 10,
+        "turns": 1
+      },
+      "evidence_sha256": "df7608155aed540da4e171b065390148d654dc4902888c97cb29bb336561e7e5",
+      "original_sha256": "df7608155aed540da4e171b065390148d654dc4902888c97cb29bb336561e7e5",
+      "model_requests": 10,
+      "observed_model_ms": 58165.50252099935,
+      "tool_trace_summary": {
+        "tool_breakdown": {
+          "fs_list": 4,
+          "fs_read": 3,
+          "run_command": 3,
+          "fs_write": 1
+        },
+        "tool_error_breakdown": {
+          "INVALID_ARGUMENT": 1
+        },
+        "empty_running_polls": 0,
+        "empty_running_poll_duration_ms": 0
+      },
+      "trace_metrics": {
+        "archived_requests": 9,
+        "terminal_requests": 9,
+        "usage_requests": 9,
+        "observed_usage": {
+          "input_tokens": 35659,
+          "cached_input_tokens": 28864,
+          "output_tokens": 12983
+        },
+        "first_request_usage": {
+          "input_tokens": 2496,
+          "cached_input_tokens": 2048,
+          "output_tokens": 123
+        },
+        "http_status_counts": {
+          "200": 9
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 591.8859129997145,
+        "source_sha256": {
+          "model-requests.jsonl": "019b902904f52e2a0ac5d288e69c3111895075796516291f96e4d78db0508b61",
+          "agent-events.jsonl": "60bb91c855f5115cc19234fa8d09f70dc20e28675c40de5ab1b88d68771a98b3",
+          "core-thread.json": "7ae9a6f666af10a378a1aa33b180d88e6c3fc4e8a967090e01bce85fe8059fc5"
+        },
+        "tool_breakdown": {
+          "fs_list": 4,
+          "fs_read": 3,
+          "fs_write": 1,
+          "run_command": 3
+        },
+        "model_reply_rounds": 10,
+        "tool_rounds": 9,
+        "multi_tool_rounds": 2,
+        "rounds_with_tool_failure": 1,
+        "poll_only_rounds": 0,
+        "context_compactions": 0,
+        "compaction_duration_ms": 0,
+        "compaction_usage": {}
+      }
+    },
+    {
+      "attempt_id": "20260917T041808Z-2111b532/006-codex",
+      "task_id": "tbpc002005-query-release-deployment-coverage",
+      "runner": "codex",
+      "agent_status": "timeout",
+      "agent_duration_ms": 1200444.242,
+      "evaluation": {
+        "valid": true,
+        "score": 1.0,
+        "metrics": {
+          "tests": 3,
+          "passed": 3,
+          "failed": 0,
+          "skipped": 0,
+          "pending": 0,
+          "other": 0,
+          "test_pass_rate": 1.0
+        },
+        "invalid_reason": null
+      },
+      "usage": {},
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 1273876109,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 571904000,
+        "pids_peak": 49
+      },
+      "activity": {
+        "assistant_turns": 38,
+        "tool_calls": 31,
+        "tool_failures": 5,
+        "tool_successes": 25,
+        "turns": 1
+      },
+      "evidence_sha256": "52b87db038eb1f92af33977923b277560c0c5e690d42687dc1953066d8275043",
+      "original_sha256": "c2c03e3f2ecbb7c05ecda290bbf73586b1a45862bf76209bcc9e938713cbe617",
+      "model_requests": 38,
+      "observed_model_ms": 211770.43862899987,
+      "grading_correction": {
+        "workspace_sha256": "d0cc0d45f1c628502031eaffec4d5a285109d2a29d8785a311c5076af63a6fc9",
+        "driver_sha256": "8a67c68f7d899092088a5db0c46bf5454cb2443ee37639e356e44acc959d991f",
+        "oracle_sha256": "3d49c249986bdeaa79e793a27fffcaa91dbdb00752ce3fe86286d4708eddd801",
+        "reason": "Restore interpreter system site-packages hidden by RHEL PYTHONNOUSERSITE; unchanged original assertions and agent artifacts.",
+        "rescore_duration_ms": 9511.146
+      },
+      "trace_metrics": {
+        "archived_requests": 38,
+        "terminal_requests": 38,
+        "usage_requests": 38,
+        "observed_usage": {
+          "input_tokens": 914787,
+          "cached_input_tokens": 874048,
+          "output_tokens": 41987
+        },
+        "first_request_usage": {
+          "input_tokens": 9749,
+          "cached_input_tokens": 0,
+          "output_tokens": 89
+        },
+        "http_status_counts": {
+          "200": 38
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 1202.7819830000226,
+        "source_sha256": {
+          "model-requests.jsonl": "b492a8088fc6c02c97094c1ebe68606ab1da21393462714808991c22c706a8dd",
+          "agent-events.jsonl": "73ecfaab108925481f6d305683be7d2118066f72fd1ac5f283e5097c3d42e415"
+        },
+        "tool_breakdown": {
+          "command_execution": 31
+        }
+      }
+    },
+    {
+      "attempt_id": "20260917T041808Z-2111b532/007-codex",
+      "task_id": "tbpc002004-match-device-observation-lines",
+      "runner": "codex",
+      "agent_status": "failed",
+      "agent_error": "unexpected status 502 Bad Gateway: Upstream request failed: Connection to [REDACTED] failed: [Errno -3] Temporary failure in name resolution, url: [REDACTED], request id: [REDACTED]",
+      "agent_duration_ms": 358725.37,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 0,
+          "other": 0,
+          "passed": 3,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 1.0,
+          "tests": 3
+        },
+        "score": 1.0,
+        "valid": true
+      },
+      "usage": {},
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 31085729,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 314990592,
+        "pids_peak": 47
+      },
+      "activity": {
+        "assistant_turns": 8,
+        "tool_calls": 8,
+        "tool_failures": 0,
+        "tool_successes": 8,
+        "turns": 1
+      },
+      "evidence_sha256": "fbed5055ca1f914eae1e74e83b77d1a5043b65313c56747cb6cfe3c236bc5c35",
+      "original_sha256": "fbed5055ca1f914eae1e74e83b77d1a5043b65313c56747cb6cfe3c236bc5c35",
+      "model_requests": 34,
+      "observed_model_ms": 312761.9957090001,
+      "trace_metrics": {
+        "archived_requests": 34,
+        "terminal_requests": 8,
+        "usage_requests": 8,
+        "observed_usage": {
+          "input_tokens": 93533,
+          "cached_input_tokens": 88384,
+          "output_tokens": 14933
+        },
+        "first_request_usage": {
+          "input_tokens": 9701,
+          "cached_input_tokens": 9344,
+          "output_tokens": 120
+        },
+        "http_status_counts": {
+          "200": 9,
+          "502": 25
+        },
+        "identical_request_repeats": 20,
+        "first_byte_ms_p50": 1011.2151020002784,
+        "source_sha256": {
+          "model-requests.jsonl": "e90e108f557b1e5470ec58cfa20449b9962e8fd1be8a6a5b00cf07389ace8309",
+          "agent-events.jsonl": "25071ae987fdba251bf144da2410bdfda032930e9364fb7945431225248c316c"
+        },
+        "tool_breakdown": {
+          "command_execution": 8
+        }
+      }
+    },
+    {
+      "attempt_id": "20260917T041808Z-2111b532/008-harness",
+      "task_id": "tbpc002006-revise-equipment-service-register",
+      "runner": "harness",
+      "agent_status": "completed",
+      "agent_duration_ms": 63176.346,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 0,
+          "other": 0,
+          "passed": 3,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 1.0,
+          "tests": 3
+        },
+        "score": 1.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 182208,
+        "input_tokens": 194561,
+        "output_tokens": 10957
+      },
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 13817169,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 42717184,
+        "pids_peak": 42
+      },
+      "activity": {
+        "assistant_turns": 23,
+        "tool_calls": 23,
+        "tool_failures": 7,
+        "tool_successes": 16,
+        "turns": 1
+      },
+      "evidence_sha256": "ebee70e7e9bee801114b9a67b51ccb7dd23d2614f1fa4a12cf7d061677cf559a",
+      "original_sha256": "ebee70e7e9bee801114b9a67b51ccb7dd23d2614f1fa4a12cf7d061677cf559a",
+      "model_requests": 23,
+      "observed_model_ms": 51598.621517998254,
+      "tool_trace_summary": {
+        "tool_breakdown": {
+          "fs_read": 6,
+          "fs_list": 2,
+          "fs_write": 5,
+          "fs_stat": 1,
+          "run_command": 7,
+          "read_process": 2
+        },
+        "tool_error_breakdown": {
+          "CONFLICT": 1,
+          "command_exit": 3,
+          "NOT_FOUND": 1,
+          "INVALID_ARGUMENT": 2
+        },
+        "empty_running_polls": 0,
+        "empty_running_poll_duration_ms": 0
+      },
+      "trace_metrics": {
+        "archived_requests": 22,
+        "terminal_requests": 22,
+        "usage_requests": 22,
+        "observed_usage": {
+          "input_tokens": 181005,
+          "cached_input_tokens": 169088,
+          "output_tokens": 10077
+        },
+        "first_request_usage": {
+          "input_tokens": 2416,
+          "cached_input_tokens": 2048,
+          "output_tokens": 131
+        },
+        "http_status_counts": {
+          "200": 22
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 847.5818645001709,
+        "source_sha256": {
+          "model-requests.jsonl": "c35f7b8a5951660e7fa01343c76a9adf6cb89150b0a0a62ac2a1bf2c1853d4ee",
+          "agent-events.jsonl": "4117e77fb8eb6d0d3f7f917ceceb14add8ee8ba3b9f487c5850b2d474bdffb84",
+          "core-thread.json": "e00cdf6bd326bbedcacce56c2c42be7e204aebc87beeeaf04475d114a4e75847"
+        },
+        "tool_breakdown": {
+          "fs_list": 2,
+          "fs_read": 6,
+          "fs_stat": 1,
+          "fs_write": 5,
+          "read_process": 2,
+          "run_command": 7
+        },
+        "model_reply_rounds": 23,
+        "tool_rounds": 22,
+        "multi_tool_rounds": 1,
+        "rounds_with_tool_failure": 7,
+        "poll_only_rounds": 2,
+        "context_compactions": 0,
+        "compaction_duration_ms": 0,
+        "compaction_usage": {}
+      }
+    },
+    {
+      "attempt_id": "20260917T041808Z-2111b532/009-codex",
+      "task_id": "tbpc002006-revise-equipment-service-register",
+      "runner": "codex",
+      "agent_status": "completed",
+      "agent_duration_ms": 5105.567,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 2,
+          "other": 0,
+          "passed": 1,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 0.3333333333333333,
+          "tests": 3
+        },
+        "score": 0.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 9408,
+        "input_tokens": 9766,
+        "output_tokens": 5
+      },
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 4568969,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 299233280,
+        "pids_peak": 45
+      },
+      "activity": {
+        "assistant_turns": 1,
+        "tool_calls": 0,
+        "tool_failures": 0,
+        "tool_successes": 0,
+        "turns": 1
+      },
+      "evidence_sha256": "f910921920bbbfec7daf256c7081d345fbe3a2f2f2b83e061d24eeee1b74ba61",
+      "original_sha256": "f910921920bbbfec7daf256c7081d345fbe3a2f2f2b83e061d24eeee1b74ba61",
+      "model_requests": 1,
+      "observed_model_ms": 0.0,
+      "trace_metrics": {
+        "archived_requests": 0,
+        "terminal_requests": 0,
+        "usage_requests": 0,
+        "observed_usage": {},
+        "first_request_usage": {},
+        "http_status_counts": {},
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": null,
+        "source_sha256": {
+          "agent-events.jsonl": "58ba2f2a13639fe2441152d0cef8da27c04978176b234feddd6214cfa6b3cc7c"
+        },
+        "tool_breakdown": {}
+      }
+    },
+    {
+      "attempt_id": "20260917T041808Z-2111b532/010-harness",
+      "task_id": "tbpc002013-migrate-warehouse-allocation-batch",
+      "runner": "harness",
+      "agent_status": "failed",
+      "agent_error": "model stream idle timeout",
+      "agent_duration_ms": 419667.521,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 0,
+          "other": 0,
+          "passed": 5,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 1.0,
+          "tests": 5
+        },
+        "score": 1.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 698240,
+        "input_tokens": 731107,
+        "output_tokens": 32403
+      },
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 162924448,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 69267456,
+        "pids_peak": 58
+      },
+      "activity": {
+        "assistant_turns": 43,
+        "tool_calls": 44,
+        "tool_failures": 7,
+        "tool_successes": 37,
+        "turns": 1
+      },
+      "evidence_sha256": "27d6533924e43f9806525aefca9a260c1bbf7ec4d39d67f7bf89b7169bbf817b",
+      "original_sha256": "27d6533924e43f9806525aefca9a260c1bbf7ec4d39d67f7bf89b7169bbf817b",
+      "model_requests": 43,
+      "observed_model_ms": 148612.55041199375,
+      "tool_trace_summary": {
+        "tool_breakdown": {
+          "fs_list": 5,
+          "fs_read": 5,
+          "run_command": 13,
+          "fs_write": 9,
+          "read_process": 9,
+          "terminate_process": 1,
+          "fs_apply_patch": 2
+        },
+        "tool_error_breakdown": {
+          "INVALID_ARGUMENT": 5,
+          "NOT_FOUND": 1,
+          "CONFLICT": 1
+        },
+        "empty_running_polls": 2,
+        "empty_running_poll_duration_ms": 60124
+      },
+      "trace_metrics": {
+        "archived_requests": 42,
+        "terminal_requests": 42,
+        "usage_requests": 42,
+        "observed_usage": {
+          "input_tokens": 731107,
+          "cached_input_tokens": 698240,
+          "output_tokens": 32403
+        },
+        "first_request_usage": {
+          "input_tokens": 2502,
+          "cached_input_tokens": 2048,
+          "output_tokens": 121
+        },
+        "http_status_counts": {
+          "200": 42
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 1004.2785900004674,
+        "source_sha256": {
+          "model-requests.jsonl": "85e056dbab39428264a8509971a701d8b499dd53622a9930bb0ef8b862888810",
+          "agent-events.jsonl": "054f8d63067a416b7b57ed434fd32b8ad9e569c7adf8acab2ea7deb51d55961a",
+          "core-thread.json": "765be578ab98faa68be5caf421af2853eb88125aa7324ce2473be4e4ca2d90ec"
+        },
+        "tool_breakdown": {
+          "fs_apply_patch": 2,
+          "fs_list": 5,
+          "fs_read": 5,
+          "fs_write": 9,
+          "read_process": 9,
+          "run_command": 13,
+          "terminate_process": 1
+        },
+        "model_reply_rounds": 43,
+        "tool_rounds": 42,
+        "multi_tool_rounds": 2,
+        "rounds_with_tool_failure": 7,
+        "poll_only_rounds": 9,
+        "context_compactions": 0,
+        "compaction_duration_ms": 0,
+        "compaction_usage": {}
+      }
+    },
+    {
+      "attempt_id": "20260917T041808Z-2111b532/011-claudecode",
+      "task_id": "tbpc002005-query-release-deployment-coverage",
+      "runner": "claudecode",
+      "agent_status": "completed",
+      "agent_duration_ms": 1133529.418,
+      "evaluation": {
+        "valid": true,
+        "score": 1.0,
+        "metrics": {
+          "tests": 3,
+          "passed": 3,
+          "failed": 0,
+          "skipped": 0,
+          "pending": 0,
+          "other": 0,
+          "test_pass_rate": 1.0
+        },
+        "invalid_reason": null
+      },
+      "usage": {
+        "cached_input_tokens": 634560,
+        "input_tokens": 662743,
+        "output_tokens": 26132
+      },
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 1386938409,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 507146240,
+        "pids_peak": 25
+      },
+      "activity": {
+        "assistant_turns": 30,
+        "tool_calls": 33,
+        "tool_failures": 1,
+        "tool_successes": 32,
+        "turns": 1
+      },
+      "evidence_sha256": "71d8d17565839dded315ff6144b298b30b3cfb16234b221aa2bbf39a0f95b13c",
+      "original_sha256": "a41fb726f47f12bcf9db65164b04458191923450022a0b8e5e03e53130134601",
+      "model_requests": 30,
+      "observed_model_ms": 122890.71438899917,
+      "grading_correction": {
+        "workspace_sha256": "06fd828ffa6f65b82c594fb2694917a80d81ff40e322fa7852ba14fc2287701f",
+        "driver_sha256": "8a67c68f7d899092088a5db0c46bf5454cb2443ee37639e356e44acc959d991f",
+        "oracle_sha256": "3d49c249986bdeaa79e793a27fffcaa91dbdb00752ce3fe86286d4708eddd801",
+        "reason": "Restore interpreter system site-packages hidden by RHEL PYTHONNOUSERSITE; unchanged original assertions and agent artifacts.",
+        "rescore_duration_ms": 10756.988
+      },
+      "trace_metrics": {
+        "archived_requests": 30,
+        "terminal_requests": 30,
+        "usage_requests": 0,
+        "observed_usage": {},
+        "first_request_usage": {},
+        "http_status_counts": {
+          "200": 30
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 863.6948944986216,
+        "source_sha256": {
+          "model-requests.jsonl": "0c2cf19354611a2149b45cce0258928dd9b10950a0fae2553a5e5610f78bf4e2",
+          "agent-events.jsonl": "a0315187aff1ef206d848654251a4ab11880c0bce3a1ea04eace4d208d9da238"
+        },
+        "tool_breakdown": {
+          "Bash": 33
+        }
+      }
+    },
+    {
+      "attempt_id": "20260917T041808Z-2111b532/012-codex",
+      "task_id": "tbpc002013-migrate-warehouse-allocation-batch",
+      "runner": "codex",
+      "agent_status": "completed",
+      "agent_duration_ms": 764647.026,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 0,
+          "other": 0,
+          "passed": 5,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 1.0,
+          "tests": 5
+        },
+        "score": 1.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 2958464,
+        "input_tokens": 3027334,
+        "output_tokens": 98251
+      },
+      "usage_complete": true,
+      "resources": {
+        "cpu_usec": 346341276,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 403537920,
+        "pids_peak": 49
+      },
+      "activity": {
+        "assistant_turns": 65,
+        "tool_calls": 58,
+        "tool_failures": 5,
+        "tool_successes": 53,
+        "turns": 1
+      },
+      "evidence_sha256": "d0e60346d36c290be6bce6112943d2e84ae55bedb3f3dc55249929f45c1eb66d",
+      "original_sha256": "d0e60346d36c290be6bce6112943d2e84ae55bedb3f3dc55249929f45c1eb66d",
+      "model_requests": 65,
+      "observed_model_ms": 428754.4467230018,
+      "trace_metrics": {
+        "archived_requests": 65,
+        "terminal_requests": 65,
+        "usage_requests": 65,
+        "observed_usage": {
+          "input_tokens": 3027334,
+          "cached_input_tokens": 2958464,
+          "output_tokens": 98251
+        },
+        "first_request_usage": {
+          "input_tokens": 9854,
+          "cached_input_tokens": 9344,
+          "output_tokens": 106
+        },
+        "http_status_counts": {
+          "200": 65
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 1183.100132000618,
+        "source_sha256": {
+          "model-requests.jsonl": "afa107ee0ab8f5f106ccaf289804bcd218f49f305e9fc0fc0b7a61a30fdcbcf5",
+          "agent-events.jsonl": "4fbd8fa17691fde7ef4a3aabbdf28aef70be52c407caaf61f6306d5d0d4f74ff"
+        },
+        "tool_breakdown": {
+          "command_execution": 58
+        }
+      }
+    },
+    {
+      "attempt_id": "20260917T041808Z-2111b532/013-codex",
+      "task_id": "tbpc002013-migrate-support-case-rollup",
+      "runner": "codex",
+      "agent_status": "timeout",
+      "agent_duration_ms": 1800558.237,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 0,
+          "other": 0,
+          "passed": 8,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 1.0,
+          "tests": 8
+        },
+        "score": 1.0,
+        "valid": true
+      },
+      "usage": {},
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 1692107693,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 397979648,
+        "pids_peak": 46
+      },
+      "activity": {
+        "assistant_turns": 65,
+        "tool_calls": 62,
+        "tool_failures": 6,
+        "tool_successes": 55,
+        "turns": 1
+      },
+      "evidence_sha256": "856a6e4f44ee76cab6b9d1c990500f848f221652ae9632974b1e035f127c57a3",
+      "original_sha256": "856a6e4f44ee76cab6b9d1c990500f848f221652ae9632974b1e035f127c57a3",
+      "model_requests": 65,
+      "observed_model_ms": 436121.4014210121,
+      "trace_metrics": {
+        "archived_requests": 65,
+        "terminal_requests": 65,
+        "usage_requests": 65,
+        "observed_usage": {
+          "input_tokens": 2091319,
+          "cached_input_tokens": 2046336,
+          "output_tokens": 87512
+        },
+        "first_request_usage": {
+          "input_tokens": 9848,
+          "cached_input_tokens": 9344,
+          "output_tokens": 112
+        },
+        "http_status_counts": {
+          "200": 65
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 1107.0084380007756,
+        "source_sha256": {
+          "model-requests.jsonl": "6c8f3c1bc8f0f5a891a351238009969ac3bb6e69504bba522bf0de27caa5310e",
+          "agent-events.jsonl": "24739cfe0d558ca19b4f283b5693cb70ae3c0dc7bfaccf1bf7bfdaaee523293e"
+        },
+        "tool_breakdown": {
+          "command_execution": 62
+        }
+      }
+    },
+    {
+      "attempt_id": "20260917T041808Z-2111b532/014-harness",
+      "task_id": "tbpc002004-match-device-observation-lines",
+      "runner": "harness",
+      "agent_status": "failed",
+      "agent_error": "Responses stream ended without response.completed",
+      "agent_duration_ms": 201908.873,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 0,
+          "other": 0,
+          "passed": 3,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 1.0,
+          "tests": 3
+        },
+        "score": 1.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 53632,
+        "input_tokens": 58075,
+        "output_tokens": 22825
+      },
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 26307291,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 40308736,
+        "pids_peak": 36
+      },
+      "activity": {
+        "assistant_turns": 14,
+        "tool_calls": 15,
+        "tool_failures": 5,
+        "tool_successes": 10,
+        "turns": 1
+      },
+      "evidence_sha256": "9054296126df49eb65932fba95336e5cd416652cf384291e96144f93f98aadf7",
+      "original_sha256": "9054296126df49eb65932fba95336e5cd416652cf384291e96144f93f98aadf7",
+      "model_requests": 14,
+      "observed_model_ms": 194934.85014699947,
+      "tool_trace_summary": {
+        "tool_breakdown": {
+          "run_command": 4,
+          "fs_read": 6,
+          "fs_write": 2,
+          "fs_apply_patch": 3
+        },
+        "tool_error_breakdown": {
+          "INVALID_ARGUMENT": 1,
+          "command_exit": 1,
+          "CONFLICT": 3
+        },
+        "empty_running_polls": 0,
+        "empty_running_poll_duration_ms": 0
+      },
+      "trace_metrics": {
+        "archived_requests": 14,
+        "terminal_requests": 13,
+        "usage_requests": 13,
+        "observed_usage": {
+          "input_tokens": 58075,
+          "cached_input_tokens": 53632,
+          "output_tokens": 22825
+        },
+        "first_request_usage": {
+          "input_tokens": 2351,
+          "cached_input_tokens": 2048,
+          "output_tokens": 138
+        },
+        "http_status_counts": {
+          "200": 14
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 740.0345465002829,
+        "source_sha256": {
+          "model-requests.jsonl": "fc45029714e4162ced858a42282ed7347c04a9e48ab2d03cab0f3121fc4bdbe2",
+          "agent-events.jsonl": "3df79c548f2387fde93f7223d9660046bdb8d4e9911cd21dd69cd07a587d1df7",
+          "core-thread.json": "3e1f964a7eef928d9f38f06b58f3b5f3b7c6709d8aff6f8a52c7660ef25610da"
+        },
+        "tool_breakdown": {
+          "fs_apply_patch": 3,
+          "fs_read": 6,
+          "fs_write": 2,
+          "run_command": 4
+        },
+        "model_reply_rounds": 14,
+        "tool_rounds": 13,
+        "multi_tool_rounds": 2,
+        "rounds_with_tool_failure": 5,
+        "poll_only_rounds": 0,
+        "context_compactions": 0,
+        "compaction_duration_ms": 0,
+        "compaction_usage": {}
+      }
+    },
+    {
+      "attempt_id": "20260917T041808Z-2111b532/015-claudecode",
+      "task_id": "tbpc002013-migrate-support-case-rollup",
+      "runner": "claudecode",
+      "agent_status": "completed",
+      "agent_duration_ms": 1162646.605,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 0,
+          "other": 0,
+          "passed": 8,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 1.0,
+          "tests": 8
+        },
+        "score": 1.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 2423680,
+        "input_tokens": 2457864,
+        "output_tokens": 54085
+      },
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 1335329941,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 424427520,
+        "pids_peak": 29
+      },
+      "activity": {
+        "assistant_turns": 56,
+        "tool_calls": 57,
+        "tool_failures": 3,
+        "tool_successes": 54,
+        "turns": 1
+      },
+      "evidence_sha256": "10d2dff423fd156f0d75cadb83924aa60e1ae8d0d7798f1a3856cdcb64ccd3a8",
+      "original_sha256": "10d2dff423fd156f0d75cadb83924aa60e1ae8d0d7798f1a3856cdcb64ccd3a8",
+      "model_requests": 56,
+      "observed_model_ms": 248585.84601400068,
+      "trace_metrics": {
+        "archived_requests": 56,
+        "terminal_requests": 56,
+        "usage_requests": 0,
+        "observed_usage": {},
+        "first_request_usage": {},
+        "http_status_counts": {
+          "200": 56
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 1014.3960125014928,
+        "source_sha256": {
+          "model-requests.jsonl": "901ef5fd8702919f1979ca46d8cf48aa783fd5554baa689ffab2e3575aebe8ec",
+          "agent-events.jsonl": "1e0837cf2199ec218c2332d15a08a01c08c4066f2254bdff43564e3797051ee5"
+        },
+        "tool_breakdown": {
+          "Bash": 39,
+          "Edit": 11,
+          "Read": 7
+        }
+      }
+    },
+    {
+      "attempt_id": "20260917T080651Z-d4121ac6/001-codex",
+      "task_id": "tbpc002006-revise-equipment-service-register",
+      "runner": "codex",
+      "agent_status": "completed",
+      "agent_duration_ms": 13519.407,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 2,
+          "other": 0,
+          "passed": 1,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 0.3333333333333333,
+          "tests": 3
+        },
+        "score": 0.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 9728,
+        "input_tokens": 9766,
+        "output_tokens": 5
+      },
+      "usage_complete": true,
+      "resources": {
+        "cpu_usec": 3989229,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 54231040,
+        "pids_peak": 51
+      },
+      "activity": {
+        "assistant_turns": 1,
+        "tool_calls": 0,
+        "tool_failures": 0,
+        "tool_successes": 0,
+        "turns": 1
+      },
+      "evidence_sha256": "11bfce100cf186c53545eca3017109d736daed36942950b1038d11a7075cb192",
+      "original_sha256": "11bfce100cf186c53545eca3017109d736daed36942950b1038d11a7075cb192",
+      "model_requests": 1,
+      "observed_model_ms": 1122.2041910004918,
+      "trace_metrics": {
+        "archived_requests": 1,
+        "terminal_requests": 1,
+        "usage_requests": 1,
+        "observed_usage": {
+          "input_tokens": 9766,
+          "cached_input_tokens": 9728,
+          "output_tokens": 5
+        },
+        "first_request_usage": {
+          "input_tokens": 9766,
+          "cached_input_tokens": 9728,
+          "output_tokens": 5
+        },
+        "http_status_counts": {
+          "200": 1
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 1100.4927209996822,
+        "source_sha256": {
+          "model-requests.jsonl": "6066b70be9ec74bda1e41d67d3a2488aa4940740717195d3072e221c0a7c28b1",
+          "agent-events.jsonl": "8a2f22366ac4397bf811856501dd41bd51b68a43a212e9b1cc1999f7505d61e2"
+        },
+        "tool_breakdown": {}
+      }
+    },
+    {
+      "attempt_id": "20260917T081109Z-3c2192c6/001-harness",
+      "task_id": "tbpc002013-migrate-support-case-rollup",
+      "runner": "harness",
+      "agent_status": "failed",
+      "agent_error": "model HTTP status 502 Bad Gateway",
+      "agent_duration_ms": 267037.663,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 0,
+          "other": 0,
+          "passed": 8,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 1.0,
+          "tests": 8
+        },
+        "score": 1.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 578816,
+        "input_tokens": 607330,
+        "output_tokens": 41245
+      },
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 124319694,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 47677440,
+        "pids_peak": 51
+      },
+      "activity": {
+        "assistant_turns": 39,
+        "tool_calls": 39,
+        "tool_failures": 10,
+        "tool_successes": 29,
+        "turns": 1
+      },
+      "evidence_sha256": "3e83e8ad9fae8d15b5410d980c031aeeeb3d2ed140467253067a00ea32048bee",
+      "original_sha256": "3e83e8ad9fae8d15b5410d980c031aeeeb3d2ed140467253067a00ea32048bee",
+      "model_requests": 41,
+      "observed_model_ms": 202344.59627999784,
+      "tool_trace_summary": {
+        "tool_breakdown": {
+          "fs_read": 4,
+          "fs_list": 3,
+          "run_command": 19,
+          "fs_write": 6,
+          "read_process": 7
+        },
+        "tool_error_breakdown": {
+          "INVALID_ARGUMENT": 7,
+          "NOT_FOUND": 1,
+          "command_exit": 2
+        },
+        "empty_running_polls": 0,
+        "empty_running_poll_duration_ms": 0
+      },
+      "trace_metrics": {
+        "archived_requests": 41,
+        "terminal_requests": 38,
+        "usage_requests": 38,
+        "observed_usage": {
+          "input_tokens": 607330,
+          "cached_input_tokens": 578816,
+          "output_tokens": 41245
+        },
+        "first_request_usage": {
+          "input_tokens": 2496,
+          "cached_input_tokens": 2432,
+          "output_tokens": 134
+        },
+        "http_status_counts": {
+          "200": 38,
+          "502": 3
+        },
+        "identical_request_repeats": 2,
+        "first_byte_ms_p50": 745.0150339991524,
+        "source_sha256": {
+          "model-requests.jsonl": "f71c054f02d8ae00d2a53d98832ea38b8876d2538ffb6c4d1493356fe81b1af3",
+          "agent-events.jsonl": "f4cf02a1eb98e0b47a2dbd33155106d133a078cd178af752e7e0763dd62881a4",
+          "core-thread.json": "7cb71476f8eef4d8260bcd15c327f4dd14b76d8a2ce37d21a958b80ae5d9fdb9"
+        },
+        "tool_breakdown": {
+          "fs_list": 3,
+          "fs_read": 4,
+          "fs_write": 6,
+          "read_process": 7,
+          "run_command": 19
+        },
+        "model_reply_rounds": 39,
+        "tool_rounds": 38,
+        "multi_tool_rounds": 1,
+        "rounds_with_tool_failure": 10,
+        "poll_only_rounds": 7,
+        "context_compactions": 0,
+        "compaction_duration_ms": 0,
+        "compaction_usage": {}
+      }
+    },
+    {
+      "attempt_id": "20260917T143433Z-75415e3b/001-codex",
+      "task_id": "tbpc030001-validate-kv-rpc-transcripts",
+      "runner": "codex",
+      "agent_status": "completed",
+      "agent_duration_ms": 456916.335,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 2,
+          "other": 0,
+          "passed": 3,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 0.6,
+          "tests": 5
+        },
+        "score": 0.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 1661952,
+        "input_tokens": 1711753,
+        "output_tokens": 55404
+      },
+      "usage_complete": true,
+      "resources": {
+        "cpu_usec": 246668423,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 463618048,
+        "pids_peak": 53
+      },
+      "activity": {
+        "assistant_turns": 48,
+        "tool_calls": 39,
+        "tool_failures": 13,
+        "tool_successes": 26,
+        "turns": 1
+      },
+      "evidence_sha256": "f6eaaba95376f44863d61d29ca59dc054d92bddd31df5fe7b5e96ddbc406fde0",
+      "original_sha256": "f6eaaba95376f44863d61d29ca59dc054d92bddd31df5fe7b5e96ddbc406fde0",
+      "model_requests": 48,
+      "observed_model_ms": 218680.99568699108,
+      "trace_metrics": {
+        "archived_requests": 48,
+        "terminal_requests": 48,
+        "usage_requests": 48,
+        "observed_usage": {
+          "input_tokens": 1711753,
+          "cached_input_tokens": 1661952,
+          "output_tokens": 55404
+        },
+        "first_request_usage": {
+          "input_tokens": 9722,
+          "cached_input_tokens": 9408,
+          "output_tokens": 160
+        },
+        "http_status_counts": {
+          "200": 48
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 926.070591496682,
+        "source_sha256": {
+          "model-requests.jsonl": "f2d413904e2d465281699b57c8b07876f2a3ae9a1436a7d709138de67751a369",
+          "agent-events.jsonl": "4dac615474854a352f1494e81f9eceed7eb45836e19ca9bf526f789de82d7a0b"
+        },
+        "tool_breakdown": {
+          "command_execution": 39
+        }
+      }
+    },
+    {
+      "attempt_id": "20260917T144439Z-3435dbab/001-codex",
+      "task_id": "tbpc030001-validate-kv-rpc-transcripts",
+      "runner": "codex",
+      "agent_status": "completed",
+      "agent_duration_ms": 748133.598,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 0,
+          "other": 0,
+          "passed": 5,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 1.0,
+          "tests": 5
+        },
+        "score": 1.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 1730176,
+        "input_tokens": 1770199,
+        "output_tokens": 57298
+      },
+      "usage_complete": true,
+      "resources": {
+        "cpu_usec": 524680213,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 430465024,
+        "pids_peak": 46
+      },
+      "activity": {
+        "assistant_turns": 52,
+        "tool_calls": 37,
+        "tool_failures": 3,
+        "tool_successes": 34,
+        "turns": 1
+      },
+      "evidence_sha256": "27a9a1a34d8e92bd05a526c92137f7bc840f56234b0691c22b9b385af93a01ce",
+      "original_sha256": "27a9a1a34d8e92bd05a526c92137f7bc840f56234b0691c22b9b385af93a01ce",
+      "model_requests": 52,
+      "observed_model_ms": 239478.64894002856,
+      "trace_metrics": {
+        "archived_requests": 52,
+        "terminal_requests": 52,
+        "usage_requests": 52,
+        "observed_usage": {
+          "input_tokens": 1770199,
+          "cached_input_tokens": 1730176,
+          "output_tokens": 57298
+        },
+        "first_request_usage": {
+          "input_tokens": 9722,
+          "cached_input_tokens": 9664,
+          "output_tokens": 55
+        },
+        "http_status_counts": {
+          "200": 52
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 883.8641590009502,
+        "source_sha256": {
+          "model-requests.jsonl": "f2abe3533d995d0c157f46ac23b7514776ee5de66467fbd9e1bdf5b827ba594c",
+          "agent-events.jsonl": "5cbf1658d71641d8f3f03f8e542e20803f9e250d92e8c0c5cac90c01fbeb78a7"
+        },
+        "tool_breakdown": {
+          "command_execution": 37
+        }
+      }
+    },
+    {
+      "attempt_id": "20260917T145734Z-5763efd8/001-harness",
+      "task_id": "tbpc030001-validate-kv-rpc-transcripts",
+      "runner": "harness",
+      "agent_status": "completed",
+      "agent_duration_ms": 396642.923,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 0,
+          "other": 0,
+          "passed": 5,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 1.0,
+          "tests": 5
+        },
+        "score": 1.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 2058176,
+        "input_tokens": 2174129,
+        "output_tokens": 65592
+      },
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 218202446,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 153223168,
+        "pids_peak": 67
+      },
+      "activity": {
+        "assistant_turns": 56,
+        "tool_calls": 56,
+        "tool_failures": 6,
+        "tool_successes": 50,
+        "turns": 1
+      },
+      "evidence_sha256": "f7f4064d6ff08dec650d949f9ce8407e2f2901d63019ef604e66994815048fcc",
+      "original_sha256": "f7f4064d6ff08dec650d949f9ce8407e2f2901d63019ef604e66994815048fcc",
+      "model_requests": 57,
+      "observed_model_ms": 248719.4550640197,
+      "tool_trace_summary": {
+        "tool_breakdown": {
+          "run_command": 19,
+          "fs_list": 1,
+          "fs_read": 11,
+          "fs_write": 5,
+          "fs_stat": 1,
+          "fs_apply_patch": 12,
+          "read_process": 7
+        },
+        "tool_error_breakdown": {
+          "INVALID_ARGUMENT": 5,
+          "CONFLICT": 1
+        },
+        "empty_running_polls": 0,
+        "empty_running_poll_duration_ms": 0
+      },
+      "trace_metrics": {
+        "archived_requests": 56,
+        "terminal_requests": 56,
+        "usage_requests": 56,
+        "observed_usage": {
+          "input_tokens": 2150037,
+          "cached_input_tokens": 2034816,
+          "output_tokens": 64392
+        },
+        "first_request_usage": {
+          "input_tokens": 2370,
+          "cached_input_tokens": 2048,
+          "output_tokens": 182
+        },
+        "http_status_counts": {
+          "200": 56
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 893.519239500165,
+        "source_sha256": {
+          "model-requests.jsonl": "7d8df87d188a4bc70b134ff8365a1d2030b939566264883fae913c5f5c73a7dc",
+          "agent-events.jsonl": "20ba191c02c528c2496480e6f14aa7d5b36a316be681eabd11df60c9c6f8c1ff",
+          "core-thread.json": "964d30cfd859ac6f1e4d52defdcae24d325143b5dcf396cc45d284e15b415bd7"
+        },
+        "tool_breakdown": {
+          "fs_apply_patch": 12,
+          "fs_list": 1,
+          "fs_read": 11,
+          "fs_stat": 1,
+          "fs_write": 5,
+          "read_process": 7,
+          "run_command": 19
+        },
+        "model_reply_rounds": 56,
+        "tool_rounds": 55,
+        "multi_tool_rounds": 1,
+        "rounds_with_tool_failure": 6,
+        "poll_only_rounds": 7,
+        "context_compactions": 1,
+        "compaction_duration_ms": 15014,
+        "compaction_usage": {
+          "inputTokens": 36493,
+          "cachedInputTokens": 0,
+          "outputTokens": 3752
+        }
+      }
+    },
+    {
+      "attempt_id": "20260917T150431Z-9c4828c4/001-claudecode",
+      "task_id": "tbpc030001-validate-kv-rpc-transcripts",
+      "runner": "claudecode",
+      "agent_status": "completed",
+      "agent_duration_ms": 690720.641,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 0,
+          "other": 0,
+          "passed": 5,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 1.0,
+          "tests": 5
+        },
+        "score": 1.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 1085760,
+        "input_tokens": 1113065,
+        "output_tokens": 46131
+      },
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 563018711,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 474705920,
+        "pids_peak": 22
+      },
+      "activity": {
+        "assistant_turns": 30,
+        "tool_calls": 30,
+        "tool_failures": 0,
+        "tool_successes": 30,
+        "turns": 1
+      },
+      "evidence_sha256": "ec934c672f37f7362dd125996eb02b90d27b0428739db62702a29345f85374f4",
+      "original_sha256": "ec934c672f37f7362dd125996eb02b90d27b0428739db62702a29345f85374f4",
+      "model_requests": 30,
+      "observed_model_ms": 177327.4065060033,
+      "trace_metrics": {
+        "archived_requests": 30,
+        "terminal_requests": 30,
+        "usage_requests": 0,
+        "observed_usage": {},
+        "first_request_usage": {},
+        "http_status_counts": {
+          "200": 30
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 887.213112997415,
+        "source_sha256": {
+          "model-requests.jsonl": "19bd732dad45d0dc87fb29c2b4a78a3a7f40eb033a0ff9bba6850bfa8a4cec5f",
+          "agent-events.jsonl": "9edc027289fae383271361868404d3688da4b76b1c3fef59e1f0025d4210f3a9"
+        },
+        "tool_breakdown": {
+          "Bash": 25,
+          "Edit": 3,
+          "Read": 2
+        }
+      }
+    },
+    {
+      "attempt_id": "20260917T151637Z-08ca0af7/001-harness",
+      "task_id": "tbpc002004-match-device-observation-lines",
+      "runner": "harness",
+      "agent_status": "completed",
+      "agent_duration_ms": 207614.596,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 0,
+          "other": 0,
+          "passed": 3,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 1.0,
+          "tests": 3
+        },
+        "score": 1.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 214720,
+        "input_tokens": 230895,
+        "output_tokens": 47328
+      },
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 35001472,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 44834816,
+        "pids_peak": 47
+      },
+      "activity": {
+        "assistant_turns": 28,
+        "tool_calls": 29,
+        "tool_failures": 4,
+        "tool_successes": 25,
+        "turns": 1
+      },
+      "evidence_sha256": "b303e005d1b968132d8cd6c126c0f2d5d64c20f381cc57207d02d32c72ac1ae6",
+      "original_sha256": "b303e005d1b968132d8cd6c126c0f2d5d64c20f381cc57207d02d32c72ac1ae6",
+      "model_requests": 28,
+      "observed_model_ms": 185649.62959697004,
+      "tool_trace_summary": {
+        "tool_breakdown": {
+          "fs_list": 3,
+          "fs_read": 6,
+          "run_command": 10,
+          "fs_write": 7,
+          "fs_stat": 1,
+          "read_process": 2
+        },
+        "tool_error_breakdown": {
+          "CONFLICT": 1,
+          "INVALID_ARGUMENT": 3
+        },
+        "empty_running_polls": 0,
+        "empty_running_poll_duration_ms": 0
+      },
+      "trace_metrics": {
+        "archived_requests": 27,
+        "terminal_requests": 27,
+        "usage_requests": 27,
+        "observed_usage": {
+          "input_tokens": 215729,
+          "cached_input_tokens": 200576,
+          "output_tokens": 45115
+        },
+        "first_request_usage": {
+          "input_tokens": 2351,
+          "cached_input_tokens": 2304,
+          "output_tokens": 115
+        },
+        "http_status_counts": {
+          "200": 27
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 597.3220860032598,
+        "source_sha256": {
+          "model-requests.jsonl": "bc1699008c7e7a1e3a937ca43e185fff59f514043b1c8a7141881b55b2f9e23e",
+          "agent-events.jsonl": "8a995e8a9eab11ad39d2746ab2222a98bbf77b5aa5983a322b10242b2669f887",
+          "core-thread.json": "320e7624c56a437623993ebe463891bee338ea9463fab79c71d8bcfff9dd5e13"
+        },
+        "tool_breakdown": {
+          "fs_list": 3,
+          "fs_read": 6,
+          "fs_stat": 1,
+          "fs_write": 7,
+          "read_process": 2,
+          "run_command": 10
+        },
+        "model_reply_rounds": 28,
+        "tool_rounds": 27,
+        "multi_tool_rounds": 2,
+        "rounds_with_tool_failure": 4,
+        "poll_only_rounds": 2,
+        "context_compactions": 0,
+        "compaction_duration_ms": 0,
+        "compaction_usage": {}
+      }
+    },
+    {
+      "attempt_id": "20260917T152021Z-6edcca5f/001-codex",
+      "task_id": "tbpc002004-match-device-observation-lines",
+      "runner": "codex",
+      "agent_status": "completed",
+      "agent_duration_ms": 94076.436,
+      "evaluation": {
+        "invalid_reason": null,
+        "metrics": {
+          "failed": 0,
+          "other": 0,
+          "passed": 3,
+          "pending": 0,
+          "skipped": 0,
+          "test_pass_rate": 1.0,
+          "tests": 3
+        },
+        "score": 1.0,
+        "valid": true
+      },
+      "usage": {
+        "cached_input_tokens": 133696,
+        "input_tokens": 139696,
+        "output_tokens": 13713
+      },
+      "usage_complete": false,
+      "resources": {
+        "cpu_usec": 40290896,
+        "io_read_bytes": null,
+        "io_write_bytes": null,
+        "memory_peak_bytes": 56569856,
+        "pids_peak": 47
+      },
+      "activity": {
+        "assistant_turns": 11,
+        "tool_calls": 10,
+        "tool_failures": 0,
+        "tool_successes": 10,
+        "turns": 1
+      },
+      "evidence_sha256": "1de7f80328194b8f066119bb966f979318e19eb6b4ea5e0996593d0498817e04",
+      "original_sha256": "1de7f80328194b8f066119bb966f979318e19eb6b4ea5e0996593d0498817e04",
+      "model_requests": 11,
+      "observed_model_ms": 54812.11046600947,
+      "trace_metrics": {
+        "archived_requests": 10,
+        "terminal_requests": 10,
+        "usage_requests": 10,
+        "observed_usage": {
+          "input_tokens": 124315,
+          "cached_input_tokens": 118592,
+          "output_tokens": 13149
+        },
+        "first_request_usage": {
+          "input_tokens": 9701,
+          "cached_input_tokens": 9664,
+          "output_tokens": 106
+        },
+        "http_status_counts": {
+          "200": 10
+        },
+        "identical_request_repeats": 0,
+        "first_byte_ms_p50": 748.003721000714,
+        "source_sha256": {
+          "model-requests.jsonl": "74c4f79a3380bf20b5b5a28557d7e67c588d096ec43b4ec188d44fc6f7b5731f",
+          "agent-events.jsonl": "19b25761d4aace13d06bff8f2fd6dd3e1825763a1c7e434486472bdb3b79144d"
+        },
+        "tool_breakdown": {
+          "command_execution": 10
+        }
+      }
+    }
+  ],
+  "representative_selection_rule": "First normally completed correct attempt per task/runner; if absent, first correct partial attempt, explicitly labeled failed or timeout. All costs retain every attempt.",
+  "trace_metrics_note": "Recomputed from archived per-request and CLI event logs. usage_complete and original CLI usage remain unchanged. observed_usage sums only terminal HTTP 200 records with valid nonnegative input/cache/output counts and no parse errors. Missing or invalid usage is never zero-filled. Archived request coverage includes records with unusable usage; it is not usage completeness. first_byte_ms_p50 is HTTP body TTFB, not first generated token latency. identical request hashes do not alone prove automatic retries.",
+  "publication": {
+    "redaction_version": 1,
+    "original_document_sha256": "031c4b4e4bb4e21bb9919c08f23b1df87845062567715e8d65359aa967df540d",
+    "preserved_payload_sha256": "a735a6f38f72204fbe1a877fd705233cf25573dc37a897ea3bb7ee95e4d62149",
+    "preserved_payload_encoding": "UTF-8 JSON, sorted keys, ensure_ascii=false, separators=comma/colon; omit publication and replace each listed field with [REDACTED]",
+    "redacted_fields": [
+      {
+        "path": "/model_config/base_url",
+        "reason": "Internal model service endpoint"
+      },
+      {
+        "path": "/model_config/runner_upstreams/claudecode/base_url",
+        "reason": "Internal model service endpoint"
+      },
+      {
+        "path": "/model_config/model",
+        "reason": "Internal deployment identifier; model identity is not publicly established"
+      },
+      {
+        "path": "/cases/tbpc002004-match-device-observation-lines/environment_image",
+        "reason": "Private registry and repository; original image digest retained"
+      },
+      {
+        "path": "/cases/tbpc002005-query-release-deployment-coverage/environment_image",
+        "reason": "Private registry and repository; original image digest retained"
+      },
+      {
+        "path": "/cases/tbpc002006-revise-equipment-service-register/environment_image",
+        "reason": "Private registry and repository; original image digest retained"
+      },
+      {
+        "path": "/cases/tbpc002013-migrate-support-case-rollup/environment_image",
+        "reason": "Private registry and repository; original image digest retained"
+      },
+      {
+        "path": "/cases/tbpc002013-migrate-warehouse-allocation-batch/environment_image",
+        "reason": "Private registry and repository; original image digest retained"
+      },
+      {
+        "path": "/cases/tbpc030001-validate-kv-rpc-transcripts/environment_image",
+        "reason": "Private registry and repository; original image digest retained"
+      },
+      {
+        "path": "/attempts/6/agent_error",
+        "reason": "Service address, local gateway address and request identifier; failure classification retained"
+      }
+    ],
+    "note": "Publication copy. Redacted endpoint/image references are not usable addresses. All measurements, attempt ordering, outcomes, image digests and source hashes are unchanged. The original-document hash identifies the unredacted source; it is not a hash of this publication copy."
+  }
+}

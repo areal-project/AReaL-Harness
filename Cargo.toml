@@ -1,0 +1,58 @@
+[workspace]
+members = ["core/mcp", "core/config", "core/protocol", "core/engine", "core/app-server", "core/server", "clients/tui", "clients/cli",
+    "runtime/protocol", "runtime/client", "runtime/supervisor", "runtime/exec-native", "runtime/daemon", "runtime/fs-helper"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "Apache-2.0"
+repository = "https://github.com/areal-project/AReaL-Harness"
+
+[workspace.dependencies]
+anyhow = "1.0.103"
+async-trait = "0.1.89"
+base64 = "0.22.1"
+axum = { version = "0.8.8", features = ["ws"] }
+clap = { version = "4.6.0", features = ["derive", "env"] }
+cordis-rs = { git = "https://github.com/dshbox/cordis-rs", branch = "main" }
+crossterm = { version = "0.29.0", features = ["event-stream"] }
+libc = "0.2"
+fs2 = "0.4.3"
+futures-util = "0.3.32"
+jsonschema = { version = "0.33.0", default-features = false }
+ratatui = { version = "0.30.0", default-features = false, features = ["crossterm"] }
+reqwest = { version = "0.12.28", default-features = false, features = ["json", "stream", "rustls-tls", "rustls-tls-native-roots"] }
+rustix = { version = "1.1.4", features = ["fs"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+sha2 = "0.10.9"
+tempfile = "3.27.0"
+thiserror = "2.0.18"
+toml_edit = { version = "0.23", default-features = false, features = ["parse"] }
+tokio = { version = "1.50.0", features = ["full", "test-util"] }
+tokio-tungstenite = "0.28.0"
+tokio-util = { version = "0.7.18", features = ["rt", "codec"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "json"] }
+tracing-opentelemetry = { version = "0.33.0", default-features = false }
+opentelemetry = { version = "0.32.0", default-features = false, features = ["trace"] }
+opentelemetry_sdk = { version = "0.32.1", default-features = false, features = ["trace"] }
+opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["http-proto", "reqwest-blocking-client", "trace"] }
+url = "2.5.8"
+uuid = { version = "1.22.0", features = ["v4"] }
+unicode-segmentation = "1.12.0"
+unicode-width = "0.2.2"
+areal-mcp = { path = "core/mcp" }
+areal-protocol = { path = "core/protocol" }
+areal-config = { path = "core/config" }
+areal-engine = { path = "core/engine" }
+areal-app-server = { path = "core/app-server" }
+areal-runtime-protocol = { path = "runtime/protocol" }
+areal-runtime-client = { path = "runtime/client" }
+areal-runtime-supervisor = { path = "runtime/supervisor" }
+areal-runtime-exec-native = { path = "runtime/exec-native" }
+
+[profile.release]
+lto = "thin"

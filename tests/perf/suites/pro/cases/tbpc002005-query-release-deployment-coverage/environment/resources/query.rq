@@ -1,0 +1,7 @@
+PREFIX ex: <http://example.org/release#>
+SELECT ?release ?region ?componentCount WHERE {
+  ?release ex:releaseDeployment ?deployment .
+  ?deployment ex:deploymentRegion ?place .
+  ?place ex:regionCode ?region .
+  BIND(1 AS ?componentCount)
+} ORDER BY ?release ?region

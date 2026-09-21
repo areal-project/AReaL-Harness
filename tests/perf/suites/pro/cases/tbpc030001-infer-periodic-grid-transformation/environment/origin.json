@@ -1,0 +1,12 @@
+{
+  "initial_files_sha256": {
+    "public_case.json": "610238cd9ac046170b43579a9454afbaca986168f4ba7fd8fcb59cc2b1ddd09b"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "d2cab1e85ae5b38ce403720ceaab8b57792e0ebd0d565f5de25462aa05f31d97",
+  "source_image_id": "sha256:37e3ee07503503215cfaaafd9c95eb628b167f05eee57284488be586744ec482",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc-infer-periodic-grid-transformation@sha256:0db82c608580ca02e55ac9cf93b528781f4a384a2401ac70f5ac90b9241909d1"
+  ],
+  "unredacted_source_env_sha256": "54b9903b824fa4c4ae740c891eb7e8cdfe1307a9f3d9b19b7bae43619a7f9c4f"
+}

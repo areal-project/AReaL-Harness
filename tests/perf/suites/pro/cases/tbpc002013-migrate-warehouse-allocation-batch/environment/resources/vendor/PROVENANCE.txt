@@ -1,0 +1,13 @@
+Artifact: libpython3.11.so.1.0
+Debian package: libpython3.11:amd64 3.11.2-6+deb12u8
+Source package: python3.11 3.11.2-6+deb12u8
+Package URI: https://deb.debian.org/debian/pool/main/p/python3.11/libpython3.11_3.11.2-6%2Bdeb12u8_amd64.deb
+Package size: 1988456 bytes
+Package SHA-256: 63845d53d5f64d2362cfb6007ec175ad1c6044cebe60a1885eff76d2ce637c35
+Artifact path in package: /usr/lib/x86_64-linux-gnu/libpython3.11.so.1.0
+Artifact size: 7731200 bytes
+Artifact SHA-256: d7b4b5bd699711828204fe1a966c737bfd2d708d1c18febf0253f6f3aa8ba139
+Builder image: tbpc002013-c-builder (sha256:af260e4a573329c07111b8c815cf00d9ad5633f543c7fc24dcdad2c88004a69c)
+Builder packages: libpython3.11:amd64, libpython3.11-dev:amd64, python3.11-dev; all 3.11.2-6+deb12u8
+Debian copyright file SHA-256: f1cbf908e1daa8789b389fdcf17811ed36b675d736b39a103591399861350382
+The artifact was independently exported from two fresh containers of the builder image and matched the package extraction byte-for-byte.

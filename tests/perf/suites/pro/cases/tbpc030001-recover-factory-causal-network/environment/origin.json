@@ -1,0 +1,13 @@
+{
+  "initial_files_sha256": {
+    "data/factory_observations.csv": "8355d51da18a005fe7998bacac33e5f550be1e5ab716ca1e71d6f8ba7eae020e",
+    "data/factory_spec.json": "fc2061bc3a81b5acd9ddfe273849f449c1767e6360819392100a6d0e7fc39ab0"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "d2d1a16776dda6fe6f91edcc49d393242df2043d8824306ff562fb910872b899",
+  "source_image_id": "sha256:cf680851ec2fedcecf44b95345b9c82f798bff0b7b89b425af561ac4b93d0a55",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc-recover-factory-causal-network@sha256:664c210e3fd72f95e564a5b8080cb26576b4971234e0c1dbbfe5d25abcb96c32"
+  ],
+  "unredacted_source_env_sha256": "9b0e604ebcfc6c511a4f4c7e89dba1616994c661b0554ad217299502c005a2bb"
+}

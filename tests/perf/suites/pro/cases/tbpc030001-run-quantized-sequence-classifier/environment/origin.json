@@ -1,0 +1,10 @@
+{
+  "initial_files_sha256": {},
+  "schema_version": 1,
+  "source_env_sha256": "18e60c3b6da9cf5d26a4cc8e8ddaa80186fca0becc366e5b15dec017cd6ccf8a",
+  "source_image_id": "sha256:3dce9706d4221b0cc5c865edf741892cc744f8eccd43e19491f00afae1602abd",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc-run-quantized-sequence-classifier@sha256:ce1dfb5b498daccd506901f7a547de52ab7ae06d5820177511dbffea78d8ced8"
+  ],
+  "unredacted_source_env_sha256": "e7762efdb02aaada526de3f937e9f16e81782c930572827ac455b9168125e789"
+}

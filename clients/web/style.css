@@ -1,0 +1,295 @@
+:root {
+  color-scheme: light;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    sans-serif;
+  color: #1a2636;
+  background: #f6f7fa;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  height: 100vh;
+}
+aside {
+  background: #101b2d;
+  color: #fff;
+  padding: 28px 20px;
+  overflow: auto;
+}
+h1 {
+  font-size: 24px;
+  margin: 0;
+}
+h1 span {
+  font-size: 14px;
+  color: #aab8cc;
+  font-weight: 400;
+}
+aside > .muted {
+  color: #91a3bd;
+  font-size: 12px;
+  letter-spacing: 2px;
+  margin-bottom: 30px;
+}
+button {
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 15px;
+  background: #206be8;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+button:hover:enabled {
+  filter: brightness(0.94);
+}
+button.secondary {
+  background: #e8edf5;
+  color: #30445e;
+}
+aside > button {
+  width: 100%;
+  margin-bottom: 8px;
+}
+aside > button.secondary {
+  background: #22324a;
+  color: #b9c8dd;
+}
+nav {
+  margin-top: 25px;
+  display: grid;
+  gap: 7px;
+}
+nav button {
+  text-align: left;
+  background: transparent;
+  color: #bac8dc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+nav button.selected {
+  background: #233855;
+  color: #fff;
+}
+#connection {
+  font-size: 12px;
+  color: #91a3bd;
+  margin-top: 30px;
+}
+main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100vh;
+  padding: 0 42px;
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #e0e6ef;
+  padding: 20px 0;
+}
+header p {
+  margin: 0 0 5px;
+  font-size: 12px;
+}
+h2 {
+  font-size: 15px;
+  margin: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+#status {
+  font-size: 12px;
+  background: #e6edf8;
+  border-radius: 20px;
+  padding: 7px 12px;
+  white-space: nowrap;
+  margin-left: 14px;
+}
+.muted {
+  color: #75839b;
+}
+#notice {
+  color: #a03a23;
+  font-size: 13px;
+  margin: 10px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#history {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 0 30px;
+  scroll-behavior: smooth;
+}
+.item {
+  margin: 0 0 24px;
+}
+.item h3 {
+  font-size: 12px;
+  color: #7686a0;
+  margin: 0 0 8px;
+}
+.item pre {
+  font:
+    14px/1.75 ui-monospace,
+    SFMono-Regular,
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+.user {
+  background: #edf2fa;
+  padding: 15px 18px;
+  border-radius: 12px;
+}
+.tool {
+  border: 1px solid #dce4ef;
+  border-radius: 10px;
+  padding: 13px 16px;
+  background: #fff;
+}
+.tool summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.tool pre {
+  font-size: 12px;
+  margin-top: 12px;
+  max-height: 320px;
+  overflow: auto;
+}
+.tool.unknown {
+  border-color: #da9d57;
+}
+.inspection {
+  padding-top: 12px;
+}
+.inspection label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.inspection textarea {
+  min-height: 70px;
+}
+.inspection button {
+  margin-top: 8px;
+}
+.turn-end {
+  font-size: 12px;
+  color: #8a5960;
+  margin: -10px 0 22px;
+}
+form#composer {
+  padding: 18px 0 24px;
+  border-top: 1px solid #dfe6f0;
+}
+label {
+  font-size: 13px;
+}
+textarea {
+  display: block;
+  width: 100%;
+  border: 1px solid #ccd7e7;
+  border-radius: 10px;
+  resize: vertical;
+  margin: 10px 0;
+  padding: 13px;
+  background: #fff;
+  color: #1a2636;
+  font: 14px/1.5 inherit;
+}
+textarea:focus {
+  outline: 2px solid #b7d0f8;
+  border-color: #5d8dd0;
+}
+#composer > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#permission {
+  font-size: 12px;
+  margin-right: auto;
+}
+@media (max-width: 750px) {
+  body {
+    grid-template-columns: 170px minmax(0, 1fr);
+  }
+  aside {
+    padding: 22px 12px;
+  }
+  main {
+    padding: 0 18px;
+  }
+  #composer > div {
+    flex-wrap: wrap;
+  }
+  #permission {
+    width: 100%;
+    margin-bottom: 5px;
+  }
+  h1 {
+    font-size: 20px;
+  }
+}
+@media (max-width: 500px) {
+  body {
+    display: block;
+  }
+  aside {
+    height: 175px;
+    padding: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    overflow: auto;
+  }
+  aside > button {
+    width: auto;
+    margin: 0;
+  }
+  aside > .muted,
+  #connection {
+    display: none;
+  }
+  nav {
+    display: flex;
+    overflow: auto;
+    margin: 0;
+    width: 100%;
+    gap: 5px;
+  }
+  nav button {
+    max-width: 180px;
+    flex-shrink: 0;
+  }
+  h1 {
+    width: 100%;
+    margin-bottom: 3px;
+  }
+  main {
+    height: calc(100vh - 175px);
+  }
+  header {
+    padding: 12px 0;
+  }
+}

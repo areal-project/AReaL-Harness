@@ -1,0 +1,42 @@
+schema_version = 1
+id = "python-fix-001"
+suite = "lite"
+description = "Fix a small deterministic Python function and preserve its input contract."
+
+[workspace]
+path = "workspace"
+
+[prompt]
+path = "prompt.md"
+
+[agent]
+files = ["fixture_agent.py"]
+
+[limits]
+timeout_seconds = 180
+cpus = 2.0
+memory = "1g"
+pids = 128
+network = "bridge"
+
+[grader]
+path = "grader"
+command = ["python3", "-m", "unittest", "discover", "-s", "/grader/tests", "-v"]
+timeout_seconds = 30
+
+[acceptance]
+require_terminal_event = true
+required_artifacts = []
+
+[comparison]
+score_regression_tolerance = 0.0
+
+[runners.codex]
+
+[runners.claudecode]
+
+[runners.harness]
+command = ["python3", "/opt/areal-perf/core_entrypoint.py"]
+
+[runners.fixture]
+command = ["python3", "/task/fixture_agent.py"]

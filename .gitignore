@@ -1,0 +1,17 @@
+/target/
+/node_modules/
+/.venv/
+/.ruff_cache/
+/.areal/
+*.tmp
+/runtime/sdk-typescript/node_modules/
+/runtime/sdk-typescript/dist/
+/core/sdk-typescript/node_modules/
+/core/sdk-typescript/dist/
+__pycache__/
+/tests/perf/model.toml
+.DS_Store
+.env
+.env.*
+!.env.example
+!.env.*.example

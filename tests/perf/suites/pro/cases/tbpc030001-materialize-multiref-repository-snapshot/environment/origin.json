@@ -1,0 +1,42 @@
+{
+  "initial_files_sha256": {
+    "SNAPSHOT_FORMAT.md": "a3f7856dfd0d724326e8b944e157210798df321a529af1fee86be38560512945",
+    "snapshot-plan.json": "a27dd5a614ce972df39d7d93d9372234335883510453bcfaffd446415036467e",
+    "source.git/HEAD": "f6f2b945f6c411b02ba3da9c7ace88dcf71b6af65ba2e0d89aa82900042b5a10",
+    "source.git/config": "dd548269913b6adbdfa7049170ea86850050cb762ea3b9c510a0b2986d2113e3",
+    "source.git/description": "85ab6c163d43a17ea9cf7788308bca1466f1b0a8d1cc92e26e9bf63da4062aee",
+    "source.git/hooks/applypatch-msg.sample": "0223497a0b8b033aa58a3a521b8629869386cf7ab0e2f101963d328aa62193f7",
+    "source.git/hooks/commit-msg.sample": "1f74d5e9292979b573ebd59741d46cb93ff391acdd083d340b94370753d92437",
+    "source.git/hooks/fsmonitor-watchman.sample": "e0549964e93897b519bd8e333c037e51fff0f88ba13e086a331592bf801fa1d0",
+    "source.git/hooks/post-update.sample": "81765af2daef323061dcbc5e61fc16481cb74b3bac9ad8a174b186523586f6c5",
+    "source.git/hooks/pre-applypatch.sample": "e15c5b469ea3e0a695bea6f2c82bcf8e62821074939ddd85b77e0007ff165475",
+    "source.git/hooks/pre-commit.sample": "f9af7d95eb1231ecf2eba9770fedfa8d4797a12b02d7240e98d568201251244a",
+    "source.git/hooks/pre-merge-commit.sample": "d3825a70337940ebbd0a5c072984e13245920cdf8898bd225c8d27a6dfc9cb53",
+    "source.git/hooks/pre-push.sample": "ecce9c7e04d3f5dd9d8ada81753dd1d549a9634b26770042b58dda00217d086a",
+    "source.git/hooks/pre-rebase.sample": "4febce867790052338076f4e66cc47efb14879d18097d1d61c8261859eaaa7b3",
+    "source.git/hooks/pre-receive.sample": "a4c3d2b9c7bb3fd8d1441c31bd4ee71a595d66b44fcf49ddb310252320169989",
+    "source.git/hooks/prepare-commit-msg.sample": "e9ddcaa4189fddd25ed97fc8c789eca7b6ca16390b2392ae3276f0c8e1aa4619",
+    "source.git/hooks/push-to-checkout.sample": "a53d0741798b287c6dd7afa64aee473f305e65d3f49463bb9d7408ec3b12bf5f",
+    "source.git/hooks/update.sample": "8d5f2fa83e103cf08b57eaa67521df9194f45cbdbcb37da52ad586097a14d106",
+    "source.git/info/exclude": "6671fe83b7a07c8932ee89164d1f2793b2318058eb8b98dc5c06ee0a5a3b0ec1",
+    "source.git/objects/02/137f0cfc98e87e26af0d831b0fe895003f2424": "6e1e727634cf83feee31d9a9cb2ecebe11f5adfb2a3b117efff1845f864a5e49",
+    "source.git/objects/0f/d71548c6800df69a40b02d98ee0cfb10822f41": "1ce363e0d89db88c8e12fdd40a82b25ea617d67c77e21bd19b799fbee93a22af",
+    "source.git/objects/13/7909fa70829e12fb0e2d5f8d52ee68ac65c2c3": "a57729b0d886df8283647159595853ea208cf031c9b4650a900c450bf74172c1",
+    "source.git/objects/26/b5a5f6cbb4d056d4ad53274569bf3d4dc534e3": "6f3b65a080ad247afc6601bc5ce59033133a1e2785ef57d84741f913a0b5b08e",
+    "source.git/objects/2b/1d57b8e533d5bf6d777d351846fdf320fa1b35": "8641cb7b89a1524ad7e3f61c29f9a37a0ff4bacf6abe3eb7deeeb8758be46204",
+    "source.git/objects/2b/f5ad0447d3370461c6f32a0a5bc8a3177376aa": "196f78572d471fddcfd45680bfbecd7cb0b9511d8fe24ee54d64f597c6de6a8a",
+    "source.git/objects/4f/a5fb405d6dc88e0c9ffe3fc05703056586f958": "f48dd6032e6f68422a332cc9ed0c46ec4c8fe7bef487a4eaf8c7a020f255f5a8",
+    "source.git/objects/54/0c54158b29c22dd4c8824476f4e1a3feb3b245": "7374b6e6ff458d03a98e610fc1d7fd002e99b059e04b44e188cf63423282b10a",
+    "source.git/objects/b8/6428d06c12ac82341b263c6668b918d493207f": "0baa63d7ed3962a0366012ecaafe809a7954abd34c8a9ad8ce387bcd434b8c2d",
+    "source.git/objects/f3/d43775e65ac68c0589a8961c9e665ee8436944": "1860ce45e802654a918763a35e2ff1bd1c5d8abce2c19bcce43115f4d69f027f",
+    "source.git/refs/heads/main": "9233ff44ffeebb294f329d39ae42bbf05a599b3fd8a42bfa4af049cfddab25b0",
+    "source.git/refs/heads/preview": "b82ac7a198c2857b72ddf087a62a501369e956cd5a444db8fcdc16d71cc39682"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "15522e963b23a8d92f7ad6efb3542fdc38ef1b22a319d4700bc8a87327d0b468",
+  "source_image_id": "sha256:f4c9b3a1b854c9413f536f83008f9429c9aed498543619c66397be50c347948f",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc-materialize-multiref-repository-snapshot@sha256:391f977cce183c3c31c55042c67bcebf1d87ff44e3f316b20faab8db97920356"
+  ],
+  "unredacted_source_env_sha256": "45fc49d4e380c9063cf45422f09397ef8a61e7ff1e56886528b18bca4c535277"
+}

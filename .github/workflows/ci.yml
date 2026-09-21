@@ -1,0 +1,131 @@
+name: Verify
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: macOS native Harness
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Prepare toolchain
+        run: |
+          rustup show
+          if ! command -v cmake; then brew install cmake; fi
+          if ! command -v rg; then brew install ripgrep; fi
+          python3 -m pip install uv==0.12.2
+          make setup
+          mkdir -p target/ci
+      - name: Verify native behavior
+        env:
+          NO_PROXY: 127.0.0.1,localhost
+        run: make verify-harness 2>&1 | tee target/ci/verify-harness.log
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: macos-logs
+          path: target/ci/
+          retention-days: 7
+
+  linux:
+    name: Linux checks and container Runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Prepare toolchain
+        run: |
+          rustup show
+          cmake --version
+          if ! command -v rg; then sudo apt-get update && sudo apt-get install -y ripgrep; fi
+          python3 -m pip install uv==0.12.2
+          make setup
+          mkdir -p target/ci
+      - name: Verify portable behavior
+        env:
+          NO_PROXY: 127.0.0.1,localhost
+        run: make verify CARGO_TEST_ARGS='--exclude areal-runtime-exec-native' 2>&1 | tee target/ci/verify.log
+      - name: Build the supported container profile
+        run: >-
+          docker build -f tests/e2e/docker/Dockerfile
+          --build-arg INSTALL_CODEX=0 --build-arg INSTALL_CLAUDE_CODE=0
+          -t areal-ci:runtime . 2>&1 | tee target/ci/docker-build.log
+      - name: Verify native backend inside its supported container
+        run: |
+          docker build -f tests/e2e/docker/Dockerfile --target runtime-tests \
+            -t areal-ci:runtime-tests . 2>&1 | tee target/ci/native-build.log
+          docker run --rm --network none \
+            --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
+            areal-ci:runtime-tests 2>&1 | tee target/ci/native-tests.log
+      - name: Verify Linux sandbox and host-staged files
+        run: |
+          python3 - <<'PY' 2>&1 | tee target/ci/runtime.log
+          import sys
+          sys.path.insert(0, 'tests/perf')
+          from perf import smoke_runtime_profile
+          raise SystemExit(smoke_runtime_profile('areal-ci:runtime'))
+          PY
+      - name: Verify root-only container ownership cases
+        run: >-
+          docker run --rm --network none --entrypoint python3
+          --mount "type=bind,source=$PWD,target=/repo,readonly" -w /repo
+          areal-ci:runtime tests/perf/perf.py self-test
+          2>&1 | tee target/ci/perf-root.log
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: linux-logs
+          path: target/ci/
+          retention-days: 7
+
+  dependencies:
+    name: Dependency advisories
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Check Rust advisories
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo audit
+      - name: Check npm lockfiles
+        run: |
+          npm audit
+          npm --prefix runtime/sdk-typescript audit
+          npm --prefix core/sdk-typescript audit

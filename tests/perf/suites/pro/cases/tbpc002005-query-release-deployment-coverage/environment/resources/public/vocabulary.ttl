@@ -1,0 +1,12 @@
+@prefix ex: <http://example.org/release#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:releaseComponent rdfs:comment "release to component" .
+ex:componentVerification rdfs:comment "component to verification" .
+ex:verificationStatus rdfs:comment "verification status literal" .
+ex:verificationStarts rdfs:comment "inclusive start date" .
+ex:verificationEnds rdfs:comment "optional inclusive end date" .
+ex:releaseDeployment rdfs:comment "release to deployment" .
+ex:deploymentRegion rdfs:comment "deployment to region" .
+ex:deploymentStarts rdfs:comment "inclusive start date" .
+ex:deploymentEnds rdfs:comment "optional inclusive end date" .
+ex:regionCode rdfs:comment "region code literal" .

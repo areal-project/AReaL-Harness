@@ -1,0 +1,13 @@
+{
+  "initial_files_sha256": {
+    "data/demo_requests.json": "4ccd89b2ef008183db117a321c179fbf2bbc3b3385f5eacac59f5786b141fa26",
+    "data/demo_server.py": "6691a75fe3f7e24837e0767832418d23af42d2570afc6567f7f3201221673d7d"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "a1dcdb4eeae9f9f93a65881997617d0a4cceb6c009472dd3655406db4943b8aa",
+  "source_image_id": "sha256:501f327ace08cfed93912a9922dc775b2a0d4cd3609e8990a0ac5c434239cbe8",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc-bound-cancellable-rpc-fanout@sha256:ec87662a59fe43bc977c5f90b01a0df09624abb803b90b12d26ad0636954db5b"
+  ],
+  "unredacted_source_env_sha256": "eb62fbd1fa1157ace62f3318579a5f0432a48212aee743a451d9c3a22f552cb1"
+}

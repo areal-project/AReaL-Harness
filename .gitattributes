@@ -1,0 +1,2 @@
+# 原始题目输入与许可证按哈希保留字节，包括 CRLF 和上游空白。
+tests/perf/suites/pro/cases/*/environment/resources/** -text -whitespace

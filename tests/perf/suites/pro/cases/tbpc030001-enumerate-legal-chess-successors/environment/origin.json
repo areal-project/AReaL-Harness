@@ -1,0 +1,12 @@
+{
+  "initial_files_sha256": {
+    "enumerate_successors.py": "0dd91e275107c30dd4bfd50db8f5eab4dc15e7d670719e0e649341407bbf4a18"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "de862fb588a59410ad7b497777cd7d7625a5f948663cd801974c01701375a77d",
+  "source_image_id": "sha256:4099606d1a91ec404a14e680806ab2c2d978912642ae86e4e0e0876c8b4c392b",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc-enumerate-legal-chess-successors@sha256:b6f5c0fa3008843487f6c200491f18d0b44692172239f74eb8a1f97365376844"
+  ],
+  "unredacted_source_env_sha256": "c92ea95cf663379bbe91cd18e9dc432074c89d740677333bb916295307724e63"
+}

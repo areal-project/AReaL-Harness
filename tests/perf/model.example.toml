@@ -1,0 +1,27 @@
+schema_version = 1
+
+# The upstream model service. localhost and 127.0.0.1 are automatically
+# rewritten to host.docker.internal for the gateway container.
+model = "your-model-id"
+base_url = "http://127.0.0.1:8000/v1"
+
+# completions, responses, or anthropic. Omit this field to use responses.
+protocol = "responses"
+
+# Store the secret in this environment variable, never in this file.
+api_key_env = "AREAL_PERF_API_KEY"
+
+# Codex sends these settings through its CLI configuration. Rust Core applies
+# reasoning_effort through its model config; reasoning_summary and verbosity
+# are recorded as unapplied. Claude Code applies reasoning_effort via --effort;
+# reasoning_summary and verbosity have no equivalent Claude Code CLI setting.
+# Availability still depends on the selected model.
+[parameters]
+reasoning_effort = "medium"
+reasoning_summary = "auto"
+verbosity = "medium"
+
+# Optional per-runner upstream routing; model and credential remain shared.
+# [runner_upstreams.claudecode]
+# base_url = "https://example.com/api/anthropic"
+# protocol = "anthropic"

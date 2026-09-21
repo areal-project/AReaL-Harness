@@ -1,0 +1,17 @@
+{
+  "initial_files_sha256": {
+    "legacy/rollup.awk": "d8395f16faae6ff0a95dec081ce9200efd679b08818b1852a31d53407b77a759",
+    "public/case-rollup-contract.md": "81640058a8d761732700d7a6b0ba500e1b0c1601ad9cea2b59621fe4caf03a98",
+    "public/run_legacy_rollup.sh": "4b71f515f08e1ac0127912ed7a70905951efa6d6b2ba8a26a4e0fceb0f8db049",
+    "vendor/LICENSE.libpython3.11": "f1cbf908e1daa8789b389fdcf17811ed36b675d736b39a103591399861350382",
+    "vendor/PROVENANCE.txt": "457df9b514aee7c348650bb11128d299c8653d614e6be734f77930e282cd8dfa",
+    "vendor/libpython3.11.so.1.0": "d7b4b5bd699711828204fe1a966c737bfd2d708d1c18febf0253f6f3aa8ba139"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "6ad8bb0f45f0ab1aae5fb453bca3427d86b5a9257adbea29eb4ba4526a2d64b5",
+  "source_image_id": "sha256:e3591d177c5e31d3d36068e657b2bbbaa45ca90757825261fe059cdde282fc12",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc002013-migrate-support-case-rollup@sha256:2c43b5f908dea932e8f1e8429a79127b14cc95e3a46f01100d484697f8b7b2d5"
+  ],
+  "unredacted_source_env_sha256": "bc23b8b9b709813373954d307ba7f51da758c55b33d9f2480a1d724cc928bc7c"
+}

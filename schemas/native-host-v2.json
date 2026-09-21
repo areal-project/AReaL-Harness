@@ -1,0 +1,773 @@
+{
+  "coreToHost": {
+    "oneOf": [
+      {
+        "additionalProperties": true,
+        "properties": {
+          "callId": {
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "properties": {
+              "arguments": {},
+              "threadId": {
+                "type": "string"
+              },
+              "tool": {
+                "type": "string"
+              },
+              "turnId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "arguments",
+              "threadId",
+              "tool",
+              "turnId"
+            ],
+            "type": "object"
+          },
+          "type": {
+            "const": "call"
+          }
+        },
+        "required": [
+          "callId",
+          "params",
+          "type"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": true,
+        "oneOf": [
+          {
+            "not": {
+              "required": [
+                "error"
+              ]
+            },
+            "required": [
+              "result"
+            ]
+          },
+          {
+            "not": {
+              "required": [
+                "result"
+              ]
+            },
+            "required": [
+              "error"
+            ]
+          }
+        ],
+        "properties": {
+          "callId": {
+            "type": "string"
+          },
+          "error": {
+            "properties": {
+              "code": {
+                "enum": [
+                  "INVALID_REQUEST",
+                  "INVALID_ARGUMENT",
+                  "UNAUTHENTICATED",
+                  "PERMISSION_DENIED",
+                  "SCOPE_CLOSED",
+                  "STALE_HANDLE",
+                  "NOT_FOUND",
+                  "CONFLICT",
+                  "RESOURCE_EXHAUSTED",
+                  "UNSUPPORTED",
+                  "UNAVAILABLE",
+                  "CLEANUP_FAILED"
+                ],
+                "type": "string"
+              },
+              "details": true,
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "title": "Error",
+            "type": "object"
+          },
+          "requestId": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "result": {},
+          "type": {
+            "enum": [
+              "fileResult",
+              "processResult"
+            ]
+          }
+        },
+        "required": [
+          "callId",
+          "requestId",
+          "type"
+        ],
+        "type": "object"
+      }
+    ]
+  },
+  "hostToCore": {
+    "oneOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "callId": {
+            "type": "string"
+          },
+          "command": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "argv": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "cwd": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "start",
+                    "type": "string"
+                  },
+                  "timeoutMs": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "tty": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "op",
+                  "argv",
+                  "cwd",
+                  "timeoutMs"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "op": {
+                    "const": "get",
+                    "type": "string"
+                  },
+                  "processId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "processId"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "after": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "maxBytes": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "op": {
+                    "const": "read",
+                    "type": "string"
+                  },
+                  "processId": {
+                    "type": "string"
+                  },
+                  "waitMs": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "op",
+                  "processId",
+                  "maxBytes",
+                  "waitMs"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "dataBase64": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "write",
+                    "type": "string"
+                  },
+                  "processId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "processId",
+                  "dataBase64"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "cols": {
+                    "format": "uint16",
+                    "maximum": 65535,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "op": {
+                    "const": "resize",
+                    "type": "string"
+                  },
+                  "processId": {
+                    "type": "string"
+                  },
+                  "rows": {
+                    "format": "uint16",
+                    "maximum": 65535,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "op",
+                  "processId",
+                  "cols",
+                  "rows"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "op": {
+                    "const": "closeStdin",
+                    "type": "string"
+                  },
+                  "processId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "processId"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "op": {
+                    "const": "terminate",
+                    "type": "string"
+                  },
+                  "processId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "processId"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "requestId": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": {
+            "const": "process",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "callId",
+          "requestId",
+          "command"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "callId": {
+            "type": "string"
+          },
+          "command": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "read",
+                    "type": "string"
+                  },
+                  "maxBytes": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "offset": {
+                    "default": 0,
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "path",
+                  "maxBytes"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "stat",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "path"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "after": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "const": "list",
+                    "type": "string"
+                  },
+                  "limit": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "path",
+                  "limit"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "dataBase64": {
+                    "type": "string"
+                  },
+                  "expected": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "absent",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "sha256",
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "value"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "kind": {
+                    "const": "write",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "path",
+                  "dataBase64",
+                  "expected"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedSha256": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "applyPatch",
+                    "type": "string"
+                  },
+                  "newText": {
+                    "type": "string"
+                  },
+                  "oldText": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "path",
+                  "oldText",
+                  "newText",
+                  "expectedSha256"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "requestId": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": {
+            "const": "file",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "callId",
+          "requestId",
+          "command"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "callId": {
+            "type": "string"
+          },
+          "response": {
+            "additionalProperties": false,
+            "properties": {
+              "contentItems": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "text": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "inputText",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "text"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "media": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "mimeType": {
+                              "type": "string"
+                            },
+                            "sizeBytes": {
+                              "format": "uint64",
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "uri": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "uri",
+                            "mimeType",
+                            "sizeBytes"
+                          ],
+                          "type": "object"
+                        },
+                        "modality": {
+                          "enum": [
+                            "text",
+                            "image",
+                            "audio",
+                            "file"
+                          ],
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "arealMedia",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "modality",
+                        "media"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "structuredContent": true,
+              "success": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "success",
+              "contentItems"
+            ],
+            "type": "object"
+          },
+          "type": {
+            "const": "result",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "callId",
+          "response"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "NativeHostMessage"
+  },
+  "protocolVersion": 2,
+  "ready": {
+    "additionalProperties": false,
+    "properties": {
+      "protocolVersion": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "tools": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "inputSchema": true,
+            "name": {
+              "type": "string"
+            },
+            "outputSchema": true
+          },
+          "required": [
+            "name",
+            "description",
+            "inputSchema"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "tools"
+    ],
+    "title": "NativeHostReady",
+    "type": "object"
+  },
+  "runtimeError": {
+    "properties": {
+      "code": {
+        "enum": [
+          "INVALID_REQUEST",
+          "INVALID_ARGUMENT",
+          "UNAUTHENTICATED",
+          "PERMISSION_DENIED",
+          "SCOPE_CLOSED",
+          "STALE_HANDLE",
+          "NOT_FOUND",
+          "CONFLICT",
+          "RESOURCE_EXHAUSTED",
+          "UNSUPPORTED",
+          "UNAVAILABLE",
+          "CLEANUP_FAILED"
+        ],
+        "type": "string"
+      },
+      "details": true,
+      "message": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "code",
+      "message"
+    ],
+    "title": "Error",
+    "type": "object"
+  },
+  "toolResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "contentItems": {
+        "items": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "type": {
+                  "const": "inputText",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "media": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "mimeType": {
+                      "type": "string"
+                    },
+                    "sizeBytes": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "uri": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "uri",
+                    "mimeType",
+                    "sizeBytes"
+                  ],
+                  "type": "object"
+                },
+                "modality": {
+                  "enum": [
+                    "text",
+                    "image",
+                    "audio",
+                    "file"
+                  ],
+                  "type": "string"
+                },
+                "type": {
+                  "const": "arealMedia",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "modality",
+                "media"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "type": "array"
+      },
+      "structuredContent": true,
+      "success": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "success",
+      "contentItems"
+    ],
+    "title": "DynamicToolResponse",
+    "type": "object"
+  }
+}

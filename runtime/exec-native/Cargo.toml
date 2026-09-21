@@ -1,0 +1,18 @@
+[package]
+name = "areal-runtime-exec-native"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+areal-runtime-protocol.workspace = true
+areal-runtime-supervisor.workspace = true
+async-trait.workspace = true
+libc.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

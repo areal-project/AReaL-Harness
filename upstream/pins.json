@@ -1,0 +1,35 @@
+{
+  "appServer": {
+    "version": "0.145.0",
+    "schema": "schemas/app-server/codex-0.145.0.json"
+  },
+  "cordisRs": {
+    "repository": "https://github.com/dshbox/cordis-rs",
+    "branch": "main",
+    "revision": "fda0c6f67c1e1d2a5b728786189214f27a80d4cb",
+    "version": "0.8.7",
+    "coreVersion": "0.2.7",
+    "integrated": true
+  },
+  "dsh": {
+    "repository": "https://github.com/deepseek-ai/deepseek-harness",
+    "referenceRevision": "c291e7961a515f6d7af9304e7fd1d257929aef26",
+    "integrated": false,
+    "pluginCompatibility": {
+      "sdk": "core/sdk-typescript",
+      "lockfile": "core/sdk-typescript/package-lock.json",
+      "package": "@deepseek-ai/dsh-tool-str-replace-editor",
+      "version": "0.1.6-alpha.2",
+      "commands": [
+        "view",
+        "str_replace"
+      ],
+      "services": [
+        "tools",
+        "fs subset",
+        "sandboxPolicy subset"
+      ],
+      "fullServiceTree": false
+    }
+  }
+}

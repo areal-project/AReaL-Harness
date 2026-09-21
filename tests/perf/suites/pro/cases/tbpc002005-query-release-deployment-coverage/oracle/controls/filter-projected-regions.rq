@@ -1,0 +1,10 @@
+PREFIX ex: <http://example.org/release#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+SELECT DISTINCT ?release ?region ?componentCount WHERE {
+ { SELECT ?release (COUNT(DISTINCT ?component) AS ?componentCount) WHERE {
+   ?release ex:releaseComponent ?component . ?component ex:componentVerification ?v . ?v ex:verificationStatus "pass" ; ex:verificationStarts ?vs . OPTIONAL {?v ex:verificationEnds ?ve}
+   FILTER(?vs <= "2030-03-31"^^xsd:date && (!BOUND(?ve)||?ve >= "2030-03-31"^^xsd:date))
+ } GROUP BY ?release HAVING(COUNT(DISTINCT ?component)>=3) }
+ FILTER EXISTS {?release ex:releaseDeployment ?pd . ?pd ex:deploymentRegion ?priority ; ex:deploymentStarts ?ps . OPTIONAL {?pd ex:deploymentEnds ?pe} VALUES ?priority {ex:RegionNorth ex:RegionEast} FILTER(?ps <= "2030-03-31"^^xsd:date && (!BOUND(?pe)||?pe >= "2030-03-31"^^xsd:date))}
+ ?release ex:releaseDeployment ?d . ?d ex:deploymentRegion ?rn ; ex:deploymentStarts ?ds . OPTIONAL {?d ex:deploymentEnds ?de} VALUES ?rn {ex:RegionNorth ex:RegionEast} ?rn ex:regionCode ?region . FILTER(?ds <= "2030-03-31"^^xsd:date && (!BOUND(?de)||?de >= "2030-03-31"^^xsd:date))
+} ORDER BY ?release ?region

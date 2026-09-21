@@ -1,0 +1,12 @@
+{
+  "initial_files_sha256": {
+    "select_suite.py": "0dd91e275107c30dd4bfd50db8f5eab4dc15e7d670719e0e649341407bbf4a18"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "b5eecce0357224ceb3cb72b78408d862881569c0ad61755e7f2c824f82286b9d",
+  "source_image_id": "sha256:ddcc0b31a250e49ed33e89400025235b414a68ca3e5015dea4c0e6bdd0571dfa",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc-select-minimal-sql-regression-suite@sha256:758813420c0427091ee51413faa5876904e213c201af26edcffb4a8fafcc1367"
+  ],
+  "unredacted_source_env_sha256": "812c43e35fa48c1ba21b234e335249b519d4dcf1870e88fa81fa918fec6eb3f2"
+}

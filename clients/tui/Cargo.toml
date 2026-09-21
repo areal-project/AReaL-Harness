@@ -1,0 +1,22 @@
+[package]
+name = "areal-tui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+areal-protocol.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+crossterm.workspace = true
+futures-util.workspace = true
+ratatui.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-tungstenite.workspace = true
+toml_edit.workspace = true
+tempfile.workspace = true
+unicode-segmentation.workspace = true
+unicode-width.workspace = true

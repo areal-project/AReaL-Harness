@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AReaL-Harness</title>
+    <link rel="stylesheet" href="/ui/style.css" />
+    <script type="module" src="/ui/app.js"></script>
+  </head>
+  <body>
+    <aside>
+      <h1>AReaL-<span>Harness</span></h1>
+      <p class="muted">会话 · 执行 · 验证</p>
+      <button id="new">新建任务</button><button id="refresh" class="secondary">刷新任务</button>
+      <nav id="threads" aria-label="任务列表"></nav>
+      <button id="more" class="secondary" hidden>加载更多任务</button>
+      <form id="login">
+        <label for="access-token">本地访问令牌</label>
+        <input id="access-token" type="password" autocomplete="off" required />
+        <button type="submit">连接</button>
+      </form>
+      <p id="connection" role="status">正在连接…</p>
+    </aside>
+    <main>
+      <header>
+        <div>
+          <p class="muted">工作区</p>
+          <h2 id="workspace">选择或新建任务</h2>
+        </div>
+        <span id="status">未开始</span>
+      </header>
+      <p id="notice" role="alert"></p>
+      <details id="workgroups">
+        <summary>协同任务与验收</summary>
+        <button id="groups-refresh" type="button" class="secondary">刷新协同任务</button>
+        <form id="group-start">
+          <label for="group-plan">执行计划（JSON，包含 requestId、plan、workers）</label>
+          <textarea id="group-plan" rows="5" required></textarea>
+          <button type="submit">开始协同任务</button>
+        </form>
+        <section id="groups" aria-label="协同任务列表"></section>
+      </details>
+      <section id="history" aria-label="任务记录"></section>
+      <form id="composer">
+        <label for="prompt">任务或补充说明</label
+        ><textarea id="prompt" rows="3" placeholder="描述需要完成和验证的工作…" required></textarea>
+        <div>
+          <span id="permission" class="muted"></span
+          ><button id="interrupt" type="button" class="secondary" disabled>停止执行</button
+          ><button id="send" type="submit" disabled>发送</button>
+        </div>
+      </form>
+    </main>
+  </body>
+</html>

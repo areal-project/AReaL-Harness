@@ -1,0 +1,36 @@
+{
+  "name": "@areal/runtime",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/areal-project/AReaL-Harness.git",
+    "directory": "runtime/sdk-typescript"
+  },
+  "homepage": "https://github.com/areal-project/AReaL-Harness#readme",
+  "bugs": {
+    "url": "https://github.com/areal-project/AReaL-Harness/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.2",
+    "typescript": "5.9.3"
+  }
+}

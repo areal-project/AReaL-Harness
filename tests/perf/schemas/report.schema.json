@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://areal.local/schemas/perf-report-v1.json",
+  "title": "AReaL local performance report",
+  "type": "object",
+  "required": [
+    "schema_version", "run_id", "task", "created_at", "provenance", "model",
+    "summary", "comparison", "trials"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "task": {
+      "type": "object",
+      "required": ["id", "sha256", "score_regression_tolerance"],
+      "properties": {
+        "id": { "type": "string" },
+        "suite": { "enum": ["lite", "pro", null] },
+        "cases": { "type": "array", "items": { "type": "string" } },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "score_regression_tolerance": { "type": "number", "minimum": 0 }
+      }
+    },
+    "created_at": { "type": "string" },
+    "model": { "type": ["string", "null"] },
+    "model_config": {
+      "type": ["object", "null"],
+      "properties": {
+        "path": { "type": "string" },
+        "model": { "type": "string" },
+        "base_url": { "type": "string" },
+        "protocol": { "enum": ["completions", "responses", "anthropic"] },
+        "api_key_env": { "type": "string" },
+        "parameters": { "type": "object" }
+      }
+    },
+    "provenance": { "type": "object" },
+    "summary": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/runnerSummary" }
+    },
+    "per_case": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": { "$ref": "#/$defs/runnerSummary" }
+      }
+    },
+    "comparison": {
+      "type": "object",
+      "required": ["status", "candidate", "baseline", "score_regression_tolerance"],
+      "properties": {
+        "status": { "enum": ["incomplete", "effect_only", "complete"] },
+        "candidate": { "const": "harness" },
+        "baseline": { "const": "codex" },
+        "score_regression_tolerance": { "type": "number", "minimum": 0 },
+        "score_delta": { "type": "number" },
+        "score_regression": { "type": "boolean" },
+        "reason": { "type": "string" }
+      }
+    },
+    "pairwise_comparisons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["candidate", "baseline", "status", "selection_status", "matched_pairs"],
+        "properties": {
+          "status": { "enum": ["paired", "incomplete"] },
+          "selection_status": { "const": "descriptive_only_no_winner" },
+          "matched_pairs": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "trials": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["schema_version", "sequence", "runner", "status", "agent", "grader", "evaluation"],
+        "properties": {
+          "schema_version": { "const": 1 },
+          "sequence": { "type": "integer", "minimum": 1 },
+          "repeat": { "type": "integer", "minimum": 1 },
+          "runner": { "type": "string" },
+          "task_id": { "type": "string" },
+          "status": { "enum": ["passed", "failed"] },
+          "agent": { "$ref": "#/$defs/agentResult" },
+          "grader": { "$ref": "#/$defs/graderResult" },
+          "evaluation": { "$ref": "#/$defs/evaluation" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "nullableNumber": { "type": ["number", "null"] },
+    "activity": {
+      "type": "object",
+      "required": ["turns", "assistant_turns", "tool_calls", "tool_successes", "tool_failures"],
+      "properties": {
+        "turns": { "type": "integer", "minimum": 0 },
+        "assistant_turns": { "type": "integer", "minimum": 0 },
+        "tool_calls": { "type": "integer", "minimum": 0 },
+        "tool_successes": { "type": "integer", "minimum": 0 },
+        "tool_failures": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "agentResult": {
+      "type": "object",
+      "required": ["status", "execution_started", "usage", "activity", "milestones_ms", "resources"],
+      "properties": {
+        "status": { "enum": ["completed", "failed", "timeout"] },
+        "execution_started": { "type": "boolean" },
+        "usage": { "type": "object" },
+        "usage_observed": { "type": "boolean" },
+        "usage_unknown_steps": { "type": ["integer", "null"], "minimum": 0 },
+        "delegation": { "type": ["object", "null"] },
+        "activity": { "$ref": "#/$defs/activity" },
+        "milestones_ms": { "type": "object" },
+        "resources": { "type": "object" }
+      }
+    },
+    "graderResult": {
+      "type": "object",
+      "required": ["status", "score", "metrics", "duration_ms"],
+      "properties": {
+        "status": { "enum": ["passed", "failed", "timeout"] },
+        "score": { "$ref": "#/$defs/nullableNumber" },
+        "metrics": { "type": "object", "additionalProperties": { "type": "number" } },
+        "duration_ms": { "$ref": "#/$defs/nullableNumber" }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "required": ["valid", "score", "metrics", "invalid_reason"],
+      "properties": {
+        "valid": { "type": "boolean" },
+        "score": { "$ref": "#/$defs/nullableNumber" },
+        "metrics": { "type": "object", "additionalProperties": { "type": "number" } },
+        "invalid_reason": { "type": ["string", "null"] }
+      }
+    },
+    "runnerSummary": {
+      "type": "object",
+      "required": [
+        "attempts", "passed", "scored", "infrastructure_failures", "success_rate",
+        "score_mean", "score_metrics_mean", "agent_wall_ms", "total_wall_ms", "grader_wall_ms_median",
+        "milestones_ms_median", "cpu_ms_median", "memory_peak_bytes_median",
+        "tokens_median", "token_efficiency", "activity_median", "tool_success_rate"
+      ],
+      "properties": {
+        "attempts": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "scored": { "type": "integer", "minimum": 0 },
+        "infrastructure_failures": { "type": "integer", "minimum": 0 },
+        "success_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "score_mean": { "$ref": "#/$defs/nullableNumber" },
+        "score_metrics_mean": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/nullableNumber" }
+        },
+        "agent_wall_ms": { "type": "object" },
+        "total_wall_ms": { "type": "object" },
+        "grader_wall_ms_median": { "$ref": "#/$defs/nullableNumber" },
+        "milestones_ms_median": { "type": "object" },
+        "cpu_ms_median": { "$ref": "#/$defs/nullableNumber" },
+        "memory_peak_bytes_median": { "$ref": "#/$defs/nullableNumber" },
+        "tokens_median": { "type": "object" },
+        "token_efficiency": { "type": "object" },
+        "activity_median": { "type": "object" },
+        "tool_success_rate": { "$ref": "#/$defs/nullableNumber" },
+        "all_attempts": {
+          "type": "object",
+          "required": ["attempts", "failures", "total_wall_ms", "tokens", "delegation_observed_trials"]
+        }
+      }
+    }
+  }
+}

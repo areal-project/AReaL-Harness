@@ -1,0 +1,12 @@
+{
+  "initial_files_sha256": {
+    "validate_transcript.py": "0dd91e275107c30dd4bfd50db8f5eab4dc15e7d670719e0e649341407bbf4a18"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "966cac7a85f51061cb11d76810fe63e20f5b93443feb1e23a5f02a6f748de41d",
+  "source_image_id": "sha256:3446e7532cadeb379f2fccec51d81630f0ab27d5cd6ba350ef3c8ca98d01b4c7",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc-validate-kv-rpc-transcripts@sha256:f99c7fb8822619f1799258b25c112a946790f9f9a8a127e7a2630a0594b356b9"
+  ],
+  "unredacted_source_env_sha256": "f8f734624adf9410c7ae11062443ff51eb3817d45597fb3ba3cca9f51cd53efc"
+}

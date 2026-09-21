@@ -1,0 +1,14 @@
+.git
+.areal
+target
+**/node_modules
+**/dist
+**/.venv
+**/.ruff_cache
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.tmp
+**/.DS_Store
+tests/perf/model.toml
+tests/perf/**/output

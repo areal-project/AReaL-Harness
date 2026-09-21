@@ -1,0 +1,10 @@
+{
+  "initial_files_sha256": {},
+  "schema_version": 1,
+  "source_env_sha256": "aab22e18911cb91b49aa90cf7b2f45f418e90750a2c7da8b9709ca012bac85e2",
+  "source_image_id": "sha256:3a12208f9ad4c93506eb71038c416d55d249add259715f39f812ce69f90a7aa6",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc-assemble-constrained-protein-cassette@sha256:558caba04165868aa5fd1a1240913242a6543d1c95663a52aa4b505db39719af"
+  ],
+  "unredacted_source_env_sha256": "34e6da5d09a2f483a9b89be07de2dc41406f585060d64acaafc8dd1aee776107"
+}

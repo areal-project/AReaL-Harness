@@ -1,0 +1,12 @@
+{
+  "initial_files_sha256": {
+    "recover_sphere.py": "0dd91e275107c30dd4bfd50db8f5eab4dc15e7d670719e0e649341407bbf4a18"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "269a01d0f1f890cab5a6c1d50ed895d34d0b266a3e10be455d2d2d3a30c744df",
+  "source_image_id": "sha256:c8fc3564faa7f508c3f22bf19fd1ce9a8c4024ac1e5528f4d7f113b025a521d0",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc-recover-sphere-from-ray-hit-observations@sha256:d902958be3d113ee4cc61877015c7d9851fcaf784350d21ad3bc51fcb5b324f1"
+  ],
+  "unredacted_source_env_sha256": "8d2a683705096deece4202f64ed301dfdbbd4f1d68c4a255976c0d1f0e66c9bc"
+}

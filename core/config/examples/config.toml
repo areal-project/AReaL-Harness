@@ -1,0 +1,35 @@
+schema_version = 1
+
+[server]
+listen = "127.0.0.1:4500"
+# data_dir defaults to <AREAL_HARNESS_HOME>/state.
+
+[model]
+# reasoning_effort = "xhigh"
+# max_output_tokens = 8192
+max_retries = 2
+provider = "company"
+name = "your-model-id"
+
+[model.providers.company]
+protocol = "chat-completions"
+endpoint = "https://gateway.example.com/v1/chat/completions"
+api_key_env = "COMPANY_MODEL_API_KEY"
+
+[limits]
+turn_timeout_seconds = 300
+stream_idle_timeout_seconds = 30
+max_history_bytes = 2097152
+max_output_bytes = 262144
+max_tool_calls = 128
+context_window_bytes = 196608
+context_recent_bytes = 65536
+model_concurrency = 32
+max_threads = 20000
+
+[logging]
+filter = "info"
+
+# 可选：工具等待策略、自定义命令工具与 hooks；详见 docs/guides/tools.md。
+# [tools]
+# extensions_file = "tools.json"

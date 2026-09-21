@@ -1,0 +1,2 @@
+The runner uses Python 3 re.compile(pattern, re.MULTILINE), checks for exactly
+one capture, then prints json.dumps(compiled.findall(corpus), ensure_ascii=False).

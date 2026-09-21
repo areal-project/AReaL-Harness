@@ -1,0 +1,30 @@
+[package]
+name = "areal-server"
+default-run = "areal-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+areal-protocol.workspace = true
+uuid.workspace = true
+tempfile.workspace = true
+areal-mcp.workspace = true
+areal-config.workspace = true
+areal-engine.workspace = true
+areal-app-server.workspace = true
+areal-runtime-client.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+opentelemetry-otlp.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-opentelemetry.workspace = true
+tracing-subscriber.workspace = true
+serde_json.workspace = true
+url.workspace = true

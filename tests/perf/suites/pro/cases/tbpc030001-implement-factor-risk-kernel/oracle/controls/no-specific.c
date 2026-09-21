@@ -1,0 +1,2 @@
+#include <stddef.h>
+int factor_risk(size_t n,size_t k,const double*w,const double*r,const double*e,const double*f,const double*s,double*a,double*b,double*g){double x[32]={0},y[32]={0};*a=*b=0;(void)s;for(size_t i=0;i<n;i++){*a+=w[i]*r[i];for(size_t q=0;q<k;q++)x[q]+=e[i*k+q]*w[i];}for(size_t q=0;q<k;q++)for(size_t p=0;p<k;p++)y[q]+=f[q*k+p]*x[p];for(size_t q=0;q<k;q++)*b+=x[q]*y[q];for(size_t i=0;i<n;i++){g[i]=0;for(size_t q=0;q<k;q++)g[i]+=2*e[i*k+q]*y[q];}return 0;}
