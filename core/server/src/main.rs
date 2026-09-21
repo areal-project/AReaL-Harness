@@ -296,6 +296,7 @@ async fn run(
         context_output_reserve_tokens: config.context_output_reserve_tokens,
         context_recent_bytes: config.context_recent_bytes,
         max_completion_retries: config.max_completion_retries,
+        watchdog_disable: config.watchdog_disable,
         ..Limits::default()
     };
     let runtime = if let Some(binary) = &args.runtime {
@@ -416,6 +417,7 @@ async fn run(
                 "trusted workgroup binaries must be outside source workspace"
             );
             let factory = Arc::new(NativeFactory {
+                watchdog_disable: config.watchdog_disable,
                 catalog:Some(Arc::downgrade(&engine)),
                 model: model.clone(),
                 runtime: binary,

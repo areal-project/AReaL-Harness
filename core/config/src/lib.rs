@@ -142,6 +142,7 @@ pub struct ResolvedCoreConfig {
     pub context_output_reserve_tokens: usize,
     pub context_recent_bytes: usize,
     pub max_completion_retries: usize,
+    pub watchdog_disable: bool,
     pub log_filter: String,
     pub sources: BTreeMap<String, ConfigSource>,
     pub warnings: Vec<String>,
@@ -195,7 +196,7 @@ impl ResolvedCoreConfig {
                 "turn_timeout_seconds": self.turn_timeout_seconds, "stream_idle_timeout_seconds": self.stream_idle_timeout_seconds,
                 "max_history_bytes": self.max_history_bytes, "max_output_bytes": self.max_output_bytes, "max_tool_calls": self.max_tool_calls,
                 "context_window_bytes": self.context_window_bytes, "context_window_tokens":self.context_window_tokens, "context_output_reserve_tokens":self.context_output_reserve_tokens, "context_recent_bytes": self.context_recent_bytes,
-                "max_completion_retries": self.max_completion_retries },
+                "max_completion_retries": self.max_completion_retries, "watchdog_disable": self.watchdog_disable },
             "logging": { "filter": self.log_filter },
         });
         if sources {

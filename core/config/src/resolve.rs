@@ -71,6 +71,11 @@ const ENV: &[(&str, &str, &str)] = &[
     ),
     ("AREAL_HARNESS_MODEL_MAX_RETRIES", "", "model.max_retries"),
     (
+        "AREAL_HARNESS_WATCHDOG_DISABLE",
+        "",
+        "limits.watchdog_disable",
+    ),
+    (
         "AREAL_HARNESS_TURN_TIMEOUT_SECONDS",
         "",
         "limits.turn_timeout_seconds",
@@ -266,6 +271,11 @@ fn valid(field: &str, entry: &Entry) -> Result<()> {
                 ));
             }
         }
+        "watchdog_disable" => {
+            if !matches!(value.as_str(), "0" | "1" | "false" | "true") {
+                return Err(reject("watchdog_disable must be 0/1 or false/true"));
+            }
+        }
         "max_retries" | "max_completion_retries" => {
             if !value.bytes().all(|b| b.is_ascii_digit())
                 || value.parse::<usize>().ok().is_none_or(|n| n > 8)
@@ -432,6 +442,7 @@ fn load_mode(inputs: &ConfigInputs, management: bool) -> Result<ResolvedCoreConf
         ("limits.context_recent_bytes", "65536"),
         ("model.max_retries", "2"),
         ("limits.max_completion_retries", "0"),
+        ("limits.watchdog_disable", "false"),
         ("logging.filter", "info"),
     ] {
         insert(
@@ -676,6 +687,10 @@ fn load_mode(inputs: &ConfigInputs, management: bool) -> Result<ResolvedCoreConf
             .value
             .parse()
             .unwrap(),
+        watchdog_disable: matches!(
+            values["limits.watchdog_disable"].value.as_str(),
+            "1" | "true"
+        ),
         log_filter: values["logging.filter"].value.clone(),
         sources,
         warnings,

@@ -555,6 +555,7 @@ pub struct NativeExecutor {
     pub root: PathBuf,
     pub runtime_limits: areal_runtime_protocol::Limits,
     pub context_bytes: usize,
+    pub watchdog_disable: bool,
     pub max_unchanged_rounds: usize,
     /// Model tool exposure only; Engine and Runtime permissions are unchanged.
     pub command_tools_only: bool,
@@ -605,6 +606,7 @@ impl NativeExecutor {
                 ..Default::default()
             },
             context_bytes: 65536,
+            watchdog_disable: false,
             max_unchanged_rounds: 0,
             command_tools_only: false,
             sequence: AtomicUsize::new(0),
@@ -715,7 +717,7 @@ impl Executor for NativeExecutor {
             let engine = Engine::open_with_runtime(&root.join("history"), worker_model.clone(),
                 Limits { max_active_turns: 1, max_children_per_turn: 0, max_agent_depth: 0,
                     max_history_bytes: 8 * 1024 * 1024, max_output_bytes: 512 * 1024,
-                    turn_timeout: Duration::from_secs(900), ..Limits::default() },
+                    turn_timeout: Duration::from_secs(900), watchdog_disable: self.watchdog_disable, ..Limits::default() },
                 RuntimeConfig { client: runtime.clone(), workspace: workspace.clone(), writable: true, command_scratch: Some(workspace.join(".scratch")) })?;
             let execution: Result<()> = async {
                 let thread = if let Some(configuration)=&task.configuration {

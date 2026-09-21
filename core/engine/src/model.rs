@@ -111,6 +111,38 @@ impl StreamError {
     }
 }
 
+pub(crate) fn is_network_error(error: &anyhow::Error) -> bool {
+    if let Some(failure) = error.downcast_ref::<ModelFailure>() {
+        return matches!(
+            failure,
+            ModelFailure::Transport
+                | ModelFailure::RateLimited
+                | ModelFailure::Unavailable
+                | ModelFailure::Incomplete
+        );
+    }
+    if let Some(detail) = error.downcast_ref::<StreamError>() {
+        let labels: Vec<_> = [&detail.code, &detail.error_type, &detail.reason]
+            .into_iter()
+            .flatten()
+            .map(String::as_str)
+            .collect();
+        // 额度、鉴权、参数和长度错误优先于笼统的 server_error，避免永久错误无限循环。
+        let transient = |label: &&str| {
+            matches!(
+                *label,
+                "rate_limit_exceeded"
+                    | "rate_limit_error"
+                    | "server_error"
+                    | "api_error"
+                    | "overloaded_error"
+            )
+        };
+        return !labels.is_empty() && labels.iter().all(transient);
+    }
+    false
+}
+
 // Diagnostic attribution only; never changes provider request parameters.
 tokio::task_local! {
     pub(crate) static REQUEST_OWNER: (String, String);
@@ -637,8 +669,8 @@ impl Model for HttpModel {
                 .ok()
                 .map_or(Value::Null, |r| json!(r.status().as_u16()));
             let transient = match &result {
-                Ok(r) => matches!(r.status().as_u16(), 408 | 429 | 500 | 502 | 503 | 504),
-                Err(e) => e.is_connect() || e.is_timeout(),
+                Ok(r) => matches!(r.status().as_u16(), 408 | 429) || r.status().is_server_error(),
+                Err(e) => !e.is_builder(),
             };
             if transient && attempt < self.options.max_retries {
                 let delay = result
@@ -659,10 +691,16 @@ impl Model for HttpModel {
                 continue;
             }
             break result.map_err(|error| {
+                if error.is_builder() {
+                    return anyhow::anyhow!("invalid model HTTP request");
+                }
                 tracing::warn!(connect = error.is_connect(), timeout = error.is_timeout(), error = %error.without_url(), "model request transport failure");
-                ModelFailure::Transport
+                anyhow::Error::new(ModelFailure::Transport)
             })?;
         };
+        if response.status() == reqwest::StatusCode::REQUEST_TIMEOUT {
+            return Err(ModelFailure::Transport.into());
+        }
         if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
             return Err(ModelFailure::RateLimited.into());
         }

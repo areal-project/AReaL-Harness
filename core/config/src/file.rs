@@ -205,7 +205,8 @@ fn walk(
             "temperature" | "top_p" | "min_p" | "presence_penalty" | "repetition_penalty"
         ]
     );
-    if !numeric && !string && !decimal {
+    let boolean = matches!(names.as_slice(), ["limits", "watchdog_disable"]);
+    if !numeric && !string && !decimal && !boolean {
         return Err(error(
             Kind::UnknownField,
             &key,
@@ -213,7 +214,9 @@ fn walk(
             "unknown configuration field",
         ));
     }
-    let value = if decimal {
+    let value = if boolean {
+        item.as_bool().map(|v| v.to_string())
+    } else if decimal {
         item.as_float()
             .or_else(|| item.as_integer().map(|v| v as f64))
             .map(|v| v.to_string())
@@ -227,7 +230,9 @@ fn walk(
             Kind::InvalidValue,
             &key,
             &at,
-            if decimal {
+            if boolean {
+                "expected a boolean"
+            } else if decimal {
                 "expected a number"
             } else if numeric {
                 "expected an integer"

@@ -184,7 +184,7 @@ async fn request_retries_transient_status_but_not_authentication_errors() {
     use areal_engine::model::{Message, Model, ModelEvent, ModelOptions};
     use axum::response::IntoResponse;
     use futures_util::StreamExt;
-    for status in [503, 401] {
+    for status in [408, 429, 501, 503, 599, 401, 403, 400] {
         let requests = Arc::new(AtomicUsize::new(0));
         let recorded = requests.clone();
         let app = Router::new().route("/", post(move || {
@@ -207,7 +207,7 @@ async fn request_retries_transient_status_but_not_authentication_errors() {
             })
             .unwrap();
         let stream = model.stream(vec![Message::text("user", "hello")]).await;
-        if status == 503 {
+        if status != 400 && status != 401 && status != 403 {
             let events = stream.unwrap().collect::<Vec<_>>().await;
             assert!(
                 events
@@ -281,7 +281,15 @@ async fn real_http_adapter_streams_and_detects_clean_truncation() {
         None,
     )
     .unwrap();
-    let engine = Engine::open(dir.path(), Arc::new(model), Limits::default()).unwrap();
+    let engine = Engine::open(
+        dir.path(),
+        Arc::new(model),
+        Limits {
+            watchdog_disable: true,
+            ..Limits::default()
+        },
+    )
+    .unwrap();
     for (prompt, status) in [
         ("hello", TurnStatus::Completed),
         ("no-done", TurnStatus::Completed),
@@ -512,7 +520,10 @@ async fn retryable_http_failures_are_typed_without_reclassifying_auth_or_bad_req
     use areal_engine::model::{Model, ModelFailure};
     use axum::http::StatusCode;
     for (status, expected) in [
+        (408, Some(ModelFailure::Transport)),
         (429, Some(ModelFailure::RateLimited)),
+        (501, Some(ModelFailure::Unavailable)),
+        (599, Some(ModelFailure::Unavailable)),
         (503, Some(ModelFailure::Unavailable)),
         (400, None),
         (401, None),

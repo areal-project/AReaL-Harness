@@ -1664,7 +1664,7 @@ async fn real_runtime_checkpoint_settles_writers_and_requires_independent_checks
         let group =
             Workgroup::create(&root, plan(vec![a]), &Tree::new(), Strategy::Contract).unwrap();
         let model = SharedModel::new(Arc::new(InterruptedModel(failure)), 1, 8).unwrap();
-        let executor = NativeExecutor::new(
+        let mut executor = NativeExecutor::new(
             model.clone(),
             root.join("bindings"),
             path("AREAL_WORKGROUP_RUNTIME"),
@@ -1672,6 +1672,7 @@ async fn real_runtime_checkpoint_settles_writers_and_requires_independent_checks
             None,
         )
         .unwrap();
+        executor.watchdog_disable = true;
         let record = group
             .run(
                 Tree::new(),

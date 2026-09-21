@@ -91,6 +91,7 @@ pub trait Factory: Send + Sync + 'static {
 pub struct NativeFactory {
     pub catalog: Option<std::sync::Weak<crate::Engine>>,
     pub model: Arc<dyn crate::model::Model>,
+    pub watchdog_disable: bool,
     pub runtime: PathBuf,
     pub file_helper: PathBuf,
     pub toolchain: Option<PathBuf>,
@@ -112,6 +113,7 @@ impl Factory for NativeFactory {
             self.toolchain.clone(),
         )?;
         executor.catalog = self.catalog.clone();
+        executor.watchdog_disable = self.watchdog_disable;
         executor.runtime_limits.wall_time_ms = policy.command_timeout_ms;
         Ok(Arc::new(executor))
     }

@@ -9,6 +9,7 @@ mod sessions;
 mod store;
 pub mod tools;
 mod turns;
+mod watchdog;
 pub mod workgroup;
 
 use areal_protocol::{
@@ -54,6 +55,8 @@ pub struct Limits {
     pub context_recent_bytes: usize,
     /// Total discarded completions that may be retried within one Turn.
     pub max_completion_retries: usize,
+    /// 关闭默认启用的网络 watchdog；有限响应恢复额度仍独立生效。
+    pub watchdog_disable: bool,
 }
 
 impl Default for Limits {
@@ -76,6 +79,7 @@ impl Default for Limits {
             context_output_reserve_tokens: 0,
             context_recent_bytes: 64 * 1024,
             max_completion_retries: 0,
+            watchdog_disable: false,
         }
     }
 }

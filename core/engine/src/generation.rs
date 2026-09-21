@@ -98,8 +98,8 @@ impl Engine {
             self.compact_context(cell, cancel, overhead, previous_usage, false)
                 .await?;
 
-            let (messages, thread_id, session_id, turn_id, item_id) = {
-                let mut state = cell.state.lock().await;
+            let (messages, thread_id, session_id, turn_id) = {
+                let state = cell.state.lock().await;
                 let mut messages = history(&state.thread, &self.store)?;
                 if !final_round
                     && self.extensions.agents.is_none()
@@ -164,25 +164,11 @@ impl Engine {
                 }
                 let thread_id = state.thread.id.clone();
                 let session_id = state.thread.session_id.clone();
-                let item_id = id();
-                state
-                    .active
-                    .as_mut()
-                    .unwrap()
-                    .open_items
-                    .insert(item_id.clone());
-                let turn = state.thread.turns.last_mut().unwrap();
-                let item = Item::AgentMessage {
-                    id: item_id.clone(),
-                    text: String::new(),
-                };
-                turn.items.push(item.clone());
-                emit_item(cell, "item/started", &thread_id, &turn.id, &item);
-                (messages, thread_id, session_id, turn.id.clone(), item_id)
+                let turn_id = state.thread.turns.last().unwrap().id.clone();
+                (messages, thread_id, session_id, turn_id)
             };
             let request_estimate = context::estimate_tokens(&messages)
                 + context::text_tokens(&serde_json::to_string(&tool_definitions)?);
-            let mut completion_items = HashSet::from([item_id.clone()]);
             let tools_enabled = !tool_definitions.is_empty();
             let model_span = info_span!(
                 "gen_ai.client.operation",
@@ -196,284 +182,331 @@ impl Engine {
                 gen_ai.usage.output_tokens = tracing::field::Empty,
             );
             self.reserve_agent_model_request(cell)?;
-            let response = tokio::select! {
-                biased;
-                _ = cancel.cancelled() => anyhow::bail!("cancelled"),
-                _ = steer.recv() => { complete_item(cell, &thread_id, &turn_id, &item_id).await; continue 'restart; },
-                result = tokio::time::timeout(
-                    self.limits.stream_idle_timeout,
-                    model::REQUEST_OWNER.scope((thread_id.clone(), turn_id.clone()), model.chat(messages, tool_definitions)).instrument(model_span.clone()),
-                ) => result.context("model request idle timeout").and_then(|v| v),
-            };
-            let mut stream = match response {
-                Ok(stream) => stream,
-                Err(error) => {
-                    if self
-                        .recover_completion(
-                            cell,
-                            &completion_items,
-                            &[],
-                            &error,
-                            completion_retries,
-                        )
-                        .await?
-                    {
-                        completion_retries += 1;
-                        recovery_hint = Some("The previous model request failed before any tool operation from it executed. Continue from confirmed workspace state.".to_owned());
-                        continue 'restart;
-                    }
-                    return Err(error);
+            let mut network_retries: usize = 0;
+            'request: loop {
+                let output_before = (text_output_bytes, media_output_bytes);
+                let item_id = id();
+                {
+                    let mut state = cell.state.lock().await;
+                    state
+                        .active
+                        .as_mut()
+                        .unwrap()
+                        .open_items
+                        .insert(item_id.clone());
+                    let item = Item::AgentMessage {
+                        id: item_id.clone(),
+                        text: String::new(),
+                    };
+                    state
+                        .thread
+                        .turns
+                        .last_mut()
+                        .unwrap()
+                        .items
+                        .push(item.clone());
+                    emit_item(cell, "item/started", &thread_id, &turn_id, &item);
                 }
-            };
-            let mut calls = Vec::new();
-            let mut visible_output = false;
-            loop {
-                let next = tokio::select! {
+                let mut completion_items = HashSet::from([item_id.clone()]);
+                let response = tokio::select! {
                     biased;
                     _ = cancel.cancelled() => anyhow::bail!("cancelled"),
                     _ = steer.recv() => { complete_item(cell, &thread_id, &turn_id, &item_id).await; continue 'restart; },
-                    next = tokio::time::timeout(
+                    result = tokio::time::timeout(
                         self.limits.stream_idle_timeout,
-                        stream.next().instrument(model_span.clone()),
-                    ) => next.context("model stream idle timeout")?,
+                        model::REQUEST_OWNER.scope((thread_id.clone(), turn_id.clone()), model.chat(messages.clone(), tool_definitions.clone())).instrument(model_span.clone()),
+                    ) => result.map_err(|_| watchdog::idle_error("model request")).and_then(|v| v),
                 };
-                let Some(delta) = next else {
-                    // The shared model pool owns a permit in the stream itself.
-                    // Release both permits before tools or child/group joins.
-                    drop(stream);
-                    let state = cell.state.lock().await;
-                    if !steer.is_empty() {
-                        drop(state);
-                        complete_item(cell, &thread_id, &turn_id, &item_id).await;
-                        continue 'restart;
-                    }
-                    if calls.is_empty() && !visible_output {
-                        drop(state);
-                        let error = anyhow::Error::new(model::ModelFailure::EmptyCompletion);
-                        if self
-                            .recover_completion(
-                                cell,
-                                &completion_items,
-                                &[],
-                                &error,
-                                completion_retries,
-                            )
-                            .await?
+                let mut stream: model::ModelStream = match response {
+                    Ok(stream) => stream,
+                    Err(error) => Box::pin(futures_util::stream::once(async move { Err(error) })),
+                };
+                let mut calls = Vec::new();
+                let mut visible_output = false;
+                loop {
+                    let next = tokio::select! {
+                        biased;
+                        _ = cancel.cancelled() => anyhow::bail!("cancelled"),
+                        _ = steer.recv() => { complete_item(cell, &thread_id, &turn_id, &item_id).await; continue 'restart; },
+                        next = tokio::time::timeout(
+                            self.limits.stream_idle_timeout,
+                            stream.next().instrument(model_span.clone()),
+                        ) => match next { Ok(next) => next, Err(_) => Some(Err(watchdog::idle_error("model stream"))) },
+                    };
+                    let Some(delta) = next else {
+                        // The shared model pool owns a permit in the stream itself.
+                        // Release both permits before tools or child/group joins.
+                        drop(stream);
+                        let state = cell.state.lock().await;
+                        if !steer.is_empty() {
+                            drop(state);
+                            complete_item(cell, &thread_id, &turn_id, &item_id).await;
+                            continue 'restart;
+                        }
+                        if calls.is_empty() && !visible_output {
+                            drop(state);
+                            let error = anyhow::Error::new(model::ModelFailure::EmptyCompletion);
+                            if self
+                                .recover_completion(
+                                    cell,
+                                    &completion_items,
+                                    &[],
+                                    &error,
+                                    completion_retries,
+                                )
+                                .await?
+                            {
+                                completion_retries += 1;
+                                recovery_hint = Some("Your last response contained no visible answer or tool calls. Continue from confirmed results, or provide a concrete final answer with actual verification evidence. Do not replay already confirmed operations.".to_owned());
+                                continue 'restart;
+                            }
+                            return Err(error);
+                        }
+                        if calls.is_empty()
+                            && !state
+                                .active
+                                .as_ref()
+                                .unwrap()
+                                .handles
+                                .pending_verifications
+                                .is_empty()
                         {
-                            completion_retries += 1;
-                            recovery_hint = Some("Your last response contained no visible answer or tool calls. Continue from confirmed results, or provide a concrete final answer with actual verification evidence. Do not replay already confirmed operations.".to_owned());
-                            continue 'restart;
+                            let pending = state
+                                .active
+                                .as_ref()
+                                .unwrap()
+                                .handles
+                                .pending_verifications
+                                .clone();
+                            drop(state);
+                            let error =
+                                anyhow::Error::new(model::ModelFailure::PendingVerification);
+                            if self
+                                .recover_completion(
+                                    cell,
+                                    &completion_items,
+                                    &[],
+                                    &error,
+                                    completion_retries,
+                                )
+                                .await?
+                            {
+                                completion_retries += 1;
+                                recovery_hint = Some(format!(
+                                    "Verification processes have no observed terminal result: {pending:?}. Use read_process to obtain exit status and receipt, or terminate an unwanted check explicitly and report that limitation. Do not rerun the same command or claim it passed without observing the result."
+                                ));
+                                continue 'restart;
+                            }
+                            return Err(error);
                         }
-                        return Err(error);
-                    }
-                    if calls.is_empty()
-                        && !state
-                            .active
-                            .as_ref()
-                            .unwrap()
-                            .handles
-                            .pending_verifications
-                            .is_empty()
-                    {
-                        let pending = state
-                            .active
-                            .as_ref()
-                            .unwrap()
-                            .handles
-                            .pending_verifications
-                            .clone();
-                        drop(state);
-                        let error = anyhow::Error::new(model::ModelFailure::PendingVerification);
-                        if self
-                            .recover_completion(
-                                cell,
-                                &completion_items,
-                                &[],
-                                &error,
-                                completion_retries,
-                            )
-                            .await?
-                        {
-                            completion_retries += 1;
-                            recovery_hint = Some(format!(
-                                "Verification processes have no observed terminal result: {pending:?}. Use read_process to obtain exit status and receipt, or terminate an unwanted check explicitly and report that limitation. Do not rerun the same command or claim it passed without observing the result."
-                            ));
-                            continue 'restart;
-                        }
-                        return Err(error);
-                    }
-                    if calls.is_empty() {
-                        drop(state);
-                        drop(permit);
-                        complete_item(cell, &thread_id, &turn_id, &item_id).await;
-                        let reports = tokio::select! { biased;
-                            _ = cancel.cancelled() => anyhow::bail!("cancelled"),
-                            _ = steer.recv() => continue 'restart,
-                            reports = self.join_model_children(cell, &mut observed_children, false) => reports?,
-                        };
-                        if reports != child_results {
-                            child_results = reports;
-                            continue 'restart;
-                        }
-                        if let Some(service) = self.workgroups.get() {
-                            let owner = format!("{thread_id}/{turn_id}");
+                        if calls.is_empty() {
+                            drop(state);
+                            drop(permit);
+                            complete_item(cell, &thread_id, &turn_id, &item_id).await;
                             let reports = tokio::select! { biased;
                                 _ = cancel.cancelled() => anyhow::bail!("cancelled"),
                                 _ = steer.recv() => continue 'restart,
-                                reports = service.settle_owner(&owner, false) => reports?,
+                                reports = self.join_model_children(cell, &mut observed_children, false) => reports?,
                             };
-                            let reports = workgroup::tools::summaries(&reports);
-                            if reports != group_results {
-                                group_results = reports;
+                            if reports != child_results {
+                                child_results = reports;
                                 continue 'restart;
                             }
+                            if let Some(service) = self.workgroups.get() {
+                                let owner = format!("{thread_id}/{turn_id}");
+                                let reports = tokio::select! { biased;
+                                    _ = cancel.cancelled() => anyhow::bail!("cancelled"),
+                                    _ = steer.recv() => continue 'restart,
+                                    reports = service.settle_owner(&owner, false) => reports?,
+                                };
+                                let reports = workgroup::tools::summaries(&reports);
+                                if reports != group_results {
+                                    group_results = reports;
+                                    continue 'restart;
+                                }
+                            }
+                            cell.state.lock().await.active.as_mut().unwrap().sealed = true;
+                            return Ok(());
                         }
-                        cell.state.lock().await.active.as_mut().unwrap().sealed = true;
-                        return Ok(());
-                    }
-                    drop(state);
-                    drop(permit);
-                    complete_item(cell, &thread_id, &turn_id, &item_id).await;
-                    for call in calls {
-                        if !steer.is_empty() {
-                            continue 'restart;
+                        drop(state);
+                        drop(permit);
+                        complete_item(cell, &thread_id, &turn_id, &item_id).await;
+                        for call in calls {
+                            if !steer.is_empty() {
+                                continue 'restart;
+                            }
+                            self.reserve_agent_tool_call(cell)?;
+                            tool_count += 1;
+                            anyhow::ensure!(
+                                tool_count <= self.limits.max_tool_calls,
+                                "turn tool-call limit exceeded"
+                            );
+                            text_output_bytes += self
+                                .tool(
+                                    cell,
+                                    cancel,
+                                    call,
+                                    self.limits
+                                        .max_output_bytes
+                                        .saturating_sub(text_output_bytes),
+                                )
+                                .await?;
                         }
-                        self.reserve_agent_tool_call(cell)?;
-                        tool_count += 1;
-                        anyhow::ensure!(
-                            tool_count <= self.limits.max_tool_calls,
-                            "turn tool-call limit exceeded"
-                        );
-                        text_output_bytes += self
-                            .tool(
-                                cell,
-                                cancel,
-                                call,
-                                self.limits
-                                    .max_output_bytes
-                                    .saturating_sub(text_output_bytes),
-                            )
-                            .await?;
-                    }
-                    continue 'restart;
-                };
-                let delta = match delta {
-                    Ok(delta) => delta,
-                    Err(error) => {
-                        if self
-                            .recover_completion(
-                                cell,
-                                &completion_items,
-                                &calls,
+                        continue 'restart;
+                    };
+                    let delta = match delta {
+                        Ok(delta) => delta,
+                        Err(error) => {
+                            // 先释放失败流及共享模型许可，再等待退避；绝不重放已执行的工具。
+                            drop(stream);
+                            if let Some(delay) = watchdog::retry_delay(
+                                self.limits.watchdog_disable,
                                 &error,
-                                completion_retries,
-                            )
-                            .await?
-                        {
-                            completion_retries += 1;
-                            recovery_hint = Some("The previous model completion was discarded because its stream or tool format was incomplete. None of its requested tools executed. Continue from confirmed results; use smaller, complete tool calls, and do not replay earlier confirmed mutations.".to_owned());
-                            continue 'restart;
+                                network_retries,
+                            ) {
+                                if !self
+                                    .discard_completion(
+                                        cell,
+                                        &completion_items,
+                                        &calls,
+                                        &error,
+                                        (network_retries, "network"),
+                                    )
+                                    .await?
+                                {
+                                    return Err(error);
+                                }
+                                network_retries = network_retries.saturating_add(1);
+                                text_output_bytes = output_before.0;
+                                media_output_bytes = output_before.1;
+                                cell.emit("areal/model/watchdogRetry", json!({"threadId":thread_id,"turnId":turn_id,"purpose":"solve","retry":network_retries,"delayMs":delay.as_millis() as u64}));
+                                tracing::warn!(
+                                    retry = network_retries,
+                                    delay_ms = delay.as_millis() as u64,
+                                    "network watchdog retrying model completion"
+                                );
+                                tokio::select! { biased;
+                                    _ = cancel.cancelled() => anyhow::bail!("cancelled"),
+                                    _ = steer.recv() => continue 'restart,
+                                    _ = tokio::time::sleep(delay) => {},
+                                }
+                                continue 'request;
+                            }
+                            if self
+                                .recover_completion(
+                                    cell,
+                                    &completion_items,
+                                    &calls,
+                                    &error,
+                                    completion_retries,
+                                )
+                                .await?
+                            {
+                                completion_retries += 1;
+                                recovery_hint = Some("The previous model completion was discarded because its stream or tool format was incomplete. None of its requested tools executed. Continue from confirmed results; use smaller, complete tool calls, and do not replay earlier confirmed mutations.".to_owned());
+                                continue 'restart;
+                            }
+                            return Err(error);
                         }
-                        return Err(error);
-                    }
-                };
-                match delta {
-                    ModelEvent::Activity => continue,
-                    ModelEvent::ProviderContext(value) => {
-                        let bytes = serde_json::to_vec(&value)?.len();
-                        text_output_bytes += bytes;
-                        anyhow::ensure!(
-                            text_output_bytes <= self.limits.max_output_bytes,
-                            "turn provider context limit exceeded"
-                        );
-                        let mut state = cell.state.lock().await;
-                        let turn = state.thread.turns.last_mut().unwrap();
-                        let context_id = id();
-                        completion_items.insert(context_id.clone());
-                        turn.items.push(Item::ModelContext {
-                            id: context_id,
-                            value,
-                        });
-                    }
-                    ModelEvent::ToolCall(call) => {
-                        // 收尾轮仍请求工具表示工作超出轮次预算；保留 CLI 的既有错误分类。
-                        anyhow::ensure!(
-                            !final_round,
-                            "MAX_MODEL_ROUNDS: final handoff cannot execute tools"
-                        );
-                        anyhow::ensure!(
-                            tools_enabled,
-                            "model requested tools without registered tools"
-                        );
-                        anyhow::ensure!(
-                            calls.len() < 16,
-                            "too many tool calls in one model completion"
-                        );
-                        calls.push(call);
-                        continue;
-                    }
-                    ModelEvent::TextDelta(delta) => {
-                        visible_output |= !delta.trim().is_empty();
-                        text_output_bytes += delta.len();
-                        anyhow::ensure!(
-                            text_output_bytes <= self.limits.max_output_bytes,
-                            "turn text output limit exceeded"
-                        );
-                        let mut state = cell.state.lock().await;
-                        let turn = state.thread.turns.last_mut().unwrap();
-                        let item = turn.items.iter_mut().find(|i| i.id() == item_id).unwrap();
-                        if let Item::AgentMessage { text, .. } = item {
-                            text.push_str(&delta);
+                    };
+                    match delta {
+                        ModelEvent::Activity => continue,
+                        ModelEvent::ProviderContext(value) => {
+                            let bytes = serde_json::to_vec(&value)?.len();
+                            text_output_bytes += bytes;
+                            anyhow::ensure!(
+                                text_output_bytes <= self.limits.max_output_bytes,
+                                "turn provider context limit exceeded"
+                            );
+                            let mut state = cell.state.lock().await;
+                            let turn = state.thread.turns.last_mut().unwrap();
+                            let context_id = id();
+                            completion_items.insert(context_id.clone());
+                            turn.items.push(Item::ModelContext {
+                                id: context_id,
+                                value,
+                            });
                         }
-                        cell.emit("item/agentMessage/delta", json!({"threadId": thread_id, "turnId": turn_id, "itemId": item_id, "delta": delta}));
-                    }
-                    ModelEvent::Binary {
-                        modality,
-                        mime_type,
-                        data,
-                    } => {
-                        visible_output |= !data.is_empty();
-                        media_output_bytes += data.len();
-                        anyhow::ensure!(
-                            media_output_bytes <= self.limits.max_media_output_bytes,
-                            "turn media output limit exceeded"
-                        );
-                        let media = self
-                            .store
-                            .save_blob(mime_type, data)
-                            .instrument(
-                                info_span!("persist_blob", areal.media.modality = ?modality),
-                            )
-                            .await?;
-                        let media_item = Item::AgentMedia {
-                            id: id(),
+                        ModelEvent::ToolCall(call) => {
+                            // 收尾轮仍请求工具表示工作超出轮次预算；保留 CLI 的既有错误分类。
+                            anyhow::ensure!(
+                                !final_round,
+                                "MAX_MODEL_ROUNDS: final handoff cannot execute tools"
+                            );
+                            anyhow::ensure!(
+                                tools_enabled,
+                                "model requested tools without registered tools"
+                            );
+                            anyhow::ensure!(
+                                calls.len() < 16,
+                                "too many tool calls in one model completion"
+                            );
+                            calls.push(call);
+                            continue;
+                        }
+                        ModelEvent::TextDelta(delta) => {
+                            visible_output |= !delta.trim().is_empty();
+                            text_output_bytes += delta.len();
+                            anyhow::ensure!(
+                                text_output_bytes <= self.limits.max_output_bytes,
+                                "turn text output limit exceeded"
+                            );
+                            let mut state = cell.state.lock().await;
+                            let turn = state.thread.turns.last_mut().unwrap();
+                            let item = turn.items.iter_mut().find(|i| i.id() == item_id).unwrap();
+                            if let Item::AgentMessage { text, .. } = item {
+                                text.push_str(&delta);
+                            }
+                            cell.emit("item/agentMessage/delta", json!({"threadId": thread_id, "turnId": turn_id, "itemId": item_id, "delta": delta}));
+                        }
+                        ModelEvent::Binary {
                             modality,
-                            media,
-                        };
-                        completion_items.insert(media_item.id().to_owned());
-                        let mut state = cell.state.lock().await;
-                        let turn = state.thread.turns.last_mut().unwrap();
-                        turn.items.push(media_item.clone());
-                        cell.emit(
-                            "areal/item/agentMedia/available",
-                            json!({"threadId":thread_id,"turnId":turn_id,"item":media_item}),
-                        );
-                    }
-                    ModelEvent::Usage(usage) => {
-                        if usage.input_tokens > 0 {
-                            previous_usage = Some((request_estimate, usage.input_tokens));
+                            mime_type,
+                            data,
+                        } => {
+                            visible_output |= !data.is_empty();
+                            media_output_bytes += data.len();
+                            anyhow::ensure!(
+                                media_output_bytes <= self.limits.max_media_output_bytes,
+                                "turn media output limit exceeded"
+                            );
+                            let media = self
+                                .store
+                                .save_blob(mime_type, data)
+                                .instrument(
+                                    info_span!("persist_blob", areal.media.modality = ?modality),
+                                )
+                                .await?;
+                            let media_item = Item::AgentMedia {
+                                id: id(),
+                                modality,
+                                media,
+                            };
+                            completion_items.insert(media_item.id().to_owned());
+                            let mut state = cell.state.lock().await;
+                            let turn = state.thread.turns.last_mut().unwrap();
+                            turn.items.push(media_item.clone());
+                            cell.emit(
+                                "areal/item/agentMedia/available",
+                                json!({"threadId":thread_id,"turnId":turn_id,"item":media_item}),
+                            );
                         }
-                        model_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
-                        model_span.record(
-                            "gen_ai.usage.cached_input_tokens",
-                            usage.cached_input_tokens,
-                        );
-                        model_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-                        let mut state = cell.state.lock().await;
-                        let turn = state.thread.turns.last_mut().unwrap();
-                        turn.usage
-                            .get_or_insert_with(Default::default)
-                            .add_assign(&usage);
+                        ModelEvent::Usage(usage) => {
+                            if usage.input_tokens > 0 {
+                                previous_usage = Some((request_estimate, usage.input_tokens));
+                            }
+                            model_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
+                            model_span.record(
+                                "gen_ai.usage.cached_input_tokens",
+                                usage.cached_input_tokens,
+                            );
+                            model_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
+                            let mut state = cell.state.lock().await;
+                            let turn = state.thread.turns.last_mut().unwrap();
+                            turn.usage
+                                .get_or_insert_with(Default::default)
+                                .add_assign(&usage);
+                        }
                     }
                 }
             }
@@ -492,6 +525,18 @@ impl Engine {
         {
             return Ok(false);
         }
+        self.discard_completion(cell, owned, calls, error, (retries, "completion"))
+            .await
+    }
+
+    async fn discard_completion(
+        &self,
+        cell: &Cell,
+        owned: &HashSet<String>,
+        calls: &[model::ToolCall],
+        error: &anyhow::Error,
+        (retries, retry_kind): (usize, &str),
+    ) -> anyhow::Result<bool> {
         let mut state = cell.state.lock().await;
         if state
             .active
@@ -510,7 +555,7 @@ impl Engine {
             .collect();
         // All calls are still local to this completion; generate executes only
         // after a clean end-of-stream. Prior tools and steered input stay intact.
-        self.store.save_audit(json!({"kind":"discardedCompletion","threadId":state.thread.id,"turnId":turn.id,"retry":retries+1,"error":error.to_string(),"items":discarded,"unexecutedCalls":calls})).await?;
+        self.store.save_audit(json!({"kind":"discardedCompletion","threadId":state.thread.id,"turnId":turn.id,"retry":retries.saturating_add(1),"retryKind":retry_kind,"error":error.to_string(),"items":discarded,"unexecutedCalls":calls})).await?;
         turn.items.retain(|i| !owned.contains(i.id()));
         self.persist(&candidate).await?;
         state.thread = candidate;
@@ -519,7 +564,7 @@ impl Engine {
         }
         cell.emit(
             "areal/model/completionDiscarded",
-            json!({"threadId":state.thread.id,"itemIds":owned,"retry":retries+1}),
+            json!({"threadId":state.thread.id,"itemIds":owned,"retry":retries.saturating_add(1),"retryKind":retry_kind}),
         );
         Ok(true)
     }

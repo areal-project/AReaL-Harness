@@ -282,20 +282,26 @@ impl Engine {
         let started = tokio::time::Instant::now();
         let mut usage = areal_protocol::ModelUsage::default();
         let mut accepted = None;
-        for attempt in 0..2 {
+        let mut attempt = 0;
+        let mut network_retries: usize = 0;
+        let mut request_reserved = false;
+        while attempt < 2 {
             let mut summary = String::new();
             let mut attempt_usage = areal_protocol::ModelUsage::default();
             let mut rejected_tools = Vec::new();
             let response: anyhow::Result<()> = async {
-                self.reserve_agent_model_request(cell)?;
+                if !request_reserved {
+                    self.reserve_agent_model_request(cell)?;
+                    request_reserved = true;
+                }
                 let mut stream = tokio::select! {
                     _ = cancel.cancelled() => anyhow::bail!("cancelled"),
-                    result = tokio::time::timeout(self.limits.stream_idle_timeout, model::REQUEST_OWNER.scope((snapshot.id.clone(), snapshot.turns.last().map_or_else(String::new, |t| t.id.clone())), model.chat_for(input.clone(), Vec::new(), model::RequestPurpose::Summary))) => result??,
+                    result = tokio::time::timeout(self.limits.stream_idle_timeout, model::REQUEST_OWNER.scope((snapshot.id.clone(), snapshot.turns.last().map_or_else(String::new, |t| t.id.clone())), model.chat_for(input.clone(), Vec::new(), model::RequestPurpose::Summary))) => result.map_err(|_| watchdog::idle_error("compaction request"))??,
                 };
                 loop {
                     let event = tokio::select! {
                         _ = cancel.cancelled() => anyhow::bail!("cancelled"),
-                        result = tokio::time::timeout(self.limits.stream_idle_timeout, stream.next()) => result.context("compaction stream idle timeout")?,
+                        result = tokio::time::timeout(self.limits.stream_idle_timeout, stream.next()) => result.map_err(|_| watchdog::idle_error("compaction stream"))?,
                     };
                     let Some(event) = event else { break; };
                     match event? {
@@ -317,12 +323,31 @@ impl Engine {
                 Ok(())
             }.await;
             usage.add_assign(&attempt_usage);
-            self.store.save_audit(json!({"kind":"contextSummary","threadId":snapshot.id,"attempt":attempt+1,"beforeBytes":before_bytes,"estimatedInputTokens":estimated_tokens,"tokenWindow":self.limits.context_window_tokens,"outputReserveTokens":self.limits.context_output_reserve_tokens,"response":summary,"rejectedTools":rejected_tools,"usage":attempt_usage,"error":response.as_ref().err().map(|e|e.to_string()),"cancelled":cancel.is_cancelled()})).await?;
+            self.store.save_audit(json!({"kind":"contextSummary","threadId":snapshot.id,"attempt":attempt+1,"networkRetries":network_retries,"beforeBytes":before_bytes,"estimatedInputTokens":estimated_tokens,"tokenWindow":self.limits.context_window_tokens,"outputReserveTokens":self.limits.context_output_reserve_tokens,"response":summary,"rejectedTools":rejected_tools,"usage":attempt_usage,"error":response.as_ref().err().map(|e|e.to_string()),"cancelled":cancel.is_cancelled()})).await?;
             anyhow::ensure!(!cancel.is_cancelled(), "cancelled");
             if response.is_ok() {
                 accepted = Some(summary);
                 break;
             }
+            if let Some(delay) = response.as_ref().err().and_then(|error| {
+                watchdog::retry_delay(self.limits.watchdog_disable, error, network_retries)
+            }) {
+                network_retries = network_retries.saturating_add(1);
+                cell.emit("areal/model/watchdogRetry", json!({"threadId":snapshot.id,"turnId":snapshot.turns.last().map(|t| &t.id),"purpose":"summary","retry":network_retries,"delayMs":delay.as_millis() as u64}));
+                tracing::warn!(
+                    retry = network_retries,
+                    delay_ms = delay.as_millis() as u64,
+                    "network watchdog retrying context summary"
+                );
+                tokio::select! { biased;
+                    _ = cancel.cancelled() => anyhow::bail!("cancelled"),
+                    _ = tokio::time::sleep(delay) => {},
+                }
+                continue;
+            }
+            attempt += 1;
+            network_retries = 0;
+            request_reserved = false;
             input.push(Message::text("user", "The summary was rejected. Return plain factual text only, without tool calls or markup. Use fewer than 1800 words and 12000 UTF-8 bytes. Keep unfinished work and verification status explicit."));
         }
         let summary = accepted

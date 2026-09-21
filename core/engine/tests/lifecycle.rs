@@ -545,6 +545,7 @@ async fn idle_timeout_and_capacity_are_explicit_errors() {
     let (_dir, engine, _model, _entered) = setup(Limits {
         max_threads: 1,
         stream_idle_timeout: Duration::from_millis(50),
+        watchdog_disable: true,
         ..Limits::default()
     });
     let thread = engine.create("/a".into()).await.unwrap();

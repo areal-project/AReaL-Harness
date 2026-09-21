@@ -52,12 +52,9 @@ impl Decoder {
     }
     pub(super) fn finish(&mut self) -> Result<Vec<ModelEvent>> {
         if let Self::Chat(decoder) = self
-            && let Some(error) = &decoder.pending_error
+            && let Some(error) = decoder.pending_error.take()
         {
-            return Err(error
-                .downcast_ref::<ModelFailure>()
-                .map(|e| anyhow::Error::new(*e))
-                .unwrap_or_else(|| anyhow::anyhow!(error.to_string())));
+            return Err(error);
         }
         if self.done() {
             return Ok(Vec::new());
@@ -348,7 +345,7 @@ impl ResponsesDecoder {
             if data == "[DONE]" {
                 self.done = self.finished;
                 if !self.done {
-                    bail!("Responses stream ended without response.completed");
+                    return Err(ModelFailure::Incomplete.into());
                 }
                 break;
             }
@@ -541,6 +538,46 @@ mod tests {
     }
 
     #[test]
+    fn watchdog_classifies_sse_network_errors_without_retrying_permanent_failures() {
+        for (value, retry) in [
+            (json!({"code":"rate_limit_exceeded"}), true),
+            (json!({"type":"rate_limit_error"}), true),
+            (json!({"type":"server_error"}), true),
+            (json!({"type":"api_error"}), true),
+            (json!({"type":"overloaded_error"}), true),
+            (
+                json!({"code":"insufficient_quota","type":"server_error"}),
+                false,
+            ),
+            (json!({"type":"authentication_error"}), false),
+            (json!({"code":"invalid_api_key"}), false),
+            (json!({"type":"permission_error"}), false),
+            (json!({"type":"invalid_request_error"}), false),
+            (json!({"code":"context_length_exceeded"}), false),
+            (json!({"reason":"max_output_tokens"}), false),
+            (
+                json!({"message":"connection error in untrusted text"}),
+                false,
+            ),
+        ] {
+            for mut decoder in [
+                Decoder::Chat(ChatDecoder::default()),
+                Decoder::Responses(ResponsesDecoder::default()),
+            ] {
+                let event = json!({"type":"error", "error":value});
+                let error = decoder
+                    .feed(format!("data: {event}\n\n").as_bytes())
+                    .unwrap_err();
+                assert_eq!(is_network_error(&error), retry, "{value}");
+            }
+        }
+        let error = ResponsesDecoder::default()
+            .feed(b"data: [DONE]\n\n")
+            .unwrap_err();
+        assert!(is_network_error(&error));
+    }
+
+    #[test]
     fn a_late_upstream_error_preserves_classification_and_never_releases_tools() {
         let mut decoder = Decoder::Chat(ChatDecoder::default());
         let input = concat!(
@@ -550,7 +587,9 @@ mod tests {
         );
         let events = decoder.feed(input.as_bytes()).unwrap();
         assert!(matches!(events.as_slice(), [ModelEvent::TextDelta(_)]));
-        let error = decoder.finish().unwrap_err().to_string();
+        let error = decoder.finish().unwrap_err();
+        assert!(is_network_error(&error));
+        let error = error.to_string();
         assert!(error.contains("rate_limit_exceeded"));
         assert!(!error.contains("secret"));
     }

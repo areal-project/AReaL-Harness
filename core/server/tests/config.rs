@@ -62,6 +62,7 @@ fn diagnostics_use_file_and_env_and_cli_without_creating_state_or_leaking_secret
     let env = [
         ("FIXTURE_KEY", "private-key"),
         ("AREAL_HARNESS_MODEL", "environment"),
+        ("AREAL_HARNESS_WATCHDOG_DISABLE", "1"),
     ];
     let out = invoke(
         temp.path(),
@@ -92,6 +93,7 @@ fn diagnostics_use_file_and_env_and_cli_without_creating_state_or_leaking_secret
     assert_eq!(json["model"]["name"], "command");
     assert_eq!(json["sources"]["model.name"]["kind"], "cli");
     assert_eq!(json["limits"]["max_active_turns"], 5);
+    assert_eq!(json["limits"]["watchdog_disable"], true);
     assert_eq!(json["limits"]["max_children_per_turn"], 3);
     assert_eq!(json["limits"]["max_agent_depth"], 1);
     assert_eq!(

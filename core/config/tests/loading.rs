@@ -507,3 +507,36 @@ fn token_window_reserve_is_validated_and_env_can_override() {
     );
     assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
 }
+
+#[test]
+fn watchdog_defaults_enabled_and_environment_overrides_toml() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    let config = load_config(&i).unwrap();
+    assert!(!config.watchdog_disable);
+    assert_eq!(
+        config.diagnostic(false)["limits"]["watchdog_disable"],
+        false
+    );
+    write(
+        &mut i,
+        "schema_version=1\n[limits]\nwatchdog_disable=true\n",
+    );
+    assert!(load_config(&i).unwrap().watchdog_disable);
+    for (value, disabled) in [("0", false), ("1", true), ("false", false), ("true", true)] {
+        set(&mut i, "AREAL_HARNESS_WATCHDOG_DISABLE", value);
+        let config = load_config(&i).unwrap();
+        assert_eq!(config.watchdog_disable, disabled);
+        assert!(
+            matches!(&config.sources["limits.watchdog_disable"], ConfigSource::Env { name } if name == "AREAL_HARNESS_WATCHDOG_DISABLE")
+        );
+    }
+    for value in ["2", "yes", "-1"] {
+        set(&mut i, "AREAL_HARNESS_WATCHDOG_DISABLE", value);
+        assert_eq!(failure(&i).field, "limits.watchdog_disable");
+    }
+    i.env
+        .remove(std::ffi::OsStr::new("AREAL_HARNESS_WATCHDOG_DISABLE"));
+    write(&mut i, "schema_version=1\n[limits]\nwatchdog_disable=1\n");
+    assert_eq!(failure(&i).field, "limits.watchdog_disable");
+}
