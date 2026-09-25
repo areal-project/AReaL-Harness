@@ -52,6 +52,7 @@ Web uses a neutral workbench layout: a collapsible 240px sidebar, a task heading
 - `areal web` signs in automatically. One-time links last 60 seconds and sessions last one hour. After expiry or service restart, run the command again or enter a token in “Settings → Local connection”; errors appear in settings. With a valid session, reload to reconnect and restore the task snapshot.
 - Enter sends; Shift + Enter inserts a newline. Confirming an input-method candidate does not send. While a task runs, send additional instructions or stop execution.
 - Web input starting with `/` opens command suggestions and supports `/help`, `/new`, `/refresh`, `/goal`, `/skills` and `/skill NAME`. Use `Skills` below the composer or `/skills` to select a Skill for the current task.
+- The Web sidebar's delete-session button archives through Core. Stop an active Goal and settle queues/resources first. Confirmation removes the session from the list; disk history and deduplication receipts remain, so this is not permanent erasure.
 - Expand “Persistent goal” above the composer to inspect budget and progress, create or edit a goal, pause, resume, or clear it. The stop button pauses an active Goal; automatic continuation Turns retain their source label.
 - “Task history” displays messages and expandable tool results; UNKNOWN tool results still require an inspection record. “Collaborative tasks and acceptance” retains plan submission, progress queries, cancellation, and revision controls.
 

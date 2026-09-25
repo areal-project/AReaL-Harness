@@ -248,19 +248,42 @@ h1 {
   flex-direction: column;
   gap: 2px;
 }
-#threads button {
+#threads .thread-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-radius: 8px;
+}
+#threads .thread-select {
   justify-content: flex-start;
   min-height: 36px;
-  width: 100%;
+  min-width: 0;
+  flex: 1;
   padding: 7px 10px;
   text-align: left;
   background: transparent;
   color: var(--muted);
 }
-#threads button:hover,
-#threads button.selected {
+#threads .thread-row:hover,
+#threads .thread-row.selected {
   background: var(--hover);
   color: var(--text);
+}
+#threads .thread-remove {
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  opacity: 0;
+}
+#threads .thread-row:hover .thread-remove,
+#threads .thread-row.selected .thread-remove,
+#threads .thread-remove:focus-visible {
+  opacity: 1;
+}
+@media (hover: none), (max-width: 700px) {
+  #threads .thread-remove {
+    opacity: 1;
+  }
 }
 .thread-title {
   min-width: 0;

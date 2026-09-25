@@ -54,6 +54,7 @@ Task 用例 `node examples/desktop-api/run.mjs task-mode` 验证提问后继续�
 |---|---|
 | 新建会话，发送 `hello`，再发送 `native` | 正文完成，原生工具成功，工作区产生 native.txt |
 | 创建 Goal `goal-native-fixture` | 自动续轮，两轮后完成并产生 goal.txt |
+| 在侧栏删除已完成的 Goal 会话并刷新 | 会话从列表移除且不再出现；文件保留，Core 归档历史而非永久删除 |
 | 新会话创建 Goal `task-channel-fixture` | 异步提问后完成独立 plan；从侧栏 Inbox 选择 B，恢复同一 Run |
 | 后台创建 `task-workers-fixture`，选择无人值守 | worker 在独立会话生成 task-worker.txt；协调者跨 Turn 验证，频道报告已完成 |
 | 后台创建 `task-channel-fixture` | 暂停、页面重载、独立 Inbox 回复 B 后仍暂停；显式恢复后完成 |

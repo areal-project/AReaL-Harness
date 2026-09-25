@@ -5,7 +5,8 @@ let socket,
   connected = false,
   refreshing = false,
   listCursor = null,
-  listing = false;
+  listing = false,
+  archiving = new Set();
 let skills = [],
   slashIndex = 0;
 const pending = new Map();
@@ -385,12 +386,10 @@ function render() {
     thread?.preview || firstMessage?.content.map((part) => part.text ?? "").join(" ") || "新建任务";
   $("task-title").textContent = title;
   $("task-title").title = title;
-  const selectedThread = [...$("threads").children].find(
-    (button) => button.dataset.id === thread?.id,
-  );
+  const selectedThread = [...$("threads").children].find((row) => row.dataset.id === thread?.id);
   if (selectedThread && firstMessage) {
     selectedThread.querySelector(".thread-title").textContent = title;
-    selectedThread.title = title;
+    selectedThread.querySelector(".thread-select").title = title;
   }
   $("status").textContent = labels[thread?.turns?.at(-1)?.status] ?? "就绪";
   $("status").dataset.status = thread?.turns?.at(-1)?.status ?? "idle";
@@ -580,25 +579,67 @@ async function list(more = false) {
       ...(more ? { cursor: listCursor } : {}),
     });
     if (!more) $("threads").replaceChildren();
-    const existing = new Set([...$("threads").children].map((button) => button.dataset.id));
+    const existing = new Set([...$("threads").children].map((row) => row.dataset.id));
     for (const item of result.data) {
-      if (existing.has(item.id)) continue;
-      const button = node("button", undefined, item.id === thread?.id ? "selected" : "");
+      if (item.desktop?.archived || existing.has(item.id) || archiving.has(item.id)) continue;
+      const row = node("div", undefined, `thread-row${item.id === thread?.id ? " selected" : ""}`);
+      const button = node("button", undefined, "thread-select");
+      button.type = "button";
       button.append(node("span", item.preview || "未命名任务", "thread-title"));
       button.title = item.preview || "未命名任务";
       if (item.id === thread?.id) button.setAttribute("aria-current", "true");
-      button.dataset.id = item.id;
       button.onclick = () => select(item.id).catch(notice);
-      $("threads").append(button);
+      const remove = node("button", undefined, "thread-remove icon-button");
+      remove.type = "button";
+      remove.setAttribute("aria-label", `删除会话：${button.title}`);
+      remove.title = "删除会话";
+      remove.append(icon("close"));
+      remove.onclick = () => archiveSession(item.id, button.title).catch(notice);
+      row.dataset.id = item.id;
+      row.append(button, remove);
+      $("threads").append(row);
     }
     listCursor = result.nextCursor;
     $("more").hidden = !listCursor;
-    $("threads-empty").hidden = $("threads").children.length > 0;
+    $("threads-empty").hidden = $("threads").children.length > 0 || Boolean(listCursor);
     $("threads-empty").textContent = "还没有任务，点击上方新建。";
   } finally {
     listing = false;
     $("more").disabled = false;
   }
+}
+async function archiveSession(id, title) {
+  if (
+    archiving.has(id) ||
+    !confirm(
+      `删除会话“${title}”？\n\n会话将从列表移除，历史仍保留在本地存储中。运行中的任务需先停止。`,
+    )
+  )
+    return;
+  archiving.add(id);
+  const row = [...$("threads").children].find((item) => item.dataset.id === id);
+  const remove = row?.querySelector(".thread-remove");
+  if (remove) remove.disabled = true;
+  try {
+    await call("areal/thread/archive", { threadId: id, requestId: crypto.randomUUID() });
+    await removeArchivedSession(id);
+    notice("");
+  } finally {
+    archiving.delete(id);
+    if (remove) remove.disabled = false;
+  }
+}
+async function removeArchivedSession(id) {
+  [...$("threads").children].find((row) => row.dataset.id === id)?.remove();
+  if (thread?.id === id) {
+    thread = null;
+    skills = [];
+    displayedGoal = null;
+    const next = $("threads").children[0];
+    if (next) await select(next.dataset.id);
+    else render();
+  }
+  $("threads-empty").hidden = $("threads").children.length > 0 || Boolean(listCursor);
 }
 async function select(id) {
   const result = await call("thread/resume", { threadId: id });
@@ -607,9 +648,10 @@ async function select(id) {
   render();
   showView(false);
   if (mobileLayout.matches) mobileSidebar(false, true);
-  for (const button of $("threads").children) {
-    button.classList.toggle("selected", button.dataset.id === id);
-    if (button.dataset.id === id) button.setAttribute("aria-current", "true");
+  for (const row of $("threads").children) {
+    row.classList.toggle("selected", row.dataset.id === id);
+    const button = row.querySelector(".thread-select");
+    if (row.dataset.id === id) button.setAttribute("aria-current", "true");
     else button.removeAttribute("aria-current");
   }
 }
@@ -640,6 +682,10 @@ function scheduleRender() {
 }
 function event(message) {
   const p = message.params ?? {};
+  if (message.method === "areal/thread/archived") {
+    if (!archiving.has(p.threadId)) removeArchivedSession(p.threadId).catch(notice);
+    return;
+  }
   if (message.method === "areal/task/updated") {
     receiveTask(p.task);
     return;

@@ -54,6 +54,7 @@ After `make build`, run `node examples/desktop-api/run.mjs --serve` and keep it 
 |---|---|
 | Create a conversation; send `hello`, then `native` | Completed text and native tool execution; native.txt appears in the workspace |
 | Create Goal `goal-native-fixture` | Automatic continuation completes in two Turns and produces goal.txt |
+| Delete the completed Goal session in the sidebar and refresh | The session remains absent from the list; the file remains and Core archives rather than permanently erasing history |
 | Create Goal `task-channel-fixture` in a new conversation | Independent plan work follows the asynchronous question; answering B in the sidebar Inbox resumes the same Run |
 | Create headless background task `task-workers-fixture` | An independent worker creates task-worker.txt; the coordinator verifies it across Turns and publishes completion |
 | Create background task `task-channel-fixture` | Pause, reload the page and answer B from the independent Inbox; it stays paused until explicitly resumed |

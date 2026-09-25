@@ -28,10 +28,15 @@ class Element {
     this.open = false;
   }
   append(...children) {
+    for (const child of children) child.parent = this;
     this.children.push(...children);
   }
   replaceChildren(...children) {
     this.children = children;
+    for (const child of children) child.parent = this;
+  }
+  remove() {
+    if (this.parent) this.parent.children = this.parent.children.filter((child) => child !== this);
   }
   setAttribute(name, value) {
     this.attributes.set(name, value);
@@ -39,8 +44,17 @@ class Element {
   getAttribute(name) {
     return this.attributes.get(name) ?? null;
   }
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
   querySelector(selector) {
-    return this.children.find((child) => child.tag === selector) ?? null;
+    return (
+      this.children.find(
+        (child) =>
+          child.tag === selector ||
+          (selector.startsWith(".") && child.className?.split(" ").includes(selector.slice(1))),
+      ) ?? null
+    );
   }
   querySelectorAll(selector) {
     return this.children.flatMap((child) => [
@@ -83,6 +97,7 @@ function client(options = {}) {
       },
     },
     AbortSignal,
+    confirm: options.confirm ?? (() => true),
     fetch: async (url, init) => {
       startup.push({ type: "fetch", url, init, page: location.href });
       return options.fetch ? options.fetch(url, init) : { ok: true };
@@ -123,6 +138,66 @@ function client(options = {}) {
     },
   };
 }
+
+test("sidebar archives a confirmed session, keeps failed archives visible, and switches selection", async () => {
+  const c = client();
+  c.run('thread = {id:"first",cwd:"/workspace",turns:[]}; render()');
+  const listing = c.run("list()");
+  const listRequest = c.requests.at(-1);
+  c.run(
+    `pending.get(${listRequest.id}).resolve({data:[{id:"first",preview:"First"},{id:"second",preview:"Second"},{id:"archived",desktop:{archived:true}}],nextCursor:null})`,
+  );
+  await listing;
+  assert.equal(c.get("threads").children.length, 2);
+  const rows = c.get("threads").children;
+  assert.equal(
+    rows[0].querySelector(".thread-remove").getAttribute("aria-label"),
+    "删除会话：First",
+  );
+
+  const failed = rows[1].querySelector(".thread-remove").onclick();
+  const failedRequest = c.requests.at(-1);
+  assert.equal(failedRequest.method, "areal/thread/archive");
+  assert.equal(failedRequest.params.threadId, "second");
+  assert.equal(rows[1].querySelector(".thread-remove").disabled, true);
+  c.run(`pending.get(${failedRequest.id}).reject(Error("active goal"))`);
+  await failed;
+  assert.equal(c.get("threads").children.length, 2);
+  assert.match(c.get("notice").textContent, /active goal/);
+
+  const archive = rows[0].querySelector(".thread-remove").onclick();
+  const request = c.requests.at(-1);
+  c.run(`pending.get(${request.id}).resolve({archived:true})`);
+  await Promise.resolve();
+  const resume = c.requests.at(-1);
+  assert.equal(resume.method, "thread/resume");
+  assert.equal(resume.params.threadId, "second");
+  c.run(`pending.get(${resume.id}).resolve({thread:{id:"second",cwd:"/workspace",turns:[]}})`);
+  await archive;
+  assert.equal(c.run("thread.id"), "second");
+  assert.equal(c.get("threads").children.length, 1);
+  assert.equal(c.get("threads").children[0].dataset.id, "second");
+});
+
+test("cancelled archive does not call Core", async () => {
+  const c = client({ confirm: () => false });
+  await c.run('archiveSession("thread", "Draft")');
+  assert.equal(c.requests.length, 0);
+});
+
+test("another client's archive clears the selected session", async () => {
+  const c = client();
+  const listing = c.run("list()");
+  const request = c.requests.at(-1);
+  c.run(
+    `pending.get(${request.id}).resolve({data:[{id:"thread",preview:"Current"}],nextCursor:null})`,
+  );
+  await listing;
+  emit(c, "areal/thread/archived", { threadId: "thread" });
+  assert.equal(c.run("thread"), null);
+  assert.equal(c.get("threads").children.length, 0);
+  assert.equal(c.get("threads-empty").hidden, false);
+});
 function emit(client, method, params) {
   client.run(
     `event(${JSON.stringify({ method, params: { threadId: "thread", turnId: "turn", ...params } })})`,
