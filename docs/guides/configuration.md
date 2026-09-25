@@ -74,6 +74,7 @@ max_output_bytes = 262144
 max_tool_calls = 128
 max_tool_buffer_bytes = 4194304
 context_window_bytes = 196608
+context_compaction_enabled = true
 context_recent_bytes = 65536
 context_window_tokens = 0
 context_output_reserve_tokens = 0
@@ -95,6 +96,8 @@ endpoint 是完整 HTTP(S) 请求 URL；Core 只支持 `chat-completions` / `res
 
 `context_window_tokens=0` 禁用 token 估计，最大 2000000；启用时 reserve 必须小于 window。历史、system 与工具定义的估计达到 window 减 reserve，或字节阈值时触发压缩。估计按 ASCII 约 3 字节/token、非 ASCII 约 2 token/字符及媒体代理成本计算，可由上次输入用量向上校准；缓存命中不降低估计，不保证匹配供应商 tokenizer。
 
+`limits.context_compaction_enabled=false` 关闭自动和手动压缩（默认 true）。超过 `context_window_bytes` 或达到启用的 token 阈值时，Turn 直接失败并报告上下文上限，不再向模型发送求解或摘要请求；原始历史仍保留。这个估计阈值不是提供方的真实上下文上限。需同时关闭 Agent 委派与 Workgroup 子任务时，设置 `max_children_per_turn=0` 和 `max_agent_depth=0`。若显式启用了原生研究 Agent 扩展，子任务限额不能为 0，启动会拒绝该组合。
+
 网络 watchdog 默认启用，网络错误没有重试次数上限。设置 `AREAL_HARNESS_WATCHDOG_DISABLE=1` 关闭，删除该变量或设为 `0` 恢复默认；也接受 `true`/`false`，对应 TOML `limits.watchdog_disable`。环境变量覆盖 TOML。watchdog 覆盖连接/传输失败、请求与流空闲超时、提前断流、HTTP 408/429/5xx，以及 SSE 明确报告的限流/服务不可用。求解、子 Agent 与上下文摘要采用同一策略，250 ms 指数退避、最长 30 秒；取消、Turn 总期限及显式 Workgroup 实际请求预算仍有效。401/403、无效请求、额度不足、长度上限和空回复不进入无限重试。
 
 Goal 的共享预算与未知用量约束优先于重试配置。Goal 请求禁用 HTTP 内部重试；失败或超时产生未知消费时保留预算预留并停止自动推进，watchdog 与有限重试额度均不能绕过此限制。
@@ -110,7 +113,7 @@ Goal 的共享预算与未知用量约束优先于重试配置。Goal 请求禁�
 | `MODEL`, `MODEL_PROVIDER`, `MODEL_ENDPOINT`, `MODEL_PROTOCOL`, `API_KEY_ENV` | 模型名称、provider、完整 URL、协议与凭据引用 |
 | `REASONING_EFFORT`, `REASONING_SUMMARY`, `MAX_OUTPUT_TOKENS`, `MODEL_MAX_RETRIES` | 模型参数 |
 | `TEMPERATURE`, `TOP_P`, `TOP_K`, `MIN_P`, `PRESENCE_PENALTY`, `REPETITION_PENALTY` | 采样参数 |
-| `CONTEXT_WINDOW_TOKENS`, `CONTEXT_OUTPUT_RESERVE_TOKENS` | 可选上下文 token 预算 |
+| `CONTEXT_WINDOW_TOKENS`, `CONTEXT_OUTPUT_RESERVE_TOKENS`, `CONTEXT_COMPACTION_ENABLED` | 可选上下文 token 预算与压缩开关 |
 | `LISTEN`, `DATA_DIR`, `TOOL_EXTENSIONS`, `LOG_FILTER` | server、扩展文件与日志 |
 | `MODEL_CONCURRENCY`, `MAX_THREADS`, `MAX_ACTIVE_TURNS`, `MAX_CHILDREN_PER_TURN`, `MAX_AGENT_DEPTH` | 并发与任务容量 |
 | `TURN_TIMEOUT_SECONDS`, `STREAM_IDLE_TIMEOUT_SECONDS` | 时限 |

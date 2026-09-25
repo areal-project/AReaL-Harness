@@ -278,3 +278,73 @@ async fn token_budget_can_compact_before_byte_limit_and_preserves_original_asser
     }
     engine.shutdown().await;
 }
+
+#[tokio::test]
+async fn disabled_compaction_fails_at_byte_limit_without_summarizing() {
+    let data = tempfile::tempdir().unwrap();
+    let model = model(false);
+    let limits = Limits {
+        context_compaction_enabled: false,
+        ..limits()
+    };
+    let engine = Engine::open(data.path(), model.clone(), limits).unwrap();
+    let thread = engine.create("/workspace".into()).await.unwrap();
+    turn(&engine, &thread.id, "Original task").await;
+    turn(&engine, &thread.id, "Continue").await;
+    let failed = turn(&engine, &thread.id, "Verify").await;
+    assert_eq!(failed.turns.last().unwrap().status, TurnStatus::Failed);
+    assert!(
+        failed
+            .turns
+            .last()
+            .unwrap()
+            .error
+            .as_ref()
+            .unwrap()
+            .message
+            .contains("context window limit exceeded: compaction is disabled")
+    );
+    assert!(failed.context_checkpoint.is_none());
+    assert_eq!(model.requests.lock().unwrap().len(), 2);
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn disabled_compaction_fails_at_token_limit_and_rejects_manual_compaction() {
+    let data = tempfile::tempdir().unwrap();
+    let model = model(false);
+    let limits = Limits {
+        context_compaction_enabled: false,
+        context_window_bytes: 1024 * 1024,
+        context_recent_bytes: 256,
+        context_window_tokens: 1800,
+        context_output_reserve_tokens: 400,
+        ..Limits::default()
+    };
+    let engine = Engine::open(data.path(), model.clone(), limits).unwrap();
+    let thread = engine.create("/workspace".into()).await.unwrap();
+    assert!(
+        engine
+            .context_compact(thread.id.clone())
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("context compaction is disabled")
+    );
+    let failed = turn(&engine, &thread.id, "Original task").await;
+    assert_eq!(failed.turns.last().unwrap().status, TurnStatus::Failed);
+    assert!(
+        failed
+            .turns
+            .last()
+            .unwrap()
+            .error
+            .as_ref()
+            .unwrap()
+            .message
+            .contains("context window limit exceeded: compaction is disabled")
+    );
+    assert!(failed.context_checkpoint.is_none());
+    assert!(model.requests.lock().unwrap().is_empty());
+    engine.shutdown().await;
+}

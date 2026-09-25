@@ -225,6 +225,7 @@ pub struct ResolvedCoreConfig {
     pub max_tool_calls: usize,
     pub max_tool_buffer_bytes: usize,
     pub context_window_bytes: usize,
+    pub context_compaction_enabled: bool,
     pub context_window_tokens: usize,
     pub context_output_reserve_tokens: usize,
     pub context_recent_bytes: usize,
@@ -272,7 +273,7 @@ impl ResolvedCoreConfig {
             "limits": { "max_active_turns": self.max_active_turns, "max_children_per_turn": self.max_children_per_turn, "max_agent_depth": self.max_agent_depth, "model_concurrency": self.model_concurrency, "max_threads": self.max_threads,
                 "turn_timeout_seconds": self.turn_timeout_seconds, "stream_idle_timeout_seconds": self.stream_idle_timeout_seconds,
                 "max_history_bytes": self.max_history_bytes, "max_output_bytes": self.max_output_bytes, "max_tool_calls": self.max_tool_calls, "max_tool_buffer_bytes": self.max_tool_buffer_bytes,
-                "context_window_bytes": self.context_window_bytes, "context_window_tokens":self.context_window_tokens, "context_output_reserve_tokens":self.context_output_reserve_tokens, "context_recent_bytes": self.context_recent_bytes,
+                "context_window_bytes": self.context_window_bytes, "context_compaction_enabled": self.context_compaction_enabled, "context_window_tokens":self.context_window_tokens, "context_output_reserve_tokens":self.context_output_reserve_tokens, "context_recent_bytes": self.context_recent_bytes,
                 "max_completion_retries": self.max_completion_retries, "watchdog_disable": self.watchdog_disable },
             "logging": { "filter": self.log_filter },
         });

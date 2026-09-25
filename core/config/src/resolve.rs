@@ -113,6 +113,11 @@ const ENV: &[(&str, &str, &str)] = &[
         "limits.context_window_bytes",
     ),
     (
+        "AREAL_HARNESS_CONTEXT_COMPACTION_ENABLED",
+        "",
+        "limits.context_compaction_enabled",
+    ),
+    (
         "AREAL_HARNESS_CONTEXT_RECENT_BYTES",
         "",
         "limits.context_recent_bytes",
@@ -317,9 +322,9 @@ fn valid(field: &str, entry: &Entry) -> Result<()> {
                 ));
             }
         }
-        "watchdog_disable" => {
+        "watchdog_disable" | "context_compaction_enabled" => {
             if !matches!(value.as_str(), "0" | "1" | "false" | "true") {
-                return Err(reject("watchdog_disable must be 0/1 or false/true"));
+                return Err(reject("boolean must be 0/1 or false/true"));
             }
         }
         "max_retries" | "max_completion_retries" => {
@@ -508,6 +513,7 @@ fn load_mode(inputs: &ConfigInputs, management: bool) -> Result<ResolvedCoreConf
         ("limits.max_tool_calls", "128"),
         ("limits.max_tool_buffer_bytes", "4194304"),
         ("limits.context_window_bytes", "196608"),
+        ("limits.context_compaction_enabled", "true"),
         ("limits.context_window_tokens", "0"),
         ("limits.context_output_reserve_tokens", "0"),
         ("limits.context_recent_bytes", "65536"),
@@ -788,6 +794,10 @@ fn load_mode(inputs: &ConfigInputs, management: bool) -> Result<ResolvedCoreConf
             .parse()
             .unwrap(),
         context_window_bytes: values["limits.context_window_bytes"].value.parse().unwrap(),
+        context_compaction_enabled: matches!(
+            values["limits.context_compaction_enabled"].value.as_str(),
+            "1" | "true"
+        ),
         context_window_tokens: values["limits.context_window_tokens"]
             .value
             .parse()

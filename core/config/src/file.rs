@@ -239,7 +239,10 @@ fn walk(
             "temperature" | "top_p" | "min_p" | "presence_penalty" | "repetition_penalty"
         ]
     );
-    let boolean = matches!(names.as_slice(), ["limits", "watchdog_disable"]);
+    let boolean = matches!(
+        names.as_slice(),
+        ["limits", "watchdog_disable" | "context_compaction_enabled"]
+    );
     if !numeric && !string && !decimal && !boolean {
         return Err(error(
             Kind::UnknownField,

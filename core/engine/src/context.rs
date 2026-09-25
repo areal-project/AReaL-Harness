@@ -236,6 +236,12 @@ impl Engine {
         if !force && before_bytes <= self.limits.context_window_bytes && !token_trigger {
             return Ok(());
         }
+        anyhow::ensure!(
+            self.limits.context_compaction_enabled,
+            "context window limit exceeded: compaction is disabled ({} bytes / {} estimated tokens)",
+            before_bytes,
+            estimated_tokens
+        );
 
         let items: Vec<_> = snapshot.turns.iter().flat_map(|turn| &turn.items).collect();
         let previous = snapshot

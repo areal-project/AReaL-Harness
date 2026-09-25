@@ -83,6 +83,7 @@ Chat 工具 index 缺失、null、非整数类型、负数、超出 u64 范围�
 Rust `Model::chat_with_limits(messages, tools, purpose, ToolCallLimits, cap)` 显式传递请求预算，内置 HTTP、共享池和 Worker 包装器均转发。可选的输出 token 上限与工具预算一起经过 Goal 计量传递。默认实现委托 `chat_limited`，保持已有自定义 Model 实现可编译，并拒绝不受支持的非空 token 上限；自定义模型自行约束内部缓冲，Engine 仍在工具执行前检查其输出。摘要使用零调用预算。`Limits` 新增 `max_tool_buffer_bytes`，`NativeFactory`/`NativeExecutor` 新增 `tool_call_limits`，显式结构体初始化需补充字段；构造器提供默认值。不增加客户端协议方法或更改快照格式。
 
 上下文压缩保留原目标与近期内容，不拆 completion/工具结果或不透明 reasoning 边界。摘要最多 16 KiB，记录 throughItemId 与 checkpoint；网络故障重试相同摘要输入，不占用摘要格式校验次数；空摘要或伪工具摘要重试一次，仍失败时只有确实缩短输入才使用明确标记的 DEGRADED CONTEXT，否则 Turn 失败。取消不覆盖旧 checkpoint，压缩不删除历史、journal 或 Turn 工具状态。
+`limits.context_compaction_enabled=false` 时自动阈值超限使 Turn 失败，显式 `areal/context/compact` 返回错误，不写入 checkpoint；配置见[上下文限额](../guides/configuration.md#模型与限额)。
 
 模型审计写入 `data_dir/model-requests/*.json` 与 `requests.jsonl`，记录 solve/summary、参数、请求体摘要/大小、attempt、usage、stopReason、耗时与有限响应形状，不记录 header、endpoint 或 prompt。`usageObserved=true` 表示收到可解析的完整用量事件（包括 0）；缺失/false 不能视为已知零。length 终态仍收集同帧/尾帧 usage，等待受期限和取消限制，随后判定截断并禁止执行工具。
 

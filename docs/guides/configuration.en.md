@@ -74,6 +74,7 @@ max_output_bytes = 262144
 max_tool_calls = 128
 max_tool_buffer_bytes = 4194304
 context_window_bytes = 196608
+context_compaction_enabled = true
 context_recent_bytes = 65536
 context_window_tokens = 0
 context_output_reserve_tokens = 0
@@ -95,6 +96,8 @@ Optional sampling fields are omitted when unset and preserve explicit zero. `tem
 
 `context_window_tokens=0` disables token estimation; its maximum is 2000000. When enabled, reserve must be below window. Estimated history, system and tool definitions trigger compaction at window minus reserve, or at the byte threshold. Estimates use roughly 3 ASCII bytes/token, 2 tokens/non-ASCII character and media proxies, and may be calibrated upward from prior input usage. Cache hits do not reduce estimates; these are not exact provider tokenizer counts.
 
+`limits.context_compaction_enabled=false` disables automatic and manual compaction (true by default). When `context_window_bytes` is exceeded or an enabled token threshold is reached, the Turn fails with a context limit error without sending another solve or summary request; original history remains intact. These estimates are not the provider's actual context limit. To also disable Agent delegation and Workgroup child tasks, set `max_children_per_turn=0` and `max_agent_depth=0`. An explicitly enabled native research Agent extension requires nonzero child limits and rejects this combination at startup.
+
 The network watchdog is enabled by default with no retry count limit. Set `AREAL_HARNESS_WATCHDOG_DISABLE=1` to disable it; remove the variable or set it to `0` to restore the default. It also accepts `true`/`false`, mapping to TOML `limits.watchdog_disable`; the environment overrides TOML. It covers connection/transport failures, request and stream idle timeouts, premature EOF, HTTP 408/429/5xx and explicit SSE rate-limit/service-availability errors. Solve, child Agent and context-summary requests use the same policy, with exponential backoff from 250 ms capped at 30 seconds. Cancellation, Turn deadlines and explicit Workgroup physical-request budgets remain effective. Authentication, invalid requests, insufficient quota, output length limits and empty answers do not receive unlimited retries.
 
 Goal shared-budget and unknown-usage constraints take precedence over retry settings. Goal requests disable internal HTTP retries; failures or timeouts with unknown usage retain their reservation and stop automatic progress. Neither the watchdog nor finite retry allowances bypass this constraint.
@@ -110,7 +113,7 @@ Byte and capacity limits are positive integers; fan-out and depth may be 0 to di
 | `MODEL`, `MODEL_PROVIDER`, `MODEL_ENDPOINT`, `MODEL_PROTOCOL`, `API_KEY_ENV` | Model name, provider, complete URL, protocol and credential reference |
 | `REASONING_EFFORT`, `REASONING_SUMMARY`, `MAX_OUTPUT_TOKENS`, `MODEL_MAX_RETRIES` | Model parameters |
 | `TEMPERATURE`, `TOP_P`, `TOP_K`, `MIN_P`, `PRESENCE_PENALTY`, `REPETITION_PENALTY` | Sampling parameters |
-| `CONTEXT_WINDOW_TOKENS`, `CONTEXT_OUTPUT_RESERVE_TOKENS` | Optional context token budget |
+| `CONTEXT_WINDOW_TOKENS`, `CONTEXT_OUTPUT_RESERVE_TOKENS`, `CONTEXT_COMPACTION_ENABLED` | Optional context token budget and compaction switch |
 | `LISTEN`, `DATA_DIR`, `TOOL_EXTENSIONS`, `LOG_FILTER` | Server, extensions file and logging |
 | `MODEL_CONCURRENCY`, `MAX_THREADS`, `MAX_ACTIVE_TURNS`, `MAX_CHILDREN_PER_TURN`, `MAX_AGENT_DEPTH` | Concurrency and task capacity |
 | `TURN_TIMEOUT_SECONDS`, `STREAM_IDLE_TIMEOUT_SECONDS` | Deadlines |
