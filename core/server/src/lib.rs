@@ -302,6 +302,7 @@ async fn serve(
         max_tool_calls: config.max_tool_calls,
         max_tool_buffer_bytes: config.max_tool_buffer_bytes,
         context_window_bytes: config.context_window_bytes,
+        context_compaction_enabled: config.context_compaction_enabled,
         context_window_tokens: config.context_window_tokens,
         context_output_reserve_tokens: config.context_output_reserve_tokens,
         context_recent_bytes: config.context_recent_bytes,

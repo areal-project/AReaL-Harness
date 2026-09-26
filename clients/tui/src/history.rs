@@ -987,6 +987,7 @@ mod tests {
         let mut t = thread("root", None);
         t.turns[0].status = TurnStatus::Failed;
         t.turns[0].error = Some(areal_protocol::TurnError {
+            outcome: None,
             message: "provider connection failed".into(),
         });
         t.turns[0].items = vec![message("empty", Some(AgentMessagePhase::Commentary), "")];

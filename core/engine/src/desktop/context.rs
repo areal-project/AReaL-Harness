@@ -20,6 +20,9 @@ impl Engine {
         )
     }
     pub async fn context_compact(self: &Arc<Self>, thread_id: String) -> Result<Value> {
+        if !self.limits.context_compaction_enabled {
+            return Err(Error::Invalid("context compaction is disabled".into()));
+        }
         self.mutate(move|engine|async move{
             if !engine.accepting_work(){return Err(Error::Closed);}
             let admission=engine.desktop.lifecycle.gate.lock().await;

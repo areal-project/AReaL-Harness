@@ -3,7 +3,7 @@ SHELL := /bin/sh
 
 # 传给 server 和 tui 子命令的附加参数；模型凭据沿用环境变量。
 ARGS ?=
-PYTHON_SOURCES := scripts tests
+PYTHON_SOURCES := scripts tests integrations/envarena
 WORKGROUP_ENV = AREAL_WORKGROUP_RUNTIME="$(CURDIR)/target/debug/areal-runtime" AREAL_WORKGROUP_HELPER="$(CURDIR)/target/debug/areal-runtime-fs"
 
 # Make 将 -- 后的单词视为目标；附加参数统一通过 ARGS 传递。
@@ -116,6 +116,7 @@ script-test: ## 启动器、Web 投影、perf 与文档的离线回归
 	python3 scripts/check-docs.py
 	node --test scripts/web-progress.test.mjs
 	python3 -m unittest discover -s scripts/tests
+	python3 -m unittest discover -s integrations/envarena
 	python3 tests/perf/perf.py self-test
 
 harness: ## 通过可信独立启动器启动工具 Harness；ARGS 指定工作区与数据目录

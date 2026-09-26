@@ -728,6 +728,21 @@ async fn final_round_only_classifies_http_call_budget_errors_as_round_exhaustion
         assert_eq!(result.turns[0].status, TurnStatus::Failed);
         let message = &result.turns[0].error.as_ref().unwrap().message;
         assert!(message.contains(expected), "{message}");
+        let outcome = result.turns[0]
+            .error
+            .as_ref()
+            .unwrap()
+            .outcome
+            .as_ref()
+            .unwrap();
+        if expected == "MAX_MODEL_ROUNDS" {
+            assert_eq!(outcome.code, "AGENT_MAX_TURNS_EXCEEDED");
+            assert_eq!(outcome.class, "agent");
+            assert_eq!(outcome.source, "core_model_round_budget");
+            assert_eq!(outcome.details.as_ref().unwrap()["maxModelRounds"], 1);
+        } else {
+            assert_eq!(outcome.code, "LLM_RESPONSE_FAILED");
+        }
         if expected != "MAX_MODEL_ROUNDS" {
             assert!(!message.contains("MAX_MODEL_ROUNDS"));
         }

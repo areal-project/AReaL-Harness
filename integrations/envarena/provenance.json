@@ -1,0 +1,13 @@
+{
+  "core_base_commit": "7bf439827f4d6c85adbea422238bbe15816b692d",
+  "runner_base_harness": "areal-harness@0.2.0-oss-rc.6-graybox-fix1",
+  "runner_base_sha256": "b6d7e0739fe2780badadd683a7855fe048229e3466889170d6662bec038f40d0",
+  "reference_gameagent_commit": "f5d8501e",
+  "package_paths": {
+    "runner.py": "runner",
+    "outcomes.py": "outcomes.py",
+    "graybox_inputs.py": "graybox_inputs.py",
+    "graybox_collect.py": "graybox_collect.py"
+  },
+  "requires_rebuilt_native_binaries": true
+}

@@ -7,6 +7,7 @@ mod generation;
 pub mod goals;
 mod history;
 pub mod model;
+mod outcome;
 mod permissions;
 mod sessions;
 mod store;
@@ -17,9 +18,7 @@ mod turns;
 mod watchdog;
 pub mod workgroup;
 
-use areal_protocol::{
-    Input, Item, Modality, Thread, ThreadStatus, Turn, TurnError, TurnStatus, notification,
-};
+use areal_protocol::{Input, Item, Modality, Thread, ThreadStatus, Turn, TurnStatus, notification};
 use futures_util::{FutureExt, StreamExt};
 use generation::emit_item;
 use history::{history, validate_input};
@@ -57,6 +56,7 @@ pub struct Limits {
     pub max_tool_calls: usize,
     pub max_tool_buffer_bytes: usize,
     pub context_window_bytes: usize,
+    pub context_compaction_enabled: bool,
     pub context_window_tokens: usize,
     pub context_output_reserve_tokens: usize,
     pub context_recent_bytes: usize,
@@ -84,6 +84,7 @@ impl Default for Limits {
             max_tool_calls: 128,
             max_tool_buffer_bytes: 4 * 1024 * 1024,
             context_window_bytes: 192 * 1024,
+            context_compaction_enabled: true,
             context_window_tokens: 0,
             context_output_reserve_tokens: 0,
             context_recent_bytes: 64 * 1024,

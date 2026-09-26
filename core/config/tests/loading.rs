@@ -540,6 +540,33 @@ fn token_window_reserve_is_validated_and_env_can_override() {
 }
 
 #[test]
+fn context_compaction_can_be_disabled_from_file_or_environment() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    assert!(load_config(&i).unwrap().context_compaction_enabled);
+    write(
+        &mut i,
+        "schema_version=1\n[limits]\ncontext_compaction_enabled=false\nmax_children_per_turn=0\nmax_agent_depth=0\n",
+    );
+    let config = load_config(&i).unwrap();
+    assert!(!config.context_compaction_enabled);
+    assert_eq!(config.max_children_per_turn, 0);
+    assert_eq!(config.max_agent_depth, 0);
+    assert_eq!(
+        config.diagnostic(false)["limits"]["context_compaction_enabled"],
+        false
+    );
+    set(&mut i, "AREAL_HARNESS_CONTEXT_COMPACTION_ENABLED", "1");
+    assert!(load_config(&i).unwrap().context_compaction_enabled);
+    set(
+        &mut i,
+        "AREAL_HARNESS_CONTEXT_COMPACTION_ENABLED",
+        "invalid",
+    );
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+}
+
+#[test]
 fn watchdog_defaults_enabled_and_environment_overrides_toml() {
     let temp = tempfile::tempdir().unwrap();
     let mut i = inputs(temp.path());

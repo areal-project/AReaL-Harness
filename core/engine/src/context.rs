@@ -236,6 +236,19 @@ impl Engine {
         if !force && before_bytes <= self.limits.context_window_bytes && !token_trigger {
             return Ok(());
         }
+        if !self.limits.context_compaction_enabled {
+            return Err(crate::outcome::TerminalFailure::new(
+                format!("context window limit exceeded: compaction is disabled ({before_bytes} bytes / {estimated_tokens} estimated tokens)"),
+                crate::outcome::outcome("LLM_CONTEXT_WINDOW_EXCEEDED", "agent", "core_context_budget", serde_json::json!({
+                    "bytes":before_bytes, "estimatedTokens":estimated_tokens,
+                    "byteLimit":self.limits.context_window_bytes,
+                    "tokenLimit":self.limits.context_window_tokens.saturating_sub(self.limits.context_output_reserve_tokens),
+                    "byteLimitExceeded":before_bytes > self.limits.context_window_bytes,
+                    "tokenLimitExceeded":token_trigger,
+                    "compactionEnabled":false
+                })),
+            ).into());
+        }
 
         let items: Vec<_> = snapshot.turns.iter().flat_map(|turn| &turn.items).collect();
         let previous = snapshot

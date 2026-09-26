@@ -18,7 +18,8 @@ pub(crate) fn retry_delay(
 }
 
 pub(crate) fn idle_error(phase: &str) -> anyhow::Error {
-    anyhow::Error::new(model::ModelFailure::Transport).context(format!("{phase} idle timeout"))
+    anyhow::Error::new(model::ModelFailure::ResponseTimeout)
+        .context(format!("{phase} idle timeout"))
 }
 
 #[cfg(test)]

@@ -7006,6 +7006,34 @@
                         "properties": {
                           "message": {
                             "type": "string"
+                          },
+                          "outcome": {
+                            "anyOf": [
+                              {
+                                "description": "终止原因由错误产生方提供；客户端不得从 message 反推分类。",
+                                "properties": {
+                                  "class": {
+                                    "type": "string"
+                                  },
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "details": true,
+                                  "source": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "code",
+                                  "class",
+                                  "source"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -8114,6 +8142,34 @@
                   "properties": {
                     "message": {
                       "type": "string"
+                    },
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "description": "终止原因由错误产生方提供；客户端不得从 message 反推分类。",
+                          "properties": {
+                            "class": {
+                              "type": "string"
+                            },
+                            "code": {
+                              "type": "string"
+                            },
+                            "details": true,
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "class",
+                            "source"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -9200,6 +9256,34 @@
                   "properties": {
                     "message": {
                       "type": "string"
+                    },
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "description": "终止原因由错误产生方提供；客户端不得从 message 反推分类。",
+                          "properties": {
+                            "class": {
+                              "type": "string"
+                            },
+                            "code": {
+                              "type": "string"
+                            },
+                            "details": true,
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "class",
+                            "source"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -17725,6 +17809,34 @@
                           "properties": {
                             "message": {
                               "type": "string"
+                            },
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "description": "终止原因由错误产生方提供；客户端不得从 message 反推分类。",
+                                  "properties": {
+                                    "class": {
+                                      "type": "string"
+                                    },
+                                    "code": {
+                                      "type": "string"
+                                    },
+                                    "details": true,
+                                    "source": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "code",
+                                    "class",
+                                    "source"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           },
                           "required": [
@@ -20716,6 +20828,34 @@
                             "properties": {
                               "message": {
                                 "type": "string"
+                              },
+                              "outcome": {
+                                "anyOf": [
+                                  {
+                                    "description": "终止原因由错误产生方提供；客户端不得从 message 反推分类。",
+                                    "properties": {
+                                      "class": {
+                                        "type": "string"
+                                      },
+                                      "code": {
+                                        "type": "string"
+                                      },
+                                      "details": true,
+                                      "source": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "code",
+                                      "class",
+                                      "source"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
                               }
                             },
                             "required": [
@@ -21815,6 +21955,34 @@
                       "properties": {
                         "message": {
                           "type": "string"
+                        },
+                        "outcome": {
+                          "anyOf": [
+                            {
+                              "description": "终止原因由错误产生方提供；客户端不得从 message 反推分类。",
+                              "properties": {
+                                "class": {
+                                  "type": "string"
+                                },
+                                "code": {
+                                  "type": "string"
+                                },
+                                "details": true,
+                                "source": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "code",
+                                "class",
+                                "source"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -22539,6 +22707,34 @@
                         "properties": {
                           "message": {
                             "type": "string"
+                          },
+                          "outcome": {
+                            "anyOf": [
+                              {
+                                "description": "终止原因由错误产生方提供；客户端不得从 message 反推分类。",
+                                "properties": {
+                                  "class": {
+                                    "type": "string"
+                                  },
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "details": true,
+                                  "source": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "code",
+                                  "class",
+                                  "source"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -37210,6 +37406,34 @@
                         "properties": {
                           "message": {
                             "type": "string"
+                          },
+                          "outcome": {
+                            "anyOf": [
+                              {
+                                "description": "终止原因由错误产生方提供；客户端不得从 message 反推分类。",
+                                "properties": {
+                                  "class": {
+                                    "type": "string"
+                                  },
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "details": true,
+                                  "source": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "code",
+                                  "class",
+                                  "source"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -38343,6 +38567,34 @@
                   "properties": {
                     "message": {
                       "type": "string"
+                    },
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "description": "终止原因由错误产生方提供；客户端不得从 message 反推分类。",
+                          "properties": {
+                            "class": {
+                              "type": "string"
+                            },
+                            "code": {
+                              "type": "string"
+                            },
+                            "details": true,
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "class",
+                            "source"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -45269,6 +45521,34 @@
                           "properties": {
                             "message": {
                               "type": "string"
+                            },
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "description": "终止原因由错误产生方提供；客户端不得从 message 反推分类。",
+                                  "properties": {
+                                    "class": {
+                                      "type": "string"
+                                    },
+                                    "code": {
+                                      "type": "string"
+                                    },
+                                    "details": true,
+                                    "source": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "code",
+                                    "class",
+                                    "source"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           },
                           "required": [
@@ -48248,6 +48528,34 @@
                         "properties": {
                           "message": {
                             "type": "string"
+                          },
+                          "outcome": {
+                            "anyOf": [
+                              {
+                                "description": "终止原因由错误产生方提供；客户端不得从 message 反推分类。",
+                                "properties": {
+                                  "class": {
+                                    "type": "string"
+                                  },
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "details": true,
+                                  "source": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "code",
+                                  "class",
+                                  "source"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -51248,6 +51556,34 @@
                         "properties": {
                           "message": {
                             "type": "string"
+                          },
+                          "outcome": {
+                            "anyOf": [
+                              {
+                                "description": "终止原因由错误产生方提供；客户端不得从 message 反推分类。",
+                                "properties": {
+                                  "class": {
+                                    "type": "string"
+                                  },
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "details": true,
+                                  "source": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "code",
+                                  "class",
+                                  "source"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -54256,6 +54592,34 @@
                         "properties": {
                           "message": {
                             "type": "string"
+                          },
+                          "outcome": {
+                            "anyOf": [
+                              {
+                                "description": "终止原因由错误产生方提供；客户端不得从 message 反推分类。",
+                                "properties": {
+                                  "class": {
+                                    "type": "string"
+                                  },
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "details": true,
+                                  "source": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "code",
+                                  "class",
+                                  "source"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -55375,6 +55739,34 @@
                   "properties": {
                     "message": {
                       "type": "string"
+                    },
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "description": "终止原因由错误产生方提供；客户端不得从 message 反推分类。",
+                          "properties": {
+                            "class": {
+                              "type": "string"
+                            },
+                            "code": {
+                              "type": "string"
+                            },
+                            "details": true,
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "class",
+                            "source"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -58447,6 +58839,34 @@
                   "properties": {
                     "message": {
                       "type": "string"
+                    },
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "description": "终止原因由错误产生方提供；客户端不得从 message 反推分类。",
+                          "properties": {
+                            "class": {
+                              "type": "string"
+                            },
+                            "code": {
+                              "type": "string"
+                            },
+                            "details": true,
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "class",
+                            "source"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -59543,6 +59963,34 @@
             "properties": {
               "message": {
                 "type": "string"
+              },
+              "outcome": {
+                "anyOf": [
+                  {
+                    "description": "终止原因由错误产生方提供；客户端不得从 message 反推分类。",
+                    "properties": {
+                      "class": {
+                        "type": "string"
+                      },
+                      "code": {
+                        "type": "string"
+                      },
+                      "details": true,
+                      "source": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "class",
+                      "source"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": [

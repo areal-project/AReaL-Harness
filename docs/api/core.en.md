@@ -26,6 +26,30 @@ input preserves text/image/audio/file ordering with at most 1 MiB aggregate UTF-
 
 Events include thread/started, turn/started/completed, item/started/completed and item/agentMessage/delta; AReaL media uses areal/item/agentMedia/available. Terminal completed/interrupted/failed state is published after persistence. steer preserves emitted text, cancels the current model request and continues within the same Turn.
 
+### Structured terminal outcomes
+
+`Turn.error` retains `message` and adds optional `outcome:{code,class,source,details?}`. Core preserves typed causes at their origin and projects them when settling the Turn. `turn/completed`, `thread/read`, persistence and restart use the same object. Legacy records remain readable without outcome; consumers must not infer categories from message text. Rust callers constructing a legacy `TurnError` must set `outcome: None`.
+
+| code | Meaning |
+|---|---|
+| `LLM_CONTEXT_WINDOW_EXCEEDED` | Local context budget exceeded (`source=core_context_budget`, with byte/estimated-token measurements and limits), or an explicit Provider `context_length_exceeded` (`provider_http` / `provider_stream`) |
+| `LLM_OUTPUT_TOKEN_LIMIT_EXCEEDED` | Provider length/max_tokens/max_output_tokens stop; does not prove actual generation reached the requested client cap |
+| `LLM_RESPONSE_TIMEOUT` | Model request or stream timeout, `class=timeout`; existing network retry policy is preserved |
+| `AGENT_MAX_TURNS_EXCEEDED` | Configured `maxModelRounds` exhausted, or tools requested during the final handoff; `class=agent`, `source=core_model_round_budget`, with round count and limit in details. A normal handoff is not a failure. No limit is enabled when unconfigured |
+| `AGENT_RUN_TIMEOUT` | Turn or Goal deadline, `class=agent` |
+| `LLM_RESPONSE_FAILED` | Other recognized model failures, distinguished by details; HTTP 413 is `request_body_too_large`, invalid tool indices retain `invalid_tool_call_index`; neither is context overflow or invalid tool JSON |
+| `HARNESS_INTERNAL_ERROR` | Unclassified Core error, persistence failure or recovered UNKNOWN tool outcome, `class=infrastructure` |
+
+Provider HTTP error bodies are read with a 64 KiB / two-second bound. Only allowlisted code/type/reason labels are retained; raw bodies, Provider messages and credentials are excluded from outcome. HTTP status is retained in `details.httpStatus`. Classification does not enable retries, promote failures to success, continue the task or run scoring. Unknown codes should remain unknown.
+
+The EnvArena [runner](../../integrations/envarena/runner.py) copies Core outcome to `harness_result.raw.outcome`, adding `schema=areal.envarena-outcome.v1`. A runner-owned process deadline uses `AGENT_RUN_TIMEOUT`, an external signal uses `HARNESS_INTERRUPTED`, adapter/collection failure uses `HARNESS_INTERNAL_ERROR`, and successful completion uses `AGENT_COMPLETED`. Failures retain ERROR and a nonzero exit. Root thread causes take precedence; a legacy root failure is not guessed from a child failure.
+
+Adapter or collection failure remains the primary `raw.outcome=HARNESS_INTERNAL_ERROR`, avoiding attribution of infrastructure failure as a zero-reward model sample; `raw.adapter_error` retains the adapter error. If Core has already failed, `raw.core_outcome` and `raw.core_errors` preserve the original classification, messages and thread/turn IDs. If the runner timed out or received a signal, `raw.runner_outcome` retains that cause. The result file, native receipt and trajectory result retain these diagnostics; repeated finalization does not append duplicate records.
+
+The runner summary and stdout also carry `GAMEAGENT_OUTCOME_CODE=... GAMEAGENT_OUTCOME_CLASS=...` for AReaL's existing marker fallback. This is a historical consumer contract, not a claim that GameAgent is running. If the platform truncates or drops failure summaries/logs, consumers must read raw.outcome from the result artifact; top-level Task raw alone is not guaranteed to expose it. Recognized model codes reuse AReaL's metrics allowlist; new infrastructure codes appear as OTHER in consumers without corresponding updates.
+
+`integrations/envarena/runner.py`, `outcomes.py`, `graybox_inputs.py` and `graybox_collect.py` overlay the native release package (runner.py is named runner inside the package). Other launchers, model settings and resources come from the matching release. Rebuild target Linux native binaries from the same source; replacing only Python does not provide Core outcomes. Deployment requires a new immutable Harness version; local tests do not establish deployment.
+
 <a id="agent-message-phase"></a>
 ### Agent message phases
 
@@ -83,6 +107,7 @@ Missing/null Chat tool indices, non-integer types, negative values, values outsi
 Rust `Model::chat_with_limits(messages, tools, purpose, ToolCallLimits, cap)` passes request budgets explicitly through the HTTP adapter, shared pool and Worker wrappers. The optional output-token cap is forwarded together with tool budgets through Goal metering. Its default delegates to `chat_limited`, which preserves existing custom Model implementations and rejects unsupported nonempty caps; custom adapters bound their own internal buffers, while Engine checks their emitted calls before execution. Summaries have a zero-call budget. `Limits` gains `max_tool_buffer_bytes`; `NativeFactory`/`NativeExecutor` gain `tool_call_limits`, requiring updates to explicit struct initializers. Constructors provide defaults. No client protocol methods or snapshot format change.
 
 Compaction retains the original goal and recent content without splitting completion/tool-result or opaque-reasoning boundaries. Summaries are at most 16 KiB with throughItemId and a persisted checkpoint. Network failures retry the same summary input without consuming validation attempts. Empty or pseudo-tool summaries get one retry; subsequent failure permits explicitly marked DEGRADED CONTEXT only if it reduces input, otherwise the Turn fails. Cancellation preserves the old checkpoint. Compaction never deletes history, journals or Turn tool state.
+With `limits.context_compaction_enabled=false`, exceeding an automatic threshold fails the Turn and explicit `areal/context/compact` returns an error without writing a checkpoint. See [context limits](../guides/configuration.en.md#models-and-limits).
 
 Model audits in `data_dir/model-requests/*.json` and `requests.jsonl` record solve/summary, parameters, body digest/size, attempts, usage, stopReason, duration and bounded response shape, without headers, endpoints or prompts. `usageObserved=true` means a complete parseable usage event was received, including zero; missing/false is not known zero. A length termination still collects same-frame/tail usage within deadlines and cancellation, then marks truncation and prevents tool execution.
 

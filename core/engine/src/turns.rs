@@ -466,7 +466,10 @@ impl Engine {
         let mut result = tokio::select! {
             biased;
             _ = cancel.cancelled() => Err(anyhow::anyhow!("cancelled")),
-            _ = tokio::time::sleep_until(deadline) => Err(anyhow::anyhow!(if goal_deadline.is_some_and(|g| g <= tokio::time::Instant::now()) {"GOAL_TIME_BUDGET"} else {"turn deadline exceeded"})),
+            _ = tokio::time::sleep_until(deadline) => Err(crate::outcome::TerminalFailure::new(
+                if goal_deadline.is_some_and(|g| g <= tokio::time::Instant::now()) {"GOAL_TIME_BUDGET"} else {"turn deadline exceeded"},
+                crate::outcome::outcome("AGENT_RUN_TIMEOUT", "agent", "core_turn_deadline", json!({"goalDeadlineReached":goal_deadline.is_some_and(|g| g <= tokio::time::Instant::now())})),
+            ).into()),
             result = std::panic::AssertUnwindSafe(self.generate(&cell, &cancel, &mut steer)).catch_unwind() =>
                 result.unwrap_or_else(|_| Err(anyhow::anyhow!("model task panicked"))),
         };
@@ -615,9 +618,7 @@ impl Engine {
             Err(error) if error.to_string() == "cancelled" => turn.status = TurnStatus::Interrupted,
             Err(error) => {
                 turn.status = TurnStatus::Failed;
-                turn.error = Some(TurnError {
-                    message: error.to_string(),
-                });
+                turn.error = Some(crate::outcome::turn_error(&error));
             }
         }
         let status = match turn.status {
@@ -682,9 +683,11 @@ impl Engine {
             }
             let turn = state.thread.turns.last_mut().unwrap();
             turn.status = TurnStatus::Failed;
-            turn.error = Some(TurnError {
-                message: error.to_string(),
-            });
+            turn.error = Some(crate::outcome::infrastructure(
+                error.to_string(),
+                "core_store",
+                "persist_failed",
+            ));
         }
         let active = state.active.take().unwrap();
         if state.poisoned {

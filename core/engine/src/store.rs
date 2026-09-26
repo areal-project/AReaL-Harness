@@ -1,7 +1,5 @@
 use anyhow::{Context, Result, bail};
-use areal_protocol::{
-    Item, MediaRef, Thread, ThreadStatus, ToolOutcome, ToolStatus, TurnError, TurnStatus,
-};
+use areal_protocol::{Item, MediaRef, Thread, ThreadStatus, ToolOutcome, ToolStatus, TurnStatus};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -141,10 +139,11 @@ impl Store {
                             ]);
                         }
                         turn.status = TurnStatus::Failed;
-                        turn.error = Some(TurnError {
-                            message: "recovered an UNKNOWN tool outcome; inspection is required"
-                                .into(),
-                        });
+                        turn.error = Some(crate::outcome::infrastructure(
+                            "recovered an UNKNOWN tool outcome; inspection is required",
+                            "core_recovery",
+                            "unknown_tool_outcome",
+                        ));
                         repaired = true;
                     }
                 }
