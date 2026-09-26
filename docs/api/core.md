@@ -26,6 +26,30 @@ input 为有序 text/image/audio/file 等内容，UTF-8 文本合计最多 1 MiB
 
 事件包括 thread/started、turn/started/completed、item/started/completed、item/agentMessage/delta；AReaL 媒体通知为 areal/item/agentMedia/available。终态 completed/interrupted/failed 在保存后发布。steer 保留已输出文本，取消当前模型请求后在同一 Turn 继续。
 
+### 结构化终止原因
+
+`Turn.error` 保留 `message`，增加可选 `outcome:{code,class,source,details?}`。Core 在错误产生处保留类型，在 Turn 结算时生成 outcome；`turn/completed`、`thread/read`、持久化及重启恢复使用同一对象。旧记录没有 outcome 时按原样读取；消费者不能通过 message 猜测分类。Rust 构造旧 `TurnError` 时需填写 `outcome: None`。
+
+| code | 含义 |
+|---|---|
+| `LLM_CONTEXT_WINDOW_EXCEEDED` | 本地 context 预算超限（`source=core_context_budget`，附字节/估算 token 与限额），或 Provider 明确返回 `context_length_exceeded`（`provider_http` / `provider_stream`） |
+| `LLM_OUTPUT_TOKEN_LIMIT_EXCEEDED` | Provider 报告 length/max_tokens/max_output_tokens；不证明实际生成量达到客户端请求上限 |
+| `LLM_RESPONSE_TIMEOUT` | 模型请求或响应流超时，`class=timeout`；网络重试策略保持原样 |
+| `AGENT_MAX_TURNS_EXCEEDED` | 配置的 `maxModelRounds` 已耗尽，或收尾轮仍请求工具；`class=agent`、`source=core_model_round_budget`，details 包含轮数和上限；正常收尾不算失败。未配置上限时不启用此限制 |
+| `AGENT_RUN_TIMEOUT` | Turn 或 Goal 时间预算到期，`class=agent` |
+| `LLM_RESPONSE_FAILED` | 其他已识别模型故障，具体原因由 details 表达；413 为 `request_body_too_large`，非法 tool index 保留 `invalid_tool_call_index`，两者不归为 context overflow 或 invalid tool JSON |
+| `HARNESS_INTERNAL_ERROR` | 未分类 Core 错误、持久化失败或恢复到 UNKNOWN 工具结果，`class=infrastructure` |
+
+Provider HTTP 错误体最多读取 64 KiB、等待 2 秒，仅保留白名单 code/type/reason；原始响应体、Provider message、鉴权信息不写入 outcome。HTTP 状态码保留在 `details.httpStatus`。错误分类不启用重试、不将失败转换为成功、不自动续轮或评分；未识别的 code 应保留为未知原因。
+
+EnvArena [runner](../../integrations/envarena/runner.py) 将 Core outcome 复制到 `harness_result.raw.outcome` 并添加 `schema=areal.envarena-outcome.v1`。runner 自己触发的进程期限使用 `AGENT_RUN_TIMEOUT`，收到外部信号使用 `HARNESS_INTERRUPTED`，适配/收集失败使用 `HARNESS_INTERNAL_ERROR`，正常完成使用 `AGENT_COMPLETED`；失败仍输出 ERROR 并非零退出。主线程原因优先，旧 Core 缺字段时不借子线程错误补猜。
+
+适配或收集失败仍以 `raw.outcome=HARNESS_INTERNAL_ERROR` 作为主要故障，防止基础设施失败被当作模型零分样本；`raw.adapter_error` 保存适配错误。若 Core 已失败，`raw.core_outcome` 和 `raw.core_errors` 同时保留原始分类、消息与 thread/turn ID；若 runner 已超时或收到信号，`raw.runner_outcome` 保留该原因。结果文件、native receipt 和轨迹 result 均保留这些诊断，重复结算不会累加重复记录。
+
+runner 的 summary 和 stdout 同时保留 `GAMEAGENT_OUTCOME_CODE=... GAMEAGENT_OUTCOME_CLASS=...`，兼容 AReaL 已有的 marker fallback；该名称是历史消费协议，不表示底层运行 GameAgent。平台若截断或丢弃失败 summary/log，仍需从结果制品读取 raw.outcome，不能保证仅凭 Task 顶层 raw 即可获取。已识别的模型 code 复用 AReaL 统计白名单，新增基础设施 code 在未更新的消费端归为 OTHER。
+
+`integrations/envarena/runner.py`、`outcomes.py`、`graybox_inputs.py` 和 `graybox_collect.py` 是原生发布包的覆盖文件（runner.py 在包内名为 runner）；其余 launcher、模型设置和资源沿用匹配的发布包。必须用同次源码重新构建目标 Linux 原生二进制，不能只替换 Python 就宣称支持 Core outcome。部署需要新的不可变 Harness 版本；本地测试不表示已经上线。
+
 <a id="agent-message-phase"></a>
 ### Agent 消息阶段
 

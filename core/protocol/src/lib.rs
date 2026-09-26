@@ -24,6 +24,19 @@ pub enum TurnStatus {
 #[serde(rename_all = "camelCase")]
 pub struct TurnError {
     pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<TurnOutcome>,
+}
+
+/// 终止原因由错误产生方提供；客户端不得从 message 反推分类。
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnOutcome {
+    pub code: String,
+    pub class: String,
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
@@ -411,5 +424,25 @@ pub fn response(id: Value, result: Result<Value, RpcError>) -> Value {
     match result {
         Ok(result) => json!({"id": id, "result": result}),
         Err(error) => json!({"id": id, "error": error}),
+    }
+}
+
+#[cfg(test)]
+mod turn_outcome_tests {
+    use super::*;
+    #[test]
+    fn legacy_errors_remain_readable_and_structured_outcomes_roundtrip() {
+        let legacy: TurnError = serde_json::from_value(json!({"message":"old error"})).unwrap();
+        assert!(legacy.outcome.is_none());
+        assert_eq!(
+            serde_json::to_value(legacy).unwrap(),
+            json!({"message":"old error"})
+        );
+        let value = json!({"message":"failed", "outcome":{
+            "code":"LLM_CONTEXT_WINDOW_EXCEEDED", "class":"agent", "source":"core_context_budget",
+            "details":{"estimatedTokens":188817,"tokenLimit":188416}
+        }});
+        let decoded: TurnError = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), value);
     }
 }

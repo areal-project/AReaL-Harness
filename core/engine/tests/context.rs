@@ -304,6 +304,18 @@ async fn disabled_compaction_fails_at_byte_limit_without_summarizing() {
             .message
             .contains("context window limit exceeded: compaction is disabled")
     );
+    let outcome = failed
+        .turns
+        .last()
+        .unwrap()
+        .error
+        .as_ref()
+        .unwrap()
+        .outcome
+        .as_ref()
+        .unwrap();
+    assert_eq!(outcome.code, "LLM_CONTEXT_WINDOW_EXCEEDED");
+    assert_eq!(outcome.source, "core_context_budget");
     assert!(failed.context_checkpoint.is_none());
     assert_eq!(model.requests.lock().unwrap().len(), 2);
     engine.shutdown().await;
@@ -344,6 +356,18 @@ async fn disabled_compaction_fails_at_token_limit_and_rejects_manual_compaction(
             .message
             .contains("context window limit exceeded: compaction is disabled")
     );
+    let outcome = failed
+        .turns
+        .last()
+        .unwrap()
+        .error
+        .as_ref()
+        .unwrap()
+        .outcome
+        .as_ref()
+        .unwrap();
+    assert_eq!(outcome.code, "LLM_CONTEXT_WINDOW_EXCEEDED");
+    assert_eq!(outcome.source, "core_context_budget");
     assert!(failed.context_checkpoint.is_none());
     assert!(model.requests.lock().unwrap().is_empty());
     engine.shutdown().await;

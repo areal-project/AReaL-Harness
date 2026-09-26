@@ -48,6 +48,8 @@ pub enum RequestPurpose {
 pub enum ModelFailure {
     #[error("model stream transport failed")]
     Transport,
+    #[error("model response timeout")]
+    ResponseTimeout,
     #[error("model HTTP status 429 Too Many Requests")]
     RateLimited,
     #[error("model service temporarily unavailable")]
@@ -117,11 +119,123 @@ impl StreamError {
     }
 }
 
+// 非成功 HTTP 响应仅保留状态与白名单协议字段，限制读取量和耗时。
+#[derive(Debug, thiserror::Error)]
+#[error("model HTTP status {status}")]
+struct HttpFailure {
+    status: reqwest::StatusCode,
+    detail: Option<StreamError>,
+}
+async fn http_failure(mut response: reqwest::Response) -> anyhow::Error {
+    let status = response.status();
+    match status {
+        reqwest::StatusCode::REQUEST_TIMEOUT => return ModelFailure::ResponseTimeout.into(),
+        reqwest::StatusCode::TOO_MANY_REQUESTS => return ModelFailure::RateLimited.into(),
+        status if status.is_server_error() => return ModelFailure::Unavailable.into(),
+        _ => {}
+    }
+    let detail = tokio::time::timeout(Duration::from_secs(2), async {
+        let mut bytes = Vec::new();
+        loop {
+            match response.chunk().await {
+                Ok(Some(chunk)) if bytes.len() + chunk.len() <= 64 * 1024 => {
+                    bytes.extend_from_slice(&chunk)
+                }
+                Ok(None) => break,
+                _ => return None,
+            }
+        }
+        let value: Value = serde_json::from_slice(&bytes).ok()?;
+        Some(StreamError::from_value(
+            value.get("error").unwrap_or(&value),
+            "http_error",
+        ))
+    })
+    .await
+    .ok()
+    .flatten();
+    HttpFailure { status, detail }.into()
+}
+
+fn stream_outcome(detail: &StreamError, source: &str) -> areal_protocol::TurnOutcome {
+    let labels = [&detail.code, &detail.error_type, &detail.reason];
+    let has = |name: &str| labels.iter().any(|v| v.as_deref() == Some(name));
+    let (code, class) = if has("context_length_exceeded") {
+        ("LLM_CONTEXT_WINDOW_EXCEEDED", "agent")
+    } else if has("max_tokens") || has("max_output_tokens") {
+        ("LLM_OUTPUT_TOKEN_LIMIT_EXCEEDED", "agent")
+    } else {
+        ("LLM_RESPONSE_FAILED", "infrastructure")
+    };
+    crate::outcome::outcome(code, class, source, json!(detail))
+}
+
+pub(crate) fn terminal_outcome(error: &anyhow::Error) -> Option<areal_protocol::TurnOutcome> {
+    use crate::outcome::outcome;
+    if let Some(detail) = error.downcast_ref::<HttpFailure>() {
+        // 413 是 HTTP 请求体限制，不用其中的泛化错误标签覆盖状态码事实。
+        let mut result = if detail.status == 413 {
+            outcome(
+                "LLM_RESPONSE_FAILED",
+                "infrastructure",
+                "provider_http",
+                json!({"reason":"request_body_too_large"}),
+            )
+        } else if let Some(provider) = &detail.detail {
+            stream_outcome(provider, "provider_http")
+        } else {
+            outcome(
+                "LLM_RESPONSE_FAILED",
+                "infrastructure",
+                "provider_http",
+                json!({"reason":"http_error"}),
+            )
+        };
+        result.details.as_mut().unwrap()["httpStatus"] = json!(detail.status.as_u16());
+        return Some(result);
+    }
+    if let Some(detail) = error.downcast_ref::<StreamError>() {
+        return Some(stream_outcome(detail, "provider_stream"));
+    }
+    if let Some(detail) = tool_error_detail(error) {
+        let class = if error.downcast_ref::<ToolCallBudgetError>().is_some() {
+            "agent"
+        } else {
+            "infrastructure"
+        };
+        return Some(outcome(
+            "LLM_RESPONSE_FAILED",
+            class,
+            "core_tool_decoder",
+            detail,
+        ));
+    }
+    let failure = error.downcast_ref::<ModelFailure>()?;
+    let (code, class, reason) = match failure {
+        ModelFailure::Truncated => (
+            "LLM_OUTPUT_TOKEN_LIMIT_EXCEEDED",
+            "agent",
+            "provider_length_stop",
+        ),
+        ModelFailure::ResponseTimeout => ("LLM_RESPONSE_TIMEOUT", "timeout", "response_timeout"),
+        ModelFailure::EmptyCompletion => ("LLM_RESPONSE_FAILED", "agent", "empty_completion"),
+        ModelFailure::PendingVerification => {
+            ("LLM_RESPONSE_FAILED", "agent", "pending_verification")
+        }
+        ModelFailure::Transport => ("LLM_RESPONSE_FAILED", "infrastructure", "transport"),
+        ModelFailure::RateLimited => ("LLM_RESPONSE_FAILED", "infrastructure", "rate_limited"),
+        ModelFailure::Unavailable => ("LLM_RESPONSE_FAILED", "infrastructure", "unavailable"),
+        ModelFailure::Incomplete => ("LLM_RESPONSE_FAILED", "infrastructure", "incomplete_stream"),
+    };
+    Some(outcome(code, class, "core_model", json!({"reason":reason})))
+}
+
 pub(crate) fn is_network_error(error: &anyhow::Error) -> bool {
     if let Some(failure) = error.downcast_ref::<ModelFailure>() {
         return matches!(
             failure,
             ModelFailure::Transport
+                | ModelFailure::ResponseTimeout
                 | ModelFailure::RateLimited
                 | ModelFailure::Unavailable
                 | ModelFailure::Incomplete
@@ -811,21 +925,19 @@ impl Model for HttpModel {
                 let error = if error.is_builder() {
                     anyhow::anyhow!("invalid model HTTP request")
                 } else {
-                    tracing::warn!(connect = error.is_connect(), timeout = error.is_timeout(), error = %error.without_url(), "model request transport failure");
-                    anyhow::Error::new(ModelFailure::Transport)
+                    let timed_out = error.is_timeout();
+                    tracing::warn!(connect = error.is_connect(), timeout = timed_out, error = %error.without_url(), "model request transport failure");
+                    anyhow::Error::new(if timed_out { ModelFailure::ResponseTimeout } else { ModelFailure::Transport })
                 };
                 audit.value["outcome"] = json!("failed");
                 audit.value["error"] = json!(error.to_string());
+                audit.value["terminalOutcome"] = json!(terminal_outcome(&error));
                 error
             })?;
         };
         if !response.status().is_success() {
-            let error = match response.status() {
-                reqwest::StatusCode::REQUEST_TIMEOUT => ModelFailure::Transport.into(),
-                reqwest::StatusCode::TOO_MANY_REQUESTS => ModelFailure::RateLimited.into(),
-                status if status.is_server_error() => ModelFailure::Unavailable.into(),
-                status => anyhow::anyhow!("model HTTP status {status}"),
-            };
+            let error = http_failure(response).await;
+            audit.value["terminalOutcome"] = json!(terminal_outcome(&error));
             audit.value["outcome"] = json!("failed");
             audit.value["error"] = json!(error.to_string());
             return Err(error);
@@ -897,8 +1009,9 @@ impl Model for HttpModel {
                                 }
                                 parts
                             }
-                            Some(Err(_)) => Err(match &decoder {
+                            Some(Err(error)) => Err(match &decoder {
                                 Decoder::Chat(chat) if chat.truncated => ModelFailure::Truncated,
+                                _ if error.is_timeout() => ModelFailure::ResponseTimeout,
                                 _ => ModelFailure::Transport,
                             }
                             .into()),
@@ -909,6 +1022,7 @@ impl Model for HttpModel {
                         Ok(parts) => queued.extend(parts),
                         Err(error) => {
                             failed = true;
+                            audit.value["terminalOutcome"] = json!(terminal_outcome(&error));
                             audit.value["outcome"] = json!("failed");
                             if let Some(detail) = error.downcast_ref::<StreamError>() {
                                 audit.value["streamError"] = json!(detail);
@@ -1197,5 +1311,120 @@ impl Model for CredentialUnavailableModel {
     async fn stream(&self, _: Vec<Message>) -> Result<ModelStream> {
         self.check_work()?;
         unreachable!()
+    }
+}
+
+#[cfg(test)]
+mod outcome_tests {
+    use super::*;
+
+    #[test]
+    fn typed_model_outcomes_survive_context_and_preserve_retry_policy() {
+        for (failure, code, network) in [
+            (
+                ModelFailure::Truncated,
+                "LLM_OUTPUT_TOKEN_LIMIT_EXCEEDED",
+                false,
+            ),
+            (ModelFailure::EmptyCompletion, "LLM_RESPONSE_FAILED", false),
+            (ModelFailure::ResponseTimeout, "LLM_RESPONSE_TIMEOUT", true),
+            (ModelFailure::Transport, "LLM_RESPONSE_FAILED", true),
+        ] {
+            let error = anyhow::Error::new(failure).context("outer");
+            assert_eq!(terminal_outcome(&error).unwrap().code, code);
+            assert_eq!(is_network_error(&error), network);
+        }
+        let error = tool_index(&json!({"index":-1}), 1, 0, 0, 0).unwrap_err();
+        let outcome = terminal_outcome(&error).unwrap();
+        assert_eq!(outcome.code, "LLM_RESPONSE_FAILED");
+        assert_eq!(outcome.details.unwrap()["code"], "invalid_tool_call_index");
+    }
+
+    #[test]
+    fn stream_metadata_is_classified_without_provider_message_or_credentials() {
+        let detail = StreamError::from_value(
+            &json!({
+                "code":"context_length_exceeded", "type":"invalid_request_error",
+                "message":"secret prompt", "reason":"secret-token"
+            }),
+            "error",
+        );
+        let error = anyhow::Error::new(detail).context("outer");
+        assert!(!is_network_error(&error));
+        let outcome = terminal_outcome(&error).unwrap();
+        assert_eq!(outcome.code, "LLM_CONTEXT_WINDOW_EXCEEDED");
+        assert_eq!(outcome.source, "provider_stream");
+        assert!(!serde_json::to_string(&outcome).unwrap().contains("secret"));
+    }
+
+    #[tokio::test]
+    async fn http_context_body_limit_and_untrusted_bodies_remain_distinct() {
+        use axum::{Router, http::StatusCode, routing::post};
+        for (status, body, code, expected_reason) in [
+            (
+                400,
+                json!({"error":{"code":"context_length_exceeded","message":"secret"}}).to_string(),
+                "LLM_CONTEXT_WINDOW_EXCEEDED",
+                None,
+            ),
+            (
+                413,
+                json!({"error":{"code":"context_length_exceeded"}}).to_string(),
+                "LLM_RESPONSE_FAILED",
+                Some("request_body_too_large"),
+            ),
+            (
+                400,
+                json!({"error":{"message":"context_length_exceeded secret"}}).to_string(),
+                "LLM_RESPONSE_FAILED",
+                None,
+            ),
+            (
+                400,
+                "secret".repeat(20000),
+                "LLM_RESPONSE_FAILED",
+                Some("http_error"),
+            ),
+            (
+                401,
+                "secret invalid credential".into(),
+                "LLM_RESPONSE_FAILED",
+                Some("http_error"),
+            ),
+            (
+                408,
+                String::new(),
+                "LLM_RESPONSE_TIMEOUT",
+                Some("response_timeout"),
+            ),
+        ] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let server =
+                tokio::spawn(async move {
+                    axum::serve(listener, Router::new().route("/", post(move || async move {
+                    (StatusCode::from_u16(status).unwrap(), body)
+                }))).await.unwrap();
+                });
+            let response = reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .unwrap()
+                .post(format!("http://{address}/"))
+                .send()
+                .await
+                .unwrap();
+            let error = http_failure(response).await;
+            let outcome = terminal_outcome(&error).unwrap();
+            assert_eq!(outcome.code, code);
+            if let Some(reason) = expected_reason {
+                assert_eq!(outcome.details.as_ref().unwrap()["reason"], reason);
+            }
+            if status != 408 {
+                assert_eq!(outcome.details.as_ref().unwrap()["httpStatus"], status);
+            }
+            assert!(!serde_json::to_string(&outcome).unwrap().contains("secret"));
+            server.abort();
+        }
     }
 }

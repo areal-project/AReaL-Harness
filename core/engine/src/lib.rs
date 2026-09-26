@@ -7,6 +7,7 @@ mod generation;
 pub mod goals;
 mod history;
 pub mod model;
+mod outcome;
 mod permissions;
 mod sessions;
 mod store;
@@ -17,9 +18,7 @@ mod turns;
 mod watchdog;
 pub mod workgroup;
 
-use areal_protocol::{
-    Input, Item, Modality, Thread, ThreadStatus, Turn, TurnError, TurnStatus, notification,
-};
+use areal_protocol::{Input, Item, Modality, Thread, ThreadStatus, Turn, TurnStatus, notification};
 use futures_util::{FutureExt, StreamExt};
 use generation::emit_item;
 use history::{history, validate_input};

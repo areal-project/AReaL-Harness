@@ -747,7 +747,8 @@ mod tests {
                     id: id(),
                     text: "\u{0001}".repeat(3000),
                 });
-                state.thread.turns[0].error = Some(TurnError {
+                state.thread.turns[0].error = Some(areal_protocol::TurnError {
+                    outcome: None,
                     message: "\u{0001}".repeat(3000),
                 });
             }

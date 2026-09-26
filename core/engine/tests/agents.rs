@@ -695,6 +695,15 @@ async fn final_round_rejects_new_work_as_budget_exhaustion_without_spawning() {
         .unwrap();
     let done = bounded(engine.wait(&root.id)).await.unwrap();
     assert_eq!(done.turns[0].status, TurnStatus::Failed);
+    let outcome = done.turns[0]
+        .error
+        .as_ref()
+        .unwrap()
+        .outcome
+        .as_ref()
+        .unwrap();
+    assert_eq!(outcome.code, "AGENT_MAX_TURNS_EXCEEDED");
+    assert_eq!(outcome.details.as_ref().unwrap()["modelRounds"], 1);
     assert!(
         done.turns[0]
             .error

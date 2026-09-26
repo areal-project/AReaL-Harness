@@ -50,8 +50,8 @@ impl Engine {
             if self.task_wait_requested(cell).await {
                 return Ok(());
             }
-            if max_rounds.is_some_and(|max| model_rounds >= max) {
-                anyhow::bail!("MAX_MODEL_ROUNDS");
+            if let Some(max) = max_rounds.filter(|max| model_rounds >= *max) {
+                return Err(crate::outcome::model_round_limit(model_rounds, max, false).into());
             }
             let final_round = max_rounds.is_some_and(|max| model_rounds + 1 == max);
             if final_round {
@@ -474,9 +474,11 @@ impl Engine {
                                     .downcast_ref::<model::ToolCallBudgetError>()
                                     .is_some_and(model::ToolCallBudgetError::is_call_limit)
                             {
-                                return Err(error.context(
-                                    "MAX_MODEL_ROUNDS: final handoff cannot execute tools",
-                                ));
+                                return Err(error.context(crate::outcome::model_round_limit(
+                                    model_rounds,
+                                    max_rounds.expect("final round has a limit"),
+                                    true,
+                                )));
                             }
                             if let Some(delay) = watchdog::retry_delay(
                                 self.limits.watchdog_disable,
@@ -549,10 +551,14 @@ impl Engine {
                         }
                         ModelEvent::ToolCall(call) => {
                             // 收尾轮仍请求工具表示工作超出轮次预算；保留 CLI 的既有错误分类。
-                            anyhow::ensure!(
-                                !final_round,
-                                "MAX_MODEL_ROUNDS: final handoff cannot execute tools"
-                            );
+                            if final_round {
+                                return Err(crate::outcome::model_round_limit(
+                                    model_rounds,
+                                    max_rounds.expect("final round has a limit"),
+                                    true,
+                                )
+                                .into());
+                            }
                             anyhow::ensure!(
                                 tools_enabled,
                                 "model requested tools without registered tools"
