@@ -313,7 +313,20 @@ impl Engine {
                 .as_mut()
                 .filter(|g| g.id == request.goal_id)
                 .ok_or(Error::Conflict)?;
-            if goal.status == GoalStatus::Completed && action != "clear" {
+            let reopen =
+                action == "update" && update.as_ref().is_some_and(|patch| patch.reopen_completed);
+            if reopen
+                && (goal.status != GoalStatus::Completed
+                    || update
+                        .as_ref()
+                        .is_none_or(|patch| patch.objective.is_none())
+                    || !engine.task_goal_can_reopen(&request.goal_id).await)
+            {
+                return Err(invalid(
+                    "repair requires a completed, uncancelled latest non-scheduled Goal and an explicit objective",
+                ));
+            }
+            if goal.status == GoalStatus::Completed && action != "clear" && !reopen {
                 return Err(Error::Conflict);
             }
             if action != "pause"
@@ -365,6 +378,16 @@ impl Engine {
                         goal.max_turns,
                         goal.max_active_seconds,
                     )?;
+                    if reopen {
+                        // 只开放显式修复阶段；沿用原目标、累计用量和历史完成报告。
+                        goal.status = GoalStatus::Paused;
+                        goal.reason = Some("repairRequested".into());
+                        goal.unreported_turns = 0;
+                        let queue = &mut candidate.desktop.as_mut().unwrap().queue;
+                        queue.paused = true;
+                        queue.pause_reason = Some(format!("goal:{}", request.goal_id));
+                        queue.revision += 1;
+                    }
                     goal.report_turn_id = None;
                 }
                 "resume" => {

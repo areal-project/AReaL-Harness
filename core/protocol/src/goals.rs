@@ -122,6 +122,8 @@ pub struct GoalControl {
 pub struct GoalUpdate {
     #[serde(flatten)]
     pub control: GoalControl,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reopen_completed: bool,
     pub objective: Option<String>,
     #[serde(
         default,

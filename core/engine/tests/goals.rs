@@ -271,6 +271,7 @@ async fn budget_stops_before_request_and_can_be_increased_without_reset() {
             "update".into(),
             c.clone(),
             Some(GoalUpdate {
+                reopen_completed: false,
                 control: c,
                 objective: None,
                 token_budget: Some(Some(100000)),
@@ -1136,4 +1137,211 @@ async fn steering_a_goal_child_does_not_block_the_shared_parent_ledger() {
     assert_eq!(done["goal"]["usage"]["tokensUsed"], 72);
     assert!(dir.path().exists());
     engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn completed_goal_requires_explicit_repair_and_keeps_identity_usage_and_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = model(true, true);
+    let e = Engine::open(dir.path(), m.clone(), Limits::default()).unwrap();
+    let t = e.create("/workspace".into()).await.unwrap();
+    e.goal_create("test".into(), request(&t.id)).await.unwrap();
+    let done = stopped(&e, &t.id).await;
+    assert_eq!(done["goal"]["status"], "completed");
+    assert!(
+        e.goal_control(
+            "test".into(),
+            "resume".into(),
+            control(&done, "reject-resume"),
+            None
+        )
+        .await
+        .is_err()
+    );
+    let c = control(&done, "repair");
+    let mut patch = GoalUpdate {
+        control: c.clone(),
+        reopen_completed: true,
+        objective: None,
+        token_budget: None,
+        max_turns: None,
+        max_active_seconds: None,
+    };
+    assert!(
+        e.goal_control(
+            "test".into(),
+            "update".into(),
+            c.clone(),
+            Some(patch.clone())
+        )
+        .await
+        .is_err()
+    );
+    patch.objective = Some("Repair independently verified acceptance defect".into());
+    let repaired = e
+        .goal_control(
+            "test".into(),
+            "update".into(),
+            c.clone(),
+            Some(patch.clone()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(repaired["goal"]["status"], "paused");
+    assert_eq!(repaired["goal"]["reason"], "repairRequested");
+    for key in [
+        "id",
+        "usage",
+        "maxActiveSeconds",
+        "maxTurns",
+        "tokenBudget",
+        "report",
+    ] {
+        assert_eq!(repaired["goal"][key], done["goal"][key], "{key}");
+    }
+    assert_eq!(m.calls.load(Ordering::SeqCst), 4);
+    assert_eq!(
+        repaired,
+        e.goal_control("test".into(), "update".into(), c, Some(patch))
+            .await
+            .unwrap()
+    );
+    let tasks = e.task_list().await;
+    let task = tasks
+        .iter()
+        .find(|task| {
+            task.runs
+                .iter()
+                .any(|run| run.goal_id.as_deref() == done["goal"]["id"].as_str())
+        })
+        .unwrap();
+    assert!(task.paused);
+    assert_eq!(task.runs.len(), 1);
+    assert_eq!(
+        task.runs[0].status,
+        areal_protocol::tasks::RunStatus::Paused
+    );
+    assert!(task.runs[0].completed_at.is_none());
+    e.goal_control(
+        "test".into(),
+        "resume".into(),
+        control(&repaired, "resume-repair"),
+        None,
+    )
+    .await
+    .unwrap();
+    let finished = stopped(&e, &t.id).await;
+    assert_eq!(finished["goal"]["status"], "completed");
+    assert_eq!(finished["goal"]["id"], done["goal"]["id"]);
+    assert!(
+        finished["goal"]["usage"]["turnsStarted"].as_u64().unwrap()
+            > done["goal"]["usage"]["turnsStarted"].as_u64().unwrap()
+    );
+    let history = e.read(&t.id, true).await.unwrap();
+    assert!(history.turns.len() > 2);
+    assert!(history.turns.iter().all(|turn| turn.goal.as_ref().unwrap().goal_id == done["goal"]["id"].as_str().unwrap()));
+    e.shutdown().await;
+}
+
+#[tokio::test]
+async fn reopened_goal_remains_budget_limited_across_restart_and_rejects_stale_control() {
+    let dir = tempfile::tempdir().unwrap();
+    let e = Engine::open(dir.path(), model(true, true), Limits::default()).unwrap();
+    let t = e.create("/fixture".into()).await.unwrap();
+    let mut req = request(&t.id);
+    req.max_turns = Some(2);
+    e.goal_create("test".into(), req).await.unwrap();
+    let done = stopped(&e, &t.id).await;
+    assert_eq!(done["goal"]["status"], "completed");
+    assert_eq!(done["goal"]["usage"]["turnsStarted"], 2);
+    let mut patch = GoalUpdate {
+        control: control(&done, "repair"),
+        reopen_completed: false,
+        objective: Some("Correct an independently verified missing requirement".into()),
+        token_budget: None,
+        max_turns: None,
+        max_active_seconds: None,
+    };
+    assert!(
+        e.goal_control(
+            "test".into(),
+            "update".into(),
+            patch.control.clone(),
+            Some(patch.clone())
+        )
+        .await
+        .is_err()
+    );
+    patch.reopen_completed = true;
+    let opened = e
+        .goal_control(
+            "test".into(),
+            "update".into(),
+            patch.control.clone(),
+            Some(patch),
+        )
+        .await
+        .unwrap();
+    let history = e.read(&t.id, true).await.unwrap();
+    assert!(
+        e.goal_control(
+            "test".into(),
+            "resume".into(),
+            control(&done, "stale"),
+            None
+        )
+        .await
+        .is_err()
+    );
+    assert!(
+        e.goal_control(
+            "test".into(),
+            "resume".into(),
+            control(&opened, "exhausted"),
+            None
+        )
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("exhausted")
+    );
+    e.shutdown().await;
+    drop(e);
+    let e = Engine::open(dir.path(), model(true, true), Limits::default()).unwrap();
+    let restored = e.goal_get(&t.id).await.unwrap();
+    assert_eq!(restored["goal"]["status"], "paused");
+    let mut restored_usage = restored["goal"]["usage"].clone();
+    let mut original_usage = opened["goal"]["usage"].clone();
+    let restored_time = restored_usage
+        .as_object_mut()
+        .unwrap()
+        .remove("timeUsedSeconds")
+        .unwrap()
+        .as_f64()
+        .unwrap();
+    let original_time = original_usage
+        .as_object_mut()
+        .unwrap()
+        .remove("timeUsedSeconds")
+        .unwrap()
+        .as_f64()
+        .unwrap();
+    // JSON 浮点往返允许舍入误差；整数计量与预留必须逐项完全一致。
+    assert!((restored_time - original_time).abs() < 1e-9);
+    assert_eq!(restored_usage, original_usage);
+    assert_eq!(
+        serde_json::to_value(e.read(&t.id, true).await.unwrap().turns).unwrap(),
+        serde_json::to_value(history.turns).unwrap()
+    );
+    assert!(
+        e.goal_control(
+            "test".into(),
+            "resume".into(),
+            control(&restored, "still-exhausted"),
+            None
+        )
+        .await
+        .is_err()
+    );
+    e.shutdown().await;
 }

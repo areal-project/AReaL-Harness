@@ -11596,6 +11596,9 @@
             "null"
           ]
         },
+        "reopenCompleted": {
+          "type": "boolean"
+        },
         "requestId": {
           "type": "string"
         },

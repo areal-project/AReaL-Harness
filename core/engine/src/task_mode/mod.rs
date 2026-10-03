@@ -487,6 +487,24 @@ impl Engine {
             .any(|t| t.cancelled && t.runs.iter().any(|r| r.goal_id.as_deref() == Some(goal_id)))
     }
 
+    pub(crate) async fn task_goal_can_reopen(&self, goal_id: &str) -> bool {
+        // 历史定时运行不能重新激活并改写另一轮的调度/额度。
+        self.task_modes
+            .state
+            .lock()
+            .await
+            .tasks
+            .values()
+            .find(|t| t.runs.iter().any(|r| r.goal_id.as_deref() == Some(goal_id)))
+            .is_none_or(|t| {
+                !t.cancelled
+                    && t.mode != TaskMode::Scheduled
+                    && t.runs
+                        .last()
+                        .is_some_and(|r| r.goal_id.as_deref() == Some(goal_id))
+            })
+    }
+
     pub(crate) async fn sync_goal_task_control(
         &self,
         thread: &Thread,
@@ -507,6 +525,25 @@ impl Engine {
             return Err(Error::Conflict);
         }
         match action {
+            "update"
+                if previous_goal.is_some_and(|g| g.status == GoalStatus::Completed)
+                    && thread
+                        .goals
+                        .goal
+                        .as_ref()
+                        .is_some_and(|g| g.status == GoalStatus::Paused) =>
+            {
+                task.paused = true;
+                let run = task
+                    .runs
+                    .iter_mut()
+                    .find(|r| r.goal_id.as_deref() == Some(goal_id))
+                    .unwrap();
+                run.status = RunStatus::Paused;
+                run.reason = Some("repairRequested".into());
+                run.completed_at = None;
+                run.wait_requested = false;
+            }
             "pause" => task.paused = true,
             "resume" => {
                 task.paused = false;
@@ -568,5 +605,73 @@ impl Engine {
             self.save_tasks(&mut state, candidate, &id).await?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod repair_tests {
+    use super::*;
+    struct NoRequests;
+    #[async_trait::async_trait]
+    impl crate::model::Model for NoRequests {
+        fn name(&self) -> &str {
+            "repair-admission"
+        }
+        async fn stream(
+            &self,
+            _: Vec<crate::model::Message>,
+        ) -> anyhow::Result<crate::model::ModelStream> {
+            unreachable!()
+        }
+    }
+
+    #[tokio::test]
+    async fn repair_admission_does_not_revive_cancelled_scheduled_or_historical_task_runs() {
+        use areal_protocol::tasks::{Task, TaskMode};
+        let dir = tempfile::tempdir().unwrap();
+        let e = Engine::open(dir.path(), Arc::new(NoRequests), Limits::default()).unwrap();
+        let mut task:Task=serde_json::from_value(json!({
+        "id":"task","revision":1,"channelSequence":0,"owner":"test","mode":"background",
+        "interactionMode":"headless","objective":"repair","paused":true,"cancelled":false,
+        "runs":[{"id":"run","goalId":"goal","status":"completed","scheduledAt":1,"completedAt":2,"usage":areal_protocol::goals::GoalUsage::default(),"waitRequested":false}],"messages":[]
+    })).unwrap();
+        e.task_modes
+            .state
+            .lock()
+            .await
+            .tasks
+            .insert(task.id.clone(), task.clone());
+        assert!(e.task_goal_can_reopen("goal").await);
+        task.cancelled = true;
+        e.task_modes
+            .state
+            .lock()
+            .await
+            .tasks
+            .insert(task.id.clone(), task.clone());
+        assert!(!e.task_goal_can_reopen("goal").await);
+        task.cancelled = false;
+        task.mode = TaskMode::Scheduled;
+        e.task_modes
+            .state
+            .lock()
+            .await
+            .tasks
+            .insert(task.id.clone(), task.clone());
+        assert!(!e.task_goal_can_reopen("goal").await);
+        task.mode = TaskMode::Background;
+        let mut later = task.runs[0].clone();
+        later.id = "later".into();
+        later.goal_id = Some("later-goal".into());
+        task.runs.push(later);
+        e.task_modes
+            .state
+            .lock()
+            .await
+            .tasks
+            .insert(task.id.clone(), task);
+        assert!(!e.task_goal_can_reopen("goal").await);
+        assert!(e.task_goal_can_reopen("later-goal").await);
+        e.shutdown().await;
     }
 }

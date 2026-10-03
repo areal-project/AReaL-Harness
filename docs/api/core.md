@@ -260,3 +260,5 @@ Goal 提示投影不携带 eventSequence 或逐请求累计用量/时钟，只�
 HTTP 模型收尾轮保留当前可见工具 schema，通过 `tool_choice=none` 禁用调用，同时将解码和执行额度设为零；供应商若仍返回调用会被拒绝。工具定义和固定委派指令不因正常收尾而删除，从而保留可复用前缀。无 `tool_choice` 能力的自定义 Model 适配器继续接收空工具列表。权限变化仍即时调整工具可见性，缓存不覆盖授权。
 
 Goal 的 steer（包括向计量子任务发送 `agent_send_input`）立即持久化，但不丢弃在途模型请求。Core 等待该响应结算，再于工具派发前处理待接收修订；旧响应的工具调用被丢弃，已知消费仍准确计入一次。既有 idle、显式 Goal 期限及取消保持有效，真正缺失的用量仍为 UNKNOWN。普通无 Goal 计量的 Turn 保持即时 steer 行为。
+
+评审后需要修正已完成任务且保留计量时，可向 `areal/goal/update` 显式传 `reopenCompleted:true` 和非空的新 `objective`。只允许空闲的 completed Goal，且其关联 Task 必须未取消、非定时任务、属于最后一次 Run。原 Goal 变为 paused，reason 为 `repairRequested`；ID、累计用量、额度、旧报告及 Turn 历史保留。直到显式 `areal/goal/resume` 才启动模型；已耗尽额度仍需明确调整。重复 requestId 返回原回执，过期 revision 冲突。普通 update/resume 不能重新打开 completed Goal，模型工具 `goal_update` 也没有该操作标志。
