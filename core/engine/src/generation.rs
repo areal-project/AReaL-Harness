@@ -31,6 +31,9 @@ impl Engine {
             .unwrap()
             .model
             .clone();
+        // Goal 请求已经持久预留消费；steer 不能丢弃仍在途的请求而制造 UNKNOWN。
+        // 新输入先入历史/邮箱，在完整结算后于工具派发之前接续。取消与 idle 期限仍有效。
+        let interrupt_for_steer = model.goal_id().is_none();
         let mut text_output_bytes = 0;
         let mut media_output_bytes = 0;
         let mut tool_count = 0;
@@ -318,7 +321,7 @@ impl Engine {
                 let response = tokio::select! {
                     biased;
                     _ = cancel.cancelled() => anyhow::bail!("cancelled"),
-                    _ = steer.recv() => {
+                    _ = steer.recv(), if interrupt_for_steer => {
                         complete_reasoning(cell, &thread_id, &turn_id, &reasoning_items).await;
                         complete_item(cell, &thread_id, &turn_id, &item_id).await;
                         continue 'restart;
@@ -339,7 +342,7 @@ impl Engine {
                     let next = tokio::select! {
                         biased;
                         _ = cancel.cancelled() => { settle_cancelled_stream(&mut stream).await; anyhow::bail!("cancelled"); },
-                        _ = steer.recv() => {
+                        _ = steer.recv(), if interrupt_for_steer => {
                             settle_cancelled_stream(&mut stream).await;
                             complete_reasoning(cell, &thread_id, &turn_id, &reasoning_items).await;
                             complete_item(cell, &thread_id, &turn_id, &item_id).await;

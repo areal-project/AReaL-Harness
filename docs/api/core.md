@@ -258,3 +258,5 @@ Chat Completions 的 HTTP 适配会把所有纯文本 system 消息按原有相�
 Goal 提示投影不携带 eventSequence 或逐请求累计用量/时钟，只保留 usage.turnsStarted；完整账本仍通过 goal_read 和 Goal API 读取。相同的最近 Goal 快照不重复注入；revision、报告或状态变化会追加新快照，A→B→A 不会误删最后一次变化。该裁剪仅影响模型提示，持久 Goal 账本与预算执行不变。
 
 HTTP 模型收尾轮保留当前可见工具 schema，通过 `tool_choice=none` 禁用调用，同时将解码和执行额度设为零；供应商若仍返回调用会被拒绝。工具定义和固定委派指令不因正常收尾而删除，从而保留可复用前缀。无 `tool_choice` 能力的自定义 Model 适配器继续接收空工具列表。权限变化仍即时调整工具可见性，缓存不覆盖授权。
+
+Goal 的 steer（包括向计量子任务发送 `agent_send_input`）立即持久化，但不丢弃在途模型请求。Core 等待该响应结算，再于工具派发前处理待接收修订；旧响应的工具调用被丢弃，已知消费仍准确计入一次。既有 idle、显式 Goal 期限及取消保持有效，真正缺失的用量仍为 UNKNOWN。普通无 Goal 计量的 Turn 保持即时 steer 行为。

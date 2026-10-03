@@ -977,3 +977,163 @@ async fn unchanged_goal_state_is_not_repeated_but_goal_read_keeps_full_usage() {
     assert_eq!(stopped(&e, &t.id).await["goal"]["status"], "completed");
     e.shutdown().await;
 }
+
+struct StreamingControlled(tokio::sync::mpsc::UnboundedSender<Call>);
+#[async_trait]
+impl Model for StreamingControlled {
+    fn name(&self) -> &str {
+        "streaming-controlled"
+    }
+    async fn stream(&self, messages: Vec<Message>) -> anyhow::Result<ModelStream> {
+        self.chat(messages, vec![]).await
+    }
+    async fn chat(&self, messages: Vec<Message>, tools: Vec<Value>) -> anyhow::Result<ModelStream> {
+        use futures_util::StreamExt;
+        let (reply, rx) = tokio::sync::oneshot::channel();
+        self.0
+            .send(Call {
+                messages,
+                tools,
+                reply,
+            })
+            .map_err(|_| anyhow::anyhow!("test receiver closed"))?;
+        Ok(Box::pin(
+            stream::once(async move {
+                rx.await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(Ok)
+                    .collect::<Vec<_>>()
+            })
+            .flat_map(stream::iter),
+        ))
+    }
+    async fn chat_limited(
+        &self,
+        m: Vec<Message>,
+        t: Vec<Value>,
+        _: RequestPurpose,
+        _: Option<u64>,
+    ) -> anyhow::Result<ModelStream> {
+        self.chat(m, t).await
+    }
+}
+
+#[tokio::test]
+async fn goal_steering_settles_opening_and_streaming_requests_before_discarding_tools() {
+    for streaming in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let model: Arc<dyn Model> = if streaming {
+            Arc::new(StreamingControlled(tx))
+        } else {
+            Arc::new(Controlled(tx))
+        };
+        let engine = Engine::open(dir.path(), model, Limits::default()).unwrap();
+        let thread = engine.create("/fixture".into()).await.unwrap();
+        let mut req = request(&thread.id);
+        req.token_budget = Some(1000000);
+        engine.goal_create("test".into(), req).await.unwrap();
+        let first = next(&mut rx).await;
+        let turn = engine
+            .read(&thread.id, true)
+            .await
+            .unwrap()
+            .turns
+            .last()
+            .unwrap()
+            .id
+            .clone();
+        engine
+            .steer(
+                &thread.id,
+                &turn,
+                vec![Input::text("LATEST: do not run the obsolete tool")],
+            )
+            .await
+            .unwrap();
+        // 超过旧的一秒 drain，确认不会先丢弃请求或派发新请求。
+        assert!(
+            tokio::time::timeout(Duration::from_millis(1200), rx.recv())
+                .await
+                .is_err()
+        );
+        assert!(!first.reply.is_closed());
+        first.send(vec![ModelEvent::ToolCall(ToolCall {
+            id: "obsolete".into(),
+            name: "must_not_execute".into(),
+            arguments: "{}".into(),
+        })]);
+        let revised = next(&mut rx).await;
+        assert!(
+            revised
+                .messages
+                .iter()
+                .any(|m| m.role == "user" && m.text_content().contains("LATEST:"))
+        );
+        revised.report("complete");
+        next(&mut rx)
+            .await
+            .answer("Completed current request without the obsolete side effect.");
+        let done = stopped(&engine, &thread.id).await;
+        assert_eq!(done["goal"]["status"], "completed");
+        assert_eq!(done["goal"]["usage"]["unknownRequests"], 0);
+        assert_eq!(done["goal"]["usage"]["reservedTokens"], 0);
+        assert_eq!(done["goal"]["usage"]["tokensUsed"], 54);
+        let history = engine.read(&thread.id, true).await.unwrap();
+        assert!(!history.turns.iter().flat_map(|t|&t.items).any(|i|matches!(i,areal_protocol::Item::DynamicToolCall {tool,..} if tool=="must_not_execute")));
+        engine.shutdown().await;
+    }
+}
+
+#[tokio::test]
+async fn steering_a_goal_child_does_not_block_the_shared_parent_ledger() {
+    let (dir, engine, mut rx) = controlled(Limits::default());
+    let thread = engine.create("/fixture".into()).await.unwrap();
+    engine
+        .goal_create("test".into(), request(&thread.id))
+        .await
+        .unwrap();
+    let parent = next(&mut rx).await;
+    let (child, turn) = engine
+        .spawn_child(
+            &thread.id,
+            vec![Input::text("Investigate a bounded subtask")],
+        )
+        .await
+        .unwrap();
+    let first = next(&mut rx).await;
+    engine
+        .steer(
+            &child.id,
+            &turn.id,
+            vec![Input::text("CHILD CORRECTION: report only, no writes")],
+        )
+        .await
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(1200), rx.recv())
+            .await
+            .is_err()
+    );
+    first.answer("superseded response");
+    let corrected = next(&mut rx).await;
+    assert!(
+        corrected
+            .messages
+            .iter()
+            .any(|m| m.text_content().contains("CHILD CORRECTION"))
+    );
+    corrected.answer("Verified bounded findings");
+    engine.wait(&child.id).await.unwrap();
+    parent.report("complete");
+    next(&mut rx)
+        .await
+        .answer("Complete using verified child findings");
+    let done = stopped(&engine, &thread.id).await;
+    assert_eq!(done["goal"]["status"], "completed");
+    assert_eq!(done["goal"]["usage"]["unknownRequests"], 0);
+    assert_eq!(done["goal"]["usage"]["tokensUsed"], 72);
+    assert!(dir.path().exists());
+    engine.shutdown().await;
+}
