@@ -282,3 +282,5 @@ Audit body/messageBlocks represent full logical input; transport=responses-webso
 WebSocket solve connections send the Core thread ID as session-id/thread-id for compatible gateway affinity. Providers may ignore these hints; they do not guarantee cache retention across connections. Summaries and unowned direct model calls do not carry the solve identity.
 
 Model configuration archives preserve the encoded bytes bound to each revision. New optional defaults do not invalidate historical revisions or rewrite queued Turn references; digest mismatches still reject modified archives. Do not manually reformat or edit the Core-owned `desktop/default-models.json`.
+
+For a confirmed model length termination, Goal metering drains the stream under the existing cancellation and stream-idle deadlines before returning the original length error. Known usage is settled once rather than becoming UNKNOWN because a consumer exits early. Missing usage, transport failures, and cancellation during settlement remain unknown.

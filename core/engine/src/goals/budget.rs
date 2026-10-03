@@ -288,11 +288,29 @@ impl Drop for Guard {
 struct MeteredStream {
     inner: ModelStream,
     guard: Option<Guard>,
+    truncated: Option<anyhow::Error>,
 }
 impl Stream for MeteredStream {
     type Item = anyhow::Result<ModelEvent>;
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        if self.guard.is_none() {
+            return Poll::Ready(None);
+        }
         let next = self.inner.as_mut().poll_next(cx);
+        // 长度终止已经由解码器确认；先读到 EOF 结算，再把原错误交给消费者。
+        // 取消、空闲超时和无用量仍保留 UNKNOWN，不把一般传输错误当作完整响应。
+        if let Poll::Ready(Some(Err(error))) = next {
+            if self.truncated.is_none()
+                && error.downcast_ref::<model::ModelFailure>()
+                    == Some(&model::ModelFailure::Truncated)
+            {
+                self.truncated = Some(error);
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
+            }
+            self.guard.take();
+            return Poll::Ready(Some(Err(self.truncated.take().unwrap_or(error))));
+        }
         if let Poll::Ready(Some(Ok(ModelEvent::Usage(value)))) = &next {
             let guard = self.guard.as_ref().unwrap();
             let mut d = guard.budget.data.lock().unwrap();
@@ -308,6 +326,17 @@ impl Stream for MeteredStream {
             && let Some(mut guard) = self.guard.take()
         {
             guard.complete = true;
+        }
+        if matches!(next, Poll::Ready(None)) {
+            if let Some(error) = self.truncated.take() {
+                return Poll::Ready(Some(Err(error)));
+            }
+        } else if self.truncated.is_some()
+            && matches!(next, Poll::Ready(Some(Ok(ref event))) if !matches!(event, ModelEvent::Usage(_)))
+        {
+            // 失败响应的工具、文本和媒体不向调用方释放；尾部用量仍正常计入审计。
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
         }
         next
     }
@@ -398,6 +427,7 @@ impl Model for MeteredModel {
         Ok(Box::pin(MeteredStream {
             inner,
             guard: Some(guard),
+            truncated: None,
         }))
     }
 }
@@ -449,6 +479,100 @@ mod tests {
             self.stream(m).await
         }
     }
+    #[tokio::test]
+    async fn terminal_length_error_settles_only_after_eof_and_known_usage() {
+        for before in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let budget = fixture(dir.path(), 1000);
+            let (guard, _) = budget.reserve(100, RequestPurpose::Summary).await.unwrap();
+            let usage = || {
+                Ok(ModelEvent::Usage(areal_protocol::ModelUsage {
+                    input_tokens: 20,
+                    cached_input_tokens: 5,
+                    output_tokens: 10,
+                }))
+            };
+            let mut events = vec![];
+            if before {
+                events.push(usage());
+            }
+            events.push(Err(model::ModelFailure::Truncated.into()));
+            events.push(Ok(ModelEvent::text("must not escape a failed response")));
+            if !before {
+                events.push(usage());
+            }
+            let mut stream = MeteredStream {
+                inner: Box::pin(futures_util::stream::iter(events)),
+                guard: Some(guard),
+                truncated: None,
+            };
+            let mut observed = 0;
+            while let Some(event) = stream.next().await {
+                match event {
+                    Ok(ModelEvent::Usage(_)) => observed += 1,
+                    Err(error) => {
+                        assert_eq!(
+                            error.downcast_ref::<model::ModelFailure>(),
+                            Some(&model::ModelFailure::Truncated)
+                        );
+                        break;
+                    }
+                    _ => panic!("failed response content escaped"),
+                }
+            }
+            drop(stream);
+            assert_eq!(observed, 1);
+            assert_eq!(budget.usage().tokens_used, 30);
+            assert_eq!(budget.usage().reserved_tokens, 0);
+            assert_eq!(budget.usage().unknown_requests, 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_usage_transport_failure_and_cancelled_length_drain_stay_unknown() {
+        for case in 0..3 {
+            let dir = tempfile::tempdir().unwrap();
+            let budget = fixture(dir.path(), 1000);
+            let (guard, _) = budget.reserve(100, RequestPurpose::Summary).await.unwrap();
+            let mut events = vec![];
+            if case != 0 {
+                events.push(Ok(ModelEvent::Usage(areal_protocol::ModelUsage {
+                    input_tokens: 20,
+                    cached_input_tokens: 5,
+                    output_tokens: 10,
+                })));
+            }
+            events.push(Err(if case == 1 {
+                model::ModelFailure::Transport
+            } else {
+                model::ModelFailure::Truncated
+            }
+            .into()));
+            let source: ModelStream = if case == 2 {
+                Box::pin(futures_util::stream::iter(events).chain(futures_util::stream::pending()))
+            } else {
+                Box::pin(futures_util::stream::iter(events))
+            };
+            let mut stream = MeteredStream {
+                inner: source,
+                guard: Some(guard),
+                truncated: None,
+            };
+            let _ = tokio::time::timeout(std::time::Duration::from_millis(20), async {
+                while let Some(event) = stream.next().await {
+                    if event.is_err() {
+                        break;
+                    }
+                }
+            })
+            .await;
+            drop(stream);
+            assert_eq!(budget.usage().unknown_requests, 1);
+            assert!(budget.usage().reserved_tokens > 0);
+            assert!(!budget.usage().accounting_complete);
+        }
+    }
+
     #[tokio::test]
     async fn parallel_reservations_cannot_spend_the_same_remaining_budget() {
         let dir = tempfile::tempdir().unwrap();
@@ -535,6 +659,7 @@ mod tests {
         let mut missing: ModelStream = Box::pin(MeteredStream {
             inner: Box::pin(futures_util::stream::pending()),
             guard: Some(guard),
+            truncated: None,
         });
         tokio::time::timeout(
             Duration::from_secs(3),
