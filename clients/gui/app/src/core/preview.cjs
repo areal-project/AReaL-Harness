@@ -1,4 +1,6 @@
 "use strict";
+const MAX_CACHED_PAGES = 8;
+const { validatePreview } = require('@areal/workbench/desktop-contract');
 
 function webUrl(value) {
   const text = String(value ?? "").trim();
@@ -45,16 +47,31 @@ class CorePreview {
     this.view = null;
   }
   dispose() {
-    for (const page of this.pages.values()) {
-      this.window.contentView.removeChildView(page.view);
-      page.view.webContents.close();
-    }
-    this.pages.clear();
+    for (const owner of [...this.pages.keys()]) this.release(owner);
     this.view = null;
     this.owner = null;
   }
+  release(owner) {
+    const page = this.pages.get(owner);
+    if (!page) return;
+    // 先撤销归属，close/loadURL 的迟到回调不能写入新页面。
+    this.pages.delete(owner);
+    if (!this.window.isDestroyed()) this.window.contentView.removeChildView(page.view);
+    if (!page.view.webContents.isDestroyed()) page.view.webContents.close();
+    if (this.owner === owner) { this.owner = null; this.view = null; }
+  }
+  releaseInvalidOwners() {
+    for (const [owner, page] of this.pages) if (!this.owns(page.projectId, page.threadId)) this.release(owner);
+  }
+  prune() {
+    for (const owner of this.pages.keys()) {
+      if (this.pages.size <= MAX_CACHED_PAGES) break;
+      if (owner !== this.owner) this.release(owner);
+    }
+  }
   state(page = this.pages.get(this.owner)) {
-    const c = page?.view.webContents;
+    const contents = page?.view.webContents;
+    const c = contents && !contents.isDestroyed() ? contents : null;
     return {
       url: c?.getURL() || page?.url || "",
       title: c?.getTitle() ?? "",
@@ -64,7 +81,7 @@ class CorePreview {
       error: page?.error ?? "",
     };
   }
-  create(owner) {
+  create(owner, projectId, threadId) {
     const view = new this.WebContentsView({
       webPreferences: {
         sandbox: true,
@@ -73,7 +90,7 @@ class CorePreview {
         partition: `areal-preview-${crypto.randomUUID()}`,
       },
     });
-    const page = { view, error: "", url: "" },
+    const page = { view, projectId, threadId, error: "", url: "", crashed: false },
       c = view.webContents;
     c.setWindowOpenHandler(() => ({ action: "deny" }));
     c.session.setPermissionRequestHandler((_contents, _permission, respond) =>
@@ -105,15 +122,20 @@ class CorePreview {
     c.on("did-fail-load", (_event, code, message, url, main) => {
       if (main && code !== -3 && url === page.url) page.error = message;
     });
+    c.on('render-process-gone', () => {
+      if (this.pages.get(owner) !== page) return;
+      page.crashed = true;
+      page.error = '预览页面已退出，请重新加载';
+    });
     this.window.contentView.addChildView(view);
     view.setVisible(false);
     this.pages.set(owner, page);
     return page;
   }
   async command(request) {
-    if (!request || typeof request !== "object")
-      throw new Error("无效预览操作");
+    validatePreview(request);
     const owner = `${request.projectId}:${request.threadId ?? ""}`;
+    if (request.operation === 'release') { this.release(owner); return this.state(null); }
     if (request.operation === "hide") {
       if (!request.projectId || this.owner === owner)
         this.view?.setVisible(false);
@@ -131,25 +153,26 @@ class CorePreview {
       // chooses whether to reveal an internal page; this read creates none.
       return { destination, url };
     }
-    const operations = [
-      "show",
-      "navigate",
-      "back",
-      "forward",
-      "reload",
-      "stop",
-      "state",
-      "external",
-      "devtools",
-    ];
-    if (!operations.includes(request.operation))
-      throw new Error("不支持的预览操作");
     const target =
       request.operation === "navigate" ? webUrl(request.url) : null;
     let page = this.pages.get(owner);
-    if (!page && ["show", "navigate"].includes(request.operation))
-      page = this.create(owner);
+    const restoreUrl = page?.url || request.url;
+    if (page && (page.crashed || page.view.webContents.isDestroyed()) && ['show', 'navigate', 'reload'].includes(request.operation)) {
+      this.release(owner); page = null;
+    }
+    if (!page && ["show", "navigate", "reload"].includes(request.operation)) {
+      const restored = request.operation !== 'navigate' && restoreUrl ? webUrl(restoreUrl) : null;
+      page = this.create(owner, request.projectId, request.threadId);
+      if (restored) {
+        page.url = restored;
+        const created = page;
+        void page.view.webContents.loadURL(page.url).catch(error => {
+          if (this.pages.get(owner) === created && error.code !== 'ERR_ABORTED') created.error = error.message;
+        });
+      }
+    }
     if (!page) return this.state(null);
+    this.pages.delete(owner); this.pages.set(owner, page);
     const c = page.view.webContents;
     if (request.bounds)
       page.view.setBounds(
@@ -167,7 +190,7 @@ class CorePreview {
         page.error = "";
         // Loading is observed through state; navigation completion cannot switch task ownership.
         void c.loadURL(target).catch((error) => {
-          if (error.code !== "ERR_ABORTED" && page.url === target)
+          if (this.pages.get(owner) === page && error.code !== "ERR_ABORTED" && page.url === target)
             page.error = error.message;
         });
         break;
@@ -183,7 +206,7 @@ class CorePreview {
         if (c.getURL()) c.reload();
         else if (page.url)
           void c.loadURL(page.url).catch((error) => {
-            if (error.code !== "ERR_ABORTED") page.error = error.message;
+            if (this.pages.get(owner) === page && error.code !== "ERR_ABORTED") page.error = error.message;
           });
         break;
       case "stop":
@@ -198,6 +221,7 @@ class CorePreview {
         c.openDevTools({ mode: "detach" });
         break;
     }
+    this.prune();
     return this.state(page);
   }
 }

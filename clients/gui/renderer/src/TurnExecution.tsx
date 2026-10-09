@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { spawnedAgent } from "./AgentIdentity.js";
 import { ActivityIcon } from "./ActivityIcon.js";
 import { ReasoningGroup } from "./ReasoningGroup.js";
 import { activityLabel, executionOutcome, executionSummary, timelineItems, toolPresentation } from "./conversationPresentation.js";
@@ -37,7 +38,8 @@ export function TurnExecution({ items, turn, project, threadId, renderItem, acti
   const singleReasoning = rows.length === 1 && rows[0].type === "reasoningGroup";
   // The round disclosure owns commentary; multi-item activity keeps its
   // semantic disclosure. A single tool or reasoning group needs no wrapper.
-  const direct = singleTool || singleReasoning;
+  const onlyAgentEntries = rows.length > 0 && rows.every(item => !!spawnedAgent(item));
+  const direct = singleTool || singleReasoning || onlyAgentEntries;
   const expanded = direct || open;
   const canAnimate = turn.status === "inProgress" && !!project.state?.connected && !awaitingInput && !turn.modelRetry;
   const animateSummary = canAnimate && (running || unfinished) && !(expanded && tools.some(item => toolPresentation(item).running));
@@ -56,8 +58,8 @@ export function TurnExecution({ items, turn, project, threadId, renderItem, acti
     </button> : running ? <div className="execution-summary">{statusLabel}</div> : null);
   return <div className="turn-execution" data-testid="turn-execution">
     {heading}
-    <div id={id} className={direct ? "execution-details execution-single" : "execution-details"} data-expanded={expanded} data-activity-list={rows.length > 1}>
-      {rows.map(item => <div key={item.id} className="execution-row" hidden={!expanded}>{item.type === "reasoningGroup"
+    <div id={id} className={direct ? "execution-details execution-single" : "execution-details"} data-expanded={expanded} data-agent-entries={rows.some(item => !!spawnedAgent(item)) || undefined} data-activity-list={rows.length > 1}>
+      {rows.map(item => <div key={item.id} className="execution-row" hidden={!expanded && !spawnedAgent(item)}>{item.type === "reasoningGroup"
         ? <ReasoningGroup items={item.items} activity={singleReasoning && running ? label : undefined} animate={singleReasoning && running && canAnimate} />
         : renderItem(item, { animate: canAnimate && expanded, onDisclosureChange })}</div>)}
     </div>

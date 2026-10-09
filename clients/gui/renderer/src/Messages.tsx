@@ -39,8 +39,10 @@ export function Messages({
   onReview,
   readTurnReview,
   beforeTurns,
+  onAgent,
 }: {
   beforeTurns?: ReactNode;
+  onAgent?: (id: string) => void;
   project: Data;
   thread: Data;
   action: Action;
@@ -289,7 +291,7 @@ export function Messages({
               return <TurnExecution key={item.id} active={index === segments.length - 1} items={item.items} turn={turn} project={project} threadId={thread.id}
                 hasTurnSummary={group.progress && turn.status === "completed" && hasReadingSummary}
                 renderItem={(entry: Data, disclosure) => {
-                  if (entry.type === "dynamicToolCall") return <ToolEvent key={entry.id} item={entry} {...disclosure} onFile={onFile} turnId={turn.id} readTurnReview={turn.status === "completed" ? readTurnReview : undefined} />;
+                  if (entry.type === "dynamicToolCall") return <ToolEvent key={entry.id} item={entry} {...disclosure} onFile={onFile} onAgent={onAgent} turnId={turn.id} readTurnReview={turn.status === "completed" ? readTurnReview : undefined} />;
                   if (entry.type === "modelContext") return null;
                   return <details className="tool-call" key={entry.id}><summary>{entry.type}</summary><pre>{JSON.stringify(entry, null, 2)}</pre></details>;
                 }} />;

@@ -4,6 +4,8 @@ import { Attachment, AttachmentInfo, AttachmentPreview, AttachmentRemove } from 
 import { Button } from "./components/ui/button.js";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "./components/ui/dialog.js";
 import type { Action, Data } from "./services.js";
+import { DocumentPanelIcon } from "./app-shell/panelIcons.js";
+import { ActivityIcon } from "./ActivityIcon.js";
 
 function downloadMedia(url: string, name: string) {
   const link = document.createElement("a");
@@ -12,8 +14,8 @@ function downloadMedia(url: string, name: string) {
 }
 
 /** ZCode's attachment tile, with Core supplying sent media bytes. */
-function AttachmentTile({ name, mime, url, onRemove, sent = false }: {
-  name: string; mime: string; url: string; onRemove?: () => void; sent?: boolean;
+function AttachmentTile({ name, mime, url, onRemove, sent = false, compact = false }: {
+  name: string; mime: string; url: string; onRemove?: () => void; sent?: boolean; compact?: boolean;
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const image = mime.startsWith("image/");
@@ -24,7 +26,10 @@ function AttachmentTile({ name, mime, url, onRemove, sent = false }: {
     }
   } : undefined;
   return <>
-    <Attachment
+    {compact ? <button type="button" className="task-resource-row" onClick={open} aria-label={image ? `预览图片 ${name}` : `下载附件 ${name}`}>
+      {image ? <img className="task-resource-thumbnail" src={url} alt="" /> : <DocumentPanelIcon />}
+      <span className="task-resource-agent-body"><span>{name}</span><small className="task-resource-description">{image ? "参考图片" : "用户附件"}</small></span><ActivityIcon kind="chevron" size={14} />
+    </button> : <Attachment
       variant={image ? "grid" : "inline"}
       data={{ id: name, type: "file", filename: name, mediaType: mime, url }}
       onRemove={onRemove}
@@ -45,7 +50,7 @@ function AttachmentTile({ name, mime, url, onRemove, sent = false }: {
         className="absolute right-0.5 top-0.5 z-10 size-4 rounded-full bg-background p-0 text-foreground opacity-100">
         <XIcon className="size-3" />
       </AttachmentRemove> : null}
-    </Attachment>
+    </Attachment>}
     {previewOpen ? <Dialog open onOpenChange={setPreviewOpen}>
       <DialogContent showCloseButton={false} aria-describedby={undefined}
         className="h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none place-items-center overflow-hidden border-0 bg-transparent p-10 shadow-none [app-region:no-drag]">
@@ -69,8 +74,8 @@ export function DraftAttachment({ file, onRemove }: { file: File; onRemove: () =
   return <AttachmentTile name={file.name} mime={file.type} url={url} onRemove={onRemove} />;
 }
 
-export function SentAttachment({ part, projectId, threadId, action }: {
-  part: Data; projectId: string; threadId: string; action: Action;
+export function SentAttachment({ part, projectId, threadId, action, compact = false }: {
+  part: Data; projectId: string; threadId: string; action: Action; compact?: boolean;
 }) {
   const [media, setMedia] = useState<{ url: string; mime: string } | null>(null);
   const [failure, setFailure] = useState("");
@@ -96,6 +101,6 @@ export function SentAttachment({ part, projectId, threadId, action }: {
   const name = part.name ?? (part.type === "image" ? "消息图片" : "附件");
   if (failure) return <span role="status" className="text-ui-sm text-foreground-subtle">{failure}</span>;
   if (!media) return <span className="text-ui-sm text-foreground-subtle">读取附件…</span>;
-  if (part.type === "audio") return <div className="flex flex-wrap items-center gap-2"><audio src={media.url} controls /><Button variant="outline" size="sm" aria-label={`下载附件 ${name}`} onClick={() => downloadMedia(media.url, name)}>下载</Button></div>;
-  return <AttachmentTile name={name} mime={media.mime} url={media.url} sent />;
+  if (part.type === "audio" && !compact) return <div className="flex flex-wrap items-center gap-2"><audio src={media.url} controls /><Button variant="outline" size="sm" aria-label={`下载附件 ${name}`} onClick={() => downloadMedia(media.url, name)}>下载</Button></div>;
+  return <AttachmentTile name={name} mime={media.mime} url={media.url} sent compact={compact} />;
 }

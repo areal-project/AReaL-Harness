@@ -68,6 +68,8 @@ Engine’s `diagnostics` module bounds non-authoritative diagnostic retention; s
 
 Desktop ownership follows the [migration decision](../adr/0001-desktop-client-module.en.md). The independent Electron adapter retains OS credentials and subscription forwarding and connects through the public shared-service API. GUI exit preserves Core work. See the [GUI guide](../../clients/gui/README.en.md) for builds, isolation and local packages. Mobile source migration is deferred.
 
+The adapter's project connection owner manages backoff, connection identity and snapshot resubscription. Passive recovery connects only to compatible running services without starting or restarting Core or replaying unknown submissions. Workbench shares the desktop capability contract; Main and service entry points validate their permitted capabilities and retain structured errors. Core still owns final configuration and execution validation. Electron Main owns native previews, releases them by project/Thread and bounds cached pages; the UI retains reconstructable URLs. See the GUI guide's lifecycle section for recovery, type coverage and page-state loss boundaries.
+
 ```text
 core/                       Config, protocol, Engine, server, MCP, plugin SDK
 clients/                    CLI, TUI, local Web, GUI

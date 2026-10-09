@@ -18,7 +18,7 @@ endif
 	test-protocol test-concurrency verify smoke server tui schemas docs clean \
 	capacity capacity-primitives capacity-core perf runtime test-runtime runtime-smoke verify-runtime \
 	cordis-pin update-cordis sdk-test harness harness-smoke verify-harness \
-	setup sdk-build script-test workgroup-smoke capacity-workgroup local-service-smoke \
+	setup setup-node sdk-build script-test workgroup-smoke capacity-workgroup local-service-smoke \
 	verify-native
 
 help: ## 显示常用操作（默认目标）
@@ -26,8 +26,10 @@ help: ## 显示常用操作（默认目标）
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@printf '%s\n' '' "参数示例：make tui ARGS='--resume THREAD_ID'" "交互式性能测试：make perf"
 
-setup: fetch ## 安装锁定的格式工具和两套 SDK 开发依赖
+setup: fetch setup-node ## 安装锁定的格式工具和两套 SDK 开发依赖
 	uv sync --locked --only-group dev
+
+setup-node: ## 安装原生 smoke 和两套 SDK 所需的锁定 Node 依赖
 	npm ci --ignore-scripts
 	npm --prefix runtime/sdk-typescript ci --ignore-scripts
 	npm --prefix core/sdk-typescript ci --ignore-scripts
@@ -142,17 +144,11 @@ workgroup-smoke: build ## 真实 Runtime 的 Workgroup 写入、组合、期限�
 
 verify-harness: ## 全部常规与原生集成验收（容量测试单独运行）
 	$(MAKE) verify
-	$(MAKE) runtime-smoke
-	$(MAKE) harness-smoke
-	$(MAKE) examples-desktop-api
-	$(MAKE) workgroup-smoke
+	$(MAKE) runtime-smoke harness-smoke examples-desktop-api workgroup-smoke
 
 verify-native: ## macOS 原生后端与 Harness 集成验收（通用回归由 Linux CI 执行）
 	cargo test --locked -p areal-runtime-exec-native
-	$(MAKE) runtime-smoke
-	$(MAKE) harness-smoke
-	$(MAKE) examples-desktop-api
-	$(MAKE) workgroup-smoke
+	$(MAKE) runtime-smoke harness-smoke examples-desktop-api workgroup-smoke
 
 smoke: build ## 构建后验证 TUI、HTTP/SSE、持久化与强杀恢复
 	node scripts/smoke.mjs
@@ -216,6 +212,7 @@ install: release ## 构建并安装完整运行时；PREFIX 指定前缀，DESTD
 .PHONY: gui-install gui-build gui gui-package gui-smoke
 gui-install: ## 安装 GUI 的公开锁定依赖（需 pnpm）
 	pnpm --dir clients/gui install --frozen-lockfile
+	pnpm --dir clients/gui --filter @areal/gui-desktop exec install-electron
 gui-build: ## 构建 GUI renderer
 	pnpm --dir clients/gui build
 gui: gui-build ## 启动桌面 GUI（先 make build）

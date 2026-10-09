@@ -34,7 +34,7 @@ tap 由维护者发布，首版发布前该安装源可能尚不存在。Formula
 从同一 Release 下载安装器和清单，校验后执行。固定版本避免在未知版本之间静默升级：
 
 ```sh
-version=0.1.3
+version=0.1.4
 base="https://github.com/areal-project/AReaL-Harness/releases/download/v${version}"
 curl -fL "$base/install.py" -o install.py
 curl -fL "$base/SHA256SUMS" -o SHA256SUMS
@@ -55,12 +55,12 @@ areal --version
 离线安装先下载平台 tar.gz 与同一 Release 的 SHA256SUMS：
 
 ```sh
-python3 install.py --version 0.1.3 --prefix "$HOME/.local" \
-  --archive areal-harness-v0.1.3-x86_64-unknown-linux-gnu.tar.gz \
+python3 install.py --version 0.1.4 --prefix "$HOME/.local" \
+  --archive areal-harness-v0.1.4-x86_64-unknown-linux-gnu.tar.gz \
   --checksums SHA256SUMS
 ```
 
-macOS 离线安装将归档名改为 `areal-harness-v0.1.3-aarch64-apple-darwin.tar.gz`。`python3 install.py --version latest --check` 仅查询最新已公开 Release，不安装；`--version latest` 可在明确选择时安装最新版。
+macOS 离线安装将归档名改为 `areal-harness-v0.1.4-aarch64-apple-darwin.tar.gz`。`python3 install.py --version latest --check` 仅查询最新已公开 Release，不安装；`--version latest` 可在明确选择时安装最新版。
 
 安装器在执行任何包内程序前校验归档和全部文件，拒绝链接、设备和路径逃逸归档。SHA256 校验提供与发布清单的一致性，不替代发布源的身份验证。
 

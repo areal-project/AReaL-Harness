@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -147,7 +147,6 @@ const model = createServer(async (req, res) => {
     const request = JSON.parse(body);
     modelCalls++;
     assert(request.messages[0].role === "system");
-    assert(request.messages[0].content.includes("Project rule: run check.sh after edits."));
     assert(request.tools.some((tool) => tool.function.name === "read_process"));
     assert.equal(request.parallel_tool_calls, true);
     const mode = request.messages.findLast(
@@ -158,9 +157,24 @@ const model = createServer(async (req, res) => {
           message.content.startsWith("AReaL runtime context (not a user request):")
         ),
     ).content;
+    if (mode.startsWith("instructions:")) {
+      const expected = JSON.parse(mode.slice("instructions:".length));
+      const system = request.messages[0].content;
+      let previous = -1;
+      for (const text of expected.present) {
+        const index = system.indexOf(text);
+        assert(index > previous, `missing or out-of-order instruction: ${text}`);
+        previous = index;
+      }
+      for (const text of expected.absent) assert(!system.includes(text), text);
+    } else {
+      assert(request.messages[0].content.includes("Project rule: run check.sh after edits."));
+    }
     const results = request.messages.filter((message) => message.role === "tool");
     let name, args;
-    if (mode === "delegate-files") {
+    if (mode.startsWith("instructions:")) {
+      // 直接收尾，断言真实模型请求中的指令链，不让 fixture 自行读取文件。
+    } else if (mode === "delegate-files") {
       assert(request.tools.some((tool) => tool.function.name === "agent_spawn"));
       assert(!request.tools.some((tool) => tool.function.name === "workgroup_start"));
       if (results.length < 2) {
@@ -574,6 +588,74 @@ async function completed(server, id) {
 }
 try {
   server = await start();
+  const projectRule = "Project rule: run check.sh after edits.";
+  await mkdir(join(workspace, "packages/app"), { recursive: true });
+  await mkdir(join(workspace, "sibling"));
+  await writeFile(join(workspace, "packages/AGENTS.md"), "Package rule: use package tests.");
+  await writeFile(join(workspace, "packages/app/AGENTS.md"), "App rule: use app tests.");
+  await writeFile(join(workspace, "sibling/AGENTS.md"), "Unrelated sibling rule.");
+  async function instructions(cwd, present, absent, status = "completed", threadId) {
+    const id = threadId ?? (await server.call("thread/start", { cwd })).thread.id;
+    const callsBefore = modelCalls;
+    await server.call("turn/start", {
+      threadId: id,
+      input: [{ type: "text", text: `instructions:${JSON.stringify({ present, absent })}` }],
+    });
+    const thread = await completed(server, id);
+    assert.equal(thread.turns.at(-1).status, status, JSON.stringify(thread));
+    assert.equal(modelCalls - callsBefore, status === "completed" ? 1 : 0);
+    return id;
+  }
+  const nested = await instructions(
+    join(workspace, "packages/app"),
+    [projectRule, "Package rule", "App rule"],
+    ["Unrelated sibling rule"],
+  );
+  await writeFile(join(workspace, "packages/app/AGENTS.md"), "Updated app rule.");
+  await instructions(
+    join(workspace, "packages/app"),
+    [projectRule, "Package rule", "Updated app rule"],
+    ["App rule"],
+    "completed",
+    nested,
+  );
+  await instructions(
+    workspace,
+    [projectRule],
+    ["Package rule", "Updated app rule", "Unrelated sibling rule"],
+  );
+  await rm(join(workspace, "AGENTS.md"));
+  await instructions(
+    join(workspace, "packages/app"),
+    ["Package rule", "Updated app rule"],
+    [projectRule],
+  );
+  await instructions(workspace, [], [projectRule, "Package rule"]);
+  await writeFile(join(workspace, "AGENTS.md"), "x".repeat(32768));
+  await instructions(workspace, ["x".repeat(32768)], []);
+  await instructions(join(workspace, "packages/app"), [], [], "failed");
+  await writeFile(join(workspace, "AGENTS.md"), "x".repeat(32769));
+  await instructions(workspace, [], [], "failed");
+  await writeFile(join(workspace, "AGENTS.md"), Buffer.from([0xff]));
+  await instructions(workspace, [], [], "failed");
+  await rm(join(workspace, "AGENTS.md"));
+  await symlink("check.sh", join(workspace, "AGENTS.md"));
+  await instructions(workspace, [], [], "failed");
+  await rm(join(workspace, "AGENTS.md"));
+  await writeFile(join(workspace, "AGENTS.md"), projectRule);
+  await symlink("packages", join(workspace, "linked-packages"));
+  await instructions(
+    join(workspace, "linked-packages/app"),
+    [projectRule, "Package rule", "Updated app rule"],
+    ["Unrelated sibling rule"],
+  );
+  await rm(join(workspace, "packages/app/AGENTS.md"));
+  await mkdir(join(workspace, "packages/app/AGENTS.md"));
+  await instructions(join(workspace, "packages/app"), [], [], "failed");
+  await rm(join(workspace, "packages/app/AGENTS.md"), { recursive: true });
+  console.log(
+    "PASS scoped AGENTS.md precedence, refresh, absence, byte limits, UTF-8 and symlink rejection",
+  );
   const first = await server.call("thread/start", {});
   const id = first.thread.id;
   assert.equal(first.sandbox.type, "workspaceWrite");

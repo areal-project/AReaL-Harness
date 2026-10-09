@@ -68,6 +68,8 @@ Engine 的 `diagnostics` 模块对非权威排障制品执行有界保留，serv
 
 桌面客户端归属见[迁移决策](../adr/0001-desktop-client-module.md)。`clients/gui` 的独立 Electron 适配器保留系统凭据与订阅转发，通过共享服务公共入口连接 Core；退出 GUI 不终止 Core 任务。GUI 构建、数据隔离与本地包见 [GUI 指南](../../clients/gui/README.md)。移动端源码后续迁移。
 
+桌面适配器的项目连接所有者管理退避、连接身份和快照重订；被动恢复只连接兼容的运行中服务，不启动或重启 Core、不重放未知提交。Workbench 共享桌面能力契约，Main 和服务入口校验各自允许的能力并保留结构化错误；Core 仍拥有配置和执行的最终校验。原生预览归 Electron Main，按项目/Thread 释放并有界缓存页面；界面仅保留可重建的 URL。具体恢复、类型覆盖及页面状态丢失边界见 GUI 指南的生命周期章节。
+
 ```text
 core/                       配置、协议、Engine、server、MCP、插件 SDK
 clients/                    CLI、TUI、本地 Web、GUI

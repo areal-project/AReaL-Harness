@@ -45,6 +45,7 @@ fn main() {
     add!("areal/thread/configure", ConfigureThread);
     add!("areal/turn/start", TurnStart);
     add!("areal/turn/enqueue", TurnStart);
+    add!("areal/queue/steer", QueueSteer);
     add!("areal/plan/update", PlanUpdate);
     add!("areal/interaction/respond", Respond);
     add!("areal/process/start", ProcessStart);

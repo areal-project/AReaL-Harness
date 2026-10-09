@@ -72,16 +72,22 @@ async function manageTask(backend, project, request) {
     // Shared desktop clients can display the same task. Serialize acquisition
     // and release so leaving one view never drops another view's subscription.
     const next = (project.taskViewWrite ?? Promise.resolve()).catch(() => {}).then(async () => {
+      const client = project.client;
+      backend.requireConnection(project, client);
       project.taskViews ??= new Map();
       const previous = project.taskViews.get(request.viewId);
       let result;
       if (operation === 'taskWatch') {
         if (typeof request.taskId !== 'string' || !request.taskId) throw new Error('缺少任务 ID');
-        result = await project.client.request('areal/task/subscribe', { taskId: request.taskId }, { onResult: task => project.model.setTask(task) });
+        result = await client.request('areal/task/subscribe', { taskId: request.taskId }, { onResult: task => {
+          if (backend.currentConnection(project, client)) project.model.setTask(task);
+        } });
+        backend.requireConnection(project, client);
         project.taskViews.set(request.viewId, request.taskId);
       } else project.taskViews.delete(request.viewId);
       if (previous && previous !== (operation === 'taskWatch' ? request.taskId : null) && ![...project.taskViews.values()].includes(previous)) {
-        await project.client.request('areal/task/unsubscribe', { taskId: previous });
+        await client.request('areal/task/unsubscribe', { taskId: previous });
+        backend.requireConnection(project, client);
       }
       return result ?? { removed: true };
     });
@@ -92,7 +98,9 @@ async function manageTask(backend, project, request) {
   const [method, fields] = definition;
   const params = pick(request, fields);
   if (reads[operation]) {
-    const value = await project.client.request(method, params);
+    const client = project.client;
+    const value = await client.request(method, params);
+    backend.requireConnection(project, client);
     if (operation === 'task') project.model.setTask(value);
     return value;
   }

@@ -1,0 +1,43 @@
+.agent-avatar { flex: none; object-fit: contain; }
+.agent-spawn-row { display: flex; align-items: center; gap: 7px; min-height: 24px; color: var(--color-foreground-subtle); font-size: 13px; }
+.agent-spawn-link { display: inline-flex; align-items: center; gap: 7px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
+.agent-spawn-link:hover { text-decoration: underline; }
+.agent-spawn-record { margin-left: auto; border: 0; background: transparent; padding: 3px; color: var(--color-foreground-subtle); }
+.agent-conversation-pane { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.agent-conversation-heading { display: flex; align-items: center; gap: 7px; padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--color-border); }
+.agent-conversation-heading strong { font-weight: 500; }
+.agent-conversation-heading > span { margin-left: auto; color: var(--color-foreground-subtle); font-size: 12px; }
+.agent-conversation-pane > .messages-shell { flex: 1; min-height: 0; }
+.agent-conversation-pane .message-column { width: 100%; padding: 16px; }
+.agent-pane-notice { padding: 8px 16px; font-size: 12px; color: var(--color-foreground-subtle); }
+.agent-pane-notice button { margin-left: 8px; text-decoration: underline; }
+.task-resources-popup { width: 332px; padding: 0; gap: 0; background: linear-gradient(var(--color-menu), var(--color-menu)), var(--color-background); }
+.task-resources { padding: 8px 12px; font-size: 13px; }
+.task-resources-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 8px 10px; }
+.task-resources-header .icon-button { width: 18px; height: 18px; padding: 0; }
+.task-resources-header h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 400; color: var(--color-foreground-subtle); }
+.task-resources-section { padding: 11px 0; }
+.task-resources-section + .task-resources-section { border-top: 1px solid var(--color-border); }
+.task-resources-heading { display: flex; gap: 8px; align-items: center; color: var(--color-foreground-subtle); font-size: 12px; font-weight: 400; padding: 0 8px 7px; min-height: 25px; margin: 0; }
+.task-resources-heading > span:last-child { margin-left: auto; }
+.task-resource-row { width: 100%; border: 0; background: transparent; display: flex; align-items: center; gap: 11px; padding: 8px; text-align: left; border-radius: 6px; font: inherit; font-weight: 400; }
+.task-resource-row:hover, .task-resource-row[data-selected] { background: var(--color-hover); }
+.task-resource-row > svg { flex-shrink: 0; }
+.task-resource-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-resource-row small, .task-resource-note { color: var(--color-foreground-subtle); font-size: 11px; }
+.task-resource-row small.task-resource-status, .task-resources-heading > span:last-child { font-size: 10px; }
+.task-resource-identity { display: flex; gap: 6px; align-items: center; }
+.task-resource-agent-body { flex: 1; min-width: 0; }
+.task-resource-agent-body p { margin: 3px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground-subtle); font-size: 11px; }
+.task-resources-agents { height: auto; }
+
+/* 折叠保留创建入口，其他活动仍由现有 disclosure 隐藏。 */
+.execution-details[data-expanded="false"][data-agent-entries="true"] { display: flex; }
+
+.task-resource-description { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-resource-agent-body > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-resource-thumbnail { width: 18px; height: 22px; flex: none; object-fit: cover; border-radius: 4px; }
+.task-resource-status { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+.task-resource-status[data-running]::before { content: ""; width: 8px; height: 8px; border: 1px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: task-resource-spin 1s linear infinite; }
+@keyframes task-resource-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .task-resource-status[data-running]::before { animation: none; } }

@@ -34,7 +34,7 @@ The tap may not exist before the first release. The formula uses the final archi
 Download the installer and checksums from the same Release and verify before execution. Pin the version to avoid silent upgrades:
 
 ```sh
-version=0.1.3
+version=0.1.4
 base="https://github.com/areal-project/AReaL-Harness/releases/download/v${version}"
 curl -fL "$base/install.py" -o install.py
 curl -fL "$base/SHA256SUMS" -o SHA256SUMS
@@ -55,12 +55,12 @@ The default destination is `~/.local/lib/areal/<version>-macos-arm64` or `<versi
 For offline installation, download the platform archive and matching SHA256SUMS:
 
 ```sh
-python3 install.py --version 0.1.3 --prefix "$HOME/.local" \
-  --archive areal-harness-v0.1.3-x86_64-unknown-linux-gnu.tar.gz \
+python3 install.py --version 0.1.4 --prefix "$HOME/.local" \
+  --archive areal-harness-v0.1.4-x86_64-unknown-linux-gnu.tar.gz \
   --checksums SHA256SUMS
 ```
 
-For macOS offline installation, use `areal-harness-v0.1.3-aarch64-apple-darwin.tar.gz` instead. `python3 install.py --version latest --check` queries the latest public Release without installing it; `--version latest` installs it when explicitly requested.
+For macOS offline installation, use `areal-harness-v0.1.4-aarch64-apple-darwin.tar.gz` instead. `python3 install.py --version latest --check` queries the latest public Release without installing it; `--version latest` installs it when explicitly requested.
 
 The installer verifies the archive and all bundle files before executing any bundled program, rejecting links, devices and traversal entries. SHA256 verifies consistency with the published manifest; it is not independent authentication of the release source.
 

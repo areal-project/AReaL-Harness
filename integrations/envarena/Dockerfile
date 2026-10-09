@@ -12,7 +12,9 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY core ./core
 COPY runtime ./runtime
-COPY clients ./clients
+COPY clients/cli ./clients/cli
+COPY clients/tui ./clients/tui
+COPY clients/web ./clients/web
 COPY scripts/install.py ./scripts/install.py
 RUN rustc --version && cargo build --locked --release \
     -p areal-cli -p areal-runtime -p areal-runtime-fs -p areal-runtime-exec-native

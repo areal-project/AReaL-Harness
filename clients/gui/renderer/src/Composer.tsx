@@ -8,6 +8,8 @@ import { ComposerPlanMode } from "./ComposerPlanMode.js";
 import { ControlHintTooltip } from "./ControlHintTooltip.js";
 import { Button } from "./components/ui/button.js";
 import { ComposerQueue } from "./ComposerQueue.js";
+import { useComposerQueueEdit } from "./useComposerQueueEdit.js";
+import { ComposerQueueAttachment } from "./ComposerQueueAttachment.js";
 import { AskUserQuestion } from "./AskUserQuestion.js";
 import { ApprovalRequest } from "./ApprovalRequest.js";
 import { GoalCard, goalControlError } from "./Goal.js";
@@ -103,7 +105,10 @@ export function Composer({
     if (hadQuestion.current && !questions.length) api.current?.focus();
     hadQuestion.current = questions.length > 0;
   }, [questions.length]);
-  const disabled = !project.state?.connected || archived || busy || pending || !!unknown || !!reviewDraft.error;
+  const baseDisabled = !project.state?.connected || archived || busy || pending || !!unknown || !!reviewDraft.error;
+  const queueEditor = useComposerQueueEdit({ project, threadId: thread.id, draftKey: key, action, readAction, api, draftFiles: attachmentDrafts,
+    setText, setFiles, setGoalMode, inFlight: busy, setInFlight: active => markSending(key, active), uploadFiles: selected => uploadComposerFiles(action, project.id, thread.id, selected) });
+  const disabled = baseDisabled || queueEditor.busy || queueEditor.locked;
   const stop = () => { void action("stop", { projectId: project.id, threadId: thread.id }).catch(() => {}); };
   const config = project.configurations?.[thread.id];
   const [mcpOpen, setMcpOpen] = useState(false);
@@ -160,6 +165,7 @@ export function Composer({
     if (thread.goals?.goal && goalMode) changeGoalMode(false);
   }, [thread.goals?.goal?.id]);
   const submit = async (value: string, invert = false, approvePlan = false) => {
+    if (queueEditor.edit) { await queueEditor.save(); return; }
     if (disabled || sending.has(key) || (!value.trim() && !files.length && !comments.length && !skills.selected.length)) return;
     if (approvePlan && (!planReady || text.trim() || files.length || comments.length)) return;
     if (creatingGoal && (running || thread.parentThreadId || !value.trim())) return;
@@ -206,6 +212,7 @@ export function Composer({
     }
   };
   const configure = async (values: Data) => {
+    if (queueEditor.edit) return;
     if (disabled || running || sending.has(key)) return;
     markSending(key, true);
     try {
@@ -260,7 +267,7 @@ export function Composer({
           </button>
         </div>
       )}
-      {planReady && <section className="flex items-center justify-between gap-3 px-3 py-2 text-ui-sm" aria-label="计划确认">
+      {planReady && !queueEditor.edit && <section className="flex items-center justify-between gap-3 px-3 py-2 text-ui-sm" aria-label="计划确认">
         <span className="text-foreground-subtle">计划已完成。批准后将以自动编辑模式执行。</span>
         <Button size="sm" disabled={disabled || !!text.trim() || !!files.length || !!comments.length} onClick={() => void submit("按上方已确认的计划执行。", false, true)}>批准并执行</Button>
       </section>}
@@ -271,8 +278,9 @@ export function Composer({
         project={project}
         thread={thread}
         action={action}
-        disabled={disabled}
-        onOpen={() => onPanel("队列")}
+        disabled={baseDisabled || queueEditor.busy}
+        editingId={queueEditor.edit?.id}
+        onEdit={item => void queueEditor.begin(item)}
       />
       {/* Pending decisions stay reachable outside the scrolling transcript. */}
       {(project.state?.interactions?.[thread.id]?.data ?? [])
@@ -293,7 +301,7 @@ export function Composer({
       </div>}
       <ChatPromptEditor
         triggerPanelContainer={menuAnchor}
-        className={questions.length ? "hidden" : undefined}
+        className={questions.length && !queueEditor.edit ? "hidden" : undefined}
         shellClassName="@container/composer"
         workspacePath={project.root}
         taskId={thread.id}
@@ -303,12 +311,12 @@ export function Composer({
         submitTestId="chat-send-button"
         placeholder={archived ? "已归档任务只读" : creatingGoal ? "描述目标，明确可衡量的结果" : planActive ? "描述任务，生成计划…" : "随心输入"}
         disabled={disabled}
-        submitDisabled={disabled || (creatingGoal ? !text.trim() || !!running : !text.trim() && !files.length && !comments.length && !skills.selected.length)}
+        submitDisabled={disabled || (queueEditor.edit ? queueEditor.saveDisabled || (!text.trim() && !files.length && !queueEditor.edit.attachments.length) : creatingGoal ? !text.trim() || !!running : !text.trim() && !files.length && !comments.length && !skills.selected.length)}
         submitting={busy}
-        submitLabel={creatingGoal ? "开始目标" : "发送"}
+        submitLabel={queueEditor.edit ? "保存排队消息" : creatingGoal ? "开始目标" : "发送"}
         enterSubmits={prefs.sendShortcut === "enter"}
         enableMentionPanel={false}
-        composerCatalog={{ ...skills.catalog, entries: [...catalogActions, ...skills.catalog.entries] }}
+        composerCatalog={{ ...skills.catalog, entries: [...catalogActions, ...skills.catalog.entries].map(entry => ({ ...entry, disabled: entry.disabled || (!!queueEditor.edit && !["upload", "files", "mcp"].includes(entry.value)) })) }}
         onChange={(value) => {
           setText(value);
           localStorage.setItem(key, value);
@@ -323,7 +331,18 @@ export function Composer({
         } : undefined}
         onPaste={event => composerPaste(event, pasted => setFiles(current => [...current, ...pasted]))}
         topContent={
-          <>{skills.tags}<ReviewCommentAttachment comments={comments} disabled={disabled} onRemove={() => detachReviewComments(reviewKey)} />
+          <>{queueEditor.edit && <div className="composer-queue-edit-banner" aria-label="编辑排队消息">
+            <span>{queueEditor.edit.phase === "opening" ? "等待确认暂停队列" : "编辑排队消息"}</span>
+            <Button type="button" size="sm" variant="ghost" disabled={queueEditor.busy || !!queueEditor.edit.unknown || pending} onClick={() => void queueEditor.cancel()}>取消</Button>
+            <Button type="button" size="sm" disabled={queueEditor.saveDisabled || (!text.trim() && !files.length && !queueEditor.edit.attachments.length)} onClick={() => void queueEditor.save()}>保存</Button>
+          </div>}
+          {queueEditor.feedback && <p role="alert" className="composer-queue-feedback">{queueEditor.feedback}</p>}
+          {queueEditor.edit?.unknown && <Button type="button" size="sm" disabled={queueEditor.busy || !project.state?.connected} onClick={() => void queueEditor.reconcile()}>核对编辑操作</Button>}
+          {!queueEditor.edit && <>{skills.tags}<ReviewCommentAttachment comments={comments} disabled={disabled} onRemove={() => detachReviewComments(reviewKey)} /></>}
+          {!!queueEditor.edit?.attachments.length && <div className="composer-attachments">
+            {queueEditor.edit.attachments.map((part, index) => <ComposerQueueAttachment key={`${index}:${part.url}`} part={part} projectId={project.id} threadId={thread.id} action={readAction} disabled={disabled}
+              onRemove={() => queueEditor.removeAttachment(index)} />)}
+          </div>}
           {files.length ? (
             <div className="composer-attachments" data-testid="composer-attachments">
               {files.map((file, i) => <ComposerAttachment disabled={disabled} key={`${file.name}-${file.lastModified}-${i}`} file={file}
@@ -344,23 +363,24 @@ export function Composer({
         )}
         leadingActions={
           <><ComposerPermissionMenu value={executionPermission}
-            disabled={disabled || !!running || !config} lockedReadOnly={config?.profile?.readOnly === true}
+            disabled={disabled || !!queueEditor.edit || !!running || !config} lockedReadOnly={config?.profile?.readOnly === true}
             onClose={() => api.current?.focus()}
             onChange={mode => configure({ options: planModeOptions(planActive, permissionOptions(mode, config?.options)) })} />
-          {planActive && <ComposerPlanMode disabled={disabled || !!running || config?.profile?.readOnly === true}
+          {planActive && <ComposerPlanMode disabled={disabled || !!queueEditor.edit || !!running || config?.profile?.readOnly === true}
             onExit={() => { void configure({ options: planModeOptions(false, config?.options) }); }} />}
           {creatingGoal && <div className="flex shrink-0 items-center gap-1">
             <span className="h-4 border-l border-border" aria-hidden="true" />
             <ControlHintTooltip title="退出目标模式">
               <Button type="button" variant="ghost" className="gap-1 rounded-full px-2 text-ui-caption text-foreground-subtle"
-                aria-label="退出目标模式" disabled={disabled} onClick={() => changeGoalMode(false)}>
+                aria-label="退出目标模式" disabled={disabled || !!queueEditor.edit} onClick={() => changeGoalMode(false)}>
                 <Target className="size-4" /><span>目标</span>
               </Button>
             </ControlHintTooltip>
           </div>}</>
         }
-        onCancel={running ? stop : undefined}
-        submitControl={running && !text.trim() && !files.length && !comments.length && !skills.selected.length ? (
+        onCancel={queueEditor.edit ? () => void queueEditor.cancel() : running ? stop : undefined}
+        submitControl={queueEditor.edit ? <Button type="button" size="icon-md" aria-label="保存排队消息" data-testid="chat-send-button" disabled={disabled || queueEditor.saveDisabled || (!text.trim() && !files.length && !queueEditor.edit.attachments.length)}
+          className="composer-primary-action" onClick={() => void queueEditor.save()}><SendMessageIcon className="size-5" /></Button> : running && !text.trim() && !files.length && !comments.length && !skills.selected.length ? (
           <ControlHintTooltip title="停止" shortcut="Esc">
             <Button type="button" variant="secondary" size="icon-md" className="composer-primary-action composer-stop-action" aria-label="停止"
               onClick={() => { stop(); api.current?.focus(); }}>
@@ -379,7 +399,7 @@ export function Composer({
         ) : undefined}
         betweenCancelAndSubmitAction={<ComposerModelMenu
           value={config?.model ? `${config.model.providerId}/${config.model.modelId}` : ""}
-          disabled={disabled || !!running}
+          disabled={disabled || !!queueEditor.edit || !!running}
           effort={config?.parameters?.reasoningEffort ?? ""}
           onEffortChange={value => { void configure({ parameters: { ...config?.parameters, reasoningEffort: value } }); }}
           options={[{ value: "", label: "默认模型", efforts: project.models.find((model: Data) => !model.providerId)?.reasoningEffortOptions }, ...project.models
@@ -415,6 +435,37 @@ export async function submitMessage(
   const comments = attachedReviewComments(readReviewComments(reviewKey));
   const skillContent = await composerSkillContent(options.skillAction ?? action, projectId, threadId, readComposerSkills(`areal-gui:draft:${projectId}:${threadId}`));
   const feedback = [comments.map(reviewCommentText).join("\n\n"), skillContent].filter(Boolean).join("\n\n");
+  const attachments = await uploadComposerFiles(action, projectId, threadId, files);
+  try {
+    await action(options.steer ? "steer" : "send", {
+        projectId,
+        threadId,
+        text: feedback ? (text ? `${text}\n\n${feedback}` : feedback) : text,
+        attachments,
+        expectedTurnId: options.expectedTurnId,
+        enqueue: options.enqueue === true,
+      });
+  } catch (cause) {
+    const error = cause as Error & { submissionUnknown?: boolean; requestId?: string };
+    if (error.submissionUnknown && error.requestId && comments.length) {
+      try { recordUnknownReviewSubmission(reviewKey, error.requestId, comments); }
+      catch { error.message += " 评论提交记录无法保存，原评论已保留。"; }
+    }
+    throw cause;
+  }
+  // Only explicit acceptance consumes the captured records. Unknown submissions
+  // retain their exact IDs until the existing Core receipt is reconciled.
+  consumeReviewComments(reviewKey, comments);
+}
+export function stageThreadDraft(projectId: string, threadId: string, text: string, files: File[]) {
+  const key = `areal-gui:draft:${projectId}:${threadId}`;
+  localStorage.setItem(key, text);
+  attachmentDrafts.set(key, files);
+  return key;
+}
+
+// 发送和队列更新共用上传边界，编辑中现存 Core 引用不经过此函数。
+export async function uploadComposerFiles(action: Action, projectId: string, threadId: string, files: File[]) {
   const attachments = [];
   for (const file of files) {
     let bytes: Uint8Array;
@@ -442,30 +493,5 @@ export async function submitMessage(
       mimeType: media.mimeType,
     });
   }
-  try {
-    await action(options.steer ? "steer" : "send", {
-        projectId,
-        threadId,
-        text: feedback ? (text ? `${text}\n\n${feedback}` : feedback) : text,
-        attachments,
-        expectedTurnId: options.expectedTurnId,
-        enqueue: options.enqueue === true,
-      });
-  } catch (cause) {
-    const error = cause as Error & { submissionUnknown?: boolean; requestId?: string };
-    if (error.submissionUnknown && error.requestId && comments.length) {
-      try { recordUnknownReviewSubmission(reviewKey, error.requestId, comments); }
-      catch { error.message += " 评论提交记录无法保存，原评论已保留。"; }
-    }
-    throw cause;
-  }
-  // Only explicit acceptance consumes the captured records. Unknown submissions
-  // retain their exact IDs until the existing Core receipt is reconciled.
-  consumeReviewComments(reviewKey, comments);
-}
-export function stageThreadDraft(projectId: string, threadId: string, text: string, files: File[]) {
-  const key = `areal-gui:draft:${projectId}:${threadId}`;
-  localStorage.setItem(key, text);
-  attachmentDrafts.set(key, files);
-  return key;
+  return attachments;
 }

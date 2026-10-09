@@ -16145,6 +16145,38 @@
         "input"
       ],
       "type": "object"
+    },
+    "areal/queue/steer": {
+      "additionalProperties": false,
+      "description": "把一个 pending 排队项一次受理到指定活动轮次；不允许客户端拼接 remove/steer。",
+      "properties": {
+        "expectedRevision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "expectedTurnId": {
+          "type": "string"
+        },
+        "queueItemId": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "requestId",
+        "threadId",
+        "expectedRevision",
+        "queueItemId",
+        "expectedTurnId"
+      ],
+      "title": "QueueSteer",
+      "type": "object"
     }
   },
   "responses": {
@@ -60460,6 +60492,31 @@
         }
       },
       "required": [
+        "turnId"
+      ],
+      "type": "object"
+    },
+    "areal/queue/steer": {
+      "additionalProperties": true,
+      "properties": {
+        "itemId": {
+          "type": "string"
+        },
+        "queueItemId": {
+          "type": "string"
+        },
+        "queueRevision": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "turnId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "itemId",
+        "queueItemId",
+        "queueRevision",
         "turnId"
       ],
       "type": "object"

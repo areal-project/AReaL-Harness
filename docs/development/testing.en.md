@@ -80,9 +80,13 @@ Outer-container relaxations apply only to the explicitly selected controlled pro
 
 ## CI and contracts
 
+macOS and Linux host checks share one matrix definition. `fail-fast: false` ensures a failure on one platform does not cancel coverage on the other. macOS uses `make setup-node` for native smoke and SDK Node dependencies; Linux `make setup` continues to install all locked formatting tools. Native validation runs Runtime, Harness, desktop API and Workgroup smoke in one child Make invocation, sharing one workspace build. Docker copies only the required CLI/TUI/Web clients and excludes GUI from its build context. All existing checks and tests remain.
+
+`harness-smoke.mjs` checks root/nested `AGENTS.md` ordering, unrelated-directory isolation, missing files, per-Turn refresh, the 32 KiB boundary, UTF-8 and symlink rejection through real Core/Runtime model requests.
+
 [CI](../../.github/workflows/ci.yml) runs native Harness checks on macOS, portable regression and Docker sandbox/file-ownership checks on Linux, and separate Rust/npm advisory checks. Actions are pinned by commit, repository permissions are read-only, and failures retain logs. Consult the run for the relevant commit for actual results.
 
-Pull requests, pushes to `main`, and manual dispatch run the full checks, avoiding duplicate push and PR runs for feature branches. Linux portable and container checks run in parallel, and formatting, static analysis, Rust/SDK/script checks inside the portable regression run in parallel as well. The existing `Linux checks and container Runtime` check remains as an aggregate gate that requires both jobs to succeed. macOS runs `make verify-native` for native backend and Harness integration coverage that Linux does not provide.
+Pull requests, pushes to `main`, and manual dispatch run the full checks, avoiding duplicate push and PR runs for feature branches. Linux portable and container checks run in parallel, with formatting, SDK and script checks in parallel inside portable regression, followed by static analysis, Rust tests and TUI smoke. The existing `Linux checks and container Runtime` check remains as an aggregate gate that requires both the host matrix and the container job to succeed. macOS runs `make verify-native` for native backend and Harness integration coverage that Linux does not provide.
 
 Host jobs cache Cargo dependency artifacts, npm downloads and uv packages; container tests also reuse the Runtime image build layers through BuildKit's GitHub Actions cache. Cache hits still execute tests. Rust caches are separated by platform, toolchain and dependency manifests. CI disables debug symbols and incremental compilation to reduce artifact size. Only the pinned `cargo-audit` binary is cached; every run still reads advisories and audits the lockfile.
 

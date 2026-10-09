@@ -34,7 +34,7 @@ const scopeItems = [
   ["branch", "分支比较"],
   ["task", "任务工作区更改"],
 ].map(([value, label]) => ({ value, label }));
-type TurnReviewRequest = { turnId: string };
+type TurnReviewRequest = { turnId: string; scope?: never } | { scope: "unstaged"; turnId?: never };
 const views = new Map<string, { selectedTurnId?: string; request?: TurnReviewRequest; scope: string; ref: string; activePath: string | null; fileExpansion: Map<string, boolean>; expandedAll: boolean; treeQuery: string; treeCollapsed: string[]; scrollTop: number }>();
 type CommitChoice = { id: string; subject: string; committedAt: number };
 type BranchChoice = { ref: string; name: string; id: string };
@@ -193,7 +193,7 @@ export function GitPane({
   useLayoutEffect(() => {
     if (!reviewRequest || handledRequest.current === reviewRequest) return;
     handledRequest.current = reviewRequest;
-    setSelectedTurnId(reviewRequest.turnId); setScope("turn");
+    setSelectedTurnId(reviewRequest.turnId); setScope(reviewRequest.scope ?? "turn");
     setSelection(undefined); setTreeQuery(""); setActivePath(null);
     setFileExpansion(new Map()); setExpandedAll(false); resetReading();
   }, [reviewRequest]);

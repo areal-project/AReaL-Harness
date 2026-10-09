@@ -1,6 +1,7 @@
 // Adapted from ZCode ToolSummaryRow / ToolLayout; Codex reference guides presentation.
 // Core owns all outcomes.
 import { useEffect, useId, useState } from "react";
+import { AgentAvatar, agentName, spawnedAgent } from "./AgentIdentity.js";
 import { ActivityIcon } from "./ActivityIcon.js";
 import { toolPresentation } from "./conversationPresentation.js";
 import { CommandDetails } from "./CommandDetails.js";
@@ -10,9 +11,9 @@ import { verifiedFileReceipts } from "./TurnFileSummary.js";
 import { DiffViewer } from "./components/ui/diff-viewer.js";
 import { MessageActions } from "./MessageActions.js";
 import type { Data } from "./services.js";
-export function ToolEvent({ item, onFile, turnId, readTurnReview, animate = false, onDisclosureChange }: {
+export function ToolEvent({ item, onFile, onAgent, turnId, readTurnReview, animate = false, onDisclosureChange }: {
   animate?: boolean; onDisclosureChange?: (open: boolean) => void;
-  item: Data; onFile?: (path: string) => void; turnId?: string;
+  item: Data; onAgent?: (id: string) => void; onFile?: (path: string) => void; turnId?: string;
   readTurnReview?: (turnId: string, itemId?: string) => Promise<Data>;
 }) {
   const [open, setOpen] = useState(false);
@@ -22,6 +23,7 @@ export function ToolEvent({ item, onFile, turnId, readTurnReview, animate = fals
   const recordId = useId();
   const diffId = useId();
   const view = toolPresentation(item);
+  const childId = onAgent && spawnedAgent(item);
   const isCommand = ["run_command", "verify_command", "read_process", "terminate_process"].includes(item.tool);
   const file = onFile && !view.failed && !view.running ? verifiedFileReceipts([item]).values().next().value : undefined;
   const readOnly = item.tool === "fs_read";
@@ -42,7 +44,10 @@ export function ToolEvent({ item, onFile, turnId, readTurnReview, animate = fals
   const current = review?.itemId === item.id ? review : undefined;
   return (
     <div className="tool-event" data-tool-id={item.id} data-tool-status={view.status}>
-      {file ? <div className="tool-summary-row tool-file-row">
+      {childId ? <div className="agent-spawn-row">
+        <button type="button" className="agent-spawn-link" aria-label={`打开 ${childId} 子对话`} title={agentName(childId)} onClick={() => onAgent?.(childId)}><AgentAvatar id={childId} size={14} /><span>已创建 1 个智能体</span></button>
+        <button type="button" className="agent-spawn-record" aria-label="查看工具原始记录" aria-expanded={open} aria-controls={recordId} onClick={toggle}><ActivityIcon kind="chevron" size={14} className={open ? "tool-chevron open" : "tool-chevron"} /></button>
+      </div> : file ? <div className="tool-summary-row tool-file-row">
         <ActivityIcon kind={readOnly ? "read" : "edit"} />
         <span>{readOnly ? "已读取" : item.tool === "fs_create" ? "已创建" : "已编辑"}</span>
         <Button variant="ghost" className="tool-file-link" aria-label={`打开 ${file.path}`} title={file.path} onClick={() => onFile?.(file.path)}>{file.path.split("/").at(-1)}</Button>

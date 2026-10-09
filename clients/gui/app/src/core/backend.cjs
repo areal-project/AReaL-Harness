@@ -2,6 +2,7 @@
 
 const { connectService, stopService } = require('./local-service.cjs');
 const { randomUUID, createHash } = require('node:crypto');
+const { isDeepStrictEqual } = require('node:util');
 const { mkdir, readFile, writeFile, rename, realpath, rm } = require('node:fs/promises');
 const { join, isAbsolute } = require('node:path');
 const WebSocket = require('ws');
@@ -123,6 +124,8 @@ class CoreBackend {
   start(id) {
     if (this.closing) return Promise.reject(new Error('应用正在退出'));
     if (this.starting.has(id)) return this.starting.get(id);
+    const project = this.projects.get(id);
+    if (project) { clearTimeout(project.reconnectTimer); project.reconnectTimer = null; project.reconnectBlocked = false; }
     const task = this.startProject(id).finally(() => this.starting.delete(id));
     this.starting.set(id, task);
     return task;
@@ -203,16 +206,71 @@ class CoreBackend {
     await this.resources.worktrees.apply(project);
   }
 
-  async connect(project) {
+  currentConnection(project, client) {
+    return !this.closing && !!client && project.client === client && !client.closed;
+  }
+
+  requireConnection(project, client) {
+    if (!this.currentConnection(project, client)) throw Object.assign(new Error('连接已换代，请等待状态恢复后重试'), { code: 'STALE_CONNECTION' });
+  }
+
+  scheduleReconnect(project) {
+    if (this.closing || project.resourceInitializing || !project.service || project.reconnectBlocked || project.reconnectTimer || project.client?.ready) return;
+    const delay = Math.min(500 * 2 ** Math.min(project.reconnectAttempt ?? 0, 6), 30000);
+    project.reconnectTimer = setTimeout(() => {
+      project.reconnectTimer = null;
+      if (this.closing || !project.service || project.reconnectBlocked || project.client?.ready) return;
+      if (this.providerUpdating || this.resourcesUpdating || this.starting.has(project.id)) { this.scheduleReconnect(project); return; }
+      const task = this.reconnectProject(project).catch(error => {
+        if (!this.closing) {
+          project.reconnectBlocked = ['CORE_STOPPED', 'CORE_INCOMPATIBLE'].includes(error.code);
+          project.reconnectAttempt = (project.reconnectAttempt ?? 0) + 1;
+          project.client?.close();
+          project.error = this.providers.redact(error.message);
+          project.model.connection(false, project.error);
+        }
+        throw error;
+      }).finally(() => {
+        if (this.starting.get(project.id) === task) this.starting.delete(project.id);
+        this.scheduleReconnect(project);
+      });
+      this.starting.set(project.id, task);
+      // 用户操作可以加入同一恢复任务；无订阅者的被动失败也必须被接收。
+      void task.catch(() => {});
+    }, delay);
+    project.reconnectTimer.unref();
+  }
+
+  async reconnectProject(project) {
+    const previous = project.service;
+    // 被动恢复只发现已运行实例；不能用 ensure 启动、升级或复活已停止的 Core。
+    const { descriptor, token } = await connectService(this, 'status', ['--instance', previous.serviceId],
+      this.hooks.environment(), project, previous.dataDir);
+    if (this.closing || project.service !== previous) throw Object.assign(new Error('服务归属已变化'), { code: 'STALE_CONNECTION' });
+    if (descriptor.serviceId !== previous.serviceId || descriptor.configFingerprint !== previous.configFingerprint) {
+      throw Object.assign(new Error('Core 部署配置已变化，请显式重新连接'), { code: 'CORE_INCOMPATIBLE' });
+    }
+    project.service = descriptor; project.endpoint = descriptor.endpoint; project.token = token;
+    await this.connect(project, { observeOnly: true });
+    await this.reconcile(project, { observeOnly: true });
+    project.reconnectAttempt = 0;
+    return project;
+  }
+
+  async connect(project, { observeOnly = false } = {}) {
     const { CoreClient } = await import('@areal/runtime-client/core');
+    if (this.closing) throw new Error('应用正在退出');
     project.taskNotificationMonitor?.stop();
-    project.client?.close();
+    const previous = project.client;
+    project.client = null;
+    previous?.close();
     project.summariesLoaded = false;
     const client = new CoreClient({ createSocket: () => new WebSocket(project.endpoint, {
       headers: { Authorization: `Bearer ${project.token}` }, followRedirects: false, maxPayload: 4 * 1024 * 1024,
     }) });
     project.client = client;
     client.onNotification((method, params) => {
+      if (!this.currentConnection(project, client)) return;
       if (method === 'areal/thread/configured' && params?.threadId && params.configuration) {
         project.configurations ??= {};
         project.configurations[params.threadId] = params.configuration;
@@ -231,30 +289,44 @@ class CoreBackend {
         void this.listThreads(project).catch(() => {});
       }
     });
-    client.onClose(() => { if (project.client === client) { project.taskNotificationMonitor?.stop(); project.model.connection(false, '连接中断，请重新连接以恢复任务状态'); } });
+    client.onClose(() => { if (project.client === client) {
+      project.taskNotificationMonitor?.stop();
+      project.model.connection(false, '连接中断，正在恢复任务状态');
+      this.scheduleReconnect(project);
+    } });
     await client.connect();
+    this.requireConnection(project, client);
     project.error = null;
-    project.model.connection(true);
     project.configurations ??= {};
     project.configurationChanges ??= new Map();
-    await this.providers.sync(project);
-    await this.resources.syncMcp(project);
+    if (!observeOnly) {
+      await this.providers.sync(project);
+      this.requireConnection(project, client);
+      await this.resources.syncMcp(project);
+      this.requireConnection(project, client);
+    }
     const [models, profiles] = await Promise.all([
       client.request('areal/model/list'), client.request('areal/profile/list'),
     ]);
+    this.requireConnection(project, client);
     project.models = models.data ?? models.models ?? [];
     project.profiles = profiles.data ?? profiles.profiles ?? [];
     await this.listThreads(project);
-    void this.analytics.syncProject(project);
+    if (!observeOnly) void this.analytics.syncProject(project);
     // 重连恢复所有已打开的任务，快照在 socket 消息分派栈内替换。
     for (const threadId of Object.keys(project.model.state.threads)) await this.openThread(project, threadId);
     for (const taskId of new Set(project.taskViews?.values() ?? [])) {
-      await client.request('areal/task/subscribe', { taskId }, { onResult: task => project.model.setTask(task) });
+      await client.request('areal/task/subscribe', { taskId }, { onResult: task => {
+        if (this.currentConnection(project, client)) project.model.setTask(task);
+      } });
+      this.requireConnection(project, client);
     }
     project.taskNotificationMonitor = new TaskNotificationMonitor(client, project.id,
-      notice => this.onNotification?.(notice), error => console.warn(this.providers.redact(`任务通知读取失败：${error.message}`)),
-      tasks => { for (const task of tasks) project.model.setTask(task); });
+      notice => { if (this.currentConnection(project, client)) this.onNotification?.(notice); }, error => console.warn(this.providers.redact(`任务通知读取失败：${error.message}`)),
+      tasks => { if (this.currentConnection(project, client)) for (const task of tasks) project.model.setTask(task); });
     await project.taskNotificationMonitor.start();
+    this.requireConnection(project, client);
+    project.model.connection(true);
     this.onChange();
   }
 
@@ -263,7 +335,7 @@ class CoreBackend {
     // Lifecycle refreshes and explicit reads can overlap. Serialize complete
     // reads so an earlier snapshot cannot overwrite a later navigation cache.
     const task = (project.summaryReads ?? Promise.resolve()).catch(() => {}).then(async () => {
-      if (project.client !== client) return project.summaries;
+      if (!this.currentConnection(project, client)) return project.summaries;
       const data = [];
       let cursor;
       do {
@@ -271,9 +343,9 @@ class CoreBackend {
         data.push(...page.data.filter(thread => !isTaskDraftConfiguration(thread.desktop?.configuration)));
         cursor = page.nextCursor;
       } while (cursor);
-      if (project.client !== client) return project.summaries;
+      if (!this.currentConnection(project, client)) return project.summaries;
       await this.library.recordThreadSummaries(project.id, data);
-      if (project.client !== client) return project.summaries;
+      if (!this.currentConnection(project, client)) return project.summaries;
       project.summaries = data;
       project.summariesLoaded = true;
       this.onChange();
@@ -284,16 +356,19 @@ class CoreBackend {
   }
 
   async openThread(project, threadId) {
+    const client = project.client;
     if ((project.summaries ?? []).find(item => item.id === threadId)?.desktop?.archived || project.model.state?.threads?.[threadId]?.desktop?.archived) {
-      const result = await project.client.request('thread/read', { threadId, includeTurns: true });
+      const result = await client.request('thread/read', { threadId, includeTurns: true });
+      this.requireConnection(project, client);
       project.model.replace(result.thread);
       project.configurations[threadId] = result.thread.desktop.configuration;
       this.onChange();
       return;
     }
-    const resumed = await project.client.request('thread/resume', { threadId }, {
-      onResult: result => project.model.replace(result.thread),
+    const resumed = await client.request('thread/resume', { threadId }, {
+      onResult: result => { if (this.currentConnection(project, client)) project.model.replace(result.thread); },
     });
+    this.requireConnection(project, client);
     if (resumed.thread?.desktop?.archived) {
       project.configurations[threadId] = resumed.thread.desktop.configuration;
       project.model.setQueue(threadId, resumed.thread.desktop.queue);
@@ -302,8 +377,8 @@ class CoreBackend {
       return;
     }
     await Promise.all([
-      project.client.request('areal/interaction/list', { threadId }, {
-        onResult: result => project.model.setInteractions(threadId, result),
+      client.request('areal/interaction/list', { threadId }, {
+        onResult: result => { if (this.currentConnection(project, client)) project.model.setInteractions(threadId, result); },
       }),
       this.refreshConfiguration(project, threadId),
       this.refreshQueue(project, threadId),
@@ -311,21 +386,34 @@ class CoreBackend {
   }
 
   async refreshQueue(project, threadId) {
-    return project.client.request('areal/queue/list', { threadId }, {
-      onResult: queue => project.model.setQueue(threadId, queue),
+    const client = project.client;
+    return client.request('areal/queue/list', { threadId }, {
+      onResult: queue => { if (this.currentConnection(project, client)) project.model.setQueue(threadId, queue); },
     });
   }
 
   async editQueue(project, request) {
     const { threadId, operation, expectedRevision } = request;
-    if (!['update', 'remove', 'reorder', 'pause', 'resume'].includes(operation)
+    if (!['update', 'remove', 'reorder', 'pause', 'resume', 'steer'].includes(operation)
       || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new Error('无效队列操作');
     const params = { threadId, expectedRevision };
-    if (operation === 'update' || operation === 'remove') {
+    if (operation === 'update' || operation === 'remove' || operation === 'steer') {
       if (typeof request.queueItemId !== 'string' || !request.queueItemId) throw new Error('缺少排队消息');
       params.queueItemId = request.queueItemId;
     }
-    if (operation === 'update') params.input = this.textInput(request.text);
+    if (operation === 'update') {
+      const retained = request.retainedInput ?? [];
+      const original = project.model.state.queues[threadId]?.items.find(item => item.id === request.queueItemId);
+      if (!Array.isArray(retained) || retained.length > 16 || retained.some(part => part.type === 'text'
+        || !original?.input.some(input => isDeepStrictEqual(input, part)))) throw new Error('排队附件引用已变化，请核对原消息');
+      const changed = request.text?.trim() || request.attachments?.length ? messageInput(this, request) : [];
+      params.input = [...changed.filter(part => part.type === 'text'), ...retained, ...changed.filter(part => part.type !== 'text')];
+      if (!params.input.length || params.input.filter(part => part.type !== 'text').length > 16) throw new Error('排队消息不能为空，且最多 16 个附件');
+    }
+    if (operation === 'steer') {
+      if (typeof request.expectedTurnId !== 'string' || !request.expectedTurnId) throw new Error('缺少目标活动轮次');
+      params.expectedTurnId = request.expectedTurnId;
+    }
     if (operation === 'reorder') {
       if (!Array.isArray(request.queueItemIds) || request.queueItemIds.length > 128
         || request.queueItemIds.some(id => typeof id !== 'string')
@@ -333,8 +421,13 @@ class CoreBackend {
       params.queueItemIds = request.queueItemIds;
     }
     try {
-      const queue = await this.submit(project, `areal/queue/${operation}`, params);
-      project.model.setQueue(threadId, queue);
+      const result = await this.submit(project, `areal/queue/${operation}`, params, { requestId: request.requestId });
+      if (operation === 'steer') {
+        // 转移收据只保存绑定 ID 和版本，不把完整队列复制到每张收据。
+        await this.refreshQueue(project, threadId).catch(() => {});
+      } else project.model.setQueue(threadId, result);
+      this.onChange();
+      return result;
     } catch (error) {
       // 冲突只刷新展示，不用新 revision 重放用户的旧操作。
       await this.refreshQueue(project, threadId).catch(() => {});
@@ -348,7 +441,9 @@ class CoreBackend {
   }
 
   async refreshConfiguration(project, threadId) {
-    const result = await project.client.request('areal/thread/inspect', { threadId });
+    const client = project.client;
+    const result = await client.request('areal/thread/inspect', { threadId });
+    this.requireConnection(project, client);
     if (!result?.configuration || !Number.isSafeInteger(result.configuration.revision)) {
       throw new Error('Core 未返回有效的会话配置，请重新打开任务');
     }
@@ -397,13 +492,14 @@ class CoreBackend {
       this.awaitingResponses.add(entry);
       await this.changePending(project, pending => [...pending, entry]);
       if (this.closing) throw new Error('应用正在退出');
-      const configuration = await project.client.request('areal/thread/configure', params);
+      const client = project.client;
+      const configuration = await client.request('areal/thread/configure', params);
       try {
         await this.changePending(project, pending => pending.filter(value => value !== entry));
       } catch {
         throw Object.assign(new Error('Core 已保存配置，但本机恢复日志更新失败；请核对当前配置'), { submissionUnknown: true });
       }
-      project.configurations[threadId] = configuration;
+      if (this.currentConnection(project, client)) project.configurations[threadId] = configuration;
       this.onChange();
     } catch (error) {
       if (entry && !error.submissionUnknown) {
@@ -500,7 +596,7 @@ class CoreBackend {
   }
 
   async submit(project, method, parameters, { requestId } = {}) {
-    if (requestId !== undefined && (!(workgroupMutationMethods.has(method) || taskMutationMethods.has(method) || ['areal/agent/spawn', 'areal/process/start', 'areal/thread/start'].includes(method)) || typeof requestId !== 'string' || !/^[0-9a-f-]{36}$/.test(requestId))) throw new Error('无效请求标识');
+    if (requestId !== undefined && (!(workgroupMutationMethods.has(method) || taskMutationMethods.has(method) || ['areal/agent/spawn', 'areal/process/start', 'areal/thread/start', ...['update','remove','reorder','pause','resume','steer'].map(name => `areal/queue/${name}`)].includes(method)) || typeof requestId !== 'string' || !/^[0-9a-f-]{36}$/.test(requestId))) throw new Error('无效请求标识');
     const params = { ...parameters, requestId: requestId ?? randomUUID() };
     const entry = { method, params };
     // 活跃请求仅保存在内存；重启后仍在恢复日志中的请求应显示为结果未知。
@@ -617,8 +713,10 @@ class CoreBackend {
     }
   }
 
-  async reconcile(project) {
+  async reconcile(project, { observeOnly = false } = {}) {
+    const client = project.client;
     for (const entry of [...project.pending]) {
+      this.requireConnection(project, client);
       if (this.awaitingResponses.has(entry)) continue;
       if (workgroupMutationMethods.has(entry.method)) { await this.recoverWorkgroupSubmission(project, entry.params.requestId); continue; }
       if (entry.method === 'areal/agent/spawn') { await this.recoverAgentSubmission(project, entry.params.parentThreadId, entry.params.requestId); continue; }
@@ -635,14 +733,15 @@ class CoreBackend {
         continue; // 没有收据的追加只核对原轮次，不重放。
       }
       if (entry.localOnly) {
-        await this.reconcileConfiguration(project, entry);
+        if (!observeOnly) await this.reconcileConfiguration(project, entry);
         continue;
       }
-      const result = await project.client.request('areal/request/read', {
+      const result = await client.request('areal/request/read', {
         requestId: entry.params.requestId,
         // 管理命令的收据属于部署日志；带 threadId 只会查询 Turn 收据。
         ...(entry.params.threadId && !managementMethods.has(entry.method) ? { threadId: entry.params.threadId } : {}),
       });
+      this.requireConnection(project, client);
       const management = managementMethods.has(entry.method);
       const receiptMethod = entry.method.startsWith('areal/process/') && entry.method !== 'areal/process/start' ? 'areal/process/control' : entry.method;
       const receipt = result.data.find(item => item.method === receiptMethod && (management
@@ -655,11 +754,22 @@ class CoreBackend {
       if (['areal/thread/start', 'areal/turn/start', 'turn/start', 'areal/turn/enqueue'].includes(entry.method)) {
         await this.changeOutcomes(project, outcomes => ({ ...outcomes, [entry.params.requestId]: { accepted: true, threadId: entry.params.threadId ?? receipt.threadId ?? receipt.result?.thread?.id } }));
       }
+      if (entry.method.startsWith('areal/queue/')) {
+        await this.changeOutcomes(project, outcomes => ({ ...outcomes, [entry.params.requestId]: {
+          accepted: !receipt.response?.error, threadId: entry.params.threadId, method: entry.method,
+          result: management ? receipt.response.result : receipt.result,
+          message: receipt.response?.error?.message,
+        } }));
+      }
       const threadId = entry.params.threadId ?? receipt.threadId ?? receipt.result?.thread?.id;
       if (entry.method === 'areal/thread/archive') await this.listThreads(project);
       if (threadId) await this.openThread(project, threadId);
       await this.changePending(project, pending => pending.filter(value => value !== entry));
-      if (entry.method.startsWith('areal/provider/')) project.models = (await project.client.request('areal/model/list')).data ?? [];
+      if (entry.method.startsWith('areal/provider/')) {
+        const models = await client.request('areal/model/list');
+        this.requireConnection(project, client);
+        project.models = models.data ?? [];
+      }
       if (management && receipt.response.error) throw new Error(`操作未成功：${receipt.response.error.message}`);
     }
     await this.listThreads(project);
@@ -745,8 +855,18 @@ class CoreBackend {
       case 'list': await this.listThreads(project); break;
       case 'open': await this.openThread(project, threadId); break;
       case 'configure': await this.configureThread(project, threadId, request); break;
-      case 'queue': await this.refreshQueue(project, threadId); break;
-      case 'queueEdit': await this.editQueue(project, request); break;
+      case 'queue': {
+        if (!request.requestId) return this.refreshQueue(project, threadId);
+        if (typeof request.requestId !== 'string' || !/^[0-9a-f-]{36}$/.test(request.requestId)
+          || !['update','remove','reorder','pause','resume','steer'].includes(request.operation)) throw new Error('无效队列收据查询');
+        const method = `areal/queue/${request.operation}`;
+        const records = await project.client.request('areal/request/read', { requestId: request.requestId, ...(request.operation === 'steer' ? { threadId } : {}) });
+        const receipt = records.data.find(record => record.method === method);
+        if (receipt?.result) return { confirmed: true, accepted: true, result: receipt.result };
+        if (receipt?.state === 'completed' && receipt.response) return { confirmed: true, accepted: !receipt.response.error, result: receipt.response.result, message: receipt.response.error?.message };
+        return { confirmed: false };
+      }
+      case 'queueEdit': return this.editQueue(project, request);
       case 'create': {
         await this.resources.beforeCreate(project);
         const { thread } = await this.submit(project, 'areal/thread/start', { cwd: project.root,
@@ -792,7 +912,7 @@ class CoreBackend {
         }
         break;
       }
-      case 'reconcile': await this.reconcile(project); break;
+      case 'reconcile': await this.reconcile(project); return { outcomes: project.outcomes };
       default: throw new Error('不支持的操作');
     }
     return this.snapshot();
@@ -830,9 +950,11 @@ class CoreBackend {
   async disconnect() {
     this.closing = true;
     for (const project of this.projects.values()) {
+      clearTimeout(project.reconnectTimer); project.reconnectTimer = null;
       project.taskNotificationMonitor?.stop();
       project.client?.close();
     }
+    await Promise.allSettled([...this.starting.values()]);
     await Promise.allSettled([...this.projects.values()].map(project => project.summaryReads));
     await this.providers.close();
     await this.analytics.flush();

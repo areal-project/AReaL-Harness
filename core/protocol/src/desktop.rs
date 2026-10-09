@@ -323,6 +323,16 @@ pub struct TurnStart {
     pub input: Vec<Input>,
     pub expected_config_revision: Option<u64>,
 }
+/// 把一个 pending 排队项一次受理到指定活动轮次；不允许客户端拼接 remove/steer。
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct QueueSteer {
+    pub request_id: String,
+    pub thread_id: String,
+    pub expected_revision: u64,
+    pub queue_item_id: String,
+    pub expected_turn_id: String,
+}
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConfigureThread {

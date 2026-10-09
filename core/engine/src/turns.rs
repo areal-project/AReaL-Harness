@@ -270,6 +270,23 @@ impl Engine {
     ) -> Result<()> {
         let cell = self.cell(thread_id).await?;
         let mut state = cell.state.lock().await;
+        let (candidate, item, permit) = self.prepare_steer(&state, turn_id, input)?;
+        self.persist(&candidate).await?;
+        state.thread = candidate;
+        emit_item(&cell, "item/started", thread_id, turn_id, &item);
+        emit_item(&cell, "item/completed", thread_id, turn_id, &item);
+        self.goal_emit(&cell, &state.thread);
+        permit.send(settle_request);
+        Ok(())
+    }
+
+    // 通道容量、附件和历史上限在持有同一 Thread 锁时校验，供普通引导与队列转移共用。
+    pub(crate) fn prepare_steer(
+        &self,
+        state: &State,
+        turn_id: &str,
+        input: Vec<Input>,
+    ) -> Result<(Thread, Item, tokio::sync::mpsc::OwnedPermit<bool>)> {
         let active = state
             .active
             .as_ref()
@@ -309,13 +326,7 @@ impl Engine {
         {
             return Err(Error::Exhausted("session history limit reached".into()));
         }
-        self.persist(&candidate).await?;
-        state.thread = candidate;
-        emit_item(&cell, "item/started", thread_id, turn_id, &item);
-        emit_item(&cell, "item/completed", thread_id, turn_id, &item);
-        self.goal_emit(&cell, &state.thread);
-        permit.send(settle_request);
-        Ok(())
+        Ok((candidate, item, permit))
     }
 
     pub async fn interrupt(&self, thread_id: &str, turn_id: &str) -> Result<()> {
@@ -707,12 +718,9 @@ impl Engine {
         }
         let final_turn = state.thread.turns.last().unwrap().clone();
         if let Some(data) = &mut state.thread.desktop {
-            if let Some(item) = data
-                .queue
-                .items
-                .iter_mut()
-                .find(|item| item.turn_id.as_deref() == Some(&final_turn.id))
-            {
+            if let Some(item) = data.queue.items.iter_mut().find(|item| {
+                item.status == "running" && item.turn_id.as_deref() == Some(&final_turn.id)
+            }) {
                 item.status = match final_turn.status {
                     TurnStatus::Completed => "completed",
                     TurnStatus::Interrupted => "cancelled",

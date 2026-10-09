@@ -328,3 +328,5 @@ checkpoint 恢复最多保留 8 组接口导向文件片段，序列化内容总
 `ModelCapabilities` 和 `ModelOptions` 增加可选窗口/输出元数据；自定义 Rust 结构体字面量需补齐新字段或使用默认值。客户端协议中的 `ModelParameters.contextWindowTokens` 为新增可选字段。
 
 CLI 保持 `--input-file` 的 2 MiB 上限，以有界读取在 JSON 解析前校验；可用 `--input-error-file` 写入不含正文的结构化拒绝 `INPUT_ENVELOPE_TOO_LARGE`。Arena Runner 将该原因及公开输入准备失败 `PUBLIC_INPUT_NOT_ACCESSIBLE` 投影到既有 outcome，不再统一报告缺少 Core Turn。媒体工具失败仍是可恢复工具结果，解码失败 details.reason 为 `MEDIA_PREPROCESS_FAILED`，不伪造一次终止 Turn。
+
+项目指令由 Engine 在每个 Turn 首次模型请求前加载，并保存为 `instructionSnapshot`。按工作区根到 Thread `cwd` 的目录链读取 `AGENTS.md`，来源路径随正文写入快照；不新增 API 字段，已有仅根文件项目保持兼容。正文合计超过 32 KiB、无效 UTF-8、符号链接或超过 64 层的目录链使 Turn 在请求模型前失败，不截断规则。作用域、优先级与 cwd 路径别名见[客户端指南](../guides/clients.md#历史恢复与观测)。

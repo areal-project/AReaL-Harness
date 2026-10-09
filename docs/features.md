@@ -6,6 +6,7 @@
 
 | 能力 | 实现与入口 |
 |---|---|
+| 项目规则 | 按工作区根到会话 cwd 加载 `AGENTS.md`，子目录优先、每 Turn 刷新、有界且经 Runtime 读取。[客户端](guides/clients.md) |
 | 会话与模型 | 持久 Thread/Turn、流式正文、Chat Completions 思考与 Responses 思考摘要/文本事件、追加输入、取消、恢复；Chat Completions / Responses，模态取决于 adapter 和模型。[客户端](guides/clients.md) |
 | 文件与进程 | 条件文件写入、命令、stdin、PTY、有界输出、Scope 权限收窄及清理。[Runtime](api/runtime.md) |
 | 工具结果 | 内置固定版本 rg、历史结果原文分页回取；可配置的搜索分组与精确重复行视图，默认 observe。[工具](guides/tools.md) |

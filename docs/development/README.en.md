@@ -63,3 +63,5 @@ See the [release workflow](releasing.en.md) for Homebrew/Linux artifacts, instal
 ## Desktop GUI
 
 The GUI uses a separate pnpm 11.7.0 workspace. Run `make gui-install`, `make gui-build`, and `make gui-smoke`; see the [GUI guide](../../clients/gui/README.en.md) for launch, packaging and isolation.
+
+`make setup-node` installs only locked Node development dependencies for native CI that does not run formatting checks; use `make setup` for full local development.

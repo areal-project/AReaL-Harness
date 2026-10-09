@@ -80,9 +80,13 @@ done
 
 ## CI 与契约
 
+macOS 与 Linux 宿主检查使用同一矩阵定义，`fail-fast: false` 保证任一平台失败不取消另一平台的覆盖。macOS 使用 `make setup-node`，仅安装原生 smoke 和 SDK 所需的 Node 依赖；Linux `make setup` 继续安装全部锁定格式工具。原生验收在同一次子 Make 调用中运行 Runtime、Harness、桌面 API 和 Workgroup smoke，共用一次 workspace build。Docker 只复制所需 CLI/TUI/Web 客户端，GUI 不进入构建上下文。所有原有检查与测试保留。
+
+`harness-smoke.mjs` 通过真实 Core/Runtime 和模型请求检查根/嵌套 `AGENTS.md` 的顺序、无关目录隔离、缺失文件、跨 Turn 刷新、32 KiB 边界、UTF-8 和符号链接拒绝。
+
 [CI](../../.github/workflows/ci.yml) 在 macOS 执行原生 Harness，在 Linux 执行常规回归和 Docker sandbox/文件所有权检查，独立检查 Rust/npm 依赖公告。工作流固定 action commit、使用只读权限并保留失败日志；是否通过以对应提交的运行结果为准。
 
-PR、`main` 推送和手动触发运行完整检查，避免同一功能分支的 push 与 PR 重复运行。Linux 常规回归与容器检查并行，常规回归内部的格式、静态检查、Rust/SDK/脚本检查也并行；原 `Linux checks and container Runtime` 检查名保留为汇总门禁，两项均成功才通过。macOS 运行 `make verify-native`，只补充 Linux 不覆盖的原生后端和 Harness 集成 smoke。
+PR、`main` 推送和手动触发运行完整检查，避免同一功能分支的 push 与 PR 重复运行。Linux 常规回归与容器检查并行，常规回归内部的格式、SDK 与脚本检查并行，随后顺序执行静态检查、Rust 测试与 TUI smoke；原 `Linux checks and container Runtime` 检查名保留为汇总门禁，宿主矩阵与容器任务均成功才通过。macOS 运行 `make verify-native`，只补充 Linux 不覆盖的原生后端和 Harness 集成 smoke。
 
 宿主缓存 Cargo 依赖产物、npm 下载和 uv 包；容器测试同时复用 Runtime 镜像构建层，Docker 使用 BuildKit 的 GitHub Actions 层缓存。缓存命中仍执行测试。Rust 缓存按平台、工具链与依赖清单区分，CI 关闭调试符号和增量编译以缩小构建产物。`cargo-audit` 只缓存固定版本工具，每次仍读取公告并审计锁文件。
 

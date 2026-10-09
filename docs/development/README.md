@@ -63,3 +63,5 @@ Homebrew/Linux 发行产物、安装验收与 draft 发布流程见[发行流程
 ## 桌面 GUI
 
 GUI 使用独立 pnpm 11.7.0 workspace。运行 `make gui-install`、`make gui-build`、`make gui-smoke`；启动、打包与隔离配置见 [GUI 指南](../../clients/gui/README.md)。
+
+`make setup-node` 仅安装锁定的 Node 开发依赖，供不运行格式检查的原生 CI 使用；本地完整开发仍使用 `make setup`。

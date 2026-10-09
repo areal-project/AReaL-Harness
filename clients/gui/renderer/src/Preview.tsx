@@ -7,6 +7,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";
 import type { PlatformServices, Data } from "./services.js";
+import type { PreviewRequest, OwnedPreviewOperation } from '@areal/workbench/desktop-contract';
 const locations = new Map<string, { url: string; link?: string }>();
 export function Preview({
   services,
@@ -37,7 +38,7 @@ export function Preview({
   current.current = owner;
   const mounted = useRef(false);
   const sequence = useRef(0);
-  const request = async (operation: string, extra: Data = {}) => {
+  const request = async (operation: OwnedPreviewOperation, extra: Data = {}) => {
     if (["navigate", "back", "forward", "reload"].includes(operation)) editing.current = false;
     const seq = ++sequence.current;
     try {
@@ -83,10 +84,12 @@ export function Preview({
       // A native view is above Renderer paint: hiding its parent in CSS does
       // not hide the page, and a floating input must retain its actual space.
       const height = Math.max(0, Math.min(r.bottom, composer?.getBoundingClientRect().top ?? r.bottom) - r.top);
-      const display = {
+      const display: PreviewRequest = {
         operation: "show",
         projectId,
         threadId,
+        // 被回收的原生页面只恢复已确认地址，不使用地址栏里的未提交草稿。
+        url: locations.get(owner)?.url,
         visible: !!value.url && !value.error && !errorRef.current && !overlay && height > 0 &&
           box.current.checkVisibility({ visibilityProperty: true }),
         bounds: { x: r.x, y: r.y, width: r.width, height },

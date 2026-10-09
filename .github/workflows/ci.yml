@@ -24,9 +24,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  native:
-    name: macOS native Harness
-    runs-on: macos-15
+  host:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            name: macOS native Harness
+            target: verify-native
+            setup: setup-node
+            log: verify-native
+          - os: ubuntu-24.04
+            name: Linux portable checks
+            target: verify
+            setup: setup
+            log: verify
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,80 +57,33 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - if: runner.os == 'Linux'
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: |
-            ~/.cache/uv
-            ~/Library/Caches/uv
+          path: ~/.cache/uv
           key: uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
             uv-${{ runner.os }}-${{ runner.arch }}-
       - name: Prepare toolchain
         run: |
           rustup show
-          if ! command -v cmake; then brew install cmake; fi
-          python3 -m pip install uv==0.12.2
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - name: Install locked dependencies
-        run: |
-          make setup
-          mkdir -p target/ci
-      - name: Verify native behavior
-        env:
-          NO_PROXY: 127.0.0.1,localhost
-        run: make verify-native 2>&1 | tee target/ci/verify-native.log
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: failure()
-        with:
-          name: macos-logs
-          path: target/ci/
-          retention-days: 7
-
-  portable:
-    name: Linux portable checks
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            runtime/sdk-typescript/package-lock.json
-            core/sdk-typescript/package-lock.json
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.13'
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cache/uv
-            ~/Library/Caches/uv
-          key: uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            uv-${{ runner.os }}-${{ runner.arch }}-
-      - name: Prepare toolchain
-        run: |
-          rustup show
+          if [ "$RUNNER_OS" = macOS ] && ! command -v cmake; then brew install cmake; fi
           cmake --version
-          python3 -m pip install uv==0.12.2
+          if [ "$RUNNER_OS" = Linux ]; then python3 -m pip install uv==0.12.2; fi
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Install locked dependencies
         run: |
-          make setup
+          make "${{ matrix.setup }}"
           mkdir -p target/ci
-      - name: Verify portable behavior
+      - name: Verify host behavior
         env:
           NO_PROXY: 127.0.0.1,localhost
-        run: make verify CARGO_TEST_ARGS='--exclude areal-runtime-exec-native' 2>&1 | tee target/ci/verify.log
+          CARGO_TEST_ARGS: --exclude areal-runtime-exec-native
+        run: make "${{ matrix.target }}" 2>&1 | tee "target/ci/${{ matrix.log }}.log"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
-          name: linux-portable-logs
+          name: ${{ runner.os }}-host-logs
           path: target/ci/
           retention-days: 7
 
@@ -212,19 +179,19 @@ jobs:
           path: target/ci/
           retention-days: 7
 
-  # 保留原检查名，分支保护仍需两个独立任务都成功，不能把跳过或取消视为通过。
+  # 保留原检查名；矩阵和容器必须全部成功，不能把跳过或取消视为通过。
   linux:
     name: Linux checks and container Runtime
-    needs: [portable, container]
+    needs: [host, container]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require both Linux jobs
+      - name: Require host matrix and container jobs
         env:
-          PORTABLE_RESULT: ${{ needs.portable.result }}
+          HOST_RESULT: ${{ needs.host.result }}
           CONTAINER_RESULT: ${{ needs.container.result }}
-        run: test "$PORTABLE_RESULT" = success && test "$CONTAINER_RESULT" = success
+        run: test "$HOST_RESULT" = success && test "$CONTAINER_RESULT" = success
 
   dependencies:
     name: Dependency advisories

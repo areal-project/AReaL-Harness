@@ -8,6 +8,7 @@ const { setupUpdater } = require('../update/electron.cjs');
 const { showCoreNotification } = require('./notifications.cjs');
 const { MenuBar } = require('./menu-bar.cjs');
 const { fileOpen } = require('./file-open.cjs');
+const { validateCommand, desktopError } = require('@areal/workbench/desktop-contract');
 const { CorePreview } = require('./preview.cjs');
 const { configureUserData, serviceOptions } = require('./service-config.cjs');
 const { SharedCoreBackend } = require('./service-client.cjs');
@@ -59,6 +60,7 @@ function theme() {
       swatch: [item.colors.bg, item.colors.bgRaised, item.colors.accent] })) };
 }
 function publish() {
+  preview?.releaseInvalidOwners();
   if (window && !window.isDestroyed()) window.webContents.send('areal-core:state', desktopSnapshot());
 }
 function desktopSnapshot() {
@@ -144,15 +146,11 @@ app.whenReady().then(async () => {
     trusted(event);
     return fileOpen({ backend, shell, home: app.getPath('home'), authorize: () => trusted(event), chooseSave: options => dialog.showSaveDialog(window, options) }, request);
   });
-  const commands = new Set(['serviceStatus', 'stopService', 'recoverResources', 'connectService', 'connect', 'list', 'open', 'create', 'send', 'stop', 'respond', 'reconcile', 'configure', 'queue', 'queueEdit', 'library', 'manage', 'workspace', 'export', 'media', 'steer', 'dismissRecovery', 'providers', 'chatgpt', 'analytics', 'resources', 'projectless', 'tasks']);
   ipcMain.handle('areal-core:command', async (event, name, params) => {
     trusted(event);
-    if (name === 'remoteControl') {
-      try { return { ok: true, value: await backend.remoteControl(params) }; }
-      catch (error) { return { ok: false, error: { message: error.message } }; }
-    }
-    if (!commands.has(name) || !params || typeof params !== 'object' || (!['serviceStatus', 'stopService', 'recoverResources', 'connectService', 'library', 'providers', 'chatgpt', 'analytics', 'resources', 'projectless', 'tasks'].includes(name) && typeof params.projectId !== 'string')) throw new Error('无效操作');
     try {
+      validateCommand(name, params);
+      if (name === 'remoteControl') return { ok: true, value: await backend.remoteControl(params) };
       if (name === 'serviceStatus') return { ok: true, value: await backend.serviceStatus() };
       if (name === 'stopService') return { ok: true, value: await requestStopService() };
       if (name === 'recoverResources') { await recoverResources(); return { ok: true, value: null }; }
@@ -179,7 +177,7 @@ app.whenReady().then(async () => {
       }
       return { ok: true, value };
     }
-    catch (error) { return { ok: false, error: { message: error.message, submissionUnknown: error.submissionUnknown === true, requestId: error.requestId } }; }
+    catch (error) { return { ok: false, error: desktopError(error) }; }
   });
   let recoveryPending = 0;
   const hasUpdateWork = () => recoveryPending > 0 || backend.hasWork() || backend.activeCommands > 0 || backend.providerUpdating || backend.starting.size > 0;

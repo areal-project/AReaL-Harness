@@ -11,7 +11,9 @@ WORKDIR /src
 COPY upstream/pins.json ./upstream/pins.json
 COPY Cargo.toml Cargo.lock ./
 COPY core ./core
-COPY clients ./clients
+COPY clients/cli ./clients/cli
+COPY clients/tui ./clients/tui
+COPY clients/web ./clients/web
 COPY runtime ./runtime
 COPY scripts/launch.py ./scripts/launch.py
 COPY scripts/install.py ./scripts/install.py

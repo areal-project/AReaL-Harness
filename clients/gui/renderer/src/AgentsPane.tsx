@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";
 import { Textarea } from "./components/ui/textarea.js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select.js";
+import { AgentAvatar, agentName, agentStatus, agentAssignment } from "./AgentIdentity.js";
 import type { Action, Data } from "./services.js";
 
 type Result = { threadId: string; turnId: string; status: string; text: string; truncated: boolean; error?: { message?: string } | null; configuration?: { readOnly: boolean; model?: { providerId: string; modelId: string }; profile?: { id: string } } };
@@ -21,7 +22,7 @@ function loadOptions(key: string): Options {
 const labels: Record<string, string> = { inProgress: "执行中", completed: "已完成", interrupted: "已中断", failed: "失败" };
 
 /** Direct Core children; isolated writers and Task workers retain their own owners. */
-export function AgentsPane({ project, thread, action, onOpen }: { project: Data; thread: Data; action: Action; onOpen: (id: string) => void }) {
+export function AgentsPane({ project, thread, action, onOpen, compact = false, selectedAgent }: { project: Data; thread: Data; action: Action; onOpen: (id: string) => void; compact?: boolean; selectedAgent?: string }) {
   const key = `areal-gui:agent-draft:${project.id}:${thread.id}`;
   const [prompt, setPrompt] = useState(() => localStorage.getItem(key) ?? "");
   const [options, setOptions] = useState(() => loadOptions(key));
@@ -178,6 +179,16 @@ export function AgentsPane({ project, thread, action, onOpen }: { project: Data;
     } catch (cause) { if (mounted.current) setError(`等待结束，但结果未确认。${(cause as Error).message}`); }
     finally { waitLock.current = false; if (mounted.current) setWaiting(null); }
   };
+  if (compact) return !children.length && !readError ? null : <section className="task-resources-section task-resources-agents" aria-label="子智能体">
+    <h3 className="task-resources-heading"><span>子智能体</span><span>{Object.values(results).filter(result => result.status === "inProgress").length} 个运行中</span></h3>
+    {!connected && <p className="task-resource-note" role="status">连接不可用，结果可能已过期。</p>}
+    {readError && <p role="alert" className="text-destructive">{readError}</p>}
+    {children.map(child => <button type="button" key={child.id} className="task-resource-row" data-selected={selectedAgent === child.id || undefined} aria-label={`打开 ${child.id} 子对话`} onClick={() => onOpen(child.id)}>
+      <AgentAvatar id={child.id} /><div className="task-resource-agent-body"><span>{agentName(child.id)}</span><p title={agentAssignment(thread, child.id)}>{agentAssignment(thread, child.id) || "查看任务指令"}</p></div>
+      <small className="task-resource-status" data-running={results[child.id]?.status === "inProgress" || undefined}>{agentStatus(results[child.id]?.status)}</small>
+    </button>)}
+    {more && <Button variant="ghost" size="sm" disabled={reading} onClick={() => { pages.current++; void read(); }}>加载更多子智能体</Button>}
+  </section>;
   return <section aria-label="子任务" className="flex h-full min-h-0 flex-col text-ui-base">
     <div className="panel-toolbar flex shrink-0 items-center justify-between gap-2"><span>子任务 · {children.length}</span><Button size="sm" variant="ghost" disabled={!connected || reading} onClick={() => void read()}>刷新子任务</Button></div>
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-3">
@@ -205,7 +216,7 @@ export function AgentsPane({ project, thread, action, onOpen }: { project: Data;
       {error && <p role="alert" className="text-destructive">{error}</p>}
       {!reading && !readError && !children.length && <p className="text-foreground-subtle">此任务尚无子任务。</p>}
       {children.map(child => { const result = results[child.id]; return <article key={child.id} data-testid={`agent-${child.id}`} className="flex flex-col gap-2 rounded-control border border-border p-3">
-        <h3 className="break-words font-medium">{child.preview || "子任务"}</h3>
+        <h3 className="flex items-center gap-2 font-medium"><AgentAvatar id={child.id} />{agentName(child.id)}</h3><p className="break-words">{child.preview || "子任务"}</p>
         <p role="status">{labels[result?.status] ?? "状态待确认"}</p>
         {result?.configuration && <p className="text-foreground-subtle">{result.configuration.readOnly ? "只读" : "按任务权限执行"}{result.configuration.profile ? ` · ${result.configuration.profile.id}` : ""}{result.configuration.model?.modelId ? ` · ${result.configuration.model.modelId}` : ""}</p>}
         {result?.error && <p className="text-destructive">{result.error.message || "执行失败"}</p>}

@@ -10,7 +10,7 @@ const mutations = {
   goalCreate: 'areal/goal/create', goalUpdate: 'areal/goal/update', goalPause: 'areal/goal/pause', goalResume: 'areal/goal/resume', goalClear: 'areal/goal/clear',
 };
 // Goal receipts belong to the owning Thread, unlike deployment management receipts.
-const threadMutationMethods = new Set(Object.values(mutations).filter(method => method.startsWith('areal/goal/')));
+const threadMutationMethods = new Set([...Object.values(mutations).filter(method => method.startsWith('areal/goal/')), 'areal/queue/steer']);
 const managementMethods = new Set(['areal/blob/release', ...Object.values(mutations).filter(method => !method.startsWith('areal/process/') && !threadMutationMethods.has(method)), ...['update', 'remove', 'reorder', 'pause', 'resume'].map(name => `areal/queue/${name}`)]);
 const fields = {
   providerSave: ['provider', 'expectedRevision'], providerRemove: ['id', 'expectedRevision'],

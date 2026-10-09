@@ -1,4 +1,6 @@
 // The renderer consumes only the narrow preload contract. Execution facts remain in Core.
+import { validateCommand } from '@areal/workbench/desktop-contract';
+import type { CommandName, CommandParams, DesktopResult, PreviewRequest } from '@areal/workbench/desktop-contract';
 export type Data = Record<string, any>;
 export type FileOpenTargets = { targets: { id: string; label: string }[]; preferred: string; preferredLabel: string };
 export type FileOpenRequest = { operation: 'targets' } | { operation: 'setDefault'; target: string }
@@ -35,17 +37,7 @@ export interface PlatformServices {
     chooseProject(): Promise<string | null>;
     chooseProjectlessDirectory?(): Promise<{ directory: string } | null>;
     fileOpen?(request: FileOpenRequest): Promise<FileOpenTargets | { saved: boolean } | Record<string, never>>;
-    command(name: string, params: Data): Promise<{
-        ok: true;
-        value: any;
-    } | {
-        ok: false;
-        error: {
-            message: string;
-            submissionUnknown?: boolean;
-            requestId?: string;
-        };
-    }>;
+    command<N extends CommandName>(name: N, params: CommandParams<N>): Promise<DesktopResult<unknown>>;
     theme(id?: string): Promise<{
         platform?: string;
         dark: boolean;
@@ -56,8 +48,9 @@ export interface PlatformServices {
         dark: boolean;
         id: string;
     }) => void): () => void;
-    preview(params: Data): Promise<Data>;
+    preview(params: PreviewRequest): Promise<Data>;
 }
-export type Action = (name: string, params?: Data) => Promise<any>;
-export async function call(services: PlatformServices, name: string, params: Data = {}) { const result = await services.command(name, params); if (!result.ok)
+export type Action = (name: CommandName, params?: Data) => Promise<any>;
+// 业务投影仍由各能力所有者建模；此适配保留现有 Action 调用方的返回类型。
+export async function call<N extends CommandName>(services: PlatformServices, name: N, params: CommandParams<N>): Promise<any> { validateCommand(name, params); const result = await services.command(name, params); if (!result.ok)
     throw Object.assign(new Error(result.error.message), result.error); return result.value; }

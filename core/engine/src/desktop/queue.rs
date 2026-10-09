@@ -62,6 +62,43 @@ impl Engine {
             }
         }).await
     }
+    /// 队列转移、历史消息和受理收据同快照落盘；通知只发生在持久化成功后。
+    pub async fn steer_queue(
+        self: &Arc<Self>,
+        identity: String,
+        request: QueueSteer,
+    ) -> Result<Value> {
+        self.mutate(move |engine| async move {
+            let cell = engine.cell(&request.thread_id).await?;
+            let mut state = cell.state.lock().await;
+            let method = "areal/queue/steer";
+            let hash = digest(&request)?;
+            let data = desktop(&state.thread);
+            if let Some(result) = receipt(&data, &identity, &request.request_id, method, &hash)? {
+                return Ok(result);
+            }
+            if state.poisoned || data.archived || data.queue.revision != request.expected_revision {
+                return Err(Error::Conflict);
+            }
+            let index = data.queue.items.iter().position(|item| item.id == request.queue_item_id).ok_or(Error::NotFound)?;
+            if data.queue.items[index].status != "pending" { return Err(Error::Conflict); }
+            let (mut candidate, item, permit) = engine.prepare_steer(&state, &request.expected_turn_id, data.queue.items[index].input.clone())?;
+            let next = candidate.desktop.get_or_insert_with(Default::default);
+            next.queue.items[index].status = "steered".into();
+            next.queue.items[index].turn_id = Some(request.expected_turn_id.clone());
+            next.queue.revision += 1;
+            let result = json!({"queueRevision": next.queue.revision, "queueItemId": request.queue_item_id, "turnId": request.expected_turn_id, "itemId": item.id()});
+            remember(next, &identity, &request.request_id, method, hash, result.clone());
+            engine.persist(&candidate).await?;
+            state.thread = candidate;
+            emit_item(&cell, "item/started", &request.thread_id, &request.expected_turn_id, &item);
+            emit_item(&cell, "item/completed", &request.thread_id, &request.expected_turn_id, &item);
+            engine.goal_emit(&cell, &state.thread);
+            cell.emit("areal/queue/updated", json!({"threadId": request.thread_id, "queue": state.thread.desktop.as_ref().unwrap().queue}));
+            permit.send(false);
+            Ok(result)
+        }).await
+    }
     pub(crate) async fn check_turn_available(&self, cell: &Cell, state: &State) -> Result<()> {
         if self.is_closed() {
             return Err(Error::Closed);

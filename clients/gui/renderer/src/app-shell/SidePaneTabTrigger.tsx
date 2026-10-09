@@ -1,3 +1,5 @@
+import { TaskSummaryIcon } from "../homeChromeIcons.js";
+import { AgentAvatar } from "../AgentIdentity.js";
 import { CloseIcon as XIcon } from "../interfaceIcons.js";
 import { useRef, type CSSProperties } from "react";
 import { useSortable } from "@dnd-kit/sortable";
@@ -16,11 +18,12 @@ import { Button } from "../components/ui/button.js";
 import { SidePaneTabTitleTooltip } from "./SidePaneTabTitleTooltip.js";
 import type { WorkspaceSidePaneTab } from "./sidePaneModel.js";
 export function SidePaneTabIcon({ tab }: { tab: WorkspaceSidePaneTab }) {
+  if (tab.id.startsWith("agent:")) return <AgentAvatar id={tab.id.slice(6)} size={14} />;
   if (tab.id.startsWith("terminal:")) return <TerminalPanelIcon className="size-4 shrink-0" />;
   if (tab.id.startsWith("file:")) return <DocumentPanelIcon className="size-4 shrink-0" />;
   const Icon =
     (
-      { 文件: FilesPanelIcon, 改动: ReviewPanelIcon, 预览: BrowserPanelIcon, 终端: TerminalPanelIcon, 进程: TerminalPanelIcon, 编辑目标: TargetIcon, 执行计划: ListChecksIcon, 上下文: FileTextIcon, 已保存授权: ShieldCheckIcon, 自动化: CalendarClockIcon, CalendarClockIcon } as Record<
+      { 任务资源: TaskSummaryIcon, 文件: FilesPanelIcon, 改动: ReviewPanelIcon, 预览: BrowserPanelIcon, 终端: TerminalPanelIcon, 进程: TerminalPanelIcon, 编辑目标: TargetIcon, 执行计划: ListChecksIcon, 上下文: FileTextIcon, 已保存授权: ShieldCheckIcon, 自动化: CalendarClockIcon, CalendarClockIcon } as Record<
         string,
         typeof FilesPanelIcon
       >

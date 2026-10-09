@@ -5,6 +5,10 @@
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
+    "./desktop-contract": {
+      "import": "./client/desktop-contract.js",
+      "require": "./client/desktop-contract.cjs"
+    },
     "./core-model": "./client/core-model.js",
     "./core-panels": "./client/core-panels.js"
   }

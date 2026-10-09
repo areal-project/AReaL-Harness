@@ -9,9 +9,11 @@ async function taskCatalog(backend, request) {
     const projectName = saved.projectless ? '独立任务' : backend.library.value.projects[saved.id]?.title || saved.root.split(/[\\/]/).pop();
     try {
       const project = await backend.start(saved.id), data = new Map(), cursors = new Set();
+      const client = project.client;
       let after;
       do {
-        const page = await project.client.request(inbox ? 'areal/inbox/list' : 'areal/task/list', { limit: 100, ...(after ? { after } : {}) });
+        const page = await client.request(inbox ? 'areal/inbox/list' : 'areal/task/list', { limit: 100, ...(after ? { after } : {}) });
+        backend.requireConnection(project, client);
         for (const task of page.data) {
           if (!inbox) project.model.setTask(task);
           data.set(inbox ? `${task.taskId}:${task.message.runId}:${task.message.id}` : task.id, { ...task, projectId: saved.id, projectName, scope: saved.projectless ? 'independent' : 'project' });

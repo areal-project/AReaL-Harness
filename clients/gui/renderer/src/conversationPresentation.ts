@@ -20,6 +20,8 @@ const toolKinds: Readonly<Record<string, ToolKind>> = {
 const specificActions: Readonly<Record<string, string>> = {
   skill_read: "读取技能", plan_read: "读取计划",
   read_process: "读取进程输出", terminate_process: "停止进程",
+  agent_spawn: "创建子智能体", agent_spawn_configured: "创建子智能体",
+  agent_wait: "等待子智能体", agent_wait_any: "等待子智能体",
 };
 function toolAction(item: Data): string {
   if (Object.hasOwn(specificActions, item.tool)) return specificActions[item.tool];
@@ -100,8 +102,8 @@ export function toolPresentation(item: Data) {
     kind,
     running,
     failed,
-    label: kind === "tool" ? `调用 ${name}` : specificActions[name] ?? (name === "fs_create" ? "创建" : { read: "读取", edit: "编辑", search: "搜索", list: "列出", command: "运行", wait: "等待" }[kind]),
-    detail: String(target),
+    label: specificActions[name] ?? (kind === "tool" ? `调用 ${name}` : name === "fs_create" ? "创建" : { read: "读取", edit: "编辑", search: "搜索", list: "列出", command: "运行", wait: "等待" }[kind]),
+    detail: name.startsWith("agent_") && Object.hasOwn(specificActions, name) ? "" : String(target),
     status: running
       ? "执行中"
       : failed

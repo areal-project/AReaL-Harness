@@ -2,7 +2,7 @@
 const { readFileSync, existsSync } = require('node:fs');
 const { join } = require('node:path');
 const githubRepository = 'areal-project/AReaL-Harness';
-const githubFeedUrl = `https://github.com/${githubRepository}/releases/latest/download/`;
+const githubFeedUrl = `https://github.com/${githubRepository}/releases/download/gui-update-channel/`;
 const githubReleaseUrl = `https://github.com/${githubRepository}/releases/download`;
 const githubTestFeedUrl = `${githubReleaseUrl}/update-test-channel/`;
 const githubSparkleTestFeedUrl = `${githubReleaseUrl}/update-test-sparkle-channel/`;
@@ -14,16 +14,16 @@ function validateFeedUrl(value, { development = false } = {}) {
   const github = url.href === githubFeedUrl || url.href === githubTestFeedUrl || url.href === githubSparkleTestFeedUrl || (testTag?.startsWith('update-test-v')
     && stableVersion(testTag.slice('update-test-v'.length)) && url.href === `${githubReleaseUrl}/${testTag}/`);
   if ((!local && !github) || url.username || url.password || url.search || url.hash) {
-    throw new Error('更新源必须是 areal-project/AReaL-Harness 的 GitHub Latest 或隔离测试 Release');
+    throw new Error('更新源必须是 areal-project/AReaL-Harness 的 GUI 更新频道或隔离测试 Release');
   }
   return url.href;
 }
 function releaseAssetUrl(feedUrl, version) {
   const feed = new URL(feedUrl);
   const test = feed.pathname.split('/').at(-2)?.startsWith('update-test');
-  const tag = `${test ? 'update-test-' : ''}v${version}`;
+  const tag = `${test ? 'update-test-v' : 'gui-v'}${version}`;
   if (test && feedUrl !== githubTestFeedUrl && feedUrl !== githubSparkleTestFeedUrl && feedUrl !== `${githubReleaseUrl}/${tag}/`) throw new Error('测试更新版本必须匹配隔离 Release');
-  const root = test ? githubReleaseUrl : feedUrl.slice(0, -'/latest/download/'.length) + '/download';
+  const root = feed.protocol === 'http:' ? feedUrl.slice(0, -'/latest/download/'.length) + '/download' : githubReleaseUrl;
   return `${root}/${tag}/AReaLHarness-${version}-macos-arm64.zip`;
 }
 function readUpdateConfig({ packaged, resourcesPath, env = process.env }) {

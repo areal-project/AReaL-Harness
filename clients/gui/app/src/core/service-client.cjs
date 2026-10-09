@@ -1,5 +1,6 @@
 'use strict';
 const { spawn } = require('node:child_process');
+const { randomUUID } = require('node:crypto');
 const { mkdir, readFile, realpath, open, writeFile, rename, rm } = require('node:fs/promises');
 const { join } = require('node:path');
 const WebSocket = require('ws');
@@ -103,7 +104,11 @@ class SharedCoreBackend {
   get providerUpdating() { return this.status.providerUpdating; }
   get starting() { return { size: this.status.starting ?? 0 }; }
   hasWork() { return !this.status.connected || this.status.busy === true; }
-  ownsThread(projectId, threadId) { return this.saved.some(p => p.id === projectId && (!threadId || p.state?.threads?.[threadId])); }
+  ownsThread(projectId, threadId) {
+    if (this.value.library.projects[projectId]?.hidden) return false;
+    const thread = this.saved.find(p => p.id === projectId)?.state?.threads?.[threadId];
+    return !!thread && !thread.desktop?.archived;
+  }
   snapshot() { return { ...this.value, revision: ++this.revision, connection: this.connectionState }; }
   accept(packet) {
     if (!packet || packet.sequence <= this.sequence) return;
@@ -238,6 +243,8 @@ class SharedCoreBackend {
     const ownedStart = name === 'manage' && request.operation === 'processStart' && request.guiOwned === true;
     const ownedRecovery = name === 'manage' && request.operation === 'processSubmission' && request.guiOwned === true;
     const { guiOwned, ...params } = request;
+    // 队列业务键跨 GUI/共享服务连接保留，外层丢失响应后也能只读核对。
+    if (name === 'queueEdit') params.requestId ??= randomUUID();
     const pending = this.connection.request('command', { name, request: name === 'media' ? encodeMedia(params) : params }, true).then(value => {
       if (ownedRecovery && value.confirmed) {
         this.guiTerminals.set(value.result.id, { projectId: request.projectId, threadId: request.threadId, id: value.result.id });
@@ -248,6 +255,7 @@ class SharedCoreBackend {
     });
     if (ownedStart || ownedRecovery) this.guiTerminalStarts.add(pending);
     try { return await pending; }
+    catch (error) { if (name === 'queueEdit' && error.submissionUnknown) error.requestId = params.requestId; throw error; }
     finally { this.guiTerminalStarts.delete(pending); }
   }
   async resources(request) {

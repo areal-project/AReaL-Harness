@@ -200,6 +200,12 @@ pub fn projections() -> (Value, Value) {
         queue.clone(),
     );
     insert(
+        &["queue/steer"],
+        object(
+            json!({"queueRevision":number,"queueItemId":string,"turnId":string,"itemId":string}),
+        ),
+    );
+    insert(
         &["interaction/list"],
         object(json!({"revision":number,"data":array(interaction.clone())})),
     );

@@ -59,6 +59,7 @@ export class CoreClient {
       await this.request('initialize', { clientInfo: { name: 'areal-harness-desktop', version: '0.1.0' } });
       socket.send(JSON.stringify({ method: 'initialized', params: {} }));
       this.capabilities = await this.request('areal/capabilities', { apiVersion: 'areal.core.v1' });
+      if (this.closed) throw new CoreRpcError('Core disconnected during initialization', { code: 'DISCONNECTED' });
       this.ready = true;
       return this.capabilities;
     } catch (error) {
@@ -68,7 +69,7 @@ export class CoreClient {
   }
 
   request(method, params = {}, { onResult, timeoutMs = this.timeoutMs } = {}) {
-    if (!this.socket || this.socket.readyState !== 1) {
+    if (this.closed || !this.socket || this.socket.readyState !== 1) {
       return Promise.reject(new CoreRpcError('Core is disconnected', { code: 'DISCONNECTED', method }));
     }
     return new Promise((resolve, reject) => {
@@ -92,6 +93,8 @@ export class CoreClient {
   }
 
   receive(bytes) {
+    // close 后仍可能收到 socket 缓冲中的包，不能让旧连接再次更新投影。
+    if (this.closed) return;
     let message;
     try { message = JSON.parse(String(bytes)); }
     catch { this.close(); return; }

@@ -2,6 +2,32 @@ use super::*;
 
 const SUMMARY_LIMIT: usize = 16 * 1024;
 
+const PROJECT_INSTRUCTION_LIMIT: usize = 32 * 1024;
+
+// 只沿会话 cwd 的祖先链加载，不扫描无关子树，也不越过 Runtime 工作区。
+fn project_instruction_directories(workspace: &Path, cwd: &Path) -> anyhow::Result<Vec<String>> {
+    let relative = cwd
+        .strip_prefix(workspace)
+        .context("instruction cwd is outside the Runtime workspace")?;
+    let mut directories = vec![String::new()];
+    let mut directory = String::new();
+    for part in relative.components() {
+        let std::path::Component::Normal(part) = part else {
+            anyhow::bail!("instruction cwd must be normalized");
+        };
+        anyhow::ensure!(
+            directories.len() < 64,
+            "AGENTS.md directory depth exceeds 64"
+        );
+        if !directory.is_empty() {
+            directory.push('/');
+        }
+        directory.push_str(part.to_str().context("instruction cwd must be UTF-8")?);
+        directories.push(directory.clone());
+    }
+    Ok(directories)
+}
+
 pub(crate) struct ContextBudget {
     pub window: usize,
     pub reserve: usize,
@@ -278,36 +304,65 @@ impl Engine {
         let Some(runtime) = &self.runtime else {
             return Ok(Some(instructions));
         };
-        let path = runtime.workspace.join("AGENTS.md");
-        match std::fs::symlink_metadata(&path) {
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(Some(instructions));
+        let cwd = cell.state.lock().await.thread.cwd.clone();
+        // Thread 保留客户端原始路径；先解析 /var 等平台别名，与 Runtime 的规范根对齐。
+        let cwd = tokio::fs::canonicalize(&cwd)
+            .await
+            .context("cannot resolve project instruction cwd")?;
+        let directories = project_instruction_directories(&runtime.workspace, &cwd)?;
+        let mut paths = Vec::new();
+        for directory in directories {
+            let directory_path = runtime.workspace.join(&directory);
+            // 拒绝符号链接目录，最终内容仍由 Runtime 的描述符文件提供方读取。
+            let metadata = match tokio::fs::symlink_metadata(&directory_path).await {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+                Err(error) => return Err(error).context("cannot inspect instruction directory"),
+            };
+            anyhow::ensure!(
+                metadata.is_dir(),
+                "AGENTS.md directory must not be a symlink or special file"
+            );
+            let path = if directory.is_empty() {
+                "AGENTS.md".to_owned()
+            } else {
+                format!("{directory}/AGENTS.md")
+            };
+            match tokio::fs::symlink_metadata(runtime.workspace.join(&path)).await {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error).context("cannot inspect project instructions"),
+                Ok(metadata) => anyhow::ensure!(
+                    metadata.is_file() && metadata.len() <= PROJECT_INSTRUCTION_LIMIT as u64,
+                    "{path} must be a regular file no larger than 32 KiB"
+                ),
             }
-            Err(error) => return Err(error).context("cannot inspect project instructions"),
-            Ok(metadata) => anyhow::ensure!(
-                metadata.is_file() && metadata.len() <= 32 * 1024,
-                "AGENTS.md must be a regular file no larger than 32 KiB"
-            ),
+            paths.push(path);
         }
-        // Read through the Runtime's descriptor-based file provider. The owned
-        // task ensures cancellation cannot abandon a newly created Scope.
+        if paths.is_empty() {
+            return Ok(Some(instructions));
+        }
+        // 跟踪读取任务，保证取消不会遗留刚创建的 Scope。
         let (sent, received) = tokio::sync::oneshot::channel();
         let engine = self.clone();
         let owned_cell = cell.clone();
         {
             let state = cell.state.lock().await;
             state.active.as_ref().unwrap().tools.spawn(async move {
-                let result = engine.read_project_instructions(&owned_cell).await;
+                let result = engine.read_project_instructions(&owned_cell, paths).await;
                 let _ = sent.send(result);
             });
         }
         let content = received.await??;
-        instructions.push_str("\n\nProject instructions from workspace AGENTS.md (subordinate to the user's request and deployment permissions):\n");
+        instructions.push_str("\n\nProject AGENTS.md instructions (subordinate to the user's request and deployment permissions). Each file applies only to its directory and descendants; closer files take precedence for files in their subtree. Before working in other directories, read their applicable AGENTS.md files. Only the workspace-root-to-session-cwd chain is loaded here:\n");
         instructions.push_str(&content);
         Ok(Some(instructions))
     }
 
-    async fn read_project_instructions(&self, cell: &Cell) -> anyhow::Result<String> {
+    async fn read_project_instructions(
+        &self,
+        cell: &Cell,
+        paths: Vec<String>,
+    ) -> anyhow::Result<String> {
         use areal_runtime_protocol as rt;
         use base64::Engine as _;
         let client = &self.runtime.as_ref().unwrap().client;
@@ -325,27 +380,34 @@ impl Engine {
             })
             .await?;
         cell.state.lock().await.active.as_mut().unwrap().scope = Some(scope.scope_id.clone());
-        let value = client
-            .filesystem(rt::FileRequest {
-                operation_id: client.operation_id(),
-                scope_id: scope.scope_id,
-                command: rt::FileCommand::Read {
-                    path: "workspace://repo/AGENTS.md".into(),
-                    offset: 0,
-                    max_bytes: 32 * 1024,
-                },
-            })
-            .await?;
-        anyhow::ensure!(
-            value["eof"] == true,
-            "AGENTS.md grew beyond the instruction budget"
-        );
-        let bytes = base64::engine::general_purpose::STANDARD.decode(
-            value["dataBase64"]
-                .as_str()
-                .context("invalid project instruction result")?,
-        )?;
-        String::from_utf8(bytes).context("AGENTS.md must be UTF-8")
+        let mut content = String::new();
+        let mut remaining = PROJECT_INSTRUCTION_LIMIT;
+        for path in paths {
+            let value = client
+                .filesystem(rt::FileRequest {
+                    operation_id: client.operation_id(),
+                    scope_id: scope.scope_id.clone(),
+                    command: rt::FileCommand::Read {
+                        path: format!("workspace://repo/{path}"),
+                        offset: 0,
+                        max_bytes: remaining + 1,
+                    },
+                })
+                .await?;
+            let bytes = base64::engine::general_purpose::STANDARD.decode(
+                value["dataBase64"]
+                    .as_str()
+                    .context("invalid project instruction result")?,
+            )?;
+            anyhow::ensure!(
+                value["eof"] == true && bytes.len() <= remaining,
+                "AGENTS.md files exceed the combined 32 KiB instruction budget"
+            );
+            remaining -= bytes.len();
+            let text = String::from_utf8(bytes).with_context(|| format!("{path} must be UTF-8"))?;
+            content.push_str(&format!("\n--- {path} ---\n{text}\n"));
+        }
+        Ok(content)
     }
 
     pub(crate) async fn compact_context(
@@ -1021,5 +1083,32 @@ mod budget_tests {
         assert!(valid_summary(
             "Observed: foo(None) still fails. Hypothesis: fix the wrapper. Next: rerun that assertion."
         ));
+    }
+}
+
+#[cfg(test)]
+mod project_instruction_tests {
+    use super::*;
+
+    #[test]
+    fn instruction_chain_is_scoped_and_ordered() {
+        assert_eq!(
+            project_instruction_directories(Path::new("/repo"), Path::new("/repo/packages/app"))
+                .unwrap(),
+            vec!["", "packages", "packages/app"]
+        );
+        assert_eq!(
+            project_instruction_directories(Path::new("/repo"), Path::new("/repo")).unwrap(),
+            vec![""]
+        );
+        for cwd in ["/outside", "/repo/../outside", "/repository", "relative"] {
+            assert!(project_instruction_directories(Path::new("/repo"), Path::new(cwd)).is_err());
+        }
+    }
+
+    #[test]
+    fn instruction_chain_has_bounded_depth() {
+        let cwd = Path::new("/repo").join(vec!["a"; 64].join("/"));
+        assert!(project_instruction_directories(Path::new("/repo"), &cwd).is_err());
     }
 }

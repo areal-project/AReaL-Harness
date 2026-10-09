@@ -573,6 +573,7 @@ button.composer-project:hover > svg,
   max-height: none;
   overflow-y: visible;
   padding-bottom: 8px;
+  caret-color: var(--color-foreground);
   font-size: var(--text-ui-lg);
   line-height: max(24px, calc(var(--ui-font-size) + 10px));
 }
@@ -1751,14 +1752,36 @@ button.composer-project:hover > svg,
 .tool-call-duration { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tool-event-body pre { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--code-font-size, 12px); }
 .activity-elapsed { margin-left: 10px; color: var(--color-foreground-subtlest); font-size: 12px; font-variant-numeric: tabular-nums; }
-.composer-queue { position: relative; margin: 0 4px -18px; padding: 6px 12px 24px; background: var(--color-surface); border: 1px solid var(--color-border); border-bottom: 0; border-radius: var(--radius-panel) var(--radius-panel) 0 0; font-size: var(--text-ui-caption); }
-.composer-queue-header, .composer-queue-row { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:30px; }
-.composer-queue button { display:inline-flex; align-items:center; gap:6px; border:0; background:transparent; padding:4px; }
-.composer-queue .queue-summary { margin:0; padding:4px; border:0; }
-.composer-queue-row > button:first-child { display:block; flex: 1; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; text-align:left; color:var(--color-foreground-subtle); }
-.composer-queue-edit { padding: 6px 0; }
-.composer-queue-edit textarea { width: 100%; min-height: 64px; resize: vertical; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-background); padding: 8px; }
-.composer-queue-edit > div { display: flex; justify-content: flex-end; gap: 8px; }
+/* 队列紧贴 Composer；主编辑器承载编辑，不建立队列内输入框。 */
+.composer-queue { position: relative; margin: 0 12px -20px; background: var(--color-composer-catalog, var(--color-surface)); border: 1px solid var(--color-border); border-bottom: 0; border-radius: 18px 18px 0 0; padding: 5px 9px 24px 5px; }
+.composer-queue-rows { max-height: 220px; overflow-y: auto; scrollbar-width: thin; }
+.composer-queue-row { min-height: 35px; display: flex; align-items: center; gap: 7px; border-radius: 7px; }
+.composer-queue-row:hover { background: var(--color-hover); }
+.composer-queue-glyph { color: var(--color-foreground-subtlest); flex-shrink: 0; }
+.composer-queue-copy { font-size: 15px; line-height: 22px; min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.composer-queue-grip { display: flex; align-items: center; justify-content: center; padding: 0; width: 10px; color: var(--color-foreground-subtle); opacity: 0; cursor: grab; flex-shrink: 0; touch-action: none; }
+.composer-queue-row:hover .composer-queue-grip, .composer-queue-row:focus-within .composer-queue-grip { opacity: 1; }
+.composer-queue-actions { display: flex; align-items: center; gap: 3px; color: var(--color-foreground-subtle); }
+.composer-queue-actions > button { display: flex; align-items: center; justify-content: center; padding: 6px; border-radius: 10px; height: 29px; }
+.composer-queue-actions .composer-queue-steer { gap: 5px; padding-inline: 7px; font-size: 14px; }
+.composer-queue-actions button:hover { background: var(--color-hover); color: var(--color-foreground); }
+.composer-queue-row.editing { color: var(--color-foreground-subtle); }
+.composer-queue-row > small { font-size: 11px; color: var(--color-foreground-subtle); }
+.composer-queue-row.drop-target { box-shadow: inset 0 2px var(--color-brand); }
+.composer-queue-pause { display: flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; color: var(--color-foreground-subtle); }
+.composer-queue-pause button { margin-left: auto; }
+.composer-queue-menu { width: 198px; border-radius: 17px; padding: 7px; background: var(--color-composer-catalog, var(--color-surface)); }
+.composer-queue-edit-banner { display: flex; align-items: center; gap: 8px; margin: -2px 0 11px; padding-bottom: 8px; border-bottom: 1px solid var(--color-border); font-size: 12px; }
+.composer-queue-edit-banner > span { flex: 1; }
+.composer-queue-feedback { padding: 5px 10px; font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .composer-queue { margin-inline: 9px; }
+  .composer-queue-actions { gap: 0; }
+  .composer-queue-actions > button { padding: 5px; }
+  .composer-queue-copy { font-size: 14px; }
+  .composer-queue-grip { opacity: .6; }
+  .composer-queue-actions .composer-queue-steer { font-size: 12px; }
+}
 .composer-input-stack { position: relative; }
 .composer-menu-anchor { position: absolute; left: 0; right: 0; bottom: 100%; z-index: 20; }
 .composer-input-stack > form { position: relative; }

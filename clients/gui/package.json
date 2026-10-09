@@ -1,6 +1,6 @@
 {
   "name": "areal-gui-workspace",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "license": "Apache-2.0",
   "packageManager": "pnpm@11.7.0",
@@ -9,12 +9,16 @@
   },
   "scripts": {
     "build": "pnpm --filter @areal/gui-renderer build",
-    "typecheck": "pnpm --filter @areal/gui-renderer typecheck",
+    "typecheck": "pnpm --filter @areal/gui-renderer typecheck && pnpm --filter @areal/gui-renderer exec tsc --allowJs --checkJs --noEmit --skipLibCheck --target ES2022 --module NodeNext ../packages/workbench/client/desktop-contract.cjs",
     "start": "node scripts/start.mjs",
     "package": "node scripts/package.mjs",
     "verify": "node scripts/verify-public.mjs",
+    "test:queue": "node scripts/queue-smoke.mjs",
     "test:composer": "node scripts/composer-smoke.mjs",
-    "test:e2e": "node scripts/migration-smoke.mjs"
+    "test:connection": "node scripts/connection-smoke.mjs",
+    "test:architecture": "node scripts/architecture-smoke.mjs",
+    "test:e2e": "node scripts/migration-smoke.mjs",
+    "sign:mac": "node scripts/notarize-macos.mjs"
   },
   "devDependencies": {
     "prettier": "3.9.8"

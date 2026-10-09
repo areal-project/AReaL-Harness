@@ -47,6 +47,7 @@ pub(crate) const METHODS: &[&str] = &[
     "areal/turn/start",
     "areal/turn/enqueue",
     "areal/queue/list",
+    "areal/queue/steer",
     "areal/queue/update",
     "areal/queue/remove",
     "areal/queue/reorder",
@@ -434,6 +435,7 @@ async fn dispatch_inner(
                 )
                 .await
         }
+        "areal/queue/steer" => engine.steer_queue(identity.into(), parse(params)?).await,
         "areal/queue/list" => {
             let p: ThreadId = parse(params)?;
             engine.queue(&p.thread_id).await.map(|q| json!(q))

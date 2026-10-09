@@ -17,13 +17,24 @@ const staged = await mkdtemp("/private/tmp/areal-stage-");
 // stageCoreApp 要求新目录；使用临时目录的子目录隔离包管理器发现。
 const appStage = join(staged, "app");
 const dependencies = await stageCoreApp({ root: gui, destination: appStage });
+const release = process.env.AREAL_GUI_RELEASE === "1";
+const { githubFeedUrl } = require(join(gui, "app/src/update/config.cjs"));
+const updateConfig = join(staged, "areal-update.json");
+if (release) {
+  const dirty = execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" });
+  if (dirty.trim()) throw new Error("GUI release requires a clean source checkout");
+  await writeFile(
+    updateConfig,
+    JSON.stringify({ engine: "electron", feedUrl: githubFeedUrl }) + "\n",
+  );
+}
 const bundle = join(output, "areal-core");
 execFileSync(
   "python3",
   [
     join(root, "scripts/package.py"),
     "--profile",
-    process.env.AREAL_CORE_PROFILE || "debug",
+    process.env.AREAL_CORE_PROFILE || (release ? "release" : "debug"),
     "--output",
     bundle,
   ],
@@ -69,6 +80,7 @@ await build({
     extraResources: [
       { from: bundle, to: "areal-core" },
       { from: join(gui, "renderer/dist"), to: "areal-gui" },
+      ...(release ? [{ from: updateConfig, to: "areal-update.json" }] : []),
     ],
     mac: { icon, identity: null, notarize: false, category: "public.app-category.developer-tools" },
     publish: null,

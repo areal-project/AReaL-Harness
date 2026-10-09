@@ -1,13 +1,11 @@
 'use strict';
 const { randomBytes, timingSafeEqual } = require('node:crypto');
 const { WebSocketServer } = require('ws');
+const { validateCommand: validateDesktopCommand, desktopError } = require('@areal/workbench/desktop-contract');
 const { inspectResources, recoverResource, summary, blocked } = require('./resource-recovery.cjs');
 const PROTOCOL = 'areal.desktop-service.v1';
-const commands = new Set(['connect', 'list', 'open', 'create', 'send', 'stop', 'respond', 'reconcile', 'configure', 'queue', 'queueEdit', 'library', 'manage', 'workspace', 'media', 'steer', 'dismissRecovery', 'providers', 'chatgpt', 'analytics', 'resources', 'projectless', 'tasks']);
-const appCommands = new Set(['library', 'providers', 'chatgpt', 'analytics', 'resources', 'projectless', 'tasks']);
 function validateCommand(name, params) {
-  if (!commands.has(name) || !params || typeof params !== 'object' || Array.isArray(params)
-    || (!appCommands.has(name) && typeof params.projectId !== 'string')) throw new Error('无效操作');
+  validateDesktopCommand(name, params, { serviceOnly: true });
 }
 
 // Media is the only binary value in the desktop contract. Keep the existing
@@ -194,8 +192,7 @@ class DesktopService {
       const message = error.code === 'SIDEBAR_SAVE_FAILED'
         ? '侧栏整理未能保存，原有布局已保留。请检查存储位置和写入权限后重试。'
         : error.message;
-      this.send(socket, { id, error: { message: this.backend.providers.redact(message), code: error.code,
-        submissionUnknown: error.submissionUnknown === true, requestId: error.requestId } });
+      this.send(socket, { id, error: { ...desktopError(error), message: this.backend.providers.redact(message) } });
     }
   }
   close() {

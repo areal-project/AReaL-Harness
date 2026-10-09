@@ -12,3 +12,6 @@ target
 **/.DS_Store
 tests/perf/model.toml
 tests/perf/**/output
+
+# GUI 不参与 Runtime/CLI 容器构建，避免传输与缓存失效。
+clients/gui

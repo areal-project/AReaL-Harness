@@ -6,6 +6,7 @@ This page describes implemented behavior. Compilation, mechanism tests and real-
 
 | Capability | Implementation and entry point |
 |---|---|
+| Project instructions | Load `AGENTS.md` from workspace root to session cwd, with closer-directory precedence, per-Turn refresh and bounded Runtime reads. [Clients](guides/clients.en.md) |
 | Task Mode and channels | foreground/scheduled/background, durable TaskRuns, independent Inbox replies, headless without human waits, and task_spawn workers surviving coordinator Turns under shared budgets. Web includes task controls, schedule creation and an independent Inbox. [API](api/tasks.en.md) |
 | Sessions and models | Persistent Threads/Turns, streaming text, Chat Completions reasoning and Responses reasoning summary/text events, steering, cancellation and resume; Chat Completions / Responses, with modalities constrained by adapter and model. [Clients](guides/clients.en.md) |
 | Files and processes | Conditional writes, commands, stdin, PTYs, bounded output, narrowing Scopes and cleanup. [Runtime](api/runtime.en.md) |
