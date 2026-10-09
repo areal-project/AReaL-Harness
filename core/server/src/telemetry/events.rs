@@ -5,7 +5,15 @@ use opentelemetry::{
     trace::TraceContextExt,
 };
 use opentelemetry_sdk::logs::SdkLogger;
-use std::{collections::BTreeMap, fmt, sync::OnceLock, time::SystemTime};
+use std::{
+    collections::BTreeMap,
+    fmt,
+    sync::{
+        Arc, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::SystemTime,
+};
 use tracing::{
     Event, Subscriber,
     field::{Field, Visit},
@@ -14,18 +22,116 @@ use tracing::{
 use tracing_opentelemetry::get_otel_context;
 use tracing_subscriber::{Layer, layer::Context, registry::LookupSpan};
 
-#[derive(Clone, Default)]
-struct Fields(BTreeMap<String, AnyValue>);
+struct Budget {
+    used: AtomicUsize,
+    limit: usize,
+}
+impl Budget {
+    fn reserve(&self, bytes: usize) -> bool {
+        self.used
+            .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |used| {
+                used.checked_add(bytes).filter(|used| *used <= self.limit)
+            })
+            .is_ok()
+    }
+}
 
-impl Visit for Fields {
+// 在每块格式化输出分配前取得额度；失败会丢弃整字段，避免输出不完整的 JSON。
+struct BudgetedString {
+    value: String,
+    budget: Arc<Budget>,
+    bytes: usize,
+    failed: bool,
+}
+impl BudgetedString {
+    fn new(budget: Arc<Budget>, overhead: usize) -> Option<Self> {
+        budget.reserve(overhead).then(|| Self {
+            value: String::new(),
+            budget,
+            bytes: overhead,
+            failed: false,
+        })
+    }
+
+    fn into_field(mut self) -> FieldValue {
+        FieldValue {
+            value: AnyValue::String(std::mem::take(&mut self.value).into()),
+            budget: Some(self.budget.clone()),
+            bytes: std::mem::take(&mut self.bytes),
+        }
+    }
+}
+impl fmt::Write for BudgetedString {
+    fn write_str(&mut self, value: &str) -> fmt::Result {
+        if self.failed || !self.budget.reserve(value.len()) {
+            self.failed = true;
+            return Err(fmt::Error);
+        }
+        self.bytes += value.len();
+        if self.value.try_reserve_exact(value.len()).is_err() {
+            self.failed = true;
+            return Err(fmt::Error);
+        }
+        self.value.push_str(value);
+        Ok(())
+    }
+}
+impl Drop for BudgetedString {
+    fn drop(&mut self) {
+        self.budget.used.fetch_sub(self.bytes, Ordering::Relaxed);
+    }
+}
+
+struct FieldValue {
+    value: AnyValue,
+    budget: Option<Arc<Budget>>,
+    bytes: usize,
+}
+impl Drop for FieldValue {
+    fn drop(&mut self) {
+        if let Some(budget) = &self.budget {
+            budget.used.fetch_sub(self.bytes, Ordering::Relaxed);
+        }
+    }
+}
+#[derive(Clone, Default)]
+struct Fields<const CHANNEL: u8> {
+    values: BTreeMap<String, Arc<FieldValue>>,
+    budget: Option<Arc<Budget>>,
+    truncated: bool,
+}
+impl<const CHANNEL: u8> Fields<CHANNEL> {
+    fn insert(&mut self, key: &str, value: impl FnOnce() -> AnyValue, bytes: usize) {
+        self.values.remove(key);
+        if let Some(budget) = &self.budget
+            && !budget.reserve(bytes)
+        {
+            self.truncated = true;
+            return;
+        }
+        self.values.insert(
+            key.into(),
+            Arc::new(FieldValue {
+                value: value(),
+                budget: self.budget.clone(),
+                bytes,
+            }),
+        );
+    }
+}
+impl<const CHANNEL: u8> Visit for Fields<CHANNEL> {
     fn record_str(&mut self, field: &Field, value: &str) {
-        self.0.insert(
-            field.name().into(),
-            AnyValue::String(value.to_owned().into()),
+        self.insert(
+            field.name(),
+            || AnyValue::String(value.to_owned().into()),
+            value
+                .len()
+                .saturating_add(field.name().len())
+                .saturating_add(128),
         );
     }
     fn record_i64(&mut self, field: &Field, value: i64) {
-        self.0.insert(field.name().into(), AnyValue::Int(value));
+        self.insert(field.name(), || AnyValue::Int(value), 128);
     }
     fn record_u64(&mut self, field: &Field, value: u64) {
         if let Ok(value) = i64::try_from(value) {
@@ -33,31 +139,59 @@ impl Visit for Fields {
         }
     }
     fn record_f64(&mut self, field: &Field, value: f64) {
-        self.0.insert(field.name().into(), AnyValue::Double(value));
+        self.insert(field.name(), || AnyValue::Double(value), 128);
     }
     fn record_bool(&mut self, field: &Field, value: bool) {
-        self.0.insert(field.name().into(), AnyValue::Boolean(value));
+        self.insert(field.name(), || AnyValue::Boolean(value), 128);
     }
     fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-        self.record_str(field, &format!("{value:?}"));
+        let Some(budget) = self.budget.clone().filter(|_| CHANNEL != 0) else {
+            self.record_str(field, &format!("{value:?}"));
+            return;
+        };
+        self.values.remove(field.name());
+        let Some(mut output) = BudgetedString::new(budget, field.name().len().saturating_add(128))
+        else {
+            self.truncated = true;
+            return;
+        };
+        if fmt::write(&mut output, format_args!("{value:?}")).is_err() || output.failed {
+            self.truncated = true;
+            return;
+        }
+        self.values
+            .insert(field.name().into(), Arc::new(output.into_field()));
     }
 }
 
-pub(super) struct EventLayer {
+struct LocalContext<const CHANNEL: u8>(opentelemetry::trace::SpanContext);
+
+pub(super) struct EventLayer<const CHANNEL: u8> {
     logger: Option<SdkLogger>,
+    budget: Option<Arc<Budget>>,
     dispatch: OnceLock<tracing::dispatcher::WeakDispatch>,
 }
 
-impl EventLayer {
+impl<const CHANNEL: u8> EventLayer<CHANNEL> {
     pub fn new(logger: Option<SdkLogger>) -> Self {
         Self {
             logger,
+            budget: None,
             dispatch: OnceLock::new(),
         }
     }
+    pub fn with_capture_limit(mut self, limit: Option<usize>) -> Self {
+        self.budget = limit.map(|limit| {
+            Arc::new(Budget {
+                used: AtomicUsize::new(0),
+                limit,
+            })
+        });
+        self
+    }
 }
 
-impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for EventLayer {
+impl<S: Subscriber + for<'a> LookupSpan<'a>, const CHANNEL: u8> Layer<S> for EventLayer<CHANNEL> {
     fn on_register_dispatch(&self, dispatch: &tracing::Dispatch) {
         // 事件回调中不能递归读取当前 tracing dispatcher；弱引用也避免订阅器循环持有。
         let _ = self.dispatch.set(dispatch.downgrade());
@@ -67,16 +201,38 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for EventLayer {
         if attrs.metadata().target() != "areal::trajectory" {
             return;
         }
-        let mut fields = Fields::default();
+        let mut fields = Fields::<CHANNEL> {
+            budget: self.budget.clone(),
+            ..Fields::default()
+        };
         attrs.record(&mut fields);
         if let Some(span) = ctx.span(id) {
+            use opentelemetry::trace::{SpanContext, SpanId, TraceFlags, TraceId, TraceState};
+            let trace_id = span
+                .parent()
+                .and_then(|p| {
+                    p.extensions()
+                        .get::<LocalContext<CHANNEL>>()
+                        .map(|c| c.0.trace_id())
+                })
+                .unwrap_or_else(|| TraceId::from_bytes(*uuid::Uuid::new_v4().as_bytes()));
+            let span_id =
+                SpanId::from_bytes(uuid::Uuid::new_v4().as_bytes()[..8].try_into().unwrap());
+            span.extensions_mut()
+                .insert(LocalContext::<CHANNEL>(SpanContext::new(
+                    trace_id,
+                    span_id,
+                    TraceFlags::SAMPLED,
+                    false,
+                    TraceState::default(),
+                )));
             span.extensions_mut().insert(fields);
         }
     }
 
     fn on_record(&self, id: &Id, values: &Record<'_>, ctx: Context<'_, S>) {
         if let Some(span) = ctx.span(id)
-            && let Some(fields) = span.extensions_mut().get_mut::<Fields>()
+            && let Some(fields) = span.extensions_mut().get_mut::<Fields<CHANNEL>>()
         {
             values.record(fields);
         }
@@ -86,11 +242,15 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for EventLayer {
         if event.metadata().target() != "areal::trajectory" {
             return;
         }
-        let mut fields = Fields::default();
+        let mut fields = Fields::<CHANNEL> {
+            budget: self.budget.clone(),
+            ..Fields::default()
+        };
         if let Some(scope) = ctx.event_scope(event) {
             for span in scope.from_root() {
-                if let Some(parent) = span.extensions().get::<Fields>() {
-                    fields.0.extend(parent.0.clone());
+                if let Some(parent) = span.extensions().get::<Fields<CHANNEL>>() {
+                    fields.values.extend(parent.values.clone());
+                    fields.truncated |= parent.truncated;
                 }
             }
         }
@@ -98,28 +258,32 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for EventLayer {
         let Some(span) = ctx.event_span(event) else {
             return;
         };
-        let Some(dispatch) = self.dispatch.get().and_then(|weak| weak.upgrade()) else {
+        let exported = self
+            .dispatch
+            .get()
+            .and_then(|weak| weak.upgrade())
+            .and_then(|dispatch| get_otel_context(&span.id(), &dispatch))
+            .map(|ctx| ctx.span().span_context().clone())
+            .filter(|sc| sc.is_valid());
+        let local = span
+            .extensions()
+            .get::<LocalContext<CHANNEL>>()
+            .map(|c| c.0.clone());
+        let Some(sc) = exported.or(local) else {
             return;
         };
-        let Some(context) = get_otel_context(&span.id(), &dispatch) else {
-            return;
-        };
-        let span = context.span();
-        let sc = span.span_context();
-        if !sc.is_valid() {
-            return;
-        }
         let Some(logger) = &self.logger else {
             return;
         };
         let mut record = logger.create_log_record();
-        if let Some(AnyValue::String(name)) = fields.0.get("event.name") {
+        if let Some(AnyValue::String(name)) = fields.values.get("event.name").map(|v| &v.value) {
             // SDK 要求静态事件名，使用 Engine 定义的有限事件集合。
             let name = match name.as_str() {
                 "gen_ai.client.inference.operation.details" => {
                     "gen_ai.client.inference.operation.details"
                 }
                 "areal.user_prompt" => "areal.user_prompt",
+                "areal.turn.completed" => "areal.turn.completed",
                 "areal.tool.call" => "areal.tool.call",
                 "areal.tool.result" => "areal.tool.result",
                 "areal.context.compacted" => "areal.context.compacted",
@@ -130,14 +294,20 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for EventLayer {
         record.set_timestamp(SystemTime::now());
         record.set_severity_number(Severity::Info);
         record.set_trace_context(sc.trace_id(), sc.span_id(), Some(sc.trace_flags()));
+        if fields.truncated {
+            record.add_attribute("areal.capture.truncated", true);
+        }
         record.add_attributes(
             fields
-                .0
+                .values
                 .into_iter()
                 .filter(|(k, _)| !k.starts_with("otel.") && k != "message")
-                .map(|(key, value)| {
-                    let value = match (key.as_str(), &value) {
+                .map(|(key, held)| {
+                    let value = held.value.clone();
+                    // 旧 OTLP 保持原投影；持久通道交给取得预算的后台线程解析 JSON。
+                    let value = match (CHANNEL, key.as_str(), &value) {
                         (
+                            0,
                             "gen_ai.input.messages"
                             | "gen_ai.output.messages"
                             | "gen_ai.tool.call.arguments"
@@ -210,7 +380,7 @@ mod tests {
                             metadata.is_span() && metadata.target() == "areal::trajectory"
                         })),
                 )
-                .with(EventLayer::new(Some(logger.logger("test"))));
+                .with(EventLayer::<0>::new(Some(logger.logger("test"))));
             let input =
                 r#"[{"role":"user","parts":[{"type":"text","content":"原始输入 token=abc"}]}]"#;
             let output = r#"[{"role":"assistant","parts":[{"type":"text","content":"原始输出"}]}]"#;
@@ -269,5 +439,187 @@ mod tests {
             logger.shutdown().unwrap();
             provider.shutdown().unwrap();
         }
+    }
+}
+
+#[cfg(test)]
+mod isolation_tests {
+    use super::*;
+    use opentelemetry::logs::LoggerProvider as _;
+    use opentelemetry_sdk::logs::{InMemoryLogExporter, SdkLoggerProvider};
+    use std::fmt::Write as _;
+    use tracing_subscriber::layer::SubscriberExt;
+
+    #[test]
+    fn bounded_formatter_rejects_oversize_chunk_before_allocating() {
+        let budget = Arc::new(Budget {
+            used: AtomicUsize::new(0),
+            limit: 1024,
+        });
+        let mut output = BudgetedString::new(budget.clone(), 128).unwrap();
+        assert!(output.write_str(&"x".repeat(1024 * 1024)).is_err());
+        assert!(output.value.is_empty());
+        assert_eq!(output.value.capacity(), 0);
+        assert!(output.write_str("small").is_err());
+        assert_eq!(budget.used.load(Ordering::Relaxed), 128);
+        drop(output);
+        assert_eq!(budget.used.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn bounded_formatter_transfers_reservation_to_field() {
+        let budget = Arc::new(Budget {
+            used: AtomicUsize::new(0),
+            limit: 1024,
+        });
+        let mut output = BudgetedString::new(budget.clone(), 128).unwrap();
+        output.write_str("保留").unwrap();
+        let field = output.into_field();
+        assert_eq!(field.value, AnyValue::String("保留".into()));
+        assert_eq!(budget.used.load(Ordering::Relaxed), 128 + "保留".len());
+        drop(field);
+        assert_eq!(budget.used.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn bounded_collection_stops_large_display_and_keeps_event() {
+        struct LargeDisplay<'a>(&'a AtomicUsize);
+        impl fmt::Display for LargeDisplay<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                for _ in 0..1_000_000 {
+                    self.0.fetch_add(1, Ordering::Relaxed);
+                    // 正常 Display 会传播写入错误；采集器不承诺中断任意自分配的实现。
+                    f.write_str(&"x".repeat(512))?;
+                }
+                Ok(())
+            }
+        }
+        let logs = InMemoryLogExporter::default();
+        let provider = SdkLoggerProvider::builder()
+            .with_simple_exporter(logs.clone())
+            .build();
+        let layer =
+            EventLayer::<1>::new(Some(provider.logger("bounded"))).with_capture_limit(Some(1024));
+        let budget = layer.budget.clone().unwrap();
+        let subscriber = tracing_subscriber::registry().with(layer);
+        let writes = AtomicUsize::new(0);
+        tracing::subscriber::with_default(subscriber, || {
+            let root =
+                tracing::info_span!(target:"areal::trajectory","invoke_agent",areal.turn.id="turn");
+            let _root = root.enter();
+            let request = tracing::info_span!(target:"areal::trajectory","chat",gen_ai.input.messages=%LargeDisplay(&writes));
+            let _request = request.enter();
+            tracing::event!(target:"areal::trajectory",tracing::Level::INFO,{"event.name"="gen_ai.client.inference.operation.details"});
+        });
+        assert!((1..=2).contains(&writes.load(Ordering::Relaxed)));
+        assert_eq!(budget.used.load(Ordering::Relaxed), 0);
+        let records = logs.get_emitted_logs().unwrap();
+        assert_eq!(records.len(), 1);
+        let attrs: BTreeMap<_, _> = records[0]
+            .record
+            .attributes_iter()
+            .map(|(key, value)| (key.as_str(), value.clone()))
+            .collect();
+        assert_eq!(attrs["areal.capture.truncated"], AnyValue::Boolean(true));
+        assert!(!attrs.contains_key("gen_ai.input.messages"));
+        assert_eq!(attrs["areal.turn.id"], AnyValue::String("turn".into()));
+        assert!(records[0].record.trace_context().is_some());
+        provider.shutdown().unwrap();
+    }
+
+    #[test]
+    fn durable_collection_leaves_json_projection_to_background() {
+        let legacy = InMemoryLogExporter::default();
+        let durable = InMemoryLogExporter::default();
+        let a = SdkLoggerProvider::builder()
+            .with_simple_exporter(legacy.clone())
+            .build();
+        let b = SdkLoggerProvider::builder()
+            .with_simple_exporter(durable.clone())
+            .build();
+        let subscriber = tracing_subscriber::registry()
+            .with(EventLayer::<0>::new(Some(a.logger("legacy"))))
+            .with(EventLayer::<1>::new(Some(b.logger("bounded"))).with_capture_limit(Some(4096)));
+        let input = r#"[{"role":"user","parts":[{"type":"text","content":"原始内容"}]}]"#;
+        tracing::subscriber::with_default(subscriber, || {
+            let root =
+                tracing::info_span!(target:"areal::trajectory","invoke_agent",areal.turn.id="turn");
+            let _root = root.enter();
+            let request =
+                tracing::info_span!(target:"areal::trajectory","chat",gen_ai.input.messages=%input);
+            let _request = request.enter();
+            tracing::event!(target:"areal::trajectory",tracing::Level::INFO,{"event.name"="gen_ai.client.inference.operation.details"});
+        });
+        for (exporter, expected) in [
+            (&legacy, json_value(serde_json::from_str(input).unwrap())),
+            (&durable, AnyValue::String(input.into())),
+        ] {
+            let records = exporter.get_emitted_logs().unwrap();
+            assert_eq!(records.len(), 1);
+            assert!(records[0].record.attributes_iter().any(|(key, value)| {
+                key.as_str() == "gen_ai.input.messages" && *value == expected
+            }));
+            assert!(
+                !records[0]
+                    .record
+                    .attributes_iter()
+                    .any(|(key, _)| { key.as_str() == "areal.capture.truncated" })
+            );
+        }
+        a.shutdown().unwrap();
+        b.shutdown().unwrap();
+    }
+
+    #[test]
+    fn bounded_collection_does_not_change_existing_otlp_content() {
+        let legacy = InMemoryLogExporter::default();
+        let limited = InMemoryLogExporter::default();
+        let a = SdkLoggerProvider::builder()
+            .with_simple_exporter(legacy.clone())
+            .build();
+        let b = SdkLoggerProvider::builder()
+            .with_simple_exporter(limited.clone())
+            .build();
+        let subscriber = tracing_subscriber::registry()
+            .with(EventLayer::<0>::new(Some(a.logger("legacy"))))
+            .with(EventLayer::<1>::new(Some(b.logger("bounded"))).with_capture_limit(Some(1024)));
+        let input = format!(
+            r#"[{{"role":"user","parts":[{{"type":"text","content":"{}"}}]}}]"#,
+            "x".repeat(8192)
+        );
+        tracing::subscriber::with_default(subscriber, || {
+            let root =
+                tracing::info_span!(target:"areal::trajectory","invoke_agent",areal.turn.id="turn");
+            let _root = root.enter();
+            let request =
+                tracing::info_span!(target:"areal::trajectory","chat",gen_ai.input.messages=%input);
+            let _request = request.enter();
+            tracing::event!(target:"areal::trajectory",tracing::Level::INFO,{"event.name"="gen_ai.client.inference.operation.details"});
+        });
+        let old = legacy.get_emitted_logs().unwrap();
+        let new = limited.get_emitted_logs().unwrap();
+        assert_eq!(old.len(), 1);
+        assert_eq!(new.len(), 1);
+        assert!(
+            old[0]
+                .record
+                .attributes_iter()
+                .any(|(k, v)| k.as_str() == "gen_ai.input.messages"
+                    && *v == json_value(serde_json::from_str(&input).unwrap()))
+        );
+        assert!(
+            new[0]
+                .record
+                .attributes_iter()
+                .any(|(k, v)| k.as_str() == "areal.capture.truncated"
+                    && *v == AnyValue::Boolean(true))
+        );
+        assert!(
+            !new[0]
+                .record
+                .attributes_iter()
+                .any(|(k, _)| k.as_str() == "gen_ai.input.messages")
+        );
+        assert!(new[0].record.trace_context().is_some());
     }
 }

@@ -23,7 +23,7 @@ import {
   SettingsPluginIcon,
   SettingsUsageIcon,
 } from "./settings/settingsNavIcons.js";
-import { Cpu, Server, Smartphone, Inbox as InboxIcon } from "lucide-react";
+import { Cpu, Server, Smartphone, Database, Inbox as InboxIcon } from "lucide-react";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { DismissIcon as X } from "./interfaceIcons.js";
@@ -83,6 +83,8 @@ import { agentName } from "./AgentIdentity.js";
 import { AgentsPane } from "./AgentsPane.js";
 import { WorkgroupsPane } from "./WorkgroupsPane.js";
 import { ServiceStatusSettings } from "./settings/ServiceStatusSettings.js";
+import { TrajectorySettings } from "./settings/TrajectorySettings.js";
+import type { TrajectoryStatus } from "@areal/workbench/desktop-contract";
 import { CoreCapabilitiesSettings } from "./settings/CoreCapabilitiesSettings.js";
 import { MobileSettings } from "./settings/MobileSettings.js";
 const settingsLabel = (name: string) =>
@@ -107,6 +109,7 @@ const settingsNavigationGroups: SettingsNavigationGroup[] = [
     { id: "模型服务", label: "模型设置", icon: <Cpu strokeWidth={1.5} /> },
     { id: "会话配置", label: "会话配置", icon: <SettingsConfigurationIcon /> },
     { id: "后台服务", label: "后台服务", icon: <Server strokeWidth={1.5} /> },
+    { id: "数据飞轮", label: "数据飞轮", icon: <Database strokeWidth={1.5} /> },
     { id: "手机连接", label: "手机连接", icon: <Smartphone strokeWidth={1.5} /> },
   ] },
 ];
@@ -194,6 +197,9 @@ function AppContent({ services }: { services: PlatformServices }) {
   const { terminalLocation, showBottomPanelControl } = useApplicationPreferences();
   const [snapshot, updateSnapshot] = useState<Snapshot>({ projects: [], connection: { state: "connecting" } });
   const [themeReady, setThemeReady] = useState(false);
+  const [trajectoryAttention, setTrajectoryAttention] = useState(false);
+  const trajectoryChecked = React.useRef(false);
+  const trajectoryRevision = React.useRef(0);
   const [restoration, setRestoration] = useState<{ projectId: string; pending: boolean; failed: boolean }>();
   // 初始 IPC 读回可能晚于订阅事件；只接受本 GUI 连接中更新的投影。
   const setSnapshot = useCallback((next: Snapshot) => updateSnapshot(previous =>
@@ -399,6 +405,19 @@ function AppContent({ services }: { services: PlatformServices }) {
     (name, params = {}) => call(services, name, params),
     [services],
   );
+  const onTrajectoryStatus = useCallback((status: TrajectoryStatus) => {
+    trajectoryRevision.current++;
+    setTrajectoryAttention(status.state === "degraded" || status.state === "invalid");
+  }, []);
+  useEffect(() => {
+    if (snapshot.connection?.state !== "ready" || trajectoryChecked.current) return;
+    trajectoryChecked.current = true;
+    const revision = trajectoryRevision.current;
+    // 首次连接只检查一次，错误留在设置页，避免与聊天错误提示混在一起。
+    void resourceAction("trajectory", { operation: "status" }).then(status => {
+      if (revision === trajectoryRevision.current) onTrajectoryStatus(status);
+    }).catch(() => {});
+  }, [snapshot.connection?.state, resourceAction, onTrajectoryStatus]);
   const readTurnReview = useCallback((turnId: string, itemId?: string) => resourceAction("workspace", {
     projectId: project?.id, threadId, turnId, itemId, operation: "turnReview",
   }), [resourceAction, project?.id, threadId]);
@@ -1093,7 +1112,7 @@ function AppContent({ services }: { services: PlatformServices }) {
               { id: "inbox", label: "Inbox", icon: <InboxIcon />, onSelect: () => requestNavigation(() => { updateSettingsOpen(false); setTaskSurface("inbox"); if (matchMedia("(max-width: 640px)").matches) setSidebar(false); }) },
               { id: "tasks", label: "执行任务", icon: <CalendarClock />, onSelect: () => requestNavigation(() => { updateSettingsOpen(false); setTaskScope(undefined); setTaskNotification(undefined); setTaskCenterOpen(true); if (matchMedia("(max-width: 640px)").matches) setSidebar(false); }) },
               { id: "plugins", label: "插件", icon: <SettingsPluginIcon />, onSelect: () => requestNavigation(() => { updateSettingsTab("插件"); setSettingsOpen(true); }) },
-            ]} footer={<><UpdateIndicator services={services} /><Button variant="ghost" size="icon" className="application-rail-button" aria-label="设置" title="设置" aria-current={settingsOpen ? "page" : undefined} onClick={() => showPanel("设置")}><Settings /></Button></>} />;
+            ]} footer={<><UpdateIndicator services={services} /><Button variant="ghost" size="icon" className="application-rail-button relative" aria-label="设置" title={trajectoryAttention ? "设置 · 数据飞轮需要检查" : "设置"} aria-current={settingsOpen ? "page" : undefined} onClick={() => showPanel("设置")}><Settings />{trajectoryAttention && <span aria-label="数据飞轮需要检查" className="absolute top-1 right-1 size-2 rounded-full bg-amber-500" />}</Button></>} />;
   const workspaceNavigation = <div className="workspace-navigation">
     <button className="icon-button" aria-label="后退" title="后退 (⌘[)" disabled={taskCenterOpen || workspaceHistory.index <= 0} onClick={() => traverseWorkspaceHistory(-1)}><ArrowLeft size={16} /></button>
     <button className="icon-button" aria-label="前进" title="前进 (⌘])" disabled={taskCenterOpen || workspaceHistory.index >= workspaceHistory.entries.length - 1} onClick={() => traverseWorkspaceHistory(1)}><ArrowRight size={16} /></button>
@@ -1112,7 +1131,7 @@ function AppContent({ services }: { services: PlatformServices }) {
         <SettingsNavigation width={sidebarWidth} rail={applicationRail}
           activeId={["Skills", "MCP"].includes(settingsTab) ? "插件" : settingsTab}
           onSelect={setSettingsTab} onBack={() => setSettingsOpen(false)}
-          groups={settingsNavigationGroups}
+          groups={trajectoryAttention ? settingsNavigationGroups.map(group => ({ ...group, items: group.items.map(item => item.id === "数据飞轮" ? { ...item, label: "数据飞轮 · 需要检查" } : item) })) : settingsNavigationGroups}
         />
       ) : (
         <NavigationSidebar id="areal-sidebar" data-testid="areal-sidebar" data-collapsed={!sidebar} railOnly={taskCenterOpen || !sidebar} width={sidebarWidth} onWidthChange={setSidebarWidth}
@@ -1313,6 +1332,8 @@ function AppContent({ services }: { services: PlatformServices }) {
                 project && thread ? <SessionSettings key={`${project.id}:${thread.id}`} project={project} thread={thread} action={resourceAction} /> : <div className="settings-empty"><p>请先选择任务，以编辑会话配置。</p></div>
               ) : settingsTab === "手机连接" ? (
                 <MobileSettings action={resourceAction} projects={snapshot.projects} />
+              ) : settingsTab === "数据飞轮" ? (
+                <TrajectorySettings action={resourceAction} connected={snapshot.connection?.state === "ready"} onStatus={onTrajectoryStatus} />
               ) : settingsTab === "后台服务" ? (
                 <><ServiceStatusSettings connected={snapshot.connection?.state === "ready"} action={resourceAction}
                   onConnect={reconnectService}

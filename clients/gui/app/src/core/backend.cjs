@@ -8,6 +8,7 @@ const { join, isAbsolute } = require('node:path');
 const WebSocket = require('ws');
 const { ScopedResources } = require('./scoped-resources.cjs');
 const { AppHooks } = require('./hooks.cjs');
+const { TrajectoryExport } = require('./trajectory.cjs');
 const { AppProviders } = require('./providers.cjs');
 const { UsageAnalytics } = require('./analytics.cjs');
 const { CoreLibrary } = require('./library.cjs');
@@ -52,6 +53,7 @@ class CoreBackend {
     this.analytics = new UsageAnalytics(this);
     this.resources = new ScopedResources(this);
     this.hooks = new AppHooks(this);
+    this.trajectory = new TrajectoryExport(this);
     this.providers = new AppProviders(this, encryption);
     this.activeCommands = 0;
     this.awaitingResponses = new WeakSet();
@@ -838,6 +840,7 @@ class CoreBackend {
 
   async executeCommand(name, request) {
     if (this.closing) throw new Error('应用正在退出');
+    if (name === 'trajectory') return this.trajectory.command(request);
     if (name === 'tasks') return taskCatalog(this, request);
     if (name === 'projectless') return this.projectless.command(request);
     if (name === 'library') return this.library.command(request);

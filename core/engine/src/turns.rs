@@ -227,6 +227,8 @@ impl Engine {
             areal.thread.id = %thread_id,
             areal.parent_thread.id = %parent_thread_id,
             areal.turn.id = %turn.id,
+            gen_ai.request.model = %state.active.as_ref().unwrap().model.name(),
+            gen_ai.provider.name = %state.active.as_ref().unwrap().model.provider(),
             areal.turn.status = tracing::field::Empty,
         );
         self.tasks
@@ -764,6 +766,24 @@ impl Engine {
                 "core_store",
                 "persist_failed",
             ));
+        }
+        // 轨迹发送仅观察最终结算，不参与请求成败；时间来自执行记录而非上传时钟。
+        if let Some(turn) = state.thread.turns.last() {
+            let status = match turn.status {
+                TurnStatus::Completed => "completed",
+                TurnStatus::Interrupted => "interrupted",
+                TurnStatus::Failed => "failed",
+                TurnStatus::InProgress => "in_progress",
+            };
+            tracing::event!(target: trajectory::TARGET, tracing::Level::INFO, {
+                "event.name" = "areal.turn.completed",
+                areal.turn.status = status,
+                areal.turn.started_at_ms = turn.started_at.map(|t| t.saturating_mul(1000)),
+                areal.turn.completed_at_ms = turn.completed_at.map(|t| t.saturating_mul(1000)),
+                areal.duration_ms = turn.duration_ms,
+                gen_ai.usage.input_tokens = turn.usage.as_ref().map(|u|u.input_tokens),
+                gen_ai.usage.output_tokens = turn.usage.as_ref().map(|u|u.output_tokens),
+            });
         }
         let active = state.active.take().unwrap();
         if state.poisoned {

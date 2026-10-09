@@ -6,3 +6,4 @@ export const { commandDefinitions, validateCommand, validatePreview, desktopErro
 /** @template {CommandName} N @typedef {import('./desktop-contract.cjs').CommandParams<N>} CommandParams */
 /** @typedef {import('./desktop-contract.cjs').PreviewRequest} PreviewRequest */
 /** @typedef {import('./desktop-contract.cjs').OwnedPreviewOperation} OwnedPreviewOperation */
+/** @typedef {import('./desktop-contract.cjs').TrajectoryStatus} TrajectoryStatus */

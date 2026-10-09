@@ -9,6 +9,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 mod reload;
 mod telemetry;
 mod tool_extensions;
+pub mod trajectory;
 pub mod workgroup;
 
 fn engine_limits(config: &ResolvedCoreConfig) -> Limits {
@@ -284,7 +285,8 @@ async fn run_configured(mut args: Args, diagnostic: Option<ConfigCommand>) -> Re
         );
     }
     let model = reload::model(&config.model, &inputs, &config.data_dir, management)?;
-    let telemetry = telemetry::TelemetryGuard::init(telemetry_config, &config.log_filter)?;
+    let telemetry =
+        telemetry::TelemetryGuard::init(telemetry_config, &config.log_filter, &config.trajectory)?;
     let stopping = tokio_util::sync::CancellationToken::new();
     #[cfg(unix)]
     let supervisor_task = if let Some(fd) = args.supervisor_fd {

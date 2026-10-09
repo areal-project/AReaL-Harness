@@ -50,6 +50,8 @@ See [testing](testing.en.md) for coverage. Pass arguments with `make tui ARGS='-
 
 The project uses [Apache-2.0](../../LICENSE). Cargo workspace and npm packages declare the same license. Both SDKs include LICENSE; `scripts/package.py` copies it into desktop bundles and records its checksum. Third-party materials retain their original licenses and copyright notices.
 
+`make smoke` also verifies optional trajectory export: the Agent returns while the local receiver responds with 503, the independent worker drains the queue after Core exits, and disabling export stops the worker. Run `node scripts/trajectory-smoke.mjs` separately; `AREAL_TRAJECTORY_FIXTURE_OUTPUT` saves real OTLP protobuf for receiver interoperability tests, containing only local fixture data.
+
 ## Dependencies and style
 
 Use Rust `--locked`; intentional upgrades update manifests and locks. Cordis also updates [pins.json](../../upstream/pins.json), following the [upgrade guide](cordis.en.md). Use `npm ci --ignore-scripts` and `uv sync --locked --only-group dev`, without transient global formatting tools. Frozen third-party tasks and oracles are excluded from bulk formatting.

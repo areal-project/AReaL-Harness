@@ -60,6 +60,98 @@ fn failure(i: &ConfigInputs) -> ConfigError {
 }
 
 #[test]
+fn trajectory_defaults_are_disabled_and_shared_across_core_data_directories() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    i.overrides.data_dir = Some(temp.path().join("run-a"));
+    let a = load_config(&i).unwrap();
+    i.overrides.data_dir = Some(temp.path().join("run-b"));
+    let b = load_config(&i).unwrap();
+    assert!(!a.trajectory.enabled);
+    assert_eq!(
+        a.trajectory.spool_dir,
+        temp.path().join(".areal/trajectory")
+    );
+    assert_eq!(a.trajectory.spool_dir, b.trajectory.spool_dir);
+    assert_eq!(a.trajectory.max_disk_bytes, 256 * 1024 * 1024);
+    assert_eq!(a.trajectory.max_memory_bytes, 16 * 1024 * 1024);
+    assert_eq!(a.trajectory.max_retries, 6);
+}
+
+#[test]
+fn trajectory_configuration_resolves_paths_without_reading_credentials() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    write(
+        &mut i,
+        "schema_version=2\n[trajectory]\nenabled=true\nendpoint='not a URL'\nspool_dir='spool'\nheaders_file='missing.headers'\nmax_retries=0\n",
+    );
+    let config = load_config(&i).unwrap();
+    assert!(config.trajectory.enabled);
+    assert_eq!(config.trajectory.spool_dir, temp.path().join("spool"));
+    assert_eq!(
+        config.trajectory.headers_file,
+        Some(temp.path().join("missing.headers"))
+    );
+    assert_eq!(config.trajectory.max_retries, 0);
+    // 运行时错误不阻止正常 Agent 配置加载，诊断也不回显非法地址。
+    assert_eq!(
+        config.diagnostic(false)["trajectory"]["endpoint"],
+        "<invalid>"
+    );
+    assert!(!config.diagnostic(false).to_string().contains("not a URL"));
+    assert!(!temp.path().join("spool").exists());
+}
+
+#[test]
+fn trajectory_diagnostics_redact_endpoint_and_preserve_change_identity() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    write(
+        &mut i,
+        "schema_version=2\n[trajectory]\nendpoint='https://name:secret@example.com/prefix?token=hidden#private'\n",
+    );
+    let before = load_config(&i).unwrap().diagnostic(false)["trajectory"].clone();
+    assert_eq!(before["endpoint"], "https://example.com/prefix");
+    assert!(!before.to_string().contains("secret"));
+    assert!(!before.to_string().contains("hidden"));
+    write(
+        &mut i,
+        "schema_version=2\n[trajectory]\nendpoint='https://name:other@example.com/prefix?token=changed'\n",
+    );
+    let after = load_config(&i).unwrap().diagnostic(false)["trajectory"].clone();
+    assert_eq!(before["endpoint"], after["endpoint"]);
+    assert_ne!(
+        before["endpoint_fingerprint"],
+        after["endpoint_fingerprint"]
+    );
+}
+
+#[test]
+fn trajectory_rejects_structural_errors_and_unbounded_capacity() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    for settings in [
+        "enabled='true'",
+        "unknown=1",
+        "max_disk_bytes=0",
+        "max_records=-1",
+        "max_records=10001",
+        "headers_env='HEADERS'\nheaders_file='headers.txt'",
+        "max_retries=101",
+        "max_memory_bytes=1",
+        "retry_initial_seconds=301",
+        "upload_interval_ms=0",
+    ] {
+        write(
+            &mut i,
+            &format!("schema_version=2\n[trajectory]\n{settings}\n"),
+        );
+        assert!(load_config(&i).is_err(), "{settings}");
+    }
+}
+
+#[test]
 fn goals_have_unlimited_default_budgets_and_validate_overrides() {
     let temp = tempfile::tempdir().unwrap();
     let mut i = inputs(temp.path());

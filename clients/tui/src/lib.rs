@@ -66,6 +66,13 @@ pub struct Args {
     input_file: Option<std::path::PathBuf>,
 }
 
+impl Args {
+    /// 产品入口可检查本地部署状态；远程连接不读取宿主用户配置。
+    pub fn local_options(&self) -> Option<&areal_local_service::LocalArgs> {
+        self.endpoint.is_none().then_some(&self.local)
+    }
+}
+
 pub fn safe_text(text: &str) -> String {
     text.chars()
         .filter(|c| !c.is_control() || matches!(c, '\n' | '\t'))

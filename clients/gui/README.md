@@ -40,6 +40,8 @@ macOS 开发和安装版均需要可执行的 `/usr/bin/python3`，供 Runtime �
 
 ## 生命周期
 
+设置中的“数据飞轮”页通过 `areal trajectory status/retry` 读取当前文件配置、上传进程、积压与最近上传记录；有相应元数据时分别显示 Turn、模型、Harness 版本、执行耗时以及事件发生/记录创建/上传成功时间，并支持刷新和手动重试；首次连接只读检查一次，异常只在设置入口显示提示。读取状态不会启动 Core 或上传进程，上传信息不进入聊天内容。界面显示的是当前配置文件，已运行 Core 的采集配置仍需重启生效。使用仓库 `scripts/configure-trajectory.py` 配置本页显示的文件；GUI 沿用可信启动配置及凭据环境，不提供上传地址或凭据编辑。`pnpm --dir clients/gui run test:trajectory` 验证桥接的命令边界与状态投影。构建 renderer 后，`pnpm --dir clients/gui run test:trajectory-ui` 使用本机 Chrome 与隔离桌面服务 fixture 验证选中导航、元数据、刷新和重试；可用 `AREAL_GUI_TEST_BROWSER` 指定浏览器可执行文件，不替代 Electron/Core 集成验收。
+
 Renderer 仅通过窄 preload IPC 访问桌面适配器。独立适配器使用 `areal service ensure/restart/stop --json` 连接 Core，不直接管理 Core PID。退出 GUI 断开界面并结算 GUI 拥有的终端，Core Turn/Goal 和已配置的定时任务继续执行；重新打开按权威快照恢复，不自动重放提交。停止后台服务是显式操作，忙碌时拒绝安全停止。
 
 Core 观察连接意外关闭时，项目连接所有者以 500ms 起步、最长 30s 的退避重试，通过 `service status --instance` 发现兼容的运行中实例，恢复 Thread/Task 快照、订阅和通知基线。`thread/resume` 同时重建工具宿主绑定；恢复不重新提交任务、不同步 Provider/MCP 配置，也不执行配置 revision 屏障。旧连接的消息与异步结果失去投影写入资格。显式停止、适配器关闭、停止中的 Core 或部署指纹不兼容会阻止自动恢复；重新连接需显式操作。

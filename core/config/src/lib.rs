@@ -3,11 +3,13 @@ mod file;
 pub mod models;
 mod resolve;
 pub mod skills;
+mod trajectory;
 
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, ffi::OsString, fmt, net::SocketAddr, path::PathBuf};
 
 pub use resolve::{load_config, load_management_config};
+pub use trajectory::TrajectoryConfig;
 
 /// 可信工具宿主继承连接所需的代理变量；不借此透传模型凭据或其他宿主环境。
 pub const PROXY_ENV_VARS: [&str; 8] = [
@@ -218,6 +220,7 @@ pub struct GoalConfig {
 }
 
 pub struct ResolvedCoreConfig {
+    pub trajectory: TrajectoryConfig,
     pub model_catalog: Vec<models::ProviderConfig>,
     pub model_catalog_managed: bool,
     pub permissions: PermissionConfig,
@@ -273,6 +276,7 @@ impl ResolvedCoreConfig {
             endpoint.to_string()
         };
         let mut result = serde_json::json!({
+            "trajectory": self.trajectory.diagnostic(),
             "permissions": self.permissions,
             "goals": self.goals,
             "home": self.home, "config_file": self.config_file,

@@ -55,6 +55,23 @@ stream_idle_timeout_seconds = 30
 [logging]
 filter = "info"
 
+# 可选持久轨迹导出；只接受标准 OTLP HTTP/protobuf，不依赖特定平台。
+[trajectory]
+enabled = false
+endpoint = "https://collector.example.com"
+# spool_dir 默认 <AREAL_HARNESS_HOME>/trajectory，跨工作区和独占 CLI run 共享。
+# headers_env = "AREAL_EXPORT_HEADERS"
+# headers_file = "/absolute/private/trajectory-headers.txt"
+max_disk_bytes = 268435456
+max_memory_bytes = 16777216
+max_batch_bytes = 4194304
+max_records = 2000
+max_retries = 6
+retry_initial_seconds = 5
+retry_max_seconds = 300
+request_timeout_seconds = 10
+upload_interval_ms = 1000
+
 # 可选：工具等待策略、自定义命令工具与 hooks；详见 docs/guides/tools.md。
 # [tools]
 # extensions_file = "tools.json"

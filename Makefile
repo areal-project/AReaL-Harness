@@ -149,8 +149,9 @@ verify-native: ## macOS 原生后端与 Harness 集成验收（通用回归由 L
 	cargo test --locked -p areal-runtime-exec-native
 	$(MAKE) runtime-smoke harness-smoke examples-desktop-api workgroup-smoke
 
-smoke: build ## 构建后验证 TUI、HTTP/SSE、持久化与强杀恢复
+smoke: build ## 构建后验证 TUI、HTTP/SSE、持久化、强杀恢复和异步轨迹补传
 	node scripts/smoke.mjs
+	node scripts/trajectory-smoke.mjs
 
 server: ## 构建并启动 Core；读取用户 TOML、环境变量和显式 ARGS
 	cargo run --locked -p areal-cli -- app-server $(ARGS)

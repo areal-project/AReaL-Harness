@@ -24,6 +24,7 @@ This page describes implemented behavior. Compilation, mechanism tests and real-
 | Shared local services | Multiple TUI windows and Web reuse one Core/Runtime; local Web launches sign in automatically with one-time codes; public JSON discovery/control for Desktop Main, workspace isolation, model configuration reload, safe idle restart for unapplied updates (including new credentials), explicit stop and crash cleanup. [Contract](api/local-service.en.md) |
 | SDKs | Private in-repository `@areal/runtime` and `@areal/plugins` packages; Node.js 22.19.0+. [SDK contracts](api/typescript-sdk.en.md) |
 | Observability and validation | Standard OpenTelemetry Traces and Events/Logs, full trajectory export through standard OTEL configuration (OTLP HTTP/protobuf); deterministic regression tests, native smoke tests and Docker lite/pro benchmarks. [Configuration](guides/configuration.en.md) · [Testing](development/testing.en.md) |
+| Persistent trajectory export | Optional `[trajectory]` configuration, a bounded disk queue shared across local runs, an independent OTLP Logs uploader, backoff, and manual retry; CLI status and GUI Data flywheel settings. Uploads do not change Turn outcomes; receivers own platform analysis registration. [Configuration](guides/configuration.en.md#persistent-trajectory-export) |
 
 ## Limitations
 

@@ -24,6 +24,7 @@
 | 共享本地服务 | 多 TUI 窗口与 Web 复用 Core/Runtime；本地 Web 启动通过一次性登录码自动认证；公共 JSON 发现/控制供 Desktop Main 使用，按工作区隔离、模型配置热更新、热更新未应用时的空闲安全重启（支持继承新凭据）、显式停止与故障清理。[契约](api/local-service.md) |
 | SDK | 仓库内私有 `@areal/runtime` 和 `@areal/plugins`，Node.js 22.19.0+。[SDK 契约](api/typescript-sdk.md) |
 | 观测与验证 | 标准 OpenTelemetry Traces 与 Events/Logs，通过标准 OTEL 配置导出完整轨迹（OTLP HTTP/protobuf）；确定性模型回归、原生 smoke、Docker lite/pro 评测。[配置](guides/configuration.md) · [测试](development/testing.md) |
+| 持久轨迹导出 | 可选 `[trajectory]` 配置、跨本地 run 的有界磁盘队列、独立 OTLP Logs 上传进程、退避与手动重试；CLI 状态和 GUI 数据飞轮设置页。上传不改变 Turn 结果；平台分析登记由接收端完成。[配置](guides/configuration.md#持久轨迹导出) |
 
 ## 支持边界
 
