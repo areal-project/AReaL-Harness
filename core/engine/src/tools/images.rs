@@ -1,11 +1,12 @@
 use super::*;
-use image::{AnimationDecoder, GenericImageView, ImageDecoder};
+use image::GenericImageView;
 use std::io::{Cursor, Seek, Write};
 
 const MAX_PIXELS: u64 = 32 * 1024 * 1024;
 const MAX_VIEW_BYTES: usize = 1024 * 1024;
 const MAX_GIF_FRAMES: usize = 4096;
-const MAX_ANIMATION_PIXELS: u64 = 512 * 1024 * 1024;
+const MAX_ANIMATION_PIXELS: u64 = 1024 * 1024 * 1024;
+const MAX_GIF_BUFFER_BYTES: u64 = 64 * 1024 * 1024;
 
 fn invalid(error: impl std::fmt::Display) -> rt::Error {
     let mut error = rt::Error::new(rt::ErrorCode::InvalidArgument, error.to_string());
@@ -138,11 +139,40 @@ fn limits() -> image::Limits {
     limits.max_alloc = Some(256 * 1024 * 1024);
     limits
 }
-fn gif(bytes: &[u8]) -> rt::Result<image::codecs::gif::GifDecoder<Cursor<&[u8]>>> {
-    let mut decoder = image::codecs::gif::GifDecoder::new(Cursor::new(bytes)).map_err(invalid)?;
-    dimensions(decoder.dimensions())?;
-    decoder.set_limits(limits()).map_err(invalid)?;
+fn gif(bytes: &[u8], metadata_only: bool) -> rt::Result<gif::Decoder<Cursor<&[u8]>>> {
+    let mut options = gif::DecodeOptions::new();
+    options.set_color_output(gif::ColorOutput::RGBA);
+    options.set_memory_limit(gif::MemoryLimit::Bytes(
+        MAX_GIF_BUFFER_BYTES.try_into().unwrap(),
+    ));
+    options.check_frame_consistency(true);
+    options.skip_frame_decoding(metadata_only);
+    let decoder = options.read_info(Cursor::new(bytes)).map_err(invalid)?;
+    let size = (u32::from(decoder.width()), u32::from(decoder.height()));
+    dimensions(size)?;
+    // 为画布、帧矩形、所选快照与缩放留出独立空间，不随动画帧数增长。
+    if u64::from(size.0) * u64::from(size.1) * 4 > MAX_GIF_BUFFER_BYTES {
+        return Err(invalid(
+            "GIF canvas exceeds the 256 MiB working memory budget",
+        ));
+    }
     Ok(decoder)
+}
+
+fn composite(canvas: &mut image::RgbaImage, frame: &gif::Frame<'_>) {
+    let width = canvas.width() as usize;
+    let row_bytes = usize::from(frame.width) * 4;
+    for (y, row) in frame.buffer.chunks_exact(row_bytes).enumerate() {
+        let start = ((usize::from(frame.top) + y) * width + usize::from(frame.left)) * 4;
+        for (target, source) in canvas.as_mut()[start..start + row_bytes]
+            .chunks_exact_mut(4)
+            .zip(row.chunks_exact(4))
+        {
+            if source[3] != 0 {
+                target.copy_from_slice(source);
+            }
+        }
+    }
 }
 fn prepare_media(bytes: Vec<u8>, args: &Value) -> rt::Result<PreparedMedia> {
     let dimension = args["maxDimension"].as_u64().unwrap_or(2048);
@@ -160,24 +190,23 @@ fn prepare_media(bytes: Vec<u8>, args: &Value) -> rt::Result<PreparedMedia> {
             crop,
         });
     }
-    let decoder = gif(&bytes)?;
-    let size = decoder.dimensions();
-    let pixels = u64::from(size.0) * u64::from(size.1);
+    let mut decoder = gif(&bytes, true)?;
+    let size = (u32::from(decoder.width()), u32::from(decoder.height()));
     let mut timeline = Vec::new();
     let mut elapsed = 0.0;
-    // 流式合成 disposal；不 collect 全动画，且限制累计解码工作量。
-    for frame in decoder.into_frames() {
-        if timeline.len() >= MAX_GIF_FRAMES
-            || (timeline.len() as u64 + 1) * pixels > MAX_ANIMATION_PIXELS
-        {
+    // 扫描时间线只跳过压缩块，不先将整段动画解码一遍。
+    while let Some(frame) = decoder.read_next_frame().map_err(invalid)? {
+        if timeline.len() >= MAX_GIF_FRAMES || frame.width == 0 || frame.height == 0 {
             return Err(invalid(
-                "GIF exceeds frame/decode work budget; use a local command to extract a bounded interval",
+                "GIF exceeds frame budget or contains an empty frame",
             ));
         }
-        let frame = frame.map_err(invalid)?;
-        let (num, den) = frame.delay().numer_denom_ms();
-        let delay = f64::from(num) / f64::from(den);
-        timeline.push((elapsed, delay));
+        let delay = f64::from(frame.delay) * 10.0;
+        timeline.push((
+            elapsed,
+            delay,
+            u64::from(frame.width) * u64::from(frame.height),
+        ));
         elapsed += delay;
     }
     if timeline.is_empty() {
@@ -202,7 +231,7 @@ fn prepare_media(bytes: Vec<u8>, args: &Value) -> rt::Result<PreparedMedia> {
         vec![
             timeline
                 .iter()
-                .position(|(start, delay)| time < start + delay)
+                .position(|(start, delay, _)| time < start + delay)
                 .ok_or_else(|| invalid("GIF time has no frame"))?,
         ]
     } else {
@@ -210,27 +239,54 @@ fn prepare_media(bytes: Vec<u8>, args: &Value) -> rt::Result<PreparedMedia> {
     };
     indices.sort_unstable();
     indices.dedup();
+    let last = *indices.last().unwrap();
+    let decoded_pixels: u64 = timeline[..=last].iter().map(|entry| entry.2).sum();
+    if decoded_pixels > MAX_ANIMATION_PIXELS {
+        return Err(invalid(
+            "GIF exceeds decode work budget; select an earlier frame or extract a bounded interval with a local command",
+        ));
+    }
+    let mut canvas = image::RgbaImage::new(size.0, size.1);
     let mut views = Vec::new();
-    for (index, frame) in gif(&bytes)?.into_frames().enumerate() {
-        if indices.binary_search(&index).is_ok() {
-            let frame = frame.map_err(invalid)?;
+    for (index, frame) in gif(&bytes, false)?.into_iter().enumerate() {
+        let frame = frame.map_err(invalid)?;
+        let selected = indices.binary_search(&index).is_ok();
+        let dispose = frame.dispose;
+        let (left, top, width, height) = (frame.left, frame.top, frame.width, frame.height);
+        // Previous 不改变持续画布；只为被选中的瞬时帧复制画布。
+        let display = if dispose == gif::DisposalMethod::Previous {
+            selected.then(|| {
+                let mut display = canvas.clone();
+                composite(&mut display, &frame);
+                display
+            })
+        } else {
+            composite(&mut canvas, &frame);
+            selected.then(|| canvas.clone())
+        };
+        drop(frame);
+        if let Some(display) = display {
             let view = render(
-                image::DynamicImage::ImageRgba8(frame.into_buffer()),
+                image::DynamicImage::ImageRgba8(display),
                 crop.clone(),
                 dimension as u32,
             )?;
             views.push((json!({"frameIndex":index,"timeMs":timeline[index].0,"durationMs":timeline[index].1}), view));
-        } else {
-            frame.map_err(invalid)?;
         }
-        if views.len() == indices.len() {
+        if index == last {
             break;
+        }
+        if dispose == gif::DisposalMethod::Background {
+            for y in top..top + height {
+                let start = (usize::from(y) * size.0 as usize + usize::from(left)) * 4;
+                canvas.as_mut()[start..start + usize::from(width) * 4].fill(0);
+            }
         }
     }
     Ok(PreparedMedia {
         views,
         animation: Some(
-            json!({"frameCount":timeline.len(),"durationMs":elapsed,"sampled":indices.len()!=timeline.len(),"selectedFrames":indices,"readMore":"Use frameIndex (zero-based) or timeMs; previews do not cover every frame."}),
+            json!({"frameCount":timeline.len(),"durationMs":elapsed,"sampled":indices.len()!=timeline.len(),"selectedFrames":indices,"decodedPixels":decoded_pixels,"maxDecodedPixels":MAX_ANIMATION_PIXELS,"readMore":"Use frameIndex (zero-based) or timeMs; previews do not cover every frame."}),
         ),
         crop,
     })
@@ -445,5 +501,54 @@ mod tests {
         assert!(view.png.len() <= MAX_VIEW_BYTES);
         assert_eq!(view.source_size, (1024, 1024));
         assert!(view.output_size.0 < 1024);
+    }
+    fn long_animation(frame_size: u16, count: usize) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        {
+            let mut encoder = gif::Encoder::new(&mut bytes, 1024, 1024, &[255, 0, 0]).unwrap();
+            let mut frame = gif::Frame {
+                width: frame_size,
+                height: frame_size,
+                delay: 1,
+                dispose: gif::DisposalMethod::Keep,
+                buffer: vec![0; usize::from(frame_size).pow(2)].into(),
+                ..Default::default()
+            };
+            frame.make_lzw_pre_encoded();
+            for _ in 0..count {
+                encoder.write_lzw_pre_encoded_frame(&frame).unwrap();
+            }
+        }
+        bytes
+    }
+    #[test]
+    fn sparse_long_gif_charges_frame_rectangles_and_keeps_full_timeline() {
+        // 大画布的小区域更新不应按每帧整张画布重复计费。
+        let preview = prepare_media(long_animation(1, 1536), &json!({})).unwrap();
+        let animation = preview.animation.unwrap();
+        assert_eq!(animation["frameCount"], 1536);
+        assert_eq!(animation["decodedPixels"], 1536);
+        assert_eq!(animation["selectedFrames"], json!([0, 768, 1535]));
+        let last = image::load_from_memory(&preview.views[2].1.png)
+            .unwrap()
+            .to_rgba8();
+        assert_eq!(last.get_pixel(0, 0).0, [255, 0, 0, 255]);
+        assert_eq!(last.get_pixel(1, 0).0, [0, 0, 0, 0]);
+    }
+    #[test]
+    fn over_budget_gif_rejects_full_preview_but_allows_bounded_early_frame() {
+        let bytes = long_animation(1024, 1025);
+        assert!(
+            prepare_media(bytes.clone(), &json!({}))
+                .err()
+                .unwrap()
+                .message
+                .contains("decode work budget")
+        );
+        let first = prepare_media(bytes, &json!({"frameIndex":0})).unwrap();
+        let animation = first.animation.unwrap();
+        assert_eq!(animation["frameCount"], 1025);
+        assert_eq!(animation["decodedPixels"], 1024 * 1024);
+        assert_eq!(animation["selectedFrames"], json!([0]));
     }
 }
