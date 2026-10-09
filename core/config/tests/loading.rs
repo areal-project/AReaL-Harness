@@ -847,3 +847,30 @@ fn summary_options_do_not_change_solve_configuration() {
     set(&mut i, "AREAL_HARNESS_SUMMARY_MAX_OUTPUT_TOKENS", "0");
     assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
 }
+
+#[test]
+fn request_bytes_are_independent_and_reject_invalid_limits() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    write(
+        &mut i,
+        "schema_version=1\n[model]\nmax_request_bytes=12345\ncontext_window_tokens=262144\n",
+    );
+    let model = load_config(&i).unwrap().model;
+    assert_eq!(model.max_request_bytes, 12345);
+    assert_eq!(model.context_window_tokens, Some(262144));
+    // 旧模型登记没有此字段，恢复时使用默认预算且不改变其他配置。
+    let mut legacy = serde_json::to_value(&model).unwrap();
+    legacy.as_object_mut().unwrap().remove("max_request_bytes");
+    let restored: areal_config::SelectedModelConfig = serde_json::from_value(legacy).unwrap();
+    assert_eq!(restored.max_request_bytes, 16 * 1024 * 1024);
+    assert_eq!(restored.context_window_tokens, model.context_window_tokens);
+    assert_ne!(restored.fingerprint(), model.fingerprint());
+    for limit in ["0", "1023", "134217729"] {
+        write(
+            &mut i,
+            &format!("schema_version=1\n[model]\nmax_request_bytes={limit}\n"),
+        );
+        assert!(load_config(&i).is_err());
+    }
+}

@@ -118,8 +118,6 @@ impl HttpModel {
         limits: ToolCallLimits,
     ) -> Result<ModelStream> {
         let owner = REQUEST_OWNER.try_with(Clone::clone).ok();
-        let mut audit = audit::Audit::new(self.audit_directory.as_deref(), &body, purpose);
-        audit.value["transport"] = json!("responses-websocket");
         // 摘要不共享求解连接；池只属于此模型实例，凭据变更会重建模型。
         let reuse_owner = owner.filter(|_| purpose == RequestPurpose::Solve);
         let cached = if let Some(key) = &reuse_owner {
@@ -137,10 +135,20 @@ impl HttpModel {
         let mut wire = body.clone();
         wire.as_object_mut().unwrap().remove("stream");
         wire["type"] = json!("response.create");
-        let socket = if let Some((cached, delta)) = cached {
+        let cached_socket = cached.map(|(cached, delta)| {
             wire["input"] = json!(delta);
             wire["previous_response_id"] = json!(cached.response_id);
             cached.socket
+        });
+        // 先检查实际发送封套；超限时连握手请求也不发出。
+        let encoded = self.encode_request(&wire, purpose)?;
+        let mut audit = audit::Audit::new(self.audit_directory.as_deref(), &body, purpose);
+        audit.value["transport"] = json!("responses-websocket");
+        audit.value["incremental"] = json!(wire.get("previous_response_id").is_some());
+        audit.value["wireInputItems"] = json!(wire["input"].as_array().map_or(0, Vec::len));
+        audit.value["wireBodyBytes"] = json!(encoded.len());
+        let socket = if let Some(socket) = cached_socket {
+            socket
         } else {
             let mut url = reqwest::Url::parse(&self.endpoint)?;
             let scheme = if url.scheme() == "https" { "wss" } else { "ws" };
@@ -236,14 +244,11 @@ impl HttpModel {
                 }
             }
         };
-        audit.value["incremental"] = json!(wire.get("previous_response_id").is_some());
-        audit.value["wireInputItems"] = json!(wire["input"].as_array().map_or(0, Vec::len));
-        audit.value["wireBodyBytes"] = json!(wire.to_string().len());
         audit.value["httpAttempts"] = json!(1);
         let mut socket = socket;
         // 发送失败也可能已被接收；不在此处降级 HTTP 或重放。
         if socket
-            .send(WsMessage::Text(wire.to_string().into()))
+            .send(WsMessage::Text(String::from_utf8(encoded)?.into()))
             .await
             .is_err()
         {
@@ -568,6 +573,59 @@ mod tests {
             .collect();
         assert_eq!(rows[1]["incremental"], true);
         assert!(rows.iter().all(|v| v["usageObserved"] == true));
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn byte_budget_checks_delta_and_rejects_full_fallback_before_connecting() {
+        let (endpoint, mut rx, connections, server) = fixture().await;
+        let model = model(endpoint, "fixture")
+            .with_options(ModelOptions {
+                responses_websocket: true,
+                max_request_bytes: 1024,
+                ..Default::default()
+            })
+            .unwrap();
+        let mut history = vec![Message::text("user", "x".repeat(600))];
+        assert!(
+            run(&model, ("thread", "turn"), history.clone())
+                .await
+                .iter()
+                .all(Result::is_ok)
+        );
+        rx.recv().await.unwrap();
+        history.extend([
+            Message::text("assistant", "ok"),
+            Message::text("user", "y".repeat(600)),
+        ]);
+        assert!(
+            run(&model, ("thread", "turn"), history.clone())
+                .await
+                .iter()
+                .all(Result::is_ok)
+        );
+        let delta = rx.recv().await.unwrap();
+        assert_eq!(delta["previous_response_id"], "resp_fixture");
+        assert_eq!(delta["input"].as_array().unwrap().len(), 1);
+        let result = REQUEST_OWNER
+            .scope(
+                ("thread".into(), "other-turn".into()),
+                model.chat(history, vec![]),
+            )
+            .await;
+        let error = match result {
+            Err(error) => error,
+            Ok(_) => panic!("oversized fallback was sent"),
+        };
+        let outcome = terminal_outcome(&error).unwrap();
+        assert_eq!(outcome.code, "MODEL_REQUEST_TOO_LARGE");
+        assert_eq!(
+            outcome.details.as_ref().unwrap()["stage"],
+            "serialized_request"
+        );
+        assert_eq!(outcome.details.unwrap()["requestSent"], false);
+        assert_eq!(connections.load(Ordering::SeqCst), 1);
+        assert!(rx.try_recv().is_err());
         server.abort();
     }
 

@@ -68,3 +68,13 @@ run.json 逐次保存，report.json 为汇总，trials/ 保存日志、工作区
 ```
 
 --fail-fast 在首个失败后暂停保留证据。保存整个批次的脱敏配置、源码/题集摘要、镜像身份和尝试记录。判读与公平性见[方法](methodology.md)，旧结果见[报告索引](reports/README.md)。任务格式以 [lite fixture](../../tests/perf/cases/) 和解析器 [perf.py](../../tests/perf/perf.py) 为准。
+
+## Arena 按需公开输入
+
+原生 Runner 使用 `lazy_files`：将 `ARENA_QUERY_PATH`、可选的冻结 Harness 规则和 `/problem_assets` 的公开文件物化到 `workspace://scratch/public-inputs/`；首轮只提交任务入口和 JSONL 附件清单路径，启动封套最多 64 KiB，不内联媒体或题面全文。清单保留原路径/别名、MIME 提示、字节数和 SHA-256；相同内容共享副本。实际图片格式、尺寸和动画覆盖由 Core 的 `image_read` 解码并报告。shell 使用清单里的实际路径，不能将 workspace URI 当 shell 路径。输入及诊断副本位于仓库/交付目录外。
+
+Runner 通过 Runtime `--read-only-path` 保护输入并在运行结束检查摘要；现有 Graybox public 包保持原路径和输出收集方式。输入身份、Case/Env/Reward 不变。附件文件、入口字节和完整性结果分别保存在 `public-inputs/`、`input-delivery.json`、`input-media.json`，无 Base64 或凭据进入诊断。发布包需包含 `public_inputs.py` 和同次源码构建的 Rust 二进制。
+
+冻结 settings 支持 `max_request_bytes`（默认 16 MiB 本地保护值，发布前按实际网关限额设置）与 `context_compaction_enabled`（默认 false，单独评估后启用）。传输字节与上下文 token 独立；50 MiB 原生分页和长轨迹压缩不属于输入故障修复的验收结论。
+
+离线验证运行 `python3 -m unittest discover -s integrations/envarena`、`cargo test --locked -p areal-engine --lib` 和 `python3 scripts/arena-input-smoke.py --bin-dir target/debug`。模型桩验证真实 CLI/Core/Runtime 输入读取、PNG/GIF 视觉内容、只读拒绝及旧封套超限诊断，不代表四题真实模型复跑或评分通过。线上验收需冻结新 Harness ref/hash，保留原题和评分器，逐题区分输入链路成功、任务终态及原 Reward。

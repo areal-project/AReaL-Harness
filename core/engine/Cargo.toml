@@ -34,9 +34,10 @@ rustls-native-certs = "0.8"
 tokio-util.workspace = true
 tracing.workspace = true
 uuid.workspace = true
-image = { version = "=0.25.8", default-features = false, features = ["png", "jpeg", "webp"] }
+image = { version = "=0.25.8", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 
 [dev-dependencies]
+gif = "=0.13.3"
 tracing-subscriber.workspace = true
 axum.workspace = true
 libc.workspace = true

@@ -1,3 +1,4 @@
+mod input_file;
 use anyhow::{Context, Result};
 use areal_protocol::Input;
 use clap::Parser;
@@ -64,6 +65,9 @@ pub struct Args {
     /// Read a turn input array (text, images, or other supported media) from JSON.
     #[arg(long, conflicts_with = "prompt")]
     input_file: Option<std::path::PathBuf>,
+    /// 非交互输入拒绝的结构化诊断；不写提示词或媒体内容。
+    #[arg(long, requires = "input_file")]
+    input_error_file: Option<std::path::PathBuf>,
 }
 
 pub fn safe_text(text: &str) -> String {
@@ -150,11 +154,7 @@ pub async fn run(mut args: Args) -> Result<()> {
         .await;
     }
     if let Some(path) = args.input_file {
-        let bytes = std::fs::read(path).context("read turn input file")?;
-        anyhow::ensure!(
-            bytes.len() <= areal_protocol::MAX_FRAME_BYTES / 2,
-            "turn input file exceeds 2 MiB"
-        );
+        let bytes = input_file::read(&path, args.input_error_file.as_deref())?;
         let input: Vec<Input> = serde_json::from_slice(&bytes).context("parse turn input array")?;
         anyhow::ensure!(!input.is_empty(), "turn input must not be empty");
         return headless::run_with_profile(&mut client, args.resume, input, agent_profile).await;

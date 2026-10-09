@@ -183,6 +183,7 @@ pub async fn run(command: Command, runtime_bin: PathBuf) -> Result<()> {
                 min_p: config.model.min_p,
                 presence_penalty: config.model.presence_penalty,
                 repetition_penalty: config.model.repetition_penalty,
+                max_request_bytes: config.model.max_request_bytes,
                 max_retries: config.model.max_retries,
             })?,
         ),

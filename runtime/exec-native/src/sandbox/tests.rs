@@ -44,6 +44,7 @@ impl Fixture {
             env: BTreeMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
             read_roots: vec![self.allowed.clone(), self.cwd.clone()],
             write_roots: vec![self.allowed.clone()],
+            read_only_paths: Vec::new(),
             scope_access: ScopeAccess::Restricted,
             trusted_executable: None,
             builtin_executables: Vec::new(),

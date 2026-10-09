@@ -68,3 +68,13 @@ run.json saves each trial, report.json holds summaries, and trials/ retains logs
 ```
 
 --fail-fast pauses on the first failure while retaining evidence. Preserve the whole batch, including redacted configuration, source/task digests, image identities and attempts. See [methodology](methodology.en.md) for interpretation and [reports](reports/README.en.md) for historical results. Task formats are defined by [lite fixtures](../../tests/perf/cases/) and [perf.py](../../tests/perf/perf.py).
+
+## Arena lazy public inputs
+
+The native Runner uses `lazy_files`: it imports `ARENA_QUERY_PATH`, optional frozen Harness rules and public files from `/problem_assets` into `workspace://scratch/public-inputs/`. The first turn carries only the task entry and JSONL manifest paths, capped at 64 KiB, without inline media or the full task. The manifest preserves original paths/aliases, MIME hints, byte counts and SHA-256; identical content shares a copy. Core `image_read` decodes and reports actual formats, dimensions and animation coverage. Shell commands use physical manifest paths, not workspace URIs. Inputs and diagnostic copies stay outside the repository/delivery directory.
+
+Runner protects input through Runtime `--read-only-path` and verifies hashes at completion. Existing Graybox public paths and collection remain intact. Case/Env/Reward identities are unchanged. `public-inputs/`, `input-delivery.json` and `input-media.json` retain input files, envelope measurements and integrity results without Base64 or credentials in diagnostics. Packages must include `public_inputs.py` and Rust binaries built from the same source.
+
+Frozen settings accept `max_request_bytes` (a 16 MiB local default guard; set it to the actual gateway limit before publishing) and `context_compaction_enabled` (false by default; enable after separate evaluation). Wire bytes and context tokens are independent. Native 50 MiB paging and long-trajectory compaction are outside acceptance for this input fix.
+
+Offline checks are `python3 -m unittest discover -s integrations/envarena`, `cargo test --locked -p areal-engine --lib` and `python3 scripts/arena-input-smoke.py --bin-dir target/debug`. The deterministic model verifies real CLI/Core/Runtime reads, PNG/GIF visual content, read-only enforcement and oversized-envelope diagnostics; it does not establish real-model reruns or scores for the four tasks. Online acceptance must freeze the new Harness ref/hash, retain original tasks/rewards and separately report input delivery, terminal status and original Reward.

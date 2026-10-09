@@ -39,7 +39,8 @@ Events include thread/started, turn/started/completed, item/started/completed an
 | `LLM_RESPONSE_TIMEOUT` | Model request or stream timeout, `class=timeout`; existing network retry policy is preserved |
 | `AGENT_MAX_TURNS_EXCEEDED` | Configured `maxModelRounds` exhausted, or tools requested during the final handoff; `class=agent`, `source=core_model_round_budget`, with round count and limit in details. A normal handoff is not a failure. No limit is enabled when unconfigured |
 | `AGENT_RUN_TIMEOUT` | Explicit Goal or research-worker deadline, `class=agent` |
-| `LLM_RESPONSE_FAILED` | Other recognized model failures, distinguished by details; HTTP 413 is `request_body_too_large`, invalid tool indices retain `invalid_tool_call_index`; neither is context overflow or invalid tool JSON |
+| `LLM_RESPONSE_FAILED` | Other recognized model failures, distinguished by details; invalid tool indices retain `invalid_tool_call_index` and are not classified as context overflow or invalid tool JSON |
+| `MODEL_REQUEST_TOO_LARGE` | Wire-size budget: `core_request_budget` rejects before send; `provider_http` represents a sent HTTP 413. Local rejection details retain stage, bytes/lower bound, limit and requestSent; provider 413 retains HTTP status and the sent marker |
 | `HARNESS_INTERNAL_ERROR` | Unclassified Core error, persistence failure or recovered UNKNOWN tool outcome, `class=infrastructure` |
 
 Provider HTTP error bodies are read with a 64 KiB / two-second bound. Only allowlisted code/type/reason labels are retained; raw bodies, Provider messages and credentials are excluded from outcome. HTTP status is retained in `details.httpStatus`. Classification does not enable retries, promote failures to success, continue the task or run scoring. Unknown codes should remain unknown.
@@ -50,7 +51,7 @@ Adapter or collection failure remains the primary `raw.outcome=HARNESS_INTERNAL_
 
 The runner summary and stdout also carry `GAMEAGENT_OUTCOME_CODE=... GAMEAGENT_OUTCOME_CLASS=...` for AReaL's existing marker fallback. This is a historical consumer contract, not a claim that GameAgent is running. If the platform truncates or drops failure summaries/logs, consumers must read raw.outcome from the result artifact; top-level Task raw alone is not guaranteed to expose it. Recognized model codes reuse AReaL's metrics allowlist; new infrastructure codes appear as OTHER in consumers without corresponding updates.
 
-`integrations/envarena/runner.py`, `outcomes.py`, `graybox_inputs.py` and `graybox_collect.py` overlay the native release package (runner.py is named runner inside the package). Other launchers, model settings and resources come from the matching release. Rebuild target Linux native binaries from the same source; replacing only Python does not provide Core outcomes. Deployment requires a new immutable Harness version; local tests do not establish deployment.
+`integrations/envarena/runner.py`, `outcomes.py`, `public_inputs.py`, `graybox_inputs.py` and `graybox_collect.py` overlay the native release package (runner.py is named runner inside the package). Other launchers, model settings and resources come from the matching release. Rebuild target Linux native binaries from the same source; replacing only Python does not provide Core outcomes. Deployment requires a new immutable Harness version; local tests do not establish deployment.
 
 <a id="agent-message-phase"></a>
 ### Agent message phases
@@ -311,3 +312,5 @@ Without an observed usage event, Turn usage remains absent and the CLI does not 
 Embedded Rust hosts constructing NativeFactory/NativeExecutor explicitly must provide `worker_limits: Limits`, preserving cumulative budgets and context policy for worker Engines. NativeExecutor::new supplies unlimited-budget defaults; request tool guards remain in tool_call_limits.
 
 `ModelCapabilities` and `ModelOptions` add optional window/output metadata; custom Rust struct literals must include the new fields or use defaults. `ModelParameters.contextWindowTokens` is additive in the client protocol.
+
+CLI retains the 2 MiB `--input-file` limit with bounded reads before JSON parsing. `--input-error-file` writes a content-free `INPUT_ENVELOPE_TOO_LARGE` rejection. Arena Runner projects it and `PUBLIC_INPUT_NOT_ACCESSIBLE` preparation errors into existing outcomes instead of generic missing-Core-Turn failures. Media preprocessing errors remain recoverable tool results (`details.reason=MEDIA_PREPROCESS_FAILED`), not fabricated terminal Turns.

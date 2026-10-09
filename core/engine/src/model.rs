@@ -2,6 +2,7 @@ mod decoder;
 use decoder::{ChatDecoder, Decoder, ResponsesDecoder};
 
 mod audit;
+mod request_budget;
 mod tool_calls;
 mod websocket;
 use anyhow::{Context, Result, bail};
@@ -202,14 +203,22 @@ fn stream_outcome(detail: &StreamError, source: &str) -> areal_protocol::TurnOut
 
 pub(crate) fn terminal_outcome(error: &anyhow::Error) -> Option<areal_protocol::TurnOutcome> {
     use crate::outcome::outcome;
+    if let Some(detail) = error.downcast_ref::<request_budget::RequestTooLarge>() {
+        return Some(outcome(
+            "MODEL_REQUEST_TOO_LARGE",
+            "infrastructure",
+            "core_request_budget",
+            json!({"actualBytes":detail.actual,"maxBytes":detail.limit,"stage":detail.stage,"byteCountKind":if matches!(detail.stage, "serialized_request" | "request_materialization") {"exact"} else {"lower_bound"},"requestSent":false}),
+        ));
+    }
     if let Some(detail) = error.downcast_ref::<HttpFailure>() {
         // 413 是 HTTP 请求体限制，不用其中的泛化错误标签覆盖状态码事实。
         let mut result = if detail.status == 413 {
             outcome(
-                "LLM_RESPONSE_FAILED",
+                "MODEL_REQUEST_TOO_LARGE",
                 "infrastructure",
                 "provider_http",
-                json!({"reason":"request_body_too_large"}),
+                json!({"reason":"request_body_too_large","requestSent":true}),
             )
         } else if let Some(provider) = &detail.detail {
             stream_outcome(provider, "provider_http")
@@ -601,6 +610,7 @@ pub struct ModelOptions {
     pub repetition_penalty: Option<f64>,
     pub max_output_tokens: Option<u64>,
     pub context_window_tokens: Option<usize>,
+    pub max_request_bytes: usize,
     pub max_retries: usize,
 }
 
@@ -620,6 +630,7 @@ impl Default for ModelOptions {
             repetition_penalty: None,
             max_output_tokens: None,
             context_window_tokens: None,
+            max_request_bytes: 16 * 1024 * 1024,
             max_retries: 2,
         }
     }
@@ -680,6 +691,10 @@ impl HttpModel {
                 .context_window_tokens
                 .is_none_or(|n| n > 0 && n <= 2_000_000),
             "context window must be between 1 and 2000000 tokens"
+        );
+        anyhow::ensure!(
+            (1024..=128 * 1024 * 1024).contains(&options.max_request_bytes),
+            "request byte budget must be between 1024 and 134217728"
         );
         anyhow::ensure!(options.max_retries <= 8, "model retries must be at most 8");
         anyhow::ensure!(
@@ -759,6 +774,7 @@ impl HttpModel {
     }
 
     async fn request_body(&self, messages: Vec<Message>) -> Result<Value> {
+        let mut media_budget = request_budget::MediaBudget::new(self.materialization_limit());
         match self.protocol {
             ModelProtocol::ChatCompletions => {
                 let mut output: Vec<Value> = Vec::with_capacity(messages.len());
@@ -773,7 +789,7 @@ impl HttpModel {
                     } else {
                         &message.role
                     };
-                    let mut content = chat_content(message.content).await?;
+                    let mut content = chat_content(message.content, &mut media_budget).await?;
                     if message.role == "areal_context" {
                         content = json!(format!(
                             "AReaL runtime context (not a user request):\n{}",
@@ -829,7 +845,7 @@ impl HttpModel {
             ModelProtocol::Responses => {
                 let mut output = Vec::with_capacity(messages.len());
                 for message in messages {
-                    output.extend(responses_items(message).await?);
+                    output.extend(responses_items(message, &mut media_budget).await?);
                 }
                 Ok(
                     json!({"model": self.name, "input": output, "stream": true, "store": false, "include": ["reasoning.encrypted_content"]}),
@@ -933,7 +949,14 @@ impl Model for HttpModel {
             limits.max_calls = 0;
             tools.clear();
         }
-        let mut body = self.request_body(messages).await?;
+        self.preflight_media(&messages, purpose).await?;
+        let mut body = self.request_body(messages).await.map_err(|error| {
+            if let Some(size) = error.downcast_ref::<request_budget::RequestTooLarge>() {
+                self.reject_request(size.actual, size.limit, size.stage, purpose)
+            } else {
+                error
+            }
+        })?;
         if let Some(temperature) = self.temperature.or(self.options.temperature) {
             body["temperature"] = json!(temperature);
         }
@@ -1009,13 +1032,24 @@ impl Model for HttpModel {
         // Retrying before accepting a stream cannot replay a tool operation.
         // Never automatically replay a partially consumed model stream here.
         if self.options.responses_websocket {
+            self.check_request_size(
+                &body,
+                self.materialization_limit(),
+                "request_materialization",
+                purpose,
+            )?;
             return self.websocket_stream(body, purpose, limits).await;
         }
+        let encoded = self.encode_request(&body, purpose)?;
         let mut audit = audit::Audit::new(self.audit_directory.as_deref(), &body, purpose);
         let mut attempt = 0;
         let response = loop {
             audit.value["httpAttempts"] = json!(attempt + 1);
-            let mut request = self.client.post(&self.endpoint).json(&body);
+            let mut request = self
+                .client
+                .post(&self.endpoint)
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(encoded.clone());
             if let Some(key) = &self.key {
                 request = request.bearer_auth(key);
             }
@@ -1206,7 +1240,10 @@ impl Model for HttpModel {
     }
 }
 
-async fn chat_content(parts: Vec<ContentPart>) -> Result<Value> {
+async fn chat_content(
+    parts: Vec<ContentPart>,
+    budget: &mut request_budget::MediaBudget,
+) -> Result<Value> {
     if parts
         .iter()
         .all(|part| matches!(part, ContentPart::Text(_)))
@@ -1227,11 +1264,11 @@ async fn chat_content(parts: Vec<ContentPart>) -> Result<Value> {
         match part {
             ContentPart::Text(text) => content.push(json!({"type":"text", "text":text})),
             ContentPart::Image { source, detail } => {
-                let url = materialize(source, "image/png").await?;
+                let url = materialize(source, "image/png", budget).await?;
                 content.push(json!({"type":"image_url", "image_url":{"url":url, "detail":detail.unwrap_or(ImageDetail::Auto)}}));
             }
             ContentPart::Audio { source } => {
-                let (data, format) = inline_audio(source).await?;
+                let (data, format) = inline_audio(source, budget).await?;
                 content.push(
                     json!({"type":"input_audio", "input_audio":{"data":data,"format":format}}),
                 );
@@ -1242,7 +1279,10 @@ async fn chat_content(parts: Vec<ContentPart>) -> Result<Value> {
     Ok(Value::Array(content))
 }
 
-async fn responses_items(mut message: Message) -> Result<Vec<Value>> {
+async fn responses_items(
+    mut message: Message,
+    budget: &mut request_budget::MediaBudget,
+) -> Result<Vec<Value>> {
     // 内部状态角色不进入供应商协议；Responses 保持原有 system 语义与时序。
     if message.role == "areal_context" {
         message.role = "system".into();
@@ -1266,8 +1306,8 @@ async fn responses_items(mut message: Message) -> Result<Vec<Value>> {
             for part in message.content {
                 match part {
                     ContentPart::Text(text)=>parts.push(json!({"type":"input_text","text":text})),
-                    ContentPart::Image{source,..}=>parts.push(json!({"type":"input_image","image_url":materialize(source,"image/png").await?})),
-                    ContentPart::File{source,name,mime_type}=>parts.push(json!({"type":"input_file","file_data":materialize(source,mime_type.as_deref().unwrap_or("application/octet-stream")).await?,"filename":name.unwrap_or_else(||"attachment".into())})),
+                    ContentPart::Image{source,..}=>parts.push(json!({"type":"input_image","image_url":materialize(source,"image/png", budget).await?})),
+                    ContentPart::File{source,name,mime_type}=>parts.push(json!({"type":"input_file","file_data":materialize(source,mime_type.as_deref().unwrap_or("application/octet-stream"), budget).await?,"filename":name.unwrap_or_else(||"attachment".into())})),
                     ContentPart::Audio{..}=>bail!("Responses tool output does not support audio"),
                 }
             }
@@ -1282,7 +1322,7 @@ async fn responses_items(mut message: Message) -> Result<Vec<Value>> {
     for part in message.content {
         if let ContentPart::Audio { source } = part {
             push_response_message(&mut items, &message.role, &mut content);
-            let (data, format) = inline_audio(source).await?;
+            let (data, format) = inline_audio(source, budget).await?;
             items.push(json!({"type":"input_audio", "input_audio":{"data":data,"format":format}}));
             continue;
         }
@@ -1290,7 +1330,7 @@ async fn responses_items(mut message: Message) -> Result<Vec<Value>> {
             ContentPart::Text(text) if !text.is_empty() => content.push(json!({"type":if message.role == "assistant" { "output_text" } else { "input_text" }, "text":text})),
             ContentPart::Text(_) => {},
             ContentPart::Image { source, detail } => {
-                let url = materialize(source, "image/png").await?;
+                let url = materialize(source, "image/png", budget).await?;
                 content.push(json!({"type":"input_image", "image_url":url, "detail":detail.unwrap_or(ImageDetail::Auto)}));
             }
             ContentPart::File {
@@ -1301,6 +1341,7 @@ async fn responses_items(mut message: Message) -> Result<Vec<Value>> {
                 let file_url = materialize(
                     source,
                     mime_type.as_deref().unwrap_or("application/octet-stream"),
+                    budget,
                 )
                 .await?;
                 if file_url.starts_with("data:") {
@@ -1331,7 +1372,10 @@ fn push_response_message(items: &mut Vec<Value>, role: &str, content: &mut Vec<V
     }
 }
 
-async fn inline_audio(source: MediaSource) -> Result<(String, &'static str)> {
+async fn inline_audio(
+    source: MediaSource,
+    budget: &mut request_budget::MediaBudget,
+) -> Result<(String, &'static str)> {
     let (bytes, format) = match source {
         MediaSource::LocalPath(path) => {
             let metadata = tokio::fs::metadata(&path)
@@ -1345,7 +1389,7 @@ async fn inline_audio(source: MediaSource) -> Result<(String, &'static str)> {
             } else {
                 "mp3"
             };
-            (tokio::fs::read(path).await?, format)
+            (request_budget::read_local_media(&path).await?, format)
         }
         MediaSource::Url(url) if url.starts_with("data:audio/") => {
             let (header, data) = url.split_once(',').context("invalid audio data URL")?;
@@ -1362,12 +1406,18 @@ async fn inline_audio(source: MediaSource) -> Result<(String, &'static str)> {
             bail!("remote audio URLs are not fetched; use localAudio or a data URL")
         }
     };
+    budget.consume(bytes.len().div_ceil(3) * 4)?;
     Ok((STANDARD.encode(bytes), format))
 }
 
-async fn materialize(source: MediaSource, mime_type: &str) -> Result<String> {
+async fn materialize(
+    source: MediaSource,
+    mime_type: &str,
+    budget: &mut request_budget::MediaBudget,
+) -> Result<String> {
     match source {
         MediaSource::Url(url) => {
+            budget.consume(url.len())?;
             let parsed = reqwest::Url::parse(&url).context("invalid media URL")?;
             if !matches!(parsed.scheme(), "http" | "https" | "data") {
                 bail!("media URL must use HTTP(S) or a data URL");
@@ -1381,7 +1431,7 @@ async fn materialize(source: MediaSource, mime_type: &str) -> Result<String> {
             if !metadata.is_file() || metadata.len() > MAX_LOCAL_MEDIA_BYTES as u64 {
                 bail!("local media must be a regular file no larger than 16 MiB");
             }
-            let bytes = tokio::fs::read(&path).await?;
+            let bytes = request_budget::read_local_media(&path).await?;
             let mime_type = match path_extension(&path).to_ascii_lowercase().as_str() {
                 "jpg" | "jpeg" => "image/jpeg",
                 "webp" => "image/webp",
@@ -1390,6 +1440,7 @@ async fn materialize(source: MediaSource, mime_type: &str) -> Result<String> {
                 "mp3" => "audio/mpeg",
                 _ => mime_type,
             };
+            budget.consume(bytes.len().div_ceil(3) * 4 + mime_type.len() + 13)?;
             Ok(format!(
                 "data:{mime_type};base64,{}",
                 STANDARD.encode(bytes)
@@ -1539,7 +1590,7 @@ mod outcome_tests {
             (
                 413,
                 json!({"error":{"code":"context_length_exceeded"}}).to_string(),
-                "LLM_RESPONSE_FAILED",
+                "MODEL_REQUEST_TOO_LARGE",
                 Some("request_body_too_large"),
             ),
             (

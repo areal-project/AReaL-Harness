@@ -77,6 +77,8 @@ def main():
     parser.add_argument("--parent-pid", type=int)
     parser.add_argument("--workspace", type=Path)
     parser.add_argument("--scratch", type=Path)
+    parser.add_argument("--input-error-file", type=Path)
+    parser.add_argument("--read-only-path", action="append", default=[])
     parser.add_argument("--allow-write", action="store_true")
     parser.add_argument("--task-credential-command", action="append", default=[])
     parser.add_argument("--runtime-max-processes", type=int, default=4)
@@ -331,6 +333,11 @@ def main():
                     "--workspace",
                     str(workspace),
                     *(["--scratch", str(scratch)] if scratch else []),
+                    *(
+                        value
+                        for path in args.read_only_path
+                        for value in ["--read-only-path", path]
+                    ),
                     "--file-helper",
                     str(paths[2]),
                     "--wall-time-ms",
@@ -469,6 +476,11 @@ def main():
                         ),
                         *tui_arguments(args),
                         *(["--input-file", str(args.input_file)] if args.input_file else []),
+                        *(
+                            ["--input-error-file", str(args.input_error_file)]
+                            if args.input_error_file
+                            else []
+                        ),
                         *(["--", args.initial_prompt] if args.initial_prompt is not None else []),
                     ]
                 )

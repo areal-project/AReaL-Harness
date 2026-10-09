@@ -147,5 +147,92 @@ class RunnerTest(unittest.TestCase):
                     self.assertNotIn("core_errors", raw)
 
 
+class LazyInputTest(unittest.TestCase):
+    def test_incident_shapes_have_small_bootstrap_and_preserve_aliases(self):
+        import public_inputs
+        import base64
+
+        # 归档四例的字节数与重复关系；合成内容只验证输入交付，不冒充原图或真实 rollout。
+        cases = {
+            "carbon": [31724, 45867, 526320, 508661, 507047, 493699],
+            "bpmn1200": [3721378],
+            "bpmn1719": [2743627],
+            "prettier": [54248, 328058, 671386, 183443] * 2,
+        }
+        for name, sizes in cases.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                assets = root / "assets"
+                assets.mkdir()
+                query = root / "query.md"
+                query.write_text("保留原题和输出合同\n" * 400000)
+                for index, size in enumerate(sizes):
+                    (assets / f"{index}.png").write_bytes(
+                        bytes([index % 4 if name == "prettier" else index]) * size
+                    )
+                old_size = sum(len(base64.b64encode(p.read_bytes())) for p in assets.iterdir())
+                self.assertGreater(old_size, 2 * 1024 * 1024)
+                destination = root / "public-inputs"
+                receipt, records, baseline = public_inputs.prepare(query, destination, assets)
+                inputs = public_inputs.bootstrap(receipt, destination)
+                self.assertLess(public_inputs.validate_envelope(inputs), 4096)
+                self.assertNotIn("data:", json.dumps(inputs))
+                self.assertEqual(len(records), len(sizes))
+                self.assertEqual((destination / "TASK.md").read_bytes(), query.read_bytes())
+                for record in records:
+                    self.assertEqual(
+                        Path(record["shell_path"]).read_bytes(), Path(record["source"]).read_bytes()
+                    )
+                self.assertEqual(
+                    receipt["unique_attachment_count"], 4 if name == "prettier" else len(sizes)
+                )
+                public_inputs.verify(destination, baseline)
+
+    def test_links_missing_task_and_tampering_fail_closed(self):
+        import public_inputs
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            task = root / "task.md"
+            task.write_text("task")
+            assets = root / "assets"
+            assets.mkdir()
+            (assets / "private.png").symlink_to(task)
+            with self.assertRaises(public_inputs.PublicInputError):
+                public_inputs.prepare(task, root / "rejected", assets)
+            (assets / "private.png").unlink()
+            receipt, records, baseline = public_inputs.prepare(task, root / "public", assets)
+            imported = root / "public/TASK.md"
+            imported.chmod(0o644)
+            imported.write_text("changed")
+            with self.assertRaises(public_inputs.PublicInputError):
+                public_inputs.verify(root / "public", baseline)
+            os.link(task, assets / "hardlink")
+            with self.assertRaises(public_inputs.PublicInputError):
+                public_inputs.prepare(task, root / "hardlinks", assets)
+
+    def test_context_policy_and_request_bytes_are_independent(self):
+        import runner
+        import tomllib
+
+        default = tomllib.loads(runner.make_config("fixture", "http://localhost/v1", 30))
+        self.assertFalse(default["limits"]["context_compaction_enabled"])
+        configured = tomllib.loads(
+            runner.make_config(
+                "fixture",
+                "http://localhost/v1",
+                30,
+                {
+                    "max_request_bytes": 4000000,
+                    "context_compaction_enabled": True,
+                    "context_window_tokens": 262144,
+                },
+            )
+        )
+        self.assertEqual(configured["model"]["max_request_bytes"], 4000000)
+        self.assertTrue(configured["limits"]["context_compaction_enabled"])
+        self.assertEqual(configured["limits"]["context_window_tokens"], 262144)
+
+
 if __name__ == "__main__":
     unittest.main()

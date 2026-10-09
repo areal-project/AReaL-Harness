@@ -10,6 +10,7 @@ This page describes implemented behavior. Compilation, mechanism tests and real-
 | Sessions and models | Persistent Threads/Turns, streaming text, Chat Completions reasoning and Responses reasoning summary/text events, steering, cancellation and resume; Chat Completions / Responses, with modalities constrained by adapter and model. [Clients](guides/clients.en.md) |
 | Files and processes | Conditional writes, commands, stdin, PTYs, bounded output, narrowing Scopes and cleanup. [Runtime](api/runtime.en.md) |
 | Tool results | Bundled pinned rg, paged original historical results, and configurable search grouping/exact repeated-line views, defaulting to observe. [Tools](guides/tools.en.md) |
+| Public multimodal input | Arena task entries/read-only assets; on-demand PNG/JPEG/WebP/GIF views and independent model request byte limits. [Evaluation inputs](benchmarks/README.en.md#arena-lazy-public-inputs) |
 | Tool extensions | Command tools, hooks, client callbacks, MCP stdio/Streamable HTTP and trusted Node plugin Hosts. [Tools](guides/tools.en.md) |
 | Network proxies | HTTP/HTTPS/SOCKS5 proxies, authentication and NO_PROXY for models, HTTP MCP and OTLP; trusted stdio MCP/plugin Hosts inherit proxy variables. [Configuration](guides/configuration.en.md#proxies) |
 | Multiple agents | Model delegation, independent histories, shared workspace, checkpoints and result aggregation. [Agent design](design/multi-agent.en.md) |

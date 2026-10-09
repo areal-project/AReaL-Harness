@@ -60,6 +60,7 @@ provider = "example"
 name = "your-model-id"
 # context_window_tokens = 131072
 max_retries = 2
+max_request_bytes = 16777216
 [model.providers.example]
 protocol = "responses"
 endpoint = "https://model.example.com/v1/responses"
@@ -320,3 +321,5 @@ HTTP 审计在响应返回规范、长度受限的关联 ID 时保留 `httpReque
 WebSocket 求解连接携带 Core 线程 ID 作为 session-id/thread-id，以便兼容网关维持会话亲和；这不表示供应商一定采用该路由提示，也不保证跨连接缓存保留。摘要与未绑定线程的直接调用不携带求解身份。
 
 模型配置登记表保留与 revision 绑定的原始编码；新增可选默认值不会使历史 revision 失效，也不重写排队 Turn 的引用，摘要不匹配仍拒绝篡改。不要手动格式化或编辑 Core 所有的 `desktop/default-models.json`。
+
+`model.max_request_bytes` 独立限制媒体物化后的完整 HTTP JSON / Responses WebSocket 发送封套，包含工具定义与历史重放，默认 16 MiB、范围 1024–134217728 字节。也可通过 `AREAL_HARNESS_MODEL_MAX_REQUEST_BYTES` 设置。它是本地有界保护值，不宣称网关支持相同大小；部署需使用已核验的服务限额。编码前检查累计媒体下界，完整序列化流式计数后才分配发送缓冲；WebSocket 续接按实际增量封套检查发送限额，候选完整历史另有 128 MiB 物化保护，退回完整请求时重新检查发送限额；超限不发请求、不做网络重试，返回 `MODEL_REQUEST_TOO_LARGE`，记录阶段、实际字节/下界及限额。HTTP 413 使用相同类别并标记请求已发送。token 预算、工具展示预算和自动压缩策略保持独立；此限额不自动丢弃历史图片或任务要求。

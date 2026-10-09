@@ -276,8 +276,8 @@ fn definitions_with_policy(policy: &ToolPolicy) -> Vec<Value> {
         ),
         tool(
             "image_read",
-            "Read a PNG/JPEG/WebP image from the workspace or workspace://scratch and return actual visual content to the model. Optional crop uses source pixels; maxDimension defaults to 2048. Rejects symlinks, files over 8 MiB, and images over 32 megapixels.",
-            json!({"path":path,"maxDimension":{"type":"integer","minimum":64,"maximum":4096},"crop":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),
+            "Read PNG/JPEG/WebP or GIF from the workspace or workspace://scratch as visual content. GIF defaults to sampled first/middle/last composited frames with frame count and timestamps; use zero-based frameIndex or timeMs to inspect omitted intervals. Crop uses original pixels. maxDimension defaults to 2048; each PNG view is reduced to at most 1 MiB. Sources are limited to 8 MiB/32 megapixels; GIF decoding is bounded.",
+            json!({"path":path,"frameIndex":{"type":"integer","minimum":0,"maximum":4095},"timeMs":{"type":"number","minimum":0},"maxDimension":{"type":"integer","minimum":64,"maximum":4096},"crop":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),
             &["path"],
         ),
         tool(

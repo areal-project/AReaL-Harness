@@ -57,6 +57,7 @@ pub fn model(
             summary_max_output_tokens: config.summary_max_output_tokens,
             reasoning_summary: config.reasoning_summary.clone(),
             max_output_tokens: config.max_output_tokens,
+            max_request_bytes: config.max_request_bytes,
             max_retries: config.max_retries,
             temperature: config.temperature,
             top_p: config.top_p,

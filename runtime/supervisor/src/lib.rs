@@ -27,6 +27,8 @@ pub struct Config {
     pub workspace: PathBuf,
     /// Explicit deployment-owned scratch, shared across commands, outside repo.
     pub scratch: Option<PathBuf>,
+    /// 已在可读范围内的公开输入目录；不额外授予读取权限。
+    pub read_only_paths: Vec<PathBuf>,
     pub writable: bool,
     /// 可信部署允许宿主路径；受限子 Scope 仍必须通过 OS 沙箱执行。
     pub full_access: bool,
@@ -50,6 +52,7 @@ impl Config {
         Self {
             workspace,
             scratch: None,
+            read_only_paths: Vec::new(),
             writable: false,
             full_access: false,
             allow_network: false,
@@ -99,6 +102,7 @@ struct Registry {
 pub struct Supervisor {
     config: Config,
     workspace: Workspace,
+    read_only_directories: Vec<Directory>,
     epoch: String,
     root: String,
     connection: String,
@@ -136,6 +140,16 @@ impl Supervisor {
         };
         if let Some(root) = workspace.scratch_root() {
             reads.push(root.clone());
+        }
+        if config.read_only_paths.len() > 16 {
+            return Err(invalid("at most 16 read-only input directories"));
+        }
+        let mut read_only_directories = Vec::new();
+        for path in &config.read_only_paths {
+            if !within(path, &reads) || reads.iter().any(|root| root.starts_with(path)) {
+                return Err(invalid("read-only inputs must be below a readable root"));
+            }
+            read_only_directories.push(Directory::bind(path)?);
         }
         let writes = if config.writable {
             reads.clone()
@@ -178,6 +192,7 @@ impl Supervisor {
         );
         let write_gate = Arc::new(writes::Writes::new(workspace.root.clone()));
         Ok(Arc::new(Self {
+            read_only_directories,
             config,
             workspace,
             epoch,
@@ -202,7 +217,7 @@ impl Supervisor {
                 "processTreeCleanupVerified": false, "coreHostIsolated": false,
                 "directoryObjectIsolation": false, "sandboxDenialAttribution": false,
                 "processLimits": self.config.limits,
-                "fullAccess":self.config.full_access,"rootNetwork": if self.config.allow_network { NetworkRequest::Inherit } else { NetworkRequest::Deny },
+                "fullAccess":self.config.full_access,"readOnlyPaths":self.config.read_only_paths.iter().map(|p| self.workspace.uri(p)).collect::<Vec<_>>(),"rootNetwork": if self.config.allow_network { NetworkRequest::Inherit } else { NetworkRequest::Deny },
                 "methods": ["runtime.status", "connection.open", "connection.close", "scope.create", "scope.get", "scope.revoke",
                     "scope.waitClosed", "owner.revoke", "process.start", "process.get", "process.terminate", "process.wait", "output.read", "operation.get"]
             }),
@@ -404,6 +419,9 @@ impl Supervisor {
 
     fn validate_paths(&self, state: &Registry, scope_id: &str) -> Result<()> {
         self.workspace.validate()?;
+        for directory in &self.read_only_directories {
+            directory.validate()?;
+        }
         if !state.scopes.contains_key(scope_id) {
             return Err(not_found());
         }
@@ -483,6 +501,7 @@ impl Supervisor {
                     env: request.env,
                     read_roots: scope.reads.clone(),
                     write_roots: scope.writes.clone(),
+                    read_only_paths: self.config.read_only_paths.clone(),
                     scope_access,
                     trusted_executable,
                     builtin_executables: self.config.file_helper.iter().cloned().collect(),

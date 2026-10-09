@@ -60,6 +60,7 @@ provider = "example"
 name = "your-model-id"
 # context_window_tokens = 131072
 max_retries = 2
+max_request_bytes = 16777216
 [model.providers.example]
 protocol = "responses"
 endpoint = "https://model.example.com/v1/responses"
@@ -320,3 +321,5 @@ Audit body/messageBlocks represent full logical input; transport=responses-webso
 WebSocket solve connections send the Core thread ID as session-id/thread-id for compatible gateway affinity. Providers may ignore these hints; they do not guarantee cache retention across connections. Summaries and unowned direct model calls do not carry the solve identity.
 
 Model configuration archives preserve the encoded bytes bound to each revision. New optional defaults do not invalidate historical revisions or rewrite queued Turn references; digest mismatches still reject modified archives. Do not manually reformat or edit the Core-owned `desktop/default-models.json`.
+
+`model.max_request_bytes` independently caps complete materialized HTTP JSON / Responses WebSocket wire envelopes, including tools and replayed history. The default is 16 MiB; range 1024–134217728 bytes. `AREAL_HARNESS_MODEL_MAX_REQUEST_BYTES` is also supported. This is a local guard, not a claim about gateway capacity; use a verified service limit. Aggregate media lower bounds are checked before materialization, then serialized JSON is counted without allocating an oversized send buffer. WebSocket continuations apply the wire limit to the actual delta; candidate full history has a separate 128 MiB materialization guard, and full-request fallback must satisfy the wire limit again. Rejection sends no request and causes no network retry, returning `MODEL_REQUEST_TOO_LARGE` with stage, measured bytes/lower bound and limit. HTTP 413 uses the same category with request-sent status. Token, tool-display and compaction budgets remain independent; this limit never silently removes historical images or task requirements.

@@ -167,13 +167,18 @@ pub fn command(execution: &Execution, profile: Profile) -> Result<Vec<String>> {
     }
     #[cfg(target_os = "linux")]
     if matches!(profile, Profile::Native | Profile::FullAccess) {
-        if profile == Profile::FullAccess && execution.scope_access == ScopeAccess::Unrestricted {
+        if profile == Profile::FullAccess
+            && execution.scope_access == ScopeAccess::Unrestricted
+            && execution.read_only_paths.is_empty()
+        {
             return Ok(execution.argv.clone());
         }
         return linux_command(execution);
     }
     if profile == Profile::FullAccess {
-        if execution.scope_access == ScopeAccess::Unrestricted {
+        if execution.scope_access == ScopeAccess::Unrestricted
+            && execution.read_only_paths.is_empty()
+        {
             return Ok(execution.argv.clone());
         }
         // 只读、研究 Agent 和插件的收窄授权不能借部署模式跳过隔离。
@@ -229,6 +234,25 @@ pub fn command(execution: &Execution, profile: Profile) -> Result<Vec<String>> {
     }
     // Only metadata traversal of authorization-root ancestors is needed for
     // getcwd/stat; do not grant content reads of their siblings.
+    for (index, root) in execution.read_only_paths.iter().enumerate() {
+        command.push(format!(
+            "-DINPUT{index}=^{}(/|$)",
+            escape(absolute_utf8(root)?)
+        ));
+        policy.push_str(&format!(
+            "(deny file-write* (regex (param \"INPUT{index}\")))\n"
+        ));
+        // 只禁止祖先本身的删除/重命名，仍允许在 scratch 中创建临时文件。
+        let parents = root
+            .ancestors()
+            .skip(1)
+            .map(|p| absolute_utf8(p).map(escape))
+            .collect::<Result<Vec<_>>>()?;
+        command.push(format!("-DINPUTPARENT{index}=^({})$", parents.join("|")));
+        policy.push_str(&format!(
+            "(deny file-write-unlink (regex (param \"INPUTPARENT{index}\")))\n"
+        ));
+    }
     if !ancestors.is_empty() {
         command.push(format!(
             "-DMETADATA=^({})$",
@@ -341,6 +365,50 @@ fn linux_command(execution: &Execution) -> Result<Vec<String>> {
         let path = absolute_utf8(helper)?;
         argv.extend(["--ro-bind".into(), path.into(), path.into()]);
     }
+    // full-access 的 / 可写时，把输入祖先也固定为挂载点，阻止重命名父目录后替换输入。
+    // 受限 Scope 的祖先本就不可写，不借此扩大其读取范围。
+    let mut parents = BTreeSet::new();
+    if execution.write_roots.iter().any(|p| p == Path::new("/")) {
+        for root in &execution.read_only_paths {
+            parents.extend(
+                root.ancestors()
+                    .skip(1)
+                    .filter(|p| *p != Path::new("/"))
+                    .map(Path::to_owned),
+            );
+        }
+    }
+    for parent in parents {
+        let path = absolute_utf8(&parent)?;
+        argv.extend(["--bind".into(), path.into(), path.into()]);
+    }
+    for protected in &execution.read_only_paths {
+        // 保护与可读根的交集；收窄到输入子目录也不能重新获得写权限。
+        let visible: BTreeSet<_> = execution
+            .read_roots
+            .iter()
+            .filter_map(|root| {
+                if protected.starts_with(root) {
+                    Some(protected)
+                } else if root.starts_with(protected) {
+                    Some(root)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for root in visible {
+            let path = absolute_utf8(root)?;
+            argv.extend(["--ro-bind".into(), path.into(), path.into()]);
+        }
+    }
+    // full-access 的根挂载不能覆盖私有 PID namespace 的 proc/dev；否则可经宿主 /proc/PID/root 绕过输入挂载。
+    argv.extend([
+        "--proc".into(),
+        "/proc".into(),
+        "--dev".into(),
+        "/dev".into(),
+    ]);
     argv.extend([
         "--chdir".into(),
         absolute_utf8(&execution.cwd)?.into(),
@@ -419,6 +487,15 @@ pub fn seccomp(
         libc::SYS_ptrace,
         libc::SYS_mount,
         libc::SYS_umount2,
+        // 新挂载 API 也必须受限，不能通过新 user namespace 移走只读输入挂载。
+        libc::SYS_fsopen,
+        libc::SYS_fsconfig,
+        libc::SYS_fsmount,
+        libc::SYS_fspick,
+        libc::SYS_open_tree,
+        libc::SYS_move_mount,
+        libc::SYS_mount_setattr,
+        libc::SYS_pivot_root,
         libc::SYS_setns,
         libc::SYS_unshare,
     ] {
@@ -478,6 +555,7 @@ mod policy_tests {
             env: BTreeMap::new(),
             read_roots: vec![PathBuf::from("/")],
             write_roots: Vec::new(),
+            read_only_paths: Vec::new(),
             scope_access: ScopeAccess::Unrestricted,
             trusted_executable: None,
             builtin_executables: Vec::new(),

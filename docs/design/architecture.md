@@ -99,3 +99,5 @@ Core `permissions` 负责审批模式、规则优先级与精确请求记忆；C
 模型目录的解析、校验和受控文件写入归 `core/config`，`core/server` 在启动时装配为 Engine 的执行投影。Clients 使用公开配置命令，不复制 TOML 解析或凭据存储。共享目录保存与安全重启分开，任务持有原模型快照；契约见[配置指南](../guides/configuration.md#gui-与-cli-共享模型目录)。
 
 历史回取分页读取原始记录。Goal 计量同样把已结算请求滚入分段，保留累计用量与未结算预留。这些存储职责位于 Core，不改变 Runtime 的执行所有权。
+
+Arena 公开输入物化与清单属于 Runner；只读目录身份、文件操作拒绝及 OS 挂载保护属于 Runtime。Core 的媒体工具生成有界派生图与动画视图，模型适配器计量最终请求字节；职责不进入 Runner 的模型循环。契约见[工具](../guides/tools.md)、[Runtime](../api/runtime.md)和[评测](../benchmarks/README.md)。
