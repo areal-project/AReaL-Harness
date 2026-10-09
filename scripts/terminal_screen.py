@@ -78,7 +78,11 @@ class TerminalScreen:
                     self.column = 0
                     self.row = min(self.row + 1, self.rows - 1)
                 self.cells[self.row][self.column] = char
-                self.column += 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
+                width = 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
+                # 宽字符占据两格，增量重绘不会另发空格来清除被覆盖的旧字符。
+                if width == 2 and self.column + 1 < self.columns:
+                    self.cells[self.row][self.column + 1] = " "
+                self.column += width
             index += 1
         self.pending = self.pending[index:]
 

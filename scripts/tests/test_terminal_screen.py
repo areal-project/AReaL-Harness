@@ -10,6 +10,13 @@ TerminalScreen = runpy.run_path(str(Path(__file__).resolve().parents[1] / "termi
 
 
 class TerminalScreenTests(unittest.TestCase):
+    def test_wide_character_clears_the_covered_old_cell(self):
+        screen = TerminalScreen(2, 40)
+        screen.feed(b"reply:xi-unicode")
+        screen.feed("\x1b[1;7H文".encode())
+        self.assertIn("reply:文 -unicode".encode(), screen.text())
+        self.assertNotIn("文i".encode(), screen.text())
+
     def test_model_reload_and_status_keep_unchanged_characters(self):
         screen = TerminalScreen(2, 40)
         screen.feed(b"fixture-third\x1b[2;1HIdle")
