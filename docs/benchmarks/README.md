@@ -84,3 +84,5 @@ Runner 通过 Runtime `--read-only-path` 保护输入并在运行结束检查摘
 离线验证运行 `python3 -m unittest discover -s integrations/envarena`、`cargo test --locked -p areal-engine --lib` 和 `python3 scripts/arena-input-smoke.py --bin-dir target/debug`。模型桩验证真实 CLI/Core/Runtime 输入读取、PNG/GIF 视觉内容、只读拒绝及旧封套超限诊断，不代表四题真实模型复跑或评分通过。线上验收需冻结新 Harness ref/hash，保留原题和评分器，逐题区分输入链路成功、任务终态及原 Reward。
 
 可附加 `--public-inputs-dir <含 TASK.md 和 assets/ 的目录>`，用同一模型桩回放冻结的真实公开附件；这仍不是在线模型或 Reward 验收。
+
+原生 x86_64 发布候选由 [Arena package 工作流](../../.github/workflows/arena-package.yml) 构建：固定 Rust 1.94.0 和 release profile，生成 zipapp，再在独立 Debian 容器中无网运行归档。CI 通过公开 URL 下载四组哈希固定的附件，使用标记题面验证视觉链路，不运行原题作答或 Reward；原始题面与线上模型验收另行保留。工作流只上传候选 artifact，不发布 Registry 或 GitHub Release。Apple Silicon 的 x86 用户态模拟可能不支持 seccomp，不能用该环境的失败或禁用过滤器替代原生 Linux 验收。

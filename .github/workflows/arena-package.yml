@@ -1,0 +1,94 @@
+name: Arena package
+
+on:
+    workflow_dispatch:
+    pull_request:
+        paths:
+            - ".github/workflows/arena-package.yml"
+            - "integrations/envarena/**"
+            - "scripts/package-arena.py"
+            - "scripts/arena-input-smoke.py"
+            - "scripts/fetch-arena-fixtures.py"
+            - "tests/fixtures/arena-inputs.json"
+            - "core/**"
+            - "runtime/**"
+            - "clients/tui/**"
+            - "scripts/launch.py"
+            - "Cargo.toml"
+            - "Cargo.lock"
+
+permissions:
+    contents: read
+
+defaults:
+    run:
+        shell: bash
+
+jobs:
+    package:
+        name: Native Linux x86_64 Arena package
+        runs-on: ubuntu-24.04
+        timeout-minutes: 45
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+              with:
+                  ref: ${{ github.event.pull_request.head.sha || github.sha }}
+                  persist-credentials: false
+            - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+              with:
+                  python-version: "3.13"
+            - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+            - name: Build pinned musl release
+              uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+              with:
+                  context: .
+                  file: integrations/envarena/Dockerfile
+                  load: true
+                  tags: areal-ci:arena-release
+                  cache-from: type=gha,scope=areal-arena-release
+                  cache-to: type=gha,scope=areal-arena-release,mode=max
+            - name: Package and preserve provenance
+              run: |
+                  cid=$(docker create areal-ci:arena-release /bin/true)
+                  trap 'docker rm -f "$cid" >/dev/null' EXIT
+                  docker cp "$cid:/out" "$RUNNER_TEMP/arena-build"
+                  python3 scripts/package-arena.py \
+                    --bin-dir "$RUNNER_TEMP/arena-build/bin" \
+                    --utilities "$RUNNER_TEMP/arena-build/utilities" \
+                    --settings integrations/envarena/settings-original-mm.json \
+                    --target x86_64-unknown-linux-musl --output "$RUNNER_TEMP/arena-package"
+                  cp "$RUNNER_TEMP/arena-package/payload/manifest.json" "$RUNNER_TEMP/arena-package/manifest.json"
+                  docker image inspect areal-ci:arena-release > "$RUNNER_TEMP/arena-package/build-image.json"
+            - name: Fetch hash-pinned public image fixtures
+              run: python3 scripts/fetch-arena-fixtures.py --output "$RUNNER_TEMP/arena-fixtures"
+            - name: Verify final archive on native x86_64
+              run: |
+                  mkdir -p "$RUNNER_TEMP/arena-package/verification"
+                  run_smoke() {
+                    docker run --rm --network none \
+                      --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
+                      --security-opt apparmor=unconfined \
+                      --mount "type=bind,source=$PWD,target=/verification,readonly" \
+                      --mount "type=bind,source=$RUNNER_TEMP/arena-package/areal-arena.pyz,target=/tmp/package.pyz,readonly" \
+                      --mount "type=bind,source=$RUNNER_TEMP/arena-fixtures,target=/fixtures,readonly" \
+                      --entrypoint python3 python:3.13-slim-bookworm \
+                      /verification/scripts/arena-input-smoke.py --package /tmp/package.pyz "$@"
+                  }
+                  run_smoke | tee "$RUNNER_TEMP/arena-package/verification/synthetic.json"
+                  for fixture in "$RUNNER_TEMP/arena-fixtures/"*; do
+                    name=$(basename "$fixture")
+                    run_smoke --public-inputs-dir "/fixtures/$name" \
+                      | tee "$RUNNER_TEMP/arena-package/verification/$name.json"
+                  done
+            - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+              if: always()
+              with:
+                  name: arena-linux-x86_64-candidate
+                  path: |
+                      ${{ runner.temp }}/arena-package/areal-arena.pyz
+                      ${{ runner.temp }}/arena-package/SHA256SUMS
+                      ${{ runner.temp }}/arena-package/manifest.json
+                      ${{ runner.temp }}/arena-package/build-image.json
+                      ${{ runner.temp }}/arena-package/verification/
+                  if-no-files-found: warn
+                  retention-days: 14
