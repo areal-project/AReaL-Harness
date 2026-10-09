@@ -32,5 +32,6 @@ RUN curl -fsSL https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ri
     && curl -fsSL https://raw.githubusercontent.com/containers/bubblewrap/v0.12.0/COPYING -o /out/utilities/licenses/bubblewrap/COPYING \
     && curl -fsSL 'https://git.musl-libc.org/cgit/musl/plain/COPYRIGHT?h=v1.2.5' -o /out/utilities/licenses/musl/COPYRIGHT \
     && curl -fsSL https://www.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.78.tar.xz -o /tmp/libcap.tar.xz \
-    && python3 -c 'import tarfile,pathlib; t=tarfile.open("/tmp/libcap.tar.xz"); [(pathlib.Path("/out/utilities/licenses/libcap")/n.replace("/","_")).write_bytes(t.extractfile("libcap-2.78/"+n).read()) for n in ("License", "libcap/License")]'
+    && echo '0d621e562fd932ccf67b9660fb018e468a683d7b827541df27813228c996bb11  /tmp/libcap.tar.xz' | sha256sum -c - \
+    && python3 -c 'import tarfile,pathlib; t=tarfile.open("/tmp/libcap.tar.xz"); [(pathlib.Path("/out/utilities/licenses/libcap")/n.replace("/","_")).write_bytes(t.extractfile("libcap-2.78/"+n).read()) for n in ("License", "cap/License", "pam_cap/License", "psx/License")]'
 ENTRYPOINT []
