@@ -233,6 +233,58 @@ class LazyInputTest(unittest.TestCase):
         self.assertTrue(configured["limits"]["context_compaction_enabled"])
         self.assertEqual(configured["limits"]["context_window_tokens"], 262144)
 
+    def test_model_overrides_allow_omission_without_changing_frozen_settings(self):
+        import runner
+        import tomllib
+
+        settings = {"temperature": 1, "reasoning_effort": "medium", "max_output_tokens": 65536}
+        with patch.dict(
+            os.environ,
+            {
+                "AREAL_ARENA_TEMPERATURE": "null",
+                "AREAL_ARENA_REASONING_EFFORT": "low",
+                "AREAL_ARENA_MAX_OUTPUT_TOKENS": "2048",
+            },
+        ):
+            parameters = runner.model_parameters(settings)
+            config = tomllib.loads(
+                runner.make_config("fixture", "http://localhost/v1", 30, settings)
+            )
+        self.assertEqual(
+            parameters, {"temperature": None, "reasoning_effort": "low", "max_output_tokens": 2048}
+        )
+        self.assertNotIn("temperature", config["model"])
+        self.assertEqual(config["model"]["reasoning_effort"], "low")
+        self.assertEqual(config["model"]["max_output_tokens"], 2048)
+        self.assertEqual(settings["temperature"], 1)
+        self.assertEqual(settings["max_output_tokens"], 65536)
+
+    def test_optional_sampling_preserves_none_effort_and_zero_temperature(self):
+        import runner
+        import tomllib
+
+        with patch.dict(os.environ, {}, clear=True):
+            for settings, wanted in [
+                ({}, {"temperature": 1, "reasoning_effort": "medium"}),
+                (
+                    {"temperature": 0, "reasoning_effort": "none"},
+                    {"temperature": 0, "reasoning_effort": "none"},
+                ),
+                ({"temperature": None, "reasoning_effort": None}, {}),
+            ]:
+                config = tomllib.loads(
+                    runner.make_config("fixture", "http://localhost/v1", 30, settings)
+                )
+                actual = {
+                    k: config["model"][k]
+                    for k in ("temperature", "reasoning_effort")
+                    if k in config["model"]
+                }
+                self.assertEqual(actual, wanted)
+        with patch.dict(os.environ, {"AREAL_ARENA_REASONING_EFFORT": "null"}):
+            config = tomllib.loads(runner.make_config("fixture", "http://localhost/v1", 30))
+        self.assertNotIn("reasoning_effort", config["model"])
+
 
 if __name__ == "__main__":
     unittest.main()

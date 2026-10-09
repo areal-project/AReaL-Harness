@@ -40,12 +40,13 @@ docker build -f tests/perf/gateway.Dockerfile -t areal-perf-gateway:source-0.13.
 When using this pinned-source gateway, pass the same gateway-image to run. Default runner versions are pinned in the [Dockerfile](../../tests/e2e/docker/Dockerfile). Builds record image IDs and source fingerprints; preparation and Runtime smoke are outside task timing. Linux Harness uses outer-container-perf; see [deployment boundaries](../guides/runtime.en.md).
 
 <a id="suites"></a>
+
 ## lite and pro
 
-| Suite | Environment and grading |
-|---|---|
-| lite | Local repository tasks, a private workspace per trial and a separate network-disabled grader container |
-| pro | Prompts/oracles from 20 pinned external Envs; local Dockerfiles and initial inputs build public amd64 environments. Tests are injected into the same container after Agent exit |
+| Suite | Environment and grading                                                                                                                                                         |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| lite  | Local repository tasks, a private workspace per trial and a separate network-disabled grader container                                                                          |
+| pro   | Prompts/oracles from 20 pinned external Envs; local Dockerfiles and initial inputs build public amd64 environments. Tests are injected into the same container after Agent exit |
 
 See the [snapshot notes](../../tests/perf/suites/pro/README.en.md) for pro provenance and constraints. fetch-pro validates local materials. build-pro builds environments without a model; run builds and caches the selected tasks automatically. The first build needs public image and package repositories, with no internal credentials:
 
@@ -78,6 +79,8 @@ Runner protects input through Runtime `--read-only-path` and verifies hashes at 
 Build reproducible `areal-arena.pyz`, per-file manifests and SHA256SUMS with `scripts/package-arena.py --bin-dir <same-build release binaries> --utilities <tools and shared libraries> --settings <frozen settings.json> --target x86_64-unknown-linux-musl --output <new directory>`. Utilities contain `bin/bwrap`, `bin/tools/rg`, and `lib/`; preserve third-party licenses under `licenses/`. Packaging requires a clean source commit and checks ELF architecture. Before invoking Runner, the bootstrap verifies every archived file and the running architecture. Binaries must come from a release build with the pinned toolchain; retain build logs and image digests with the package. Before publishing, run `python3 scripts/arena-input-smoke.py --package <pyz>` in an isolated Linux container to exercise the actual archive, Runner, tools, visual input and result file. Registry artifact globs should include `public-inputs/**/*` and `input-delivery.json`.
 
 Frozen settings accept `max_request_bytes` (a 16 MiB local default guard; set it to the actual gateway limit before publishing) and `context_compaction_enabled` (false by default; enable after separate evaluation). Wire bytes and context tokens are independent. Native 50 MiB paging and long-trajectory compaction are outside acceptance for this input fix.
+
+Before real-model acceptance, verify image input, tool calling, context limits and sampling parameters against the provider contract. Deployment variables `AREAL_ARENA_TEMPERATURE`, `AREAL_ARENA_REASONING_EFFORT` and `AREAL_ARENA_MAX_OUTPUT_TOKENS` override the frozen settings. The literal `null` omits either of the first two parameters; `reasoning_effort=none` is still sent unchanged. For example, set `AREAL_ARENA_TEMPERATURE=null` for a reasoning model that rejects temperature. The trajectory configuration event records effective values, with `null` meaning omitted; cross-check these against `core-config.toml` and Core request audits. Label acceptance runs with a changed model or parameters separately from comparisons of the original model's quality.
 
 Packages support the default `task_profile: "generic"` and `task_profile: "original"`. Use `original` for original-task comparisons: only the public-input Bootstrap is added, without Runner implementation or test advice. Native Core instructions are determined by the same build. The packaged `system-prompt.md` is an audit copy of the Core base instructions and does not override native instructions. Historical configurations requiring external delivery/piggy modules are outside this packaging entry point and are rejected during packaging.
 

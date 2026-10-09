@@ -165,13 +165,30 @@ def project(data, trajectory, seen):
     return threads
 
 
-def make_config(model, endpoint, timeout, settings=None):
+def model_parameters(settings):
+    parameters = {
+        "reasoning_effort": settings.get("reasoning_effort", "medium"),
+        "temperature": settings.get("temperature", 1),
+        "max_output_tokens": settings.get("max_output_tokens", 16384),
+    }
+    for name in parameters:
+        value = os.environ.get("AREAL_ARENA_" + name.upper(), parameters[name])
+        # null 表示省略可选参数；reasoning_effort 的 none 仍是有效模型取值。
+        if name != "max_output_tokens" and isinstance(value, str) and value.strip() == "null":
+            value = None
+        parameters[name] = value
+    if parameters["temperature"] is not None:
+        parameters["temperature"] = float(parameters["temperature"])
+    parameters["max_output_tokens"] = int(parameters["max_output_tokens"])
+    return parameters
+
+
+def make_config(model, endpoint, timeout, settings=None, parameters=None):
     settings = settings or {}
+    parameters = model_parameters(settings) if parameters is None else parameters
     q = json.dumps
-    effort = os.environ.get(
-        "AREAL_ARENA_REASONING_EFFORT", settings.get("reasoning_effort", "medium")
-    )
-    temperature = os.environ.get("AREAL_ARENA_TEMPERATURE", settings.get("temperature", 1))
+    effort = parameters["reasoning_effort"]
+    temperature = parameters["temperature"]
     sampling = (f"reasoning_effort={q(effort)}\n" if effort is not None else "") + (
         f"temperature={float(temperature)}\n" if temperature is not None else ""
     )
@@ -179,7 +196,7 @@ def make_config(model, endpoint, timeout, settings=None):
 [model]
 provider="arena"
 name={q(model)}
-{sampling}max_output_tokens={int(os.environ.get("AREAL_ARENA_MAX_OUTPUT_TOKENS", settings.get("max_output_tokens", 16384)))}
+{sampling}max_output_tokens={parameters["max_output_tokens"]}
 max_retries={int(settings.get("http_retries", 2))}
 max_request_bytes={int(settings.get("max_request_bytes", 16777216))}
 [model.providers.arena]
@@ -411,7 +428,8 @@ def main():
                 inputs[0]["text"] += (
                     "\nWhen the implementation and verification are finished, put IMPLEMENTATION_COMPLETE on its own line in your final response, followed by the change and test summary. If no source change is necessary, put IMPLEMENTATION_NO_CHANGE with verification evidence. If you cannot finish, put IMPLEMENTATION_BLOCKED on its own line and give the concrete remaining blocker. Do not emit either marker while there are still actions you intend to take; carry out those actions with tools first."
                 )
-            config.write_text(make_config(model, endpoint, timeout, settings))
+            parameters = model_parameters(settings)
+            config.write_text(make_config(model, endpoint, timeout, settings, parameters))
             # This contains only the credential environment variable's name.
             # Preserve the exact adapter settings used by this attempt.
             shutil.copy2(config, output / "core-config.toml")
@@ -484,11 +502,7 @@ def main():
                             "implementation": "rust-core-runtime",
                             "protocol": "chat-completions",
                             "system_prompt": (root / "system-prompt.md").read_text(),
-                            "parameters": {
-                                "temperature": settings.get("temperature", 1),
-                                "reasoning_effort": settings.get("reasoning_effort", "medium"),
-                                "max_output_tokens": settings.get("max_output_tokens", 16384),
-                            },
+                            "parameters": parameters,
                             "task_profile": profile,
                             "images": images,
                             "timeout_seconds": timeout,

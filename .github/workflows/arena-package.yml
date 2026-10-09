@@ -95,7 +95,7 @@ jobs:
                       --entrypoint python3 python:3.13-slim-bookworm \
                       /verification/scripts/arena-input-smoke.py --package /tmp/package.pyz "$@"
                   }
-                  run_smoke | tee "$RUNNER_TEMP/arena-package/verification/synthetic.json"
+                  run_smoke --check-model-overrides | tee "$RUNNER_TEMP/arena-package/verification/synthetic.json"
                   for fixture in "$RUNNER_TEMP/arena-fixtures/"*; do
                     name=$(basename "$fixture")
                     run_smoke --public-inputs-dir "/fixtures/$name" \

@@ -33,8 +33,16 @@ def main():
         type=Path,
         help="replay archived TASK.md and assets/ with the fixture model",
     )
+    parser.add_argument(
+        "--check-model-overrides",
+        action="store_true",
+        help="verify nullable sampling overrides through the packaged runner and HTTP requests",
+    )
     args = parser.parse_args()
+    if args.check_model_overrides and not args.package:
+        parser.error("--check-model-overrides requires --package")
     errors, requests, visual_counts = [], [], []
+    request_parameters = []
     image_evidence = {}
     with tempfile.TemporaryDirectory(prefix="arena-input-smoke-") as temporary:
         root = Path(temporary).resolve()
@@ -101,6 +109,17 @@ def main():
                     raw = self.rfile.read(int(self.headers["Content-Length"]))
                     body = json.loads(raw)
                     requests.append(len(raw))
+                    request_parameters.append(
+                        {
+                            key: body[key]
+                            for key in ("temperature", "reasoning_effort", "max_completion_tokens")
+                            if key in body
+                        }
+                    )
+                    if args.check_model_overrides:
+                        assert "temperature" not in body, "temperature must be omitted on the wire"
+                        assert body["reasoning_effort"] == "low"
+                        assert body["max_completion_tokens"] == 2048
                     tools = [
                         json.loads(m["content"]) for m in body["messages"] if m["role"] == "tool"
                     ]
@@ -281,6 +300,12 @@ max_tool_calls=16
                 OPENAI_BASE_URL=f"http://127.0.0.1:{server.server_port}/v1",
                 OPENAI_API_KEY="fixture",
             )
+            if args.check_model_overrides:
+                environment.update(
+                    AREAL_ARENA_TEMPERATURE="null",
+                    AREAL_ARENA_REASONING_EFFORT="low",
+                    AREAL_ARENA_MAX_OUTPUT_TOKENS="2048",
+                )
             command = [sys.executable, str(args.package.resolve())]
         try:
             done = subprocess.run(
@@ -300,6 +325,24 @@ max_tool_calls=16
                 with zipfile.ZipFile(args.package) as archive:
                     manifest = json.loads(archive.read("manifest.json"))
                     settings = json.loads(archive.read("settings.json"))
+                events = [
+                    json.loads(line)
+                    for line in (output / "trajectory.jsonl").read_text().splitlines()
+                ]
+                configuration = next(e for e in events if e.get("subtype") == "configuration")
+                effective = configuration["parameters"]
+                expected_wire = {
+                    "max_completion_tokens" if key == "max_output_tokens" else key: value
+                    for key, value in effective.items()
+                    if value is not None
+                }
+                assert all(p == expected_wire for p in request_parameters), request_parameters
+                if args.check_model_overrides:
+                    assert effective == {
+                        "temperature": None,
+                        "reasoning_effort": "low",
+                        "max_output_tokens": 2048,
+                    }, effective
                 if settings.get("task_profile") == "original":
                     prompt = json.loads((output / "agent/input.json").read_text())[0]["text"]
                     assert "This is an implementation task" not in prompt
@@ -317,6 +360,8 @@ max_tool_calls=16
                             "visualViews": max(visual_counts),
                             "imageEvidence": image_evidence,
                             "publicInputIntegrity": "verified",
+                            "effectiveModelParameters": effective,
+                            "modelParametersMatchWire": True,
                         }
                     )
                 )
