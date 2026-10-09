@@ -6,6 +6,7 @@
   "package_paths": {
     "runner.py": "runner",
     "outcomes.py": "outcomes.py",
+    "public_inputs.py": "public_inputs.py",
     "graybox_inputs.py": "graybox_inputs.py",
     "graybox_collect.py": "graybox_collect.py"
   },

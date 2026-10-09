@@ -316,9 +316,11 @@ def main():
         inputs = [{"type": "text", "text": ""}]
         images = []
         prompt_path = os.environ.get("ARENA_SYSTEM_PROMPT_PATH")
-        inputs[0]["text"] += (
-            "\n\nThis is an implementation task: inspect the task and repository, make the required focused source changes, and verify them. Finish pending tool work before reporting completion. Do not search for upstream fixes or claim unperformed tests. Inspect the final diff."
-        )
+        # 原题评测只加入输入读取指引，避免将输入修复与任务提示调优混为一项实验。
+        if profile != "original":
+            inputs[0]["text"] += (
+                "\n\nThis is an implementation task: inspect the task and repository, make the required focused source changes, and verify them. Finish pending tool work before reporting completion. Do not search for upstream fixes or claim unperformed tests. Inspect the final diff."
+            )
         if profile == "swe":
             inputs[0]["text"] += (
                 "\nThe environment is offline with preinstalled dependencies. Preserve existing tests unless this issue explicitly requires test changes. Do not add temporary scripts or output to the repository."
@@ -391,9 +393,10 @@ def main():
                 import delivery as delivery_module
 
                 verification = delivery_module.load_verification(root)
-            inputs[0]["text"] += (
-                f"\nShared temporary files and verification logs belong in {scratch} (workspace://scratch). TMPDIR points there. /tmp itself is private to each command. Use verify_command for relevant test/build checks; it writes a source-bound exit receipt. After edits, rerun the relevant check and wait for exit."
-            )
+            if profile != "original":
+                inputs[0]["text"] += (
+                    f"\nShared temporary files and verification logs belong in {scratch} (workspace://scratch). TMPDIR points there. /tmp itself is private to each command. Use verify_command for relevant test/build checks; it writes a source-bound exit receipt. After edits, rerun the relevant check and wait for exit."
+                )
             if profile == "piggy":
                 import piggy as piggy_module
 

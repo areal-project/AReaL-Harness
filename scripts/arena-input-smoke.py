@@ -7,12 +7,14 @@ import http.server
 import json
 import os
 from pathlib import Path
+import shutil
 import struct
 import subprocess
 import sys
 import tempfile
 import threading
 import zlib
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "integrations/envarena"))
@@ -21,9 +23,19 @@ import public_inputs  # noqa: E402
 
 def main():
     parser = argparse.ArgumentParser(__doc__)
-    parser.add_argument("--bin-dir", type=Path, required=True)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--bin-dir", type=Path)
+    mode.add_argument(
+        "--package", type=Path, help="validate a frozen pyz inside an isolated Linux container"
+    )
+    parser.add_argument(
+        "--public-inputs-dir",
+        type=Path,
+        help="replay archived TASK.md and assets/ with the fixture model",
+    )
     args = parser.parse_args()
-    errors, requests = [], []
+    errors, requests, visual_counts = [], [], []
+    image_evidence = {}
     with tempfile.TemporaryDirectory(prefix="arena-input-smoke-") as temporary:
         root = Path(temporary).resolve()
         repo, scratch, assets = (root / p for p in ("repo", "scratch", "assets"))
@@ -54,9 +66,27 @@ def main():
                 + bytes([0x44 if index % 2 == 0 else 0x4C, 1, 0])
             )
         (assets / "motion.gif").write_bytes(gif + b";")
+        if args.public_inputs_dir:
+            query.write_bytes((args.public_inputs_dir / "TASK.md").read_bytes())
+            shutil.rmtree(assets)
+            shutil.copytree(args.public_inputs_dir / "assets", assets)
+        if args.package:
+            assert Path("/.dockerenv").exists(), "package smoke requires an isolated container"
+            assert not Path("/problem_assets").exists(), "do not replace existing public inputs"
+            shutil.copytree(assets, "/problem_assets")
         public = scratch / "public-inputs"
         receipt, records, baseline = public_inputs.prepare(query, public, assets)
         paths = {row["alias"]: row["path"] for row in records}
+        replay_calls = [
+            ("read_file", {"path": receipt["task"]["path"], "limit": 2}),
+            ("read_file", {"path": receipt["manifest_path"]}),
+        ]
+        by_path = {row["path"]: row for row in records}
+        for row in by_path.values():
+            replay_calls.append(("image_read", {"path": row["path"]}))
+            if row["mime_hint"] == "image/gif":
+                replay_calls.append(("image_read", {"path": row["path"], "frameIndex": 0}))
+        replay_calls.append(("fs_write", {"path": receipt["task"]["path"], "text": "tampered"}))
         inputs = public_inputs.bootstrap(receipt, public)
         input_path = root / "input.json"
         input_path.write_text(json.dumps(inputs))
@@ -81,8 +111,47 @@ def main():
                         for p in m["content"]
                         if p.get("type") == "image_url"
                     ]
+                    visual_counts.append(len(visuals))
                     step = len(tools)
-                    if step == 0:
+                    if args.public_inputs_dir:
+                        if step == 0:
+                            assert not visuals
+                        elif step == 1:
+                            marker = json.dumps(
+                                query.read_text().splitlines()[0][:80], ensure_ascii=False
+                            )[1:-1]
+                            assert marker in json.dumps(tools[-1], ensure_ascii=False), tools[-1]
+                        elif step == 2:
+                            assert records[0]["sha256"] in json.dumps(tools[-1]), tools[-1]
+                        elif replay_calls[step - 1][0] == "image_read":
+                            params = replay_calls[step - 1][1]
+                            row, result = by_path[params["path"]], tools[-1]
+                            assert result["sourceSha256"] == row["sha256"], result
+                            assert result["sourceBytes"] == row["bytes"], result
+                            assert result["views"], result
+                            if row["mime_hint"] == "image/gif":
+                                animation = result["animation"]
+                                count = animation["frameCount"]
+                                selected = (
+                                    [0]
+                                    if "frameIndex" in params
+                                    else sorted({0, count // 2, count - 1})
+                                )
+                                assert animation["selectedFrames"] == selected, animation
+                            image_evidence[str(step)] = {
+                                "sourceSha256": row["sha256"],
+                                "sourceBytes": row["bytes"],
+                                "animation": result["animation"],
+                                "views": len(result["views"]),
+                            }
+                            assert len(visuals) == sum(
+                                item["views"] for item in image_evidence.values()
+                            )
+                        else:
+                            assert "PERMISSION_DENIED" in json.dumps(tools[-1]).upper().replace(
+                                "PERMISSIONDENIED", "PERMISSION_DENIED"
+                            ), tools[-1]
+                    elif step == 0:
                         assert not visuals
                     elif step == 1:
                         assert "original task contract" in json.dumps(tools[-1]), tools[-1]
@@ -106,14 +175,19 @@ def main():
                             visual["image_url"]["url"].split(",", 1)[1], validate=True
                         )
                         assert data.startswith(b"\x89PNG\r\n\x1a\n")
-                    calls = [
-                        ("read_file", {"path": receipt["task"]["path"], "limit": 2}),
-                        ("read_file", {"path": receipt["manifest_path"]}),
-                        ("image_read", {"path": paths["still.png"]}),
-                        ("image_read", {"path": paths["motion.gif"]}),
-                        ("image_read", {"path": paths["motion.gif"], "frameIndex": 1}),
-                        ("fs_write", {"path": receipt["task"]["path"], "text": "tampered"}),
-                    ]
+                        assert len(data) <= 1024 * 1024
+                    calls = (
+                        replay_calls
+                        if args.public_inputs_dir
+                        else [
+                            ("read_file", {"path": receipt["task"]["path"], "limit": 2}),
+                            ("read_file", {"path": receipt["manifest_path"]}),
+                            ("image_read", {"path": paths["still.png"]}),
+                            ("image_read", {"path": paths["motion.gif"]}),
+                            ("image_read", {"path": paths["motion.gif"], "frameIndex": 1}),
+                            ("fs_write", {"path": receipt["task"]["path"], "text": "tampered"}),
+                        ]
+                    )
                     delta, finish = {"content": "Input delivery verified."}, "stop"
                     if step < len(calls):
                         name, arguments = calls[step]
@@ -150,7 +224,7 @@ def main():
 [model]
 name="fixture"
 max_retries=0
-max_request_bytes=4194304
+max_request_bytes=16777216
 [model.providers.default]
 protocol="chat-completions"
 endpoint="http://127.0.0.1:{server.server_port}/v1/chat/completions"
@@ -162,12 +236,14 @@ context_window_bytes=0
 max_tool_calls=16
 """)
         environment = {k: v for k, v in os.environ.items() if not k.startswith("AREAL_")}
-        environment.update(AREAL_API_KEY="fixture", AREAL_HARNESS_HOME=str(root / "home"))
+        environment.update(
+            AREAL_API_KEY="fixture", AREAL_HARNESS_HOME=str(root / "home"), HOME=str(root / "home")
+        )
         command = [
             sys.executable,
             str(ROOT / "scripts/launch.py"),
             "--bin-dir",
-            str(args.bin_dir.resolve()),
+            str(args.bin_dir.resolve()) if args.bin_dir else "",
             "--tui",
             "--config",
             str(config),
@@ -181,19 +257,70 @@ max_tool_calls=16
             str(public),
             "--sandbox-profile",
             "full-access",
+            # 与 Runner 的累计工具输出预算一致，允许重新读取同一原始 GIF。
+            "--command-output-bytes",
+            "67108864",
             "--allow-write",
             "--input-error-file",
             str(root / "input-error.json"),
             "--input-file",
             str(input_path),
         ]
+        if args.package:
+            output = root / "arena-output"
+            output.mkdir()
+            environment.update(
+                IS_SANDBOX="1",
+                ARENA_TASK_ID="arena-package-input-smoke",
+                ARENA_QUERY_PATH=str(query),
+                ARENA_WORKSPACE=str(repo),
+                ARENA_OUTPUT_DIR=str(output),
+                ARENA_AGENT_OUTPUT_DIR=str(output / "agent"),
+                ARENA_TRAJECTORY_PATH=str(output / "trajectory.jsonl"),
+                OPENAI_MODEL="fixture",
+                OPENAI_BASE_URL=f"http://127.0.0.1:{server.server_port}/v1",
+                OPENAI_API_KEY="fixture",
+            )
+            command = [sys.executable, str(args.package.resolve())]
         try:
             done = subprocess.run(
                 command, env=environment, text=True, capture_output=True, timeout=90
             )
             assert done.returncode == 0, done.stderr + done.stdout + str(errors)
             assert not errors, errors
-            assert len(requests) == 7, requests
+            expected_requests = len(replay_calls) + 1 if args.public_inputs_dir else 7
+            assert len(requests) == expected_requests, requests
+            if args.package:
+                result = json.loads((output / "harness_result.json").read_text())
+                delivery = json.loads((output / "agent/input-delivery.json").read_text())
+                assert result["status"] == "OK", result
+                assert delivery["integrity"] == "verified", delivery
+                assert (output / "agent/public-inputs/TASK.md").read_bytes() == query.read_bytes()
+                assert delivery["bootstrap_bytes"] < 4096, delivery
+                with zipfile.ZipFile(args.package) as archive:
+                    manifest = json.loads(archive.read("manifest.json"))
+                    settings = json.loads(archive.read("settings.json"))
+                if settings.get("task_profile") == "original":
+                    prompt = json.loads((output / "agent/input.json").read_text())[0]["text"]
+                    assert "This is an implementation task" not in prompt
+                    assert "Use verify_command" not in prompt
+                    assert "TASK.md" in prompt and "attachments.jsonl" in prompt
+                print(
+                    json.dumps(
+                        {
+                            "packagedRunner": "PASS",
+                            "sourceRevision": manifest["sourceRevision"],
+                            "bootstrapBytes": delivery["bootstrap_bytes"],
+                            "modelRequests": len(requests),
+                            "maxRequestBytes": max(requests),
+                            "taskProfile": settings.get("task_profile", "generic"),
+                            "visualViews": max(visual_counts),
+                            "imageEvidence": image_evidence,
+                            "publicInputIntegrity": "verified",
+                        }
+                    )
+                )
+                return
             public_inputs.verify(public, baseline)
             # 同一个真实入口拒绝旧式大封套，且不会发出额外模型请求。
             input_path.write_text(" " * (2 * 1024 * 1024 + 1))
@@ -203,14 +330,15 @@ max_tool_calls=16
             assert rejected.returncode != 0
             error = json.loads((root / "input-error.json").read_text())
             assert error["code"] == "INPUT_ENVELOPE_TOO_LARGE"
-            assert len(requests) == 7
+            assert len(requests) == expected_requests
             print(
                 json.dumps(
                     {
                         "bootstrapBytes": public_inputs.validate_envelope(inputs),
                         "modelRequests": len(requests),
                         "maxRequestBytes": max(requests),
-                        "visualViews": 5,
+                        "visualViews": max(visual_counts),
+                        "imageEvidence": image_evidence,
                         "publicInputIntegrity": "verified",
                         "oversizedInput": "rejected_before_model",
                     }

@@ -75,6 +75,12 @@ run.json 逐次保存，report.json 为汇总，trials/ 保存日志、工作区
 
 Runner 通过 Runtime `--read-only-path` 保护输入并在运行结束检查摘要；现有 Graybox public 包保持原路径和输出收集方式。输入身份、Case/Env/Reward 不变。附件文件、入口字节和完整性结果分别保存在 `public-inputs/`、`input-delivery.json`、`input-media.json`，无 Base64 或凭据进入诊断。发布包需包含 `public_inputs.py` 和同次源码构建的 Rust 二进制。
 
+使用 `scripts/package-arena.py --bin-dir <同次 release 二进制目录> --utilities <工具与动态库目录> --settings <冻结 settings.json> --target x86_64-unknown-linux-musl --output <新目录>` 构建可重复的 `areal-arena.pyz`、逐文件 manifest 和 SHA256SUMS。utilities 包含 `bin/bwrap`、`bin/tools/rg`、`lib/`；第三方许可应放在 `licenses/`。打包要求干净源码提交并校验 ELF 架构，启动器在执行 Runner 前逐文件校验归档并检查运行架构。二进制须来自锁定工具链的 release 构建，构建日志和镜像摘要应随包保存。发布前在独立 Linux 容器运行 `python3 scripts/arena-input-smoke.py --package <pyz>`，覆盖最终归档的展开、Runner、工具、视觉输入与结果文件；Registry artifact globs 应包含 `public-inputs/**/*` 和 `input-delivery.json`。
+
 冻结 settings 支持 `max_request_bytes`（默认 16 MiB 本地保护值，发布前按实际网关限额设置）与 `context_compaction_enabled`（默认 false，单独评估后启用）。传输字节与上下文 token 独立；50 MiB 原生分页和长轨迹压缩不属于输入故障修复的验收结论。
 
+包支持默认 `task_profile: "generic"` 与 `task_profile: "original"`。原题对照使用 `original`，仅加入读取公开输入的 Bootstrap，不附加 Runner 的实现、测试建议；Core 原生指令保持由同次构建决定。包中的 `system-prompt.md` 是 Core 基础指令的审计副本，不覆盖原生指令。依赖外部 delivery/piggy 模块的历史配置不属于本打包入口，遇到此类配置会在打包时拒绝。
+
 离线验证运行 `python3 -m unittest discover -s integrations/envarena`、`cargo test --locked -p areal-engine --lib` 和 `python3 scripts/arena-input-smoke.py --bin-dir target/debug`。模型桩验证真实 CLI/Core/Runtime 输入读取、PNG/GIF 视觉内容、只读拒绝及旧封套超限诊断，不代表四题真实模型复跑或评分通过。线上验收需冻结新 Harness ref/hash，保留原题和评分器，逐题区分输入链路成功、任务终态及原 Reward。
+
+可附加 `--public-inputs-dir <含 TASK.md 和 assets/ 的目录>`，用同一模型桩回放冻结的真实公开附件；这仍不是在线模型或 Reward 验收。
