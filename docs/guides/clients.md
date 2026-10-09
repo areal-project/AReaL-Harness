@@ -17,7 +17,7 @@
 | `areal serve` | 前台启动 Core + Runtime，由同一 launcher 负责清理 |
 | `areal app-server` | 直接启动 Core 服务，Runtime 连接需显式部署 |
 | `areal config show/validate` | 查看脱敏配置或校验配置，不启动服务 |
-| `areal trajectory status/retry/sync-config` | 查看轨迹队列、重新排队失败批次或应用持久导出控制，输出 JSON |
+| `areal trajectory status/retry/sync-config` | 查看轨迹队列、重新排队失败记录或应用持久导出控制，输出 JSON |
 | `areal service` / `areal web` | 共享服务管理与 Web 启动 |
 | `areal workgroup run/inspect` | 隔离任务组执行与状态检查 |
 

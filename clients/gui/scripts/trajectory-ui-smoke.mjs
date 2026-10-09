@@ -48,6 +48,10 @@ try {
       : { channel: "chrome" }),
   });
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+  const settled = () =>
+    page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
   page.on("pageerror", (error) => errors.push(error.message));
   await page.addInitScript(() => {
     window.fixture = {
@@ -102,12 +106,15 @@ try {
       limits: { max_retries: 5, upload_interval_ms: 1000, max_memory_bytes: 4194304 },
     };
     window.calls = [];
-    window.readError = false;
+    window.readError = new URL(location.href).searchParams.has("initialError");
+    window.holdNext = new URL(location.href).searchParams.has("holdStartup");
+    window.delayed = [];
     const snapshot = {
       projects: [],
       connection: { state: "ready" },
       library: { projects: {}, threads: {}, projectOrder: [], settings: {} },
     };
+    window.setConnection = (state) => window.setTestState({ ...snapshot, connection: { state } });
     window.arealDesktop = {
       snapshot: async () => snapshot,
       onState: (listener) => {
@@ -121,6 +128,10 @@ try {
       command: async (name, params) => {
         window.calls.push({ name, params });
         if (name === "trajectory") {
+          if (window.holdNext) {
+            window.holdNext = false;
+            return new Promise((resolve) => window.delayed.push(resolve));
+          }
           if (window.readError) return { ok: false, error: { message: "FIXTURE_READ_FAILURE" } };
           if (params.operation === "retry")
             window.fixture = {
@@ -200,6 +211,115 @@ try {
   await page.getByRole("button", { name: "返回应用", exact: true }).click();
   assert.equal(await page.getByText("authentication_failed", { exact: true }).count(), 0);
   checks.push("retry updates the settings badge; read failures and metadata never enter chat");
+  // 初次读取失败也必须在设置入口可发现；断线恢复不重复自动读取。
+  await page.goto(`http://127.0.0.1:${server.address().port}/?initialError=1`);
+  await page.locator('[aria-label="数据飞轮需要检查"]').waitFor();
+  await page.evaluate(() => window.setConnection("unavailable"));
+  await page.getByText("后台尚未连接", { exact: true }).waitFor();
+  await page.evaluate(() => window.setConnection("ready"));
+  await page.getByText("后台尚未连接", { exact: true }).waitFor({ state: "hidden" });
+  assert.equal(
+    await page.evaluate(() => window.calls.filter((call) => call.name === "trajectory").length),
+    1,
+  );
+  assert.equal(await page.locator(".error-banner").count(), 0);
+  checks.push("initial CLI failure warns once at settings and reconnect does not poll again");
+
+  // 设置页较新的失败必须使迟到的首次成功失效，避免隐藏真实异常。
+  await page.goto(`http://127.0.0.1:${server.address().port}/?holdStartup=1`);
+  await page.waitForFunction(() => window.delayed.length === 1);
+  await page.evaluate(() => {
+    window.readError = true;
+  });
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "数据飞轮", exact: true }).click();
+  await page.getByRole("alert").getByText("FIXTURE_READ_FAILURE", { exact: true }).waitFor();
+  await page.evaluate(() =>
+    window.delayed.shift()({
+      ok: true,
+      value: { ...window.fixture, state: "ready", last_error: null },
+    }),
+  );
+  await settled();
+  await page.locator('[aria-label="数据飞轮需要检查"]').waitFor();
+  await page.evaluate(() => {
+    window.readError = false;
+    window.fixture = { ...window.fixture, state: "ready", last_error: null };
+  });
+  await page.getByRole("button", { name: "刷新上传状态", exact: true }).click();
+  await page.getByText("就绪", { exact: true }).waitFor();
+  assert.equal(await page.locator('[aria-label="数据飞轮需要检查"]').count(), 0);
+  checks.push(
+    "late startup success cannot clear a newer read failure; explicit recovery clears it",
+  );
+
+  // 前一连接的重试在断线后失败，不能覆盖重新连接读回的状态。
+  await page.evaluate(() => {
+    window.holdNext = true;
+  });
+  await page.getByRole("button", { name: "重试上传", exact: true }).click();
+  await page.waitForFunction(() => window.delayed.length === 1);
+  assert.equal(
+    await page.getByRole("button", { name: "刷新上传状态", exact: true }).isDisabled(),
+    true,
+  );
+  assert.equal(
+    await page.getByRole("button", { name: "重试上传", exact: true }).isDisabled(),
+    true,
+  );
+  await page.evaluate(() => window.setConnection("unavailable"));
+  await page
+    .getByText("后台适配器未连接，请在“后台服务”中连接后读取状态。", { exact: true })
+    .waitFor();
+  await page.evaluate(() => window.setConnection("ready"));
+  await page
+    .getByRole("button", { name: "刷新上传状态", exact: true })
+    .waitFor({ state: "visible" });
+  await page.waitForFunction(
+    () =>
+      ![...document.querySelectorAll("button")].find(
+        (button) => button.textContent === "刷新上传状态",
+      )?.disabled,
+  );
+  await page.evaluate(() =>
+    window.delayed.shift()({ ok: false, error: { message: "STALE_RETRY_FAILURE" } }),
+  );
+  await settled();
+  assert.equal(await page.getByRole("alert").count(), 0);
+  assert.equal(await page.locator('[aria-label="数据飞轮需要检查"]').count(), 0);
+  await page.getByText("就绪", { exact: true }).waitFor();
+  checks.push("a late retry failure from a disconnected adapter cannot overwrite fresh status");
+  for (const error of [
+    "spool_configuration_conflict",
+    "configuration_not_applied",
+    "worker_not_running",
+  ]) {
+    await page.evaluate((error) => {
+      window.fixture = { ...window.fixture, state: "degraded", last_error: error };
+    }, error);
+    await page.getByRole("button", { name: "刷新上传状态", exact: true }).click();
+    await page.getByText(error, { exact: true }).waitFor();
+    assert.equal(await page.locator('[aria-label="数据飞轮需要检查"]').count(), 1);
+  }
+  checks.push(
+    "spool ownership and stopped worker failure categories remain visible without a state schema change",
+  );
+
+  await page.goto(`http://127.0.0.1:${server.address().port}/?holdStartup=1`);
+  await page.waitForFunction(() => window.delayed.length === 1);
+  await page.evaluate(() => {
+    window.fixture = { ...window.fixture, state: "ready", last_error: null };
+  });
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "数据飞轮", exact: true }).click();
+  await page.getByText("就绪", { exact: true }).waitFor();
+  await page.evaluate(() =>
+    window.delayed.shift()({ ok: false, error: { message: "STALE_INITIAL_FAILURE" } }),
+  );
+  await settled();
+  assert.equal(await page.locator('[aria-label="数据飞轮需要检查"]').count(), 0);
+  assert.equal(await page.getByRole("alert").count(), 0);
+  checks.push("a late initial failure cannot overwrite a newer successful explicit read");
   assert.deepEqual(errors, []);
   passed = true;
 } finally {

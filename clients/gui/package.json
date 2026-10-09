@@ -18,6 +18,7 @@
     "test:connection": "node scripts/connection-smoke.mjs",
     "test:architecture": "node scripts/architecture-smoke.mjs",
     "test:trajectory": "node --test scripts/trajectory.test.mjs",
+    "test:trajectory-config": "node scripts/trajectory-config-smoke.mjs",
     "test:trajectory-ui": "node scripts/trajectory-ui-smoke.mjs",
     "test:e2e": "node scripts/migration-smoke.mjs",
     "sign:mac": "node scripts/notarize-macos.mjs"

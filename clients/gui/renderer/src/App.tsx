@@ -405,9 +405,9 @@ function AppContent({ services }: { services: PlatformServices }) {
     (name, params = {}) => call(services, name, params),
     [services],
   );
-  const onTrajectoryStatus = useCallback((status: TrajectoryStatus) => {
+  const onTrajectoryStatus = useCallback((status: TrajectoryStatus | null) => {
     trajectoryRevision.current++;
-    setTrajectoryAttention(status.state === "degraded" || status.state === "invalid");
+    setTrajectoryAttention(!status || status.state === "degraded" || status.state === "invalid");
   }, []);
   useEffect(() => {
     if (snapshot.connection?.state !== "ready" || trajectoryChecked.current) return;
@@ -416,7 +416,9 @@ function AppContent({ services }: { services: PlatformServices }) {
     // 首次连接只检查一次，错误留在设置页，避免与聊天错误提示混在一起。
     void resourceAction("trajectory", { operation: "status" }).then(status => {
       if (revision === trajectoryRevision.current) onTrajectoryStatus(status);
-    }).catch(() => {});
+    }).catch(() => {
+      if (revision === trajectoryRevision.current) onTrajectoryStatus(null);
+    });
   }, [snapshot.connection?.state, resourceAction, onTrajectoryStatus]);
   const readTurnReview = useCallback((turnId: string, itemId?: string) => resourceAction("workspace", {
     projectId: project?.id, threadId, turnId, itemId, operation: "turnReview",

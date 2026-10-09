@@ -73,7 +73,7 @@ impl Processor {
             .spawn(move || {
                 // 安装ID、历史清理和磁盘锁均在后台初始化，慢磁盘不阻塞 Core 启动。
                 let initialize = || -> Result<_> {
-                    configure(&config_worker)?;
+                    configure_on_startup(&config_worker)?;
                     endpoint(&config_worker)?;
                     let installation = queue::installation(&config_worker.spool_dir)?;
                     let _queue = queue::lock(&config_worker.spool_dir, ".queue.lock", true)?;
@@ -81,14 +81,20 @@ impl Processor {
                         .context("producer lease unavailable")?;
                     let resource = Resource::builder()
                         .with_service_name("areal-core")
-                        .with_attribute(opentelemetry::KeyValue::new("service.version", env!("CARGO_PKG_VERSION")))
-                        .with_attribute(opentelemetry::KeyValue::new("service.instance.id", installation))
+                        .with_attribute(opentelemetry::KeyValue::new(
+                            "service.version",
+                            env!("CARGO_PKG_VERSION"),
+                        ))
+                        .with_attribute(opentelemetry::KeyValue::new(
+                            "service.instance.id",
+                            installation,
+                        ))
                         .build();
                     Ok((resource, lease))
                 };
                 let Ok((resource, _producer_lease)) = initialize() else {
                     shared_worker.stopped.store(true, Ordering::Release);
-                    eprintln!("Warning: trajectory reporting unavailable; Agent execution continues. See areal trajectory status.");
+                    // 客户端统一显示一次提示，后台故障不向聊天/终端重复输出。
                     return;
                 };
                 let resource: ResourceAttributesWithSchema = (&resource).into();
@@ -133,15 +139,21 @@ impl Processor {
                         }
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
                         Err(mpsc::RecvTimeoutError::Timeout) => {
+                            if shared_worker.stopped.load(Ordering::Acquire) {
+                                break;
+                            }
                             // 启动瞬间的进程故障也需要恢复，不能只等下一次 Agent 请求。
-                            if queue::records(
-                                &config_worker.spool_dir,
-                                config_worker.max_disk_bytes,
-                            )
-                            .is_ok_and(|rs| {
-                                rs.iter()
-                                    .any(|r| matches!(r.status.as_str(), "pending" | "uploading"))
-                            }) {
+                            if !worker_running(&config_worker.spool_dir)
+                                && queue::records(
+                                    &config_worker.spool_dir,
+                                    config_worker.max_disk_bytes,
+                                )
+                                .is_ok_and(|rs| {
+                                    rs.iter().any(|r| {
+                                        matches!(r.status.as_str(), "pending" | "uploading")
+                                    })
+                                })
+                            {
                                 let _ = ensure_worker(&config_worker.spool_dir);
                             }
                         }

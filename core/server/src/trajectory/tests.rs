@@ -10,6 +10,9 @@ use std::time::Duration;
 
 fn config(root: &Path) -> TrajectoryConfig {
     TrajectoryConfig {
+        source_id: "test-configuration".into(),
+        source_file: None,
+        source_revision: String::new(),
         enabled: true,
         endpoint: "http://127.0.0.1:1".into(),
         spool_dir: root.into(),
@@ -93,6 +96,147 @@ fn disabled_does_not_create_storage_and_invalid_endpoint_is_redacted() {
     let view = status(&c).unwrap();
     assert_eq!(view["state"], "invalid");
     assert!(!view.to_string().contains("credential"));
+}
+
+#[test]
+fn delayed_startup_cannot_undo_suspend_or_activate_an_old_configuration() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "first revision").unwrap();
+    let mut old = config(&dir.path().join("spool"));
+    old.source_file = Some(path.clone());
+    old.source_revision = format!("{:x}", Sha256::digest(b"first revision"));
+    configure_on_startup(&old).unwrap();
+    let mut suspended = old.clone();
+    suspended.enabled = false;
+    configure(&suspended).unwrap();
+    assert!(configure_on_startup(&old).is_err());
+    assert!(!persisted_control(&old.spool_dir).unwrap().unwrap().enabled);
+
+    std::fs::write(&path, "second revision").unwrap();
+    let mut current = old.clone();
+    current.source_revision = format!("{:x}", Sha256::digest(b"second revision"));
+    current.endpoint = "http://127.0.0.1:2".into();
+    configure_on_startup(&current).unwrap();
+    assert!(configure_on_startup(&old).is_err());
+    let control = persisted_control(&current.spool_dir).unwrap().unwrap();
+    assert!(control.enabled);
+    assert_eq!(control.endpoint, current.endpoint);
+    // 同一快照的晚到 disabled Core 也不能关闭新配置。
+    assert!(configure_on_startup(&suspended).is_err());
+}
+
+#[test]
+fn unrelated_configuration_revision_does_not_report_unapplied_trajectory() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut c = config(dir.path());
+    configure(&c).unwrap();
+    c.source_revision = "model-only-edit".into();
+    assert_eq!(status(&c).unwrap()["state"], "ready");
+}
+
+#[test]
+fn replaced_configuration_fifo_cannot_stall_the_spool_lock() {
+    use std::os::unix::ffi::OsStrExt;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    let name = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+    let mut c = config(&dir.path().join("spool"));
+    c.source_file = Some(path);
+    c.source_revision = "old-file".into();
+    assert!(configure_on_startup(&c).is_err());
+    // 检查失败已经释放控制锁，显式停用仍然可以完成。
+    c.enabled = false;
+    configure(&c).unwrap();
+    assert!(!persisted_control(&c.spool_dir).unwrap().unwrap().enabled);
+    assert!(source_revision(Path::new("/dev/zero")).is_err());
+}
+
+#[test]
+fn different_configuration_cannot_override_a_shared_spool() {
+    let d = tempfile::tempdir().unwrap();
+    let first = config(d.path());
+    configure(&first).unwrap();
+    queue::enqueue(&first, &event("private-turn", true, 0), None).unwrap();
+    let mut second = first.clone();
+    second.source_id = "other-configuration".into();
+    second.enabled = false;
+    assert!(
+        configure(&second).is_err(),
+        "another Core must not disable this queue"
+    );
+    let current: TrajectoryConfig = queue::read(d.path(), "control.json", 16384).unwrap();
+    assert!(current.enabled);
+    assert_eq!(
+        status(&second).unwrap()["last_error"],
+        "spool_configuration_conflict"
+    );
+    let mut changed = first.clone();
+    assert!(
+        status(&second).unwrap()["records"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    changed.enabled = false;
+    configure(&changed).unwrap();
+    assert_eq!(
+        status(&first).unwrap()["last_error"],
+        "configuration_not_applied"
+    );
+    assert_eq!(status(&first).unwrap()["state"], "degraded");
+}
+
+#[test]
+fn legacy_control_is_claimed_only_for_the_same_destination() {
+    let d = tempfile::tempdir().unwrap();
+    let mut legacy = config(d.path());
+    legacy.source_id.clear();
+    configure(&legacy).unwrap();
+    let mut current = config(d.path());
+    current.endpoint = "http://127.0.0.1:2".into();
+    assert!(configure(&current).is_err());
+    current.endpoint = legacy.endpoint;
+    configure(&current).unwrap();
+    let persisted: TrajectoryConfig = queue::read(d.path(), "control.json", 16384).unwrap();
+    assert_eq!(persisted.source_id, current.source_id);
+}
+
+#[test]
+fn corrupt_control_is_not_silently_overwritten_or_reported_ready() {
+    let d = tempfile::tempdir().unwrap();
+    let c = config(d.path());
+    std::fs::write(d.path().join("control.json"), "{broken").unwrap();
+    assert!(status(&c).is_err());
+    assert!(configure(&c).is_err());
+    assert_eq!(
+        std::fs::read_to_string(d.path().join("control.json")).unwrap(),
+        "{broken"
+    );
+}
+
+#[test]
+fn large_model_name_keeps_bounded_index_and_complete_wire_payload() {
+    let d = tempfile::tempdir().unwrap();
+    let c = config(d.path());
+    configure(&c).unwrap();
+    let mut request = ExportLogsServiceRequest::decode(event("turn", true, 0).as_slice()).unwrap();
+    let name = "模型\u{0001}".repeat(1800);
+    let attributes = &mut request.resource_logs[0].scope_logs[0].log_records[0].attributes;
+    *attributes
+        .iter_mut()
+        .find(|a| a.key == "gen_ai.request.model")
+        .unwrap() = attr("gen_ai.request.model", &name);
+    let body = request.encode_to_vec();
+    queue::enqueue(&c, &body, None).unwrap();
+    let record = worker::pick(&c).unwrap().unwrap();
+    assert!(record.model_name.ends_with('…'));
+    assert_eq!(
+        queue::payload(d.path(), &record, c.max_batch_bytes).unwrap(),
+        body
+    );
+    assert_eq!(status(&c).unwrap()["queue"]["uploading"], 1);
 }
 #[test]
 fn restart_recovers_pending_and_preserves_event_time_and_version() {
@@ -214,6 +358,62 @@ fn completion_of_evicted_inflight_record_does_not_resurrect_it() {
     worker::settle(&c, &a, worker::Outcome::Success).unwrap();
     assert_eq!(status(&c).unwrap()["queue"]["uploaded"], 0);
     assert_eq!(status(&c).unwrap()["queue"]["evicted"], 1);
+}
+
+#[test]
+fn acknowledged_payload_survives_failed_completion_commit() {
+    let d = tempfile::tempdir().unwrap();
+    let c = config(d.path());
+    configure(&c).unwrap();
+    let body = event("turn", true, 50);
+    queue::enqueue(&c, &body, None).unwrap();
+    let record = worker::pick(&c).unwrap().unwrap();
+    queue::fail_next_write(format!("record-{}.json", record.id));
+    assert!(worker::settle(&c, &record, worker::Outcome::Success).is_err());
+    assert_eq!(
+        queue::payload(d.path(), &record, c.max_batch_bytes).unwrap(),
+        body,
+        "a failed local ACK commit must retain the replayable payload"
+    );
+    let resumed = worker::pick(&c).unwrap().unwrap();
+    worker::settle(&c, &resumed, worker::Outcome::Success).unwrap();
+    assert_eq!(status(&c).unwrap()["queue"]["uploaded"], 1);
+}
+
+#[test]
+fn completion_is_recoverable_when_statistics_write_fails() {
+    let d = tempfile::tempdir().unwrap();
+    let c = config(d.path());
+    configure(&c).unwrap();
+    queue::enqueue(&c, &event("a", true, 0), None).unwrap();
+    let record = worker::pick(&c).unwrap().unwrap();
+    let mut totals = queue::stats(d.path());
+    totals.last_error = Some("connection_failed".into());
+    totals.consecutive_failures = 5;
+    totals.not_before = now() + 300_000;
+    queue::save_stats(d.path(), &totals).unwrap();
+    queue::fail_next_write("statistics.json".into());
+    assert!(worker::settle(&c, &record, worker::Outcome::Success).is_err());
+    assert_eq!(status(&c).unwrap()["queue"]["uploaded"], 1);
+    assert_eq!(status(&c).unwrap()["state"], "ready");
+    assert_eq!(status(&c).unwrap()["last_error"], Value::Null);
+    let mut recovered = queue::stats(d.path());
+    recovered.last_error = Some("capture_capacity_or_storage".into());
+    queue::recover_statistics(
+        &queue::records(d.path(), c.max_disk_bytes).unwrap(),
+        &mut recovered,
+    );
+    assert_eq!(
+        recovered.last_error.as_deref(),
+        Some("capture_capacity_or_storage")
+    );
+    assert_eq!(recovered.consecutive_failures, 0);
+    assert!(recovered.not_before < totals.not_before);
+    queue::enqueue(&c, &event("b", true, 0), None).unwrap();
+    reset_delay(&c);
+    let second = worker::pick(&c).unwrap().unwrap();
+    worker::settle(&c, &second, worker::Outcome::Success).unwrap();
+    assert_eq!(status(&c).unwrap()["queue"]["uploaded"], 2);
 }
 #[test]
 fn headers_follow_otlp_percent_decoding_and_private_file_rules() {

@@ -613,6 +613,8 @@ impl Engine {
                 gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
                 gen_ai.conversation.id = %snapshot.session_id,
+                areal.thread.id = %snapshot.id,
+                areal.parent_thread.id = %snapshot.parent_thread_id.as_deref().unwrap_or_default(),
                 areal.turn.id = %snapshot.turns.last().map(|t| t.id.as_str()).unwrap_or_default(),
                 areal.turn.number = snapshot.turns.len() as u64 + snapshot.history_archive.as_ref().map_or(0, |a| a.completed_turns),
                 areal.duration_ms = tracing::field::Empty,
@@ -661,7 +663,7 @@ impl Engine {
                         gen_ai.request.model = %model.name(),
                         gen_ai.request.stream = true,
                         gen_ai.conversation.id = %snapshot.session_id,
-                        gen_ai.input.messages = %trajectory::messages(&input),
+                        gen_ai.input.messages = tracing::field::Empty,
                         gen_ai.output.messages = tracing::field::Empty,
                         gen_ai.usage.input_tokens = tracing::field::Empty,
                         gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
@@ -681,6 +683,8 @@ impl Engine {
                         self.reserve_agent_model_request(cell)?;
                         request_reserved = true;
                     }
+                    // 预检可能缩短摘要证据；轨迹必须记录真正提交给模型的消息。
+                    tracing::Span::current().record("gen_ai.input.messages", trajectory::messages(&input));
                     let pending = tokio::time::timeout(self.limits.stream_idle_timeout, model::REQUEST_OWNER.scope((snapshot.id.clone(), snapshot.turns.last().map_or_else(String::new, |t| t.id.clone())), model.chat_with_limits(input.clone(), Vec::new(), model::RequestPurpose::Summary, model::ToolCallLimits { max_calls: 0, max_buffer_bytes: self.limits.max_tool_buffer_bytes }, None)));
                     tokio::pin!(pending);
                     let mut stream = tokio::select! {
@@ -894,6 +898,143 @@ fn retained_evidence(thread: &Thread, budget: usize) -> String {
 #[cfg(test)]
 mod budget_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn idle_compaction_trace_matches_fitted_model_input_and_thread_identity() {
+        use crate::model::{Model, ModelCapabilities, ModelStream, RequestPurpose};
+        use std::sync::Mutex;
+        use tracing::{
+            Subscriber,
+            field::{Field, Visit},
+            span::{Attributes, Id, Record},
+        };
+        use tracing_subscriber::{Layer, layer::Context, prelude::*};
+
+        #[derive(Default)]
+        struct Fields(BTreeMap<String, String>);
+        impl Visit for Fields {
+            fn record_str(&mut self, field: &Field, value: &str) {
+                self.0.insert(field.name().into(), value.into());
+            }
+            fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+                self.record_str(field, &format!("{value:?}"));
+            }
+        }
+        #[derive(Clone, Default)]
+        struct Capture(Arc<Mutex<Vec<BTreeMap<String, String>>>>);
+        impl<S: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>> Layer<S> for Capture {
+            fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
+                let mut fields = Fields::default();
+                attrs.record(&mut fields);
+                ctx.span(id).unwrap().extensions_mut().insert(fields);
+            }
+            fn on_record(&self, id: &Id, values: &Record<'_>, ctx: Context<'_, S>) {
+                if let Some(span) = ctx.span(id) {
+                    values.record(span.extensions_mut().get_mut::<Fields>().unwrap());
+                }
+            }
+            fn on_event(&self, event: &tracing::Event<'_>, ctx: Context<'_, S>) {
+                if event.metadata().target() != trajectory::TARGET {
+                    return;
+                }
+                let mut fields = Fields::default();
+                if let Some(scope) = ctx.event_scope(event) {
+                    for span in scope.from_root() {
+                        if let Some(parent) = span.extensions().get::<Fields>() {
+                            fields.0.extend(parent.0.clone());
+                        }
+                    }
+                }
+                event.record(&mut fields);
+                self.0.lock().unwrap().push(fields.0);
+            }
+        }
+        #[derive(Default)]
+        struct ModelFixture(Mutex<Vec<String>>);
+        #[async_trait::async_trait]
+        impl Model for ModelFixture {
+            fn name(&self) -> &str {
+                "summary-fixture"
+            }
+            fn capabilities(&self) -> ModelCapabilities {
+                ModelCapabilities {
+                    context_window_tokens: Some(32000),
+                    summary_output_tokens: Some(30000),
+                    ..ModelCapabilities::text()
+                }
+            }
+            async fn stream(&self, _: Vec<Message>) -> anyhow::Result<ModelStream> {
+                unreachable!()
+            }
+            async fn chat_for(
+                &self,
+                messages: Vec<Message>,
+                _: Vec<Value>,
+                purpose: RequestPurpose,
+            ) -> anyhow::Result<ModelStream> {
+                let text = if purpose == RequestPurpose::Summary {
+                    self.0.lock().unwrap().push(trajectory::messages(&messages));
+                    "Recorded the observed work; continue with verification.".to_owned()
+                } else {
+                    "recorded work ".repeat(3500)
+                };
+                Ok(Box::pin(futures_util::stream::iter([Ok(
+                    ModelEvent::TextDelta(text),
+                )])))
+            }
+        }
+        let capture = Capture::default();
+        let _subscriber =
+            tracing::subscriber::set_default(tracing_subscriber::registry().with(capture.clone()));
+        let dir = tempfile::tempdir().unwrap();
+        let model = Arc::new(ModelFixture::default());
+        let engine = Engine::open(
+            dir.path(),
+            model.clone(),
+            Limits {
+                context_auto_compaction: false,
+                context_recent_bytes: 256,
+                ..Limits::default()
+            },
+        )
+        .unwrap();
+        let thread = engine.create("/workspace".into()).await.unwrap();
+        for prompt in ["initial work", "continue work"] {
+            engine
+                .start(&thread.id, vec![areal_protocol::Input::text(prompt)])
+                .await
+                .unwrap();
+            assert_eq!(
+                engine
+                    .wait(&thread.id)
+                    .await
+                    .unwrap()
+                    .turns
+                    .last()
+                    .unwrap()
+                    .status,
+                areal_protocol::TurnStatus::Completed
+            );
+        }
+        engine.context_compact(thread.id.clone()).await.unwrap();
+        engine.shutdown().await;
+        let sent = model.0.lock().unwrap();
+        assert_eq!(sent.len(), 1, "must actually invoke the summarizer");
+        assert!(
+            sent[0].contains("[omitted]"),
+            "fixture must trigger input fitting"
+        );
+        let observed = capture.0.lock().unwrap();
+        let event = observed
+            .iter()
+            .find(|event| event.get("gen_ai.input.messages") == Some(&sent[0]))
+            .expect("trace must contain exact fitted model input");
+        assert_eq!(event["areal.thread.id"], thread.id);
+        assert_eq!(
+            event["event.name"],
+            "gen_ai.client.inference.operation.details"
+        );
+    }
 
     #[test]
     fn model_switch_changes_window_and_summary_preflight_keeps_fixed_instructions() {

@@ -18,11 +18,13 @@ function serviceHome(app) {
   return process.env.AREAL_CORE_HOME || join(app.getPath('userData'), 'areal-core');
 }
 function serviceOptions(app) {
+  // 配置文件参与后台身份；环境变量选择也必须固定，避免新窗口复用另一份配置的后台。
+  const config = process.env.AREAL_CORE_CONFIG || process.env.AREAL_HARNESS_CONFIG;
   return { binary: resolveCoreBinary({ explicit: process.env.AREAL_CORE_BIN || (!app.isPackaged ? resolve(__dirname, '../../../../../target/debug/areal') : undefined), packaged: app.isPackaged, resourcesPath: process.resourcesPath }),
     home: serviceHome(app),
     // macOS Unix socket 长度有限，注册目录不能嵌入较长的 userData 路径。
     harnessHome: process.env.AREAL_HARNESS_HOME || join(app.getPath('home'), '.areal', 'gui', createHash('sha256').update(resolve(serviceHome(app))).digest('hex').slice(0, 12)),
-    userHome: process.env.AREAL_CORE_USER_HOME, config: process.env.AREAL_CORE_CONFIG,
+    userHome: process.env.AREAL_CORE_USER_HOME, config: config ? resolve(config) : undefined,
     toolExtensions: process.env.AREAL_HARNESS_TOOL_EXTENSIONS,
     workgroupPolicy: process.env.AREAL_CORE_WORKGROUP_POLICY,
     workgroupToolchain: process.env.AREAL_CORE_WORKGROUP_TOOLCHAIN,

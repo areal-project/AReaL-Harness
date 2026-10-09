@@ -131,6 +131,20 @@ mode = "YOLO"
             self.assertTrue(config.is_symlink())
             self.assertEqual(other.read_text(), "schema_version = 2\n")
 
+    def test_multiline_model_strings_ending_with_literal_quotes_do_not_hide_tables(self):
+        for quote in ('"', "'"):
+            for count in (4, 5):
+                original = (
+                    "schema_version=2\n[model]\nprompt="
+                    + quote * 3
+                    + "ends with quotes"
+                    + quote * count
+                    + "\n[trajectory]\nenabled=false\n"
+                )
+                updated = MODULE.replace_trajectory(original, {"enabled": True})
+                self.assertEqual(tomllib.loads(updated)["model"], tomllib.loads(original)["model"])
+                self.assertTrue(tomllib.loads(updated)["trajectory"]["enabled"])
+
     def test_sync_control_uses_fixed_argv_and_private_home(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
@@ -177,6 +191,172 @@ mode = "YOLO"
             ]:
                 self.assertEqual(self.run_script(home, "--disable", *arguments)[0], 1)
                 self.assertEqual(config.read_text(), original)
+
+    def test_environment_selected_file_is_updated_without_touching_default_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            selected = Path(directory) / "selected.toml"
+            selected.write_text(
+                'schema_version = 2\n[model]\nname = "keep"\n[trajectory]\n'
+                'enabled = true\nendpoint = "https://collector.example"\n'
+            )
+            code, stdout, _ = self.run_script(
+                home, "--disable", environment={"AREAL_HARNESS_CONFIG": str(selected)}
+            )
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(stdout)["config"], str(selected))
+            self.assertFalse(tomllib.loads(selected.read_text())["trajectory"]["enabled"])
+            self.assertEqual(tomllib.loads(selected.read_text())["model"]["name"], "keep")
+            self.assertFalse((home / "config.toml").exists())
+
+    def test_credential_rotation_preserves_enabled_and_does_not_force_a_shared_spool(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            config = home / "dedicated.toml"
+            config.write_text(
+                "schema_version=2\n[trajectory]\nenabled=true\n"
+                'endpoint="https://collector.example"\n'
+            )
+            code, _, _ = self.run_script(
+                home,
+                "--config",
+                str(config),
+                "--headers-env",
+                "HEADERS",
+                environment={"HEADERS": "authorization=Bearer%20rotated"},
+            )
+            self.assertEqual(code, 0)
+            values = tomllib.loads(config.read_text())["trajectory"]
+            self.assertTrue(values["enabled"])
+            self.assertNotIn("spool_dir", values)
+            self.assertEqual(
+                Path(values["headers_file"]).read_text(), "authorization=Bearer%20rotated"
+            )
+            self.assertEqual(self.run_script(home, "--config", str(config))[0], 0)
+            self.assertTrue(tomllib.loads(config.read_text())["trajectory"]["enabled"])
+
+    def test_explicit_queue_can_be_preserved_or_reset_to_configuration_scoped_default(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            config = home / "config.toml"
+            config.write_text('schema_version=2\n[trajectory]\nspool_dir="relative-spool"\n')
+            self.assertEqual(self.run_script(home, "--disable")[0], 0)
+            self.assertEqual(
+                tomllib.loads(config.read_text())["trajectory"]["spool_dir"], "relative-spool"
+            )
+            with patch.object(MODULE.subprocess, "run") as run:
+                run.return_value.returncode = 0
+                self.assertEqual(
+                    self.run_script(home, "--default-spool", binary="/safe/areal")[0], 0
+                )
+            self.assertEqual(
+                [call.args[0][2] for call in run.call_args_list], ["suspend", "sync-config"]
+            )
+            self.assertNotIn("spool_dir", tomllib.loads(config.read_text())["trajectory"])
+
+    def test_destination_migration_stops_old_control_before_replacing_configuration_or_secrets(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            self.assertEqual(
+                self.run_script(
+                    home,
+                    "--enable",
+                    "--endpoint",
+                    "https://old.example",
+                    "--headers-env",
+                    "HEADERS",
+                    environment={"HEADERS": "authorization=old-token"},
+                )[0],
+                0,
+            )
+            config = home / "config.toml"
+            original = config.read_text()
+            old_credential = Path(tomllib.loads(original)["trajectory"]["headers_file"])
+            calls = []
+
+            def control(argv, **_kwargs):
+                calls.append(argv[2])
+                self.assertEqual(argv[-1], str(config))
+                if argv[2] == "suspend":
+                    self.assertEqual(config.read_text(), original)
+                    self.assertEqual(list(old_credential.parent.iterdir()), [old_credential])
+                else:
+                    current = tomllib.loads(config.read_text())["trajectory"]
+                    self.assertEqual(current["endpoint"], "https://new.example")
+                    self.assertNotEqual(Path(current["headers_file"]), old_credential)
+                    self.assertEqual(
+                        Path(current["headers_file"]).read_text(), "authorization=new-token"
+                    )
+                self.assertEqual(old_credential.read_text(), "authorization=old-token")
+                return MODULE.subprocess.CompletedProcess(argv, 0)
+
+            with patch.object(MODULE.subprocess, "run", side_effect=control):
+                code, _, _ = self.run_script(
+                    home,
+                    "--endpoint",
+                    "https://new.example",
+                    "--headers-env",
+                    "HEADERS",
+                    environment={"HEADERS": "authorization=new-token"},
+                    binary="/safe/areal",
+                )
+            self.assertEqual(code, 0)
+            self.assertEqual(calls, ["suspend", "sync-config"])
+
+    def test_migration_failure_preserves_existing_configuration_and_credentials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            config = home / "config.toml"
+            original = (
+                'schema_version=2\n[trajectory]\nenabled=true\nendpoint="https://old.example"\n'
+            )
+            config.write_text(original)
+            for binary in (None, "/safe/areal"):
+                with patch.object(MODULE.subprocess, "run") as run:
+                    run.return_value.returncode = 1
+                    code, _, stderr = self.run_script(
+                        home, "--spool-dir", str(home / "next-spool"), binary=binary
+                    )
+                self.assertEqual(code, 1)
+                self.assertIn("停止原队列", stderr)
+                self.assertEqual(config.read_text(), original)
+                self.assertFalse((home / "trajectory-credentials").exists())
+                self.assertFalse((home / "config.toml.trajectory.bak").exists())
+
+    def test_editor_change_during_control_transition_is_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            config = home / "config.toml"
+            original = 'schema_version=2\n[model]\nname="old"\n[trajectory]\nendpoint="https://old.example"\n'
+            config.write_text(original)
+            edited = original.replace('name="old"', 'name="edited"')
+
+            def control(argv, **_kwargs):
+                config.write_text(edited)
+                return MODULE.subprocess.CompletedProcess(argv, 0)
+
+            with patch.object(MODULE.subprocess, "run", side_effect=control) as run:
+                code, _, _ = self.run_script(
+                    home, "--endpoint", "https://new.example", binary="/safe/areal"
+                )
+            self.assertEqual(code, 1)
+            self.assertEqual(config.read_text(), edited)
+            self.assertEqual(run.call_count, 1)
+
+    def test_rejects_configuration_values_that_core_cannot_load_before_writing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            config = home / "config.toml"
+            for field in ["spool_dir=17", 'headers_file=""', "headers_env=12", 'enabled="true"']:
+                original = f"schema_version=2\n[trajectory]\n{field}\n"
+                config.write_text(original)
+                self.assertEqual(self.run_script(home)[0], 1, field)
+                self.assertEqual(config.read_text(), original)
+            config.write_text("schema_version=2\n")
+            self.assertEqual(self.run_script(home, "--endpoint", "界" * 1500)[0], 1)
+            self.assertEqual(config.read_text(), "schema_version=2\n")
 
 
 if __name__ == "__main__":

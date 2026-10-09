@@ -17,7 +17,7 @@ The product command is `areal`. Use `target/debug/areal` after a source build; a
 | `areal serve` | Start foreground Core + Runtime with cleanup owned by the launcher |
 | `areal app-server` | Start Core directly; Runtime connections require explicit deployment |
 | `areal config show/validate` | Inspect redacted configuration or validate it without starting services |
-| `areal trajectory status/retry/sync-config` | Inspect the trajectory queue, requeue failed batches, or apply persistent export control; output JSON |
+| `areal trajectory status/retry/sync-config` | Inspect the trajectory queue, requeue failed records, or apply persistent export control; output JSON |
 | `areal service` / `areal web` | Manage shared services or open Web |
 | `areal workgroup run/inspect` | Run isolated workgroups or inspect their state |
 

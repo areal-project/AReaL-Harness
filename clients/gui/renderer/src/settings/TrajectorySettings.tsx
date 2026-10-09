@@ -38,7 +38,7 @@ export function TrajectorySettings({
 }: {
     action: Action;
     connected: boolean;
-    onStatus: (status: TrajectoryStatus) => void;
+    onStatus: (status: TrajectoryStatus | null) => void;
 }) {
     const [status, setStatus] = useState<TrajectoryStatus | null>(null);
     const [busy, setBusy] = useState<"status" | "retry" | null>(null);
@@ -64,7 +64,10 @@ export function TrajectorySettings({
                 onStatus(value);
                 if (operation === "retry") setNotice("已请求重试，请刷新查看上传进度。");
             } catch (cause) {
-                if (ticket === generation.current) setError((cause as Error).message);
+                if (ticket === generation.current) {
+                    setError((cause as Error).message);
+                    onStatus(null);
+                }
             } finally {
                 if (pending.current === request) pending.current = null;
                 if (ticket === generation.current) setBusy(null);

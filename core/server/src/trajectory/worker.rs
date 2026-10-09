@@ -185,11 +185,23 @@ pub(super) fn backoff(
 pub(super) fn pick(config: &TrajectoryConfig) -> Result<Option<Record>> {
     let root = &config.spool_dir;
     let _lock = queue::lock(root, ".queue.lock", true)?;
+    let current: TrajectoryConfig = queue::read(root, "control.json", 16384)?;
+    anyhow::ensure!(
+        owns_control(config, &current),
+        "spool_configuration_conflict"
+    );
+    if !current.enabled {
+        return Ok(None);
+    }
+    let config = &current;
     let mut totals = queue::stats(root);
-    queue::prune(config, 0, false, &mut totals)?;
-    queue::save_stats(root, &totals)?;
     if totals.not_before > now() {
         return Ok(None);
+    }
+    let before = totals.clone();
+    queue::prune(config, 0, false, &mut totals)?;
+    if before != totals {
+        queue::save_stats(root, &totals)?;
     }
     let records = queue::records(root, config.max_disk_bytes)?;
     let settled: std::collections::HashSet<_> = records
@@ -251,12 +263,18 @@ pub(super) fn settle(config: &TrajectoryConfig, record: &Record, outcome: Outcom
     totals.not_before = now().saturating_add(config.upload_interval_ms);
     match outcome {
         Outcome::Success => {
+            let mut previous = current.clone();
             current.status = "uploaded".into();
             current.uploaded_at = Some(now());
+            current.completion_sequence = Some(totals.uploaded.saturating_add(1));
+            current.completion_not_before = Some(totals.not_before);
             current.next_attempt_at = None;
             current.error = None;
-            queue::remove_payload(root, &mut current)?;
-            totals.uploaded += 1;
+            current.payload_present = false;
+            // 先持久确认再删除副本；磁盘满或崩溃时，至少保留可重放正文或已确认的完成记录。
+            queue::save(root, &current)?;
+            queue::remove_payload(root, &mut previous)?;
+            totals.uploaded = current.completion_sequence.unwrap();
             totals.last_success_at = Some(now());
             totals.last_error = None;
             totals.consecutive_failures = 0;
@@ -292,6 +310,16 @@ pub async fn run_worker(root: PathBuf) -> Result<()> {
     let Some(_worker) = queue::lock(&root, ".worker.lock", false)? else {
         return Ok(());
     };
+    {
+        let _queue = queue::lock(&root, ".queue.lock", true)?;
+        let mut stats = queue::stats(&root);
+        let previous = stats.clone();
+        // 单次启动恢复 ACK，避免上一进程写统计失败后继续使用过时的长退避。
+        queue::recover_statistics(&queue::records(&root, 0)?, &mut stats);
+        if stats != previous {
+            queue::save_stats(&root, &stats)?;
+        }
+    }
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()?;
@@ -314,7 +342,7 @@ pub async fn run_worker(root: PathBuf) -> Result<()> {
                     if !current.enabled || destination(&current) != record.destination {
                         return Ok(());
                     }
-                    upload(&client, &config, bytes).await
+                    upload(&client, &current, bytes).await
                 }
                 Err(_) => Outcome::Failed("payload_unavailable"),
             };

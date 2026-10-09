@@ -58,7 +58,7 @@ enum Command {
     AppServer(Box<areal_server::Args>),
     /// 校验或查看脱敏后的有效配置。
     Config(Box<areal_server::ConfigCli>),
-    /// 查看轨迹导出状态或重新排队失败批次。
+    /// 查看轨迹导出状态或重新排队失败记录。
     Trajectory(trajectory::Options),
     /// 轨迹导出内部 worker；共享持久队列，不拥有 Agent 会话。
     #[command(hide = true)]

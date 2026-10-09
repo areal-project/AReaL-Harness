@@ -52,6 +52,8 @@ The project uses [Apache-2.0](../../LICENSE). Cargo workspace and npm packages d
 
 `make smoke` also verifies optional trajectory export: the Agent returns while the local receiver responds with 503, the independent worker drains the queue after Core exits, and disabling export stops the worker. Run `node scripts/trajectory-smoke.mjs` separately; `AREAL_TRAJECTORY_FIXTURE_OUTPUT` saves real OTLP protobuf for receiver interoperability tests, containing only local fixture data.
 
+`node scripts/trajectory-semantics-smoke.mjs` uses a real owned Core/Runtime with local model and receiver fixtures, covering multi-round tools, child Agents, a model change between Turns in the same thread, failures, and streaming cancellation. `make smoke` includes this check. Actual HTTP model inputs and OTLP protobuf are saved to `out/trajectory-semantics/` by default; `AREAL_TRAJECTORY_SEMANTICS_OUTPUT` overrides the directory for receiver interoperability checks. The script uses isolated temporary home, state, and workspace directories without reading user configuration.
+
 ## Dependencies and style
 
 Use Rust `--locked`; intentional upgrades update manifests and locks. Cordis also updates [pins.json](../../upstream/pins.json), following the [upgrade guide](cordis.en.md). Use `npm ci --ignore-scripts` and `uv sync --locked --only-group dev`, without transient global formatting tools. Frozen third-party tasks and oracles are excluded from bulk formatting.

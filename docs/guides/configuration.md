@@ -273,7 +273,7 @@ enabled = true
 endpoint = "https://collector.example.com"
 # headers_env 与 headers_file 二选一，均为凭据引用。
 headers_file = "/absolute/private/trajectory-headers.txt"
-# spool_dir 默认 <AREAL_HARNESS_HOME>/trajectory。
+# 默认用户配置使用 <AREAL_HARNESS_HOME>/trajectory；独立配置文件自动隔离队列。
 max_disk_bytes = 268435456
 max_memory_bytes = 16777216
 max_batch_bytes = 4194304
@@ -290,7 +290,7 @@ upload_interval_ms = 1000
 | 字段 | 默认值与约束 |
 |---|---|
 | `enabled` | `false`；仅显式启用才采集 |
-| `spool_dir` | `<AREAL_HARNESS_HOME>/trajectory`；跨工作区、共享 Core 与独占 CLI run 共用 |
+| `spool_dir` | 默认用户配置使用 `<AREAL_HARNESS_HOME>/trajectory`；其它配置文件使用 `<AREAL_HARNESS_HOME>/trajectory-sources/<source_id>`，同一配置的跨工作区 Core 与 CLI run 共用 |
 | `max_disk_bytes` | 256 MiB，1–1 TiB；只限制遥测副本，不计入权威会话历史 |
 | `max_memory_bytes` | 16 MiB，1–1 GiB；采集缓冲字节预算 |
 | `max_batch_bytes` | 4 MiB，1–64 MiB，且不超过内存和磁盘预算；单条 OTLP 发送内容上限，当前逐条保存和发送 |
@@ -302,9 +302,11 @@ upload_interval_ms = 1000
 
 上传失败按有上限的退避处理，耗尽重试后保留失败记录供人工重试。内存缓冲满或单条内容超限时丢弃该遥测副本并累计计数；磁盘/记录额度不足时按顺序回收旧副本并记录淘汰。上传成功后释放本地正文，保留有界状态元数据。这些策略不删除 Core 的权威会话历史，也不改变 Turn 成败。此路径不提供零丢失保证：强杀前尚未落盘的事件可能丢失，正常退出只短暂等待本地落盘，上传重试可能产生重复记录，接收端应按记录身份去重。
 
-安装标识读取、队列初始化、历史清理及 JSON 结构化均在后台执行。消息和工具内容在共享内存、节点数及 32 层深度预算内转换为嵌套 OTLP 值；超出预算时保留原 JSON 字符串并标记 `areal.capture.truncated=true`。非法 JSON 或无法无损表示的值保留原文，不保证所有内容都成功结构化。内存额度约束新增采集缓冲，不能等同于整个 Core 进程的 RSS 上限。
+安装标识读取、队列初始化、历史清理及 JSON 结构化均在后台执行。消息和工具内容在共享内存、节点数及 32 层深度预算内转换为嵌套 OTLP 值；结构化超出预算时保留完整原 JSON 字符串并标记 `areal.capture.json_fallback=true`，不代表内容丢失；只有采集字段确实丢失才标记 `areal.capture.truncated=true`。非法 JSON 或无法无损表示的值保留原文，不保证所有内容都成功结构化。内存额度约束新增采集缓冲，不能等同于整个 Core 进程的 RSS 上限。
 
-使用 Python 3.11+ 的配置脚本持久启用或关闭，默认写入 `~/.areal/config.toml`。脚本保留原模型等配置及其注释，只更新 `[trajectory]`，变更前备份到 `config.toml.trajectory.bak`，使用原子写入。可编辑脚本顶部默认值，或通过参数指定；`--home` 为独立 home，`--config` 为独立文件。
+队列归属由有效配置文件的规范绝对路径派生，内部 `source_id` 不接受 TOML 设置；内容更新、同一文件的路径别名不会改变身份。同一配置的多个 Core 可共享队列，不同配置默认隔离，避免另一份配置的关闭开关或接收地址覆盖当前采集。显式指定同一个 `spool_dir` 不会合并配置所有权：已有不同归属时报告配置冲突，不覆盖控制或读取其它配置的轨迹。恢复默认隔离路径可用配置脚本的 `--default-spool`，旧队列保持原位。后台初始化在队列锁内校验原配置文件的内部版本摘要，防止延迟启动的旧快照覆盖新控制；直接修改 TOML 仍会在下一次启动时应用。暂停原队列的 `trajectory suspend` 是配置脚本内部使用的命令。
+
+使用 Python 3.11+ 的配置脚本持久启用或关闭，配置选择顺序为 `--config`、`AREAL_HARNESS_CONFIG`、home 下的 `config.toml`；home 来自 `--home`、`AREAL_HARNESS_HOME` 或 `~/.areal`。脚本保留原模型等配置及其注释，只更新 `[trajectory]`，变更前备份到 `config.toml.trajectory.bak`，使用原子写入。不带 `--enable` / `--disable` 时保留已有开关，首次默认关闭，更新地址或认证不会意外停用采集。可将脚本顶部 `DEFAULT_ENABLED` 从 `None` 改为布尔值以显式设定默认动作，其它默认值也可编辑或由参数指定。
 
 ```sh
 python3 scripts/configure-trajectory.py --enable \
@@ -314,10 +316,11 @@ python3 scripts/configure-trajectory.py --enable \
 python3 scripts/configure-trajectory.py --disable --areal-binary target/debug/areal
 # 独立测试配置，不接触默认用户配置。
 python3 scripts/configure-trajectory.py --home /absolute/test-home \
+  --config /absolute/test-home/config.toml \
   --enable --endpoint http://127.0.0.1:4318 --areal-binary target/debug/areal
 ```
 
-脚本的 `--headers-env` 从当前环境读取编码头，并保存到 home 下的私有凭据文件，使后续 GUI/CLI 启动不依赖该终端环境；`--headers-file` 复制已有文件，`--clear-headers` 清除引用。脚本不回显凭据，也不重启或取消 Agent。找到新版 `areal` 时会执行 `trajectory sync-config` 更新持久控制；找不到时仍保存配置并提示尚未应用。停用控制阻止后续入队和发送，在途 HTTP 请求最多等待当前超时；修改已经运行的 Core 的采集参数仍需安全重启。部署指纹包含轨迹配置，已有共享服务不会静默忽略更改。
+脚本的 `--headers-env` 从当前环境读取编码头，并保存到 home 下的私有凭据文件，使后续 GUI/CLI 启动不依赖该终端环境；`--headers-file` 复制已有文件，`--clear-headers` 清除引用。切换已有配置的接收地址或队列前，脚本通过新版 areal 暂停原队列；暂停失败或缺少新版 binary 时保留原配置和凭据并报错。新接收地址使用独立的凭据文件，旧在途请求不会读到新地址的凭据；同一地址的凭据轮换保持引用稳定。原队列的数据留在原位，不迁移或改发到新地址。脚本不回显凭据，也不重启或取消 Agent。找到新版 `areal` 时会执行 `trajectory sync-config` 更新持久控制；找不到时仍保存配置并提示尚未应用。停用控制阻止后续入队和发送，在途 HTTP 请求最多等待当前超时；修改已经运行的 Core 的采集参数仍需安全重启。部署指纹包含轨迹配置，已有共享服务不会静默忽略更改。
 
 ```sh
 target/debug/areal trajectory status --config /absolute/config.toml
@@ -325,7 +328,7 @@ target/debug/areal trajectory retry --config /absolute/config.toml
 target/debug/areal trajectory sync-config --config /absolute/config.toml
 ```
 
-三个命令均输出 JSON。`status` 不启动 Agent 或上传，显示当前文件配置、上传进程、队列数量/字节、丢弃/淘汰计数、安全错误类别及最近 100 条发送记录。记录可包含 Turn、事件名称、模型、Harness 版本、事件发生时间和执行耗时；旧记录缺少这些字段时保持未知，不补造值。`created_at` / `uploaded_at` 分别表示本地记录创建和上传成功时间，与事件的 `occurred_at`、执行耗时 `execution_duration_ms` 分开。`retry` 只重新排队并唤醒发送器，不等待远端成功。`sync-config` 应用导出控制，不重新装配现有 Core。GUI 的「设置 → 数据飞轮」显示同一状态并提供刷新和重试；本地 TUI/exec 每次进程启动最多提示一次异常，GUI 在首次连接时以设置入口提示点显示异常，不将它写入聊天内容。
+三个命令均输出 JSON。`status` 不启动 Agent 或上传，显示当前文件配置、上传进程、队列数量/字节、丢弃/淘汰计数、安全错误类别及最近 100 条发送记录。记录可包含 Turn、事件名称、模型、Harness 版本、事件发生时间和执行耗时；模型名索引保留最多 1024 字节的 UTF-8 前缀，超长时追加省略号，原始轨迹正文保持完整；旧记录缺少这些字段时保持未知，不补造值。`created_at` / `uploaded_at` 分别表示本地记录创建和上传成功时间，与事件的 `occurred_at`、执行耗时 `execution_duration_ms` 分开。`retry` 只重新排队并唤醒发送器，不等待远端成功。`sync-config` 应用导出控制，不重新装配现有 Core。GUI 的「设置 → 数据飞轮」显示同一状态并提供刷新和重试；本地 TUI/exec 每次进程启动最多提示一次异常，配置和队列检查在后台执行，启动只等待最多 20 ms；超时后静默继续，慢磁盘上的状态可通过 `status` 或设置页查看。GUI 在首次连接时以设置入口提示点显示异常，不将它写入聊天内容。
 
 非法地址、认证不可用或上报失败只影响采集/导出状态；字段类型、容量范围和冲突由配置校验拒绝。数据内容范围与下方 OpenTelemetry 轨迹相同，包含实际输入、推理、工具参数和结果；开启前应选择适合这些内容的接收端。持久导出与标准 `OTEL_*` 观测配置可分别使用，重复配置同一目的地时需考虑重复数据。
 

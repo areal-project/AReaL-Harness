@@ -20,6 +20,8 @@ make gui
 
 `AREAL_CORE_BIN` 可指定可信 Core 的绝对路径；开发默认使用仓库 `target/debug/areal`。默认使用独立的 `AReaL Harness GUI Dev/<工作树摘要>` 数据目录；安装版使用 `AReaL Harness GUI`。不导入或替换旧桌面安装与数据。`AREAL_GUI_USER_DATA`、`AREAL_CORE_HOME`、`AREAL_HARNESS_HOME`、`AREAL_CORE_CONFIG` 可显式设置隔离目录/配置。
 
+配置文件按 `AREAL_CORE_CONFIG`、`AREAL_HARNESS_CONFIG`、GUI 的 `AREAL_HARNESS_HOME/config.toml` 顺序选择。显式文件的相对路径在 GUI 启动目录解析，并参与后台身份校验；不同配置不会误接到同一个旧后台。同一 GUI 后台的不同项目沿用这份配置，设置页不随项目切换选择另一份上传配置。
+
 macOS 开发和安装版均需要可执行的 `/usr/bin/python3`，供 Runtime 及可信工具助手启动中转；可通过 `xcode-select --install` 安装 Xcode Command Line Tools。该解释器不随应用打包；共享服务在启动前检查可用性并返回明确错误。
 
 ## Composer
@@ -40,7 +42,9 @@ macOS 开发和安装版均需要可执行的 `/usr/bin/python3`，供 Runtime �
 
 ## 生命周期
 
-设置中的“数据飞轮”页通过 `areal trajectory status/retry` 读取当前文件配置、上传进程、积压与最近上传记录；有相应元数据时分别显示 Turn、模型、Harness 版本、执行耗时以及事件发生/记录创建/上传成功时间，并支持刷新和手动重试；首次连接只读检查一次，异常只在设置入口显示提示。读取状态不会启动 Core 或上传进程，上传信息不进入聊天内容。界面显示的是当前配置文件，已运行 Core 的采集配置仍需重启生效。使用仓库 `scripts/configure-trajectory.py` 配置本页显示的文件；GUI 沿用可信启动配置及凭据环境，不提供上传地址或凭据编辑。`pnpm --dir clients/gui run test:trajectory` 验证桥接的命令边界与状态投影。构建 renderer 后，`pnpm --dir clients/gui run test:trajectory-ui` 使用本机 Chrome 与隔离桌面服务 fixture 验证选中导航、元数据、刷新和重试；可用 `AREAL_GUI_TEST_BROWSER` 指定浏览器可执行文件，不替代 Electron/Core 集成验收。
+设置中的“数据飞轮”页通过 `areal trajectory status/retry` 读取当前文件配置、上传进程、积压与最近上传记录；有相应元数据时分别显示 Turn、模型、Harness 版本、执行耗时以及事件发生/记录创建/上传成功时间，并支持刷新和手动重试。首次连接只读检查一次，读取失败与导出异常都在设置入口显示提示；手动读取恢复正常后清除，断线重连不重复自动请求。读取状态不会启动 Core 或上传进程，也不解密 GUI 凭据；手动重试可能启动上传进程，继承与 Core 启动相同的凭据环境。上传信息不进入聊天内容。界面显示的是当前配置文件，已运行 Core 的采集配置仍需重启生效。使用仓库 `scripts/configure-trajectory.py` 配置本页显示的文件；GUI 不提供上传地址或凭据编辑。
+
+`pnpm --dir clients/gui run test:trajectory` 验证桥接的命令边界、凭据环境与状态投影。`pnpm --dir clients/gui run test:trajectory-config` 使用已构建的真实 CLI，在隔离目录验证配置路径、优先级、后台身份与跨项目一致性，不启动 Core 或上传进程。构建 renderer 后，`pnpm --dir clients/gui run test:trajectory-ui` 使用本机 Chrome 与隔离桌面服务 fixture 验证选中导航、元数据、首次读取失败、迟到响应、断线恢复和重试；可用 `AREAL_GUI_TEST_BROWSER` 指定浏览器可执行文件，不替代 Electron/Core 集成验收。
 
 Renderer 仅通过窄 preload IPC 访问桌面适配器。独立适配器使用 `areal service ensure/restart/stop --json` 连接 Core，不直接管理 Core PID。退出 GUI 断开界面并结算 GUI 拥有的终端，Core Turn/Goal 和已配置的定时任务继续执行；重新打开按权威快照恢复，不自动重放提交。停止后台服务是显式操作，忙碌时拒绝安全停止。
 

@@ -135,26 +135,15 @@ impl TelemetryGuard {
             .with_attribute(KeyValue::new("service.version", env!("CARGO_PKG_VERSION")))
             .build();
         let durable = if trajectory.enabled {
-            match crate::trajectory::Processor::new(trajectory) {
-                Ok(processor) => Some(processor),
-                Err(_) => {
-                    eprintln!(
-                        "Warning: trajectory reporting unavailable; Agent execution continues. See areal trajectory status."
-                    );
-                    None
-                }
-            }
+            // 用户提示统一由客户端状态入口负责，Core 不重复向继承终端输出。
+            crate::trajectory::Processor::new(trajectory).ok()
         } else {
             let control = trajectory.clone();
             let _ = std::thread::Builder::new()
                 .name("areal-trajectory-disable".into())
                 .spawn(move || {
-                    if let Err(_error) = crate::trajectory::configure(&control) {
-                        // 停用失败仅影响可选采集；不改变模型或Runtime的启动结果。
-                        eprintln!(
-                            "Warning: trajectory control unavailable; Agent execution continues."
-                        );
-                    }
+                    // 停用失败仅影响可选采集，由状态命令报告，不改变主服务启动结果。
+                    let _ = crate::trajectory::configure_on_startup(&control);
                 });
             None
         };

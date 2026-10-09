@@ -16,7 +16,8 @@ import tempfile
 import tomllib
 
 # 可编辑默认值；建议凭据通过 --headers-env 读取，避免将秘密写入脚本或命令行。
-DEFAULT_ENABLED = False
+# None 保留已有开关；首次配置默认关闭。设为 True/False 可显式改变脚本默认动作。
+DEFAULT_ENABLED = None
 DEFAULT_ENDPOINT = ""
 DEFAULT_HEADERS = ""
 DEFAULTS = {
@@ -83,7 +84,10 @@ def table_headers(text):
                 if quote == '"""' and line[index] == "\\":
                     index += 2
                 elif line.startswith(quote, index):
-                    index += 3
+                    # TOML 多行字符串可用四/五个引号结束，额外引号属于字符串内容。
+                    marker = quote[0]
+                    while index < len(line) and line[index] == marker:
+                        index += 1
                     quote = None
                 else:
                     index += 1
@@ -139,12 +143,18 @@ def replace_trajectory(text, values):
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--home", type=Path, help="独立 AREAL_HARNESS_HOME，默认 ~/.areal")
-    parser.add_argument("--config", type=Path, help="指定完整配置文件，不叠加默认文件")
+    parser.add_argument(
+        "--config", type=Path, help="指定完整配置文件，默认遵循 AREAL_HARNESS_CONFIG"
+    )
     action = parser.add_mutually_exclusive_group()
     action.add_argument("--enable", action="store_true")
     action.add_argument("--disable", action="store_true")
     parser.add_argument("--endpoint", help="OTLP HTTP/protobuf 基地址，自动追加 /v1/logs")
-    parser.add_argument("--spool-dir", type=Path)
+    spool = parser.add_mutually_exclusive_group()
+    spool.add_argument("--spool-dir", type=Path)
+    spool.add_argument(
+        "--default-spool", action="store_true", help="恢复按配置文件身份隔离的默认队列"
+    )
     credentials = parser.add_mutually_exclusive_group()
     credentials.add_argument("--headers-env", help="从环境变量读取编码头并存入私有文件，跨启动生效")
     credentials.add_argument(
@@ -157,13 +167,49 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
+def apply_control(binary, action, config, home):
+    if not binary:
+        return False
+    try:
+        result = subprocess.run(
+            [binary, "trajectory", action, "--config", str(config)],
+            env=dict(os.environ, AREAL_HARNESS_HOME=str(home)),
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def configure(args):
+    env_home = os.environ.get("AREAL_HARNESS_HOME")
+    if (
+        not args.home
+        and env_home is not None
+        and (not env_home or not Path(env_home).is_absolute())
+    ):
+        raise ConfigurationError("AREAL_HARNESS_HOME 必须是非空绝对路径")
     home = (
-        (args.home or Path(os.environ.get("AREAL_HARNESS_HOME", "~/.areal")))
+        (args.home or Path(env_home if env_home is not None else "~/.areal"))
         .expanduser()
         .absolute()
     )
-    config = (args.config or home / "config.toml").expanduser().absolute()
+    env_config = os.environ.get("AREAL_HARNESS_CONFIG")
+    if not args.config and env_config == "":
+        raise ConfigurationError("AREAL_HARNESS_CONFIG 必须是非空路径")
+    config = (
+        (args.config or (Path(env_config) if env_config else home / "config.toml"))
+        .expanduser()
+        .absolute()
+    )
+    binary = (
+        str(args.areal_binary.expanduser().absolute())
+        if args.areal_binary
+        else shutil.which("areal")
+    )
     config.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     # 与 Core 的模型配置写入共用锁，避免并发修改覆盖模型目录。
     lock_path = config.with_name(f".{config.name}.lock")
@@ -189,17 +235,26 @@ def configure(args):
         if unknown:
             raise ConfigurationError("原轨迹配置含不支持的字段，请先校验配置")
         values = dict(existing)
-        values["enabled"] = False if args.disable else True if args.enable else DEFAULT_ENABLED
+        values["enabled"] = (
+            False
+            if args.disable
+            else True
+            if args.enable
+            else DEFAULT_ENABLED
+            if DEFAULT_ENABLED is not None
+            else existing.get("enabled", False)
+        )
+        if type(values["enabled"]) is not bool:
+            raise ConfigurationError("enabled 必须是布尔值")
         values["endpoint"] = (
             args.endpoint
             if args.endpoint is not None
             else DEFAULT_ENDPOINT or existing.get("endpoint", "")
         )
-        values["spool_dir"] = str(
-            args.spool_dir.expanduser().absolute()
-            if args.spool_dir
-            else existing.get("spool_dir", home / "trajectory")
-        )
+        if args.default_spool:
+            values.pop("spool_dir", None)
+        elif args.spool_dir:
+            values["spool_dir"] = str(args.spool_dir.expanduser().absolute())
         for field, default in DEFAULTS.items():
             option = getattr(args, field)
             values[field] = option if option is not None else existing.get(field, default)
@@ -221,8 +276,19 @@ def configure(args):
         }
         if any(values[field] > maximum for field, maximum in maxima.items()):
             raise ConfigurationError("容量或时间超出支持范围")
-        if not isinstance(values["endpoint"], str) or len(values["endpoint"]) > 4096:
+        if not isinstance(values["endpoint"], str) or len(values["endpoint"].encode()) > 4096:
             raise ConfigurationError("接收地址必须是长度不超过 4096 的文本")
+        for field in ("spool_dir", "headers_file"):
+            if field in values and (
+                not isinstance(values[field], str)
+                or not values[field].strip()
+                or any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in values[field])
+            ):
+                raise ConfigurationError("队列和凭据路径必须是非空、无控制字符的文本")
+        if "headers_env" in values and (
+            not isinstance(values["headers_env"], str) or len(values["headers_env"].encode()) > 4096
+        ):
+            raise ConfigurationError("认证环境变量引用必须是长度不超过 4096 字节的文本")
         if values["max_batch_bytes"] > min(values["max_memory_bytes"], values["max_disk_bytes"]):
             raise ConfigurationError("批次上限不得超过内存或磁盘上限")
         if values["retry_initial_seconds"] > values["retry_max_seconds"]:
@@ -245,8 +311,9 @@ def configure(args):
         if secret is not None:
             if not secret or len(secret.encode()) > 16384 or any(ord(c) < 32 for c in secret):
                 raise ConfigurationError("认证头必须是非空、无控制字符的编码文本，且不超过 16 KiB")
-            # 凭据轮换保持引用稳定，已排队记录仍能在更新后重试。
-            digest = hashlib.sha256(str(config).encode()).hexdigest()
+            # 同接收端轮换保持引用稳定；切换地址用独立文件，旧在途请求不能读取新地址凭据。
+            identity = json.dumps([str(config.resolve()), values["endpoint"]], ensure_ascii=False)
+            digest = hashlib.sha256(identity.encode()).hexdigest()
             private = home / "trajectory-credentials" / f"headers-{digest}.txt"
             credential_update = (private, secret)
             values["headers_file"] = str(private)
@@ -256,32 +323,29 @@ def configure(args):
         changed = tomllib.loads(old).get("trajectory") != values
         if (os.path.lexists(config) != existed) or (existed and regular_text(config) != old):
             raise ConfigurationError("配置已被其他编辑器修改，请重新运行")
+        migrating = (
+            existed
+            and "trajectory" in parsed
+            and any(
+                values.get(field, "" if field == "endpoint" else None)
+                != existing.get(field, "" if field == "endpoint" else None)
+                for field in ("spool_dir", "endpoint")
+            )
+        )
+        if migrating and not apply_control(binary, "suspend", config, home):
+            raise ConfigurationError(
+                "切换接收地址或队列前必须先停止原队列；请通过 --areal-binary 指定支持 "
+                "trajectory suspend 的新版 areal，并确认原队列属于此配置。原配置和凭据未修改"
+            )
+        if migrating and regular_text(config) != old:
+            raise ConfigurationError("停止原队列期间配置被其他编辑器修改，请重新运行")
         if credential_update is not None:
             atomic_private(*credential_update)
         if changed:
             if config.exists():
                 atomic_private(config.with_name(config.name + ".trajectory.bak"), old)
             atomic_private(config, updated)
-    binary = (
-        str(args.areal_binary.expanduser().absolute())
-        if args.areal_binary
-        else shutil.which("areal")
-    )
-    applied = False
-    if binary:
-        environment = dict(os.environ, AREAL_HARNESS_HOME=str(home))
-        try:
-            result = subprocess.run(
-                [binary, "trajectory", "sync-config", "--config", str(config)],
-                env=environment,
-                capture_output=True,
-                text=True,
-                timeout=15,
-                check=False,
-            )
-            applied = result.returncode == 0
-        except (OSError, subprocess.TimeoutExpired):
-            pass
+    applied = apply_control(binary, "sync-config", config, home)
     print(
         json.dumps(
             {

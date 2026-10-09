@@ -101,7 +101,11 @@ class TrajectoryExport {
         let stdout;
         try {
             ({ stdout } = await execute(this.backend.binary, args, {
-                env: this.backend.hooks.environment(),
+                // 重试可能启动上传进程，须与 Core 启动继承同一凭据环境；只读状态不解密凭据。
+                env: {
+                    ...this.backend.hooks.environment(),
+                    ...(request.operation === "retry" ? this.backend.providers.environment() : {}),
+                },
                 timeout: 15000,
                 maxBuffer: 2 * 1024 * 1024,
             }));

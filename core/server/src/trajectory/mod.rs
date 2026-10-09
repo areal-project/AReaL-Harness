@@ -46,9 +46,67 @@ fn endpoint(config: &TrajectoryConfig) -> Result<url::Url> {
     Ok(url)
 }
 
+fn owns_control(config: &TrajectoryConfig, control: &TrajectoryConfig) -> bool {
+    control.source_id == config.source_id
+        || (control.source_id.is_empty() && destination(config) == destination(control))
+}
+
+fn persisted_control(root: &Path) -> Result<Option<TrajectoryConfig>> {
+    match std::fs::symlink_metadata(root.join("control.json")) {
+        Ok(_) => queue::read(root, "control.json", 16384).map(Some),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
 /// 写入无秘密的控制快照；运行中的上传器会在下一次发送前重新读取。
 /// 不等待网络，不验证远端连通性。停用保留历史和未上传数据。
 pub fn configure(config: &TrajectoryConfig) -> Result<()> {
+    configure_inner(config, false)
+}
+
+// 后台初始化不能覆盖脚本刚暂停或更新的控制；校验与写入持有同一队列锁。
+pub(crate) fn configure_on_startup(config: &TrajectoryConfig) -> Result<()> {
+    configure_inner(config, true)
+}
+
+fn same_settings(left: &TrajectoryConfig, right: &TrajectoryConfig) -> bool {
+    left.diagnostic() == right.diagnostic()
+}
+
+fn source_revision(path: &Path) -> Result<String> {
+    use std::io::Read;
+    use std::os::unix::fs::OpenOptionsExt;
+    let file = match std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok("missing".into()),
+        Err(error) => return Err(error.into()),
+    };
+    let metadata = file.metadata()?;
+    anyhow::ensure!(metadata.is_file(), "configuration_source_not_regular");
+    // 文件被替换或并发增长时也必须有限结束，不能在队列锁内一直追赶 EOF。
+    let expected = metadata.len();
+    let mut file = file.take(expected.saturating_add(1));
+    let mut total = 0_u64;
+    let mut hash = Sha256::new();
+    let mut buffer = [0; 8192];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        total += read as u64;
+        hash.update(&buffer[..read]);
+    }
+    anyhow::ensure!(total == expected, "configuration_source_changed");
+    Ok(format!("{:x}", hash.finalize()))
+}
+
+fn configure_inner(config: &TrajectoryConfig, startup: bool) -> Result<()> {
     if !config.enabled && !config.spool_dir.exists() {
         return Ok(());
     }
@@ -56,6 +114,25 @@ pub fn configure(config: &TrajectoryConfig) -> Result<()> {
     queue::directory(root)?;
     {
         let _lock = queue::lock(root, ".queue.lock", true)?;
+        if startup && let Some(path) = &config.source_file {
+            let revision = source_revision(path)?;
+            anyhow::ensure!(
+                revision == config.source_revision,
+                "configuration_snapshot_expired"
+            );
+        }
+        if let Some(control) = persisted_control(root)? {
+            anyhow::ensure!(
+                owns_control(config, &control),
+                "spool_configuration_conflict"
+            );
+            anyhow::ensure!(
+                !startup
+                    || control.source_revision != config.source_revision
+                    || same_settings(config, &control),
+                "configuration_control_changed"
+            );
+        }
         queue::atomic(root, "control.json", &serde_json::to_vec(config)?)?;
         let mut totals = queue::stats(root);
         queue::prune(config, 0, false, &mut totals)?;
@@ -68,10 +145,17 @@ pub fn configure(config: &TrajectoryConfig) -> Result<()> {
 }
 
 fn worker_running(root: &Path) -> bool {
-    if !root.exists() {
+    use fs2::FileExt;
+    use std::os::unix::fs::OpenOptionsExt;
+    let Ok(file) = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(root.join(".worker.lock"))
+    else {
         return false;
-    }
-    matches!(queue::lock(root, ".worker.lock", false), Ok(None))
+    };
+    matches!(file.try_lock_exclusive(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock)
 }
 fn ensure_worker(root: &Path) -> Result<()> {
     if cfg!(test) {
@@ -136,12 +220,21 @@ fn ensure_worker(root: &Path) -> Result<()> {
 /// 状态只输出有界元数据；不读取轨迹正文或凭据。
 pub fn status(config: &TrajectoryConfig) -> Result<Value> {
     let root = &config.spool_dir;
-    let records = if root.exists() {
+    let control = persisted_control(root)?;
+    let conflict = control
+        .as_ref()
+        .is_some_and(|control| !owns_control(config, control));
+    let records = if !conflict && root.exists() {
         queue::records(root, config.max_disk_bytes)?
     } else {
         Vec::new()
     };
-    let totals = queue::stats(root);
+    let mut totals = if conflict {
+        queue::Statistics::default()
+    } else {
+        queue::stats(root)
+    };
+    queue::recover_statistics(&records, &mut totals);
     let bytes: u64 = records
         .iter()
         .map(|r| {
@@ -151,14 +244,23 @@ pub fn status(config: &TrajectoryConfig) -> Result<Value> {
         .sum();
     let count = |state: &str| records.iter().filter(|r| r.status == state).count();
     let invalid = config.enabled && endpoint(config).is_err();
-    let error = if invalid {
+    let mismatch = control
+        .as_ref()
+        .is_some_and(|control| !same_settings(config, control));
+    let running = !conflict && worker_running(root);
+    let error = if conflict {
+        Some("spool_configuration_conflict".to_string())
+    } else if mismatch {
+        Some("configuration_not_applied".to_string())
+    } else if invalid {
         Some("invalid_endpoint".to_string())
+    } else if config.enabled && !running && count("pending") + count("uploading") > 0 {
+        Some("worker_not_running".to_string())
     } else {
         totals.last_error.clone()
     };
-    let running = worker_running(root);
     Ok(json!({
-        "enabled": config.enabled, "state": if !config.enabled {"disabled"} else if invalid {"invalid"} else if error.is_some() || count("failed") > 0 {"degraded"} else {"ready"},
+        "enabled": config.enabled, "state": if conflict || mismatch {"degraded"} else if !config.enabled {"disabled"} else if invalid {"invalid"} else if error.is_some() || count("failed") > 0 {"degraded"} else {"ready"},
         "endpoint": config.diagnostic()["endpoint"], "spool_dir": root, "worker_running": running,
         "queue": {"pending":count("pending"),"uploading":count("uploading"),"failed":count("failed"),
             "uploaded":totals.uploaded,"evicted":totals.evicted,"bytes":bytes,"max_bytes":config.max_disk_bytes,
@@ -178,6 +280,11 @@ pub fn retry_failed(config: &TrajectoryConfig) -> Result<Value> {
     }
     {
         let _lock = queue::lock(&config.spool_dir, ".queue.lock", true)?;
+        let control: TrajectoryConfig = queue::read(&config.spool_dir, "control.json", 16384)?;
+        anyhow::ensure!(
+            owns_control(config, &control),
+            "spool_configuration_conflict"
+        );
         for mut record in queue::records(&config.spool_dir, config.max_disk_bytes)? {
             if record.status == "failed"
                 && record.payload_present

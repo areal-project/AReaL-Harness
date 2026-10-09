@@ -117,6 +117,89 @@ fn trajectory_status_reports_invalid_destination_without_echoing_credentials() {
 }
 
 #[test]
+fn trajectory_suspend_reads_under_config_writer_lock_without_mutating_the_file() {
+    use fs2::FileExt;
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("config.toml");
+    let original =
+        "schema_version=2\n[trajectory]\nenabled=true\nendpoint='invalid'\nspool_dir='queue'\n";
+    fs::write(&path, original).unwrap();
+    let sync = invoke(
+        temp.path(),
+        &["trajectory", "sync-config", "--config", "config.toml"],
+        &[],
+    );
+    assert!(
+        sync.status.success(),
+        "{}",
+        String::from_utf8_lossy(&sync.stderr)
+    );
+    let lock = fs::File::create(temp.path().join(".config.toml.lock")).unwrap();
+    lock.lock_exclusive().unwrap();
+    let suspended = invoke(
+        temp.path(),
+        &["trajectory", "suspend", "--config", "config.toml"],
+        &[],
+    );
+    assert!(
+        suspended.status.success(),
+        "{}",
+        String::from_utf8_lossy(&suspended.stderr)
+    );
+    assert_eq!(fs::read_to_string(&path).unwrap(), original);
+    let control: serde_json::Value =
+        serde_json::from_slice(&fs::read(temp.path().join("queue/control.json")).unwrap()).unwrap();
+    assert_eq!(control["enabled"], false);
+    assert_eq!(control["endpoint"], "invalid");
+    assert!(suspended.stderr.is_empty());
+}
+
+#[test]
+fn local_startup_warns_once_on_stderr_and_remote_exec_ignores_local_trajectory() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("config.toml"), "schema_version=2\n[trajectory]\nenabled=true\nendpoint='https://user:private-token@example.com?token=private-query'\n").unwrap();
+    let notice = "轨迹导出需要处理";
+    for args in [
+        vec![
+            "exec",
+            "hello",
+            "--workspace",
+            "missing",
+            "--config",
+            "config.toml",
+        ],
+        vec![
+            "--prompt",
+            "hello",
+            "--workspace",
+            "missing",
+            "--config",
+            "config.toml",
+        ],
+    ] {
+        let out = invoke(temp.path(), &args, &[]);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(stderr.matches(notice).count(), 1, "{stderr}");
+        assert!(!String::from_utf8_lossy(&out.stdout).contains(notice));
+        assert!(!stderr.contains("private-token"));
+        assert!(!stderr.contains("private-query"));
+    }
+    let remote = invoke(
+        temp.path(),
+        &[
+            "exec",
+            "hello",
+            "--endpoint",
+            "ws://127.0.0.1:1",
+            "--auth-file",
+            "missing-auth",
+        ],
+        &[("AREAL_HARNESS_CONFIG", "config.toml")],
+    );
+    assert!(!String::from_utf8_lossy(&remote.stderr).contains(notice));
+}
+
+#[test]
 fn source_build_does_not_self_upgrade() {
     let temp = tempfile::tempdir().unwrap();
     let out = invoke(temp.path(), &["upgrade", "--check"], &[]);

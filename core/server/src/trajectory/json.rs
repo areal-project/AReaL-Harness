@@ -11,17 +11,17 @@ const MAX_DEPTH: usize = 32;
 const MAX_NODES: usize = 65_536;
 const ALLOCATION_OVERHEAD: usize = 64;
 const PARSER_OVERHEAD: usize = 2048;
-const TRUNCATED: &str = "areal.capture.truncated";
+const JSON_FALLBACK: &str = "areal.capture.json_fallback";
 
 /// `limit` 约束新增 JSON 树和解析 scratch 的估算空间，所有日志/属性共用。
-/// 原始 request 已由调用者计费；每条日志至多追加一个截断标记，其属性数组扩容
-/// 也须由调用者随原始 request 预留。即使 limit 为零，仍会记录预算耗尽。
+/// 原始 request 已由调用者计费；每条日志至多追加一个降级标记，其属性数组扩容
+/// 也须由调用者随原始 request 预留。即使 limit 为零，仍会记录预算耗尽；完整原始字符串保留，不表示内容丢失。
 pub(super) fn project(request: &mut ExportLogsServiceRequest, limit: usize) {
     let mut budget = Budget::new(limit);
     for resource in &mut request.resource_logs {
         for scope in &mut resource.scope_logs {
             for record in &mut scope.log_records {
-                let mut truncated = false;
+                let mut fallback = false;
                 for attr in &mut record.attributes {
                     if !matches!(
                         attr.key.as_str(),
@@ -39,26 +39,26 @@ pub(super) fn project(request: &mut ExportLogsServiceRequest, limit: usize) {
                     };
                     match parse(raw, &mut budget) {
                         Projection::Value(value) => attr.value = Some(value),
-                        Projection::Truncated => truncated = true,
+                        Projection::Fallback => fallback = true,
                         Projection::Invalid => {}
                     }
                 }
-                if truncated {
-                    mark_truncated(&mut record.attributes);
+                if fallback {
+                    mark_fallback(&mut record.attributes);
                 }
             }
         }
     }
 }
 
-fn mark_truncated(attributes: &mut Vec<KeyValue>) {
-    if let Some(attr) = attributes.iter_mut().find(|attr| attr.key == TRUNCATED) {
+fn mark_fallback(attributes: &mut Vec<KeyValue>) {
+    if let Some(attr) = attributes.iter_mut().find(|attr| attr.key == JSON_FALLBACK) {
         attr.value = Some(any(Value::BoolValue(true)));
     } else {
         // 避免默认 push 的几何扩容；调用者预留至多 len + 1 个 KeyValue 的新数组。
         attributes.reserve_exact(1);
         attributes.push(KeyValue {
-            key: TRUNCATED.into(),
+            key: JSON_FALLBACK.into(),
             value: Some(any(Value::BoolValue(true))),
             ..Default::default()
         });
@@ -136,7 +136,7 @@ impl Budget {
 enum Projection {
     Value(AnyValue),
     Invalid,
-    Truncated,
+    Fallback,
 }
 
 fn parse(raw: &str, budget: &mut Budget) -> Projection {
@@ -149,10 +149,10 @@ fn parse(raw: &str, budget: &mut Budget) -> Projection {
         .checked_mul(3)
         .and_then(|n| n.checked_add(PARSER_OVERHEAD))
     else {
-        return Projection::Truncated;
+        return Projection::Fallback;
     };
     if budget.claim::<serde_json::Error>(scratch).is_err() {
-        return Projection::Truncated;
+        return Projection::Fallback;
     }
     let result = {
         let mut deserializer = serde_json::Deserializer::from_str(raw);
@@ -166,7 +166,7 @@ fn parse(raw: &str, budget: &mut Budget) -> Projection {
     budget.remaining += scratch;
     match result {
         Ok(value) => Projection::Value(value),
-        Err(_) if budget.exhausted => Projection::Truncated,
+        Err(_) if budget.exhausted => Projection::Fallback,
         Err(_) => Projection::Invalid,
     }
 }
@@ -348,10 +348,10 @@ mod tests {
         &request.resource_logs[0].scope_logs[0].log_records[0].attributes
     }
 
-    fn truncated(request: &ExportLogsServiceRequest) -> bool {
-        attrs(request)
-            .iter()
-            .any(|attr| attr.key == TRUNCATED && attr.value == Some(any(Value::BoolValue(true))))
+    fn fallback(request: &ExportLogsServiceRequest) -> bool {
+        attrs(request).iter().any(|attr| {
+            attr.key == JSON_FALLBACK && attr.value == Some(any(Value::BoolValue(true)))
+        })
     }
 
     fn preserved(request: &ExportLogsServiceRequest, raw: &str) {
@@ -359,7 +359,7 @@ mod tests {
             attrs(request)[0].value,
             Some(any(Value::StringValue(raw.into())))
         );
-        assert!(truncated(request));
+        assert!(fallback(request));
     }
 
     #[test]
@@ -389,7 +389,7 @@ mod tests {
                 any(Value::DoubleValue(1.25)),
             ]
         );
-        assert!(!truncated(&r));
+        assert!(!fallback(&r));
     }
 
     #[test]
@@ -428,7 +428,7 @@ mod tests {
     fn large_escaped_strings_are_rejected_before_parser_scratch_allocation() {
         let raw = format!("\"{}\"", "\\u0041".repeat(100_000));
         let mut budget = Budget::new(16 * 1024);
-        assert!(matches!(parse(&raw, &mut budget), Projection::Truncated));
+        assert!(matches!(parse(&raw, &mut budget), Projection::Fallback));
         assert_eq!(budget.nodes, MAX_NODES);
         assert_eq!(budget.remaining, 16 * 1024);
         let mut r = request(&raw);
@@ -448,7 +448,7 @@ mod tests {
     fn unescaped_string_is_borrowed_until_output_budget_is_checked() {
         let raw = format!("\"{}\"", "a".repeat(100_000));
         let mut budget = Budget::new(16 * 1024);
-        assert!(matches!(parse(&raw, &mut budget), Projection::Truncated));
+        assert!(matches!(parse(&raw, &mut budget), Projection::Fallback));
         assert_eq!(budget.nodes, MAX_NODES - 1);
         assert_eq!(
             budget.remaining,
@@ -460,11 +460,11 @@ mod tests {
             attrs(&r)[0].value,
             Some(any(Value::StringValue("a".repeat(100_000))))
         );
-        assert!(!truncated(&r));
+        assert!(!fallback(&r));
     }
 
     #[test]
-    fn budget_is_shared_between_records_and_zero_still_marks_truncation() {
+    fn budget_is_shared_between_records_and_zero_still_marks_fallback() {
         let mut r = request("[0]");
         let second = r.resource_logs[0].scope_logs[0].log_records[0].clone();
         r.resource_logs[0].scope_logs[0].log_records.push(second);
@@ -478,20 +478,23 @@ mod tests {
         ));
         let second = &r.resource_logs[0].scope_logs[0].log_records[1].attributes;
         assert_eq!(second[0].value, Some(any(Value::StringValue("[0]".into()))));
-        assert!(second.iter().any(|attr| attr.key == TRUNCATED));
+        assert!(second.iter().any(|attr| attr.key == JSON_FALLBACK));
 
         let mut zero = request("[]");
         project(&mut zero, 0);
         project(&mut zero, 0);
         preserved(&zero, "[]");
         assert_eq!(
-            attrs(&zero).iter().filter(|a| a.key == TRUNCATED).count(),
+            attrs(&zero)
+                .iter()
+                .filter(|a| a.key == JSON_FALLBACK)
+                .count(),
             1
         );
     }
 
     #[test]
-    fn invalid_or_lossy_values_keep_original_data_without_false_truncation() {
+    fn invalid_or_lossy_values_keep_original_data_without_false_fallback() {
         for raw in [
             r#"{"bad":}"#,
             "{} trailing",
@@ -504,7 +507,7 @@ mod tests {
                 attrs(&r)[0].value,
                 Some(any(Value::StringValue(raw.into())))
             );
-            assert!(!truncated(&r));
+            assert!(!fallback(&r));
         }
     }
 }

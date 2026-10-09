@@ -8,12 +8,25 @@ use std::{
     os::unix::fs::OpenOptionsExt,
 };
 
+#[cfg(test)]
+thread_local! {
+    static FAIL_WRITE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+#[cfg(test)]
+pub(super) fn fail_next_write(name: String) {
+    FAIL_WRITE.with(|fault| *fault.borrow_mut() = Some(name));
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct Record {
     pub id: String,
     pub status: String,
     pub created_at: u64,
     pub uploaded_at: Option<u64>,
+    #[serde(default)]
+    pub completion_sequence: Option<u64>,
+    #[serde(default)]
+    pub completion_not_before: Option<u64>,
     pub attempts: u32,
     pub next_attempt_at: Option<u64>,
     pub bytes: usize,
@@ -38,7 +51,7 @@ pub(super) struct Record {
     pub payload_present: bool,
     pub sha256: String,
 }
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 pub(super) struct Statistics {
     pub uploaded: u64,
     pub evicted: u64,
@@ -86,6 +99,18 @@ pub(super) fn lock(root: &Path, name: &str, wait: bool) -> Result<Option<File>> 
     Ok(Some(file))
 }
 pub(super) fn atomic(root: &Path, name: &str, bytes: &[u8]) -> Result<()> {
+    #[cfg(test)]
+    if FAIL_WRITE.with(|fault| {
+        let mut fault = fault.borrow_mut();
+        if fault.as_deref() == Some(name) {
+            fault.take();
+            true
+        } else {
+            false
+        }
+    }) {
+        anyhow::bail!("injected atomic write failure");
+    }
     let mut temp = tempfile::Builder::new()
         .prefix(".trajectory-tmp-")
         .tempfile_in(root)?;
@@ -119,6 +144,40 @@ pub(super) fn stats(root: &Path) -> Statistics {
 }
 pub(super) fn save_stats(root: &Path, stats: &Statistics) -> Result<()> {
     atomic(root, "statistics.json", &serde_json::to_vec(stats)?)
+}
+// 完成记录先于统计持久化；崩溃恢复不能把已确认完成的上传误算成失败或重复计数。
+pub(super) fn recover_statistics(records: &[Record], stats: &mut Statistics) {
+    for record in records {
+        if record.status == "uploaded"
+            && let Some(sequence) = record.completion_sequence
+            && sequence > stats.uploaded
+        {
+            stats.uploaded = sequence;
+            stats.last_success_at = record.uploaded_at;
+            stats.consecutive_failures = 0;
+            stats.not_before = record.completion_not_before.unwrap_or(stats.not_before);
+            // 只清除被该 ACK 覆盖的传输错误，保留之后发生的采集/磁盘容量告警。
+            if matches!(
+                stats.last_error.as_deref(),
+                Some(
+                    "invalid_endpoint"
+                        | "credential_unavailable"
+                        | "upload_timeout"
+                        | "connection_failed"
+                        | "rate_limited"
+                        | "remote_unavailable"
+                        | "authentication_rejected"
+                        | "request_rejected"
+                        | "invalid_otlp_response"
+                        | "response_interrupted"
+                        | "otlp_partial_rejection"
+                        | "payload_unavailable"
+                )
+            ) {
+                stats.last_error = None;
+            }
+        }
+    }
 }
 pub(super) fn records(root: &Path, _max_bytes: u64) -> Result<Vec<Record>> {
     let mut result = Vec::new();
@@ -195,6 +254,10 @@ pub(super) fn enqueue(
     let _lock = lock(root, ".queue.lock", true)?;
     let current = read::<TrajectoryConfig>(root, "control.json", 16384)?;
     // 停用和切换目的地以后，旧进程不能继续按过期配置采集。
+    anyhow::ensure!(
+        owns_control(config, &current),
+        "spool_configuration_conflict"
+    );
     if !current.enabled || destination(config) != destination(&current) {
         return Ok(());
     }
@@ -239,6 +302,16 @@ pub(super) fn enqueue(
             _ => None,
         })
         .unwrap_or_default();
+    // 索引字段受独立上限约束；完整模型名仍在不可变 protobuf 中，不因索引过大被误判为损坏。
+    let model_name = if model_name.len() > 1024 {
+        let mut end = 1024;
+        while !model_name.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}…", &model_name[..end])
+    } else {
+        model_name
+    };
     let harness_version = env!("CARGO_PKG_VERSION").to_string();
     let execution_duration_ms = if terminal {
         log.and_then(|l| l.attributes.iter().find(|a| a.key == "areal.duration_ms"))
@@ -255,6 +328,8 @@ pub(super) fn enqueue(
         status: "pending".into(),
         created_at: now(),
         uploaded_at: None,
+        completion_sequence: None,
+        completion_not_before: None,
         attempts: 0,
         next_attempt_at: None,
         bytes: bytes.len(),
@@ -295,6 +370,12 @@ pub(super) fn prune(
 ) -> Result<()> {
     let root = &config.spool_dir;
     let mut entries = records(root, config.max_disk_bytes)?;
+    let previous_uploaded = totals.uploaded;
+    recover_statistics(&entries, totals);
+    if totals.uploaded != previous_uploaded {
+        // 先恢复统计再回收完成记录，否则第二次磁盘故障可能丢失唯一计数凭证。
+        save_stats(root, totals)?;
+    }
     let names: std::collections::HashSet<_> = entries
         .iter()
         .filter(|r| r.payload_present)

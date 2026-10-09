@@ -543,6 +543,14 @@ pub(crate) fn load_mode(
         Some(file) => file,
         None => file::read(&selected, explicit)?,
     };
+    let (trajectory_source_id, trajectory_spool, trajectory_source_file) =
+        crate::trajectory::location(&home, &selected);
+    let trajectory_source_revision = if file.loaded {
+        use sha2::{Digest, Sha256};
+        format!("{:x}", Sha256::digest(file.text.as_bytes()))
+    } else {
+        "missing".to_owned()
+    };
     let catalog = file.catalog.clone();
     let catalog_managed = file.values.contains_key("model.catalog_version");
     let mut values = BTreeMap::new();
@@ -617,11 +625,7 @@ pub(crate) fn load_mode(
         &mut values,
         "trajectory.spool_dir",
         Entry {
-            value: path_text(
-                &home.join("trajectory"),
-                "trajectory.spool_dir",
-                &home_source,
-            )?,
+            value: path_text(&trajectory_spool, "trajectory.spool_dir", &home_source)?,
             source: default.clone(),
         },
         &inputs.cwd,
@@ -831,7 +835,12 @@ pub(crate) fn load_mode(
     sources.insert("home".into(), home_source);
     sources.insert("config_file".into(), selected_source);
     let result = ResolvedCoreConfig {
-        trajectory: TrajectoryConfig::resolve(&values)?,
+        trajectory: TrajectoryConfig::resolve(
+            &values,
+            trajectory_source_id,
+            trajectory_source_file,
+            trajectory_source_revision,
+        )?,
         model_catalog: catalog,
         model_catalog_managed: catalog_managed,
         permissions: PermissionConfig {

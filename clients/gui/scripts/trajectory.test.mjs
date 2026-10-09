@@ -53,7 +53,7 @@ async function fixture(t) {
     binary,
     `#!/usr/bin/env node
 const fs = require('node:fs');
-fs.writeFileSync(process.env.FIXTURE_CALLS, JSON.stringify({args:process.argv.slice(2), home:process.env.AREAL_HARNESS_HOME}));
+fs.writeFileSync(process.env.FIXTURE_CALLS, JSON.stringify({args:process.argv.slice(2), home:process.env.AREAL_HARNESS_HOME, credential:process.env.AREAL_CREDENTIAL_fixture}));
 const value=fs.readFileSync(process.env.FIXTURE_RESPONSE,'utf8');
 if(value==='fail') { process.stderr.write('credential fixture-secret rejected'); process.exit(1); }
 process.stdout.write(value);
@@ -72,7 +72,10 @@ process.stdout.write(value);
         FIXTURE_RESPONSE: response,
       }),
     },
-    providers: { redact: (text) => text.replaceAll("fixture-secret", "[redacted]") },
+    providers: {
+      environment: () => ({ AREAL_CREDENTIAL_fixture: "fixture-secret" }),
+      redact: (text) => text.replaceAll("fixture-secret", "[redacted]"),
+    },
   });
   return { exporter, response, calls, directory };
 }
@@ -108,6 +111,7 @@ test("fixed CLI arguments preserve GUI config and environment; only public field
   });
   assert.deepEqual(await exporter.command({ operation: "retry" }), status);
   assert.equal(JSON.parse(await readFile(calls, "utf8")).args[1], "retry");
+  assert.equal(JSON.parse(await readFile(calls, "utf8")).credential, "fixture-secret");
   await assert.rejects(exporter.command({ operation: "status", config: "/other.toml" }), {
     code: "INVALID_DESKTOP_REQUEST",
   });
@@ -128,6 +132,15 @@ test("invalid CLI responses fail explicitly and stderr uses credential redaction
     exporter.command({ operation: "retry" }),
     (error) => error.message.includes("[redacted]") && !error.message.includes("fixture-secret"),
   );
+});
+
+test("status remains readable when the GUI credential vault cannot be unlocked", async (t) => {
+  const { exporter } = await fixture(t);
+  exporter.backend.providers.environment = () => {
+    throw new Error("fixture vault locked");
+  };
+  assert.deepEqual(await exporter.command({ operation: "status" }), status);
+  await assert.rejects(exporter.command({ operation: "retry" }), /fixture vault locked/);
 });
 
 test("optional execution metadata is projected without changing legacy records", async (t) => {

@@ -1,11 +1,22 @@
 use crate::{ConfigErrorKind, Result, error, file::Entry};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 /// 轨迹导出属于部署配置；这里只保存凭据引用，不读取或序列化凭据值。
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TrajectoryConfig {
+    /// 由有效配置文件身份派生；不能通过 TOML 伪造其它配置的队列所有权。
+    #[serde(default)]
+    pub source_id: String,
+    /// 启动时校验读取快照仍是当前文件；只供内部并发保护，不参与部署指纹。
+    #[serde(default)]
+    pub source_file: Option<PathBuf>,
+    #[serde(default)]
+    pub source_revision: String,
     pub enabled: bool,
     pub endpoint: String,
     pub spool_dir: PathBuf,
@@ -85,9 +96,17 @@ pub(crate) fn validate(field: &str, entry: &Entry) -> Result<()> {
 }
 
 impl TrajectoryConfig {
-    pub(crate) fn resolve(values: &BTreeMap<String, Entry>) -> Result<Self> {
+    pub(crate) fn resolve(
+        values: &BTreeMap<String, Entry>,
+        source_id: String,
+        source_file: PathBuf,
+        source_revision: String,
+    ) -> Result<Self> {
         let get = |field: &str| &values[&format!("trajectory.{field}")].value;
         let config = Self {
+            source_id,
+            source_file: Some(source_file),
+            source_revision,
             enabled: get("enabled") == "true",
             endpoint: get("endpoint").clone(),
             spool_dir: get("spool_dir").into(),
@@ -143,6 +162,10 @@ impl TrajectoryConfig {
     pub fn diagnostic(&self) -> serde_json::Value {
         use sha2::{Digest, Sha256};
         let mut value = serde_json::to_value(self).expect("trajectory configuration");
+        // 原始文件摘要仅防止旧启动快照覆盖新控制；模型热更新不能因此触发部署重启。
+        let fields = value.as_object_mut().expect("trajectory object");
+        fields.remove("source_file");
+        fields.remove("source_revision");
         let endpoint = if self.endpoint.is_empty() {
             String::new()
         } else if let Ok(mut url) = url::Url::parse(&self.endpoint) {
@@ -164,4 +187,35 @@ impl TrajectoryConfig {
             format!("{:x}", Sha256::digest(self.endpoint.as_bytes())).into();
         value
     }
+}
+
+pub(crate) fn location(home: &Path, config: &Path) -> (String, PathBuf, PathBuf) {
+    use sha2::{Digest, Sha256};
+    let identity = canonical_identity(config);
+    let source_id = format!(
+        "{:x}",
+        Sha256::digest(identity.as_os_str().as_encoded_bytes())
+    );
+    let spool = if identity == canonical_identity(&home.join("config.toml")) {
+        home.join("trajectory")
+    } else {
+        home.join("trajectory-sources").join(&source_id)
+    };
+    (source_id, spool, identity)
+}
+
+fn canonical_identity(path: &Path) -> PathBuf {
+    // 默认配置尚未创建时也需稳定身份；创建目录/文件不能改变既有队列归属。
+    // 规范化现有祖先同时消除 macOS /tmp 别名与父目录符号链接的差异。
+    for ancestor in path.ancestors() {
+        if let Ok(base) = ancestor.canonicalize() {
+            let suffix = path.strip_prefix(ancestor).expect("path ancestor");
+            return if suffix.as_os_str().is_empty() {
+                base
+            } else {
+                base.join(suffix)
+            };
+        }
+    }
+    path.to_owned()
 }

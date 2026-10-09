@@ -26,6 +26,30 @@ struct Budget {
     used: AtomicUsize,
     limit: usize,
 }
+
+// 继承字段可能同时被多个事件使用；SDK 记录的临时副本也必须占用共享额度。
+struct RecordReservation {
+    budget: Option<Arc<Budget>>,
+    bytes: usize,
+}
+impl RecordReservation {
+    fn reserve(&mut self, bytes: usize) -> bool {
+        if let Some(budget) = &self.budget {
+            if !budget.reserve(bytes) {
+                return false;
+            }
+            self.bytes += bytes;
+        }
+        true
+    }
+}
+impl Drop for RecordReservation {
+    fn drop(&mut self) {
+        if let Some(budget) = &self.budget {
+            budget.used.fetch_sub(self.bytes, Ordering::Relaxed);
+        }
+    }
+}
 impl Budget {
     fn reserve(&self, bytes: usize) -> bool {
         self.used
@@ -294,15 +318,21 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>, const CHANNEL: u8> Layer<S> for Eve
         record.set_timestamp(SystemTime::now());
         record.set_severity_number(Severity::Info);
         record.set_trace_context(sc.trace_id(), sc.span_id(), Some(sc.trace_flags()));
-        if fields.truncated {
-            record.add_attribute("areal.capture.truncated", true);
-        }
+        let mut reservation = RecordReservation {
+            budget: self.budget.clone(),
+            bytes: 0,
+        };
+        let mut truncated = fields.truncated;
         record.add_attributes(
             fields
                 .values
                 .into_iter()
                 .filter(|(k, _)| !k.starts_with("otel.") && k != "message")
-                .map(|(key, held)| {
+                .filter_map(|(key, held)| {
+                    if !reservation.reserve(held.bytes) {
+                        truncated = true;
+                        return None;
+                    }
                     let value = held.value.clone();
                     // 旧 OTLP 保持原投影；持久通道交给取得预算的后台线程解析 JSON。
                     let value = match (CHANNEL, key.as_str(), &value) {
@@ -318,9 +348,12 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>, const CHANNEL: u8> Layer<S> for Eve
                             .unwrap_or(value),
                         _ => value,
                     };
-                    (key, value)
+                    Some((key, value))
                 }),
         );
+        if truncated {
+            record.add_attribute("areal.capture.truncated", true);
+        }
         logger.emit(record);
     }
 }
@@ -449,6 +482,29 @@ mod isolation_tests {
     use opentelemetry_sdk::logs::{InMemoryLogExporter, SdkLoggerProvider};
     use std::fmt::Write as _;
     use tracing_subscriber::layer::SubscriberExt;
+
+    #[test]
+    fn concurrent_record_copies_share_the_field_budget() {
+        let budget = Arc::new(Budget {
+            used: AtomicUsize::new(300),
+            limit: 1024,
+        });
+        let mut first = RecordReservation {
+            budget: Some(budget.clone()),
+            bytes: 0,
+        };
+        let mut second = RecordReservation {
+            budget: Some(budget.clone()),
+            bytes: 0,
+        };
+        assert!(first.reserve(600));
+        assert!(!second.reserve(600));
+        assert_eq!(budget.used.load(Ordering::Relaxed), 900);
+        drop(first);
+        assert!(second.reserve(600));
+        drop(second);
+        assert_eq!(budget.used.load(Ordering::Relaxed), 300);
+    }
 
     #[test]
     fn bounded_formatter_rejects_oversize_chunk_before_allocating() {

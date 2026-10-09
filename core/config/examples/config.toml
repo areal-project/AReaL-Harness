@@ -59,7 +59,7 @@ filter = "info"
 [trajectory]
 enabled = false
 endpoint = "https://collector.example.com"
-# spool_dir 默认 <AREAL_HARNESS_HOME>/trajectory，跨工作区和独占 CLI run 共享。
+# 默认用户配置使用 <AREAL_HARNESS_HOME>/trajectory；其它配置文件的队列自动隔离。
 # headers_env = "AREAL_EXPORT_HEADERS"
 # headers_file = "/absolute/private/trajectory-headers.txt"
 max_disk_bytes = 268435456
