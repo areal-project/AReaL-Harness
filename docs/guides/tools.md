@@ -2,11 +2,11 @@
 
 # 工具与 hooks
 
-Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后端绑定。输入与输出由 Core 校验；本地执行交给 Runtime。完整模型工具 schema 位于 [tools.rs](../../core/engine/src/tools.rs)。
+Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后端绑定。输入与输出由 Core 校验；本地执行交给 Runtime。完整内置工具参数契约位于 [tools.rs](../../core/engine/src/tools.rs)，模型投影位于[注册表](../../core/engine/src/tools/registry.rs)。
 
 本地默认 YOLO；文件工具与命令 cwd 接受工作区外绝对路径，Core 规范化为 `workspace://host`，Runtime full-access 才允许。相对路径仍从工作区解析，argv 中使用普通文件路径。ASK_PERMISSIONS 在执行前审批实际参数，见[权限配置](configuration.md#permissions)。launcher 自动提供每 Thread scratch；隔离 Workgroup 使用其工作区内的私有 `.scratch/agent-<threadId>`，其 Scope 边界继续有效。
 
-`run_command` 的 `oneOf` 使用两个完整对象分支，分别声明 `command` 或 `argv` 入口及公共选项，以兼容要求完整分支的模型端点；两个分支同步包含 Runtime 的期限上限。调用参数不变，Core 仍拒绝同时提供或同时省略两个入口。
+内置 `run_command` 向模型提供普通 object schema，描述中要求 `command` 或 `argv` 二选一，避免部分模型端点拒绝顶层 `oneOf`。Core 的执行校验仍保留完整 `oneOf` 契约，拒绝同时提供或同时省略两个入口；模型投影和执行校验均包含 Runtime 的期限上限。该投影只适用于内置命令工具，不修改外部工具的 schema。
 
 | 工具 | 关键参数与边界 |
 |---|---|

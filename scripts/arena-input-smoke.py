@@ -108,6 +108,11 @@ def main():
                 try:
                     raw = self.rfile.read(int(self.headers["Content-Length"]))
                     body = json.loads(raw)
+                    # Claude 等端点拒绝顶层组合 schema；覆盖完整工具集，而非单工具探测。
+                    for tool in body.get("tools", []):
+                        schema = tool["function"]["parameters"]
+                        assert schema["type"] == "object"
+                        assert not any(key in schema for key in ("oneOf", "anyOf", "allOf"))
                     requests.append(len(raw))
                     request_parameters.append(
                         {
@@ -369,6 +374,7 @@ max_tool_calls=16
                             "publicInputIntegrity": "verified",
                             "effectiveModelParameters": effective,
                             "modelParametersMatchWire": True,
+                            "modelToolsHaveNoRootCombinators": True,
                             "missingOptionalRulesAccepted": True,
                         }
                     )

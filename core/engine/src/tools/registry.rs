@@ -406,7 +406,18 @@ impl Registry {
             .with_context(|| format!("unknown tool: {name}"))
     }
     pub fn definitions(&self) -> Vec<Value> {
-        self.order.iter().map(|name| &self.tools[name]).map(|tool| json!({"type":"function","function":{"name":tool.definition.name,"description":tool.definition.description,"parameters":tool.definition.input_schema}})).collect()
+        self.order
+            .iter()
+            .map(|name| &self.tools[name])
+            .map(|tool| {
+                let mut parameters = tool.definition.input_schema.clone();
+                if matches!(tool.backend, Backend::Builtin) && tool.definition.name == "run_command" {
+                    // 部分端点拒绝顶层 oneOf；仅简化模型投影，执行校验仍使用原始契约。
+                    parameters.as_object_mut().unwrap().remove("oneOf");
+                }
+                json!({"type":"function","function":{"name":tool.definition.name,"description":tool.definition.description,"parameters":parameters}})
+            })
+            .collect()
     }
 }
 
@@ -461,6 +472,62 @@ mod tests {
             );
             assert!(registry.tools.contains_key("run_command"));
         }
+    }
+
+    #[test]
+    fn command_model_schema_keeps_runtime_validation() {
+        let registry = Registry::new(true, &ToolExtensions::default())
+            .unwrap()
+            .with_runtime_limits(&rt::Limits {
+                wall_time_ms: 7000,
+                ..Default::default()
+            })
+            .unwrap();
+        let command = registry.get("run_command").unwrap();
+        let definitions = registry.definitions();
+        let advertised = &definitions
+            .iter()
+            .find(|d| d["function"]["name"] == "run_command")
+            .unwrap()["function"];
+        let mut expected = command.definition.input_schema.clone();
+        expected.as_object_mut().unwrap().remove("oneOf");
+        assert_eq!(advertised["parameters"], expected);
+        assert!(
+            advertised["description"]
+                .as_str()
+                .unwrap()
+                .contains("exactly one of command/argv")
+        );
+        for args in [
+            json!({"command":"true","timeoutMs":7000}),
+            json!({"argv":["true"],"timeoutMs":7000}),
+        ] {
+            command.validate_input(&args).unwrap();
+            compile(&advertised["parameters"])
+                .unwrap()
+                .validate(&args)
+                .unwrap();
+        }
+        for args in [
+            json!({}),
+            json!({"command":"true","argv":["true"]}),
+            json!({"argv":["true"],"timeoutMs":7001}),
+            json!({"command":""}),
+            json!({"argv":[]}),
+            json!({"command":"true","unexpected":true}),
+        ] {
+            assert!(command.validate_input(&args).is_err(), "{args}");
+        }
+
+        // 同名外部工具仍保留其完整契约，不按名称删除用户 schema 的约束。
+        let mut external = Registry::default();
+        external
+            .insert(command.definition.clone(), Backend::Client)
+            .unwrap();
+        assert_eq!(
+            external.definitions()[0]["function"]["parameters"],
+            command.definition.input_schema
+        );
     }
 
     #[test]

@@ -2,11 +2,11 @@
 
 # Tools and hooks
 
-Core's registry binds names and JSON Schemas to built-in, command, client, MCP or plugin backends. Core validates inputs and outputs; Runtime handles local execution. Full model-tool schemas are in [tools.rs](../../core/engine/src/tools.rs).
+Core's registry binds names and JSON Schemas to built-in, command, client, MCP or plugin backends. Core validates inputs and outputs; Runtime handles local execution. Full built-in argument contracts are in [tools.rs](../../core/engine/src/tools.rs); model projections are in the [registry](../../core/engine/src/tools/registry.rs).
 
 The Local launch defaults to YOLO. File tools and command cwd accept outside-workspace absolute paths normalized to `workspace://host`, requiring Runtime full-access. Relative paths remain workspace-relative; argv uses ordinary filesystem paths. ASK_PERMISSIONS gates effective arguments before execution; see [permissions](configuration.en.md#permissions). The launcher supplies per-Thread scratch; isolated Workgroups use private `.scratch/agent-<threadId>` within their workspace and retain their Scope boundaries.
 
-`run_command` `oneOf` uses two complete object branches, each defining either `command` or `argv` and the common options, for compatibility with model endpoints that require complete branches. Both branches include the Runtime deadline ceiling. Call parameters are unchanged; Core still rejects supplying both entry points or neither.
+The built-in `run_command` advertises a plain object schema with a description requiring exactly one of `command` or `argv`, because some model endpoints reject top-level `oneOf`. Core retains the full `oneOf` execution contract and rejects both entry points or neither. Both the model projection and execution validation include the Runtime deadline ceiling. This projection applies only to the built-in command tool and does not modify external tool schemas.
 
 | Tool | Key parameters and boundaries |
 |---|---|
