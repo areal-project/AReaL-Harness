@@ -18,3 +18,4 @@ __pycache__/
 
 # GUI workspace package cache
 .pnpm-store/
+.scratch/

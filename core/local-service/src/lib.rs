@@ -9,7 +9,15 @@ pub use client::{
 pub use spec::{LaunchSpec, LocalArgs, parse_agent_profile};
 
 pub fn home() -> anyhow::Result<std::path::PathBuf> {
-    let path = match std::env::var_os("AREAL_HARNESS_HOME") {
+    // 服务登记可单独隔离；配置位置继续由 core/config 的 home 规则决定。
+    let service_home = std::env::var_os("AREAL_HARNESS_SERVICE_HOME");
+    if let Some(path) = &service_home {
+        anyhow::ensure!(
+            std::path::Path::new(path).is_absolute(),
+            "AREAL_HARNESS_SERVICE_HOME must be absolute"
+        );
+    }
+    let path = match service_home.or_else(|| std::env::var_os("AREAL_HARNESS_HOME")) {
         Some(path) => path.into(),
         None => std::env::home_dir()
             .ok_or_else(|| anyhow::anyhow!("home unavailable"))?

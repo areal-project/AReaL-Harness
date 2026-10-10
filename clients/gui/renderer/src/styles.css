@@ -2064,7 +2064,8 @@ body {
 }
 
 /* Update notice stays blue across application themes and accent preferences. */
-.areal-update-indicator { --update-notice: #2563eb; display: inline-flex; flex-direction: column; align-items: center; gap: 4px; width: 36px; flex-shrink: 0; }
+.areal-update-indicator { --update-notice: #2563eb; position: relative; display: inline-flex; flex-direction: column; align-items: center; gap: 4px; width: 36px; flex-shrink: 0; }
+.areal-update-error { position: absolute; left: calc(100% + 8px); bottom: 0; z-index: var(--layer-popover); width: min(280px, calc(100vw - 80px)); padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-navigation); background: var(--color-popover); color: var(--color-foreground); box-shadow: 0 5px 18px #00000014; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .areal-update-action, .areal-update-current { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border: 0; border-radius: var(--radius-navigation); }
 .areal-update-action { background: var(--update-notice); color: white; cursor: var(--interactive-cursor, pointer); }
 .areal-update-action:hover { background: #1d4ed8; }

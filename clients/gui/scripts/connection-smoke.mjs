@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
@@ -16,7 +16,7 @@ const scratch = await mkdtemp('/private/tmp/areal-connection-');
 const workspace = join(scratch, 'workspace');
 const home = join(scratch, 'desktop');
 await mkdir(workspace);
-await mkdir(join(scratch, 'user'));
+await mkdir(join(scratch, 'user', '.areal'), { recursive: true });
 let finish, requests = 0;
 const model = createServer(async (request, response) => {
   for await (const _ of request) { /* 消费请求后保留流，供断线恢复期间继续执行。 */ }
@@ -27,12 +27,12 @@ const model = createServer(async (request, response) => {
   finish = () => { chunk({ content: 'AFTER_RECONNECT' }); chunk({}, 'stop'); response.end('data: [DONE]\n\n'); };
 });
 await new Promise(resolve => model.listen(0, '127.0.0.1', resolve));
-const config = join(scratch, 'config.toml');
+const config = join(scratch, 'user', '.areal', 'config.toml');
 await writeFile(config, `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\n`);
 const deployment = join(scratch, 'desktop.json');
 await writeFile(deployment, JSON.stringify({ profiles: [{ id: 'fixture', revision: 'v1', displayName: 'Fixture', instructions: 'Complete the task' }] }));
 const backend = new CoreBackend({ binary: process.env.AREAL_CORE_BIN || resolve(gui, '../../target/debug/areal'),
-  home, harnessHome: join(scratch, 'registry'), userHome: join(scratch, 'user'), config,
+  home, harnessHome: join(scratch, 'registry'), userHome: join(scratch, 'user'),
   desktopConfig: deployment, defaultProfile: { id: 'fixture', revision: 'v1' } });
 const checks = [];
 async function until(predicate, label, timeout = 15000) {
@@ -43,8 +43,23 @@ async function until(predicate, label, timeout = 15000) {
 let passed = false;
 try {
   await backend.init();
+  const providers = await backend.command('providers', { operation: 'list' });
+  assert.equal(providers.path, config, 'desktop defaults to the user Core configuration, independently of its registry');
+  assert.equal(providers.data[0].id, 'fixture');
+  const saved = await backend.command('providers', { operation: 'save', expectedRevision: providers.revision, provider: { ...providers.data[0], name: 'Shared fixture' } });
+  const { stdout: configuration } = await execute(backend.binary, ['config', 'models', 'read'], { env: { ...backend.hooks.environment(), AREAL_HARNESS_SERVICE_HOME: undefined } });
+  const shared = JSON.parse(configuration);
+  assert.equal(shared.path, config);
+  assert.equal(shared.data[0].name, 'Shared fixture');
+  assert.equal(shared.revision, saved.revision, 'GUI saves and CLI reads share the Core revision');
+  await assert.rejects(() => readFile(join(scratch, 'registry', 'config.toml')), { code: 'ENOENT' });
+  checks.push('desktop and independent CLI share the default Core model file and revision without a config override');
   const projectId = await backend.addProject(workspace);
   const project = backend.projects.get(projectId);
+  assert.ok(project.service.dataDir.startsWith(home + '/'), 'runtime state stays in the desktop home');
+  const registry = JSON.parse(await readFile(join(scratch, 'registry', 'services', project.service.serviceId, 'service.json'), 'utf8'));
+  assert.equal(registry.generation, project.service.generation, 'service registration stays isolated');
+  checks.push('service registration and runtime state remain isolated from the shared configuration');
   const { threadId } = await backend.command('create', { projectId });
   await backend.command('send', { projectId, threadId, text: 'Continue while the observer reconnects' });
   await until(() => finish && project.model.state.threads[threadId]?.turns.at(-1)?.status === 'inProgress', 'active turn');

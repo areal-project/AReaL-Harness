@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
@@ -11,22 +11,25 @@ const require = createRequire(join(gui, 'app/package.json'));
 const { _electron: electron } = require('playwright-core');
 const scratch = await mkdtemp('/private/tmp/areal-architecture-');
 const workspace = join(scratch, 'workspace');
-await mkdir(workspace); await mkdir(join(scratch, 'user'));
+await mkdir(workspace); await mkdir(join(scratch, 'user', '.areal'), { recursive: true });
 const server = createServer((request, response) => {
   response.setHeader('Content-Type', 'text/html');
   response.end('<html><body><h1>ARCHITECTURE_PREVIEW</h1></body></html>');
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const url = `http://127.0.0.1:${server.address().port}/preview`;
-const config = join(scratch, 'config.toml');
+const config = join(scratch, 'user', '.areal', 'config.toml');
 await writeFile(config, `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\n`);
 const deployment = join(scratch, 'desktop.json');
 await writeFile(deployment, JSON.stringify({ profiles: [{ id: 'fixture', revision: 'v1', displayName: 'Fixture', instructions: 'Complete the task' }] }));
 const env = { ...process.env, AREAL_CORE_BIN: process.env.AREAL_CORE_BIN || resolve(gui, '../../target/debug/areal'),
-  AREAL_CORE_HOME: join(scratch, 'core'), AREAL_HARNESS_HOME: join(scratch, 'registry'),
+  AREAL_CORE_HOME: join(scratch, 'core'), AREAL_HARNESS_SERVICE_HOME: join(scratch, 'registry'),
   AREAL_CORE_USER_HOME: join(scratch, 'user'), AREAL_GUI_USER_DATA: join(scratch, 'electron'),
-  AREAL_CORE_CONFIG: config, AREAL_CORE_DESKTOP_CONFIG: deployment };
+  AREAL_CORE_DESKTOP_CONFIG: deployment };
 delete env.AREAL_CORE_WORKSPACE;
+delete env.AREAL_CORE_CONFIG;
+delete env.AREAL_HARNESS_CONFIG;
+delete env.AREAL_HARNESS_HOME;
 let app, page, passed = false;
 const checks = [], errors = [];
 async function until(predicate, label) {
@@ -43,6 +46,12 @@ try {
   app = await electron.launch({ executablePath: require('electron'), args: [join(gui, 'app')], env });
   page = await app.firstWindow(); page.on('pageerror', error => errors.push(error.message));
   await page.locator('[data-testid=areal-workbench]').waitFor({ timeout: 120000 });
+  await until(async () => (await page.evaluate(() => window.arealDesktop.snapshot())).connection?.state === 'ready', 'background Core ready');
+  const providers = await call('providers', { operation: 'list' });
+  assert.equal(providers.path, config, 'real desktop IPC reads the default user Core configuration');
+  assert.equal(providers.data[0].id, 'fixture');
+  await assert.rejects(() => readFile(join(scratch, 'registry', 'config.toml')), { code: 'ENOENT' });
+  checks.push('real Electron IPC reads the global Core provider catalog without a config override');
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
     dialog.showMessageBox = async () => ({ response: 1 });

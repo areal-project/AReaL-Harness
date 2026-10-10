@@ -512,7 +512,10 @@ pub(crate) fn load_mode(
     for key in inputs.env.keys() {
         if let Some(name) = key.to_str()
             && name.starts_with("AREAL_HARNESS_")
-            && !matches!(name, "AREAL_HARNESS_HOME" | "AREAL_HARNESS_CONFIG")
+            && !matches!(
+                name,
+                "AREAL_HARNESS_HOME" | "AREAL_HARNESS_CONFIG" | "AREAL_HARNESS_SERVICE_HOME"
+            )
             && !ENV.iter().any(|(key, _, _)| *key == name)
         {
             return Err(error(

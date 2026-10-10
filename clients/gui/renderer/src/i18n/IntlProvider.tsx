@@ -36,7 +36,7 @@ Object.assign(messages, {
   "taskList.newThread": "新聊天",
 });
 Object.assign(messages, {
-  "settings.modelProvider.apiKeyPlaceholder": "输入 API Key；留空可使用无需认证的本地服务",
+  "settings.modelProvider.apiKeyPlaceholder": "输入 API Key",
   "settings.modelProvider.apiKey": "API Key",
   "settings.modelProvider.baseUrl": "Base URL",
   "settings.modelProvider.baseUrlPlaceholder": "https://api.example.com/v1",
@@ -77,7 +77,7 @@ const enMessages: Record<string, string> = {
   "settings.plugins.title": "Plugins",
   "settings.models.title": "Configuration",
   "settings.permissions.title": "Permissions",
-  "settings.modelProvider.apiKeyPlaceholder": "Enter API Key; leave empty for local unauthenticated service",
+  "settings.modelProvider.apiKeyPlaceholder": "Enter API Key",
   "settings.modelProvider.apiKey": "API Key",
   "settings.modelProvider.baseUrl": "Base URL",
   "settings.modelProvider.baseUrlPlaceholder": "https://api.example.com/v1",

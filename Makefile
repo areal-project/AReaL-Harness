@@ -216,7 +216,7 @@ gui-build: ## 构建 GUI renderer
 	pnpm --dir clients/gui build
 gui: gui-build ## 启动桌面 GUI（先 make build）
 	pnpm --dir clients/gui start
-gui-package: gui-build ## 生成本地 macOS arm64 应用包（先 make build）
+gui-package: gui-build ## 构建 macOS arm64 候选应用（先构建 Core，随后执行 sign:mac）
 	pnpm --dir clients/gui package
 gui-smoke: ## 隔离目录中验证真实 Electron/Core 和本地模型
 	pnpm --dir clients/gui test:e2e

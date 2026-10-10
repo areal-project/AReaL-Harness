@@ -55,7 +55,7 @@ target/debug/areal web --workspace /absolute/workspace --json
 
 开发版与 PATH 中的安装版在相同工作区、相同 dataDir 下会定位同一实例，但二进制内容及不同版本的默认配置可能不兼容。冲突诊断给出当前客户端二进制的绝对路径和已解析的部署参数；使用该命令并保持相同环境重启，避免裸 `areal` 重新启动另一版本。纯二进制/普通配置更新仍沿用空闲自动重启；Runtime、权限等边界变化仍需显式重启。
 
-未显式配置 dataDir 时，共享入口使用 `$AREAL_HARNESS_HOME/instances/<workspace-hash前24位>/state`；home 默认 `~/.areal`。显式 CLI、环境变量或 TOML 中的 dataDir 保持配置优先级。独占 launcher、非交互 CLI 的默认目录保持原有规则。
+服务 home 由 `AREAL_HARNESS_SERVICE_HOME`（非空绝对路径）选择，省略时沿用 `AREAL_HARNESS_HOME` 或 `~/.areal`；它只决定服务登记、工作区映射与默认实例数据的位置，不改变 Core 配置查找。`ensure`、`restart`、`list`、`status`、`stop`、`bind` 和 `web` 使用同一服务 home。未显式配置 dataDir 时，共享入口使用 `<服务 home>/instances/<workspace-hash前24位>/state`。显式 CLI、环境变量或 TOML 中的 dataDir 保持配置优先级。独占 launcher、非交互 CLI 的默认目录保持原有规则。
 
 旧 `~/.areal-harness/state` 不自动搬迁或混入新工作区。可显式指定 `--data-dir`，或停止旧 Core 后绑定默认目录：
 
@@ -85,7 +85,7 @@ TUI 断线会重新发现服务，故障清理完成后可启动新 generation�
 - 重连重新发现并比较 generation，然后 initialize/initialized 和 thread/resume。先查 request/read 或权威状态再决定重试，不自动重放已提交操作。
 - 需要跨窗口的动态 ToolHost 应放在稳定 Main/独立宿主连接中。窗口上的动态工具不会自动转移；连接丢失仍按现有 Host generation 与 UNKNOWN 语义处理。
 
-内部控制使用 home/services/INSTANCE_ID/control.sock 上的单行 JSON，目录 0700、登记与凭据 0600；请求 `{method:"status",version:1}` 或 `{method:"stop",version:1,generation,cancel}`，响应 `{result:"ok",service}` 或 `{result:"error",message}`。建议非 Rust 客户端使用 CLI，避免复制锁和恢复逻辑。Unix socket 路径过长时需缩短 AREAL_HARNESS_HOME。
+内部控制使用 home/services/INSTANCE_ID/control.sock 上的单行 JSON，目录 0700、登记与凭据 0600；请求 `{method:"status",version:1}` 或 `{method:"stop",version:1,generation,cancel}`，响应 `{result:"ok",service}` 或 `{result:"error",message}`。建议非 Rust 客户端使用 CLI，避免复制锁和恢复逻辑。Unix socket 路径过长时需缩短 AREAL_HARNESS_SERVICE_HOME。
 
 认证 GET `/areal/service` 返回描述中的六个身份字段（protocolVersion/serviceId/generation/workspace/dataDir/configFingerprint），需要 observe 权限，拒绝不匹配的 Origin；无托管身份的已认证 Core 返回 404。业务协议仍见 [Core](core.md) 与[桌面 API](desktop.md)，无需另建 Agent loop。
 

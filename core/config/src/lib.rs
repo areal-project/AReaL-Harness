@@ -31,6 +31,15 @@ pub struct ConfigInputs {
     pub overrides: ConfigOverrides,
 }
 
+/// 配置状态与启动装配共用凭据规则；密钥仅在可信调用方内解析。
+pub fn credential_value<'a>(env: &'a BTreeMap<OsString, OsString>, name: &str) -> Option<&'a str> {
+    env.get(std::ffi::OsStr::new(name))
+        .and_then(|value| value.to_str())
+        .filter(|value| {
+            !value.trim().is_empty() && value.bytes().all(|byte| (0x20..=0x7e).contains(&byte))
+        })
+}
+
 /// Only explicit CLI values belong here. Text is validated without echoing it.
 #[derive(Clone, Default)]
 pub struct ConfigOverrides {
@@ -190,13 +199,7 @@ impl SelectedModelConfig {
         self.api_key_env
             .as_ref()
             .map(|name| {
-                inputs
-                    .env
-                    .get(std::ffi::OsStr::new(name))
-                    .and_then(|v| v.to_str())
-                    .filter(|v| {
-                        !v.trim().is_empty() && v.bytes().all(|b| (0x20..=0x7e).contains(&b))
-                    })
+                credential_value(&inputs.env, name)
                     .map(str::to_owned)
                     .ok_or_else(|| ConfigError {
                         kind: ConfigErrorKind::MissingValue,

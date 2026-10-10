@@ -55,7 +55,7 @@ One dataDir allows one Core. `ensure` serializes concurrent launches and checks 
 
 Development and PATH-installed binaries select the same instance for the same workspace and dataDir, but their binary contents and version-specific defaults may be incompatible. Conflict diagnostics provide the current client binary's absolute path and resolved deployment arguments. Run that command with the same environment so a bare `areal` does not restart another version. Binary-only and ordinary configuration changes still restart automatically when idle; Runtime and permission boundary changes still require an explicit restart.
 
-Without an explicitly configured dataDir, shared entry points use `$AREAL_HARNESS_HOME/instances/<first24-workspace-hash>/state`; home defaults to `~/.areal`. CLI/environment/TOML dataDir overrides retain their precedence. Owned launchers and noninteractive CLI retain their existing default directories.
+Service home is selected by `AREAL_HARNESS_SERVICE_HOME` (a nonempty absolute path), falling back to `AREAL_HARNESS_HOME` or `~/.areal`. It controls only service registration, workspace mappings, and default instance data, without changing Core configuration lookup. `ensure`, `restart`, `list`, `status`, `stop`, `bind`, and `web` use the same service home. Without an explicitly configured dataDir, shared entry points use `<service home>/instances/<first24-workspace-hash>/state`. CLI/environment/TOML dataDir overrides retain their precedence. Owned launchers and noninteractive CLI retain their existing default directories.
 
 Existing `~/.areal-harness/state` history is not moved or merged automatically. Pass `--data-dir`, or stop the old Core and bind the workspace default:
 
@@ -85,7 +85,7 @@ TUI rediscovers after disconnection and can start a new generation after crash c
 - Rediscover and compare generation before initialize/initialized and thread/resume. Query request/read or authoritative state before deciding to retry; never replay accepted operations automatically.
 - Dynamic ToolHosts that must survive windows belong in a stable Main/independent host connection. Window tools do not transfer automatically; disconnect retains Host generation and UNKNOWN semantics.
 
-Internal control uses one-line JSON over home/services/INSTANCE_ID/control.sock, with 0700 directories and 0600 records/credentials. Requests are `{method:"status",version:1}` or `{method:"stop",version:1,generation,cancel}`; responses are `{result:"ok",service}` or `{result:"error",message}`. Non-Rust clients should use the CLI instead of duplicating locking/recovery. Shorten AREAL_HARNESS_HOME if the Unix socket path exceeds the platform limit.
+Internal control uses one-line JSON over home/services/INSTANCE_ID/control.sock, with 0700 directories and 0600 records/credentials. Requests are `{method:"status",version:1}` or `{method:"stop",version:1,generation,cancel}`; responses are `{result:"ok",service}` or `{result:"error",message}`. Non-Rust clients should use the CLI instead of duplicating locking/recovery. Shorten AREAL_HARNESS_SERVICE_HOME if the Unix socket path exceeds the platform limit.
 
 Authenticated GET `/areal/service` returns the six identity fields (protocolVersion/serviceId/generation/workspace/dataDir/configFingerprint), requires observe permission and rejects a mismatched Origin. An authenticated Core without managed identity returns 404. Business operations retain the [Core](core.en.md) and [desktop API](desktop.en.md) protocols and the same Agent loop.
 

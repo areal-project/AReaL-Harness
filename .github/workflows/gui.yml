@@ -1,0 +1,94 @@
+name: GUI checks
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/gui.yml'
+      - 'clients/gui/**'
+      - 'core/**'
+      - 'runtime/**'
+      - 'schemas/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'Makefile'
+      - 'scripts/launch.py'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/gui.yml'
+      - 'clients/gui/**'
+      - 'core/**'
+      - 'runtime/**'
+      - 'schemas/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'Makefile'
+      - 'scripts/launch.py'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_INCREMENTAL: '0'
+  NO_PROXY: 127.0.0.1,localhost
+
+concurrency:
+  group: gui-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gui:
+    name: macOS GUI checks and Composer/queue smoke
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22'
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - name: Prepare locked GUI dependencies
+        run: |
+          mkdir -p target/ci/gui
+          npm install --global pnpm@11.7.0
+          rustup show
+          if ! command -v cmake; then brew install cmake; fi
+          make gui-install
+      - name: Check GUI types and public boundaries
+        run: |
+          pnpm --dir clients/gui typecheck 2>&1 | tee target/ci/gui/typecheck.log
+          pnpm --dir clients/gui run verify 2>&1 | tee target/ci/gui/public.log
+      - name: Build Core and GUI
+        run: |
+          make build 2>&1 | tee target/ci/gui/core-build.log
+          make gui-build 2>&1 | tee target/ci/gui/gui-build.log
+      - name: Check registered desktop RPC routes
+        run: cargo test --locked -p areal-app-server --lib desktop_registered_methods_have_dispatch_routes 2>&1 | tee target/ci/gui/rpc-routes.log
+      - name: Verify existing GUI workflow
+        run: make gui-smoke 2>&1 | tee target/ci/gui/migration.log
+      - name: Verify Composer workflow
+        run: pnpm --dir clients/gui run test:composer 2>&1 | tee target/ci/gui/composer.log
+      - name: Verify model configuration and selection
+        run: pnpm --dir clients/gui run test:model-selection 2>&1 | tee target/ci/gui/model-selection.log
+      - name: Verify queue workflow
+        run: pnpm --dir clients/gui run test:queue 2>&1 | tee target/ci/gui/queue.log
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: macos-gui-evidence
+          path: |
+            target/ci/gui/
+            /private/tmp/areal-gui-*/
+            /private/tmp/ams-*/
+          retention-days: 7
