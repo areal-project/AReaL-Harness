@@ -148,6 +148,79 @@ class RunnerTest(unittest.TestCase):
 
 
 class LazyInputTest(unittest.TestCase):
+    def test_optional_rules_path_may_be_absent_but_existing_rules_are_preserved(self):
+        import public_inputs
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            task = root / "task.md"
+            task.write_text("Original task contract")
+            harness = root / "harness"
+            harness.mkdir()
+            rules = harness / "system-prompt.md"
+            for name, content in [("absent", None), ("present", "原始附加规则\n"), ("empty", "")]:
+                with self.subTest(name=name):
+                    if content is not None:
+                        rules.write_text(content)
+                    destination = root / name
+                    receipt, _, baseline = public_inputs.prepare(
+                        task, destination, root / "no-assets", rules_path=rules
+                    )
+                    if content is None:
+                        self.assertIsNone(receipt["rules"])
+                        self.assertFalse((destination / "RULES.md").exists())
+                        self.assertNotIn(
+                            "RULES.md", public_inputs.bootstrap(receipt, destination)[0]["text"]
+                        )
+                    else:
+                        self.assertEqual((destination / "RULES.md").read_text(), content)
+                        self.assertEqual(receipt["rules"]["bytes"], len(content.encode()))
+                    public_inputs.verify(destination, baseline)
+
+    def test_optional_rules_reject_unsafe_paths_and_copy_failures(self):
+        import public_inputs
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            task = root / "task.md"
+            task.write_text("task")
+            directory = root / "directory"
+            directory.mkdir()
+            (root / "link").symlink_to(task)
+            (root / "dangling").symlink_to(root / "missing")
+            (root / "parent-link").symlink_to(directory, target_is_directory=True)
+            (root / "hardlink-source").write_text("rules")
+            os.link(root / "hardlink-source", root / "hardlink")
+            for name in ["directory", "link", "dangling", "parent-link/missing", "hardlink"]:
+                with self.subTest(name=name), self.assertRaises(public_inputs.PublicInputError):
+                    public_inputs.prepare(
+                        task,
+                        root / ("reject-" + name.replace("/", "-")),
+                        root / "no-assets",
+                        rules_path=root / name,
+                    )
+            rules = root / "rules.md"
+            rules.write_text("required when present")
+            copy_file = public_inputs.copy_file
+            for error in [
+                PermissionError("unreadable rules"),
+                FileNotFoundError("rules removed during copy"),
+            ]:
+
+                def copy(source, destination):
+                    if source == rules:
+                        raise error
+                    return copy_file(source, destination)
+
+                with (
+                    self.subTest(error=type(error).__name__),
+                    patch.object(public_inputs, "copy_file", copy),
+                ):
+                    with self.assertRaises(type(error)):
+                        public_inputs.prepare(
+                            task, root / type(error).__name__, root / "no-assets", rules_path=rules
+                        )
+
     def test_incident_shapes_have_small_bootstrap_and_preserve_aliases(self):
         import public_inputs
         import base64

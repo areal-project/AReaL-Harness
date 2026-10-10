@@ -62,8 +62,22 @@ def prepare(query_path, destination, assets=Path("/problem_assets"), rules_path=
     task = {"path": "workspace://scratch/public-inputs/TASK.md", "sha256": sha, "bytes": size}
     rules = None
     if rules_path:
-        sha, size = copy_file(rules_path, destination / "RULES.md")
-        rules = {"path": "workspace://scratch/public-inputs/RULES.md", "sha256": sha, "bytes": size}
+        rules_path = Path(rules_path).absolute()
+        try:
+            rules_path.lstat()
+        except FileNotFoundError:
+            # Arena 始终注入可选规则路径；缺失占位文件不代表输入交付失败。
+            # 父目录软链接仍须拒绝，不能将指向其他挂载的路径当成缺省规则。
+            if rules_path.resolve() != rules_path:
+                raise PublicInputError("Optional rules path must not contain symlinks") from None
+        else:
+            # 只允许初次检查时缺失；读取失败、链接和复制期间删除仍按输入错误处理。
+            sha, size = copy_file(rules_path, destination / "RULES.md")
+            rules = {
+                "path": "workspace://scratch/public-inputs/RULES.md",
+                "sha256": sha,
+                "bytes": size,
+            }
     records = []
     assets = Path(assets)
     if assets.exists() or assets.is_symlink():

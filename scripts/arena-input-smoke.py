@@ -288,6 +288,8 @@ max_tool_calls=16
         if args.package:
             output = root / "arena-output"
             output.mkdir()
+            harness = root / "platform-harness"
+            harness.mkdir()
             environment.update(
                 IS_SANDBOX="1",
                 ARENA_TASK_ID="arena-package-input-smoke",
@@ -296,6 +298,9 @@ max_tool_calls=16
                 ARENA_OUTPUT_DIR=str(output),
                 ARENA_AGENT_OUTPUT_DIR=str(output / "agent"),
                 ARENA_TRAJECTORY_PATH=str(output / "trajectory.jsonl"),
+                # 平台会注入未物化的可选规则路径，包验收必须覆盖这一启动边界。
+                ARENA_HARNESS_DIR=str(harness),
+                ARENA_SYSTEM_PROMPT_PATH=str(harness / "system-prompt.md"),
                 OPENAI_MODEL="fixture",
                 OPENAI_BASE_URL=f"http://127.0.0.1:{server.server_port}/v1",
                 OPENAI_API_KEY="fixture",
@@ -322,6 +327,8 @@ max_tool_calls=16
                 assert delivery["integrity"] == "verified", delivery
                 assert (output / "agent/public-inputs/TASK.md").read_bytes() == query.read_bytes()
                 assert delivery["bootstrap_bytes"] < 4096, delivery
+                assert delivery["rules"] is None, delivery
+                assert not (output / "agent/public-inputs/RULES.md").exists()
                 with zipfile.ZipFile(args.package) as archive:
                     manifest = json.loads(archive.read("manifest.json"))
                     settings = json.loads(archive.read("settings.json"))
@@ -362,6 +369,7 @@ max_tool_calls=16
                             "publicInputIntegrity": "verified",
                             "effectiveModelParameters": effective,
                             "modelParametersMatchWire": True,
+                            "missingOptionalRulesAccepted": True,
                         }
                     )
                 )

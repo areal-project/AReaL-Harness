@@ -84,6 +84,8 @@ Runner 通过 Runtime `--read-only-path` 保护输入并在运行结束检查摘
 
 包支持默认 `task_profile: "generic"` 与 `task_profile: "original"`。原题对照使用 `original`，仅加入读取公开输入的 Bootstrap，不附加 Runner 的实现、测试建议；Core 原生指令保持由同次构建决定。包中的 `system-prompt.md` 是 Core 基础指令的审计副本，不覆盖原生指令。依赖外部 delivery/piggy 模块的历史配置不属于本打包入口，遇到此类配置会在打包时拒绝。
 
+平台注入的 `ARENA_SYSTEM_PROMPT_PATH` 是可选的附加规则路径，可能没有对应文件。初次检查时缺失则不生成 `RULES.md`；文件存在时按原字节复制并校验，空文件也保留。不可读、软链接、硬链接或复制期间消失仍按输入错误终止，不能静默丢弃已有规则。最终包回放包含平台已注入但未物化该文件的情形。
+
 离线验证运行 `python3 -m unittest discover -s integrations/envarena`、`cargo test --locked -p areal-engine --lib` 和 `python3 scripts/arena-input-smoke.py --bin-dir target/debug`。模型桩验证真实 CLI/Core/Runtime 输入读取、PNG/GIF 视觉内容、只读拒绝及旧封套超限诊断，不代表四题真实模型复跑或评分通过。线上验收需冻结新 Harness ref/hash，保留原题和评分器，逐题区分输入链路成功、任务终态及原 Reward。
 
 可附加 `--public-inputs-dir <含 TASK.md 和 assets/ 的目录>`，用同一模型桩回放冻结的真实公开附件；这仍不是在线模型或 Reward 验收。
