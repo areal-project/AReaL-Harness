@@ -183,6 +183,7 @@ class AppProviders {
         if (!raw || typeof raw.name !== 'string') throw new Error('请输入供应商名称');
         const previous = raw.id ? next.data.find(p => p.id === raw.id) : null;
         if (raw.id && !previous) throw new Error('供应商已不存在，请刷新');
+        if (request.authentication !== undefined && !['none', 'apiKey'].includes(request.authentication)) throw new Error('不支持的认证方式');
         const protocol = protocolToCore(raw.protocol);
         // Name/model-only edits preserve an exact endpoint supplied by the CLI.
         const endpoint = previous && raw.baseUrl === endpointBase(previous.endpoint) && protocol === previous.protocol
@@ -191,10 +192,13 @@ class AppProviders {
         const models = raw.models.map(m => ({ id: m.id?.trim(), enabled: m.enabled !== false, ...(m.displayName?.trim() ? { displayName: m.displayName.trim() } : {}), parameters: modelParameters(m.parameters) }));
         const item = { id: previous?.id ?? `app_${randomUUID().replaceAll('-', '')}`, name: raw.name.trim(), endpoint, protocol, models, parameters: modelParameters(raw.parameters), enabled: raw.enabled !== false,
           ...(previous?.apiKeyEnv ? { apiKeyEnv: previous.apiKeyEnv } : {}) };
-        if (request.apiKey !== undefined) {
+        if (request.authentication === 'none') delete item.apiKeyEnv;
+        else if (request.apiKey !== undefined) {
           const reference = await this.config.credential(request.apiKey);
-          if (reference) item.apiKeyEnv = reference; else delete item.apiKeyEnv;
+          if (reference) item.apiKeyEnv = reference;
+          else if (request.authentication !== 'apiKey') delete item.apiKeyEnv;
         }
+        if (request.authentication === 'apiKey' && !item.apiKeyEnv) throw new Error('请填写 API Key，或保留已配置的凭据环境变量。');
         next.data = previous ? next.data.map(p => p.id === item.id ? item : p) : [...next.data, item];
       }
       this.config.value = await this.config.execute('write', { expectedRevision: current.revision, data: next.data, defaultModel: next.defaultModel });

@@ -15,6 +15,25 @@ export interface ComposerModelOption {
     value: string;
     label: string;
     efforts?: readonly string[];
+    unavailableReason?: string;
+}
+/** 可用性直接投影 Core 目录，不在 Renderer 重新判断凭据。 */
+export function composerModelOption(model: {
+    providerId: string;
+    modelId: string;
+    displayName?: string;
+    reasoningEffortOptions?: readonly string[];
+    available?: boolean;
+    credentialState?: string;
+}): ComposerModelOption {
+    return {
+        value: `${model.providerId}/${model.modelId}`,
+        label: model.displayName ?? model.modelId,
+        efforts: model.reasoningEffortOptions,
+        unavailableReason: model.available === false
+            ? model.credentialState === "unavailable" ? "缺少 API Key" : "模型不可用"
+            : undefined,
+    };
 }
 /** 模型/允许强度由目录和宿主提供，组件只负责两级选择。 */
 export function ComposerModelMenu({
@@ -25,6 +44,7 @@ export function ComposerModelMenu({
     onEffortChange,
     onChange,
     onClose,
+    onConfigure,
 }: {
     options: ComposerModelOption[];
     value: string;
@@ -33,6 +53,7 @@ export function ComposerModelMenu({
     onEffortChange?: (value: string) => void;
     onChange: (value: string) => void;
     onClose: () => void;
+    onConfigure: () => void;
 }) {
     const [open, setOpen] = useState(false);
     const [page, setPage] = useState<"effort" | "models">("effort");
@@ -40,12 +61,18 @@ export function ComposerModelMenu({
     const label = model?.label ?? "请选择模型";
     const efforts = model?.efforts ?? [];
     const index = effort ? efforts.indexOf(effort) : -1;
+    if (!options.length) return (
+        <Button type="button" variant="ghost" aria-label="模型" disabled={disabled}
+            className="composer-model-trigger" onClick={onConfigure}>
+            请先配置模型 <MenuChevronIcon size={14} aria-hidden="true" />
+        </Button>
+    );
     return (
         <Popover
             open={open}
             onOpenChange={(next) => {
                 setOpen(next);
-                if (next) setPage("effort");
+                if (next) setPage(model && !model.unavailableReason ? "effort" : "models");
             }}
         >
             <PopoverTrigger
@@ -55,7 +82,7 @@ export function ComposerModelMenu({
                         variant="ghost"
                         aria-label="模型"
                         title={label}
-                        disabled={disabled || !options.length}
+                        disabled={disabled}
                         className="composer-model-trigger"
                     />
                 }
@@ -154,18 +181,23 @@ export function ComposerModelMenu({
                                     aria-checked={value === option.value}
                                     key={option.value}
                                     data-model-value={option.value}
+                                    disabled={!!option.unavailableReason}
                                     onClick={() => {
                                         onChange(option.value);
                                         setPage("effort");
                                     }}
                                 >
-                                    {option.label}
+                                    <span>{option.label}{option.unavailableReason && <small>{option.unavailableReason}</small>}</span>
                                     {value === option.value && <MenuSelectedIcon size={16} />}
                                 </button>
                             ))}
                         </div>
                     </>
                 )}
+                <Button type="button" variant="ghost" className="composer-model-configure"
+                    onClick={() => { setOpen(false); onConfigure(); }}>
+                    配置模型
+                </Button>
             </PopoverContent>
         </Popover>
     );

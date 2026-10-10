@@ -1,3 +1,4 @@
+import { captureSmokeFailure, resizeConversation } from "./smoke-navigation.mjs";
 import assert from "node:assert/strict";
 
 import { createRequire } from "node:module";
@@ -315,10 +316,14 @@ try {
         }),
         { inside: true, offset: 2, collapsed: true },
       );
-      assert.equal(await input().evaluate((element) => {
-        const style = getComputedStyle(element);
-        return style.caretColor === style.color;
-      }), true, `${label}: caret follows foreground color`);
+      assert.equal(
+        await input().evaluate((element) => {
+          const style = getComputedStyle(element);
+          return style.caretColor === style.color;
+        }),
+        true,
+        `${label}: caret follows foreground color`,
+      );
       await shot(`${label}-ime-committed`);
       await compose("mei");
       await page.waitForFunction(() =>
@@ -563,12 +568,7 @@ try {
   checks.push(
     "new draft inline Goal uses Core creation; objective consumed while skills and file remain unsent",
   );
-  await button("收起侧栏").click();
-  await app.evaluate(({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    window.setMinimumSize(640, 480);
-    window.setSize(720, 760);
-  });
+  await resizeConversation(app, page, 720, 760);
   await openCatalog();
   await shot("05-narrow-catalog");
   const catalogBox = await page.getByTestId("composer-catalog").boundingBox();
@@ -596,8 +596,9 @@ try {
   console.log(JSON.stringify({ passed, scratch, checks }));
 } catch (error) {
   console.error("renderer errors", errors);
-  console.error(await page?.locator("body").innerText());
-  await shot("failure").catch(() => {});
+  frames.push(
+    ...(await captureSmokeFailure(page, scratch, error)).filter((file) => file.endsWith(".png")),
+  );
   throw error;
 } finally {
   await quit();

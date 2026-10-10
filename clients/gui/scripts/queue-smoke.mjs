@@ -1,3 +1,9 @@
+import {
+  captureSmokeFailure,
+  resizeConversation,
+  createProjectConversation,
+  selectConversation,
+} from "./smoke-navigation.mjs";
 import assert from "node:assert/strict";
 
 import { createRequire } from "node:module";
@@ -343,34 +349,20 @@ try {
   assert.ok(await button("模型").isDisabled());
   await shot("03-editing");
   await input().fill("切换后保留的编辑");
-  await page
-    .locator(".project-row")
-    .filter({ has: page.getByRole("button", { name: "workspace", exact: true }) })
-    .hover();
-  await page.getByRole("button", { name: "在项目 workspace 中新建对话", exact: true }).click();
+  await createProjectConversation(page, "workspace");
   await page.waitForFunction(
     (tid) => document.querySelector('[data-testid="areal-workbench"]').dataset.threadId !== tid,
     tid,
   );
   await input().fill("另一对话草稿");
-  await page.getByTestId(`task-item-${tid}`).click();
-  await page.waitForFunction(
-    (tid) => document.querySelector('[data-testid="areal-workbench"]').dataset.threadId === tid,
-    tid,
-  );
+  await selectConversation(page, tid);
   assert.equal(await input().textContent(), "切换后保留的编辑");
   assert.equal(queue(await state()).paused, true);
   assert.equal(await page.getByTestId("composer-queued-attachment").count(), 1);
   checks.push(
     "task navigation preserves queued edit body and retained attachment without resuming queue or touching another draft",
   );
-  await button("收起侧栏").click();
-  await app.evaluate(({ BrowserWindow }) => {
-    const w = BrowserWindow.getAllWindows()[0];
-    w.setMinimumSize(480, 600);
-    w.setSize(520, 760);
-  });
-  await page.waitForFunction(() => innerWidth <= 520);
+  await resizeConversation(app, page, 520, 760);
   assert.equal(
     await page.locator(".composer-queue").evaluate((e) => e.scrollWidth <= e.clientWidth),
     true,
@@ -579,8 +571,9 @@ try {
   console.log(JSON.stringify({ passed, scratch, checks }));
 } catch (error) {
   console.error("renderer errors", errors);
-  console.error(await page?.locator("body").innerText());
-  await shot("failure").catch(() => {});
+  frames.push(
+    ...(await captureSmokeFailure(page, scratch, error)).filter((file) => file.endsWith(".png")),
+  );
   throw error;
 } finally {
   await quit();

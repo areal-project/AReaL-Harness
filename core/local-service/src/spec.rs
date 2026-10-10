@@ -215,7 +215,7 @@ impl LaunchSpec {
         };
         let config = areal_config::load_management_config(&inputs)?;
         config.credential(&inputs)?;
-        let root = storage::canonical_pending(&config.home)?;
+        let root = crate::home()?;
         let workspace_key = storage::digest(workspace.as_os_str().as_encoded_bytes());
         let mapping = root
             .join("workspaces")

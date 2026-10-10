@@ -41,6 +41,8 @@ GUI 版本由 `clients/gui/package.json` 和 `clients/gui/app/package.json` 共�
 
 正式 GUI 包内写入 `areal-update.json`，更新源固定为 `https://github.com/areal-project/AReaL-Harness/releases/download/gui-update-channel/`。`gui-update-channel` 是仅承载当前 `latest-mac.yml` 的预发布频道；清单指向不可变 `gui-v<版本>` Release 中的 ZIP，并包含大小及 SHA-512。仅接受同仓库、同版本的附件地址。本地 ad-hoc 包没有更新配置。
 
+macOS `dir` 目标不会自动生成原生更新配置。正式打包在签名前写入 `app-update.yml`，沿用同一产品更新源和固定下载缓存名，并校验包内配置；仍禁止 builder 自动上传。仅能发现新版本不证明能下载。侧栏更新按钮显示下载进度，失败时直接显示原因并允许重试。
+
 在干净、已合并的提交上执行：
 
 ```sh
@@ -52,8 +54,10 @@ pnpm --dir clients/gui run sign:mac --app "/absolute/new-package/package/mac-arm
 node clients/gui/scripts/release-assets.mjs /absolute/new-signed-directory /absolute/new-assets
 ```
 
-签名脚本先签 Core 可执行文件并更新完整性摘要，再签 Electron 应用；Apple Accepted 回执、stapler、Gatekeeper、签名后隔离 GUI/Core/Runtime smoke 和只读 DMG 内签名验证均通过才完成。Apple 仍在处理时退出 2，使用同脚本的 `--resume --output` 恢复；不可修改已签名应用。
+签名脚本先签 Core 可执行文件并更新完整性摘要，再签 Electron 应用；Apple Accepted 回执、stapler、Gatekeeper、签名后隔离 GUI/Core/Runtime smoke、模型配置与 Composer 专项以及只读 DMG 内签名验证均通过才完成。`notarization.json` 与脱敏 `release.json` 记录 `packagedModelSelection: "passed"`；导出脚本拒绝没有该项验收的旧候选，需要使用当前签名脚本生成新候选。Apple 仍在处理时退出 2，使用同脚本的 `--resume --output` 恢复；不可修改已签名应用。
 
 在固定提交创建 `gui-v<版本>` 标签，以 draft 上传 ZIP、DMG、`latest-mac.yml`、脱敏 `release.json` 与 `SHA256SUMS`；回读摘要后公开，保持 `--latest=false`。先确认版本附件可下载，再更新 `gui-update-channel` 的清单；首次创建该频道时使用 prerelease。公开后核对完整字节、HTTP Range、清单大小及 SHA-512。版本附件不可覆盖；频道清单按已验收版本推进。此流程不发布 CLI 包，也不更新 Homebrew tap。
 
 GUI 只支持 macOS arm64 更新，检查和下载由 Electron 持有，后台任务空闲并完成原生校验后才关闭 Core 并安装。公开附件与包内 smoke 不证明既有安装已经完成自动替换；旧安装到新版本的实际升级需要单独验收。其他仓库或旧测试频道的客户端不会自动迁移到本频道，需要手动安装首个正式 GUI 包。
+
+`pnpm --dir clients/gui run test:update` 通过真实 Electron preload/IPC 验证下载错误可见与重试进度。设置 `AREAL_GUI_EXECUTABLE` 为候选包入口，并设置 `AREAL_GUI_UPDATE_BASELINE` 为较旧已签名 GUI 的入口，可额外验证候选包的原生配置、公开 ZIP 下载与 SHA-512 校验、Squirrel 原生准备和安全停止 Core。脚本只启动旧基线的隔离副本，借用候选配置，不修改签名资源；截获最终安装调用后退出，核对 Squirrel 自动替换的副本版本，不触碰原基线或用户安装。证据目录由脚本输出。

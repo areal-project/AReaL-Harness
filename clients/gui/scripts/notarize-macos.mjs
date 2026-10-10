@@ -108,6 +108,8 @@ function summary() {
     output,
     submissions: state.notarization,
     artifacts: state.artifacts,
+    packagedGui: state.packagedGui,
+    packagedModelSelection: state.packagedModelSelection,
   };
 }
 function assertApp() {
@@ -421,6 +423,10 @@ async function main() {
       env: { ...process.env, AREAL_GUI_EXECUTABLE: join(app, "Contents/MacOS/AReaL Harness GUI") },
     });
     state.packagedGui = "passed";
+    run(process.execPath, [join(desktop, "scripts/model-selection-smoke.mjs")], {
+      env: { ...process.env, AREAL_GUI_EXECUTABLE: join(app, "Contents/MacOS/AReaL Harness GUI") },
+    });
+    state.packagedModelSelection = "passed";
     // These paths belong to this locked run and may contain interrupted output.
     for (const path of [zip, dmg, join(output, "dmg-root")])
       rmSync(path, { recursive: true, force: true });
