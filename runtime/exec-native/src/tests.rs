@@ -430,6 +430,21 @@ async fn public_inputs_block_mutation_and_ancestor_replacement_in_full_access() 
         backend.shutdown().await.unwrap();
         assert_eq!(std::fs::read(public.join("task")).unwrap(), b"original");
     }
+    // 收窄到可写工作区后，中间父目录仍须固定，不能通过重命名替换输入路径。
+    let backend = NativeBackend::launch_with_profile(SandboxProfile::FullAccess)
+        .await
+        .unwrap();
+    let mut request = execution(&root, "mv scratch moved");
+    request.read_only_paths = vec![public.clone()];
+    let mut rx = backend.start(request).await.unwrap();
+    let (_, status) = collect(&mut rx, &backend).await;
+    assert_ne!(
+        status,
+        Some(0),
+        "restricted scope renamed the input ancestor"
+    );
+    backend.shutdown().await.unwrap();
+    assert_eq!(std::fs::read(public.join("task")).unwrap(), b"original");
     let nested = public.join("nested");
     std::fs::create_dir(&nested).unwrap();
     std::fs::write(nested.join("task"), "nested-original").unwrap();
