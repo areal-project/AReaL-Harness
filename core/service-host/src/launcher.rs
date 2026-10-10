@@ -26,6 +26,8 @@ struct Args {
     #[arg(long)]
     scratch: Option<PathBuf>,
     #[arg(long)]
+    read_only_path: Vec<PathBuf>,
+    #[arg(long)]
     allow_write: bool,
     #[arg(long)]
     task_credential_command: Vec<PathBuf>,
@@ -117,6 +119,8 @@ struct Args {
     goal_token_budget: Option<u64>,
     #[arg(long)]
     input_file: Option<PathBuf>,
+    #[arg(long, requires = "input_file")]
+    input_error_file: Option<PathBuf>,
     #[arg(long)]
     theme: Option<String>,
     #[arg(long)]
@@ -592,6 +596,9 @@ async fn launch(
     for path in &args.task_credential_command {
         runtime_command.arg("--task-credential-command").arg(path);
     }
+    for path in &args.read_only_path {
+        runtime_command.arg("--read-only-path").arg(path);
+    }
     for (flag, enabled) in [
         ("--allow-network", args.allow_network),
         ("--allow-concurrent-writes", args.allow_concurrent_writes),
@@ -808,6 +815,11 @@ async fn supervise(
         );
         push_option(&mut command, "--tui-config", args.tui_config.as_ref());
         push_option(&mut command, "--input-file", args.input_file.as_ref());
+        push_option(
+            &mut command,
+            "--input-error-file",
+            args.input_error_file.as_ref(),
+        );
         for (flag, value) in [
             ("--no-logo", args.no_logo),
             ("--ascii", args.ascii),

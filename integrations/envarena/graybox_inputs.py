@@ -10,7 +10,11 @@ from pathlib import Path
 
 
 def sha(p):
-    return hashlib.sha256(p.read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    with p.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 class PublicInputError(RuntimeError):

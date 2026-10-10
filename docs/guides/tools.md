@@ -2,17 +2,17 @@
 
 # 工具与 hooks
 
-Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后端绑定。输入与输出由 Core 校验；本地执行交给 Runtime。完整模型工具 schema 位于 [tools.rs](../../core/engine/src/tools.rs)。
+Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后端绑定。输入与输出由 Core 校验；本地执行交给 Runtime。完整内置工具参数契约位于 [tools.rs](../../core/engine/src/tools.rs)，模型投影位于[注册表](../../core/engine/src/tools/registry.rs)。
 
 本地默认 YOLO；文件工具与命令 cwd 接受工作区外绝对路径，Core 规范化为 `workspace://host`，Runtime full-access 才允许。相对路径仍从工作区解析，argv 中使用普通文件路径。ASK_PERMISSIONS 在执行前审批实际参数，见[权限配置](configuration.md#permissions)。launcher 自动提供每 Thread scratch；隔离 Workgroup 使用其工作区内的私有 `.scratch/agent-<threadId>`，其 Scope 边界继续有效。
 
-`run_command` 的 `oneOf` 使用两个完整对象分支，分别声明 `command` 或 `argv` 入口及公共选项，以兼容要求完整分支的模型端点；两个分支同步包含 Runtime 的期限上限。调用参数不变，Core 仍拒绝同时提供或同时省略两个入口。
+内置 `run_command` 向模型提供普通 object schema，描述中要求 `command` 或 `argv` 二选一，避免部分模型端点拒绝顶层 `oneOf`。Core 的执行校验仍保留完整 `oneOf` 契约，拒绝同时提供或同时省略两个入口；模型投影和执行校验均包含 Runtime 的期限上限。该投影只适用于内置命令工具，不修改外部工具的 schema。
 
 | 工具 | 关键参数与边界 |
 |---|---|
 | `read_file` | `path,offset?=1,limit?=120`；UTF-8 行、行号、nextLine/eof、完整摘要与 fileVersion；最多 1000 行、约 14 KiB |
 | `search_files` | `pattern,path?=".",glob?,context?=2,limit?=50`；rg 正则，context ≤10、limit ≤100；遵循 gitignore，不跟随符号链接 |
-| `image_read` | `path,maxDimension?=2048,crop?`；PNG/JPEG/WebP，最多 8 MiB/32 MP；仅缩小，返回真实 Core Blob 图像 |
+| `image_read` | `path,maxDimension?=2048,crop?,frameIndex?/timeMs?`；PNG/JPEG/WebP/GIF，最多 8 MiB/32 MP；仅缩小，返回真实 Core Blob 图像 |
 | `fs_read/list/stat` | 相对路径或 workspace URI；read offset 默认 0、maxBytes 默认/上限 8192，返回完整摘要与版本；list 默认 limit=100、最多 256 |
 | `fs_create` | `path,text`，只创建不存在的文件 |
 | `fs_write` | `path,text,fileVersion?/expectedSha256?`；省略版本使用本 Turn 最近观察，未观察时仅新建 |
@@ -27,6 +27,10 @@ Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后�
 文件最大 8 MiB，单次写/patch 64 KiB，另受每个调用参数 64 KiB 预算限制。显式 fileVersion 和 expectedSha256 互斥；SHA 为 null 表示仅新建。成功编辑返回新版本与规范路径，shell/外部编辑不自动刷新观察，CAS 冲突后需重新读取。行过长或遇到非 UTF-8 二进制内容时使用 fs_read；PNG/JPEG/WebP 图像使用 image_read。read 通过 Python、search 通过内置 Rust 搜索助手在同一 Scope 中执行、最长 15 秒；Linux 从可信宿主 PATH 查找并解析可执行 Python 3，macOS 使用受支持的系统 Python；没有解释器时仅 read_file 不可用，启动服务不受影响。受限 Scope 仍要求解释器位于 Runtime 允许的系统路径中，不自动扩大沙箱权限。搜索库编译进 Runtime 文件助手，使用 Runtime 提供的助手绝对路径，不读取宿主 rg 配置或工作区外 ignore。
 
 完整响应中的调用依次执行；每响应默认 128 次资源保护与显式 Turn 剩余预算取较小值。两种协议均有 4 MiB 工具缓冲；编号非法或超限时，该响应的所有调用都不执行。文本结果页仍最多 16 KiB。`remainingToolCalls` 在无累计预算时为 null，否则为整数，压缩不重置计数；有限剩余额度 ≤32 时提示收尾。`max_output_bytes` 默认无限，显式有限预算不足以执行下一工具时保留已确认结果并要求未完成交接。独立的 `max_response_bytes` 默认限制单响应 4 MiB，包含推理/provider context/媒体。已知参数与工具失败返回模型处理，UNKNOWN 停止执行。
+
+`image_read` 也支持 GIF：省略 `frameIndex` / `timeMs` 时，确定性抽取首、中、尾帧并按动画顺序返回；这不是全动画覆盖。指定零基 `frameIndex` 或 `timeMs` 可查看被略过的瞬间，两者互斥。解码正确合成 disposal，报告帧数、总时长、帧起始时间与持续时间。时间线扫描只读取最多 4096 帧的元数据；实际解码截至最后所选帧，按帧矩形累计最多 1 Gi 像素，避免为每帧重复物化完整画布。GIF 画布最多 16 MP，四个有界缓冲共用 256 MiB 工作预算；超限返回可恢复的工具错误，早期帧可独立读取。每个 PNG 视图最多 1 MiB，必要时继续等比缩小，返回原始/实际尺寸、原始 SHA、裁剪区域、派生 Blob 与所用策略；原图不修改，细节可重新裁剪读取。
+
+原生文件源上限仍为 8 MiB；更大文本应使用命令工具流式筛选并限制输出。按需加载不会消除历史累积，最终请求另受 `model.max_request_bytes` 约束，见[配置](configuration.md)。
 
 `verify_command` 将完整输出（最多 64 MiB）及 receipt 写入 scratch/verification，记录退出状态、日志与执行前后源码指纹。指纹覆盖 Git 跟踪和未忽略文件，非 Git 目录使用排除依赖/构建/缓存的扫描；源码变化使验证过期。receipt 位于任务可写目录，不是对恶意任务的认证。收尾时未结束的验证进程需要续读终态或显式终止；普通后台 run_command 不受此约束，也不会唤醒已结束 Turn。
 

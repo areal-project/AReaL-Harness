@@ -22,6 +22,15 @@ impl Supervisor {
                     Error::new(ErrorCode::Unsupported, "file helper is not configured")
                 })?;
                 let path = self.workspace.file_path(request.command.path())?;
+                if request.command.writes()
+                    && self
+                        .config
+                        .read_only_paths
+                        .iter()
+                        .any(|root| path.starts_with(root) || root.starts_with(&path))
+                {
+                    return Err(denied("public inputs are read-only"));
+                }
                 let roots = if request.command.writes() {
                     &scope.writes
                 } else {

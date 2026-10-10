@@ -39,7 +39,8 @@ input 为有序 text/image/audio/file 等内容，UTF-8 文本合计最多 1 MiB
 | `LLM_RESPONSE_TIMEOUT` | 模型请求或响应流超时，`class=timeout`；网络重试策略保持原样 |
 | `AGENT_MAX_TURNS_EXCEEDED` | 配置的 `maxModelRounds` 已耗尽，或收尾轮仍请求工具；`class=agent`、`source=core_model_round_budget`，details 包含轮数和上限；正常收尾不算失败。未配置上限时不启用此限制 |
 | `AGENT_RUN_TIMEOUT` | 显式 Goal 或研究 worker 时间预算到期，`class=agent` |
-| `LLM_RESPONSE_FAILED` | 其他已识别模型故障，具体原因由 details 表达；413 为 `request_body_too_large`，非法 tool index 保留 `invalid_tool_call_index`，两者不归为 context overflow 或 invalid tool JSON |
+| `LLM_RESPONSE_FAILED` | 其他已识别模型故障，具体原因由 details 表达；非法 tool index 保留 `invalid_tool_call_index`，不归为 context overflow 或 invalid tool JSON |
+| `MODEL_REQUEST_TOO_LARGE` | 实际请求字节限额；`core_request_budget` 在发送前拒绝，`provider_http` 为已发送的 HTTP 413。本地拒绝的 details 保留阶段、字节/下界、上限与 requestSent；供应商 413 保留 HTTP 状态与已发送标记 |
 | `HARNESS_INTERNAL_ERROR` | 未分类 Core 错误、持久化失败或恢复到 UNKNOWN 工具结果，`class=infrastructure` |
 
 Provider HTTP 错误体最多读取 64 KiB、等待 2 秒，仅保留白名单 code/type/reason；原始响应体、Provider message、鉴权信息不写入 outcome。HTTP 状态码保留在 `details.httpStatus`。错误分类不启用重试、不将失败转换为成功、不自动续轮或评分；未识别的 code 应保留为未知原因。
@@ -50,7 +51,7 @@ EnvArena [runner](../../integrations/envarena/runner.py) 将 Core outcome 复制
 
 runner 的 summary 和 stdout 同时保留 `GAMEAGENT_OUTCOME_CODE=... GAMEAGENT_OUTCOME_CLASS=...`，兼容 AReaL 已有的 marker fallback；该名称是历史消费协议，不表示底层运行 GameAgent。平台若截断或丢弃失败 summary/log，仍需从结果制品读取 raw.outcome，不能保证仅凭 Task 顶层 raw 即可获取。已识别的模型 code 复用 AReaL 统计白名单，新增基础设施 code 在未更新的消费端归为 OTHER。
 
-`integrations/envarena/runner.py`、`outcomes.py`、`graybox_inputs.py` 和 `graybox_collect.py` 是原生发布包的覆盖文件（runner.py 在包内名为 runner）；其余 launcher、模型设置和资源沿用匹配的发布包。必须用同次源码重新构建目标 Linux 原生二进制，不能只替换 Python 就宣称支持 Core outcome。部署需要新的不可变 Harness 版本；本地测试不表示已经上线。
+`integrations/envarena/runner.py`、`outcomes.py`、`public_inputs.py`、`graybox_inputs.py` 和 `graybox_collect.py` 是原生发布包的覆盖文件（runner.py 在包内名为 runner）；其余 launcher、模型设置和资源沿用匹配的发布包。必须用同次源码重新构建目标 Linux 原生二进制，不能只替换 Python 就宣称支持 Core outcome。部署需要新的不可变 Harness 版本；本地测试不表示已经上线。
 
 <a id="agent-message-phase"></a>
 ### Agent 消息阶段
@@ -325,5 +326,7 @@ checkpoint 恢复最多保留 8 组接口导向文件片段，序列化内容总
 嵌入式 Rust 宿主显式构造 NativeFactory/NativeExecutor 时需提供 `worker_limits: Limits`，把累计预算和上下文策略传给 worker Engine。NativeExecutor::new 提供预算无限的默认值；单请求工具保护仍由 tool_call_limits 指定。
 
 `ModelCapabilities` 和 `ModelOptions` 增加可选窗口/输出元数据；自定义 Rust 结构体字面量需补齐新字段或使用默认值。客户端协议中的 `ModelParameters.contextWindowTokens` 为新增可选字段。
+
+CLI 保持 `--input-file` 的 2 MiB 上限，以有界读取在 JSON 解析前校验；可用 `--input-error-file` 写入不含正文的结构化拒绝 `INPUT_ENVELOPE_TOO_LARGE`。Arena Runner 将该原因及公开输入准备失败 `PUBLIC_INPUT_NOT_ACCESSIBLE` 投影到既有 outcome，不再统一报告缺少 Core Turn。媒体工具失败仍是可恢复工具结果，解码失败 details.reason 为 `MEDIA_PREPROCESS_FAILED`，不伪造一次终止 Turn。
 
 项目指令由 Engine 在每个 Turn 首次模型请求前加载，并保存为 `instructionSnapshot`。按工作区根到 Thread `cwd` 的目录链读取 `AGENTS.md`，来源路径随正文写入快照；不新增 API 字段，已有仅根文件项目保持兼容。正文合计超过 32 KiB、无效 UTF-8、符号链接或超过 64 层的目录链使 Turn 在请求模型前失败，不截断规则。作用域、优先级与 cwd 路径别名见[客户端指南](../guides/clients.md#历史恢复与观测)。

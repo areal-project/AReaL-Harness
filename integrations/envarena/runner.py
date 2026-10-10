@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """EnvArena adapter for the native TUI/Core/Runtime; owns no model loop."""
 
-import hashlib
-import base64
 import json
 import os
 from pathlib import Path
@@ -13,6 +11,7 @@ import sys
 import tempfile
 import time
 from outcomes import finalize
+import public_inputs
 
 
 def write_json(path, value):
@@ -20,40 +19,6 @@ def write_json(path, value):
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2))
     temporary.replace(path)
-
-
-def prepare_input(query, assets=Path("/problem_assets")):
-    parts = [{"type": "text", "text": query}]
-    images = []
-    mime_types = {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".webp": "image/webp",
-        ".gif": "image/gif",
-    }
-    if assets.is_dir():
-        for path in sorted(assets.iterdir()):
-            if path.is_file() and path.suffix.lower() in mime_types:
-                data = path.read_bytes()
-                mime = mime_types[path.suffix.lower()]
-                images.append(
-                    {
-                        "path": str(path),
-                        "sha256": hashlib.sha256(data).hexdigest(),
-                        "bytes": len(data),
-                    }
-                )
-                parts.extend(
-                    [
-                        {"type": "text", "text": "Problem image: " + path.name},
-                        {
-                            "type": "image",
-                            "url": f"data:{mime};base64," + base64.b64encode(data).decode("ascii"),
-                        },
-                    ]
-                )
-    return parts, images
 
 
 def find_node(nvm_root=Path("/usr/local/nvm")):
@@ -200,13 +165,30 @@ def project(data, trajectory, seen):
     return threads
 
 
-def make_config(model, endpoint, timeout, settings=None):
+def model_parameters(settings):
+    parameters = {
+        "reasoning_effort": settings.get("reasoning_effort", "medium"),
+        "temperature": settings.get("temperature", 1),
+        "max_output_tokens": settings.get("max_output_tokens", 16384),
+    }
+    for name in parameters:
+        value = os.environ.get("AREAL_ARENA_" + name.upper(), parameters[name])
+        # null 表示省略可选参数；reasoning_effort 的 none 仍是有效模型取值。
+        if name != "max_output_tokens" and isinstance(value, str) and value.strip() == "null":
+            value = None
+        parameters[name] = value
+    if parameters["temperature"] is not None:
+        parameters["temperature"] = float(parameters["temperature"])
+    parameters["max_output_tokens"] = int(parameters["max_output_tokens"])
+    return parameters
+
+
+def make_config(model, endpoint, timeout, settings=None, parameters=None):
     settings = settings or {}
+    parameters = model_parameters(settings) if parameters is None else parameters
     q = json.dumps
-    effort = os.environ.get(
-        "AREAL_ARENA_REASONING_EFFORT", settings.get("reasoning_effort", "medium")
-    )
-    temperature = os.environ.get("AREAL_ARENA_TEMPERATURE", settings.get("temperature", 1))
+    effort = parameters["reasoning_effort"]
+    temperature = parameters["temperature"]
     sampling = (f"reasoning_effort={q(effort)}\n" if effort is not None else "") + (
         f"temperature={float(temperature)}\n" if temperature is not None else ""
     )
@@ -214,8 +196,9 @@ def make_config(model, endpoint, timeout, settings=None):
 [model]
 provider="arena"
 name={q(model)}
-{sampling}max_output_tokens={int(os.environ.get("AREAL_ARENA_MAX_OUTPUT_TOKENS", settings.get("max_output_tokens", 16384)))}
+{sampling}max_output_tokens={parameters["max_output_tokens"]}
 max_retries={int(settings.get("http_retries", 2))}
+max_request_bytes={int(settings.get("max_request_bytes", 16777216))}
 [model.providers.arena]
 protocol="chat-completions"
 endpoint={q(endpoint)}
@@ -227,7 +210,7 @@ max_history_bytes=134217728
 max_output_bytes=16777216
 max_tool_calls=512
 context_window_bytes={int(settings.get("context_window_bytes", 196608))}
-context_compaction_enabled=false
+context_compaction_enabled={str(bool(settings.get("context_compaction_enabled", False))).lower()}
 context_recent_bytes={int(settings.get("context_recent_bytes", 65536))}
 context_window_tokens={int(settings.get("context_window_tokens", 0))}
 context_output_reserve_tokens={int(settings.get("context_output_reserve_tokens", 0))}
@@ -347,19 +330,13 @@ def main():
                 context_output_reserve_tokens=73728,
             )
         profile = settings.get("task_profile", "generic")
-        query = Path(os.environ["ARENA_QUERY_PATH"]).read_text()
-        inputs, images = prepare_input(query)
+        inputs = [{"type": "text", "text": ""}]
+        images = []
         prompt_path = os.environ.get("ARENA_SYSTEM_PROMPT_PATH")
-        if prompt_path and Path(prompt_path).is_file():
+        # 原题评测只加入输入读取指引，避免将输入修复与任务提示调优混为一项实验。
+        if profile != "original":
             inputs[0]["text"] += (
-                "\n\nTask rules from the frozen Harness:\n" + Path(prompt_path).read_text()
-            )
-        inputs[0]["text"] += (
-            "\n\nThis is an implementation task: inspect the task and repository, make the required focused source changes, and verify them. Finish pending tool work before reporting completion. Do not search for upstream fixes or claim unperformed tests. Inspect the final diff."
-        )
-        if images:
-            inputs[0]["text"] += (
-                "\nProblem images are attached directly; /problem_assets is outside workspace tools."
+                "\n\nThis is an implementation task: inspect the task and repository, make the required focused source changes, and verify them. Finish pending tool work before reporting completion. Do not search for upstream fixes or claim unperformed tests. Inspect the final diff."
             )
         if profile == "swe":
             inputs[0]["text"] += (
@@ -410,6 +387,22 @@ def main():
             config = state / "config.toml"
             scratch = state / "task-scratch"
             scratch.mkdir()
+            public = scratch / "public-inputs"
+            try:
+                receipt, attachments, baseline = public_inputs.prepare(
+                    Path(os.environ["ARENA_QUERY_PATH"]),
+                    public,
+                    rules_path=Path(prompt_path) if prompt_path else None,
+                )
+            except (OSError, public_inputs.PublicInputError) as error:
+                raise public_inputs.InputDeliveryError(
+                    "PUBLIC_INPUT_NOT_ACCESSIBLE", str(error)
+                ) from error
+            inputs[0]["text"] = (
+                public_inputs.bootstrap(receipt, public)[0]["text"] + inputs[0]["text"]
+            )
+            images = [r for r in attachments if r["mime_hint"].startswith("image/")]
+            write_json(output / "input-delivery.json", receipt)
             delivery_checks = bool(settings.get("delivery_checks", False))
             delivery = None
             piggy = None
@@ -417,9 +410,10 @@ def main():
                 import delivery as delivery_module
 
                 verification = delivery_module.load_verification(root)
-            inputs[0]["text"] += (
-                f"\nShared temporary files and verification logs belong in {scratch} (workspace://scratch). TMPDIR points there. /tmp itself is private to each command. Use verify_command for relevant test/build checks; it writes a source-bound exit receipt. After edits, rerun the relevant check and wait for exit."
-            )
+            if profile != "original":
+                inputs[0]["text"] += (
+                    f"\nShared temporary files and verification logs belong in {scratch} (workspace://scratch). TMPDIR points there. /tmp itself is private to each command. Use verify_command for relevant test/build checks; it writes a source-bound exit receipt. After edits, rerun the relevant check and wait for exit."
+                )
             if profile == "piggy":
                 import piggy as piggy_module
 
@@ -434,16 +428,18 @@ def main():
                 inputs[0]["text"] += (
                     "\nWhen the implementation and verification are finished, put IMPLEMENTATION_COMPLETE on its own line in your final response, followed by the change and test summary. If no source change is necessary, put IMPLEMENTATION_NO_CHANGE with verification evidence. If you cannot finish, put IMPLEMENTATION_BLOCKED on its own line and give the concrete remaining blocker. Do not emit either marker while there are still actions you intend to take; carry out those actions with tools first."
                 )
-            config.write_text(make_config(model, endpoint, timeout, settings))
+            parameters = model_parameters(settings)
+            config.write_text(make_config(model, endpoint, timeout, settings, parameters))
             # This contains only the credential environment variable's name.
             # Preserve the exact adapter settings used by this attempt.
             shutil.copy2(config, output / "core-config.toml")
             input_file = state / "input.json"
+            receipt["bootstrap_bytes"] = public_inputs.validate_envelope(inputs)
+            write_json(output / "input-delivery.json", receipt)
             write_json(input_file, inputs)
             write_json(output / "input-media.json", images)
             write_json(output / "input.json", inputs)
-            if images:
-                shutil.copytree("/problem_assets", output / "problem-assets", dirs_exist_ok=True)
+            shutil.copytree(public, output / "public-inputs", dirs_exist_ok=True)
             environment = {
                 k: v
                 for k, v in os.environ.items()
@@ -466,6 +462,8 @@ def main():
                 workspace,
                 "--scratch",
                 str(scratch),
+                "--read-only-path",
+                str(public),
                 "--allow-write",
                 "--allow-network",
                 "--allow-concurrent-writes",
@@ -475,9 +473,20 @@ def main():
                 "600000",
                 "--command-output-bytes",
                 "67108864",
+                "--input-error-file",
+                str(output / "input-error.json"),
                 "--input-file",
                 str(input_file),
             ]
+            if Path("/problem_assets").is_dir():
+                index = command.index("--input-error-file")
+                command[index:index] = ["--read-only-path", "/problem_assets"]
+            if graybox_state:
+                index = command.index("--input-error-file")
+                command[index:index] = [
+                    "--read-only-path",
+                    str((Path(workspace) / "public").resolve()),
+                ]
             seen = set()
             continuations = 0
             max_continuations = int(settings.get("max_no_change_continuations", 0))
@@ -493,11 +502,7 @@ def main():
                             "implementation": "rust-core-runtime",
                             "protocol": "chat-completions",
                             "system_prompt": (root / "system-prompt.md").read_text(),
-                            "parameters": {
-                                "temperature": settings.get("temperature", 1),
-                                "reasoning_effort": settings.get("reasoning_effort", "medium"),
-                                "max_output_tokens": settings.get("max_output_tokens", 16384),
-                            },
+                            "parameters": parameters,
                             "task_profile": profile,
                             "images": images,
                             "timeout_seconds": timeout,
@@ -508,6 +513,7 @@ def main():
                 )
                 trajectory.flush()
                 while True:
+                    (output / "input-error.json").unlink(missing_ok=True)
                     process = subprocess.Popen(command, stdout=log, stderr=log, env=environment)
                     try:
                         while process.poll() is None:
@@ -584,7 +590,7 @@ def main():
                     if require_completion_marker:
                         feedback += " Finish with IMPLEMENTATION_COMPLETE on its own line and the actual change/test summary, or IMPLEMENTATION_BLOCKED on its own line with the concrete blocker."
                     command = (
-                        command[: command.index("--input-file")]
+                        command[: command.index("--input-error-file")]
                         if "--input-file" in command
                         else command[: command.index("--resume")]
                     )
@@ -609,6 +615,9 @@ def main():
                         + "\n"
                     )
                     trajectory.flush()
+                public_inputs.verify(public, baseline)
+                receipt["integrity"] = "verified"
+                write_json(output / "input-delivery.json", receipt)
                 if piggy and success:
                     if not delivery or delivery["status"] != "complete":
                         raise RuntimeError("Piggy delivery incomplete: " + str(delivery))
@@ -631,7 +640,7 @@ def main():
                     scratch,
                     output / "scratch",
                     dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns("skills"),
+                    ignore=shutil.ignore_patterns("skills", "public-inputs"),
                 )
                 usage = {
                     key: sum((t.get("usage") or {}).get(key, 0) for t in turns)
@@ -648,10 +657,20 @@ def main():
                     "duration_ms": int((time.monotonic() - started) * 1000),
                     "delivery": delivery,
                 }
+                if not turns and (output / "input-error.json").is_file():
+                    result["launch_outcome"] = json.loads((output / "input-error.json").read_text())
                 if not success:
-                    result["error"] = [
-                        t.get("error") for t in turns
-                    ] or "No completed Core turn; see tui.log"
+                    if result.get("launch_outcome"):
+                        diagnostic = result["launch_outcome"]
+                        details = diagnostic["details"]
+                        result["error"] = (
+                            f"{diagnostic['code']}: {details['actualBytes']} bytes exceeds "
+                            f"{details['maxBytes']} byte input limit"
+                        )
+                    else:
+                        result["error"] = [
+                            t.get("error") for t in turns
+                        ] or "No completed Core turn; see tui.log"
                 if graybox:
                     from graybox_collect import collect
 
@@ -687,6 +706,8 @@ def main():
         adapter_error = True
         result["status"] = "ERROR"
         result["error"] = str(error)
+        if isinstance(error, public_inputs.InputDeliveryError):
+            result["adapter_outcome"] = error.outcome
         finalize(result, threads, timed_out=timed_out, interrupted=stopping, adapter_error=True)
         print(str(error), file=sys.stderr, flush=True)
         with trajectory_path.open("a") as trajectory:

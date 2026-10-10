@@ -108,6 +108,25 @@ class OutcomesTest(unittest.TestCase):
         )
         self.assertEqual(extract({"error": result["summary"]}), "LLM_CONTEXT_WINDOW_EXCEEDED")
 
+    def test_input_diagnostics_keep_outcome_schema(self):
+        from public_inputs import InputDeliveryError
+
+        error = InputDeliveryError("PUBLIC_INPUT_NOT_ACCESSIBLE", "missing public source")
+        result = {"status": "ERROR", "adapter_outcome": error.outcome}
+        finalize(result, adapter_error=True)
+        self.assertEqual(result["raw"]["outcome"]["schema"], "areal.envarena-outcome.v1")
+        self.assertEqual(result["raw"]["outcome"]["code"], "PUBLIC_INPUT_NOT_ACCESSIBLE")
+        result = {
+            "status": "ERROR",
+            "launch_outcome": {
+                "code": "INPUT_ENVELOPE_TOO_LARGE",
+                "class": "infrastructure",
+                "source": "cli_input",
+            },
+        }
+        finalize(result)
+        self.assertEqual(result["raw"]["outcome"]["code"], "INPUT_ENVELOPE_TOO_LARGE")
+
 
 if __name__ == "__main__":
     unittest.main()

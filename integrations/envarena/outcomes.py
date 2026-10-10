@@ -35,7 +35,9 @@ def finalize(result, threads=(), *, timed_out=False, interrupted=False, adapter_
     if result["status"] == "OK":
         outcome = runner_outcome("AGENT_COMPLETED", "runner", "completed", "success")
     elif adapter_error:
-        outcome = runner_outcome("HARNESS_INTERNAL_ERROR", "runner", "adapter_error")
+        outcome = result.get("adapter_outcome") or runner_outcome(
+            "HARNESS_INTERNAL_ERROR", "runner", "adapter_error"
+        )
     elif timed_out:
         outcome = runner_outcome(
             "AGENT_RUN_TIMEOUT", "runner_deadline", "process_deadline", "agent"
@@ -43,9 +45,12 @@ def finalize(result, threads=(), *, timed_out=False, interrupted=False, adapter_
     elif interrupted:
         outcome = runner_outcome("HARNESS_INTERRUPTED", "runner_signal", "external_signal")
     else:
-        outcome = core_outcome(threads) or runner_outcome(
-            "HARNESS_INTERNAL_ERROR", "runner", "missing_terminal_outcome"
+        outcome = (
+            core_outcome(threads)
+            or result.get("launch_outcome")
+            or runner_outcome("HARNESS_INTERNAL_ERROR", "runner", "missing_terminal_outcome")
         )
+    outcome = {**outcome, "schema": SCHEMA}
     raw = {**result.get("raw", {}), "outcome": outcome}
     if adapter_error:
         # 收集/适配失败仍作为主因；同时保存模型原因，不能因后续错误抹掉证据。

@@ -340,6 +340,10 @@ try {
   await resources.getByRole("heading", { name: "后台进程", exact: false }).waitFor();
   assert.equal(await resources.getByRole("button", { name: /子对话$/ }).count(), 3);
   assert.equal(await page.locator("[data-testid=chat-view]").evaluate(el => el.getBoundingClientRect().width), mainWidth);
+  // 等待入场缩放结束再检查最终宽度，避免把动画中的 98% 尺寸当成布局回归。
+  await page.locator(".task-resources-popup").evaluate(async el => {
+    await Promise.all(el.getAnimations().map(animation => animation.finished));
+  });
   assert.equal(await page.locator(".task-resources-popup").evaluate(el => el.getBoundingClientRect().width), 332);
   await page.keyboard.press("Escape");
   await resources.waitFor({ state: "hidden" });

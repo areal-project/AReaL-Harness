@@ -18,6 +18,7 @@ fn execution(root: &Path, code: &str) -> Execution {
         env: BTreeMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
         read_roots: vec![root.into()],
         write_roots: vec![root.into()],
+        read_only_paths: Vec::new(),
         scope_access: ScopeAccess::Restricted,
         trusted_executable: None,
         builtin_executables: Vec::new(),
@@ -387,3 +388,94 @@ mod linux_reaping;
 
 #[cfg(target_os = "macos")]
 mod macos_reaping;
+
+#[tokio::test]
+async fn public_inputs_block_mutation_and_ancestor_replacement_in_full_access() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let public = root.join("scratch/public");
+    std::fs::create_dir_all(&public).unwrap();
+    std::fs::write(public.join("task"), "original").unwrap();
+    // 文件故意保持可写，证明不是 chmod 在提供只读保证。
+    let mut mutations: Vec<String> = [
+        "printf changed > scratch/public/task",
+        "rm scratch/public/task",
+        "mv scratch/public scratch/moved",
+        "mv scratch moved",
+        "ln scratch/public/task linked && printf changed > linked",
+        "ln -s scratch/public alias && printf changed > alias/task",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    if cfg!(target_os = "linux") {
+        mutations.push(format!(
+            "printf changed > /proc/1/root{}/task",
+            public.display()
+        ));
+    }
+    for code in mutations {
+        let backend = NativeBackend::launch_with_profile(SandboxProfile::FullAccess)
+            .await
+            .unwrap();
+        let mut request = execution(&root, &code);
+        request.read_roots = vec!["/".into()];
+        request.write_roots = vec!["/".into()];
+        request.read_only_paths = vec![public.clone()];
+        request.scope_access = ScopeAccess::Unrestricted;
+        request.network = areal_runtime_protocol::NetworkRequest::Inherit;
+        let mut rx = backend.start(request).await.unwrap();
+        let (_, status) = collect(&mut rx, &backend).await;
+        assert_ne!(status, Some(0), "mutation succeeded: {code}");
+        backend.shutdown().await.unwrap();
+        assert_eq!(std::fs::read(public.join("task")).unwrap(), b"original");
+    }
+    // 收窄到可写工作区后，中间父目录仍须固定，不能通过重命名替换输入路径。
+    let backend = NativeBackend::launch_with_profile(SandboxProfile::FullAccess)
+        .await
+        .unwrap();
+    let mut request = execution(&root, "mv scratch moved");
+    request.read_only_paths = vec![public.clone()];
+    let mut rx = backend.start(request).await.unwrap();
+    let (_, status) = collect(&mut rx, &backend).await;
+    assert_ne!(
+        status,
+        Some(0),
+        "restricted scope renamed the input ancestor"
+    );
+    backend.shutdown().await.unwrap();
+    assert_eq!(std::fs::read(public.join("task")).unwrap(), b"original");
+    let nested = public.join("nested");
+    std::fs::create_dir(&nested).unwrap();
+    std::fs::write(nested.join("task"), "nested-original").unwrap();
+    let backend = NativeBackend::launch_with_profile(SandboxProfile::FullAccess)
+        .await
+        .unwrap();
+    let mut request = execution(&nested, "printf changed > task");
+    request.read_only_paths = vec![public.clone()];
+    let mut rx = backend.start(request).await.unwrap();
+    let (_, status) = collect(&mut rx, &backend).await;
+    assert_ne!(status, Some(0));
+    assert_eq!(
+        std::fs::read(nested.join("task")).unwrap(),
+        b"nested-original"
+    );
+    backend.shutdown().await.unwrap();
+    let backend = NativeBackend::launch_with_profile(SandboxProfile::FullAccess)
+        .await
+        .unwrap();
+    let mut request = execution(
+        &root,
+        "cat scratch/public/task; printf allowed > scratch/output",
+    );
+    request.read_only_paths = vec![public];
+    let mut rx = backend.start(request).await.unwrap();
+    let (output, status) = collect(&mut rx, &backend).await;
+    assert_eq!(status, Some(0), "{}", String::from_utf8_lossy(&output));
+    assert_eq!(output, b"original");
+    assert_eq!(
+        std::fs::read(root.join("scratch/output")).unwrap(),
+        b"allowed"
+    );
+    backend.shutdown().await.unwrap();
+}

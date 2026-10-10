@@ -33,6 +33,9 @@ struct Args {
     /// Task scratch outside the workspace; exposes workspace://scratch.
     #[arg(long)]
     scratch: Option<PathBuf>,
+    /// 固定保护公开输入目录；full-access 也执行 OS 只读隔离。
+    #[arg(long)]
+    read_only_path: Vec<PathBuf>,
     #[arg(long)]
     task_credential_command: Vec<PathBuf>,
     #[arg(long, default_value_t = 256)]
@@ -76,6 +79,7 @@ async fn main() -> Result<()> {
     anyhow::ensure!(workspace.is_dir(), "workspace must be a directory");
     let mut config = Config::read_only(workspace);
     config.scratch = args.scratch;
+    config.read_only_paths = args.read_only_path;
     config.full_access = matches!(args.sandbox_profile, SandboxProfileArg::FullAccess);
     config.writable = args.allow_write || config.full_access;
     config.max_scopes = args.max_scopes;

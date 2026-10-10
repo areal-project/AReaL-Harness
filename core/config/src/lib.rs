@@ -178,7 +178,13 @@ pub struct SelectedModelConfig {
     pub max_output_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window_tokens: Option<usize>,
+    #[serde(default = "default_request_bytes")]
+    pub max_request_bytes: usize,
     pub max_retries: usize,
+}
+
+fn default_request_bytes() -> usize {
+    16 * 1024 * 1024
 }
 
 fn is_false(value: &bool) -> bool {
@@ -292,7 +298,7 @@ impl ResolvedCoreConfig {
                 "min_p": self.model.min_p,
                 "presence_penalty": self.model.presence_penalty,
                 "repetition_penalty": self.model.repetition_penalty,
-                "max_output_tokens": self.model.max_output_tokens, "context_window_tokens": self.model.context_window_tokens, "max_retries": self.model.max_retries },
+                "max_output_tokens": self.model.max_output_tokens, "context_window_tokens": self.model.context_window_tokens, "max_request_bytes": self.model.max_request_bytes, "max_retries": self.model.max_retries },
             "budget": {"max_history_bytes":self.max_history_bytes,"max_output_bytes":self.max_output_bytes,"max_tool_calls":self.max_tool_calls},
             "resources": {"model_concurrency":self.model_concurrency,"max_threads":self.max_threads,"max_active_turns":self.max_active_turns,"max_children_per_turn":self.max_children_per_turn,"max_agent_depth":self.max_agent_depth,"max_response_tool_calls":self.max_response_tool_calls,"max_response_bytes":self.max_response_bytes,"max_tool_buffer_bytes":self.max_tool_buffer_bytes},
             "network": {"stream_idle_timeout_seconds":self.stream_idle_timeout_seconds,"retry_mode":if self.watchdog_disable {"bounded"} else {"persistent"}},

@@ -93,3 +93,5 @@ list 每页最多 256 项/约 32 KiB，扫描最多 4096 UTF-8 名称；目录�
 错误包括 INVALID_REQUEST、INVALID_ARGUMENT、UNAUTHENTICATED、PERMISSION_DENIED、SCOPE_CLOSED、STALE_HANDLE、NOT_FOUND、CONFLICT、RESOURCE_EXHAUSTED、UNSUPPORTED、UNAVAILABLE、CLEANUP_FAILED。signal 为 POSIX 数字字符串；sandboxDenied=false 不能证明无沙箱拒绝。
 
 内置工具相对 Runtime 可执行文件定位：开发构建在 `target/<profile>/tools/`，发行包在 `libexec/areal/tools/`；与公开的 `bin/areal` 分开。
+
+可信 launcher 和 Runtime daemon 可重复传入 `--read-only-path <规范绝对目录>`，最多 16 个。目录必须严格位于既有可读根内，不增加读取权限；公开请求/子 Scope 不能取消保护。Runtime 拒绝其文件写入并固定目录身份；OS 后端保护子树以及祖先删除/重命名，Linux 使用只读挂载与 seccomp，macOS 使用 Seatbelt deny。Linux 同时固定输入与可写根之间的中间父目录，收窄到可写工作区的 Scope 也不能重命名这些目录；保护不扩大 Scope 的读取范围。`full-access` 有此约束时也执行沙箱，不回退为裸命令。只读输入与其他可写 scratch 文件可共存；候选文件的原有权限/链接限制继续适用。这保护命令及 Runtime 文件操作，不约束可信宿主上的外部修改；结束时仍应校验输入摘要。

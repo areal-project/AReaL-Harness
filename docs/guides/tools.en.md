@@ -2,17 +2,17 @@
 
 # Tools and hooks
 
-Core's registry binds names and JSON Schemas to built-in, command, client, MCP or plugin backends. Core validates inputs and outputs; Runtime handles local execution. Full model-tool schemas are in [tools.rs](../../core/engine/src/tools.rs).
+Core's registry binds names and JSON Schemas to built-in, command, client, MCP or plugin backends. Core validates inputs and outputs; Runtime handles local execution. Full built-in argument contracts are in [tools.rs](../../core/engine/src/tools.rs); model projections are in the [registry](../../core/engine/src/tools/registry.rs).
 
 The Local launch defaults to YOLO. File tools and command cwd accept outside-workspace absolute paths normalized to `workspace://host`, requiring Runtime full-access. Relative paths remain workspace-relative; argv uses ordinary filesystem paths. ASK_PERMISSIONS gates effective arguments before execution; see [permissions](configuration.en.md#permissions). The launcher supplies per-Thread scratch; isolated Workgroups use private `.scratch/agent-<threadId>` within their workspace and retain their Scope boundaries.
 
-`run_command` `oneOf` uses two complete object branches, each defining either `command` or `argv` and the common options, for compatibility with model endpoints that require complete branches. Both branches include the Runtime deadline ceiling. Call parameters are unchanged; Core still rejects supplying both entry points or neither.
+The built-in `run_command` advertises a plain object schema with a description requiring exactly one of `command` or `argv`, because some model endpoints reject top-level `oneOf`. Core retains the full `oneOf` execution contract and rejects both entry points or neither. Both the model projection and execution validation include the Runtime deadline ceiling. This projection applies only to the built-in command tool and does not modify external tool schemas.
 
 | Tool | Key parameters and boundaries |
 |---|---|
 | `read_file` | `path,offset?=1,limit?=120`; UTF-8 lines, line numbers, nextLine/eof, whole-file digest and fileVersion; at most 1000 lines/about 14 KiB |
 | `search_files` | `pattern,path?=".",glob?,context?=2,limit?=50`; rg regex, context ≤10 and limit ≤100; respects gitignore without following symlinks |
-| `image_read` | `path,maxDimension?=2048,crop?`; PNG/JPEG/WebP, up to 8 MiB/32 MP; downscales only and returns actual Core Blob image content |
+| `image_read` | `path,maxDimension?=2048,crop?,frameIndex?/timeMs?`; PNG/JPEG/WebP/GIF, up to 8 MiB/32 MP; downscales only and returns actual Core Blob image content |
 | `fs_read/list/stat` | Relative paths or workspace URIs; read offset defaults to 0, maxBytes defaults/caps at 8192, returning a whole-file digest/version; list defaults to 100, maximum 256 |
 | `fs_create` | `path,text`; create only if absent |
 | `fs_write` | `path,text,fileVersion?/expectedSha256?`; omitted version uses the current Turn's last observation, or create-only if unobserved |
@@ -25,6 +25,10 @@ The Local launch defaults to YOLO. File tools and command cwd accept outside-wor
 | `task_state` | `{pendingAfter?}`; bounded observations of files/processes/children/scratch and summaryThroughItemId, without live probes |
 
 Files are limited to 8 MiB and individual writes/patches to 64 KiB, also constrained by the 64 KiB argument budget per call. Explicit fileVersion and expectedSha256 are mutually exclusive; null SHA means create-only. Successful edits return a new version and normalized path. Shell/external edits do not refresh observations; reread after CAS conflicts. Use fs_read for long lines or non-UTF-8 binary data, and image_read for PNG/JPEG/WebP images. read uses Python and search uses the embedded Rust search helper in the same Scope with a 15-second deadline. Linux resolves executable Python 3 from the trusted host PATH; macOS uses supported system Python. Without one, only read_file is unavailable, not service startup. Restricted Scopes still need an interpreter under a Runtime-allowed system path; permissions are not widened automatically. The embedded search helper uses a Runtime-provided absolute path and ignores host rg configuration and ignore files above the workspace.
+
+`image_read` also supports GIF: without `frameIndex` / `timeMs`, it returns deterministic first/middle/last composited frames in animation order, not complete coverage. Set a zero-based `frameIndex` or `timeMs` to inspect omitted moments; the selectors are mutually exclusive. Disposal is composed correctly, with frame count, total duration, start times and delays reported. Timeline scanning reads metadata for at most 4096 frames. Decoding stops at the last selected frame and permits at most 1 Gi cumulative frame-rectangle pixels, without materializing a full canvas for every frame. GIF canvases are limited to 16 MP, with four bounded buffers sharing a 256 MiB working budget. Over-budget requests return recoverable tool errors; earlier frames can be read independently. Each PNG view is at most 1 MiB, downscaled further if needed. Metadata records original/output dimensions, source SHA, crop, derived Blob and strategy. Originals remain unchanged; crop again for detail.
+
+Native file sources remain limited to 8 MiB. Stream and filter larger text through bounded command output. Lazy loading does not remove history growth; final requests also obey `model.max_request_bytes`, described in [configuration](configuration.en.md).
 
 Calls in a complete response execute in order. The per-response resource cap defaults to 128 and intersects any explicit remaining Turn budget. Both protocols enforce a 4 MiB tool buffer; invalid indices or buffer overflow prevent all calls in that response from executing. Text result pages remain bounded at 16 KiB. `remainingToolCalls` is null without a cumulative budget, otherwise an integer that does not reset at compaction; a finite remaining allowance ≤32 adds handoff guidance. `max_output_bytes` defaults to unlimited; an explicit finite budget preserves confirmed results and requests an incomplete handoff when too little output remains for the next tool. `max_response_bytes` independently limits a single response to 4 MiB, including reasoning/provider context/media. Known parameter/tool failures return to the model; UNKNOWN stops execution.
 

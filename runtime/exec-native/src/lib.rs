@@ -132,7 +132,15 @@ impl Backend for NativeBackend {
     async fn start(&self, mut execution: Execution) -> Result<mpsc::Receiver<Event>> {
         prepare_system_python(&mut execution);
         let mut argv = sandbox::command(&execution, self.profile)?;
-        let filter = sandbox::seccomp(&mut argv, self.profile, execution.network)?;
+        let filter = sandbox::seccomp(
+            &mut argv,
+            if execution.read_only_paths.is_empty() {
+                self.profile
+            } else {
+                SandboxProfile::Native
+            },
+            execution.network,
+        )?;
         // Locally linked Mach-O helpers can be killed by AMFI when their
         // spawning parent is a Rust development binary. A signed system parent
         // launches the unchanged sandbox command. It shares our process group

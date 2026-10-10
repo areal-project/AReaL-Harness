@@ -325,6 +325,7 @@ fn walk(
                 "context_window_tokens"
                     | "max_output_tokens"
                     | "summary_max_output_tokens"
+                    | "max_request_bytes"
                     | "max_retries"
                     | "top_k"
                     | "catalog_version"

@@ -97,6 +97,11 @@ const ENV: &[(&str, &str, &str)] = &[
     ),
     ("AREAL_HARNESS_MODEL_MAX_RETRIES", "", "model.max_retries"),
     (
+        "AREAL_HARNESS_MODEL_MAX_REQUEST_BYTES",
+        "",
+        "model.max_request_bytes",
+    ),
+    (
         "AREAL_HARNESS_WATCHDOG_DISABLE",
         "",
         "limits.watchdog_disable",
@@ -383,6 +388,17 @@ pub(crate) fn valid(field: &str, entry: &Entry) -> Result<()> {
                 return Err(reject("boolean must be 0/1 or false/true"));
             }
         }
+        "max_request_bytes" => {
+            if value
+                .parse::<usize>()
+                .ok()
+                .is_none_or(|v| !(1024..=128 * 1024 * 1024).contains(&v))
+            {
+                return Err(reject(
+                    "request byte budget must be between 1024 and 134217728",
+                ));
+            }
+        }
         "max_retries" | "max_completion_retries" => {
             if !value.bytes().all(|b| b.is_ascii_digit())
                 || value.parse::<usize>().ok().is_none_or(|n| n > 8)
@@ -572,6 +588,7 @@ pub(crate) fn load_mode(
         ("limits.context_recent_tokens", "8192"),
         ("limits.context_mode", "auto"),
         ("model.max_retries", "2"),
+        ("model.max_request_bytes", "16777216"),
         ("model.responses_websocket", "false"),
         ("limits.max_completion_retries", "0"),
         ("limits.watchdog_disable", "false"),
@@ -874,6 +891,7 @@ pub(crate) fn load_mode(
             max_output_tokens: values
                 .get("model.max_output_tokens")
                 .map(|e| e.value.parse().unwrap()),
+            max_request_bytes: values["model.max_request_bytes"].value.parse().unwrap(),
             max_retries: values["model.max_retries"].value.parse().unwrap(),
         },
         model_concurrency: values["limits.model_concurrency"].value.parse().unwrap(),

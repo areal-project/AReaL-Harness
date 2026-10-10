@@ -1,0 +1,15 @@
+{
+  "stream_idle_timeout_seconds": 900,
+  "max_completion_retries": 0,
+  "context_window_bytes": 2097152,
+  "context_compaction_enabled": false,
+  "context_recent_bytes": 131072,
+  "context_window_tokens": 262144,
+  "context_output_reserve_tokens": 73728,
+  "reasoning_effort": "medium",
+  "temperature": 1.0,
+  "max_output_tokens": 65536,
+  "http_retries": 2,
+  "max_request_bytes": 16777216,
+  "task_profile": "original"
+}

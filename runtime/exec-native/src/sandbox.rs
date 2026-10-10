@@ -167,13 +167,18 @@ pub fn command(execution: &Execution, profile: Profile) -> Result<Vec<String>> {
     }
     #[cfg(target_os = "linux")]
     if matches!(profile, Profile::Native | Profile::FullAccess) {
-        if profile == Profile::FullAccess && execution.scope_access == ScopeAccess::Unrestricted {
+        if profile == Profile::FullAccess
+            && execution.scope_access == ScopeAccess::Unrestricted
+            && execution.read_only_paths.is_empty()
+        {
             return Ok(execution.argv.clone());
         }
         return linux_command(execution);
     }
     if profile == Profile::FullAccess {
-        if execution.scope_access == ScopeAccess::Unrestricted {
+        if execution.scope_access == ScopeAccess::Unrestricted
+            && execution.read_only_paths.is_empty()
+        {
             return Ok(execution.argv.clone());
         }
         // 只读、研究 Agent 和插件的收窄授权不能借部署模式跳过隔离。
@@ -229,6 +234,25 @@ pub fn command(execution: &Execution, profile: Profile) -> Result<Vec<String>> {
     }
     // Only metadata traversal of authorization-root ancestors is needed for
     // getcwd/stat; do not grant content reads of their siblings.
+    for (index, root) in execution.read_only_paths.iter().enumerate() {
+        command.push(format!(
+            "-DINPUT{index}=^{}(/|$)",
+            escape(absolute_utf8(root)?)
+        ));
+        policy.push_str(&format!(
+            "(deny file-write* (regex (param \"INPUT{index}\")))\n"
+        ));
+        // 只禁止祖先本身的删除/重命名，仍允许在 scratch 中创建临时文件。
+        let parents = root
+            .ancestors()
+            .skip(1)
+            .map(|p| absolute_utf8(p).map(escape))
+            .collect::<Result<Vec<_>>>()?;
+        command.push(format!("-DINPUTPARENT{index}=^({})$", parents.join("|")));
+        policy.push_str(&format!(
+            "(deny file-write-unlink (regex (param \"INPUTPARENT{index}\")))\n"
+        ));
+    }
     if !ancestors.is_empty() {
         command.push(format!(
             "-DMETADATA=^({})$",
@@ -333,6 +357,30 @@ fn linux_command(execution: &Execution) -> Result<Vec<String>> {
             argv.extend([option.into(), path.into(), path.into()]);
         }
     }
+    // 输入和可写根之间的父目录也必须固定，否则收窄 Scope 仍可重命名中间目录。
+    // 仅绑定已授权写入的祖先；写根本身已有挂载，不扩大父目录或兄弟目录的可见范围。
+    let mut parents = BTreeSet::new();
+    for root in &execution.read_only_paths {
+        parents.extend(
+            root.ancestors()
+                .skip(1)
+                .filter(|parent| {
+                    !execution
+                        .write_roots
+                        .iter()
+                        .any(|root| root.as_path() == *parent)
+                        && execution
+                            .write_roots
+                            .iter()
+                            .any(|root| parent.starts_with(root))
+                })
+                .map(Path::to_owned),
+        );
+    }
+    for parent in parents {
+        let path = absolute_utf8(&parent)?;
+        argv.extend(["--bind".into(), path.into(), path.into()]);
+    }
     for helper in execution
         .trusted_executable
         .iter()
@@ -341,6 +389,33 @@ fn linux_command(execution: &Execution) -> Result<Vec<String>> {
         let path = absolute_utf8(helper)?;
         argv.extend(["--ro-bind".into(), path.into(), path.into()]);
     }
+    for protected in &execution.read_only_paths {
+        // 保护与可读根的交集；收窄到输入子目录也不能重新获得写权限。
+        let visible: BTreeSet<_> = execution
+            .read_roots
+            .iter()
+            .filter_map(|root| {
+                if protected.starts_with(root) {
+                    Some(protected)
+                } else if root.starts_with(protected) {
+                    Some(root)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for root in visible {
+            let path = absolute_utf8(root)?;
+            argv.extend(["--ro-bind".into(), path.into(), path.into()]);
+        }
+    }
+    // full-access 的根挂载不能覆盖私有 PID namespace 的 proc/dev；否则可经宿主 /proc/PID/root 绕过输入挂载。
+    argv.extend([
+        "--proc".into(),
+        "/proc".into(),
+        "--dev".into(),
+        "/dev".into(),
+    ]);
     argv.extend([
         "--chdir".into(),
         absolute_utf8(&execution.cwd)?.into(),
@@ -419,6 +494,15 @@ pub fn seccomp(
         libc::SYS_ptrace,
         libc::SYS_mount,
         libc::SYS_umount2,
+        // 新挂载 API 也必须受限，不能通过新 user namespace 移走只读输入挂载。
+        libc::SYS_fsopen,
+        libc::SYS_fsconfig,
+        libc::SYS_fsmount,
+        libc::SYS_fspick,
+        libc::SYS_open_tree,
+        libc::SYS_move_mount,
+        libc::SYS_mount_setattr,
+        libc::SYS_pivot_root,
         libc::SYS_setns,
         libc::SYS_unshare,
     ] {
@@ -470,6 +554,40 @@ mod policy_tests {
     use std::{collections::BTreeMap, path::PathBuf};
 
     #[test]
+    fn linux_public_input_ancestors_are_pinned_inside_narrow_write_roots() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap().join("workspace");
+        let parent = root.join("scratch");
+        let public = parent.join("public");
+        std::fs::create_dir_all(&public).unwrap();
+        let outside = root.parent().unwrap().join("private/public");
+        std::fs::create_dir_all(&outside).unwrap();
+        let execution = Execution {
+            process_id: "test-process".into(),
+            argv: vec!["/bin/true".into()],
+            cwd: root.clone(),
+            env: BTreeMap::new(),
+            read_roots: vec![root.clone()],
+            write_roots: vec![root.clone()],
+            read_only_paths: vec![public, outside],
+            scope_access: ScopeAccess::Restricted,
+            trusted_executable: None,
+            builtin_executables: Vec::new(),
+            tty: false,
+            pipe_stdin: false,
+            network: areal_runtime_protocol::NetworkRequest::Deny,
+        };
+        let argv = linux_command(&execution).unwrap();
+        let bound: BTreeSet<_> = argv
+            .windows(3)
+            .filter(|args| args[0] == "--bind")
+            .map(|args| PathBuf::from(&args[1]))
+            .collect();
+        // 固定可写范围内的中间父目录，不能顺便暴露工作区外的祖先或兄弟目录。
+        assert_eq!(bound, BTreeSet::from([root, parent]));
+    }
+
+    #[test]
     fn full_access_unrestricted_scope_does_not_require_native_sandbox() {
         let execution = Execution {
             process_id: "test-process".into(),
@@ -478,6 +596,7 @@ mod policy_tests {
             env: BTreeMap::new(),
             read_roots: vec![PathBuf::from("/")],
             write_roots: Vec::new(),
+            read_only_paths: Vec::new(),
             scope_access: ScopeAccess::Unrestricted,
             trusted_executable: None,
             builtin_executables: Vec::new(),

@@ -18,6 +18,8 @@ pub struct Execution {
     pub env: BTreeMap<String, String>,
     pub read_roots: Vec<PathBuf>,
     pub write_roots: Vec<PathBuf>,
+    /// 可信部署固定的只读输入，所有子 Scope 和 full-access 命令都必须保护。
+    pub read_only_paths: Vec<PathBuf>,
     /// Scope 的部署授权；操作级只读不能覆盖这里记录的未收窄授权。
     pub scope_access: ScopeAccess,
     /// Fixed deployment helper, never supplied through the public process API.

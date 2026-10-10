@@ -18,6 +18,8 @@ Install dependencies using the [development guide](README.en.md). Regular tests 
 
 Snapshot format changes require `make verify-harness`: Harness and plugin smoke check the written version, and desktop relocation tests compare the release manifest, `areal/server/status.stateVersion`, and actual snapshot versions.
 
+Real PTY smoke tests reconstruct incremental output with a terminal-cell emulator. Wide characters also overwrite the adjacent cell so stale characters cannot produce false Unicode-editing failures. Script unit tests cover this redraw boundary.
+
 macOS native smoke tests require Seatbelt; Linux native smoke tests require `/usr/bin/bwrap` and user namespaces. Neither platform may substitute unsandboxed execution when the capability is missing. `outer-container-perf` remains validated in controlled containers. Default `cargo test` excludes explicitly ignored native Workgroup and capacity cases.
 
 Linux host checks use `make verify CARGO_TEST_ARGS='--exclude areal-runtime-exec-native'`. Native backend tests require `/usr/bin/bwrap` and user namespaces; a separate CI job builds the Dockerfile's `runtime-tests` target and runs every backend test, including `outer-container-perf`, inside the controlled Bubblewrap container. Excluding the backend alone does not complete validation.
@@ -54,6 +56,8 @@ python3 scripts/native-agents-smoke.py --bin-dir target/debug --sandbox-profile 
 ```
 
 Native tools/agent smoke tests use a local fixed-response HTTP model, the standard launcher and temporary workspaces without external model services. They cover file CAS, search, verification receipts, images, no delegation, a single Worker, synchronous waits, budget failures, parent cancellation and default asynchronous dispatch. The asynchronous case requires parent progress before three Worker requests finish and checks parent/child sampling parameters. Stream tests cover same-frame/tail length usage, EOF/cancellation, no UNKNOWN replay, post-compaction handles and cross-Turn boundaries.
+
+`make harness-smoke` also runs `python3 scripts/arena-input-smoke.py --bin-dir target/debug`. The real launcher, CLI, Core and Runtime verify that a task larger than 2 MiB starts through a short bootstrap; task text, manifest, PNG and selected GIF frames are read on demand; images reach the local model request; public inputs reject writes and retain their integrity. Directly oversized CLI input produces a structured error before any model request. This does not evaluate a real model. Engine unit tests separately cover serialized byte boundaries and successful WebSocket deltas whose full replay would exceed the wire budget.
 
 Request-budget tests cover `MAX_MODEL_ROUNDS` classification when Chat Completions or Responses returns tools in the final round, with no tool execution or retries and the original budget audit preserved. Ordinary tool-call budget exhaustion and invalid indices must retain their own classifications. Desktop CLI acceptance also checks the corresponding `error_max_turns` result. Goal HTTP regressions verify that output-token caps and tool count/buffer budgets survive shared pools, while unknown usage from failed requests prevents retries and tool execution.
 

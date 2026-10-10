@@ -40,12 +40,13 @@ docker build -f tests/perf/gateway.Dockerfile -t areal-perf-gateway:source-0.13.
 需要固定源码网关时对 run 也传同一 gateway-image。默认 runner 版本固定在 [Dockerfile](../../tests/e2e/docker/Dockerfile)，构建记录镜像 ID 与源码指纹；准备和 Runtime smoke 位于解题计时之外。Linux Harness 使用 outer-container-perf，见[部署边界](../guides/runtime.md)。
 
 <a id="suites"></a>
+
 ## lite 与 pro
 
-| 套件 | 环境与评分 |
-|---|---|
-| lite | 仓库本地任务、每次独立工作区，Agent 后用无网络独立 grader 容器评分 |
-| pro | 20 个固定外部 Env 的题面/oracle；用仓库内 Dockerfile 和初始输入构建公开 amd64 环境；Agent 退出后同容器注入测试 |
+| 套件 | 环境与评分                                                                                                     |
+| ---- | -------------------------------------------------------------------------------------------------------------- |
+| lite | 仓库本地任务、每次独立工作区，Agent 后用无网络独立 grader 容器评分                                             |
+| pro  | 20 个固定外部 Env 的题面/oracle；用仓库内 Dockerfile 和初始输入构建公开 amd64 环境；Agent 退出后同容器注入测试 |
 
 pro 来源与约束见[快照说明](../../tests/perf/suites/pro/README.md)。fetch-pro 仅校验本地题集；build-pro 无需模型即可构建环境，run 会自动构建所选题目并缓存。首次构建需访问公开镜像和软件源，无需内部凭据：
 
@@ -68,3 +69,25 @@ run.json 逐次保存，report.json 为汇总，trials/ 保存日志、工作区
 ```
 
 --fail-fast 在首个失败后暂停保留证据。保存整个批次的脱敏配置、源码/题集摘要、镜像身份和尝试记录。判读与公平性见[方法](methodology.md)，旧结果见[报告索引](reports/README.md)。任务格式以 [lite fixture](../../tests/perf/cases/) 和解析器 [perf.py](../../tests/perf/perf.py) 为准。
+
+## Arena 按需公开输入
+
+原生 Runner 使用 `lazy_files`：将 `ARENA_QUERY_PATH`、可选的冻结 Harness 规则和 `/problem_assets` 的公开文件物化到 `workspace://scratch/public-inputs/`；首轮只提交任务入口和 JSONL 附件清单路径，启动封套最多 64 KiB，不内联媒体或题面全文。清单保留原路径/别名、MIME 提示、字节数和 SHA-256；相同内容共享副本。实际图片格式、尺寸和动画覆盖由 Core 的 `image_read` 解码并报告。shell 使用清单里的实际路径，不能将 workspace URI 当 shell 路径。输入及诊断副本位于仓库/交付目录外。
+
+Runner 通过 Runtime `--read-only-path` 保护输入并在运行结束检查摘要；现有 Graybox public 包保持原路径和输出收集方式。输入身份、Case/Env/Reward 不变。附件文件、入口字节和完整性结果分别保存在 `public-inputs/`、`input-delivery.json`、`input-media.json`，无 Base64 或凭据进入诊断。发布包需包含 `public_inputs.py` 和同次源码构建的 Rust 二进制。
+
+使用 `scripts/package-arena.py --bin-dir <同次 release 二进制目录> --utilities <工具与动态库目录> --settings <冻结 settings.json> --target x86_64-unknown-linux-musl --output <新目录>` 构建可重复的 `areal-arena.pyz`、逐文件 manifest 和 SHA256SUMS。utilities 包含 `bin/bwrap`、`bin/tools/rg`、`lib/`；第三方许可应放在 `licenses/`。打包要求干净源码提交并校验 ELF 架构，启动器在执行 Runner 前逐文件校验归档并检查运行架构。二进制须来自锁定工具链的 release 构建，构建日志和镜像摘要应随包保存。发布前在独立 Linux 容器运行 `python3 scripts/arena-input-smoke.py --package <pyz>`，覆盖最终归档的展开、Runner、工具、视觉输入与结果文件；Registry artifact globs 应包含 `public-inputs/**/*` 和 `input-delivery.json`。
+
+冻结 settings 支持 `max_request_bytes`（默认 16 MiB 本地保护值，发布前按实际网关限额设置）与 `context_compaction_enabled`（默认 false，单独评估后启用）。传输字节与上下文 token 独立；50 MiB 原生分页和长轨迹压缩不属于输入故障修复的验收结论。
+
+真实模型复验前，按供应商契约核对图片、工具调用、上下文和采样参数。部署环境变量 `AREAL_ARENA_TEMPERATURE`、`AREAL_ARENA_REASONING_EFFORT`、`AREAL_ARENA_MAX_OUTPUT_TOKENS` 可覆盖冻结配置；前两项使用字面量 `null` 可省略该参数，`reasoning_effort=none` 仍会原样发送。例如不接受 temperature 的推理模型可设置 `AREAL_ARENA_TEMPERATURE=null`。轨迹的 configuration 事件记录实际生效值，`null` 表示未发送；`core-config.toml` 和 Core 请求审计可交叉核对。模型或参数变化的验收结果应单独标记，不能当作原模型质量对比。
+
+包支持默认 `task_profile: "generic"` 与 `task_profile: "original"`。原题对照使用 `original`，仅加入读取公开输入的 Bootstrap，不附加 Runner 的实现、测试建议；Core 原生指令保持由同次构建决定。包中的 `system-prompt.md` 是 Core 基础指令的审计副本，不覆盖原生指令。依赖外部 delivery/piggy 模块的历史配置不属于本打包入口，遇到此类配置会在打包时拒绝。
+
+平台注入的 `ARENA_SYSTEM_PROMPT_PATH` 是可选的附加规则路径，可能没有对应文件。初次检查时缺失则不生成 `RULES.md`；文件存在时按原字节复制并校验，空文件也保留。不可读、软链接、硬链接或复制期间消失仍按输入错误终止，不能静默丢弃已有规则。最终包回放包含平台已注入但未物化该文件的情形。
+
+离线验证运行 `python3 -m unittest discover -s integrations/envarena`、`cargo test --locked -p areal-engine --lib` 和 `python3 scripts/arena-input-smoke.py --bin-dir target/debug`。模型桩验证真实 CLI/Core/Runtime 输入读取、PNG/GIF 视觉内容、只读拒绝及旧封套超限诊断，不代表四题真实模型复跑或评分通过。线上验收需冻结新 Harness ref/hash，保留原题和评分器，逐题区分输入链路成功、任务终态及原 Reward。
+
+可附加 `--public-inputs-dir <含 TASK.md 和 assets/ 的目录>`，用同一模型桩回放冻结的真实公开附件；这仍不是在线模型或 Reward 验收。
+
+原生 x86_64 发布候选由 [Arena package 工作流](../../.github/workflows/arena-package.yml) 构建：固定 Rust 1.94.0 和 release profile，生成 zipapp，再在独立 Debian 容器中无网运行归档。CI 通过公开 URL 下载四组哈希固定的附件，使用标记题面验证视觉链路，不运行原题作答或 Reward；原始题面与线上模型验收另行保留。工作流只上传候选 artifact，不发布 Registry 或 GitHub Release。Apple Silicon 的 x86 用户态模拟可能不支持 seccomp，不能用该环境的失败或禁用过滤器替代原生 Linux 验收。
