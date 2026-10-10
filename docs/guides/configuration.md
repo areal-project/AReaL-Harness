@@ -8,6 +8,8 @@
 
 `显式 CLI > 已登记环境变量 > 选定 TOML > 默认值`。默认配置为 `~/.areal/config.toml`，数据为同目录 `state/`。`AREAL_HARNESS_HOME` 指定非空绝对 home；`--config` 优先于 `AREAL_HARNESS_CONFIG`，替代默认文件，不叠加。不自动读取项目 TOML 或 `.env`。
 
+GUI 默认使用同一配置文件和 Core 读写接口；服务登记与运行数据保持隔离。`AREAL_HARNESS_SERVICE_HOME` 只选择共享服务登记及默认实例数据的非空绝对目录，不改变配置位置；省略时沿用 `AREAL_HARNESS_HOME` 或 `~/.areal`。GUI 自动选择自己的服务目录，无需为共享默认配置设置环境变量；路径覆盖见 [GUI 指南](../../clients/gui/README.md)。
+
 共享 TUI/Web 入口使用按工作区隔离的默认数据目录；显式 dataDir 仍遵循上述优先级。历史迁移与配置兼容性见[本地服务契约](../api/local-service.md)。
 
 默认文件不存在可继续；显式文件不存在、未知字段、类型/版本错误或已设置为空的值均拒绝。文件限普通 UTF-8、1 MiB，接受 `schema_version=1` 或 `2`。TOML 相对路径以配置文件目录为基准，CLI/env 相对路径以启动 cwd 为基准，不展开 `~`、变量或 glob。即使字段被高层覆盖，低层格式错误仍拒绝。
@@ -198,7 +200,9 @@ target/debug/areal exec --desktop-config deployment.json --agent code-agent@v2 "
 
 ### GUI 与 CLI 共享模型目录
 
-`areal config models read [--config /absolute/config.toml]` 输出 JSON：`path`、文件内容 revision、`data`（供应商目录）、`defaultModel`（文件值）和 `effective`（经过 CLI／环境覆盖的诊断，含 sources）。读取不创建文件、不需要密钥值。`areal config models write` 从 stdin 接收 `{ "expectedRevision": "...", "data": [...], "defaultModel": { "providerId": "local", "modelId": "one" } }`；传 `null` 清除默认值。接口完整替换模型目录，保留其他配置和注释，输出新快照。两个入口必须使用同一文件才共享；环境覆盖不会写回文件。
+`areal config models read [--config /absolute/config.toml]` 输出 JSON：`path`、文件内容 revision、`data`（供应商目录）、`defaultModel`（文件值）、`credentialStates`（供应商 ID 到凭据状态的映射）、`credentialSources`（凭据来源）和 `effective`（经过 CLI／环境覆盖的诊断，含 sources）。读取不创建文件、缺少密钥不阻止管理读取。`credentialStates` 使用 `notRequired`、`available`、`unavailable`，由 Core 按当前可信环境和解析后的凭据引用判断；不包含密钥，不影响文件 revision，也不代表远端认证或推理已通过。`areal config models write` 从 stdin 接收 `{ "expectedRevision": "...", "data": [...], "defaultModel": { "providerId": "local", "modelId": "one" } }`；传 `null` 清除默认值。接口完整替换模型目录，保留其他配置和注释，输出新快照。两个入口必须使用同一文件才共享；环境覆盖不会写回文件。
+
+`credentialSources` 使用 `none`（无需认证）、`environment`（环境变量凭据）、`stored`（已保存凭据）。可信适配器调用 read/write 时可重复传 `--stored-credential-env NAME`，声明由安全存储注入的环境变量名；Core 根据实际解析的引用判定来源，并独立校验该值是否就绪。此来源信息不持久化、不改变 revision、不使缺少值的引用变为可用。独立 CLI 不传此参数，其凭据来源为环境变量。GUI 的“认证方式”可选择“无需认证”：保存时通过 Core 移除该供应商的 `api_key_env`，应用后新模型选择不发送认证头；旧任务仍保留原凭据引用。API Key 输入留空保留已有引用；没有引用和新密钥时不能保存为 API Key 模式。GUI 不读取终端启动脚本，环境凭据按应用／后台启动时的环境提供。
 
 ```toml
 schema_version = 1
@@ -226,6 +230,8 @@ JSON 使用 camelCase（`apiKeyEnv`、`displayName`、`maxOutputTokens`、`reaso
 写入先校验、检查整个文件 revision，再使用同目录临时文件、fsync 和原子替换；合作写入者通过锁串行，过期请求失败。默认缺失文件可以首次创建，显式缺失文件和写入符号链接拒绝。非合作编辑器不参与锁，多次摘要校验不等于文件系统原子 CAS。
 
 共享目录采用保存／应用分离：`catalog_version = 1` 的模型变更显示 restartRequired，由客户端在安全空闲时重启；未启动实例下次加载。运行中的模型及已有任务不被保存动作修改，新默认值仅用于应用后创建的任务。历史任务保留原配置和凭据引用，轮换时需继续提供旧引用所需的环境凭据。
+
+GUI 设置页分别显示 Core 已保存的启用状态、凭据来源与就绪状态、配置应用状态；未保存的开关或密钥输入保留为草稿。桌面适配器把安全存储中的凭据提供给 Core 诊断，Renderer 只接收状态。当前文件 revision 与项目已加载 revision 不一致时显示“待应用”；安全应用成功后刷新项目的 Core 模型目录。停用的供应商或模型不进入 Composer 的执行目录，启用但缺少凭据的模型仍显示名称与原因。GUI 数据目录隔离意味着共享配置中的凭据引用可能在另一个 GUI 实例中不可用，状态按当前实例诊断。
 
 ## 模型配置热更新
 

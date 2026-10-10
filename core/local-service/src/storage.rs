@@ -168,7 +168,7 @@ pub fn registry(root: &Path, id: &str) -> Result<PathBuf> {
     let path = root.join("services").join(id);
     ensure!(
         path.join("control.sock").as_os_str().len() < 104,
-        "service socket path is too long; use a shorter AREAL_HARNESS_HOME"
+        "service socket path is too long; use a shorter AREAL_HARNESS_SERVICE_HOME"
     );
     Ok(path)
 }

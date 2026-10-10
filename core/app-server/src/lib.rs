@@ -932,6 +932,47 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn desktop_registered_methods_have_dispatch_routes() {
+        let dir = tempfile::tempdir().unwrap();
+        let model =
+            areal_engine::model::ChatModel::new("http://127.0.0.1:9".into(), "unused".into(), None)
+                .unwrap();
+        let engine =
+            Engine::open(dir.path(), Arc::new(model), areal_engine::Limits::default()).unwrap();
+        let (tx, _rx) = mpsc::channel(1);
+        let stop = CancellationToken::new();
+        let mut conn = Connection {
+            principal: auth::Principal::embedded(),
+            tool_host: dynamic_tools::ToolHost::new(tx.clone(), stop.clone()),
+            initialized: true,
+            ready: true,
+            subscriptions: HashMap::new(),
+            suppressed: HashSet::new(),
+            tx,
+            stop,
+            tasks: TaskTracker::new(),
+            delivery: Arc::new(Mutex::new(())),
+            rpc_permits: Arc::new(tokio::sync::Semaphore::new(16)),
+        };
+        let mut seen = HashSet::new();
+        for &method in desktop::METHODS {
+            assert!(seen.insert(method), "duplicate registered method: {method}");
+            // 非对象参数在读取或变更状态前被拒绝；缺失路由则返回 -32601。
+            // 经连接层调用，同时覆盖由该层单独接管的 areal/thread/start。
+            let error = conn
+                .dispatch(&engine, method, Value::Null)
+                .await
+                .unwrap_err();
+            assert_eq!(
+                error.code, -32602,
+                "registered method has no parameter route: {method}"
+            );
+        }
+        assert!(engine.list(None, 100, None).await.unwrap().0.is_empty());
+        engine.shutdown().await;
+    }
+
+    #[tokio::test]
     async fn slow_subscription_closes_connection_instead_of_dropping_events() {
         let (tx, _unread) = mpsc::channel(1);
         let stop = CancellationToken::new();

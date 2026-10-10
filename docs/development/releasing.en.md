@@ -41,6 +41,8 @@ GUI versions are declared by `clients/gui/package.json` and `clients/gui/app/pac
 
 Production GUI packages contain `areal-update.json` with the fixed feed `https://github.com/areal-project/AReaL-Harness/releases/download/gui-update-channel/`. The `gui-update-channel` prerelease carries only the current `latest-mac.yml`; that manifest points to the immutable ZIP in `gui-v<version>` and includes size and SHA-512. Only same-repository, same-version assets are accepted. Local ad-hoc packages have no update configuration.
 
+The macOS `dir` target does not automatically generate native update configuration. Production packaging writes `app-update.yml` before signing, using the same product feed and a fixed download cache name, and verifies the packaged configuration. Automatic builder uploads remain disabled. Discovering an update does not prove download works. The sidebar update button shows download progress, displays failures directly, and allows retries.
+
 Run from a clean, merged commit:
 
 ```sh
@@ -52,8 +54,10 @@ pnpm --dir clients/gui run sign:mac --app "/absolute/new-package/package/mac-arm
 node clients/gui/scripts/release-assets.mjs /absolute/new-signed-directory /absolute/new-assets
 ```
 
-The signing script signs Core executables and updates integrity hashes before signing Electron. Completion requires Apple Accepted receipts, stapler, Gatekeeper, an isolated signed-package GUI/Core/Runtime smoke, and signature validation inside a read-only DMG mount. Exit 2 means Apple is still processing; resume with the same script and `--resume --output`. Never modify a signed app.
+The signing script signs Core executables and updates integrity hashes before signing Electron. Completion requires Apple Accepted receipts, stapler, Gatekeeper, an isolated signed-package GUI/Core/Runtime smoke, model-configuration and Composer acceptance, and signature validation inside a read-only DMG mount. `notarization.json` and sanitized `release.json` record `packagedModelSelection: "passed"`; export rejects older candidates without this acceptance, requiring a new candidate built with the current signing script. Exit 2 means Apple is still processing; resume with the same script and `--resume --output`. Never modify a signed app.
 
 Create `gui-v<version>` at the fixed commit, upload ZIP, DMG, `latest-mac.yml`, sanitized `release.json`, and `SHA256SUMS` to a draft, verify downloaded hashes, then publish with `--latest=false`. Verify version assets are downloadable before updating the `gui-update-channel` manifest; create that channel as a prerelease initially. Check full bytes, HTTP Range, manifest size, and SHA-512 after publication. Never overwrite version assets; advance the channel only to verified versions. This workflow does not publish CLI bundles or update the Homebrew tap.
 
 GUI updates support macOS arm64. Electron owns checks and downloads; Core shuts down for installation only after background work becomes idle and native validation finishes. Public download and package smoke checks do not prove replacement of an existing installation; that upgrade requires separate acceptance. Clients configured for other repositories or older test channels need manual installation of the first production GUI package.
+
+`pnpm --dir clients/gui run test:update` uses real Electron preload/IPC to verify visible download errors and retry progress. Set `AREAL_GUI_EXECUTABLE` to a candidate package executable and `AREAL_GUI_UPDATE_BASELINE` to an older signed GUI executable to additionally verify the candidate's native configuration, public ZIP download and SHA-512 verification, Squirrel native staging, and safe Core shutdown. The script launches only an isolated baseline copy, borrowing candidate configuration without changing signed resources. It intercepts the final installation call, exits, and checks the version of the copy automatically replaced by Squirrel, leaving the original baseline and user installation untouched. The script prints its evidence directory.

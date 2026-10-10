@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -107,11 +107,27 @@ pub struct ModelRef {
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub enum CredentialState {
+    NotRequired,
+    Available,
+    Unavailable,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CredentialSource {
+    None,
+    Environment,
+    Stored,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModelConfiguration {
     pub path: PathBuf,
     pub revision: String,
     pub data: Vec<ProviderConfig>,
     pub default_model: Option<ModelRef>,
+    pub credential_states: BTreeMap<String, CredentialState>,
+    pub credential_sources: BTreeMap<String, CredentialSource>,
     pub effective: Value,
 }
 #[derive(Deserialize)]
@@ -335,6 +351,7 @@ fn snapshot(
     inputs: &ConfigInputs,
     path: PathBuf,
     layer: file::FileLayer,
+    stored_credential_envs: &[String],
 ) -> Result<ModelConfiguration> {
     // 共享编辑不能静默丢掉尚未补齐的旧供应商，也不能把临时覆盖当作文件值。
     if layer.catalog.len() != layer.providers.len() {
@@ -352,18 +369,52 @@ fn snapshot(
         }
     }
     let config = resolve::load_mode(inputs, true, Some(layer.clone()))?;
+    // 只返回凭据状态；密钥不进入文件快照或 revision。选中供应商沿用解析后的覆盖。
+    let (credential_states, credential_sources) = layer
+        .catalog
+        .iter()
+        .map(|provider| {
+            let reference = if config.model.provider == provider.id && !config.model.name.is_empty()
+            {
+                config.model.api_key_env.as_deref()
+            } else {
+                provider.api_key_env.as_deref()
+            };
+            let state = match reference {
+                None => CredentialState::NotRequired,
+                Some(name) if crate::credential_value(&inputs.env, name).is_some() => {
+                    CredentialState::Available
+                }
+                Some(_) => CredentialState::Unavailable,
+            };
+            // 适配器声明安全存储注入的引用；来源诊断仍由 Core 结合实际引用判定。
+            let source = match reference {
+                None => CredentialSource::None,
+                Some(name) if stored_credential_envs.iter().any(|stored| stored == name) => {
+                    CredentialSource::Stored
+                }
+                Some(_) => CredentialSource::Environment,
+            };
+            ((provider.id.clone(), state), (provider.id.clone(), source))
+        })
+        .unzip();
     Ok(ModelConfiguration {
         revision: revision(&path, &layer),
         path,
         default_model: default_model(&layer),
         data: layer.catalog,
+        credential_states,
+        credential_sources,
         effective: config.diagnostic(true),
     })
 }
-pub fn read(inputs: &ConfigInputs) -> Result<ModelConfiguration> {
+pub fn read(
+    inputs: &ConfigInputs,
+    stored_credential_envs: &[String],
+) -> Result<ModelConfiguration> {
     let location = resolve::location(inputs)?;
     let layer = file::read(&location.selected, location.explicit)?;
-    snapshot(inputs, location.selected, layer)
+    snapshot(inputs, location.selected, layer, stored_credential_envs)
 }
 
 fn toml_value(value: Value) -> toml_edit::Value {
@@ -462,6 +513,7 @@ fn render(layer: &file::FileLayer, update: &ModelConfigurationUpdate) -> String 
 pub fn write(
     inputs: &ConfigInputs,
     update: ModelConfigurationUpdate,
+    stored_credential_envs: &[String],
 ) -> Result<ModelConfiguration> {
     let location = resolve::location(inputs)?;
     let path = &location.selected;
@@ -491,7 +543,7 @@ pub fn write(
         return Err(invalid(&at, "configuration exceeds 1 MiB"));
     }
     let candidate = file::parse(path, &text)?;
-    let result = snapshot(inputs, path.clone(), candidate)?;
+    let result = snapshot(inputs, path.clone(), candidate, stored_credential_envs)?;
     fs::create_dir_all(parent).map_err(|_| io_error())?;
     let lock_path = parent.join(format!(
         ".{}.lock",

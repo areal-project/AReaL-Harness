@@ -1,6 +1,6 @@
 import { profileKey } from "./ProfileDetails.js";
 import { useApplicationPreferences } from "./settings/applicationPreferences.js";
-import { ComposerModelMenu } from "./ComposerModelMenu.js";
+import { ComposerModelMenu, composerModelOption } from "./ComposerModelMenu.js";
 import { ComposerPermissionMenu } from "./ComposerPermissionMenu.js";
 import { permissionOptions, planModeOptions, type PermissionMode } from "./permissions.js";
 import { ComposerPlanMode } from "./ComposerPlanMode.js";
@@ -86,7 +86,7 @@ export function DraftComposer({
     () => localStorage.getItem(`areal-gui:model:${project.id}`) ?? "",
   );
   const selectedModel = project.models.find(
-    (m: Data) => `${m.providerId}/${m.modelId}` === model && m.available !== false,
+    (m: Data) => `${m.providerId}/${m.modelId}` === model,
   );
   const hasDefaultModel = project.models.some((m: Data) => !m.providerId);
   const effectiveModel = !model && chosenProfile?.model ? "" : selectedModel
@@ -101,12 +101,13 @@ export function DraftComposer({
   const effort = efforts[effectiveModel] ?? "";
   const [unknown, setUnknown] = useState(() => localStorage.getItem(`${key}:pending-create`));
   const busy = useSyncExternalStore(subscribeSending, () => sending.has(key));
-  const disabled =
+  const modelSelectionDisabled =
     busy ||
-    (!hasDefaultModel && !effectiveModel && !chosenProfile?.model) ||
     !project.state?.connected ||
     !!project.pending.length ||
     !!unknown || !!reviewDraft.error || unavailableProfile;
+  const disabled = modelSelectionDisabled || currentModel?.available === false ||
+    (!hasDefaultModel && !effectiveModel && !chosenProfile?.model);
   const skills = useComposerSkills({ project, profile: chosenProfile, draftKey: key, action: readAction, disabled });
   useEffect(() => {
     attachmentDrafts.set(key, files);
@@ -296,15 +297,16 @@ export function DraftComposer({
           {plan && <ComposerPlanMode disabled={disabled || chosenProfile?.readOnly === true} onExit={() => setPlanMode(false)} />}</>
         }
         betweenCancelAndSubmitAction={<ComposerModelMenu
-          value={effectiveModel} disabled={disabled}
+          value={effectiveModel} disabled={modelSelectionDisabled}
           effort={effort} onEffortChange={value => { const next = { ...efforts, [effectiveModel]: value }; setEfforts(next); localStorage.setItem(`${key}:efforts`, JSON.stringify(next)); }}
           options={[
-            ...(chosenProfile?.model ? [{ value: "", label: `预设模型：${chosenProfile.model.modelId}`, efforts: currentModel?.reasoningEffortOptions }] : hasDefaultModel ? [{ value: "", label: "默认模型", efforts: currentModel?.reasoningEffortOptions }] : !effectiveModel ? [{ value: "", label: "请先配置模型" }] : []),
-            ...project.models.filter((model: Data) => model.providerId && model.available !== false)
-              .map((model: Data) => ({ value: `${model.providerId}/${model.modelId}`, label: model.displayName ?? model.modelId, efforts: model.reasoningEffortOptions })),
+            ...(chosenProfile?.model ? [{ value: "", label: `预设模型：${chosenProfile.model.modelId}`, efforts: currentModel?.reasoningEffortOptions, unavailableReason: currentModel?.available === false ? composerModelOption(currentModel).unavailableReason : undefined }] : hasDefaultModel ? [{ value: "", label: "默认模型", efforts: currentModel?.reasoningEffortOptions }] : []),
+            ...project.models.filter((model: Data) => model.providerId)
+              .map(composerModelOption),
           ]}
           onChange={value => { setModel(value); localStorage.setItem(`areal-gui:model:${project.id}`, value); }}
           onClose={() => api.current?.focus()}
+          onConfigure={() => onPanel("设置")}
         />}
       />
       </div>

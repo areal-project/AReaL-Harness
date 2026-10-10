@@ -20,6 +20,7 @@ const input = resolve(inputArg),
   output = resolve(outputArg);
 const state = JSON.parse(await readFile(join(input, "notarization.json"), "utf8"));
 assert.equal(state.phase, "complete", "Signing and notarization must finish before release");
+assert.equal(state.packagedModelSelection, "passed", "Model configuration and Composer acceptance must pass on the signed package; build a new candidate with the current signing script");
 assert.ok(stableVersion(state.version));
 const version = state.version;
 const resources = join(input, state.appName, "Contents/Resources");
@@ -78,6 +79,7 @@ await writeFile(
         ]),
       ),
       packagedGui: state.packagedGui,
+      packagedModelSelection: state.packagedModelSelection,
       artifacts,
     },
     null,

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useApplicationPreferences } from "./settings/applicationPreferences.js";
 import { shouldSteer } from "./settings/applicationSettings.js";
-import { ComposerModelMenu } from "./ComposerModelMenu.js";
+import { ComposerModelMenu, composerModelOption } from "./ComposerModelMenu.js";
 import { ComposerPermissionMenu } from "./ComposerPermissionMenu.js";
 import { canExecutePlan, permissionMode, permissionOptions, planModeOptions } from "./permissions.js";
 import { ComposerPlanMode } from "./ComposerPlanMode.js";
@@ -402,15 +402,16 @@ export function Composer({
           disabled={disabled || !!queueEditor.edit || !!running}
           effort={config?.parameters?.reasoningEffort ?? ""}
           onEffortChange={value => { void configure({ parameters: { ...config?.parameters, reasoningEffort: value } }); }}
-          options={[{ value: "", label: "默认模型", efforts: project.models.find((model: Data) => !model.providerId)?.reasoningEffortOptions }, ...project.models
-            .filter((model: Data) => model.providerId && model.available !== false)
-            .map((model: Data) => ({ value: `${model.providerId}/${model.modelId}`, label: model.displayName ?? model.modelId, efforts: model.reasoningEffortOptions }))]}
+          options={[...(project.models.some((model: Data) => !model.providerId) ? [{ value: "", label: "默认模型", efforts: project.models.find((model: Data) => !model.providerId)?.reasoningEffortOptions }] : []), ...project.models
+            .filter((model: Data) => model.providerId)
+            .map(composerModelOption)]}
           onChange={value => {
             if (!value) { void configure({ model: null }); return; }
             const model = project.models.find((item: Data) => `${item.providerId}/${item.modelId}` === value);
             if (model) void configure({ model: { providerId: model.providerId, modelId: model.modelId } });
           }}
           onClose={() => api.current?.focus()}
+          onConfigure={() => onPanel("设置")}
         />}
       />
       </div>

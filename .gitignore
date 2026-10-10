@@ -18,6 +18,7 @@ __pycache__/
 
 # GUI workspace package cache
 .pnpm-store/
+.scratch/
 
 # 本地跨仓轨迹互通夹具
 /out/trajectory-semantics/

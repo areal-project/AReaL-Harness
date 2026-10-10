@@ -88,6 +88,9 @@ struct ConfigArgs {
 #[derive(Subcommand)]
 enum ConfigCommand {
     Models {
+        /// 可信适配器从安全存储注入的环境变量名；只用于诊断，不写入配置。
+        #[arg(long = "stored-credential-env", global = true)]
+        stored_credential_envs: Vec<String>,
         #[command(subcommand)]
         command: ModelConfigCommand,
     },
@@ -206,9 +209,14 @@ async fn run_configured(mut args: Args, diagnostic: Option<ConfigCommand>) -> Re
         },
     };
     let diagnostic = match diagnostic {
-        Some(ConfigCommand::Models { command }) => {
+        Some(ConfigCommand::Models {
+            command,
+            stored_credential_envs,
+        }) => {
             let result = match command {
-                ModelConfigCommand::Read => areal_config::models::read(&inputs)?,
+                ModelConfigCommand::Read => {
+                    areal_config::models::read(&inputs, &stored_credential_envs)?
+                }
                 ModelConfigCommand::Write => {
                     use std::io::Read;
                     let mut bytes = Vec::new();
@@ -221,7 +229,7 @@ async fn run_configured(mut args: Args, diagnostic: Option<ConfigCommand>) -> Re
                     );
                     let update = serde_json::from_slice(&bytes)
                         .map_err(|_| anyhow::anyhow!("invalid model configuration request"))?;
-                    areal_config::models::write(&inputs, update)?
+                    areal_config::models::write(&inputs, update, &stored_credential_envs)?
                 }
             };
             println!("{}", serde_json::to_string(&result)?);
@@ -485,9 +493,12 @@ async fn serve(
             id: s.id, revision: s.revision, root: s.root,
             metadata: Some(s.metadata),
         }).collect())?;
-        for (name, value) in &mcp_env {
-            if let Some(reference) = name.to_str().and_then(|name| name.strip_prefix("AREAL_CREDENTIAL_")) {
-                engine.register_credential(reference.into(), value.to_str().context("credential must be UTF-8")?.into())?;
+        for name in mcp_env.keys() {
+            if let Some(name) = name.to_str()
+                && let Some(reference) = name.strip_prefix("AREAL_CREDENTIAL_")
+                && let Some(value) = areal_config::credential_value(&mcp_env, name)
+            {
+                engine.register_credential(reference.into(), value.into())?;
             }
         }
         engine.install_configured_models(configured_models(&config, &mcp_env, &engine)?)?;
@@ -679,10 +690,7 @@ fn configured_models(
                 .to_owned()
         });
         if let (Some(name), Some(reference)) = (&key_env, &reference)
-            && let Some(value) = env
-                .get(std::ffi::OsStr::new(name))
-                .and_then(|v| v.to_str())
-                .filter(|v| !v.is_empty())
+            && let Some(value) = areal_config::credential_value(env, name)
         {
             engine.register_credential(reference.clone(), value.into())?;
         }
