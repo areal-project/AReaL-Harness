@@ -11,7 +11,7 @@ use std::{
     fmt,
     sync::{
         Arc, Mutex, OnceLock,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     time::SystemTime,
 };
@@ -197,7 +197,7 @@ struct TurnSequence {
     lost: AtomicBool,
     _reservation: RecordReservation,
 }
-struct TurnIdentity(Arc<TurnSequence>);
+struct TurnIdentity(Option<Arc<TurnSequence>>);
 
 impl TurnSequence {
     fn next(&self) -> Option<(u64, String, String)> {
@@ -217,6 +217,7 @@ impl TurnSequence {
 pub(super) struct EventLayer<const CHANNEL: u8> {
     logger: Option<SdkLogger>,
     budget: Option<Arc<Budget>>,
+    dropped: Option<Arc<AtomicU64>>,
     dispatch: OnceLock<tracing::dispatcher::WeakDispatch>,
 }
 
@@ -225,7 +226,20 @@ impl<const CHANNEL: u8> EventLayer<CHANNEL> {
         Self {
             logger,
             budget: None,
+            dropped: None,
             dispatch: OnceLock::new(),
+        }
+    }
+    pub fn with_drop_counter(mut self, counter: Option<Arc<AtomicU64>>) -> Self {
+        self.dropped = counter;
+        self
+    }
+    fn drop_event(&self) {
+        // 前台只记录整事件丢弃；字段截断仍由记录自身标记，不重复增加队列丢弃数。
+        if CHANNEL == 1
+            && let Some(counter) = &self.dropped
+        {
+            counter.fetch_add(1, Ordering::Relaxed);
         }
     }
     pub fn with_capture_limit(mut self, limit: Option<usize>) -> Self {
@@ -260,14 +274,18 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>, const CHANNEL: u8> Layer<S> for Eve
                     budget: self.budget.clone(),
                     bytes: 0,
                 };
-                if reservation.reserve(1024) {
-                    span.extensions_mut()
-                        .insert(TurnIdentity(Arc::new(TurnSequence {
-                            state: Mutex::new((0, Sha256::new())),
-                            lost: AtomicBool::new(false),
-                            _reservation: reservation,
-                        })));
-                }
+                let identity = if reservation.reserve(1024) {
+                    Some(Arc::new(TurnSequence {
+                        state: Mutex::new((0, Sha256::new())),
+                        lost: AtomicBool::new(false),
+                        _reservation: reservation,
+                    }))
+                } else {
+                    fields.truncated = true;
+                    None
+                };
+                // 即使容量不足也保留 Turn 边界，不能借用父 Agent 的序号。
+                span.extensions_mut().insert(TurnIdentity(identity));
             }
             use opentelemetry::trace::{SpanContext, SpanId, TraceFlags, TraceId, TraceState};
             let trace_id = span
@@ -309,18 +327,25 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>, const CHANNEL: u8> Layer<S> for Eve
             ..Fields::default()
         };
         let mut sequence = None;
+        let mut turn_boundary = false;
         if let Some(scope) = ctx.event_scope(event) {
             for span in scope.from_root() {
                 if CHANNEL == 1
                     && let Some(identity) = span.extensions().get::<TurnIdentity>()
                 {
-                    sequence = Some(identity.0.clone());
+                    turn_boundary = true;
+                    sequence = identity.0.clone();
                 }
                 if let Some(parent) = span.extensions().get::<Fields<CHANNEL>>() {
                     fields.values.extend(parent.values.clone());
                     fields.truncated |= parent.truncated;
                 }
             }
+        }
+        if turn_boundary && sequence.is_none() {
+            // 子 Turn 没有取得独立身份预算时整条放弃，避免继承父级身份字段。
+            self.drop_event();
+            return;
         }
         event.record(&mut fields);
         let Some(span) = ctx.event_span(event) else {
@@ -346,7 +371,10 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>, const CHANNEL: u8> Layer<S> for Eve
         let identity = match &sequence {
             Some(sequence) => match sequence.next() {
                 Some(identity) => Some(identity),
-                None => return,
+                None => {
+                    self.drop_event();
+                    return;
+                }
             },
             None => None,
         };
@@ -375,6 +403,7 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>, const CHANNEL: u8> Layer<S> for Eve
         };
         if let Some((number, id, digest)) = identity {
             if !reservation.reserve(2048) {
+                self.drop_event();
                 return;
             }
             record.add_attribute("areal.trajectory.schema_version", "areal.trajectory/v1");
@@ -462,7 +491,9 @@ mod tests {
         let provider = SdkLoggerProvider::builder()
             .with_simple_exporter(logs.clone())
             .build();
+        let dropped = Arc::new(AtomicU64::new(0));
         let layer = EventLayer::<1>::new(Some(provider.logger("manifest")))
+            .with_drop_counter(Some(dropped.clone()))
             .with_capture_limit(Some(64 * 1024));
         let budget = layer.budget.clone().unwrap();
         tracing::subscriber::with_default(tracing_subscriber::registry().with(layer), || {
@@ -483,6 +514,7 @@ mod tests {
             tracing::event!(target: "areal::trajectory", tracing::Level::INFO, { "event.name" = "areal.turn.completed" });
         });
         assert_eq!(budget.used.load(Ordering::Relaxed), 0);
+        assert_eq!(dropped.load(Ordering::Relaxed), 1);
         let records = logs.get_emitted_logs().unwrap();
         assert_eq!(records.len(), 4);
         let attrs: Vec<BTreeMap<_, _>> = records
@@ -526,6 +558,86 @@ mod tests {
         assert!(sequence.lost.load(Ordering::Relaxed));
         drop(guard);
         assert_eq!(sequence.next().unwrap().0, 1);
+    }
+
+    #[test]
+    fn child_without_identity_capacity_never_uses_parent_sequence() {
+        let logs = InMemoryLogExporter::default();
+        let provider = SdkLoggerProvider::builder()
+            .with_simple_exporter(logs.clone())
+            .build();
+        let dropped = Arc::new(AtomicU64::new(0));
+        let layer = EventLayer::<1>::new(Some(provider.logger("manifest")))
+            .with_drop_counter(Some(dropped.clone()))
+            .with_capture_limit(Some(64 * 1024));
+        let budget = layer.budget.clone().unwrap();
+        tracing::subscriber::with_default(tracing_subscriber::registry().with(layer), || {
+            let parent = tracing::info_span!(target: "areal::trajectory", "invoke_agent", areal.turn.id = "parent");
+            let _parent = parent.enter();
+            let occupied = budget.limit - budget.used.load(Ordering::Relaxed);
+            assert!(budget.reserve(occupied));
+            let child = tracing::info_span!(target: "areal::trajectory", "invoke_agent", areal.turn.id = "child");
+            budget.used.fetch_sub(occupied, Ordering::Relaxed);
+            child.in_scope(|| tracing::event!(target: "areal::trajectory", tracing::Level::INFO, { "event.name" = "areal.turn.completed" }));
+            drop(child);
+            tracing::event!(target: "areal::trajectory", tracing::Level::INFO, { "event.name" = "areal.turn.completed" });
+        });
+        assert_eq!(dropped.load(Ordering::Relaxed), 1);
+        let records = logs.get_emitted_logs().unwrap();
+        assert_eq!(records.len(), 1);
+        let attrs: BTreeMap<_, _> = records[0]
+            .record
+            .attributes_iter()
+            .map(|(k, v)| (k.as_str(), v.clone()))
+            .collect();
+        assert_eq!(attrs["areal.turn.id"], AnyValue::String("parent".into()));
+        assert_eq!(attrs["areal.turn.event_count"], AnyValue::Int(1));
+        assert_eq!(budget.used.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn whole_event_lock_contention_counts_once_but_field_truncation_does_not() {
+        let logs = InMemoryLogExporter::default();
+        let provider = SdkLoggerProvider::builder()
+            .with_simple_exporter(logs.clone())
+            .build();
+        let dropped = Arc::new(AtomicU64::new(0));
+        let layer = EventLayer::<1>::new(Some(provider.logger("manifest")))
+            .with_capture_limit(Some(64 * 1024))
+            .with_drop_counter(Some(dropped.clone()));
+        tracing::subscriber::with_default(tracing_subscriber::registry().with(layer), || {
+            let root = tracing::info_span!(target: "areal::trajectory", "invoke_agent",
+                areal.turn.id = "parent", gen_ai.input.messages = tracing::field::Empty);
+            let _root = root.enter();
+            let sequence = tracing::dispatcher::get_default(|dispatch| {
+                let registry = dispatch
+                    .downcast_ref::<tracing_subscriber::Registry>()
+                    .unwrap();
+                let span = registry.span(&root.id().unwrap()).unwrap();
+                span.extensions()
+                    .get::<TurnIdentity>()
+                    .unwrap()
+                    .0
+                    .clone()
+                    .unwrap()
+            });
+            let held = sequence.state.lock().unwrap();
+            tracing::event!(target: "areal::trajectory", tracing::Level::INFO, { "event.name" = "areal.tool.call" });
+            assert_eq!(dropped.load(Ordering::Relaxed), 1);
+            drop(held);
+            root.record("gen_ai.input.messages", "x".repeat(128 * 1024));
+            tracing::event!(target: "areal::trajectory", tracing::Level::INFO, { "event.name" = "areal.turn.completed" });
+            assert_eq!(dropped.load(Ordering::Relaxed), 1);
+        });
+        let records = logs.get_emitted_logs().unwrap();
+        assert_eq!(records.len(), 1);
+        assert!(
+            records[0]
+                .record
+                .attributes_iter()
+                .any(|(key, value)| key.as_str() == "areal.capture.truncated"
+                    && value == &AnyValue::Boolean(true))
+        );
     }
 
     #[test]
@@ -697,7 +809,7 @@ mod isolation_tests {
         let writes = AtomicUsize::new(0);
         tracing::subscriber::with_default(subscriber, || {
             let root =
-                tracing::info_span!(target:"areal::trajectory","invoke_agent",areal.turn.id="turn");
+                tracing::info_span!(target:"areal::trajectory","test_root",areal.turn.id="turn");
             let _root = root.enter();
             let request = tracing::info_span!(target:"areal::trajectory","chat",gen_ai.input.messages=%LargeDisplay(&writes));
             let _request = request.enter();
@@ -781,7 +893,7 @@ mod isolation_tests {
         );
         tracing::subscriber::with_default(subscriber, || {
             let root =
-                tracing::info_span!(target:"areal::trajectory","invoke_agent",areal.turn.id="turn");
+                tracing::info_span!(target:"areal::trajectory","test_root",areal.turn.id="turn");
             let _root = root.enter();
             let request =
                 tracing::info_span!(target:"areal::trajectory","chat",gen_ai.input.messages=%input);

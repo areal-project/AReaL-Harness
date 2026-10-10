@@ -306,6 +306,7 @@ Task Mode 在 Goal 之上提供 foreground/scheduled/background 任务、TaskRun
 | `areal.model.request.wire`                                           | Responses WebSocket 实际发送的 JSON 字符串，可能使用 `previous_response_id` 和增量 input；`.body` 仍保存完整有效输入                                           |
 | `gen_ai.response.id` / `.model` / `.finish_reasons`                  | 供应商实际返回的响应 ID、模型名称与结束原因；未返回则缺省，不根据请求别名推断 checkpoint                                                                       |
 | `areal.model.response.accepted`                                      | 响应在 Engine 请求结算时被接受；失败、取消、被 steering 丢弃的响应为 false。它不是任务正确性或训练质量的证明                                                   |
+| `areal.model.response.status` / `.incomplete_details` | Responses 返回的状态与不完整原因；`finish_reasons` 优先保存实际 `reason`，否则保留终态 status |
 | `areal.model.response.usage_details`                                 | 已收到的细分 token 用量；未知值保持未知。取消排空期收到的用量同时记到请求和 Turn                                                                               |
 | `gen_ai.tool.call.arguments`                                         | 模型原始工具意图                                                                                                                                               |
 | `areal.tool.call.effective_arguments`                                | hooks 与运行时句柄解析之后真正提交给执行器的参数                                                                                                               |

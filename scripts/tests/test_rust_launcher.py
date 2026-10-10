@@ -66,7 +66,7 @@ class RustLauncherTests(legacy.LauncherTests):
         service = json.loads(started.stdout)
         try:
             self.assertEqual(service["state"], "ready")
-            self.assertEqual(service["workspace"], str(self.workspace))
+            self.assertEqual(service["workspace"], str(self.workspace.resolve()))
         finally:
             stopped = subprocess.run(
                 [*base, "stop", "--instance", service["serviceId"], "--cancel", "--json"],

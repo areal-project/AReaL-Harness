@@ -29,7 +29,7 @@ enum Work {
 }
 struct Shared {
     used: AtomicUsize,
-    dropped: AtomicU64,
+    dropped: Arc<AtomicU64>,
     stopped: AtomicBool,
 }
 pub(crate) struct Processor {
@@ -42,6 +42,23 @@ impl std::fmt::Debug for Processor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("DurableOtlpProcessor")
     }
+}
+
+// 只有采集后台读写磁盘。锁竞争或写入失败时归还计数，下一次 tick/flush 继续尝试。
+fn persist_dropped(root: &Path, counter: &AtomicU64) {
+    let dropped = counter.swap(0, Ordering::Relaxed);
+    if dropped == 0 {
+        return;
+    }
+    if let Ok(Some(_guard)) = queue::lock(root, ".queue.lock", false) {
+        let mut totals = queue::stats(root);
+        totals.dropped_memory = totals.dropped_memory.saturating_add(dropped);
+        totals.last_error = Some("capture_capacity_or_storage".into());
+        if queue::save_stats(root, &totals).is_ok() {
+            return;
+        }
+    }
+    counter.fetch_add(dropped, Ordering::Relaxed);
 }
 
 fn value_bytes(v: &AnyValue) -> usize {
@@ -63,7 +80,7 @@ impl Processor {
         let (sender, receiver) = mpsc::sync_channel(config.max_records.min(256));
         let shared = Arc::new(Shared {
             used: AtomicUsize::new(0),
-            dropped: AtomicU64::new(0),
+            dropped: Arc::new(AtomicU64::new(0)),
             stopped: AtomicBool::new(false),
         });
         let shared_worker = shared.clone();
@@ -139,15 +156,22 @@ impl Processor {
                             }
                         }
                         Ok(Work::Flush(done)) => {
+                            persist_dropped(&config_worker.spool_dir, &shared_worker.dropped);
                             let _ = done.send(());
+                            continue;
                         }
                         Ok(Work::Stop(done)) => {
+                            persist_dropped(&config_worker.spool_dir, &shared_worker.dropped);
                             let _ = done.send(());
                             break;
                         }
-                        Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                        Err(mpsc::RecvTimeoutError::Disconnected) => {
+                            persist_dropped(&config_worker.spool_dir, &shared_worker.dropped);
+                            break;
+                        }
                         Err(mpsc::RecvTimeoutError::Timeout) => {
                             if shared_worker.stopped.load(Ordering::Acquire) {
+                                persist_dropped(&config_worker.spool_dir, &shared_worker.dropped);
                                 break;
                             }
                             // 启动瞬间的进程故障也需要恢复，不能只等下一次 Agent 请求。
@@ -166,20 +190,7 @@ impl Processor {
                             }
                         }
                     }
-                    let dropped = shared_worker.dropped.swap(0, Ordering::Relaxed);
-                    if dropped > 0
-                        && let Ok(Some(_guard)) =
-                            queue::lock(&config_worker.spool_dir, ".queue.lock", false)
-                    {
-                        let mut totals = queue::stats(&config_worker.spool_dir);
-                        totals.dropped_memory += dropped;
-                        totals.last_error = Some("capture_capacity_or_storage".into());
-                        if queue::save_stats(&config_worker.spool_dir, &totals).is_err() {
-                            shared_worker.dropped.fetch_add(dropped, Ordering::Relaxed);
-                        }
-                    } else if dropped > 0 {
-                        shared_worker.dropped.fetch_add(dropped, Ordering::Relaxed);
-                    }
+                    persist_dropped(&config_worker.spool_dir, &shared_worker.dropped);
                 }
             })?;
         Ok(Self {
@@ -189,6 +200,9 @@ impl Processor {
             max_memory: config.max_memory_bytes / 2,
             max_record: config.max_batch_bytes,
         })
+    }
+    pub(crate) fn drop_counter(&self) -> Arc<AtomicU64> {
+        self.shared.dropped.clone()
     }
     fn flush(&self, stop: bool, timeout: Duration) {
         if stop {
@@ -252,4 +266,75 @@ impl LogProcessor for Processor {
     }
     // 使用独立、固定的资源身份，避免普通观测配置伪造安装ID或产品版本。
     fn set_resource(&mut self, _resource: &Resource) {}
+}
+
+#[cfg(test)]
+mod drop_counter_tests {
+    use super::*;
+
+    fn config(root: &Path) -> TrajectoryConfig {
+        TrajectoryConfig {
+            source_id: "drop-counter-test".into(),
+            source_file: None,
+            source_revision: String::new(),
+            enabled: true,
+            endpoint: "http://127.0.0.1:1/v1/logs".into(),
+            spool_dir: root.into(),
+            max_disk_bytes: 1024 * 1024,
+            max_memory_bytes: 256 * 1024,
+            max_batch_bytes: 64 * 1024,
+            max_records: 20,
+            max_retries: 6,
+            retry_initial_seconds: 1,
+            retry_max_seconds: 10,
+            request_timeout_seconds: 1,
+            upload_interval_ms: 10,
+            headers_env: None,
+            headers_file: None,
+        }
+    }
+
+    #[test]
+    fn whole_event_drops_persist_before_flush_and_stop_without_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let processor = Processor::new(&config(dir.path())).unwrap();
+        let dropped = processor.drop_counter();
+        for (stop, count, total) in [(false, 3, 3), (true, 2, 5)] {
+            dropped.fetch_add(count, Ordering::Relaxed);
+            let (done, wait) = mpsc::channel();
+            processor
+                .sender
+                .send(if stop {
+                    Work::Stop(done)
+                } else {
+                    Work::Flush(done)
+                })
+                .unwrap();
+            // 回执之前必须已尝试持久化；不依赖后续成功事件或下一秒 tick。
+            wait.recv_timeout(Duration::from_secs(5)).unwrap();
+            let stats = queue::stats(dir.path());
+            assert_eq!(stats.dropped_memory, total);
+            assert_eq!(
+                stats.last_error.as_deref(),
+                Some("capture_capacity_or_storage")
+            );
+            assert_eq!(dropped.load(Ordering::Relaxed), 0);
+            assert!(queue::records(dir.path(), 1024 * 1024).unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn drop_counter_is_restored_on_lock_contention_and_not_double_counted() {
+        let dir = tempfile::tempdir().unwrap();
+        let dropped = AtomicU64::new(4);
+        let held = queue::lock(dir.path(), ".queue.lock", true).unwrap();
+        persist_dropped(dir.path(), &dropped);
+        assert_eq!(dropped.load(Ordering::Relaxed), 4);
+        assert_eq!(queue::stats(dir.path()).dropped_memory, 0);
+        drop(held);
+        persist_dropped(dir.path(), &dropped);
+        persist_dropped(dir.path(), &dropped);
+        assert_eq!(queue::stats(dir.path()).dropped_memory, 4);
+        assert_eq!(dropped.load(Ordering::Relaxed), 0);
+    }
 }

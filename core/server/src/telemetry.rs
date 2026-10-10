@@ -148,6 +148,9 @@ impl TelemetryGuard {
             None
         };
         let durable_enabled = durable.is_some();
+        let durable_drops = durable
+            .as_ref()
+            .map(crate::trajectory::Processor::drop_counter);
         if durable_enabled {
             areal_engine::configure_trajectory_capture_budget(trajectory.max_memory_bytes / 4);
         }
@@ -209,6 +212,7 @@ impl TelemetryGuard {
         let durable_events =
             events::EventLayer::<1>::new(durable_provider.as_ref().map(|p| p.logger("areal-core")))
                 .with_capture_limit(Some(trajectory.max_memory_bytes / 4))
+                .with_drop_counter(durable_drops)
                 .with_filter(filter_fn(move |m| {
                     durable_enabled && m.target() == "areal::trajectory"
                 }));

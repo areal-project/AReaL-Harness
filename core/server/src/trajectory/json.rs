@@ -32,6 +32,7 @@ pub(super) fn project(request: &mut ExportLogsServiceRequest, limit: usize) {
                             | "areal.tool.call.effective_arguments"
                             | "areal.tool.result.projected"
                             | "areal.model.response.usage_details"
+                            | "areal.model.response.incomplete_details"
                             | "gen_ai.response.finish_reasons"
                     ) {
                         continue;

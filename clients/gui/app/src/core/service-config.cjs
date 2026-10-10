@@ -1,7 +1,8 @@
 'use strict';
 const { createHash } = require('node:crypto');
 const { existsSync, readFileSync, readdirSync, statSync, realpathSync } = require('node:fs');
-const { join, dirname, resolve } = require('node:path');
+const { join, dirname, basename, resolve } = require('node:path');
+const { homedir } = require('node:os');
 const { resolveCoreBinary, executables } = require('./bundle.cjs');
 // 独立应用身份避免接管旧安装；开发版按工作树隔离。
 function configureUserData(app, env = process.env) {
@@ -20,16 +21,28 @@ function serviceHome(app) {
 function serviceOptions(app) {
   // 配置文件参与后台身份；环境变量选择也必须固定，避免新窗口复用另一份配置的后台。
   const config = process.env.AREAL_CORE_CONFIG || process.env.AREAL_HARNESS_CONFIG;
+  const configHome = resolve(process.env.AREAL_HARNESS_HOME || join(process.env.AREAL_CORE_USER_HOME || homedir(), '.areal'));
   return { binary: resolveCoreBinary({ explicit: process.env.AREAL_CORE_BIN || (!app.isPackaged ? resolve(__dirname, '../../../../../target/debug/areal') : undefined), packaged: app.isPackaged, resourcesPath: process.resourcesPath }),
     home: serviceHome(app),
     // macOS Unix socket 长度有限，注册目录不能嵌入较长的 userData 路径。
     harnessHome: process.env.AREAL_HARNESS_SERVICE_HOME || process.env.AREAL_HARNESS_HOME || join(app.getPath('home'), '.areal', 'gui', createHash('sha256').update(resolve(serviceHome(app))).digest('hex').slice(0, 12)),
-    userHome: process.env.AREAL_CORE_USER_HOME, config: config ? resolve(config) : undefined,
+    userHome: process.env.AREAL_CORE_USER_HOME, config: config ? resolve(config) : undefined, configHome,
     toolExtensions: process.env.AREAL_HARNESS_TOOL_EXTENSIONS,
     workgroupPolicy: process.env.AREAL_CORE_WORKGROUP_POLICY,
     workgroupToolchain: process.env.AREAL_CORE_WORKGROUP_TOOLCHAIN,
     desktopConfig: process.env.AREAL_CORE_DESKTOP_CONFIG || join(__dirname, 'desktop-profile.json'),
     desktopProcesses: true, defaultProfile: !process.env.AREAL_CORE_DESKTOP_CONFIG ? { id: 'areal-standard', revision: 'v1' } : undefined };
+}
+function configurationIdentity(path) {
+  // 默认文件可以尚不存在；规范已有祖先，使首次保存和目录别名不改变身份。
+  const suffix = [];
+  for (let current = resolve(path);;) {
+    try { return join(realpathSync(current), ...suffix); }
+    catch (error) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error; }
+    const parent = dirname(current);
+    if (parent === current) return resolve(path);
+    suffix.unshift(basename(current)); current = parent;
+  }
 }
 async function serviceIdentity(options) {
   const hash = createHash('sha256');
@@ -55,7 +68,8 @@ async function serviceIdentity(options) {
   // Core owns mutable model configuration and its revisions. Saving it must
   // not make a later window incompatible with the still-running service;
   // applying pending configuration retains the explicit safe restart path.
-  hash.update(JSON.stringify({ config: options.config ? realpathSync(options.config) : null }));
+  const configHome = options.configHome || resolve(process.env.AREAL_HARNESS_HOME || join(options.userHome || homedir(), '.areal'));
+  hash.update(JSON.stringify({ config: configurationIdentity(options.config || join(configHome, 'config.toml')), configHome: configurationIdentity(configHome) }));
   for (const path of [options.desktopConfig, options.workgroupPolicy]) if (path) hash.update(readFileSync(path));
   if (options.workgroupToolchain) hash.update(realpathSync(options.workgroupToolchain));
   hash.update(JSON.stringify({ harnessHome: options.harnessHome, userHome: options.userHome, toolExtensions: options.toolExtensions, desktopProcesses: options.desktopProcesses, defaultProfile: options.defaultProfile }));
