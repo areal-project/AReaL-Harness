@@ -191,6 +191,7 @@ impl ChatDecoder {
             return Ok(());
         }
         let event: Value = serde_json::from_str(data).context("invalid SSE JSON")?;
+        telemetry::response(&event, ModelProtocol::ChatCompletions);
         if let Some(error) = event.get("error").filter(|v| !v.is_null()) {
             return Err(StreamError::from_value(error, "error").into());
         }
@@ -506,6 +507,7 @@ impl ResponsesDecoder {
             return Ok(());
         }
         let event: Value = serde_json::from_str(data).context("invalid Responses SSE JSON")?;
+        telemetry::response(&event, ModelProtocol::Responses);
         self.usage_details
             .observe_response_id(event["response"].get("id"));
         match event["type"].as_str().unwrap_or_default() {

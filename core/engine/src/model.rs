@@ -2,6 +2,7 @@ mod decoder;
 use decoder::{ChatDecoder, Decoder, ResponsesDecoder};
 
 mod audit;
+mod telemetry;
 mod tool_calls;
 mod websocket;
 use anyhow::{Context, Result, bail};
@@ -1008,6 +1009,12 @@ impl Model for HttpModel {
         }
         // Retrying before accepting a stream cannot replay a tool operation.
         // Never automatically replay a partially consumed model stream here.
+        telemetry::request(
+            &body,
+            self.protocol,
+            purpose,
+            self.options.responses_websocket,
+        );
         if self.options.responses_websocket {
             return self.websocket_stream(body, purpose, limits).await;
         }
@@ -1153,6 +1160,7 @@ impl Model for HttpModel {
                                 }
                                 let parts = decoder.feed(&bytes);
                                 audit.value["usageDetails"] = decoder.usage_details();
+                                telemetry::usage(&audit.value["usageDetails"]);
                                 if let Decoder::Chat(chat) = &decoder {
                                     audit.value["stopReason"] = json!(chat.stop_reason);
                                     audit.value["responseShape"] = json!({

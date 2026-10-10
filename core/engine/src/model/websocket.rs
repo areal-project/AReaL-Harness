@@ -242,6 +242,7 @@ impl HttpModel {
         audit.value["httpAttempts"] = json!(1);
         let mut socket = socket;
         // 发送失败也可能已被接收；不在此处降级 HTTP 或重放。
+        crate::record_trajectory_json(&tracing::Span::current(), "areal.model.request.wire", &wire);
         if socket
             .send(WsMessage::Text(wire.to_string().into()))
             .await
@@ -376,6 +377,7 @@ impl HttpModel {
                         let mut events =
                             state.decoder.feed(format!("data: {text}\n\n").as_bytes())?;
                         state.audit.value["usageDetails"] = state.decoder.usage_details();
+                        telemetry::usage(&state.audit.value["usageDetails"]);
                         if is_complete {
                             events.extend(state.decoder.finish()?);
                             state.response_id = event["response"]["id"]

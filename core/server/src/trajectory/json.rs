@@ -29,6 +29,10 @@ pub(super) fn project(request: &mut ExportLogsServiceRequest, limit: usize) {
                             | "gen_ai.output.messages"
                             | "gen_ai.tool.call.arguments"
                             | "gen_ai.tool.call.result"
+                            | "areal.tool.call.effective_arguments"
+                            | "areal.tool.result.projected"
+                            | "areal.model.response.usage_details"
+                            | "gen_ai.response.finish_reasons"
                     ) {
                         continue;
                     }

@@ -148,6 +148,9 @@ impl TelemetryGuard {
             None
         };
         let durable_enabled = durable.is_some();
+        if durable_enabled {
+            areal_engine::configure_trajectory_capture_budget(trajectory.max_memory_bytes / 4);
+        }
         let durable_provider = durable.map(|processor| {
             opentelemetry_sdk::logs::SdkLoggerProvider::builder()
                 .with_log_processor(processor)
@@ -213,7 +216,11 @@ impl TelemetryGuard {
             .with(
                 tracing_subscriber::fmt::layer()
                     .with_writer(std::io::stderr)
-                    .with_filter(log_filter),
+                    .with_filter(log_filter)
+                    // 原始轨迹只进入明确启用的遥测通道，不因 RUST_LOG=info 启动内容采集。
+                    .with_filter(filter_fn(|metadata| {
+                        metadata.target() != "areal::trajectory"
+                    })),
             )
             .with(trace_layer)
             .with(events)

@@ -44,8 +44,6 @@ const collector = createServer(async (req, res) => {
   res.writeHead(200, { "Content-Type": "application/x-protobuf" });
   res.end();
 });
-const frame = (delta, finish = null) =>
-  `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
 const call = (id, name, args, index = 0) => ({
   index,
   id,
@@ -58,6 +56,9 @@ const model = createServer(async (req, res) => {
     for await (const chunk of req) body += chunk;
     const input = JSON.parse(body);
     requests.push(input);
+    const responseId = `chatcmpl-fixture-${requests.length}`;
+    const frame = (delta, finish = null) =>
+      `data: ${JSON.stringify({ id: responseId, model: `${input.model}-snapshot`, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
     assert(requests.length <= 50, "fixture model request limit");
     const user = input.messages.findLast(
       (message) =>
@@ -80,8 +81,12 @@ const model = createServer(async (req, res) => {
       res.write(frame({ content: "partial-before-cancel" }));
       cancellationStarted = true;
       const timer = setTimeout(
-        () => res.end(frame({ content: "tail-after-cancel" }, "stop") + "data: [DONE]\n\n"),
-        2000,
+        () =>
+          res.end(
+            frame({ content: "tail-after-cancel" }, "stop") +
+              `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 } })}\n\ndata: [DONE]\n\n`,
+          ),
+        750,
       );
       timer.unref();
       return;

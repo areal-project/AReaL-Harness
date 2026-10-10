@@ -610,6 +610,7 @@ impl Engine {
                 otel.status_code = tracing::field::Empty,
                 error.type = tracing::field::Empty,
                 gen_ai.operation.name = "areal.compact_context",
+                areal.capture.truncated = tracing::field::Empty,
                 gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
                 gen_ai.conversation.id = %snapshot.session_id,
@@ -636,7 +637,7 @@ impl Engine {
                 // 这是写作目标而非硬截断；原有净缩减验证仍决定能否保存摘要。
                 input[0] = Message::text("system", format!("{}\nSummary writing target: {writing_target} UTF-8 bytes. Compress completed background into one sentence; prioritize current state, unresolved failures and the next action. Original user instructions and exact file receipts are retained separately, so do not copy their full lists. This tighter target supersedes the general length guidance above.", include_str!("summary-instructions.md")));
             }
-            tracing::Span::current().record("gen_ai.input.messages", trajectory::messages(&input));
+            trajectory::record_messages(&tracing::Span::current(), "gen_ai.input.messages", &input);
             let started = tokio::time::Instant::now();
             let mut usage = areal_protocol::ModelUsage::default();
             let mut accepted = None;
@@ -653,7 +654,7 @@ impl Engine {
                     info_span!(
                         target: trajectory::TARGET,
                         "gen_ai.client.operation",
-                        otel.name = %format!("chat {}", model.name()),
+                        otel.name = %format_args!("chat {}", model.name()),
                         otel.kind = "client",
                         otel.status_code = tracing::field::Empty,
                         error.type = tracing::field::Empty,
@@ -662,6 +663,20 @@ impl Engine {
                         gen_ai.provider.name = %model.provider(),
                         gen_ai.request.model = %model.name(),
                         gen_ai.request.stream = true,
+                        areal.capture.truncated = tracing::field::Empty,
+                        areal.model.request.id = tracing::field::Empty,
+                        areal.model.request.protocol = tracing::field::Empty,
+                        areal.model.request.transport = tracing::field::Empty,
+                        areal.model.request.body = tracing::field::Empty,
+                        areal.model.request.wire = tracing::field::Empty,
+                        areal.model.request.sha256 = tracing::field::Empty,
+                        areal.model.request.purpose = tracing::field::Empty,
+                        areal.model.adapter.version = tracing::field::Empty,
+                        areal.model.response.accepted = tracing::field::Empty,
+                        gen_ai.response.id = tracing::field::Empty,
+                        gen_ai.response.model = tracing::field::Empty,
+                        gen_ai.response.finish_reasons = tracing::field::Empty,
+                        areal.model.response.usage_details = tracing::field::Empty,
                         gen_ai.conversation.id = %snapshot.session_id,
                         gen_ai.input.messages = tracing::field::Empty,
                         gen_ai.output.messages = tracing::field::Empty,
@@ -684,13 +699,13 @@ impl Engine {
                         request_reserved = true;
                     }
                     // 预检可能缩短摘要证据；轨迹必须记录真正提交给模型的消息。
-                    tracing::Span::current().record("gen_ai.input.messages", trajectory::messages(&input));
+                    trajectory::record_messages(&tracing::Span::current(), "gen_ai.input.messages", &input);
                     let pending = tokio::time::timeout(self.limits.stream_idle_timeout, model::REQUEST_OWNER.scope((snapshot.id.clone(), snapshot.turns.last().map_or_else(String::new, |t| t.id.clone())), model.chat_with_limits(input.clone(), Vec::new(), model::RequestPurpose::Summary, model::ToolCallLimits { max_calls: 0, max_buffer_bytes: self.limits.max_tool_buffer_bytes }, None)));
                     tokio::pin!(pending);
                     let mut stream = tokio::select! {
                         _ = cancel.cancelled() => {
                             if let Ok(Ok(Ok(mut stream))) = tokio::time::timeout(Duration::from_millis(cell.cancel_grace_ms.load(Ordering::Acquire) as u64), &mut pending).await {
-                                self.settle_cancelled_model(cell, &mut stream).await;
+                                self.settle_cancelled_model(cell, &mut stream, &mut request).await;
                             }
                             anyhow::bail!("cancelled");
                         },
@@ -699,7 +714,7 @@ impl Engine {
                     loop {
                         let event = tokio::select! {
                             _ = cancel.cancelled() => {
-                                self.settle_cancelled_model(cell, &mut stream).await;
+                                self.settle_cancelled_model(cell, &mut stream, &mut request).await;
                                 anyhow::bail!("cancelled");
                             },
                             result = tokio::time::timeout(self.limits.stream_idle_timeout, stream.next()) => result.map_err(|_| watchdog::idle_error("compaction stream"))?,
@@ -718,9 +733,6 @@ impl Engine {
                                 // 已观察消费属于 Turn，不依赖摘要或 checkpoint 是否最终提交。
                                 cell.state.lock().await.thread.turns.last_mut().unwrap()
                                     .usage.get_or_insert_with(Default::default).add_assign(&value);
-                                request.span.record("gen_ai.usage.input_tokens", attempt_usage.input_tokens);
-                                request.span.record("gen_ai.usage.cache_read.input_tokens", attempt_usage.cached_input_tokens);
-                                request.span.record("gen_ai.usage.output_tokens", attempt_usage.output_tokens);
                             },
                             ModelEvent::ToolCall(call) => {
                                 rejected_tools.push(json!({"name":call.name,"arguments":tools::prefix(&call.arguments,4096)}));
@@ -735,8 +747,9 @@ impl Engine {
                     Ok(())
                 }.instrument(request_span).await;
                 if let Err(error) = &response {
-                    request.span.record("error.message", format!("{error:#}"));
+                    request.span.record("error.message", tracing::field::display(format_args!("{error:#}")));
                 }
+                attempt_usage = request.usage().clone();
                 request.finish(response.as_ref().err().map(|_| "model_request_failed"));
                 drop(request);
                 usage.add_assign(&attempt_usage);
@@ -785,7 +798,7 @@ impl Engine {
                 summary = retained_evidence(&prefix, summary_budget.min(SUMMARY_LIMIT));
                 summary = tools::prefix(&summary, summary_budget).to_owned();
             }
-            tracing::Span::current().record("gen_ai.output.messages", trajectory::messages(&[Message::text("assistant", &summary)]));
+            trajectory::record_text(&tracing::Span::current(), "gen_ai.output.messages", "assistant", &summary);
             let mut state = cell.state.lock().await;
             // 摘要等待期间允许 steer；净缩减必须与同一时刻的历史比较。
             let commit_before_bytes = message_bytes(&history(&state.thread, &self.store)?);

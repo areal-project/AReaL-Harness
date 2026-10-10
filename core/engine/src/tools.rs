@@ -701,7 +701,7 @@ impl Engine {
             info_span!(
                 target: trajectory::TARGET,
                 "execute_tool",
-                otel.name = %format!("execute_tool {}", call.name),
+                otel.name = %format_args!("execute_tool {}", call.name),
                 otel.kind = "internal",
                 otel.status_code = tracing::field::Empty,
                 error.type = tracing::field::Empty,
@@ -715,6 +715,10 @@ impl Engine {
                 gen_ai.tool.call.id = %call.id,
                 gen_ai.tool.call.arguments = %call.arguments,
                 gen_ai.tool.call.result = tracing::field::Empty,
+                areal.capture.truncated = tracing::field::Empty,
+                areal.tool.call.effective_arguments = tracing::field::Empty,
+                areal.tool.result.projected = tracing::field::Empty,
+                areal.tool.outcome = tracing::field::Empty,
                 areal.duration_ms = tracing::field::Empty,
             ),
             "areal.tool.result",
@@ -727,7 +731,10 @@ impl Engine {
         .instrument(span)
         .await;
         if let Err(error) = &result {
-            operation.span.record("error.message", format!("{error:#}"));
+            operation.span.record(
+                "error.message",
+                tracing::field::display(format_args!("{error:#}")),
+            );
         }
         operation.finish(result.as_ref().err().map(|_| "tool_execution_failed"));
         result
@@ -934,6 +941,15 @@ impl Engine {
                 },
             );
         }
+        tracing::Span::current().record(
+            "areal.tool.outcome",
+            match outcome {
+                ToolOutcome::Succeeded => "succeeded",
+                ToolOutcome::Failed => "failed",
+                ToolOutcome::Cancelled => "cancelled",
+                ToolOutcome::Unknown | ToolOutcome::Running => "unknown",
+            },
+        );
         let unknown = outcome == ToolOutcome::Unknown;
         let cursor = result["processId"]
             .as_str()
@@ -988,13 +1004,22 @@ impl Engine {
                 }
             }
         }
-        tracing::Span::current().record("gen_ai.tool.call.result", result.to_string());
+        trajectory::record_json(
+            &tracing::Span::current(),
+            "gen_ai.tool.call.result",
+            &result,
+        );
         let mut custom_content = result
             .get("contentItems")
             .map(|_| extensions::content_items(&result));
         let prepared = self
             .prepare_tool_result(cell, &item_id, &call.name, &result, output_argv.as_deref())
             .await?;
+        trajectory::record_json(
+            &tracing::Span::current(),
+            "areal.tool.result.projected",
+            &prepared.value,
+        );
         if prepared.value != result
             && custom_content
                 .as_ref()

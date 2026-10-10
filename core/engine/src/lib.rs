@@ -15,6 +15,7 @@ mod store;
 mod task_mode;
 pub mod tools;
 mod trajectory;
+pub use trajectory::{configure_trajectory_capture_budget, record_json as record_trajectory_json};
 mod turns;
 mod watchdog;
 pub mod workgroup;

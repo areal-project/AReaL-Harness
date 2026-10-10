@@ -86,6 +86,14 @@ impl Processor {
                             env!("CARGO_PKG_VERSION"),
                         ))
                         .with_attribute(opentelemetry::KeyValue::new(
+                            "service.build.revision",
+                            env!("AREAL_BUILD_REVISION"),
+                        ))
+                        .with_attribute(opentelemetry::KeyValue::new(
+                            "service.build.dirty",
+                            env!("AREAL_BUILD_DIRTY"),
+                        ))
+                        .with_attribute(opentelemetry::KeyValue::new(
                             "service.instance.id",
                             installation,
                         ))
@@ -177,8 +185,8 @@ impl Processor {
         Ok(Self {
             sender,
             shared,
-            // 剩余四分之一由 EventLayer 的共享字段预算使用。
-            max_memory: config.max_memory_bytes / 4 * 3,
+            // Engine 内容构造与 EventLayer 各占四分之一，其余供后台副本与编码。
+            max_memory: config.max_memory_bytes / 2,
             max_record: config.max_batch_bytes,
         })
     }

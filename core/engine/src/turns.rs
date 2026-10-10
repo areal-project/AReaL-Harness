@@ -449,33 +449,25 @@ impl Engine {
         cancel: CancellationToken,
         mut steer: mpsc::Receiver<bool>,
     ) {
+        let prompt_span = info_span!(target: trajectory::TARGET, "areal.user_prompt",
+            gen_ai.input.messages = tracing::field::Empty,
+            areal.capture.truncated = tracing::field::Empty);
         let input = {
             let state = cell.state.lock().await;
-            state
-                .thread
-                .turns
-                .last()
-                .map(|turn| {
-                    turn.items
-                        .iter()
-                        .filter_map(|item| {
-                            if let Item::UserMessage { content, .. } = item {
-                                let mut message = model::Message::text("user", "");
-                                message.content =
-                                    content.iter().map(model::content_from_input).collect();
-                                Some(message)
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
+            trajectory::capture_prompt(
+                &prompt_span,
+                state
+                    .thread
+                    .turns
+                    .last()
+                    .map_or(&[], |turn| turn.items.as_slice()),
+            )
         };
-        tracing::event!(target: trajectory::TARGET, tracing::Level::INFO, {
-            "event.name" = "areal.user_prompt",
-            gen_ai.input.messages = %trajectory::messages(&input)
+        input.record(&prompt_span, "gen_ai.input.messages");
+        prompt_span.in_scope(|| {
+            tracing::event!(target: trajectory::TARGET, tracing::Level::INFO, { "event.name" = "areal.user_prompt" });
         });
+        drop(prompt_span);
         // 普通 Turn 没有组合时限；仅保留显式研究 worker 和 Goal 预算。
         let worker_deadline = self
             .extensions

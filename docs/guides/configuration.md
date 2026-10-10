@@ -332,6 +332,8 @@ target/debug/areal trajectory sync-config --config /absolute/config.toml
 
 非法地址、认证不可用或上报失败只影响采集/导出状态；字段类型、容量范围和冲突由配置校验拒绝。数据内容范围与下方 OpenTelemetry 轨迹相同，包含实际输入、推理、工具参数和结果；开启前应选择适合这些内容的接收端。持久导出与标准 `OTEL_*` 观测配置可分别使用，重复配置同一目的地时需考虑重复数据。
 
+采集内存分为 Engine 内容构造四分之一、事件字段四分之一、后台副本和编码二分之一。流式输出、摘要及输入序列化都在分配前取得共享额度；超限停止该副本的采集，业务流继续。最终模型请求包含工具 schema 与有效参数，并保留构建提交和响应模型身份。事件序号和终态清单用于检测整条事件丢失；字段、摘要和训练边界见[持久轨迹协议](../api/core.md#持久轨迹协议)。仅设置 `RUST_LOG=info` 不会启用原始轨迹采集或把内容写到终端。
+
 ## OpenTelemetry 轨迹上报
 
 Core 使用开源 OpenTelemetry SDK，通过标准 OTLP HTTP/protobuf 导出 Traces 和 Events/Logs。未配置 endpoint 时不启用，上报失败不改变 Turn 结果。配置在 Core 启动时读取，修改后需重启服务。

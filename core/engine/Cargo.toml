@@ -23,7 +23,7 @@ jsonschema.workspace = true
 reqwest.workspace = true
 rustix.workspace = true
 serde.workspace = true
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
 sha2.workspace = true
 thiserror.workspace = true
 tempfile.workspace = true

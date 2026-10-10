@@ -5,12 +5,13 @@ use opentelemetry::{
     trace::TraceContextExt,
 };
 use opentelemetry_sdk::logs::SdkLogger;
+use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     fmt,
     sync::{
-        Arc, OnceLock,
-        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::SystemTime,
 };
@@ -190,6 +191,29 @@ impl<const CHANNEL: u8> Visit for Fields<CHANNEL> {
 
 struct LocalContext<const CHANNEL: u8>(opentelemetry::trace::SpanContext);
 
+// 每个 Turn 只保留流式摘要；先分配序号再尝试导出，容量丢弃会成为可检测的缺口。
+struct TurnSequence {
+    state: Mutex<(u64, Sha256)>,
+    lost: AtomicBool,
+    _reservation: RecordReservation,
+}
+struct TurnIdentity(Arc<TurnSequence>);
+
+impl TurnSequence {
+    fn next(&self) -> Option<(u64, String, String)> {
+        // 并发观测不能反向阻塞执行；竞争本身记为采集损失。
+        let Ok(mut state) = self.state.try_lock() else {
+            self.lost.store(true, Ordering::Relaxed);
+            return None;
+        };
+        state.0 += 1;
+        let sequence = state.0;
+        let id = uuid::Uuid::new_v4().to_string();
+        state.1.update(format!("{sequence}:{id}\n").as_bytes());
+        Some((sequence, id, format!("{:x}", state.1.clone().finalize())))
+    }
+}
+
 pub(super) struct EventLayer<const CHANNEL: u8> {
     logger: Option<SdkLogger>,
     budget: Option<Arc<Budget>>,
@@ -231,6 +255,20 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>, const CHANNEL: u8> Layer<S> for Eve
         };
         attrs.record(&mut fields);
         if let Some(span) = ctx.span(id) {
+            if CHANNEL == 1 && attrs.metadata().name() == "invoke_agent" {
+                let mut reservation = RecordReservation {
+                    budget: self.budget.clone(),
+                    bytes: 0,
+                };
+                if reservation.reserve(1024) {
+                    span.extensions_mut()
+                        .insert(TurnIdentity(Arc::new(TurnSequence {
+                            state: Mutex::new((0, Sha256::new())),
+                            lost: AtomicBool::new(false),
+                            _reservation: reservation,
+                        })));
+                }
+            }
             use opentelemetry::trace::{SpanContext, SpanId, TraceFlags, TraceId, TraceState};
             let trace_id = span
                 .parent()
@@ -270,8 +308,14 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>, const CHANNEL: u8> Layer<S> for Eve
             budget: self.budget.clone(),
             ..Fields::default()
         };
+        let mut sequence = None;
         if let Some(scope) = ctx.event_scope(event) {
             for span in scope.from_root() {
+                if CHANNEL == 1
+                    && let Some(identity) = span.extensions().get::<TurnIdentity>()
+                {
+                    sequence = Some(identity.0.clone());
+                }
                 if let Some(parent) = span.extensions().get::<Fields<CHANNEL>>() {
                     fields.values.extend(parent.values.clone());
                     fields.truncated |= parent.truncated;
@@ -299,6 +343,13 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>, const CHANNEL: u8> Layer<S> for Eve
         let Some(logger) = &self.logger else {
             return;
         };
+        let identity = match &sequence {
+            Some(sequence) => match sequence.next() {
+                Some(identity) => Some(identity),
+                None => return,
+            },
+            None => None,
+        };
         let mut record = logger.create_log_record();
         if let Some(AnyValue::String(name)) = fields.values.get("event.name").map(|v| &v.value) {
             // SDK 要求静态事件名，使用 Engine 定义的有限事件集合。
@@ -322,7 +373,20 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>, const CHANNEL: u8> Layer<S> for Eve
             budget: self.budget.clone(),
             bytes: 0,
         };
+        if let Some((number, id, digest)) = identity {
+            if !reservation.reserve(2048) {
+                return;
+            }
+            record.add_attribute("areal.trajectory.schema_version", "areal.trajectory/v1");
+            record.add_attribute("areal.event.sequence", number as i64);
+            record.add_attribute("areal.event.id", id);
+            if fields.values.get("event.name").is_some_and(|v| matches!(&v.value, AnyValue::String(name) if name.as_str() == "areal.turn.completed")) {
+                record.add_attribute("areal.turn.event_count", number as i64);
+                record.add_attribute("areal.turn.events_sha256", digest);
+            }
+        }
         let mut truncated = fields.truncated;
+        truncated |= sequence.is_some_and(|s| s.lost.load(Ordering::Relaxed));
         record.add_attributes(
             fields
                 .values
@@ -391,6 +455,78 @@ mod tests {
         trace::{InMemorySpanExporter, SdkTracerProvider},
     };
     use tracing_subscriber::{filter::filter_fn, layer::SubscriberExt};
+
+    #[test]
+    fn durable_manifest_sequences_nested_turns_and_detects_a_missing_record() {
+        let logs = InMemoryLogExporter::default();
+        let provider = SdkLoggerProvider::builder()
+            .with_simple_exporter(logs.clone())
+            .build();
+        let layer = EventLayer::<1>::new(Some(provider.logger("manifest")))
+            .with_capture_limit(Some(64 * 1024));
+        let budget = layer.budget.clone().unwrap();
+        tracing::subscriber::with_default(tracing_subscriber::registry().with(layer), || {
+            let root = tracing::info_span!(target: "areal::trajectory", "invoke_agent", areal.turn.id = "parent");
+            let _entered = root.enter();
+            tracing::event!(target: "areal::trajectory", tracing::Level::INFO, { "event.name" = "areal.user_prompt" });
+            {
+                let child = tracing::info_span!(target: "areal::trajectory", "invoke_agent", areal.turn.id = "child");
+                let _child = child.enter();
+                tracing::event!(target: "areal::trajectory", tracing::Level::INFO, { "event.name" = "areal.user_prompt" });
+                tracing::event!(target: "areal::trajectory", tracing::Level::INFO, { "event.name" = "areal.turn.completed" });
+            }
+            // 人为占满共享预算：整事件未导出，终态依旧声明这次捕获尝试。
+            let occupied = budget.limit - budget.used.load(Ordering::Relaxed);
+            assert!(budget.reserve(occupied));
+            tracing::event!(target: "areal::trajectory", tracing::Level::INFO, { "event.name" = "areal.tool.call" });
+            budget.used.fetch_sub(occupied, Ordering::Relaxed);
+            tracing::event!(target: "areal::trajectory", tracing::Level::INFO, { "event.name" = "areal.turn.completed" });
+        });
+        assert_eq!(budget.used.load(Ordering::Relaxed), 0);
+        let records = logs.get_emitted_logs().unwrap();
+        assert_eq!(records.len(), 4);
+        let attrs: Vec<BTreeMap<_, _>> = records
+            .iter()
+            .map(|r| {
+                r.record
+                    .attributes_iter()
+                    .map(|(k, v)| (k.as_str(), v.clone()))
+                    .collect()
+            })
+            .collect();
+        assert_eq!(attrs[0]["areal.event.sequence"], AnyValue::Int(1));
+        assert_eq!(attrs[1]["areal.event.sequence"], AnyValue::Int(1));
+        assert_eq!(attrs[2]["areal.turn.event_count"], AnyValue::Int(2));
+        assert_eq!(attrs[3]["areal.turn.event_count"], AnyValue::Int(3));
+        let mut hash = Sha256::new();
+        for (i, a) in attrs[1..3].iter().enumerate() {
+            let AnyValue::String(id) = &a["areal.event.id"] else {
+                panic!()
+            };
+            hash.update(format!("{}:{}\n", i + 1, id.as_str()));
+        }
+        assert_eq!(
+            attrs[2]["areal.turn.events_sha256"],
+            AnyValue::String(format!("{:x}", hash.finalize()).into())
+        );
+    }
+
+    #[test]
+    fn concurrent_manifest_capture_marks_loss_without_waiting() {
+        let sequence = TurnSequence {
+            state: Mutex::new((0, Sha256::new())),
+            lost: AtomicBool::new(false),
+            _reservation: RecordReservation {
+                budget: None,
+                bytes: 0,
+            },
+        };
+        let guard = sequence.state.lock().unwrap();
+        assert!(sequence.next().is_none());
+        assert!(sequence.lost.load(Ordering::Relaxed));
+        drop(guard);
+        assert_eq!(sequence.next().unwrap().0, 1);
+    }
 
     #[test]
     fn events_preserve_content_and_correlate_with_spans_even_without_trace_export() {

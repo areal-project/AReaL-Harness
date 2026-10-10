@@ -28,16 +28,20 @@ impl Engine {
         &self,
         cell: &Cell,
         stream: &mut model::ModelStream,
+        operation: &mut trajectory::Operation,
     ) {
         let grace = Duration::from_millis(cell.cancel_grace_ms.load(Ordering::Acquire) as u64);
-        let usage = settle_cancelled_stream(stream, grace).await;
+        let usage = settle_cancelled_stream(stream, grace)
+            .instrument(operation.span.clone())
+            .await;
         // 没有用量事件不等于提供方明确报告零消费。
-        if let Some(usage) = usage
-            && let Some(turn) = cell.state.lock().await.thread.turns.last_mut()
-        {
-            turn.usage
-                .get_or_insert_with(Default::default)
-                .add_assign(&usage);
+        if let Some(usage) = usage {
+            operation.record_usage(&usage);
+            if let Some(turn) = cell.state.lock().await.thread.turns.last_mut() {
+                turn.usage
+                    .get_or_insert_with(Default::default)
+                    .add_assign(&usage);
+            }
         }
     }
 
@@ -48,15 +52,17 @@ impl Engine {
         cell: &Cell,
         cancel: &CancellationToken,
         stream: &mut model::ModelStream,
+        operation: &mut trajectory::Operation,
     ) {
         loop {
             tokio::select! {
                 biased;
-                _ = cancel.cancelled() => { self.settle_cancelled_model(cell, stream).await; break; },
+                _ = cancel.cancelled() => { self.settle_cancelled_model(cell, stream, operation).await; break; },
                 // 协作纠偏沿用请求的空闲期限；有活动就刷新，原 Goal/worker 总期限由外层执行器控制。
-                event = tokio::time::timeout(self.limits.stream_idle_timeout, stream.next()) => match event {
+                event = tokio::time::timeout(self.limits.stream_idle_timeout, stream.next().instrument(operation.span.clone())) => match event {
                     Ok(Some(Ok(model::ModelEvent::Usage(value)))) => {
                         // 纠偏收尾也只记录真实事件；提前取消不能丢失已观察消费。
+                        operation.record_usage(&value);
                         cell.state.lock().await.thread.turns.last_mut().unwrap()
                             .usage.get_or_insert_with(Default::default).add_assign(&value);
                     },
@@ -386,7 +392,7 @@ impl Engine {
                     info_span!(
                         target: trajectory::TARGET,
                         "gen_ai.client.operation",
-                        otel.name = %format!("chat {}", model.name()),
+                        otel.name = %format_args!("chat {}", model.name()),
                         otel.kind = "client",
                         otel.status_code = tracing::field::Empty,
                         error.type = tracing::field::Empty,
@@ -399,7 +405,21 @@ impl Engine {
                         areal.turn.id = %turn_id,
                         areal.turn.number = turn_number,
                         areal.duration_ms = tracing::field::Empty,
-                        gen_ai.input.messages = %trajectory::messages(&messages),
+                        gen_ai.input.messages = tracing::field::Empty,
+                        areal.capture.truncated = tracing::field::Empty,
+                        areal.model.request.id = tracing::field::Empty,
+                        areal.model.request.protocol = tracing::field::Empty,
+                        areal.model.request.transport = tracing::field::Empty,
+                        areal.model.request.body = tracing::field::Empty,
+                        areal.model.request.wire = tracing::field::Empty,
+                        areal.model.request.sha256 = tracing::field::Empty,
+                        areal.model.request.purpose = tracing::field::Empty,
+                        areal.model.adapter.version = tracing::field::Empty,
+                        areal.model.response.accepted = tracing::field::Empty,
+                        gen_ai.response.id = tracing::field::Empty,
+                        gen_ai.response.model = tracing::field::Empty,
+                        gen_ai.response.finish_reasons = tracing::field::Empty,
+                        areal.model.response.usage_details = tracing::field::Empty,
                         gen_ai.output.messages = tracing::field::Empty,
                         gen_ai.usage.input_tokens = tracing::field::Empty,
                         gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
@@ -407,7 +427,7 @@ impl Engine {
                     ),
                     "gen_ai.client.inference.operation.details",
                 );
-                let mut request_usage = areal_protocol::ModelUsage::default();
+                trajectory::record_messages(&operation.span, "gen_ai.input.messages", &messages);
                 let model_span = operation.span.clone();
                 let output_before = (text_output_bytes, media_output_bytes);
                 let mut response_bytes = 0usize;
@@ -457,7 +477,7 @@ impl Engine {
                         biased;
                         _ = cancel.cancelled() => {
                             if let Ok(Ok(mut stream)) = (&mut pending_response).await {
-                                self.settle_cancelled_model(cell, &mut stream).await;
+                                self.settle_cancelled_model(cell, &mut stream, &mut operation).await;
                             }
                             anyhow::bail!("cancelled");
                         },
@@ -467,14 +487,14 @@ impl Engine {
                                 let result = tokio::select! {
                                     _ = cancel.cancelled() => {
                                         if let Ok(Ok(mut stream)) = (&mut pending_response).await {
-                                            self.settle_cancelled_model(cell, &mut stream).await;
+                                            self.settle_cancelled_model(cell, &mut stream, &mut operation).await;
                                         }
                                         anyhow::bail!("cancelled");
                                     },
                                     result = &mut pending_response => result,
                                 };
                                 if let Ok(Ok(mut stream)) = result {
-                                    self.settle_child_steering(cell, cancel, &mut stream).await;
+                                    self.settle_child_steering(cell, cancel, &mut stream, &mut operation).await;
                                 }
                             }
                             complete_reasoning(cell, &thread_id, &turn_id, &reasoning_items).await;
@@ -494,12 +514,12 @@ impl Engine {
                 loop {
                     let next = tokio::select! {
                         biased;
-                        _ = cancel.cancelled() => { self.settle_cancelled_model(cell, &mut stream).await; anyhow::bail!("cancelled"); },
+                        _ = cancel.cancelled() => { self.settle_cancelled_model(cell, &mut stream, &mut operation).await; anyhow::bail!("cancelled"); },
                         settle = steer.recv(), if interrupt_for_steer => {
                             if settle == Some(true) {
-                                self.settle_child_steering(cell, cancel, &mut stream).await;
+                                self.settle_child_steering(cell, cancel, &mut stream, &mut operation).await;
                             } else {
-                                self.settle_cancelled_model(cell, &mut stream).await;
+                                self.settle_cancelled_model(cell, &mut stream, &mut operation).await;
                             }
                             complete_reasoning(cell, &thread_id, &turn_id, &reasoning_items).await;
                             complete_item(cell, &thread_id, &turn_id, &item_id).await;
@@ -511,16 +531,42 @@ impl Engine {
                         ) => match next { Ok(next) => next, Err(_) => Some(Err(watchdog::idle_error("model stream"))) },
                     };
                     let Some(delta) = next else {
-                        operation.finish(
-                            (calls.is_empty() && !visible_output).then_some("empty_completion"),
-                        );
+                        let state = cell.state.lock().await;
+                        let steered = !steer.is_empty();
+                        let blocked_report = state.thread.goals.goal.as_ref().is_some_and(|g| {
+                            g.report_turn_id.as_deref() == Some(turn_id.as_str())
+                                && g.report.as_ref().is_some_and(|r| {
+                                    r.status == areal_protocol::goals::GoalReportStatus::Blocked
+                                })
+                        });
+                        let pending_verification = calls.is_empty()
+                            && !blocked_report
+                            && !output_handoff
+                            && !state
+                                .active
+                                .as_ref()
+                                .unwrap()
+                                .handles
+                                .pending_verifications
+                                .is_empty();
+                        drop(state);
+                        // 明确拒收的响应仍保留观测内容，但不能成为可蒸馏的 accepted completion。
+                        operation.finish(if steered {
+                            Some("completion_steered")
+                        } else if calls.is_empty() && !visible_output {
+                            Some("empty_completion")
+                        } else if pending_verification {
+                            Some("pending_verification")
+                        } else {
+                            None
+                        });
                         drop(operation);
                         drop(model_span);
                         // The shared model pool owns a permit in the stream itself.
                         // Release both permits before tools or child/group joins.
                         drop(stream);
                         let state = cell.state.lock().await;
-                        if !steer.is_empty() {
+                        if steered {
                             drop(state);
                             complete_reasoning(cell, &thread_id, &turn_id, &reasoning_items).await;
                             complete_item(cell, &thread_id, &turn_id, &item_id).await;
@@ -545,24 +591,7 @@ impl Engine {
                             }
                             return Err(error);
                         }
-                        // blocked 是明确保留未完成工作的终态；不得再要求作者完成所有验证才能报告阻塞。
-                        let blocked_report = state.thread.goals.goal.as_ref().is_some_and(|g| {
-                            g.report_turn_id.as_deref() == Some(turn_id.as_str())
-                                && g.report.as_ref().is_some_and(|r| {
-                                    r.status == areal_protocol::goals::GoalReportStatus::Blocked
-                                })
-                        });
-                        if calls.is_empty()
-                            && !blocked_report
-                            && !output_handoff
-                            && !state
-                                .active
-                                .as_ref()
-                                .unwrap()
-                                .handles
-                                .pending_verifications
-                                .is_empty()
-                        {
+                        if pending_verification {
                             let pending = state
                                 .active
                                 .as_ref()
@@ -681,7 +710,10 @@ impl Engine {
                     let delta = match delta {
                         Ok(delta) => delta,
                         Err(error) => {
-                            operation.span.record("error.message", format!("{error:#}"));
+                            operation.span.record(
+                                "error.message",
+                                tracing::field::display(format_args!("{error:#}")),
+                            );
                             operation.finish(Some("model_request_failed"));
                             drop(operation);
                             drop(model_span);
@@ -950,15 +982,6 @@ impl Engine {
                             if usage.input_tokens > 0 {
                                 previous_usage = Some((request_estimate, usage.input_tokens));
                             }
-                            request_usage.add_assign(&usage);
-                            model_span
-                                .record("gen_ai.usage.input_tokens", request_usage.input_tokens);
-                            model_span.record(
-                                "gen_ai.usage.cache_read.input_tokens",
-                                request_usage.cached_input_tokens,
-                            );
-                            model_span
-                                .record("gen_ai.usage.output_tokens", request_usage.output_tokens);
                             let mut state = cell.state.lock().await;
                             let turn = state.thread.turns.last_mut().unwrap();
                             turn.usage
@@ -1089,6 +1112,154 @@ mod cancellation_usage_tests {
                 })));
             let usage = settle_cancelled_stream(&mut stream, Duration::from_secs(1)).await;
             assert_eq!(usage.is_some(), observed);
+        }
+    }
+    #[tokio::test]
+    async fn actual_cancel_and_both_steering_paths_record_drained_usage() {
+        use tracing_subscriber::prelude::*;
+        use trajectory::test_support::Capture;
+        struct Fixture {
+            calls: AtomicUsize,
+            started: Arc<tokio::sync::Notify>,
+            release: Arc<tokio::sync::Notify>,
+        }
+        #[async_trait::async_trait]
+        impl model::Model for Fixture {
+            fn name(&self) -> &str {
+                "drained-usage-fixture"
+            }
+            async fn stream(&self, _: Vec<model::Message>) -> anyhow::Result<model::ModelStream> {
+                if self.calls.fetch_add(1, Ordering::Relaxed) > 0 {
+                    return Ok(Box::pin(futures_util::stream::iter([Ok(
+                        ModelEvent::TextDelta("accepted replacement".into()),
+                    )])));
+                }
+                let started = self.started.clone();
+                let release = self.release.clone();
+                Ok(Box::pin(futures_util::stream::unfold(0, move |index| {
+                    let started = started.clone();
+                    let release = release.clone();
+                    async move {
+                        match index {
+                            0 => {
+                                started.notify_one();
+                                Some((Ok(ModelEvent::TextDelta("before interrupt".into())), 1))
+                            }
+                            1 => {
+                                release.notified().await;
+                                Some((
+                                    Ok(ModelEvent::Usage(areal_protocol::ModelUsage {
+                                        input_tokens: 7,
+                                        cached_input_tokens: 2,
+                                        output_tokens: 3,
+                                    })),
+                                    2,
+                                ))
+                            }
+                            _ => None,
+                        }
+                    }
+                })))
+            }
+        }
+        for mode in ["cancel", "steer", "child-steer"] {
+            let capture = Capture::default();
+            let _subscriber = tracing::subscriber::set_default(
+                tracing_subscriber::registry().with(capture.clone()),
+            );
+            let dir = tempfile::tempdir().unwrap();
+            let fixture = Arc::new(Fixture {
+                calls: AtomicUsize::new(0),
+                started: Arc::new(tokio::sync::Notify::new()),
+                release: Arc::new(tokio::sync::Notify::new()),
+            });
+            let engine = Engine::open(
+                dir.path(),
+                fixture.clone(),
+                Limits {
+                    context_compaction_enabled: false,
+                    ..Limits::default()
+                },
+            )
+            .unwrap();
+            let thread = engine.create("/fixture".into()).await.unwrap();
+            let turn = engine
+                .start(&thread.id, vec![Input::text("start")])
+                .await
+                .unwrap();
+            tokio::time::timeout(Duration::from_secs(2), fixture.started.notified())
+                .await
+                .unwrap();
+            match mode {
+                "cancel" => engine.interrupt(&thread.id, &turn.id).await.unwrap(),
+                "steer" => {
+                    engine
+                        .steer(&thread.id, &turn.id, vec![Input::text("replacement")])
+                        .await
+                        .unwrap();
+                }
+                _ => {
+                    let cell = engine.cell(&thread.id).await.unwrap();
+                    let sender = cell
+                        .state
+                        .lock()
+                        .await
+                        .active
+                        .as_ref()
+                        .unwrap()
+                        .steer
+                        .clone();
+                    sender.send(true).await.unwrap();
+                }
+            }
+            fixture.release.notify_one();
+            let settled = tokio::time::timeout(Duration::from_secs(3), engine.wait(&thread.id))
+                .await
+                .unwrap()
+                .unwrap();
+            engine.shutdown().await;
+            let turn = settled.turns.last().unwrap();
+            let usage = turn.usage.as_ref().unwrap();
+            assert_eq!(
+                (
+                    usage.input_tokens,
+                    usage.cached_input_tokens,
+                    usage.output_tokens
+                ),
+                (7, 2, 3),
+                "{mode}"
+            );
+            assert_eq!(
+                turn.status,
+                if mode == "cancel" {
+                    TurnStatus::Interrupted
+                } else {
+                    TurnStatus::Completed
+                },
+                "{mode}"
+            );
+            let events = capture.0.lock().unwrap();
+            let models: Vec<_> = events
+                .iter()
+                .filter(|event| {
+                    event.get("event.name").map(String::as_str)
+                        == Some("gen_ai.client.inference.operation.details")
+                })
+                .collect();
+            assert_eq!(models.len(), if mode == "cancel" { 1 } else { 2 }, "{mode}");
+            assert_eq!(models[0]["gen_ai.usage.input_tokens"], "7", "{mode}");
+            assert_eq!(models[0]["gen_ai.usage.output_tokens"], "3", "{mode}");
+            assert_eq!(
+                models[0]["gen_ai.usage.cache_read.input_tokens"], "2",
+                "{mode}"
+            );
+            assert_eq!(
+                models[0]["areal.model.response.accepted"], "false",
+                "{mode}"
+            );
+            if mode != "cancel" {
+                assert_eq!(models[1]["areal.model.response.accepted"], "true", "{mode}");
+            }
         }
     }
 }

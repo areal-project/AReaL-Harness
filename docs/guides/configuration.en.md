@@ -332,6 +332,8 @@ All three commands return JSON. `status` starts neither Agent work nor uploads. 
 
 Invalid addresses, unavailable credentials, and upload failures affect only collection/export state. Configuration validation rejects invalid field types, capacity ranges, and conflicts. Payload content is the same as the OpenTelemetry trajectories below, including actual input, reasoning, tool arguments, and results; choose a receiver suitable for this content before enabling export. Persistent export and standard `OTEL_*` observability settings can be used independently; configuring both for the same destination may produce duplicate data.
 
+Capture memory is partitioned into one quarter for Engine content construction, one quarter for event fields, and one half for background copies and encoding. Streaming output, summaries, and input serialization reserve shared capacity before allocating; exhaustion stops capture of that copy while the business stream continues. Final model requests include tool schemas and effective settings, alongside build and response-model identity. Event sequences and terminal manifests detect missing whole events. See the [durable trajectory protocol](../api/core.en.md#durable-trajectory-protocol) for fields, digests, and training boundaries. Setting only `RUST_LOG=info` neither enables raw trajectory capture nor prints its content to the terminal.
+
 ## OpenTelemetry trajectory reporting
 
 Core uses the open-source OpenTelemetry SDK to export Traces and Events/Logs over standard OTLP HTTP/protobuf. Reporting is disabled without an endpoint, and export failures do not change Turn outcomes. Core reads configuration at startup; restart the service after changes.
