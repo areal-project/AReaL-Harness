@@ -326,6 +326,8 @@ Queue ownership derives from the effective configuration file's canonical absolu
 
 Use the Python 3.11+ configuration script to persistently enable or disable export. Configuration selection follows `--config`, then `AREAL_HARNESS_CONFIG`, then `config.toml` under home. Home follows `--home`, `AREAL_HARNESS_HOME`, or `~/.areal`. The script preserves unrelated configuration and comments, only replaces `[trajectory]`, backs up changed files to `config.toml.trajectory.bak`, and writes atomically. Without `--enable` or `--disable`, it preserves existing enablement and defaults to disabled on first use; updating an address or credentials does not silently disable collection. To explicitly set the default action, change `DEFAULT_ENABLED` from `None` to a boolean at the top of the script. Other defaults can also be edited or overridden by arguments.
 
+When enabling export or explicitly changing the endpoint, the script validates the HTTP(S) URL and rejects URL credentials, queries, fragments, and invalid ports. Before writing new credentials, it validates OTEL encoded headers and rejects malformed percent escapes, decoded control characters, and transport headers such as `host`, `content-length`, `content-type`, and `connection`. Invalid input does not suspend the old queue or overwrite configuration or credentials. Disabling export alone can preserve an existing invalid endpoint so a broken exporter can be stopped. Script success means configuration was saved; `controlApplied` only confirms local upload control. Verify remote receipt, archival, and display through an actual execution, `trajectory status`, and receiver readback.
+
 ```sh
 python3 scripts/configure-trajectory.py --enable \
   --endpoint https://collector.example.com \

@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+import urllib.parse
 
 # 可编辑默认值；建议凭据通过 --headers-env 读取，避免将秘密写入脚本或命令行。
 # None 保留已有开关；首次配置默认关闭。设为 True/False 可显式改变脚本默认动作。
@@ -43,6 +44,55 @@ class ConfigurationError(ValueError):
 def validate_disk_limit(value):
     if type(value) is not int or not MIN_DISK_BYTES <= value <= 1 << 40:
         raise ConfigurationError("max_disk_bytes 必须为 1 MiB–1 TiB 范围内的整数")
+
+
+def validate_endpoint(value):
+    # 配置脚本应在停用旧队列、写入配置或凭据前拒绝无法发送的地址。
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        invalid = (
+            parsed.scheme not in ("http", "https")
+            or not parsed.netloc
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or "?" in value
+            or "#" in value
+            or "\\" in value
+            or any(c.isspace() or ord(c) < 32 or 127 <= ord(c) <= 159 for c in value)
+        )
+        parsed.port
+    except ValueError:
+        invalid = True
+    if invalid:
+        raise ConfigurationError("接收地址必须为有效 HTTP(S) URL，不能包含认证、查询参数或片段")
+
+
+def validate_headers(value):
+    # 与上传器相同的 OTEL 编码头契约；错误消息不能包含认证输入。
+    invalid = "认证头必须使用有效的 key=percent-encoded-value 格式，不能覆盖传输控制头"
+    if not value or len(value.encode()) > 16384 or any(ord(c) < 32 for c in value):
+        raise ConfigurationError("认证头必须是非空、无控制字符的编码文本，且不超过 16 KiB")
+    for pair in value.strip().split(","):
+        if not pair.strip():
+            continue
+        name, separator, encoded = pair.partition("=")
+        name = name.strip()
+        if (
+            not separator
+            or not re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", name)
+            or name.lower() in ("host", "content-length", "content-type", "connection")
+            or re.search(r"%(?![0-9A-Fa-f]{2})", encoded)
+        ):
+            raise ConfigurationError(invalid)
+        try:
+            decoded = urllib.parse.unquote_to_bytes(encoded.strip()).decode("utf-8")
+        except UnicodeDecodeError:
+            raise ConfigurationError(invalid) from None
+        if any(ord(c) < 32 or ord(c) == 127 for c in decoded):
+            raise ConfigurationError(invalid)
+    if not any(pair.strip() for pair in value.strip().split(",")):
+        raise ConfigurationError(invalid)
 
 
 def regular_text(path, limit=MAX_CONFIG_BYTES):
@@ -308,6 +358,8 @@ def configure(args):
             raise ConfigurationError("最大退避时间不得小于初始退避时间")
         if values["enabled"] and not values["endpoint"]:
             raise ConfigurationError("启用前请通过 --endpoint 或脚本 DEFAULT_ENDPOINT 配置接收地址")
+        if values["endpoint"] and (values["enabled"] or args.endpoint is not None):
+            validate_endpoint(values["endpoint"])
         # 与队列的目的地身份一致：地址文本改变也不能隐式转交旧接收端凭据。
         endpoint_changed = values["endpoint"] != existing.get("endpoint", "")
         had_credentials = any(field in values for field in ("headers_env", "headers_file"))
@@ -331,8 +383,7 @@ def configure(args):
         credentials_cleared = endpoint_changed and had_credentials and secret is None
         credential_update = None
         if secret is not None:
-            if not secret or len(secret.encode()) > 16384 or any(ord(c) < 32 for c in secret):
-                raise ConfigurationError("认证头必须是非空、无控制字符的编码文本，且不超过 16 KiB")
+            validate_headers(secret)
             # 同接收端轮换保持引用稳定；切换地址用独立文件，旧在途请求不能读取新地址凭据。
             identity = json.dumps([str(config.resolve()), values["endpoint"]], ensure_ascii=False)
             digest = hashlib.sha256(identity.encode()).hexdigest()

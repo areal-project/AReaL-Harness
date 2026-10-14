@@ -558,6 +558,113 @@ mode = "YOLO"
             self.assertEqual(self.run_script(home, "--endpoint", "界" * 1500)[0], 1)
             self.assertEqual(config.read_text(), "schema_version=2\n")
 
+    def test_invalid_endpoints_preserve_existing_state_without_control_calls(self):
+        invalid = [
+            "ftp://collector.example",
+            "https://",
+            "https://collector.example:bad",
+            "https://collector.example:65536",
+            "https://user:fixture-secret@collector.example",
+            "https://collector.example?token=fixture-secret",
+            "https://collector.example?",
+            "https://collector.example#fragment",
+            "https://collector.example#",
+            "https://collector.example\\other",
+            " https://collector.example",
+            "https://collector.example/\n",
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            config = home / "config.toml"
+            old = 'schema_version=2\n[trajectory]\nenabled=true\nendpoint="https://old.example"\n'
+            config.write_text(old)
+            for endpoint in invalid:
+                with (
+                    self.subTest(endpoint=endpoint),
+                    patch.object(MODULE, "apply_control") as control,
+                ):
+                    code, stdout, stderr = self.run_script(home, "--enable", "--endpoint", endpoint)
+                    self.assertEqual(code, 1)
+                    self.assertEqual(config.read_text(), old)
+                    self.assertFalse((home / "config.toml.trajectory.bak").exists())
+                    self.assertFalse((home / "trajectory-credentials").exists())
+                    self.assertNotIn("fixture-secret", stdout + stderr)
+                    control.assert_not_called()
+
+    def test_invalid_encoded_headers_are_rejected_before_migration_or_secret_rotation(self):
+        invalid = [
+            "Bearer fixture-secret",
+            "authorization=Bearer%ZZfixture-secret",
+            "authorization=fixture-secret%",
+            "authorization=fixture-secret%0D%0AInjected%3Ayes",
+            "authorization=%FFfixture-secret",
+            "authorization=fixture-secret%7F",
+            "bad name=fixture-secret",
+            "host=fixture-secret",
+            "Content-Type=fixture-secret",
+            "content-length=123",
+            "connection=close",
+            " , , ",
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            config = home / "config.toml"
+            credential = home / "original-headers.txt"
+            credential.write_text("authorization=old-fixture-secret")
+            old = (
+                'schema_version=2\n[trajectory]\nenabled=true\nendpoint="https://old.example"\n'
+                f"headers_file={json.dumps(str(credential))}\n"
+            )
+            config.write_text(old)
+            for headers in invalid:
+                with (
+                    self.subTest(headers=headers),
+                    patch.object(MODULE, "apply_control") as control,
+                ):
+                    code, stdout, stderr = self.run_script(
+                        home,
+                        "--enable",
+                        "--endpoint",
+                        "https://new.example",
+                        "--headers-env",
+                        "HEADERS",
+                        environment={"HEADERS": headers},
+                    )
+                    self.assertEqual(code, 1)
+                    self.assertEqual(config.read_text(), old)
+                    self.assertEqual(credential.read_text(), "authorization=old-fixture-secret")
+                    self.assertFalse((home / "config.toml.trajectory.bak").exists())
+                    self.assertFalse((home / "trajectory-credentials").exists())
+                    self.assertNotIn("fixture-secret", stdout + stderr)
+                    control.assert_not_called()
+
+    def test_valid_encoded_headers_and_ipv6_endpoint_are_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            headers = "authorization=Bearer%20fixture,cookie=iam%3Dfixture%3B%20other%3Dx%2Cy"
+            code, _, _ = self.run_script(
+                home,
+                "--enable",
+                "--endpoint",
+                "http://[::1]:4318/otlp/v1/logs",
+                "--headers-env",
+                "HEADERS",
+                environment={"HEADERS": headers},
+            )
+            self.assertEqual(code, 0)
+            values = tomllib.loads((home / "config.toml").read_text())["trajectory"]
+            self.assertEqual(values["endpoint"], "http://[::1]:4318/otlp/v1/logs")
+            self.assertEqual(Path(values["headers_file"]).read_text(), headers)
+
+    def test_disabling_can_preserve_an_existing_invalid_endpoint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            config = home / "config.toml"
+            config.write_text('schema_version=2\n[trajectory]\nenabled=true\nendpoint="invalid"\n')
+            code, _, _ = self.run_script(home, "--disable")
+            self.assertEqual(code, 0)
+            self.assertFalse(tomllib.loads(config.read_text())["trajectory"]["enabled"])
+
 
 if __name__ == "__main__":
     unittest.main()

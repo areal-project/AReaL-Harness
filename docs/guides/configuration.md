@@ -326,6 +326,8 @@ upload_interval_ms = 1000
 
 使用 Python 3.11+ 的配置脚本持久启用或关闭，配置选择顺序为 `--config`、`AREAL_HARNESS_CONFIG`、home 下的 `config.toml`；home 来自 `--home`、`AREAL_HARNESS_HOME` 或 `~/.areal`。脚本保留原模型等配置及其注释，只更新 `[trajectory]`，变更前备份到 `config.toml.trajectory.bak`，使用原子写入。不带 `--enable` / `--disable` 时保留已有开关，首次默认关闭，更新地址或认证不会意外停用采集。可将脚本顶部 `DEFAULT_ENABLED` 从 `None` 改为布尔值以显式设定默认动作，其它默认值也可编辑或由参数指定。
 
+脚本在启用或显式更新地址时校验 HTTP(S) URL，拒绝 URL 内认证、查询参数、片段和非法端口；写入新认证材料前校验 OTEL 编码头，拒绝损坏的百分号编码、解码后的控制字符和 `host`、`content-length`、`content-type`、`connection` 等传输控制头。错误输入不会暂停原队列或覆盖原配置、凭据。仅关闭开关时可以保留已有非法地址，以便停用故障导出。脚本成功表示配置已保存，`controlApplied` 只表示本地上传控制已应用；远端接收、归档和展示仍须通过实际执行、`trajectory status` 和接收端回读核验。
+
 ```sh
 python3 scripts/configure-trajectory.py --enable \
   --endpoint https://collector.example.com \
