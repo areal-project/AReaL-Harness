@@ -1456,8 +1456,9 @@ async fn execute(
                 ));
             }
             owned_process(client, scope, &write.process_id).await?;
+            let has_text = !write.text.is_empty();
             let mut result = json!({"written":false});
-            if !write.text.is_empty() {
+            if has_text {
                 result = client
                     .write(rt::ProcessInput {
                         operation_id: operation.into(),
@@ -1469,7 +1470,12 @@ async fn execute(
             if write.close {
                 result = client
                     .close_stdin(rt::CloseStdin {
-                        operation_id: client.operation_id(),
+                        // 单独 EOF 必须使用已持久化的调用身份；写后关闭才需要第二个操作。
+                        operation_id: if has_text {
+                            client.operation_id()
+                        } else {
+                            operation.into()
+                        },
                         process_id: write.process_id,
                     })
                     .await?;

@@ -383,6 +383,7 @@ async fn process_fixture_output(
     tokio::spawn(async move {
         let mut lines = BufReader::new(peer_read).lines();
         let mut started = Instant::now();
+        let mut last_write = None;
         while let Some(line) = lines.next_line().await.unwrap() {
             let req: Value = serde_json::from_str(&line).unwrap();
             let method = req["method"].as_str().unwrap();
@@ -393,7 +394,13 @@ async fn process_fixture_output(
                 "scope.create" | "scope.get" | "scope.revoke" | "scope.waitClosed" => {
                     json!({"scopeId":"scope","parentScopeId":null,"state":if method=="scope.waitClosed"{"closed"}else{"active"},"owner":{"taskId":"fixture"},"readRoots":["workspace://repo"],"writeRoots":["workspace://repo"],"network":"deny","limits":{"wallTimeMs":10000,"outputBytes":8388608,"maxProcesses":4},"activeProcesses":0,"outputBytes":0,"cleanupError":null})
                 }
-                "process.write" => json!({"accepted":true}),
+                "process.write" => {
+                    last_write = Some(req["params"]["operationId"].clone());
+                    json!({"accepted":true,"operationId":last_write})
+                }
+                "process.closeStdin" => {
+                    json!({"accepted":true,"operationId":req["params"]["operationId"],"priorWriteOperation":last_write})
+                }
                 "process.start" => {
                     started = Instant::now();
                     json!({"processId":"process","scopeId":"scope"})
@@ -1590,4 +1597,34 @@ fn command_input_contract_requires_explicit_pipe_and_allows_eof() {
         serde_json::from_value(json!({"processId":"p-test","close":true})).unwrap();
     assert!(request.close);
     assert!(request.text.is_empty());
+}
+
+#[tokio::test]
+async fn process_input_preserves_primary_operation_identity_and_orders_eof() {
+    for (text, close) in [("payload", false), ("", true), ("payload", true)] {
+        let client = process_fixture(180_000, None, None, false).await;
+        let (success, result) = execute(
+            &client,
+            Request::WriteProcess(WriteProcess {
+                process_id: "process".into(),
+                text: text.into(),
+                close,
+            }),
+            "scope",
+            "persisted-input-operation",
+            &ToolPolicy::default(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(success);
+        if !text.is_empty() && close {
+            assert_eq!(result["priorWriteOperation"], "persisted-input-operation");
+            assert_ne!(result["operationId"], "persisted-input-operation");
+            assert!(result["operationId"].is_string());
+        } else {
+            assert_eq!(result["operationId"], "persisted-input-operation");
+        }
+        client.shutdown().await.unwrap();
+    }
 }
