@@ -73,6 +73,8 @@ Native tools/agent smoke tests use a local fixed-response HTTP model, the standa
 
 Request-budget tests cover `MAX_MODEL_ROUNDS` classification when Chat Completions or Responses returns tools in the final round, with no tool execution or retries and the original budget audit preserved. Ordinary tool-call budget exhaustion and invalid indices must retain their own classifications. Desktop CLI acceptance also checks the corresponding `error_max_turns` result. Goal HTTP regressions verify that output-token caps and tool count/buffer budgets survive shared pools, while unknown usage from failed requests prevents retries and tool execution.
 
+The interactive-process smoke explicitly sets `stdinOpen:true` for non-PTY pipes, checks `stdinMode=pipe` and the running state before writing, then verifies output; PTY separately checks `stdinMode=pty`. Native tools smoke additionally checks default-closed stdin, write-then-EOF and EOF-only input instead of depending on the old implicit open pipe.
+
 Linux requires Bubblewrap user/PID namespaces, seccomp, Python and Bash. The public Dockerfile builds the pinned bundled rg and provides the remaining toolchain; no host rg installation is required:
 
 ```sh

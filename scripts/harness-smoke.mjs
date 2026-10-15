@@ -365,10 +365,14 @@ const model = createServer(async (req, res) => {
           timeoutMs: 60000,
           yieldMs: 0,
           tty: mode === "process-pty",
+          stdinOpen: mode === "process-session",
         };
       } else if (results.length === 1) {
+        const started = JSON.parse(results[0].content);
+        assert.equal(started.stdinMode, mode === "process-pty" ? "pty" : "pipe");
+        assert.equal(started.state, "running");
         name = "write_process";
-        args = { processId: JSON.parse(results[0].content).processId, text: "pong\n" };
+        args = { processId: started.processId, text: "pong\n" };
       } else {
         const first = JSON.parse(results[0].content),
           last = JSON.parse(results.at(-1).content);

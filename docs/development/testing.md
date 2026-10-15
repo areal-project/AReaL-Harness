@@ -73,6 +73,8 @@ python3 scripts/native-agents-smoke.py --bin-dir target/debug --sandbox-profile 
 
 请求预算测试覆盖 Chat Completions 与 Responses 在最后一轮返回工具时的 `MAX_MODEL_ROUNDS` 分类，并检查零工具执行、无重试和原始预算审计；普通工具调用预算耗尽及非法 `index` 不应被误分类。桌面 CLI 验收同时检查对应的 `error_max_turns` 结果。Goal HTTP 回归同时验证输出 token 上限与工具数量/缓冲预算经过共享池后仍生效，失败请求的未知消费阻止后续重试和工具执行。
 
+交互进程 smoke 在创建非 PTY 管道时显式传入 `stdinOpen:true`，先核对 `stdinMode=pipe` 与运行状态，再写入并验证输出；PTY 独立检查 `stdinMode=pty`。原生工具 smoke 另验证默认关闭 stdin、写入后 EOF 和单独 EOF，避免依赖旧的隐式开放管道。
+
 Linux 需要 Bubblewrap user/PID namespace、seccomp，以及 Python 和 Bash；rg 随构建产物交付。`make harness-smoke` 包含受限原生工具 smoke，验证内置搜索及宿主假 rg 不影响命令解析。也可用公开 Dockerfile：
 
 ```sh
