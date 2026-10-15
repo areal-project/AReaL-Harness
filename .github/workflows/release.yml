@@ -158,25 +158,26 @@ jobs:
           pattern: release-*
           path: target/release-assets
           merge-multiple: true
-      - name: Assemble checksums and draft
+      - name: Assemble all bundles and draft
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p target/ci
           exec > >(tee -a target/ci/release.log) 2>&1
-          cp scripts/install.py target/release-assets/install.py
-          cd target/release-assets
-          cat *.tar.gz.sha256 > SHA256SUMS
+          version=$(node -p 'require("./clients/gui/package.json").version')
+          gh release download "gui-v$version" --dir target/gui-release-assets
+          python3 scripts/release-artifacts.py assemble \
+            --core-assets target/release-assets --gui-assets target/gui-release-assets \
+            --output target/complete-release --version "${GITHUB_REF_NAME#v}" \
+            --revision "$(git rev-parse HEAD)"
+          cd target/complete-release
           sha256sum --check SHA256SUMS
-          sha256sum install.py areal.rb manifest-*.json >> SHA256SUMS
-          rm *.tar.gz.sha256
           gh release create "$GITHUB_REF_NAME" --verify-tag --draft \
-            --title "AReaL-Harness $GITHUB_REF_NAME" --generate-notes \
-            ./*.tar.gz ./SHA256SUMS ./install.py ./areal.rb ./manifest-*.json
+            --title "AReaL-Harness $GITHUB_REF_NAME" --generate-notes ./*
 
   gate:
     name: Release gate
-    needs: [scope, bundle]
+    needs: [scope, bundle, draft]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -189,4 +190,9 @@ jobs:
           SCOPE_RESULT: ${{ needs.scope.result }}
           WORK_RESULT: ${{ needs.bundle.result }}
           NEEDED: ${{ needs.scope.outputs.release }}
-        run: python3 scripts/ci-gate.py
+          DRAFT_RESULT: ${{ needs.draft.result }}
+        run: |
+          python3 scripts/ci-gate.py
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            test "$DRAFT_RESULT" = success
+          fi

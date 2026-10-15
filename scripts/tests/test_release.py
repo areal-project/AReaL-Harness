@@ -1,6 +1,7 @@
 """发行归档、formula 和版本化安装的回归。"""
 
 import hashlib
+import base64
 import importlib.util
 import io
 import json
@@ -90,6 +91,94 @@ class ReleaseTests(unittest.TestCase):
         archive.write_bytes(archive.read_bytes() + b"tampered")
         with self.assertRaises(ValueError):
             installer.verify_archive(archive, sums, archive.name)
+
+    def complete_candidates(self):
+        core_assets, gui_assets = self.root / "core-assets", self.root / "gui-assets"
+        for target in release.TARGETS:
+            release.archive(self.bundle(target=target, manifest_version=2), core_assets)
+        gui_assets.mkdir()
+        version = json.loads((ROOT / "clients/gui/package.json").read_text())["version"]
+        artifacts = []
+        for extension in ("zip", "dmg"):
+            name = f"AReaLHarness-{version}-macos-arm64.{extension}"
+            data = ("signed fixture " + name).encode()
+            (gui_assets / name).write_bytes(data)
+            artifacts.append(
+                {
+                    "name": name,
+                    "size": len(data),
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                    "sha512": base64.b64encode(hashlib.sha512(data).digest()).decode(),
+                }
+            )
+        metadata = {
+            "version": version,
+            "tag": "gui-v" + version,
+            "repository": "areal-project/AReaL-Harness",
+            "sourceRevision": "a" * 40,
+            "coreVersion": "areal 0.1.0",
+            "platform": "darwin/arm64",
+            "feedUrl": "https://github.com/areal-project/AReaL-Harness/releases/download/gui-update-channel/",
+            "packagedGui": "passed",
+            "packagedModelSelection": "passed",
+            "notarization": {key: {"status": "Accepted"} for key in ("zip", "dmg")},
+            "artifacts": artifacts,
+        }
+        (gui_assets / "release.json").write_text(json.dumps(metadata))
+        (gui_assets / "latest-mac.yml").write_text("fixture manifest")
+        self.gui_checksums(gui_assets)
+        return core_assets, gui_assets
+
+    def gui_checksums(self, directory):
+        (directory / "SHA256SUMS").write_text(
+            "".join(
+                f"{release.sha(p)}  {p.name}\n"
+                for p in sorted(directory.iterdir())
+                if p.name != "SHA256SUMS"
+            )
+        )
+
+    def test_complete_release_validates_inventory_and_legacy_update_url(self):
+        core, gui = self.complete_candidates()
+        output = release.assemble(core, gui, self.root / "complete", "0.1.0", "a" * 40)
+        manifest = json.loads((output / "release-manifest.json").read_text())
+        self.assertEqual(manifest["sourceRevision"], "a" * 40)
+        self.assertEqual(len(manifest["assets"]), 10)
+        for path in output.iterdir():
+            if path.name != "SHA256SUMS":
+                installer.verify_archive(path, output / "SHA256SUMS", path.name)
+        update = json.loads((output / "latest-mac.yml").read_text())
+        self.assertIn(f"/gui-v{manifest['guiVersion']}/", update["files"][0]["url"])
+        self.assertIn("/v0.1.0/", (output / "areal.rb").read_text())
+
+    def test_complete_release_rejects_stale_or_unaccepted_gui(self):
+        core, gui = self.complete_candidates()
+        path = gui / "release.json"
+        original = json.loads(path.read_text())
+        for field, value in (
+            ("sourceRevision", "b" * 40),
+            ("coreVersion", "areal 0.0.9"),
+            ("packagedModelSelection", "failed"),
+            ("notarization", {}),
+            ("artifacts", original["artifacts"][:1]),
+        ):
+            with self.subTest(field=field):
+                path.write_text(json.dumps({**original, field: value}))
+                self.gui_checksums(gui)
+                output = self.root / ("rejected-" + field)
+                with self.assertRaises(ValueError):
+                    release.assemble(core, gui, output, "0.1.0", "a" * 40)
+                self.assertFalse(output.exists())
+
+    def test_complete_release_rejects_tampering_and_missing_platform(self):
+        core, gui = self.complete_candidates()
+        path = next(gui.glob("*.zip"))
+        path.write_bytes(path.read_bytes() + b"changed")
+        with self.assertRaises(ValueError):
+            release.assemble(core, gui, self.root / "tampered", "0.1.0", "a" * 40)
+        next(core.glob("*linux*.tar.gz")).unlink()
+        with self.assertRaises(FileNotFoundError):
+            release.assemble(core, gui, self.root / "missing", "0.1.0", "a" * 40)
 
     def test_manifest_rejects_missing_extra_and_changed_files(self):
         bundle = self.bundle()
