@@ -285,7 +285,7 @@ turn_model_rounds = 0
 
 ## 持久轨迹导出
 
-`[trajectory]` 为本地 TUI、GUI、`exec` 和服务提供可选的数据采集模式，默认关闭。启用后，Core 将轨迹 Events/Logs 放入有界内存缓冲，由后台线程保存到用户级磁盘队列；独立上传进程通常等待所属 Turn 的终态记录后，逐条发送标准 OTLP HTTP/protobuf 到接收端。生产进程结束或崩溃时也允许补传已落盘的不完整记录。为避免终态丢失造成永久积压，单条记录入队满 5 分钟后，即使生产进程仍存活也允许上传；因此超长 Turn 可能先同步部分轨迹，随后追加终态。接收端须将缺少终态的内容视为不完整，不能据此推断成功。Agent 返回和关闭流程不等待网络上传；独占 CLI 退出后，上传进程仍可处理已经落盘的数据。此功能不依赖 Arena 或某一种对象存储：接收端负责归档、索引、分析来源登记和后续训练数据管理，配置一个 OSS 对象地址不能代替 OTLP 接收服务。
+`[trajectory]` 为本地 TUI、GUI、`exec` 和服务提供可选的数据采集模式，默认关闭。启用后，Core 将轨迹 Events/Logs 放入有界内存缓冲，由后台线程保存到用户级磁盘队列；独立上传进程通常等待所属 Turn 的终态记录后，逐条发送标准 OTLP HTTP/protobuf 到接收端。生产进程结束或崩溃时也允许补传已落盘的不完整记录。为避免终态丢失造成永久积压，单条记录入队满 5 分钟后，即使生产进程仍存活也允许上传；因此超长 Turn 可能先同步部分轨迹，随后追加终态。接收端须将缺少终态的内容视为不完整，不能据此推断成功。Agent 返回和关闭流程不等待网络上传；独占 CLI 退出后，上传进程仍可处理已经落盘的数据。此功能不依赖特定接收平台或对象存储：接收端负责归档、索引、分析来源登记和后续训练数据管理，配置一个 OSS 对象地址不能代替 OTLP 接收服务。
 
 ```toml
 [trajectory]
@@ -324,25 +324,13 @@ upload_interval_ms = 1000
 
 安装标识读取、队列初始化、历史清理及 JSON 结构化均在后台执行。消息和工具内容在共享内存、节点数及 32 层深度预算内转换为嵌套 OTLP 值；结构化超出预算时保留完整原 JSON 字符串并标记 `areal.capture.json_fallback=true`，不代表内容丢失；只有采集字段确实丢失才标记 `areal.capture.truncated=true`。非法 JSON 或无法无损表示的值保留原文，不保证所有内容都成功结构化。内存额度约束新增采集缓冲，不能等同于整个 Core 进程的 RSS 上限。
 
-队列归属由有效配置文件的规范绝对路径派生，内部 `source_id` 不接受 TOML 设置；内容更新、同一文件的路径别名不会改变身份。同一配置的多个 Core 可共享队列，不同配置默认隔离，避免另一份配置的关闭开关或接收地址覆盖当前采集。显式指定同一个 `spool_dir` 不会合并配置所有权：已有不同归属时报告配置冲突，不覆盖控制或读取其它配置的轨迹。恢复默认隔离路径可用配置脚本的 `--default-spool`，旧队列保持原位。后台初始化在队列锁内校验原配置文件的内部版本摘要，防止延迟启动的旧快照覆盖新控制；直接修改 TOML 仍会在下一次启动时应用。暂停原队列的 `trajectory suspend` 是配置脚本内部使用的命令。
+队列归属由有效配置文件的规范绝对路径派生，内部 `source_id` 不接受 TOML 设置；内容更新、同一文件的路径别名不会改变身份。同一配置的多个 Core 可共享队列，不同配置默认隔离，避免另一份配置的关闭开关或接收地址覆盖当前采集。显式指定同一个 `spool_dir` 不会合并配置所有权：已有不同归属时报告配置冲突，不覆盖控制或读取其它配置的轨迹。删除 `spool_dir` 配置可恢复默认隔离路径，旧队列保持原位。后台初始化在队列锁内校验原配置文件的内部版本摘要，防止延迟启动的旧快照覆盖新控制；直接修改 TOML 仍会在下一次启动时应用。切换接收地址或队列前，应先对原配置执行 `trajectory suspend`，待原上传器停止后再修改配置；旧队列中的数据不会自动迁移或改发到新地址。
 
-使用 Python 3.11+ 的配置脚本持久启用或关闭，配置选择顺序为 `--config`、`AREAL_HARNESS_CONFIG`、home 下的 `config.toml`；home 来自 `--home`、`AREAL_HARNESS_HOME` 或 `~/.areal`。脚本保留原模型等配置及其注释，只更新 `[trajectory]`，变更前备份到 `config.toml.trajectory.bak`，使用原子写入。不带 `--enable` / `--disable` 时保留已有开关，首次默认关闭，更新地址或认证不会意外停用采集。可将脚本顶部 `DEFAULT_ENABLED` 从 `None` 改为布尔值以显式设定默认动作，其它默认值也可编辑或由参数指定。
+通过用户配置中的 `[trajectory]` 持久启用或关闭导出。配置文件选择顺序为命令行 `--config`、`AREAL_HARNESS_CONFIG`、home 下的 `config.toml`；home 来自 `AREAL_HARNESS_HOME` 或 `~/.areal`。修改前备份原文件，保留模型等无关配置。将 `enabled` 设为 `true` 启用，设为 `false` 关闭；接收端地址、认证和部署参数由使用方管理，不属于产品默认配置或发行依赖。
 
-脚本在启用或显式更新地址时校验 HTTP(S) URL，拒绝 URL 内认证、查询参数、片段和非法端口；写入新认证材料前校验 OTEL 编码头，拒绝损坏的百分号编码、解码后的控制字符和 `host`、`content-length`、`content-type`、`connection` 等传输控制头。错误输入不会暂停原队列或覆盖原配置、凭据。仅关闭开关时可以保留已有非法地址，以便停用故障导出。脚本成功表示配置已保存，`controlApplied` 只表示本地上传控制已应用；远端接收、归档和展示仍须通过实际执行、`trajectory status` 和接收端回读核验。
+`headers_env` 引用启动 Core 时的环境变量；`headers_file` 引用仅当前用户可读的 OTEL 编码头文件，二者不能同时设置。认证头使用 `key=percent-encoded-value` 格式。切换接收地址时应显式更换或清除原认证引用，避免将旧接收端凭据转交给新地址。不要把秘密写入源码、命令行或日志。
 
-```sh
-python3 scripts/configure-trajectory.py --enable \
-  --endpoint https://collector.example.com \
-  --headers-env AREAL_EXPORT_HEADERS \
-  --areal-binary target/debug/areal
-python3 scripts/configure-trajectory.py --disable --areal-binary target/debug/areal
-# 独立测试配置，不接触默认用户配置。
-python3 scripts/configure-trajectory.py --home /absolute/test-home \
-  --config /absolute/test-home/config.toml \
-  --enable --endpoint http://127.0.0.1:4318 --areal-binary target/debug/areal
-```
-
-脚本的 `--headers-env` 从当前环境读取编码头，并保存到 home 下的私有凭据文件，使后续 GUI/CLI 启动不依赖该终端环境；`--headers-file` 复制已有文件，`--clear-headers` 清除引用。切换已有配置的接收地址或队列前，脚本通过新版 areal 暂停原队列；暂停失败或缺少新版 binary 时保留原配置和凭据并报错。接收地址文本变化时不继承旧 `headers_env` / `headers_file`：未显式提供新凭据则清除引用，JSON 输出 `credentialsCleared=true` 并提示；旧凭据文件保留。提供新凭据时使用新地址独立的文件，旧在途请求不会读到新地址的凭据；同一地址的凭据保留及轮换保持引用稳定。脚本内 `DEFAULT_HEADERS` 仅用于与非空 `DEFAULT_ENDPOINT` 完全一致的地址，命令行覆盖到其它地址时不转交它。原队列的数据留在原位，不迁移或改发到新地址。脚本不回显凭据，也不重启或取消 Agent。找到新版 `areal` 时会执行 `trajectory sync-config` 更新持久控制；找不到时仍保存配置并提示尚未应用。停用控制阻止后续入队和发送，在途 HTTP 请求最多等待当前超时；修改已经运行的 Core 的采集参数仍需安全重启。部署指纹包含轨迹配置，已有共享服务不会静默忽略更改。
+修改文件后执行 `trajectory sync-config` 应用本地上传控制，并安全重启已经运行的 Core 以装配新的采集参数。命令成功只证明本地控制已应用；远端接收、归档和展示仍须通过实际执行、`trajectory status` 和接收端回读核验。停用控制阻止后续入队和发送，在途 HTTP 请求最多等待当前超时；部署指纹包含轨迹配置，已有共享服务不会静默忽略更改。
 
 ```sh
 target/debug/areal trajectory status --config /absolute/config.toml
@@ -379,10 +367,9 @@ export OTEL_FANOUT_STORAGE=/absolute/private/collector-storage
 export OTEL_BACKEND_A_LOGS_ENDPOINT=https://backend-a.example/v1/logs
 export OTEL_BACKEND_B_LOGS_ENDPOINT=https://backend-b.example/custom/logs
 /path/to/otelcol-contrib --config examples/telemetry/collector-fanout.yaml
-# 在另一终端配置 Harness；接收器默认仅监听 127.0.0.1:4318。
-python3 scripts/configure-trajectory.py --enable --endpoint http://127.0.0.1:4318 \
-  --clear-headers --areal-binary target/debug/areal
 ```
+
+在 Harness 的 `[trajectory]` 中设置 `enabled = true`、`endpoint = "http://127.0.0.1:4318"`，移除不适用于该本地接收端的 `headers_env` / `headers_file`，然后应用 `trajectory sync-config` 并安全重启 Core。接收器默认仅监听 `127.0.0.1:4318`。
 
 各后端的 `headers`、TLS/客户端证书在对应的 Collector exporter 中独立配置，并引用受保护的环境变量或认证扩展。Harness 不转发它们。共享 Collector 使用单一后端 token 时，后端看到的是 Collector 的认证账号；不会自动保留各发送者的用户归属。需要按人隔离时，使用每用户 Collector/出口身份，或经过审计的认证与租户路由，不把生产端自报的属性当作认证身份。
 

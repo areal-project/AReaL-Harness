@@ -345,13 +345,16 @@ export function TrajectorySettings({
                     </SettingsSection>
                 </>
             )}
-            <SettingsSection title="启用与修改" description="通过配置脚本选择上传地址与认证方式。">
+            <SettingsSection
+                title="启用与修改"
+                description="在用户配置中设置通用 OTLP 上传地址与认证引用。"
+            >
                 <p className="settings-section-desc">
-                    在 AReaL-Harness 仓库运行{" "}
-                    <code>python3 scripts/configure-trajectory.py --help</code>
-                    查看用法，使用 <code>--config</code>{" "}
-                    指向本页显示的配置文件。修改采集配置后，重启已运行的 Core
-                    服务。凭据由配置与环境管理，本页不显示凭据内容。
+                    编辑本页显示的配置文件中的 <code>[trajectory]</code>，设置开关、
+                    <code>endpoint</code> 和凭据引用。修改后执行{" "}
+                    <code>areal trajectory sync-config --config 配置文件路径</code>{" "}
+                    应用上传控制，并安全重启已运行的 Core 服务以装配采集参数。
+                    凭据由配置与环境管理，本页不显示凭据内容。
                 </p>
             </SettingsSection>
         </div>
