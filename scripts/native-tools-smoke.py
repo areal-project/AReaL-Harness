@@ -30,6 +30,8 @@ def main():
     errors = []
     requests = []
     recovered = {}
+    stdin_checks = []
+    stdin_process = [None]
     with tempfile.TemporaryDirectory(prefix="areal-native-tools-") as temp:
         base = Path(temp)
         repo = base / "repo"
@@ -168,6 +170,50 @@ def main():
                                 }
                                 name = "image_read"
                                 arguments = {"path": "noise.png"}
+                    elif results[-1].get("stdinMode") == "closed":
+                        assert results[-1]["exitCode"] == 0, results[-1]
+                        assert results[-1]["stdout"] == "stdin-eof:\n", results[-1]
+                        stdin_checks.append("default-closed")
+                        name = "run_command"
+                        arguments = {
+                            "argv": [
+                                "/usr/bin/python3",
+                                "-c",
+                                "import sys; print('stdin-eof:'+sys.stdin.read())",
+                            ],
+                            "stdinOpen": True,
+                            "yieldMs": 0,
+                            "timeoutMs": 10000,
+                        }
+                    elif results[-1].get("stdinMode") == "pipe":
+                        assert results[-1]["state"] == "running", results[-1]
+                        stdin_process[0] = results[-1]["processId"]
+                        name = "write_process"
+                        arguments = {"processId": stdin_process[0], "close": True}
+                        if "explicit-write-and-close" not in stdin_checks:
+                            arguments["text"] = "payload"
+                    elif stdin_process[0] and results[-1].get("accepted"):
+                        name = "read_process"
+                        arguments = {"processId": stdin_process[0], "waitMs": 5000}
+                    elif stdin_process[0]:
+                        assert results[-1]["exitCode"] == 0, results[-1]
+                        if "explicit-write-and-close" not in stdin_checks:
+                            assert results[-1]["stdout"] == "stdin-eof:payload\n", results[-1]
+                            stdin_checks.append("explicit-write-and-close")
+                            name = "run_command"
+                            arguments = {
+                                "argv": [
+                                    "/usr/bin/python3",
+                                    "-c",
+                                    "import sys; print('stdin-eof:'+sys.stdin.read())",
+                                ],
+                                "stdinOpen": True,
+                                "yieldMs": 0,
+                                "timeoutMs": 10000,
+                            }
+                        else:
+                            assert results[-1]["stdout"] == "stdin-eof:\n", results[-1]
+                            stdin_checks.append("explicit-close-only")
                     else:
                         metadata = results[-1]
                         assert metadata["sourceSha256"] == hashlib.sha256(png).hexdigest()
@@ -185,6 +231,16 @@ def main():
                         delivered = base64.b64decode(image_url.split(",", 1)[1], validate=True)
                         assert delivered.startswith(b"\x89PNG\r\n\x1a\n")
                         assert struct.unpack(">II", delivered[16:24]) == (256, 256)
+                        name = "run_command"
+                        arguments = {
+                            "argv": [
+                                "/usr/bin/python3",
+                                "-c",
+                                "import sys; print('stdin-eof:'+sys.stdin.read())",
+                            ],
+                            "yieldMs": 5000,
+                            "timeoutMs": 10000,
+                        }
                     delta = {"content": "All native tools verified."}
                     finish = "stop"
                     if name:
@@ -304,6 +360,11 @@ max_tool_calls = 32
                 timeout=100,
             )
             assert not errors, errors
+            assert stdin_checks == [
+                "default-closed",
+                "explicit-write-and-close",
+                "explicit-close-only",
+            ], stdin_checks
             assert done.returncode == 0, done.stdout[-5000:] + done.stderr[-5000:]
             assert (repo / "code.py").read_text() == "value = 4\n"
             task_scratch = list(scratch.glob("agent-*"))
@@ -317,6 +378,7 @@ max_tool_calls = 32
                 json.dumps(
                     {
                         "native_tool_smoke": "passed",
+                        "stdin_checks": stdin_checks,
                         "sandbox_profile": args.sandbox_profile,
                         "model_requests": len(requests),
                         "verification_receipts": len(receipts),

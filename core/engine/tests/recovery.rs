@@ -313,7 +313,7 @@ async fn empty_visible_stop_recovers_but_reasoning_is_not_a_final_answer() {
             data.path(),
             model.clone(),
             Limits {
-                max_completion_retries: 2,
+                max_empty_completion_retries: 2,
                 ..Limits::default()
             },
         )
@@ -345,6 +345,100 @@ async fn empty_visible_stop_recovers_but_reasoning_is_not_a_final_answer() {
 }
 
 struct ConfirmedWriteThenEmpty(AtomicUsize);
+
+#[tokio::test]
+async fn empty_recovery_is_disabled_by_default() {
+    let data = tempfile::tempdir().unwrap();
+    let model = Arc::new(EmptyThenAnswer {
+        requests: AtomicUsize::new(0),
+        always_empty: true,
+        media: false,
+    });
+    let engine = Engine::open(data.path(), model.clone(), Limits::default()).unwrap();
+    let thread = engine.create("/workspace".into()).await.unwrap();
+    engine
+        .start(&thread.id, vec![Input::text("inspect")])
+        .await
+        .unwrap();
+    let result = engine.wait(&thread.id).await.unwrap();
+    assert_eq!(result.turns[0].status, TurnStatus::Failed);
+    assert_eq!(model.requests.load(Ordering::SeqCst), 1);
+    engine.shutdown().await;
+}
+
+struct InterleavedEmpty(AtomicUsize);
+#[async_trait]
+impl Model for InterleavedEmpty {
+    fn name(&self) -> &str {
+        "interleaved-empty"
+    }
+    async fn stream(&self, _: Vec<Message>) -> anyhow::Result<ModelStream> {
+        unreachable!()
+    }
+    async fn chat(&self, _: Vec<Message>, _: Vec<Value>) -> anyhow::Result<AgentStream> {
+        let n = self.0.fetch_add(1, Ordering::SeqCst);
+        assert!(
+            n < 5,
+            "successful tools must not reset the Turn recovery allowance"
+        );
+        let event = if n.is_multiple_of(2) {
+            ModelEvent::text(" \n\t")
+        } else {
+            ModelEvent::ToolCall(ToolCall {
+                id: format!("write-{n}"),
+                name: "write_once".into(),
+                arguments: "{}".into(),
+            })
+        };
+        Ok(Box::pin(stream::iter([
+            Ok(event),
+            Ok(ModelEvent::Usage(ModelUsage {
+                input_tokens: 10,
+                output_tokens: 1,
+                cached_input_tokens: 0,
+            })),
+        ])))
+    }
+}
+
+#[tokio::test]
+async fn blank_recovery_is_bounded_across_successful_tools_and_charges_all_attempts() {
+    let data = tempfile::tempdir().unwrap();
+    let host = Arc::new(CountWrites(AtomicUsize::new(0)));
+    let model = Arc::new(InterleavedEmpty(AtomicUsize::new(0)));
+    let engine = Engine::open(
+        data.path(),
+        model.clone(),
+        Limits {
+            max_empty_completion_retries: 2,
+            ..Limits::default()
+        },
+    )
+    .unwrap();
+    let thread = engine
+        .create_with_tools(
+            "/workspace".into(),
+            vec![areal_protocol::ToolDefinition {
+                name: "write_once".into(),
+                description: "fixture".into(),
+                input_schema: serde_json::json!({"type":"object"}),
+                output_schema: None,
+            }],
+            host.clone(),
+        )
+        .await
+        .unwrap();
+    engine
+        .start(&thread.id, vec![Input::text("two writes")])
+        .await
+        .unwrap();
+    let result = engine.wait(&thread.id).await.unwrap();
+    assert_eq!(result.turns[0].status, TurnStatus::Failed);
+    assert_eq!(model.0.load(Ordering::SeqCst), 5);
+    assert_eq!(host.0.load(Ordering::SeqCst), 2);
+    assert_eq!(result.turns[0].usage.as_ref().unwrap().input_tokens, 50);
+    engine.shutdown().await;
+}
 struct CountWrites(AtomicUsize);
 #[async_trait]
 impl areal_engine::tools::DynamicToolHost for CountWrites {

@@ -46,6 +46,11 @@ fn engine_limits(config: &ResolvedCoreConfig) -> Limits {
         context_output_reserve_tokens: config.context_output_reserve_tokens,
         context_recent_bytes: config.context_recent_bytes,
         max_completion_retries: config.max_completion_retries,
+        max_empty_completion_retries: config.max_empty_completion_retries,
+        context_observation_tokens: config.context_observation_tokens,
+        context_reference_tokens: config.context_reference_tokens,
+        max_repeated_tool_failures: config.max_repeated_tool_failures,
+        command_stdin_closed: config.command_stdin_closed,
         watchdog_disable: config.watchdog_disable,
         ..Limits::default()
     }
@@ -787,4 +792,50 @@ fn configured_models(
 /// 返回输入二进制内嵌的构建身份，打包不能用当前 checkout 冒充。
 pub fn build_info() -> serde_json::Value {
     serde_json::json!({"sourceRevision":env!("AREAL_BUILD_REVISION"),"workingTree":env!("AREAL_BUILD_DIRTY"),"inputHash":env!("AREAL_BUILD_INPUT_HASH"),"apiVersion":areal_protocol::desktop::API_VERSION,"stateVersion":areal_engine::state_version()})
+}
+
+#[cfg(test)]
+mod experiment_tests {
+    use super::*;
+
+    #[test]
+    fn server_passes_only_explicit_experimental_policy_values_to_engine() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut inputs = areal_config::ConfigInputs {
+            cwd: dir.path().into(),
+            homedir: Some(dir.path().into()),
+            overrides: areal_config::ConfigOverrides {
+                model: Some("fixture".into()),
+                model_endpoint: Some("http://127.0.0.1:9/v1/chat/completions".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        for enabled in [false, true] {
+            let text = if enabled {
+                "schema_version=2\n[context]\nobservation_tokens=4096\nreference_tokens=2048\n[limits]\nmax_empty_completion_retries=1\nmax_repeated_tool_failures=3\n"
+            } else {
+                "schema_version=2\n"
+            };
+            let path = dir.path().join("config.toml");
+            std::fs::write(&path, text).unwrap();
+            inputs.config_file = Some(path);
+            let config = areal_config::load_config(&inputs).unwrap();
+            let limits = engine_limits(&config);
+            assert_eq!(
+                limits.context_observation_tokens,
+                if enabled { 4096 } else { 0 }
+            );
+            assert_eq!(
+                limits.context_reference_tokens,
+                if enabled { 2048 } else { 0 }
+            );
+            assert_eq!(limits.max_empty_completion_retries, usize::from(enabled));
+            assert_eq!(
+                limits.max_repeated_tool_failures,
+                if enabled { 3 } else { 0 }
+            );
+            assert!(limits.command_stdin_closed);
+        }
+    }
 }

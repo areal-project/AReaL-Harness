@@ -13,6 +13,78 @@ pub(super) const HANDOFF_OUTPUT_RESERVE: usize = 8 * 1024;
 // Leave room for process metadata and JSON framing after stdout/stderr are
 // escaped. Control-heavy output can expand several times in the model payload.
 const MODEL_OUTPUT_HEADROOM: usize = 4096;
+
+fn previous_matching_failures(items: &[Item], call: &ToolCall, current_id: &str) -> usize {
+    let arguments = serde_json::from_str(&call.arguments)
+        .unwrap_or_else(|_| Value::String(call.arguments.clone()));
+    // 只比较本 Turn 的原始调用；观察其他状态不会证明原调用已经恢复。
+    // 同一调用的成功、未知或未完成结果都中断计数，不能推测它们没有副作用。
+    items
+        .iter()
+        .rev()
+        .filter_map(|item| match item {
+            Item::DynamicToolCall {
+                id,
+                tool,
+                arguments: previous,
+                status,
+                success,
+                execution,
+                ..
+            } if id != current_id && tool == &call.name && previous == &arguments => Some(
+                status == &ToolStatus::Failed
+                    && success == &Some(false)
+                    && execution.outcome == ToolOutcome::Failed,
+            ),
+            _ => None,
+        })
+        .take_while(|failed| *failed)
+        .count()
+}
+
+fn consecutive_matching_failures(items: &[Item], call: &ToolCall) -> usize {
+    let arguments = serde_json::from_str::<Value>(&call.arguments)
+        .unwrap_or_else(|_| Value::String(call.arguments.clone()));
+    let mut count = 0;
+    for item in items.iter().rev() {
+        let Item::DynamicToolCall {
+            tool,
+            arguments: previous,
+            status,
+            success,
+            execution,
+            ..
+        } = item
+        else {
+            continue;
+        };
+        if tool == &call.name && previous == &arguments {
+            if *status == ToolStatus::Failed
+                && *success == Some(false)
+                && execution.outcome == ToolOutcome::Failed
+            {
+                count += 1;
+                continue;
+            }
+            break;
+        }
+        // 只读检查不表示问题已修复；修改参数或执行其他操作后允许重新验证。
+        if !matches!(
+            tool.as_str(),
+            "read_file"
+                | "fs_read"
+                | "fs_stat"
+                | "fs_list"
+                | "search_files"
+                | "read_tool_result"
+                | "task_state"
+                | "read_history"
+        ) {
+            break;
+        }
+    }
+    count
+}
 pub(crate) fn side_file_tool(name: &str, backend: &registry::Backend) -> bool {
     matches!(name, "fs_read" | "fs_list" | "fs_stat" | "search_files")
         && matches!(backend, registry::Backend::Builtin)
@@ -329,10 +401,10 @@ fn definitions_with_policy(policy: &ToolPolicy) -> Vec<Value> {
         tool(
             "run_command",
             &format!(
-                "Run command text with bash -o pipefail -c, or pass argv for a direct executable. Supply exactly one of command/argv; argv does not interpret shell operators. Collects output until completion or the wait budget, up to yieldMs (default {}, or {} for PTY). Use yieldMs=0 for independent work, then read_process. Inspect commandStatus and outputReadComplete. Turn completion reclaims commands.",
+                "Run command text with bash -o pipefail -c, or pass argv for a direct executable. Supply exactly one of command/argv; argv does not interpret shell operators. Collects output until completion or the wait budget, up to yieldMs (default {}, or {} for PTY). Use yieldMs=0 for independent work, then read_process. Inspect commandStatus and outputReadComplete. Non-PTY stdin is closed by default (legacy configurations may keep it open); stdinOpen explicitly selects open/closed. Use stdinOpen=true only when intending to write input, then write_process(close=true) to send EOF. Shell redirection still works. A running silent process is not proof it needs input; inspect its command and input contract before waiting or terminating. Turn completion reclaims commands.",
                 policy.command_wait_ms, policy.pty_wait_ms
             ),
-            json!({"command":{"type":"string","minLength":1},"argv":{"type":"array","items":{"type":"string"},"minItems":1},"cwd":path,"timeoutMs":{"type":"integer","minimum":1},"yieldMs":{"type":"integer","minimum":0},"tty":{"type":"boolean","default":false}}),
+            json!({"command":{"type":"string","minLength":1},"argv":{"type":"array","items":{"type":"string"},"minItems":1},"cwd":path,"timeoutMs":{"type":"integer","minimum":1},"yieldMs":{"type":"integer","minimum":0},"tty":{"type":"boolean","default":false},"stdinOpen":{"type":"boolean","default":false}}),
             &[],
         ),
         tool(
@@ -346,9 +418,9 @@ fn definitions_with_policy(policy: &ToolPolicy) -> Vec<Value> {
         ),
         tool(
             "write_process",
-            "Write UTF-8 input to a managed command in this Turn. Include newline to submit a line; a PTY also accepts control characters. Does not wait for command completion.",
-            json!({"processId":process_id,"text":{"type":"string"}}),
-            &["processId", "text"],
+            "Write UTF-8 input to a managed command started with stdinOpen=true (or tty=true). Include newline for a line; close=true sends EOF after writing, without rerunning the command. Does not wait for completion. PTY EOF uses control characters instead.",
+            json!({"processId":process_id,"text":{"type":"string"},"close":{"type":"boolean","default":false}}),
+            &["processId"],
         ),
         tool(
             "terminate_process",
@@ -404,6 +476,8 @@ struct Command {
     yield_ms: Option<u64>,
     #[serde(default)]
     tty: bool,
+    #[serde(default)]
+    stdin_open: bool,
 }
 // Optional means the field may be absent; an explicit null is not an integer.
 fn present_wait<'de, D: serde::Deserializer<'de>>(
@@ -431,7 +505,10 @@ struct ReadProcess {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct WriteProcess {
     process_id: String,
+    #[serde(default)]
     text: String,
+    #[serde(default)]
+    close: bool,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -769,6 +846,20 @@ impl Engine {
         let mut rejection = self.goal_tool_guard(cell, &call.name).await?;
         let bindings = cell.bindings.read().await.clone();
         let entry = bindings.registry.get(&call.name);
+        let repeat_limit = self.limits.max_repeated_tool_failures;
+        let repeats = if repeat_limit > 0 {
+            let state = cell.state.lock().await;
+            consecutive_matching_failures(&state.thread.turns.last().unwrap().items, &call)
+        } else {
+            0
+        };
+        let repeat_blocked = repeat_limit > 0 && repeats >= repeat_limit;
+        if rejection.is_none() && repeat_blocked {
+            rejection = Some(rt::Error::new(
+                rt::ErrorCode::InvalidArgument,
+                "REPEATED_TOOL_FAILURE: identical consecutive failed calls reached the execution limit; this call was not executed. Inspect the error and original protocol with read_file/read_tool_result, then change the approach. Another unchanged call stops this Turn. A previous failed operation may have partially changed state.",
+            ));
+        }
         let side_read = cell.state.lock().await.thread.side_workspace_read();
         if cell.state.lock().await.thread.is_side()
             && !(call.name == "side_context_read"
@@ -1099,6 +1190,13 @@ impl Engine {
             let state = cell.state.lock().await;
             let items = &state.thread.turns.last().unwrap().items;
             let used = state.active.as_ref().map_or(0, |a| a.tool_calls);
+            if outcome == ToolOutcome::Failed {
+                let repeats = previous_matching_failures(items, &call, &item_id);
+                if repeats > 0 {
+                    object.insert("previousMatchingFailures".into(), json!(repeats));
+                    object.insert("recoveryNote".into(), json!("The same tool and arguments have failed before in this turn. Use the error and current observations to change the approach before retrying. A failed action may have partially changed state; inspect it and preserve unrelated user data. This notice does not block execution or establish that a retry is safe."));
+                }
+            }
             object.insert(
                 "remainingToolCalls".into(),
                 json!(self.extensions.agents.as_ref().map_or_else(
@@ -1128,6 +1226,11 @@ impl Engine {
         let mut custom_content = result
             .get("contentItems")
             .map(|_| extensions::content_items(&result));
+        if let Some(content) = custom_content.as_mut()
+            && let Some(note) = result.get("recoveryNote").and_then(Value::as_str)
+        {
+            content.push(json!({"type":"inputText","text":format!("previousMatchingFailures={}: {note}", result["previousMatchingFailures"])}));
+        }
         let prepared = self
             .prepare_tool_result(cell, &item_id, &call.name, &result, output_argv.as_deref())
             .await?;
@@ -1199,6 +1302,10 @@ impl Engine {
         }
         state.active.as_mut().unwrap().open_items.remove(&item_id);
         emit_item(cell, "item/completed", &thread_id, &turn_id, &item);
+        anyhow::ensure!(
+            !repeat_blocked || repeats == repeat_limit,
+            "repeated tool failure recovery exhausted; rejected calls were not executed"
+        );
         anyhow::ensure!(
             !unknown,
             "tool outcome is UNKNOWN; inspect the workspace before continuing; automatic replay is disabled"
@@ -1294,7 +1401,7 @@ async fn execute(
                     cwd: command.cwd,
                     env: command.environment,
                     tty: command.tty,
-                    pipe_stdin: !command.tty,
+                    pipe_stdin: !command.tty && command.stdin_open,
                     limits: rt::LimitRequest {
                         wall_time_ms: Some(command.timeout_ms),
                         output_bytes: None,
@@ -1321,6 +1428,13 @@ async fn execute(
             )
             .await?;
             result["effectiveTimeoutMs"] = json!(effective_timeout_ms);
+            result["stdinMode"] = json!(if command.tty {
+                "pty"
+            } else if command.stdin_open {
+                "pipe"
+            } else {
+                "closed"
+            });
             Ok((success, result))
         }
         Request::ReadProcess(read) => {
@@ -1335,14 +1449,31 @@ async fn execute(
             .await
         }
         Request::WriteProcess(write) => {
+            if write.text.is_empty() && !write.close {
+                return Err(rt::Error::new(
+                    rt::ErrorCode::InvalidArgument,
+                    "write_process requires nonempty text or close=true",
+                ));
+            }
             owned_process(client, scope, &write.process_id).await?;
-            let result = client
-                .write(rt::ProcessInput {
-                    operation_id: operation.into(),
-                    process_id: write.process_id,
-                    data_base64: STANDARD.encode(write.text),
-                })
-                .await?;
+            let mut result = json!({"written":false});
+            if !write.text.is_empty() {
+                result = client
+                    .write(rt::ProcessInput {
+                        operation_id: operation.into(),
+                        process_id: write.process_id.clone(),
+                        data_base64: STANDARD.encode(write.text),
+                    })
+                    .await?;
+            }
+            if write.close {
+                result = client
+                    .close_stdin(rt::CloseStdin {
+                        operation_id: client.operation_id(),
+                        process_id: write.process_id,
+                    })
+                    .await?;
+            }
             Ok((true, result))
         }
         Request::TerminateProcess(process) => {

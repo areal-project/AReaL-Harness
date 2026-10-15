@@ -159,6 +159,31 @@ const ENV: &[(&str, &str, &str)] = &[
     ),
     ("AREAL_HARNESS_CONTEXT_MODE", "", "limits.context_mode"),
     (
+        "AREAL_HARNESS_CONTEXT_OBSERVATION_TOKENS",
+        "",
+        "limits.context_observation_tokens",
+    ),
+    (
+        "AREAL_HARNESS_MAX_EMPTY_COMPLETION_RETRIES",
+        "",
+        "limits.max_empty_completion_retries",
+    ),
+    (
+        "AREAL_HARNESS_CONTEXT_REFERENCE_TOKENS",
+        "",
+        "limits.context_reference_tokens",
+    ),
+    (
+        "AREAL_HARNESS_MAX_REPEATED_TOOL_FAILURES",
+        "",
+        "limits.max_repeated_tool_failures",
+    ),
+    (
+        "AREAL_HARNESS_COMMAND_STDIN_CLOSED",
+        "",
+        "limits.command_stdin_closed",
+    ),
+    (
         "AREAL_HARNESS_CONTEXT_RECENT_TOKENS",
         "",
         "limits.context_recent_tokens",
@@ -370,7 +395,9 @@ pub(crate) fn valid(field: &str, entry: &Entry) -> Result<()> {
         "context_window_tokens"
         | "context_output_reserve_tokens"
         | "context_target_tokens"
-        | "context_recent_tokens" => {
+        | "context_recent_tokens"
+        | "context_observation_tokens"
+        | "context_reference_tokens" => {
             if value
                 .parse::<usize>()
                 .ok()
@@ -386,7 +413,10 @@ pub(crate) fn valid(field: &str, entry: &Entry) -> Result<()> {
                 return Err(reject("context mode must be auto, manual or disabled"));
             }
         }
-        "watchdog_disable" | "context_compaction_enabled" | "responses_websocket" => {
+        "watchdog_disable"
+        | "context_compaction_enabled"
+        | "responses_websocket"
+        | "command_stdin_closed" => {
             if !matches!(value.as_str(), "0" | "1" | "false" | "true") {
                 return Err(reject("boolean must be 0/1 or false/true"));
             }
@@ -402,7 +432,10 @@ pub(crate) fn valid(field: &str, entry: &Entry) -> Result<()> {
                 ));
             }
         }
-        "max_retries" | "max_completion_retries" => {
+        "max_retries"
+        | "max_completion_retries"
+        | "max_empty_completion_retries"
+        | "max_repeated_tool_failures" => {
             if !value.bytes().all(|b| b.is_ascii_digit())
                 || value.parse::<usize>().ok().is_none_or(|n| n > 8)
             {
@@ -618,6 +651,11 @@ pub(crate) fn load_mode(
         ("model.max_request_bytes", "16777216"),
         ("model.responses_websocket", "false"),
         ("limits.max_completion_retries", "0"),
+        ("limits.max_empty_completion_retries", "0"),
+        ("limits.context_observation_tokens", "0"),
+        ("limits.context_reference_tokens", "0"),
+        ("limits.max_repeated_tool_failures", "0"),
+        ("limits.command_stdin_closed", "true"),
         ("limits.watchdog_disable", "false"),
         ("logging.filter", "info"),
     ] {
@@ -1023,6 +1061,26 @@ pub(crate) fn load_mode(
             .parse()
             .unwrap(),
         context_recent_bytes: values["limits.context_recent_bytes"].value.parse().unwrap(),
+        context_reference_tokens: values["limits.context_reference_tokens"]
+            .value
+            .parse()
+            .unwrap(),
+        max_repeated_tool_failures: values["limits.max_repeated_tool_failures"]
+            .value
+            .parse()
+            .unwrap(),
+        command_stdin_closed: matches!(
+            values["limits.command_stdin_closed"].value.as_str(),
+            "1" | "true"
+        ),
+        context_observation_tokens: values["limits.context_observation_tokens"]
+            .value
+            .parse()
+            .unwrap(),
+        max_empty_completion_retries: values["limits.max_empty_completion_retries"]
+            .value
+            .parse()
+            .unwrap(),
         max_completion_retries: values["limits.max_completion_retries"]
             .value
             .parse()

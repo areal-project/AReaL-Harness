@@ -42,6 +42,8 @@ Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后�
 
 ## 等待与状态
 
+`run_command` 的非 PTY stdin 默认关闭；显式 `stdinOpen:true` 保持管道以供后续写入，`stdinOpen:false` 明确关闭，PTY 行为不变。`write_process {processId,text?,close?}` 可写入非空文本、用 `close:true` 单独发送 EOF，或先写入再关闭；不能同时省略文本与关闭动作。不重启命令，仍要求当前 Turn 所有权和 Runtime 权限。`stdinMode` 报告 closed/pipe/pty；旧配置可显式选择默认开放管道，见配置指南。
+
 命令 timeoutMs 默认 600000，受 Runtime 授权截断并返回 effectiveTimeoutMs。普通命令/续读默认等 120 秒，PTY 1 秒；`yieldMs` / `waitMs` 接受非负 u64，0 不等待新输出，但会在页上限内读完已保留的字节。等待不改变进程期限或持有模型许可，每次收集最多 `tools.policy.outputPageBytes`（默认 8192）字节；JSON 转义会占用模型结果预算，控制字符较多时实际页会自动缩小并通过 cursor 续读。Jest、Karma、Mocha、Cargo test、Pytest 和 Go test 的成功进度行可折叠，完整保留其他行和 stdout/stderr 边界；只在包含元数据的序列化结果更小时启用视图。未知命令、复合 shell 命令和丢失输出保持原样。无输出或早期输出默认都继续等待；显式设置 outputQuietMs>0 才按静默窗口提前返回，底层轮询每次最多 1 秒。
 
 `returnReason` 为 completed、waitBudget、outputLimit、outputLoss 或 outputQuiet。`commandStatus` 为 running/succeeded/failed/terminated；`outputReadComplete` / `outputClosed` 表示生产者关闭且保留输出读完，`outputIntegrity` 为 retained/incomplete，`nextAction` 提示后续操作。completed 不代替退出码检查，gap/truncated 即使读完仍表示丢失。
@@ -49,6 +51,8 @@ Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后�
 read_process 省略 after 接续本 Turn 最近返回的游标，显式 null 从最早保留输出开始。`view="auto"` 默认折叠成功进度；`view="raw"` 返回原始页，续读时也须指定 raw。回看已提供 rawResult 的历史页使用 `read_tool_result`；仍在 Runtime 保留的进程输出可用 `after=null,view="raw"`；结束游标之后没有旧内容。短进程/游标/fileVersion 句柄绑定 Turn 和目标，Core 展开后仍执行 Runtime 权限检查；格式错误返回可恢复错误，不猜测句柄。最多缓存 128 个文件版本和每进程一个当前游标别名，旧显式游标会过期。`task_state` 的 observedOnly=true 表示历史观察，不能证明当前状态；压缩保留这些缓存，Turn 结束或重启即失效。
 
 ## 原文回取与结构视图
+
+工具返回确定失败时，Core 检查本 Turn 内相同工具及完整 JSON 参数的既有失败；再次失败的对象结果附 `previousMatchingFailures` 与 `recoveryNote`。同一调用的成功、未知、取消或未完成记录中断计数；其他调用不参与计数。不跨 Turn 累积，也不把参数不同的调用合并。提示在执行后生成，不阻止调用、不自动重试，也不证明失败没有副作用。可见状态变化仍需模型核实，不能靠清空未获授权的字段来恢复。
 
 大文本/结构化结果和需要折叠的结果在模型投影前保存为 Blob。`rawResult.resultId` 对应本 Thread 的真实调用 item，`read_tool_result` 校验归属和摘要后分页返回原始 JSON；直接传 Blob hash 或其他 Thread 的 item 无效。跨任务共享应显式导出制品。若 Turn 使用工具 allowlist，需包含 read_tool_result；缺少时禁用依赖回取的投影，并明确原文不可用。回取不刷新当前文件版本、不重跑原工具及其 hooks；回取调用自身仍经过审批和匹配的 hooks，并消耗正常工具预算。
 
@@ -130,3 +134,5 @@ Goal/Task 中 ask_user_question 支持 mode=async；提问持久写入独立频�
 `policy.resultViews.fileLines` 默认 true，独立于控制搜索/命令候选的 `mode`。read_file 的连续 `{number,text}` 行数组可表示为 `firstLine`、`lineCount`、`source`，保留全部源码和其余元数据；使用 `fileLines:false` 关闭。只接受可还原的连续行、原有行尾和已知行字段，至少节省 128 bytes。完整原文先写入受限快照；快照不可用或不能回取时透传原有有界表示。`read_tool_result` 读取原始 JSON；该视图不把历史 fileVersion 变成跨 Turn 的编辑权限。`execution.outputProjection.transform=file-lines-v1` 与 `reason=lossless` 记录实际应用，搜索/命令 observe 仍只观察对应候选。
 
 `read_history` 只读取当前 Thread，压缩和重启后仍可使用。列表页返回 `{items:[{itemId,turnId,type,preview}],nextBefore,order:"newestFirst"}`；指定 itemId 后使用 read_tool_result 同样的字节分页封套（resultId 标识历史条目）。跨条目/Thread 游标会拒绝。返回的是已记录证据，不执行原工具、不授予权限。显式工具 allowlist 需要包含 read_history，才可访问归档用户输入和回执。
+
+参考保留预算与连续失败硬上限属于默认关闭的实验策略；检查点回取及仍默认关闭非交互 stdin 的命令契约见[配置指南](configuration.md#参考保留与有界工具恢复)。原文回取、失败提示与 UNKNOWN 不重放不依赖这些实验开关。

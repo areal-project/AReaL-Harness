@@ -265,6 +265,11 @@ pub struct ResolvedCoreConfig {
     pub context_target_tokens: usize,
     pub context_output_reserve_tokens: usize,
     pub context_recent_bytes: usize,
+    pub context_observation_tokens: usize,
+    pub context_reference_tokens: usize,
+    pub max_repeated_tool_failures: usize,
+    pub command_stdin_closed: bool,
+    pub max_empty_completion_retries: usize,
     pub max_completion_retries: usize,
     pub watchdog_disable: bool,
     pub log_filter: String,
@@ -319,6 +324,18 @@ impl ResolvedCoreConfig {
                 "max_completion_retries": self.max_completion_retries, "watchdog_disable": self.watchdog_disable },
             "logging": { "filter": self.log_filter },
         });
+        result["context"]["reference_tokens"] = serde_json::json!(self.context_reference_tokens);
+        result["limits"]["context_reference_tokens"] =
+            serde_json::json!(self.context_reference_tokens);
+        result["limits"]["max_repeated_tool_failures"] =
+            serde_json::json!(self.max_repeated_tool_failures);
+        result["limits"]["command_stdin_closed"] = serde_json::json!(self.command_stdin_closed);
+        result["context"]["observation_tokens"] =
+            serde_json::json!(self.context_observation_tokens);
+        result["limits"]["context_observation_tokens"] =
+            serde_json::json!(self.context_observation_tokens);
+        result["limits"]["max_empty_completion_retries"] =
+            serde_json::json!(self.max_empty_completion_retries);
         if sources {
             result["sources"] = serde_json::json!(self.sources);
         }

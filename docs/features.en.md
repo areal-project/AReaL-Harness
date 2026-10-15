@@ -40,3 +40,7 @@ Remote Direct and Relay join the shared Host authorization and PWA protocol. Dir
 - Goals do not resume automatically after restart. Cumulative execution budgets are unlimited unless explicitly configured. History and settled Goal requests use immutable segments; hot unresolved ledgers retain a 4 MiB resource guard. Session/resource capacities and available disk still apply. clear retains ledgers, with no automatic ledger GC. Conservative tokenBudget admission estimates do not guarantee a strict provider billing ceiling; unknown consumption retains reservations and stops automatic continuation.
 
 Release preparation supports complete macOS arm64 and Linux x86_64 glibc standalone bundles plus a macOS Homebrew formula, with SHA256 verification, versioned installation and relocated read/write checks. npm and Windows are not supported; availability depends on published GitHub Releases/tap. See [installation](guides/installation.en.md).
+
+File-reference retention and consecutive-failure execution limits require explicit experimental settings and are disabled by default. Noninteractive stdin remains closed by default; see the [configuration guide](guides/configuration.en.md#reference-retention-and-bounded-tool-recovery). Availability does not establish improved task success.
+
+Old-observation folding and extra empty-completion recovery are also disabled by default and require explicit frozen experimental settings. Correctness regressions do not establish end-to-end gains.

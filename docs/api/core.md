@@ -107,6 +107,8 @@ Goal 请求先检查共享预算与用量是否已知，再决定是否重试。
 
 Goal 的根线程与子线程共享账本。子模型失败后缺失最终用量，会阻止其他线程继续提交模型或工具；根线程诊断保留已观察到的子请求终止分类、账本请求 ID 和所属 thread/turn，避免把上游错误误报为无来源的内部故障。账本只新增可选的脱敏分类字段，兼容旧记录；旧记录可能无法还原失败来源。检查失败请求后，可在 TUI 使用 `/goal-resume` 确认未知消费的保守预留并继续；不会自动重放失败工具或将未知用量改为零。
 
+`max_empty_completion_retries` 是默认 0（关闭）的实验性额外恢复额度，显式开启后仅为空白或纯推理结束提供有界恢复；一般 `max_completion_retries` 仍默认 0。两者共用 Turn 计数，空白取较大上限，成功工具不清零。恢复仅丢弃本次未接受响应，不重放已执行操作；失败原文与 usage 留档，所有实际请求仍受硬预算和取消限制。
+
 `max_completion_retries` 默认 0，可为已分类的长度截断、非法工具 index、空回复等提供有限恢复（仅 reasoning 不算最终回复）；关闭 watchdog 后，已分类网络错误也沿用此有限额度。工具仍只在完整成功流后执行；UNKNOWN、持久化错误、取消与显式任务预算错误不重放。
 
 Chat 工具 index 缺失、null、非整数类型、负数、超出 u64 范围或片段非对象时，使用明确的内部协议错误，只进入上述有限恢复，不进入网络 watchdog，也不作为 Workgroup 推理检查点。Core 不猜测编号或片段归属；数量、参数和缓冲预算错误不自动恢复。失败响应的模型视图被丢弃，已有确认工具、steer 和已观测 usage 保留。解析错误在已排队事件交付后立即传播；同事件或前序事件的已解析 usage 只累计一次，直接 EOF 保留原始错误类型。
@@ -393,3 +395,7 @@ CLI 保持 `--input-file` 的 2 MiB 上限，以有界读取在 JSON 解析前�
 项目指令由 Engine 在每个 Turn 首次模型请求前加载，并保存为 `instructionSnapshot`。按工作区根到 Thread `cwd` 的目录链读取 `AGENTS.md`，来源路径随正文写入快照；不新增 API 字段，已有仅根文件项目保持兼容。正文合计超过 32 KiB、无效 UTF-8、符号链接或超过 64 层的目录链使 Turn 在请求模型前失败，不截断规则。作用域、优先级与 cwd 路径别名见[客户端指南](../guides/clients.md#历史恢复与观测)。
 
 Shared Browser 的旧 Thread 固定工具包追加已实现，方法为 `areal/thread/tools/attach`；请求、回执、存储版本与回退限制见[Browser 契约](browser.md#10-旧-thread-与多客户端新增-core-接口)。工具准备与只读观察订阅仍是设计契约；`thread/resume` 行为未改变。
+
+Core 可通过默认关闭的实验配置，在请求投影与检查点证据中有界保留完整文件参考；执行等待仍由 Runtime 管理。参考回取、非交互 stdin 和连续失败上限见[配置指南](../guides/configuration.md#参考保留与有界工具恢复)。
+
+Rust `Limits` 与 `ResolvedCoreConfig` 增加上述实验控制字段及 `command_stdin_closed`。直接使用完整结构体字面量的调用方需补齐字段，或使用 `..Limits::default()`；默认值不启用四项实验策略。

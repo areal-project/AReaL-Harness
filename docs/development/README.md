@@ -2,7 +2,7 @@
 
 # 开发指南
 
-先阅读[架构](../design/architecture.md)和[开发规范](../../AGENTS.md)。所有命令从仓库根目录执行。
+先阅读[架构](../design/architecture.md)、[开发规范](../../AGENTS.md)和[Agent 改进目标与方法](agent-improvement.md)。所有命令从仓库根目录执行。
 
 ## 环境
 

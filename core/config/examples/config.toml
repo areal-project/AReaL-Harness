@@ -32,6 +32,15 @@ mode = "auto"
 # target_tokens = 0                 # 0：自动目标
 # output_reserve_tokens = 8192
 
+# 以下行为策略尚无泛化收益结论，默认 0 关闭；仅在冻结的实验配置中显式开启。
+# observation_tokens = 8192
+# reference_tokens = 8192
+
+[limits]
+# 实验性恢复策略；每次只验证一个假设，保持根预算不变。
+# max_empty_completion_retries = 2
+# max_repeated_tool_failures = 2
+
 [budget]
 # 省略或 0：不设累计预算。
 # max_tool_calls = 0

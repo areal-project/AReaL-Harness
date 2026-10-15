@@ -15,6 +15,32 @@ fn inputs(root: &Path) -> ConfigInputs {
 }
 
 #[test]
+fn observation_and_empty_recovery_budgets_have_independent_validated_controls() {
+    let root = tempfile::tempdir().unwrap();
+    let mut i = inputs(root.path());
+    let defaults = load_config(&i).unwrap();
+    assert_eq!(defaults.context_observation_tokens, 0);
+    assert_eq!(defaults.max_empty_completion_retries, 0);
+    assert_eq!(defaults.max_completion_retries, 0);
+    write(
+        &mut i,
+        "schema_version=2\n[context]\nobservation_tokens=4096\n[limits]\nmax_empty_completion_retries=2\n",
+    );
+    let config = load_config(&i).unwrap();
+    assert_eq!(config.context_observation_tokens, 4096);
+    assert_eq!(config.max_empty_completion_retries, 2);
+    assert_eq!(config.context_reference_tokens, 0);
+    assert_eq!(config.max_repeated_tool_failures, 0);
+    for text in [
+        "schema_version=2\n[context]\nobservation_tokens=-1\n",
+        "schema_version=2\n[limits]\nmax_empty_completion_retries=9\n",
+    ] {
+        write(&mut i, text);
+        assert!(load_config(&i).is_err());
+    }
+}
+
+#[test]
 fn grouped_configuration_keeps_explicit_budgets_and_model_window() {
     let root = tempfile::tempdir().unwrap();
     let mut i = inputs(root.path());
@@ -1136,6 +1162,122 @@ fn request_bytes_are_independent_and_reject_invalid_limits() {
             &mut i,
             &format!("schema_version=1\n[model]\nmax_request_bytes={limit}\n"),
         );
+        assert!(load_config(&i).is_err());
+    }
+}
+
+#[test]
+fn reference_and_tool_recovery_configuration_is_bounded_and_diagnostic() {
+    let root = tempfile::tempdir().unwrap();
+    let mut i = inputs(root.path());
+    let defaults = load_config(&i).unwrap();
+    assert_eq!(defaults.context_reference_tokens, 0);
+    assert_eq!(defaults.max_repeated_tool_failures, 0);
+    assert!(defaults.command_stdin_closed);
+    write(
+        &mut i,
+        "schema_version=2\n[context]\nreference_tokens=4096\n[limits]\nmax_repeated_tool_failures=2\ncommand_stdin_closed=false\n",
+    );
+    let c = load_config(&i).unwrap();
+    assert_eq!(c.context_reference_tokens, 4096);
+    assert_eq!(c.max_repeated_tool_failures, 2);
+    assert!(!c.command_stdin_closed);
+    assert_eq!(
+        c.diagnostic(false)["limits"]["context_reference_tokens"],
+        4096
+    );
+    for text in [
+        "schema_version=2\n[context]\nreference_tokens=2000001\n",
+        "schema_version=2\n[limits]\nmax_repeated_tool_failures=9\n",
+        "schema_version=2\n[limits]\ncommand_stdin_closed='unknown'\n",
+    ] {
+        write(&mut i, text);
+        assert!(load_config(&i).is_err());
+    }
+    write(&mut i, "schema_version=2\n");
+    set(&mut i, "AREAL_HARNESS_CONTEXT_REFERENCE_TOKENS", "2048");
+    set(&mut i, "AREAL_HARNESS_MAX_REPEATED_TOOL_FAILURES", "3");
+    set(&mut i, "AREAL_HARNESS_COMMAND_STDIN_CLOSED", "false");
+    let c = load_config(&i).unwrap();
+    assert_eq!(c.context_reference_tokens, 2048);
+    assert_eq!(c.max_repeated_tool_failures, 3);
+    assert!(!c.command_stdin_closed);
+}
+
+#[test]
+fn experimental_policies_require_explicit_values_and_keep_legacy_aliases() {
+    let root = tempfile::tempdir().unwrap();
+    let mut i = inputs(root.path());
+    for schema in [1, 2] {
+        write(&mut i, &format!("schema_version={schema}\n"));
+        let defaults = load_config(&i).unwrap();
+        assert_eq!(defaults.context_observation_tokens, 0);
+        assert_eq!(defaults.context_reference_tokens, 0);
+        assert_eq!(defaults.max_repeated_tool_failures, 0);
+        assert_eq!(defaults.max_empty_completion_retries, 0);
+        assert!(defaults.context_compaction_enabled);
+        assert!(defaults.command_stdin_closed);
+        write(
+            &mut i,
+            &format!(
+                "schema_version={schema}\n[limits]\ncontext_observation_tokens=4096\ncontext_reference_tokens=2048\nmax_repeated_tool_failures=3\nmax_empty_completion_retries=1\n"
+            ),
+        );
+        let configured = load_config(&i).unwrap();
+        assert_eq!(configured.context_observation_tokens, 4096);
+        assert_eq!(configured.context_reference_tokens, 2048);
+        assert_eq!(configured.max_repeated_tool_failures, 3);
+        assert_eq!(configured.max_empty_completion_retries, 1);
+        let diagnostic = configured.diagnostic(false);
+        assert_eq!(diagnostic["context"]["observation_tokens"], 4096);
+        assert_eq!(diagnostic["context"]["reference_tokens"], 2048);
+        assert_eq!(diagnostic["limits"]["max_repeated_tool_failures"], 3);
+        assert_eq!(diagnostic["limits"]["max_empty_completion_retries"], 1);
+    }
+}
+
+#[test]
+fn experimental_environment_values_enable_and_disable_each_policy() {
+    let root = tempfile::tempdir().unwrap();
+    for (name, field, value) in [
+        (
+            "AREAL_HARNESS_CONTEXT_OBSERVATION_TOKENS",
+            "context_observation_tokens",
+            "4096",
+        ),
+        (
+            "AREAL_HARNESS_CONTEXT_REFERENCE_TOKENS",
+            "context_reference_tokens",
+            "2048",
+        ),
+        (
+            "AREAL_HARNESS_MAX_EMPTY_COMPLETION_RETRIES",
+            "max_empty_completion_retries",
+            "2",
+        ),
+        (
+            "AREAL_HARNESS_MAX_REPEATED_TOOL_FAILURES",
+            "max_repeated_tool_failures",
+            "3",
+        ),
+    ] {
+        let mut i = inputs(root.path());
+        set(&mut i, name, value);
+        let c = load_config(&i).unwrap();
+        assert_eq!(
+            c.diagnostic(true)["limits"][field],
+            value.parse::<usize>().unwrap()
+        );
+        assert_eq!(
+            c.diagnostic(true)["sources"][format!("limits.{field}")]["kind"],
+            "env"
+        );
+        set(&mut i, name, "0");
+        assert_eq!(
+            load_config(&i).unwrap().diagnostic(false)["limits"][field],
+            0
+        );
+        set(&mut i, name, "invalid");
         assert!(load_config(&i).is_err());
     }
 }

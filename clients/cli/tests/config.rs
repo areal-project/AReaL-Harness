@@ -440,3 +440,64 @@ fn extensions_are_validated_without_executing_commands_or_creating_state() {
     assert!(!invoke(temp.path(), &args, &[]).status.success());
     assert!(!temp.path().join("home").exists());
 }
+
+#[test]
+fn platform_identity_never_changes_native_budgets_or_experimental_defaults() {
+    let temp = tempfile::tempdir().unwrap();
+    for explicit in [false, true] {
+        let settings = if explicit {
+            "schema_version=2\n[model]\nmax_output_tokens=12345\ncontext_window_tokens=180000\n[context]\nobservation_tokens=4096\nreference_tokens=2048\n[limits]\ncontext_window_bytes=2000000\ncontext_recent_bytes=90000\ncontext_output_reserve_tokens=16000\nmax_empty_completion_retries=1\nmax_repeated_tool_failures=3\n"
+        } else {
+            "schema_version=2\n"
+        };
+        fs::write(temp.path().join("config.toml"), settings).unwrap();
+        let mut baseline = None;
+        for (env_key, task_id) in [
+            ("ordinary", "ordinary-task"),
+            ("graybox19-example", "ordinary-task"),
+            ("ordinary", "example:graybox19-001"),
+        ] {
+            let out = invoke(
+                temp.path(),
+                &["config", "show", "--config", "config.toml"],
+                &[
+                    ("ARENA_ENV_KEY", env_key),
+                    ("TASK_ID", task_id),
+                    ("AREAL_HARNESS_MODEL", "fixture"),
+                    (
+                        "AREAL_HARNESS_MODEL_ENDPOINT",
+                        "http://127.0.0.1:9/v1/chat/completions",
+                    ),
+                ],
+            );
+            assert!(
+                out.status.success(),
+                "{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            let actual: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+            let projection = serde_json::json!({"model":actual["model"], "limits":actual["limits"], "context":actual["context"]});
+            if let Some(ref expected) = baseline {
+                assert_eq!(&projection, expected);
+            } else {
+                baseline = Some(projection);
+            }
+            for (field, value) in [
+                ("context_observation_tokens", 4096),
+                ("context_reference_tokens", 2048),
+                ("max_empty_completion_retries", 1),
+                ("max_repeated_tool_failures", 3),
+            ] {
+                assert_eq!(actual["limits"][field], if explicit { value } else { 0 });
+            }
+            if explicit {
+                assert_eq!(actual["model"]["max_output_tokens"], 12345);
+                assert_eq!(actual["model"]["context_window_tokens"], 180000);
+                assert_eq!(actual["limits"]["context_window_bytes"], 2000000);
+                assert_eq!(actual["limits"]["context_recent_bytes"], 90000);
+                assert_eq!(actual["limits"]["context_output_reserve_tokens"], 16000);
+            }
+        }
+    }
+    assert!(!temp.path().join("home").exists());
+}

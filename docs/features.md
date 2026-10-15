@@ -40,3 +40,7 @@ Remote 的 Direct 与 Relay 已接入共同 Host 授权和 PWA 协议，Direct �
 - Goal 不自动跨重启运行。累计执行预算仅在显式配置时生效。历史与已结算 Goal 请求使用不可变分段；未结算热账本仍有 4 MiB 资源保护，会话/资源容量与可用磁盘仍有效；clear 保留账本且无自动账本 GC。tokenBudget 使用保守准入估算，不保证供应商绝不超额计费；未知消费保留预留并停止自动推进。
 
 发行准备支持 macOS arm64 / Linux x86_64 glibc 独立完整包、macOS Homebrew formula，含 SHA256 校验、版本化安装和搬迁读写验收。npm 与 Windows 暂不支持；发布可用性以 GitHub Release/tap 为准，详见[安装指南](guides/installation.md)。
+
+文件参考保留与连续相同失败的执行上限需要显式实验配置，默认关闭；非交互命令仍默认关闭 stdin，详见[配置指南](guides/configuration.md#参考保留与有界工具恢复)。功能存在不代表已证明业务成功率提升。
+
+旧观察折叠与空白响应额外恢复同样默认关闭，需在冻结的实验配置中显式启用；正确性回归不能代替端到端收益验证。

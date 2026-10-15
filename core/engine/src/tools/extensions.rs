@@ -459,6 +459,9 @@ impl Invocation<'_> {
                 drop(state);
                 let mut verification_receipt = None;
                 if let Request::Command(command) = &mut request {
+                    if effective.get("stdinOpen").is_none() && call.name == "run_command" {
+                        command.stdin_open = !self.engine.limits.command_stdin_closed;
+                    }
                     // 在验证子进程之前解析系统 shim，避免进入沙箱后查询开发工具路径。
                     if command
                         .argv

@@ -172,6 +172,8 @@ fn walk(
         ]
         | ["network", "stream_idle_timeout_seconds"] => Some(format!("limits.{}", names[1])),
         ["context", "mode"] => Some("limits.context_mode".into()),
+        ["context", "reference_tokens"] => Some("limits.context_reference_tokens".into()),
+        ["context", "observation_tokens"] => Some("limits.context_observation_tokens".into()),
         ["context", "recent_tokens"] => Some("limits.context_recent_tokens".into()),
         ["context", "target_tokens"] => Some("limits.context_target_tokens".into()),
         ["context", "output_reserve_tokens"] => Some("limits.context_output_reserve_tokens".into()),
@@ -341,6 +343,10 @@ fn walk(
                     | "context_recent_tokens"
                     | "context_output_reserve_tokens"
                     | "context_recent_bytes"
+                    | "context_observation_tokens"
+                    | "context_reference_tokens"
+                    | "max_repeated_tool_failures"
+                    | "max_empty_completion_retries"
                     | "max_completion_retries"
             ]
             | [
@@ -389,8 +395,10 @@ fn walk(
     let string = string || names.as_slice() == ["limits", "context_mode"];
     let boolean = matches!(
         names.as_slice(),
-        ["limits", "watchdog_disable" | "context_compaction_enabled"]
-            | ["trajectory", "enabled"]
+        [
+            "limits",
+            "watchdog_disable" | "context_compaction_enabled" | "command_stdin_closed"
+        ] | ["trajectory", "enabled"]
             | ["model", "responses_websocket"]
     );
     if !numeric && !string && !decimal && !boolean {

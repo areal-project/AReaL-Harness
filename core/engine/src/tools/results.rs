@@ -74,7 +74,13 @@ impl Engine {
         } else {
             None
         };
-        let needs_snapshot = bytes.len() > MAX_RESULT || baseline != *raw || candidate.is_some();
+        let projection_snapshot =
+            bytes.len() > MAX_RESULT || baseline != *raw || candidate.is_some();
+        let needs_snapshot = projection_snapshot
+            || (self.limits.context_compaction_enabled
+                && self.limits.context_auto_compaction
+                && self.limits.context_observation_tokens > 0
+                && bytes.len() > 2048);
         let readback_allowed = {
             let state = cell.state.lock().await;
             state
@@ -121,7 +127,7 @@ impl Engine {
         if snapshot.is_none() && value != *raw {
             value = raw.clone();
         }
-        if let Some(reference) = &reference {
+        if projection_snapshot && let Some(reference) = &reference {
             if !value.is_object() {
                 value = json!({"result":value});
             }

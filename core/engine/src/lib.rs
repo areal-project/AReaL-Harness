@@ -9,6 +9,7 @@ mod generation;
 pub mod goals;
 mod history;
 pub mod model;
+mod observations;
 mod outcome;
 mod permissions;
 mod sessions;
@@ -73,6 +74,15 @@ pub struct Limits {
     pub context_target_tokens: usize,
     pub context_output_reserve_tokens: usize,
     pub context_recent_bytes: usize,
+    /// 实验性旧工具观察预算；默认 0 关闭，原文与最近结果始终保留。
+    pub context_observation_tokens: usize,
+    /// 实验性历史文件参考预算；默认 0 关闭。
+    pub context_reference_tokens: usize,
+    /// 实验性相同失败调用执行上限；默认 0 不限制。
+    pub max_repeated_tool_failures: usize,
+    pub command_stdin_closed: bool,
+    /// 实验性空白恢复额度；默认 0 关闭，与一般恢复共享整轮已用计数。
+    pub max_empty_completion_retries: usize,
     /// Total discarded completions that may be retried within one Turn.
     pub max_completion_retries: usize,
     /// 关闭默认启用的网络 watchdog；有限响应恢复额度仍独立生效。
@@ -110,6 +120,11 @@ impl Default for Limits {
             context_target_tokens: 0,
             context_output_reserve_tokens: 8 * 1024,
             context_recent_bytes: 0,
+            context_observation_tokens: 0,
+            context_reference_tokens: 0,
+            max_repeated_tool_failures: 0,
+            command_stdin_closed: true,
+            max_empty_completion_retries: 0,
             max_completion_retries: 0,
             watchdog_disable: false,
         }
@@ -414,6 +429,10 @@ impl Engine {
                 && (limits.context_window_bytes == 0
                     || limits.context_recent_bytes < limits.context_window_bytes)
                 && limits.max_completion_retries <= 8
+                && limits.max_empty_completion_retries <= 8
+                && limits.context_observation_tokens <= 2_000_000
+                && limits.context_reference_tokens <= 2_000_000
+                && limits.max_repeated_tool_failures <= 8
                 && (limits.max_history_bytes == 0
                     || limits.max_output_bytes < limits.max_history_bytes)
                 && !limits.stream_idle_timeout.is_zero(),

@@ -232,7 +232,15 @@ impl Engine {
                 history_tail_before,
             ) = {
                 let mut state = cell.state.lock().await;
-                let mut messages = history(&state.thread, &self.store)?;
+                let (mut messages, observation_audit) = observations::project(
+                    &state.thread,
+                    &self.store,
+                    &self.limits,
+                    model.as_ref(),
+                )?;
+                if let Some(audit) = observation_audit {
+                    self.store.save_audit(audit).await?;
+                }
                 // 每次请求的动态提示必须与其输出一起保留，后续只追加。
                 // 删除旧提示会破坏 encrypted reasoning 所对应的原始上下文。
                 let mut live_context = Vec::new();
@@ -1092,7 +1100,18 @@ impl Engine {
         error: &anyhow::Error,
         retries: usize,
     ) -> anyhow::Result<bool> {
-        if retries >= self.limits.max_completion_retries
+        // 空白恢复不扩大截断、网络或非法协议的默认重试范围；所有恢复共用整轮计数。
+        let limit = if matches!(
+            error.downcast_ref::<model::ModelFailure>(),
+            Some(model::ModelFailure::EmptyCompletion)
+        ) {
+            self.limits
+                .max_completion_retries
+                .max(self.limits.max_empty_completion_retries)
+        } else {
+            self.limits.max_completion_retries
+        };
+        if retries >= limit
             || (error.downcast_ref::<model::ModelFailure>().is_none()
                 && error.downcast_ref::<model::ToolCallIndexError>().is_none())
         {

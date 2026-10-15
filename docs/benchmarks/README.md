@@ -54,7 +54,7 @@ pro 来源与约束见[快照说明](../../tests/perf/suites/pro/README.md)。fe
 ./scripts/perf fetch-pro
 ./scripts/perf build-pro --case tbpc002004-match-device-observation-lines
 ./scripts/perf run --task pro --runner harness --runner codex --runner claudecode \
-  --model-config tests/perf/model.toml --repeat 1 --seed 163 \
+  --model-config tests/perf/model.toml --repeat 5 --seed 163 \
   --output target/perf/formal --allow-failures
 ```
 
@@ -75,3 +75,7 @@ run.json 逐次保存，report.json 为汇总，trials/ 保存日志、工作区
 外部评测平台使用标准原生发布包及 [CLI 契约](../api/claude-cli.md)。公开输入通过可重复的 `--read-only-path` 绑定保护；使用 `stream-json --include-native-events` 获取完整工具媒体和终态结构化错误。短输入入口、附件清单与完整性检查、模型设置、生命周期期限、产物收集和 Reward 执行由平台负责。
 
 旧 EnvArena Python runner、zipapp 打包器及专用工作流已移除。通用文件/图像工具、只读保护和请求预算继续由 Core/Runtime 与原生 CLI 测试覆盖。平台验收应在原生 Linux 上运行完整发布包，区分模型桩的输入交付验证与真实模型任务评分。
+
+正式策略比较默认每题每方重复 5 次；跨任务、跨来源和四领域确认的最低规模、区间估计及停止规则见[评测方法](methodology.md#重复次数覆盖面与证据规模)。单题、少量题或显式 `--repeat 1` 只作 smoke/探索；当前工具不自动证明泛化。原生平台配置须显式冻结，产品不根据 Env/Task/Benchmark 身份扩大预算或附加解题策略。
+
+默认重复次数由 1 改为 5，也适用于单个 Runner 与 fixture；只需链路 smoke 时显式传 `--repeat 1`。恢复历史批次须按已保存计划显式给出原重复数，不能用新默认值改变冻结调度。

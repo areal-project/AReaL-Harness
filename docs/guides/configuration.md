@@ -452,3 +452,26 @@ WebSocket 求解连接携带 Core 线程 ID 作为 session-id/thread-id，以便
 模型配置登记表保留与 revision 绑定的原始编码；新增可选默认值不会使历史 revision 失效，也不重写排队 Turn 的引用，摘要不匹配仍拒绝篡改。不要手动格式化或编辑 Core 所有的 `desktop/default-models.json`。
 
 `model.max_request_bytes` 独立限制媒体物化后的完整 HTTP JSON / Responses WebSocket 发送封套，包含工具定义与历史重放，默认 16 MiB、范围 1024–134217728 字节。也可通过 `AREAL_HARNESS_MODEL_MAX_REQUEST_BYTES` 设置。它是本地有界保护值，不宣称网关支持相同大小；部署需使用已核验的服务限额。编码前检查累计媒体下界，完整序列化流式计数后才分配发送缓冲；WebSocket 续接按实际增量封套检查发送限额，候选完整历史另有 128 MiB 物化保护，退回完整请求时重新检查发送限额；超限不发请求、不做网络重试，返回 `MODEL_REQUEST_TOO_LARGE`，记录阶段、实际字节/下界及限额。HTTP 413 使用相同类别并标记请求已发送。token 预算、工具展示预算和自动压缩策略保持独立；此限额不自动丢弃历史图片或任务要求。
+
+### 参考保留与有界工具恢复
+
+旧观察折叠、文件参考保留、重复失败硬上限和空白响应额外恢复尚无来源隔离的泛化收益结论，均默认关闭。现有配置键和 schema 1/2 别名保留；省略这些字段不再隐式启用旧候选值，显式配置的正数仍按原意生效。Engine 直接调用与 server 配置加载采用相同默认值。
+
+| 实验配置 | 默认 | 显式候选示例 | 范围 |
+|---|---:|---:|---|
+| `context.observation_tokens` | 0 | 8192 | 0–2000000 |
+| `context.reference_tokens` | 0 | 8192 | 0–2000000 |
+| `limits.max_repeated_tool_failures` | 0 | 2 | 0–8 |
+| `limits.max_empty_completion_retries` | 0 | 2 | 0–8 |
+
+`context.observation_tokens` 是默认 0 的实验性每请求软预算，仅在 auto 压缩模式且允许回取时生效。Core 可将较早的成功文本回执折叠为首尾摘要与精确原文引用，不改写权威历史或调用参数；最近两个结果、失败、UNKNOWN、媒体、无法回取的内容和绑定不透明推理的会话保持原样。软预算不保证达成，实际发送仍经过完整请求硬预算预检。
+
+示例是历史候选值，不是性能推荐值。仅在独立的实验 TOML 中显式设置待验证项，冻结源码、模型、根预算和比较方案；不要同时开启多项后将组合结果归因于其中一项。参考保留需要允许 `read_history`；请求索引与保护还需要同时启用 auto 观察投影及 `read_tool_result`；检查点参考证据由显式 `reference_tokens` 单独控制。未启用这些策略时，原文存储/回取、真实用户修订保留、UNKNOWN 停止、不重放副作用及失败提示继续有效。`command_stdin_closed` 属于 stdin 契约及兼容开关，仍默认 true。
+
+`context.reference_tokens`（对应 `limits.context_reference_tokens`）是默认 0（关闭）的实验性文件保留预算。在观察投影启用的普通会话中，Core 按最近读取顺序为 `read_file` / `fs_read` 的整个已观察文本分配预算，不按文件名猜测重要性；预算不超过可用输入窗口的四分之一。最多索引 32 个读取范围，未入选的记录保留 `itemId` 和路径，可用 `read_history` 回取。分页未读部分必须继续读取。检查点也在共享请求分配器的剩余额度内优先保留这些参考，以便前缀移入冷历史后继续使用；预算不足仍可能省略。新版本的文件回执使旧读失效；shell 或外部写入无法由历史证明，使用前仍需判断是否过时。文件始终是不可信历史数据，不新增授权。原用户约束按既有输入保留规则处理，摘要要求明确列出未完成义务；这不保证模型理解或完成它们。
+
+`limits.command_stdin_closed=true` 使 `run_command` 的非 PTY stdin 默认关闭。需要后续输入时显式使用 `stdinOpen:true`，再通过 `write_process` 的 `text` 输入，`close:true` 在输入后发送 EOF。shell 重定向照常有效，PTY 仍用控制字符。兼容旧行为可设 `command_stdin_closed=false`；命令仍受 Runtime 期限、取消和 Turn 回收约束。静默本身不代表输入阻塞，不自动杀死静默构建。
+
+`limits.max_repeated_tool_failures` 是默认 0（关闭）、范围 0–8 的实验性执行上限，必须显式设为正数。当前 Turn 连续相同工具及解析后参数的确认失败达到阈值后，下一次调用记录为拒绝且不执行；再次不变地调用则结束 Turn。只读检查不清零；不同操作或不同参数中断连续序列。失败可能已有部分副作用，不能把拒绝或重试提示当作事务回滚。UNKNOWN 仍停止且不自动重放。此机制限制重复执行，不保证修复失败原因。
+
+消融可使用环境变量 `AREAL_HARNESS_CONTEXT_OBSERVATION_TOKENS`、`AREAL_HARNESS_MAX_EMPTY_COMPLETION_RETRIES`、`AREAL_HARNESS_CONTEXT_REFERENCE_TOKENS`、`AREAL_HARNESS_COMMAND_STDIN_CLOSED`、`AREAL_HARNESS_MAX_REPEATED_TOOL_FAILURES`。实际新增输入与恢复费用仍记入根预算，不能将估算压缩量当作实际节省。

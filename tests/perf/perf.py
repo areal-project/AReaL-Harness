@@ -56,6 +56,7 @@ DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org"
 DEFAULT_CODEX_VERSION = "0.145.0"
 DEFAULT_CLAUDE_CODE_VERSION = "2.1.273"
 DEFAULT_DSH_VERSION = "0.1.2-alpha.5"
+DEFAULT_REPEAT = 5
 GATEWAY_PORT = 8765
 IDENTIFIER = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 ENV_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -1990,9 +1991,7 @@ def interactive_arguments(
             output_fn=output_fn,
         )
         arguments.extend(["--model-config", model_config])
-    repeat = ask_positive_int(
-        "Repeat", 5 if len(runners) > 1 else 1, input_fn=input_fn, output_fn=output_fn
-    )
+    repeat = ask_positive_int("Repeat", DEFAULT_REPEAT, input_fn=input_fn, output_fn=output_fn)
     image = ask("Image", default=DEFAULT_IMAGE, input_fn=input_fn, output_fn=output_fn)
     arguments.extend(["--repeat", str(repeat), "--image", image])
     arguments.append("--allow-failures")
@@ -2062,7 +2061,12 @@ def parser() -> argparse.ArgumentParser:
             metavar="CASE_ID",
             help="select a pro subset; repeat once per case (requires --task pro)",
         )
-        command.add_argument("--repeat", type=int, default=1)
+        command.add_argument(
+            "--repeat",
+            type=int,
+            default=DEFAULT_REPEAT,
+            help="independent attempts per task and runner (default: 5); use 1 for smoke only",
+        )
         command.add_argument("--image", default=DEFAULT_IMAGE)
         command.add_argument("--output", default=str(DEFAULT_OUTPUT))
         command.add_argument("--seed", type=int)

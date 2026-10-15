@@ -1331,7 +1331,7 @@ class InteractiveTests(unittest.TestCase):
                 "--runner",
                 "fixture",
                 "--repeat",
-                "1",
+                "5",
                 "--image",
                 perf.DEFAULT_IMAGE,
                 "--allow-failures",
@@ -1398,10 +1398,6 @@ class TraceReportTests(unittest.TestCase):
         self.assertIsNone(summary["codex"]["trace_metrics"]["return_reason_counts"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class MissingUsageTests(unittest.TestCase):
     def test_usage_absence_and_partial_result_remain_missing(self):
         usage = {}
@@ -1411,3 +1407,19 @@ class MissingUsageTests(unittest.TestCase):
         self.assertEqual(usage, {"input_tokens": 12})
         agent.extract_usage({"usage": {"input_tokens": 12, "output_tokens": 5}}, usage)
         self.assertEqual(usage, {"input_tokens": 12, "output_tokens": 5})
+
+
+class RepetitionDefaultsTests(unittest.TestCase):
+    def test_run_and_compare_repeat_each_task_five_times_unless_explicit(self):
+        for command in [
+            ["run", "--task", "pro", "--runner", "harness"],
+            ["run", "--task", "lite", "--runner", "harness", "--runner", "dsh"],
+            ["compare", "--task", "pro"],
+        ]:
+            with self.subTest(command=command):
+                self.assertEqual(perf.parser().parse_args(command).repeat, 5)
+                self.assertEqual(perf.parser().parse_args([*command, "--repeat", "1"]).repeat, 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

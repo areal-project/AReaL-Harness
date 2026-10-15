@@ -2,7 +2,7 @@
 
 # Development
 
-Read the [architecture](../design/architecture.en.md) and [repository instructions](../../AGENTS.md) first. Run commands from the repository root.
+Read the [architecture](../design/architecture.en.md), [repository instructions](../../AGENTS.md) and [agent improvement goals and method](agent-improvement.en.md) first. Run commands from the repository root.
 
 ## Environment
 

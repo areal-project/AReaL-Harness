@@ -3,6 +3,123 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::time::Instant;
 
 #[test]
+fn repeated_failure_count_respects_arguments_outcomes_and_current_item() {
+    let call = ToolCall {
+        id: "current-call".into(),
+        name: "click".into(),
+        arguments: r#"{"target":{"text":"A"},"page":1}"#.into(),
+    };
+    let item = |id: &str,
+                tool: &str,
+                args: Value,
+                outcome: &str,
+                status: &str,
+                success: Option<bool>|
+     -> Item {
+        serde_json::from_value(
+            json!({"type":"dynamicToolCall","id":id,"tool":tool,"arguments":args,
+            "status":status,"success":success,"contentItems":null,"callId":id,
+            "execution":{"runtimeEpoch":"e","scopeId":"s","operationId":id,"outcome":outcome}}),
+        )
+        .unwrap()
+    };
+    let args = json!({"page":1,"target":{"text":"A"}});
+    let failed = item("f", "click", args.clone(), "failed", "failed", Some(false));
+    let inspection = item(
+        "inspect",
+        "read_file",
+        json!({"path":"protocol"}),
+        "succeeded",
+        "completed",
+        Some(true),
+    );
+    assert_eq!(
+        consecutive_matching_failures(&[failed.clone(), inspection, failed.clone()], &call),
+        2
+    );
+    let repair = item(
+        "repair",
+        "fs_write",
+        json!({"path":"script"}),
+        "succeeded",
+        "completed",
+        Some(true),
+    );
+    assert_eq!(
+        consecutive_matching_failures(&[failed.clone(), repair], &call),
+        0
+    );
+    let current = item(
+        "current",
+        "click",
+        args.clone(),
+        "running",
+        "inProgress",
+        None,
+    );
+    let observed = item(
+        "read",
+        "snapshot",
+        json!({}),
+        "succeeded",
+        "completed",
+        Some(true),
+    );
+    assert_eq!(
+        previous_matching_failures(
+            &[failed.clone(), observed, failed.clone(), current.clone()],
+            &call,
+            "current"
+        ),
+        2
+    );
+    assert_eq!(previous_matching_failures(&[], &call, "current"), 0);
+    let changed = item(
+        "other",
+        "click",
+        json!({"page":2,"target":{"text":"A"}}),
+        "failed",
+        "failed",
+        Some(false),
+    );
+    assert_eq!(
+        consecutive_matching_failures(&[failed.clone(), changed.clone()], &call),
+        0
+    );
+    assert_eq!(previous_matching_failures(&[changed], &call, "current"), 0);
+    for (outcome, status, success) in [
+        ("succeeded", "completed", Some(true)),
+        ("unknown", "failed", Some(false)),
+        ("cancelled", "failed", Some(false)),
+        ("running", "inProgress", None),
+    ] {
+        let boundary = item("boundary", "click", args.clone(), outcome, status, success);
+        assert_eq!(
+            consecutive_matching_failures(&[failed.clone(), boundary.clone()], &call),
+            0
+        );
+        assert_eq!(
+            previous_matching_failures(
+                &[failed.clone(), boundary.clone(), current.clone()],
+                &call,
+                "current"
+            ),
+            0,
+            "{outcome}"
+        );
+        assert_eq!(
+            previous_matching_failures(
+                &[failed.clone(), boundary, failed.clone(), current.clone()],
+                &call,
+                "current"
+            ),
+            1,
+            "{outcome}"
+        );
+    }
+}
+
+#[test]
 fn read_file_on_binary_content_explains_supported_alternatives() {
     let workspace = tempfile::tempdir().unwrap();
     std::fs::write(workspace.path().join("binary.dat"), [0xff, 0x00]).unwrap();
@@ -356,6 +473,7 @@ async fn command_with_policy(
             timeout_ms: 300_000,
             yield_ms,
             tty,
+            stdin_open: false,
         }),
         "scope",
         "operation",
@@ -1446,4 +1564,30 @@ fn child_creation_classification_is_bound_to_the_actual_backend() {
     }
     assert!(!creates_child_execution("plan_read", &Backend::Core));
     assert!(!creates_child_execution("read_agent", &Backend::Agent));
+}
+
+#[test]
+fn command_input_contract_requires_explicit_pipe_and_allows_eof() {
+    for open in [false, true] {
+        let args = if open {
+            json!({"argv":["cat"],"stdinOpen":true})
+        } else {
+            json!({"argv":["cat"]})
+        };
+        let call = ToolCall {
+            id: "stdin".into(),
+            name: "run_command".into(),
+            arguments: args.to_string(),
+        };
+        let Request::Command(command) =
+            request(&call, Path::new("/app"), "epoch", &BTreeMap::new()).unwrap()
+        else {
+            panic!("command")
+        };
+        assert_eq!(command.stdin_open, open);
+    }
+    let request: WriteProcess =
+        serde_json::from_value(json!({"processId":"p-test","close":true})).unwrap();
+    assert!(request.close);
+    assert!(request.text.is_empty());
 }

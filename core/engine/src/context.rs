@@ -94,6 +94,7 @@ struct ContextPlan<'a> {
     overhead_tokens: usize,
     byte_target: Option<usize>,
     store: &'a store::Store,
+    reference_tokens: usize,
 }
 impl ContextPlan<'_> {
     fn checkpoint(
@@ -108,6 +109,7 @@ impl ContextPlan<'_> {
             overhead_tokens,
             byte_target,
             store,
+            reference_tokens,
         } = *self;
         let items: Vec<_> = thread.turns.iter().flat_map(|t| &t.items).collect();
         let inputs = crate::history::checkpoint_inputs(thread, count);
@@ -197,6 +199,19 @@ impl ContextPlan<'_> {
             .map(|c| c.evidence.clone())
             .unwrap_or_default();
         candidates.extend(crate::history::checkpoint_evidence(&items, count));
+        if reference_tokens > 0 {
+            // 实验参考仍消耗同一个分配器额度；关闭时沿用既有证据规则。
+            candidates.retain(|text| !text.starts_with("Core-retained reference ("));
+            candidates.extend(crate::observations::checkpoint_references(
+                thread,
+                count,
+                reference_tokens.min(if budget.window == 0 {
+                    usize::MAX
+                } else {
+                    budget.input_limit / 4
+                }),
+            ));
+        }
         for text in candidates.into_iter().rev() {
             if checkpoint.evidence.contains(&text) {
                 continue;
@@ -622,7 +637,8 @@ impl Engine {
             .map(|a| a.model.clone())
             .unwrap_or(configured);
         let budget = ContextBudget::resolve(&self.limits, model.as_ref())?;
-        let messages = history(&snapshot, &self.store)?;
+        let (messages, _) =
+            observations::project(&snapshot, &self.store, &self.limits, model.as_ref())?;
         let before_bytes = message_bytes(&messages);
         let estimated_tokens =
             calibrated(estimate_tokens(&messages) + overhead_tokens, previous_usage);
@@ -749,6 +765,7 @@ impl Engine {
             overhead_tokens,
             byte_target,
             store: &self.store,
+            reference_tokens: self.limits.context_reference_tokens,
         };
         // 用共享预算定位保留最多近期完整轮次的边界，最多进行对数次投影。
         let mut low = 0;
@@ -1595,5 +1612,80 @@ mod project_instruction_tests {
     fn instruction_chain_has_bounded_depth() {
         let cwd = Path::new("/repo").join(vec!["a"; 64].join("/"));
         assert!(project_instruction_directories(Path::new("/repo"), &cwd).is_err());
+    }
+}
+
+#[cfg(test)]
+mod reference_tests {
+    use super::*;
+    struct FixtureModel;
+    #[async_trait::async_trait]
+    impl Model for FixtureModel {
+        fn name(&self) -> &str {
+            "checkpoint-reference-fixture"
+        }
+        async fn stream(&self, _: Vec<Message>) -> anyhow::Result<model::ModelStream> {
+            unreachable!()
+        }
+    }
+
+    #[tokio::test]
+    async fn checkpoint_reference_opt_in_respects_shared_allocation() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), Arc::new(FixtureModel), Limits::default()).unwrap();
+        let mut thread = engine.create("/fixture".into()).await.unwrap();
+        let raw = json!({"path":"workspace://repo/reference.txt","sha256":"a".repeat(64),"source":"untrusted-protocol-middle".repeat(100)}).to_string();
+        thread.turns.push(serde_json::from_value(json!({"id":"turn","status":"completed","error":null,"usage":null,"items":[
+            {"type":"userMessage","id":"request","content":[{"type":"text","text":"preserve current requirements"}]},
+            {"type":"dynamicToolCall","id":"read","callId":"read-call","tool":"read_file","arguments":{"path":"reference.txt"},"status":"completed","success":true,
+            "execution":{"runtimeEpoch":"e","scopeId":"s","operationId":"read","outcome":"succeeded"},"contentItems":[{"type":"inputText","text":raw}]}
+        ]})).unwrap());
+        let original = serde_json::to_value(&thread).unwrap();
+        let budget = ContextBudget {
+            window: 16000,
+            reserve: 2000,
+            input_limit: 14000,
+            target: 10000,
+        };
+        for reference_tokens in [0, 4096] {
+            let planner = ContextPlan {
+                budget: &budget,
+                overhead_tokens: 128,
+                byte_target: None,
+                store: &engine.store,
+                reference_tokens,
+            };
+            let (checkpoint, tokens, _) = planner
+                .checkpoint(&thread, 2, "fallible summary", true)
+                .unwrap();
+            assert_eq!(
+                checkpoint
+                    .evidence
+                    .iter()
+                    .any(|s| s.contains("untrusted-protocol-middle")),
+                reference_tokens > 0
+            );
+            assert!(tokens <= budget.target);
+            assert_eq!(serde_json::to_value(&thread).unwrap(), original);
+            let tiny = ContextBudget {
+                target: 1,
+                ..budget
+            };
+            let planner = ContextPlan {
+                budget: &tiny,
+                ..planner
+            };
+            let (checkpoint, _, _) = planner
+                .checkpoint(&thread, 2, "fallible summary", true)
+                .unwrap();
+            assert!(
+                !checkpoint
+                    .evidence
+                    .iter()
+                    .any(|s| s.contains("untrusted-protocol-middle")),
+                "实验预算不能绕过共享请求分配器"
+            );
+        }
+        engine.shutdown().await;
     }
 }

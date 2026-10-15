@@ -54,7 +54,7 @@ See the [snapshot notes](../../tests/perf/suites/pro/README.en.md) for pro prove
 ./scripts/perf fetch-pro
 ./scripts/perf build-pro --case tbpc002004-match-device-observation-lines
 ./scripts/perf run --task pro --runner harness --runner codex --runner claudecode \
-  --model-config tests/perf/model.toml --repeat 1 --seed 163 \
+  --model-config tests/perf/model.toml --repeat 5 --seed 163 \
   --output target/perf/formal --allow-failures
 ```
 
@@ -75,3 +75,7 @@ run.json saves each trial, report.json holds summaries, and trials/ retains logs
 External evaluation platforms use the standard native release bundle and the [CLI contract](../api/claude-cli.en.md). Pass repeatable `--read-only-path` bindings for public inputs and opt into `stream-json --include-native-events` for complete tool media and structured terminal errors. Platforms own short input bootstraps, input manifests and integrity checks, model settings, lifecycle deadlines, artifact collection and reward execution.
 
 The legacy EnvArena Python runner, zipapp packager and dedicated workflow have been retired. Generic file/image tools, read-only protection and request budgets remain covered by Core/Runtime and native CLI tests. Platform acceptance must exercise the complete release bundle on native Linux and distinguish fixture input delivery from real-model task scores.
+
+Formal policy comparisons default to 5 repetitions per task per arm. See [methodology](methodology.en.md#repetitions-coverage-and-evidence-size) for minimum cross-task/source/domain coverage, intervals and stopping rules. Single tasks, small subsets or explicit `--repeat 1` are smoke/exploratory evidence; the tool does not establish generalization automatically. Freeze native platform settings explicitly; product behavior never expands budgets or adds solving policies based on Env/Task/Benchmark identity.
+
+The repetition default changes from 1 to 5, including single-runner and fixture runs; request `--repeat 1` explicitly for smoke. When resuming an older batch, explicitly supply its saved repetition count rather than changing the frozen schedule through the new default.
