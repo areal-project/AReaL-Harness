@@ -13,6 +13,11 @@ pub use resolve::{load_config, load_management_config};
 pub use trajectory::TrajectoryConfig;
 pub use trajectory_control::set_trajectory_enabled;
 
+/// Ultra 是显式客户端模式，HTTP 映射为 max。
+pub const REASONING_EFFORTS: &[&str] = &[
+    "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
+];
+
 /// 可信工具宿主继承连接所需的代理变量；不借此透传模型凭据或其他宿主环境。
 pub const PROXY_ENV_VARS: [&str; 8] = [
     "HTTP_PROXY",

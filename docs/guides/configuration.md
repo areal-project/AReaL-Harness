@@ -111,7 +111,7 @@ endpoint 是完整 HTTP(S) 请求 URL；Core 只支持 `chat-completions` / `res
 
 例如 Chat Completions 通常填写 `https://model.example.com/v1/chat/completions`，Responses 填写 `https://model.example.com/v1/responses`，以供应商实际接口为准。仅填 `/v1` 可能得到 HTTP 200 的 HTML 网页，触发 `model response must use text/event-stream`；Goal 模式还会因未知用量显示 `GOAL_USAGE_UNKNOWN`，并保留原始错误。修改启动配置后须[停止并重新启动共享服务](../api/local-service.md#公共入口)，只重开客户端不会重新加载配置。
 
-`reasoning_effort` 可为 none/minimal/low/medium/high/xhigh，供应商需支持；`model.max_output_tokens` 默认 16384（16k），映射到协议对应字段；这是单次请求的可覆盖默认值，需大于零，不是整个 Turn 的累计预算。全局显式值、模型和供应商默认参数、环境变量仍按既有优先级覆盖；省略值（含旧模型快照中的空值）使用新默认。OpenAI 推理模型的额度包含推理与可见输出，复杂任务可按模型调大，例如 32768，并确保窗口留有输入空间。`max_retries` 为 0–8，控制接受流之前的有限 HTTP 重试，涵盖传输错误、HTTP 408/429 和全部 5xx。该额度耗尽后，默认启用的 Core watchdog 仍会继续网络恢复。
+`reasoning_effort` 可为 none/minimal/low/medium/high/xhigh/max，供应商需支持；也接受显式客户端模式 `ultra`。Ultra 的 HTTP 请求使用 `max`，Core 在主任务指引中允许在用户要求、工具与部署权限范围内主动委派独立子任务；Side 和只读研究 worker 不获得额外委派能力，共享预算不增加。摘要请求不添加 Ultra 委派指引，独立摘要强度仍优先。此模式不保证任务会产生子 Agent，也不代表与 Codex 的执行效果等价。`model.max_output_tokens` 默认 16384（16k），映射到协议对应字段；这是单次请求的可覆盖默认值，需大于零，不是整个 Turn 的累计预算。全局显式值、模型和供应商默认参数、环境变量仍按既有优先级覆盖；省略值（含旧模型快照中的空值）使用新默认。OpenAI 推理模型的额度包含推理与可见输出，复杂任务可按模型调大，例如 32768，并确保窗口留有输入空间。`max_retries` 为 0–8，控制接受流之前的有限 HTTP 重试，涵盖传输错误、HTTP 408/429 和全部 5xx。该额度耗尽后，默认启用的 Core watchdog 仍会继续网络恢复。
 
 可选 `model.reasoning_summary = "auto"`（也可为 `concise` / `detailed`）仅适用于 `responses`，映射到请求的 `reasoning.summary`；环境变量为 `AREAL_HARNESS_REASONING_SUMMARY`。默认省略，不向 Chat Completions 或未选择此功能的模型附加摘要参数。端点/模型必须支持所选摘要模式；是否返回摘要取决于供应商，不保证始终有思考文本。
 
@@ -244,6 +244,8 @@ models = [
 ```
 
 JSON 使用 camelCase（`apiKeyEnv`、`displayName`、`maxOutputTokens`、`reasoningEffort`），协议仍为 `chat-completions` / `responses`。最多 32 个供应商，每个最多 64 个模型。供应商与模型都支持启停、名称和参数；参数按显式会话、模型、供应商默认值叠加。全局 TOML／环境／CLI 参数仍遵循原优先级。文件默认引用必须指向启用的供应商与模型。旧单模型 TOML 无需立即改写，选中的名称作为目录项；首次共享保存会添加 `catalog_version = 1`。仅含原有字段的旧供应商表可以省略 endpoint，由环境变量或 CLI 补齐，仍遵循 CLI > 环境变量 > 文件的优先级。共享目录读写要求供应商在文件中提供完整 endpoint；未补齐时读取明确失败，不丢弃供应商，也不将临时覆盖写回文件。
+
+共享目录的模型项可选 `reasoning_effort_options` 和 `default_reasoning_effort`（JSON 为 `reasoningEffortOptions` / `defaultReasoningEffort`），按模型保存上游档位顺序与默认值。Core 将其投影到模型目录，默认模型别名使用同一能力；GUI 保存编辑时保留这些字段。省略能力时兼容旧配置，显式空列表不提供强度选项；未知值、重复值或不在选项中的默认值拒绝写入。能力默认值仅在会话、模型和供应商都未显式配置强度时生效，不覆盖已有用户参数。新增字段需使用支持模型能力的 Core，旧版不识别这些字段。
 
 普通配置只保存密钥环境变量名。共享接口拒绝带查询参数的 endpoint，避免把 URL 中的认证信息送入 GUI；旧配置诊断仍脱敏查询参数。桌面安全存储不向独立 CLI 暴露，CLI 自行提供引用变量。`areal_openai` 为桌面动态账号目录保留，允许作为默认引用，禁止写为静态供应商；独立 CLI 缺少账号传输端点时明确失败。
 

@@ -497,6 +497,9 @@ impl Model for MeteredModel {
     fn name(&self) -> &str {
         self.inner.name()
     }
+    fn reasoning_effort(&self) -> Option<&str> {
+        self.inner.reasoning_effort()
+    }
     fn provider(&self) -> &str {
         self.inner.provider()
     }

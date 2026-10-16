@@ -94,6 +94,7 @@ export class CoreSubscription {
   get models() { return this.catalog ? this.catalog.models : this.legacyModels }
   set models(value) { this.legacyModels = value }
   async discover(options) { return this.catalog.discover(options) }
+  invalidateCatalog() { if (this.catalog) this.catalog.expiresAt = 0 }
   async ready() {
     if (!this.starting) this.starting = (async () => {
       this.server = createServer((req, res) => { void this.handle(req, res) })

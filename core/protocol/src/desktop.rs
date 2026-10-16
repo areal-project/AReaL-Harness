@@ -223,12 +223,25 @@ pub struct ModelRef {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderModelCapabilities {
+    pub reasoning_effort_options: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_reasoning_effort: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Provider {
     pub id: String,
     pub revision: u64,
     pub endpoint: String,
     pub protocol: String,
     pub models: Vec<String>,
+    /// 缺省沿用适配器能力；显式空列表表示上游未公布可选强度。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub model_capabilities: BTreeMap<String, ProviderModelCapabilities>,
     #[serde(default)]
     pub credential_ref: Option<String>,
     #[serde(default)]

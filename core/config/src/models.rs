@@ -78,6 +78,10 @@ pub struct ModelConfig {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort_options: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_reasoning_effort: Option<String>,
     #[serde(default = "enabled")]
     pub enabled: bool,
     #[serde(default)]
@@ -195,6 +199,28 @@ fn validate(data: &[ProviderConfig], default: Option<&ModelRef>, at: &ConfigSour
             {
                 return Err(invalid(at, "invalid or duplicate model ID or display name"));
             }
+            if model
+                .reasoning_effort_options
+                .as_ref()
+                .is_some_and(|options| {
+                    options.len() > crate::REASONING_EFFORTS.len()
+                        || options
+                            .iter()
+                            .any(|v| !crate::REASONING_EFFORTS.contains(&v.as_str()))
+                        || options.iter().collect::<BTreeSet<_>>().len() != options.len()
+                })
+                || model
+                    .default_reasoning_effort
+                    .as_ref()
+                    .is_some_and(|effort| {
+                        model
+                            .reasoning_effort_options
+                            .as_ref()
+                            .is_none_or(|options| !options.contains(effort))
+                    })
+            {
+                return Err(invalid(at, "invalid per-model reasoning capabilities"));
+            }
             model.parameters.validate(at)?;
         }
     }
@@ -226,6 +252,8 @@ fn json_value(item: &Item, at: &ConfigSource) -> Result<Value> {
         for (key, value) in table.iter() {
             let key = match key {
                 "display_name" => "displayName",
+                "reasoning_effort_options" => "reasoningEffortOptions",
+                "default_reasoning_effort" => "defaultReasoningEffort",
                 "api_key_env" => "apiKeyEnv",
                 "max_output_tokens" => "maxOutputTokens",
                 "context_window_tokens" => "contextWindowTokens",
@@ -440,6 +468,8 @@ fn toml_value(value: Value) -> toml_edit::Value {
             for (key, value) in values {
                 let key = match key.as_str() {
                     "displayName" => "display_name",
+                    "reasoningEffortOptions" => "reasoning_effort_options",
+                    "defaultReasoningEffort" => "default_reasoning_effort",
                     "maxOutputTokens" => "max_output_tokens",
                     "contextWindowTokens" => "context_window_tokens",
                     "reasoningEffort" => "reasoning_effort",

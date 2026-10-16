@@ -356,10 +356,7 @@ pub(crate) fn valid(field: &str, entry: &Entry) -> Result<()> {
             }
         }
         "reasoning_effort" | "summary_reasoning_effort" => {
-            if !matches!(
-                value.as_str(),
-                "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
-            ) {
+            if !crate::REASONING_EFFORTS.contains(&value.as_str()) {
                 return Err(reject("unsupported reasoning effort"));
             }
         }
