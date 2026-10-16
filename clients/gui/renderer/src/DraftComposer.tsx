@@ -99,7 +99,7 @@ export function DraftComposer({
           return m ? `${m.providerId}/${m.modelId}` : "";
         })();
   const currentModel = project.models.find((item: Data) => effectiveModel ? `${item.providerId}/${item.modelId}` === effectiveModel : chosenProfile?.model ? item.providerId === chosenProfile.model.providerId && item.modelId === chosenProfile.model.modelId : !item.providerId);
-  const effort = efforts[effectiveModel] ?? "";
+  const effort = currentModel?.reasoningEffortOptions?.includes(efforts[effectiveModel]) ? efforts[effectiveModel] : "";
   const [unknown, setUnknown] = useState(() => localStorage.getItem(`${key}:pending-create`));
   const busy = useSyncExternalStore(subscribeSending, () => sending.has(key));
   const modelSelectionDisabled =

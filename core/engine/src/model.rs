@@ -513,6 +513,10 @@ pub trait Model: Send + Sync {
         inner
     }
     fn name(&self) -> &str;
+    /// 返回冻结的客户端强度；Core 据此区分显式 Ultra 与普通推理请求。
+    fn reasoning_effort(&self) -> Option<&str> {
+        None
+    }
     fn load(&self) -> Option<ModelLoad> {
         None
     }
@@ -718,14 +722,11 @@ impl HttpModel {
             options
                 .summary_reasoning_effort
                 .as_deref()
-                .is_none_or(|v| matches!(
-                    v,
-                    "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
-                ))
-                && options.reasoning_effort.as_deref().is_none_or(|v| matches!(
-                    v,
-                    "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
-                )),
+                .is_none_or(|v| areal_config::REASONING_EFFORTS.contains(&v))
+                && options
+                    .reasoning_effort
+                    .as_deref()
+                    .is_none_or(|v| areal_config::REASONING_EFFORTS.contains(&v)),
             "invalid reasoning effort"
         );
         anyhow::ensure!(
@@ -911,6 +912,10 @@ impl Model for HttpModel {
         &self.name
     }
 
+    fn reasoning_effort(&self) -> Option<&str> {
+        self.options.reasoning_effort.as_deref()
+    }
+
     fn provider(&self) -> &str {
         match self.protocol {
             ModelProtocol::ChatCompletions => "openai.chat_completions",
@@ -1000,6 +1005,8 @@ impl Model for HttpModel {
         } else {
             self.options.reasoning_effort.as_ref()
         } {
+            // Ultra 的委派策略属于 Core，不是 Responses/Chat Completions 的 wire 枚举。
+            let effort = if effort == "ultra" { "max" } else { effort };
             match self.protocol {
                 ModelProtocol::ChatCompletions => body["reasoning_effort"] = json!(effort),
                 ModelProtocol::Responses => body["reasoning"]["effort"] = json!(effort),

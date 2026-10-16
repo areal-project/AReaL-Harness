@@ -1,4 +1,5 @@
 import { useId, useRef, useState } from "react";
+import { reasoningEffortLabels } from "@areal/workbench/reasoning-effort";
 import { Button } from "../components/ui/button.js";
 import { Input } from "../components/ui/input.js";
 import { Feedback } from "../components/ui/feedback.js";
@@ -66,7 +67,7 @@ export function ModelEditor({ model, editing, ids, onSave, onClose }: {
           <label>最大输出 Token<Input ref={maximumInput} {...invalid("maximum")} aria-label="模型最大输出 Token" type="number" min={1} step={1} placeholder="供应商默认" value={maximum} onChange={e => setMaximum(e.target.value)} /></label>
           <label>温度<Input ref={temperatureInput} {...invalid("temperature")} aria-label="模型温度" type="number" min={0} max={2} step="any" placeholder="供应商默认" value={temperature} onChange={e => setTemperature(e.target.value)} /></label>
         </div>
-        <label className="model-editor-effort"><span>推理强度<small>仅适用于支持推理参数的模型</small></span><select aria-label="模型推理强度" value={effort} onChange={e => setEffort(e.target.value)}><option value="">供应商默认</option><option value="none">无</option><option value="minimal">最低</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option><option value="xhigh">最高</option></select></label>
+        <label className="model-editor-effort"><span>推理强度<small>仅适用于支持推理参数的模型</small></span><select aria-label="模型推理强度" value={effort} onChange={e => setEffort(e.target.value)}><option value="">供应商默认</option>{Object.entries(reasoningEffortLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       </section>
       <Feedback id={errorId} error={error} />
       <footer><Button type="button" variant="outline" onClick={requestClose}>取消</Button><Button type="submit">保存模型</Button></footer>

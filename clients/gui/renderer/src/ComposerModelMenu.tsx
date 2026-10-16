@@ -2,15 +2,9 @@ import { useState } from "react";
 import { MenuChevronIcon, MenuSelectedIcon } from "./interfaceIcons.js";
 import { Button } from "./components/ui/button.js";
 import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover.js";
+import { reasoningEffortLabels } from "@areal/workbench/reasoning-effort";
 
-const labels: Record<string, string> = {
-    none: "无",
-    minimal: "最少",
-    low: "低",
-    medium: "中",
-    high: "高",
-    xhigh: "极高",
-};
+const labels: Record<string, string> = reasoningEffortLabels;
 export interface ComposerModelOption {
     value: string;
     label: string;

@@ -319,6 +319,21 @@ impl Engine {
             {
                 return Err(invalid("invalid provider ID or model catalog"));
             }
+            for (name, capabilities) in &provider.model_capabilities {
+                if !provider.models.contains(name)
+                    || capabilities.reasoning_effort_options.len()
+                        > areal_config::REASONING_EFFORTS.len()
+                    || capabilities.reasoning_effort_options.iter().any(|effort| {
+                        !areal_config::REASONING_EFFORTS.contains(&effort.as_str())
+                    })
+                    || capabilities.default_reasoning_effort.as_ref().is_some_and(|effort| {
+                        !capabilities.reasoning_effort_options.contains(effort)
+                    })
+                    || capabilities.display_name.as_ref().is_some_and(|name| name.len() > 256)
+                {
+                    return Err(invalid("invalid model reasoning capabilities; update the client for new upstream efforts"));
+                }
+            }
             let mut candidate = engine.desktop.catalog.read().unwrap().clone();
             let revision = candidate
                 .providers
@@ -412,6 +427,16 @@ impl Engine {
         };
         if !provider.models.iter().any(|m| m == name) {
             return Err(invalid("unknown model"));
+        }
+        if let Some(capabilities) = provider.model_capabilities.get(name)
+            && parameters
+                .reasoning_effort
+                .as_ref()
+                .is_some_and(|effort| !capabilities.reasoning_effort_options.contains(effort))
+        {
+            return Err(invalid(
+                "reasoning effort is not supported by the selected model",
+            ));
         }
         let credential = provider
             .credential_ref
@@ -521,7 +546,15 @@ impl Engine {
             reasoning_effort: parameters
                 .reasoning_effort
                 .or(model_defaults.reasoning_effort)
-                .or(defaults.reasoning_effort),
+                .or(defaults.reasoning_effort)
+                .or_else(|| {
+                    provider
+                        .as_ref()?
+                        .model_capabilities
+                        .get(&model.as_ref()?.model_id)?
+                        .default_reasoning_effort
+                        .clone()
+                }),
             reasoning_summary: parameters
                 .reasoning_summary
                 .or(model_defaults.reasoning_summary)
