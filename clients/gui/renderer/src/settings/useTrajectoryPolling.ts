@@ -32,7 +32,21 @@ export function useTrajectoryPolling(
     }
     let poller = pollers.get(action);
     if (!poller) {
-      poller = createTrajectoryPoller((operation) => action("trajectory", { operation }));
+      let snapshot: TrajectoryStatus | undefined;
+      poller = createTrajectoryPoller(async (operation) => {
+        const value: TrajectoryStatus = await action(
+          "trajectory",
+          operation === "enable" || operation === "disable"
+            ? {
+                operation: "setEnabled",
+                enabled: operation === "enable",
+                expectedRevision: snapshot?.config_revision ?? "",
+              }
+            : { operation },
+        );
+        snapshot = value;
+        return value;
+      });
       pollers.set(action, poller);
     }
     const active = poller.watch({

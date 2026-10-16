@@ -1,0 +1,25 @@
+.trajectory-toggle-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.trajectory-toggle-label {
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 12px;
+  white-space: nowrap;
+  background: #ffedd5;
+  color: #9a3412;
+}
+.trajectory-toggle-control .trajectory-toggle {
+  background: #fed7aa;
+  border: 1px solid #fdba74;
+}
+.trajectory-toggle-control[data-upload-state="enabled"] .trajectory-toggle-label {
+  background: #dcfce7;
+  color: #166534;
+}
+.trajectory-toggle-control[data-upload-state="enabled"] .trajectory-toggle {
+  background: #bbf7d0;
+  border-color: #86efac;
+}

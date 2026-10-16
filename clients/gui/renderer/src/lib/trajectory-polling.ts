@@ -1,4 +1,4 @@
-export type TrajectoryOperation = "status" | "retry";
+export type TrajectoryOperation = "status" | "retry" | "enable" | "disable";
 
 type Clock = {
   now(): number;

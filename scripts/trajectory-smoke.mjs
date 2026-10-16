@@ -123,8 +123,8 @@ async function configure(enabled) {
     `schema_version = 1\n[model]\nname = "trajectory-fixture"\n[model.providers.default]\nendpoint = "http://127.0.0.1:${model.address().port}/v1/chat/completions"\n[trajectory]\nenabled = ${enabled}\nendpoint = "http://127.0.0.1:${collector.address().port}"\nspool_dir = ${JSON.stringify(spool)}\nheaders_file = ${JSON.stringify(join(directory, "headers"))}\nretry_initial_seconds = 1\nretry_max_seconds = 2\nrequest_timeout_seconds = 1\nupload_interval_ms = 100\n`,
   );
 }
-async function management(operation) {
-  const running = launch(["trajectory", operation, "--config", configPath]);
+async function management(operation, ...arguments_) {
+  const running = launch(["trajectory", operation, ...arguments_, "--config", configPath]);
   try {
     const result = await Promise.race([
       running.done,
@@ -151,8 +151,8 @@ async function workerPids() {
   });
 }
 async function disable() {
-  await configure(false);
-  await management("sync-config");
+  const current = await management("status");
+  await management("set-enabled", "false", "--expected-revision", current.config_revision);
   await until(
     async () => !(await management("status")).worker_running && (await workerPids()).length === 0,
     "disabled worker exit",
@@ -335,7 +335,7 @@ try {
     name: "rapid-reenable",
     processSpawnedAt: rapidSpawnedAt,
     spawnAgeBeforeEnableMs: Date.now() - rapidSpawnedAt,
-    retryCalls: 1,
+    retryCalls: 0,
   };
   report.scenarios.push(rapid);
   assert(
@@ -343,10 +343,14 @@ try {
     "fixture must re-enable within the real five-second spawn throttle",
   );
   receiver = collectorPhase("rapid-reenable-recovery", 200, 120);
-  await configure(true);
-  rapid.enabled = await management("sync-config");
+  const beforeEnable = await management("status");
+  rapid.enabled = await management(
+    "set-enabled",
+    "true",
+    "--expected-revision",
+    beforeEnable.config_revision,
+  );
   assert.equal(rapid.enabled.worker_running, true, "explicit enable must acquire the worker lease");
-  rapid.retry = await management("retry");
   await deliveredOnce(rapidRows, receiver);
   rapid.uploaded = rapidRows.length;
 

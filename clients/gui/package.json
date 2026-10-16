@@ -25,7 +25,7 @@
     "test:history": "node --test scripts/history.test.mjs && node scripts/history-smoke.mjs",
     "test:architecture": "node scripts/architecture-smoke.mjs",
     "test:conversation-derivation": "node scripts/conversation-derivation-smoke.mjs",
-    "test:trajectory": "node --test scripts/trajectory.test.mjs scripts/trajectory-polling.test.mjs",
+    "test:trajectory": "node --test scripts/trajectory.test.mjs scripts/trajectory-polling.test.mjs scripts/trajectory-toggle.test.mjs",
     "test:trajectory-config": "node scripts/trajectory-config-smoke.mjs",
     "test:trajectory-ui": "node scripts/trajectory-ui-smoke.mjs",
     "test:remote-observation": "node scripts/remote-observation-smoke.mjs",
@@ -63,7 +63,8 @@
     "test:regressions": "node --test scripts/browser-observation-privacy.test.cjs scripts/trajectory-polling.test.mjs scripts/builder-download.test.mjs",
     "test:proxy": "node --test scripts/system-proxy.test.mjs",
     "test:feedback": "node --test scripts/feedback.test.mjs && node scripts/feedback-ui-smoke.mjs",
-    "test:feedback-native": "node scripts/feedback-native-smoke.mjs"
+    "test:feedback-native": "node scripts/feedback-native-smoke.mjs",
+    "test:trajectory-native": "node scripts/trajectory-native-smoke.mjs"
   },
   "devDependencies": {
     "fake-indexeddb": "6.2.4",

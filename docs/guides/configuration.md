@@ -338,13 +338,18 @@ upload_interval_ms = 1000
 
 修改文件后执行 `trajectory sync-config` 应用本地上传控制，并安全重启已经运行的 Core 以装配新的采集参数。命令成功只证明本地控制已应用；远端接收、归档和展示仍须通过实际执行、`trajectory status` 和接收端回读核验。停用控制阻止后续入队和发送，在途 HTTP 请求最多等待当前超时；部署指纹包含轨迹配置，已有共享服务不会静默忽略更改。
 
+
+已配置接收地址后，可在 GUI“数据飞轮”页通过开关启停：就绪开启显示浅绿，关闭、采集待应用或异常显示浅橙，并提供文字状态。开关只修改当前配置的 `enabled`，保留地址、凭据引用与队列；CLI 对应 `trajectory set-enabled true` / `trajectory set-enabled false`，可用 `--expected-revision` 传入 `status.config_revision` 防止覆盖并发编辑。从关闭变开启会恢复仍保留的失败副本，保留接收端 Retry-After；重复开启不重置已有重试预算。`sync-config --resume-retained` 供外部配置工具显式恢复失败副本，普通 `sync-config` 不重置它们。
+
+GUI 自动在 Core 空闲且其它配置没有变化时，复用 `ifIdle` 排空和安全应用流程装配采集。运行中任务、终端和排队消息阻止自动重启，显示待应用；存在其它配置变化或应用失败时显示原因，由后台服务原有安全应用入口处理。CLI 只应用上传控制，现有 Core 的采集设置仍需安全重启。关闭不会删除缓存或原会话；已超出容量被淘汰的副本、关闭期间未采集的事件不能通过重新开启恢复。
+
 ```sh
 target/debug/areal trajectory status --config /absolute/config.toml
 target/debug/areal trajectory retry --config /absolute/config.toml
 target/debug/areal trajectory sync-config --config /absolute/config.toml
 ```
 
-三个命令均输出 JSON。`status` 不启动 Agent 或上传，显示当前文件配置、上传进程、队列数量/字节、丢弃/淘汰计数、安全错误类别及最近 100 条发送记录。记录可包含 Turn、事件名称、模型、Harness 版本和事件发生时间；模型名索引保留最多 1024 字节的 UTF-8 前缀，超长时追加省略号，原始轨迹正文保持完整；旧记录缺少这些字段时保持未知，不补造值。
+这些命令均输出 JSON。`status` 不启动 Agent 或上传，显示当前文件配置、上传进程、队列数量/字节、丢弃/淘汰计数、安全错误类别及最近 100 条发送记录。记录可包含 Turn、事件名称、模型、Harness 版本和事件发生时间；模型名索引保留最多 1024 字节的 UTF-8 前缀，超长时追加省略号，原始轨迹正文保持完整；旧记录缺少这些字段时保持未知，不补造值。
 
 采集初始化失败使用 `capture_initialization_failed`，采集线程创建失败使用 `capture_thread_unavailable`；这些安全类别与上传统计分开保存，上传成功或重试不会清除采集故障，成功重新初始化才会清除本进程或已退出进程的旧故障；共用同一配置的其它存活 Core 的故障继续保留。诊断最多保存 64 个失败进程；超出上限时保留 `capture_diagnostic_capacity`，需要更改有效 trajectory 设置后重新启动并检查全部 Core。诊断文件损坏或不可读时报告 `capture_diagnostic_unavailable`，不覆盖为健康状态。Core 本进程的状态查询优先读取内存故障。初始化后台直接尝试保存，线程创建失败则复用已有诊断后台：首次立即检查，之后每 60 秒补写，慢磁盘与锁竞争可能延迟；不为诊断阻塞 Agent 启动或事件采集。独立 CLI/GUI 读取已保存状态。spool 完全不可写或 Core 在补写前退出时，不能保证保存故障历史；状态读取本身失败时由客户端显示检查不可用，不能据此声称采集成功。故障身份绑定配置归属与有效 trajectory 设置（含目的地），不随模型或注释修订变化。已有相同配置的控制快照时，失败诊断可以跨文件修订补写，但不修改控制；成功清理和没有控制快照的写入仍校验原文件版本。若线程创建失败尚未建立控制快照，文件先被修订会阻止旧 Core 补写，需重启完成初始化。快照不包含底层错误文本、凭据或请求内容。
 

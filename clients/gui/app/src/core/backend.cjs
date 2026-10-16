@@ -1143,6 +1143,7 @@ class CoreBackend {
     if (name === 'analytics') return this.analytics.command(request);
     // 后台只读状态不占任务或配置准入；参数仍由轨迹能力校验。
     if (name === 'trajectory' && request?.operation === 'status') return this.trajectory.command(request);
+    if (name === 'trajectory' && request?.operation === 'setEnabled') return this.trajectory.setEnabled(request);
     if (name === 'feedback' && request?.operation === 'status') return this.feedback.command(request);
     if (name === 'chatgpt') return this.providers.chatgpt(request);
     if (name === 'providers') return this.providers.command(request);

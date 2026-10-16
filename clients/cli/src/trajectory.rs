@@ -161,10 +161,21 @@ enum Command {
     FeedbackSubmit,
     /// 读取本地轨迹积压和错误，不启动模型或上传。
     Status,
+    /// 只切换已有接收配置的启用状态；保留队列并应用后台上传控制。
+    SetEnabled {
+        #[arg(action = clap::ArgAction::Set, value_parser = clap::value_parser!(bool))]
+        enabled: bool,
+        #[arg(long)]
+        expected_revision: Option<String>,
+    },
     /// 将失败记录重新排队；上传由独立后台进程完成。
     Retry,
     /// 应用持久导出控制；现有 Core 的采集配置仍需安全重启。
-    SyncConfig,
+    SyncConfig {
+        /// 显式重新开启时补传仍保留的失败记录，保留接收端退避。
+        #[arg(long)]
+        resume_retained: bool,
+    },
     /// 配置脚本迁移队列前暂停原控制，不修改配置文件或已落盘轨迹。
     #[command(hide = true)]
     Suspend,
@@ -199,10 +210,31 @@ pub fn run(options: Options) -> Result<()> {
             )?
         }
         Command::Status => areal_server::trajectory::status(&config.trajectory)?,
-        Command::Retry => areal_server::trajectory::retry_failed(&config.trajectory)?,
-        Command::SyncConfig => {
+        Command::SetEnabled {
+            enabled,
+            expected_revision,
+        } => {
+            let was_enabled = config.trajectory.enabled;
+            // 恢复决策绑定本次读取；省略显式版本也拒绝并发变更，避免重复恢复失败副本。
+            let expected_revision =
+                expected_revision.unwrap_or_else(|| config.trajectory.source_revision.clone());
+            config =
+                areal_config::set_trajectory_enabled(&inputs, enabled, Some(&expected_revision))?;
             areal_server::trajectory::configure(&config.trajectory)?;
-            areal_server::trajectory::status(&config.trajectory)?
+            if enabled && !was_enabled {
+                areal_server::trajectory::resume_retained(&config.trajectory)?
+            } else {
+                areal_server::trajectory::status(&config.trajectory)?
+            }
+        }
+        Command::Retry => areal_server::trajectory::retry_failed(&config.trajectory)?,
+        Command::SyncConfig { resume_retained } => {
+            areal_server::trajectory::configure(&config.trajectory)?;
+            if resume_retained && config.trajectory.enabled {
+                areal_server::trajectory::resume_retained(&config.trajectory)?
+            } else {
+                areal_server::trajectory::status(&config.trajectory)?
+            }
         }
         Command::Suspend => {
             config.trajectory.enabled = false;
@@ -215,6 +247,9 @@ pub fn run(options: Options) -> Result<()> {
             .config_file
             .unwrap_or(config.home.join("config.toml"))
     );
+    if result.get("queue").is_some() && result.get("records").is_some() {
+        result["config_revision"] = config.trajectory.source_revision.into();
+    }
     println!("{}", serde_json::to_string(&result)?);
     Ok(())
 }

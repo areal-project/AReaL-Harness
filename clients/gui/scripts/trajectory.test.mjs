@@ -315,6 +315,19 @@ test("fixed CLI arguments preserve GUI config and environment; only public field
   assert.deepEqual(await exporter.command({ operation: "retry" }), status);
   assert.equal(JSON.parse(await readFile(calls, "utf8")).args[1], "retry");
   assert.equal(JSON.parse(await readFile(calls, "utf8")).credential, "fixture-secret");
+  const toggle = { operation: "setEnabled", enabled: false, expectedRevision: "a".repeat(64) };
+  assert.deepEqual(await exporter.command(toggle), status);
+  const toggled = JSON.parse(await readFile(calls, "utf8"));
+  assert.deepEqual(toggled.args, [
+    "trajectory",
+    "set-enabled",
+    "false",
+    "--expected-revision",
+    toggle.expectedRevision,
+    "--config",
+    status.configPath,
+  ]);
+  assert.equal(toggled.credential, "fixture-secret");
   await assert.rejects(exporter.command({ operation: "status", config: "/other.toml" }), {
     code: "INVALID_DESKTOP_REQUEST",
   });

@@ -463,6 +463,76 @@ fn fifo_bounds_payload_and_reports_eviction_including_unsent_records() {
         .sum();
     assert!(actual <= c.max_disk_bytes);
 }
+
+#[test]
+fn record_limit_prunes_oldest_history_and_failed_payload_without_reordering_newer_events() {
+    let d = tempfile::tempdir().unwrap();
+    let mut c = config(d.path());
+    c.max_records = 2;
+    configure(&c).unwrap();
+    queue::enqueue(&c, &event("uploaded", true, 0), None).unwrap();
+    let first = worker::pick(&c).unwrap().unwrap();
+    worker::settle(&c, &first, worker::Outcome::Success).unwrap();
+    std::thread::sleep(Duration::from_millis(2));
+    reset_delay(&c);
+    queue::enqueue(&c, &event("failed", true, 0), None).unwrap();
+    let failed = worker::pick(&c).unwrap().unwrap();
+    worker::settle(
+        &c,
+        &failed,
+        worker::Outcome::Failed("authentication_rejected"),
+    )
+    .unwrap();
+    for name in ["newer-a", "newer-b"] {
+        std::thread::sleep(Duration::from_millis(2));
+        queue::enqueue(&c, &event(name, true, 0), None).unwrap();
+    }
+    let records = queue::records(d.path(), c.max_disk_bytes).unwrap();
+    assert_eq!(
+        records
+            .iter()
+            .map(|r| r.turn_id.as_str())
+            .collect::<Vec<_>>(),
+        ["newer-a", "newer-b"]
+    );
+    assert!(
+        records
+            .iter()
+            .all(|r| r.payload_present && r.status == "pending")
+    );
+    assert_eq!(status(&c).unwrap()["queue"]["evicted"], 1);
+    assert_eq!(status(&c).unwrap()["queue"]["uploaded"], 1);
+    assert!(!d.path().join(format!("payload-{}.pb", failed.id)).exists());
+}
+
+#[test]
+fn lowering_disk_quota_prunes_existing_oldest_payload_even_while_disabled() {
+    let d = tempfile::tempdir().unwrap();
+    let mut c = config(d.path());
+    c.max_disk_bytes = 2 * 1024 * 1024;
+    c.max_memory_bytes = 1024 * 1024;
+    c.max_batch_bytes = 700_000;
+    configure(&c).unwrap();
+    queue::enqueue(&c, &event("oldest", true, 600_000), None).unwrap();
+    std::thread::sleep(Duration::from_millis(2));
+    queue::enqueue(&c, &event("newest", true, 600_000), None).unwrap();
+    assert_eq!(status(&c).unwrap()["queue"]["pending"], 2);
+    c.enabled = false;
+    c.max_disk_bytes = 1024 * 1024;
+    configure(&c).unwrap();
+    let records = queue::records(d.path(), c.max_disk_bytes).unwrap();
+    assert_eq!(records[0].turn_id, "oldest");
+    assert_eq!(records[0].status, "evicted");
+    assert!(!records[0].payload_present);
+    assert_eq!(records[1].turn_id, "newest");
+    assert!(records[1].payload_present);
+    let actual: u64 = std::fs::read_dir(d.path())
+        .unwrap()
+        .map(|e| e.unwrap().metadata().unwrap().len())
+        .sum();
+    assert!(actual <= c.max_disk_bytes);
+    assert!(!status(&c).unwrap()["worker_running"].as_bool().unwrap());
+}
 #[test]
 fn lowered_budget_rejects_old_producer_and_removes_orphan_temp() {
     let d = tempfile::tempdir().unwrap();
@@ -498,6 +568,60 @@ fn retry_budget_survives_restart_and_manual_retry_resets_only_failed() {
     assert!(worker::pick(&c).unwrap().is_none());
     assert_eq!(retry_failed(&c).unwrap()["queue"]["pending"], 1);
     assert_eq!(worker::pick(&c).unwrap().unwrap().attempts, 1);
+}
+
+#[test]
+fn resume_retained_requeues_failed_without_shortening_receiver_backoff_or_resetting_pending_attempts()
+ {
+    let d = tempfile::tempdir().unwrap();
+    let c = config(d.path());
+    configure(&c).unwrap();
+    queue::enqueue(&c, &event("failed", true, 0), None).unwrap();
+    let failed = worker::pick(&c).unwrap().unwrap();
+    worker::settle(
+        &c,
+        &failed,
+        worker::Outcome::Failed("authentication_rejected"),
+    )
+    .unwrap();
+    reset_delay(&c);
+    queue::enqueue(&c, &event("throttled", true, 0), None).unwrap();
+    let pending = worker::pick(&c).unwrap().unwrap();
+    worker::settle(
+        &c,
+        &pending,
+        worker::Outcome::Retry("rate_limited", Some(300)),
+    )
+    .unwrap();
+    let before = queue::stats(d.path());
+    assert!(before.not_before > now());
+    assert_eq!(resume_retained(&c).unwrap()["queue"]["pending"], 2);
+    let after = queue::stats(d.path());
+    assert_eq!(after.not_before, before.not_before);
+    assert_eq!(after.consecutive_failures, before.consecutive_failures);
+    let records = queue::records(d.path(), c.max_disk_bytes).unwrap();
+    let failed = records.iter().find(|r| r.turn_id == "failed").unwrap();
+    let pending = records.iter().find(|r| r.turn_id == "throttled").unwrap();
+    assert_eq!(failed.attempts, 0);
+    assert_eq!(failed.next_attempt_at, Some(before.not_before));
+    assert_eq!(pending.attempts, 1);
+    assert!(worker::pick(&c).unwrap().is_none());
+    resume_retained(&c).unwrap();
+    assert_eq!(
+        queue::records(d.path(), c.max_disk_bytes)
+            .unwrap()
+            .iter()
+            .find(|r| r.turn_id == "throttled")
+            .unwrap()
+            .attempts,
+        1
+    );
+    let mut other = c.clone();
+    other.endpoint = "http://127.0.0.1:2".into();
+    configure(&other).unwrap();
+    assert!(worker::pick(&other).unwrap().is_none());
+    assert_eq!(resume_retained(&other).unwrap()["queue"]["pending"], 0);
+    assert_eq!(status(&other).unwrap()["queue"]["failed"], 2);
 }
 
 #[test]

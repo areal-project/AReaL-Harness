@@ -4,6 +4,8 @@ import { Button } from "../components/ui/button.js";
 import type { Action } from "../services.js";
 import { useTrajectoryPolling } from "./useTrajectoryPolling.js";
 import { UserFeedbackPreference } from "./UserFeedbackPreference.js";
+import { TrajectoryToggle } from "./TrajectoryToggle.js";
+import type { TrajectoryOperation } from "../lib/trajectory-polling.js";
 import {
     SettingsBadge,
     SettingsGroupCard,
@@ -45,7 +47,7 @@ export function TrajectorySettings({
     onStatus: (status: TrajectoryStatus | null) => void;
 }) {
     const [status, setStatus] = useState<TrajectoryStatus | null>(null);
-    const [busy, setBusy] = useState<"status" | "retry" | null>(null);
+    const [busy, setBusy] = useState<TrajectoryOperation | null>(null);
     const [working, setWorking] = useState(false);
     const [error, setError] = useState(""),
         [notice, setNotice] = useState(""),
@@ -61,6 +63,15 @@ export function TrajectorySettings({
             setCheckedAt(new Date().toLocaleTimeString());
             onStatus(value);
             if (operation === "retry") setNotice("已请求重试，上传进度将自动更新。");
+            if (operation === "enable" || operation === "disable")
+                setNotice(
+                    value.capture_apply_error ||
+                        (value.capture_apply_pending
+                            ? "上传控制已应用；当前任务结束且 Core 空闲后自动应用采集设置。"
+                            : operation === "enable"
+                              ? "数据飞轮已开启，保留的待传和失败轨迹将由后台继续上传。"
+                              : "数据飞轮已关闭，已保存的轨迹保留在本地。"),
+                );
         },
         onError(cause) {
             setError(cause instanceof Error ? cause.message : "无法读取轨迹上传状态。");
@@ -69,13 +80,13 @@ export function TrajectorySettings({
         onBusy(operation) {
             setWorking(operation !== null);
             // 后台刷新保留上次结果和错误；仅首次加载或显式操作显示读取中。
-            if (!operation || operation === "retry" || !lastStatus.current) setBusy(operation);
+            if (!operation || operation !== "status" || !lastStatus.current) setBusy(operation);
         },
     });
-    const run = (operation: "status" | "retry") => {
+    const run = (operation: TrajectoryOperation) => {
         if (refresh(operation)) {
             setBusy(operation);
-            if (operation === "retry") setNotice("");
+            if (operation !== "status") setNotice("");
         }
     };
     const stale = !connected || !!error;
@@ -106,9 +117,11 @@ export function TrajectorySettings({
                         ? "读取中…"
                         : busy === "retry"
                           ? "请求重试中…"
-                          : checkedAt
-                            ? `上次读取：${checkedAt}${stale ? "（可能已过期）" : ""}`
-                            : "尚未读取上传状态"}
+                          : busy === "enable" || busy === "disable"
+                            ? "应用开关中…"
+                            : checkedAt
+                              ? `上次读取：${checkedAt}${stale ? "（可能已过期）" : ""}`
+                              : "尚未读取上传状态"}
                 </p>
                 {error && (
                     <p role="alert" className="text-destructive">
@@ -120,13 +133,34 @@ export function TrajectorySettings({
                 {status && (
                     <SettingsGroupCard>
                         <SettingsRow
-                            label="当前文件配置"
+                            label="数据飞轮开关"
                             description={
                                 status.enabled
-                                    ? "已启用轨迹导出；运行中的 Core 需使用此配置并完成重启。"
-                                    : "轨迹导出已关闭。"
+                                    ? status.capture_apply_error ||
+                                      (status.capture_apply_pending
+                                          ? "后台上传已开启；Core 空闲后自动应用新采集设置，不取消当前任务。"
+                                          : "已启用后台轨迹上传；重新开启会补传仍保留的待传和失败记录。")
+                                    : "未开启轨迹导出；已有配置和磁盘缓存保留，重新开启后继续上传。"
                             }
+                            control={
+                                <TrajectoryToggle
+                                    status={status}
+                                    busy={working}
+                                    stale={stale}
+                                    onChange={(enabled) => run(enabled ? "enable" : "disable")}
+                                />
+                            }
+                        />
+                        <SettingsRow
+                            label="配置状态"
                             control={<SettingsBadge>{stateLabels[status.state]}</SettingsBadge>}
+                            description={
+                                status.config_revision === "missing"
+                                    ? "请先通过用户配置或独立接入脚本配置接收地址和认证。"
+                                    : !/^[a-f0-9]{64}$/.test(status.config_revision ?? "")
+                                      ? "当前 Core 未提供开关控制版本，请升级 Core；接收地址需先通过用户配置或独立接入脚本配置。"
+                                      : "上传地址、认证和容量通过用户配置或独立接入脚本维护，开关只改变启停。"
+                            }
                         />
                         <SettingsRow
                             label="上传进程"
@@ -355,7 +389,8 @@ export function TrajectorySettings({
                     编辑本页显示的配置文件中的 <code>[trajectory]</code>，设置开关、
                     <code>endpoint</code> 和凭据引用。修改后执行{" "}
                     <code>areal trajectory sync-config --config 配置文件路径</code>{" "}
-                    应用上传控制，并安全重启已运行的 Core 服务以装配采集参数。
+                    应用上传控制；本页开关会在 Core 空闲后自动安全应用启停设置。
+                    手工修改其它采集参数时仍需安全重启 Core。
                     凭据由配置与环境管理，本页不显示凭据内容。
                 </p>
             </SettingsSection>

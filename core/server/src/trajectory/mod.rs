@@ -335,6 +335,15 @@ pub fn status(config: &TrajectoryConfig) -> Result<Value> {
 }
 
 pub fn retry_failed(config: &TrajectoryConfig) -> Result<Value> {
+    requeue_failed(config, true)
+}
+
+/// 用户重新开启时补传仍保留的失败副本；不缩短接收端已要求的等待时间。
+pub fn resume_retained(config: &TrajectoryConfig) -> Result<Value> {
+    requeue_failed(config, false)
+}
+
+fn requeue_failed(config: &TrajectoryConfig, reset_backoff: bool) -> Result<Value> {
     if !config.spool_dir.exists() {
         return status(config);
     }
@@ -345,6 +354,7 @@ pub fn retry_failed(config: &TrajectoryConfig) -> Result<Value> {
             owns_control(config, &control),
             "spool_configuration_conflict"
         );
+        let mut totals = queue::stats(&config.spool_dir);
         for mut record in queue::records(&config.spool_dir, config.max_disk_bytes)? {
             if record.status == "failed"
                 && record.payload_present
@@ -352,14 +362,16 @@ pub fn retry_failed(config: &TrajectoryConfig) -> Result<Value> {
             {
                 record.status = "pending".into();
                 record.attempts = 0;
-                record.next_attempt_at = None;
+                record.next_attempt_at =
+                    (!reset_backoff && totals.not_before > now()).then_some(totals.not_before);
                 record.error = None;
                 queue::save(&config.spool_dir, &record)?;
             }
         }
-        let mut totals = queue::stats(&config.spool_dir);
-        totals.not_before = 0;
-        totals.consecutive_failures = 0;
+        if reset_backoff {
+            totals.not_before = 0;
+            totals.consecutive_failures = 0;
+        }
         totals.last_error = None;
         queue::save_stats(&config.spool_dir, &totals)?;
     }

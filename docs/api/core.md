@@ -376,6 +376,10 @@ HTTP 模型收尾轮保留当前可见工具 schema，通过 `tool_choice=none` 
 
 Goal 的 steer（包括向计量子任务发送 `agent_send_input`）立即持久化，但不丢弃在途模型请求。Core 等待该响应结算，再于工具派发前处理待接收修订；旧响应的工具调用被丢弃，已知消费仍准确计入一次。既有 idle、显式 Goal 期限及取消保持有效，真正缺失的用量仍为 UNKNOWN。普通无 Goal 计量的 Turn 保持即时 steer 行为。
 
+### 本地轨迹启停控制
+
+`areal trajectory set-enabled <true|false> [--expected-revision <sha256>] --config <file>` 仅修改现有配置中的 `[trajectory].enabled`，使用共享配置文件锁和原子写入，保留格式、注释、其它字段与队列身份。启用需要已配置合法 HTTP(S) 接收地址；不创建接收端配置。`status` 和控制响应包含可选 `config_revision`（原始文件 SHA-256；文件缺失为 `missing`）。旧版本缺少此字段时客户端不得假设支持启停。省略 `--expected-revision` 时也绑定命令本次载入的文件哈希，拒绝读取与写入之间的并发变更。陈旧版本拒绝写入；`set-enabled true` 从关闭变开启时自动补传仍保留的失败记录并保留服务端退避，已开启时不重置尝试次数。`sync-config --resume-retained` 为仓库外配置工具提供相同的显式恢复语义。已有 Core 的新采集装配由客户端安全应用，CLI 不取消运行中任务。见[配置指南](../guides/configuration.md#持久轨迹导出)。
+
 ### 子任务停止与计量收尾
 
 `agent_cancel` 接受 `{threadId,mode?:"graceful"|"force"}`，默认 graceful。两种模式立即停止继续执行当前响应的工具和启动下一请求；graceful 为已发请求保留最多 60 秒结算，force 为 1 秒，均受原 Goal/研究 worker 剩余期限约束。重复取消不延长期限；收尾中改为 force 会缩短期限。它不保证生成交接报告，也不保证 provider 返回 usage。`agent_send_input` 可先要求作者提交交接。外层 Turn 在期限内继续驱动取消中的生成循环，不能先丢弃响应 future；首包前的已发请求也遵守此规则。截止仍缺最终用量时，原账本保留 UNKNOWN 和预留，不补零、不追加预算。崩溃后的未结算请求仍按原恢复契约保留未知，不声明支持 provider 用量补查。

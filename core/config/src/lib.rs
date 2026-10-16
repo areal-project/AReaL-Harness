@@ -4,12 +4,14 @@ pub mod models;
 mod resolve;
 pub mod skills;
 mod trajectory;
+mod trajectory_control;
 
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, ffi::OsString, fmt, net::SocketAddr, path::PathBuf};
 
 pub use resolve::{load_config, load_management_config};
 pub use trajectory::TrajectoryConfig;
+pub use trajectory_control::set_trajectory_enabled;
 
 /// 可信工具宿主继承连接所需的代理变量；不借此透传模型凭据或其他宿主环境。
 pub const PROXY_ENV_VARS: [&str; 8] = [
