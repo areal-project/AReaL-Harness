@@ -307,6 +307,37 @@
               "id": {
                 "type": "string"
               },
+              "modelCapabilities": {
+                "additionalProperties": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "defaultReasoningEffort": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "displayName": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "reasoningEffortOptions": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "reasoningEffortOptions"
+                  ],
+                  "type": "object"
+                },
+                "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                "type": "object"
+              },
               "models": {
                 "items": {
                   "type": "string"
@@ -2558,6 +2589,37 @@
                               "id": {
                                 "type": "string"
                               },
+                              "modelCapabilities": {
+                                "additionalProperties": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "defaultReasoningEffort": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    },
+                                    "displayName": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    },
+                                    "reasoningEffortOptions": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "reasoningEffortOptions"
+                                  ],
+                                  "type": "object"
+                                },
+                                "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                "type": "object"
+                              },
                               "models": {
                                 "items": {
                                   "type": "string"
@@ -3704,6 +3766,37 @@
                     },
                     "id": {
                       "type": "string"
+                    },
+                    "modelCapabilities": {
+                      "additionalProperties": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "defaultReasoningEffort": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "displayName": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "reasoningEffortOptions": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "reasoningEffortOptions"
+                        ],
+                        "type": "object"
+                      },
+                      "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                      "type": "object"
                     },
                     "models": {
                       "items": {
@@ -5992,6 +6085,37 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "modelCapabilities": {
+                                  "additionalProperties": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "defaultReasoningEffort": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "displayName": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "reasoningEffortOptions": {
+                                        "items": {
+                                          "type": "string"
+                                        },
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "reasoningEffortOptions"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                  "type": "object"
+                                },
                                 "models": {
                                   "items": {
                                     "type": "string"
@@ -6908,6 +7032,37 @@
                                           },
                                           "id": {
                                             "type": "string"
+                                          },
+                                          "modelCapabilities": {
+                                            "additionalProperties": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "defaultReasoningEffort": {
+                                                  "type": [
+                                                    "string",
+                                                    "null"
+                                                  ]
+                                                },
+                                                "displayName": {
+                                                  "type": [
+                                                    "string",
+                                                    "null"
+                                                  ]
+                                                },
+                                                "reasoningEffortOptions": {
+                                                  "items": {
+                                                    "type": "string"
+                                                  },
+                                                  "type": "array"
+                                                }
+                                              },
+                                              "required": [
+                                                "reasoningEffortOptions"
+                                              ],
+                                              "type": "object"
+                                            },
+                                            "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                            "type": "object"
                                           },
                                           "models": {
                                             "items": {
@@ -8089,6 +8244,37 @@
                                   },
                                   "id": {
                                     "type": "string"
+                                  },
+                                  "modelCapabilities": {
+                                    "additionalProperties": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "defaultReasoningEffort": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "displayName": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "reasoningEffortOptions": {
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "reasoningEffortOptions"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                    "type": "object"
                                   },
                                   "models": {
                                     "items": {
@@ -9289,6 +9475,37 @@
                             "id": {
                               "type": "string"
                             },
+                            "modelCapabilities": {
+                              "additionalProperties": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "defaultReasoningEffort": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "displayName": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "reasoningEffortOptions": {
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "reasoningEffortOptions"
+                                ],
+                                "type": "object"
+                              },
+                              "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                              "type": "object"
+                            },
                             "models": {
                               "items": {
                                 "type": "string"
@@ -10466,6 +10683,37 @@
                             "id": {
                               "type": "string"
                             },
+                            "modelCapabilities": {
+                              "additionalProperties": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "defaultReasoningEffort": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "displayName": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "reasoningEffortOptions": {
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "reasoningEffortOptions"
+                                ],
+                                "type": "object"
+                              },
+                              "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                              "type": "object"
+                            },
                             "models": {
                               "items": {
                                 "type": "string"
@@ -11599,6 +11847,37 @@
       "id": {
         "type": "string"
       },
+      "modelCapabilities": {
+        "additionalProperties": {
+          "additionalProperties": false,
+          "properties": {
+            "defaultReasoningEffort": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "displayName": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reasoningEffortOptions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "reasoningEffortOptions"
+          ],
+          "type": "object"
+        },
+        "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+        "type": "object"
+      },
       "models": {
         "items": {
           "type": "string"
@@ -11978,6 +12257,37 @@
                         },
                         "id": {
                           "type": "string"
+                        },
+                        "modelCapabilities": {
+                          "additionalProperties": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "defaultReasoningEffort": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "displayName": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "reasoningEffortOptions": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "reasoningEffortOptions"
+                            ],
+                            "type": "object"
+                          },
+                          "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                          "type": "object"
                         },
                         "models": {
                           "items": {
@@ -14201,6 +14511,37 @@
             },
             "id": {
               "type": "string"
+            },
+            "modelCapabilities": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "defaultReasoningEffort": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "displayName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reasoningEffortOptions": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "reasoningEffortOptions"
+                ],
+                "type": "object"
+              },
+              "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+              "type": "object"
             },
             "models": {
               "items": {
@@ -19463,6 +19804,37 @@
                                   "id": {
                                     "type": "string"
                                   },
+                                  "modelCapabilities": {
+                                    "additionalProperties": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "defaultReasoningEffort": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "displayName": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "reasoningEffortOptions": {
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "reasoningEffortOptions"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                    "type": "object"
+                                  },
                                   "models": {
                                     "items": {
                                       "type": "string"
@@ -20379,6 +20751,37 @@
                                             },
                                             "id": {
                                               "type": "string"
+                                            },
+                                            "modelCapabilities": {
+                                              "additionalProperties": {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "defaultReasoningEffort": {
+                                                    "type": [
+                                                      "string",
+                                                      "null"
+                                                    ]
+                                                  },
+                                                  "displayName": {
+                                                    "type": [
+                                                      "string",
+                                                      "null"
+                                                    ]
+                                                  },
+                                                  "reasoningEffortOptions": {
+                                                    "items": {
+                                                      "type": "string"
+                                                    },
+                                                    "type": "array"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "reasoningEffortOptions"
+                                                ],
+                                                "type": "object"
+                                              },
+                                              "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                              "type": "object"
                                             },
                                             "models": {
                                               "items": {
@@ -21560,6 +21963,37 @@
                                     },
                                     "id": {
                                       "type": "string"
+                                    },
+                                    "modelCapabilities": {
+                                      "additionalProperties": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "defaultReasoningEffort": {
+                                            "type": [
+                                              "string",
+                                              "null"
+                                            ]
+                                          },
+                                          "displayName": {
+                                            "type": [
+                                              "string",
+                                              "null"
+                                            ]
+                                          },
+                                          "reasoningEffortOptions": {
+                                            "items": {
+                                              "type": "string"
+                                            },
+                                            "type": "array"
+                                          }
+                                        },
+                                        "required": [
+                                          "reasoningEffortOptions"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                      "type": "object"
                                     },
                                     "models": {
                                       "items": {
@@ -23310,6 +23744,37 @@
                                     "id": {
                                       "type": "string"
                                     },
+                                    "modelCapabilities": {
+                                      "additionalProperties": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "defaultReasoningEffort": {
+                                            "type": [
+                                              "string",
+                                              "null"
+                                            ]
+                                          },
+                                          "displayName": {
+                                            "type": [
+                                              "string",
+                                              "null"
+                                            ]
+                                          },
+                                          "reasoningEffortOptions": {
+                                            "items": {
+                                              "type": "string"
+                                            },
+                                            "type": "array"
+                                          }
+                                        },
+                                        "required": [
+                                          "reasoningEffortOptions"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                      "type": "object"
+                                    },
                                     "models": {
                                       "items": {
                                         "type": "string"
@@ -24226,6 +24691,37 @@
                                               },
                                               "id": {
                                                 "type": "string"
+                                              },
+                                              "modelCapabilities": {
+                                                "additionalProperties": {
+                                                  "additionalProperties": false,
+                                                  "properties": {
+                                                    "defaultReasoningEffort": {
+                                                      "type": [
+                                                        "string",
+                                                        "null"
+                                                      ]
+                                                    },
+                                                    "displayName": {
+                                                      "type": [
+                                                        "string",
+                                                        "null"
+                                                      ]
+                                                    },
+                                                    "reasoningEffortOptions": {
+                                                      "items": {
+                                                        "type": "string"
+                                                      },
+                                                      "type": "array"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "reasoningEffortOptions"
+                                                  ],
+                                                  "type": "object"
+                                                },
+                                                "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                                "type": "object"
                                               },
                                               "models": {
                                                 "items": {
@@ -25407,6 +25903,37 @@
                                       },
                                       "id": {
                                         "type": "string"
+                                      },
+                                      "modelCapabilities": {
+                                        "additionalProperties": {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "defaultReasoningEffort": {
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ]
+                                            },
+                                            "displayName": {
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ]
+                                            },
+                                            "reasoningEffortOptions": {
+                                              "items": {
+                                                "type": "string"
+                                              },
+                                              "type": "array"
+                                            }
+                                          },
+                                          "required": [
+                                            "reasoningEffortOptions"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                        "type": "object"
                                       },
                                       "models": {
                                         "items": {
@@ -26597,6 +27124,37 @@
                                 },
                                 "id": {
                                   "type": "string"
+                                },
+                                "modelCapabilities": {
+                                  "additionalProperties": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "defaultReasoningEffort": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "displayName": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "reasoningEffortOptions": {
+                                        "items": {
+                                          "type": "string"
+                                        },
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "reasoningEffortOptions"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                  "type": "object"
                                 },
                                 "models": {
                                   "items": {
@@ -30356,6 +30914,37 @@
                                   "id": {
                                     "type": "string"
                                   },
+                                  "modelCapabilities": {
+                                    "additionalProperties": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "defaultReasoningEffort": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "displayName": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "reasoningEffortOptions": {
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "reasoningEffortOptions"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                    "type": "object"
+                                  },
                                   "models": {
                                     "items": {
                                       "type": "string"
@@ -31272,6 +31861,37 @@
                                             },
                                             "id": {
                                               "type": "string"
+                                            },
+                                            "modelCapabilities": {
+                                              "additionalProperties": {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "defaultReasoningEffort": {
+                                                    "type": [
+                                                      "string",
+                                                      "null"
+                                                    ]
+                                                  },
+                                                  "displayName": {
+                                                    "type": [
+                                                      "string",
+                                                      "null"
+                                                    ]
+                                                  },
+                                                  "reasoningEffortOptions": {
+                                                    "items": {
+                                                      "type": "string"
+                                                    },
+                                                    "type": "array"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "reasoningEffortOptions"
+                                                ],
+                                                "type": "object"
+                                              },
+                                              "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                              "type": "object"
                                             },
                                             "models": {
                                               "items": {
@@ -32453,6 +33073,37 @@
                                     },
                                     "id": {
                                       "type": "string"
+                                    },
+                                    "modelCapabilities": {
+                                      "additionalProperties": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "defaultReasoningEffort": {
+                                            "type": [
+                                              "string",
+                                              "null"
+                                            ]
+                                          },
+                                          "displayName": {
+                                            "type": [
+                                              "string",
+                                              "null"
+                                            ]
+                                          },
+                                          "reasoningEffortOptions": {
+                                            "items": {
+                                              "type": "string"
+                                            },
+                                            "type": "array"
+                                          }
+                                        },
+                                        "required": [
+                                          "reasoningEffortOptions"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                      "type": "object"
                                     },
                                     "models": {
                                       "items": {
@@ -38501,6 +39152,37 @@
               "id": {
                 "type": "string"
               },
+              "modelCapabilities": {
+                "additionalProperties": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "defaultReasoningEffort": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "displayName": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "reasoningEffortOptions": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "reasoningEffortOptions"
+                  ],
+                  "type": "object"
+                },
+                "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                "type": "object"
+              },
               "models": {
                 "items": {
                   "type": "string"
@@ -38721,6 +39403,37 @@
         "id": {
           "type": "string"
         },
+        "modelCapabilities": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "defaultReasoningEffort": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "displayName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reasoningEffortOptions": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "reasoningEffortOptions"
+            ],
+            "type": "object"
+          },
+          "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+          "type": "object"
+        },
         "models": {
           "items": {
             "type": "string"
@@ -38808,6 +39521,37 @@
         },
         "id": {
           "type": "string"
+        },
+        "modelCapabilities": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "defaultReasoningEffort": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "displayName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reasoningEffortOptions": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "reasoningEffortOptions"
+            ],
+            "type": "object"
+          },
+          "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+          "type": "object"
         },
         "models": {
           "items": {
@@ -39188,6 +39932,37 @@
                           },
                           "id": {
                             "type": "string"
+                          },
+                          "modelCapabilities": {
+                            "additionalProperties": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "defaultReasoningEffort": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "displayName": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "reasoningEffortOptions": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "reasoningEffortOptions"
+                              ],
+                              "type": "object"
+                            },
+                            "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                            "type": "object"
                           },
                           "models": {
                             "items": {
@@ -39833,6 +40608,37 @@
                           "id": {
                             "type": "string"
                           },
+                          "modelCapabilities": {
+                            "additionalProperties": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "defaultReasoningEffort": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "displayName": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "reasoningEffortOptions": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "reasoningEffortOptions"
+                              ],
+                              "type": "object"
+                            },
+                            "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                            "type": "object"
+                          },
                           "models": {
                             "items": {
                               "type": "string"
@@ -40476,6 +41282,37 @@
                           },
                           "id": {
                             "type": "string"
+                          },
+                          "modelCapabilities": {
+                            "additionalProperties": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "defaultReasoningEffort": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "displayName": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "reasoningEffortOptions": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "reasoningEffortOptions"
+                              ],
+                              "type": "object"
+                            },
+                            "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                            "type": "object"
                           },
                           "models": {
                             "items": {
@@ -41121,6 +41958,37 @@
                           "id": {
                             "type": "string"
                           },
+                          "modelCapabilities": {
+                            "additionalProperties": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "defaultReasoningEffort": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "displayName": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "reasoningEffortOptions": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "reasoningEffortOptions"
+                              ],
+                              "type": "object"
+                            },
+                            "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                            "type": "object"
+                          },
                           "models": {
                             "items": {
                               "type": "string"
@@ -41764,6 +42632,37 @@
                           },
                           "id": {
                             "type": "string"
+                          },
+                          "modelCapabilities": {
+                            "additionalProperties": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "defaultReasoningEffort": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "displayName": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "reasoningEffortOptions": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "reasoningEffortOptions"
+                              ],
+                              "type": "object"
+                            },
+                            "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                            "type": "object"
                           },
                           "models": {
                             "items": {
@@ -42433,6 +43332,37 @@
                           },
                           "id": {
                             "type": "string"
+                          },
+                          "modelCapabilities": {
+                            "additionalProperties": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "defaultReasoningEffort": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "displayName": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "reasoningEffortOptions": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "reasoningEffortOptions"
+                              ],
+                              "type": "object"
+                            },
+                            "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                            "type": "object"
                           },
                           "models": {
                             "items": {
@@ -44375,6 +45305,37 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "modelCapabilities": {
+                                  "additionalProperties": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "defaultReasoningEffort": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "displayName": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "reasoningEffortOptions": {
+                                        "items": {
+                                          "type": "string"
+                                        },
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "reasoningEffortOptions"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                  "type": "object"
+                                },
                                 "models": {
                                   "items": {
                                     "type": "string"
@@ -45291,6 +46252,37 @@
                                           },
                                           "id": {
                                             "type": "string"
+                                          },
+                                          "modelCapabilities": {
+                                            "additionalProperties": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "defaultReasoningEffort": {
+                                                  "type": [
+                                                    "string",
+                                                    "null"
+                                                  ]
+                                                },
+                                                "displayName": {
+                                                  "type": [
+                                                    "string",
+                                                    "null"
+                                                  ]
+                                                },
+                                                "reasoningEffortOptions": {
+                                                  "items": {
+                                                    "type": "string"
+                                                  },
+                                                  "type": "array"
+                                                }
+                                              },
+                                              "required": [
+                                                "reasoningEffortOptions"
+                                              ],
+                                              "type": "object"
+                                            },
+                                            "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                            "type": "object"
                                           },
                                           "models": {
                                             "items": {
@@ -46472,6 +47464,37 @@
                                   },
                                   "id": {
                                     "type": "string"
+                                  },
+                                  "modelCapabilities": {
+                                    "additionalProperties": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "defaultReasoningEffort": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "displayName": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "reasoningEffortOptions": {
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "reasoningEffortOptions"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                    "type": "object"
                                   },
                                   "models": {
                                     "items": {
@@ -47659,6 +48682,37 @@
                             },
                             "id": {
                               "type": "string"
+                            },
+                            "modelCapabilities": {
+                              "additionalProperties": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "defaultReasoningEffort": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "displayName": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "reasoningEffortOptions": {
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "reasoningEffortOptions"
+                                ],
+                                "type": "object"
+                              },
+                              "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                              "type": "object"
                             },
                             "models": {
                               "items": {
@@ -52754,6 +53808,37 @@
                 "id": {
                   "type": "string"
                 },
+                "modelCapabilities": {
+                  "additionalProperties": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "defaultReasoningEffort": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "displayName": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "reasoningEffortOptions": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "reasoningEffortOptions"
+                    ],
+                    "type": "object"
+                  },
+                  "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                  "type": "object"
+                },
                 "models": {
                   "items": {
                     "type": "string"
@@ -53726,6 +54811,37 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "modelCapabilities": {
+                                  "additionalProperties": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "defaultReasoningEffort": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "displayName": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "reasoningEffortOptions": {
+                                        "items": {
+                                          "type": "string"
+                                        },
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "reasoningEffortOptions"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                  "type": "object"
+                                },
                                 "models": {
                                   "items": {
                                     "type": "string"
@@ -54642,6 +55758,37 @@
                                           },
                                           "id": {
                                             "type": "string"
+                                          },
+                                          "modelCapabilities": {
+                                            "additionalProperties": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "defaultReasoningEffort": {
+                                                  "type": [
+                                                    "string",
+                                                    "null"
+                                                  ]
+                                                },
+                                                "displayName": {
+                                                  "type": [
+                                                    "string",
+                                                    "null"
+                                                  ]
+                                                },
+                                                "reasoningEffortOptions": {
+                                                  "items": {
+                                                    "type": "string"
+                                                  },
+                                                  "type": "array"
+                                                }
+                                              },
+                                              "required": [
+                                                "reasoningEffortOptions"
+                                              ],
+                                              "type": "object"
+                                            },
+                                            "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                            "type": "object"
                                           },
                                           "models": {
                                             "items": {
@@ -55823,6 +56970,37 @@
                                   },
                                   "id": {
                                     "type": "string"
+                                  },
+                                  "modelCapabilities": {
+                                    "additionalProperties": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "defaultReasoningEffort": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "displayName": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "reasoningEffortOptions": {
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "reasoningEffortOptions"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                    "type": "object"
                                   },
                                   "models": {
                                     "items": {
@@ -57018,6 +58196,37 @@
                     },
                     "id": {
                       "type": "string"
+                    },
+                    "modelCapabilities": {
+                      "additionalProperties": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "defaultReasoningEffort": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "displayName": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "reasoningEffortOptions": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "reasoningEffortOptions"
+                        ],
+                        "type": "object"
+                      },
+                      "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                      "type": "object"
                     },
                     "models": {
                       "items": {
@@ -58406,6 +59615,37 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "modelCapabilities": {
+                                  "additionalProperties": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "defaultReasoningEffort": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "displayName": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "reasoningEffortOptions": {
+                                        "items": {
+                                          "type": "string"
+                                        },
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "reasoningEffortOptions"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                  "type": "object"
+                                },
                                 "models": {
                                   "items": {
                                     "type": "string"
@@ -59322,6 +60562,37 @@
                                           },
                                           "id": {
                                             "type": "string"
+                                          },
+                                          "modelCapabilities": {
+                                            "additionalProperties": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "defaultReasoningEffort": {
+                                                  "type": [
+                                                    "string",
+                                                    "null"
+                                                  ]
+                                                },
+                                                "displayName": {
+                                                  "type": [
+                                                    "string",
+                                                    "null"
+                                                  ]
+                                                },
+                                                "reasoningEffortOptions": {
+                                                  "items": {
+                                                    "type": "string"
+                                                  },
+                                                  "type": "array"
+                                                }
+                                              },
+                                              "required": [
+                                                "reasoningEffortOptions"
+                                              ],
+                                              "type": "object"
+                                            },
+                                            "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                            "type": "object"
                                           },
                                           "models": {
                                             "items": {
@@ -60503,6 +61774,37 @@
                                   },
                                   "id": {
                                     "type": "string"
+                                  },
+                                  "modelCapabilities": {
+                                    "additionalProperties": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "defaultReasoningEffort": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "displayName": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "reasoningEffortOptions": {
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "reasoningEffortOptions"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                    "type": "object"
                                   },
                                   "models": {
                                     "items": {
@@ -62236,6 +63538,37 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "modelCapabilities": {
+                                  "additionalProperties": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "defaultReasoningEffort": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "displayName": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "reasoningEffortOptions": {
+                                        "items": {
+                                          "type": "string"
+                                        },
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "reasoningEffortOptions"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                  "type": "object"
+                                },
                                 "models": {
                                   "items": {
                                     "type": "string"
@@ -63152,6 +64485,37 @@
                                           },
                                           "id": {
                                             "type": "string"
+                                          },
+                                          "modelCapabilities": {
+                                            "additionalProperties": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "defaultReasoningEffort": {
+                                                  "type": [
+                                                    "string",
+                                                    "null"
+                                                  ]
+                                                },
+                                                "displayName": {
+                                                  "type": [
+                                                    "string",
+                                                    "null"
+                                                  ]
+                                                },
+                                                "reasoningEffortOptions": {
+                                                  "items": {
+                                                    "type": "string"
+                                                  },
+                                                  "type": "array"
+                                                }
+                                              },
+                                              "required": [
+                                                "reasoningEffortOptions"
+                                              ],
+                                              "type": "object"
+                                            },
+                                            "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                            "type": "object"
                                           },
                                           "models": {
                                             "items": {
@@ -64333,6 +65697,37 @@
                                   },
                                   "id": {
                                     "type": "string"
+                                  },
+                                  "modelCapabilities": {
+                                    "additionalProperties": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "defaultReasoningEffort": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "displayName": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "reasoningEffortOptions": {
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "reasoningEffortOptions"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                    "type": "object"
                                   },
                                   "models": {
                                     "items": {
@@ -65578,6 +66973,37 @@
                             },
                             "id": {
                               "type": "string"
+                            },
+                            "modelCapabilities": {
+                              "additionalProperties": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "defaultReasoningEffort": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "displayName": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "reasoningEffortOptions": {
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "reasoningEffortOptions"
+                                ],
+                                "type": "object"
+                              },
+                              "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                              "type": "object"
                             },
                             "models": {
                               "items": {
@@ -71794,6 +73220,37 @@
                                   "id": {
                                     "type": "string"
                                   },
+                                  "modelCapabilities": {
+                                    "additionalProperties": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "defaultReasoningEffort": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "displayName": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "reasoningEffortOptions": {
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "reasoningEffortOptions"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                    "type": "object"
+                                  },
                                   "models": {
                                     "items": {
                                       "type": "string"
@@ -72710,6 +74167,37 @@
                                             },
                                             "id": {
                                               "type": "string"
+                                            },
+                                            "modelCapabilities": {
+                                              "additionalProperties": {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "defaultReasoningEffort": {
+                                                    "type": [
+                                                      "string",
+                                                      "null"
+                                                    ]
+                                                  },
+                                                  "displayName": {
+                                                    "type": [
+                                                      "string",
+                                                      "null"
+                                                    ]
+                                                  },
+                                                  "reasoningEffortOptions": {
+                                                    "items": {
+                                                      "type": "string"
+                                                    },
+                                                    "type": "array"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "reasoningEffortOptions"
+                                                ],
+                                                "type": "object"
+                                              },
+                                              "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                              "type": "object"
                                             },
                                             "models": {
                                               "items": {
@@ -73891,6 +75379,37 @@
                                     },
                                     "id": {
                                       "type": "string"
+                                    },
+                                    "modelCapabilities": {
+                                      "additionalProperties": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "defaultReasoningEffort": {
+                                            "type": [
+                                              "string",
+                                              "null"
+                                            ]
+                                          },
+                                          "displayName": {
+                                            "type": [
+                                              "string",
+                                              "null"
+                                            ]
+                                          },
+                                          "reasoningEffortOptions": {
+                                            "items": {
+                                              "type": "string"
+                                            },
+                                            "type": "array"
+                                          }
+                                        },
+                                        "required": [
+                                          "reasoningEffortOptions"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                      "type": "object"
                                     },
                                     "models": {
                                       "items": {
@@ -75629,6 +77148,37 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "modelCapabilities": {
+                                  "additionalProperties": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "defaultReasoningEffort": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "displayName": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "reasoningEffortOptions": {
+                                        "items": {
+                                          "type": "string"
+                                        },
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "reasoningEffortOptions"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                  "type": "object"
+                                },
                                 "models": {
                                   "items": {
                                     "type": "string"
@@ -76545,6 +78095,37 @@
                                           },
                                           "id": {
                                             "type": "string"
+                                          },
+                                          "modelCapabilities": {
+                                            "additionalProperties": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "defaultReasoningEffort": {
+                                                  "type": [
+                                                    "string",
+                                                    "null"
+                                                  ]
+                                                },
+                                                "displayName": {
+                                                  "type": [
+                                                    "string",
+                                                    "null"
+                                                  ]
+                                                },
+                                                "reasoningEffortOptions": {
+                                                  "items": {
+                                                    "type": "string"
+                                                  },
+                                                  "type": "array"
+                                                }
+                                              },
+                                              "required": [
+                                                "reasoningEffortOptions"
+                                              ],
+                                              "type": "object"
+                                            },
+                                            "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                            "type": "object"
                                           },
                                           "models": {
                                             "items": {
@@ -77726,6 +79307,37 @@
                                   },
                                   "id": {
                                     "type": "string"
+                                  },
+                                  "modelCapabilities": {
+                                    "additionalProperties": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "defaultReasoningEffort": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "displayName": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "reasoningEffortOptions": {
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "reasoningEffortOptions"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                    "type": "object"
                                   },
                                   "models": {
                                     "items": {
@@ -79485,6 +81097,37 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "modelCapabilities": {
+                                  "additionalProperties": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "defaultReasoningEffort": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "displayName": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "reasoningEffortOptions": {
+                                        "items": {
+                                          "type": "string"
+                                        },
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "reasoningEffortOptions"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                  "type": "object"
+                                },
                                 "models": {
                                   "items": {
                                     "type": "string"
@@ -80401,6 +82044,37 @@
                                           },
                                           "id": {
                                             "type": "string"
+                                          },
+                                          "modelCapabilities": {
+                                            "additionalProperties": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "defaultReasoningEffort": {
+                                                  "type": [
+                                                    "string",
+                                                    "null"
+                                                  ]
+                                                },
+                                                "displayName": {
+                                                  "type": [
+                                                    "string",
+                                                    "null"
+                                                  ]
+                                                },
+                                                "reasoningEffortOptions": {
+                                                  "items": {
+                                                    "type": "string"
+                                                  },
+                                                  "type": "array"
+                                                }
+                                              },
+                                              "required": [
+                                                "reasoningEffortOptions"
+                                              ],
+                                              "type": "object"
+                                            },
+                                            "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                            "type": "object"
                                           },
                                           "models": {
                                             "items": {
@@ -81582,6 +83256,37 @@
                                   },
                                   "id": {
                                     "type": "string"
+                                  },
+                                  "modelCapabilities": {
+                                    "additionalProperties": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "defaultReasoningEffort": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "displayName": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "reasoningEffortOptions": {
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "reasoningEffortOptions"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                    "type": "object"
                                   },
                                   "models": {
                                     "items": {
@@ -83349,6 +85054,37 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "modelCapabilities": {
+                                  "additionalProperties": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "defaultReasoningEffort": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "displayName": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "reasoningEffortOptions": {
+                                        "items": {
+                                          "type": "string"
+                                        },
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "reasoningEffortOptions"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                  "type": "object"
+                                },
                                 "models": {
                                   "items": {
                                     "type": "string"
@@ -84265,6 +86001,37 @@
                                           },
                                           "id": {
                                             "type": "string"
+                                          },
+                                          "modelCapabilities": {
+                                            "additionalProperties": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "defaultReasoningEffort": {
+                                                  "type": [
+                                                    "string",
+                                                    "null"
+                                                  ]
+                                                },
+                                                "displayName": {
+                                                  "type": [
+                                                    "string",
+                                                    "null"
+                                                  ]
+                                                },
+                                                "reasoningEffortOptions": {
+                                                  "items": {
+                                                    "type": "string"
+                                                  },
+                                                  "type": "array"
+                                                }
+                                              },
+                                              "required": [
+                                                "reasoningEffortOptions"
+                                              ],
+                                              "type": "object"
+                                            },
+                                            "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                            "type": "object"
                                           },
                                           "models": {
                                             "items": {
@@ -85446,6 +87213,37 @@
                                   },
                                   "id": {
                                     "type": "string"
+                                  },
+                                  "modelCapabilities": {
+                                    "additionalProperties": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "defaultReasoningEffort": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "displayName": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "reasoningEffortOptions": {
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "reasoningEffortOptions"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                    "type": "object"
                                   },
                                   "models": {
                                     "items": {
@@ -86656,6 +88454,37 @@
                             },
                             "id": {
                               "type": "string"
+                            },
+                            "modelCapabilities": {
+                              "additionalProperties": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "defaultReasoningEffort": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "displayName": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "reasoningEffortOptions": {
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "reasoningEffortOptions"
+                                ],
+                                "type": "object"
+                              },
+                              "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                              "type": "object"
                             },
                             "models": {
                               "items": {
@@ -88567,6 +90396,37 @@
                           "id": {
                             "type": "string"
                           },
+                          "modelCapabilities": {
+                            "additionalProperties": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "defaultReasoningEffort": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "displayName": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "reasoningEffortOptions": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "reasoningEffortOptions"
+                              ],
+                              "type": "object"
+                            },
+                            "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                            "type": "object"
+                          },
                           "models": {
                             "items": {
                               "type": "string"
@@ -89483,6 +91343,37 @@
                                     },
                                     "id": {
                                       "type": "string"
+                                    },
+                                    "modelCapabilities": {
+                                      "additionalProperties": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "defaultReasoningEffort": {
+                                            "type": [
+                                              "string",
+                                              "null"
+                                            ]
+                                          },
+                                          "displayName": {
+                                            "type": [
+                                              "string",
+                                              "null"
+                                            ]
+                                          },
+                                          "reasoningEffortOptions": {
+                                            "items": {
+                                              "type": "string"
+                                            },
+                                            "type": "array"
+                                          }
+                                        },
+                                        "required": [
+                                          "reasoningEffortOptions"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                                      "type": "object"
                                     },
                                     "models": {
                                       "items": {
@@ -90664,6 +92555,37 @@
                             },
                             "id": {
                               "type": "string"
+                            },
+                            "modelCapabilities": {
+                              "additionalProperties": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "defaultReasoningEffort": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "displayName": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "reasoningEffortOptions": {
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "reasoningEffortOptions"
+                                ],
+                                "type": "object"
+                              },
+                              "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                              "type": "object"
                             },
                             "models": {
                               "items": {
@@ -91851,6 +93773,37 @@
                       },
                       "id": {
                         "type": "string"
+                      },
+                      "modelCapabilities": {
+                        "additionalProperties": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "defaultReasoningEffort": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "displayName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "reasoningEffortOptions": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "reasoningEffortOptions"
+                          ],
+                          "type": "object"
+                        },
+                        "description": "缺省沿用适配器能力；显式空列表表示上游未公布可选强度。",
+                        "type": "object"
                       },
                       "models": {
                         "items": {

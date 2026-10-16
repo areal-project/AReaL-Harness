@@ -224,6 +224,9 @@ impl Model for SharedModel {
     fn name(&self) -> &str {
         self.inner.name()
     }
+    fn reasoning_effort(&self) -> Option<&str> {
+        self.inner.reasoning_effort()
+    }
     fn load(&self) -> Option<ModelLoad> {
         let mut state = self.load.lock().unwrap();
         state.update();
@@ -519,6 +522,9 @@ impl Model for ProgressModel {
     }
     fn name(&self) -> &str {
         self.inner.name()
+    }
+    fn reasoning_effort(&self) -> Option<&str> {
+        self.inner.reasoning_effort()
     }
     fn provider(&self) -> &str {
         self.inner.provider()

@@ -22,9 +22,11 @@ export function ConversationComposer({ project, modelConfig: config, modelDisabl
     onEffortChange={value => onConfigureModel({ parameters: { ...config?.parameters, reasoningEffort: value } })}
     onChange={value => {
       if (value === "__inherit") { onConfigureModel({ model: undefined }); return; }
-      if (!value) { onConfigureModel({ model: null }); return; }
-      const model = project.models.find((item: Data) => `${item.providerId}/${item.modelId}` === value);
-      if (model) onConfigureModel({ model: { providerId: model.providerId, modelId: model.modelId } });
+      const model = project.models.find((item: Data) => value ? `${item.providerId}/${item.modelId}` === value : !item.providerId);
+      const parameters = { ...config?.parameters };
+      if (!model?.reasoningEffortOptions?.includes(parameters.reasoningEffort)) delete parameters.reasoningEffort;
+      if (!value) { onConfigureModel({ model: null, parameters }); return; }
+      if (model) onConfigureModel({ model: { providerId: model.providerId, modelId: model.modelId }, parameters });
     }}
     onClose={() => editor.inputApiRef?.current?.focus()}
     onConfigure={onModelSettings}

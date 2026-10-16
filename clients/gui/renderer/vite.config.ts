@@ -32,6 +32,6 @@ export default defineConfig(({ mode }): UserConfig => ({
         remote: fileURLToPath(new URL("./remote.html", import.meta.url)),
       },
     },
-    commonjsOptions: { include: [/node_modules/, /desktop-contract\.cjs$/] },
+    commonjsOptions: { include: [/node_modules/, /(desktop-contract|reasoning-effort)\.cjs$/] },
   },
 }));

@@ -1,5 +1,39 @@
 import { ProviderError, responseError, safeRefresh } from "./errors.js";
 
+// 只投影当前账号的上游能力；不根据模型名称猜测或扩充档位。
+export function modelCatalog(models) {
+  if (!Array.isArray(models)) throw new Error("Invalid OpenAI model catalog");
+  return models
+    .filter(
+      (m) =>
+        m.visibility === "list" && typeof m.slug === "string" && m.slug && m.slug.length <= 256,
+    )
+    .slice(0, 64)
+    .map((m) => {
+      const efforts = m.supported_reasoning_levels;
+      if (
+        efforts !== undefined &&
+        (!Array.isArray(efforts) ||
+          efforts.length > 16 ||
+          efforts.some(
+            (level) =>
+              typeof level?.effort !== "string" || !/^[a-z][a-z0-9_]{0,31}$/.test(level.effort),
+          ))
+      )
+        throw new Error("Invalid OpenAI reasoning capabilities");
+      const options = [...new Set((efforts ?? []).map((level) => level.effort))];
+      const defaultEffort = options.length ? m.default_reasoning_level : undefined;
+      if (defaultEffort != null && !options.includes(defaultEffort))
+        throw new Error("Invalid OpenAI default reasoning effort");
+      return {
+        id: m.slug,
+        name: typeof m.display_name === "string" ? m.display_name.slice(0, 256) : m.slug,
+        reasoningEffortOptions: options,
+        ...(defaultEffort != null ? { defaultReasoningEffort: defaultEffort } : {}),
+      };
+    });
+}
+
 export class ModelCatalog {
   constructor(session, fetch, { now = Date.now, ttlMs = 30_000 } = {}) {
     Object.assign(this, { session, fetch, now, ttlMs });
@@ -81,31 +115,14 @@ export class ModelCatalog {
     if (revision !== this.session.revision || this.session.busy)
       throw new ProviderError("account_changed", { phase: "catalog" });
     const seen = new Set();
-    this.models = data.models
-      .filter((m) => {
-        if (
-          m.visibility !== "list" ||
-          typeof m.slug !== "string" ||
-          !m.slug ||
-          m.slug.length > 256 ||
-          seen.has(m.slug) ||
-          m.slug.includes(access)
-        )
-          return false;
-        seen.add(m.slug);
-        return true;
-      })
-      .slice(0, 256)
-      .map((m) => ({
-        id: m.slug,
-        name:
-          typeof m.display_name === "string" &&
-          m.display_name.length <= 256 &&
-          !m.display_name.includes(access)
-            ? m.display_name
-            : m.slug,
-        source: "account",
-      }));
+    const visible = data.models.filter((m) => {
+      if (m.visibility !== "list" || typeof m.slug !== "string" || !m.slug ||
+          m.slug.length > 256 || seen.has(m.slug) || m.slug.includes(access)) return false;
+      seen.add(m.slug);
+      return true;
+    }).map((m) => ({ ...m, display_name: typeof m.display_name === "string" &&
+      m.display_name.length <= 256 && !m.display_name.includes(access) ? m.display_name : m.slug }));
+    this.models = modelCatalog(visible).map((m) => ({ ...m, source: "account" }));
     this.revision = revision;
     this.fetchedAt = this.now();
     this.expiresAt = this.fetchedAt + this.ttlMs;

@@ -2,6 +2,7 @@
 const { readFile, appendFile } = require('node:fs/promises');
 const { join } = require('node:path');
 const { randomUUID, randomBytes } = require('node:crypto');
+const { reasoningEfforts } = require('@areal/workbench/reasoning-effort');
 const { isDeepStrictEqual } = require('node:util');
 const { SubscriptionStore } = require('./subscription.cjs');
 const { definitions, connectionMetadata } = require('@areal/provider-config');
@@ -21,7 +22,7 @@ function modelParameters(raw = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('模型参数无效');
   const rules = { temperature: v => Number.isFinite(v) && v >= 0 && v <= 2, maxOutputTokens: v => Number.isSafeInteger(v) && v > 0,
     contextWindowTokens: v => Number.isSafeInteger(v) && v > 0 && v <= 2_000_000,
-    reasoningEffort: v => ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'].includes(v) };
+    reasoningEffort: v => reasoningEfforts.includes(v) };
   const result = {};
   for (const [name, value] of Object.entries(raw)) {
     if (!Object.hasOwn(rules, name) || value !== null && !rules[name](value)) throw new Error('模型参数无效');
@@ -71,6 +72,15 @@ class AppProviders {
           return true;
         } finally { this.backend.providerUpdating = false; }
       };
+      // 能力可在模型 ID 不变时更新；后台刷新不重启 Core，也不修改已受理的配置快照。
+      this.catalogTimer = setInterval(() => {
+        if (this.catalogRefresh || service.account.busy || service.account.lifetime.signal.aborted || this.backend.closing || this.backend.providerUpdating) return;
+        service.invalidateCatalog();
+        this.catalogRefresh = service.account.track(this.refreshSubscription(service))
+          .catch(() => { console.warn('ChatGPT 模型能力同步失败，请在模型设置中刷新。'); })
+          .finally(() => { this.catalogRefresh = null; });
+      }, 30_000);
+      this.catalogTimer.unref?.();
       return service;
     }).catch(error => { this.openaiPromise = null; throw error; });
     return this.openaiPromise;
@@ -121,6 +131,9 @@ class AppProviders {
     } else if (op === 'cancel') await service.account.cancel();
     else if (op === 'probe') return service.probe(request.model);
     else if (op !== 'status') throw new Error('不支持的 ChatGPT 操作');
+    return this.refreshSubscription(service);
+  }
+  async refreshSubscription(service) {
     const status = await service.account.status();
     await service.ready();
     // OAuth completion does not restart Core or alter existing task selections.
@@ -145,8 +158,12 @@ class AppProviders {
       return;
     }
     await service.ready();
-    const desired = { id: service.id ?? 'areal_openai', protocol: 'responses', endpoint: service.endpoint, credentialRef: service.id ?? 'areal_openai', models: (status.models ?? service.models).map(m => m.id), parameters: {} };
-    if (!existing || Object.entries(desired).some(([k,v]) => JSON.stringify(existing[k]) !== JSON.stringify(v)))
+    const models = status.models ?? service.models;
+    const desired = { id: service.id ?? 'areal_openai', protocol: 'responses', endpoint: service.endpoint, credentialRef: service.id ?? 'areal_openai', models: models.map(m => m.id),
+      modelCapabilities: Object.fromEntries(models.map(m => [m.id, { displayName: m.name, reasoningEffortOptions: m.reasoningEffortOptions ?? [], ...(m.defaultReasoningEffort ? { defaultReasoningEffort: m.defaultReasoningEffort } : {}) }])), parameters: {} };
+    // Option 参数可能被 Core 序列化为 null；省略与 null 都表示未配置。
+    const current = existing && { ...existing, parameters: Object.fromEntries(Object.entries(existing.parameters ?? {}).filter(([,v]) => v != null)) };
+    if (!current || Object.entries(desired).some(([k,v]) => !isDeepStrictEqual(current[k], v)))
       await this.backend.submit(project, 'areal/provider/upsert', { provider: { ...desired, revision: existing?.revision ?? 0 }, expectedRevision: existing?.revision ?? 0 });
   }
   async refreshGoalTransport(project, threadId) {
@@ -166,6 +183,7 @@ class AppProviders {
     });
   }
   async close() {
+    clearInterval(this.catalogTimer);
     try { if (this.openaiPromise) await (await this.openaiPromise).close(); }
     finally { if (this.networkPromise) (await this.networkPromise).close(); }
   }
@@ -222,7 +240,7 @@ class AppProviders {
         const endpoint = previous && raw.baseUrl === endpointBase(previous.endpoint) && protocol === previous.protocol
           ? previous.endpoint : connection(raw.baseUrl, raw.protocol).endpoint;
         if (!Array.isArray(raw.models)) throw new Error('请填写模型列表');
-        const models = raw.models.map(m => ({ id: m.id?.trim(), enabled: m.enabled !== false, ...(m.displayName?.trim() ? { displayName: m.displayName.trim() } : {}), parameters: modelParameters(m.parameters) }));
+        const models = raw.models.map(m => ({ id: m.id?.trim(), enabled: m.enabled !== false, ...(m.reasoningEffortOptions !== undefined ? { reasoningEffortOptions: m.reasoningEffortOptions } : {}), ...(m.defaultReasoningEffort ? { defaultReasoningEffort: m.defaultReasoningEffort } : {}), ...(m.displayName?.trim() ? { displayName: m.displayName.trim() } : {}), parameters: modelParameters(m.parameters) }));
         const item = { id: previous?.id ?? `app_${randomUUID().replaceAll('-', '')}`, name: raw.name.trim(), endpoint, protocol, models, parameters: modelParameters(raw.parameters), enabled: raw.enabled !== false,
           ...(previous?.apiKeyEnv ? { apiKeyEnv: previous.apiKeyEnv } : {}) };
         if (request.authentication === 'none') delete item.apiKeyEnv;

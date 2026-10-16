@@ -738,6 +738,21 @@ fn configured_models(
             item.protocol
         };
         result.providers.push(Provider {
+            model_capabilities: item
+                .models
+                .iter()
+                .filter_map(|entry| {
+                    let options = entry.reasoning_effort_options.clone()?;
+                    Some((
+                        entry.id.clone(),
+                        areal_protocol::desktop::ProviderModelCapabilities {
+                            reasoning_effort_options: options,
+                            default_reasoning_effort: entry.default_reasoning_effort.clone(),
+                            display_name: entry.display_name.clone(),
+                        },
+                    ))
+                })
+                .collect(),
             id: item.id.clone(),
             revision: 0,
             endpoint: if selected {

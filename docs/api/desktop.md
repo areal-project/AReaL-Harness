@@ -78,7 +78,9 @@ thread/configure 使用 expectedRevision，仅空闲且不压缩时生效。rese
 
 `areal/thread/start` 使用 `{requestId,agentProfile:{id,revision},cwd?,model?,parameters?,dynamicTools?}` 创建按指定 Profile 冻结配置的 Thread。客户端可以用 `--agent id@revision` 传入同一引用；不需要再指定 Workflow。Profile 的 `workflow` 字段是 Agent 属性，创建 Thread 时自动启动一次并在快照 `desktop.workflowRun` 中记录 Workgroup ID 与启动状态；实时状态通过 Workgroup API 查询。相同 requestId 重试和恢复 Thread 不会重复启动；绑定 Workflow 的 Profile 只能在创建 Thread 时选择，不能通过 `thread/configure` 切换。没有 Workflow 的 Profile 不要求 Workgroup policy，仍可使用其 `toolAllowlist` 允许的工具。
 
-可选 `parameters.reasoningSummary` 接受 `auto` / `concise` / `detailed`，仅用于 Responses，按 Provider 默认 → Thread 参数合并；Provider/服务默认与 Thread 都未配置时不启用摘要请求。`areal/model/list.parameterCapabilities` 只在 Responses Provider 下包含 `reasoningSummary`，表示适配器支持传参，不保证供应商的每个模型都支持所选模式。`areal/model/list.reasoningEffortOptions` 返回现有 HTTP 适配器允许的 `none/minimal/low/medium/high/xhigh`（其他适配器为空），同样不保证远端每个模型都支持。Composer 从目录读取这些选项，通过原会话配置提交参数。事件与分段规则见 [Core 思考进度](core.md#思考进度)。
+Provider 可选 `modelCapabilities` 按模型 ID 保存 `{reasoningEffortOptions,defaultReasoningEffort?,displayName?}`。Core 校验模型归属、允许值和默认值，`areal/model/list` 投影对应字段；`model/list` 同步投影 `supportedReasoningEfforts`。有模型元数据时按该模型的列表校验选择，显式空数组表示没有已公布的可选强度；旧 Provider 缺省该字段时仍返回 HTTP 适配器允许的 `none/minimal/low/medium/high/xhigh/max`（其他适配器为空），不保证远端支持。上游默认值仅在 Thread、共享模型配置和 Provider 都未指定时采用。`ultra` 是[配置指南](../guides/configuration.md)中的显式客户端模式，不作为 HTTP 强度直接发送。
+
+ChatGPT 桌面适配器使用当前账号的 `/v1/models` 元数据，保留上游顺序、支持档位与默认值，并每 30 秒刷新；模型 ID 不变的能力更新也通过 Provider revision 生效，不改写已受理 Turn/队列的配置快照。获取失败保留已发布目录，设置页刷新报告失败；切换账号不会接纳旧账号的在途结果。未知的新档位明确拒绝同步并要求升级客户端，不静默截断。Composer 与任务草稿只读取 Core 目录，不按模型名称推断能力。
 
 options.readOnly 收窄 Scope 写根和网络；toolAllowlist 收窄 Profile；preapprovedTools 不能取消部署强制审批，且只匹配当前工具名；预批准读取工具不会豁免它触发的 hook。maxModelRounds 为 1–1024，最后一轮仅交接，不等于团队请求预算。Profile/Workflow 定义使用不可变 id/revision；Skill 引用不冻结资源内容，见下文。
 

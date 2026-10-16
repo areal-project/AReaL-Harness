@@ -493,6 +493,13 @@ impl Engine {
             .last()
             .and_then(|t| t.configuration.clone());
         let task_read_only = configuration.as_ref().is_some_and(|c| c.read_only);
+        let ultra = cell
+            .state
+            .lock()
+            .await
+            .active
+            .as_ref()
+            .is_some_and(|active| active.model.reasoning_effort() == Some("ultra"));
         if let Some(config) = configuration {
             if let Some(prompt) = &config.options.system_prompt {
                 instructions = prompt.clone();
@@ -512,6 +519,9 @@ impl Engine {
             instructions.push_str(&config.options.append_instructions);
         }
         instructions.push_str(&format!("\nExecution settings supplied by Core: {}. Tool approvals use the product dialog; do not ask the user to repeat approval in chat.\n", json!({"permissionMode":self.permission_config().mode,"runtime":self.sandbox(),"taskReadOnly":task_read_only || cell.research,"temporaryDirectory":self.command_scratch(cell)})));
+        if ultra && !cell.research {
+            instructions.push_str("\nUltra mode was explicitly selected. When permitted by the user's instructions and the available tools, proactively delegate suitable independent work to child agents while continuing useful work yourself. Keep simple or tightly dependent work local. Consume and verify child results before relying on them. This mode does not grant permissions, enable unavailable tools, or increase shared task budgets.\n");
+        }
         if cell.research {
             instructions.push_str(&format!("\nYou are a bounded research worker. Your deliverable is an answer to the assigned subquestion, not a complete solution of the original issue. The repository is read-only. Write reproductions, logs and test output only under {} (also TMPDIR). Do not edit source or tests, install dependencies, delegate further, or leave background work. Inspect the assigned question and run focused checks when useful. Once you have enough evidence, report it instead of expanding into additional investigations or broad test suites. If a check needs repository writes, report that limitation or run a focused reproduction in your scratch. Return concise evidence within 2500 UTF-8 bytes with file paths/lines, observed commands/results, uncertainties and a recommended change. Reserve enough of your request budget to write this report; incomplete evidence with explicit limitations is useful. Parent performs integration and final verification; your conclusions are advisory.", self.command_scratch(cell).context("research scratch missing")?.display()));
         } else if self.extensions.agents.is_some() {
