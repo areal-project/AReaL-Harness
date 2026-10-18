@@ -1,0 +1,16 @@
+{
+  "initial_files_sha256": {
+    "edit.program": "2a87eddcd61b8c15898aa1bd088e6b57829f64fb5b55da1ada442ad8bd08b956",
+    "public/DSL.md": "4a593c129b1ae9109e96ff142974eeb24c8108de426c9882f605f6bf6c8df64a",
+    "public/expected.txt": "71bf4a7df6e1648da1c41c1349efb6ba8488c0911b6537869a1e54e7cf89dd91",
+    "public/input.txt": "a1e8d66f0051b20364ccca195fe10192f16e3dd401a6cc7432dd0ac4082ac4da",
+    "public/run_edit.py": "cb486854488c2bda5ab6a5598f69d84f8406afc7e16f157bc35dc1765676789d"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "7fb40f90d6c65104a6c9b7b3b07f62bcaedf2507cb46a9bcf6bc93ab90bb82a6",
+  "source_image_id": "sha256:0f5b23d409822efdb0c61f6d39d598560748dc5c8f1407d81cc3ae862282b9b4",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc002006-revise-equipment-service-register@sha256:ca5c9307c512b076fda55f0f3e34cd4476b0d8d90ae37986901e9f052cd95f4f"
+  ],
+  "unredacted_source_env_sha256": "5d58887477dc94cd3b09d102bc32ac27550c3a23fd2436dc41426ed3adc104dc"
+}

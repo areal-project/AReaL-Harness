@@ -1,0 +1,33 @@
+[package]
+name = "areal-app-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+areal-protocol.workspace = true
+areal-engine.workspace = true
+anyhow.workspace = true
+axum.workspace = true
+base64.workspace = true
+futures-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+areal-local-service.workspace = true
+areal-runtime = { path = "../../runtime/daemon" }
+areal-runtime-client.workspace = true
+areal-runtime-supervisor.workspace = true
+tempfile.workspace = true
+tokio-tungstenite.workspace = true
+reqwest.workspace = true
+jsonschema.workspace = true

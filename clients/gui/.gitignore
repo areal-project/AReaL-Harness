@@ -1,0 +1,6 @@
+node_modules/
+renderer/dist/
+dist/
+.stage/
+test-results/
+playwright-report/

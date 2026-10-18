@@ -1,0 +1,5 @@
+.browser-style-trial { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--color-border); border-radius: 8px; }
+.browser-style-trial-fields, .browser-style-trial-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.browser-style-trial label { display: flex; flex-direction: column; gap: 4px; min-width: 110px; }
+.browser-style-trial input, .browser-style-trial select, .browser-style-trial textarea { color: inherit; background: var(--color-background); border: 1px solid var(--color-border); border-radius: 5px; padding: 5px; }
+.browser-style-trial textarea { min-height: 48px; }

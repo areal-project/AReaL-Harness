@@ -1,0 +1,40 @@
+{
+  "name": "areal-gui-workspace",
+  "version": "0.1.8",
+  "private": true,
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "pnpm --filter @areal/gui-renderer build",
+    "typecheck": "pnpm --filter @areal/gui-renderer typecheck && pnpm --filter @areal/gui-renderer exec tsc --allowJs --checkJs --noEmit --skipLibCheck --target ES2022 --module NodeNext ../packages/workbench/client/desktop-contract.cjs",
+    "start": "node scripts/start.mjs",
+    "package": "node scripts/package.mjs",
+    "verify": "node scripts/verify-public.mjs && node --test scripts/side-restore.test.mjs scripts/operation-contract.test.cjs scripts/side-model-intent.test.mjs",
+    "test:rsi": "node scripts/rsi-goal-smoke.mjs",
+    "test:queue": "node scripts/queue-smoke.mjs",
+    "test:interactions": "node scripts/interaction-smoke.mjs",
+    "test:composer": "node scripts/composer-smoke.mjs",
+    "test:model-selection": "node scripts/model-selection-smoke.mjs",
+    "test:connection": "node scripts/connection-smoke.mjs",
+    "test:architecture": "node scripts/architecture-smoke.mjs",
+    "test:conversation-derivation": "node scripts/conversation-derivation-smoke.mjs",
+    "test:trajectory": "node --test scripts/trajectory.test.mjs scripts/trajectory-polling.test.mjs",
+    "test:trajectory-config": "node scripts/trajectory-config-smoke.mjs",
+    "test:trajectory-ui": "node scripts/trajectory-ui-smoke.mjs",
+    "test:e2e": "node scripts/migration-smoke.mjs",
+    "sign:mac": "node scripts/notarize-macos.mjs",
+    "test:update": "node scripts/update-smoke.mjs",
+    "test:core-process": "node scripts/core-process-smoke.mjs",
+    "test:browser-feasibility": "node scripts/browser-feasibility.mjs",
+    "test:browser-attach": "node scripts/browser-attach-smoke.mjs",
+    "test:browser-annotations": "node scripts/browser-annotation-smoke.mjs",
+    "test:browser-contracts": "node --test scripts/browser-read-contract.test.mjs scripts/browser-network-policy.test.mjs scripts/browser-diagnostics-contract.test.cjs scripts/browser-evidence-contract.test.mjs scripts/browser-startup-contract.test.mjs scripts/browser-observation-privacy.test.cjs",
+    "test:regressions": "node --test scripts/browser-observation-privacy.test.cjs scripts/trajectory-polling.test.mjs scripts/builder-download.test.mjs"
+  },
+  "devDependencies": {
+    "prettier": "3.9.8"
+  }
+}

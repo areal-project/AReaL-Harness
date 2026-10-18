@@ -1,0 +1,30 @@
+OPERATIONS SERVICE REGISTER
+# preserve this heading exactly
+@@ record EQ-100
+class=compressor
+lifecycle=active
+region=NORTH
+service_queue=standard
+coordinator=legacy-desk
+dispatch_window=night
+@@ end
+
+@@ record EQ-101
+class=valve
+lifecycle=active
+region=WEST
+criticality=high
+inspection_days=60
+service_queue=normal
+@@ end
+
+@@ record EQ-102
+class=compressor
+lifecycle=active
+region=EAST
+service_queue=standard
+coordinator=legacy-desk
+dispatch_state=retired
+dispatch_window=none
+@@ end
+END REGISTER

@@ -1,0 +1,22 @@
+[package]
+name = "areal-runtime-fs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+grep-regex = "0.1.14"
+grep-searcher = "0.1.16"
+ignore = "0.4.25"
+serde.workspace = true
+areal-runtime-protocol.workspace = true
+base64.workspace = true
+rustix.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

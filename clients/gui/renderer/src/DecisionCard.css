@@ -1,0 +1,47 @@
+.decision-card { margin-bottom: 8px; padding: 16px; border: 1px solid var(--color-border); border-radius: var(--radius-overlay); background: var(--color-composer-catalog, var(--color-composer)); color: var(--color-foreground); font-size: var(--text-ui-base); line-height: 20px; }
+.decision-card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 20px; margin-bottom: 14px; }
+.decision-card-label { display: flex; align-items: center; gap: 8px; color: var(--color-foreground-subtle); font-size: var(--text-ui-base); }
+.decision-card-label > svg { width: 16px; height: 16px; flex-shrink: 0; }
+.decision-card-header-actions { display: flex; align-items: center; gap: 8px; }
+.decision-card-body { max-height: min(40dvh, 24rem); overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; }
+.decision-card-title { margin: 0 0 12px; font-size: var(--text-ui-base); font-weight: 500; line-height: 20px; outline: none; }
+.decision-card-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.decision-card .decision-button { height: 28px; padding: 0 9px; border-radius: 999px; font-size: var(--text-ui-base); line-height: 20px; }
+.decision-card .decision-primary { background: var(--color-foreground); color: var(--color-background); }
+.decision-card .decision-primary:disabled { background: var(--color-foreground-subtle); color: var(--color-background); }
+.decision-card kbd { display: inline-flex; align-items: center; justify-content: center; height: 18px; padding: 0 5px; border-radius: 4px; background: var(--color-hover); font: inherit; font-size: var(--text-ui-sm); }
+.decision-card .ui-feedback { margin: 10px 0 0; }
+.approval-preview { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--color-background); color: var(--color-foreground-subtle); font-size: var(--text-ui-caption); line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.approval-browser-preview p { margin: 4px 0; }
+.approval-browser-preview ol { margin: 8px 0; }
+.approval-browser-preview details { margin-top: 8px; }
+.approval-scope-details { margin-top: 8px; color: var(--color-foreground-subtle); font-size: var(--text-ui-sm); line-height: 18px; }
+.approval-scope-details summary { cursor: var(--interactive-cursor, pointer); }
+.approval-scope-details p { margin: 8px 0 0; }
+.approval-split { display: flex; border-radius: 999px; background: var(--color-foreground); }
+.decision-card .approval-split .decision-primary { border-radius: 999px 0 0 999px; padding-right: 4px; }
+.decision-card .approval-split .approval-scope-trigger { width: 26px; padding: 0 6px 0 2px; border-radius: 0 999px 999px 0; background: var(--color-foreground); color: var(--color-background); }
+.approval-scope-menu { width: 282px; padding: 6px; }
+.approval-scope-menu [role="menuitem"] { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px; }
+.approval-scope-menu small { color: var(--color-foreground-subtle); font-size: var(--text-ui-sm); }
+/* Keep the existing Lexical editor mounted so swapping decision surfaces preserves drafts. */
+.interaction-composer-compact .composer-surface { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 8px 6px 12px; }
+.interaction-composer-compact .composer-editor { flex: 1 1 120px; padding: 0; max-height: 80px; }
+.interaction-composer-compact .composer-editor :is([contenteditable], textarea) { min-height: 20px; padding-bottom: 0; font-size: var(--text-ui-base); line-height: 20px; }
+.interaction-composer-compact .composer-toolbar { flex: 1 0 auto; }
+.interaction-composer-compact .composer-toolbar [data-composer-leading-actions] { flex: 0 0 auto; }
+@media(max-width: 600px) { .decision-card { padding: 14px; } .decision-card-footer { flex-wrap: wrap; } }
+
+.question-answer-bubble { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-ui-base); line-height: 20px; }
+.question-answer-bubble p { margin: 0; }
+.question-answer-bubble > div + div { margin-top: 12px; }
+.question-answer-title { opacity: .7; font-size: var(--text-ui-caption); margin-bottom: 4px !important; }
+
+.decision-card:focus-visible { outline: var(--focus-width) solid var(--color-foreground-subtle); outline-offset: 2px; }
+
+/* The editor stays in the same React/DOM owner; only compact control placement changes. */
+.interaction-composer-compact .composer-editor { padding-left: 34px; }
+.interaction-composer-compact .composer-toolbar { position: static; flex: 0 0 auto; }
+.interaction-composer-compact [data-composer-leading-actions] { position: absolute; left: 10px; bottom: 6px; width: 32px; }
+.interaction-composer-compact :is([aria-label="更改权限"], [aria-label="退出计划模式"], [aria-label="退出目标模式"]) { display: none; }
+.interaction-composer-compact .composer-model-trigger { max-width: 200px; }

@@ -1,0 +1,2589 @@
+{
+  "schema_version": 1,
+  "scope": "Four targeted native tool probes, not MM480; all 56 planned task attempts are retained.",
+  "sources": {
+    "baseline": {
+      "revision": "85f4a279391124adde103a825c7ea088e0545f9d"
+    },
+    "initial": {
+      "revision": "a138620b2dca0e0e97f320eea7b363ffa683a818"
+    },
+    "tuned": {
+      "parent": "a138620b2dca0e0e97f320eea7b363ffa683a818",
+      "patch_sha256": "a91955e42c3ab5db52da7d5726e9f7d9d9abdbd6beeedbed4296415111236680"
+    },
+    "final": {
+      "revision": "acfdb2e003e9d9b18af1b8410fbae79f13d237d4",
+      "files": {
+        "areal-runtime": "72c6c7d2e3bc0a8ed0f2fbf61e44c05e9a9f313204b5593c0f96fef66dc43465",
+        "areal-runtime-fs": "3e0ca0070ea29556fa1dbdc5cd77699e1be3bbd0df993541886d5eb96f930aac",
+        "areal-server": "7a3aa6152c21061e847f581a3f3789d9546d044c0afca0c60ac62e97d15b3e56",
+        "areal-tui": "cf0e042de2c04826190015ac7468d876a83964a1f59101a3dc3a3b17393b696c",
+        "launch.py": "78eaff65e70f6916e819f1e531d89e99928de788df4baf25299cc00a9fbeb382"
+      }
+    }
+  },
+  "publication": {
+    "omitted": "Absolute binary directories were removed from schedules. Full model traces, local workspaces, credentials and private provider routing are not published. Source hashes identify original local JSON files, not this publication file.",
+    "measurement": "elapsed_s spans launcher start through exit/cleanup, excludes build, fixture setup and independent grading. Input includes cached input. Tool errors include expected failing diagnostic commands and are not task failures.",
+    "preflight": "Connectivity checks are separate from probe attempts. A model-to-pwd-to-final smoke succeeded after removing incompatible SOCKS proxy variables only from subprocess environments. The selected model and provider configuration were unchanged."
+  },
+  "rounds": [
+    {
+      "name": "exploratory",
+      "original_results_sha256": "9e16e9170568b0007051ff77563e150ac10e58647a95926cb38db3bd64757bda",
+      "original_plan_sha256": "7bd9cf972fea2f34a0a9b07100b320a6e235827e91886dcef4ba62df664d454a",
+      "plan": {
+        "suite": "native-tool-mechanism-probes-v1",
+        "seed": 163,
+        "repeat": 1,
+        "jobs": 2,
+        "timeout": 180,
+        "direct": true,
+        "model": "grok-4.7",
+        "schedule": [
+          {
+            "variant": "baseline",
+            "case": "batch-edit",
+            "repeat": 0
+          },
+          {
+            "variant": "initial",
+            "case": "failure-context",
+            "repeat": 0
+          },
+          {
+            "variant": "baseline",
+            "case": "pricing",
+            "repeat": 0
+          },
+          {
+            "variant": "baseline",
+            "case": "output-tail",
+            "repeat": 0
+          },
+          {
+            "variant": "initial",
+            "case": "output-tail",
+            "repeat": 0
+          },
+          {
+            "variant": "initial",
+            "case": "pricing",
+            "repeat": 0
+          },
+          {
+            "variant": "baseline",
+            "case": "failure-context",
+            "repeat": 0
+          },
+          {
+            "variant": "initial",
+            "case": "batch-edit",
+            "repeat": 0
+          }
+        ],
+        "binaries": {
+          "baseline": {
+            "areal-server": "7705816d0c5a0bf0ecd97cc364bb8213c2bc9886705b1fde466f2466d1ce95ea",
+            "areal-tui": "bf19606cbc70a34cf2360b17f0da868d7d0409500c7eceea044078b2a374f7f8",
+            "areal-runtime": "3e947e4f5f310eb4a686ba4ef31bea5fc2ae71b276691a4b29a70ee4121b1a37",
+            "areal-runtime-fs": "8bd421a551c7719e7d272d95404f6f40e2fe3d53433ff491896300ea65628ada"
+          },
+          "initial": {
+            "areal-server": "5b12eef911fb82219ade8bdfd1af27f910c0348d94037234a621ae52868466c4",
+            "areal-tui": "cf0e042de2c04826190015ac7468d876a83964a1f59101a3dc3a3b17393b696c",
+            "areal-runtime": "72c6c7d2e3bc0a8ed0f2fbf61e44c05e9a9f313204b5593c0f96fef66dc43465",
+            "areal-runtime-fs": "88eedc089717cb3613649769e3afabcad47c9be54649d87a3cfcd4521565d52b"
+          }
+        },
+        "fixtures": {
+          "pricing": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "output-tail": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "failure-context": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "batch-edit": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c"
+        }
+      },
+      "request_parameters": {
+        "model": "grok-4.7",
+        "parallel_tool_calls": true
+      },
+      "results": [
+        {
+          "trial_id": "failure-context-0-initial",
+          "variant": "initial",
+          "case": "failure-context",
+          "repeat": 0,
+          "elapsed_s": 27.764,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 101513,
+            "cachedInputTokens": 70912,
+            "outputTokens": 852
+          },
+          "model_requests": 8,
+          "model_ms": 21527,
+          "tool_calls": 10,
+          "tool_counts": {
+            "fs_list": 1,
+            "run_command": 4,
+            "read_process": 1,
+            "read_file": 3,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 34822,
+          "output_views": 3,
+          "request_bytes": 381263,
+          "usage_complete": true,
+          "fixture_sha256": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "prompt_sha256": "df010a363ca96a97956e9ff8031408a1cea63895e2b842566b90d11d983a409d"
+        },
+        {
+          "trial_id": "batch-edit-0-baseline",
+          "variant": "baseline",
+          "case": "batch-edit",
+          "repeat": 0,
+          "elapsed_s": 29.319,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 66216,
+            "cachedInputTokens": 29056,
+            "outputTokens": 789
+          },
+          "model_requests": 7,
+          "model_ms": 20390,
+          "tool_calls": 19,
+          "tool_counts": {
+            "search_files": 1,
+            "fs_list": 1,
+            "read_file": 2,
+            "fs_apply_patch": 14,
+            "run_command": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 9941,
+          "output_views": 0,
+          "request_bytes": 239346,
+          "usage_complete": true,
+          "fixture_sha256": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c",
+          "prompt_sha256": "1aeedf0d358e859b798671584341f22345f48952ec5a0b5cb924b510528ede57"
+        },
+        {
+          "trial_id": "pricing-0-baseline",
+          "variant": "baseline",
+          "case": "pricing",
+          "repeat": 0,
+          "elapsed_s": 11.032,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 41379,
+            "cachedInputTokens": 32896,
+            "outputTokens": 246
+          },
+          "model_requests": 5,
+          "model_ms": 8634,
+          "tool_calls": 6,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1,
+            "verify_command": 1
+          },
+          "tool_errors": 0,
+          "result_bytes": 7178,
+          "output_views": 0,
+          "request_bytes": 147409,
+          "usage_complete": true,
+          "fixture_sha256": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "prompt_sha256": "3743167d107084d2d1517ae3c2794faf6006ed55e1df3bc3509c1b61e2261b39"
+        },
+        {
+          "trial_id": "output-tail-0-baseline",
+          "variant": "baseline",
+          "case": "output-tail",
+          "repeat": 0,
+          "elapsed_s": 43.614,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 214028,
+            "cachedInputTokens": 155264,
+            "outputTokens": 848
+          },
+          "model_requests": 17,
+          "model_ms": 40338,
+          "tool_calls": 18,
+          "tool_counts": {
+            "run_command": 2,
+            "fs_list": 1,
+            "read_process": 12,
+            "read_file": 2,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 6,
+          "result_bytes": 33751,
+          "output_views": 0,
+          "request_bytes": 783033,
+          "usage_complete": true,
+          "fixture_sha256": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "prompt_sha256": "87ff2e417384acf6d87190b7490332a60bc30e2cc9c81145f47f27fa1d2350fb"
+        },
+        {
+          "trial_id": "pricing-0-initial",
+          "variant": "initial",
+          "case": "pricing",
+          "repeat": 0,
+          "elapsed_s": 11.989,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 42839,
+            "cachedInputTokens": 11520,
+            "outputTokens": 253
+          },
+          "model_requests": 5,
+          "model_ms": 9613,
+          "tool_calls": 6,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1,
+            "verify_command": 1
+          },
+          "tool_errors": 0,
+          "result_bytes": 7217,
+          "output_views": 0,
+          "request_bytes": 153044,
+          "usage_complete": true,
+          "fixture_sha256": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "prompt_sha256": "3743167d107084d2d1517ae3c2794faf6006ed55e1df3bc3509c1b61e2261b39"
+        },
+        {
+          "trial_id": "output-tail-0-initial",
+          "variant": "initial",
+          "case": "output-tail",
+          "repeat": 0,
+          "elapsed_s": 59.161,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 459684,
+            "cachedInputTokens": 329344,
+            "outputTokens": 1374
+          },
+          "model_requests": 26,
+          "model_ms": 54575,
+          "tool_calls": 28,
+          "tool_counts": {
+            "run_command": 3,
+            "fs_list": 1,
+            "read_process": 20,
+            "read_file": 2,
+            "fs_read": 1,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 19,
+          "result_bytes": 58003,
+          "output_views": 2,
+          "request_bytes": 1680151,
+          "usage_complete": true,
+          "fixture_sha256": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "prompt_sha256": "87ff2e417384acf6d87190b7490332a60bc30e2cc9c81145f47f27fa1d2350fb"
+        },
+        {
+          "trial_id": "failure-context-0-baseline",
+          "variant": "baseline",
+          "case": "failure-context",
+          "repeat": 0,
+          "elapsed_s": 37.741,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 63980,
+            "cachedInputTokens": 32640,
+            "outputTokens": 637
+          },
+          "model_requests": 7,
+          "model_ms": 35521,
+          "tool_calls": 9,
+          "tool_counts": {
+            "run_command": 2,
+            "fs_list": 1,
+            "read_process": 3,
+            "read_file": 2,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 13022,
+          "output_views": 0,
+          "request_bytes": 236473,
+          "usage_complete": true,
+          "fixture_sha256": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "prompt_sha256": "df010a363ca96a97956e9ff8031408a1cea63895e2b842566b90d11d983a409d"
+        },
+        {
+          "trial_id": "batch-edit-0-initial",
+          "variant": "initial",
+          "case": "batch-edit",
+          "repeat": 0,
+          "elapsed_s": 27.248,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 72831,
+            "cachedInputTokens": 39936,
+            "outputTokens": 1413
+          },
+          "model_requests": 7,
+          "model_ms": 24603,
+          "tool_calls": 8,
+          "tool_counts": {
+            "search_files": 1,
+            "fs_list": 1,
+            "read_file": 3,
+            "fs_apply_patches": 2,
+            "run_command": 1
+          },
+          "tool_errors": 1,
+          "result_bytes": 11745,
+          "output_views": 0,
+          "request_bytes": 255224,
+          "usage_complete": true,
+          "fixture_sha256": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c",
+          "prompt_sha256": "1aeedf0d358e859b798671584341f22345f48952ec5a0b5cb924b510528ede57"
+        }
+      ]
+    },
+    {
+      "name": "paired",
+      "original_results_sha256": "120968776b9d55f90eee9d86a955e7245cbd13bf3cda592d0a86e22da03dfaf6",
+      "original_plan_sha256": "7e9e7714b0502f0fe7e4aa9f45a9ef5c67c9cadfe78a341d3c36ceba301e2510",
+      "plan": {
+        "suite": "native-tool-mechanism-probes-v1",
+        "seed": 163,
+        "repeat": 3,
+        "jobs": 2,
+        "timeout": 180,
+        "direct": true,
+        "model": "grok-4.7",
+        "schedule": [
+          {
+            "variant": "baseline",
+            "case": "failure-context",
+            "repeat": 2
+          },
+          {
+            "variant": "tuned",
+            "case": "batch-edit",
+            "repeat": 1
+          },
+          {
+            "variant": "tuned",
+            "case": "failure-context",
+            "repeat": 0
+          },
+          {
+            "variant": "baseline",
+            "case": "pricing",
+            "repeat": 2
+          },
+          {
+            "variant": "baseline",
+            "case": "output-tail",
+            "repeat": 1
+          },
+          {
+            "variant": "tuned",
+            "case": "output-tail",
+            "repeat": 0
+          },
+          {
+            "variant": "baseline",
+            "case": "output-tail",
+            "repeat": 2
+          },
+          {
+            "variant": "tuned",
+            "case": "pricing",
+            "repeat": 0
+          },
+          {
+            "variant": "baseline",
+            "case": "pricing",
+            "repeat": 0
+          },
+          {
+            "variant": "tuned",
+            "case": "batch-edit",
+            "repeat": 2
+          },
+          {
+            "variant": "baseline",
+            "case": "batch-edit",
+            "repeat": 1
+          },
+          {
+            "variant": "baseline",
+            "case": "failure-context",
+            "repeat": 0
+          },
+          {
+            "variant": "baseline",
+            "case": "pricing",
+            "repeat": 1
+          },
+          {
+            "variant": "baseline",
+            "case": "batch-edit",
+            "repeat": 2
+          },
+          {
+            "variant": "tuned",
+            "case": "pricing",
+            "repeat": 1
+          },
+          {
+            "variant": "tuned",
+            "case": "output-tail",
+            "repeat": 2
+          },
+          {
+            "variant": "baseline",
+            "case": "output-tail",
+            "repeat": 0
+          },
+          {
+            "variant": "tuned",
+            "case": "output-tail",
+            "repeat": 1
+          },
+          {
+            "variant": "tuned",
+            "case": "failure-context",
+            "repeat": 1
+          },
+          {
+            "variant": "tuned",
+            "case": "pricing",
+            "repeat": 2
+          },
+          {
+            "variant": "baseline",
+            "case": "batch-edit",
+            "repeat": 0
+          },
+          {
+            "variant": "baseline",
+            "case": "failure-context",
+            "repeat": 1
+          },
+          {
+            "variant": "tuned",
+            "case": "batch-edit",
+            "repeat": 0
+          },
+          {
+            "variant": "tuned",
+            "case": "failure-context",
+            "repeat": 2
+          }
+        ],
+        "binaries": {
+          "baseline": {
+            "areal-server": "7705816d0c5a0bf0ecd97cc364bb8213c2bc9886705b1fde466f2466d1ce95ea",
+            "areal-tui": "bf19606cbc70a34cf2360b17f0da868d7d0409500c7eceea044078b2a374f7f8",
+            "areal-runtime": "3e947e4f5f310eb4a686ba4ef31bea5fc2ae71b276691a4b29a70ee4121b1a37",
+            "areal-runtime-fs": "8bd421a551c7719e7d272d95404f6f40e2fe3d53433ff491896300ea65628ada"
+          },
+          "tuned": {
+            "areal-server": "b8fc10bd4ccbe482a6a7f4eb978dc30b825c75fe411521bcfb86bca6028552ff",
+            "areal-tui": "cf0e042de2c04826190015ac7468d876a83964a1f59101a3dc3a3b17393b696c",
+            "areal-runtime": "72c6c7d2e3bc0a8ed0f2fbf61e44c05e9a9f313204b5593c0f96fef66dc43465",
+            "areal-runtime-fs": "88eedc089717cb3613649769e3afabcad47c9be54649d87a3cfcd4521565d52b"
+          }
+        },
+        "fixtures": {
+          "pricing": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "output-tail": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "failure-context": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "batch-edit": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c"
+        }
+      },
+      "request_parameters": {
+        "model": "grok-4.7",
+        "parallel_tool_calls": true
+      },
+      "results": [
+        {
+          "trial_id": "failure-context-2-baseline",
+          "variant": "baseline",
+          "case": "failure-context",
+          "repeat": 2,
+          "elapsed_s": 20.346,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 72706,
+            "cachedInputTokens": 56704,
+            "outputTokens": 610
+          },
+          "model_requests": 8,
+          "model_ms": 17752,
+          "tool_calls": 10,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "run_command": 2,
+            "read_file": 2,
+            "read_process": 3,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 13569,
+          "output_views": 0,
+          "request_bytes": 269327,
+          "usage_complete": true,
+          "fixture_sha256": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "prompt_sha256": "df010a363ca96a97956e9ff8031408a1cea63895e2b842566b90d11d983a409d"
+        },
+        {
+          "trial_id": "batch-edit-1-tuned",
+          "variant": "tuned",
+          "case": "batch-edit",
+          "repeat": 1,
+          "elapsed_s": 27.413,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 69666,
+            "cachedInputTokens": 43136,
+            "outputTokens": 1321
+          },
+          "model_requests": 7,
+          "model_ms": 22598,
+          "tool_calls": 9,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 4,
+            "fs_apply_patches": 2,
+            "verify_command": 1
+          },
+          "tool_errors": 1,
+          "result_bytes": 11406,
+          "output_views": 0,
+          "request_bytes": 244440,
+          "usage_complete": true,
+          "fixture_sha256": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c",
+          "prompt_sha256": "1aeedf0d358e859b798671584341f22345f48952ec5a0b5cb924b510528ede57"
+        },
+        {
+          "trial_id": "failure-context-0-tuned",
+          "variant": "tuned",
+          "case": "failure-context",
+          "repeat": 0,
+          "elapsed_s": 14.933,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 46032,
+            "cachedInputTokens": 5760,
+            "outputTokens": 494
+          },
+          "model_requests": 5,
+          "model_ms": 12861,
+          "tool_calls": 7,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "run_command": 2,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 1,
+          "result_bytes": 9814,
+          "output_views": 2,
+          "request_bytes": 166012,
+          "usage_complete": true,
+          "fixture_sha256": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "prompt_sha256": "df010a363ca96a97956e9ff8031408a1cea63895e2b842566b90d11d983a409d"
+        },
+        {
+          "trial_id": "pricing-2-baseline",
+          "variant": "baseline",
+          "case": "pricing",
+          "repeat": 2,
+          "elapsed_s": 10.952,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 40855,
+            "cachedInputTokens": 32768,
+            "outputTokens": 216
+          },
+          "model_requests": 5,
+          "model_ms": 8952,
+          "tool_calls": 6,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1,
+            "run_command": 1
+          },
+          "tool_errors": 0,
+          "result_bytes": 5990,
+          "output_views": 0,
+          "request_bytes": 145969,
+          "usage_complete": true,
+          "fixture_sha256": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "prompt_sha256": "3743167d107084d2d1517ae3c2794faf6006ed55e1df3bc3509c1b61e2261b39"
+        },
+        {
+          "trial_id": "output-tail-0-tuned",
+          "variant": "tuned",
+          "case": "output-tail",
+          "repeat": 0,
+          "elapsed_s": 26.001,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 108040,
+            "cachedInputTokens": 80128,
+            "outputTokens": 570
+          },
+          "model_requests": 9,
+          "model_ms": 23622,
+          "tool_calls": 10,
+          "tool_counts": {
+            "run_command": 2,
+            "fs_list": 1,
+            "read_process": 4,
+            "read_file": 2,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 32029,
+          "output_views": 2,
+          "request_bytes": 387398,
+          "usage_complete": true,
+          "fixture_sha256": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "prompt_sha256": "87ff2e417384acf6d87190b7490332a60bc30e2cc9c81145f47f27fa1d2350fb"
+        },
+        {
+          "trial_id": "output-tail-1-baseline",
+          "variant": "baseline",
+          "case": "output-tail",
+          "repeat": 1,
+          "elapsed_s": 41.312,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 226844,
+            "cachedInputTokens": 183168,
+            "outputTokens": 902
+          },
+          "model_requests": 18,
+          "model_ms": 37922,
+          "tool_calls": 19,
+          "tool_counts": {
+            "run_command": 2,
+            "read_process": 12,
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 6,
+          "result_bytes": 34248,
+          "output_views": 0,
+          "request_bytes": 830257,
+          "usage_complete": true,
+          "fixture_sha256": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "prompt_sha256": "87ff2e417384acf6d87190b7490332a60bc30e2cc9c81145f47f27fa1d2350fb"
+        },
+        {
+          "trial_id": "pricing-0-tuned",
+          "variant": "tuned",
+          "case": "pricing",
+          "repeat": 0,
+          "elapsed_s": 13.864,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 53014,
+            "cachedInputTokens": 36736,
+            "outputTokens": 341
+          },
+          "model_requests": 6,
+          "model_ms": 11102,
+          "tool_calls": 7,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 3,
+            "fs_apply_patch": 1,
+            "verify_command": 1
+          },
+          "tool_errors": 0,
+          "result_bytes": 7831,
+          "output_views": 0,
+          "request_bytes": 189014,
+          "usage_complete": true,
+          "fixture_sha256": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "prompt_sha256": "3743167d107084d2d1517ae3c2794faf6006ed55e1df3bc3509c1b61e2261b39"
+        },
+        {
+          "trial_id": "pricing-0-baseline",
+          "variant": "baseline",
+          "case": "pricing",
+          "repeat": 0,
+          "elapsed_s": 13.482,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 40860,
+            "cachedInputTokens": 25216,
+            "outputTokens": 219
+          },
+          "model_requests": 5,
+          "model_ms": 11613,
+          "tool_calls": 6,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1,
+            "run_command": 1
+          },
+          "tool_errors": 0,
+          "result_bytes": 5990,
+          "output_views": 0,
+          "request_bytes": 145979,
+          "usage_complete": true,
+          "fixture_sha256": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "prompt_sha256": "3743167d107084d2d1517ae3c2794faf6006ed55e1df3bc3509c1b61e2261b39"
+        },
+        {
+          "trial_id": "output-tail-2-baseline",
+          "variant": "baseline",
+          "case": "output-tail",
+          "repeat": 2,
+          "elapsed_s": 59.924,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 226858,
+            "cachedInputTokens": 66432,
+            "outputTokens": 875
+          },
+          "model_requests": 18,
+          "model_ms": 56520,
+          "tool_calls": 19,
+          "tool_counts": {
+            "run_command": 2,
+            "read_process": 12,
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 6,
+          "result_bytes": 34248,
+          "output_views": 0,
+          "request_bytes": 828436,
+          "usage_complete": true,
+          "fixture_sha256": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "prompt_sha256": "87ff2e417384acf6d87190b7490332a60bc30e2cc9c81145f47f27fa1d2350fb"
+        },
+        {
+          "trial_id": "batch-edit-2-tuned",
+          "variant": "tuned",
+          "case": "batch-edit",
+          "repeat": 2,
+          "elapsed_s": 30.57,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 87958,
+            "cachedInputTokens": 51968,
+            "outputTokens": 1471
+          },
+          "model_requests": 9,
+          "model_ms": 27067,
+          "tool_calls": 11,
+          "tool_counts": {
+            "search_files": 1,
+            "fs_list": 1,
+            "read_file": 4,
+            "fs_apply_patches": 2,
+            "fs_apply_patch": 2,
+            "verify_command": 1
+          },
+          "tool_errors": 1,
+          "result_bytes": 11151,
+          "output_views": 0,
+          "request_bytes": 310755,
+          "usage_complete": true,
+          "fixture_sha256": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c",
+          "prompt_sha256": "1aeedf0d358e859b798671584341f22345f48952ec5a0b5cb924b510528ede57"
+        },
+        {
+          "trial_id": "batch-edit-1-baseline",
+          "variant": "baseline",
+          "case": "batch-edit",
+          "repeat": 1,
+          "elapsed_s": 24.012,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 83789,
+            "cachedInputTokens": 62976,
+            "outputTokens": 1020
+          },
+          "model_requests": 8,
+          "model_ms": 19358,
+          "tool_calls": 21,
+          "tool_counts": {
+            "search_files": 1,
+            "fs_list": 1,
+            "read_file": 4,
+            "fs_apply_patch": 14,
+            "verify_command": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 15470,
+          "output_views": 0,
+          "request_bytes": 299647,
+          "usage_complete": true,
+          "fixture_sha256": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c",
+          "prompt_sha256": "1aeedf0d358e859b798671584341f22345f48952ec5a0b5cb924b510528ede57"
+        },
+        {
+          "trial_id": "failure-context-0-baseline",
+          "variant": "baseline",
+          "case": "failure-context",
+          "repeat": 0,
+          "elapsed_s": 16.797,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 63731,
+            "cachedInputTokens": 40960,
+            "outputTokens": 523
+          },
+          "model_requests": 7,
+          "model_ms": 14776,
+          "tool_calls": 9,
+          "tool_counts": {
+            "run_command": 2,
+            "fs_list": 1,
+            "read_process": 3,
+            "read_file": 2,
+            "fs_write": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 13012,
+          "output_views": 0,
+          "request_bytes": 235274,
+          "usage_complete": true,
+          "fixture_sha256": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "prompt_sha256": "df010a363ca96a97956e9ff8031408a1cea63895e2b842566b90d11d983a409d"
+        },
+        {
+          "trial_id": "pricing-1-baseline",
+          "variant": "baseline",
+          "case": "pricing",
+          "repeat": 1,
+          "elapsed_s": 10.67,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 41324,
+            "cachedInputTokens": 7040,
+            "outputTokens": 229
+          },
+          "model_requests": 5,
+          "model_ms": 8477,
+          "tool_calls": 6,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1,
+            "verify_command": 1
+          },
+          "tool_errors": 0,
+          "result_bytes": 7069,
+          "output_views": 0,
+          "request_bytes": 147028,
+          "usage_complete": true,
+          "fixture_sha256": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "prompt_sha256": "3743167d107084d2d1517ae3c2794faf6006ed55e1df3bc3509c1b61e2261b39"
+        },
+        {
+          "trial_id": "pricing-1-tuned",
+          "variant": "tuned",
+          "case": "pricing",
+          "repeat": 1,
+          "elapsed_s": 11.429,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 42905,
+            "cachedInputTokens": 29568,
+            "outputTokens": 245
+          },
+          "model_requests": 5,
+          "model_ms": 8987,
+          "tool_calls": 6,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1,
+            "verify_command": 1
+          },
+          "tool_errors": 0,
+          "result_bytes": 7059,
+          "output_views": 0,
+          "request_bytes": 153004,
+          "usage_complete": true,
+          "fixture_sha256": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "prompt_sha256": "3743167d107084d2d1517ae3c2794faf6006ed55e1df3bc3509c1b61e2261b39"
+        },
+        {
+          "trial_id": "batch-edit-2-baseline",
+          "variant": "baseline",
+          "case": "batch-edit",
+          "repeat": 2,
+          "elapsed_s": 20.567,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 71182,
+            "cachedInputTokens": 41216,
+            "outputTokens": 736
+          },
+          "model_requests": 7,
+          "model_ms": 16575,
+          "tool_calls": 18,
+          "tool_counts": {
+            "search_files": 1,
+            "fs_list": 1,
+            "read_file": 2,
+            "fs_apply_patch": 13,
+            "run_command": 1
+          },
+          "tool_errors": 1,
+          "result_bytes": 12191,
+          "output_views": 0,
+          "request_bytes": 254086,
+          "usage_complete": true,
+          "fixture_sha256": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c",
+          "prompt_sha256": "1aeedf0d358e859b798671584341f22345f48952ec5a0b5cb924b510528ede57"
+        },
+        {
+          "trial_id": "output-tail-2-tuned",
+          "variant": "tuned",
+          "case": "output-tail",
+          "repeat": 2,
+          "elapsed_s": 27.077,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 75668,
+            "cachedInputTokens": 50816,
+            "outputTokens": 400
+          },
+          "model_requests": 8,
+          "model_ms": 24630,
+          "tool_calls": 9,
+          "tool_counts": {
+            "run_command": 2,
+            "read_process": 2,
+            "search_files": 1,
+            "fs_list": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 1,
+          "result_bytes": 15025,
+          "output_views": 2,
+          "request_bytes": 274201,
+          "usage_complete": true,
+          "fixture_sha256": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "prompt_sha256": "87ff2e417384acf6d87190b7490332a60bc30e2cc9c81145f47f27fa1d2350fb"
+        },
+        {
+          "trial_id": "output-tail-0-baseline",
+          "variant": "baseline",
+          "case": "output-tail",
+          "repeat": 0,
+          "elapsed_s": 36.09,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 224933,
+            "cachedInputTokens": 172032,
+            "outputTokens": 699
+          },
+          "model_requests": 18,
+          "model_ms": 32599,
+          "tool_calls": 19,
+          "tool_counts": {
+            "run_command": 2,
+            "read_process": 12,
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 6,
+          "result_bytes": 34248,
+          "output_views": 0,
+          "request_bytes": 822263,
+          "usage_complete": true,
+          "fixture_sha256": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "prompt_sha256": "87ff2e417384acf6d87190b7490332a60bc30e2cc9c81145f47f27fa1d2350fb"
+        },
+        {
+          "trial_id": "failure-context-1-tuned",
+          "variant": "tuned",
+          "case": "failure-context",
+          "repeat": 1,
+          "elapsed_s": 16.945,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 68981,
+            "cachedInputTokens": 58496,
+            "outputTokens": 531
+          },
+          "model_requests": 7,
+          "model_ms": 14685,
+          "tool_calls": 9,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "run_command": 2,
+            "read_file": 2,
+            "read_process": 2,
+            "fs_write": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 17229,
+          "output_views": 2,
+          "request_bytes": 254214,
+          "usage_complete": true,
+          "fixture_sha256": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "prompt_sha256": "df010a363ca96a97956e9ff8031408a1cea63895e2b842566b90d11d983a409d"
+        },
+        {
+          "trial_id": "output-tail-1-tuned",
+          "variant": "tuned",
+          "case": "output-tail",
+          "repeat": 1,
+          "elapsed_s": 28.391,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 102185,
+            "cachedInputTokens": 87936,
+            "outputTokens": 512
+          },
+          "model_requests": 9,
+          "model_ms": 25706,
+          "tool_calls": 10,
+          "tool_counts": {
+            "run_command": 2,
+            "read_process": 3,
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 23776,
+          "output_views": 2,
+          "request_bytes": 367450,
+          "usage_complete": true,
+          "fixture_sha256": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "prompt_sha256": "87ff2e417384acf6d87190b7490332a60bc30e2cc9c81145f47f27fa1d2350fb"
+        },
+        {
+          "trial_id": "pricing-2-tuned",
+          "variant": "tuned",
+          "case": "pricing",
+          "repeat": 2,
+          "elapsed_s": 11.49,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 42898,
+            "cachedInputTokens": 28288,
+            "outputTokens": 223
+          },
+          "model_requests": 5,
+          "model_ms": 9075,
+          "tool_calls": 6,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1,
+            "verify_command": 1
+          },
+          "tool_errors": 0,
+          "result_bytes": 7060,
+          "output_views": 0,
+          "request_bytes": 152929,
+          "usage_complete": true,
+          "fixture_sha256": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "prompt_sha256": "3743167d107084d2d1517ae3c2794faf6006ed55e1df3bc3509c1b61e2261b39"
+        },
+        {
+          "trial_id": "batch-edit-0-baseline",
+          "variant": "baseline",
+          "case": "batch-edit",
+          "repeat": 0,
+          "elapsed_s": 24.301,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 80069,
+            "cachedInputTokens": 67840,
+            "outputTokens": 1012
+          },
+          "model_requests": 8,
+          "model_ms": 19408,
+          "tool_calls": 21,
+          "tool_counts": {
+            "search_files": 1,
+            "fs_list": 1,
+            "read_file": 4,
+            "fs_apply_patch": 14,
+            "verify_command": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 13676,
+          "output_views": 0,
+          "request_bytes": 288119,
+          "usage_complete": true,
+          "fixture_sha256": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c",
+          "prompt_sha256": "1aeedf0d358e859b798671584341f22345f48952ec5a0b5cb924b510528ede57"
+        },
+        {
+          "trial_id": "failure-context-1-baseline",
+          "variant": "baseline",
+          "case": "failure-context",
+          "repeat": 1,
+          "elapsed_s": 19.208,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 72472,
+            "cachedInputTokens": 57856,
+            "outputTokens": 545
+          },
+          "model_requests": 8,
+          "model_ms": 17030,
+          "tool_calls": 10,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "run_command": 2,
+            "read_process": 3,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 13569,
+          "output_views": 0,
+          "request_bytes": 268363,
+          "usage_complete": true,
+          "fixture_sha256": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "prompt_sha256": "df010a363ca96a97956e9ff8031408a1cea63895e2b842566b90d11d983a409d"
+        },
+        {
+          "trial_id": "failure-context-2-tuned",
+          "variant": "tuned",
+          "case": "failure-context",
+          "repeat": 2,
+          "elapsed_s": 17.155,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 61151,
+            "cachedInputTokens": 35456,
+            "outputTokens": 627
+          },
+          "model_requests": 6,
+          "model_ms": 14977,
+          "tool_calls": 8,
+          "tool_counts": {
+            "run_command": 2,
+            "search_files": 1,
+            "read_process": 2,
+            "read_file": 2,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 17099,
+          "output_views": 2,
+          "request_bytes": 224443,
+          "usage_complete": true,
+          "fixture_sha256": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "prompt_sha256": "df010a363ca96a97956e9ff8031408a1cea63895e2b842566b90d11d983a409d"
+        },
+        {
+          "trial_id": "batch-edit-0-tuned",
+          "variant": "tuned",
+          "case": "batch-edit",
+          "repeat": 0,
+          "elapsed_s": 33.232,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 67772,
+            "cachedInputTokens": 34688,
+            "outputTokens": 1837
+          },
+          "model_requests": 7,
+          "model_ms": 29128,
+          "tool_calls": 18,
+          "tool_counts": {
+            "search_files": 1,
+            "read_file": 3,
+            "fs_apply_patches": 1,
+            "fs_apply_patch": 12,
+            "run_command": 1
+          },
+          "tool_errors": 1,
+          "result_bytes": 10882,
+          "output_views": 0,
+          "request_bytes": 239694,
+          "usage_complete": true,
+          "fixture_sha256": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c",
+          "prompt_sha256": "1aeedf0d358e859b798671584341f22345f48952ec5a0b5cb924b510528ede57"
+        }
+      ]
+    },
+    {
+      "name": "final",
+      "original_results_sha256": "dc0412bf0f195339d19ecf2374a9029193f05836d734d40efb71bc65d7f6888d",
+      "original_plan_sha256": "60b37017df9889138b3d5a03ddf09458da7d56527a7991fa3c56cf1e7aa8c559",
+      "plan": {
+        "suite": "native-tool-mechanism-probes-v1",
+        "seed": 163,
+        "repeat": 3,
+        "jobs": 2,
+        "timeout": 180,
+        "direct": true,
+        "model": "grok-4.7",
+        "runner_sha256": "9a807ffb3d8d4f0962ee6751ea30af30a33998eeffa76516bb7fbae870c70831",
+        "platform": "macOS-26.3.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.2",
+        "pytest": "pytest 8.4.2",
+        "schedule": [
+          {
+            "variant": "baseline",
+            "case": "failure-context",
+            "repeat": 2
+          },
+          {
+            "variant": "final",
+            "case": "batch-edit",
+            "repeat": 1
+          },
+          {
+            "variant": "final",
+            "case": "failure-context",
+            "repeat": 0
+          },
+          {
+            "variant": "baseline",
+            "case": "pricing",
+            "repeat": 2
+          },
+          {
+            "variant": "baseline",
+            "case": "output-tail",
+            "repeat": 1
+          },
+          {
+            "variant": "final",
+            "case": "output-tail",
+            "repeat": 0
+          },
+          {
+            "variant": "baseline",
+            "case": "output-tail",
+            "repeat": 2
+          },
+          {
+            "variant": "final",
+            "case": "pricing",
+            "repeat": 0
+          },
+          {
+            "variant": "baseline",
+            "case": "pricing",
+            "repeat": 0
+          },
+          {
+            "variant": "final",
+            "case": "batch-edit",
+            "repeat": 2
+          },
+          {
+            "variant": "baseline",
+            "case": "batch-edit",
+            "repeat": 1
+          },
+          {
+            "variant": "baseline",
+            "case": "failure-context",
+            "repeat": 0
+          },
+          {
+            "variant": "baseline",
+            "case": "pricing",
+            "repeat": 1
+          },
+          {
+            "variant": "baseline",
+            "case": "batch-edit",
+            "repeat": 2
+          },
+          {
+            "variant": "final",
+            "case": "pricing",
+            "repeat": 1
+          },
+          {
+            "variant": "final",
+            "case": "output-tail",
+            "repeat": 2
+          },
+          {
+            "variant": "baseline",
+            "case": "output-tail",
+            "repeat": 0
+          },
+          {
+            "variant": "final",
+            "case": "output-tail",
+            "repeat": 1
+          },
+          {
+            "variant": "final",
+            "case": "failure-context",
+            "repeat": 1
+          },
+          {
+            "variant": "final",
+            "case": "pricing",
+            "repeat": 2
+          },
+          {
+            "variant": "baseline",
+            "case": "batch-edit",
+            "repeat": 0
+          },
+          {
+            "variant": "baseline",
+            "case": "failure-context",
+            "repeat": 1
+          },
+          {
+            "variant": "final",
+            "case": "batch-edit",
+            "repeat": 0
+          },
+          {
+            "variant": "final",
+            "case": "failure-context",
+            "repeat": 2
+          }
+        ],
+        "binaries": {
+          "baseline": {
+            "areal-server": "7705816d0c5a0bf0ecd97cc364bb8213c2bc9886705b1fde466f2466d1ce95ea",
+            "areal-tui": "bf19606cbc70a34cf2360b17f0da868d7d0409500c7eceea044078b2a374f7f8",
+            "areal-runtime": "3e947e4f5f310eb4a686ba4ef31bea5fc2ae71b276691a4b29a70ee4121b1a37",
+            "areal-runtime-fs": "8bd421a551c7719e7d272d95404f6f40e2fe3d53433ff491896300ea65628ada",
+            "launch.py": "78eaff65e70f6916e819f1e531d89e99928de788df4baf25299cc00a9fbeb382"
+          },
+          "final": {
+            "areal-server": "7a3aa6152c21061e847f581a3f3789d9546d044c0afca0c60ac62e97d15b3e56",
+            "areal-tui": "cf0e042de2c04826190015ac7468d876a83964a1f59101a3dc3a3b17393b696c",
+            "areal-runtime": "72c6c7d2e3bc0a8ed0f2fbf61e44c05e9a9f313204b5593c0f96fef66dc43465",
+            "areal-runtime-fs": "3e0ca0070ea29556fa1dbdc5cd77699e1be3bbd0df993541886d5eb96f930aac",
+            "launch.py": "78eaff65e70f6916e819f1e531d89e99928de788df4baf25299cc00a9fbeb382"
+          }
+        },
+        "fixtures": {
+          "pricing": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "output-tail": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "failure-context": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "batch-edit": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c"
+        }
+      },
+      "request_parameters": {
+        "model": "grok-4.7",
+        "parallel_tool_calls": true
+      },
+      "results": [
+        {
+          "trial_id": "batch-edit-1-final",
+          "variant": "final",
+          "case": "batch-edit",
+          "repeat": 1,
+          "elapsed_s": 21.507,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 44707,
+            "cachedInputTokens": 20352,
+            "outputTokens": 670
+          },
+          "model_requests": 5,
+          "model_ms": 14858,
+          "tool_calls": 6,
+          "tool_counts": {
+            "search_files": 1,
+            "fs_list": 1,
+            "read_file": 2,
+            "fs_apply_patches": 1,
+            "run_command": 1
+          },
+          "tool_errors": 0,
+          "result_bytes": 7159,
+          "output_views": 0,
+          "request_bytes": 158099,
+          "usage_complete": true,
+          "fixture_sha256": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c",
+          "prompt_sha256": "1aeedf0d358e859b798671584341f22345f48952ec5a0b5cb924b510528ede57"
+        },
+        {
+          "trial_id": "failure-context-2-baseline",
+          "variant": "baseline",
+          "case": "failure-context",
+          "repeat": 2,
+          "elapsed_s": 23.141,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 78907,
+            "cachedInputTokens": 31104,
+            "outputTokens": 642
+          },
+          "model_requests": 8,
+          "model_ms": 20670,
+          "tool_calls": 10,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "run_command": 2,
+            "read_process": 3,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 16125,
+          "output_views": 0,
+          "request_bytes": 289912,
+          "usage_complete": true,
+          "fixture_sha256": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "prompt_sha256": "df010a363ca96a97956e9ff8031408a1cea63895e2b842566b90d11d983a409d"
+        },
+        {
+          "trial_id": "pricing-2-baseline",
+          "variant": "baseline",
+          "case": "pricing",
+          "repeat": 2,
+          "elapsed_s": 11.593,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 40846,
+            "cachedInputTokens": 21760,
+            "outputTokens": 237
+          },
+          "model_requests": 5,
+          "model_ms": 9662,
+          "tool_calls": 6,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1,
+            "run_command": 1
+          },
+          "tool_errors": 0,
+          "result_bytes": 5973,
+          "output_views": 0,
+          "request_bytes": 145869,
+          "usage_complete": true,
+          "fixture_sha256": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "prompt_sha256": "3743167d107084d2d1517ae3c2794faf6006ed55e1df3bc3509c1b61e2261b39"
+        },
+        {
+          "trial_id": "failure-context-0-final",
+          "variant": "final",
+          "case": "failure-context",
+          "repeat": 0,
+          "elapsed_s": 18.375,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 60081,
+            "cachedInputTokens": 33536,
+            "outputTokens": 512
+          },
+          "model_requests": 6,
+          "model_ms": 16350,
+          "tool_calls": 8,
+          "tool_counts": {
+            "run_command": 2,
+            "fs_list": 1,
+            "read_process": 2,
+            "read_file": 2,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 16674,
+          "output_views": 2,
+          "request_bytes": 221008,
+          "usage_complete": true,
+          "fixture_sha256": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "prompt_sha256": "df010a363ca96a97956e9ff8031408a1cea63895e2b842566b90d11d983a409d"
+        },
+        {
+          "trial_id": "output-tail-0-final",
+          "variant": "final",
+          "case": "output-tail",
+          "repeat": 0,
+          "elapsed_s": 30.07,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 101132,
+            "cachedInputTokens": 71936,
+            "outputTokens": 479
+          },
+          "model_requests": 9,
+          "model_ms": 27787,
+          "tool_calls": 9,
+          "tool_counts": {
+            "run_command": 2,
+            "read_process": 3,
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 1,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 22992,
+          "output_views": 2,
+          "request_bytes": 362902,
+          "usage_complete": true,
+          "fixture_sha256": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "prompt_sha256": "87ff2e417384acf6d87190b7490332a60bc30e2cc9c81145f47f27fa1d2350fb"
+        },
+        {
+          "trial_id": "output-tail-1-baseline",
+          "variant": "baseline",
+          "case": "output-tail",
+          "repeat": 1,
+          "elapsed_s": 42.92,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 225952,
+            "cachedInputTokens": 188288,
+            "outputTokens": 783
+          },
+          "model_requests": 18,
+          "model_ms": 39515,
+          "tool_calls": 19,
+          "tool_counts": {
+            "run_command": 2,
+            "read_process": 12,
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 6,
+          "result_bytes": 34244,
+          "output_views": 0,
+          "request_bytes": 825092,
+          "usage_complete": true,
+          "fixture_sha256": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "prompt_sha256": "87ff2e417384acf6d87190b7490332a60bc30e2cc9c81145f47f27fa1d2350fb"
+        },
+        {
+          "trial_id": "pricing-0-final",
+          "variant": "final",
+          "case": "pricing",
+          "repeat": 0,
+          "elapsed_s": 12.974,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 42949,
+            "cachedInputTokens": 26496,
+            "outputTokens": 244
+          },
+          "model_requests": 5,
+          "model_ms": 10590,
+          "tool_calls": 6,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1,
+            "verify_command": 1
+          },
+          "tool_errors": 0,
+          "result_bytes": 7038,
+          "output_views": 0,
+          "request_bytes": 153075,
+          "usage_complete": true,
+          "fixture_sha256": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "prompt_sha256": "3743167d107084d2d1517ae3c2794faf6006ed55e1df3bc3509c1b61e2261b39"
+        },
+        {
+          "trial_id": "pricing-0-baseline",
+          "variant": "baseline",
+          "case": "pricing",
+          "repeat": 0,
+          "elapsed_s": 16.134,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 51218,
+            "cachedInputTokens": 42240,
+            "outputTokens": 383
+          },
+          "model_requests": 6,
+          "model_ms": 13689,
+          "tool_calls": 7,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 3,
+            "fs_apply_patch": 1,
+            "verify_command": 1
+          },
+          "tool_errors": 0,
+          "result_bytes": 7817,
+          "output_views": 0,
+          "request_bytes": 182290,
+          "usage_complete": true,
+          "fixture_sha256": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "prompt_sha256": "3743167d107084d2d1517ae3c2794faf6006ed55e1df3bc3509c1b61e2261b39"
+        },
+        {
+          "trial_id": "output-tail-2-baseline",
+          "variant": "baseline",
+          "case": "output-tail",
+          "repeat": 2,
+          "elapsed_s": 46.197,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 225277,
+            "cachedInputTokens": 187520,
+            "outputTokens": 913
+          },
+          "model_requests": 18,
+          "model_ms": 42923,
+          "tool_calls": 18,
+          "tool_counts": {
+            "run_command": 2,
+            "read_process": 12,
+            "fs_list": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 6,
+          "result_bytes": 33739,
+          "output_views": 0,
+          "request_bytes": 820443,
+          "usage_complete": true,
+          "fixture_sha256": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "prompt_sha256": "87ff2e417384acf6d87190b7490332a60bc30e2cc9c81145f47f27fa1d2350fb"
+        },
+        {
+          "trial_id": "batch-edit-2-final",
+          "variant": "final",
+          "case": "batch-edit",
+          "repeat": 2,
+          "elapsed_s": 23.767,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 54089,
+            "cachedInputTokens": 32128,
+            "outputTokens": 1251
+          },
+          "model_requests": 6,
+          "model_ms": 21651,
+          "tool_calls": 6,
+          "tool_counts": {
+            "search_files": 1,
+            "fs_list": 1,
+            "read_file": 1,
+            "fs_apply_patches": 2,
+            "run_command": 1
+          },
+          "tool_errors": 1,
+          "result_bytes": 6077,
+          "output_views": 0,
+          "request_bytes": 190726,
+          "usage_complete": true,
+          "fixture_sha256": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c",
+          "prompt_sha256": "1aeedf0d358e859b798671584341f22345f48952ec5a0b5cb924b510528ede57"
+        },
+        {
+          "trial_id": "failure-context-0-baseline",
+          "variant": "baseline",
+          "case": "failure-context",
+          "repeat": 0,
+          "elapsed_s": 23.42,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 72919,
+            "cachedInputTokens": 31488,
+            "outputTokens": 656
+          },
+          "model_requests": 8,
+          "model_ms": 20963,
+          "tool_calls": 10,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "run_command": 2,
+            "read_process": 3,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 13565,
+          "output_views": 0,
+          "request_bytes": 270165,
+          "usage_complete": true,
+          "fixture_sha256": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "prompt_sha256": "df010a363ca96a97956e9ff8031408a1cea63895e2b842566b90d11d983a409d"
+        },
+        {
+          "trial_id": "batch-edit-1-baseline",
+          "variant": "baseline",
+          "case": "batch-edit",
+          "repeat": 1,
+          "elapsed_s": 38.48,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 77983,
+            "cachedInputTokens": 60928,
+            "outputTokens": 969
+          },
+          "model_requests": 8,
+          "model_ms": 33902,
+          "tool_calls": 19,
+          "tool_counts": {
+            "search_files": 1,
+            "fs_list": 1,
+            "read_file": 3,
+            "fs_apply_patch": 13,
+            "verify_command": 1
+          },
+          "tool_errors": 1,
+          "result_bytes": 11512,
+          "output_views": 0,
+          "request_bytes": 280855,
+          "usage_complete": true,
+          "fixture_sha256": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c",
+          "prompt_sha256": "1aeedf0d358e859b798671584341f22345f48952ec5a0b5cb924b510528ede57"
+        },
+        {
+          "trial_id": "pricing-1-baseline",
+          "variant": "baseline",
+          "case": "pricing",
+          "repeat": 1,
+          "elapsed_s": 12.881,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 41317,
+            "cachedInputTokens": 32768,
+            "outputTokens": 245
+          },
+          "model_requests": 5,
+          "model_ms": 10644,
+          "tool_calls": 6,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1,
+            "verify_command": 1
+          },
+          "tool_errors": 0,
+          "result_bytes": 7046,
+          "output_views": 0,
+          "request_bytes": 146969,
+          "usage_complete": true,
+          "fixture_sha256": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "prompt_sha256": "3743167d107084d2d1517ae3c2794faf6006ed55e1df3bc3509c1b61e2261b39"
+        },
+        {
+          "trial_id": "batch-edit-2-baseline",
+          "variant": "baseline",
+          "case": "batch-edit",
+          "repeat": 2,
+          "elapsed_s": 22.651,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 72852,
+            "cachedInputTokens": 60672,
+            "outputTokens": 875
+          },
+          "model_requests": 7,
+          "model_ms": 18048,
+          "tool_calls": 20,
+          "tool_counts": {
+            "search_files": 1,
+            "fs_list": 1,
+            "read_file": 4,
+            "fs_apply_patch": 13,
+            "run_command": 1
+          },
+          "tool_errors": 1,
+          "result_bytes": 14741,
+          "output_views": 0,
+          "request_bytes": 260108,
+          "usage_complete": true,
+          "fixture_sha256": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c",
+          "prompt_sha256": "1aeedf0d358e859b798671584341f22345f48952ec5a0b5cb924b510528ede57"
+        },
+        {
+          "trial_id": "pricing-1-final",
+          "variant": "final",
+          "case": "pricing",
+          "repeat": 1,
+          "elapsed_s": 12.822,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 42928,
+            "cachedInputTokens": 18688,
+            "outputTokens": 236
+          },
+          "model_requests": 5,
+          "model_ms": 10448,
+          "tool_calls": 6,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1,
+            "verify_command": 1
+          },
+          "tool_errors": 0,
+          "result_bytes": 7037,
+          "output_views": 0,
+          "request_bytes": 153100,
+          "usage_complete": true,
+          "fixture_sha256": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "prompt_sha256": "3743167d107084d2d1517ae3c2794faf6006ed55e1df3bc3509c1b61e2261b39"
+        },
+        {
+          "trial_id": "output-tail-2-final",
+          "variant": "final",
+          "case": "output-tail",
+          "repeat": 2,
+          "elapsed_s": 29.426,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 100580,
+            "cachedInputTokens": 43264,
+            "outputTokens": 436
+          },
+          "model_requests": 9,
+          "model_ms": 27296,
+          "tool_calls": 8,
+          "tool_counts": {
+            "run_command": 2,
+            "read_process": 3,
+            "search_files": 1,
+            "read_file": 1,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 22862,
+          "output_views": 2,
+          "request_bytes": 360901,
+          "usage_complete": true,
+          "fixture_sha256": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "prompt_sha256": "87ff2e417384acf6d87190b7490332a60bc30e2cc9c81145f47f27fa1d2350fb"
+        },
+        {
+          "trial_id": "output-tail-0-baseline",
+          "variant": "baseline",
+          "case": "output-tail",
+          "repeat": 0,
+          "elapsed_s": 48.189,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 227058,
+            "cachedInputTokens": 181760,
+            "outputTokens": 903
+          },
+          "model_requests": 18,
+          "model_ms": 44646,
+          "tool_calls": 19,
+          "tool_counts": {
+            "run_command": 2,
+            "read_process": 12,
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 6,
+          "result_bytes": 34244,
+          "output_views": 0,
+          "request_bytes": 829966,
+          "usage_complete": true,
+          "fixture_sha256": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "prompt_sha256": "87ff2e417384acf6d87190b7490332a60bc30e2cc9c81145f47f27fa1d2350fb"
+        },
+        {
+          "trial_id": "output-tail-1-final",
+          "variant": "final",
+          "case": "output-tail",
+          "repeat": 1,
+          "elapsed_s": 24.898,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 100840,
+            "cachedInputTokens": 87168,
+            "outputTokens": 447
+          },
+          "model_requests": 9,
+          "model_ms": 22651,
+          "tool_calls": 8,
+          "tool_counts": {
+            "run_command": 2,
+            "read_process": 3,
+            "search_files": 1,
+            "read_file": 1,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 22862,
+          "output_views": 2,
+          "request_bytes": 361146,
+          "usage_complete": true,
+          "fixture_sha256": "6f44291f136491860fb6e93b39d12d81786980bcd33e6ea34b80ab4c71a397d4",
+          "prompt_sha256": "87ff2e417384acf6d87190b7490332a60bc30e2cc9c81145f47f27fa1d2350fb"
+        },
+        {
+          "trial_id": "pricing-2-final",
+          "variant": "final",
+          "case": "pricing",
+          "repeat": 2,
+          "elapsed_s": 11.526,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 42563,
+            "cachedInputTokens": 13568,
+            "outputTokens": 249
+          },
+          "model_requests": 5,
+          "model_ms": 9560,
+          "tool_calls": 6,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "fs_apply_patch": 1,
+            "run_command": 1
+          },
+          "tool_errors": 0,
+          "result_bytes": 5979,
+          "output_views": 0,
+          "request_bytes": 152348,
+          "usage_complete": true,
+          "fixture_sha256": "e9a0a7d46ce96991815f59959a83267f71f09ae2e64bef7a85ed417d67237522",
+          "prompt_sha256": "3743167d107084d2d1517ae3c2794faf6006ed55e1df3bc3509c1b61e2261b39"
+        },
+        {
+          "trial_id": "failure-context-1-final",
+          "variant": "final",
+          "case": "failure-context",
+          "repeat": 1,
+          "elapsed_s": 18.074,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 53285,
+            "cachedInputTokens": 37120,
+            "outputTokens": 489
+          },
+          "model_requests": 6,
+          "model_ms": 15836,
+          "tool_calls": 8,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 2,
+            "run_command": 2,
+            "fs_write": 1,
+            "read_process": 1
+          },
+          "tool_errors": 1,
+          "result_bytes": 11121,
+          "output_views": 2,
+          "request_bytes": 194884,
+          "usage_complete": true,
+          "fixture_sha256": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "prompt_sha256": "df010a363ca96a97956e9ff8031408a1cea63895e2b842566b90d11d983a409d"
+        },
+        {
+          "trial_id": "batch-edit-0-baseline",
+          "variant": "baseline",
+          "case": "batch-edit",
+          "repeat": 0,
+          "elapsed_s": 28.082,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 58885,
+            "cachedInputTokens": 39296,
+            "outputTokens": 1035
+          },
+          "model_requests": 6,
+          "model_ms": 23925,
+          "tool_calls": 19,
+          "tool_counts": {
+            "fs_list": 1,
+            "search_files": 1,
+            "read_file": 4,
+            "fs_apply_patch": 12,
+            "verify_command": 1
+          },
+          "tool_errors": 0,
+          "result_bytes": 12937,
+          "output_views": 0,
+          "request_bytes": 210294,
+          "usage_complete": true,
+          "fixture_sha256": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c",
+          "prompt_sha256": "1aeedf0d358e859b798671584341f22345f48952ec5a0b5cb924b510528ede57"
+        },
+        {
+          "trial_id": "failure-context-1-baseline",
+          "variant": "baseline",
+          "case": "failure-context",
+          "repeat": 1,
+          "elapsed_s": 27.12,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 72088,
+            "cachedInputTokens": 49792,
+            "outputTokens": 567
+          },
+          "model_requests": 8,
+          "model_ms": 25017,
+          "tool_calls": 9,
+          "tool_counts": {
+            "run_command": 2,
+            "fs_list": 1,
+            "read_process": 3,
+            "read_file": 2,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 13010,
+          "output_views": 0,
+          "request_bytes": 266749,
+          "usage_complete": true,
+          "fixture_sha256": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "prompt_sha256": "df010a363ca96a97956e9ff8031408a1cea63895e2b842566b90d11d983a409d"
+        },
+        {
+          "trial_id": "failure-context-2-final",
+          "variant": "final",
+          "case": "failure-context",
+          "repeat": 2,
+          "elapsed_s": 17.26,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 60226,
+            "cachedInputTokens": 39424,
+            "outputTokens": 550
+          },
+          "model_requests": 6,
+          "model_ms": 15167,
+          "tool_calls": 8,
+          "tool_counts": {
+            "fs_list": 1,
+            "run_command": 2,
+            "read_process": 2,
+            "read_file": 2,
+            "fs_apply_patch": 1
+          },
+          "tool_errors": 2,
+          "result_bytes": 16674,
+          "output_views": 2,
+          "request_bytes": 221423,
+          "usage_complete": true,
+          "fixture_sha256": "ce406695ef7a538b8250739564fcbbafc1c7d36c53ba46a6a8bffe17eaf1b223",
+          "prompt_sha256": "df010a363ca96a97956e9ff8031408a1cea63895e2b842566b90d11d983a409d"
+        },
+        {
+          "trial_id": "batch-edit-0-final",
+          "variant": "final",
+          "case": "batch-edit",
+          "repeat": 0,
+          "elapsed_s": 25.076,
+          "exit_code": 0,
+          "timed_out": false,
+          "completed": true,
+          "grade": {
+            "correct": true,
+            "tests_unchanged": true,
+            "exit_code": 0,
+            "stderr": ""
+          },
+          "usage": {
+            "inputTokens": 57643,
+            "cachedInputTokens": 25344,
+            "outputTokens": 1309
+          },
+          "model_requests": 6,
+          "model_ms": 22505,
+          "tool_calls": 8,
+          "tool_counts": {
+            "search_files": 1,
+            "fs_list": 1,
+            "read_file": 3,
+            "fs_apply_patches": 2,
+            "run_command": 1
+          },
+          "tool_errors": 1,
+          "result_bytes": 9809,
+          "output_views": 0,
+          "request_bytes": 202974,
+          "usage_complete": true,
+          "fixture_sha256": "4308ad1c6ff792a5ec265ad41d5bda102870f9c167e62d679d24953b13e8b92c",
+          "prompt_sha256": "1aeedf0d358e859b798671584341f22345f48952ec5a0b5cb924b510528ede57"
+        }
+      ]
+    }
+  ]
+}

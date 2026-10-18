@@ -1,0 +1,220 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+# CI 不使用调试器或增量编译；减少链接、缓存传输和服务二进制指纹计算的开销。
+env:
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_INCREMENTAL: '0'
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            name: macOS native Harness
+            target: verify-native
+            setup: setup-node
+            log: verify-native
+          - os: ubuntu-24.04
+            name: Linux portable checks
+            target: verify
+            setup: setup
+            log: verify
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            runtime/sdk-typescript/package-lock.json
+            core/sdk-typescript/package-lock.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - if: runner.os == 'Linux'
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-${{ runner.arch }}-
+      - name: Prepare toolchain
+        run: |
+          rustup show
+          if [ "$RUNNER_OS" = macOS ] && ! command -v cmake; then brew install cmake; fi
+          cmake --version
+          if [ "$RUNNER_OS" = Linux ]; then python3 -m pip install uv==0.12.2; fi
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install locked dependencies
+        run: |
+          make "${{ matrix.setup }}"
+          mkdir -p target/ci
+      - name: Record tool and cache fingerprints
+        run: python3 scripts/ci-fingerprint.py > target/ci/fingerprint.json
+      - name: Verify host behavior
+        env:
+          NO_PROXY: 127.0.0.1,localhost
+          CARGO_TEST_ARGS: --exclude areal-runtime-exec-native
+          AREAL_UNIFIED_EVIDENCE_DIR: target/ci/unified
+          AREAL_TEST_EVIDENCE: target/ci/local-service.json
+        run: make "${{ matrix.target }}" 2>&1 | tee "target/ci/${{ matrix.log }}.log"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: ${{ runner.os }}-host-logs
+          path: target/ci/
+          retention-days: 7
+
+  container:
+    name: Linux container Runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - run: mkdir -p target/ci
+      - name: Verify container namespace prerequisites
+        run: |
+          # Ubuntu 的 userns 限制需要显式允许 Bubblewrap；不修改全局 sysctl。
+          sudo apparmor_parser --replace <<'APPARMOR'
+          abi <abi/4.0>,
+          profile areal-ci-bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+          }
+          APPARMOR
+          docker run --rm \
+            --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
+            --security-opt apparmor=unconfined \
+            alpine:3.22.4 sh -ec '
+              apk add --no-cache bubblewrap
+              exec bwrap --unshare-all --die-with-parent --cap-drop ALL \
+                --ro-bind / / --proc /proc --dev /dev -- /bin/true
+            '
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the supported container profile
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: tests/e2e/docker/Dockerfile
+          build-args: |
+            BUILD_PROFILE=ci
+            INSTALL_CODEX=0
+            INSTALL_CLAUDE_CODE=0
+          load: true
+          tags: areal-ci:runtime
+          cache-from: type=gha,scope=areal-runtime
+          cache-to: type=gha,scope=areal-runtime,mode=max
+      - name: Build native backend tests
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: tests/e2e/docker/Dockerfile
+          target: runtime-tests
+          build-args: BUILD_PROFILE=ci
+          load: true
+          tags: areal-ci:runtime-tests
+          cache-from: |
+            type=gha,scope=areal-runtime-tests
+            type=gha,scope=areal-runtime
+          cache-to: type=gha,scope=areal-runtime-tests,mode=max
+      - name: Verify native backend inside its supported container
+        run: |
+          docker run --rm --network none \
+            --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
+            --security-opt apparmor=unconfined \
+            areal-ci:runtime-tests 2>&1 | tee target/ci/native-tests.log
+      - name: Verify Linux sandbox and host-staged files
+        run: |
+          python3 - <<'PY' 2>&1 | tee target/ci/runtime.log
+          import sys
+          sys.path.insert(0, 'tests/perf')
+          from perf import smoke_runtime_profile
+          raise SystemExit(smoke_runtime_profile('areal-ci:runtime'))
+          PY
+      - name: Verify bundled search and durable result retrieval
+        run: |
+          docker run --rm --network none -e IS_SANDBOX=1 \
+            --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
+            --security-opt apparmor=unconfined \
+            --mount "type=bind,source=$PWD,target=/repo,readonly" -w /repo \
+            --entrypoint python3 areal-ci:runtime scripts/native-tools-smoke.py \
+            --bin-dir /usr/local/bin --sandbox-profile outer-container-perf \
+            2>&1 | tee target/ci/native-tools.log
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Prepare locked unified smoke dependencies
+        run: npm ci --ignore-scripts
+      - name: Verify unified delegation inside the supported container
+        run: |
+          mkdir -p target/ci/unified
+          docker run --rm --network none \
+            --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
+            --security-opt apparmor=unconfined \
+            --mount "type=bind,source=$PWD,target=/repo,readonly" -w /repo \
+            --mount "type=bind,source=$PWD/target/ci/unified,target=/evidence" \
+            -e AREAL_UNIFIED_BIN_DIR=/usr/local/bin -e AREAL_UNIFIED_EVIDENCE_DIR=/evidence \
+            --entrypoint node areal-ci:runtime scripts/unified-execution-smoke.mjs \
+            2>&1 | tee target/ci/unified.log
+      - name: Verify root-only container ownership cases
+        run: >-
+          docker run --rm --network none --entrypoint python3
+          --mount "type=bind,source=$PWD,target=/repo,readonly" -w /repo
+          areal-ci:runtime tests/perf/perf.py self-test
+          2>&1 | tee target/ci/perf-root.log
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: linux-container-logs
+          path: target/ci/
+          retention-days: 7
+
+  # 保留原检查名；矩阵和容器必须全部成功，不能把跳过或取消视为通过。
+  linux:
+    name: Linux checks and container Runtime
+    needs: [host, container, dependencies]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require host matrix and container jobs
+        env:
+          HOST_RESULT: ${{ needs.host.result }}
+          CONTAINER_RESULT: ${{ needs.container.result }}
+          DEPENDENCY_RESULT: ${{ needs.dependencies.result }}
+        run: test "$HOST_RESULT" = success && test "$CONTAINER_RESULT" = success && test "$DEPENDENCY_RESULT" = success
+
+  dependencies:
+    name: Dependency advisories
+    uses: ./.github/workflows/dependency-audit.yml

@@ -1,0 +1,19 @@
+Component: chess 1.11.2 (python-chess)
+Author: Niklas Fiekas
+Repository: https://github.com/niklasf/python-chess
+Tag: v1.11.2
+Revision: 3516d7c6c0879af724c2855fac5a304a4ef40949
+License: GPL-3.0-or-later (see LICENSE.txt)
+Scope: vendored reference implementation used by this benchmark oracle.
+The original Python sources and py.typed match the upstream Git blobs.
+
+Files:
+128609e2b8895ceb19877d856866dc80b830dfb2  __init__.py
+270e31e716b5506b50a35d67c138cfd7b321a27d  engine.py
+281df836b551b1e21b5a94a5ef2783ae2359379f  gaviota.py
+83ddaf8f52a37ffec209eb933176d3cacec84f57  pgn.py
+44a68caa53974b2edf3f1ba7ef496e24d6021417  polyglot.py
+e69de29bb2d1d6434b8b29ae775ad8c2e48c5391  py.typed
+c665b171b9e493e2b71f9f23726775ddcc85cc04  svg.py
+77a6eeded5f10a4acd9e828fb9c4f554c3835b14  syzygy.py
+6e9161dc89faeda13f563ddcc7dbe589ee44a2a9  variant.py

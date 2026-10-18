@@ -1,0 +1,10 @@
+{
+  "initial_files_sha256": {},
+  "schema_version": 1,
+  "source_env_sha256": "43a67f569a16f0b2608a217ceb96f058ae319225fa97e2bf91251ead9955bdc8",
+  "source_image_id": "sha256:ad197aaefab0bc552f804403a8fe258a9a383611ed021fa42d00e95a491782ba",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc-construct-semiring-normalization-proof@sha256:10e8f6adf70b05e15aa6b4f3307324dd10927071ff8a9166b9a7b0c9d3a5bd30"
+  ],
+  "unredacted_source_env_sha256": "1d73e8dbebd1335d012d9980b3a2899fbd149013cb7be3c54d44c4539549b44c"
+}

@@ -1,0 +1,23 @@
+
+.goal-dock { margin: 0 12px -12px; padding: 4px 8px 16px; border: 1px solid var(--color-border); border-radius: 16px 16px 0 0; background: var(--color-secondary); }
+.goal-strip { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.goal-summary { display: flex; align-items: center; flex: 1; min-width: 0; gap: 4px; padding: 0; height: 24px; border: 0; background: transparent; text-align: left; font-size: 14px; line-height: 20px; }
+.goal-summary > svg, .goal-status, .goal-elapsed { flex-shrink: 0; }
+.goal-objective { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground-subtle); }
+.goal-elapsed { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--color-foreground-subtle); }
+.goal-strip > button, .goal-strip [data-slot=tooltip-trigger] { width: 24px; height: 24px; padding: 0; }
+.goal-strip > .goal-summary { width: auto; }
+.goal-strip > button svg { width: 14px; height: 14px; }
+.goal-detail { margin: 4px 0; font-size: 12px; overflow-wrap: anywhere; }
+.goal-editor { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 20px 16px 12px; gap: 12px; }
+.goal-editor > textarea { flex: 1; min-height: 80px; width: 100%; resize: none; border: 0; outline: none; padding: 0; background: transparent; color: var(--color-foreground); font: inherit; font-size: 14px; line-height: 1.35; }
+.goal-editor > textarea:focus-visible { outline: 1px solid var(--color-ring); outline-offset: 4px; }
+.goal-editor footer { display: flex; align-items: center; gap: 8px; }
+.goal-editor footer > span { flex: 1; font-size: 13px; color: var(--color-foreground-subtle); }
+.goal-editor footer button { height: 28px; }
+.goal-editor-notice, .goal-editor > [role=alert] { font-size: 12px; margin: 0; }
+.goal-editor { overflow-y: auto; }
+.goal-editor-report { font-size: 12px; overflow-wrap: anywhere; }
+.goal-editor-report p { margin: 4px 0; }
+.goal-editor-report ul { padding-left: 16px; list-style: disc; }
+@media (max-width: 640px) { .goal-status { max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .goal-elapsed { display: none; } }

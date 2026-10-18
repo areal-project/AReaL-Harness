@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+<rect width="1600" height="1000" fill="#FFFFFF"/>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#3A3D44"/></marker></defs>
+<text x="64" y="92" font-family="Georgia, serif" font-size="34" font-weight="normal" fill="#0F1012">Human takeover — local control before coordination</text>
+<text x="64" y="132" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="normal" fill="#3A3D44">Design proposal: one writer, honest outcomes, and private manual interaction.</text>
+<text x="64" y="184" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="13" font-weight="normal" fill="#8B8F97">DESIGN PROPOSAL — NOT IMPLEMENTED</text>
+<rect x="64" y="264" width="192" height="224" rx="0" fill="#FFFFFF" stroke="#A0A1A3" stroke-width="1.5"/>
+<text x="80" y="297" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="bold" fill="#0F1012">1  User takes over</text>
+<line x1="80" y1="314" x2="240" y2="314" stroke="#E9E9EA"/>
+<text x="80" y="342" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Trusted UI control</text>
+<text x="80" y="367" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Mouse or keyboard</text>
+<text x="80" y="392" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Works while Core</text>
+<text x="80" y="417" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">is unavailable</text>
+<rect x="320" y="264" width="192" height="224" rx="0" fill="#FFFFFF" stroke="#A0A1A3" stroke-width="1.5"/>
+<text x="336" y="297" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="bold" fill="#0F1012">2  Local fence</text>
+<line x1="336" y1="314" x2="496" y2="314" stroke="#E9E9EA"/>
+<text x="336" y="342" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Increase controlEpoch</text>
+<text x="336" y="367" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Reject the old lease</text>
+<text x="336" y="392" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">No wait behind</text>
+<text x="336" y="417" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">an action queue</text>
+<rect x="576" y="264" width="192" height="224" rx="0" fill="#FFFFFF" stroke="#A0A1A3" stroke-width="1.5"/>
+<text x="592" y="297" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="bold" fill="#0F1012">3  Quiesce input</text>
+<line x1="592" y1="314" x2="752" y2="314" stroke="#E9E9EA"/>
+<text x="592" y="342" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Drop unsent steps</text>
+<text x="592" y="367" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Settle native input</text>
+<text x="592" y="392" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Release held keys</text>
+<text x="592" y="417" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Pause agent reads</text>
+<rect x="832" y="264" width="192" height="224" rx="0" fill="#FFFFFF" stroke="#A0A1A3" stroke-width="1.5"/>
+<text x="848" y="297" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="bold" fill="#0F1012">4  Human control</text>
+<line x1="848" y1="314" x2="1008" y2="314" stroke="#E9E9EA"/>
+<text x="848" y="342" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">User can interact</text>
+<text x="848" y="367" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Private login phase</text>
+<text x="848" y="392" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">No automatic</text>
+<text x="848" y="417" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">agent reclaim</text>
+<rect x="1088" y="264" width="192" height="224" rx="0" fill="#FFFFFF" stroke="#A0A1A3" stroke-width="1.5"/>
+<text x="1104" y="297" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="bold" fill="#0F1012">5  Core evidence</text>
+<line x1="1104" y1="314" x2="1264" y2="314" stroke="#E9E9EA"/>
+<text x="1104" y="342" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Notify asynchronously</text>
+<text x="1104" y="367" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Confirmed facts stay</text>
+<text x="1104" y="392" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Ambiguity is UNKNOWN</text>
+<text x="1104" y="417" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">No automatic replay</text>
+<rect x="1344" y="264" width="192" height="224" rx="0" fill="#FFFFFF" stroke="#A0A1A3" stroke-width="1.5"/>
+<text x="1360" y="297" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="bold" fill="#0F1012">6  Explicit resume</text>
+<line x1="1360" y1="314" x2="1520" y2="314" stroke="#E9E9EA"/>
+<text x="1360" y="342" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">New control epoch</text>
+<text x="1360" y="367" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Inspect UNKNOWN first</text>
+<text x="1360" y="392" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Fresh observation</text>
+<text x="1360" y="417" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Then a new action</text>
+<polyline points="256,352 320,352" fill="none" stroke="#3A3D44" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="260" y="318" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="12" font-weight="normal" fill="#3A3D44"></text>
+<polyline points="512,352 576,352" fill="none" stroke="#3A3D44" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="516" y="318" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="12" font-weight="normal" fill="#3A3D44"></text>
+<polyline points="768,352 832,352" fill="none" stroke="#3A3D44" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="772" y="318" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="12" font-weight="normal" fill="#3A3D44"></text>
+<polyline points="1024,352 1088,352" fill="none" stroke="#3A3D44" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="1028" y="318" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="12" font-weight="normal" fill="#3A3D44"></text>
+<polyline points="1280,352 1344,352" fill="none" stroke="#3A3D44" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="1284" y="318" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="12" font-weight="normal" fill="#3A3D44"></text>
+<line x1="64" y1="710" x2="1536" y2="710" stroke="#E9E9EA"/>
+<text x="64" y="754" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="normal" fill="#3A3D44">Steps 2–4 do not wait for step 5. Local control and privacy fencing are effective even when Core cannot answer.</text>
+<text x="64" y="788" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="normal" fill="#3A3D44">Cancellation cannot roll back input already delivered to a website. A lost receipt remains UNKNOWN in Core history.</text>
+<text x="64" y="822" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="normal" fill="#3A3D44">Resume is an explicit user authorization, not a replay of the old call. New input must use a newly observed page.</text>
+<text x="64" y="856" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="normal" fill="#3A3D44">Controller, host, page, document, control and viewport identities are separate; an event cursor never grants permission.</text>
+</svg>

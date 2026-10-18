@@ -1,0 +1,322 @@
+{
+  "browserBootstrap": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "只通过可信本地客户端交付给浏览器，不进入服务发现描述或日志。",
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "expiresIn": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "code",
+      "expiresIn"
+    ],
+    "title": "BrowserBootstrap",
+    "type": "object"
+  },
+  "browserBootstrapExchange": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "code": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "code"
+    ],
+    "title": "BrowserBootstrapExchange",
+    "type": "object"
+  },
+  "identity": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "configFingerprint": {
+        "type": "string"
+      },
+      "dataDir": {
+        "type": "string"
+      },
+      "generation": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "serviceId": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serviceId",
+      "generation",
+      "workspace",
+      "dataDir",
+      "configFingerprint"
+    ],
+    "title": "Identity",
+    "type": "object"
+  },
+  "protocolVersion": 1,
+  "request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "oneOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "status",
+            "type": "string"
+          },
+          "version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "method",
+          "version"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "cancel": {
+            "type": "boolean"
+          },
+          "generation": {
+            "type": "string"
+          },
+          "method": {
+            "const": "stop",
+            "type": "string"
+          },
+          "version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "method",
+          "version",
+          "generation",
+          "cancel"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "Request"
+  },
+  "response": {
+    "$defs": {
+      "Service": {
+        "additionalProperties": false,
+        "properties": {
+          "authFile": {
+            "type": "string"
+          },
+          "configFingerprint": {
+            "type": "string"
+          },
+          "corePid": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "dataDir": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "string"
+          },
+          "hostPid": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "logFile": {
+            "type": "string"
+          },
+          "protocolVersion": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "serviceId": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/$defs/State"
+          },
+          "webUrl": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocolVersion",
+          "serviceId",
+          "generation",
+          "workspace",
+          "dataDir",
+          "configFingerprint",
+          "endpoint",
+          "webUrl",
+          "authFile",
+          "logFile",
+          "hostPid",
+          "corePid",
+          "state"
+        ],
+        "type": "object"
+      },
+      "State": {
+        "enum": [
+          "ready",
+          "stopping",
+          "stopped",
+          "unavailable"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "oneOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "const": "ok",
+            "type": "string"
+          },
+          "service": {
+            "$ref": "#/$defs/Service"
+          }
+        },
+        "required": [
+          "result",
+          "service"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "result": {
+            "const": "error",
+            "type": "string"
+          }
+        },
+        "required": [
+          "result",
+          "message"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "Response"
+  },
+  "service": {
+    "$defs": {
+      "State": {
+        "enum": [
+          "ready",
+          "stopping",
+          "stopped",
+          "unavailable"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "authFile": {
+        "type": "string"
+      },
+      "configFingerprint": {
+        "type": "string"
+      },
+      "corePid": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "dataDir": {
+        "type": "string"
+      },
+      "endpoint": {
+        "type": "string"
+      },
+      "generation": {
+        "type": "string"
+      },
+      "hostPid": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "logFile": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "serviceId": {
+        "type": "string"
+      },
+      "state": {
+        "$ref": "#/$defs/State"
+      },
+      "webUrl": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serviceId",
+      "generation",
+      "workspace",
+      "dataDir",
+      "configFingerprint",
+      "endpoint",
+      "webUrl",
+      "authFile",
+      "logFile",
+      "hostPid",
+      "corePid",
+      "state"
+    ],
+    "title": "Service",
+    "type": "object"
+  }
+}

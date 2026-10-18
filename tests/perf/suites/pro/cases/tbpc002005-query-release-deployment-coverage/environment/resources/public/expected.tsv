@@ -1,0 +1,3 @@
+release	region	componentCount
+http://example.org/release#R1	NORTH	3
+http://example.org/release#R1	WEST	3

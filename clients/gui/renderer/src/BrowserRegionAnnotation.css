@@ -1,0 +1,246 @@
+.browser-region-annotation { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--color-background); overflow: auto; }
+.browser-region-annotation [role="status"] { font-size: 12px; overflow-wrap: anywhere; }
+.browser-region-image-wrap { position: relative; align-self: center; width: fit-content; max-width: 100%; border: 1px solid var(--color-border); line-height: 0; }
+.browser-region-image-wrap img { display: block; max-width: 100%; max-height: 55vh; width: auto; height: auto; cursor: crosshair; touch-action: none; user-select: none; }
+.browser-region-selection { position: absolute; box-sizing: border-box; border: 2px solid var(--color-foreground); background: color-mix(in srgb, var(--color-foreground) 16%, transparent); pointer-events: none; }
+.browser-region-annotation label { display: flex; flex-direction: column; gap: 4px; }
+.browser-region-coordinates { display: flex; gap: 8px; flex-wrap: wrap; }
+.browser-region-coordinates label { width: 85px; }
+.browser-region-coordinates input { width: 100%; }
+.browser-region-annotation textarea { min-height: 70px; resize: vertical; }
+.browser-region-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* 冻结原生截图铺满原视口，交互浮层不改变 Main 持有的页面尺寸。 */
+.shared-browser-annotation {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  overflow: hidden;
+}
+.shared-browser-annotation .browser-region-image-wrap {
+  border: 0;
+  max-height: 100%;
+  line-height: normal;
+}
+.shared-browser-annotation .browser-region-image-wrap > img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  cursor: crosshair;
+}
+.shared-browser-annotation .browser-region-selection {
+  border-color: #4795ff;
+  background: #4795ff12;
+}
+.browser-annotation-marker {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  border: 1px solid #bddbff;
+  border-radius: 50%;
+  color: #fff;
+  background: #368bee;
+  font-size: 10px;
+  pointer-events: none;
+}
+.browser-annotation-editor {
+  position: absolute;
+  z-index: 4;
+  width: min(268px, calc(100% - 8px));
+  padding: 4px 5px;
+  background: var(--color-popover);
+  color: var(--color-foreground);
+  border: 1px solid var(--color-border);
+  border-radius: 22px;
+  box-shadow: var(--shadow-overlay);
+}
+.browser-annotation-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+}
+.browser-annotation-editor-row > button {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: var(--color-foreground-subtle);
+}
+.browser-annotation-editor-row > textarea {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  min-height: 0;
+  padding: 5px 1px;
+  resize: none;
+  border: 0;
+  background: transparent;
+  color: var(--color-foreground);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  outline: none;
+}
+.browser-annotation-editor-row > span {
+  flex: 1;
+  font-size: 12px;
+}
+.browser-annotation-editor .browser-annotation-confirm {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--color-foreground);
+  color: var(--color-background);
+}
+.browser-annotation-confirm:disabled {
+  opacity: 0.5;
+}
+.browser-annotation-editor.expanded {
+  padding: 8px;
+  border-radius: 14px;
+}
+.browser-annotation-editor.expanded > small {
+  display: block;
+  padding: 6px 0;
+  font-size: 11px;
+  color: var(--color-foreground-subtle);
+}
+.browser-annotation-editor.expanded > textarea {
+  display: block;
+  width: 100%;
+  height: 75px;
+  min-height: 0;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-background);
+  font-size: 12px;
+  resize: none;
+}
+.browser-annotation-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 7px;
+}
+.browser-annotation-dock {
+  position: absolute;
+  z-index: 5;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-popover);
+  box-shadow: var(--shadow-overlay);
+  white-space: nowrap;
+}
+.browser-annotation-dock > span {
+  font-size: 11px;
+  padding: 0 5px;
+}
+.browser-annotation-dock [aria-pressed="true"] {
+  color: #91c5ff;
+  background: #4795ff26;
+}
+.browser-annotation-context {
+  position: absolute;
+  z-index: 5;
+  bottom: 65px;
+  left: 8px;
+  right: 8px;
+  width: fit-content;
+  max-width: calc(100% - 16px);
+  margin: auto;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: var(--color-popover);
+  font-size: 11px;
+  color: var(--color-foreground-subtle);
+  text-align: center;
+}
+.browser-annotation-coordinate-panel {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 6;
+  padding: 7px;
+  border-radius: 9px;
+  border: 1px solid var(--color-border);
+  background: var(--color-popover);
+  font-size: 11px;
+}
+.browser-annotation-attachments {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-ui-caption);
+  color: var(--color-foreground-subtle);
+}
+.browser-annotation-attachments > span {
+  font-size: 10px;
+}
+.browser-annotation-attachment-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border-top: 1px solid var(--color-border);
+  padding: 10px 0;
+}
+.browser-annotation-attachment-copy {
+  flex: 1;
+  min-width: 0;
+}
+.browser-annotation-attachment-card > .composer-image-card {
+  flex: none;
+}
+.browser-annotation-attachment-card strong {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+.browser-annotation-attachment-card textarea {
+  width: 100%;
+  min-height: 50px;
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-background);
+  font-size: 12px;
+}
+.browser-annotation-attachment-card small {
+  display: block;
+  margin-top: 5px;
+  font-size: 10px;
+  color: var(--color-foreground-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-annotation-attachment-card p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.browser-annotation-attachment-card pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+}
+
+.browser-annotation-attachment-card [data-message-attachment="image"] { flex: none; width: 64px; height: 54px; }
+.browser-annotation-attachment-card [data-message-attachment="image"] img { object-fit: contain; }
+.browser-annotation-attachment-card button[aria-label^="移除附件"] { display: none; }

@@ -1,0 +1,14 @@
+{
+  "initial_files_sha256": {
+    "public/documented-token-counter-v1.md": "45a14051cad44fc543559ff56cb7cc31e5dd3904bc7743eacb1303af4263a6df",
+    "public/tokenizer/PROVENANCE.json": "27efcc090806f6db7b57ec5d11bafce86fa426d2241a580c78f996ff60747a19",
+    "public/tokenizer/tokenizer.json": "5054a9ec2166c437cc87743a7e10f53d68cae73f37854101c67d3fabbf714f7b"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "4f5077f0aa9f2bf914036b334eb99daaf714e8aa63d4af7885cf3abefb0dac14",
+  "source_image_id": "sha256:56213d81dac063b91d12dd33ca6dcc893440539e4c4401ab8d2b1acd8e5a26f1",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc-count-documented-jsonl-tokens@sha256:6ccde7cbc08d33f4f679cf765c849b0cecfe35ca27881cae68f136ab43f5cb5b"
+  ],
+  "unredacted_source_env_sha256": "f37fb3cd5a36d0bb5ffee365568a40295752de75e0a9394a3da76dbb89a1708d"
+}

@@ -1,0 +1,51 @@
+/* Settings own the compact visual role; public Tabs retain keyboard semantics.
+   Unlayered component rules override utility recipes without !important. */
+.settings-segmented-tabs {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.settings-segmented-tabs [data-slot="tabs-list"] {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  height: auto;
+  min-height: var(--spacing-control-sm);
+  max-width: 100%;
+  padding: 0;
+  gap: 2px;
+  border-radius: 9999px;
+  background: transparent;
+  border: 0;
+}
+
+.settings-segmented-tabs [data-slot="tabs-trigger"] {
+  flex: none;
+  height: var(--spacing-control-sm);
+  padding: 2px 8px;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  font-size: var(--text-ui-caption);
+  line-height: calc(var(--ui-font-size) + 4px);
+  font-weight: 430;
+  color: var(--color-settings-secondary, var(--color-muted-foreground));
+  background: transparent;
+  box-shadow: none;
+  cursor: var(--interactive-cursor, pointer);
+  user-select: none;
+}
+
+/* Base UI exposes data-active by presence, not a string boolean. */
+.settings-segmented-tabs [data-slot="tabs-trigger"][data-active] {
+  background: var(--color-hover);
+  color: var(--color-foreground);
+}
+
+.settings-segmented-tabs [data-slot="tabs-trigger"]:hover:not([data-active]) {
+  color: var(--color-foreground);
+  background: var(--color-surface);
+}
+
+.settings-segmented-tabs [data-slot="tabs-trigger"]:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}

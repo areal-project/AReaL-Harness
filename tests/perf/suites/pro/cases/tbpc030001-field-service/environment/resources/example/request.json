@@ -1,0 +1,14 @@
+{
+  "title": "Calibrate flow meter",
+  "attendees": ["ops@example.test", "site@example.test"],
+  "range_start": "2026-09-07T08:00:00Z",
+  "range_end": "2026-09-09T18:00:00Z",
+  "duration_minutes": 60,
+  "work_hours": {"start": "08:00", "end": "18:00"},
+  "travel_buffer_minutes": 30,
+  "required_skill": "calibration",
+  "preferences": [
+    {"kind": "avoid_weekday", "weekday": 0},
+    {"kind": "prefer_start_before", "time": "12:00"}
+  ]
+}

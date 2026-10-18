@@ -1,0 +1,160 @@
+[中文](clients.md) | **English**
+
+# CLI, TUI and local Web
+
+Complete the [quickstart](quickstart.en.md) first. Clients share Core history; Runtime executes tools without requiring a Codex binary.
+
+## Launch
+
+The product command is `areal`. Use `target/debug/areal` after a source build; add only the bundle's `bin` directory to PATH. Place subcommand options after the subcommand.
+
+| Command | Behavior |
+| --- | --- |
+| `areal [PROMPT]` | Open the TUI; submit an optional initial message once the session is ready |
+| `areal version` / `areal --version` | Show the product version without starting services |
+| `areal upgrade [--check]` | Check or upgrade a complete installed bundle; see [installation](installation.en.md) |
+| `areal exec [PROMPT]` | Run noninteractively with text, JSON or stream-json output |
+| `areal serve` | Start foreground Core + Runtime with cleanup owned by the launcher |
+| `areal app-server` | Start Core directly; Runtime connections require explicit deployment |
+| `areal config show/validate` | Inspect redacted configuration or validate it without starting services |
+| `areal trajectory status/retry/sync-config` | Inspect the trajectory queue, requeue failed records, or apply persistent export control; output JSON |
+| `areal service` / `areal web` | Manage shared services or open Web |
+| `areal workgroup run/inspect` | Run isolated workgroups or inspect their state |
+
+Migration: replace `areal-tui …` with `areal …`, `areal-server …` with `areal app-server …`, its `config` command with `areal config …`, and `areal-workgroup …` with `areal workgroup …`. The old standalone executables are no longer built or distributed. `areal -p/--print …` retains the existing noninteractive protocol and is equivalent to `areal exec …`. Bare `areal` now opens the TUI; automation must select `exec` or `-p`. `--prompt`, `--goal` and `--input-file` retain the original TUI headless behavior and conflict with positional PROMPT.
+
+```sh
+target/debug/areal
+target/debug/areal --resume THREAD_ID
+target/debug/areal exec --workspace /absolute/task 'Describe the task'
+# Connect using the authentication file in the existing Core data directory
+target/debug/areal --endpoint ws://127.0.0.1:4500 --auth-file /absolute/core-data/security/auth.json
+```
+
+Without an endpoint, interactive TUI attaches to a shared Core/Runtime on a random loopback port. Multiple windows in the same workspace reuse it; closing a window leaves service and tasks running. `--prompt`, `--goal` and `--input-file` default to owned mode and clean up on exit. `--local-mode shared|owned` overrides this choice. Explicit endpoint (alias `--remote`) only connects and cannot be combined with local deployment arguments.
+
+Shared mode defaults to a workspace-specific data directory under `~/.areal/instances/`; explicit data configuration keeps its precedence. To open old `~/.areal-harness/state` history, specify `--data-dir` or bind it after stopping the old Core. Model TOML changes reload automatically; other TOML changes restart after background work settles, while permission/deployment argument changes require explicit restart. Discovery, migration, logs and Desktop integration are specified in [local services](../api/local-service.en.md).
+
+```sh
+target/debug/areal web --workspace /absolute/task
+target/debug/areal service list --json
+target/debug/areal service status --json
+target/debug/areal service restart --json
+target/debug/areal service stop --json
+```
+
+`areal exec 'prompt' --output-format stream-json --verbose` provides noninteractive CLI operation; `areal serve` starts a persistent service. See the [CLI contract](../api/claude-cli.en.md) for arguments, authentication, resume and exit codes. Web is served at `/ui`; `areal web` opens it and signs in automatically without copying a token. Direct visits without a valid session can use the local token from `security/auth.json` in the service data directory.
+
+TUI `--input-file /absolute/input.json` is mutually exclusive with `--prompt` and accepts a Core Input array up to 2 MiB, for example `[{"type":"text","text":"Inspect the image"},{"type":"localImage","path":"/absolute/image.png"}]`. Both local and explicit-endpoint modes support it; the trusted launcher forwards `--tui --input-file`. Media paths and fields remain subject to [Core API](../api/core.en.md) validation.
+
+## Web controls and appearance
+
+Web uses a neutral workbench layout: a collapsible 240px sidebar, a task heading with view tabs, centered conversation content, and a rounded composer. Its light and dark appearance follows the AReaLGameAgent workbench. It follows the system by default; use “Settings → Appearance” at the bottom of the sidebar to override it. The preference is stored in the current browser. Narrow screens use a dismissible navigation drawer.
+
+- Create, select, refresh, or paginate tasks from the sidebar. New tasks center the composer; once history exists, the composer stays at the bottom.
+- `areal web` signs in automatically. One-time links last 60 seconds and sessions last one hour. After expiry or service restart, run the command again or enter a token in “Settings → Local connection”; errors appear in settings. With a valid session, reload to reconnect and restore the task snapshot.
+- Enter sends; Shift + Enter inserts a newline. Confirming an input-method candidate does not send. While a task runs, send additional instructions or stop execution.
+- Web input starting with `/` opens command suggestions and supports `/help`, `/new`, `/refresh`, `/goal`, `/skills` and `/skill NAME`. Use `Skills` below the composer or `/skills` to select a Skill for the current task.
+- The Web sidebar's delete-session button archives through Core. Stop an active Goal and settle queues/resources first. Confirmation removes the session from the list; disk history and deduplication receipts remain, so this is not permanent erasure.
+- Expand “Persistent goal” above the composer to inspect budget and progress, create or edit a goal, pause, resume, or clear it. The stop button pauses an active Goal; automatic continuation Turns retain their source label.
+- “Task history” displays messages and expandable tool results; UNKNOWN tool results still require an inspection record. “Collaborative tasks and acceptance” retains plan submission, progress queries, cancellation, and revision controls.
+
+The Web client owns appearance and navigation; task, permission, and execution state come from Core.
+
+TUI headers and Web show YOLO/ASK_PERMISSIONS and Core remains authoritative. TUI approvals show effective arguments; ↑/↓ selects deny/allow once/remember session/project, Enter submits, Esc denies and PgUp/PgDn scrolls arguments. Deny is selected initially. Web provides equivalent buttons. Forced approvals only offer single-use answers. `/permissions` displays mode, source and memory; `/permissions clear-session` or `clear-project` revokes remembered grants. See [configuration](configuration.en.md#permissions). `--prompt`/`--input-file` cannot answer interactive requests: they interrupt and return an error asking for interactive TUI/Web.
+
+## TUI controls
+
+| Control | Behavior |
+| --- | --- |
+| Enter | Start a Turn when idle; steer while running |
+| ←/→, Option+←/→, Ctrl-A / Ctrl-E | In the editor, move by grapheme; Option+←/→ (Alt+b / Alt+f) jump to the previous word start / next word end using Codex word boundaries; Ctrl-A / Ctrl-E jump to the current line start / end |
+| Ctrl-D / Delete, Backspace | Delete the grapheme at / before the cursor; empty input or the corresponding boundary is a no-op, without exiting |
+| `/`, Tab, Esc | Slash candidates, completion and dismissal |
+| Ctrl-C / Ctrl-Q | Pause the current Goal and cancel its Turn (interrupt the Turn without a Goal) / exit |
+| Ctrl-R | Reconnect and restore a snapshot without replay |
+| F5, `/sessions`, `/new`, `/open ID` | Select, create or open sessions |
+| F6, `/model` | Select a model or reset to default while idle |
+| `/skills`, `/skill NAME` | Choose or apply a Skill for the current session |
+| F2, `/theme` | Preview; Enter saves and Esc reverts |
+| `/agents`, `/executions`, F4 | Subtask progress, verification, and delivery |
+| F3, `/topology` | Session history tree and root topology |
+| `/spawn prompt` | Delegate a read-only analysis child of the active Turn through the unified entry point |
+| `/tasks` | Current task plan |
+| `/execution-cancel ID` | Stop a subtask and let Core settle usage and resources |
+| `/groups`, `/group ID`, `/group-start FILE` | Advanced legacy Workgroup history and explicit plans |
+| PageUp/PageDown/Home, End | Read history; End resumes following |
+| Click a history summary | Expand the group, then an individual record; the wheel scrolls |
+| ↑/↓, Enter/Space, ←/→ | With history focused: select, toggle, collapse/expand; Esc returns to input |
+| Ctrl-O, `/details` | Toggle compact/detailed history, preserving local expansion choices |
+| `/restore-input` | Restore input retained after a failed or unconfirmed submission |
+
+Subtask lists are paginated; TUI `/more` loads later records. Waiting or disconnecting does not replay child execution, and Core owns cancellation. Manual `/spawn` defaults to read-only analysis. Submit development requests through the ordinary prompt so the coordinator can declare modification and delivery intent.
+
+`--prompt` emits only the current Turn's text, writes Thread ID to stderr and exits nonzero on failure. It skips TUI preferences. See [appearance configuration](configuration.en.md#tui).
+
+## Reasoning and waiting state
+
+Web displays Chat Completions / Responses reasoning in an expandable section, labeled as a reasoning summary when only summary text is available, separately from the answer. While waiting for body text it shows whether reasoning has arrived and how many seconds this page has observed the wait. After 30 seconds it offers a reminder to keep waiting, refresh, or stop. This is a UI reminder, not a model timeout or stop signal. Refresh preserves the observation timer for the same request; reopening the page starts timing from the new observation.
+
+Refresh shows its pending state and replaces history with the latest Core snapshot. Stop shows a pending state after submitting cancellation and waits for Core to settle the task and tools. Controls are disabled while disconnected; the server task may continue. Refresh after reconnecting to confirm state without automatically resending the task.
+
+TUI starts with compact history: consecutive tool calls, reasoning and commentary form one Activity summary. Arguments, successful output previews and reasoning require explicit expansion. Final answers stay visible; legacy messages without a phase remain visible. Click a group and then a record, or focus history with Tab and use the keys above. `--mouse=false` disables capture for native terminal selection.
+
+Failure reasons persist beside the affected Turn, even after reconnect; empty Agent titles are omitted. Partial replies are marked incomplete. Goal blockage, pending interactions, automatic retries and unconfirmed usage have explicit notices. Failed submissions restore the original input only when the editor is empty; `/restore-input` explicitly replaces the current draft. A disconnected session awaits synchronization and never automatically resends submissions or tools. Noninteractive output retains its existing body-text behavior. See [TUI design](../design/tui.en.md) and [Core API](../api/core.en.md#reasoning-progress).
+
+## History, recovery and observability
+
+Core retains original history and tool intents/results; context compaction only changes future model input. At the start of each Turn, Core reads `AGENTS.md` files through Runtime in order from the workspace root to the resolved session cwd (including platform path aliases). Files must be regular UTF-8 files, with a combined content limit of 32 KiB and a directory-chain limit of 64 levels; reads reject symlink files and directories replaced by symlinks. Missing files are skipped; siblings and subtrees below cwd are not scanned. The resolved cwd must remain inside the Runtime workspace. Each file applies to its directory and descendants; closer rules take precedence, while user requests and deployment permissions override project rules. The model is instructed to read applicable rules before working in other directories; automatic loading does not follow temporary tool-command cwd changes. Instructions stay fixed within a Turn and are refreshed on the next Turn.
+
+Ordinary tasks use one delegation entry point. Core chooses shared or isolated execution from the declared intent, dependencies, effective permissions, and runtime capabilities; users do not select a workspace mode. GUI Subtasks, TUI `/executions`, and Web Subtasks and Delivery read the same Core projection and distinguish execution, verification, and delivery. Producing a candidate, passing checks, and applying changes are separate states; conflicts or partial application do not mean delivery succeeded. Advanced controls retain [legacy Workgroups](workgroups.en.md) and historical tasks. GUI can preview candidate files and apply the complete change set; Core validates and executes delivery. Continue the original task to accept a candidate when it is no longer active. Per-file application is not offered.
+
+Restart marks unconfirmed tools/hooks UNKNOWN and blocks new Turns. Inspect actual files/processes, then record the inspection in Web or via `areal/tool/acknowledge`. History remains unknown. This neither replays operations nor approves permissions or restores old processes. Corrupt snapshots are not silently discarded.
+
+```sh
+export OTEL_SERVICE_NAME='areal-core'
+export OTEL_EXPORTER_OTLP_ENDPOINT='http://127.0.0.1:4318'
+export OTEL_EXPORTER_OTLP_PROTOCOL='http/protobuf'
+make server
+```
+
+OTLP supports HTTP/protobuf only. It is disabled without an endpoint and can be disabled with `OTEL_SDK_DISABLED=true`. Trajectories contain actual model inputs/outputs and tool arguments/results, together with IDs, usage, status and timing, without redaction. Export failure does not change Turn outcomes; see [reporting configuration](configuration.en.md#opentelemetry-trajectory-reporting).
+
+<a id="goals"></a>
+
+## Goal mode
+
+No configuration change is needed. In TUI, `/goal Complete the module migration and pass its tests` creates and starts a Goal; `/goal` reads it. `/goal-pause` pauses; after Turn cleanup, `/goal-resume` resumes. `/goal-edit New objective` and `/goal-budget 200000` (or `none`) edit a stopped Goal while retaining usage. `/goal-clear` requires a stopped Goal with settled queues/resources. Web provides the same controls in its Goal panel.
+
+Clients display status, token usage, active time, Turn count and stop reasons, and label automatic continuation Turns. Ordinary final text only ends its Turn. The model reports completion through `goal_update`; Core commits the final state after resource settlement. User input takes priority over automatic continuation and invalidates prior completion requests.
+
+```sh
+make tui ARGS='--goal "Complete the module migration and pass its tests" --goal-token-budget 200000'
+target/debug/areal --endpoint ws://127.0.0.1:4500 --goal 'Inspect the code and prepare migration recommendations'
+```
+
+`--goal` conflicts with `--prompt`/`--input-file`. `--resume THREAD_ID` can create a new Goal in an existing idle Thread. Headless mode waits across Turns, exits successfully only for completed, and prints Goal JSON/reasons with a nonzero exit for other stopped states. Remote headless exit/disconnection does not cancel server execution; owned local launcher exit shuts down its Core; shared mode only disconnects. Use interactive `/open` and `/goal-resume` for stopped Goals. Ordinary `--prompt` and Claude CLI retain single-execution semantics.
+
+Core restart restores active Goals as paused/serverRestarted; `thread/resume` does not restart them. Unknown model usage retains its reservation; explicit Goal resume acknowledges it without erasing consumption. Tool UNKNOWN still needs inspection and acknowledgement. Budget, active-time, Turn or history exhaustion stops execution without automatic retry. See [configuration](configuration.en.md#goals) and [Core API](../api/core.en.md#goals).
+
+## Background tasks and Inbox
+
+Core exposes a unified [Task Mode API](../api/tasks.en.md) for foreground, scheduled and background work. Models may ask asynchronously even inside foreground Goals; the Task Channel is separate from execution conversations. Find questions with inbox/list and answer with channel/reply. The Web Background and schedules tab provides creation, progress, channels, pause, resume and cancellation. The sidebar Inbox is independent of the selected execution conversation. A dedicated TUI Inbox panel remains to be integrated; API clients use channel/reply rather than interaction/respond for asynchronous answers.
+
+Background tasks can use asynchronous questions or headless execution. Schedules bind to the selected conversation, accept a local date/time and an optional fixed repeat interval, and default to headless. Headless is an interaction policy; ordinary headless conversations and Goals do not automatically create schedules. Accepted controls still need execution to settle; replying while paused does not resume a task. Refreshing the Inbox retains current form drafts, while a full page reload can retrieve durable questions again.
+
+TUI headless and Claude CLI without a bidirectional response channel use headless interaction policy. Explicit bidirectional stream-json retains host responses; dontAsk still forbids waiting. In headless mode, questions immediately return unavailable and tools requiring human approval are denied, allowing other work or a blocker report. To continue after closing a window, use a persistent shared or external Core service; an owned launcher still shuts down its service on exit.
+
+The TUI captures the mouse by default for clicking and scrolling. Use `areal --mouse=false` for native terminal drag selection, then use the terminal copy shortcut. Ctrl-C continues to interrupt tasks.
+
+### RSI Artifact: one query and human selection
+
+`/rsi-goal QUERY` explicitly creates an RSI goal with `workflow: "rsiArtifact"`; ordinary `/goal` behavior is unchanged. Phase one uses three visible, fixed Harness templates: baseline, structured, and critic-and-revise. They share one frozen workspace input and run up to three candidates concurrently through native `isolatedWrite` boundaries. Deployments without isolation reject creation rather than falling back to shared writes.
+
+Each candidate delivers one UTF-8 `artifact.md` of at most 1 MiB; source code can be included in fenced blocks. A candidate can modify only its declared artifact path. Nothing is automatically applied to the source project. Under the Core data directory, `rsi/<goalId>/<candidateId>/` stores `request.json`, `harness.md`, `metadata.json`, and the settled `result.json`. The native execution service retains isolated workspaces, artifacts, and Runtime cleanup receipts separately. Candidate projections include the harness, status, workspace/artifact paths, summary, run/task identity, timestamps, and errors.
+
+Both new-chat and existing idle root-chat composers accept the command; the GUI feature menu also offers “RSI 产物对比”. Candidate cards show Harness/run details, paginated artifact previews, and winner selection. In the TUI, use `/rsi-refresh`, `/rsi-artifact candidate-1 [OFFSET]`, and `/rsi-select candidate-1`; the right panel displays state and summaries; `/tasks` expands the complete candidate and artifact view. `/goal-clear` clears the current goal after candidates settle.
+
+After all candidates settle, any successful artifact leads to `awaitingSelection`; otherwise the phase becomes `failed`. One failure does not cancel other candidates. Selection persists a winner reference without applying its artifact. Selecting the current winner again leaves the revision unchanged; stale revisions conflict. Reopening the GUI restores Core projections. A Core restart only reconciles existing executions: incomplete candidates conservatively fail and are never redispatched. Completed candidates and the winner remain available. Ordinary Turns are blocked until selection; conversation can continue afterwards.
+
+Feedback evaluations, explicit bounded branching, and version trees are now available; see [RSI feedback branches](../guides/rsi-evolution.en.md). There are no automatic quality scores, automatic winner, or cross-task improvement claims. Templates are not an online research agent. The executor checks write scope, artifact presence, and resource settlement, not quality. Explicit token/time budgets are accepted; `inferLimits: true` and `maxTurns` are unsupported.

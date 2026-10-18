@@ -1,0 +1,127 @@
+name: GUI checks
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_INCREMENTAL: '0'
+  NO_PROXY: 127.0.0.1,localhost
+
+concurrency:
+  group: gui-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scope:
+    name: Determine applicable work
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      gui: ${{ steps.scope.outputs.gui }}
+      release: ${{ steps.scope.outputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: scope
+        run: python3 scripts/ci-scope.py
+
+  gui:
+    needs: scope
+    if: needs.scope.outputs.gui == 'true'
+    name: macOS GUI checks and Composer/queue smoke
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22'
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - name: Prepare locked GUI dependencies
+        run: |
+          mkdir -p target/ci/gui
+          npm install --global pnpm@11.7.0
+          rustup show
+          if ! command -v cmake; then brew install cmake; fi
+          make gui-install
+      - name: Verify fast GUI regressions
+        run: pnpm --dir clients/gui run test:regressions
+      - name: Record tool and cache fingerprints
+        run: python3 scripts/ci-fingerprint.py > target/ci/gui/fingerprint.json
+      - name: Check GUI types and public boundaries
+        run: |
+          pnpm --dir clients/gui typecheck 2>&1 | tee target/ci/gui/typecheck.log
+          pnpm --dir clients/gui run verify 2>&1 | tee target/ci/gui/public.log
+      - name: Verify native Core process lifecycle
+        run: pnpm --dir clients/gui run test:core-process 2>&1 | tee target/ci/gui/core-process.log
+      - name: Check Browser contracts and evidence
+        run: pnpm --dir clients/gui run test:browser-contracts 2>&1 | tee target/ci/gui/browser-contracts.log
+      - name: Build Core and GUI
+        run: |
+          make build 2>&1 | tee target/ci/gui/core-build.log
+          make gui-build 2>&1 | tee target/ci/gui/gui-build.log
+      - name: Check registered desktop RPC routes
+        run: cargo test --locked -p areal-app-server --lib desktop_registered_methods_have_dispatch_routes 2>&1 | tee target/ci/gui/rpc-routes.log
+      - name: Verify existing GUI workflow
+        run: make gui-smoke 2>&1 | tee target/ci/gui/migration.log
+      - name: Verify Composer workflow
+        run: pnpm --dir clients/gui run test:composer 2>&1 | tee target/ci/gui/composer.log
+      - name: Verify model configuration and selection
+        run: pnpm --dir clients/gui run test:model-selection 2>&1 | tee target/ci/gui/model-selection.log
+      - name: Verify queue workflow
+        run: pnpm --dir clients/gui run test:queue 2>&1 | tee target/ci/gui/queue.log
+      - name: Verify conversation derivation workflow
+        timeout-minutes: 10
+        run: pnpm --dir clients/gui run test:conversation-derivation 2>&1 | tee target/ci/gui/conversation-derivation.log
+      - name: Collect GUI evidence
+        if: always()
+        run: |
+          mkdir -p target/ci/gui
+          if [ -d .scratch/gui-evidence ]; then
+            cp -R .scratch/gui-evidence target/ci/gui/gui-evidence
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: macos-gui-evidence
+          path: |
+            target/ci/gui/
+            /private/tmp/areal-gui-*/
+            /private/tmp/ams-*/
+            /private/tmp/areal-core-process-*/
+            /private/tmp/areal-browser-*/
+            /private/tmp/shared-browser-06-evidence-*/
+          retention-days: 7
+
+  gate:
+    name: GUI gate
+    needs: [scope, gui]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Require applicable work
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          WORK_RESULT: ${{ needs.gui.result }}
+          NEEDED: ${{ needs.scope.outputs.gui }}
+        run: python3 scripts/ci-gate.py

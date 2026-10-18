@@ -1,0 +1,2 @@
+{"when":{"all":[{"field":"class","eq":"compressor"},{"field":"lifecycle","eq":"active"},{"field":"region","in":["NORTH","EAST"]}]},"set":{"field":"service_queue","value":"priority"}}
+{"when":{"field":"dispatch_state","eq":"retired"},"delete":"dispatch_window"}

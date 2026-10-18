@@ -1,0 +1,564 @@
+pub mod delegation;
+pub mod goals;
+pub mod service;
+pub mod tasks;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+pub mod desktop;
+
+pub const CODEX_PROTOCOL_VERSION: &str = "0.145.0";
+pub const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024;
+/// 工具的文本/结构化原文接收上限；模型可见页仍单独限制为 16 KiB。
+pub const MAX_TOOL_RESULT_BYTES: usize = 8 * 1024 * 1024;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum TurnStatus {
+    InProgress,
+    Completed,
+    Interrupted,
+    Failed,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnError {
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<TurnOutcome>,
+}
+
+/// 终止原因由错误产生方提供；客户端不得从 message 反推分类。
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnOutcome {
+    pub code: String,
+    pub class: String,
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
+pub enum Input {
+    Text {
+        text: String,
+        #[serde(default, rename = "text_elements")]
+        text_elements: Vec<Value>,
+    },
+    Image {
+        url: String,
+        #[serde(default)]
+        detail: Option<ImageDetail>,
+    },
+    LocalImage {
+        path: String,
+        #[serde(default)]
+        detail: Option<ImageDetail>,
+    },
+    Audio {
+        url: String,
+    },
+    LocalAudio {
+        path: String,
+    },
+    File {
+        url: String,
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(default)]
+        mime_type: Option<String>,
+    },
+}
+
+impl Input {
+    pub fn text(text: impl Into<String>) -> Self {
+        Self::Text {
+            text: text.into(),
+            text_elements: Vec::new(),
+        }
+    }
+    pub fn as_text(&self) -> &str {
+        match self {
+            Self::Text { text, .. } => text,
+            _ => "",
+        }
+    }
+    pub fn modality(&self) -> Modality {
+        match self {
+            Self::Text { .. } => Modality::Text,
+            Self::Image { .. } | Self::LocalImage { .. } => Modality::Image,
+            Self::Audio { .. } | Self::LocalAudio { .. } => Modality::Audio,
+            Self::File { .. } => Modality::File,
+        }
+    }
+}
+
+#[derive(
+    Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, schemars::JsonSchema,
+)]
+#[serde(rename_all = "camelCase")]
+pub enum Modality {
+    Text,
+    Image,
+    Audio,
+    File,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum ImageDetail {
+    Auto,
+    Low,
+    High,
+    Original,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MediaRef {
+    pub uri: String,
+    pub mime_type: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModelUsage {
+    pub input_tokens: u64,
+    #[serde(default)]
+    pub cached_input_tokens: u64,
+    pub output_tokens: u64,
+}
+
+impl ModelUsage {
+    pub fn add_assign(&mut self, other: &Self) {
+        self.input_tokens = self.input_tokens.saturating_add(other.input_tokens);
+        self.cached_input_tokens = self
+            .cached_input_tokens
+            .saturating_add(other.cached_input_tokens);
+        self.output_tokens = self.output_tokens.saturating_add(other.output_tokens);
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentMessagePhase {
+    Commentary,
+    FinalAnswer,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum Item {
+    UserMessage {
+        id: String,
+        content: Vec<Input>,
+    },
+    AgentMessage {
+        id: String,
+        text: String,
+        /// Core 按执行轮次确认正文阶段；旧快照缺失时客户端保留正文。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        phase: Option<AgentMessagePhase>,
+    },
+    /// 模型显式返回的思考文本，独立于正文且不回放为模型输入。
+    Reasoning {
+        id: String,
+        #[serde(default)]
+        summary: Vec<String>,
+        #[serde(default)]
+        content: Vec<String>,
+    },
+    DynamicToolCall {
+        id: String,
+        tool: String,
+        arguments: Value,
+        status: ToolStatus,
+        success: Option<bool>,
+        #[serde(rename = "contentItems")]
+        content_items: Option<Vec<Value>>,
+        #[serde(rename = "callId")]
+        call_id: String,
+        execution: Box<ToolExecution>,
+    },
+    AgentMedia {
+        id: String,
+        modality: Modality,
+        media: MediaRef,
+    },
+    /// Provider-owned opaque context retained for subsequent model requests.
+    ModelContext {
+        id: String,
+        value: Value,
+    },
+}
+
+impl Item {
+    pub fn id(&self) -> &str {
+        match self {
+            Self::UserMessage { id, .. }
+            | Self::AgentMessage { id, .. }
+            | Self::Reasoning { id, .. }
+            | Self::DynamicToolCall { id, .. }
+            | Self::ModelContext { id, .. }
+            | Self::AgentMedia { id, .. } => id,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum ToolStatus {
+    InProgress,
+    Completed,
+    Failed,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolOutcome {
+    Running,
+    Succeeded,
+    Failed,
+    Cancelled,
+    Unknown,
+}
+
+/// Durable journal carried alongside the upstream dynamic-tool item projection.
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolExecution {
+    /// 当前调用准许暴露的原始结果，引用保留在权威历史中以支持恢复与 GC。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result_snapshot: Option<MediaRef>,
+    /// 只记录转换度量，不持有另一份权威历史。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_projection: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
+    pub runtime_epoch: String,
+    pub scope_id: String,
+    pub operation_id: String,
+    pub outcome: ToolOutcome,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inspection: Option<String>,
+    /// Dispatch journal, tool/hooks execution and result preparation; excludes final commit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hooks: Vec<HookExecution>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective_arguments: Option<Value>,
+    /// Post-hook arguments before resolving model-facing aliases into Runtime IDs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_arguments: Option<Value>,
+    /// 模型返回的原始工具参数，仅在语义未被 hook 改写时用于历史回放。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_arguments: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<PluginExecution>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginExecution {
+    pub plugin_id: String,
+    pub generation: String,
+    pub scope_id: String,
+    pub operations: Vec<PluginOperation>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginOperation {
+    pub operation_id: String,
+    pub kind: String,
+    pub path: String,
+    pub request_sha256: String,
+    pub outcome: ToolOutcome,
+    pub result: Option<Value>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ToolDefinition {
+    pub name: String,
+    pub description: String,
+    pub input_schema: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<Value>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DynamicToolResponse {
+    pub success: bool,
+    pub content_items: Vec<ToolContent>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structured_content: Option<Value>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
+pub enum ToolContent {
+    InputText {
+        text: String,
+    },
+    ArealMedia {
+        modality: Modality,
+        media: MediaRef,
+    },
+    /// 只在受信任 MCP 适配器与 Engine 间使用，禁止通过公共 wire 注入。
+    #[serde(skip)]
+    InlineMedia {
+        modality: Modality,
+        mime_type: String,
+        data_base64: String,
+    },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct HookExecution {
+    pub name: String,
+    pub event: String,
+    pub operation_id: String,
+    pub outcome: ToolOutcome,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result: Option<Value>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Turn {
+    /// Core 准入时的 Unix 秒；旧历史缺省，不从打开界面的时刻补造。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<i64>,
+    /// 终态结算时的 Unix 秒；重启修复的未知结束时刻保持缺省。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<i64>,
+    /// 单调时钟测得的执行经过毫秒，包含模型、工具、审批与清理等待。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub goal: Option<goals::GoalTurn>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instruction_snapshot: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configuration: Option<desktop::EffectiveConfig>,
+    pub id: String,
+    pub items: Vec<Item>,
+    pub status: TurnStatus,
+    pub error: Option<TurnError>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<ModelUsage>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum ThreadStatus {
+    Idle,
+    Active {
+        #[serde(rename = "activeFlags")]
+        active_flags: Vec<String>,
+    },
+    SystemError,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextCheckpoint {
+    pub through_item_id: String,
+    pub summary: String,
+    pub compactions: u64,
+    #[serde(default)]
+    pub total_duration_ms: u64,
+    #[serde(default)]
+    pub usage: ModelUsage,
+    /// 保留的真实用户输入；缺省表示旧 checkpoint 的全量重放契约。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retained_inputs: Option<Vec<ContextInput>>,
+    /// 有界的原始工具回执提示，不授予权限或恢复过期句柄。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextInput {
+    pub item_id: String,
+    pub content: Vec<Input>,
+}
+
+/// 不可变历史分段的链头；读取完整 Thread 时由 Core 展开，不要求客户端管理文件。
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryArchive {
+    pub head: String,
+    pub through_item_id: String,
+    pub completed_turns: u64,
+    pub items: u64,
+    pub bytes: u64,
+}
+
+/// 不可变会话来源；未知角色反序列化失败，避免将新受限会话当作普通可写 Thread。
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Conversation {
+    Fork {
+        version: u32,
+        origin: ConversationOrigin,
+        #[serde(rename = "historySeed")]
+        history_seed: HistorySeed,
+        #[serde(rename = "workspaceMode")]
+        workspace_mode: String,
+    },
+    Side {
+        version: u32,
+        origin: ConversationOrigin,
+        #[serde(rename = "referenceSnapshot")]
+        reference_snapshot: HistorySeed,
+        policy: SidePolicy,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selection: Option<SideReference>,
+    },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SideReference {
+    pub selection: desktop::SideSelection,
+    pub text: String,
+    pub verified: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SidePolicy {
+    pub kind: String,
+    pub workspace_access: String,
+}
+
+impl Thread {
+    pub fn is_side(&self) -> bool {
+        matches!(self.conversation, Some(Conversation::Side { .. }))
+    }
+    pub fn side_workspace_read(&self) -> bool {
+        matches!(&self.conversation, Some(Conversation::Side { policy, .. }) if policy.workspace_access == "readOnly")
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationOrigin {
+    pub source_thread_id: String,
+    pub source_turn_id: String,
+    pub boundary: String,
+    pub snapshot_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct HistorySeed {
+    pub snapshot_id: String,
+    pub turn_count: usize,
+    pub item_count: usize,
+    pub logical_bytes: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Thread {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation: Option<Conversation>,
+    #[serde(default, skip_serializing_if = "goals::GoalState::is_empty")]
+    pub goals: goals::GoalState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub goal_owner: Option<goals::GoalOwner>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub desktop: Option<desktop::DesktopState>,
+    pub id: String,
+    pub session_id: String,
+    pub parent_thread_id: Option<String>,
+    pub preview: String,
+    pub model_provider: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub status: ThreadStatus,
+    pub cwd: String,
+    pub cli_version: String,
+    pub source: String,
+    pub ephemeral: bool,
+    pub turns: Vec<Turn>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history_archive: Option<HistoryArchive>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_checkpoint: Option<ContextCheckpoint>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dynamic_tools: Vec<ToolDefinition>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub toolset_revision: u64,
+}
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct RpcError {
+    pub code: i64,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<Value>,
+}
+
+impl RpcError {
+    pub fn invalid(message: impl Into<String>) -> Self {
+        Self {
+            code: -32602,
+            message: message.into(),
+            data: None,
+        }
+    }
+    pub fn method() -> Self {
+        Self {
+            code: -32601,
+            message: "Method not found".into(),
+            data: None,
+        }
+    }
+}
+
+pub fn notification(method: &str, params: Value) -> Value {
+    json!({"method": method, "params": params})
+}
+
+pub fn response(id: Value, result: Result<Value, RpcError>) -> Value {
+    match result {
+        Ok(result) => json!({"id": id, "result": result}),
+        Err(error) => json!({"id": id, "error": error}),
+    }
+}
+
+#[cfg(test)]
+mod turn_outcome_tests {
+    use super::*;
+    #[test]
+    fn legacy_errors_remain_readable_and_structured_outcomes_roundtrip() {
+        let legacy: TurnError = serde_json::from_value(json!({"message":"old error"})).unwrap();
+        assert!(legacy.outcome.is_none());
+        assert_eq!(
+            serde_json::to_value(legacy).unwrap(),
+            json!({"message":"old error"})
+        );
+        let value = json!({"message":"failed", "outcome":{
+            "code":"LLM_CONTEXT_WINDOW_EXCEEDED", "class":"agent", "source":"core_context_budget",
+            "details":{"estimatedTokens":188817,"tokenLimit":188416}
+        }});
+        let decoded: TurnError = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), value);
+    }
+}

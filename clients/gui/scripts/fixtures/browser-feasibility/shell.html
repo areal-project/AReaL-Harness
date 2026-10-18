@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data:"
+  />
+  <title>AReaL Browser R0 Fixture</title>
+  <style>
+    body {
+      margin: 0;
+      background: #f0f2f4;
+      color: #243040;
+      font: 16px system-ui;
+    }
+    header {
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+    button {
+      font: inherit;
+      padding: 10px 24px;
+    }
+    #instruction {
+      margin: 0 24px;
+    }
+  </style>
+  <header>
+    <strong>Shared Browser · R0 原生实验</strong
+    ><span id="control" aria-live="polite">你在控制</span><button id="takeover">接管</button
+    ><button id="unfreeze" hidden>返回实时页</button>
+  </header>
+  <p id="instruction">仅合成页面；未连接 Core 工具、审批或历史。</p>
+  <img
+    id="frozen"
+    hidden
+    alt="冻结截图反馈实验；页面可能继续变化"
+    style="position: absolute; left: 24px; top: 120px; width: 960px; height: 600px"
+  />
+  <script src="shell.js"></script>
+</html>

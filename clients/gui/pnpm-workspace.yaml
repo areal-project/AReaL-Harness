@@ -1,0 +1,28 @@
+packages:
+  - app
+  - renderer
+  - packages/*
+
+verifyDepsBeforeRun: error
+allowBuilds:
+  '@google/genai': false
+  electron: true
+  electron-winstaller: false
+  esbuild: true
+  protobufjs: false
+
+patchedDependencies:
+  '@pierre/diffs@1.4.3': patches/@pierre__diffs@1.4.3.patch
+  app-builder-lib@26.15.3: patches/app-builder-lib@26.15.3.patch
+overrides:
+  '@dicebear/core@<=9.4.2': 9.4.3
+  basic-ftp@<=6.2.0: 6.2.1
+  katex@>=0.11.0 <0.18.2: 0.18.2
+  postcss-selector-parser@<7.1.6: 7.1.6
+  'app-builder-lib>@electron/get': 5.1.0
+
+packageExtensions:
+  'app-builder-lib@26.15.3':
+    dependencies:
+      got: 11.8.6
+      proxy-from-env: 1.1.0

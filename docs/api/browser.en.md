@@ -1,0 +1,209 @@
+[中文](browser.md) | **English**
+
+# Browser v1 contract
+
+**Design contract, partly implemented.** Current source supports natural discovery of the fixed tool bundle in Browser-capable GUI chats, Core-approved binding to the same native Page, observation/capture/diagnostics, Ref actions, restricted local coordinate actions, waits, navigation, new Pages and bounded batches, plus direct human intervention and missing-host rejection. Discover actual capabilities through `describe`; unadvertised operations remain proposals. Unified native and package acceptance of the natural browsing flow remains pending. Existing [Core UNKNOWN rules](core.en.md#dynamic-tools) remain in force.
+
+New Browser-capable GUI chats register the fixed `browser_v1` bundle. On the next explicit user send while an older Thread is idle, the GUI appends the deployed fixed bundle under [ADR-0007](../adr/0007-browser-tool-compatibility.en.md), preserving existing tools and history. No Composer switch or Page handback button is required. The first Core-approved `describe` lazily binds the current same native Page, allocating a blank Page only when none exists. The Thread's bound Core connection still handles model callbacks. The extensible `operation:string` envelope is fixed. `describe` returns parameter examples, including the single nested `action` for `act` and `snapshotId` from `observe.observationId`. Secondary validation accepts `describe` (empty parameters), `observe` (`pageId`, optional document scope, Ref and budget), `capture` (current viewport), `act` (pageId, snapshotId and advertised Ref actions and restricted local screenshot-coordinate actions) and `wait` (pageId, 1–30000 ms and optional condition). Bounded native accessibility reads report actual Frame coverage and expose role, name, state, value, and parent association where available. Refs bind to native node identity and generations; a budget-limited observation does not itself invalidate an omitted live Ref. Tool URLs omit query and fragment values. Capture is limited to 8 million pixels, 4096 pixels per side, and a 2 MiB PNG, then uses the existing Core Blob and tool media path for model and chat access. Automatic capture refuses known sensitive forms and unreadable Frames; this is not image masking and cannot identify every secret. Persistent Profiles are not available. Human takeover, navigation, and Core/host generation changes revoke reading; cancelled or timed-out calls are never replayed.
+
+On first focus, the Preview address bar expands and selects the full URL; a subsequent click can edit part of it. Address, navigation and tabs support ordinary human browsing. Annotation and sending context do not require Agent tool activation or a Page claim. Tool availability alone grants no read or action permission: Core approves the actual Page, target, operation and control epoch.
+
+Known-sensitive capture checks and viewport measurements run in Electron's isolated world so page scripts cannot replace the DOM query methods or viewport getters used by those checks. Unknown sensitive content can still escape detection; the page itself remains untrusted.
+
+Node and text budgets follow the native AX parent/child reading order instead of the array allocation order; privacy checks still cover the complete returned node set.
+
+Observation budgets count the final projection: empty anonymous generic nodes and InlineTextBox nodes that exactly repeat their immediate StaticText parent are omitted. Names, state, values, descriptions and Frame identity remain represented; privacy checks use the complete AX node set.
+
+Observations omit text-field values and field descendants, and conceal echoes of field values in other nodes. A search field stops concealing ordinary result labels containing its query only when the current result URL matches the Origin, path, complete query values and multiplicity of an unexpired Core-approved public GET search, and an isolated-world read confirms that the native target itself is the query field and rechecks its form, GET semantics and sensitive controls. The permit remains bound to its Page and control epoch without extending navigation permission or its lifetime. Unapproved, unknown, sensitive and other same-valued fields still contribute to echo protection; failed checks keep content concealed. Sensitive-name, property and subtree protection remains unchanged.
+
+Current actions support Core-approved local development operations and Ref actions with recognized benign public-page semantics, including ordinary text entry, GET search submission and link navigation. Main checks the actual target during preparation and execution. Sensitive, unknown or high-impact actions return `human_takeover_required`; public-page screenshot-coordinate actions remain denied. Reads and actions both pass Core permission checks bound to the Page and control epoch. Plans are short lived and bind the snapshot, target, document, control epoch and viewport; stale plans return `plan_stale` without retargeting. Confirmed input still leaves business verification as `not_checked`.
+
+An approved public GET search retains a navigation chain for 30 seconds from dispatch, without renewal, on the same Page/control generations, origin and path. The query field retains all exact values, order and multiplicity and cannot disappear; the site may rewrite, add or omit other parameters. The approval plan retains the complete pre-submit form fields, still checked exactly between preparation and dispatch; this does not guarantee that site JavaScript generates a request with the same auxiliary parameters. Every navigation still invalidates prior observations, Refs and plans. Human takeover, the next dispatched action, cancellation or UNKNOWN clears the intent; subsequent reads still require Core approval.
+
+For the development loop, the Agent can inspect or start the current Thread's existing Core-managed service through `development_service_inspect` and `development_service_start`. The Process pane offers only explicit loopback URLs found in complete output of a running managed process; the user chooses one to open in the same native Preview. This output is endpoint evidence, not proof of listener readiness or a Browser permission grant. The Preview verification card links Core check, Browser observation/capture and file-write Items, with the original screenshot Blob and turn diff. It keeps command exit, visual judgment, loaded build identity and post-refresh behavior separate; a source fingerprint alone does not identify the loaded page.
+
+Main owns local control. Physical key or mouse input on the visible Page first synchronously revokes the old Agent epoch, plans and reads, then waits for dispatched CDP input and releases synthetic keys/buttons. After convergence, the first human event continues into the same Page without a mode switch. Unconfirmed convergence stays `transferring`, with stop-loading or close-page options and no competing writers. Synthetic dispatch still checks native focus and isolation. Human control pauses automatic observation, capture and diagnostics; late results are discarded by epoch. Ambiguous dispatched actions remain UNKNOWN and are never retried automatically. The next explicit user message or explicit continuation uses the existing `send` path and Core approval to regain control, clears old plans and observations, and requires fresh observation before action. Human-period content is not uploaded on a timer, and evidence previously delivered to Core/model cannot be retracted.
+
+Element selection provides trusted, user-initiated Preview IPC `captureElement`, `cancelElementSelection`, and `checkElement`; it does not add a model-writable `browser_v1` operation. Controller enables DOM and Overlay in one CDP session on the visible human Page, receives `inspectNodeRequested`, disables the overlay, then takes the existing privacy-guarded capture and reads the node's actual AX role/name, bitmap bounds, and Page/document/control identity. Selection and later reads check Core/Thread/Page/native WebContentsView identity, generations, display state and deadlines; cancellation or a page switch discards late results. The `human:` evidence Ref never enters the Agent-action Ref cache. A pre-stage change in node identity, semantics, bounds or viewport marks the original evidence `stale`. Only the crop and provenance enter the original Thread's Composer draft; explicit send uses the existing Core Blob/MediaRef and message-admission path. React source location is unavailable without an actual project-provided attributed mapping. Canvas and unverifiable iframe or Shadow content receive a reason and region-feedback entry without invented selectors. Cross-origin Frames without explicit permission or complete privacy checks produce no image, never a fabricated crop.
+
+Human embedded-site permission uses the `authorizeFrameOrigin`, `reloadFrameOrigin`, and `revokeFrameOrigin` Preview IPC operations, requiring the current Human Page and trusted Main confirmation. Main derives exactly one distinct HTTP(S) Origin from iframe/frame addresses in the current main document; the Renderer cannot supply an Origin. Confirmation creates only a pending grant valid for 60 seconds; the user must explicitly reload to apply it. The grant binds Core, Thread, Page, native WebContents, parent document, and control generations, without granting Agent read or action permissions. Document change, switching to another Page/Thread, or explicit revocation closes that native Page; confirmation explains state loss. Closing Preview or an ordinary `hide` destroys a granted Page. Only annotation hide carrying the current Main-issued `captureId` for that Page retains the same Native and frozen draft; unmount always sends ordinary `hide`. While granted, Agent claim and ordinary navigation/DevTools are refused; automatic capture permissions remain unchanged.
+
+Human Frame grants scope capture and Page ownership; they are not per-resource Origin permissions required for ordinary page loading. While a grant is active, requests still check the initiating Frame and owned native Page. No site CSP, `Connection-Allowlist` or download response header is injected, deleted or rewritten; the site's own restrictions remain effective. Human capture checks every Frame represented by the full returned PNG (at most 32) in isolated worlds, including same-process Frames and OOPIFs, with before/after sensitivity, DOM mutation, and Frame/loader identity checks. Incomplete coverage, unknown nested cross-origin Frames, unavailable contexts, navigation, or cancellation returns no image. The existing 10-second read deadline and bounded cleanup apply; unknown canvas or closed-shadow secrets remain outside the guarantee. Element annotation on a granted Page explains the iframe limitation and offers region annotation without a selector. Crops and Frame provenance enter existing Blob/MediaRef only through the original Thread draft and explicit user send.
+
+Temporary style trials provide trusted GUI human Preview IPC `beginStyleTrial`, `applyStyleTrial`, `undoStyleTrial`, `redoStyleTrial`, `captureStyleTrialAfter`, and `clearStyleTrial`; the model tool definition stays fixed. Main accepts only a bounded text/color/font/spacing/size vocabulary on the private backend node chosen by native inspection. It rejects arbitrary CSS, URLs or scripts in CSS values, and Renderer selectors; plain text is assigned to an existing text node. Each step checks actual current property values, node connection, and Page/document/control generations in an isolated world. Application replacement or changes to an edited property stop replay. There are at most 20 steps. Clear restores an old value only while the current value still equals this trial's override; uncertainty requires reload rather than claiming source verification. Cross-document navigation discards old overrides; same-document navigation marks the trial stale and blocks handback until the user explicitly reloads to discard any surviving override, preserving unsaved form content from an automatic reload. Both before and after images use the existing privacy guard; only selected-element crops and the user's intent enter the original Thread's Composer draft. Explicit send uses existing Core media and message admission. Unknown source location stays labeled unknown.
+
+Trusted GUI `selectElement` IPC accepts the current `pageId`, `captureId`, and nonnegative integer bitmap coordinates `x/y` for pointer and keyboard-coordinate selection on a frozen capture. Main checks human control, task/page/capture identity, bounds, document, and viewport. Active cross-origin frame grants remain region-only; this adds no model operation.
+
+Human frozen captures retain a DOM mutation marker until selection and confirmation finish. Node, attribute or text changes after capture reject element identity selection and confirmation; users can retain region-only evidence from the original image or capture again. Ending annotation, entering a style trial, reclaiming control, document replacement or page release clears the marker.
+
+Diagnostics provide the read-only `diagnostics` operation in source: `pageId`, `kind=console|network`, optional nonnegative integer `cursor`, and optional `limit=1–200` (default 50). Results include page/control/document generations, event sequence, next cursor, loss marker, and a per-page 200-entry/256 KiB buffer cap. Console uses live events from the current WebContents; network uses request/response/failure metadata from that page's CDP owner. Collection does not enable `Runtime` or `Console` CDP domains that may replay older logs. It retains query- and fragment-free URLs, methods, statuses and bounded errors, without bodies, headers or credentials; sensitive text is conservatively hidden. Takeover immediately clears and stops the buffer; handback begins a new control epoch, and late network requests are excluded by native creation time. Opening DevTools revokes Agent control; closing it requires a fresh claim and observation. Diagnostic tool results are Core Items scoped to the Thread, linked from the Preview verification card.
+
+The resource lifecycle limits native Pages to eight per window and logical Pages to four per Workspace, checking before native allocation. Executing, transferring, visible human, prepared-plan, and file-handoff Pages are excluded from idle eviction; a new Page is refused when no candidate can be evicted. Eviction keeps the same Page shell's URL and title and reports state loss; reopening advances `pageGeneration`. Without an embedded-site grant, hiding alone does not navigate or close a Page. Archive, project hide, and window close revoke ownership and close the last reference to the temporary context; cancellation and late results cannot reveal an old Page or turn a dispatched operation into a known unsent one.
+
+File handoff requires the user to allow the next download on the current visible human Page. The one-use permission expires in 30 seconds and is bound to native WebContents, Page, Thread, document and control generations. Electron's native Save dialog obtains the destination before writing; Main accepts no path from the Renderer or model. There is at most one active download per Page, a 64 MiB item limit and a 120-second timeout. Limit, closure and crash cancel the item; network side effects after dispatch remain unknown and are never automatically retried. The latest eight in-session receipts per Workspace record Page, opener, known origin, filename, size or unknown, destination filename and completion/cancellation/interruption. Human uploads use the system file chooser; Agent preparation rejects file inputs, while native CDP intercepts an indirectly opened chooser and revokes control. No file bytes, host path or file-selection capability reaches the model.
+
+The private Ref cache retains at most 1000 live identities per page. Current emitted Refs take priority; older evicted Refs return `stale_ref`, and public IDs are never reused. Capture checks known sensitive fields, including password, payment security code, and one-time-code autocomplete tokens with optional section prefixes, before and after the native image and refuses any observed DOM mutation during the capture interval. The guard covers the main document, readable Frames, and open Shadow roots; transient canvas pixels and inaccessible closed Shadow content cannot be proven clean, so automatic capture remains unsuitable for pages with unknown secrets.
+
+Bounded execution adds `runBatch` to the existing `browser_v1` envelope without changing its persisted tool definition. Its parameters are `{pageId, snapshotId, steps}` with 1–8 steps. Each step is an existing `act` action (`{operation:"act", snapshotId, action}`) or a bounded wait (`{operation:"wait", timeoutMs, condition?}`); all steps use the outer Page and one observed snapshot. Navigation, new pages, arbitrary code, network tools and file access are excluded. Screenshot coordinates are allowed only in the first step because input invalidates the capture. Known waits cannot exceed the 29-second inner execution budget. Core prepares and approves the concrete full sequence; Main retains the private step plans and checks the native target and control fence before every dispatch. Results contain step-indexed confirmed receipts and `verification:not_checked`; a known later refusal reports `remaining:not_sent`. An ambiguous step makes the whole tool UNKNOWN and retains the confirmed prefix in the Core error details. Duplicate equal call identities share the in-flight or completed result, and changed arguments are refused. The Preview shows step progress from its existing Page operation projection.
+
+Same-document history updates with an unchanged full URL invalidate old reads, Refs and plans without revoking or restoring current control. URL changes and new documents retain the existing navigation authorization rules.
+
+After the native keyDown of a main-document Ref `press` is acknowledged, navigation of a non-target child Frame may invalidate the whole-page observation epoch without preventing the matching single keyUp, provided the main document, native Page, Host/Core ownership, control and viewport remain unchanged and the action is not cancelled. This exception only finishes acknowledged input; it does not reuse stale Refs, continue other input or broaden navigation permission. Old read plans remain invalid, and subsequent actions require fresh observation and Core permission checks. The receipt remains `inputConfirmed:true / verification:not_checked`; lost ACKs or other invalid fences remain UNKNOWN without replay.
+
+## 1. Existing connections, new host capability
+
+Reuse Core ↔ independent desktop adapter and the adapter’s authenticated local connection ↔ Electron Main. Renderer has no Core credentials. The latter channel carries bounded reverse Browser requests/replies/cancellation under its existing authentication, without a public browser port.
+
+Actual execution uses existing `item/tool/call`, DynamicToolHost and `areal/tool/cancelled`. The optional `areal.browser.host.v1` handshake includes protocol version, supported operations, browserHostId, hostGeneration and live Main availability. Only deployment-trusted clients register it. Validate IPC sender and owning window; identifiers alone are not permissions. Keep the adapter as the Thread’s single callback owner. A second `thread/resume` cannot steal an active host. Adapter survival after Main exit reports unavailable.
+
+## 2. Model interface and discovery
+
+The model tool `browser_v1` has a fixed envelope `{operation:string, parameters:object}` and rejects extra top-level fields. Size/depth are bounded; the selected operation strictly validates its parameters. This extensible envelope avoids changing persisted tool definitions as capabilities grow.
+
+`describe` returns actual supported operations and concise documentation. Unknown operations/fields never become shell, JavaScript or raw CDP. Advertise only implemented capabilities. Supported intent surface:
+
+| Operation | Purpose and constraints |
+|---|---|
+| describe | Current bound host documentation; no secrets or system endpoints |
+| listPages / claimPage | Current Thread only; human-page metadata does not grant control; adoption preserves the object |
+| newPage / navigate | Scoped HTTP(S) navigation and allocation; quotas and origin checks |
+| observe | Scoped DOM/AX with Ref, truncation and frame coverage |
+| capture | Provenance-bearing viewport/full/clip image; privacy and size limits |
+| act | Single supported click/fill/key/scroll/hover/select/check/drag from an observation |
+| wait | Bounded explicit state condition, not universal network-idle |
+| closePage | Confirm closure of human/unknown-origin pages; no cross-Thread action |
+| diagnostics | Bounded Console/network summaries, no default sensitive headers/body |
+| runBatch | Up to8 known same-page actions/waits; per-step checks; no code or privilege escalation |
+
+Every operation and user-facing error has behavioral tests. Core supplies Thread/Turn identity; model arguments cannot specify another thread, host, WebContents or CDP session. Unavailable operations fail explicitly rather than create a placeholder browser.
+
+## 3. Trusted execution identity
+
+This is a **new internal DTO illustration**, not an existing API or model-writable input.
+
+```ts
+interface BrowserExecutionContext {
+  coreInstanceId: string;
+  projectId: string;
+  threadId: string;
+  turnId: string;
+  callId: string;
+  requestId: string;
+  browserHostId: string;
+  hostGeneration: number;
+  workspaceId: string;
+  pageId?: string;
+  pageGeneration?: number;
+  controlEpoch: number;
+  deadlineRemainingMs: number;
+}
+```
+
+Use structural or unambiguous compound keys. Distinguish hostGeneration (host/native binding), pageGeneration (native object replacement), documentEpoch (main/frame document replacement), controlEpoch (claim/takeover/resume/revocation), viewportRevision (coordinate transform) and eventSequence (subscription cursor). A cursor is not authority. Every hop only narrows the remaining deadline.
+
+## 4. Pages, contexts and events
+
+One Browser Workspace per `(coreInstanceId, projectId, threadId)` initially, with multiple Pages. No cross-Thread transfers. Adopt an existing preview with its real Session; new sibling pages share that transient context; other Workspaces do not.
+
+Controller provides atomic snapshot-and-subscribe. Install the snapshot sequence before consuming deltas; resnapshot after a gap. Do not assume independent read/subscribe is race-free. Broadcast metadata only; read DOM/images/network data on demand. Events: pageAdded/pageChanged/pageRemoved, controlChanged, operationChanged, hostAvailabilityChanged, viewportChanged and diagnosticsAvailable. GUI-only projections use the local channel; authoritative tool history remains Core Items. Filter by authorized project/Thread/window.
+
+Electron Main's sole Page map owns native objects. The trusted main view installs `preview.subscribe` and receives its snapshot; later events carry Page metadata only, and a sequence gap triggers resubscription. Human new, select and close Page commands come from the main view; closing a human or unknown-source Page requires explicit user intent. `browser_v1` `navigate` and `newPage` prepare read-only, pass Core approval, then execute against a Page ID and generations. For `newPage`, `pageId` names the opener. After loading, the child follows the same claim path to establish its own control epoch, diagnostics and native file-chooser interception; the receipt returns its Page ID and generations. Navigation and new-page creation also require fresh observe/capture after claiming or giveback. A website popup may join the same transient context only after recent, one-use local human input; Main denies other native window requests.
+
+Orthogonal state dimensions: resource=`ready|suspended|crashed|closed`; control=`human|agent|transferring`; reachability=`connected|disconnected|incompatible`; operation=`prepared|dispatched|confirmed|rejected|unknown`. Controller owns physical facts; Core owns the official outcome. Restore a Page shell’s URL/title, not identity, forms, heap or login. Crash recovery uses only the last committed document URL, never a provisional URL from a download or other uncommitted navigation. Historic evidence is not a restored live page.
+
+## 5. Observation and references
+
+Observations include observationId, pageId, pageGeneration, documentEpoch, controlEpoch, URL/title, capturedAt, scope, truncation and frameCoverage. Visual observations also include CSS viewport, scroll offset, device scale, page zoom, bitmap size and viewportRevision. Capture is a timepoint, not a lock on the website.
+
+Prefer meaningful visible text, role/name/state and actionable Refs. Preserve labels, errors, associations and frame provenance. Explicitly mark unsupported frames unavailable, not empty. Private Ref identity includes page generation, frame, frame document and backend node. Public IDs never recycle into a different node. Missing/stale Refs fail; there is no name/XPath fallback to a replacement target.
+
+Ref actions check connectivity, visibility, actionability and hit-testing at prepare and dispatch. Use bounded stability waits and real input rather than page-script click simulation. Whole-document mutation counters alone are insufficient. Coordinate actions use an explicit bitmap-to-CSS transform; never guess by multiplying DPR. Changed viewport/zoom/document requires a new screenshot.
+
+Screenshot-coordinate actions remain restricted to local development Pages and are denied on public Pages. These actions use the latest visible viewport `capture` observationId as `snapshotId`. `clickAt(x,y)`, `drag(fromX,fromY,toX,toY,steps)`, and `pressAt(x,y,key)` take integer screenshot bitmap pixels inside the actual image; drag steps are 1–20. `describe` advertises supported actions. Main converts with the captured bitmap and CSS viewport sizes and binds the converted target into the Core approval plan. The conversion uses exactly representable 1/64 CSS-pixel precision to avoid floating-point drift across JSON transport. Local Canvas without a Ref requires this screenshot path; public Canvas actions go to a human, without invented DOM selectors. A fresh capture is required after every action before another coordinate input. Capture records CSS viewport, scroll, DPR, page zoom, GUI zoom, native DIP bounds, and bitmap size. Renderer CSS bounds are converted to native DIP bounds using GUI zoom. Hidden, minimized, and zero-sized pages cannot provide an automatic capture. Viewport, zoom, scroll, or document changes invalidate prior screenshot coordinates and prepared plans; stable Refs still receive fresh actionability checks.
+
+`wait` supports `{kind:"documentReady",state:"interactive"|"complete"}` or `{kind:"accessibleName",ref,name}`. The latter matches the exact accessible name of an observed Ref in the current main document; replacement returns `stale_ref`. The concrete wait condition is part of Core approval; timeout never claims satisfaction. Omitting condition means a fixed delay only, not page readiness. No whole-page networkidle or arbitrary script is used. Batch waits retain the same condition and budget.
+
+## 6. Core approval and native execution: not a transaction
+
+Reads and actions both pass Core permissions. Initial `describe` binding and subsequent observation/capture/diagnostics cannot bypass approval or the human-control fence; read permission is checked against the current control epoch. For mutating/navigation/external-effect operations:
+
+1. Core records Tool Intent and validates the trusted bundle, Thread and policy.
+2. A **new read-only server request** `areal/browser/prepare` resolves live target facts. It cannot send input, navigate, upload or allocate a new page. New-page allocation is planned only.
+3. Host returns an expiring preparedActionId, canonical plan/digest, target description, Origin, scope, epochs, budget and risk reasons. Escape page-derived labels as untrusted text. Core persists the actual plan rather than trusting model intent.
+4. Core extends its existing permission/ApprovalRequest domain for browser plans. Only Core decisions grant execution. High-impact or semantically unknown external submissions use human takeover. An explicitly authorized development Origin may have a bounded Workspace development grant.
+5. Core adds the approved plan identity and grant to **trusted callback metadata**, not model arguments, on `item/tool/call`. Existing non-browser tools remain unchanged.
+6. Host revalidates expiry, origin, all relevant generations, plan digest and target immediately before dispatch. Changed context returns plan_stale, never silently replans/retries.
+
+This requires an optional read-only preparation interface on DynamicToolHost and a correlated prepare response. Core can record non-dispatch on prepare failure only when it knows no execute was sent. Existing tool errors are not globally reclassified. Core owns durable approvals; Controller holds short-lived prepared records, not a second persistent authorization database. Outer tool permission never overrides a local takeover fence.
+
+## 7. Human takeover
+
+Physical input on the native Page synchronously increments controlEpoch, rejects old inputs, drains not-yet-dispatched work and pauses automated observations. It runs in a priority lane, not behind a long action. Release synthetic held keys/buttons within a bound; website effects already dispatched are not reversible.
+
+The local fence is immediate, but opening human input requires a native input-quiescence barrier: settle dispatched synthetic input, release held keys and guarantee no further old-epoch input dispatch. This waits only on the local native channel, not Core. If quiescence cannot be established within a bound, remain transferring, prevent concurrent writers and offer safe page stop/closure. Do not label a requested takeover as completed. Already-triggered website/network effects may continue and remain UNKNOWN.
+
+Then publish human state and notify Core. With no dispatched input, user_control is a known refusal and subsequent Browser admissions are blocked; other independent work may finish. Do not automatically start another Turn. Ambiguous in-flight input follows existing UNKNOWN fail-stop semantics.
+
+Human control also pauses DOM/image/Console/network collection and delivery. Keep only internal safety/lifecycle signals; discard potentially sensitive diagnostics from manual login by default. Reads/captures begun before takeover must recheck controlEpoch before delivering to the model/history; discard stale-epoch results. Already-shared evidence cannot be retracted. The next explicit user message or explicit continuation can regain control through Core approval, creating a new epoch, clearing old prepared/observation handles and requiring fresh observation. No separate handback button is needed; visibility changes, tab selection and timers are not permission. UNKNOWN retains inspection/acknowledgement and never replays an old call.
+
+## 8. Receipts, deduplication, deadlines and cancellation
+
+Dedup key: `(hostGeneration, threadId, turnId, callId, stepIndex)`. requestId is transport correlation only. Equal key/equal parameters share one in-flight execution or return its known receipt; changed parameters conflict. The bounded cache must never treat missing historical state as permission to resend. Host restart does not restore execution eligibility.
+
+| Facts | Core outcome | Consequence |
+|---|---|---|
+| Invalid/denied/stale/user-control/quota/unsupported and certainly not sent | success=false, code, dispatch=not_sent | Correct/observe, not automatic takeover |
+| Confirmed action | success=true with receipt | Verify business result separately |
+| Confirmed action but failed business check | action succeeds, verification fails | Inspect and decide a new action |
+| Execute sent but receipt lost, timeout/crash/cancel ambiguous | RPC error/existing UNKNOWN | Stop automatic execution; inspect, never replay |
+| Batch prior steps confirmed, later step certainly not sent | confirmed receipts + known failure + remaining not sent | Do not repeat prior steps |
+| Any batch step ambiguous | tool UNKNOWN, preserve confirmed prefixes | Dispatch no remaining steps |
+
+Separate prepare, approval, execution and transport timeouts. Inner work ends before outer deadline to return a structured receipt. Approval does not use the short action timeout. Initial policy: action5s default/30s maximum; wait3s default/30s maximum; batch≤8 steps/30s execution total. These are adjustable protection values, not measured performance claims. Local budgets use monotonic time.
+
+Propagate existing `areal/tool/cancelled` by original request and generation. Best effort is not rollback. Late receipts may aid inspection but cannot resurrect a Turn or silently change finalized UNKNOWN.
+
+## 9. Resources, media and safety
+
+Keep the existing window-wide8-native-page cap, initially4 pages per Workspace. Pin executing pages, active human-control pages, blocking dialogs and file handoffs. Reject capacity if all candidates are pinned. Hide retains resources; eviction/suspension is explicit for idle pages with state-loss disclosure. Limit each Workspace queue to16 and reserve control capacity.
+
+Observation defaults:200 actionable nodes/32KiB text; explicit expansion up to1000/128KiB. Console/network buffer per page≤200 entries/256KiB, no body by default. Mark truncation. These are initial policy limits, not optimized measurements.
+
+Core’s4MiB WS frame limit governs end-to-end transport even if the adapter permits larger frames. Bound image pixel/encoded size. Reuse the current Core media/Blob upload, MediaRef and contentItems contracts; do not define a competing Browser media system. Use existing chunk upload only if available; otherwise reject or reduce preview resolution, never expose an unauthenticated file server. Full evidence is a Thread-authorized Core Blob. The model receives the supported image projection when visual judgment is needed, not only an inaccessible artifactId. Record redacted URL, time, viewport, page/document generations, callId and optional code/build identity; leave unknown provenance unknown.
+
+Retain sandbox, contextIsolation, webSecurity, navigation/frame and IPC checks. No remote-page Node/preload/product bridge. Deny file/javascript/data top-level navigation, credential-bearing URLs, private product protocols and OS/shell access. Browser Profile is not Agent Profile. Block Core/adapter control endpoints even on localhost.
+
+Ordinary human public/local browsing uses Chromium system proxy, DNS, redirects, cross-origin dependencies, Frames, workers and HTTP(S)/WebSocket. Private addresses and fake-IP classifications do not substitute for permissions, and there are no per-site/resource Origin prompts. The product does not change OS/Surge configuration or inject CSP/`Connection-Allowlist`; site response headers remain intact. Main reserves active Core/adapter control ports across all hostnames to prevent DNS-alias or proxy fake-IP bypass. An unrelated site using the same active control port is also refused. Closed Sessions retain denial. This is not an OS network sandbox or exfiltration guarantee; Agent reads and actions separately pass Core permissions.
+
+Do not expose cookie/storage export, browser-wide CDP, arbitrary evaluate or host paths. Diagnostics are scoped and permissioned. Redact password/token values, sensitive query items and Authorization/Cookie/Set-Cookie. Current capture refuses known sensitive forms or incomplete privacy checks rather than masking images; unknown secrets are not guaranteed detected, and Agent capture requires Core permission for the current Page and epoch. Manual sensitive flows use takeover. Downloads and user-selected uploads require separate authorization; no automatic executable launch.
+
+Core records model tool arguments separately from internal approval plans. Subsequent model history replays only the canonical post-hook arguments; plans remain in the audit fields. For existing Browser/client records, projection extracts canonical arguments from the internal audit envelope without rewriting authoritative history or accepting model-supplied `arguments/plan` envelopes.
+
+### Trust model and residual risk
+
+The primary threats are hostile web content, model mistakes, cross-Thread routing and untrusted Renderer input. Core, the authenticated desktop adapter and Main are trusted. This design does not defend against compromised Main, an OS administrator or another tool already granted unrestricted disk/network execution. Browser restrictions do not sandbox independently authorized host execution.
+
+Redaction applies to automatic Browser capture/projection; secrets already supplied in chat or held by the model cannot be promised retracted from history. Prefer manual credential entry and do not expose password fields as agent action values. Unknown sensitive page content still requires the user’s observation decision.
+
+## 10. Existing Threads and Core extensions
+
+`areal/thread/tools/attach` and `areal/thread/observe` are implemented in source. Discover observation through the `areal/capabilities` method list and `features.atomicObserve`; discover attachment through `features.browserToolAttachment` and `browserToolBundles`. Existing fixed Codex compatibility definitions stay unchanged. On reconnect or open, the GUI calls `areal/thread/observe` first to restore the authoritative Core projection; an older Core that does not advertise it reports unsupported rather than rebinding through `thread/resume`. The next explicit send while idle can append the fixed bundle, and the first Core-approved `describe` binds the Page. `thread/resume` cannot be used to steal a host or rewrite history; Core still checks host conflicts. An observer's tool reply cannot complete the bound host's call, and page operations are never replayed from a URL or cached event.
+
+| Method | Request | Meaning |
+|---|---|---|
+| areal/thread/tools/attach | requestId, threadId, expectedToolsetRevision, bundleId=areal.browser.v1 | Trusted interact+tools client; idle Thread; atomic append-only deployed bundle and current host binding; conflict on different same-name schema; idempotent |
+| areal/thread/observe | threadId | Atomic snapshot plus deltas with observe permission, without ToolHost rebinding; existing resume semantics unchanged |
+
+`Thread.toolsetRevision` is optional and defaults to 0 for older Threads. Core defines the fixed `areal.browser.v1` bundle; the request carries no tool schema. Attachment returns `threadId`, `toolsetRevision`, and `bundleId`. The same principal, method, `requestId`, and input replay the original durable Thread receipt; changed input conflicts. Busy or archived Threads, stale revisions, a same-name different definition, or another live host conflict. Existing `dynamicTools` entries and history remain intact. Attachment neither ends nor starts a Turn.
+
+After commit, Core emits `areal/thread/tools/attached` with `threadId`, the new `toolsetRevision`, and the complete `dynamicTools` array. The GUI projects that authoritative event onto an open Thread, and an older snapshot cannot undo the newer toolset. Tool callbacks remain checked by the bound Core host and native page claim, not a potentially stale GUI projection.
+
+The current GUI host executes only `browser_v1`. A Thread with other existing client dynamic tools allows attachment only on the same live original host connection. Once that host disconnects, rebinding to a GUI callback that cannot execute those tools is refused. Their definitions and history remain readable.
+
+Storage version increases from 12 to 13. The new Core reads older Threads with revision 0. Older Core binaries reject version 13 records; back up data and use a Core that understands version 13 rather than editing the version field or dropping tool history. An older Core without the capability reports Browser unavailable.
+
+New Browser-capable GUI Threads register the fixed dispatcher; older Threads append the fixed bundle on the next explicit send while idle, without a manual activation switch. CLI/TUI use observe rather than becoming an Electron driver. Authorized submissions to a GUI-hosted Thread retain that host. With no GUI, Browser is unavailable rather than a new Chrome. Child agents do not inherit parent browser control by default.
+
+## 11. Versioning and rollback
+
+Turning the feature off returns to ordinary preview while preserving Browser history and never replaying live objects. Do not remove stored tool definitions or pretend an older binary can execute them. Block incompatible storage downgrades and document backup rather than changing version numbers. Update schemas/types/docs/fixtures with each contract change.

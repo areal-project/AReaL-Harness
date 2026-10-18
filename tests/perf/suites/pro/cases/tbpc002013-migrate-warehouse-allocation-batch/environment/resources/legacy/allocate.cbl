@@ -1,0 +1,114 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ALLOCATE-BATCH.
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT STOCK-IN ASSIGN TO "STOCK.DAT"
+               ORGANIZATION IS SEQUENTIAL.
+           SELECT REQUEST-IN ASSIGN TO "REQUESTS.DAT"
+               ORGANIZATION IS SEQUENTIAL.
+           SELECT STOCK-OUT ASSIGN TO "STOCK.OUT"
+               ORGANIZATION IS SEQUENTIAL.
+           SELECT AUDIT-OUT ASSIGN TO "AUDIT.OUT"
+               ORGANIZATION IS SEQUENTIAL.
+       DATA DIVISION.
+       FILE SECTION.
+       FD STOCK-IN RECORD CONTAINS 23 CHARACTERS.
+       01 STOCK-IN-REC.
+          05 SI-ITEM PIC X(6).
+          05 SI-BIN PIC X(4).
+          05 SI-HAND PIC 9(6).
+          05 SI-RESERVED PIC 9(6).
+          05 SI-FLAG PIC X.
+       FD REQUEST-IN RECORD CONTAINS 17 CHARACTERS.
+       01 REQUEST-REC.
+          05 RQ-SEQ PIC X(4).
+          05 RQ-OP PIC X.
+          05 RQ-ITEM PIC X(6).
+          05 RQ-QTY PIC 9(6).
+       FD STOCK-OUT RECORD CONTAINS 23 CHARACTERS.
+       01 STOCK-OUT-REC PIC X(23).
+       FD AUDIT-OUT RECORD CONTAINS 24 CHARACTERS.
+       01 AUDIT-REC.
+          05 AU-REQUEST PIC X(17).
+          05 AU-STATUS PIC X.
+          05 AU-RESULT PIC 9(6).
+       WORKING-STORAGE SECTION.
+       01 EOF-FLAG PIC X VALUE "N".
+       01 STOCK-COUNT PIC 9(3) COMP VALUE 0.
+       01 IDX PIC 9(3) COMP VALUE 0.
+       01 MATCH-IDX PIC 9(3) COMP VALUE 0.
+       01 AVAILABLE PIC 9(7) COMP VALUE 0.
+       01 STOCK-TABLE.
+          05 STOCK-ROW OCCURS 256 TIMES.
+             10 T-ITEM PIC X(6).
+             10 T-BIN PIC X(4).
+             10 T-HAND PIC 9(6).
+             10 T-RESERVED PIC 9(6).
+             10 T-FLAG PIC X.
+       PROCEDURE DIVISION.
+       MAIN.
+           OPEN INPUT STOCK-IN REQUEST-IN
+           OPEN OUTPUT STOCK-OUT AUDIT-OUT
+           PERFORM LOAD-STOCK
+           PERFORM PROCESS-REQUESTS
+           PERFORM WRITE-STOCK
+           CLOSE STOCK-IN REQUEST-IN STOCK-OUT AUDIT-OUT
+           STOP RUN.
+       LOAD-STOCK.
+           MOVE "N" TO EOF-FLAG
+           PERFORM UNTIL EOF-FLAG = "Y"
+              READ STOCK-IN
+                 AT END MOVE "Y" TO EOF-FLAG
+                 NOT AT END
+                    ADD 1 TO STOCK-COUNT
+                    MOVE SI-ITEM TO T-ITEM(STOCK-COUNT)
+                    MOVE SI-BIN TO T-BIN(STOCK-COUNT)
+                    MOVE SI-HAND TO T-HAND(STOCK-COUNT)
+                    MOVE SI-RESERVED TO T-RESERVED(STOCK-COUNT)
+                    MOVE SI-FLAG TO T-FLAG(STOCK-COUNT)
+              END-READ
+           END-PERFORM.
+       PROCESS-REQUESTS.
+           MOVE "N" TO EOF-FLAG
+           PERFORM UNTIL EOF-FLAG = "Y"
+              READ REQUEST-IN
+                 AT END MOVE "Y" TO EOF-FLAG
+                 NOT AT END PERFORM APPLY-REQUEST
+              END-READ
+           END-PERFORM.
+       APPLY-REQUEST.
+           MOVE 0 TO MATCH-IDX
+           PERFORM VARYING IDX FROM 1 BY 1 UNTIL IDX > STOCK-COUNT
+              IF T-ITEM(IDX) = RQ-ITEM MOVE IDX TO MATCH-IDX END-IF
+           END-PERFORM
+           MOVE REQUEST-REC TO AU-REQUEST
+           MOVE "N" TO AU-STATUS
+           MOVE 0 TO AU-RESULT
+           IF MATCH-IDX > 0
+              MOVE T-HAND(MATCH-IDX) TO AVAILABLE
+              SUBTRACT T-RESERVED(MATCH-IDX) FROM AVAILABLE
+              IF RQ-OP = "A" AND RQ-QTY <= AVAILABLE
+                 ADD RQ-QTY TO T-RESERVED(MATCH-IDX)
+                 MOVE "Y" TO AU-STATUS
+              END-IF
+              IF RQ-OP = "R" AND RQ-QTY <= T-RESERVED(MATCH-IDX)
+                 SUBTRACT RQ-QTY FROM T-RESERVED(MATCH-IDX)
+                 MOVE "Y" TO AU-STATUS
+              END-IF
+              IF T-RESERVED(MATCH-IDX) = T-HAND(MATCH-IDX)
+                 MOVE "Y" TO T-FLAG(MATCH-IDX)
+              ELSE
+                 MOVE "N" TO T-FLAG(MATCH-IDX)
+              END-IF
+              MOVE T-RESERVED(MATCH-IDX) TO AU-RESULT
+           END-IF
+           WRITE AUDIT-REC.
+       WRITE-STOCK.
+           PERFORM VARYING IDX FROM 1 BY 1 UNTIL IDX > STOCK-COUNT
+              STRING T-ITEM(IDX) T-BIN(IDX) T-HAND(IDX)
+                     T-RESERVED(IDX) T-FLAG(IDX)
+                 INTO STOCK-OUT-REC
+              END-STRING
+              WRITE STOCK-OUT-REC
+           END-PERFORM.

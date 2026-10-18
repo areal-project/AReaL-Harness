@@ -1,0 +1,11 @@
+{
+  "plugins": {
+    "editor": {
+      "trusted": true,
+      "argv": ["node", "editor.mjs"],
+      "readRoots": ["workspace://repo/src"],
+      "writeRoots": ["workspace://repo/src"],
+      "timeoutMs": 5000
+    }
+  }
+}

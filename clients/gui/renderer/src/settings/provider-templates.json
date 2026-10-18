@@ -1,0 +1,134 @@
+[
+  {
+    "name": "阿里云百炼（国际）",
+    "baseUrl": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "protocol": "chatCompletions",
+    "models": [
+      {
+        "id": "qwen3.8-max",
+        "enabled": true
+      },
+      {
+        "id": "qwen3.8-flash",
+        "enabled": true
+      },
+      {
+        "id": "qwen3.8-omni-flash",
+        "enabled": true
+      },
+      {
+        "id": "qwen3.7-max",
+        "enabled": true
+      },
+      {
+        "id": "qwen3.7-plus",
+        "enabled": true
+      },
+      {
+        "id": "qwen3.7-flash",
+        "enabled": true
+      },
+      {
+        "id": "qwen3.6-plus",
+        "enabled": true
+      },
+      {
+        "id": "qwen3.6-flash",
+        "enabled": true
+      },
+      {
+        "id": "qwen3.5-plus",
+        "enabled": true
+      },
+      {
+        "id": "qwen3.5-flash",
+        "enabled": true
+      },
+      {
+        "id": "qwen3-max",
+        "enabled": true
+      },
+      {
+        "id": "qwen-plus",
+        "enabled": true
+      },
+      {
+        "id": "qwen-flash",
+        "enabled": true
+      },
+      {
+        "id": "qwen3-vl-plus",
+        "enabled": true
+      }
+    ],
+    "icon": "model-provider-alibaba-cloud.png"
+  },
+  {
+    "name": "OpenAI",
+    "baseUrl": "https://api.openai.com/v1",
+    "protocol": "responses",
+    "models": [
+      {
+        "id": "gpt-6-astra",
+        "enabled": true
+      },
+      {
+        "id": "gpt-5.6-sol",
+        "enabled": true
+      },
+      {
+        "id": "gpt-5.6-terra",
+        "enabled": true
+      },
+      {
+        "id": "gpt-5.6-luna",
+        "enabled": true
+      },
+      {
+        "id": "gpt-5.6",
+        "enabled": true
+      },
+      {
+        "id": "gpt-5.4",
+        "enabled": true
+      },
+      {
+        "id": "gpt-5.4-pro",
+        "enabled": true
+      },
+      {
+        "id": "gpt-5.4-mini",
+        "enabled": true
+      },
+      {
+        "id": "gpt-5.4-nano",
+        "enabled": true
+      },
+      {
+        "id": "gpt-5.3-codex",
+        "enabled": true
+      }
+    ],
+    "icon": "model-provider-openai.png"
+  },
+  {
+    "name": "xAI",
+    "baseUrl": "https://api.x.ai/v1",
+    "protocol": "responses",
+    "models": [
+      {
+        "id": "grok-4.6",
+        "enabled": true
+      },
+      {
+        "id": "grok-build-0.1",
+        "enabled": true
+      },
+      {
+        "id": "grok-4.3",
+        "enabled": true
+      }
+    ],
+    "icon": "model-provider-xai.png"
+  }
+]

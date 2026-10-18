@@ -1,0 +1,58 @@
+diff --git a/out/binDownload.js b/out/binDownload.js
+index 287e8735e53970c9787253e85b5980988719a668..ac17770ef687977d7208abf2e370b44162e91a02 100644
+--- a/out/binDownload.js
++++ b/out/binDownload.js
+@@ -21,6 +21,8 @@ async function download(url, output, checksum) {
+     }
+     const { downloadArtifact, ElectronDownloadCacheMode } = await (0, dynamicImport_1.dynamicImport)("@electron/get");
+     const downloadedFile = await downloadArtifact({
++        downloader: require("./util/legacyGotDownloader").legacyGotDownloader,
++        downloadOptions: { arealEnvironmentProxy: true, timeout: { request: 600000 }, agent: (0, builder_util_1.buildGotProxyAgent)() },
+         version: "9.9.9",
+         artifactName: filenameWithExt,
+         cacheRoot: path.resolve((0, electronGet_1.getCacheDirectory)({ allowEnvVarOverride: true }), "downloads"),
+diff --git a/out/util/electronGet.js b/out/util/electronGet.js
+index a941f9d20c10ca58a84b9a600b0df468631aae01..d5c2c84a5ed1efdad41ab6a57da3717c452c1e13 100644
+--- a/out/util/electronGet.js
++++ b/out/util/electronGet.js
+@@ -211,6 +211,7 @@ async function downloadArtifactToFile(config, label) {
+     let lastLoggedMilestone = -1;
+     const state = { bar: undefined };
+     const downloadOptions = {
++        arealEnvironmentProxy: config.downloadOptions?.agent == null,
+         timeout: { request: 10 * 60 * 1000 }, // prevent indefinite hang on stalled connections
+         ...config.downloadOptions,
+         agent: (_b = (_a = config.downloadOptions) === null || _a === void 0 ? void 0 : _a.agent) !== null && _b !== void 0 ? _b : (0, builder_util_1.buildGotProxyAgent)(),
+@@ -241,7 +242,7 @@ async function downloadArtifactToFile(config, label) {
+             return Promise.resolve();
+         },
+     };
+-    const configWithProgress = { ...config, downloadOptions };
++    const configWithProgress = { ...config, downloadOptions, downloader: require("./legacyGotDownloader").legacyGotDownloader };
+     try {
+         let filePath;
+         try {
+diff --git a/out/util/legacyGotDownloader.js b/out/util/legacyGotDownloader.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..77d0e9aaac9498fda32ddd384ba1c4cc0b9dabd8
+--- /dev/null
++++ b/out/util/legacyGotDownloader.js
+@@ -0,0 +1,18 @@
++"use strict";
++const got = require("got");
++const fs = require("fs");
++const path = require("path");
++const { pipeline } = require("stream/promises");
++const { getProxyForUrl } = require("proxy-from-env");
++// 保留 builder 已有的 Got agent、TLS 与 request deadline；Fetch 不解释这些选项。
++exports.legacyGotDownloader = {
++  async download(url, target, options = {}) {
++    const { quiet, getProgressCallback, arealEnvironmentProxy, ...requestOptions } = options;
++    // 仅自动环境代理受 NO_PROXY 限制；显式传入的自定义 agent 保持原语义。
++    if (arealEnvironmentProxy && !getProxyForUrl(url)) delete requestOptions.agent;
++    await fs.promises.mkdir(path.dirname(target), { recursive: true });
++    const request = got.stream(url, requestOptions);
++    if (getProgressCallback) request.on("downloadProgress", progress => { void getProgressCallback(progress); });
++    await pipeline(request, fs.createWriteStream(target));
++  },
++};

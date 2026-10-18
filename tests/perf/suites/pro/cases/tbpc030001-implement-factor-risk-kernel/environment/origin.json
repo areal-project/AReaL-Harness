@@ -1,0 +1,12 @@
+{
+  "initial_files_sha256": {
+    "factor_kernel.so": "06c5ad50197f9e4b7adb2087018d548a70b43291fac308ea6d8e77611c964936"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "6e277c652f667e1aad8f29271aa9fcf874ab83a30d5d6dd180552e9629e8ff39",
+  "source_image_id": "sha256:d6b89b2ad08c44123b87cd87089300d69c1e4209be6f0b4fdc15e10b0ceafca8",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc-implement-factor-risk-kernel@sha256:1dbb094e6dc6e4c66d66c437cf11892f73d38b6865c1e016eb20e8df6679cc56"
+  ],
+  "unredacted_source_env_sha256": "369cd8cd0ef526efba2c67f21effee1533915b3fb6577cc11018f9882fdf06b1"
+}

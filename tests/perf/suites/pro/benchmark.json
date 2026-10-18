@@ -1,0 +1,159 @@
+{
+  "key": "harness-bench-terminal",
+  "version": "1.0.0",
+  "status": "PUBLISHED",
+  "storage_ref": "default",
+  "content_hash": "4abef6dfc4ff5144c23d16f2dd5a908bbcac3b443ab0ba29de412a33ae01bfaf",
+  "spec": {
+    "reward_ref": {
+      "key": "tbpc-core-reward",
+      "version": "1.0.0"
+    },
+    "env_refs": [
+      {
+        "env_ref": {
+          "key": "tbpc002005-query-release-deployment-coverage",
+          "version": "1.0.0"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc002006-revise-equipment-service-register",
+          "version": "1.0.0"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc002013-migrate-support-case-rollup",
+          "version": "1.0.1"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc030001-assemble-constrained-protein-cassette",
+          "version": "1.0.0"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc030001-evaluate-leading-system-modes",
+          "version": "2.0.2"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc030001-implement-factor-risk-kernel",
+          "version": "1.0.0"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc030001-infer-periodic-grid-transformation",
+          "version": "1.0.0"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc030001-run-quantized-sequence-classifier",
+          "version": "1.0.0"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc030001-select-minimal-sql-regression-suite",
+          "version": "1.0.0"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc030001-validate-kv-rpc-transcripts",
+          "version": "1.0.0"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc002004-match-device-observation-lines",
+          "version": "1.0.0"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc030001-bound-cancellable-rpc-fanout",
+          "version": "2.0.0"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc030001-construct-semiring-normalization-proof",
+          "version": "1.0.0"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc030001-field-service",
+          "version": "1.0.3"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc030001-recover-sphere-from-ray-hit-observations",
+          "version": "1.0.0"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc030001-count-documented-jsonl-tokens",
+          "version": "1.0.0"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc030001-materialize-multiref-repository-snapshot",
+          "version": "1.0.0"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc030001-recover-factory-causal-network",
+          "version": "1.0.2"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc002013-migrate-warehouse-allocation-batch",
+          "version": "1.0.1"
+        },
+        "weight": 1
+      },
+      {
+        "env_ref": {
+          "key": "tbpc030001-enumerate-legal-chess-successors",
+          "version": "1.0.0"
+        },
+        "weight": 1
+      }
+    ],
+    "aggregation": {
+      "method": "mean",
+      "failed_task_policy": "failed_as_zero"
+    }
+  }
+}

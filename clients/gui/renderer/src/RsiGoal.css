@@ -1,0 +1,115 @@
+.rsi-goal {
+  margin: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  max-height: 55vh;
+  overflow: auto;
+}
+.rsi-goal > header,
+.rsi-candidate > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+.rsi-goal p {
+  margin: 8px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.rsi-notice,
+.rsi-id {
+  opacity: 0.7;
+  font-size: 12px;
+}
+.rsi-candidates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 10px;
+}
+.rsi-candidate {
+  border: 1px solid var(--color-border);
+  padding: 10px;
+  border-radius: 8px;
+  min-width: 0;
+}
+.rsi-candidate[data-status="selected"] {
+  border-color: var(--color-brand);
+}
+.rsi-candidate header span {
+  font-size: 12px;
+}
+.rsi-candidate details {
+  font-size: 12px;
+}
+.rsi-candidate summary {
+  cursor: pointer;
+}
+.rsi-candidate dd {
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+.rsi-artifact {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 280px;
+  overflow: auto;
+  font-size: 12px;
+  padding: 8px;
+  background: var(--color-secondary);
+  border-radius: 6px;
+}
+.rsi-actions,
+.rsi-goal footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.rsi-version-tree {
+  margin: 14px 0;
+  padding: 12px;
+  background: var(--color-secondary);
+  border-radius: 8px;
+}
+.rsi-version-tree ul {
+  list-style: none;
+  padding-left: 18px;
+}
+.rsi-version-tree > ul {
+  padding-left: 0;
+}
+.rsi-version-tree li {
+  margin: 8px 0;
+  padding: 4px 0 4px 12px;
+  border-left: 2px solid var(--color-border);
+}
+.rsi-version-tree a {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  text-decoration: none;
+}
+.rsi-version-tree span,
+.rsi-version-tree small,
+.rsi-version-tree p {
+  font-size: 12px;
+}
+.rsi-evolve-form label {
+  display: block;
+  margin: 8px 0;
+}
+.rsi-evolve-form textarea {
+  display: block;
+  width: 100%;
+  min-height: 75px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+.rsi-evaluation {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border);
+}

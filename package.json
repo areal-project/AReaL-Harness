@@ -1,0 +1,25 @@
+{
+  "name": "areal-harness-development",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/areal-project/AReaL-Harness.git"
+  },
+  "homepage": "https://github.com/areal-project/AReaL-Harness#readme",
+  "bugs": {
+    "url": "https://github.com/areal-project/AReaL-Harness/issues"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "format": "prettier --write \"{core,runtime}/sdk-typescript/**/*.{ts,mjs,json}\" \"clients/web/*.{js,css,html}\" \"scripts/*.mjs\" \"examples/**/*.mjs\" package.json .prettierrc.json",
+    "format:check": "prettier --check \"{core,runtime}/sdk-typescript/**/*.{ts,mjs,json}\" \"clients/web/*.{js,css,html}\" \"scripts/*.mjs\" \"examples/**/*.mjs\" package.json .prettierrc.json"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "prettier": "3.9.8",
+    "ws": "8.21.3"
+  }
+}

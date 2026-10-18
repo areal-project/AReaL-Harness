@@ -1,0 +1,15 @@
+{
+  "initial_files_sha256": {
+    "example/calendars/alex.ics": "d5f9a229b4c04d6459ca572ee775096f6c20b7925cc2556cb9bc414ffcf1e73d",
+    "example/calendars/blair.ics": "0c663b58ca7b91134b8cc51f3aa2751c0cb70413abbb73e7c36af674dc9a7e03",
+    "example/request.json": "0aba142f8c60cf9d30574c3f6089b4a329e7c7ca2aa3f6e9a32669dbe8c5fea8",
+    "schedule_visit.py": "0efcf454cfb4850a2754eac634cdc0098fc78020d5a990cdbfb37c55bfec6c26"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "3d732eb89e8d2b7f7ec1459e179e73e1db681cf89eb7e5ed122b28b0a79abbae",
+  "source_image_id": "sha256:5f0473750904f733d56fe055d5856cc18ff987fd5785218bdbc326bba9b37c5f",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc030001-field-service@sha256:bf17fbfdebab40ce4e0e0ab2de6b8fd194267eb746199e17f1da658bec6882b6"
+  ],
+  "unredacted_source_env_sha256": "864dd5bca20af9b29d2323ef1112b4e171f33e3582ca95f4dc3c26f157a5b4d6"
+}

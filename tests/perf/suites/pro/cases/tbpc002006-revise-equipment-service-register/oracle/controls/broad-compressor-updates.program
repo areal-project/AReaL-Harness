@@ -1,0 +1,4 @@
+{"when":{"field":"class","eq":"compressor"},"set":{"field":"service_queue","value":"priority"}}
+{"when":{"all":[{"field":"class","eq":"compressor"},{"field":"coordinator","eq":"legacy-desk"}]},"set":{"field":"coordinator","value":"reliability-desk"}}
+{"when":{"field":"dispatch_state","eq":"retired"},"delete":"dispatch_window"}
+{"when":{"all":[{"field":"class","eq":"valve"},{"field":"criticality","eq":"high"},{"field":"inspection_days","int_gt":45}]},"set":{"field":"inspection_days","value":"45"}}

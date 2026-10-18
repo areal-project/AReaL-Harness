@@ -1,0 +1,219 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-03",
+  "scope": "Isolated synthetic continuity tests; not Golden game acceptance or steady-state cache benchmark",
+  "setupFailures": [
+    {
+      "phase": "startup",
+      "reason": "missing referenced credential"
+    },
+    {
+      "phase": "first model request",
+      "reason": "fixture credential returned HTTP 401"
+    }
+  ],
+  "runs": [
+    {
+      "verified": true,
+      "graderCorrection": "Original final grader accepted run_command only; verify_command executed actual Python assertions with exitCode=0. Original failure.json retained.",
+      "protocol": "responses",
+      "model": "gpt-6-sol",
+      "threadId": "285e54b6-4095-4246-bfa9-e3d95747fbfe",
+      "turns": 6,
+      "compactions": 7,
+      "toolCalls": 18,
+      "requests": 26,
+      "unknownUsageRequests": 0,
+      "input": 199580,
+      "cached": 100608,
+      "cacheRate": 0.5040986070748572,
+      "goalStatus": "completed",
+      "goalUsage": {
+        "inputTokens": 48475,
+        "cachedInputTokens": 20992,
+        "outputTokens": 1407,
+        "tokensUsed": 49882,
+        "reservedTokens": 0,
+        "unknownRequests": 0,
+        "timeUsedSeconds": 56.542349805,
+        "turnsStarted": 1,
+        "accountingComplete": true
+      },
+      "output": {
+        "revision": 3,
+        "chord": true,
+        "release": true,
+        "opticalCenter": 23,
+        "retryHud": 0,
+        "drawBudget": 120,
+        "nonce": "ed4a3e81-4006-41b8-a0f6-53fb0e95cf34",
+        "sum": 60
+      }
+    },
+    {
+      "verified": true,
+      "threadId": "99af2e5c-170a-43a2-99a4-104866714e1d",
+      "seconds": 165.899,
+      "stages": [
+        {
+          "turns": 1,
+          "compactions": 0
+        },
+        {
+          "turns": 2,
+          "compactions": 0
+        },
+        {
+          "turns": 3,
+          "compactions": 1
+        },
+        {
+          "turns": 4,
+          "compactions": 2
+        },
+        {
+          "manualCompaction": 1,
+          "compactions": 2
+        },
+        {
+          "turns": 5,
+          "compactions": 3
+        },
+        {
+          "manualCompaction": 2,
+          "compactions": 4
+        },
+        {
+          "turns": 6,
+          "compactions": 5
+        },
+        {
+          "manualCompaction": 3,
+          "compactions": 6
+        }
+      ],
+      "compactions": 6,
+      "toolCalls": 19,
+      "goalStatus": "completed",
+      "goalUsage": {
+        "accountingComplete": true,
+        "cachedInputTokens": 34688,
+        "inputTokens": 55454,
+        "outputTokens": 829,
+        "reservedTokens": 0,
+        "timeUsedSeconds": 46.382641715000005,
+        "tokensUsed": 56283,
+        "turnsStarted": 1,
+        "unknownRequests": 0
+      },
+      "requests": 27,
+      "unknownUsageRequests": 0,
+      "input": 206935,
+      "cached": 119552,
+      "cacheRate": 0.5777273056756953,
+      "output": {
+        "revision": 3,
+        "chord": true,
+        "release": true,
+        "opticalCenter": 23,
+        "retryHud": 0,
+        "drawBudget": 120,
+        "nonce": "8d591a11-253f-45f6-b855-38ecaacfd944",
+        "sum": 60
+      },
+      "protocol": "chat-completions",
+      "model": "gpt-6-sol"
+    },
+    {
+      "verified": true,
+      "threadId": "63520a8d-f73a-4841-ba0f-2b5e8873d842",
+      "seconds": 220.243,
+      "stages": [
+        {
+          "turns": 1,
+          "compactions": 0
+        },
+        {
+          "turns": 2,
+          "compactions": 0
+        },
+        {
+          "turns": 3,
+          "compactions": 1
+        },
+        {
+          "turns": 4,
+          "compactions": 2
+        },
+        {
+          "manualCompaction": 1,
+          "compactions": 2
+        },
+        {
+          "turns": 5,
+          "compactions": 3
+        },
+        {
+          "manualCompaction": 2,
+          "compactions": 4
+        },
+        {
+          "turns": 6,
+          "compactions": 5
+        },
+        {
+          "manualCompaction": 3,
+          "compactions": 6
+        }
+      ],
+      "compactions": 7,
+      "toolCalls": 18,
+      "goalStatus": "completed",
+      "goalUsage": {
+        "accountingComplete": true,
+        "cachedInputTokens": 26624,
+        "inputTokens": 57404,
+        "outputTokens": 1420,
+        "reservedTokens": 0,
+        "timeUsedSeconds": 65.45478183,
+        "tokensUsed": 58824,
+        "turnsStarted": 1,
+        "unknownRequests": 0
+      },
+      "requests": 28,
+      "unknownUsageRequests": 0,
+      "input": 212487,
+      "cached": 107264,
+      "cacheRate": 0.5048026467501542,
+      "output": {
+        "revision": 3,
+        "chord": true,
+        "release": true,
+        "opticalCenter": 23,
+        "retryHud": 0,
+        "drawBudget": 120,
+        "nonce": "718e5cef-0699-419e-ac51-aa1fb471d6ff",
+        "sum": 60
+      },
+      "protocol": "responses",
+      "model": "gpt-6-sol"
+    }
+  ],
+  "persistence": {
+    "profile": "debug",
+    "filesystem": "development /data",
+    "iterations": 3,
+    "bytes": 9399322,
+    "newMs": [
+      857.1544279999999,
+      842.951043,
+      847.178008
+    ],
+    "oldMs": [
+      4495.530166,
+      4537.539701,
+      4408.539986
+    ],
+    "scope": "encoding, clone and file write/fsync; excludes queue and directory rename/sync"
+  }
+}

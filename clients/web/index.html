@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>AReaL-Harness</title>
+    <link rel="stylesheet" href="/ui/style.css" />
+    <script type="module" src="/ui/app.js"></script>
+  </head>
+  <body>
+    <!--
+  图标摘自 Reicon 1.2.4（与参考项目一致），https://github.com/dqev/reicon。
+  MIT License
+  Copyright (c) devchauhan
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+-->
+    <svg class="sr-only" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <symbol id="icon-sidebar" viewBox="0 0 24 24">
+        <path
+          fill-rule="evenodd"
+          clip-rule="evenodd"
+          d="M13.7693 4.62418C15.6761 4.62418 17.0308 4.62577 18.0585 4.76394C19.0645 4.8992 19.6442 5.15287 20.0674 5.57608C20.4906 5.99929 20.7443 6.57894 20.8795 7.58503C21.0177 8.61269 21.0193 9.96738 21.0193 11.8742C21.0193 13.781 21.0177 15.1357 20.8795 16.1634C20.7443 17.1694 20.4906 17.7491 20.0674 18.1723C19.6442 18.5955 19.0645 18.8492 18.0585 18.9844C17.0308 19.1226 15.6761 19.1242 13.7693 19.1242H9.76928C7.86246 19.1242 6.5078 19.1226 5.48014 18.9844C4.47405 18.8492 3.8944 18.5955 3.47119 18.1723C3.04798 17.7491 2.79431 17.1694 2.65905 16.1634C2.52088 15.1357 2.51929 13.781 2.51929 11.8742C2.51929 9.96738 2.52088 8.61269 2.65905 7.58503C2.79431 6.57894 3.04798 5.99929 3.47119 5.57608C3.8944 5.15287 4.47405 4.89921 5.48014 4.76394C6.5078 4.62577 7.86246 4.62418 9.76928 4.62418H13.7693ZM21.1281 4.51542C20.3797 3.76706 19.4307 3.43494 18.2583 3.27732C17.1191 3.12415 15.6635 3.12416 13.8257 3.12418H9.71287C7.87511 3.12416 6.41948 3.12415 5.28027 3.27732C4.10785 3.43494 3.1589 3.76706 2.41053 4.51542C1.66217 5.26379 1.33005 6.21274 1.17243 7.38516C1.01926 8.52437 1.01927 9.97998 1.01929 11.8178V11.9306C1.01927 13.7684 1.01926 15.224 1.17243 16.3632C1.33005 17.5356 1.66217 18.4846 2.41053 19.233C3.1589 19.9813 4.10785 20.3134 5.28027 20.4711C6.41948 20.6242 7.87511 20.6242 18.2583 20.4711C19.4307 20.3134 20.3797 19.9813 21.1281 19.233C21.8764 18.4846 22.2085 17.5356 22.3662 16.3632C22.5193 15.224 22.5193 13.7684 22.5193 11.9306V11.8178C22.5193 9.97998 22.5193 8.52437 22.3662 7.38516C22.2085 6.21274 21.8764 5.26379 21.1281 4.51542Z"
+          fill="currentColor"
+        />
+        <path
+          d="M4.74012 8.12219C5.15432 8.1233 5.48922 8.45998 5.48812 8.87419L5.48014 11.8742L5.47215 14.8742C5.47105 15.2884 5.13436 15.6233 4.72016 15.6222C4.30596 15.6211 3.97105 15.2844 3.97216 14.8702L3.98813 8.87019C3.98923 8.45599 4.32592 8.12109 4.74012 8.12219Z"
+          fill="currentColor"
+        />
+      </symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24">
+        <path
+          d="M11.25 20C11.25 20.4142 11.5858 20.75 12 20.75C12.4142 20.75 12.75 20.4142 12.75 20V12.75H20C20.4142 12.75 20.75 12.4142 20.75 12C20.75 11.5858 20.4142 11.25 20 11.25H12.75V4C12.75 3.58579 12.4142 3.25 12 3.25C11.5858 3.25 11.25 3.58579 11.25 4V11.25H4C3.58579 11.25 3.25 11.5858 3.25 12C3.25 12.4142 3.58579 12.75 4 12.75H11.25V20Z"
+          fill="currentColor"
+        />
+      </symbol>
+      <symbol id="icon-refresh" viewBox="0 0 24 24">
+        <path
+          fill-rule="evenodd"
+          clip-rule="evenodd"
+          d="M2.93077 11.2003C3.00244 6.23968 7.07619 2.25 12.0789 2.25C15.3873 2.25 18.287 3.99427 19.8934 6.60721C20.1103 6.96007 20.0001 7.42199 19.6473 7.63892C19.2944 7.85585 18.8325 7.74565 18.6156 7.39279C17.2727 5.20845 14.8484 3.75 12.0789 3.75C7.8945 3.75 4.50372 7.0777 4.431 11.1982L4.83138 10.8009C5.12542 10.5092 5.60029 10.511 5.89203 10.8051C6.18377 11.0991 6.18191 11.574 5.88787 11.8657L4.20805 13.5324C3.91565 13.8225 3.44398 13.8225 3.15157 13.5324L1.47176 11.8657C1.17772 11.574 1.17585 11.0991 1.46759 10.8051C1.75933 10.5111 2.2342 10.5092 2.52824 10.8009L2.93077 11.2003ZM19.7864 10.4666C20.0786 10.1778 20.5487 10.1778 20.8409 10.4666L22.5271 12.1333C22.8217 12.4244 22.8245 12.8993 22.5333 13.1939C22.2421 13.4885 21.7673 13.4913 21.4727 13.2001L21.0628 12.7949C20.9934 17.7604 16.9017 21.75 11.8825 21.75C8.56379 21.75 5.65381 20.007 4.0412 17.3939C3.82366 17.0414 3.93307 16.5793 4.28557 16.3618C4.63806 16.1442 5.10016 16.2536 5.31769 16.6061C6.6656 18.7903 9.09999 20.25 11.8825 20.25C16.0887 20.25 19.4922 16.9171 19.5625 12.7969L19.1546 13.2001C18.86 13.4913 18.3852 13.4885 18.094 13.1939C17.8028 12.8993 17.8056 12.4244 18.1002 12.1333L19.7864 10.4666Z"
+          fill="currentColor"
+        />
+      </symbol>
+      <symbol id="icon-folder" viewBox="0 0 24 24">
+        <path
+          fill-rule="evenodd"
+          clip-rule="evenodd"
+          d="M6.85929 1.25001C6.88904 1.25001 6.91919 1.25002 6.94976 1.25002L6.98675 1.25001C7.33818 1.24999 7.56433 1.24998 7.78542 1.27065C8.7367 1.35961 9.63905 1.73337 10.3746 2.34313C10.5456 2.48485 10.7055 2.64477 10.954 2.89329L11.5303 3.46969C12.3761 4.3154 12.7012 4.6311 13.0768 4.84005C13.2948 4.96134 13.526 5.05713 13.766 5.12552C14.1793 5.24333 14.6324 5.25002 15.8284 5.25002L16.253 5.25002C17.526 5.25 18.5521 5.24998 19.364 5.35206C20.2054 5.45784 20.9204 5.68358 21.5077 6.21185C21.6061 6.30032 21.6997 6.39394 21.7882 6.49231C22.3165 7.07965 22.5422 7.79459 22.648 8.63601C22.75 9.4479 22.75 10.4741 22.75 11.747V14.0564C22.75 15.8942 22.75 17.3498 22.5969 18.489C22.4393 19.6615 22.1071 20.6104 21.3588 21.3588C20.6104 22.1071 19.6615 22.4393 18.489 22.5969C17.3498 22.75 15.8942 22.75 14.0564 22.75H9.94361C8.10584 22.75 6.65021 22.75 5.51099 22.5969C4.33857 22.4393 3.38962 22.1071 2.64126 21.3588C1.8929 20.6104 1.56078 19.6615 1.40315 18.489C1.24999 17.3498 1.25 15.8942 1.25002 14.0564L1.25002 6.94976C1.25002 6.91919 1.25001 6.88904 1.25001 6.85929C1.2499 6.06338 1.24982 5.55685 1.33237 5.11935C1.6949 3.19788 3.19788 1.6949 5.11935 1.33237C5.55685 1.24982 6.06338 1.2499 6.85929 1.25001ZM6.94976 2.75002C6.03312 2.75002 5.67873 2.75329 5.39746 2.80636C4.08277 3.05441 3.05441 4.08277 2.80636 5.39746C2.75329 5.67873 2.75002 6.03312 2.75002 6.94976V14C2.75002 15.9068 2.75161 17.2615 2.88978 18.2892C3.02504 19.2953 3.27871 19.8749 3.70192 20.2981C4.12513 20.7213 4.70478 20.975 5.71087 21.1103C6.73853 21.2484 8.0932 21.25 10 21.25H14C15.9068 21.25 17.2615 21.2484 18.2892 21.1103C19.2953 20.975 19.8749 20.7213 20.2981 20.2981C20.7213 19.8749 20.975 19.2953 21.1103 18.2892C21.2484 17.2615 21.25 15.9068 21.25 14V11.7979C21.25 10.4621 21.2486 9.5305 21.1597 8.82312C21.0731 8.13448 20.9141 7.76356 20.6729 7.49539C20.6198 7.43637 20.5637 7.3802 20.5046 7.32712C20.2365 7.08592 19.8656 6.92692 19.1769 6.84034C18.4695 6.75141 17.538 6.75002 16.2021 6.75002H15.8284C15.7912 6.75002 15.7545 6.75002 15.7182 6.75003C14.6702 6.75025 13.9944 6.75038 13.3548 6.56806C13.0041 6.46811 12.6661 6.32811 12.3475 6.15083C11.7663 5.82747 11.2885 5.3495 10.5476 4.60833C10.522 4.58265 10.496 4.55666 10.4697 4.53035L9.91943 3.98009C9.63616 3.69682 9.52778 3.58951 9.41731 3.49793C8.91403 3.08073 8.29664 2.825 7.64576 2.76413C7.50289 2.75077 7.35038 2.75002 6.94976 2.75002ZM12.25 10C12.25 9.5858 12.5858 9.25002 13 9.25002H18C18.4142 9.25002 18.75 9.5858 18.75 10C18.75 10.4142 18.4142 10.75 18 10.75H13C12.5858 10.75 12.25 10.4142 12.25 10Z"
+          fill="currentColor"
+        />
+      </symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24">
+        <path
+          fill-rule="evenodd"
+          clip-rule="evenodd"
+          d="M12 8.25C9.92893 8.25 8.25 9.92893 8.25 12C8.25 14.0711 9.92893 15.75 12 15.75C14.0711 15.75 15.75 14.0711 15.75 12C15.75 9.92893 14.0711 8.25 12 8.25ZM9.75 12C9.75 10.7574 10.7574 9.75 12 9.75C13.2426 9.75 14.25 10.7574 14.25 12C14.25 13.2426 13.2426 14.25 12 14.25C10.7574 14.25 9.75 13.2426 9.75 12Z"
+          fill="currentColor"
+        />
+        <path
+          fill-rule="evenodd"
+          clip-rule="evenodd"
+          d="M12 1.25C11.2954 1.25 10.6519 1.44359 9.94858 1.77037C9.26808 2.08656 8.48039 2.55304 7.49457 3.13685L6.74148 3.58283C5.75533 4.16682 4.96771 4.63324 4.36076 5.07944C3.73315 5.54083 3.25177 6.01311 2.90334 6.63212C2.55548 7.25014 2.39841 7.91095 2.32306 8.69506C2.24999 9.45539 2.24999 10.3865 2.25 11.556V12.444C2.24999 13.6135 2.24999 14.5446 2.32306 15.3049C2.39841 16.0891 2.55548 16.7499 2.90334 17.3679C3.25177 17.9869 3.73315 18.4592 4.36076 18.9206C4.96771 19.3668 5.75533 19.8332 6.74148 20.4172L7.4946 20.8632C8.48038 21.447 9.2681 21.9135 9.94858 22.2296C10.6519 22.5564 11.2954 22.75 12 22.75C12.7046 22.75 13.3481 22.5564 14.0514 22.2296C14.7319 21.9134 15.5196 21.447 16.5054 20.8632L17.2585 20.4172C18.2446 19.8332 19.0323 19.3668 19.6392 18.9206C20.2669 18.4592 20.7482 17.9869 21.0967 17.3679C21.4445 16.7499 21.6016 16.0891 21.6769 15.3049C21.75 14.5446 21.75 13.6135 21.75 12.4441V11.556C21.75 10.3866 21.75 9.45538 21.6769 8.69506C21.6016 7.91095 21.4445 7.25014 21.0967 6.63212C20.7482 6.01311 20.2669 5.54083 19.6392 5.07944C19.0323 4.63324 18.2447 4.16683 17.2585 3.58285L16.5054 3.13685C15.5196 2.55303 14.7319 2.08656 14.0514 1.77037C13.3481 1.44359 12.7046 1.25 12 1.25ZM8.22524 4.44744C9.25238 3.83917 9.97606 3.41161 10.5807 3.13069C11.1702 2.85676 11.5907 2.75 12 2.75C12.4093 2.75 12.8298 2.85676 13.4193 3.13069C14.0239 3.41161 14.7476 3.83917 15.7748 4.44744L16.4609 4.85379C17.4879 5.46197 18.2109 5.89115 18.7508 6.288C19.2767 6.67467 19.581 6.99746 19.7895 7.36788C19.9986 7.73929 20.1199 8.1739 20.1838 8.83855C20.2492 9.51884 20.25 10.378 20.25 11.5937V12.4063C20.25 13.622 20.2492 14.4812 20.1838 15.1614C20.1199 15.8261 19.9986 16.2607 19.7895 16.6321C19.581 17.0025 19.2767 17.3253 18.7508 17.712C18.2109 18.1089 17.4879 18.538 16.4609 19.1462L15.7748 19.5526C14.7476 20.1608 14.0239 20.5884 13.4193 20.8693C12.8298 21.1432 12.4093 21.25 12 21.25C11.5907 21.25 11.1702 21.1432 10.5807 20.8693C9.97606 20.5884 9.25238 20.1608 8.22524 19.5526L7.53909 19.1462C6.5121 18.538 5.78906 18.1089 5.24923 17.712C4.72326 17.3253 4.419 17.0025 4.2105 16.6321C4.00145 16.2607 3.88005 15.8261 3.81618 15.1614C3.7508 14.4812 3.75 13.622 3.75 12.4063V11.5937C3.75 10.378 3.7508 9.51884 3.81618 8.83855C3.88005 8.1739 4.00145 7.73929 4.2105 7.36788C4.419 6.99746 4.72326 6.67467 5.24923 6.288C5.78906 5.89115 6.5121 5.46197 7.53909 4.85379L8.22524 4.44744Z"
+          fill="currentColor"
+        />
+      </symbol>
+      <symbol id="icon-send" viewBox="0 0 24 24">
+        <path
+          fill-rule="evenodd"
+          clip-rule="evenodd"
+          d="M11.4697 3.46967C11.7626 3.17678 12.2374 3.17678 12.5303 3.46967L18.5303 9.46967C18.8232 9.76256 18.8232 10.2374 18.5303 10.5303C18.2374 10.8232 17.7626 10.8232 17.4697 10.5303L12.75 5.81066L12.75 20C12.75 20.4142 12.4142 20.75 12 20.75C11.5858 20.75 11.25 20.4142 11.25 20L11.25 5.81066L6.53033 10.5303C6.23744 10.8232 5.76256 10.8232 5.46967 10.5303C5.17678 10.2374 5.17678 9.76256 5.46967 9.46967L11.4697 3.46967Z"
+          fill="currentColor"
+        />
+      </symbol>
+      <symbol id="icon-chevron" viewBox="0 0 24 24">
+        <polyline
+          points="20.3333 8.6666 12 17 3.6667 8.6666"
+          fill="none"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="1.5"
+        ></polyline>
+      </symbol>
+      <symbol id="icon-close" viewBox="0 0 24 24">
+        <path
+          d="M18.4697 19.5303C18.7626 19.8232 19.2374 19.8232 19.5303 19.5303C19.8232 19.2374 19.8232 18.7626 19.5303 18.4697L13.0607 12L19.5303 5.53033C19.8232 5.23744 19.8232 4.76256 19.5303 4.46967C19.2374 4.17678 18.7626 4.17678 18.4697 4.46967L12 10.9393L5.53033 4.46967C5.23744 4.17678 4.76256 4.17678 4.46967 4.46967C4.17678 4.76256 4.17678 5.23744 4.46967 5.53033L10.9393 12L4.46967 18.4697C4.17678 18.7626 4.17678 19.2374 4.46967 19.5303C4.76256 19.8232 5.23744 19.8232 5.53033 19.5303L12 13.0607L18.4697 19.5303Z"
+          fill="currentColor"
+        />
+      </symbol>
+      <symbol id="icon-terminal" viewBox="0 0 24 24">
+        <path
+          d="M6.96967 7.46967C7.26256 7.17678 7.73744 7.17678 8.03033 7.46967L12.0303 11.4697C12.3232 11.7626 12.3232 12.2374 12.0303 12.5303L8.03033 16.5303C7.73744 16.8232 7.26256 16.8232 6.96967 16.5303C6.67678 16.2374 6.67678 15.7626 6.96967 15.4697L10.4393 12L6.96967 8.53033C6.67678 8.23744 6.67678 7.76256 6.96967 7.46967Z"
+          fill="currentColor"
+        />
+        <path
+          d="M11.5 15.25C11.0858 15.25 10.75 15.5858 10.75 16C10.75 16.4142 11.0858 16.75 11.5 16.75H16.5C16.9142 16.75 17.25 16.4142 17.25 16C17.25 15.5858 16.9142 15.25 16.5 15.25H11.5Z"
+          fill="currentColor"
+        />
+        <path
+          fill-rule="evenodd"
+          clip-rule="evenodd"
+          d="M8.367 1.25H15.633C16.7251 1.24999 17.5906 1.24999 18.2883 1.30699C19.0017 1.36527 19.6053 1.48688 20.1565 1.76772C21.0502 2.22312 21.7769 2.94978 22.2323 3.84355C22.5131 4.39472 22.6347 4.99834 22.693 5.71173C22.75 6.40935 22.75 7.27484 22.75 8.36698V15.633C22.75 16.7252 22.75 17.5906 22.693 18.2883C22.6347 19.0017 22.5131 19.6053 22.2323 20.1565C21.7769 21.0502 21.0502 21.7769 20.1565 22.2323C19.6053 22.5131 19.0017 22.6347 18.2883 22.693C17.5906 22.75 16.7252 22.75 15.633 22.75H8.36698C7.27484 22.75 6.40935 22.75 5.71173 22.693C4.99834 22.6347 4.39472 22.5131 3.84355 22.2323C2.94978 21.7769 2.22312 21.0502 1.76772 20.1565C1.48688 19.6053 1.36527 19.0017 1.30699 18.2883C1.24999 17.5906 1.24999 16.7252 1.25 15.633V8.367C1.24999 7.27486 1.24999 6.40935 1.30699 5.71173C1.36527 4.99834 1.48688 4.39472 1.76772 3.84355C2.22312 2.94978 2.94978 2.22312 3.84355 1.76772C4.39472 1.48688 4.99834 1.36527 5.71173 1.30699C6.40935 1.24999 7.27486 1.24999 8.367 1.25ZM5.83388 2.80201C5.21325 2.85271 4.829 2.94909 4.52453 3.10423C3.913 3.41582 3.41582 3.913 3.10423 4.52453C2.94909 4.829 2.85271 5.21325 2.80201 5.83388C2.75058 6.46327 2.75 7.26752 2.75 8.4V15.6C2.75 16.7325 2.75058 17.5367 2.80201 18.1661C2.85271 18.7867 2.94909 19.171 3.10423 19.4755C3.41582 20.087 3.913 20.5842 4.52453 20.8958C4.829 21.0509 5.21325 21.1473 5.83388 21.198C6.46327 21.2494 7.26752 21.25 8.4 21.25H15.6C16.7325 21.25 17.5367 21.2494 18.1661 21.198C18.7867 21.1473 19.171 21.0509 19.4755 20.8958C20.087 20.5842 20.5842 20.087 20.8958 19.4755C21.0509 19.171 21.1473 18.7867 21.198 18.1661C21.2494 17.5367 21.25 16.7325 21.25 15.6V8.4C21.25 7.26752 21.2494 6.46327 21.198 5.83388C21.1473 5.21325 21.0509 4.829 20.8958 4.52453C20.5842 3.913 20.087 3.41582 19.4755 3.10423C19.171 2.94909 18.7867 2.85271 18.1661 2.80201C17.5367 2.75058 16.7325 2.75 15.6 2.75H8.4C7.26752 2.75 6.46327 2.75058 5.83388 2.80201Z"
+          fill="currentColor"
+        />
+      </symbol>
+    </svg>
+    <aside id="sidebar" aria-label="任务导航">
+      <div class="brand-row">
+        <h1>AReaL<span>-Harness</span></h1>
+        <button
+          id="sidebar-toggle"
+          class="icon-button"
+          type="button"
+          aria-label="收起侧栏"
+          aria-controls="sidebar-content"
+          aria-expanded="true"
+          title="收起侧栏"
+        >
+          <svg aria-hidden="true"><use href="#icon-sidebar"></use></svg>
+        </button>
+      </div>
+      <button id="new" class="new-task" type="button" title="新建任务">
+        <svg aria-hidden="true"><use href="#icon-plus"></use></svg><span>新建任务</span>
+      </button>
+      <div id="sidebar-content" class="sidebar-content">
+        <div class="section-heading">
+          <span>任务</span>
+          <button
+            id="refresh"
+            class="icon-button"
+            type="button"
+            aria-label="刷新任务"
+            title="刷新任务"
+          >
+            <svg aria-hidden="true"><use href="#icon-refresh"></use></svg>
+          </button>
+        </div>
+        <nav id="threads" aria-label="任务列表"></nav>
+        <p id="threads-empty" class="sidebar-empty">连接后查看任务</p>
+        <button id="more" class="secondary" type="button" hidden>加载更多任务</button>
+      </div>
+      <div class="sidebar-footer">
+        <button id="inbox-open" class="settings-button" type="button" hidden>
+          <svg aria-hidden="true"><use href="#icon-folder"></use></svg><span>收件箱</span>
+        </button>
+        <p id="connection" role="status" data-state="connecting">正在连接…</p>
+        <button id="settings-open" class="settings-button" type="button" title="设置">
+          <svg aria-hidden="true"><use href="#icon-settings"></use></svg><span>设置</span>
+        </button>
+      </div>
+    </aside>
+    <button id="sidebar-backdrop" type="button" aria-label="关闭任务导航" hidden></button>
+    <main id="main" class="is-empty">
+      <header class="workspace-header">
+        <div class="title-row">
+          <button
+            id="sidebar-open"
+            class="icon-button"
+            type="button"
+            aria-label="展开侧栏"
+            aria-controls="sidebar"
+            aria-expanded="false"
+            title="展开侧栏"
+          >
+            <svg aria-hidden="true"><use href="#icon-sidebar"></use></svg>
+          </button>
+          <div class="workspace-crumb">
+            <svg aria-hidden="true"><use href="#icon-folder"></use></svg>
+            <span id="workspace" title="工作区">工作区</span>
+            <span class="crumb-divider" aria-hidden="true">/</span>
+            <h2 id="task-title">新建任务</h2>
+          </div>
+          <span id="status" role="status">就绪</span>
+        </div>
+        <div class="view-tabs" role="tablist" aria-label="任务视图">
+          <button
+            id="history-tab"
+            type="button"
+            role="tab"
+            aria-selected="true"
+            aria-controls="conversation"
+          >
+            任务记录
+          </button>
+          <button
+            id="groups-tab"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="workgroups"
+            tabindex="-1"
+          >
+            子任务与交付
+          </button>
+          <button
+            id="tasks-tab"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="task-center"
+            tabindex="-1"
+            hidden
+          >
+            后台与定时
+          </button>
+        </div>
+      </header>
+      <p id="notice" role="alert"></p>
+      <div id="conversation" role="tabpanel" aria-labelledby="history-tab">
+        <div id="welcome" class="welcome">
+          <h2>今天想完成什么？</h2>
+          <p id="welcome-description">新建任务，开始你的工作。</p>
+        </div>
+        <section id="history" aria-label="任务记录" tabindex="0"></section>
+        <div class="composer-seat">
+          <p id="progress" class="muted" role="status" hidden></p>
+          <details id="goal-panel" hidden>
+            <summary id="goal-status">持续目标</summary>
+            <p id="goal-progress" role="status"></p>
+            <form id="goal-form">
+              <label for="goal-objective">目标与验收条件</label>
+              <textarea id="goal-objective" rows="2" maxlength="4000" required></textarea>
+              <label for="goal-budget">Token 预算（留空不设置）</label>
+              <input id="goal-budget" type="number" min="1" step="1" />
+              <div class="goal-actions">
+                <button id="goal-save" type="submit">开始目标</button>
+                <button id="goal-pause" type="button" class="secondary">暂停</button>
+                <button id="goal-resume" type="button" class="secondary">恢复</button>
+                <button id="goal-clear" type="button" class="secondary">清除</button>
+              </div>
+            </form>
+          </details>
+          <form id="composer">
+            <label for="prompt" class="sr-only">任务或补充说明</label>
+            <textarea
+              id="prompt"
+              rows="2"
+              placeholder="描述需要完成和验证的工作…"
+              required
+            ></textarea>
+            <div
+              id="slash-menu"
+              class="slash-menu"
+              role="listbox"
+              aria-label="Slash commands"
+              hidden
+            ></div>
+            <div class="composer-toolbar">
+              <span id="permission" class="muted">选择或新建任务</span>
+              <button id="skills-open" type="button" class="secondary" title="选择 Skill">
+                Skills
+              </button>
+              <span class="composer-shortcut" title="Enter 发送，Shift + Enter 换行">↵ 发送</span>
+              <button
+                id="interrupt"
+                type="button"
+                class="round-button stop-button"
+                aria-label="停止执行"
+                title="停止执行"
+                disabled
+                hidden
+              >
+                <span aria-hidden="true"></span>
+              </button>
+              <button
+                id="send"
+                type="submit"
+                class="round-button"
+                aria-label="发送"
+                title="发送"
+                disabled
+              >
+                <svg aria-hidden="true"><use href="#icon-send"></use></svg>
+              </button>
+            </div>
+          </form>
+          <p id="composer-context" class="composer-context">
+            <svg aria-hidden="true"><use href="#icon-folder"></use></svg
+            ><span>从侧栏新建任务以使用当前工作区</span>
+          </p>
+        </div>
+      </div>
+      <section id="workgroups" role="tabpanel" aria-labelledby="groups-tab" tabindex="0" hidden>
+        <div class="panel-heading">
+          <div>
+            <h2>子任务与交付</h2>
+            <p class="muted">Core 自动安排子任务；在这里查看进度、验证与最终交付。</p>
+          </div>
+          <button id="groups-refresh" type="button" class="secondary">
+            <svg aria-hidden="true"><use href="#icon-refresh"></use></svg>刷新子任务
+          </button>
+        </div>
+        <details>
+          <summary>高级：兼容工作组计划与历史</summary>
+          <button id="legacy-groups-refresh" type="button" class="secondary">
+            读取兼容工作组历史
+          </button>
+          <form id="group-start">
+            <label for="group-plan">执行计划（JSON，包含 requestId、plan、workers）</label>
+            <textarea id="group-plan" rows="7" spellcheck="false" required></textarea>
+            <button type="submit">开始协同任务</button>
+          </form>
+        </details>
+        <section id="groups" aria-label="子任务与交付列表"></section>
+      </section>
+      <section id="task-center" role="tabpanel" aria-labelledby="tasks-tab" hidden>
+        <div class="panel-heading">
+          <div>
+            <h2>后台与定时任务</h2>
+            <p class="muted">关闭页面后继续执行，问题与回复保存在独立收件箱。</p>
+          </div>
+          <button id="tasks-refresh" type="button" class="secondary">刷新任务列表</button>
+        </div>
+        <details id="task-create-panel" class="task-card" open>
+          <summary>创建任务</summary>
+          <form id="task-create-form">
+            <label for="task-mode">执行方式</label>
+            <select id="task-mode">
+              <option value="background">立即在后台执行</option>
+              <option value="scheduled">定时执行</option>
+            </select>
+            <label for="task-objective">任务与验收条件</label>
+            <textarea id="task-objective" rows="3" maxlength="4000" required></textarea>
+            <label for="task-interaction">需要你提供信息时</label>
+            <select id="task-interaction">
+              <option value="asynchronous">发送到收件箱，先继续其他工作</option>
+              <option value="headless">无人值守，不等待回复</option>
+            </select>
+            <div id="task-schedule-fields" hidden>
+              <p id="task-binding" class="muted"></p>
+              <label for="task-at">首次执行时间（本地时间）</label>
+              <input id="task-at" type="datetime-local" step="1" />
+              <label for="task-interval">重复间隔（秒，留空只执行一次）</label>
+              <input id="task-interval" type="number" min="1" max="31536000" step="1" />
+              <p class="muted">到达时间时 Core 服务须保持运行。</p>
+            </div>
+            <label for="task-budget">总 Token 预算（留空不设置）</label>
+            <input id="task-budget" type="number" min="1" step="1" />
+            <button id="task-create" type="submit">创建并运行</button>
+            <p id="task-create-status" role="status"></p>
+          </form>
+        </details>
+        <section id="task-list" aria-label="后台与定时任务列表"></section>
+        <button id="tasks-more" type="button" class="secondary" hidden>加载更多后台任务</button>
+        <section id="task-detail" class="task-card" aria-label="任务详情" hidden></section>
+      </section>
+    </main>
+    <dialog id="inbox-dialog" aria-labelledby="inbox-title">
+      <div class="dialog-heading">
+        <h2 id="inbox-title">收件箱</h2>
+        <button id="inbox-close" type="button" class="secondary">关闭收件箱</button>
+      </div>
+      <p class="muted">直接回复任务提出的问题，无需打开它的执行会话。</p>
+      <button id="inbox-refresh" type="button" class="secondary">刷新收件箱</button>
+      <p id="inbox-notice" role="status"></p>
+      <section id="inbox-list" aria-label="待回答的问题"></section>
+      <button id="inbox-more" type="button" class="secondary" hidden>加载更多问题</button>
+    </dialog>
+    <dialog id="skills-dialog" aria-labelledby="skills-title">
+      <div class="dialog-heading">
+        <h2 id="skills-title">选择 Skill</h2>
+        <button
+          id="skills-close"
+          type="button"
+          class="icon-button"
+          aria-label="关闭 Skill 选择"
+          title="关闭"
+        >
+          <svg aria-hidden="true"><use href="#icon-close"></use></svg>
+        </button>
+      </div>
+      <p class="muted">Skill 只作用于当前任务的新提交。</p>
+      <p id="skills-notice" role="status"></p>
+      <section id="skills-list" aria-label="可用 Skill"></section>
+    </dialog>
+    <dialog id="settings-dialog" aria-labelledby="settings-title">
+      <div class="dialog-heading">
+        <h2 id="settings-title">设置</h2>
+        <button
+          id="settings-close"
+          type="button"
+          class="icon-button"
+          aria-label="关闭设置"
+          title="关闭设置"
+        >
+          <svg aria-hidden="true"><use href="#icon-close"></use></svg>
+        </button>
+      </div>
+      <div class="appearance-row">
+        <label for="theme">外观</label
+        ><select id="theme">
+          <option value="system">跟随系统</option>
+          <option value="light">浅色</option>
+          <option value="dark">深色</option>
+        </select>
+      </div>
+      <form id="login">
+        <h3>本地连接</h3>
+        <p class="muted">通过 areal web 启动可自动连接；也可输入本地访问令牌。</p>
+        <label for="access-token">本地访问令牌</label>
+        <input id="access-token" type="password" autocomplete="off" required />
+        <p id="login-error" role="alert"></p>
+        <button id="connect-button" type="submit">连接</button>
+      </form>
+    </dialog>
+  </body>
+</html>

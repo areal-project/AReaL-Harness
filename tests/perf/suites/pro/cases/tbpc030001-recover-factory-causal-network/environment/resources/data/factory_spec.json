@@ -1,0 +1,36 @@
+{
+  "variables": [
+    "feed",
+    "heat",
+    "pressure",
+    "speed",
+    "quality",
+    "yield"
+  ],
+  "tiers": [
+    [
+      "feed",
+      "heat"
+    ],
+    [
+      "pressure",
+      "speed"
+    ],
+    [
+      "quality",
+      "yield"
+    ]
+  ],
+  "within_tier_order": "lexicographic",
+  "root_variables": [
+    "feed"
+  ],
+  "edge_threshold": 0.25,
+  "intervention": {
+    "values": {
+      "pressure": 1.4
+    },
+    "sample_count": 3000,
+    "seed": 941
+  }
+}

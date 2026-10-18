@@ -1,0 +1,37 @@
+schema_version = 1
+id = "tbpc030001-validate-kv-rpc-transcripts"
+description = "EnvArena harness-bench-terminal pro task"
+suite = "pro"
+
+[prompt]
+path = "prompt.md"
+
+[environment]
+image = "areal-perf-env:tbpc030001-validate-kv-rpc-transcripts"
+build = "environment"
+platform = "linux/amd64"
+workdir = "/app"
+source = "env.json"
+
+[limits]
+timeout_seconds = 1200
+cpus = 2.0
+memory = "4g"
+pids = 512
+network = "bridge"
+
+[grader]
+path = "oracle"
+command = ["/usr/bin/python3", "/opt/areal-perf/pro_tests.py"]
+timeout_seconds = 7200
+mode = "reuse_agent"
+
+[acceptance]
+require_terminal_event = true
+
+[runners.codex]
+
+[runners.claudecode]
+
+[runners.harness]
+command = ["python3.11", "/opt/areal-perf/core_entrypoint.py"]

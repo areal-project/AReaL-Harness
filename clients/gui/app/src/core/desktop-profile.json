@@ -1,0 +1,9 @@
+{
+  "profiles": [{
+    "id": "areal-standard",
+    "revision": "v1",
+    "displayName": "标准",
+    "instructions": "协助用户完成当前工作区的软件开发任务。",
+    "allowThreadProcesses": true
+  }]
+}

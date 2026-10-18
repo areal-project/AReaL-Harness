@@ -1,0 +1,75 @@
+# 固定兼容版本及官方发布摘要见 collector-pins.json。
+# 接收器仅监听回环；两个出口各自持久排队，不合并认证凭据。
+extensions:
+    file_storage/a:
+        directory: ${env:OTEL_FANOUT_STORAGE}/a
+        create_directory: true
+        fsync: true
+        compaction:
+            directory: ${env:OTEL_FANOUT_STORAGE}/compaction-a
+            on_start: true
+            on_rebound: true
+    file_storage/b:
+        directory: ${env:OTEL_FANOUT_STORAGE}/b
+        create_directory: true
+        fsync: true
+        compaction:
+            directory: ${env:OTEL_FANOUT_STORAGE}/compaction-b
+            on_start: true
+            on_rebound: true
+
+receivers:
+    otlp:
+        protocols:
+            http:
+                endpoint: ${env:OTEL_FANOUT_LISTEN:-127.0.0.1:4318}
+                max_request_body_size: 4194304
+
+processors:
+    memory_limiter:
+        check_interval: 1s
+        limit_mib: 128
+        spike_limit_mib: 32
+
+exporters:
+    otlphttp/a:
+        logs_endpoint: ${env:OTEL_BACKEND_A_LOGS_ENDPOINT}
+        encoding: proto
+        compression: none
+        timeout: 5s
+        retry_on_failure:
+            initial_interval: 1s
+            max_interval: 5s
+            max_elapsed_time: 10m
+        sending_queue:
+            storage: file_storage/a
+            sizer: bytes
+            queue_size: 8388608
+            num_consumers: 1
+            block_on_overflow: false
+    otlphttp/b:
+        logs_endpoint: ${env:OTEL_BACKEND_B_LOGS_ENDPOINT}
+        encoding: proto
+        compression: none
+        timeout: 5s
+        retry_on_failure:
+            initial_interval: 1s
+            max_interval: 5s
+            max_elapsed_time: 10m
+        sending_queue:
+            storage: file_storage/b
+            sizer: bytes
+            queue_size: 8388608
+            num_consumers: 1
+            block_on_overflow: false
+
+service:
+    extensions: [file_storage/a, file_storage/b]
+    pipelines:
+        logs:
+            receivers: [otlp]
+            processors: [memory_limiter]
+            exporters: [otlphttp/a, otlphttp/b]
+    telemetry:
+        logs:
+            level: warn

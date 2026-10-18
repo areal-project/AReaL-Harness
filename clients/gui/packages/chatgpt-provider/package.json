@@ -1,0 +1,17 @@
+{
+  "name": "@areal/chatgpt-provider",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    "./core": "./core.js",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "0.84.4",
+    "jose": "6.2.9",
+    "node-fetch": "3.3.2",
+    "proxy-agent": "6.5.0"
+  }
+}

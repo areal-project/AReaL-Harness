@@ -1,0 +1,380 @@
+'use strict';
+
+const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, nativeTheme, WebContentsView, shell, powerMonitor, Notification } = require('electron');
+const { readFile, realpath, writeFile } = require('node:fs/promises');
+const { join, resolve, extname, sep } = require('node:path');
+const { createResourceRecovery } = require('./resource-recovery.cjs');
+const { setupUpdater } = require('../update/electron.cjs');
+const { showCoreNotification } = require('./notifications.cjs');
+const { MenuBar } = require('./menu-bar.cjs');
+const { fileOpen } = require('./file-open.cjs');
+const { validateCommand, validatePreview, desktopError } = require('@areal/workbench/desktop-contract');
+const { CorePreview } = require('./preview.cjs');
+const { configureUserData, serviceOptions } = require('./service-config.cjs');
+const { SharedCoreBackend } = require('./service-client.cjs');
+const { recoverStartupService } = require('./startup-recovery.cjs');
+const { loadThemes, engineCss, panelCss } = require('../themes');
+
+app.setName('AReaL Harness GUI');
+configureUserData(app);
+// Acquire before loading resources or registering shutdown hooks. The userData
+// directory scopes the lock, so explicitly isolated development/test homes coexist.
+if (!app.requestSingleInstanceLock()) { app.exit(0); return; }
+protocol.registerSchemesAsPrivileged([{ scheme: 'areal-ui', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+
+const guiRoot = app.isPackaged ? join(process.resourcesPath, 'areal-gui') : resolve(__dirname, '../../../renderer/dist');
+const mime = { '.wasm': 'application/wasm', '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.json': 'application/json', '.woff2': 'font/woff2', '.woff': 'font/woff', '.svg': 'image/svg+xml', '.png': 'image/png' };
+let window, backend, preview, updates, quitting = false, exitReady = false, themeId = 'system';
+let browserWindowClosed = false;
+const previewSubscriptions = new Map();
+let startupPending = true, startupPainted = false, startupReady = false;
+// The renderer owns first-screen readiness; Main alone owns native visibility.
+// Consume this gate once so late data cannot reopen a window the user hid.
+function presentStartup() {
+  if (!startupPending || quitting || !window || window.isDestroyed()
+    || !startupPainted || !startupReady) return;
+  startupPending = false;
+  window.show();
+}
+const menuBar = new MenuBar(() => quitting || startupPending ? null : window);
+app.on('will-quit', () => menuBar?.close());
+let notificationTarget = null, notificationSequence = 0;
+function openNotificationTarget(target) {
+  notificationTarget = { ...target, id: ++notificationSequence };
+  if (!window || window.isDestroyed()) return;
+  if (window.isMinimized()) window.restore();
+  if (!startupPending) { window.show(); window.focus(); }
+  window.webContents.send('areal-core:notification-open');
+}
+const themes = loadThemes();
+app.on('second-instance', () => {
+  if (startupPending || !window || window.isDestroyed()) return;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+});
+
+function theme() {
+  const id = themeId === 'system' ? (nativeTheme.shouldUseDarkColors ? 'data-dense' : 'soft-glass') : themeId;
+  const selected = themes.find(item => item.id === id) ?? themes[0];
+  return { platform: process.platform, id: themeId, dark: selected.dark, css: engineCss(selected) + panelCss(selected),
+    options: themes.map(item => ({ id: item.id, name: item.name, author: item.author,
+      swatch: [item.colors.bg, item.colors.bgRaised, item.colors.accent] })) };
+}
+function publish() {
+  preview?.releaseInvalidOwners();
+  if (window && !window.isDestroyed()) window.webContents.send('areal-core:state', desktopSnapshot());
+}
+function desktopSnapshot() {
+  const state = backend.snapshot();
+  // Wait for the authoritative saved Library before applying the default.
+  // A temporary disconnect must not reset the native preference.
+  if (state.connection?.state === 'ready' && state.library && !quitting) menuBar?.sync(state.library.settings?.showInMenuBar !== false);
+  return { ...state, menuBar: menuBar?.snapshot() ?? null };
+}
+function trusted(event) {
+  if (quitting) throw new Error('应用正在退出或安装更新');
+  if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame
+    || !event.senderFrame.url.startsWith('areal-ui://app/')) throw new Error('拒绝非主视图请求');
+}
+
+async function createWindow() {
+  browserWindowClosed = false;
+  window = new BrowserWindow({ width: 1440, height: 900, minWidth: 980, minHeight: 620,
+    show: false,
+    title: 'AReaL Harness', titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 15 }, backgroundColor: '#1b1b1c',
+    webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false },
+  });
+  {
+    // Native recovery dialogs may reveal their parent before the normal gate.
+    window.once('show', () => { startupPending = false; });
+    window.once('ready-to-show', () => { startupPainted = true; presentStartup(); });
+  }
+  preview = new CorePreview(window, WebContentsView,
+    (projectId, threadId) => backend.ownsThread(projectId, threadId),
+    () => backend.snapshot().library?.settings ?? {},
+    projectId => backend.status.browserCore?.[projectId] ?? null,
+    () => [backend.metadata?.endpoint, ...(backend.status.browserControlEndpoints ?? [])].filter(Boolean),
+    async ({ origin, page, fence, kind }) => {
+      const current = () => !quitting && !!backend.metadata?.endpoint
+        && window && !window.isDestroyed() && window.isVisible() && !window.isMinimized()
+        && window.isFocused() && preview?.currentDevelopmentPrompt(page, fence);
+      if (!current()) return false;
+      const { response } = await dialog.showMessageBox(window, {
+        type: 'question', title: kind === 'frame' ? '授权当前页面的嵌入站点' : '允许本地开发站点',
+        message: kind === 'frame' ? `允许当前页面嵌入 ${origin} 并在人工标注时检查其隐私？` : `允许此浏览工作区访问 ${origin}？`,
+        detail: kind === 'frame'
+          ? '仅当前 Human 页面有效，不授权 Agent。确认后需明确重载，未保存的页面状态可能丢失。截图检查失败不生成图片；撤销、文档变化、关闭预览或切换页面将关闭此页面；标注时临时隐藏除外。'
+          : '仅允许此精确地址的临时站点状态；关闭工作区或重启后需要重新授权。',
+        buttons: ['取消', kind === 'frame' ? '仅当前页面允许' : '仅此工作区允许'], defaultId: 0, cancelId: 0, noLink: true,
+      });
+      return response === 1 && current();
+    });
+  preview.onRevoke = identity => { void backend.browserRevoke(identity).catch(() => {}); };
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.on('will-navigate', event => event.preventDefault());
+  window.on('show', () => { browserWindowClosed = false; });
+  window.on('close', event => {
+    if (exitReady) return;
+    event.preventDefault();
+    // A close-to-background still ends this window's Browser ownership. Fence
+    // native callbacks before hiding; reopening creates fresh Pages on demand.
+    browserWindowClosed = true;
+    preview?.dispose();
+    window.hide();
+  });
+  await window.loadURL('areal-ui://app/');
+  return window;
+}
+
+app.whenReady().then(async () => {
+  if (process.platform === 'darwin') app.dock.setIcon(join(__dirname, '../../assets/icon-1024.png'));
+  protocol.handle('areal-ui', async request => {
+    const url = new URL(request.url);
+    if (url.host !== 'app') return new Response('Not found', { status: 404 });
+    const path = resolve(guiRoot, '.' + decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname));
+    if (!path.startsWith(guiRoot + sep)) return new Response('Not found', { status: 404 });
+    try { return new Response(await readFile(path), { headers: { 'Content-Type': mime[extname(path)] ?? 'application/octet-stream', 'Content-Security-Policy': "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; frame-src 'none'" } }); }
+    catch { return new Response('GUI 未构建，请先执行 make gui-build', { status: 404 }); }
+  });
+  backend = new SharedCoreBackend({ app, ...serviceOptions(app), onChange: publish,
+    onNotification: notice => showCoreNotification(Notification, window, notice, openNotificationTarget),
+    onNotificationOpen: openNotificationTarget,
+    recoverIncompatible: (metadata, home) => recoverStartupService({ metadata, home, notify: options => dialog.showMessageBox(window, options) }) });
+  backend.onBrowserDisconnected = () => preview?.revokeAll();
+  backend.onBrowserCancel = request => preview?.cancelRead(request);
+  backend.onBrowserRequest = async request => {
+    if (quitting || !preview || !window || window.isDestroyed()) throw new Error('Browser host unavailable');
+    try {
+      if (request.operation === 'describe') {
+        const identity = await preview.ensureAgentPage(request.projectId, request.threadId);
+        try {
+          await backend.browserClaim({ ...identity, bootstrapRequestId: request.requestId });
+          const page = preview.page(request.projectId, request.threadId, identity.pageId);
+          if (!page || !preview.pageStillOwned(page) || page.control !== 'agent'
+            || page.controlEpoch !== identity.controlEpoch || page.pageGeneration !== identity.pageGeneration)
+            throw new Error('Browser entry was revoked');
+        }
+        catch (error) {
+          const page = preview.page(request.projectId, request.threadId, identity.pageId);
+          if (page?.controlEpoch === identity.controlEpoch && page.control === 'agent')
+            preview.takeover(request.projectId, request.threadId, identity.pageId);
+          throw error;
+        }
+        if (!window.isDestroyed()) window.webContents.send('areal-core:preview-event', {
+          kind: 'reveal', projectId: request.projectId, threadId: request.threadId, pageId: identity.pageId });
+        return { claimed: true };
+      }
+      return await (request.phase === 'prepare' ? preview.prepare(request) : preview.execute(request));
+    }
+    catch (error) {
+      if (error.message === 'outcome_unknown') throw error;
+      return { coreInstanceId: request.coreInstanceId, coreGeneration: request.coreGeneration, projectId: request.projectId,
+      threadId: request.threadId, turnId: request.turnId, callId: request.callId, pageId: request.pageId,
+      browserHostId: request.browserHostId, hostGeneration: request.hostGeneration,
+      pageGeneration: request.pageGeneration, controlEpoch: request.controlEpoch,
+      error: error.message === 'human_control' || /Human controls|revoked/.test(error.message) ? 'human_control'
+        : error.message === 'stale_ref' ? 'stale_ref'
+        : /plan_stale/.test(error.message) ? 'plan_stale'
+        : error.message === 'human_takeover_required' ? 'human_takeover_required'
+        : error.message === 'condition_timeout' ? 'condition_timeout'
+        : /not_sent|target_unavailable/.test(error.message) ? 'not_sent'
+        : /budget exceeded|Sensitive field|viewport changed|content changed during capture|capture guard unavailable/.test(error.message) ? 'evidence_unavailable' : 'page_unavailable' }; }
+  };
+  ipcMain.handle('areal-core:preview', async (event, request) => {
+    trusted(event);
+    validatePreview(request);
+    if (!preview) throw new Error('预览不可用');
+    if (request?.operation === 'subscribe') {
+      if (!backend.ownsThread(request.projectId, request.threadId)) throw new Error('请选择有效任务');
+      const key = JSON.stringify([request.projectId, request.threadId]);
+      previewSubscriptions.get(key)?.();
+      const subscription = preview.subscribe(request.projectId, request.threadId, update => {
+        if (!window.isDestroyed()) window.webContents.send('areal-core:preview-event', update);
+      });
+      previewSubscriptions.set(key, subscription.unsubscribe);
+      return subscription.snapshot;
+    }
+    if (request?.operation === 'unsubscribe') {
+      const key = JSON.stringify([request.projectId, request.threadId]);
+      previewSubscriptions.get(key)?.(); previewSubscriptions.delete(key);
+      return null;
+    }
+    if (browserWindowClosed && ['show', 'newPage', 'navigate', 'reload'].includes(request?.operation))
+      throw new Error('窗口已关闭，无法打开浏览页面');
+    if (request?.operation === 'claim') {
+      const identity = await preview.claim(request.projectId, request.threadId, request.pageId);
+      const currentClaimPage = () => {
+        const page = preview.page(request.projectId, request.threadId, request.pageId);
+        return page && preview.pageStillOwned(page) && page.view && !page.view.webContents.isDestroyed()
+          && page.control === 'agent' && page.coreInstanceId === identity.coreInstanceId
+          && preview.browserHostId === identity.browserHostId && preview.hostGeneration === identity.hostGeneration
+          && page.pageGeneration === identity.pageGeneration && page.controlEpoch === identity.controlEpoch ? page : null;
+      };
+      try {
+        await backend.browserClaim(identity);
+        trusted(event);
+        if (!currentClaimPage()) throw new Error('浏览页面已换代，请重新认领');
+      }
+      catch (error) { if (currentClaimPage()) preview.takeover(request.projectId, request.threadId, request.pageId); throw error; }
+      return preview.state(preview.page(request.projectId, request.threadId, request.pageId));
+    }
+    if (request?.operation === 'takeover') {
+      const value = preview.takeover(request.projectId, request.threadId, request.pageId);
+      void backend.browserRevoke({ projectId: request.projectId, threadId: request.threadId, pageId: request.pageId }).catch(() => {});
+      return value;
+    }
+    return preview.command(request);
+  });
+  ipcMain.handle('areal-core:notification-target', event => { trusted(event); return notificationTarget; });
+  ipcMain.handle('areal-core:notification-consumed', (event, id) => { trusted(event); if (notificationTarget?.id === id) notificationTarget = null; });
+  ipcMain.handle('areal-core:snapshot', event => { trusted(event); return desktopSnapshot(); });
+  ipcMain.handle('areal-core:present-ready', event => {
+    trusted(event);
+    startupReady = true;
+    presentStartup();
+  });
+  ipcMain.handle('areal-core:theme', (event, id) => {
+    trusted(event);
+    if (id !== undefined) {
+      if (id !== 'system' && !themes.some(item => item.id === id)) throw new Error('未知主题');
+      themeId = id;
+    }
+    return theme();
+  });
+  nativeTheme.on('updated', () => window?.webContents.send('areal-core:theme-changed', theme()));
+  ipcMain.handle('areal-core:choose-project', async event => {
+    trusted(event);
+    const result = await dialog.showOpenDialog(window, { title: '打开项目', properties: ['openDirectory'] });
+    if (result.canceled) return null;
+    const path = await realpath(result.filePaths[0]);
+    trusted(event);
+    return backend.addProject(path);
+  });
+  ipcMain.handle('areal-core:choose-projectless-directory', async event => {
+    trusted(event);
+    const result = await dialog.showOpenDialog(window, { title: '选择无项目任务文件夹', properties: ['openDirectory', 'createDirectory'] });
+    if (result.canceled) return null;
+    trusted(event);
+    return backend.command('projectless', { operation: 'directory', path: result.filePaths[0] });
+  });
+  ipcMain.handle('areal-core:file-open', async (event, request) => {
+    trusted(event);
+    return fileOpen({ backend, shell, home: app.getPath('home'), authorize: () => trusted(event), chooseSave: options => dialog.showSaveDialog(window, options) }, request);
+  });
+  ipcMain.handle('areal-core:command', async (event, name, params) => {
+    trusted(event);
+    try {
+      validateCommand(name, params);
+      if (name === 'remoteControl') return { ok: true, value: await backend.remoteControl(params) };
+      if (name === 'serviceStatus') return { ok: true, value: await backend.serviceStatus() };
+      if (name === 'stopService') return { ok: true, value: await requestStopService() };
+      if (name === 'recoverResources') { await recoverResources(); return { ok: true, value: null }; }
+      if (name === 'connectService') { await backend.init(); return { ok: true, value: null }; }
+      if (name === 'manage' && params.operation === 'archive') {
+        const answer = await dialog.showMessageBox(window, { type: 'question', message: '归档此会话？', detail: '历史仍可查看。当前 Core 不支持取消归档，归档后无法继续发送消息；该会话的临时浏览页面和登录状态也会关闭。', buttons: ['取消', '归档会话'], defaultId: 0, cancelId: 0 });
+        if (answer.response !== 1) return { ok: true, value: { canceled: true } };
+      }
+      if (name === 'export') {
+        await backend.command('open', params);
+        const project = backend.snapshot().projects.find(item => item.id === params.projectId);
+        const thread = project?.state?.threads[params.threadId];
+        if (!thread) throw new Error('请选择需要导出的会话');
+        const result = await dialog.showSaveDialog(window, { title: '导出会话记录与执行轨迹', defaultPath: `areal-${thread.id}.json`, filters: [{ name: 'JSON', extensions: ['json'] }] });
+        if (result.canceled || !result.filePath) return { ok: true, value: { canceled: true } };
+        await writeFile(result.filePath, JSON.stringify({ format: 'areal-harness-thread-v1', exportedAt: new Date().toISOString(), project: { id: project.id, root: project.root }, thread, queue: project.state.queues[thread.id] }, null, 2), { mode: 0o600 });
+        return { ok: true, value: { path: result.filePath } };
+      }
+      trusted(event);
+      const value = await backend.command(name, params);
+      if (name === 'chatgpt' && params.operation === 'login') {
+        try { await shell.openExternal(value.authUrl); }
+        catch { await backend.command('chatgpt', { operation: 'cancel', provider: params.provider }); throw new Error('无法打开浏览器，请重试 ChatGPT 登录'); }
+      }
+      return { ok: true, value };
+    }
+    catch (error) { return { ok: false, error: desktopError(error) }; }
+  });
+  let recoveryPending = 0;
+  const hasUpdateWork = () => recoveryPending > 0 || backend.hasWork() || backend.activeCommands > 0 || backend.providerUpdating || backend.starting.size > 0;
+  const nativeRecoverResources = createResourceRecovery({ backend, notify: options => dialog.showMessageBox(window, options) });
+  const recoverResources = async () => {
+    recoveryPending++;
+    try { await nativeRecoverResources(); }
+    finally {
+      recoveryPending--;
+      if (recoveryPending === 0 && updates?.state().status === 'deferred') void updates.install();
+    }
+  };
+  updates = setupUpdater({ recoverInstall: recoverResources, hasWork: hasUpdateWork,
+    onState: state => { if (window && !window.isDestroyed()) window.webContents.send('areal-core:update-changed', state); },
+    prepareInstall: async () => {
+    if (quitting || hasUpdateWork()) throw new Error('仍有活动任务，请完成后重试');
+    quitting = true;
+    try { await backend.stopService(true); preview?.dispose(); await backend.shutdown(); exitReady = true; }
+    catch (error) { quitting = false; throw error; }
+  } });
+  ipcMain.handle('areal-core:update-state', event => { trusted(event); return updates.state(); });
+  ipcMain.handle('areal-core:update-download', event => { trusted(event); void updates.download(); return updates.state(); });
+  ipcMain.handle('areal-core:update-recover-resources', async event => { trusted(event); await recoverResources(); return updates.state(); });
+  const requestStopService = async () => {
+    const answer = await dialog.showMessageBox(window, { type: 'question', message: '停止共享后台服务？', detail: '所有连接此服务的 GUI 都会断开。只有没有活动任务、可执行的排队消息和终端时才能停止。已暂停的待发送消息会保留。', buttons: ['取消', '停止后台服务'], defaultId: 0, cancelId: 0 });
+    if (answer.response !== 1) return { canceled: true };
+    return backend.stopService();
+  };
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { label: 'AReaL Harness', submenu: [{ role: 'about' }, { label: '检查更新…', click: () => { void updates.check(true); } }, { label: '检查后台资源…', click: () => { void recoverResources(); } }, { label: '停止后台 Core 服务…', click: async () => {
+      try { await requestStopService(); } catch (error) { await dialog.showMessageBox(window, { type: 'warning', message: '后台服务未停止', detail: error.message }); }
+    } }, { type: 'separator' }, { role: 'quit' }] },
+    { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
+  ]));
+  // Build the hidden first screen while the existing service connection starts.
+  // Incompatible services keep their recovery dialog; failures remain retryable.
+  const windowLoaded = createWindow();
+  const serviceStarted = (async () => {
+    try {
+      await backend.init({ automatic: true });
+      if (backend.status.connected && process.env.AREAL_CORE_WORKSPACE) await backend.addProject(process.env.AREAL_CORE_WORKSPACE);
+    } catch { /* 错误由后台连接快照展示，用户显式重试。 */ }
+    publish();
+  })();
+  await windowLoaded;
+  const activityPauses = new Set();
+  const sampleActivity = () => backend.analytics.sample({ focused: !!window && !window.isDestroyed() && window.isFocused() && window.isVisible() && !window.isMinimized(), idleSeconds: powerMonitor.getSystemIdleTime(), suspended: activityPauses.size > 0 });
+  const activityTimer = setInterval(sampleActivity, 5000);
+  const saveTimer = setInterval(() => { void backend.analytics.flush(); }, 30000);
+  for (const event of ['focus', 'blur', 'hide', 'minimize', 'restore']) window.on(event, sampleActivity);
+  for (const event of ['suspend', 'lock-screen']) powerMonitor.on(event, () => { sampleActivity(); activityPauses.add(event); sampleActivity(); void backend.analytics.flush(); });
+  for (const [event, pause] of [['resume', 'suspend'], ['unlock-screen', 'lock-screen']]) powerMonitor.on(event, () => { activityPauses.delete(pause); sampleActivity(); });
+  app.on('before-quit', () => { sampleActivity(); void backend.analytics.flush(); });
+  app.on('will-quit', () => { clearInterval(activityTimer); clearInterval(saveTimer); });
+  sampleActivity();
+  await serviceStarted;
+  sampleActivity();
+}).catch(error => { if (error.code !== 'STARTUP_CANCELLED') { console.error(error); dialog.showErrorBox('AReaL 启动失败', error.message); } app.exit(error.code === 'STARTUP_CANCELLED' ? 0 : 1); });
+
+app.on('activate', () => { if (!startupPending && window && !window.isDestroyed()) window.show(); });
+app.on('window-all-closed', () => {});
+app.on('before-quit', event => {
+  if (exitReady) return;
+  event.preventDefault();
+  if (quitting) return;
+  quitting = true;
+  void (async () => {
+    // 窗口只拥有连接和交互终端；退出不是停止共享 Core 的授权。
+    try { await backend?.prepareQuit(); }
+    catch (error) {
+      window?.show(); window?.focus();
+      await dialog.showMessageBox(window, { type: 'warning', message: '界面终端尚未完成清理', detail: error.message, buttons: ['返回应用'] });
+      quitting = false;
+      return;
+    }
+    // 先断开宿主连接，让已派发且未返回的 Browser 请求保留 UNKNOWN；
+    // 再释放原生页，避免退出撤销回执把它误记成未派发。
+    try { await backend?.shutdown(); }
+    catch (error) { await dialog.showMessageBox(window, { type: 'warning', message: '退出清理未完全确认', detail: error.message }); }
+    preview?.dispose();
+    exitReady = true;
+    app.quit();
+  })();
+});

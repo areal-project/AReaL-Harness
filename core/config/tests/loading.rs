@@ -1,0 +1,1081 @@
+use areal_config::*;
+use std::{ffi::OsString, fs, path::Path};
+
+fn inputs(root: &Path) -> ConfigInputs {
+    ConfigInputs {
+        cwd: root.into(),
+        homedir: Some(root.into()),
+        overrides: ConfigOverrides {
+            model: Some("fixture".into()),
+            model_endpoint: Some("http://127.0.0.1:9/v1/chat/completions".into()),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+#[test]
+fn grouped_configuration_keeps_explicit_budgets_and_model_window() {
+    let root = tempfile::tempdir().unwrap();
+    let mut i = inputs(root.path());
+    write(
+        &mut i,
+        "schema_version=2\n[model]\ncontext_window_tokens=131072\nmax_output_tokens=16384\n[budget]\nmax_tool_calls=900\n[context]\nmode='manual'\nrecent_tokens=4096\ntarget_tokens=90000\n[resources]\nmax_response_tool_calls=64\n[network]\nretry_mode='bounded'\n",
+    );
+    let c = load_config(&i).unwrap();
+    assert_eq!(c.model.context_window_tokens, Some(131072));
+    assert_eq!(c.max_tool_calls, 900);
+    assert_eq!(c.max_history_bytes, 0);
+    assert_eq!(c.max_output_bytes, 0);
+    assert_eq!(c.max_response_tool_calls, 64);
+    assert!(c.context_compaction_enabled && !c.context_auto_compaction);
+    assert!(c.watchdog_disable);
+    assert_eq!(c.context_target_tokens, 90000);
+    assert_eq!(c.goals.max_turns, 0);
+    assert_eq!(c.goals.turn_model_rounds, 0);
+    set(&mut i, "AREAL_HARNESS_CONTEXT_MODE", "disabled");
+    assert!(!load_config(&i).unwrap().context_compaction_enabled);
+    for text in [
+        "schema_version=2\n[budget]\nmax_tool_calls=2\n[limits]\nmax_tool_calls=3\n",
+        "schema_version=2\n[context]\nmode='manual'\n[limits]\ncontext_compaction_enabled=false\n",
+        "schema_version=2\n[network]\nretry_mode='persistent'\n[limits]\nwatchdog_disable=false\n",
+    ] {
+        write(&mut i, text);
+        assert_eq!(failure(&i).kind, ConfigErrorKind::Conflict);
+    }
+}
+fn set(i: &mut ConfigInputs, name: &str, value: &str) {
+    i.env.insert(name.into(), value.into());
+}
+fn write(i: &mut ConfigInputs, text: &str) {
+    let path = i.cwd.join("config.toml");
+    fs::write(&path, text).unwrap();
+    i.config_file = Some(path);
+}
+fn failure(i: &ConfigInputs) -> ConfigError {
+    match load_config(i) {
+        Ok(_) => panic!("configuration unexpectedly accepted"),
+        Err(e) => e,
+    }
+}
+
+#[test]
+fn trajectory_defaults_are_disabled_and_shared_across_core_data_directories() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    i.overrides.data_dir = Some(temp.path().join("run-a"));
+    let a = load_config(&i).unwrap();
+    i.overrides.data_dir = Some(temp.path().join("run-b"));
+    let b = load_config(&i).unwrap();
+    assert!(!a.trajectory.enabled);
+    assert_eq!(
+        a.trajectory.spool_dir,
+        temp.path().join(".areal/trajectory")
+    );
+    assert_eq!(a.trajectory.spool_dir, b.trajectory.spool_dir);
+    assert_eq!(a.trajectory.source_id, b.trajectory.source_id);
+    assert_eq!(a.trajectory.source_id.len(), 64);
+    assert_eq!(a.trajectory.max_disk_bytes, 256 * 1024 * 1024);
+    assert_eq!(a.trajectory.max_memory_bytes, 16 * 1024 * 1024);
+    assert_eq!(a.trajectory.max_retries, 6);
+}
+
+#[test]
+fn trajectory_configuration_identity_isolates_files_and_preserves_default_queue() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    let before_creation = load_config(&i).unwrap().trajectory;
+    assert_eq!(before_creation.source_revision, "missing");
+    fs::create_dir_all(temp.path().join(".areal")).unwrap();
+    let default = temp.path().join(".areal/config.toml");
+    fs::write(&default, "schema_version=2\n").unwrap();
+    i.config_file = Some(default);
+    let explicit_default = load_config(&i).unwrap().trajectory;
+    assert_eq!(before_creation.source_id, explicit_default.source_id);
+    assert_eq!(before_creation.spool_dir, explicit_default.spool_dir);
+    assert_eq!(explicit_default.source_revision.len(), 64);
+    let a = temp.path().join("first.toml");
+    let b = temp.path().join("second.toml");
+    fs::write(&a, "schema_version=2\n[trajectory]\nenabled=true\n").unwrap();
+    fs::write(&b, "schema_version=2\n").unwrap();
+    i.config_file = Some(a.clone());
+    let first = load_config(&i).unwrap().trajectory;
+    i.config_file = Some(b);
+    let second = load_config(&i).unwrap().trajectory;
+    assert_ne!(first.source_id, second.source_id);
+    assert_ne!(first.spool_dir, second.spool_dir);
+    assert_eq!(
+        first.spool_dir,
+        temp.path()
+            .join(".areal/trajectory-sources")
+            .join(&first.source_id)
+    );
+    i.config_file = None;
+    set(&mut i, "AREAL_HARNESS_CONFIG", a.to_str().unwrap());
+    let from_env = load_config(&i).unwrap().trajectory;
+    assert_eq!(first.source_id, from_env.source_id);
+    assert_eq!(first.spool_dir, from_env.spool_dir);
+    // 配置内容和限额更新不能更换归属，否则旧积压将失去管理入口。
+    fs::write(&a, "schema_version=2\n[trajectory]\nmax_retries=3\n").unwrap();
+    assert_eq!(
+        first.source_id,
+        load_config(&i).unwrap().trajectory.source_id
+    );
+    assert_ne!(
+        first.source_revision,
+        load_config(&i).unwrap().trajectory.source_revision
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn trajectory_identity_resolves_file_and_parent_aliases_before_and_after_creation() {
+    let temp = tempfile::tempdir().unwrap();
+    let real = temp.path().join("real");
+    fs::create_dir(&real).unwrap();
+    let alias = temp.path().join("alias");
+    std::os::unix::fs::symlink(&real, &alias).unwrap();
+    let mut i = inputs(temp.path());
+    set(
+        &mut i,
+        "AREAL_HARNESS_HOME",
+        alias.join("new-home").to_str().unwrap(),
+    );
+    let before = load_config(&i).unwrap().trajectory;
+    fs::create_dir(real.join("new-home")).unwrap();
+    let path = real.join("new-home/config.toml");
+    fs::write(&path, "schema_version=2\n").unwrap();
+    set(
+        &mut i,
+        "AREAL_HARNESS_HOME",
+        real.join("new-home").to_str().unwrap(),
+    );
+    let after = load_config(&i).unwrap().trajectory;
+    assert_eq!(before.source_id, after.source_id);
+    let file_alias = temp.path().join("config-link.toml");
+    std::os::unix::fs::symlink(&path, &file_alias).unwrap();
+    i.config_file = Some(file_alias);
+    let aliased = load_config(&i).unwrap().trajectory;
+    assert_eq!(after.source_id, aliased.source_id);
+    assert_eq!(after.spool_dir, aliased.spool_dir);
+    assert_eq!(after.source_file, aliased.source_file);
+}
+
+#[test]
+fn trajectory_source_revision_preserves_raw_snapshot_without_changing_deployment_identity() {
+    use sha2::{Digest, Sha256};
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    let original = "schema_version=2\n# exact file snapshot\n[model]\nname='first'\n";
+    write(&mut i, original);
+    let first = load_config(&i).unwrap().trajectory;
+    assert_eq!(
+        first.source_revision,
+        format!("{:x}", Sha256::digest(original.as_bytes()))
+    );
+    write(&mut i, &original.replace("first", "second"));
+    let second = load_config(&i).unwrap().trajectory;
+    assert_ne!(first.source_revision, second.source_revision);
+    assert_eq!(first.diagnostic(), second.diagnostic());
+    let mut serialized = serde_json::to_value(&second).unwrap();
+    assert!(serialized.get("source_file").is_some());
+    assert_eq!(serialized["source_revision"], second.source_revision);
+    for field in ["source_id", "source_file", "source_revision"] {
+        serialized.as_object_mut().unwrap().remove(field);
+    }
+    let legacy: TrajectoryConfig = serde_json::from_value(serialized).unwrap();
+    assert!(legacy.source_id.is_empty() && legacy.source_revision.is_empty());
+    assert!(legacy.source_file.is_none());
+}
+
+#[test]
+fn trajectory_configuration_resolves_paths_without_reading_credentials() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    write(
+        &mut i,
+        "schema_version=2\n[trajectory]\nenabled=true\nendpoint='not a URL'\nspool_dir='spool'\nheaders_file='missing.headers'\nmax_retries=0\n",
+    );
+    let config = load_config(&i).unwrap();
+    assert!(config.trajectory.enabled);
+    assert_eq!(config.trajectory.spool_dir, temp.path().join("spool"));
+    assert_eq!(
+        config.trajectory.headers_file,
+        Some(temp.path().join("missing.headers"))
+    );
+    assert_eq!(config.trajectory.max_retries, 0);
+    // 运行时错误不阻止正常 Agent 配置加载，诊断也不回显非法地址。
+    assert_eq!(
+        config.diagnostic(false)["trajectory"]["endpoint"],
+        "<invalid>"
+    );
+    assert!(!config.diagnostic(false).to_string().contains("not a URL"));
+    assert!(!temp.path().join("spool").exists());
+}
+
+#[test]
+fn trajectory_diagnostics_redact_endpoint_and_preserve_change_identity() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    write(
+        &mut i,
+        "schema_version=2\n[trajectory]\nendpoint='https://name:secret@example.com/prefix?token=hidden#private'\n",
+    );
+    let before = load_config(&i).unwrap().diagnostic(false)["trajectory"].clone();
+    assert_eq!(before["endpoint"], "https://example.com/prefix");
+    assert!(!before.to_string().contains("secret"));
+    assert!(!before.to_string().contains("hidden"));
+    write(
+        &mut i,
+        "schema_version=2\n[trajectory]\nendpoint='https://name:other@example.com/prefix?token=changed'\n",
+    );
+    let after = load_config(&i).unwrap().diagnostic(false)["trajectory"].clone();
+    assert_eq!(before["endpoint"], after["endpoint"]);
+    assert_ne!(
+        before["endpoint_fingerprint"],
+        after["endpoint_fingerprint"]
+    );
+}
+
+#[test]
+fn trajectory_rejects_structural_errors_and_unbounded_capacity() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    for settings in [
+        "enabled='true'",
+        "unknown=1",
+        "source_id='forged-owner'",
+        "source_file='/forged/file'",
+        "source_revision='forged-version'",
+        "max_disk_bytes=0",
+        "max_records=-1",
+        "max_records=10001",
+        "headers_env='HEADERS'\nheaders_file='headers.txt'",
+        "max_retries=101",
+        "max_memory_bytes=1",
+        "retry_initial_seconds=301",
+        "upload_interval_ms=0",
+    ] {
+        write(
+            &mut i,
+            &format!("schema_version=2\n[trajectory]\n{settings}\n"),
+        );
+        assert!(load_config(&i).is_err(), "{settings}");
+    }
+}
+
+#[test]
+fn goals_have_unlimited_default_budgets_and_validate_overrides() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    let defaults = load_config(&i).unwrap();
+    assert_eq!(defaults.home, temp.path().join(".areal"));
+    assert_eq!(defaults.goals.max_turns, 0);
+    assert_eq!(defaults.goals.max_active_seconds, 0);
+    assert_eq!(defaults.goals.max_unreported_turns, 3);
+    assert_eq!(defaults.goals.turn_model_rounds, 0);
+    write(
+        &mut i,
+        "schema_version=1\n[goals]\nmax_turns=12\nmax_active_seconds=90\nmax_unreported_turns=2\nturn_model_rounds=8\n",
+    );
+    let config = load_config(&i).unwrap();
+    assert_eq!(config.goals.max_turns, 12);
+    assert_eq!(config.goals.max_active_seconds, 90);
+    assert_eq!(config.goals.max_unreported_turns, 2);
+    assert_eq!(config.goals.turn_model_rounds, 8);
+    for text in [
+        "max_turns=-1",
+        "max_active_seconds=86401",
+        "max_unreported_turns=0",
+        "turn_model_rounds=1",
+        "turn_model_rounds=1025",
+    ] {
+        write(&mut i, &format!("schema_version=1\n[goals]\n{text}\n"));
+        assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+    }
+}
+
+#[test]
+fn temperature_validates_numbers_and_environment_precedence() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    for value in ["1", "0.7"] {
+        write(
+            &mut i,
+            &format!("schema_version=1\n[model]\ntemperature={value}\n"),
+        );
+        assert_eq!(
+            load_config(&i).unwrap().model.temperature,
+            Some(value.parse().unwrap())
+        );
+    }
+    set(&mut i, "AREAL_HARNESS_TEMPERATURE", "1.5");
+    assert_eq!(load_config(&i).unwrap().model.temperature, Some(1.5));
+    for value in ["NaN", "inf", "-0.1", "2.1", "bad"] {
+        set(&mut i, "AREAL_HARNESS_TEMPERATURE", value);
+        assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+    }
+}
+
+#[test]
+fn sampling_parameters_validate_ranges_preserve_zero_and_report_overrides() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    let empty = load_config(&i).unwrap().diagnostic(false);
+    for field in [
+        "top_p",
+        "top_k",
+        "min_p",
+        "presence_penalty",
+        "repetition_penalty",
+    ] {
+        assert!(empty["model"][field].is_null());
+    }
+    write(
+        &mut i,
+        "schema_version=1\n[model]\nreasoning_effort='xhigh'\ntemperature=1.0\ntop_p=0.95\ntop_k=20\nmin_p=0.0\npresence_penalty=0.0\nrepetition_penalty=1.0\n",
+    );
+    let resolved = load_config(&i).unwrap().diagnostic(false);
+    for (field, value) in [
+        ("top_p", 0.95),
+        ("min_p", 0.0),
+        ("presence_penalty", 0.0),
+        ("repetition_penalty", 1.0),
+    ] {
+        assert_eq!(resolved["model"][field], value);
+    }
+    assert_eq!(resolved["model"]["top_k"], 20);
+    for (field, valid, invalid) in [
+        ("top_p", "0", "1.01"),
+        ("min_p", "1", "-0.1"),
+        ("presence_penalty", "-2", "2.1"),
+        ("repetition_penalty", "0.5", "0"),
+        ("top_k", "-1", "0"),
+    ] {
+        let env_name = format!("AREAL_HARNESS_{}", field.to_uppercase());
+        set(&mut i, &env_name, valid);
+        let resolved = load_config(&i).unwrap();
+        assert!(
+            matches!(&resolved.sources[&format!("model.{field}")], ConfigSource::Env { name } if name == &env_name)
+        );
+        assert_eq!(
+            resolved.diagnostic(false)["model"][field].as_f64(),
+            Some(valid.parse().unwrap())
+        );
+        for bad in [invalid, "nan", "inf", "bad"] {
+            set(&mut i, &env_name, bad);
+            assert_eq!(failure(&i).field, format!("model.{field}"));
+        }
+        i.env.remove(std::ffi::OsStr::new(&env_name));
+    }
+    for field in ["top_k", "min_p", "presence_penalty", "repetition_penalty"] {
+        write(&mut i, &format!("schema_version=1\n[model]\n{field}=1\n"));
+        set(&mut i, "AREAL_HARNESS_MODEL_PROTOCOL", "responses");
+        assert_eq!(failure(&i).kind, ConfigErrorKind::Conflict);
+    }
+    write(&mut i, "schema_version=1\n[model]\ntop_p=0.95\n");
+    assert_eq!(load_config(&i).unwrap().model.top_p, Some(0.95));
+}
+
+#[test]
+fn model_and_execution_budgets_are_validated_and_preserve_sources() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    write(
+        &mut i,
+        "schema_version=1\n[model]\nreasoning_effort='xhigh'\nmax_output_tokens=8192\nmax_retries=0\n[limits]\nstream_idle_timeout_seconds=90\nmax_history_bytes=16777216\nmax_output_bytes=4194304\nmax_tool_calls=512\n",
+    );
+    let c = load_config(&i).unwrap();
+    assert_eq!(c.model.reasoning_effort.as_deref(), Some("xhigh"));
+    assert_eq!(c.model.max_output_tokens, Some(8192));
+    assert_eq!(c.model.max_retries, 0);
+    assert_eq!(c.stream_idle_timeout_seconds, 90);
+    assert_eq!(c.max_history_bytes, 16777216);
+    assert_eq!(c.max_output_bytes, 4194304);
+    assert_eq!(c.max_tool_calls, 512);
+    assert_eq!(c.context_window_bytes, 0);
+    assert_eq!(c.context_recent_bytes, 0);
+    assert_eq!(c.context_window_tokens, 65536);
+    assert_eq!(c.context_output_reserve_tokens, 8192);
+    set(&mut i, "AREAL_HARNESS_REASONING_EFFORT", "high");
+    assert_eq!(
+        load_config(&i).unwrap().model.reasoning_effort.as_deref(),
+        Some("high")
+    );
+    for (name, value) in [
+        ("AREAL_HARNESS_MODEL_MAX_RETRIES", "9"),
+        ("AREAL_HARNESS_STREAM_IDLE_TIMEOUT_SECONDS", "86401"),
+        ("AREAL_HARNESS_MAX_TOOL_CALLS", "-1"),
+        ("AREAL_HARNESS_CONTEXT_RECENT_BYTES", "-1"),
+        ("AREAL_HARNESS_CONTEXT_WINDOW_BYTES", "-1"),
+        ("AREAL_HARNESS_REASONING_EFFORT", "typo"),
+    ] {
+        let previous = i.env.insert(name.into(), value.into());
+        assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue, "{name}");
+        i.env.remove(std::ffi::OsStr::new(name));
+        if let Some(previous) = previous {
+            i.env.insert(name.into(), previous);
+        }
+    }
+}
+
+#[test]
+fn defaults_and_home_do_not_create_files_or_read_project_config() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    fs::create_dir(temp.path().join(".areal-harness")).unwrap();
+    fs::write(temp.path().join(".areal-harness/config.toml"), "broken").unwrap();
+    let other = temp.path().join("separate");
+    set(&mut i, "AREAL_HARNESS_HOME", other.to_str().unwrap());
+    let c = load_config(&i).unwrap();
+    assert_eq!(c.data_dir, other.join("state"));
+    assert_eq!(c.model_concurrency, 32);
+    assert!(c.config_file.is_none());
+    assert!(!other.exists());
+    i.homedir = None;
+    i.env.clear();
+    assert_eq!(failure(&i).kind, ConfigErrorKind::MissingValue);
+    set(&mut i, "AREAL_HARNESS_HOME", "relative");
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+}
+
+#[test]
+fn file_selection_paths_and_precedence_keep_each_source() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    let dir = temp.path().join("configs");
+    fs::create_dir(&dir).unwrap();
+    fs::write(dir.join("user.toml"), "schema_version = 1\n[server]\ndata_dir = 'data'\n[model]\nname = 'file'\n[limits]\nmodel_concurrency = 7\n").unwrap();
+    set(&mut i, "AREAL_HARNESS_CONFIG", "missing.toml");
+    i.config_file = Some("configs/user.toml".into());
+    i.overrides.model = None;
+    let c = load_config(&i).unwrap();
+    assert_eq!(c.data_dir, dir.join("data"));
+    assert_eq!(c.model.name, "file");
+    assert!(matches!(
+        c.sources["server.data_dir"],
+        ConfigSource::File {
+            line: 3,
+            column: 12,
+            ..
+        }
+    ));
+    set(&mut i, "AREAL_MODEL", "old");
+    set(&mut i, "AREAL_HARNESS_MODEL", "new");
+    set(&mut i, "AREAL_HARNESS_DATA_DIR", "env-data");
+    set(&mut i, "AREAL_HARNESS_MODEL_CONCURRENCY", "8");
+    let c = load_config(&i).unwrap();
+    assert_eq!(c.model.name, "new");
+    assert_eq!(c.data_dir, temp.path().join("env-data"));
+    assert_eq!(c.model_concurrency, 8);
+    assert_eq!(c.warnings.len(), 1);
+    i.overrides.model = Some("cli".into());
+    i.overrides.model_concurrency = Some("9".into());
+    let c = load_config(&i).unwrap();
+    assert_eq!(c.model.name, "cli");
+    assert_eq!(c.model_concurrency, 9);
+    assert!(matches!(c.sources["model.name"], ConfigSource::Cli { .. }));
+}
+
+#[test]
+fn providers_are_selected_before_overrides_and_never_borrow_credentials() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    write(
+        &mut i,
+        "schema_version=1\n[model]\nprovider='a'\n[model.providers.a]\nendpoint='http://localhost/a'\napi_key_env='SECRET_A'\n[model.providers.b]\nendpoint='http://localhost/b'\nprotocol='responses'\n",
+    );
+    i.overrides.model_endpoint = None;
+    set(&mut i, "AREAL_HARNESS_MODEL_PROVIDER", "b");
+    set(&mut i, "AREAL_API_KEY", "old-secret");
+    let c = load_config(&i).unwrap();
+    assert_eq!(c.model.endpoint, "http://localhost/b");
+    assert!(c.credential(&i).unwrap().is_none());
+    assert_eq!(c.model.protocol, ModelProtocolConfig::Responses);
+    set(&mut i, "AREAL_HARNESS_MODEL_PROVIDER", "a");
+    assert_eq!(failure(&i).kind, ConfigErrorKind::MissingValue);
+    set(&mut i, "SECRET_A", "secret-a");
+    let c = load_config(&i).unwrap();
+    assert_eq!(c.credential(&i).unwrap().as_deref(), Some("secret-a"));
+    set(
+        &mut i,
+        "AREAL_HARNESS_MODEL_ENDPOINT",
+        "http://localhost/override",
+    );
+    assert_eq!(
+        load_config(&i).unwrap().model.endpoint,
+        "http://localhost/override"
+    );
+    set(&mut i, "AREAL_HARNESS_MODEL_PROVIDER", "missing");
+    i.env
+        .remove(&OsString::from("AREAL_HARNESS_MODEL_ENDPOINT"));
+    assert_eq!(failure(&i).kind, ConfigErrorKind::MissingValue);
+}
+
+#[test]
+fn legacy_auth_is_optional_but_explicit_references_are_required_and_redacted() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    assert!(load_config(&i).unwrap().credential(&i).unwrap().is_none());
+    set(&mut i, "AREAL_API_KEY", "secret-value");
+    let c = load_config(&i).unwrap();
+    assert_eq!(c.credential(&i).unwrap().as_deref(), Some("secret-value"));
+    assert!(!c.diagnostic(true).to_string().contains("secret-value"));
+    i.overrides.api_key_env = Some("MISSING".into());
+    assert!(failure(&i).to_string().contains("MISSING"));
+    set(&mut i, "MISSING", "");
+    assert_eq!(failure(&i).kind, ConfigErrorKind::MissingValue);
+    set(&mut i, "MISSING", "secret\ninjected");
+    assert!(!failure(&i).to_string().contains("secret"));
+    i.overrides.api_key_env = None;
+    write(
+        &mut i,
+        "schema_version=1\n[model.providers.default]\nendpoint='http://localhost/anonymous'\n",
+    );
+    assert!(load_config(&i).unwrap().credential(&i).unwrap().is_none());
+}
+
+#[test]
+fn malformed_layers_fail_even_when_overridden_without_echoing_values() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    for (text, kind) in [
+        ("schema_version=1\nschema_version=1", ConfigErrorKind::Parse),
+        ("[model]\nname='x'", ConfigErrorKind::MissingValue),
+        ("schema_version=3", ConfigErrorKind::UnsupportedVersion),
+        ("schema_version='1'", ConfigErrorKind::InvalidValue),
+        (
+            "schema_version=1\n[model]\nendpoint='secret'",
+            ConfigErrorKind::UnknownField,
+        ),
+        (
+            "schema_version=1\n[model]\nname=3",
+            ConfigErrorKind::InvalidValue,
+        ),
+        (
+            "schema_version=1\n[model.providers.p]\nprotocol='secret'",
+            ConfigErrorKind::InvalidValue,
+        ),
+        (
+            "schema_version=1\n[model.providers.p]\nendpoint='https://user:secret@host/'",
+            ConfigErrorKind::InvalidValue,
+        ),
+        (
+            "schema_version=1\n[limits]\nmax_threads=0",
+            ConfigErrorKind::InvalidValue,
+        ),
+        (
+            "schema_version=1\n[server]\nlisten='0.0.0.0:4500'",
+            ConfigErrorKind::InvalidValue,
+        ),
+    ] {
+        write(&mut i, text);
+        let e = failure(&i);
+        assert_eq!(e.kind, kind, "{e}");
+        assert!(!format!("{e:?}").contains("secret"));
+    }
+    write(&mut i, "schema_version=1");
+    for value in ["", "0", "-1", "3.1", " 7", "1e3", "18446744073709551615"] {
+        set(&mut i, "AREAL_HARNESS_MAX_THREADS", value);
+        assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+    }
+    i.env.clear();
+    set(&mut i, "AREAL_HARNESS_MODLE", "secret");
+    assert_eq!(failure(&i).kind, ConfigErrorKind::UnknownField);
+    i.env.clear();
+    set(&mut i, "AREAL_MODEL", "");
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+}
+
+#[test]
+fn diagnostics_remove_query_and_credential_while_preserving_file_location() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    write(
+        &mut i,
+        "schema_version=1\n[model]\nname='测试'\n[model.providers.default]\nendpoint='http://localhost/path?token=hidden'\napi_key_env='KEY'\n",
+    );
+    i.overrides.model_endpoint = None;
+    set(&mut i, "KEY", "secret");
+    let c = load_config(&i).unwrap();
+    let out = c.diagnostic(true).to_string();
+    assert!(!out.contains("hidden"));
+    assert!(!out.contains("secret"));
+    assert!(out.contains("http://localhost/path"));
+    assert!(out.contains("KEY"));
+    assert!(matches!(
+        c.sources["model.providers.default.endpoint"],
+        ConfigSource::File { line: 5, .. }
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn file_symlink_base_and_non_utf8_environment_are_explicit() {
+    use std::os::unix::{ffi::OsStringExt, fs::symlink};
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    fs::create_dir(temp.path().join("real")).unwrap();
+    fs::write(
+        temp.path().join("real/file.toml"),
+        "schema_version=1\n[server]\ndata_dir='state'\n",
+    )
+    .unwrap();
+    symlink(
+        temp.path().join("real/file.toml"),
+        temp.path().join("link.toml"),
+    )
+    .unwrap();
+    i.config_file = Some("link.toml".into());
+    assert_eq!(load_config(&i).unwrap().data_dir, temp.path().join("state"));
+    i.env
+        .insert("AREAL_HARNESS_MODEL".into(), OsString::from_vec(vec![255]));
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+    i.env.clear();
+    i.config_file = Some(temp.path().join("missing"));
+    assert_eq!(failure(&i).kind, ConfigErrorKind::Io);
+    i.config_file = Some(temp.path().into());
+    assert_eq!(failure(&i).kind, ConfigErrorKind::Io);
+}
+
+#[test]
+fn default_file_is_loaded_and_shipped_example_resolves() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    let home = temp.path().join(".areal");
+    fs::create_dir(&home).unwrap();
+    fs::write(
+        home.join("config.toml"),
+        "schema_version=1\n[model]\nname='from-home'\n",
+    )
+    .unwrap();
+    i.overrides.model = None;
+    assert_eq!(load_config(&i).unwrap().model.name, "from-home");
+    fs::write(home.join("config.toml"), "broken TOML").unwrap();
+    assert_eq!(failure(&i).kind, ConfigErrorKind::Parse);
+    i.config_file = Some(Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/config.toml"));
+    i.overrides = ConfigOverrides::default();
+    set(&mut i, "COMPANY_MODEL_API_KEY", "fixture-secret");
+    let c = load_config(&i).unwrap();
+    assert_eq!(c.model.provider, "company");
+    assert_eq!(c.model.name, "your-model-id");
+    assert_eq!(c.data_dir, home.join("state"));
+}
+
+#[cfg(unix)]
+#[test]
+fn unreadable_default_file_is_not_treated_as_missing() {
+    use std::os::unix::fs::PermissionsExt;
+    let temp = tempfile::tempdir().unwrap();
+    let i = inputs(temp.path());
+    let home = temp.path().join(".areal");
+    fs::create_dir(&home).unwrap();
+    let path = home.join("config.toml");
+    fs::write(&path, "schema_version=1").unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+    // Root can read mode-000 files; do not claim to exercise EACCES there.
+    if fs::File::open(&path).is_err() {
+        assert_eq!(failure(&i).kind, ConfigErrorKind::Io);
+    }
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+}
+
+#[test]
+fn agent_limits_follow_precedence_and_validate_independently() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    write(
+        &mut i,
+        "schema_version=1\n[limits]\nmax_active_turns=12\nmax_children_per_turn=3\nmax_agent_depth=2\n",
+    );
+    let c = load_config(&i).unwrap();
+    assert_eq!(
+        (
+            c.max_active_turns,
+            c.max_children_per_turn,
+            c.max_agent_depth
+        ),
+        (12, 3, 2)
+    );
+    set(&mut i, "AREAL_HARNESS_MAX_ACTIVE_TURNS", "7");
+    set(&mut i, "AREAL_HARNESS_MAX_CHILDREN_PER_TURN", "0");
+    set(&mut i, "AREAL_HARNESS_MAX_AGENT_DEPTH", "0");
+    let c = load_config(&i).unwrap();
+    assert_eq!(
+        (
+            c.max_active_turns,
+            c.max_children_per_turn,
+            c.max_agent_depth
+        ),
+        (7, 0, 0)
+    );
+    i.overrides.max_active_turns = Some("5".into());
+    i.overrides.max_children_per_turn = Some("4".into());
+    i.overrides.max_agent_depth = Some("1".into());
+    let c = load_config(&i).unwrap();
+    assert_eq!(
+        (
+            c.max_active_turns,
+            c.max_children_per_turn,
+            c.max_agent_depth
+        ),
+        (5, 4, 1)
+    );
+    assert_eq!(c.diagnostic(false)["limits"]["max_active_turns"], 5);
+    for invalid in ["0", "-1", "1.5", "18446744073709551615"] {
+        i.overrides.max_active_turns = Some(invalid.into());
+        assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+    }
+}
+
+#[test]
+fn tool_extensions_path_is_explicit_and_relative_to_its_config_source() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    assert!(load_config(&i).unwrap().tool_extensions_file.is_none());
+    let config_dir = temp.path().join("config");
+    fs::create_dir(&config_dir).unwrap();
+    let config = config_dir.join("settings.toml");
+    fs::write(
+        &config,
+        "schema_version=1\n[tools]\nextensions_file='tools.json'\n",
+    )
+    .unwrap();
+    i.config_file = Some(config);
+    assert_eq!(
+        load_config(&i).unwrap().tool_extensions_file,
+        Some(config_dir.join("tools.json"))
+    );
+    set(&mut i, "AREAL_HARNESS_TOOL_EXTENSIONS", "other.json");
+    let c = load_config(&i).unwrap();
+    assert_eq!(c.tool_extensions_file, Some(temp.path().join("other.json")));
+    assert_eq!(
+        c.sources["tools.extensions_file"],
+        ConfigSource::Env {
+            name: "AREAL_HARNESS_TOOL_EXTENSIONS".into()
+        }
+    );
+}
+
+#[test]
+fn token_window_reserve_is_validated_and_env_can_override() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    write(
+        &mut i,
+        "schema_version=1\n[limits]\ncontext_window_tokens=200000\ncontext_output_reserve_tokens=40000\n",
+    );
+    let c = load_config(&i).unwrap();
+    assert_eq!(c.context_window_tokens, 200000);
+    set(
+        &mut i,
+        "AREAL_HARNESS_CONTEXT_OUTPUT_RESERVE_TOKENS",
+        "200000",
+    );
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+}
+
+#[test]
+fn context_compaction_can_be_disabled_from_file_or_environment() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    assert!(load_config(&i).unwrap().context_compaction_enabled);
+    write(
+        &mut i,
+        "schema_version=1\n[limits]\ncontext_compaction_enabled=false\nmax_children_per_turn=0\nmax_agent_depth=0\n",
+    );
+    let config = load_config(&i).unwrap();
+    assert!(!config.context_compaction_enabled);
+    assert_eq!(config.max_children_per_turn, 0);
+    assert_eq!(config.max_agent_depth, 0);
+    assert_eq!(
+        config.diagnostic(false)["limits"]["context_compaction_enabled"],
+        false
+    );
+    set(&mut i, "AREAL_HARNESS_CONTEXT_COMPACTION_ENABLED", "1");
+    assert!(load_config(&i).unwrap().context_compaction_enabled);
+    set(
+        &mut i,
+        "AREAL_HARNESS_CONTEXT_COMPACTION_ENABLED",
+        "invalid",
+    );
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+}
+
+#[test]
+fn watchdog_defaults_enabled_and_environment_overrides_toml() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    let config = load_config(&i).unwrap();
+    assert!(!config.watchdog_disable);
+    assert_eq!(
+        config.diagnostic(false)["limits"]["watchdog_disable"],
+        false
+    );
+    write(
+        &mut i,
+        "schema_version=1\n[limits]\nwatchdog_disable=true\n",
+    );
+    assert!(load_config(&i).unwrap().watchdog_disable);
+    for (value, disabled) in [("0", false), ("1", true), ("false", false), ("true", true)] {
+        set(&mut i, "AREAL_HARNESS_WATCHDOG_DISABLE", value);
+        let config = load_config(&i).unwrap();
+        assert_eq!(config.watchdog_disable, disabled);
+        assert!(
+            matches!(&config.sources["limits.watchdog_disable"], ConfigSource::Env { name } if name == "AREAL_HARNESS_WATCHDOG_DISABLE")
+        );
+    }
+    for value in ["2", "yes", "-1"] {
+        set(&mut i, "AREAL_HARNESS_WATCHDOG_DISABLE", value);
+        assert_eq!(failure(&i).field, "limits.watchdog_disable");
+    }
+    i.env
+        .remove(std::ffi::OsStr::new("AREAL_HARNESS_WATCHDOG_DISABLE"));
+    write(&mut i, "schema_version=1\n[limits]\nwatchdog_disable=1\n");
+    assert_eq!(failure(&i).field, "limits.watchdog_disable");
+}
+
+#[test]
+fn tool_buffer_budget_defaults_and_overrides_are_validated_and_visible() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    assert_eq!(
+        load_config(&i).unwrap().max_tool_buffer_bytes,
+        4 * 1024 * 1024
+    );
+    write(
+        &mut i,
+        "schema_version=1\n[limits]\nmax_tool_buffer_bytes=8388608\n",
+    );
+    assert_eq!(
+        load_config(&i).unwrap().max_tool_buffer_bytes,
+        8 * 1024 * 1024
+    );
+    set(&mut i, "AREAL_HARNESS_MAX_TOOL_BUFFER_BYTES", "1024");
+    let config = load_config(&i).unwrap();
+    assert_eq!(config.max_tool_buffer_bytes, 1024);
+    assert_eq!(
+        config.diagnostic(true)["limits"]["max_tool_buffer_bytes"],
+        1024
+    );
+    assert!(config.sources.contains_key("limits.max_tool_buffer_bytes"));
+    for value in ["0", "-1", "1.5", "18446744073709551616", ""] {
+        set(&mut i, "AREAL_HARNESS_MAX_TOOL_BUFFER_BYTES", value);
+        assert!(load_config(&i).is_err(), "{value}");
+    }
+}
+
+#[test]
+fn reasoning_summary_is_opt_in_responses_only_and_env_can_override_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    assert!(load_config(&i).unwrap().model.reasoning_summary.is_none());
+    write(
+        &mut i,
+        "schema_version=1\n[model]\nreasoning_summary='auto'\n",
+    );
+    assert_eq!(failure(&i).kind, ConfigErrorKind::Conflict);
+    set(&mut i, "AREAL_HARNESS_MODEL_PROTOCOL", "responses");
+    assert_eq!(
+        load_config(&i).unwrap().model.reasoning_summary.as_deref(),
+        Some("auto")
+    );
+    for value in ["concise", "detailed"] {
+        set(&mut i, "AREAL_HARNESS_REASONING_SUMMARY", value);
+        let c = load_config(&i).unwrap();
+        assert_eq!(c.model.reasoning_summary.as_deref(), Some(value));
+        assert!(matches!(
+            c.sources["model.reasoning_summary"],
+            ConfigSource::Env { .. }
+        ));
+    }
+    set(&mut i, "AREAL_HARNESS_REASONING_SUMMARY", "unsupported");
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+}
+
+#[test]
+fn management_diagnostic_without_model_is_valid_json() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut input = inputs(temp.path());
+    input.overrides = ConfigOverrides::default();
+    let config = load_management_config(&input).unwrap();
+    assert_eq!(config.diagnostic(false)["model"]["endpoint"], "");
+}
+
+#[test]
+fn management_accepts_missing_selected_credential_but_still_validates_model() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut input = inputs(temp.path());
+    input.overrides = ConfigOverrides::default();
+    write(
+        &mut input,
+        "schema_version=1\n[model]\nprovider='grok'\nname='test'\n[model.providers.grok]\nprotocol='chat-completions'\nendpoint='http://127.0.0.1:1/v1/chat/completions'\napi_key_env='GROK_API_KEY'\n",
+    );
+    let config = load_management_config(&input).unwrap();
+    assert_eq!(config.model.provider, "grok");
+    assert_eq!(config.model.api_key_env.as_deref(), Some("GROK_API_KEY"));
+    assert_eq!(failure(&input).kind, ConfigErrorKind::MissingValue);
+    set(&mut input, "GROK_API_KEY", "valid-key");
+    assert!(load_config(&input).is_ok());
+    set(&mut input, "GROK_API_KEY", "");
+    assert!(load_management_config(&input).is_ok());
+    write(
+        &mut input,
+        "schema_version=1\n[model]\nprovider='grok'\nname='test'\n[model.providers.grok]\nprotocol='invalid'\nendpoint='http://127.0.0.1:1/v1/chat/completions'\napi_key_env='GROK_API_KEY'\n",
+    );
+    assert_eq!(
+        load_management_config(&input).err().unwrap().kind,
+        ConfigErrorKind::InvalidValue
+    );
+}
+
+#[test]
+fn permission_mode_defaults_to_yolo_and_respects_all_sources() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    assert_eq!(
+        load_config(&i).unwrap().permissions.mode,
+        PermissionMode::Yolo
+    );
+    write(
+        &mut i,
+        "schema_version=1\n[permissions]\nmode='ASK_PERMISSIONS'\nallow=['read_file']\nask=['mcp__*']\ndeny=['fs_write']\n",
+    );
+    let config = load_config(&i).unwrap();
+    assert_eq!(config.permissions.mode, PermissionMode::AskPermissions);
+    assert_eq!(config.permissions.deny, ["fs_write"]);
+    set(&mut i, "ASK_PERMISSIONS", "0");
+    assert_eq!(
+        load_config(&i).unwrap().permissions.mode,
+        PermissionMode::Yolo
+    );
+    set(&mut i, "AREAL_HARNESS_PERMISSION_MODE", "ask_permissions");
+    assert_eq!(
+        load_config(&i).unwrap().permissions.mode,
+        PermissionMode::AskPermissions
+    );
+    i.overrides.permissions = Some("YOLO".into());
+    let config = load_config(&i).unwrap();
+    assert_eq!(config.permissions.mode, PermissionMode::Yolo);
+    assert!(matches!(
+        config.sources["permissions.mode"],
+        ConfigSource::Cli { .. }
+    ));
+    set(&mut i, "ASK_PERMISSIONS", "maybe");
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+}
+
+#[test]
+fn invalid_permission_rules_and_modes_are_not_silently_ignored() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    for permissions in [
+        "mode='unknown'",
+        "mode=true",
+        "ask='run_command'",
+        "deny=[5]",
+        "allow=['run_command(git *)']",
+    ] {
+        write(
+            &mut i,
+            &format!("schema_version=1\n[permissions]\n{permissions}\n"),
+        );
+        assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+    }
+}
+
+#[test]
+fn removed_turn_timeout_requires_toml_and_env_migration() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    write(
+        &mut i,
+        "schema_version=1\n[limits]\nturn_timeout_seconds=300\n",
+    );
+    assert!(load_config(&i).is_err());
+    write(&mut i, "schema_version=1\n");
+    set(&mut i, "AREAL_HARNESS_TURN_TIMEOUT_SECONDS", "0");
+    assert_eq!(failure(&i).kind, ConfigErrorKind::UnknownField);
+}
+
+#[test]
+fn responses_websocket_is_opt_in_and_rejects_chat_protocol() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    assert!(!load_config(&i).unwrap().model.responses_websocket);
+    write(
+        &mut i,
+        "schema_version=1\n[model]\nresponses_websocket=true\n",
+    );
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+    i.overrides.model_protocol = Some("responses".into());
+    assert!(load_config(&i).unwrap().model.responses_websocket);
+    set(&mut i, "AREAL_HARNESS_RESPONSES_WEBSOCKET", "false");
+    assert!(!load_config(&i).unwrap().model.responses_websocket);
+}
+
+#[test]
+fn compaction_target_is_explicit_bounded_and_overridable() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    assert_eq!(load_config(&i).unwrap().context_target_tokens, 0);
+    write(
+        &mut i,
+        "schema_version=1\n[limits]\ncontext_window_tokens=88000\ncontext_output_reserve_tokens=8192\ncontext_target_tokens=55000\n",
+    );
+    assert_eq!(load_config(&i).unwrap().context_target_tokens, 55000);
+    set(&mut i, "AREAL_HARNESS_CONTEXT_TARGET_TOKENS", "79808");
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+    set(&mut i, "AREAL_HARNESS_CONTEXT_TARGET_TOKENS", "0");
+    assert_eq!(load_config(&i).unwrap().context_target_tokens, 0);
+    write(
+        &mut i,
+        "schema_version=1\n[limits]\ncontext_window_tokens=0\ncontext_target_tokens=1000\n",
+    );
+    i.env
+        .remove(std::ffi::OsStr::new("AREAL_HARNESS_CONTEXT_TARGET_TOKENS"));
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+}
+
+#[test]
+fn summary_options_do_not_change_solve_configuration() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    write(
+        &mut i,
+        "schema_version=1\n[model]\nreasoning_effort='high'\nsummary_reasoning_effort='low'\nsummary_max_output_tokens=4096\n",
+    );
+    let c = load_config(&i).unwrap();
+    assert_eq!(c.model.reasoning_effort.as_deref(), Some("high"));
+    assert_eq!(c.model.summary_reasoning_effort.as_deref(), Some("low"));
+    assert_eq!(c.model.summary_max_output_tokens, Some(4096));
+    set(&mut i, "AREAL_HARNESS_SUMMARY_MAX_OUTPUT_TOKENS", "0");
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+}
+
+#[test]
+fn request_bytes_are_independent_and_reject_invalid_limits() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    write(
+        &mut i,
+        "schema_version=1\n[model]\nmax_request_bytes=12345\ncontext_window_tokens=262144\n",
+    );
+    let model = load_config(&i).unwrap().model;
+    assert_eq!(model.max_request_bytes, 12345);
+    assert_eq!(model.context_window_tokens, Some(262144));
+    // 旧模型登记没有此字段，恢复时使用默认预算且不改变其他配置。
+    let mut legacy = serde_json::to_value(&model).unwrap();
+    legacy.as_object_mut().unwrap().remove("max_request_bytes");
+    let restored: areal_config::SelectedModelConfig = serde_json::from_value(legacy).unwrap();
+    assert_eq!(restored.max_request_bytes, 16 * 1024 * 1024);
+    assert_eq!(restored.context_window_tokens, model.context_window_tokens);
+    assert_ne!(restored.fingerprint(), model.fingerprint());
+    for limit in ["0", "1023", "134217729"] {
+        write(
+            &mut i,
+            &format!("schema_version=1\n[model]\nmax_request_bytes={limit}\n"),
+        );
+        assert!(load_config(&i).is_err());
+    }
+}

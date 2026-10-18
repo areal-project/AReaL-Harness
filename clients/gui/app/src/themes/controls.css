@@ -1,0 +1,889 @@
+/* Product geometry is shared by every palette and only styles the host UI. */
+body {
+  --areal-composer-muted: var(--dsw-alias-label-tertiary);
+  --areal-font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif !important;
+  --areal-font-mono: "SF Mono", ui-monospace, Menlo, Consolas, "PingFang SC", monospace !important;
+  --areal-hover-radius: 12px !important;
+  --areal-radius-control: 6px !important;
+  --areal-radius-surface: 16px !important;
+  --areal-composer-control-font-size: 12px;
+  --areal-effort-accent: #3d9bf2;
+  --dsw-font-mono: var(--areal-font-mono) !important;
+  font-family: var(--areal-font-ui) !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  -webkit-font-smoothing: antialiased !important;
+}
+body * { letter-spacing: 0 !important; }
+body :is(button, [role="button"], input, select, textarea) {
+  font-family: var(--areal-font-ui) !important;
+  font-size: 13px !important;
+  line-height: 20px !important;
+  border-radius: var(--areal-radius-control) !important;
+  corner-shape: round !important;
+}
+
+body :is(
+  button,
+  [role="button"],
+  [role="menuitem"],
+  [role="option"],
+  [role="treeitem"],
+  [role="tab"],
+  a,
+  summary
+) {
+  border-radius: var(--areal-hover-radius) !important;
+  corner-shape: round !important;
+}
+body :is(button, [role="button"]) { box-shadow: none !important; }
+body :is(button, [role="button"]) svg { width: 16px !important; height: 16px !important; flex-shrink: 0 !important; }
+body :focus-visible { outline: 2px solid var(--dsw-alias-brand-primary) !important; outline-offset: 2px !important; }
+body :is(input[type="checkbox"], input[type="radio"]) { accent-color: var(--dsw-alias-brand-primary) !important; }
+body :is([role="menu"], [role="listbox"], [role="dialog"], dialog) {
+  border-radius: var(--areal-radius-surface) !important;
+  corner-shape: round !important;
+  font-size: var(--areal-composer-control-font-size) !important;
+  line-height: 18px !important;
+}
+body :is([role="menu"], [role="listbox"], [role="dialog"], dialog) :is(
+  button,
+  [role="button"],
+  [role="menuitem"],
+  [role="menuitemradio"],
+  [role="option"],
+  h1,
+  h2,
+  h3,
+  label,
+  span,
+  p
+) {
+  font-size: var(--areal-composer-control-font-size) !important;
+  line-height: 18px !important;
+}
+body [data-composer-card] {
+  border-radius: 22px !important;
+  box-shadow: none !important;
+  border: 0.5px solid var(--dsw-alias-border-l2) !important;
+}
+
+body [data-phase="active"] [data-conversation-scroll] div:has(> [data-composer-card]) {
+  padding-bottom: 24px !important;
+}
+body :is([data-composer-input], [data-composer-placeholder]) {
+  font: 14px/22px var(--areal-font-ui) !important;
+}
+body [data-composer-card] button[data-areal-composer-primary] {
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+  background: var(--dsw-alias-label-primary) !important;
+  color: var(--dsw-alias-bg-base) !important;
+  transform: none !important;
+}
+body [data-composer-card] button[data-areal-composer-primary] svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+body [data-composer-card] button[data-areal-composer-primary]:hover:not(:disabled) {
+  background: var(--dsw-alias-label-secondary) !important;
+}
+body [data-composer-card] button[data-areal-composer-primary]:disabled {
+  opacity: .32 !important;
+}
+
+body [data-composer-card] button[data-areal-composer-primary]:is(
+  [aria-label="停止生成"],
+  [aria-label="Stop generating"]
+) svg {
+  display: none !important;
+}
+body [data-composer-card] button[data-areal-composer-primary]:is(
+  [aria-label="停止生成"],
+  [aria-label="Stop generating"]
+)::after {
+  content: "";
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: currentColor;
+}
+body [data-composer-card] :is(
+  button[aria-label="添加附件"],
+  button[aria-label="Add attachment"]
+) {
+  width: 32px !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  color: var(--dsw-alias-label-secondary) !important;
+}
+body [data-composer-card] :is(
+  button[aria-label="添加附件"],
+  button[aria-label="Add attachment"]
+):hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover) !important;
+  color: var(--dsw-alias-label-primary) !important;
+}
+body [data-composer-card] :is(
+  button[aria-label="添加附件"],
+  button[aria-label="Add attachment"]
+) svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+body [data-composer-card] div:has(button img):not(:has(div img)) {
+  width: 80px !important;
+  height: 80px !important;
+}
+/* The attachment item is 64px upstream. It must grow with our 80px preview,
+   otherwise the rail's hidden vertical overflow clips the lower 16px. */
+body [data-composer-card] div:has(div img):not(:has(div div img)) {
+  height: 80px !important;
+}
+body [data-composer-card] div:has(button img):not(:has(div img)) button:has(img) {
+  width: 80px !important;
+  height: 80px !important;
+  padding: 0 !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+}
+body [data-composer-card] div:has(button img):not(:has(div img)) button:not(:has(img)) {
+  width: 18px !important;
+  min-width: 18px !important;
+  height: 18px !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+}
+body [data-composer-card] div:has(button img):not(:has(div img)) button:not(:has(img)) svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+/* Active animations live with the chat/tool plugins so they are present before
+   Electron's theme sheet arrives. The desktop layer only removes old sweeps. */
+body [data-chat-flow-kind] [data-state="running"] [data-disclosure-row]::after,
+body [data-chat-flow-kind="tool-call"] [data-sample="bash"][data-state="running"]::after {
+  display: none !important;
+}
+/* Several process plugins bundle their own DisclosureRow copy. Remove the
+   redundant affordance at the stable DOM contract instead of relying on each
+   plugin's bundled primitive version. The row remains the disclosure target. */
+body [data-chat-flow-kind] [data-disclosure-row] [data-reicon="ChevronDown"] {
+  display: none !important;
+}
+
+body :is(pre, code, kbd, samp) { font-family: var(--areal-font-mono) !important; }
+body button[data-areal-session-title] { cursor: pointer !important; }
+body :is(h1, h2, h3) { font-family: var(--areal-font-ui) !important; font-weight: 600 !important; }
+
+
+body [data-chat-flow-kind="assistant-step"] [class*="_body"] > div:has(> :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, hr)) {
+  line-height: 22px !important;
+}
+body [data-chat-flow-kind="assistant-step"] [class*="_body"] > div:has(> :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, hr)) > :first-child {
+  margin-top: 0 !important;
+}
+body [data-chat-flow-kind="assistant-step"] [class*="_body"] > div:has(> :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, hr)) > :last-child {
+  margin-bottom: 0 !important;
+}
+body [data-chat-flow-kind="assistant-step"] [class*="_body"] > div:has(> :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, hr)) > :is(p, ul, ol, blockquote, pre) {
+  margin-block: 8px !important;
+}
+body [data-chat-flow-kind="assistant-step"] [class*="_body"] > div:has(> :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, hr)) > :is(h1, h2, h3) {
+  margin: 24px 0 8px !important;
+}
+body [data-chat-flow-kind="assistant-step"] [class*="_body"] > div:has(> :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, hr)) > :is(h4, h5, h6) {
+  margin: 16px 0 8px !important;
+}
+body [data-chat-flow-kind="assistant-step"] [class*="_body"] > div:has(> :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, hr)) > hr {
+  margin-block: 20px !important;
+}
+body [data-chat-flow-kind="assistant-step"] [class*="_body"] > div:has(> :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, hr)) > div:has([data-code-block-banner]) {
+  margin-block: 12px !important;
+}
+body [data-chat-flow-kind="assistant-step"] [class*="_body"] > div:has(> :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, hr)) li:not(:first-child) {
+  margin-top: 2px !important;
+}
+body [data-chat-flow-kind="assistant-step"] [class*="_body"] > div:has(> :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, hr)) li > p {
+  margin-block: 0 !important;
+}
+body [data-chat-flow-kind="assistant-step"] [class*="_body"] > div:has(> :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, hr)) li > p + p {
+  margin-top: 6px !important;
+}
+body [data-chat-flow-kind="assistant-step"] [class*="_body"] > div:has(> :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, hr)) li > :is(ul, ol) {
+  margin-block: 4px 0 !important;
+}
+
+
+body [data-conversation-scroll] [class*="_scroll"]:has(> [class*="_column"] [data-chat-flow-kind]) {
+  padding-bottom: 44px !important;
+}
+
+
+body button[aria-label="新建会话"]:has(.zeebo-mark) {
+  height: 36px !important;
+  padding: 0 4px !important;
+  gap: 12px !important;
+  border-radius: var(--areal-hover-radius) !important;
+  background: transparent !important;
+}
+body button[aria-label="新建会话"]:has(.zeebo-mark):hover {
+  background: var(--dsw-alias-interactive-bg-hover) !important;
+}
+body button[aria-label="新建会话"]:has(.zeebo-mark) .zeebo-mark {
+  align-items: center !important;
+  justify-content: center !important;
+  width: 26px !important;
+  height: 26px !important;
+}
+body button[aria-label="新建会话"]:has(.zeebo-mark) .zeebo-mark svg {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+body button[aria-label="新建会话"]:has(.zeebo-mark) .zeebo-name {
+  font-size: 18px !important;
+  font-weight: 600 !important;
+}
+
+/* macOS uses an inset title bar, so the application content owns the top
+   surface. These local insets keep controls clear of the traffic lights. */
+@supports (-webkit-app-region: drag) {
+  body [class*="_sidebarCol"] {
+    position: relative;
+    padding-top: 38px !important;
+    box-sizing: border-box !important;
+  }
+  body [class*="_sidebarCol"]::before {
+    position: absolute;
+    top: 0;
+    height: 38px;
+    content: "";
+    -webkit-app-region: drag;
+  }
+  body [class*="_sidebarCol"]::before { left: 0; width: 150px; }
+  body [class*="_sidebarCol"] button[data-areal-sidebar-toggle="native"] {
+    display: none !important;
+  }
+
+
+  body [class*="_centerCol"] header[class*="_header"] {
+    -webkit-app-region: drag;
+  }
+  body [data-areal-sidebar-auto-hidden] [class*="_centerCol"] header[class*="_header"] {
+    padding-left: 164px !important;
+  }
+  body [class*="_centerCol"] header[class*="_header"] :is(button, a, input, [role="button"], [role="tab"]) {
+    -webkit-app-region: no-drag;
+  }
+  body > .areal-sidebar-collapsed-chrome {
+    -webkit-app-region: no-drag;
+  }
+}
+
+body > .areal-sidebar-collapsed-chrome {
+  position: fixed;
+  z-index: 60;
+  top: 8px;
+  left: 86px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+body > .areal-sidebar-collapsed-chrome:not([data-show-new-session]) [data-areal-collapsed-new-session] {
+  display: none !important;
+}
+body .areal-window-action {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: var(--areal-hover-radius) !important;
+  background: transparent !important;
+  color: var(--dsw-alias-label-secondary) !important;
+  line-height: 0 !important;
+  cursor: pointer;
+}
+body .areal-window-action:hover {
+  background: var(--dsw-alias-interactive-bg-hover) !important;
+  color: var(--dsw-alias-label-primary) !important;
+}
+body .areal-window-action svg {
+  display: block !important;
+  flex: none !important;
+  width: 16px !important;
+  height: 16px !important;
+  margin: 0 !important;
+  transform: none !important;
+}
+
+body [class*="_centerCol"] header[class*="_header"] {
+  box-sizing: border-box !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  padding-top: 7px !important;
+  padding-bottom: 7px !important;
+}
+body [class*="_centerCol"] header[class*="_header"] [role="tablist"] {
+  display: none !important;
+}
+body .areal-task-more {
+  border-radius: var(--areal-hover-radius) !important;
+}
+
+/* The collapse control creates a full-width off-canvas sidebar. Only an
+   invisible 8px edge target remains; hovering it reveals the complete panel. */
+body [data-areal-sidebar-auto-hidden] {
+  grid-template-columns: 0 minmax(0, 1fr) var(--areal-details-track, 0px) !important;
+}
+body [data-areal-sidebar-auto-hidden] [class*="_sidebarCol"] {
+  grid-column: 1 !important;
+  position: absolute !important;
+  z-index: 30 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  width: var(--areal-sidebar-expanded-width, 240px) !important;
+  overflow: hidden !important;
+  border-right: 0 !important;
+  box-shadow: none !important;
+  opacity: 0 !important;
+  transform: translateX(calc(-100% + 8px)) !important;
+  transition:
+    transform var(--ds-transition-duration-slow) var(--ds-ease-in-out),
+    opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out) !important;
+}
+body [class*="_centerCol"] { grid-column: 2 !important; }
+body :is([data-rightbar-col], [class*="_detailsCol"]) { grid-column: 3 !important; }
+body [data-areal-sidebar-auto-hidden][data-areal-sidebar-revealed] [class*="_sidebarCol"] {
+  border-right: 0.5px solid var(--dsw-alias-border-l3) !important;
+  box-shadow: 8px 0 24px color-mix(in srgb, #000 22%, transparent) !important;
+  opacity: 1 !important;
+  transform: translateX(0) !important;
+}
+body [data-areal-sidebar-auto-hidden] [data-side="sidebar"] {
+  display: none !important;
+}
+/* Keep the active resize target alive until pointerup. Removing a captured
+   element mid-drag produces a lost-capture/reopen loop at the collapse edge. */
+body [data-areal-sidebar-auto-hidden][data-areal-sidebar-resize-gesture] [data-side="sidebar"] {
+  display: block !important;
+  opacity: 0 !important;
+}
+
+/* The message viewport previously exposed its native scrollbar on the left
+   edge. Keep scrolling functional, but let the turn navigator own that rail. */
+body [class*="_scrollBody"]:has(.eGxaPq_slot) {
+  scrollbar-width: none !important;
+}
+body [class*="_scrollBody"]:has(.eGxaPq_slot)::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Mirror the turn navigator to the conversation's left edge. The upstream
+   component hides below 900px, but this rail remains usable in split views. */
+body .eGxaPq_slot { display: block !important; }
+body .eGxaPq_frame {
+  right: auto !important;
+  left: calc(12px - (var(--dsh-composer-side-clearance) + 16px)) !important;
+}
+body .eGxaPq_mark { inset: 0 auto 0 0 !important; }
+body .eGxaPq_mark::before { right: auto !important; left: 0 !important; }
+body .eGxaPq_preview {
+  right: auto !important;
+  left: calc(100% + 10px) !important;
+}
+
+/* A continuous pointer falloff lets neighbouring ticks follow the hovered one. */
+body [data-turn-navigator] .eGxaPq_mark::before {
+  width: 6px !important;
+  height: 2px !important;
+  opacity: .45 !important;
+  background: var(--dsw-alias-label-tertiary) !important;
+  transition: width 380ms cubic-bezier(.22, .8, .25, 1),
+    transform 420ms cubic-bezier(.22, .8, .25, 1), opacity 300ms ease !important;
+}
+body [data-turn-navigator] .eGxaPq_mark[aria-current]::before {
+  width: 10px !important;
+  opacity: 1 !important;
+  background: var(--dsw-alias-label-secondary) !important;
+}
+@supports (width: calc(1px * abs(-1))) {
+  body [data-turn-navigator][data-turn-preview] .eGxaPq_markPosition {
+    --turn-wave: max(0, calc(1 - abs(var(--turn-natural-position) - var(--turn-pointer-position, -100px)) / 38px));
+  }
+  body [data-turn-navigator][data-turn-preview] .eGxaPq_mark::before {
+    width: calc(6px + 20px * var(--turn-wave)) !important;
+    opacity: calc(.45 + .2 * var(--turn-wave)) !important;
+    transform: translateY(-50%) !important;
+  }
+}
+body [data-turn-navigator] .eGxaPq_mark[aria-describedby]::before {
+  opacity: 1 !important;
+  background: var(--dsw-alias-label-primary) !important;
+}
+body [data-turn-navigator] .eGxaPq_preview {
+  transition: top 380ms cubic-bezier(.22, .8, .25, 1) !important;
+}
+body .areal-sidebar-footer-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+}
+body .areal-sidebar-footer-row > :first-child { flex: 1 !important; min-width: 0 !important; }
+body .areal-sidebar-more {
+  display: inline-flex !important; align-items: center !important; justify-content: center !important;
+  width: 28px !important; height: 28px !important; flex: 0 0 28px !important;
+  border: 0 !important; padding: 0 !important; border-radius: var(--areal-hover-radius) !important;
+  color: var(--dsw-alias-label-secondary) !important; background: transparent !important;
+  cursor: pointer !important;
+}
+body .areal-sidebar-more:hover { background: var(--dsw-alias-interactive-bg-hover) !important; }
+body .areal-sidebar-more .areal-task-more-dots {
+  position: relative !important; display: block !important; width: 3px !important; height: 3px !important;
+  border-radius: 50% !important; background: currentColor !important;
+  box-shadow: -5px 0 currentColor, 5px 0 currentColor !important;
+}
+body .areal-sidebar-footer-menu {
+  position: fixed !important; inset: auto !important; left: 12px !important; bottom: 58px !important;
+  margin: 0 !important; width: min(240px, calc(100vw - 16px)) !important;
+  max-height: min(480px, calc(100vh - 80px)) !important; overflow-y: auto !important;
+  box-sizing: border-box !important; padding: 6px !important; border-radius: 8px !important;
+  border: 1px solid var(--dsw-alias-border-l4) !important;
+  color: var(--dsw-alias-label-primary) !important; background: var(--dsw-alias-bg-layer-1) !important;
+  box-shadow: var(--dsw-elevation-panel) !important;
+}
+body .areal-sidebar-footer-menu[style] {
+  left: var(--areal-footer-menu-left, 12px) !important;
+  bottom: var(--areal-footer-menu-bottom, 58px) !important;
+}
+body .areal-sidebar-footer-menu [data-slot="sidebar.footer.action"] { display: block !important; }
+body .areal-sidebar-footer-menu .areal-isolated-task { display: block !important; width: 100% !important; }
+body .areal-sidebar-footer-menu button:not(dialog *) {
+  flex: none !important;
+  display: flex !important; align-items: center !important; justify-content: flex-start !important;
+  gap: 10px !important; width: 100% !important; min-height: 34px !important; height: auto !important;
+  padding: 7px 10px !important; border: 0 !important; border-radius: var(--areal-hover-radius) !important;
+  color: var(--dsw-alias-label-primary) !important; background: transparent !important;
+  font: inherit !important; font-size: 13px !important;
+}
+body .areal-sidebar-footer-menu button:not(dialog *):hover {
+  background: var(--dsw-alias-interactive-bg-hover) !important;
+}
+body .areal-sidebar-footer-menu button[aria-label]:not(dialog *)::after { content: attr(aria-label); }
+body .areal-sidebar-footer-menu .dshgui-shell-status {
+  display: flex !important; width: 100% !important; margin: 4px 0 0 !important;
+  padding: 7px 10px !important; box-sizing: border-box !important;
+  border-top: 1px solid var(--dsw-alias-border-l4) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  body [data-turn-navigator] .eGxaPq_mark::before,
+  body [data-turn-navigator] .eGxaPq_preview { transition: none !important; }
+}
+
+body [data-composer-card] :is(button[aria-label^="访问模式"], button[aria-label^="选择模型"]),
+body [data-composer-card] :is(button[aria-label^="访问模式"], button[aria-label^="选择模型"]) * {
+  font-weight: 400 !important;
+}
+body [data-composer-card] :is(button[data-permission-value], button[data-areal-model-select]) {
+  color: var(--dsw-alias-label-caption) !important;
+  font-size: var(--areal-composer-control-font-size) !important;
+  font-weight: 400 !important;
+}
+body [data-composer-card] :is(button[data-permission-value], button[data-areal-model-select]) :is(span, svg) {
+  font-size: var(--areal-composer-control-font-size) !important;
+}
+body [data-composer-card] :is(button[data-permission-value], button[data-areal-model-select]) svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+body [data-composer-placeholder] {
+  color: var(--areal-composer-muted) !important;
+}
+body [data-composer-card] button[data-permission-value="danger-full-access"] {
+  color: #ff7a2f !important;
+}
+
+/* Model and effort popovers use the same compact scale as the composer
+   controls. At 2x display scale this is the 450px-wide surface in the refs. */
+body [role="menu"]:is(
+  [aria-label="模型与推理等级"],
+  [aria-label="Model and reasoning effort"]
+) {
+  box-sizing: border-box !important;
+  width: min(225px, calc(100vw - 24px)) !important;
+  min-width: min(225px, calc(100vw - 24px)) !important;
+  max-width: min(225px, calc(100vw - 24px)) !important;
+  padding: 4px !important;
+  border-radius: var(--areal-radius-surface) !important;
+}
+body [role="menu"]:is(
+  [aria-label="模型与推理等级"],
+  [aria-label="Model and reasoning effort"]
+) .areal-effort-card {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-height: 102px !important;
+  padding: 8px 10px 10px !important;
+  gap: 2px !important;
+  border: 0 !important;
+  border-radius: 14px !important;
+  background: transparent !important;
+  position: relative !important;
+}
+body .areal-effort-heading {
+  min-height: 18px !important;
+  font-size: var(--areal-composer-control-font-size) !important;
+  line-height: 18px !important;
+}
+body .areal-effort-model-link {
+  color: var(--areal-effort-accent) !important;
+  font-size: var(--areal-composer-control-font-size) !important;
+  line-height: 18px !important;
+}
+body .areal-effort-model-link:hover {
+  color: var(--areal-effort-accent) !important;
+}
+body .areal-effort-reset {
+  top: -1px !important;
+  right: 0 !important;
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 999px !important;
+}
+body .areal-effort-reset svg,
+body .areal-effort-chevron {
+  width: 14px !important;
+  height: 14px !important;
+}
+body .areal-effort-model {
+  font-size: var(--areal-composer-control-font-size) !important;
+  line-height: 18px !important;
+}
+body .areal-effort-range {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  height: 24px !important;
+  margin: 4px 0 0 !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  outline: none !important;
+  background: linear-gradient(
+    to right,
+    var(--areal-effort-accent) 0 var(--areal-effort-progress, 0%),
+    var(--dsw-alias-interactive-bg-active) var(--areal-effort-progress, 0%) 100%
+  ) !important;
+}
+body .areal-effort-range::-webkit-slider-runnable-track {
+  height: 24px !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+}
+body .areal-effort-range::-webkit-slider-thumb {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  width: 28px !important;
+  height: 28px !important;
+  margin-top: -2px !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: var(--dsw-alias-label-primary) !important;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 24%) !important;
+}
+body .areal-effort-stops {
+  position: relative !important;
+  display: block !important;
+  height: 0 !important;
+  margin: 0 14px !important;
+  color: rgb(255 255 255 / 38%) !important;
+  pointer-events: none !important;
+}
+body .areal-effort-stops span {
+  position: absolute !important;
+  top: -14px !important;
+  width: 4px !important;
+  height: 4px !important;
+  overflow: hidden !important;
+  border-radius: 999px !important;
+  background: currentColor !important;
+  color: rgb(255 255 255 / 38%) !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  transform: translate(-50%, -50%) !important;
+}
+body .areal-effort-stops span:nth-child(1) { left: 0 !important; }
+body .areal-effort-stops span:nth-child(2) { left: 33.333% !important; }
+body .areal-effort-stops span:nth-child(3) { left: 66.667% !important; }
+body .areal-effort-stops span:nth-child(4) { left: 100% !important; }
+body .areal-effort-stops span[data-active] { color: transparent !important; }
+body [role="menu"]:is(
+  [aria-label="模型与推理等级"],
+  [aria-label="Model and reasoning effort"]
+) :is(.areal-model-heading, .areal-model-default, .areal-model-recommended) {
+  font-size: var(--areal-composer-control-font-size) !important;
+  line-height: 18px !important;
+}
+body [role="menu"]:is(
+  [aria-label="模型与推理等级"],
+  [aria-label="Model and reasoning effort"]
+) [role="menuitemradio"] {
+  min-height: 30px !important;
+  padding-block: 4px !important;
+  border-radius: 10px !important;
+}
+body button[aria-label="新建会话"]:not(:has(.zeebo-mark)):not(.areal-window-action) {
+  height: 36px !important;
+  padding: 0 10px !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+  border-radius: var(--areal-hover-radius) !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--dsw-alias-label-secondary) !important;
+  transition: background-color 120ms ease, border-color 120ms ease !important;
+}
+body button[aria-label="新建会话"]:not(:has(.zeebo-mark)) > svg {
+  display: none !important;
+}
+body button[aria-label="新建会话"]:not(:has(.zeebo-mark))::before {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  content: "";
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3H6a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-6'/%3E%3Cpath d='M18.375 2.625a2.121 2.121 0 0 1 3 3L12.36 14.64a2 2 0 0 1-.85.5l-2.87.84a.5.5 0 0 1-.62-.62l.84-2.87a2 2 0 0 1 .5-.85z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3H6a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-6'/%3E%3Cpath d='M18.375 2.625a2.121 2.121 0 0 1 3 3L12.36 14.64a2 2 0 0 1-.85.5l-2.87.84a.5.5 0 0 1-.62-.62l.84-2.87a2 2 0 0 1 .5-.85z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+body button.areal-window-action[aria-label="新建会话"] {
+  box-sizing: border-box !important;
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: var(--areal-hover-radius) !important;
+  justify-content: center !important;
+}
+body button[aria-label="新建会话"]:not(:has(.zeebo-mark)):not(.areal-window-action):hover {
+  border-color: var(--dsw-alias-border-l2) !important;
+  background: var(--dsw-alias-interactive-bg-hover) !important;
+  color: var(--dsw-alias-label-primary) !important;
+}
+body [role="tree"][aria-label="会话"] [role="treeitem"],
+body [role="tree"][aria-label="任务管理"] [role="treeitem"] {
+  border-radius: var(--areal-hover-radius) !important;
+  transition: background-color 120ms ease, color 120ms ease !important;
+}
+body [role="tree"][aria-label="会话"] [role="treeitem"]:hover,
+body [role="tree"][aria-label="任务管理"] [role="treeitem"]:hover {
+  background: var(--dsw-alias-interactive-bg-hover) !important;
+}
+body [role="tree"][aria-label="会话"] [class*="_selected"],
+body [role="tree"][aria-label="任务管理"] [class*="Active"] {
+  background: var(--dsw-alias-interactive-bg-hover) !important;
+}
+body button[data-areal-settings-trigger="true"] {
+  height: 36px !important;
+  min-height: 36px !important;
+  margin-block: 2px !important;
+  padding-inline: 10px !important;
+  border-radius: var(--areal-hover-radius) !important;
+}
+body [data-slot="conversation.session.header.utilities"] button {
+  width: 30px !important;
+  min-width: 30px !important;
+  height: 30px !important;
+  padding: 0 !important;
+  justify-content: center !important;
+  border: 1px solid transparent !important;
+  border-radius: var(--areal-hover-radius) !important;
+  background: transparent !important;
+  color: var(--dsw-alias-label-secondary) !important;
+  transition: background-color 120ms ease, color 120ms ease !important;
+}
+body [data-slot="conversation.session.header.utilities"] button:hover {
+  background: var(--dsw-alias-interactive-bg-hover) !important;
+  color: var(--dsw-alias-label-primary) !important;
+}
+body button[aria-label="Session 日志"] span {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+}
+body button[aria-label="Session 日志"] svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+
+body div[class*="_tabBar"] {
+  height: 44px !important;
+  min-height: 44px !important;
+  box-sizing: border-box !important;
+  padding-block: 6px !important;
+  padding-left: 8px !important;
+  border-bottom: 1px solid var(--dsw-alias-border-l2) !important;
+  background: var(--dsw-alias-bg-base) !important;
+}
+body [class*="_tabList"] {
+  height: 30px !important;
+  min-height: 30px !important;
+  align-self: center !important;
+  gap: 8px !important;
+}
+body div[title][class*="_tab"] {
+  min-height: 30px !important;
+  height: 30px !important;
+  padding-inline: 8px !important;
+  border: 0 !important;
+  border-radius: var(--areal-hover-radius) !important;
+  background: transparent !important;
+  color: var(--dsw-alias-label-tertiary) !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+}
+body div[title][class*="_tab"]:hover {
+  background: var(--dsw-alias-interactive-bg-hover) !important;
+  color: var(--dsw-alias-label-primary) !important;
+}
+body div[title][class*="_tabActive"] {
+  box-shadow: none !important;
+  background: var(--dsw-alias-interactive-bg-hover) !important;
+  color: var(--dsw-alias-label-primary) !important;
+}
+body div[title][class*="_tabActive"]::after {
+  display: none !important;
+}
+body button[aria-label="新建标签页"] {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: var(--areal-hover-radius) !important;
+  background: transparent !important;
+}
+body button[aria-label="新建标签页"]:hover {
+  background: var(--dsw-alias-interactive-bg-hover) !important;
+  color: var(--dsw-alias-label-primary) !important;
+}
+body [data-composer-card] {
+  background: var(--dsw-specific-input-major) !important;
+  border-color: var(--dsw-alias-border-l2) !important;
+  transition: border-color 120ms ease, background-color 120ms ease !important;
+}
+body [data-composer-card]:focus-within {
+  border-color: var(--dsw-alias-border-l4) !important;
+}
+
+body [data-composer-card] [data-input-scroll] {
+  margin-bottom: -6px !important;
+}
+
+/* The composer uses Lexical's official semantic Markdown nodes. */
+body [data-composer-input] :is(h1, h2, h3, h4, h5, h6, blockquote, ul, ol, li) {
+  box-sizing: border-box;
+  min-height: 24px;
+  margin: 0;
+  color: inherit;
+}
+body [data-composer-input] :is(ul, ol) {
+  margin: 0;
+  padding-left: 22px;
+}
+body [data-composer-input] blockquote {
+  border-left: 2px solid var(--dsw-alias-border-l4);
+  padding-left: 10px;
+  color: var(--dsw-alias-label-secondary);
+}
+body [data-composer-input] :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: 600;
+  line-height: 1.35;
+}
+body [data-composer-input] h1 { font-size: 1.4em; }
+body [data-composer-input] h2 { font-size: 1.25em; }
+body [data-composer-input] h3 { font-size: 1.12em; }
+body [data-composer-input] a {
+  color: var(--dsw-alias-state-business-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+body [data-composer-input] .areal-composer-markdown-strikethrough {
+  text-decoration: line-through;
+}
+body [data-composer-input] code:not([spellcheck="false"]) {
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 5px;
+  background: var(--dsw-alias-markdown-inline-code);
+  padding: 1px 4px;
+  font-family: var(--ds-font-family-code);
+  font-size: 0.9em;
+}
+body [data-composer-input] code[spellcheck="false"] {
+  display: block;
+  min-height: 24px;
+  margin: 2px 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--dsw-alias-markdown-code-block-bg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+
+html[data-areal-color-scheme="dark"] [class*="_root"]:has([class*="_logoRow"]) {
+  --dsw-alias-label-primary: #ececec;
+  --dsw-alias-label-secondary: #b4b4b4;
+  --dsw-alias-label-tertiary: #8b8b8b;
+  --dsw-alias-label-caption: #737373;
+}
+html[data-areal-color-scheme="dark"] [class*="_sidebarCol"] {
+  border-right-color: #3a3a3b !important;
+}
+html[data-areal-color-scheme="dark"] [data-composer-card] {
+  --dsw-alias-label-primary: #ececec;
+  --dsw-alias-label-secondary: #b4b4b4;
+  --dsw-alias-label-tertiary: #8b8b8b;
+  color: #ececec !important;
+}
+html[data-areal-color-scheme="dark"] [data-composer-card]:not(:focus-within) {
+  border-color: #3a3a3b !important;
+}
+html[data-areal-color-scheme="dark"] [data-composer-placeholder] {
+  color: var(--areal-composer-muted) !important;
+}
+html[data-areal-color-scheme="dark"] [data-composer-card] :is(
+  button[data-permission-value]:not([data-permission-value="danger-full-access"]),
+  button[data-areal-model-select]
+) {
+  color: #8b8b8b !important;
+}
+html[data-areal-color-scheme="dark"] [data-composer-input] {
+  color: #ececec !important;
+  caret-color: #ececec;
+}
+html[data-areal-color-scheme="dark"] div[class*="_tabBar"] {
+  --dsw-alias-label-primary: #ececec;
+  --dsw-alias-label-secondary: #a8a8a8;
+  --dsw-alias-label-tertiary: #858585;
+}
+@media (prefers-reduced-motion: reduce) {
+  body button[aria-label="新建会话"],
+  body [role="tree"] [role="treeitem"],
+  body [data-slot="conversation.session.header.utilities"] button,
+  body [data-composer-card] { transition: none !important; }
+}

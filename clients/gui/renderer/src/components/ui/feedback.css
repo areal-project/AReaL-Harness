@@ -1,0 +1,15 @@
+/* Feedback owns its presentation; callers own messages and recovery actions. */
+.ui-feedback {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: var(--border-width-default) solid var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-foreground);
+  font-size: var(--text-ui-base);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.ui-feedback[data-tone="error"] {
+  color: var(--color-destructive);
+}

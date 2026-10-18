@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+<rect width="1600" height="1000" fill="#FFFFFF"/>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#3A3D44"/></marker></defs>
+<text x="64" y="92" font-family="Georgia, serif" font-size="34" font-weight="normal" fill="#0F1012">Shared Browser — ownership and execution</text>
+<text x="64" y="132" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="normal" fill="#3A3D44">AReaL Harness design: extend the existing authenticated callback path and native preview.</text>
+<text x="64" y="184" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="13" font-weight="normal" fill="#8B8F97">DESIGN PROPOSAL — NOT IMPLEMENTED</text>
+<rect x="64" y="264" width="240" height="224" rx="0" fill="#FFFFFF" stroke="#A0A1A3" stroke-width="1.5"/>
+<text x="80" y="297" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="bold" fill="#0F1012">Core</text>
+<line x1="80" y1="314" x2="288" y2="314" stroke="#E9E9EA"/>
+<text x="80" y="342" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Thread / Turn / approval</text>
+<text x="80" y="367" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Durable intent + history</text>
+<text x="80" y="392" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Client-backed receipts</text>
+<text x="80" y="417" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">No Electron dependency</text>
+<rect x="368" y="264" width="240" height="224" rx="0" fill="#FFFFFF" stroke="#A0A1A3" stroke-width="1.5"/>
+<text x="384" y="297" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="bold" fill="#0F1012">Desktop adapter</text>
+<line x1="384" y1="314" x2="592" y2="314" stroke="#E9E9EA"/>
+<text x="384" y="342" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Bound ToolHost connection</text>
+<text x="384" y="367" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Authentication + routing</text>
+<text x="384" y="392" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Reply/cancel correlation</text>
+<text x="384" y="417" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">No agent loop</text>
+<rect x="672" y="264" width="240" height="224" rx="0" fill="#FFFFFF" stroke="#A0A1A3" stroke-width="1.5"/>
+<text x="688" y="297" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="bold" fill="#0F1012">Browser Controller</text>
+<line x1="688" y1="314" x2="896" y2="314" stroke="#E9E9EA"/>
+<text x="688" y="342" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Electron Main</text>
+<text x="688" y="367" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Pages / contexts / epochs</text>
+<text x="688" y="392" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Input fence + narrow CDP</text>
+<text x="688" y="417" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Native resource authority</text>
+<rect x="976" y="264" width="240" height="224" rx="0" fill="#FFFFFF" stroke="#A0A1A3" stroke-width="1.5"/>
+<text x="992" y="297" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="bold" fill="#0F1012">Live Browser Page</text>
+<line x1="992" y1="314" x2="1200" y2="314" stroke="#E9E9EA"/>
+<text x="992" y="342" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Existing WebContentsView</text>
+<text x="992" y="367" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">One DOM + site Session</text>
+<text x="992" y="392" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">No Node / product bridge</text>
+<text x="992" y="417" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Same object as preview</text>
+<rect x="1280" y="264" width="240" height="224" rx="0" fill="#FFFFFF" stroke="#A0A1A3" stroke-width="1.5"/>
+<text x="1296" y="297" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="bold" fill="#0F1012">GUI</text>
+<line x1="1296" y1="314" x2="1504" y2="314" stroke="#E9E9EA"/>
+<text x="1296" y="342" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Tabs + annotations</text>
+<text x="1296" y="367" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Control + evidence</text>
+<text x="1296" y="392" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Drafts + projections</text>
+<text x="1296" y="417" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="normal" fill="#3A3D44">Visible human takeover</text>
+<polyline points="304,352 368,352" fill="none" stroke="#3A3D44" stroke-width="1.5" marker-end="url(#a)" marker-start="url(#a)"/>
+<text x="306" y="316" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="12" font-weight="normal" fill="#3A3D44">call /</text>
+<text x="306" y="333" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="12" font-weight="normal" fill="#3A3D44">receipt</text>
+<polyline points="608,352 672,352" fill="none" stroke="#3A3D44" stroke-width="1.5" marker-end="url(#a)" marker-start="url(#a)"/>
+<text x="610" y="316" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="12" font-weight="normal" fill="#3A3D44">private</text>
+<text x="610" y="333" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="12" font-weight="normal" fill="#3A3D44">channel</text>
+<polyline points="912,352 976,352" fill="none" stroke="#3A3D44" stroke-width="1.5" marker-end="url(#a)" marker-start="url(#a)"/>
+<text x="920" y="316" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="12" font-weight="normal" fill="#3A3D44">scoped</text>
+<text x="920" y="333" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="12" font-weight="normal" fill="#3A3D44">CDP</text>
+<polyline points="1216,352 1280,352" fill="none" stroke="#3A3D44" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="1220" y="316" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="12" font-weight="normal" fill="#3A3D44">same</text>
+<text x="1220" y="333" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="12" font-weight="normal" fill="#3A3D44">window</text>
+<polyline points="1400,488 1400,592 792,592 792,488" fill="none" stroke="#3A3D44" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="820" y="568" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="12" font-weight="normal" fill="#3A3D44">Human control: priority local fence before Core coordination</text>
+<line x1="64" y1="710" x2="1536" y2="710" stroke="#E9E9EA"/>
+<text x="64" y="754" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="normal" fill="#3A3D44">Ownership stays explicit: Core owns the task record; Main owns physical pages; the Renderer owns only unsent drafts and UI state.</text>
+<text x="64" y="788" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="normal" fill="#3A3D44">Runtime still owns development servers and code/file execution. A client browser is not automatically inside the Runtime sandbox.</text>
+<text x="64" y="822" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="normal" fill="#3A3D44">No second browser daemon, no public application-wide CDP endpoint, and no duplicate Agent Loop.</text>
+<text x="64" y="856" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="normal" fill="#3A3D44">R2 target: shared-page work, takeover, annotations, diagnostics and code verification. Persistent Browser Profiles are deferred.</text>
+</svg>

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'"
+  />
+  <title>Trusted native input mask</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(24, 34, 48, 0.28);
+      font: 16px system-ui;
+    }
+    p {
+      position: absolute;
+      top: 70px;
+      left: 30px;
+      padding: 12px;
+      background: #fff;
+      border-radius: 8px;
+      color: #243040;
+    }
+  </style>
+  <p>原生输入屏障 · 顶栏仍可接管</p>
+  <script src="mask.js"></script>
+</html>

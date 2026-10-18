@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="180" viewBox="0 0 160 180" role="img" aria-labelledby="title desc">
+  <title id="title">AReaL-Harness milk tea logo</title>
+  <desc id="desc">A cup of milk tea with an orange straw and dark tapioca pearls.</desc>
+  <defs>
+    <clipPath id="cup">
+      <path d="M36 66h88l-11 85a12 12 0 0 1-12 10H59a12 12 0 0 1-12-10Z"/>
+    </clipPath>
+  </defs>
+  <g stroke="#fff8ed" stroke-width="12" stroke-linejoin="round" stroke-linecap="round">
+    <path d="m87 60 13-43 13 4-13 43Z" fill="#e8864f"/>
+    <path d="M36 66h88l-11 85a12 12 0 0 1-12 10H59a12 12 0 0 1-12-10Z" fill="#f7e4c4"/>
+    <rect x="28" y="51" width="104" height="20" rx="9" fill="#fff4dd"/>
+  </g>
+  <g stroke="#4b3027" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">
+    <path d="m87 60 13-43 13 4-13 43Z" fill="#e8864f"/>
+    <path d="M36 66h88l-11 85a12 12 0 0 1-12 10H59a12 12 0 0 1-12-10Z" fill="#f7e4c4"/>
+  </g>
+  <g clip-path="url(#cup)">
+    <path d="M34 94c18-12 34 10 53 0s29-4 39 1v69H34Z" fill="#d6a36e"/>
+    <path d="M106 71h18l-12 94H95Z" fill="#4b3027" opacity=".08"/>
+    <path d="m48 82 6 48" fill="none" stroke="#fff8ed" stroke-width="6" stroke-linecap="round" opacity=".75"/>
+    <g fill="#4b3027">
+      <circle cx="63" cy="140" r="7"/>
+      <circle cx="83" cy="145" r="7"/>
+      <circle cx="102" cy="137" r="7"/>
+      <circle cx="75" cy="122" r="7"/>
+      <circle cx="95" cy="117" r="7"/>
+    </g>
+    <g fill="#a47253">
+      <circle cx="61" cy="138" r="2"/>
+      <circle cx="81" cy="143" r="2"/>
+      <circle cx="100" cy="135" r="2"/>
+      <circle cx="73" cy="120" r="2"/>
+      <circle cx="93" cy="115" r="2"/>
+    </g>
+  </g>
+  <g stroke="#4b3027" stroke-width="5" stroke-linejoin="round">
+    <path d="M36 66h88l-11 85a12 12 0 0 1-12 10H59a12 12 0 0 1-12-10Z" fill="none"/>
+    <rect x="28" y="51" width="104" height="20" rx="9" fill="#fff4dd"/>
+  </g>
+  <path d="M40 58h69" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+</svg>

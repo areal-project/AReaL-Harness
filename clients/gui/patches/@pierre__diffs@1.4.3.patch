@@ -1,0 +1,12 @@
+diff --git a/dist/components/FileDiff.js b/dist/components/FileDiff.js
+index 6758a7b9d07f2f971f971afbf52b831a7388e999..dca1518eae78fbb1ca7579d9bdce2d227a5604f8 100644
+--- a/dist/components/FileDiff.js
++++ b/dist/components/FileDiff.js
+@@ -315,6 +315,7 @@ var FileDiff = class {
+ 		this.managersDirty = false;
+ 	}
+ 	shouldApplyColumnVariables(overflow) {
++		if (this.options.hunkSeparators === "line-info") return true;
+ 		if (typeof this.options.hunkSeparators === "function") return true;
+ 		return overflow === "scroll" && (this.getLatestAnnotations().length > 0 || this.pre?.hasAttribute("data-has-merge-conflict") === true);
+ 	}

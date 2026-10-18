@@ -1,0 +1,13 @@
+.preview-file-status {
+  display: block;
+  max-height: 112px;
+  overflow: auto;
+}
+
+.preview-file-status [role="listitem"] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-wrap: anywhere;
+  padding: 3px 0;
+}

@@ -1,0 +1,89 @@
+schema_version = 2
+
+[permissions]
+# 默认 YOLO；需要工具审批时改为 ASK_PERMISSIONS。
+mode = "YOLO"
+
+[server]
+listen = "127.0.0.1:4500"
+# data_dir defaults to <AREAL_HARNESS_HOME>/state.
+
+[model]
+# 仅 Responses 且服务支持 WebSocket 时显式开启；默认 false。
+# responses_websocket = true
+# reasoning_effort = "xhigh"
+# 仅选择 responses 且模型支持摘要时启用。
+# reasoning_summary = "auto"
+# max_output_tokens = 8192
+# 按所选模型的实际窗口设置；不按模型名称猜测。
+# context_window_tokens = 131072
+max_retries = 2
+provider = "company"
+name = "your-model-id"
+
+[model.providers.company]
+protocol = "chat-completions"
+endpoint = "https://gateway.example.com/v1/chat/completions"
+api_key_env = "COMPANY_MODEL_API_KEY"
+
+[context]
+mode = "auto"
+recent_tokens = 8192
+# target_tokens = 0                 # 0：自动目标
+# output_reserve_tokens = 8192
+
+[budget]
+# 省略或 0：不设累计预算。
+# max_tool_calls = 0
+# max_output_bytes = 0
+# max_history_bytes = 0
+
+[resources]
+model_concurrency = 32
+max_threads = 20000
+max_active_turns = 256
+max_side_turns_per_source = 2
+max_side_turns_per_deployment = 8
+max_side_model_rounds = 8
+max_side_tool_calls = 16
+max_side_turn_seconds = 300
+max_children_per_turn = 64
+max_agent_depth = 8
+max_response_tool_calls = 128
+max_response_bytes = 4194304
+max_tool_buffer_bytes = 4194304
+
+[network]
+retry_mode = "persistent"
+stream_idle_timeout_seconds = 30
+
+[logging]
+filter = "info"
+
+# 可选持久轨迹导出；只接受标准 OTLP HTTP/protobuf，不依赖特定平台。
+[trajectory]
+enabled = false
+endpoint = "https://collector.example.com"
+# 默认用户配置使用 <AREAL_HARNESS_HOME>/trajectory；其它配置文件的队列自动隔离。
+# headers_env = "AREAL_EXPORT_HEADERS"
+# headers_file = "/absolute/private/trajectory-headers.txt"
+max_disk_bytes = 268435456
+max_memory_bytes = 16777216
+max_batch_bytes = 4194304
+max_records = 2000
+max_retries = 6
+retry_initial_seconds = 5
+retry_max_seconds = 300
+request_timeout_seconds = 10
+upload_interval_ms = 1000
+
+# 可选：工具等待策略、自定义命令工具与 hooks；详见 docs/guides/tools.md。
+# [tools]
+# extensions_file = "tools.json"
+
+# Goal 执行限制；客户端用 /goal 创建目标，无需功能开关。
+[goals]
+max_turns = 0
+max_active_seconds = 0
+max_unreported_turns = 3
+turn_model_rounds = 0

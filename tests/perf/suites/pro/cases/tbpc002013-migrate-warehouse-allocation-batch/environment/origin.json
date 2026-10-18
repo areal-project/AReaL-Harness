@@ -1,0 +1,17 @@
+{
+  "initial_files_sha256": {
+    "legacy/allocate.cbl": "82c04682ec537f89cbf3bfac2c655631a11f8be51fcb0f0b79871254a9d976e1",
+    "public/run_legacy_allocation.sh": "a5ed94ee0b51f69600769c0ddf5167ae93675d9c30967171a5d06e868c627270",
+    "public/warehouse-contract.md": "a91f27881298afae5e2770619d8b8e63ed106216d2a69e89d7418449741f9098",
+    "vendor/LICENSE.libpython3.11": "f1cbf908e1daa8789b389fdcf17811ed36b675d736b39a103591399861350382",
+    "vendor/PROVENANCE.txt": "457df9b514aee7c348650bb11128d299c8653d614e6be734f77930e282cd8dfa",
+    "vendor/libpython3.11.so.1.0": "d7b4b5bd699711828204fe1a966c737bfd2d708d1c18febf0253f6f3aa8ba139"
+  },
+  "schema_version": 1,
+  "source_env_sha256": "f267d52294cc5c6630250e1c836101431af312b2fd3b7579427acfa31812b533",
+  "source_image_id": "sha256:0faa41c7e6e065bd0a42f772ee7cfd9a3b043ecd96904939f06a801792035f92",
+  "source_repo_digests": [
+    "source.invalid/provenance/tbpc002013-migrate-warehouse-allocation-batch@sha256:4642172ce80a6302a3daad602db47d28c3c645dfa904aaa30c4c9ab5ba4092a0"
+  ],
+  "unredacted_source_env_sha256": "c02d994bb24eb9f1b71a750401bd5a538d429f1d33b681776ce2dfbd33d0696e"
+}

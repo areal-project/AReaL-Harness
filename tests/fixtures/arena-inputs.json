@@ -1,0 +1,122 @@
+[
+  {
+    "case": "swemm-bpmn-io-bpmn-js-1200",
+    "assets": [
+      {
+        "name": "0-65552698-bc77c900-df2d-11e9-9327-c9e8ed50a64d.gif",
+        "url": "https://user-images.githubusercontent.com/8074799/65552698-bc77c900-df2d-11e9-9327-c9e8ed50a64d.gif",
+        "sha256": "0cd99848dab7a221af25fbdf6fa38f2ea9145ccf46e7c06823f572059e42e357",
+        "bytes": 3721378
+      }
+    ]
+  },
+  {
+    "case": "swemm-bpmn-io-bpmn-js-1719",
+    "assets": [
+      {
+        "name": "0-178237778-960903e0-70dd-41d2-adb8-362360785914.gif",
+        "url": "https://user-images.githubusercontent.com/33545902/178237778-960903e0-70dd-41d2-adb8-362360785914.gif",
+        "sha256": "60563d817e9beecd50ee38f774ad0aa339a348b3efc4f879e4058e872406e917",
+        "bytes": 2743627
+      }
+    ]
+  },
+  {
+    "case": "swemm-carbon-design-system-carbon-7063",
+    "assets": [
+      {
+        "name": "0-95786810-ecf7e580-0c9d-11eb-92d6-87898b628c89.png",
+        "url": "https://user-images.githubusercontent.com/32556167/95786810-ecf7e580-0c9d-11eb-92d6-87898b628c89.png",
+        "sha256": "c0ea6aaee4a034af1a04a21ef6015692aaad95397e1aa8a0ff48c38f12b1eaab",
+        "bytes": 31724
+      },
+      {
+        "name": "1-95786813-ed907c00-0c9d-11eb-8a28-329ac3073413.png",
+        "url": "https://user-images.githubusercontent.com/32556167/95786813-ed907c00-0c9d-11eb-8a28-329ac3073413.png",
+        "sha256": "7b1a2753e51c46c64416ca4fe3e9977c95512fc862352ad3fab2de5049d91b34",
+        "bytes": 45867
+      },
+      {
+        "name": "2-95786386-0d737000-0c9d-11eb-99b9-69fa7dc58119.png",
+        "url": "https://user-images.githubusercontent.com/32556167/95786386-0d737000-0c9d-11eb-99b9-69fa7dc58119.png",
+        "sha256": "27dde3c39f82aebf9ad92404933cc8eaac2589f86df6dd97bd93e70fccc9ff15",
+        "bytes": 526320
+      },
+      {
+        "name": "3-95786399-119f8d80-0c9d-11eb-9700-ddbb551613df.png",
+        "url": "https://user-images.githubusercontent.com/32556167/95786399-119f8d80-0c9d-11eb-9700-ddbb551613df.png",
+        "sha256": "fd974484e9ee423b3117bce3588edf28b17655880c29ad4fa4608cfa7266b9e9",
+        "bytes": 508661
+      },
+      {
+        "name": "4-95786400-119f8d80-0c9d-11eb-9b4a-08d4a769a63d.png",
+        "url": "https://user-images.githubusercontent.com/32556167/95786400-119f8d80-0c9d-11eb-9b4a-08d4a769a63d.png",
+        "sha256": "9b919b50264d2a29ad005f405d282b8aba7462068d2bd6790819e6c864f94b85",
+        "bytes": 507047
+      },
+      {
+        "name": "5-95786397-119f8d80-0c9d-11eb-9f57-0615ecc917ff.png",
+        "url": "https://user-images.githubusercontent.com/32556167/95786397-119f8d80-0c9d-11eb-9f57-0615ecc917ff.png",
+        "sha256": "cd19a0aae70e1d96219be2ba6dd50ac4b4ebaa6ec650ec21653ee74937d53e80",
+        "bytes": 493699
+      }
+    ]
+  },
+  {
+    "case": "swemm-prettier-prettier-16347",
+    "assets": [
+      {
+        "name": "0-logo.png",
+        "url": "https://waline.js.org/logo.png",
+        "sha256": "e9ec7d54053ba3c17b3172edc4f67476cba26ea012476f2a454f2c6524157466",
+        "bytes": 54248
+      },
+      {
+        "name": "1-lxh_71.gif",
+        "url": "https://file.mo7.cc/static/lxh_gif/lxh_71.gif",
+        "sha256": "f7353315eaa9ec3e578c1294c01d5cce518c05c893613271792012fb07a09f5e",
+        "bytes": 328058,
+        "file": "tests/fixtures/arena-images/f7353315eaa9ec3e578c1294c01d5cce518c05c893613271792012fb07a09f5e.gif"
+      },
+      {
+        "name": "2-blog_preview_en.png",
+        "url": "https://file.mo7.cc/disk/blog_preview_en.png",
+        "sha256": "109b6e4c88090cefe610b0c2e0a0661bf9f54a4a5f84771a0a97a17b3f021ada",
+        "bytes": 671386,
+        "file": "tests/fixtures/arena-images/109b6e4c88090cefe610b0c2e0a0661bf9f54a4a5f84771a0a97a17b3f021ada.png"
+      },
+      {
+        "name": "3-logo.png",
+        "url": "https://guoxicheng.top/logo.png",
+        "sha256": "7b09d6df40ae3bad7f3fbef5da1db48e45f22c3a390b270da99fcd2dd6c41e56",
+        "bytes": 183443
+      },
+      {
+        "name": "4-logo.png",
+        "url": "https://waline.js.org/logo.png",
+        "sha256": "e9ec7d54053ba3c17b3172edc4f67476cba26ea012476f2a454f2c6524157466",
+        "bytes": 54248
+      },
+      {
+        "name": "5-lxh_71.gif",
+        "url": "https://file.mo7.cc/static/lxh_gif/lxh_71.gif",
+        "sha256": "f7353315eaa9ec3e578c1294c01d5cce518c05c893613271792012fb07a09f5e",
+        "bytes": 328058,
+        "file": "tests/fixtures/arena-images/f7353315eaa9ec3e578c1294c01d5cce518c05c893613271792012fb07a09f5e.gif"
+      },
+      {
+        "name": "6-blog_preview_en.png",
+        "url": "https://file.mo7.cc/disk/blog_preview_en.png",
+        "sha256": "109b6e4c88090cefe610b0c2e0a0661bf9f54a4a5f84771a0a97a17b3f021ada",
+        "bytes": 671386,
+        "file": "tests/fixtures/arena-images/109b6e4c88090cefe610b0c2e0a0661bf9f54a4a5f84771a0a97a17b3f021ada.png"
+      },
+      {
+        "name": "7-logo.png",
+        "url": "https://guoxicheng.top/logo.png",
+        "sha256": "7b09d6df40ae3bad7f3fbef5da1db48e45f22c3a390b270da99fcd2dd6c41e56",
+        "bytes": 183443
+      }
+    ]
+  }
+]
