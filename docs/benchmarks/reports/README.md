@@ -6,6 +6,7 @@
 
 | 报告 | 证据范围 |
 |---|---|
+| [子任务结果消费与收尾续轮](child-result-consumption.md) | 固定版本 Codex/DSH 对照、已见终态去重、迟到结果与压缩边界；确定性请求数回归，不宣称整体提速 |
 | [上下文连续性与持久化](context-continuity.md) | 真实多次压缩、修订、重启和 Goal 交付；Chat/Responses 与持久化阶段对照 |
 | [内置搜索与历史结果回取](native-result-views.md) | 146 次尝试，最终 18 对常规探针和 3 对 MCP 回取；含成本与耗时退化，未复跑 MM480 |
 | [原生工具优化 A/B](tool-optimization.md) | 当前配置模型的 56 次定向尝试，含迭代退化与最终 12 对结果；不代表 MM480 成功率 |

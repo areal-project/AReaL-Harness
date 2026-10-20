@@ -6,6 +6,7 @@ Historical records do not define current capabilities. Use the [run guide](../RE
 
 | Report | Evidence scope |
 |---|---|
+| [Child-result consumption and completion](child-result-consumption.en.md) | Fixed-version Codex/DSH references, observed terminal-result deduplication, late results and compaction; deterministic request counts, no overall speedup claim |
 | [Context continuity and persistence](context-continuity.en.md) | Live revisions, repeated compaction, restart and Goal delivery; Chat/Responses and persistence-stage comparison |
 | [Bundled search and historical result retrieval](native-result-views.en.md) | 146 attempts, with 18 final ordinary pairs and three MCP retrieval pairs; includes cost/latency regressions, no MM480 rerun |
 | [Native tool optimization A/B](tool-optimization.en.md) | 56 targeted attempts with the configured model, including regressions and 12 final pairs; not an MM480 success-rate claim |

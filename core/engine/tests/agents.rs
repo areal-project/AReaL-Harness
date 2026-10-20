@@ -88,6 +88,24 @@ impl Model for Delegating {
         let summarized = messages
             .iter()
             .any(|m| m.text_content().starts_with("Settled child Agent results"));
+        // 两个终态都已通过工具提供时，模型可直接综合；不能要求重复的自动汇总才算完成。
+        let observed: std::collections::BTreeSet<String> = results
+            .iter()
+            .filter_map(|message| {
+                let value: Value = serde_json::from_str(&message.text_content()).ok()?;
+                if value["settled"] != true
+                    || value["resourcesReleased"] != true
+                    || value["status"] != "completed"
+                    || value["text"] != "child-result"
+                {
+                    return None;
+                }
+                value["executionId"]
+                    .as_str()
+                    .or_else(|| value["threadId"].as_str())
+                    .map(str::to_owned)
+            })
+            .collect();
         if summarized {
             assert!(
                 messages
@@ -95,11 +113,13 @@ impl Model for Delegating {
                     .any(|m| m.text_content().contains("child-result"))
             );
         }
-        Ok(stream(vec![ModelEvent::text(if summarized {
-            "integrated"
-        } else {
-            "parent-ready"
-        })]))
+        Ok(stream(vec![ModelEvent::text(
+            if summarized || observed.len() == 2 {
+                "integrated"
+            } else {
+                "parent-ready"
+            },
+        )]))
     }
 }
 

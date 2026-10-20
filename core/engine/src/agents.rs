@@ -205,6 +205,164 @@ fn prefix(text: &str, limit: usize) -> &str {
     &text[..end]
 }
 
+/// 仅记录本 Turn 已进入模型请求的终态回执；不把持久化或工具执行等同于模型已见。
+#[derive(Default)]
+pub(crate) struct ChildResultObservations {
+    versions: BTreeMap<(String, String), Value>,
+    tool_items: HashSet<String>,
+}
+
+impl ChildResultObservations {
+    pub(crate) fn observe_request(
+        &mut self,
+        state: &State,
+        messages: &[Message],
+        observed_children: &mut HashSet<String>,
+    ) {
+        if state
+            .active
+            .as_ref()
+            .is_none_or(|active| active.model_children.is_empty())
+        {
+            return;
+        }
+        let Some(turn) = state.thread.turns.last() else {
+            return;
+        };
+        // 调用 ID 可能跨响应复用。歧义回执不能为另一次调用确认结果消费。
+        let mut calls = BTreeMap::new();
+        for past_turn in &state.thread.turns {
+            for item in &past_turn.items {
+                if let Item::DynamicToolCall { call_id, .. } = item {
+                    calls
+                        .entry(call_id.as_str())
+                        .and_modify(|item| *item = None)
+                        .or_insert(Some((item, past_turn.id == turn.id)));
+                }
+            }
+        }
+        for message in messages.iter().filter(|message| message.role == "tool") {
+            let Some(Some((
+                Item::DynamicToolCall {
+                    id,
+                    tool,
+                    success: Some(true),
+                    execution,
+                    ..
+                },
+                true,
+            ))) = message.tool_call_id.as_deref().and_then(|id| calls.get(id))
+            else {
+                continue;
+            };
+            if self.tool_items.contains(id)
+                || execution.backend.as_deref() != Some("coordination")
+                || execution.outcome != areal_protocol::ToolOutcome::Succeeded
+                || !matches!(
+                    tool.as_str(),
+                    "agent_spawn"
+                        | "agent_read"
+                        | "agent_wait"
+                        | "agent_wait_any"
+                        | "agent_cancel"
+                        | "agent_send_input"
+                )
+            {
+                continue;
+            }
+            let Ok(value) = serde_json::from_str::<Value>(&message.text_content()) else {
+                continue;
+            };
+            self.observe_value(state, &value);
+            self.tool_items.insert(id.clone());
+        }
+        // join 的完成顺序也必须共用已见状态，否则已读子任务会挡住仍在执行的兄弟任务。
+        observed_children.extend(self.versions.keys().map(|(id, _)| id.clone()));
+    }
+
+    fn observe_value(&mut self, state: &State, value: &Value) {
+        use areal_protocol::delegation::{ExecutionOwner, ExecutionRef};
+        let Some(active) = state.active.as_ref() else {
+            return;
+        };
+        for key in ["agents", "completed"] {
+            if let Some(rows) = value[key].as_array() {
+                for row in rows {
+                    self.observe_value(state, row);
+                }
+            }
+        }
+        let identity = if let Some(id) = value["executionId"].as_str() {
+            state.thread.desktop.as_ref().and_then(|desktop| {
+                desktop.executions.iter().find_map(|record| {
+                    if record.execution_id != id
+                        || !matches!(&record.owner, ExecutionOwner::Turn { turn_id, .. } if turn_id == &active.id)
+                    {
+                        return None;
+                    }
+                    match &record.execution {
+                        Some(ExecutionRef::Thread { thread_id, turn_id }) => Some((thread_id.clone(), turn_id.clone())),
+                        _ => None,
+                    }
+                })
+            })
+        } else {
+            child_result_identity(value)
+        };
+        if let Some(identity) = identity
+            && active.model_children.contains(&identity.0)
+            && let Some(version) = child_result_version(value)
+        {
+            self.versions.insert(identity, version);
+        }
+    }
+
+    pub(crate) fn covers(&self, reports: &Value) -> bool {
+        // 省略项仍须沿原有汇总/回取契约提示；不能因已见一部分而提前结束全部子任务。
+        reports["pending"] == 0
+            && reports["omitted"] == 0
+            && reports["agents"].as_array().is_some_and(|agents| {
+                agents.iter().all(|report| {
+                    child_result_identity(report)
+                        .and_then(|key| self.versions.get(&key))
+                        .zip(child_result_version(report))
+                        .is_some_and(|(observed, current)| *observed == current)
+                })
+            })
+    }
+}
+
+fn child_result_identity(value: &Value) -> Option<(String, String)> {
+    Some((
+        value["threadId"].as_str()?.into(),
+        value["turnId"].as_str()?.into(),
+    ))
+}
+
+fn child_result_version(value: &Value) -> Option<Value> {
+    let status = match value["status"].as_str()? {
+        "completed" => "completed",
+        "failed" => "failed",
+        "interrupted" | "cancelled" => "interrupted",
+        _ => return None,
+    };
+    if value["settled"] != true || value["offset"] != 0 {
+        return None;
+    }
+    value["resourcesReleased"].as_bool()?;
+    value["sourceItemId"].as_str()?;
+    value["source"].as_str()?;
+    value["textBytes"].as_u64()?;
+    let text = value["text"].as_str()?;
+    // 工具页为 2/8 KiB，自动汇总为 1 KiB；比较同一前缀，不以分页长度制造新版本。
+    Some(json!({
+        "status":status,"settled":true,"resourcesReleased":value["resourcesReleased"],
+        "source":value["source"],"sourceItemId":value["sourceItemId"],
+        "text":prefix(text,1024),"textBytes":value["textBytes"],"partial":value["partial"],
+        "error":value["error"],"stopRequested":value["stopRequested"],"activity":value["activity"]
+    }))
+}
+
 fn child_turn_id(state: &State) -> String {
     state
         .thread
@@ -644,6 +802,228 @@ async fn summaries(children: &[Arc<Cell>]) -> anyhow::Result<(Value, Vec<String>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn observed_receipt(text: &str) -> Value {
+        json!({
+            "threadId":"child","turnId":"child-turn","status":"completed",
+            "settled":true,"resourcesReleased":true,"source":"message","sourceItemId":"answer-a",
+            "text":text,"textBytes":text.len(),"offset":0,"nextOffset":null,
+            "partial":false,"error":null,"stopRequested":false,"activity":{"recordedItems":2}
+        })
+    }
+
+    fn observation_item(id: &str, call_id: &str, value: &Value) -> Item {
+        serde_json::from_value(json!({
+            "type":"dynamicToolCall","id":id,"callId":call_id,"tool":"agent_wait",
+            "arguments":{"threadId":"child"},"status":"completed","success":true,
+            "contentItems":[{"type":"inputText","text":value.to_string()}],
+            "execution":{"backend":"coordination","outcome":"succeeded",
+                "runtimeEpoch":"","scopeId":"","operationId":id}
+        }))
+        .unwrap()
+    }
+
+    fn observation_message(call_id: &str, value: &Value) -> Message {
+        let mut message = Message::text("tool", value.to_string());
+        message.tool_call_id = Some(call_id.into());
+        message
+    }
+
+    fn result_batch(value: Value) -> Value {
+        json!({"agents":[value],"total":1,"settled":1,"pending":0,"omitted":0})
+    }
+
+    #[tokio::test]
+    async fn child_consumption_requires_actual_trusted_request_receipt() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+        let parent = engine.create("/workspace".into()).await.unwrap();
+        engine
+            .start(&parent.id, vec![Input::text("parent")])
+            .await
+            .unwrap();
+        let cell = engine.cell(&parent.id).await.unwrap();
+        let value = observed_receipt("finding");
+        let batch = result_batch(value.clone());
+        {
+            let mut state = cell.state.lock().await;
+            state
+                .active
+                .as_mut()
+                .unwrap()
+                .model_children
+                .push("child".into());
+            let item = observation_item("receipt", "call", &value);
+            let tool_message = observation_message("call", &value);
+            let active_turn = state.thread.turns.last().unwrap().clone();
+            for (label, change) in [
+                ("not sent", 0),
+                ("user text", 1),
+                ("external tool", 2),
+                ("ambiguous call", 3),
+                ("projected excerpt", 4),
+                ("running", 5),
+                ("tail page", 6),
+                ("failed tool", 7),
+                ("unowned child", 8),
+                ("previous turn", 9),
+                ("prior turn duplicate", 10),
+                ("unknown outcome", 11),
+                ("missing source", 12),
+                ("unsettled", 13),
+                ("no owned children", 14),
+            ] {
+                state.thread.turns = vec![active_turn.clone()];
+                state.active.as_mut().unwrap().model_children = vec!["child".into()];
+                let mut receipt = item.clone();
+                let mut message = tool_message.clone();
+                let mut projected = value.clone();
+                match change {
+                    1 => message.role = "user".into(),
+                    2 => {
+                        if let Item::DynamicToolCall { execution, .. } = &mut receipt {
+                            execution.backend = Some("host".into());
+                        }
+                    }
+                    4 => projected = json!({"head":value.to_string(),"rawAvailable":true}),
+                    5 => {
+                        projected["status"] = json!("running");
+                        projected["settled"] = json!(false);
+                    }
+                    6 => projected["offset"] = json!(1),
+                    7 => {
+                        if let Item::DynamicToolCall { success, .. } = &mut receipt {
+                            *success = Some(false);
+                        }
+                    }
+                    8 => projected["threadId"] = json!("other-child"),
+                    11 => {
+                        if let Item::DynamicToolCall { execution, .. } = &mut receipt {
+                            execution.outcome = areal_protocol::ToolOutcome::Unknown;
+                        }
+                    }
+                    12 => projected["sourceItemId"] = Value::Null,
+                    13 => projected["settled"] = json!(false),
+                    14 => state.active.as_mut().unwrap().model_children.clear(),
+                    _ => {}
+                }
+                if change >= 4 {
+                    message = observation_message("call", &projected);
+                }
+                state.thread.turns.last_mut().unwrap().items = vec![receipt];
+                if change == 3 {
+                    state
+                        .thread
+                        .turns
+                        .last_mut()
+                        .unwrap()
+                        .items
+                        .push(observation_item("duplicate", "call", &value));
+                }
+                if change == 9 || change == 10 {
+                    let mut old_turn = active_turn.clone();
+                    old_turn.id = "old-turn".into();
+                    old_turn.items = vec![observation_item("old-receipt", "call", &value)];
+                    if change == 9 {
+                        state.thread.turns.last_mut().unwrap().items.clear();
+                    }
+                    state.thread.turns.insert(0, old_turn);
+                }
+                let messages = if change == 0 { vec![] } else { vec![message] };
+                let mut observations = ChildResultObservations::default();
+                let mut progress = HashSet::new();
+                observations.observe_request(&state, &messages, &mut progress);
+                assert!(!observations.covers(&batch), "{label}");
+                assert!(progress.is_empty(), "{label}");
+            }
+        }
+        engine.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn child_consumption_retains_versions_across_compaction_without_hiding_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+        let parent = engine.create("/workspace".into()).await.unwrap();
+        engine
+            .start(&parent.id, vec![Input::text("parent")])
+            .await
+            .unwrap();
+        let cell = engine.cell(&parent.id).await.unwrap();
+        {
+            let mut state = cell.state.lock().await;
+            state
+                .active
+                .as_mut()
+                .unwrap()
+                .model_children
+                .push("child".into());
+            let full = observed_receipt(&"中".repeat(1100));
+            let mut receipt = full.clone();
+            receipt["text"] = json!(prefix(full["text"].as_str().unwrap(), 2048));
+            let mut summary = full.clone();
+            summary["text"] = json!(prefix(full["text"].as_str().unwrap(), 1024));
+            state
+                .thread
+                .turns
+                .last_mut()
+                .unwrap()
+                .items
+                .push(observation_item("a", "call-a", &receipt));
+            let mut observations = ChildResultObservations::default();
+            let mut progress = HashSet::new();
+            observations.observe_request(
+                &state,
+                &[observation_message("call-a", &receipt)],
+                &mut progress,
+            );
+            assert!(observations.covers(&result_batch(summary.clone())));
+            assert!(progress.contains("child"));
+            for (key, changed) in [
+                ("sourceItemId", json!("answer-b")),
+                ("status", json!("failed")),
+                ("resourcesReleased", json!(false)),
+                ("error", json!("cleanup failed")),
+                ("textBytes", json!(4000)),
+                ("text", json!("different finding")),
+            ] {
+                let mut next = summary.clone();
+                next[key] = changed;
+                assert!(!observations.covers(&result_batch(next)), "{key}");
+            }
+            for key in ["pending", "omitted"] {
+                let mut batch = result_batch(summary.clone());
+                batch[key] = json!(1);
+                assert!(!observations.covers(&batch), "{key}");
+            }
+            // 同一来源的 A→B→A 是新变化，不能用“曾出现过 A”消掉最后一次。
+            let mut changed = receipt.clone();
+            changed["text"] = json!("new finding");
+            state
+                .thread
+                .turns
+                .last_mut()
+                .unwrap()
+                .items
+                .push(observation_item("b", "call-b", &changed));
+            observations.observe_request(
+                &state,
+                &[observation_message("call-b", &changed)],
+                &mut progress,
+            );
+            assert!(!observations.covers(&result_batch(summary)));
+            // 压缩或投影移除旧回执后，不丢弃已经提供过的版本，也不从旧页回退版本。
+            observations.observe_request(
+                &state,
+                &[observation_message("call-a", &receipt)],
+                &mut progress,
+            );
+            state.thread.turns.last_mut().unwrap().items.clear();
+            observations.observe_request(&state, &[], &mut progress);
+            assert!(observations.covers(&result_batch(changed)));
+        }
+        engine.shutdown().await;
+    }
 
     struct Pending;
     #[async_trait::async_trait]

@@ -204,6 +204,8 @@ Restored definitions have no host binding. A callback-capable client may take ov
 <a id="agent-tools"></a>
 ## Agent tools
 
+For shared native children, once a terminal receipt has been included in a successfully completed parent model request, the same version does not cause another completion request. This applies to `agent_read`, `agent_wait`, `agent_wait_any`, and compatible legacy threadId calls. A timed-out wait, a tail page alone, or a truncated projection missing required fields does not acknowledge an unseen terminal result. New reports, failures, or resource-release changes still require processing. Response fields, budgets, isolated-candidate delivery gates, and TaskRun lifetimes are unchanged; supplying a result does not certify successful verification.
+
 Models use one delegation entry point to describe intent and delivery. Core selects shared read-only execution, a shared exclusive writer, or an isolated workspace. Users do not choose a backend. Mandatory isolation and trusted checks are explicit requirements that cannot silently weaken.
 
 | Tool | Parameters |

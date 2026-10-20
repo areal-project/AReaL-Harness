@@ -147,6 +147,7 @@ impl Engine {
         let mut group_results = Vec::<Value>::new();
         let mut child_results = Value::Null;
         let mut observed_children = HashSet::new();
+        let mut child_observations = agents::ChildResultObservations::default();
         let instructions = self.project_instructions(cell).await?;
         if instructions.is_some() {
             let mut state = cell.state.lock().await;
@@ -380,6 +381,8 @@ impl Engine {
                         Some("Built-in Browser guidance: ")
                     } else if text.starts_with("This execution is headless.") {
                         Some("This execution is headless.")
+                    } else if text.starts_with("Settled child Agent results ") {
+                        Some("Settled child Agent results ")
                     } else {
                         None
                     };
@@ -757,6 +760,12 @@ impl Engine {
                             }
                             return Err(error);
                         }
+                        // 仅已完成且被接受的响应确认输入消费；预检、断流或 steer 不提前确认。
+                        child_observations.observe_request(
+                            &state,
+                            &messages,
+                            &mut observed_children,
+                        );
                         if calls.is_empty() {
                             drop(state);
                             drop(permit);
@@ -770,9 +779,12 @@ impl Engine {
                                 reports = self.join_model_children(cell, &mut observed_children, false) => reports?,
                             };
                             if reports != child_results {
+                                let already_observed = child_observations.covers(&reports);
                                 child_results = reports;
-                                complete_item(cell, &thread_id, &turn_id, &item_id).await;
-                                continue 'restart;
+                                if !already_observed {
+                                    complete_item(cell, &thread_id, &turn_id, &item_id).await;
+                                    continue 'restart;
+                                }
                             }
                             if self.workgroups.get().is_some()
                                 || self.automatic_workgroups.get().is_some()
