@@ -19,6 +19,8 @@ struct Fixture {
     execution_id: bool,
     parent_requests: AtomicUsize,
     child_requests: AtomicUsize,
+    naming_requests: AtomicUsize,
+    total_requests: AtomicUsize,
     ready: mpsc::UnboundedSender<()>,
     release: Semaphore,
 }
@@ -37,6 +39,7 @@ fn content(value: &Value) -> String {
 
 impl Fixture {
     async fn respond(&self, request: Value) -> String {
+        self.total_requests.fetch_add(1, Ordering::SeqCst);
         let messages = request[if self.responses { "input" } else { "messages" }]
             .as_array()
             .unwrap();
@@ -46,7 +49,25 @@ impl Fixture {
             .any(|m| m["role"] == "user" && content(&m["content"]) == "wire-child");
         let mut tool = None;
         let text;
-        if child {
+        // 标题在 Turn 完成后独立请求；必须单独核算，不能靠及时 shutdown 隐藏它。
+        let naming = messages.iter().any(|m| {
+            m["role"] == "system"
+                && content(&m["content"]).starts_with("Generate a concise semantic session title")
+        });
+        if naming {
+            self.naming_requests.fetch_add(1, Ordering::SeqCst);
+            assert!(
+                request
+                    .get("tools")
+                    .and_then(Value::as_array)
+                    .is_none_or(Vec::is_empty)
+            );
+            let input = messages.iter().find(|m| m["role"] == "user").unwrap();
+            let input: Value = serde_json::from_str(&content(&input["content"])).unwrap();
+            assert_eq!(input["user"], "wire-parent");
+            assert_eq!(input["assistant"], "final uses the delivered wire result");
+            text = "Wire child completion";
+        } else if child {
             self.child_requests.fetch_add(1, Ordering::SeqCst);
             text = "wire child finding";
         } else {
@@ -145,6 +166,8 @@ async fn exercise(responses: bool, execution_id: bool) {
         execution_id,
         parent_requests: AtomicUsize::new(0),
         child_requests: AtomicUsize::new(0),
+        naming_requests: AtomicUsize::new(0),
+        total_requests: AtomicUsize::new(0),
         ready,
         release: Semaphore::new(0),
     });
@@ -191,6 +214,7 @@ async fn exercise(responses: bool, execution_id: bool) {
     )
     .unwrap();
     let parent = engine.create("/workspace".into()).await.unwrap();
+    let mut events = engine.subscribe(&parent.id).await.unwrap();
     engine
         .start(&parent.id, vec![Input::text("wire-parent")])
         .await
@@ -202,7 +226,21 @@ async fn exercise(responses: bool, execution_id: bool) {
         let child = engine.wait(&children[0].id).await.unwrap();
         assert_eq!(child.turns[0].status, TurnStatus::Completed);
         fixture.release.add_permits(1);
-        engine.wait(&parent.id).await.unwrap()
+        let done = engine.wait(&parent.id).await.unwrap();
+        if done.turns[0].status == TurnStatus::Completed {
+            loop {
+                let event = events.recv().await.unwrap();
+                if event["method"] == "areal/thread/edited" {
+                    assert_eq!(event["params"]["thread"]["name"], "Wire child completion");
+                    assert_eq!(
+                        event["params"]["thread"]["turns"],
+                        serde_json::to_value(&done.turns).unwrap()
+                    );
+                    break;
+                }
+            }
+        }
+        done
     })
     .await;
     engine.shutdown().await;
@@ -211,6 +249,8 @@ async fn exercise(responses: bool, execution_id: bool) {
     let done = done.expect("HTTP child completion deadlocked");
     assert_eq!(fixture.parent_requests.load(Ordering::SeqCst), 3);
     assert_eq!(fixture.child_requests.load(Ordering::SeqCst), 1);
+    assert_eq!(fixture.naming_requests.load(Ordering::SeqCst), 1);
+    assert_eq!(fixture.total_requests.load(Ordering::SeqCst), 5);
     assert_eq!(
         done.turns[0].status,
         TurnStatus::Completed,

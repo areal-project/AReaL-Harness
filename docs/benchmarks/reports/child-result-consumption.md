@@ -41,21 +41,26 @@ Codex 来源：[主循环](https://github.com/openai/codex/blob/83086188ae0614bd
 
 额外门禁覆盖未读结果仍需汇总、尾页不替代首段、超时后的失败、快慢兄弟任务、后续工具轮不重复追加汇总、压缩后的消费状态，以及不可信输入和状态变化。扩展集加入中断、空回复与断流恢复、重复读取、用户 steer、UTF-8 / JSON 转义、4/16 个子任务批次和最终轮预算，共 49 个参数场景。专门恢复场景显式启用一次既有恢复；产品默认重试和预算不变。验证检查模型请求数、输入内容、最终消息阶段和子任务终态，不仅检查输出文本。
 
-将未修复主线的 `generation.rs` 代入同一扩展集，24 项测试中 20 项失败、4 项通过；恢复修复后，24 项连续 5 轮全部通过。未读结果、超时新结果及最终轮限制等有效续轮没有被一律删除。
+将未修复主线的 `generation.rs` 代入同一扩展集，24 项测试中 20 项失败、4 项通过；恢复修复后，24 项连续 5 轮全部通过。完成标题请求分类后的 4 项 HTTP 测试在未修复控制流下也全部失败，恢复修复后连续 5 轮全部通过。未读结果、超时新结果及最终轮限制等有效续轮没有被一律删除。
 
 | 检查 | 结果 |
 |---|---|
 | `cargo test --locked --profile ci -p areal-engine --test child_completion` | 24 项 × 5 轮通过，每轮覆盖 49 个参数场景；原 12 个复现的主请求由 4 次变为 3 次 |
-| `cargo test --locked --profile ci -p areal-engine --test child_completion_http` | 4 项通过：两种 HTTP 协议 × 两种身份接口，实际请求均为父 3 次、子 1 次，父用量无重复计入 |
+| `cargo test --locked --profile ci --workspace --test child_completion_http` | 4 项通过：两种 HTTP 协议 × 两种身份接口，实际请求均为父 3 次、子 1 次、后台标题 1 次，共 5 次；标题不重复计入父 Turn 用量 |
 | `cargo test --locked --profile ci -p areal-engine --lib child_consumption` | 2 项通过，包含跨 Turn、歧义 ID、未知工具结果、版本变化与已消费状态保留 |
 | `cargo test --locked --profile ci --workspace --no-fail-fast` | 本机 1048 项通过、5 项失败、14 项忽略；5 项子进程执行失败见下文。此运行未包含后来单独执行的 4 项 HTTP 回归 |
 | `cargo build --locked --profile ci --workspace`；`cargo clippy --locked --profile ci --workspace --all-targets -- -D warnings` | 均通过 |
 | `AREAL_UNIFIED_BIN_DIR=target/ci node scripts/unified-execution-smoke.mjs` | 真实 Core/Runtime 的并行隔离交付、取消清理、权限和重启恢复通过 |
+| Python / Rust launcher 生命周期；修改文件的 Ruff 检查与格式 | 8 项 / 12 项通过；Ruff 通过 |
 | `cargo fmt --all -- --check`、差异空白及 `python3 scripts/check-docs.py` | 通过；189 个 Markdown 的链接与语言配对检查通过 |
 
 完整测试按[开发指南](../../development/README.md)在测试子进程的 `NO_PROXY` / `no_proxy` 中保留既有条目并补充 localhost/127.0.0.1；全局代理配置未修改。5 项失败分别涉及模型代理、MCP 插件重启、OAuth 跨进程刷新及两项 MCP 代理检查；系统日志记录对应二进制的 AMFI `Unrecoverable CT signature issue`。直接复核相同 SHA-256 的原二进制仍失败，未修改签名或安全设置，不将其计为通过。原工作区的早期代理超时和中止日志同样保留。
 
 测试替身的修订保持严格断言：旧单许可 fixture 现在接受两个终态已通过工具完整提供，仍要求两个结果都可见且子任务已结算；未读场景用信号量保证 spawn 尚未携带终态，避免把合法提前投递误判为遗漏。开发期的同步假设、回执字段缺失和依赖未准备失败均保留。额外执行的旧研究 Agent smoke 因 fixture 将无工具的会话命名请求当作工作请求而报 `KeyError('tools')`，未计为通过，也未为本次修复修改该旧入口。默认忽略的容量与额外原生集成未执行，不计为通过。
+
+原生 CI 还暴露了启动器 fixture 的发布竞态：直接 `write_text` 创建就绪文件后、正文写完前，读取方可能遇到空 JSON。fixture 改为与真实 Core 相同的临时文件加原子替换；启动器生产逻辑、等待时限、参数转发和进程回收断言均未放宽。首次失败记录保留，修订后的两套生命周期回归通过。
+
+HTTP fixture 最初在父 Turn 完成后立即关闭 Engine，后台标题请求是否抵达会受调度影响；CI 上误把它计入父推理，报告 4 次。保留的诊断复现确认父 Turn 已 Completed，第 5 次总 HTTP 请求才是标题。fixture 现通过通知等待标题完成，分别断言父、子、标题及总请求数，并确认命名不改写已结算 Turn。此修订不隐藏请求，也不改变生产命名行为。
 
 ## 解释边界
 

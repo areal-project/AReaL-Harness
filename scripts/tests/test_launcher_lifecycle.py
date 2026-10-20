@@ -45,12 +45,19 @@ class LauncherTests(unittest.TestCase):
         self.fixture(
             "app-server",
             """
+def publish(path, text):
+    # 与真实 Core 一样原子发布，存在即代表完整就绪回执。
+    target = Path(path)
+    pending = target.with_suffix('.pending')
+    pending.write_text(text)
+    pending.replace(target)
+
 args = sys.argv[1:]
 if '--ready-file' in args:
     time.sleep(0.15)
-    Path(args[args.index('--ready-file') + 1]).write_text('ws://127.0.0.1:12345')
+    publish(args[args.index('--ready-file') + 1], 'ws://127.0.0.1:12345')
 if '--ready-metadata-file' in args:
-    Path(args[args.index('--ready-metadata-file') + 1]).write_text(json.dumps({'authFile': '/fixture/auth.json', 'endpoint': 'ws://127.0.0.1:12345'}))
+    publish(args[args.index('--ready-metadata-file') + 1], json.dumps({'authFile': '/fixture/auth.json', 'endpoint': 'ws://127.0.0.1:12345'}))
 signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 while True: time.sleep(0.02)
 """,
