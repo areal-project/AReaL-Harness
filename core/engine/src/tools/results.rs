@@ -159,7 +159,11 @@ impl Engine {
         if snapshot.is_none() && value != *raw && raw.get("mcpResult").is_none() {
             value = raw.clone();
         }
-        if projection_snapshot && let Some(reference) = &reference {
+        // 观察候选需要留存原文，但未变且未超限的结果无需增加模型侧回取包装。
+        // 候选随后与实际发送的基线比较，不能靠先扩大基线满足净节省门槛。
+        if (value != *raw || bytes.len() > MAX_RESULT || raw.get("mcpResult").is_some())
+            && let Some(reference) = &reference
+        {
             if !value.is_object() {
                 value = json!({"result":value});
             }
@@ -173,13 +177,20 @@ impl Engine {
         let mut candidate_bytes = None;
         let mut kind = if identity_compacted {
             "coordination-v2"
-        } else if file_compacted {
+        } else if file_compacted && snapshot.is_some() {
             "file-lines-v1"
         } else {
             "none"
         };
         if file_compacted && snapshot.is_some() {
-            reason = "lossless";
+            // 文件行压缩的门槛也包含回取引用；短片段可能被固定元数据抵消收益。
+            if value.to_string().len() + 128 < bytes.len() {
+                reason = "lossless";
+            } else {
+                value = raw.clone();
+                kind = "none";
+                reason = "noNetSaving";
+            }
         }
         if let Some((format, mut proposed)) = candidate {
             kind = format;
@@ -557,7 +568,10 @@ mod tests {
         let records: Vec<Value> = serde_json::from_slice(&std::fs::read(input).unwrap()).unwrap();
         let directory = tempfile::tempdir().unwrap();
         let mut extensions = ToolExtensions::default();
-        extensions.policy.result_views.mode = ResultViewMode::On;
+        extensions.policy.result_views.mode = std::env::var("AREAL_RESULT_REPLAY_MODE")
+            .ok()
+            .map(|mode| serde_json::from_value(json!(mode)).unwrap())
+            .unwrap_or(ResultViewMode::On);
         let engine = Engine::open_with_extensions(
             directory.path(),
             Arc::new(NoModel),
@@ -581,8 +595,14 @@ mod tests {
                 )
                 .await
                 .unwrap();
+            if let Some(snapshot) = &prepared.snapshot {
+                let digest = snapshot.uri.strip_prefix("areal://blob/").unwrap();
+                let bytes = engine.store.read_blob(digest).await.unwrap();
+                assert_eq!(bytes, serde_json::to_vec(&record["raw"]).unwrap());
+            }
             measurements.push(
-                json!({"id":record["id"],"tool":record["tool"],"projection":prepared.metrics}),
+                json!({"id":record["id"],"tool":record["tool"],"projection":prepared.metrics,
+                    "value":prepared.value,"snapshotVerified":prepared.snapshot.is_some()}),
             );
         }
         std::fs::write(output, serde_json::to_vec_pretty(&measurements).unwrap()).unwrap();
@@ -686,6 +706,7 @@ mod tests {
                 assert!(prepared.value.to_string().len() < raw.to_string().len());
             } else {
                 assert_eq!(prepared.value["matches"], raw["matches"]);
+                assert_eq!(prepared.value, raw, "未应用候选时不向模型增加回取包装");
                 assert_eq!(
                     prepared.metrics["reason"],
                     if mode == ResultViewMode::Off {
@@ -712,6 +733,83 @@ mod tests {
             assert!(fallback.value.to_string().len() <= MAX_RESULT);
             engine.shutdown().await;
         }
+    }
+
+    #[tokio::test]
+    async fn candidate_savings_use_the_unwrapped_baseline() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut extensions = ToolExtensions::default();
+        extensions.policy.result_views.mode = ResultViewMode::On;
+        let engine = Engine::open_with_extensions(
+            directory.path(),
+            Arc::new(NoModel),
+            Limits::default(),
+            None,
+            extensions,
+        )
+        .unwrap();
+        let thread = engine.create("/fixture".into()).await.unwrap();
+        let cell = engine.cell(&thread.id).await.unwrap();
+        for count in [4, 5, 6, 7, 8, 16, 80] {
+            let raw = json!({"matches":(1..=count).map(|n|json!({"path":"src/components/serialization/nested/configuration/reader.rs","line":n,"kind":"match","text":"关键值\n"})).collect::<Vec<_>>(),"limited":false});
+            let prepared = engine
+                .prepare_tool_result(
+                    &cell,
+                    "search-call-with-a-realistic-identifier",
+                    "search_files",
+                    &raw,
+                    None,
+                )
+                .await
+                .unwrap();
+            println!(
+                "search rows={count} raw={} displayed={} reason={}",
+                raw.to_string().len(),
+                prepared.value.to_string().len(),
+                prepared.metrics["reason"]
+            );
+            if prepared.value != raw {
+                assert!(
+                    worthwhile(&raw.to_string(), &prepared.value.to_string()),
+                    "最终候选必须对原始结果满足净节省门槛"
+                );
+            }
+        }
+        engine.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn file_projection_counts_retrieval_metadata_in_savings() {
+        let directory = tempfile::tempdir().unwrap();
+        let engine = Engine::open(directory.path(), Arc::new(NoModel), Limits::default()).unwrap();
+        let thread = engine.create("/fixture".into()).await.unwrap();
+        let cell = engine.cell(&thread.id).await.unwrap();
+        for count in [9, 12, 16, 32, 80] {
+            let raw = json!({"path":"src/配置.rs","fileVersion":"observed-handle",
+                "lines":(1..=count).map(|n|json!({"number":n,"text":"value = '中文';\n"})).collect::<Vec<_>>()});
+            let prepared = engine
+                .prepare_tool_result(
+                    &cell,
+                    "file-call-with-a-realistic-identifier",
+                    "read_file",
+                    &raw,
+                    None,
+                )
+                .await
+                .unwrap();
+            let raw_bytes = raw.to_string().len();
+            let displayed_bytes = prepared.value.to_string().len();
+            println!("file lines={count} raw={raw_bytes} displayed={displayed_bytes}");
+            if prepared.value != raw {
+                assert!(
+                    displayed_bytes + 128 < raw_bytes,
+                    "回取元数据也必须计入文件行视图的净节省: {displayed_bytes} vs {raw_bytes}"
+                );
+                assert_eq!(prepared.value["fileVersion"], raw["fileVersion"]);
+                assert!(prepared.snapshot.is_some());
+            }
+        }
+        engine.shutdown().await;
     }
 
     #[tokio::test]
