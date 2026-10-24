@@ -1,21 +1,37 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { once } from "node:events";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
+const { executeCore } = createRequire(import.meta.url)("../app/src/core/core-process.cjs");
 
 export async function assertApplicationStopped(binary, env, metadata) {
-  const alive = pid => {
+  const alive = (pid) => {
     if (!Number.isSafeInteger(pid) || pid <= 1) return false;
-    try { process.kill(pid, 0); return true; }
-    catch (error) { if (error.code === "ESRCH") return false; throw error; }
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      if (error.code === "ESRCH") return false;
+      throw error;
+    }
   };
   const deadline = Date.now() + 30000;
   let records;
   do {
-    records = JSON.parse(execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8", timeout: 20000 }));
-    if (!alive(metadata?.pid) && records.every(record => record.state === "stopped"
-      && !alive(record.hostPid) && !alive(record.corePid))) return;
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // 使用产品的原生启动适配，同时让同进程中的模型 HTTP 夹具继续响应。
+    const { stdout } = await executeCore(binary, ["service", "list", "--json"], {
+      env,
+      timeout: 20000,
+    });
+    records = JSON.parse(stdout);
+    if (
+      !alive(metadata?.pid) &&
+      records.every(
+        (record) => record.state === "stopped" && !alive(record.hostPid) && !alive(record.corePid),
+      )
+    )
+      return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
   } while (Date.now() < deadline);
   assert.fail("Application quit left a live isolated adapter or Core generation");
 }

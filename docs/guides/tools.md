@@ -55,6 +55,8 @@ macOS 的受限命令直接调用 `bash`/`sh` 时使用随 Runtime 发布的私�
 
 `returnReason` 为 completed、waitBudget、outputLimit、outputLoss 或 outputQuiet。`commandStatus` 为 running/succeeded/failed/terminated；`outputReadComplete` / `outputClosed` 表示生产者关闭且保留输出读完，`outputIntegrity` 为 retained/incomplete，`nextAction` 提示后续操作。completed 不代替退出码检查，gap/truncated 即使读完仍表示丢失。
 
+`run_command` 与 `read_process` 保留 Runtime 的 `exitCode`、`signal`、`sandboxDenied` 和 `stopReason`。`signal` 为 POSIX 信号编号的十进制字符串（例如 `"9"`），正常退出时为 null；shell 返回 137 不会被推断为信号 9。信号本身不说明发送者，`sandboxDenied=false` 也不能证明没有沙箱拒绝；仅凭 SIGKILL 不能认定是超时、内存不足或系统安全软件终止。
+
 read_process 省略 after 接续本 Turn 最近返回的游标，显式 null 从最早保留输出开始。`view="auto"` 默认折叠成功进度；`view="raw"` 返回原始页，续读时也须指定 raw。回看已提供 rawResult 的历史页使用 `read_tool_result`；仍在 Runtime 保留的进程输出可用 `after=null,view="raw"`；结束游标之后没有旧内容。短进程/游标/fileVersion 句柄绑定 Turn 和目标，Core 展开后仍执行 Runtime 权限检查；格式错误返回可恢复错误，不猜测句柄。最多缓存 128 个文件版本和每进程一个当前游标别名，旧显式游标会过期。`task_state` 的 observedOnly=true 表示历史观察，不能证明当前状态；压缩保留这些缓存，Turn 结束或重启即失效。
 
 ## 原文回取与结构视图

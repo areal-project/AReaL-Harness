@@ -37,6 +37,10 @@ On macOS, `make build/release` also builds standalone Bash from SHA-256-pinned s
 
 `python3 scripts/tool-capacity-smoke.py --report /tmp/tool-capacity.json` submits 16 file operations to a real native Runtime after two background processes occupy all slots, and checks subscription-adapter construction/closure in restricted Node. Run `make build` and `make gui-install` first. `node scripts/permission-presets-smoke.mjs` covers approval isolation with `AGENTS.md` present and concurrent `read_file`/`search_files` within one Turn. These are deterministic mechanism regressions, not evidence of overall Agent improvement.
 
+`scripts/managed-toolchains-smoke.py --help` lists inputs for locally installed Node/npm/pnpm. The test checks common installation layouts concurrently and actually runs `node --test`, `npm test`, `pnpm test` and nested Node children in both parent and child Scopes for NVM and mise. Version queries do not replace these execution checks. Credential reads, toolchain writes, child-Scope source writes and network access must still be denied. No dependencies are downloaded.
+
+GUI acceptance cleanup checks reuse the product's native Core launcher and query process state asynchronously so an in-process model HTTP fixture can continue responding. Acceptance must confirm task results, tool results, and owned service exit; runner completion is not task success. Expected permission denials and deliberate termination tests require separate assertions.
+
 ## Checks
 
 | Change | Command |

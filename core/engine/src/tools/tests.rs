@@ -377,6 +377,17 @@ async fn process_fixture_output(
     loss: bool,
     output: String,
 ) -> Arc<Client> {
+    process_fixture_exit(finish_ms, output_ms, stop_reason, loss, output, None).await
+}
+
+async fn process_fixture_exit(
+    finish_ms: u64,
+    output_ms: Option<u64>,
+    stop_reason: Option<&'static str>,
+    loss: bool,
+    output: String,
+    exit_facts: Option<Value>,
+) -> Arc<Client> {
     let (pipe, peer) = tokio::io::duplex(64 * 1024);
     let (read, write) = tokio::io::split(pipe);
     let (peer_read, mut peer_write) = tokio::io::split(peer);
@@ -408,7 +419,13 @@ async fn process_fixture_output(
                 }
                 "process.get" | "process.wait" => {
                     let exited = started.elapsed().as_millis() >= finish_ms.into();
-                    json!({"processId":"process","scopeId":"scope","state":if exited {"exited"} else {"running"},"exitCode":if exited {Some(if stop_reason.is_some() {1} else {0})} else {None},"signal":null,"sandboxDenied":false,"stopReason":if exited {stop_reason} else {None},"cleanupError":null})
+                    let mut info = json!({"processId":"process","scopeId":"scope","state":if exited {"exited"} else {"running"},"exitCode":if exited {Some(if stop_reason.is_some() {1} else {0})} else {None},"signal":null,"sandboxDenied":false,"stopReason":if exited {stop_reason} else {None},"cleanupError":null});
+                    if exited && let Some(facts) = &exit_facts {
+                        info.as_object_mut()
+                            .unwrap()
+                            .extend(facts.as_object().unwrap().clone());
+                    }
+                    info
                 }
                 "output.read" => {
                     let params = &req["params"];
@@ -490,6 +507,49 @@ async fn command_with_policy(
     )
     .await
     .unwrap()
+}
+
+#[tokio::test(start_paused = true)]
+async fn command_and_readback_preserve_exit_signal_without_guessing_its_source() {
+    for facts in [
+        json!({"exitCode":null,"signal":"9","sandboxDenied":false}),
+        json!({"exitCode":null,"signal":"15","sandboxDenied":true}),
+        json!({"exitCode":137,"signal":null,"sandboxDenied":false}),
+    ] {
+        for yield_ms in [None, Some(0)] {
+            let client =
+                process_fixture_exit(100, None, None, false, String::new(), Some(facts.clone()))
+                    .await;
+            let (mut success, mut result) = command(&client, yield_ms, false).await;
+            if yield_ms == Some(0) {
+                assert!(success);
+                assert!(result["signal"].is_null());
+                (success, result) = process_output(
+                    &client,
+                    "scope",
+                    ReadProcess {
+                        view: OutputView::Auto,
+                        process_id: "process".into(),
+                        after: None,
+                        wait_ms: 1000,
+                    },
+                    0,
+                    None,
+                    8192,
+                )
+                .await
+                .unwrap();
+            }
+            assert!(!success);
+            assert_eq!(result["commandStatus"], "failed");
+            assert!(result["stopReason"].is_null());
+            for key in ["exitCode", "signal", "sandboxDenied"] {
+                assert_eq!(result[key], facts[key]);
+            }
+            assert_eq!(result["outputReadComplete"], true);
+            client.shutdown().await.unwrap();
+        }
+    }
 }
 
 #[tokio::test(start_paused = true)]

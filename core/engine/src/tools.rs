@@ -2063,7 +2063,8 @@ async fn process_output(
     };
     let stdout_text = String::from_utf8_lossy(&stdout).into_owned();
     let stderr_text = String::from_utf8_lossy(&stderr).into_owned();
-    let mut result = json!({"processId":read.process_id, "state":info.state, "returnReason":return_reason, "exitCode":info.exit_code, "stopReason":info.stop_reason, "stdout":stdout_text, "stderr":stderr_text, "stdoutBytes":stdout.len(), "stderrBytes":stderr.len(), "outputPageBytes":output_page_bytes, "nextCursor":after, "outputClosed":closed, "gap":gap, "truncated":truncated,
+    // 保留 Runtime 的退出事实；137 也可能是程序自行返回，不能据此猜测信号或终止来源。
+    let mut result = json!({"processId":read.process_id, "state":info.state, "returnReason":return_reason, "exitCode":info.exit_code, "signal":info.signal, "sandboxDenied":info.sandbox_denied, "stopReason":info.stop_reason, "stdout":stdout_text, "stderr":stderr_text, "stdoutBytes":stdout.len(), "stderrBytes":stderr.len(), "outputPageBytes":output_page_bytes, "nextCursor":after, "outputClosed":closed, "gap":gap, "truncated":truncated,
         "commandStatus":command_status,"outputReadComplete":closed,
         "outputIntegrity":if gap || truncated { "incomplete" } else { "retained" },
         "nextAction":if !closed { "Read this process again to collect remaining/new output; omit after to continue." } else { "Retained output has been read to its end. Evaluate the actual checks; exit zero alone does not prove correctness." }});
