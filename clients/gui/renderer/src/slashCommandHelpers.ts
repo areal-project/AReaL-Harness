@@ -6,5 +6,6 @@ export interface AppSlashCommand {
   description: string;
   icon: ReactNode;
   keywords?: readonly string[];
-  run: () => void;
+  preserveInputUntilAccepted?: boolean;
+  run: () => void | Promise<void>;
 }

@@ -107,6 +107,7 @@ pub struct HookDefinition {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields, default)]
 pub struct ToolExtensions {
+    pub gen_ui: bool,
     /// Opt-in native research agents; budgets are shared by this Engine.
     pub agents: Option<AgentToolsConfig>,
     pub policy: ToolPolicy,
@@ -146,6 +147,16 @@ pub trait DynamicToolHost: Send + Sync {
         _cancel: CancellationToken,
     ) -> anyhow::Result<Option<Value>> {
         Ok(None)
+    }
+    async fn prepare_computer(
+        &self,
+        _request: Value,
+        _cancel: CancellationToken,
+    ) -> anyhow::Result<Option<Value>> {
+        Ok(None)
+    }
+    async fn end_cua_turn(&self, _request: Value) -> anyhow::Result<()> {
+        Ok(())
     }
     async fn page_tool_notice(
         &self,
@@ -248,7 +259,8 @@ fn compile(schema: &Value) -> anyhow::Result<jsonschema::Validator> {
 impl Registry {
     pub fn side_only(mut self, workspace_read: bool) -> Self {
         self.tools.retain(|name, tool| {
-            (name == "side_context_read" && matches!(tool.backend, Backend::Core))
+            (matches!(name.as_str(), "side_context_read" | "gen_ui_publish")
+                && matches!(tool.backend, Backend::Core))
                 || (workspace_read && super::side_file_tool(name, &tool.backend))
         });
         self.order.retain(|name| self.tools.contains_key(name));
@@ -323,6 +335,9 @@ impl Registry {
             config.validate()?;
         }
         let mut registry = Self::default();
+        if extensions.gen_ui {
+            registry.insert(crate::desktop::gen_ui::definition(), Backend::Core)?;
+        }
         for definition in crate::desktop::definitions()
             .into_iter()
             .chain(crate::goals::definitions())

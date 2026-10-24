@@ -12,7 +12,7 @@ import type { ComposerSkill } from "../ComposerSkills.js";
 import type { Action, Data } from "../services.js";
 
 export type ResourceDraftSeed = { kind: "creator"; projectId: string }
-  | { kind?: "resource"; text: string; skill?: ComposerSkill };
+  | { kind?: "resource"; text: string; skill?: ComposerSkill; plugin?: { id: string } };
 export type CenterSkill = {
   key: string;
   id: string;
@@ -55,7 +55,7 @@ async function skillBody(action: Action, skill: CenterSkill, project?: Data) {
 }
 
 export function PluginSkillsPage({ action, projects, project, packageSkills, selected, onOpen, onManagePlugin,
-  onStartDraft, compact, onCreate, createBusy,
+  onStartDraft, compact, onCreate, createBusy, active,
 }: {
   action: Action;
   projects: Data[];
@@ -68,6 +68,7 @@ export function PluginSkillsPage({ action, projects, project, packageSkills, sel
   compact: boolean;
   onCreate: () => void;
   createBusy: boolean;
+  active: boolean;
 }) {
   const { t, intl } = useI18n();
   const sourceLabel = (skill: CenterSkill) => formatUiMessage(t, skill.sourceLabel);
@@ -83,6 +84,13 @@ export function PluginSkillsPage({ action, projects, project, packageSkills, sel
   const [content, setContent] = useState("");
   const [contentLoading, setContentLoading] = useState(false);
   const generation = useRef(0);
+  const draftGeneration = useRef(0);
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  useEffect(() => {
+    draftGeneration.current++;
+    return () => { draftGeneration.current++; };
+  }, [active, project?.id, selected?.key, selected?.revision]);
   const projectKey = projects.filter(item => !item.projectless).map(item => `${item.id}:${item.root}`).join("|");
   const refresh = useCallback(async () => {
     const version = ++generation.current;
@@ -133,10 +141,24 @@ export function PluginSkillsPage({ action, projects, project, packageSkills, sel
       id: skill.id, enabled: !skill.enabled, expectedRevision: skill.catalogRevision });
     setMessage({ id: "settings.pluginSkillsPage.savedChangesTakeEffectInNewTasks" });
   });
-  const startDraft = (skill: CenterSkill) => run(async () => onStartDraft({
-    text: t("settings.pluginSkillsPage.pleaseUseValueToHelpMeComplete", { value0: skill.name }),
-    skill: { id: skill.id, revision: skill.revision, name: skill.name, description: skill.description, source: sourceLabel(skill) },
-  }));
+  const startDraft = (skill: CenterSkill) => run(async () => {
+    const draftVersion = draftGeneration.current;
+    if (skill.scope === "plugin") {
+      if (!project?.state?.connected || !skill.pluginId)
+        throw new UiMessageError({ id: "settings.pluginSkillsPage.connectTheOwningProjectToReadThe" });
+      const owner = await action("manage", { operation: "plugin", projectId: project.id, id: skill.pluginId });
+      if (!owner.installed || !owner.installedDigest || !(owner.installedSkills ?? []).some((item: Data) => item.id === skill.id && item.revision === skill.revision))
+        throw new UiMessageError({ id: "settings.pluginCenter.hostReadinessUnavailable" });
+      const readiness = await action("manage", { operation: "pluginReadiness", projectId: project.id, id: skill.pluginId, expectedDigest: owner.installedDigest });
+      if (!readiness.available)
+        throw new UiMessageError({ id: "settings.pluginCenter.requiredHostToolsUnavailable", values: { tools: readiness.missingTools.join(", ") } });
+    }
+    if (!activeRef.current || draftVersion !== draftGeneration.current) return;
+    await onStartDraft({
+      text: t("settings.pluginSkillsPage.pleaseUseValueToHelpMeComplete", { value0: skill.name }),
+      skill: { id: skill.id, revision: skill.revision, name: skill.name, description: skill.description, source: sourceLabel(skill) },
+    });
+  });
   if (selected) return <article className="plugin-detail-page" data-testid="skill-detail-page">
     <header className="plugin-detail-header"><span className="plugin-resource-icon"><BookOpen size={28} /></span><div><h1>{selected.name}</h1><p>{selected.description}</p></div><div className="plugin-detail-actions">
       {selected.pluginId && <Button variant="outline" onClick={() => onManagePlugin(selected.pluginId!)}>{t("settings.pluginSkillsPage.managePlugin")}</Button>}

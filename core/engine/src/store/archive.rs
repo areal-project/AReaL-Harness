@@ -111,6 +111,73 @@ pub(super) fn visit_segments(
     Ok(())
 }
 
+struct AcceptedTurnInputs {
+    turn_id: String,
+    previous: Option<String>,
+    found: bool,
+    initial_message_is_control: bool,
+    messages: Vec<Vec<areal_protocol::Input>>,
+    input: Vec<areal_protocol::Input>,
+}
+
+impl AcceptedTurnInputs {
+    fn new(turn_id: String) -> Self {
+        Self {
+            turn_id,
+            previous: None,
+            found: false,
+            initial_message_is_control: false,
+            messages: Vec::new(),
+            input: Vec::new(),
+        }
+    }
+
+    fn flush(&mut self) {
+        if self.initial_message_is_control {
+            self.messages.pop();
+        }
+        self.input.extend(self.messages.drain(..).rev().flatten());
+    }
+
+    fn scan(&mut self, turns: &[Turn]) -> bool {
+        for turn in turns.iter().rev() {
+            if turn.id != self.turn_id && self.found {
+                self.flush();
+                let Some(previous) = self.previous.take() else {
+                    return true;
+                };
+                self.turn_id = previous;
+                self.found = false;
+            }
+            if turn.id != self.turn_id {
+                continue;
+            }
+            self.found = true;
+            self.previous = turn.continued_from_turn_id.clone();
+            self.initial_message_is_control = self.previous.is_some()
+                || turn
+                    .goal
+                    .as_ref()
+                    .is_some_and(|goal| goal.origin == "continuation");
+            for item in turn.items.iter().rev() {
+                if let Item::UserMessage { content, .. } = item {
+                    self.messages.push(content.clone());
+                }
+            }
+        }
+        false
+    }
+
+    fn finish(mut self) -> Result<Vec<areal_protocol::Input>> {
+        anyhow::ensure!(
+            self.found && self.previous.is_none(),
+            "accepted input origin is missing"
+        );
+        self.flush();
+        Ok(self.input)
+    }
+}
+
 impl Store {
     pub(crate) async fn write_fork_snapshot(
         &self,
@@ -315,8 +382,41 @@ impl Store {
         Ok(())
     }
 
+    pub(crate) async fn accepted_turn_inputs(
+        &self,
+        thread: &Thread,
+    ) -> Result<Vec<areal_protocol::Input>> {
+        let Some(current) = thread.turns.last() else {
+            return Ok(Vec::new());
+        };
+        let mut accepted = AcceptedTurnInputs::new(current.id.clone());
+        if accepted.scan(&thread.turns) || thread.history_archive.is_none() {
+            return accepted.finish();
+        }
+        let mut cursor = thread.history_archive.clone();
+        let root = self.root.clone();
+        let permit = self.fork_reads.clone().acquire_owned().await?;
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            let mut seen = std::collections::HashSet::new();
+            while let Some(reference) = cursor {
+                anyhow::ensure!(
+                    seen.insert(reference.head.clone()),
+                    "cyclic history archive"
+                );
+                let segment = read_segment(&root, &reference.head)?;
+                if accepted.scan(&segment.turns) {
+                    break;
+                }
+                cursor = segment.previous;
+            }
+            accepted.finish()
+        })
+        .await?
+    }
+
     pub(crate) async fn history_item(&self, thread: &Thread, id: &str) -> Result<Option<Item>> {
-        if let Some(areal_protocol::Conversation::Fork { history_seed, .. }) = &thread.conversation
+        if let Some(history_seed) = thread.model_history_seed()
             && let Some(item) = self
                 .read_fork_snapshot(&history_seed.snapshot_id)?
                 .into_iter()

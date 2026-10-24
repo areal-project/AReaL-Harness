@@ -11,6 +11,7 @@ areal_protocol::method_catalog! {
     "areal/plugin/connector/configure" => Mutation, Management;
     "areal/mcp/tool/result" => Read;
     "areal/mcp/apps/list" => Read;
+    "areal/genUi/source" => Read;
     "areal/mcp/app/open" => Mutation;
     "areal/mcp/app/openFromResult" => Mutation;
     "areal/mcp/app/request" => Mutation;
@@ -150,6 +151,12 @@ async fn dispatch_inner(
                     p.credential_ref,
                     p.expected_digest,
                 )
+                .await
+        }
+        "areal/genUi/source" => {
+            let p: GenUiSource = parse(params)?;
+            engine
+                .gen_ui_source(&p.thread_id, &p.turn_id, &p.item_id, p.path.as_deref())
                 .await
         }
         "areal/mcp/apps/list" => {

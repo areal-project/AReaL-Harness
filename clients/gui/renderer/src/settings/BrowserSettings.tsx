@@ -1,3 +1,4 @@
+import { BrowserDataSettings } from './BrowserDataSettings.js';
 import { useI18n } from "../i18n/IntlProvider.js";
 import {
   SettingsGroupCard,
@@ -46,6 +47,7 @@ export function BrowserSettings({ settings = {}, action, connected = false }: { 
         />
       </SettingsGroupCard>
       </SettingsSection>
+      <BrowserDataSettings action={action} connected={connected} />
     </div>
   );
 }

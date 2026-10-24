@@ -1,0 +1,19 @@
+@areal/browser-data incorporates source from ZCode.
+Copyright 2026 Z.AI Co., Ltd.
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+Source: https://github.com/zai-org/ZCode
+Revision: 3c5b227649371507ddc4eb46ac5133afe6db1cab
+UPSTREAM.json lists each source file, its SHA-256 digest, and local adaptations.
+
+AReaL adaptations require a Main-owned target Session and a temporary
+WebContents registration callback. They remove ZCode partition selection,
+legacy profile-path compatibility, data-clearing ownership, and site-permission
+dependencies. Local types replace @zcode/shared. SQLite loads lazily and reports
+an explicit unavailable result. Windows App-Bound decryption is unsupported
+because AReaL does not ship ZCode's signed Windows helper. The public product
+entry supports macOS only. Portable upstream discovery and decryption sources
+remain available internally. Temporary Electron windows are destroyed and
+unregistered after initialization and registration failures.
+
+The package includes AReaL build scripts and synthetic acceptance fixtures.

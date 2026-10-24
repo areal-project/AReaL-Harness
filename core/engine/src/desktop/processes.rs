@@ -149,7 +149,7 @@ impl Engine {
             if !engine.accepting_work(){return Err(Error::Closed);}
             let runtime=engine.runtime.as_ref().ok_or_else(||invalid("Runtime is not configured"))?;
             let cell=engine.cell(&request.thread_id).await?;
-            if cell.state.lock().await.thread.is_side() { return Err(invalid("SIDE_POLICY_VIOLATION")); }
+            if cell.state.lock().await.thread.is_read_only_side() { return Err(invalid("SIDE_POLICY_VIOLATION")); }
             let _resources=cell.resource_gate.lock().await;
             let hash=digest(&request)?;
             let cwd=crate::tools::workspace_uri(&request.cwd,&runtime.workspace).map_err(invalid)?;
@@ -233,11 +233,23 @@ impl Engine {
     ) -> Result<Value> {
         self.mutate(move|engine|async move {
             if note.trim().is_empty()||note.len()>4096 {return Err(invalid("external cleanup evidence note required (1..4096 bytes)"));}
-            let cell=engine.cell(&thread_id).await?;
+            let cell=engine.raw_cell(&thread_id).await?;
             let _resources=cell.resource_gate.lock().await;
-            let process=desktop(&cell.state.lock().await.thread).processes.into_iter().find(|p|p.id==id).ok_or(Error::NotFound)?;
+            let mut state=cell.state.lock().await;
+            let archived=state.thread.desktop.as_ref().is_some_and(|data|data.archived);
+            if archived && !state.thread.is_executable_side() {return Err(invalid("THREAD_ARCHIVED"));}
+            let mut candidate=if archived {
+                engine.store.read_thread(&thread_id).await.map_err(invalid)?
+            } else {state.thread.clone()};
+            let process=candidate.desktop.as_mut().ok_or(Error::NotFound)?.processes.iter_mut().find(|p|p.id==id).ok_or(Error::NotFound)?;
             if engine.runtime.as_ref().is_some_and(|r|r.client.info().runtime_epoch==process.runtime_epoch) {return Err(invalid("current epoch resources must be closed through Runtime"));}
-            engine.edit_process(&cell,&id,|p|{p.cleanup_confirmed=true;p.cleanup_attestation=Some(CleanupAttestation{identity,note,recorded_at:now()});}).await?;
+            process.cleanup_confirmed=true;
+            process.cleanup_attestation=Some(CleanupAttestation{identity,note,recorded_at:now()});
+            let result=process.clone();
+            engine.persist(&candidate).await?;
+            state.thread=candidate;
+            cell.emit("areal/process/updated",json!({"threadId":thread_id,"process":result}));
+            engine.finish_side_close(&cell,&mut state).await?;
             Ok(json!({"cleanupConfirmed":true,"source":"operatorAttestation","executionOutcomeUnchanged":true}))
         }).await
     }
@@ -490,27 +502,35 @@ impl Engine {
     pub(crate) async fn close_managed(&self, cell: &Cell, turn: Option<&str>) -> Result<()> {
         let _resources = cell.resource_gate.lock().await;
         let processes = desktop(&cell.state.lock().await.thread).processes;
+        let mut failure = None;
         for process in processes.into_iter().filter(|p| {
             !p.cleanup_confirmed
                 && turn
                     .is_none_or(|turn| p.lifetime == "turn" && p.turn_id.as_deref() == Some(turn))
         }) {
-            if let Some(runtime) = &self.runtime {
-                if process.runtime_epoch != runtime.client.info().runtime_epoch {
-                    return Err(invalid("old epoch resource requires inspection"));
+            let result = async {
+                if let Some(runtime) = &self.runtime {
+                    if process.runtime_epoch != runtime.client.info().runtime_epoch {
+                        return Err(invalid("old epoch resource requires inspection"));
+                    }
+                    if let Some(scope) = &process.scope_id {
+                        runtime.client.close_scope(scope).await.map_err(invalid)?;
+                    } else {
+                        return Err(invalid("UNKNOWN process scope requires inspection"));
+                    }
+                    self.edit_process(cell, &process.id, |p| {
+                        p.cleanup_confirmed = true;
+                        p.state = "closed".into();
+                    })
+                    .await?;
                 }
-                if let Some(scope) = &process.scope_id {
-                    runtime.client.close_scope(scope).await.map_err(invalid)?;
-                } else {
-                    return Err(invalid("UNKNOWN process scope requires inspection"));
-                }
-                self.edit_process(cell, &process.id, |p| {
-                    p.cleanup_confirmed = true;
-                    p.state = "closed".into();
-                })
-                .await?;
+                Ok(())
+            }
+            .await;
+            if let Err(error) = result {
+                failure.get_or_insert(error);
             }
         }
-        Ok(())
+        failure.map_or(Ok(()), Err)
     }
 }

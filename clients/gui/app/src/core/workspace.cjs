@@ -38,9 +38,17 @@ async function readFileBefore(project, threadId, reference) {
 
 /** 用户直接操作的桌面文件／Git 功能，复用原有路径与 revision 校验。 */
 async function workspaceCommand(backend, request) {
+  if (request.operation === 'worktreeList') return backend.worktrees.list();
+  if (request.operation === 'worktreeSettings') return backend.worktrees.configure(request);
   const project = backend.saved.find(item => item.id === request.projectId);
   if (!project) throw new Error('未知工作区');
   switch (request.operation) {
+    case 'worktreeOptions': return backend.worktrees.options(project, request.sourceRoot);
+    case 'worktreeEnvironmentSave': return backend.worktrees.saveEnvironment(project, request);
+    case 'worktreeEnvironmentDelete': return backend.worktrees.saveEnvironment(project, request, true);
+    case 'worktreeCancel': return backend.worktrees.cancel(project, request.requestId);
+    case 'worktreeAction': return backend.worktrees.action(project, request);
+    case 'worktreeDelete': return backend.worktrees.remove(project, request);
     case 'worktreeCreate': return backend.worktrees.create(project, request);
     case 'worktreeRead': return backend.worktrees.read(project, request.requestId);
     case 'worktreeOpen': return backend.worktrees.open(project, request.requestId);

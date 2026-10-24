@@ -323,11 +323,11 @@ fn formats_paths_and_cache_integrity_fail_closed() {
     assert_eq!(open(&temp).list().unwrap().data.len(), 0);
     let temp = fixture(".zcode-plugin/plugin.json", json!({"name":"sample"}));
     let list = open(&temp).list().unwrap();
-    assert_eq!(list.data.len(), 0);
-    assert!(
-        list.errors
-            .join(" ")
-            .contains("unsupported .zcode-plugin manifest")
+    assert_eq!(list.data.len(), 1);
+    assert!(list.errors.is_empty());
+    assert_eq!(
+        serde_json::to_value(&list.data[0]).unwrap()["componentSupport"]["manifestFormat"],
+        "zcode"
     );
     for key in ["commands", "agents"] {
         let mut manifest = json!({"name":"sample"});

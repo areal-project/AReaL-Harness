@@ -43,8 +43,8 @@ use anyhow::{Context, Result, bail, ensure};
 use areal_protocol::{DynamicToolResponse, ToolContent, ToolDefinition};
 pub use config::{ServerConfig, TransportConfig, validate};
 pub use plugin::{
-    ApprovalMode, AuthPolicy, PluginConfigOutcome, PluginDiagnostic, PluginPolicy,
-    PluginServerConfig, ToolPolicy, normalize_plugin_document,
+    ApprovalMode, AuthPolicy, PluginConfigOutcome, PluginDeclaration, PluginDiagnostic,
+    PluginEnvelopeEntry, PluginPolicy, PluginServerConfig, ToolPolicy, normalize_plugin_document,
 };
 use rmcp::{
     ClientHandler, RoleClient,
@@ -413,6 +413,7 @@ fn convert_result(value: Value) -> Result<DynamicToolResponse> {
         "MCP text result exceeds 8 MiB; outcome is UNKNOWN"
     );
     Ok(DynamicToolResponse {
+        raw_mcp_result: None,
         success: !value["isError"].as_bool().unwrap_or(false),
         content_items: items,
         structured_content: value.get("structuredContent").cloned(),
@@ -772,7 +773,11 @@ async fn connect_one(
             let mut process = tokio::process::Command::new(command);
             process.args(args).env_clear().kill_on_drop(true);
             // 搜索等可信 MCP 工具沿用 Core 的代理；其他变量仍须显式列入 envVars。
-            for key in ["PATH"].into_iter().chain(areal_config::PROXY_ENV_VARS) {
+            for key in ["PATH"]
+                .into_iter()
+                .chain(areal_config::PROXY_ENV_VARS)
+                .chain(areal_config::TLS_ENV_VARS)
+            {
                 if let Some(value) = env.get(std::ffi::OsStr::new(key)) {
                     process.env(key, value);
                 }

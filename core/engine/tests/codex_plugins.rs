@@ -507,6 +507,117 @@ async fn active_model_reads_admitted_revision_after_update_and_child_cannot_expa
 }
 
 #[tokio::test]
+async fn component_disable_denies_retained_skill_reads_and_onboarding() {
+    let workspace = fixture();
+    let state = tempfile::tempdir().unwrap();
+    let model = Arc::new(PausedReader {
+        reference: Mutex::new(None),
+        entered: Default::default(),
+        release: Default::default(),
+        results: Mutex::new(vec![]),
+    });
+    let engine = Engine::open(state.path(), model.clone(), Limits::default()).unwrap();
+    let store = Arc::new(
+        Store::open(
+            workspace.path().join("plugins"),
+            workspace.path().into(),
+            None,
+        )
+        .unwrap(),
+    );
+    engine.install_plugin_store(store.clone()).unwrap();
+    let installed = install(&engine, &store).await;
+    let selected = reference(
+        installed["installedSkills"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|skill| skill["name"] == "One")
+            .unwrap(),
+    );
+    *model.reference.lock().unwrap() = Some(selected.clone());
+    let thread = engine
+        .create(workspace.path().to_str().unwrap().into())
+        .await
+        .unwrap();
+    engine
+        .start(&thread.id, vec![Input::text("read the admitted plugin")])
+        .await
+        .unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), model.entered.notified())
+        .await
+        .unwrap();
+    write(workspace.path(), "pkg/shared/data.txt", "replacement");
+    let updated = install(&engine, &store).await;
+    engine
+        .plugin_component_configure(
+            "sample@local".into(),
+            areal_plugins::PluginComponentId::Skill {
+                id: selected.id.clone(),
+            },
+            false,
+            updated["revision"].as_u64().unwrap(),
+            updated["installedDigest"].as_str().unwrap().into(),
+        )
+        .await
+        .unwrap();
+    model.release.notify_one();
+    tokio::time::timeout(std::time::Duration::from_secs(5), engine.wait(&thread.id))
+        .await
+        .unwrap()
+        .unwrap();
+    let results = model.results.lock().unwrap().clone();
+    assert!(
+        !results[1].to_string().contains("old body"),
+        "captured retained Skill body leaked"
+    );
+    assert_eq!(results[1]["error"]["code"], "INVALID_ARGUMENT");
+    assert_eq!(
+        results[1]["error"]["message"],
+        "skill is not selected for this Turn"
+    );
+    assert!(
+        engine
+            .read_skill(&thread.id, selected.clone(), "SKILL.md", 0, 8192)
+            .await
+            .is_err()
+    );
+    assert!(
+        !engine
+            .skills(&thread.id)
+            .await
+            .unwrap()
+            .to_string()
+            .contains(&selected.id)
+    );
+    let detail = store.read("sample@local").unwrap();
+    let setup = detail
+        .installed_skills
+        .iter()
+        .find(|skill| skill.onboarding)
+        .unwrap();
+    engine
+        .plugin_component_configure(
+            detail.id.clone(),
+            areal_plugins::PluginComponentId::Skill {
+                id: setup.id.clone(),
+            },
+            false,
+            detail.revision,
+            detail.installed_digest.unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(
+        engine
+            .plugin_setup("owner".into(), detail.id, None, "disabled-setup".into())
+            .await
+            .is_err()
+    );
+    engine.shutdown().await;
+}
+
+#[tokio::test]
 async fn disabled_plugin_is_revoked_during_active_model_calls() {
     let t = fixture();
     let state = tempfile::tempdir().unwrap();
@@ -969,4 +1080,85 @@ async fn blocked_historical_skill_cannot_be_selected_after_compatible_replacemen
         }
         engine.take().unwrap().shutdown().await;
     }
+}
+
+#[tokio::test]
+async fn declared_host_requirements_gate_reads_and_selected_turns() {
+    for required in ["browser_v1", "skill_read"] {
+        let t = fixture();
+        write(t.path(), "pkg/plugin.json", &json!({"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", "name":"sample", "skills":["skills/one","skills/setup"], "extensions":{"org.areal":{"hostRequirements":{"version":1,"tools":[required]}}}}).to_string());
+        let state = tempfile::tempdir().unwrap();
+        let recorded = Arc::new(Mutex::new(vec![]));
+        let e = Engine::open(
+            state.path(),
+            Arc::new(Recorder(recorded.clone())),
+            Limits::default(),
+        )
+        .unwrap();
+        let store = Arc::new(Store::open(t.path().join("plugins"), t.path().into(), None).unwrap());
+        e.install_plugin_store(store.clone()).unwrap();
+        install(&e, &store).await;
+        let thread = e.create(t.path().to_str().unwrap().into()).await.unwrap();
+        let skills = e.skills(&thread.id).await.unwrap();
+        let r = reference(&skills["data"][0]);
+        let read = e
+            .read_skill(&thread.id, r.clone(), "SKILL.md", 0, 8192)
+            .await;
+        let input = vec![Input::text(format!(
+            "<skill id={} revision={}>untrusted body</skill>",
+            json!(r.id),
+            json!(r.revision)
+        ))];
+        let admission = e.start(&thread.id, input).await;
+        if required == "browser_v1" {
+            assert!(read.unwrap_err().to_string().contains("browser_v1"));
+            assert!(admission.unwrap_err().to_string().contains("browser_v1"));
+            assert!(recorded.lock().unwrap().is_empty());
+            assert!(e.read(&thread.id, true).await.unwrap().turns.is_empty());
+        } else {
+            assert!(read.is_ok());
+            admission.unwrap();
+            e.wait(&thread.id).await.unwrap();
+        }
+        e.shutdown().await;
+    }
+}
+
+#[tokio::test]
+async fn declared_host_requirements_do_not_override_profile_tool_scope() {
+    let t = fixture();
+    write(t.path(), "pkg/plugin.json", &json!({"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", "name":"sample", "skills":["skills/one"], "extensions":{"org.areal":{"hostRequirements":{"version":1,"tools":["skill_read"]}}}}).to_string());
+    let state = tempfile::tempdir().unwrap();
+    let e = Engine::open(
+        state.path(),
+        Arc::new(Recorder(Default::default())),
+        Limits::default(),
+    )
+    .unwrap();
+    let store = Arc::new(Store::open(t.path().join("plugins"), t.path().into(), None).unwrap());
+    e.install_plugin_store(store.clone()).unwrap();
+    install(&e, &store).await;
+    write(t.path(), "deployment.json", &json!({"profiles":[{"id":"restricted","revision":"v1","displayName":"Restricted","instructions":"","allowPluginSkills":true,"toolAllowlist":["read_history"]}]}).to_string());
+    e.install_deployment(&t.path().join("deployment.json"))
+        .unwrap();
+    let thread = e.create(t.path().to_str().unwrap().into()).await.unwrap();
+    e.configure_thread(serde_json::from_value(json!({"threadId":thread.id,"expectedRevision":1,"agentProfile":{"id":"restricted","revision":"v1"}})).unwrap()).await.unwrap();
+    let r = reference(&e.skills(&thread.id).await.unwrap()["data"][0]);
+    assert!(
+        e.read_skill(&thread.id, r.clone(), "SKILL.md", 0, 8192)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("skill_read")
+    );
+    let profile = VersionRef {
+        id: "restricted".into(),
+        revision: "v1".into(),
+    };
+    assert!(
+        e.read_profile_skill(profile, r, "SKILL.md", 0, 8192)
+            .await
+            .is_ok()
+    );
+    e.shutdown().await;
 }

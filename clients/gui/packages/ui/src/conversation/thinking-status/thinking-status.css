@@ -1,0 +1,10 @@
+.areal-thinking { display: block; min-width: 0; color: var(--color-foreground-subtle); font-size: var(--text-content-caption); line-height: 1.6; overflow-wrap: anywhere; }
+.areal-thinking-message { display: inline-grid; max-width: 100%; animation: areal-thinking-message-in var(--motion-normal) var(--ease-standard); }
+.areal-thinking-message > span { grid-area: 1 / 1; }
+.areal-thinking-sweep { color: var(--color-foreground); opacity: 0; mask-image: linear-gradient(90deg, transparent 35%, #000 50%, transparent 65%); mask-size: 250% 100%; mask-repeat: no-repeat; }
+.areal-thinking[data-animating="true"] .areal-thinking-sweep { opacity: 1; animation: areal-thinking-sweep 1.8s linear infinite; }
+@keyframes areal-thinking-sweep { from { mask-position: 100% 0; } to { mask-position: 0% 0; } }
+@keyframes areal-thinking-message-in { from { opacity: .5; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .areal-thinking-message { animation: none; } .areal-thinking[data-animating] .areal-thinking-sweep { animation: none; opacity: 0; } }
+:root[data-reduced-motion="true"] .areal-thinking-message { animation: none; }
+:root[data-reduced-motion="true"] .areal-thinking[data-animating] .areal-thinking-sweep { animation: none; opacity: 0; }

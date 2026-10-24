@@ -14,7 +14,7 @@ export function AgentConversationPane({ project, parentId, childId, action, dark
   const [loading, setLoading] = useState(true);
   const [revision, refresh] = useState(0);
   const thread = project.state?.threads[childId];
-  const connected = !!project.state?.connected;
+  const connected = thread?.executionConnected ?? !!project.state?.connected;
   // Reading a comparison refreshes the snapshot. Preserve the reader identity
   // across that refresh so file summaries can accept the pending result.
   const readTurnReview = useCallback((turnId: string, itemId?: string) => action("workspace", {

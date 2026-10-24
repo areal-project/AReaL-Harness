@@ -49,6 +49,7 @@ function projectCoreCapabilities(binary, capabilities) {
       browserToolAttachment: supports('areal/thread/tools/attach') && capabilities?.features?.browserToolAttachment === true
         && capabilities?.browserToolBundles?.some(bundle => bundle.bundleId === 'areal.browser.v1') === true,
       forkPreview: supports('areal/thread/fork', 'areal/conversation/history') && capabilities?.features?.conversationDerivationV1?.workspaceModes?.includes('sharedCurrent') === true,
+      sideExecutableV2: supports('areal/side/create', 'areal/side/close') && capabilities?.features?.sideExecutableV2 === true,
       sidePreview: supports('areal/side/start', 'areal/side/context/read') && capabilities?.features?.conversationDerivationV1?.sideWorkspaceAccess?.includes('none') === true,
       sideWorkspaceRead: supports('areal/side/start') && capabilities?.features?.conversationDerivationV1?.sideWorkspaceAccess?.includes('readOnly') === true,
       goals: supports('areal/goal/create', 'areal/goal/get'),

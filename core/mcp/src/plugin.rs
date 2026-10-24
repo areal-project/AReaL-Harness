@@ -100,6 +100,9 @@ impl PluginServerConfig {
     pub fn policy(&self) -> &PluginPolicy {
         &self.policy
     }
+    pub fn restrict_enabled(&mut self, enabled: bool) {
+        self.policy.enabled &= enabled;
+    }
     pub fn auth_policy(&self) -> Option<&AuthPolicy> {
         self.auth.as_ref()
     }
@@ -214,58 +217,162 @@ fn expand(s: &str, root: &Path, data: &Path) -> String {
     result.push_str(rest);
     result
 }
+/// Sensitive declaration input. Only envelope identities and normalized configurations leave it.
+#[derive(Clone)]
+pub struct PluginDeclaration {
+    portable: bool,
+    nested: bool,
+    value: Value,
+    document_error: Option<&'static str>,
+}
+
+pub enum PluginEnvelopeEntry<'a> {
+    Server {
+        nested: bool,
+        name: &'a str,
+        object: bool,
+    },
+    Empty {
+        nested: bool,
+    },
+    Invalid {
+        nested: bool,
+    },
+}
+
+impl std::fmt::Debug for PluginDeclaration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PluginDeclaration")
+            .field("portable", &self.portable)
+            .field("servers", &self.servers().map(serde_json::Map::len))
+            .finish()
+    }
+}
+
+impl PluginDeclaration {
+    pub fn parse(portable: bool, value: Value) -> Self {
+        let nested = value.get("mcpServers").is_some();
+        let document_error = match value.as_object() {
+            None => Some("MCP document must be an object"),
+            Some(obj)
+                if portable
+                    && obj.get("$schema").and_then(Value::as_str)
+                        != Some("https://agent-plugins.org/schemas/1.0.0/mcp.schema.json") =>
+            {
+                Some("unsupported Agent Plugins MCP schema")
+            }
+            Some(obj) if portable && !obj.keys().all(|k| k == "$schema" || k == "mcpServers") => {
+                Some("unknown Agent Plugins MCP document field")
+            }
+            Some(obj)
+                if (portable || nested) && !obj.get("mcpServers").is_some_and(Value::is_object) =>
+            {
+                Some("mcpServers must be an object")
+            }
+            Some(_) => None,
+        };
+        Self {
+            portable,
+            nested,
+            value,
+            document_error,
+        }
+    }
+
+    fn servers(&self) -> Option<&serde_json::Map<String, Value>> {
+        if self.nested {
+            &self.value["mcpServers"]
+        } else {
+            &self.value
+        }
+        .as_object()
+    }
+
+    /// Static support recognizes envelopes even when runtime schema validation will reject them.
+    pub fn envelope(&self) -> impl ExactSizeIterator<Item = PluginEnvelopeEntry<'_>> {
+        let nested = self.nested;
+        let rows: Vec<_> = match self.servers() {
+            None => vec![PluginEnvelopeEntry::Invalid { nested }],
+            Some(servers) if servers.is_empty() => vec![PluginEnvelopeEntry::Empty { nested }],
+            Some(servers) => servers
+                .iter()
+                .map(|(name, value)| PluginEnvelopeEntry::Server {
+                    nested,
+                    name,
+                    object: value.is_object(),
+                })
+                .collect(),
+        };
+        rows.into_iter()
+    }
+
+    /// Returns true when a previously nonempty document is completely shadowed.
+    pub fn retain_servers(&mut self, mut keep: impl FnMut(&str) -> bool) -> bool {
+        let value = if self.nested {
+            &mut self.value["mcpServers"]
+        } else {
+            &mut self.value
+        };
+        if let Some(servers) = value.as_object_mut() {
+            let had_servers = !servers.is_empty();
+            servers.retain(|name, _| keep(name));
+            had_servers && servers.is_empty()
+        } else {
+            false
+        }
+    }
+
+    pub fn references_user_config(&self) -> bool {
+        fn references(value: &Value) -> bool {
+            match value {
+                Value::String(s) => s.contains("${user_config.") || s.contains("${userConfig."),
+                Value::Array(values) => values.iter().any(references),
+                Value::Object(values) => values.values().any(references),
+                _ => false,
+            }
+        }
+        references(&self.value)
+    }
+
+    pub fn normalize(&self, package_root: &Path, data_root: &Path) -> Result<PluginConfigOutcome> {
+        if let Some(error) = self.document_error {
+            bail!(error);
+        }
+        let servers = self.servers().expect("validated MCP envelope");
+        ensure!(servers.len() <= 16, "at most 16 MCP servers are supported");
+        let root = absolute(package_root)?;
+        let data = absolute(data_root)?;
+        let mut out = PluginConfigOutcome::default();
+        for (name, v) in servers {
+            match normalize(self.portable, v, &root, &data).and_then(|s| {
+                crate::validate(&[(name.clone(), s.config.clone())].into())?;
+                Ok(s)
+            }) {
+                Ok(s) => {
+                    if self.portable && v.get("extensions").is_some() {
+                        out.diagnostics.push(PluginDiagnostic { server: name.clone(), message: "Portable authentication extension retained; pinned Codex rejects extensions".into() });
+                    }
+                    if s.auth.as_ref().is_some_and(|p| !p.is_supported()) {
+                        out.diagnostics.push(PluginDiagnostic { server:name.clone(), message:"Authentication declaration retained but requires additional host support".into() });
+                    }
+                    out.servers.insert(name.clone(), s);
+                }
+                Err(error) => out.diagnostics.push(PluginDiagnostic {
+                    server: name.clone(),
+                    message: error.to_string(),
+                }),
+            }
+        }
+        Ok(out)
+    }
+}
 pub fn normalize_plugin_document(
     portable: bool,
     value: &Value,
     package_root: &Path,
     data_root: &Path,
 ) -> Result<PluginConfigOutcome> {
-    let obj = value
-        .as_object()
-        .ok_or_else(|| anyhow::anyhow!("MCP document must be an object"))?;
-    if portable {
-        ensure!(
-            obj.get("$schema").and_then(Value::as_str)
-                == Some("https://agent-plugins.org/schemas/1.0.0/mcp.schema.json"),
-            "unsupported Agent Plugins MCP schema"
-        );
-        ensure!(
-            obj.keys().all(|k| k == "$schema" || k == "mcpServers"),
-            "unknown Agent Plugins MCP document field"
-        );
-    }
-    let servers = if portable || obj.contains_key("mcpServers") {
-        obj.get("mcpServers")
-            .and_then(Value::as_object)
-            .ok_or_else(|| anyhow::anyhow!("mcpServers must be an object"))?
-    } else {
-        obj
-    };
-    ensure!(servers.len() <= 16, "at most 16 MCP servers are supported");
-    let root = absolute(package_root)?;
-    let data = absolute(data_root)?;
-    let mut out = PluginConfigOutcome::default();
-    for (name, v) in servers {
-        match normalize(portable, v, &root, &data).and_then(|s| {
-            crate::validate(&[(name.clone(), s.config.clone())].into())?;
-            Ok(s)
-        }) {
-            Ok(s) => {
-                if portable && v.get("extensions").is_some() {
-                    out.diagnostics.push(PluginDiagnostic { server: name.clone(), message: "Portable authentication extension retained; pinned Codex rejects extensions".into() });
-                }
-                if s.auth.as_ref().is_some_and(|p| !p.is_supported()) {
-                    out.diagnostics.push(PluginDiagnostic { server:name.clone(), message:"Authentication declaration retained but requires additional host support".into() });
-                }
-                out.servers.insert(name.clone(), s);
-            }
-            Err(error) => out.diagnostics.push(PluginDiagnostic {
-                server: name.clone(),
-                message: error.to_string(),
-            }),
-        }
-    }
-    Ok(out)
+    PluginDeclaration::parse(portable, value.clone()).normalize(package_root, data_root)
 }
 fn normalize(portable: bool, v: &Value, root: &Path, data: &Path) -> Result<PluginServerConfig> {
     let o = v

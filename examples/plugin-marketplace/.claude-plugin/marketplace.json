@@ -1,0 +1,18 @@
+{
+  "name": "areal-adapters",
+  "owner": {
+    "name": "AReaL Harness"
+  },
+  "plugins": [
+    {
+      "name": "browser-control",
+      "source": "./browser-control",
+      "description": "AReaL adapter guidance for the host browser_v1 tool."
+    },
+    {
+      "name": "computer-control",
+      "source": "./computer-control",
+      "description": "AReaL adapter guidance for the host computer_v1 tool."
+    }
+  ]
+}

@@ -9,6 +9,18 @@ export type RecoveryNotice = RecoveryOwner & {
   settings?: "模型服务" | "会话配置";
   detail?: string;
 };
+type PendingOperation = {
+  method?: string;
+  params?: { requestId?: string; threadId?: string; taskId?: string };
+  operation?: RecoveryOperation;
+};
+export function isIndependentCreation(entry: PendingOperation, ownRequestIds: readonly (string | null | undefined)[]) {
+  const requestId = entry.params?.requestId;
+  return entry.method === "areal/thread/start" && typeof requestId === "string"
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(requestId)
+    && !ownRequestIds.includes(requestId) && !entry.params?.threadId && !entry.params?.taskId
+    && (!entry.operation || entry.operation.requestId === requestId && entry.operation.method === entry.method && entry.operation.target?.kind === "project");
+}
 export function sameRecoveryOwner(left: RecoveryOwner | undefined, right: RecoveryOwner) {
   return left?.projectId === right.projectId && left.threadId === right.threadId
     && left.connectionGeneration === right.connectionGeneration;
@@ -25,7 +37,7 @@ export function recoveredOutcome(project: Data, requestId: string, threadId: str
   const target = outcome.operation?.target;
   const method = operation?.method ?? outcome.operation?.method;
   const createsThread = method === "areal/thread/start" && !threadId
-    || ["areal/thread/fork", "areal/side/start"].includes(method ?? "") && !!threadId && outcome.sourceThreadId === threadId;
+    || ["areal/thread/fork", "areal/side/start", "areal/side/create"].includes(method ?? "") && !!threadId && outcome.sourceThreadId === threadId;
   const bindsCreatedTarget = operation?.target.kind === "project" && outcome.operation?.method === operation.method
     && outcome.operation.requestId === operation.requestId
     && (createsThread && target?.kind === "thread" || method === "areal/task/create" && !threadId && target?.kind === "task");
@@ -37,7 +49,7 @@ export function recoveredOutcome(project: Data, requestId: string, threadId: str
 }
 export function recoveryMessage(failure: RecoveryFailure, context: "operation" | "view" = "operation") {
   if (context === "operation" && (failure.submissionUnknown || failure.outcome?.kind === "admitted" || failure.outcome?.kind === "unconfirmed"))
-    return "操作结果尚未确认。正在核对原请求，不会自动重发。";
+    return "操作结果待确认。";
   if (/auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(`${failure.reason ?? ""} ${failure.code ?? ""}`))
     return "无法完成操作，请检查模型服务的登录或凭据设置后重试。";
   if (failure.code === -32003 || /permission|forbidden|权限|denied/i.test(`${failure.reason ?? ""} ${failure.code ?? ""}`))

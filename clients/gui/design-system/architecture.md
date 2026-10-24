@@ -4,6 +4,8 @@
 
 共享知识与平台职责见[设计系统架构](../../../design/architecture.md)，下一轮产品建设见[建设计划](../../../design/roadmap.md)。整体候选与真实路径迁移仍按各自条件准入，不由文档整理自动通过。
 
+2026-10-24 按 [D-004](../../../design/decisions/004-local-ui-package.md)采用私有 @areal/ui 包的首批闭环：源、生成 CSS/主题、控件、类型/文档与 Agent 索引、独立示例及守卫。共享控件与组合的包化范围、生产适配和验证边界见[组件迁移](component-migration.md)。业务页面与平台所有者继续保留；包化不自动提升Base准入。
+
 ## 目标与质量场景
 
 目标是让 Agent 把页面需求映射为已有设计决策，而不是为每页重新决定字体、颜色、控件、分组和状态反馈。架构先固定决策的所有者，再由 Base 提供可用实现，最后用独立题目检验规则是否足够。
@@ -30,18 +32,23 @@
 | Product surfaces | 任务内容、业务状态映射、真实动作绑定 | Patterns + 原业务所有者 → 用户页面 | 不重定公共颜色/字号/控件样式，不复制提交和恢复权威 |
 | Validation / evidence | 声明检查、生成一致性、交互结果与视觉证据 | 固定来源/状态/条件 → 可追溯报告和待修项 | 不反向生成生产数值，不自动接受新视觉基线 |
 
+包内Worktree领域组合位于`packages/ui/src/worktree`，与conversation并列，依赖core控件；core不可反向依赖领域层。五个组合通过原Worktree业务适配接入，状态与操作权威保持原位。短时通知采用core层NotificationToast及原ToastHost通道，等级颜色来自既有语义角色。
+
+工作台层位于`packages/ui/src/workbench`，拥有壳层、面板结构、设置导航、任务行及资源范围/空态。面板注册、拖拽身份、关闭守卫、保活与原生资源生命周期归宿主；层级不可反向依赖renderer。
+
 系统级目录 `registry.json` 是上述角色、组件与模式的索引。它只引用数值源和实现，不是新增的数值层，也不承担渲染引擎职责。
 
 ## 与现有所有者的映射
 
 | 架构责任 | 当前所有者 | 接线状态 |
 | --- | --- | --- |
-| renderer 默认样式与语义变量 | [styles.css](../renderer/src/styles.css) | 已有生产源，继续保留 |
+| 基础值与默认主题输入 | [tokens.json](../packages/ui/tokens.json)、[theme.ts](../packages/ui/src/theme.ts) | 首批迁入单源包；生成产物由包检查，未迁入别名继续归 styles.css |
+| renderer 产品与命名主题别名 | [styles.css](../renderer/src/styles.css) | 导入包内基础层，保留当前平台/产品适配 |
 | 调色板/字体默认、规范化及派生 | [applicationSettings.ts](../renderer/src/settings/applicationSettings.ts) | 已有生产源；派生值不转成截图抄来的常量 |
 | 用户偏好、外观应用、reduced motion | [applicationPreferences.ts](../renderer/src/settings/applicationPreferences.ts) | `useAppearance` 将合法偏好写入 CSS 变量；消费端尊重这条链 |
 | 宿主题与面板主题适配 | [Main](../app/src/core/main.cjs)、[themes](../app/src/themes/index.js) | Main 调用现有 theme adapter；不能宣称 registry 已统一这些数值 |
-| 基础组件 | [components/ui](../renderer/src/components/ui) | 已有生产实现，按实际用途和状态准入 Base |
-| 设置与对话组合 | [SettingsPageParts](../renderer/src/settings/SettingsPageParts.tsx)、[ComposerSurface](../renderer/src/prompt-editor/ComposerSurface.tsx)、[DecisionCard](../renderer/src/DecisionCard.tsx)、[CollapsibleText](../renderer/src/CollapsibleText.tsx) | 已有组合，优先复用；当前六个模式是候选目录 |
+| 基础组件 | [UI包components](../packages/ui/src/components)；[原路径适配](../renderer/src/components/ui) | 基础控件与代码/Diff阅读器已迁入；原路径保留本地化和偏好注入，按实际状态准入Base |
+| 设置与对话组合 | [UI包components](../packages/ui/src/components)、[UI包conversation](../packages/ui/src/conversation)；原SettingsPageParts/ComposerSurface转接 | 设置选择/编辑、输入附件、决策卡、长文本、Markdown阅读与过程组合采用包内实现；编辑、授权、保存、历史投影继续归原renderer |
 | 目录/合同与生成 | [registry](registry.json)、[catalog generator](../scripts/design-system-catalog.mjs) | 原型已接入，检查来源引用与派生输出 |
 | 开发期预览 | [design-system/main.tsx](../renderer/src/design-system/main.tsx) | 已有生产组件 fixture；普通构建不包含预览入口 |
 | 检查入口 | [design-system-audit](../scripts/design-system-audit.mjs)、[package scripts](../package.json) | 已有 verify 调用链；CSS 覆盖仍有限，目录检查不证明 JSX 依从 |
@@ -52,7 +59,7 @@
 
 | 数据 | 可编辑的真源 | 派生物 / 消费者 | 维护规则 |
 | --- | --- | --- | --- |
-| 精确设计值与动态派生 | 既有 CSS、主题和偏好所有者 | 生产控件及 computed style | 现阶段不引入第二份 JSON 数值总表 |
+| 精确设计值与动态派生 | 首批包内 tokens.json/theme.ts；未迁入 CSS、主题和偏好所有者 | 生成 CSS、默认主题输入、生产控件及 computed style | 迁移时删除旧可编辑定义，保留宿主偏好和未迁入边界；不从生成物反写源 |
 | 角色/组件/模式目录 | registry.json | catalog.ts、inventory/patterns 的生成区块 | 同源生成，check 拒绝过期/手改；不从生成物反写源 |
 | 模式的使用原则与准入 | foundations / patterns / governance 中的人工区块 | Agent、实现与评审 | 结构事实放 registry，使用理由放规则；同义规则只保留一份 |
 | 页面实现合同 | surfaces 中的数据 | 具体实现与状态验收 | 引用模式、组件、来源、状态和条件；不是执行 DSL |
@@ -88,7 +95,7 @@
 | 方案 | 收益 | 代价 / 结论 |
 | --- | --- | --- |
 | 只扩写规范 | 上手快 | 实现可绕过，目录/示例会漂移；不足以单独达成目标 |
-| 替换为独立设计包、DTCG 全生成或通用页面 DSL | 来源集中、可跨端转译 | 当前会新增第二条数值/运行链，迁移用户主题和业务边界风险高；本阶段不选 |
+| 全量替换为独立设计包、DTCG 全生成或通用页面 DSL | 来源集中、可跨端转译 | 共享展示逐批迁入同源私有包；本轮不引入DTCG编译器/页面DSL，用户偏好与业务边界保留 |
 | 复用生产所有者，补职责分层、单源目录、有限组合及独立验证 | 可增量落地，已有公共控件立即受益 | JSX 依从与视觉质量仍需单独检查；作为当前方案 |
 
 若未来出现多个独立运行端必须消费同一设计源，再复审 Token 编译与跨端 recipe；不能仅因参考项目采用就提前迁移。
@@ -115,7 +122,7 @@
 
 将偏差分为规则缺失、规则含糊、组件/组合缺陷、未遵守规则、任务或参考含糊。前三类回到共享所有者，未遵守规则修实现或检查；任务歧义修题目，不硬塞进全局规范。修订 Base 后复跑原题，并保留另一种真实任务用于检查是否过拟合。
 
-阶段按 A → B → C → D 推进。当前候选已完成探索题，尚未执行正式冻结后的独立盲测；取证只在来源、Base 和题目明确后开展，用户要求长期保留的 CDP 实例不因阶段切换而关闭。
+阶段按 A → B → C → D 推进。当前已完成有限 Base 冻结及[固定输入的独立复用与归因](../../../design/components/reuse-result.md)，历史探索题仍保留各自边界；取证只在来源、Base 和题目明确后开展，用户要求长期保留的 CDP 实例不因阶段切换而关闭。
 
 ## 按用户交互组织
 

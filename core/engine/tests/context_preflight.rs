@@ -135,6 +135,7 @@ impl DynamicToolHost for RecordHost {
         assert!(!request["arguments"]["payload"].as_str().unwrap().is_empty());
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(DynamicToolResponse {
+            raw_mcp_result: None,
             success: true,
             structured_content: None,
             content_items: vec![ToolContent::InputText {

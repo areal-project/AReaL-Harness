@@ -1,6 +1,8 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, MessageCircleQuestion, Pencil, X } from "lucide-react";
-import { DecisionCard } from "./DecisionCard.js";
+import { useI18n } from "./i18n/IntlProvider.js";
+import { useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, MessageCircleQuestion, Pencil, X } from "lucide-react";
+import { QuestionCard } from "@areal/ui/wip";
+import { Feedback } from "./components/ui/feedback.js";
 import { useApplicationPreferences } from "./settings/applicationPreferences.js";
 import { Button } from "./components/ui/button.js";
 import { Textarea } from "./components/ui/textarea.js";
@@ -12,7 +14,7 @@ const empty: Draft = { mode: "option", option: "", text: "" };
 const answer = (draft?: Draft) =>
   draft?.mode === "custom" ? draft.text.trim() : (draft?.option ?? "");
 
-/** Core owns completion. A single-choice click submits; initial selection never does. */
+/** Core owns completion. Selection edits the draft; only explicit submit sends it. */
 export function AskUserQuestion({
   item,
   projectId,
@@ -22,6 +24,7 @@ export function AskUserQuestion({
   projectId: string;
   action: Action;
 }) {
+  const { t } = useI18n();
   const prefs = useApplicationPreferences();
   const [collapsed, setCollapsed] = useState(false);
   const questions = item.questions as Data[];
@@ -33,7 +36,6 @@ export function AskUserQuestion({
   const [unknown, setUnknown] = useState(false);
   const inFlight = useRef(false);
   const title = useRef<HTMLHeadingElement>(null);
-  const id = useId();
   const question = questions[index];
   useEffect(() => {
     if (!collapsed) title.current?.focus({ preventScroll: true });
@@ -98,7 +100,6 @@ export function AskUserQuestion({
         e.preventDefault();
         const next = { ...drafts, [question.id]: { ...draft, mode: "option" as const, option } };
         setDrafts(next);
-        if (single) void submit(next);
       }}
       onSubmit={(e) => {
         e.preventDefault();
@@ -107,8 +108,13 @@ export function AskUserQuestion({
         else void submit();
       }}
     >
-      <DecisionCard kind={item.kind} label="问题" icon={<MessageCircleQuestion />} busy={busy}
-        className="ask-user-card" error={error} message={submitted ? "回答已提交，等待执行状态更新。" : undefined}
+      <QuestionCard title={question.title} options={options} selected={custom ? undefined : draft.option}
+        disabled={locked} titleRef={title} onSelect={option => update({ mode: "option", option })}
+        busy={busy} feedback={<Feedback error={error} message={submitted ? "回答已提交，等待执行状态更新。" : undefined} />}
+        onKeyDown={event => {
+          if (event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing || busy || submitted) return;
+          event.preventDefault(); event.stopPropagation(); setCollapsed(true);
+        }}
         headerActions={<>
             {questions.length > 1 && <nav className="ask-user-navigation" aria-label="问题导航">
               <Button
@@ -155,50 +161,13 @@ export function AskUserQuestion({
           </div>}
           {!single && <span className="ask-user-progress" role="status">已回答 {answered} / {questions.length}</span>}
           {unknown ? <Button type="button" className="decision-button" variant="outline" disabled={busy} onClick={() => void refresh()}>核对待回答状态</Button> : <>
-            <Button type="button" className="decision-button ask-user-defer" variant="outline" disabled={busy || submitted} onClick={() => setCollapsed(true)}>跳过</Button>
+            <Button type="button" className="decision-button ask-user-defer" variant="outline" disabled={busy || submitted} onClick={() => setCollapsed(true)}>{t("decision.answerLater")}</Button>
             <Button type="submit" className="decision-button decision-primary" disabled={locked || !answer(draft) || (index === questions.length - 1 && !complete)}>
               {busy ? "提交中…" : submitted ? "已提交" : index < questions.length - 1 ? "下一题" : "发送"}
             </Button>
           </>}
         </>}>
-        <h3 className="decision-card-title" ref={title} tabIndex={-1} id={`${id}-title`}>{question.title}</h3>
-        <div className="ask-user-body">
-          <fieldset
-            disabled={locked}
-            aria-labelledby={`${id}-title`}
-            className="ask-user-options"
-          >
-            {options.map((option, i) => (
-              <label
-                key={option}
-                className="ask-user-option"
-                data-selected={!custom && draft.option === option}
-              >
-                <input
-                  type="radio"
-                  name={`${id}-${question.id}`}
-                  value={option}
-                  checked={!custom && draft.option === option}
-                  onChange={() => update({ mode: "option", option })}
-                  onClick={() => {
-                    if (questions.length !== 1 || locked) return;
-                    const next = { ...drafts, [question.id]: { ...draft, mode: "option" as const, option } };
-                    setDrafts(next);
-                    void submit(next);
-                  }}
-                />
-                <span className="ask-user-number" aria-hidden="true">
-                  {i + 1}
-                </span>
-                <span>{option}</span>
-                {!custom && draft.option === option && (
-                  <Check size={16} className="ask-user-check" aria-hidden="true" />
-                )}
-              </label>
-            ))}
-          </fieldset>
-        </div>
-      </DecisionCard>
+      </QuestionCard>
     </form>
     </>
   );

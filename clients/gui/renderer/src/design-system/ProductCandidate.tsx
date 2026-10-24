@@ -11,6 +11,7 @@ import { SettingsPage } from "../settings/SettingsWorkspace.js";
 import { SettingsGroupCard, SettingsRow, SettingsSection, SettingsSelect, SettingsSwitch } from "../settings/SettingsPageParts.js";
 import { CloseIcon, FileReference, NavigationBackIcon, Settings, StopIcon } from "../interfaceIcons.js";
 import { SidebarToggleIcon } from "../homeChromeIcons.js";
+import { DEFAULT_PALETTES, paletteVariables } from "../settings/applicationSettings.js";
 import type { LexicalChatInputHandle } from "../LexicalChatInput.js";
 import type { Action, Data } from "../services.js";
 import "./product-candidate.css";
@@ -187,8 +188,13 @@ export function ProductCandidate() {
   }, [state.execution]);
   useLayoutEffect(() => {
     const root = document.documentElement;
+    const palette = paletteVariables(DEFAULT_PALETTES.light);
+    const savedVariables = Object.keys(palette).map(name => ({ name, value: root.style.getPropertyValue(name), priority: root.style.getPropertyPriority(name) }));
     const before = { dark: root.classList.contains("dark"), lightPreset: root.classList.contains("theme-areal-light"), darkPreset: root.classList.contains("theme-areal-dark"), colorScheme: root.style.colorScheme, reducedMotion: root.getAttribute("data-reduced-motion"), uiSize: root.style.getPropertyValue("--ui-font-size"), contentSize: root.style.getPropertyValue("--content-font-size") };
     return () => {
+      for (const { name, value, priority } of savedVariables) {
+        if (value) root.style.setProperty(name, value, priority); else root.style.removeProperty(name);
+      }
       root.classList.toggle("dark", before.dark); root.classList.toggle("theme-areal-light", before.lightPreset); root.classList.toggle("theme-areal-dark", before.darkPreset); root.style.colorScheme = before.colorScheme;
       if (before.reducedMotion === null) root.removeAttribute("data-reduced-motion"); else root.setAttribute("data-reduced-motion", before.reducedMotion);
       for (const [name, value] of [["--ui-font-size", before.uiSize], ["--content-font-size", before.contentSize]]) {
@@ -198,6 +204,7 @@ export function ProductCandidate() {
   }, []);
   useLayoutEffect(() => {
     const root = document.documentElement;
+    for (const [name, value] of Object.entries(paletteVariables(DEFAULT_PALETTES[state.preferences.theme], state.preferences.theme === "dark"))) root.style.setProperty(name, value);
     root.classList.toggle("dark", state.preferences.theme === "dark");
     root.classList.toggle("theme-areal-light", state.preferences.theme === "light");
     root.classList.toggle("theme-areal-dark", state.preferences.theme === "dark");
@@ -269,7 +276,7 @@ export function ProductCandidate() {
               {delivered && <Button variant="outline" size="sm" data-testid="candidate-deliverable" data-candidate-focus="deliverable" onClick={() => openResource(delivered.run.id, "deliverable")}><FileReference />打开快速开始.md</Button>}
               {state.execution.kind === "unknown" && <div className="candidate-reconcile"><Button variant="outline" size="sm" onClick={() => { if (activeRun) dispatch({ type: "reconcile", runId: activeRun.id, generation: activeRun.generation }); }}>核对演示结果</Button><p>读取本次演示的迟到结果，不重新执行写入。</p></div>}
             </div>} />
-          <div className="candidate-composer-dock"><div className="candidate-execution" role="status"><span className="candidate-motion-sample" data-testid="candidate-motion-sample">{phaseText[state.execution.kind]}</span>{busy && state.execution.kind !== "unknown" && <Button variant="ghost" size="sm" aria-label="停止演示任务" onClick={() => dispatch({ type: "stop" })}><StopIcon />停止</Button>}</div>
+          <div className="composer-dock candidate-composer-dock"><div className="candidate-execution" role="status"><span className="candidate-motion-sample" data-testid="candidate-motion-sample">{phaseText[state.execution.kind]}</span>{busy && state.execution.kind !== "unknown" && <Button variant="ghost" size="sm" aria-label="停止演示任务" onClick={() => dispatch({ type: "stop" })}><StopIcon />停止</Button>}</div>
             <ConversationComposer project={data} modelConfig={data.configurations[threadId]} modelDisabled onConfigureModel={() => { throw new Error("本候选只使用本地演示模型。"); }}
               workspacePath="/示例项目" taskId={threadId} initialValue="" inputApiRef={input} inputTestId="candidate-input" submitTestId="candidate-send" placeholder={busy ? "可以先写下一条需求" : "描述你想完成的事"} submitLabel="发送需求" enterSubmits enableMentionPanel={false}
               submitDisabled={busy || !state.draft.trim()} onChange={text => dispatch({ type: "edit", text })} onSubmit={submit} />

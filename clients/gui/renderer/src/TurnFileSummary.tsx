@@ -75,21 +75,24 @@ export function TurnFileSummary({ turn, readTurnReview, onFile, onReview }: {
   }, { additions: 0, deletions: 0 });
   return <div className="turn-file-summary" data-testid="turn-file-summary">
     <div className="turn-file-summary-header">
-        <FileChanges aria-hidden="true" /><strong>{files.size} 个文件已更改</strong>
+      <span className="turn-file-summary-badge" aria-hidden="true"><FileChanges /></span>
+      <div className="turn-file-summary-heading">
+        <strong>{files.size} 个文件已更改</strong>
         {totals && <span className="turn-file-summary-totals" aria-label={`合计新增 ${totals.additions} 行，删除 ${totals.deletions} 行`}>
           <span className="added">+{totals.additions}</span><span className="deleted">-{totals.deletions}</span>
         </span>}
         {current.kind !== "ready" && <span className="turn-file-summary-meta" role="status" title={current.kind === "unavailable" ? current.error : undefined}>{current.kind === "loading" ? "统计中" : "行数不可用"}</span>}
-      <Button size="sm" variant="ghost" className="turn-file-summary-review-action" onClick={() => onReview(turn.id)}>查看变更</Button>
+      </div>
+      <Button size="sm" variant="outline" className="turn-file-summary-review-action" onClick={() => onReview(turn.id)}>查看变更</Button>
     </div>
     <div id={filesId} className="turn-file-summary-files" role="region" aria-label="本轮文件" data-expanded={expanded}>
       {(expanded ? entries : entries.slice(0, 5)).map(file => {
         // A verified comparison omits unchanged paths. Only that successful
         // result permits zero; pending or rejected reads never do.
         const totals = counts ? counts.get(file.path) ?? { additions: 0, deletions: 0 } : undefined;
+        const nameStart = file.path.lastIndexOf("/") + 1;
         return <Button key={file.path} variant="ghost" aria-label={`打开 ${file.path}`} onClick={() => onFile(file.path)} title={file.path}>
-        <FileChanges className="turn-file-summary-icon" aria-hidden="true" />
-        <span className="turn-file-summary-title">{file.path}</span>
+        <span className="turn-file-summary-title"><span className="turn-file-summary-directory">{file.path.slice(0, nameStart)}</span><span className="turn-file-summary-filename">{file.path.slice(nameStart)}</span></span>
           {totals ? <span className="turn-file-summary-stats" aria-label={`新增 ${totals.additions} 行，删除 ${totals.deletions} 行`}>
             <span className="added">+{totals.additions}</span><span className="deleted">-{totals.deletions}</span>
           </span> : <span className="turn-file-summary-meta" title={current.kind === "unavailable" ? current.error : undefined}>{current.kind === "loading" ? "统计中" : "行数不可用"}</span>}

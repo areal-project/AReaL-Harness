@@ -1,0 +1,124 @@
+
+
+
+/* The app rail and titlebar keep the same geometry in settings and workspaces. */
+.settings-sidebar { user-select: none; }
+
+.settings-sidebar .settings-sidebar-header {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  padding: 16px 8px 12px;
+}
+
+.settings-sidebar .settings-sidebar-title {
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--color-foreground);
+  margin: 0 8px 12px;
+  letter-spacing: -0.01em;
+}
+
+.settings-sidebar .settings-navigation-search input {
+  height: 36px;
+  border-radius: 9999px;
+  background: var(--color-sidebar-item);
+  border: 1px solid transparent;
+  font-size: var(--text-ui-base);
+  line-height: calc(var(--ui-font-size) + 4px);
+  padding-left: 36px;
+  color: var(--color-foreground);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.settings-sidebar .settings-navigation-search input:focus {
+  outline: none;
+  border-color: var(--color-brand);
+  background: var(--color-background);
+}
+
+.settings-sidebar .settings-category-navigation {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  padding: 8px;
+}
+
+.settings-sidebar .settings-category-navigation section { display: flex; flex-direction: column; gap: 1px; }
+
+.settings-sidebar .settings-group-label {
+  font-size: var(--text-ui-base);
+  font-weight: 500;
+  line-height: 21px;
+  color: var(--color-settings-secondary);
+  padding: 0 8px 4px;
+  margin: 0;
+}
+
+.settings-sidebar .settings-navigation-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: max(30px, calc(var(--ui-font-size) + 16px));
+  min-height: 30px;
+  padding: 5px 8px;
+  margin: 0;
+  border-radius: var(--radius-navigation);
+  border: none !important;
+  border-left: none !important;
+  box-shadow: none !important;
+  background: transparent;
+  color: var(--color-foreground);
+  font-size: var(--text-ui-caption);
+  font-weight: 400;
+  text-align: left;
+  cursor: var(--interactive-cursor, pointer);
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.settings-sidebar .settings-navigation-item svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: currentColor;
+  opacity: 1;
+}
+
+.settings-sidebar .settings-navigation-item span {
+  font-size: var(--text-ui-base);
+  line-height: 1.5;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-sidebar .settings-navigation-item:hover {
+  background-color: var(--color-sidebar-item, var(--color-hover));
+  color: var(--color-foreground);
+}
+
+.settings-sidebar .settings-navigation-item[aria-pressed="true"],
+.settings-sidebar .settings-navigation-item[aria-current="page"] {
+  background-color: var(--color-sidebar-item, var(--color-selected)) !important;
+  color: var(--color-foreground) !important;
+  font-weight: 400;
+}
+
+.settings-sidebar .settings-navigation-item[aria-pressed="true"] svg,
+.settings-sidebar .settings-navigation-item[aria-current="page"] svg {
+  color: var(--color-foreground);
+  opacity: 1;
+}
+
+.settings-sidebar .settings-navigation-empty {
+  padding: 12px 10px;
+  font-size: var(--text-ui-caption);
+  color: var(--color-muted-foreground);
+  text-align: center;
+}

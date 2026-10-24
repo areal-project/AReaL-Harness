@@ -1,3 +1,8 @@
+import { ContentSystemPreview } from "./ContentSystemPreview.js";
+import { ToastHost } from "../ToastHost.js";
+import { FeedbackNotice } from "../FeedbackNotice.js";
+import { ArtifactReviewExercise } from "./ArtifactReviewExercise.js";
+import { DesignDashboard } from "./DesignDashboard.js";
 import { ProductCandidate } from "./ProductCandidate.js";
 import { DesignDocument } from "./DesignDocument.js";
 import { ApplicationIntlProvider } from "../i18n/IntlProvider.js";
@@ -29,6 +34,8 @@ import { ConversationFlowExercise } from "./ConversationFlowExercise.js";
 import { SharedWorkspacePreview } from "./SharedWorkspacePreview.js";
 import { SettingsPreview } from "./SettingsPreview.js";
 import { ConversationTimelinePreview } from "./ConversationTimelinePreview.js";
+import { ConversationSystemPreview } from "./ConversationSystemPreview.js";
+import { UiLibraryPreview } from "./UiLibraryPreview.js";
 import type { LexicalChatInputHandle } from "../LexicalChatInput.js";
 import type { Action, CommandName } from "../services.js";
 import { tokenGroups, baseCandidate } from "./catalog.js";
@@ -82,7 +89,7 @@ function ChatMotionPreview({ dark }: { dark: boolean }) {
 }
 
 function Preview() {
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(() => new URLSearchParams(window.location.search).has("conversation-system"));
   const [fontSize, setFontSize] = useState("14");
   const [width, setWidth] = useState("wide");
   const [state, setState] = useState<PreviewState>("ready");
@@ -91,9 +98,14 @@ function Preview() {
   const [showPanel, setShowPanel] = useState(true);
   const [panelLocation, setPanelLocation] = useState<"bottom" | "right">("bottom");
   const [message, setMessage] = useState("");
+  const [operationNotice, setOperationNotice] = useState("");
   const [reducedMotion, setReducedMotion] = useState(false);
+  const reuseExercise = new URLSearchParams(window.location.search).has("reuse-exercise");
   const sharedWorkspace = new URLSearchParams(window.location.search).has("shared-workspace");
   const conversationExercise = new URLSearchParams(window.location.search).has("conversation-exercise");
+  const conversationSystem = new URLSearchParams(window.location.search).has("conversation-system");
+  const contentSystem = new URLSearchParams(window.location.search).has("content-system");
+  const uiLibrary = new URLSearchParams(window.location.search).has("ui-library");
   const decisionExercise = new URLSearchParams(window.location.search).has("decision-exercise");
   const exercise = new URLSearchParams(window.location.search).has("settings-exercise");
   const [exerciseContent, setExerciseContent] = useState("reference");
@@ -101,8 +113,8 @@ function Preview() {
   const api = useRef<LexicalChatInputHandle | null>(null);
   useAppearance(dark);
   useLayoutEffect(() => {
-    if (conversationExercise) setApplicationPreferences({ contentSize: Number(fontSize) });
-  }, [conversationExercise, fontSize]);
+    if (conversationExercise || conversationSystem) setApplicationPreferences({ contentSize: Number(fontSize) });
+  }, [conversationExercise, conversationSystem, fontSize]);
   useLayoutEffect(() => { setApplicationPreferences({ reducedMotion: reducedMotion ? "on" : "off" }); }, [reducedMotion]);
   useEffect(() => {
     let fragment = window.location.hash.slice(1);
@@ -133,18 +145,18 @@ function Preview() {
   const disabled = state === "busy" || state === "unknown";
   return <main className="design-preview" data-width={width} data-view={new URLSearchParams(window.location.search).has("conversation") ? "conversation" : new URLSearchParams(window.location.search).has("settings") ? "settings" : undefined}>
     <header className="design-preview-header">
-      <div><h1>客户端设计系统</h1><p>生产组件与语义 Token · Base 候选 {baseCandidate.version}（未冻结）</p>
-        <nav className="design-preview-navigation" aria-label="设计预览导航"><a href="?product-candidate">完整产品候选</a><a href="?docs=design/README.md">设计说明</a><a href={`${window.location.pathname}#controls`}>组件示例</a>
+      <div><h1>客户端设计系统</h1><p>{uiLibrary ? "私有 workspace 包 · 首批实现，未发布" : conversationSystem ? "对话流候选 · 独立预览，未接入生产页面" : <>生产组件与语义 Token · Base {baseCandidate.version}（{({ "frozen-beta": "有限 beta 已冻结", candidate: "候选未冻结" })[baseCandidate.status]}）</>}</p>
+        <nav className="design-preview-navigation" aria-label="设计预览导航"><a href="?dashboard">建设看板</a><a href="?ui-library">UI 包与架构</a><a href="?conversation-system">对话流设计</a><a href="?product-candidate">完整产品候选</a><a href="?reuse-exercise">独立复用题</a><a href="?docs=design/README.md">设计说明</a><a href={`${window.location.pathname}#controls`}>组件示例</a>
           {new URLSearchParams(window.location.search).get("returnTo")?.startsWith("?docs=") && <a href={`${window.location.pathname}${new URLSearchParams(window.location.search).get("returnTo")}`}>返回来源设计说明</a>}
         </nav></div>
       <label>主题<select aria-label="主题" value={dark ? "dark" : "light"} onChange={event => setDark(event.target.value === "dark")}><option value="light">明亮</option><option value="dark">深色</option></select></label>
       <label>字号<select aria-label="字号" value={fontSize} onChange={event => setFontSize(event.target.value)}><option value="14">14</option><option value="18">18</option></select></label>
       <label>面板宽度<select aria-label="面板宽度" value={width} onChange={event => setWidth(event.target.value)}><option value="wide">宽面板</option><option value="narrow">窄面板</option></select></label>
-      <label>状态<select aria-label="状态" value={state} onChange={event => { setState(event.target.value as PreviewState); setMessage(""); }}>{Object.entries(states).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      {!reuseExercise && !conversationSystem && !uiLibrary && <label>状态<select aria-label="状态" value={state} onChange={event => { setState(event.target.value as PreviewState); setMessage(""); }}>{Object.entries(states).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}
       <label>减少动态效果<input type="checkbox" checked={reducedMotion} onChange={event => setReducedMotion(event.target.checked)} /></label>
       {exercise && <label>题目内容<select aria-label="题目内容" value={exerciseContent} onChange={event => setExerciseContent(event.target.value)}><option value="reference">参考内容</option><option value="stress">长文案</option></select></label>}
     </header>
-    {sharedWorkspace ? <SharedWorkspacePreview dark={dark} /> : conversationExercise ? <ConversationFlowExercise dark={dark} /> : decisionExercise ? <DecisionTransferExercise key={state} state={state} /> : exercise ? <SettingsReflowExercise key={exerciseContent} stress={exerciseContent === "stress"} state={state} /> : <>
+    {contentSystem ? <ContentSystemPreview dark={dark} /> : uiLibrary ? <UiLibraryPreview dark={dark} fontSize={fontSize} /> : conversationSystem ? <ConversationSystemPreview dark={dark} /> : reuseExercise ? <section id="artifact-review-exercise" className="design-preview-panel" aria-label="交付物核对"><ArtifactReviewExercise baseVersion={baseCandidate.version} /></section> : sharedWorkspace ? <SharedWorkspacePreview dark={dark} /> : conversationExercise ? <ConversationFlowExercise dark={dark} /> : decisionExercise ? <DecisionTransferExercise key={state} state={state} /> : exercise ? <SettingsReflowExercise key={exerciseContent} stress={exerciseContent === "stress"} state={state} /> : <>
     <SettingsPreview />
     <section id="controls" className="design-preview-panel" aria-label="公共控件">
       <h2>设置控件 · 按交互选择</h2>
@@ -173,7 +185,9 @@ function Preview() {
         <ActionButton disabled>不可用</ActionButton>
         <ActionButton pending={state === "busy"} onClick={() => setMessage("状态已刷新。")}>刷新状态</ActionButton>
         <Button size="icon-sm" variant="ghost" aria-label="刷新预览" onClick={() => setMessage("状态已刷新。 ")}><RefreshIcon /></Button>
+        <Button variant="outline" onClick={() => setOperationNotice("示例操作失败，输入已保留。")}>触发操作失败提醒</Button>
       </div>
+      {operationNotice && <FeedbackNotice transient tone="error" message={operationNotice} actions={<></>} onDismiss={() => setOperationNotice("")} />}
       <Feedback error={state === "failed" ? "操作未受理，请检查后重试。" : undefined} message={state === "unknown" ? "结果待核对，保留当前内容。" : "反馈跟随所属组件，错误与等待保持不同含义。"} />
       </SettingsSection></SettingsPage>
     </section>
@@ -208,4 +222,4 @@ function Preview() {
     </>}
   </main>;
 }
-createRoot(document.getElementById("root")!).render(<ApplicationIntlProvider><TooltipProvider>{new URLSearchParams(window.location.search).has("product-candidate") ? <ProductCandidate /> : new URLSearchParams(window.location.search).has("docs") ? <DesignDocument path={new URLSearchParams(window.location.search).get("docs")!} /> : <Preview />}</TooltipProvider></ApplicationIntlProvider>);
+createRoot(document.getElementById("root")!).render(<ApplicationIntlProvider><ToastHost /><TooltipProvider>{new URLSearchParams(window.location.search).has("dashboard") ? <DesignDashboard /> : new URLSearchParams(window.location.search).has("product-candidate") ? <ProductCandidate /> : new URLSearchParams(window.location.search).has("docs") ? <DesignDocument path={new URLSearchParams(window.location.search).get("docs")!} /> : <Preview />}</TooltipProvider></ApplicationIntlProvider>);

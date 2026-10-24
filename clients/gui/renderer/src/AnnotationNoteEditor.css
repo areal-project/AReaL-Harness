@@ -49,14 +49,14 @@
   border: 0;
   background: transparent;
   color: var(--color-foreground);
-  font-size: 12px;
+  font-size: var(--text-ui-sm);
   line-height: 18px;
   white-space: nowrap;
   outline: none;
 }
 .browser-annotation-editor-row > span {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--text-ui-sm);
 }
 .browser-annotation-editor .browser-annotation-confirm {
   display: grid;
@@ -77,7 +77,7 @@
 .browser-annotation-editor.expanded > small {
   display: block;
   padding: 6px 0;
-  font-size: 11px;
+  font-size: var(--text-ui-xs);
   color: var(--color-foreground-subtle);
 }
 .browser-annotation-editor.expanded > textarea {
@@ -89,7 +89,7 @@
   border: 1px solid var(--color-border);
   border-radius: 7px;
   background: var(--color-background);
-  font-size: 12px;
+  font-size: var(--text-ui-sm);
   resize: none;
 }
 .browser-annotation-editor-actions {

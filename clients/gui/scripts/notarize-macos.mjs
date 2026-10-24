@@ -144,6 +144,7 @@ async function main() {
       "keychain-profile": { type: "string" },
       "history-source": { type: "string" },
       resume: { type: "boolean" },
+      "skip-tests": { type: "boolean" },
       "wait-seconds": { type: "string", default: "60" },
     },
   });
@@ -158,6 +159,7 @@ async function main() {
         "Identity/profile can also use CSC_NAME / APPLE_KEYCHAIN_PROFILE.\n" +
         "Requires macOS, Xcode notarytool, installed project dependencies and an existing\n" +
         "AReaL Core GUI .app. Copies input; produces notarized ZIP/DMG and JSON evidence.\n" +
+        "[--skip-tests] explicitly skips desktop/model acceptance, recorded in evidence; signing/notarization checks still run.\n" +
         "Exit 0: complete; 2: Apple still processing (resume); 1: failed, inspect logs.\n" +
         "Never publishes, changes update feeds, creates credentials, or replaces the source app.",
     );
@@ -474,14 +476,20 @@ async function main() {
       join(app, "Contents/Resources"),
       { hashes: true },
     );
-    run(process.execPath, [join(desktop, "scripts/migration-smoke.mjs")], {
-      env: { ...process.env, AREAL_GUI_EXECUTABLE: join(app, "Contents/MacOS/AReaL Harness GUI") },
-    });
-    state.packagedGui = "passed";
-    run(process.execPath, [join(desktop, "scripts/model-selection-smoke.mjs")], {
-      env: { ...process.env, AREAL_GUI_EXECUTABLE: join(app, "Contents/MacOS/AReaL Harness GUI") },
-    });
-    state.packagedModelSelection = "passed";
+    if (options["skip-tests"]) {
+      state.packagedGui = "skipped-by-request";
+      state.packagedModelSelection = "skipped-by-request";
+    } else {
+      run(process.execPath, [join(desktop, "scripts/migration-smoke.mjs")], {
+        env: { ...process.env, AREAL_GUI_EXECUTABLE: join(app, "Contents/MacOS/AReaL Harness GUI") },
+      });
+      state.packagedGui = "passed";
+      run(process.execPath, [join(desktop, "scripts/model-selection-smoke.mjs")], {
+        env: { ...process.env, AREAL_GUI_EXECUTABLE: join(app, "Contents/MacOS/AReaL Harness GUI") },
+      });
+      state.packagedModelSelection = "passed";
+    }
+    save();
     // These paths belong to this locked run and may contain interrupted output.
     for (const path of [zip, dmg])
       rmSync(path, { recursive: true, force: true });

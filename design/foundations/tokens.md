@@ -1,43 +1,49 @@
-# Token 语义与平台映射
+# Token 来源与使用
 
-Token 先按 GUI 确立角色及默认值，为后续 Web 复用提供基线。首组已复用的值是浏览器焦点的宽度与偏移。其余数值仍在 GUI 生产源中收敛，动态偏好保留原所有者。
+GUI 的基础值只有一个可编辑来源。写样式时按用途选变量，不写字面量；变量清单、默认值与用途见生成的 [Token 速查](../../clients/gui/packages/ui/src/generated/tokens.md)。用途怎样选见[基础表达角色](roles.md)。
 
-## 三类信息分开维护
+## 每类值在哪里改
 
-| 信息 | 所有者 | 维护方式 |
+| 值 | 唯一可编辑位置 | 说明 |
 | --- | --- | --- |
-| 语义角色及使用理由 | [基础表达角色](roles.md)及[设计基础](README.md) | 描述主内容、次内容、状态、焦点和密度的用途 |
-| 已复用的默认值 | [focus.css](../tokens/focus.css) | `--focus-width` 与 `--focus-offset` 只有此处可编辑 |
-| GUI 默认值、平台映射与动态偏好 | GUI 生产源及已接入的 Web 代码 | 默认值保持唯一来源，字号偏好及系统能力由实际入口适配 |
+| 字号、行高、间距、控件高度、圆角、阴影、动效、层级、状态色 | [tokens.json](../../clients/gui/packages/ui/tokens.json) 的 `foundation` | 生成 `foundation.css` 与 Tailwind 映射；明暗不同的值写在 `$extensions.build.areal.ui.dark` |
+| 默认明暗调色板（背景、前景、边框、表面等） | tokens.json 的 `themes` 作为输入，[theme.ts](../../clients/gui/packages/ui/src/theme.ts) 的 `paletteVariables` 派生 | 生成 `themes.css` 用于首帧；挂载后 `useAppearance` 用同一函数应用用户偏好 |
+| 浏览器焦点宽度与偏移 | [focus.css](../tokens/focus.css) | GUI 与本地 Web 共用，见 [D-002](../decisions/002-shared-semantics.md) |
+| 产品专用主题别名（工作流图、终端色、轨迹色等） | [styles.css](../../clients/gui/renderer/src/styles.css) 的 `@theme` 与 `.dark` | 只放 @areal/ui 未定义的变量 |
+| 用户偏好（界面字号、内容字号、字体、调色板、动效） | [applicationSettings](../../clients/gui/renderer/src/settings/applicationSettings.ts) 与 [applicationPreferences](../../clients/gui/renderer/src/settings/applicationPreferences.ts) | 运行时输入，不是另一个默认值来源 |
 
-## 当前映射地图
+修改流程：改 tokens.json 或 theme.ts → `pnpm --dir clients/gui --filter @areal/ui generate` → `build` 与 `check` → 运行设计审计。
 
-下表列出已有来源，角色之间只是候选对应关系，不声明数值或完整行为相同。
+## 写样式时
 
-| 角色 | GUI 基线 | 本地 Web 现有来源 |
+- 字号用 `--text-ui-*` / `--text-page-title`（或 Tailwind 的 `text-ui-*`），这样会跟随用户设置的界面字号。阅读内容跟随内容字号，用 `--text-content-caption` 或消息正文里重映射过的 `--text-ui-base`。
+- 圆角按表面用 `--radius-*`：控件、按钮、内嵌块、胶囊、浮层、导航、输入区、面板、对话框各有一个。
+- 颜色用语义变量（`--color-foreground`、`--color-border`、`--color-destructive` 等），不写十六进制或 Tailwind 色板类。
+- 组件内部可以局部重映射变量（例如消息正文把 `--text-ui-base` 指向内容字号），不能在全局主题选择器里重新定义 @areal/ui 已生成的变量。
+
+## 自动守卫
+
+[design-system-audit](../../clients/gui/scripts/design-system-audit.mjs) 在 `pnpm --dir clients/gui verify` 中运行，包含：
+
+| 检查 | 失败时的含义 |
+| --- | --- |
+| Token 单源 | renderer 的 `@theme`、`:root`、`.dark`、`.theme-*` 重新定义了 @areal/ui 生成的变量；改 tokens.json |
+| 字面量基线（[literal-baseline.json](../../clients/gui/design-system/literal-baseline.json)） | 某个文件写死的字号、颜色或圆角比基线多；改用变量。数量减少后运行 `node clients/gui/scripts/design-system-baseline.mjs --write` 锁定新上限 |
+| 增量检查 | 本次改动新增了字号或颜色字面量，见[增量设计检查](../../clients/gui/design-system/automation.md#增量设计检查) |
+
+## 有意保留的字面量
+
+以下位置不跟随界面字号，留在基线中：`:root` 的 `font-size: 16px`（rem 基准）；文件阅读器 Markdown 标题（属于内容字号，待内容排印决定）；远程与移动配对界面（`remote.css`、`MobileSettings.css`，按手机尺寸设计）；以及没有对应角色的 10/15/20/23/28px。新增角色时先在 tokens.json 定义，再替换这些值。
+
+## 平台映射
+
+本地 Web 由 [style.css](../../clients/web/style.css) 与 [app.js](../../clients/web/app.js) 拥有样式与主题偏好，只共享 focus.css；[Core 静态资源入口](../../core/app-server/src/lib.rs)在编译时把 focus.css 与 Web CSS 拼接为 `/ui/style.css`。Remote Web 的 [RemoteWorkbench](../../clients/gui/renderer/src/remote/RemoteWorkbench.tsx) 复用 GUI 样式和 `useAppearance`。
+
+| 角色 | GUI | 本地 Web |
 | --- | --- | --- |
-| 主要与次要内容 | `--color-foreground` 等语义变量 | `--text`、`--muted` |
-| 成功、警告、错误 | 既有反馈组件与主题角色 | `--success`、`--warning`、`--error` |
-| 选择与强调 | 按钮及选中状态角色 | `--accent` 与各控件状态 |
-| 空间与密度 | 控件、文字、间距和形状角色 | 本端 CSS 与响应式布局 |
-| 焦点与动态反馈 | 公共控件、focus 与 reduced motion | 浏览器控件与 CSS |
+| 主要与次要内容 | `--color-foreground`、`--color-foreground-subtle` | `--text`、`--muted` |
+| 成功、警告、错误 | `--color-success`、`--color-warning`、`--color-destructive` | `--success`、`--warning`、`--error` |
+| 选择与强调 | `--color-brand`、`--color-selected` | `--accent` |
+| 焦点 | focus.css + `--color-ring` | focus.css + 浏览器控件 |
 
-GUI 的 [styles.css](../../clients/gui/renderer/src/styles.css)直接导入共享焦点 CSS，Vite 将其合入样式产物。现有 workbench 焦点规则与 DecisionCard 消费这两个变量。其他数值由该文件、[applicationSettings](../../clients/gui/renderer/src/settings/applicationSettings.ts)及相关偏好链拥有。UI 字号还有 [App](../../clients/gui/renderer/src/App.tsx) 的独立来源。具体控件选择见 [GUI Token 指南](../../clients/gui/DESIGN_SYSTEM.md#token-选择)。
-
-本地 Web 由 [style.css](../../clients/web/style.css)和 [app.js](../../clients/web/app.js)拥有样式与主题偏好，表中来源供后续复用时核对。Remote Web 的 [RemoteWorkbench](../../clients/gui/renderer/src/remote/RemoteWorkbench.tsx)是另一消费路径，不能用本地 Web 的接线代替它。
-
-本地 Web 的 `:focus-visible` 消费共享焦点变量。[Core 静态资源入口](../../core/app-server/src/lib.rs)在编译时将共享 CSS 与 Web CSS 拼接到原有 `/ui/style.css` 响应，保留资源头与路由。颜色和选择器保留现有所有者。Remote 构建包含 GUI 样式，不代表已接入审批交互。
-
-[设计审计](../../clients/gui/scripts/design-system-audit.mjs)检查共享默认值、重复声明和两条资源接线。[interaction smoke](../../clients/gui/scripts/interaction-smoke.mjs)的 `--focus-only` 模式通过真实隔离 Core 的批准与拒绝核对键盘焦点和文件效果。本地 Web 由无 Desktop bridge 的 Electron Chromium 窗口加载实际 HTTP 与 WebSocket，不代表其他浏览器或安装包验收。
-
-## 当前偏好边界
-
-GUI 的 UI 字号、内容字号、字体、调色板与动效偏好由不同的现有路径处理。Main 返回的主题 CSS 不能视作已被 App 完整消费；Remote Web 也没有与桌面共享全部选择。源码归属核对于 `17144634`，后续改变这些所有者时重新核对。
-
-迁移时先明确每种偏好的持久化、默认值与应用顺序，再提供本端适配。UI 字号和内容字号是不同角色，不能为收敛来源而合并。跨设备同步范围属于独立产品决定。
-
-## 何时扩大共享数值源
-
-先收敛 GUI 实际使用的角色与默认值，无需等待第二个消费者。Web 接入时复用适用的源，并明确浏览器适配。当前焦点的两个消费者直接使用 CSS，无需 JSON、生成器或新构建步骤。DTCG 是后续候选格式，不是前置要求。每次迁移删除旧的可编辑定义，并验证实际消费，避免同时维护多份同义数值源。
-
-动态偏好和系统能力是运行输入，不是另一个默认值来源。共享默认值的加入不自动引入跨设备偏好同步。
+DTCG 是 tokens.json 的格式；扩大到 Web 共享数值源，等出现第二个运行消费者时再决定。

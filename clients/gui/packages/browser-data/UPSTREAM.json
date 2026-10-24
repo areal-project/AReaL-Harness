@@ -1,0 +1,120 @@
+{
+  "repository": "https://github.com/zai-org/ZCode",
+  "commit": "3c5b227649371507ddc4eb46ac5133afe6db1cab",
+  "license": "Apache-2.0",
+  "files": [
+    {
+      "source": "packages/desktop/src/main/browserDataManager.ts",
+      "target": "src/browserDataManager.ts",
+      "sha256": "d86cc43d79a349c1e45bc4b69cc137d47f25ce7f2ba36a2ebee75818d3f297b9",
+      "adaptations": [
+        "Use local result types.",
+        "Require the caller targetSession and temporary WebContents registration callback.",
+        "Remove ZCode partition selection, legacy default-profile resolver, and data-clearing API.",
+        "Check SQLite capability before source discovery."
+      ],
+      "localSha256": "06988d24e7f94e8def196ee782585d79862f92e59bcac7f77c94d189a6f4a19c"
+    },
+    {
+      "source": "packages/desktop/src/main/chromeCookieManager.ts",
+      "target": "src/chromeCookieManager.ts",
+      "sha256": "838653fbfc7e64e9c35e55f837a294d7ee1e4f7db156b3e113599439dbe0c59e",
+      "adaptations": [
+        "Use local result types and lazy CommonJS SQLite loading.",
+        "Resolve the absent Windows helper through an explicit unsupported adapter."
+      ],
+      "localSha256": "e970267ac31355af8bfbd5bc16bedf4c103dd4c43e7da6f1f205bacbd8c1d2a4"
+    },
+    {
+      "source": "packages/desktop/src/main/chromeCookieMapping.ts",
+      "target": "src/chromeCookieMapping.ts",
+      "sha256": "7f537d6310295263287e87f6d8304b0fa6e127b236a4d78f333c5bd955608a67",
+      "adaptations": [],
+      "localSha256": "7f537d6310295263287e87f6d8304b0fa6e127b236a4d78f333c5bd955608a67"
+    },
+    {
+      "source": "packages/desktop/src/main/chromeCredentialManager.ts",
+      "target": "src/chromeCredentialManager.ts",
+      "sha256": "5d488ca7a1791e54f49e2ab54148c14642a60f900eef61a1c1d1bb2b14ea0499",
+      "adaptations": [
+        "Resolve the copied PowerShell helper from the local source directory."
+      ],
+      "localSha256": "dbc01a9fccf80cafd18d3062b3f4dba6daa2cf9a62c43981aaec75f9747ebaf5"
+    },
+    {
+      "source": "packages/desktop/src/main/chromeLocalStorageManager.ts",
+      "target": "src/chromeLocalStorageManager.ts",
+      "sha256": "8c2bc43c361bfcb0c366df39732174f286eeb3e77c9e79c29c2e85330b75f46e",
+      "adaptations": [
+        "Use local result types.",
+        "Register target WebContents before navigation.",
+        "Deny target popups and always unregister and destroy target windows, including initialization failures.",
+        "Export the writer internally for synthetic Electron acceptance.",
+        "Wait for WebContents destruction before resolving the writer, as verified in Electron 44.5."
+      ],
+      "localSha256": "4e777d9570a486f65b44d9fc232022116f5bbb5009595b1263dd15d52794115b"
+    },
+    {
+      "source": "packages/desktop/src/main/chromeProfileDiscovery.ts",
+      "target": "src/chromeProfileDiscovery.ts",
+      "sha256": "f5dcdcbd387aa4dc172fa391edb9afbbc7ba2323b14d51c800ce117f618defa6",
+      "adaptations": [],
+      "localSha256": "f5dcdcbd387aa4dc172fa391edb9afbbc7ba2323b14d51c800ce117f618defa6"
+    },
+    {
+      "source": "packages/desktop/src/main/chromeExecutableDiscovery.ts",
+      "target": "src/chromeExecutableDiscovery.ts",
+      "sha256": "2a0caf67bc6c9e531620ea7fa45a66e22b641f7366bb910eae4983b087044e41",
+      "adaptations": [],
+      "localSha256": "2a0caf67bc6c9e531620ea7fa45a66e22b641f7366bb910eae4983b087044e41"
+    },
+    {
+      "source": "packages/desktop/src/main/chromeInstallationCandidates.ts",
+      "target": "src/chromeInstallationCandidates.ts",
+      "sha256": "37eb7f9da193140d11f7a9a8ae0914258903b2023e2e2f7cc29f1c0fc694020d",
+      "adaptations": [],
+      "localSha256": "37eb7f9da193140d11f7a9a8ae0914258903b2023e2e2f7cc29f1c0fc694020d"
+    },
+    {
+      "source": "packages/desktop/scripts/powershell-command.mjs",
+      "target": "src/powershell-command.mjs",
+      "sha256": "b3c88f9a5a247a65d93ad59184003f1c49d64bca95a05327447717e2502b01d1",
+      "adaptations": [],
+      "localSha256": "b3c88f9a5a247a65d93ad59184003f1c49d64bca95a05327447717e2502b01d1"
+    },
+    {
+      "source": "LICENSE",
+      "target": "LICENSE",
+      "sha256": "606c36baf38b973227273df12a74930e4b4137280eea835c5cd623aa4553c13b",
+      "adaptations": [],
+      "localSha256": "606c36baf38b973227273df12a74930e4b4137280eea835c5cd623aa4553c13b"
+    },
+    {
+      "source": "packages/shared/src/platform.ts",
+      "target": "src/types.ts",
+      "sha256": "32b463b05b9eba0a3d52a43c399714adacc58f8ba437288c677e82b8f13499eb",
+      "selection": "ChromeBrowserDataImportError and ChromeBrowserDataImportResult",
+      "adaptations": [
+        "Copy only import errors and results from the upstream platform contract.",
+        "Add chrome_sqlite_unavailable."
+      ],
+      "localSha256": "5003d7f11e179a4b4400e1433d9f6006255d0734fe96f7d8172433478d51f707"
+    },
+    {
+      "source": "packages/desktop/src/main/windowsChromeAppBoundKey.ts",
+      "target": "src/windowsChromeAppBoundKey.ts",
+      "sha256": "da5dca97c638759bab07d64166c1a131ee2ede1b24dfb4e0253063189fc3fc60",
+      "selection": "Error and reader type adapted to an explicit unsupported helper",
+      "adaptations": [
+        "Retain the error and reader contract needed by the cookie importer.",
+        "Always report chrome_import_not_supported because the signed native helper is not included."
+      ],
+      "localSha256": "26386801253f9dc09ddb5b095a9f88f8d05fa89c898a4afdbcf253a547eb0cbc"
+    }
+  ],
+  "adaptations": [
+    "The public Main-only entry allows macOS and forwards only targetSession, registerWebContents, and logger.",
+    "Build with esbuild to CommonJS; keep Electron and ws external.",
+    "Use synthetic acceptance data and block system credential commands in fixtures."
+  ]
+}

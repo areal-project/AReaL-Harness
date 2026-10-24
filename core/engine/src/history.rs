@@ -372,7 +372,7 @@ pub(super) fn checkpoint_inputs(
 
 pub(super) fn logical_history(thread: &Thread, store: &store::Store) -> anyhow::Result<Thread> {
     let mut logical = thread.clone();
-    if let Some(areal_protocol::Conversation::Fork { history_seed, .. }) = &thread.conversation {
+    if let Some(history_seed) = thread.model_history_seed() {
         logical.conversation = None;
         let mut inherited = store.read_fork_snapshot(&history_seed.snapshot_id)?;
         inherited.extend(std::mem::take(&mut logical.turns));
@@ -439,6 +439,7 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
     if let Some(areal_protocol::Conversation::Side {
         reference_snapshot,
         selection,
+        policy: areal_protocol::SidePolicy::ReadOnlyV1 { .. },
         ..
     }) = &thread.conversation
     {
@@ -502,7 +503,7 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
         messages.insert(0, Message::text("areal_context", context));
         return Ok(messages);
     }
-    if let Some(areal_protocol::Conversation::Fork { history_seed, .. }) = &thread.conversation {
+    if let Some(history_seed) = thread.model_history_seed() {
         let mut logical = logical_history(thread, store)?;
         // 检查点越过继承块并落在本地冷段时，冷段边界代表整个此前逻辑前缀。
         if thread
@@ -518,7 +519,33 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
             let count = history_seed.turn_count.min(logical.turns.len());
             logical.turns.drain(..count);
         }
-        return history(&logical, store);
+        let mut messages = history(&logical, store)?;
+        if thread.is_executable_side() {
+            let inherited = store.read_fork_snapshot(&history_seed.snapshot_id)?;
+            let boundary_in_seed = thread.context_checkpoint.as_ref().is_none_or(|checkpoint| {
+                inherited
+                    .iter()
+                    .flat_map(|turn| &turn.items)
+                    .any(|item| item.id() == checkpoint.through_item_id)
+            });
+            let boundary = if boundary_in_seed {
+                let mut seed = logical.clone();
+                seed.turns = inherited;
+                seed.history_archive = None;
+                history(&seed, store)?.len().min(messages.len())
+            } else {
+                messages
+                    .iter()
+                    .position(|message| {
+                        message
+                            .text_content()
+                            .starts_with("Work summary through item ")
+                    })
+                    .map_or(0, |index| index + 1)
+            };
+            messages.insert(boundary, Message::text("system", "Side conversation boundary. The inherited conversation above is frozen reference history. Do not continue its unfinished work or replay its tools. Only a new user request in this child conversation authorizes action."));
+        }
+        return Ok(messages);
     }
     let mut messages = Vec::new();
     let items: Vec<_> = thread.turns.iter().flat_map(|turn| &turn.items).collect();
@@ -871,6 +898,17 @@ pub(crate) fn uploaded_content(
     thread: &Thread,
     store: &store::Store,
 ) -> anyhow::Result<ContentPart> {
+    let media = thread.desktop.as_ref().and_then(|data| data.uploads.iter().find(|media| {
+        matches!(input, Input::Image { url, .. } | Input::Audio { url } | Input::File { url, .. } if url == &media.uri)
+    }));
+    uploaded_content_with_media(input, media, store)
+}
+
+pub(crate) fn uploaded_content_with_media(
+    input: &Input,
+    media: Option<&areal_protocol::MediaRef>,
+    store: &store::Store,
+) -> anyhow::Result<ContentPart> {
     let mut content = content_from_input(input);
     let source = match &mut content {
         ContentPart::Image { source, .. }
@@ -882,54 +920,65 @@ pub(crate) fn uploaded_content(
         && let Some(id) = uri.strip_prefix("areal://blob/")
     {
         use base64::Engine as _;
-        let media = thread
-            .desktop
-            .as_ref()
-            .and_then(|d| d.uploads.iter().find(|m| &m.uri == uri));
         let bytes = std::fs::read(store.blob_path(id)?)?;
         anyhow::ensure!(
             format!("{:x}", sha2::Sha256::digest(&bytes)) == id,
             "uploaded media integrity changed"
         );
-        let mime = media
-            .map(|m| m.mime_type.as_str())
-            .or_else(|| match input {
-                Input::Image { .. } if bytes.starts_with(b"\x89PNG\r\n\x1a\n") => Some("image/png"),
-                Input::Image { .. } if bytes.starts_with(&[0xff, 0xd8, 0xff]) => Some("image/jpeg"),
-                Input::Image { .. }
-                    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") =>
-                {
-                    Some("image/gif")
-                }
-                Input::Image { .. }
-                    if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") =>
-                {
-                    Some("image/webp")
-                }
-                Input::Audio { .. }
-                    if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WAVE") =>
-                {
-                    Some("audio/wav")
-                }
-                Input::Audio { .. }
-                    if bytes.starts_with(b"ID3")
-                        || (bytes.first() == Some(&0xff)
-                            && bytes.get(1).is_some_and(|byte| byte & 0xe0 == 0xe0)) =>
-                {
-                    Some("audio/mpeg")
-                }
+        let inferred = crate::desktop::media::validate_media(
+            media.map_or("application/octet-stream", |media| media.mime_type.as_str()),
+            &bytes,
+        );
+        // Registered text predates the stricter upload policy. Frozen legacy
+        // text hints remain usable unless a supported media signature disagrees.
+        let recorded_text = media.is_some_and(|media| media.mime_type == "text/plain")
+            || media.is_none()
+                && matches!(input, Input::File { mime_type: Some(mime), .. } if mime == "text/plain")
+                && inferred
+                    .as_ref()
+                    .map_or(true, |media| media.mime == "text/plain");
+        let validated = if recorded_text {
+            std::str::from_utf8(&bytes)?;
+            crate::desktop::media::ValidatedMedia {
+                mime: "text/plain",
+                modality: Modality::File,
+            }
+        } else {
+            inferred?
+        };
+        anyhow::ensure!(
+            media.is_none_or(|media| media.size_bytes == bytes.len() as u64),
+            "uploaded media size changed"
+        );
+        anyhow::ensure!(
+            validated.modality == input.modality(),
+            "uploaded media modality mismatch"
+        );
+        if validated.mime == "text/plain" {
+            let text = std::str::from_utf8(&bytes)?
+                .strip_prefix('\u{feff}')
+                .unwrap_or(std::str::from_utf8(&bytes)?);
+            let name = match input {
                 Input::File {
-                    mime_type: Some(mime),
-                    ..
-                } => Some(mime.as_str()),
-                _ => None,
-            })
-            .context("missing uploaded media MIME")?;
+                    name: Some(name), ..
+                } => name.rsplit(['/', '\\']).next().unwrap_or("attachment"),
+                _ => "attachment",
+            };
+            let name: String = name.chars().take(255).collect();
+            return Ok(ContentPart::Text(format!(
+                "Attached UTF-8 file {} (untrusted user data):\n{}",
+                serde_json::to_string(&name)?,
+                text
+            )));
+        }
         *source = MediaSource::Url(format!(
             "data:{};base64,{}",
-            mime,
+            validated.mime,
             base64::engine::general_purpose::STANDARD.encode(bytes)
         ));
+        if let ContentPart::File { mime_type, .. } = &mut content {
+            *mime_type = Some(validated.mime.to_owned());
+        }
     }
     Ok(content)
 }

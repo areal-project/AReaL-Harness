@@ -18,6 +18,26 @@ async function source(root, path) {
   assert.ok((await stat(absolute)).isFile(), `source is not a file: ${path}`);
   return readFile(absolute, "utf8");
 }
+async function reference(root, value) {
+  assert.ok(text(value), "missing document reference");
+  const [path, anchor, extra] = value.split("#");
+  assert.equal(extra, undefined, `invalid document reference: ${value}`);
+  const document = await source(root, path);
+  if (anchor !== undefined) {
+    assert.ok(/^[a-z][a-z0-9-]*$/.test(anchor), `invalid document anchor: ${value}`);
+    const headings = [...document.matchAll(/^#{1,6} +(.+)$/gm)].map(match => match[1].toLowerCase().replace(/[^\p{L}\p{N}\p{M}_\-\s]/gu, "").replace(/\s/g, "-"));
+    assert.equal(headings.filter(value => value === anchor).length, 1, `missing/duplicate document anchor: ${value}`);
+  }
+}
+const entryExports = new Map();
+async function uiEntryExports(root) {
+  if (!entryExports.has(root)) {
+    const read = async name => new Set([...(await readFile(join(root, `packages/ui/src/${name}.ts`), "utf8")).matchAll(/export\s*\{([^}]+)\}/g)]
+      .flatMap(match => match[1].split(",").map(item => item.trim().replace(/^type\s+/, "").split(/\s+as\s+/).at(-1))).filter(Boolean));
+    entryExports.set(root, { index: await read("index"), wip: await read("wip") });
+  }
+  return entryExports.get(root);
+}
 function block(document, name, body) {
   const start = `<!-- BEGIN GENERATED: ${name} -->`;
   const end = `<!-- END GENERATED: ${name} -->`;
@@ -55,6 +75,12 @@ export async function verifyDesignCatalog({ write = false, root = guiRoot } = {}
   for (const component of registry.components) {
     assert.ok(/^[A-Z]\w*$/.test(component.id) && text(component.purpose), `invalid component: ${component.id}`);
     await source(root, component.source);
+    if (component.importFrom !== undefined) assert.ok(/^@areal\/[a-z-]+$/.test(component.importFrom) || component.importFrom === "@areal/ui/wip", `invalid package import: ${component.id}`);
+    // 成熟度只由包入口决定：目录里的 importFrom 必须与组件实际所在的入口一致。
+    if (component.importFrom === "@areal/ui" || component.importFrom === "@areal/ui/wip") {
+      const entry = component.importFrom === "@areal/ui" ? "index" : "wip";
+      assert.ok((await uiEntryExports(root))[entry].has(component.id), `${component.id} is not exported by ${component.importFrom}; update registry.json importFrom`);
+    }
   }
   list(registry.patterns, "patterns");
   unique(registry.patterns.map(item => item.id), "pattern ids");
@@ -97,6 +123,39 @@ export async function verifyDesignCatalog({ write = false, root = guiRoot } = {}
     assert.ok(patterns.has(id), `baseCandidate: unknown pattern ${id}`);
     for (const component of patterns.get(id).components) assert.ok(baseComponents.has(component), `baseCandidate: ${id} needs ${component}`);
   }
+  assert.ok(["candidate", "frozen-beta"].includes(base.status), "baseCandidate.status must be candidate or frozen-beta");
+  assert.ok(base.snapshot && text(base.snapshot.owner), "baseCandidate.snapshot needs owner");
+  await reference(root, base.snapshot.owner);
+  assert.ok(base.snapshot.revision === null || /^[a-f0-9]{40}$/.test(base.snapshot.revision), "baseCandidate.snapshot.revision must be null or an exact commit");
+  if (base.status === "frozen-beta") assert.ok(base.snapshot.revision !== null, "frozen baseCandidate.snapshot.revision needs an exact commit");
+  list(base.admissions, "baseCandidate.admissions");
+  unique(base.admissions.map(item => item.id), "baseCandidate.admissions ids");
+  for (const item of base.admissions) assert.ok(baseComponents.has(item.id), `baseCandidate: unknown admitted member ${item.id}`);
+  for (const id of baseComponents) assert.ok(base.admissions.some(item => item.id === id), `baseCandidate: missing admission ${id}`);
+  list(base.evidence, "baseCandidate.evidence");
+  unique(base.evidence.map(item => item.id), "baseCandidate.evidence ids");
+  const evidenceIds = new Set(base.evidence.map(item => item.id));
+  for (const item of base.evidence) {
+    assert.ok(/^E-[A-Z]+$/.test(item.id), `invalid evidence id ${item.id}`);
+    await source(root, item.checker);
+    await reference(root, item.report);
+  }
+  const exports = [];
+  for (const item of base.admissions) {
+    await reference(root, item.contract);
+    unique(item.consumers, `${item.id}.consumers`);
+    for (const consumer of item.consumers) await source(root, consumer);
+    for (const key of ["variants", "states", "evidence"]) {
+      unique(item[key], `${item.id}.${key}`);
+      assert.ok(item[key].every(value => text(value) && /^[A-Za-z0-9][A-Za-z0-9/-]*$/.test(value)), `${item.id}.${key}: expected finite named values`);
+    }
+    for (const id of item.evidence) assert.ok(evidenceIds.has(id), `${item.id}: unknown evidence ${id}`);
+    const names = item.exports ?? [item.id];
+    unique(names, `${item.id}.exports`);
+    assert.ok(names.includes(item.id) && names.every(name => /^[A-Z]\w*$/.test(name)), `${item.id}: invalid exports`);
+    exports.push(...names);
+  }
+  unique(exports, "baseCandidate exports");
   const surfaces = (await readdir(join(dataRoot, "surfaces"))).filter(name => name.endsWith(".json")).sort();
   list(surfaces, "surface contracts");
   const surfaceIds = [];
@@ -158,7 +217,14 @@ export async function verifyDesignCatalog({ write = false, root = guiRoot } = {}
   const patternTable = "| ID / 用户任务 | 最小组合 / 生产参考 | 允许变化 | 验收重点 |\n| --- | --- | --- | --- |\n" + registry.patterns.map(item => `| ${item.id} ${cells(item.intent)} | ${item.components.join(" + ")}；[参考](../${item.reference}) | ${cells(item.variation)} | ${cells(item.acceptance)} |`).join("\n");
   const catalog = "// 由 design-system/registry.json 生成；运行 pnpm --dir clients/gui design:sync。\n// 只记录角色与定义名，数值始终从生产 CSS 读取。\nexport const tokenGroups = " + JSON.stringify(registry.tokenGroups, null, 2) + " as const;\nexport const baseCandidate = " + JSON.stringify(base, null, 2) + " as const;\n";
   const outputs = new Map([["renderer/src/design-system/catalog.ts", catalog]]);
-  const baseSummary = `候选 ID：\`${base.id}\`；版本：\`${base.version}\`。该版本尚未冻结。\n\n| 层 | 准入范围 |\n| --- | --- |\n| Foundations | ${base.foundations.join("、")} |\n| Primitives | ${base.primitives.join("、")} |\n| Compositions | ${base.compositions.join("、")} |\n| Patterns | ${base.patterns.join("、")} |\n\n### 验收条件\n\n${base.acceptance.map(value => `- ${value}`).join("\n")}\n\n### 边界\n\n${base.limits.map(value => `- ${value}`).join("\n")}`;
+  const sourceEntry = base.admissions.map(item => {
+    const component = registry.components.find(component => component.id === item.id);
+    const path = relative("renderer/src/design-system", component.source).replace(/\.tsx?$/, ".js");
+    return `export { ${(item.exports ?? [item.id]).join(", ")} } from "${component.importFrom ?? (path.startsWith(".") ? path : `./${path}`)}";`;
+  }).join("\n") + "\n";
+  outputs.set("renderer/src/design-system/base-components.ts", sourceEntry);
+  const admissionTable = "| 成员 | 合同 / 生产消费者 | 有限变体 | 状态 | 证据ID |\n| --- | --- | --- | --- | --- |\n" + base.admissions.map(item => `| ${item.id} | [合同](../${item.contract})；${item.consumers.map(path => `[消费者](../${path})`).join("、")} | ${item.variants.join(", ")} | ${item.states.join(", ")} | ${item.evidence.join(", ")} |`).join("\n");
+  const baseSummary = `候选 ID：\`${base.id}\`；版本：\`${base.version}\`；状态：\`${base.status}\`。\n\n来源快照：${base.snapshot.revision ? `\`${base.snapshot.revision}\`` : "待最终验收后记录"}；冻结与兼容所有者：[${base.snapshot.owner}](../${base.snapshot.owner})。\n\n| 层 | 准入范围 |\n| --- | --- |\n| Foundations | ${base.foundations.join("、")} |\n| Primitives | ${base.primitives.join("、")} |\n| Compositions | ${base.compositions.join("、")} |\n| Patterns | ${base.patterns.join("、")} |\n\n### 成员准入\n\n${admissionTable}\n\n证据ID统一映射到 [Base证据索引](base-evidence.md)。路径验证只确认引用存在，不解析JSX证明消费者采用；真实符号导出由TypeScript检查。\n\n### 验收条件\n\n${base.acceptance.map(value => `- ${value}`).join("\n")}\n\n### 边界\n\n${base.limits.map(value => `- ${value}`).join("\n")}`;
   for (const [file, name, body] of [["inventory.md", "components", componentTable], ["patterns.md", "patterns", patternTable], ["base.md", "base", baseSummary]]) {
     const path = `design-system/${file}`;
     outputs.set(path, block(await source(root, path), name, body));

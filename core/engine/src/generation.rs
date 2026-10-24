@@ -318,7 +318,7 @@ impl Engine {
                 .last()
                 .and_then(|t| t.configuration.as_ref())
                 .and_then(|c| c.options.max_model_rounds);
-            if state.thread.is_side() {
+            if state.thread.is_read_only_side() {
                 (
                     Some(
                         configured
@@ -369,10 +369,13 @@ impl Engine {
             // 只在模型请求期间持有许可；等待与停止不占其他会话的模型名额。
             let side_thread_id = {
                 let state = cell.state.lock().await;
-                state.thread.is_side().then(|| state.thread.id.clone())
+                state
+                    .thread
+                    .is_read_only_side()
+                    .then(|| state.thread.id.clone())
             };
             while steer.try_recv().is_ok() {}
-            let (configuration, desktop_enabled) = {
+            let (configuration, thread) = {
                 let state = cell.state.lock().await;
                 (
                     state
@@ -381,12 +384,12 @@ impl Engine {
                         .last()
                         .and_then(|t| t.configuration.clone())
                         .unwrap_or_default(),
-                    state.thread.desktop.is_some(),
+                    state.thread.clone(),
                 )
             };
             // 工具声明参与缓存前缀；收尾轮仅禁用调用，不移除 schema。
             let tool_definitions = self
-                .visible_tools(cell, &configuration, desktop_enabled)
+                .visible_tools(cell, &configuration, thread.desktop.is_some(), &thread)
                 .await;
             // 使用现有请求上下文提供指引，保持持久工具定义及模型收到的声明不变。
             let browser_instructions = tool_definitions.iter()
@@ -395,6 +398,10 @@ impl Engine {
             let task_instructions = self.task_context(cell).await?;
             let goal_instructions = self.goal_instructions(cell).await?;
             let app_context = self.app_model_context(&cell.id).await;
+            let reference_thread = cell.state.lock().await.thread.clone();
+            let conversation_reference = self
+                .conversation_reference_reminder(&reference_thread)
+                .await?;
             let (
                 messages,
                 live_context,
@@ -429,6 +436,9 @@ impl Engine {
                     app_reference_message(&messages, &app_context, compacted_reference_seen)?
                 {
                     live_context.push(reference);
+                }
+                if let Some(reference) = &conversation_reference {
+                    live_context.push(Message::text("system", reference.clone()));
                 }
                 if let Some(browser) = browser_instructions {
                     live_context.push(Message::text("system", browser));
@@ -516,6 +526,8 @@ impl Engine {
                     let text = message.text_content();
                     let kind = if text.contains("Current authoritative goal: ") {
                         Some("Current authoritative goal: ")
+                    } else if text.starts_with("Selected conversation references: ") {
+                        Some("Selected conversation references: ")
                     } else if text.starts_with("Built-in Browser guidance: ") {
                         Some("Built-in Browser guidance: ")
                     } else if text.starts_with("Choose checks that can falsify the implementation")

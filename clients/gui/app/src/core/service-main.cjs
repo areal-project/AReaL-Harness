@@ -15,7 +15,8 @@ const { ServiceConnection, waitForServiceProcessExit } = require('./service-clie
 const { createResourceRecovery } = require('./resource-recovery.cjs');
 const { BackgroundNotifications } = require('./notifications.cjs');
 const { SharedPowerMonitor } = require('./power.cjs');
-const { systemProxyEnvironment } = require('./system-proxy.cjs');
+const { resolveDesktopNetwork } = require('./desktop-network.cjs');
+const { readLibraryStartupSettings } = require('./library.cjs');
 const { proxyRelay } = require('./proxy-relay.cjs');
 const { RemoteControl } = require('./remote.cjs');
 const { desktopExecutables } = require('./desktop-executables.cjs');
@@ -117,7 +118,8 @@ async function start() {
   startupTraceService.advance('app_ready');
   await app.whenReady();
   startupTraceService.advance('proxy_discovery');
-  backend = new CoreBackend({ ...options, proxyEnvironment: await systemProxyEnvironment(), encryption: safeStorage });
+  const network = await resolveDesktopNetwork(readLibraryStartupSettings(home), process.env, { caBundleDirectory: join(home, 'network-ca') });
+  backend = new CoreBackend({ ...options, proxyEnvironment: network, encryption: safeStorage });
   startupTraceService.advance('proxy_relay');
   let ports;
   try { ports = JSON.parse(await readFile(join(home, 'proxy-relays.json'), 'utf8')); }

@@ -11,6 +11,7 @@ import { createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { chromium, _electron as electron } from '../app/node_modules/playwright-core/index.mjs';
+import { applicationFixture } from './application-fixture.mjs';
 import { createIdentity, identityId } from '../packages/remote/src/channel.mjs';
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -21,7 +22,16 @@ const { DesktopService } = require('../app/src/core/service-protocol.cjs');
 const { RemoteControl } = require('../app/src/core/remote.cjs');
 const { createRemoteNetworkAdapter } = require('../app/src/core/remote-network.cjs');
 const { serviceIdentity } = require('../app/src/core/service-config.cjs');
+const { createOwner } = require('../app/src/core/application-owner.cjs');
 const scratch = await mkdtemp('/private/tmp/areal-remote-rc02-');
+// The in-process Host and real Main belong to one explicit fixture application.
+// Ownership checks remain active; application exit is covered by its own suite.
+const applicationOwner = createOwner(join(scratch, 'electron'));
+const application = await applicationFixture(gui, join(scratch, 'application'), `
+require(${JSON.stringify(join(gui, 'app/src/core/application-owner.cjs'))}).createOwner = profile => {
+  require('node:assert/strict').equal(require('node:fs').realpathSync(profile), ${JSON.stringify(applicationOwner.profile)});
+  return ${JSON.stringify(applicationOwner)};
+};`);
 const workspace = join(scratch, 'workspace');
 const home = join(scratch, 'desktop');
 await mkdir(workspace);
@@ -38,7 +48,7 @@ await writeFile(join(scratch, 'user', '.areal', 'config.toml'), `schema_version=
 const deployment = join(scratch, 'desktop.json');
 await writeFile(deployment, JSON.stringify({ profiles: [{ id: 'fixture', revision: 'v1', displayName: 'Fixture', instructions: 'Complete the task' }] }));
 const backend = new CoreBackend({ binary: process.env.AREAL_CORE_BIN || resolve(gui, '../../target/debug/areal'),
-  home, harnessHome: join(scratch, 'registry'), userHome: join(scratch, 'user'), desktopConfig: deployment,
+  home, applicationOwner, harnessHome: join(scratch, 'registry'), userHome: join(scratch, 'user'), desktopConfig: deployment,
   desktopProcesses: true });
 let service, browser, app, passed = false;
 const checks = [];
@@ -157,7 +167,7 @@ try {
     AREAL_CORE_USER_HOME: join(scratch, 'user'), AREAL_HARNESS_SERVICE_HOME: join(scratch, 'registry'),
     AREAL_GUI_USER_DATA: join(scratch, 'electron'), AREAL_CORE_DESKTOP_CONFIG: deployment };
   for (const name of ['AREAL_CORE_CONFIG', 'AREAL_HARNESS_CONFIG', 'AREAL_HARNESS_HOME', 'AREAL_CORE_WORKSPACE', 'ELECTRON_RUN_AS_NODE']) delete env[name];
-  app = await electron.launch({ executablePath: require('electron'), args: [join(gui, 'app')], env, timeout: 60000 });
+  app = await electron.launch({ executablePath: require('electron'), args: [application.path], env, timeout: 60000 });
   const desktop = await app.firstWindow();
   await desktop.locator('[data-testid=areal-workbench]').waitFor({ timeout: 60000 });
   await desktop.getByRole('button', { name: '设置', exact: true }).click();
@@ -182,7 +192,8 @@ try {
   while (remote.state().directUrl !== 'https://fixture.example.ts.net' && Date.now() < publishedDeadline) await new Promise(resolve => setTimeout(resolve, 30));
   assert.equal(remote.state().directUrl, 'https://fixture.example.ts.net');
   assert.match(await desktop.getByRole('textbox', { name: '当前连接链接', exact: true }).inputValue(), /^https:\/\/fixture\.example\.ts\.net\/#/);
-  await desktop.getByRole('tab', { name: '公网', exact: true }).click();
+  await desktop.getByRole('combobox', { name: '手机访问方式', exact: true }).click();
+  await desktop.getByRole('option', { name: '公网', exact: true }).click();
   await desktop.getByRole('button', { name: '生成公网 Funnel 方案', exact: true }).click();
   const scopeConsent = desktop.getByLabel('我明确确认按此方案更改入口访问范围。', { exact: true });
   const publicConsent = desktop.getByLabel('我再次确认将此 Remote 入口公开到互联网。', { exact: true });
@@ -365,11 +376,12 @@ try {
   checks.push('public listener did not expose desktop service token or route');
   console.log(JSON.stringify({ passed, evidence: scratch, checks }));
 } finally {
-  await browser?.close(); await app?.close(); service?.close();
+  await browser?.close(); await application.close(); await app?.close(); service?.close();
   for (const project of backend.projects.values()) {
     try { await project.client?.request('areal/server/drain', { strategy: 'cancel' }); } catch { /* 保留原失败。 */ }
   }
   await backend.shutdown().catch(() => backend.disconnect());
+  await backend.disconnect();
   model.closeAllConnections(); await new Promise(resolve => model.close(resolve));
   const manifest = { passed, checks, networkWizard, modelRequests, transport: 'direct-loopback',
     screenshots: ['desktop-network-wizard.png (production Electron with fake CLI)', 'desktop-pairing.png (production Electron)', 'remote-pairing.png (desktop Chrome; not mobile acceptance)'],
@@ -379,7 +391,7 @@ try {
       diffSha256: createHash('sha256').update(execFileSync('git', ['diff', 'HEAD'], { cwd: root })).digest('hex') },
     core: { binary: backend.binary, sha256: await fileSha256(backend.binary) },
     environment: { node: process.version, chrome: browser?.version() ?? null, platform: process.platform, arch: process.arch },
-    scope: 'real isolated DesktopService/Core/Runtime, deterministic local model, production Electron settings and Remote browser page',
+    scope: 'real isolated DesktopService/Core/Runtime, deterministic local model, production Electron settings and Remote browser page; shared application owner identity supplied by fixture, not application-exit acceptance',
     notRun: ['real Tailscale/tailnet/Funnel/public T44 and phone reachability', 'public HTTPS/WSS', 'mobile Safari/Chrome devices', 'system keychain', 'signed package', 'Relay'] };
   await writeFile(join(scratch, 'manifest.json'), JSON.stringify(manifest, null, 2));
 }

@@ -4,7 +4,7 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { createHash, randomUUID } = require('node:crypto');
+const { createHash } = require('node:crypto');
 const { parsePatch } = require('diff');
 const exec = promisify(execFile);
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -63,69 +63,8 @@ async function copyWorktreeIncludes(source, destination) {
   return [...new Set(copied)];
 }
 
-async function createTask(root, storage, options = {}) {
-  const taskId = options.taskId ?? randomUUID();
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(taskId)) throw new Error('无效工作树标识');
-  const source = options.source || 'head';
-  if (!['head', 'working-tree', 'branch'].includes(source)) throw new Error('不支持的隔离起点');
-  const target = (await git(root, 'rev-parse', '--show-toplevel')).trim();
-  const sourceHead = (await git(target, 'rev-parse', 'HEAD')).trim();
-  let base = sourceHead;
-  if (source === 'branch') {
-    if (typeof options.ref !== 'string' || !options.ref.trim() || options.ref.length > 512) throw new Error('请输入起始分支或提交');
-    base = (await git(target, 'rev-parse', '--verify', '--end-of-options', `${options.ref}^{commit}`)).trim();
-  }
-  if (source === 'working-tree') {
-    if ((await git(target, 'ls-files', '--unmerged')).trim()) throw new Error('项目存在未解决冲突，请先处理后再创建工作区快照');
-    const scratch = await fs.mkdtemp(path.join(require('node:os').tmpdir(), 'areal-worktree-index-'));
-    try {
-      // A separate index captures tracked and untracked files without changing the user's staging area.
-      const snapshotGit = async (...args) => (await exec('git', ['-C', target, ...args], {
-        maxBuffer: 8 * 1024 * 1024, env: { ...process.env, GIT_INDEX_FILE: path.join(scratch, 'index'), GIT_TERMINAL_PROMPT: '0' },
-      })).stdout.trim();
-      await snapshotGit('read-tree', sourceHead);
-      await snapshotGit('add', '-A', '--', '.');
-      const tree = await snapshotGit('write-tree');
-      base = await snapshotGit('-c', 'user.name=AReaL Harness', '-c', 'user.email=worktree@localhost', 'commit-tree', tree, '-p', sourceHead, '-m', 'Workspace starting snapshot');
-    } finally { await fs.rm(scratch, { recursive: true, force: true }); }
-  }
-  const branch = `areal/task-${taskId}`;
-  const directory = path.join(storage, 'worktrees', branch.split('/')[1]);
-  // A caller-supplied identity is a receipt key, never permission to replace
-  // an earlier tree. Check before entering the rollback region.
-  if (await fs.lstat(directory).then(() => true, error => { if (error.code === 'ENOENT') return false; throw error; })) throw new Error('工作树目录已存在，请核对原创建结果');
-  if ((await git(target, 'branch', '--list', branch)).trim()) throw new Error('工作树分支已存在，请核对原创建结果');
-  await fs.mkdir(path.dirname(directory), { recursive: true });
-  let real;
-  try {
-    await git(target, 'worktree', 'add', '-b', branch, directory, base);
-    real = await fs.realpath(directory);
-    const copied = await copyWorktreeIncludes(target, real);
-    const record = { target, base, source, sourceHead, sourceRef: source === 'branch' ? options.ref : null, branch, directory: real, copied, createdAt: new Date().toISOString() };
-    await fs.writeFile(metadataPath(real, storage), JSON.stringify(record), { flag: 'wx' });
-    return record;
-  } catch (error) {
-    try {
-      if (real) await git(target, 'worktree', 'remove', '--force', real);
-      else await fs.rm(directory, { recursive: true, force: true });
-      await git(target, 'branch', '-D', branch);
-    } catch { error.worktreeUncertain = true; }
-    throw error;
-  }
-}
+const { createTask, readTaskCreation, readTaskCreationStatus, listWorktrees, checkoutRoot, inspectManagedTask, readManagedTaskRemoval, removeManagedTask } = require('./worktrees');
 
-async function readTaskCreation(storage, taskId) {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(taskId)) throw new Error('无效工作树标识');
-  const directory = path.join(storage, 'worktrees', `task-${taskId}`);
-  try {
-    const record = await metadata(directory, storage);
-    if (!record) return null;
-    if (record.directory !== await fs.realpath(directory) || record.branch !== `areal/task-${taskId}`) throw new Error('工作树记录不匹配');
-    const actual = await workspaceInfo(directory, storage);
-    if (actual.root !== record.directory) throw new Error('工作树目录已变化');
-    return record;
-  } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
-}
 function reviewFiles(diff, paths) {
   const parsed = diff ? parsePatch(diff) : [];
   if (paths && parsed.length !== paths.length) throw new Error('审查期间文件列表已变化，请刷新');
@@ -463,4 +402,4 @@ async function removeTask(root, storage, options = {}) {
   return { removed: true, directory: record.directory, branch: record.branch, target: record.target };
 }
 
-module.exports = { fileStatus, createTask, readTaskCreation, review, reviewCommits, reviewBranches, mergeTask, removeTask, copyWorktreeIncludes, reviewFiles, workspaceInfo, snapshotTree, reviewTrees, restoreTrees, reviewTurnFiles, gitState, gitChange };
+module.exports = { inspectManagedTask, readManagedTaskRemoval, removeManagedTask, fileStatus, createTask, readTaskCreation, readTaskCreationStatus, listWorktrees, checkoutRoot, review, reviewCommits, reviewBranches, mergeTask, removeTask, copyWorktreeIncludes, reviewFiles, workspaceInfo, snapshotTree, reviewTrees, restoreTrees, reviewTurnFiles, gitState, gitChange };

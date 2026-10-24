@@ -756,7 +756,7 @@ impl Engine {
                     value["capabilities"]["networkPolicy"] =
                         json!(crate::permissions::base_network_policy(
                             Some(configuration),
-                            state.thread.is_side()
+                            state.thread.is_read_only_side()
                         ));
                 }
                 let raw =

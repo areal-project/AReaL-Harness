@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "id": "worktree-settings",
+  "intent": "管理全局创建偏好、按项目的目录，以及可保存的项目环境",
+  "pattern": "P-SETTINGS",
+  "target": "renderer/src/settings/WorktreesSettings.tsx",
+  "runtime": "desktop",
+  "interactionFamilies": [
+    "I-MANAGE",
+    "I-INPUT",
+    "I-RETURN",
+    "I-RECOVER"
+  ],
+  "reference": {
+    "kind": "screenshot",
+    "visualTarget": "WT-R03 General、WT-R01 项目列表、WT-R02 / WT-R07 环境编辑；规则正文：design-system/worktrees.md。用户原图留本地，代表状态对照见 design-system/exercises/worktrees.md。"
+  },
+  "slots": {
+    "label": [
+      "SettingsRow",
+      "SettingsSection"
+    ],
+    "control": [
+      "Button",
+      "Switch",
+      "SettingsSelect",
+      "SettingsSegmentedTabs"
+    ],
+    "detail": [
+      "SettingsDisclosure",
+      "Feedback"
+    ]
+  },
+  "states": [
+    {
+      "id": "default",
+      "condition": "General 已读取",
+      "expected": "一个创建与清理组，下方按项目的紧凑目录列表；根默认 ~/.areal/worktrees"
+    },
+    {
+      "id": "busy",
+      "condition": "保存、删除或环境操作已受理",
+      "expected": "值与对象保留，所属操作显示忙碌，禁止重复提交"
+    },
+    {
+      "id": "failed",
+      "condition": "读取或保存明确失败",
+      "expected": "反馈就近显示，不清空已确认配置或冒充保存成功"
+    },
+    {
+      "id": "unknown",
+      "condition": "保存、删除或 Action 结果未知",
+      "expected": "保留对象和待核对状态，不自动重提、删行或重跑"
+    },
+    {
+      "id": "disabled",
+      "condition": "宿主不允许修改或当前对象不可用",
+      "expected": "控件值与原因可读，不能以视觉可用绕过宿主"
+    },
+    {
+      "id": "projects",
+      "condition": "进入 Environments，存在多个项目",
+      "expected": "项目列表先行；进入所属环境列表后打开独立编辑页，返回保留位置"
+    },
+    {
+      "id": "environment-editor",
+      "condition": "三个平台有未保存脚本",
+      "expected": "名称、Setup、Cleanup、Actions 顺序固定；每个脚本独立切平台，不丢其他文本"
+    },
+    {
+      "id": "actions-empty",
+      "condition": "没有 Action",
+      "expected": "安静整行空态与添加入口，保存不执行脚本"
+    },
+    {
+      "id": "actions-populated",
+      "condition": "三个 Action，长名称与命令",
+      "expected": "具名紧凑列表，所属行展开编辑；实际运行在会话工作区入口"
+    },
+    {
+      "id": "delete-blocked",
+      "condition": "活动、未确认、脏目录或其他保护阻挡删除",
+      "expected": "目录行保留并显示真实原因，无强制删除或恢复快照承诺"
+    },
+    {
+      "id": "empty",
+      "condition": "已确认目录列表为空",
+      "expected": "显示尚无 Worktree，读取失败不算空集合"
+    },
+    {
+      "id": "unsaved-return",
+      "condition": "编辑未保存时切换项目或返回",
+      "expected": "沿原导航保护，草稿保留；保存返回不发送 Prompt"
+    }
+  ],
+  "conditions": {
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "fontSizes": [
+      14,
+      18
+    ],
+    "widthModes": [
+      "wide",
+      "narrow"
+    ],
+    "reducedMotion": [
+      false,
+      true
+    ]
+  },
+  "invariants": [
+    "遵循 WT-SETTINGS-01、WT-LIST-01、WT-ENV-01～02、WT-ACTION-01",
+    "局部候选尺寸和有限控件例外只归 worktrees.md，不改变全局 Token 或 Base",
+    "项目、环境、目录和请求身份沿原所有者，不从目录名猜测归属",
+    "Default / macOS / Linux；只解释当前 AREAL 三个变量；不新增 Windows、凭据或快照能力"
+  ],
+  "evidence": {
+    "status": "compared",
+    "artifacts": [
+      {
+        "path": ".scratch/worktree-ui-20261024/renderer-4/settings-general.png",
+        "sha256": "defe8bf758e5ed367b23a98099228fbc1c11fa1381ae591a4c2d7ab7f57777ed",
+        "state": "settings-general"
+      },
+      {
+        "path": ".scratch/worktree-ui-20261024/renderer-4/settings-environment-projects.png",
+        "sha256": "e8a44ee414805ff588bddcc75332ec54b8b9a7eeddeabec17d8e5f69cc22ea6f",
+        "state": "settings-environment-projects"
+      },
+      {
+        "path": ".scratch/worktree-ui-20261024/renderer-4/settings-platform-independent.png",
+        "sha256": "6621a85275b67072f3dedb4b8f19a57accd0c527f7188ca7af6c4172c8a39a45",
+        "state": "settings-platform-independent"
+      },
+      {
+        "path": ".scratch/worktree-ui-20261024/renderer-4/settings-dark-18-wide.png",
+        "sha256": "a0b1cb7f33d1002ebeff92b825b9859dc2f28743bf57b7d913de3dece7e4b4a5",
+        "state": "settings-dark-18-wide"
+      }
+    ],
+    "gaps": [
+      "组件保存/删除使用服务 fixture；真实配置重载与脏目录拒删另见桌面验收题",
+      "原生目录窗口、Linux 实机、自动保留清理和成功删除前 Cleanup 未覆盖",
+      "只采用 Default/macOS/Linux 与现有安全删除；没有 Windows、脏文件复制或恢复快照承诺"
+    ]
+  }
+}

@@ -64,7 +64,7 @@ export function ChatPromptActionMenu({
             <Button
               type="button"
               variant="ghost"
-              size="icon-md"
+              size="icon"
               className="gap-1 rounded-lg text-ui-base"
               onMouseDown={(event) => event.preventDefault()}
               aria-label={actionMenuTitle}

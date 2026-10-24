@@ -119,7 +119,8 @@ export function BackendServiceStatus(props: BackendStatusProps) {
   const { message, diagnostic, tone, action, retryUpdate } = presentation;
   const { lifecycle, pending, update, onAction } = props;
   const applying = action === "update" && (pending || update?.state === "applying");
-  return <div data-testid="backend-service-status"><FeedbackNotice tone={tone} message={t(applying ? "backend.updating" : message)}
+  // 后台设置页的操作状态和控件属于页面内容，不能随操作通知消失。
+  return <div data-testid="backend-service-status"><FeedbackNotice transient={false} tone={tone} message={t(applying ? "backend.updating" : message)}
     detail={diagnostic} actions={<>
     {lifecycle?.recovery && <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => onAction("recover")}>
       {t("backend.recover")}

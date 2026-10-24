@@ -21,6 +21,9 @@ export function NotificationSettings({ settings, action, connected }: { settings
   return <SettingsSection title={t("settings.notificationSettings.notifications")}>
     <Feedback error={error} />
     <SettingsGroupCard>
+      <SettingsRow label={t("settings.desktop.taskNotifications")} description={t("settings.desktop.taskNotificationsDescription")} control={
+        <SettingsSwitch aria-label={t("settings.desktop.taskNotifications")} disabled={disabled} checked={settings.taskNotifications !== false} onCheckedChange={v => void save("taskNotifications", v)} />
+      } />
       <SettingsRow label={t("settings.notificationSettings.turnCompletionNotifications")} description={t("settings.notificationSettings.chooseWhenToBeNotifiedAfterA")} control={
         <SettingsSelect aria-label={t("settings.notificationSettings.turnCompletionNotifications")} disabled={disabled} value={settings.turnNotifications ?? "unfocused"} onValueChange={selectedValue => void save("turnNotifications", selectedValue)}>
           <option value="always">{t("settings.notificationSettings.always")}</option><option value="unfocused">{t("settings.notificationSettings.whenUnfocused")}</option><option value="never">{t("settings.notificationSettings.never")}</option>

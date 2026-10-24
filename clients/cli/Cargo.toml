@@ -15,6 +15,7 @@ areal-tui.workspace = true
 areal-server.workspace = true
 areal-service-host.workspace = true
 areal-local-service.workspace = true
+areal-engine.workspace = true
 areal-config.workspace = true
 areal-protocol.workspace = true
 anyhow.workspace = true

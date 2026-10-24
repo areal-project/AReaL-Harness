@@ -75,10 +75,31 @@ pub(crate) fn source(
             json!({"type":"npm","package":package,"version":optional_text(source,"version")?,"registry":registry}),
         );
     }
-    let url = remote::normalize_git_url(
-        source["url"].as_str().context("Git URL missing")?,
-        marketplace_root,
-    )?;
+    let kind = source["source"].as_str().or(source["type"].as_str());
+    if matches!(kind, Some("archive" | "command" | "pip")) {
+        return Ok(json!({"type":kind.unwrap(),"unsupported":true}));
+    }
+    let github_url;
+    let raw_url = if kind == Some("github") {
+        let repo = source["repo"]
+            .as_str()
+            .context("GitHub repository missing")?;
+        let parts: Vec<_> = repo.split('/').collect();
+        ensure!(
+            parts.len() == 2
+                && parts.iter().all(|p| !p.is_empty()
+                    && *p != "."
+                    && *p != ".."
+                    && p.bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))),
+            "invalid GitHub repository"
+        );
+        github_url = format!("https://github.com/{repo}.git");
+        github_url.as_str()
+    } else {
+        source["url"].as_str().context("Git URL missing")?
+    };
+    let url = remote::normalize_git_url(raw_url, marketplace_root)?;
     let path = optional_text(source, "path")?
         .map(|path| package::relative(&path))
         .transpose()?;

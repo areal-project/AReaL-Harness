@@ -1,6 +1,6 @@
 # AReaL GUI 设计系统架构
 
-[设计地图](README.md)组织以 GUI 为准的设计知识，为后续 Web 复用保留边界。当前已建立设计主题、首组文案建议与桌面工作台说明；[完整工作台候选](products/workbench/candidate.md)提供可操作的本地体验，生产迁移及视觉准入仍按[建设计划](roadmap.md)推进。
+[设计地图](README.md)组织以 GUI 为准的设计知识，为后续 Web 复用保留边界。当前已建立设计主题、首组文案建议与桌面工作台说明；[完整工作台候选](products/workbench/candidate.md)提供可操作的本地体验，首条任务视觉切片复用生产组件与执行控制器，其他路径迁移及视觉准入仍按[建设计划](roadmap.md)推进。
 
 ## 知识、实现与执行分开
 
@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 取舍依据 | [设计原则](principles/README.md) | 平台引用适用理由，不复制定义 |
 | 基础表达 | [设计基础](foundations/README.md)、[Token 地图](foundations/tokens.md) | GUI 确立角色与默认值；已复用的默认值归共享源，动态偏好与浏览器适配归原所有者 |
-| 内容表达 | [内容与文案](content/README.md) | GUI 文案键、翻译与真实状态绑定；Web 按实际入口复用 |
+| 内容表达 | [内容与文案](content/README.md)、[对话内容呈现系统](content/conversation-content-system.md) | 正文、公式、结构化内容与交互页面的展示合同；GUI保留翻译、状态与资源绑定，Web按实际入口复用 |
 | 人机关系 | [人与 Agent](people-and-agents/README.md) | 现有服务判断身份、权限、受理、执行和结算 |
 | 任务组织 | [交互模式](patterns/README.md) | GUI 布局、阅读、焦点、状态投影和合法动作绑定；Web 复用时验证适配 |
 | 控件与组合 | [组件目录](components/README.md) | 真实导出、参数、平台交互及生产示例 |
@@ -28,6 +28,8 @@ GUI 是设计与验收主线。后续 Remote Web、本地 Web 复用适用的设
 GUI 的 `registry.json` 仍是本端索引。I-*、P-* 和 CONV-* 的定义、生成区块与 surface 合同继续位于 GUI 所有者。共享主题拥有设计解释，平台规则引用该解释后明确本端要求；共享目录不再定义一套同 ID 的正文。
 
 组件参数从类型和实现读取，结构索引由原 registry 维护，生产预览使用真实组件。规则、数值、接口和示例各有一个来源，派生文档或检索格式不反向编辑它们。
+
+按 [D-004](decisions/004-local-ui-package.md)，基础值、原纯调色板函数和共享展示实现由私有 [@areal/ui](../clients/gui/packages/ui/README.md)承接，原 GUI registry 继续拥有模式与 Base。包生成 CSS、类型、组件索引和 Agent 入口，原设计站提供独立包示例；[UI 包与架构](../clients/gui/renderer/design-system.html?ui-library)可核对实际来源与产物。共享组件的当前范围见[组件迁移](../clients/gui/design-system/component-migration.md)，产品适配与Gen UI/MCP Apps宿主继续归原renderer、Electron和Core，不因展示包化而迁移执行权威。
 
 ## 文档整理与产品演进
 

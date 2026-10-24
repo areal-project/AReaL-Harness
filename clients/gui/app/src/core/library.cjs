@@ -2,6 +2,41 @@
 const { readFile } = require('node:fs/promises');
 const { join } = require('node:path');
 const { randomUUID } = require('node:crypto');
+const { openSync, fstatSync, readSync, closeSync, constants } = require('node:fs');
+const { normalizeNetworkSetting } = require('./desktop-network.cjs');
+const DESKTOP_SETTING_DEFAULTS = Object.freeze({ terminalInheritSystemProfile: true, terminalFontFamily: '',
+  httpProxy: '', httpProxyNoProxy: '', httpProxyCaCertPath: '', hardwareAcceleration: true, taskNotifications: true });
+
+function readLibraryStartupSettings(home) {
+  let fd;
+  try { fd = openSync(join(home, 'library.json'), constants.O_RDONLY | constants.O_NONBLOCK); }
+  catch (error) { if (error.code === 'ENOENT') return { ...DESKTOP_SETTING_DEFAULTS }; throw error; }
+  try {
+    const maximum = 8 * 1024 * 1024, stat = fstatSync(fd);
+    if (!stat.isFile() || stat.size > maximum) throw new Error('Desktop library must be a regular file no larger than 8 MiB');
+    const bytes = Buffer.alloc(maximum + 1), length = readSync(fd, bytes, 0, bytes.length, 0);
+    if (length > maximum) throw new Error('Desktop library exceeds 8 MiB');
+    const value = JSON.parse(bytes.subarray(0, length).toString('utf8'));
+    if (!value || typeof value !== 'object' || Array.isArray(value)
+      || value.settings !== undefined && (!value.settings || typeof value.settings !== 'object' || Array.isArray(value.settings))) throw new Error('Invalid desktop library settings');
+    const result = { ...DESKTOP_SETTING_DEFAULTS };
+    for (const [key, fallback] of Object.entries(DESKTOP_SETTING_DEFAULTS)) {
+      const setting = value.settings?.[key];
+      if (setting === undefined) continue;
+      if (typeof setting !== typeof fallback) throw new Error(`Invalid desktop setting ${key}`);
+      if (typeof setting === 'string' && (setting.length > (key === 'terminalFontFamily' ? 256 : 4096) || /[\x00-\x1f\x7f]/.test(setting))) throw new Error(`Invalid desktop setting ${key}`);
+      result[key] = typeof setting === 'string' ? setting.trim() : setting;
+    }
+    return result;
+  } finally { closeSync(fd); }
+}
+function validateDesktopString(key, value) {
+  if (key === 'terminalFontFamily') {
+    if (typeof value !== 'string' || value.length > 256 || /[\x00-\x1f\x7f]/.test(value)) throw new Error('Terminal font must be no longer than 256 characters without control characters');
+    return value.trim();
+  }
+  return normalizeNetworkSetting(key, value);
+}
 
 /** 桌面整理偏好与可重建导航摘要；Core 继续拥有会话、执行和历史。 */
 class CoreLibrary {
@@ -32,6 +67,7 @@ class CoreLibrary {
     return task;
   }
   async recordThreadActivity(projectId, threadId, completionId) {
+    projectId = this.backend.saved.find(project => project.id === projectId)?.logicalProjectId ?? projectId;
     if (!threadId) return;
     // Core timestamps have second precision; retain observed order only as a tie-break.
     return this.change(state => {
@@ -47,6 +83,7 @@ class CoreLibrary {
     });
   }
   async recordScheduledCompletion(projectId, run, completionId) {
+    projectId = this.backend.saved.find(project => project.id === projectId)?.logicalProjectId ?? projectId;
     if (!completionId || !run.threadId || run.status !== 'completed' || this.value.threads[`${projectId}:${run.threadId}`]?.scheduledCompletionId===run.id) return;
     return this.change(state => {
       const meta=state.threads[`${projectId}:${run.threadId}`] ??= {};
@@ -57,14 +94,18 @@ class CoreLibrary {
     });
   }
   threadSummaries(projectId) {
-    const live = this.backend.projects.get(projectId);
-    if (live?.summariesLoaded || live?.summaries?.length) return live.summaries;
-    const cached = this.value.projects[projectId]?.navigationSummaries;
-    if (Array.isArray(cached)) return cached;
-    // Older installations know pinned/renamed IDs before their first cache fill.
+    const owners = this.backend.worktrees?.owners(projectId) ?? this.backend.saved.filter(project => project.id === projectId);
+    const data = owners.flatMap(owner => {
+      const live = this.backend.projects.get(owner.id);
+      if (live?.summariesLoaded || live?.summaries?.length) return live.summaries;
+      const cached = this.value.projects[owner.id]?.navigationSummaries;
+      return Array.isArray(cached) ? cached : [];
+    });
+    if (data.length) return data;
     const prefix = `${projectId}:`;
     return Object.keys(this.value.threads).filter(key => key.startsWith(prefix)).map(key => ({ id: key.slice(prefix.length), preview: '未加载的任务' }));
   }
+
   async recordThreadSummaries(projectId, summaries) {
     // Deliberate whitelist: thread/list also carries configuration, permissions,
     // receipts and other execution state, none of which belongs in this cache.
@@ -91,14 +132,16 @@ class CoreLibrary {
       && !(operation === 'readThread' && this.backend.projects.get(projectId)?.model.state.threads?.[threadId])) throw new Error('未知会话');
     if ((operation.startsWith('rename') || operation === 'createSection') && (typeof title !== 'string' || !title.trim() || title.length > 200)) throw new Error('名称需要 1–200 个字符');
     if (operation === 'hideProject' && request.hidden) {
-      const live = await this.backend.start(projectId);
-      // 未打开的历史线程也可能保存暂停队列；不能仅凭当前视图隐藏它们。
-      for (const summary of live.summaries) {
-        const { thread } = await live.client.request('thread/read', { threadId: summary.id, includeTurns: true });
-        if (thread.turns?.some(turn => turn.status === 'inProgress') || thread.desktop?.queue?.items?.some(item => ['pending', 'running'].includes(item.status))) throw new Error('工作区仍有活动任务或排队消息，请先处理后再移出侧边栏');
+      const owners = this.backend.worktrees?.owners(projectId) ?? this.backend.saved.filter(project => project.id === projectId);
+      for (const owner of owners) {
+        const live = await this.backend.start(owner.id);
+        for (const summary of live.summaries) {
+          const { thread } = await live.client.request('thread/read', { threadId: summary.id, includeTurns: true });
+          if (thread.turns?.some(turn => turn.status === 'inProgress') || thread.desktop?.queue?.items?.some(item => ['pending', 'running'].includes(item.status))) throw new Error('工作区仍有活动任务或排队消息，请先处理后再移出侧边栏');
+        }
+        if (live.pending.length || Object.values(live.model.state.threads ?? {}).some(thread => thread.turns?.some(turn => turn.status === 'inProgress'))
+          || Object.values(live.model.state.queues ?? {}).some(queue => queue.items.some(item => ['pending', 'running'].includes(item.status)))) throw new Error('工作区仍有活动任务或排队消息，请先处理后再移出侧边栏');
       }
-      if (live?.pending.length || Object.values(live?.model.state.threads ?? {}).some(thread => thread.turns?.some(turn => turn.status === 'inProgress'))
-        || Object.values(live?.model.state.queues ?? {}).some(queue => queue.items.some(item => ['pending', 'running'].includes(item.status)))) throw new Error('工作区仍有活动任务或排队消息，请先处理后再移出侧边栏');
     }
     return this.change(state => {
       const project = projectId ? (state.projects[projectId] ??= {}) : {};
@@ -186,14 +229,23 @@ class CoreLibrary {
             turnNotifications: ['always', 'unfocused', 'never'], permissionNotifications: [true, false],
             questionNotifications: [true, false], notificationSound: ['default', 'silent'], preventSleep: [true, false], showInMenuBar: [true, false],
             fileOpenTarget: ['system', 'finder', 'zed', 'vscode', 'cursor'],
+            terminalInheritSystemProfile: [true, false], hardwareAcceleration: [true, false], taskNotifications: [true, false],
+            computerControlEnabled: [true, false], computerControlShowEntry: [true, false], computerControlProvider: ['native', 'lcu'],
             browserLinkTarget: ['internal', 'external'], browserLocalTarget: ['internal', 'external'], browserFullAddress: [true, false] };
-          if (!allowed[request.key]?.includes(request.value)) throw new Error('无效偏好设置');
+          let settingValue = request.value;
+          if (['terminalFontFamily', 'httpProxy', 'httpProxyNoProxy', 'httpProxyCaCertPath'].includes(request.key)) {
+            if (typeof request.value !== 'string') throw new Error('Invalid desktop setting');
+            settingValue = validateDesktopString(request.key, request.value);
+          } else if (request.key === 'computerControlExecutable') {
+            if (typeof request.value !== 'string' || request.value.length > 4096 || request.value.includes('\0')
+              || request.value && !require('node:path').isAbsolute(request.value)) throw new Error('LCU executable must be an absolute path');
+          } else if (!allowed[request.key]?.includes(request.value)) throw new Error('无效偏好设置');
           if (['sidebarSort', 'sidebarSortChats', 'sidebarSortProjects', 'sidebarSortPinned'].includes(request.key) && request.value === 'manual' && !state.sidebarThreadOrder.length) {
             const available = this.backend.saved.flatMap(owner => this.threadSummaries(owner.id).map(item => `${owner.id}:${item.id}`));
             if (!Array.isArray(request.order) || request.order.some(id => !available.includes(id)) || new Set(request.order).size !== request.order.length) throw new Error('排序列表已变化，请刷新');
             state.sidebarThreadOrder = [...request.order, ...available.filter(id => !request.order.includes(id))];
           }
-          state.settings[request.key] = request.value; break;
+          state.settings[request.key] = settingValue; break;
         }
         default: throw new Error('不支持的整理操作');
       }
@@ -268,4 +320,4 @@ function reorder(current, available, id, before) {
   ids.splice(before == null ? ids.length : ids.indexOf(before), 0, id);
   return ids;
 }
-module.exports = { CoreLibrary };
+module.exports = { CoreLibrary, readLibraryStartupSettings };

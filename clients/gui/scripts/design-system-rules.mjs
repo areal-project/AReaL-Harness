@@ -71,4 +71,13 @@ export function nativeControlFindings(source) {
   return out;
 }
 
-export { cssFindings, tsxFindings };
+// 圆角字面量只进入存量基线，不作为增量硬错误：组件局部几何允许存在，但数量只能减少。
+// 0、百分比和 var() 不计入。
+function radiusFindings(css) {
+  const source = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  return [...source.matchAll(/(?<=[{;])\s*(border(?:-(?:top|bottom|start|end)-(?:left|right|start|end))?-radius)\s*:\s*([^;{}]+)(?=[;}])/g)]
+    .filter(([, , value]) => !value.includes("var(--") && /(?:^|[\s(,])(?!0(?:px)?\b)\d+(?:\.\d+)?px\b/.test(value))
+    .map(([, property, value]) => `literal radius: ${property}: ${value.trim()}`);
+}
+
+export { cssFindings, tsxFindings, radiusFindings };

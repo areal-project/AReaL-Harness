@@ -348,7 +348,7 @@ export async function nativeProject(t, fixture, { large = false, commands = fals
             ...(commands ? ["areal/thread/start"] : []),
           ],
           features: {
-            ...(commands ? { threadStartAdmissionGuard: true } : {}),
+            ...(commands ? { threadStartAdmissionGuard: true, permissionPresets: true } : {}),
             atomicObserve: true,
             atomicObserveOwnership: true,
             subscriptionRemoval: true,

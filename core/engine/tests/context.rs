@@ -1234,6 +1234,7 @@ impl areal_engine::tools::DynamicToolHost for DesignHost {
         _: tokio_util::sync::CancellationToken,
     ) -> anyhow::Result<areal_protocol::DynamicToolResponse> {
         Ok(areal_protocol::DynamicToolResponse {
+            raw_mcp_result: None,
             success: true,
             structured_content: None,
             content_items: vec![areal_protocol::ToolContent::InputText {

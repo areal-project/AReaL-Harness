@@ -24,9 +24,10 @@ function port(url) {
 }
 
 class WorkspaceNetworkPolicy {
-  constructor(controlEndpoint = () => null, ownsDevTools = () => false) {
+  constructor(controlEndpoint = () => null, ownsDevTools = () => false, ownsRequest = () => true) {
     this.controlEndpoint = controlEndpoint;
     this.ownsDevTools = ownsDevTools;
+    this.ownsRequest = ownsRequest;
     this.frameGrants = new Map();
     this.active = true;
   }
@@ -93,13 +94,13 @@ class WorkspaceNetworkPolicy {
     return this.permits(details);
   }
   install(session) {
-    // One webRequest listener per Session. A closed context keeps a deny-only
-    // listener until Chromium releases the partition and its workers.
     session.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, respond) => {
+      if (!this.ownsRequest(details)) { respond({ cancel: true }); return; }
       void this.permitsResolved(details, session).then(allowed => respond({ cancel: !allowed }),
         () => respond({ cancel: true }));
     });
     session.webRequest.onHeadersReceived({ urls: ['<all_urls>'] }, (details, respond) => {
+      if (!this.ownsRequest(details)) { respond({ cancel: true }); return; }
       if (this.permitsDevTools(details)) { respond({}); return; }
       if (!this.permits(details)) { respond({ cancel: true }); return; }
       // 不增删站点 CSP、Connection-Allowlist 或下载响应头。

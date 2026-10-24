@@ -1,3 +1,4 @@
+import { UiMessageError } from "@/i18n/IntlProvider.js";
 import { buildFileMentionMarkdown } from "@/mentions/mentionMarkdown.js";
 
 export const WORKSPACE_FILE_DRAG_MIME = "application/x-areal-workspace-file";
@@ -151,7 +152,8 @@ export function createWorkspaceFileComposerMention(
     workspacePath,
     workspaceIdentity,
   );
-  const mentionTarget = sameWorkspace ? payload.relativePath : payload.path;
+  if (!sameWorkspace) throw new UiMessageError({ id: "chat.composer.workspaceReferenceCurrentOnly" });
+  const mentionTarget = payload.relativePath;
 
   return {
     markdown: buildFileMentionMarkdown(mentionTarget, payload.name, payload.type),

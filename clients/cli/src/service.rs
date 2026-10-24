@@ -56,6 +56,19 @@ pub enum ServiceCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Read published scheduled-task previews without starting Core or Runtime.
+    TaskCatalog {
+        #[arg(long)]
+        workspace: PathBuf,
+        #[arg(long)]
+        data_dir: PathBuf,
+        #[arg(long, default_value_t = 30)]
+        limit: usize,
+        #[arg(long)]
+        source_thread_id: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     Status {
         #[arg(long)]
         recovery: bool,
@@ -173,6 +186,27 @@ pub async fn execute(command: ServiceCommand) -> Result<()> {
         }
         ServiceCommand::List { .. } => {
             serde_json::to_value(areal_local_service::list(&root).await?)?
+        }
+        ServiceCommand::TaskCatalog {
+            workspace,
+            data_dir,
+            limit,
+            source_thread_id,
+            ..
+        } => {
+            ensure!((1..=1024).contains(&limit), "limit must be 1..1024");
+            let (target, bound) = areal_local_service::catalog_target(&workspace, &data_dir)?;
+            let catalog = if bound {
+                serde_json::to_value(areal_engine::read_published_task_catalog(
+                    &target.data_dir,
+                    source_thread_id.as_deref(),
+                    limit,
+                )?)?
+            } else {
+                serde_json::json!({"kind":"requiresCore","reason":"unbound"})
+            };
+            serde_json::json!({"version":1,"target":target,"source":"published",
+                "executionState":"unobserved","catalog":catalog})
         }
         ServiceCommand::Status {
             target,

@@ -1,0 +1,40 @@
+.worktrees-directory-list { min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-overlay); overflow: hidden; }
+.worktrees-directory-list:empty { display: none; }
+.worktrees-directory-project-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-inline);
+  min-height: var(--spacing-control-lg);
+  padding: var(--spacing-inline) var(--spacing-panel);
+  background: var(--color-settings-card, var(--color-card));
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-ui-caption);
+}
+
+.worktrees-directory-project-heading svg { width: 1rem; height: 1rem; flex: none; }
+.worktrees-directory-project-heading span { min-width: 0; overflow-wrap: anywhere; }
+.worktrees-directory-item { border-top: 1px solid var(--color-border); }
+.worktrees-directory-project + .worktrees-directory-project { border-top: 1px solid var(--color-border); }
+.worktrees-directory-row { display: flex; align-items: center; min-height: var(--spacing-control-lg); padding-inline: var(--spacing-inline); }
+.worktrees-directory-item .worktrees-directory-toggle {
+  flex: 1;
+  justify-content: flex-start;
+  min-width: 0;
+  height: auto;
+  min-height: var(--spacing-control-lg);
+  padding-inline: var(--spacing-inline);
+  text-align: left;
+}
+
+.worktrees-directory-toggle > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.worktrees-directory-toggle > svg { color: var(--color-foreground-subtle); }
+.worktrees-directory-delete { color: var(--color-foreground-subtle); }
+.worktrees-directory-delete:hover, .worktrees-directory-delete:focus-visible { color: var(--color-destructive); }
+.worktrees-directory-feedback { margin: 0; padding: 0 var(--spacing-panel) var(--spacing-inline) calc(var(--spacing-panel) + 1.5rem); font-size: var(--text-ui-sm); overflow-wrap: anywhere; }
+.worktrees-directory-details { display: grid; gap: var(--spacing-inline); margin: 0; padding: var(--spacing-inline) var(--spacing-panel) var(--spacing-panel) calc(var(--spacing-panel) + 1.5rem); font-size: var(--text-ui-sm); }
+.worktrees-directory-details > div { display: grid; grid-template-columns: 5rem minmax(0, 1fr); gap: var(--spacing-inline); }
+.worktrees-directory-details dt { color: var(--color-foreground-subtle); }
+.worktrees-directory-details dd { margin: 0; min-width: 0; overflow-wrap: anywhere; user-select: text; }
+.worktrees-directory-details code { font-family: var(--font-mono); white-space: pre-wrap; }
+
+@media (max-width: 520px) { .worktrees-directory-details > div { grid-template-columns: minmax(0, 1fr); gap: 2px; } }

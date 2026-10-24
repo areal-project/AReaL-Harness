@@ -1595,7 +1595,9 @@ mod tests {
         assert_eq!(config.options.max_model_rounds, Some(2));
         assert_eq!(config.tool_allowlist, Some(vec!["agent_report".into()]));
         let child_cell = engine.cell(&saved.id).await.unwrap();
-        let visible = engine.visible_tools(&child_cell, config, true).await;
+        let visible = engine
+            .visible_tools(&child_cell, config, true, &saved)
+            .await;
         assert_eq!(visible.len(), 1);
         assert_eq!(visible[0]["function"]["name"], "agent_report");
         engine.shutdown().await;

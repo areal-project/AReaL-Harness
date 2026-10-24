@@ -68,6 +68,9 @@ lto = "thin"
 [profile.dev.package.sha2]
 opt-level = 3
 
+[profile.dev.package.jsonschema]
+opt-level = 3
+
 # 容器行为测试保留调试断言，省去调试符号和增量产物；性能镜像仍使用 release。
 [profile.ci]
 inherits = "dev"

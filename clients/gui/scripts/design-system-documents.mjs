@@ -62,7 +62,23 @@ export async function runDesignDocuments(page, origin, scratch, checks, samples)
     await page.screenshot({ path: join(scratch, `documents-${theme}-420.png`), fullPage: true, animations: "disabled" });
     samples.push({ documents: { theme, width: 420 } });
   }
-  await open("design/not-collected.md");
+  for (const [path, heading, fragment] of [
+    ["../renderer/src/settings/SettingsPageParts.md#settingspage", "SettingsPage", "settingspage"],
+    ["../renderer/src/DecisionCard.md#decisioncard", "DecisionCard", "decisioncard"],
+    ["../renderer/src/CollapsibleText.md", "CollapsibleText 合同", ""],
+    ["../renderer/src/Messages.md#messages", "Messages", "messages"],
+  ]) {
+    await open("clients/gui/design-system/base.md");
+    await follow(path);
+    await page.getByRole("heading", { name: heading, exact: true }).waitFor();
+    if (fragment) await page.waitForFunction(id => document.activeElement?.id === id, fragment);
+    assert.equal(await page.getByRole("alert").count(), 0, "就近合同已收录且可定位");
+  }
+  await follow("../../design-system/base-evidence.md#e-conversation");
+  await page.getByRole("heading", { name: "E-CONVERSATION", exact: true }).waitFor();
+  await page.waitForFunction(() => document.activeElement?.id === "e-conversation");
+  checks.push("Base四份就近组合合同与证据索引可实际导航，标题锚点可定位且无未收录反馈");
+  await page.goto(`${entry}?docs=design/not-collected.md`);
   await page.getByRole("alert").filter({ hasText: "未收录此设计文档" }).waitFor();
   assert.ok((await page.getByRole("alert").innerText()).includes("design/not-collected.md"));
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -93,7 +109,14 @@ export async function runDesignDocuments(page, origin, scratch, checks, samples)
   assert.equal(await refresh.isDisabled(), true);
   assert.equal(await refresh.getAttribute("aria-busy"), "true");
   await page.getByLabel("状态", { exact: true }).selectOption("failed");
-  assert.equal(await controls.getByRole("alert").innerText(), "操作未受理，请检查后重试。");
+  assert.equal(await page.getByTestId("toast").getByRole("alert").innerText(), "操作未受理，请检查后重试。");
+  await controls.getByRole("button", { name: "触发操作失败提醒", exact: true }).click();
+  const operationToast = page.getByTestId("toast");
+  await operationToast.filter({ hasText: "示例操作失败，输入已保留。" }).waitFor();
+  assert.equal(await controls.getByTestId("feedback-notice").count(), 0, "consumed operation notices leave no persistent error card");
+  await operationToast.waitFor({ state: "hidden", timeout: 8000 });
+  await controls.getByRole("button", { name: "触发操作失败提醒", exact: true }).click();
+  await operationToast.filter({ hasText: "示例操作失败，输入已保留。" }).waitFor();
   await page.getByLabel("状态", { exact: true }).selectOption("unknown");
   assert.equal(await controls.getByRole("status").innerText(), "结果待核对，保留当前内容。");
   const approval = page.getByRole("region", { name: "工具审批", exact: true });

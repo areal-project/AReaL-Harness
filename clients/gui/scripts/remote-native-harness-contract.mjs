@@ -130,7 +130,7 @@ project.model.connection(true);
 const calls = [];
 project.client = {
   ready: true,
-  capabilities: { features: { threadStartAdmissionGuard: true }, methods: ["areal/thread/start"] },
+  capabilities: { features: { threadStartAdmissionGuard: true, permissionPresets: true }, methods: ["areal/thread/start"] },
   async request(method, params) {
     calls.push({ method, params });
     if (params.agentProfile.id === "flow")

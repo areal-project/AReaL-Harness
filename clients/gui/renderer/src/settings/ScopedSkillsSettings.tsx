@@ -1,3 +1,4 @@
+import { ResourceScope as ScopeView, CatalogEmpty as EmptyView } from "@areal/ui/wip";
 import { useI18n, type UiMessage } from "../i18n/IntlProvider.js";
 import { useState } from "react";
 import { BookOpen, Plug, ChevronDown, Folder, Monitor } from "lucide-react";
@@ -29,86 +30,13 @@ export type ScopedProps = {
   scope?: string;
   onScopeChange?: (scope: string) => void;
 };
-export function ResourceScope({
-  value,
-  onChange,
-  project,
-  task = false,
-  disabled = false,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  project?: Data;
-  task?: boolean;
-  disabled?: boolean;
-}) {
-  const { t } = useI18n();
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="outline"
-            className="resource-scope"
-            aria-label={t("settings.scopedSkillsSettings.resourceScope")}
-            disabled={disabled}
-          >
-            {value === "user" ? <Monitor size={16} /> : <Folder size={16} />}
-            <span>{value === "user" ? t("settings.scopedSkillsSettings.user") : value === "task" ? t("settings.scopedSkillsSettings.currentTask") : t("settings.scopedSkillsSettings.currentProject")}</span>
-            <ChevronDown size={14} />
-          </Button>
-        }
-      />
-      <DropdownMenuContent>
-        <DropdownMenuRadioGroup value={value} onValueChange={onChange}>
-          <DropdownMenuRadioItem value="user">{t("settings.scopedSkillsSettings.user")}</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="project" disabled={!project}>
-            {t("settings.scopedSkillsSettings.currentProject")}</DropdownMenuRadioItem>
-          {task && <DropdownMenuRadioItem value="task">{t("settings.scopedSkillsSettings.currentTask")}</DropdownMenuRadioItem>}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+export function ResourceScope({ value, onChange, project, task = false, disabled = false }: { value: string; onChange: (value: string) => void; project?: Data; task?: boolean; disabled?: boolean }) {
+ const { t } = useI18n(); return <ScopeView value={value} onChange={onChange} hasProject={!!project} task={task} disabled={disabled} labels={{ scope: t("settings.scopedSkillsSettings.resourceScope"), user: t("settings.scopedSkillsSettings.user"), project: t("settings.scopedSkillsSettings.currentProject"), task: t("settings.scopedSkillsSettings.currentTask") }} />;
 }
-export function CatalogEmpty({
-  kind,
-  query,
-  scope,
-  onAdd,
-}: {
-  kind: "mcp" | "skill";
-  query: string;
-  scope: string;
-  onAdd?: () => void;
-}) {
-  const { t } = useI18n();
-  return (
-    <div className="resource-empty">
-      {kind === "mcp" ? (
-        <Plug size={26} aria-hidden="true" />
-      ) : (
-        <BookOpen size={26} aria-hidden="true" />
-      )}
-      <strong>
-        {query
-          ? t("settings.scopedSkillsSettings.noMatchingResources", { kind })
-          : t("settings.scopedSkillsSettings.noResourcesYet", { scope, kind })}
-      </strong>
-      <p>
-        {query
-          ? t("settings.scopedSkillsSettings.tryAnotherNameOrKeyword")
-          : scope === "user"
-            ? t("settings.scopedSkillsSettings.sharedResources", { kind })
-            : t("settings.scopedSkillsSettings.projectResources", { kind })}
-      </p>
-      {!query && onAdd && (
-        <Button variant="outline" onClick={onAdd}>
-          {t("settings.scopedSkillsSettings.addResource", { kind })}
-        </Button>
-      )}
-    </div>
-  );
+export function CatalogEmpty({ kind, query, scope, onAdd }: { kind: "mcp" | "skill"; query: string; scope: string; onAdd?: () => void }) {
+ const { t } = useI18n(); return <EmptyView kind={kind} title={query ? t("settings.scopedSkillsSettings.noMatchingResources", { kind }) : t("settings.scopedSkillsSettings.noResourcesYet", { scope, kind })} description={query ? t("settings.scopedSkillsSettings.tryAnotherNameOrKeyword") : scope === "user" ? t("settings.scopedSkillsSettings.sharedResources", { kind }) : t("settings.scopedSkillsSettings.projectResources", { kind })} addLabel={t("settings.scopedSkillsSettings.addResource", { kind })} onAdd={query ? undefined : onAdd} />;
 }
+
 export function ScopedSkillsSettings({
   project,
   action,

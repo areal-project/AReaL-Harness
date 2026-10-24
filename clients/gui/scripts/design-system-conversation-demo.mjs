@@ -21,7 +21,7 @@ export async function runConversationDemo(page, scratch, checks) {
   await capture("01-completed");
   const earlier = timeline.locator('[data-side-item-id="timeline-progress"]');
   // CONV-GROUP-01统一完成过程；原先“phased短过程始终外露”的预期已被新合同替换。
-  const aggregate = timeline.getByRole("button", { name: "执行过程：用时 19秒", exact: true });
+  const aggregate = timeline.getByRole("button", { name: "执行过程：Working for 19s", exact: true });
   assert.equal(await aggregate.getAttribute("aria-expanded"), "false");
   assert.equal(await earlier.isVisible(), false, "normal completed commentary follows the aggregate default");
   assert.equal(await timeline.locator('[data-side-item-id="timeline-final"]').isVisible(), true);
@@ -29,14 +29,13 @@ export async function runConversationDemo(page, scratch, checks) {
   await aggregate.click();
   assert.equal(await earlier.isVisible(), true, "aggregate restores original short commentary");
   const longProgress = timeline.locator('[data-side-item-id="timeline-long-progress"]');
-  const progressSize = await longProgress.locator(".collapsible-text-viewport").evaluate(el => ({ height: el.clientHeight, full: el.scrollHeight, line: parseFloat(getComputedStyle(el).lineHeight) }));
-  assert.ok(progressSize.full > progressSize.height && Math.abs(progressSize.height - progressSize.line * 6) <= 1);
-  await longProgress.getByRole("button", { name: "展开全文", exact: true }).click();
-  assert.equal(await longProgress.getByRole("button", { name: "收起", exact: true }).getAttribute("aria-expanded"), "true");
+  assert.equal(await longProgress.locator(".collapsible-text-viewport").count(), 0, "commentary stays fully readable in the process group");
+  assert.equal(await longProgress.getByRole("button", { name: "展开全文", exact: true }).count(), 0);
   assert.ok((await longProgress.innerText()).includes("检查记录 10"));
-  await longProgress.getByRole("button", { name: "收起", exact: true }).click();
+  const activity = timeline.locator(".areal-activity-group > .areal-disclosure > button").first();
+  if (await activity.getAttribute("aria-expanded") !== "true") await activity.click();
   const imageToggle = timeline.getByRole("button", { name: "已查看 1 张图片", exact: true });
-  assert.equal(await imageToggle.isVisible(), true, "image results remain discoverable inside the opened aggregate with the activity collapsed");
+  assert.equal(await imageToggle.isVisible(), true, "image records are discoverable after opening their activity group");
   await imageToggle.click();
   await timeline.getByRole("button", { name: "预览图片 工具图片", exact: true }).waitFor();
   await timeline.getByRole("button", { name: "预览图片 工具图片", exact: true }).click();
@@ -65,7 +64,6 @@ export async function runConversationDemo(page, scratch, checks) {
   assert.ok(Math.abs(priorAnchor.y - returnedAnchor.y) < 1, "resource return preserves the visible parent entry");
   assert.equal(await draft.innerText(), "保留未发送草稿");
   assert.equal(await timeline.getByRole("button", { name: "发送", exact: true }).isDisabled(), true);
-  const activity = timeline.getByRole("button", { name: "执行过程", exact: true });
   if (await activity.getAttribute("aria-expanded") !== "true") await activity.click();
   const command = timeline.locator('[data-tool-id="timeline-command"]');
   await command.getByRole("button").click();
@@ -73,21 +71,22 @@ export async function runConversationDemo(page, scratch, checks) {
   assert.ok((await command.getByLabel("工具结果", { exact: true }).innerText()).includes("类型检查通过"));
   const scrollOwners = await command.locator(".command-card").evaluate(el => ({
     output: getComputedStyle(el.querySelector(".command-output")).overflowY,
-    group: getComputedStyle(el.closest(".execution-details")).overflowY,
+    group: getComputedStyle(el.closest(".areal-activity-list")).overflowY,
   }));
   assert.equal(scrollOwners.output, "auto");
-  assert.equal(scrollOwners.group, "visible", "expanded tools use transcript scrolling rather than a second activity scrollbar");
+  assert.equal(scrollOwners.group, "auto", "expanded groups retain the approved bounded vertical activity list");
   await capture("04-command");
-  const fileSummary = timeline.getByRole("button", { name: "本轮文件变更", exact: true });
-  assert.equal(await fileSummary.getAttribute("aria-expanded"), "false");
-  assert.equal(await timeline.getByRole("region", { name: "本轮文件", exact: true }).isVisible(), false);
-  await fileSummary.click();
+  const fileSummary = timeline.getByTestId("turn-file-summary");
+  assert.equal(await fileSummary.isVisible(), true);
+  assert.ok((await fileSummary.innerText()).includes("7 个文件已更改"));
   assert.equal(await timeline.getByRole("region", { name: "本轮文件", exact: true }).isVisible(), true);
-  assert.equal(await timeline.getByLabel("合计新增 1 行，删除 1 行", { exact: true }).count(), 1);
+  await timeline.getByLabel("合计新增 7 行，删除 7 行", { exact: true }).waitFor();
+  assert.equal(await timeline.getByLabel("合计新增 7 行，删除 7 行", { exact: true }).count(), 1);
   await timeline.getByRole("button", { name: "查看变更", exact: true }).click();
   await timeline.getByRole("region", { name: "文件变更预览", exact: true }).waitFor();
   await timeline.getByRole("button", { name: "返回主对话", exact: true }).click();
-  await fileSummary.click();
+  for (const toggle of await timeline.locator(".areal-activity-group > .areal-disclosure > button").all())
+    if (await toggle.getAttribute("aria-expanded") === "false") await toggle.click();
   await timeline.locator('[data-tool-id="timeline-write"]').getByRole("button", { name: "打开 src/conversation.tsx", exact: true }).click();
   await timeline.getByRole("region", { name: "文件内容预览", exact: true }).waitFor();
   await capture("05-file");
@@ -97,9 +96,10 @@ export async function runConversationDemo(page, scratch, checks) {
   assert.equal(await timeline.locator('[data-side-item-id="timeline-stream"] .collapsible-text').count(), 0, "public reasoning after the current streamed reply does not fold that reply");
   await capture("06-running");
   await timeline.getByRole("button", { name: "显示已完成", exact: true }).click();
-  assert.equal(await longProgress.getByRole("button", { name: "展开全文", exact: true }).getAttribute("aria-expanded"), "false");
+  assert.equal(await longProgress.getByRole("button", { name: "展开全文", exact: true }).count(), 0, "completion retains full commentary");
+  assert.ok((await longProgress.innerText()).includes("检查记录 10"));
   assert.ok((await timeline.locator('[data-side-item-id="timeline-final"]').innerText()).includes("最终回答保留完整内容"));
-  checks.push("phased timeline groups completed progress, restores original text, bounds long commentary, and exposes images, named agents, command output and verified file totals without nested activity scrolling");
+  checks.push("phased timeline groups completed progress, preserves full commentary, and exposes collapsed images, named agents, command output and verified file totals with bounded vertical activity scrolling");
   assert.equal(await draft.innerText(), "保留未发送草稿");
   for (const theme of ["light", "dark"]) {
     await page.getByLabel("主题", { exact: true }).selectOption(theme);

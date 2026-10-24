@@ -5,6 +5,22 @@ pub const API_VERSION: &str = "areal.core.v1";
 pub const MAX_SUBSCRIPTIONS: usize = 128;
 
 pub const BROWSER_V1_BUNDLE: &str = "areal.browser.v1";
+pub const COMPUTER_V1_BUNDLE: &str = "areal.computer.v1";
+
+/// 本机电脑工具与浏览器分别启用，操作仍由 Core 审批和记录。
+pub fn computer_v1_tool() -> super::ToolDefinition {
+    super::ToolDefinition {
+        name: "computer_v1".into(),
+        description: "Control authorized local desktop applications. Call describe first. Get fresh app state before acting. OS permissions must be granted by the user in Computer control settings. Never replay an action whose dispatch is unknown.".into(),
+        input_schema: serde_json::json!({
+            "type":"object",
+            "properties":{"operation":{"type":"string"},"parameters":{"type":"object"}},
+            "required":["operation","parameters"],
+            "additionalProperties":false
+        }),
+        output_schema: None,
+    }
+}
 
 /// 已部署的 Browser 工具包；追加请求只选择此身份，不接受客户端定义。
 pub fn browser_v1_tool() -> super::ToolDefinition {
@@ -256,6 +272,22 @@ pub struct SideStart {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SideCreate {
+    pub request_id: String,
+    pub source_thread_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_input: Option<Vec<super::Input>>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SideClose {
+    pub request_id: String,
+    pub thread_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -289,6 +321,14 @@ pub enum ThreadOwnership {
         run_id: Option<String>,
     },
 }
+pub const SERVER_REQUESTS: &[&str] = &[
+    "item/tool/call",
+    "areal/task/prepare",
+    "areal/browser/prepare",
+    "areal/computer/prepare",
+    "areal/cua/turnEnded",
+];
+
 pub const NOTIFICATIONS: &[&str] = &[
     "areal/mcp/app/notification",
     "areal/mcp/tool/result",
@@ -459,6 +499,8 @@ pub struct EffectivePermissions {
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClientOptions {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub external_cua: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_preset: Option<PermissionPreset>,
     #[serde(default)]

@@ -10,11 +10,12 @@ type ConversationComposerProps = Omit<ComponentProps<typeof ChatPromptEditor>, "
   modelConfig?: Data;
   fallbackModelConfig?: Data;
   modelDisabled?: boolean;
-  onConfigureModel: (values: Data) => void;
+  modelPending?: boolean;
+  onConfigureModel: (values: Data) => void | Promise<void>;
 };
 
 /** Main and Side share the editor, toolbar and Core model catalog; callers own submission and drafts. */
-export function ConversationComposer({ project, modelConfig, fallbackModelConfig, modelDisabled, onConfigureModel, contextControl, ...editor }: ConversationComposerProps) {
+export function ConversationComposer({ project, modelConfig, fallbackModelConfig, modelDisabled, modelPending, onConfigureModel, contextControl, ...editor }: ConversationComposerProps) {
   // 展示回退不改变草稿意图；显式点选当前展示模型仍可覆盖历史锚点模型。
   const config = modelConfig?.model === undefined && fallbackModelConfig ? {
     ...fallbackModelConfig,
@@ -38,6 +39,7 @@ export function ConversationComposer({ project, modelConfig, fallbackModelConfig
   }
   return <ChatPromptEditor {...editor} betweenCancelAndSubmitAction={<>{contextControl}<ComposerModelMenu
     disabled={modelDisabled}
+    pending={modelPending}
     effort={config?.resolvedParameters?.reasoningEffort ?? config?.parameters?.reasoningEffort}
     value={value}
     options={options}

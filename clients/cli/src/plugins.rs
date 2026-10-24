@@ -196,7 +196,7 @@ pub async fn run(options: Options) -> Result<()> {
             (
                 "areal/plugin/install",
                 json!({"id":id,"scope":scope,"expectedRevision":revision,
-                "source":selected["source"],"expectedDigest":selected["sourceDigest"]}),
+                "source":selected["source"],"expectedDigest":selected["admissionDigest"].as_str().map(Value::from).unwrap_or_else(||selected["sourceDigest"].clone())}),
                 true,
             )
         }

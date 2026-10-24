@@ -95,7 +95,7 @@ impl Engine {
             }
             let cell = engine.cell(&thread_id).await?;
             let cancel = engine.shutdown.child_token();
-            if cell.state.lock().await.thread.is_side() {
+            if cell.state.lock().await.thread.is_read_only_side() {
                 return Err(invalid("SIDE_POLICY_VIOLATION"));
             }
             {

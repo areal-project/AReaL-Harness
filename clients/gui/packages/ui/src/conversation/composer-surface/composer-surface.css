@@ -1,0 +1,68 @@
+/* 公共输入表面拥有布局；业务状态仍由调用方提供。 */
+.composer-surface {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: var(--spacing-field) minmax(0, 1fr) var(--spacing-field);
+  gap: 0;
+  padding: var(--spacing-field) 0 var(--spacing-inline);
+  border: 0;
+  border-radius: var(--radius-composer);
+  background: var(--color-composer, var(--color-background));
+  box-shadow: var(--shadow-composer);
+  backdrop-filter: blur(16px);
+}
+.composer-surface:focus-within {
+  box-shadow: var(--shadow-composer), 0 0 0 1px var(--color-border-hover);
+}
+.composer-surface[data-dragging] { outline: var(--focus-width) solid var(--color-brand); }
+/* Slot insets belong to the surface; the editor viewport spans its full width.
+   The text grows inside one scroll owner, matching the reference composer. */
+.composer-surface > * { grid-column: 2; }
+.composer-surface > :is(.composer-editor, .absolute) { grid-column: 1 / -1; }
+.composer-editor { min-width: 0; max-height: 25dvh; overflow-y: auto; padding: 0 var(--spacing-field); }
+.composer-editor { scrollbar-width: thin; }
+.composer-editor :is([contenteditable], textarea) {
+  min-height: 48px;
+  max-height: none;
+  overflow-y: visible;
+  padding-bottom: 8px;
+  caret-color: var(--color-foreground);
+}
+.composer-editor :is([contenteditable], textarea) {
+  font-size: var(--text-ui-lg);
+  line-height: max(22px, calc(var(--ui-font-size) + 8px));
+}
+.composer-editor .composer-prediction {
+  font-size: var(--text-ui-base);
+  font-weight: 400;
+  line-height: var(--line-height-ui);
+}
+.composer-editor :is([contenteditable], textarea):focus-visible { outline: none; }
+@media (forced-colors: active) {
+  .composer-surface:focus-within { outline: 1px solid Highlight; outline-offset: 1px; }
+}
+.composer-editor textarea { field-sizing: content; }
+.composer-toolbar { display: flex; align-items: center; gap: var(--spacing-inline); min-width: 0; min-height: 32px; }
+.composer-toolbar :is([type="submit"], .composer-primary-action) { border-radius: var(--radius-pill); }
+.composer-toolbar :is([type="submit"], .composer-primary-action):not(:disabled) { background: var(--color-composer-action); color: var(--color-composer-action-foreground); }
+
+/* 宿主显式选择布局；面板祖先不能改变另一输入器的几何。 */
+.composer-dock { container: composer-dock / inline-size; }
+.composer-surface[data-layout="compact"] { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; padding: 4px 12px; gap: 8px; border-radius: 28px; }
+.composer-surface[data-layout="compact"] > :not(.composer-editor):not(.composer-toolbar) { grid-column: 1 / -1; grid-row: 1; }
+.composer-surface[data-layout="compact"]:has(> :not(.composer-editor):not(.composer-toolbar)) :is(.composer-editor, [data-composer-leading-actions], [data-composer-trailing-actions]) { grid-row: 2; }
+.composer-surface[data-layout="compact"] .composer-editor { grid-column: 2; grid-row: 1; padding: 0; max-height: 80px; }
+.composer-surface[data-layout="compact"] .composer-editor :is([contenteditable], textarea) { min-height: 36px; }
+.composer-surface[data-layout="compact"] .composer-toolbar { display: contents; }
+.composer-surface[data-layout="compact"] [data-composer-leading-actions] { grid-column: 1; grid-row: 1; }
+.composer-surface[data-layout="compact"] [data-composer-trailing-actions] { grid-column: 3; grid-row: 1; }
+@container composer-dock (max-width: 620px) {
+  .composer-surface[data-layout="compact"] { display: flex; flex-direction: column; align-items: stretch; padding: 14px 8px 8px; border-radius: var(--radius-composer); }
+  .composer-surface[data-layout="compact"] .composer-toolbar { display: flex; }
+  .composer-surface[data-layout="compact"] .composer-model-trigger { max-width: 120px; }
+}
+
+
+@media (max-width: 760px) { .composer-toolbar { flex-wrap: wrap; } }
+.composer-submit-feedback { margin: 0 0 var(--spacing-inline); color: var(--color-foreground-subtle); font-size: var(--text-ui-sm); line-height: var(--line-height-ui); overflow-wrap: anywhere; }

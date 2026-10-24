@@ -1,0 +1,11 @@
+@import "./generated/foundation.css";
+@import "./generated/tailwind.css";
+@import "./components/disclosure/disclosure.css";
+@source "./**/*.js";
+
+.ui-control { transition-duration: var(--motion-fast); transition-timing-function: var(--ease-standard); }
+@import "./settings/settings-segmented-tabs/settings-segmented-tabs.css";
+@import "./components/settings-disclosure/settings-disclosure.css";
+@import "./settings/settings-select/settings-select.css";
+@import "./settings/settings-dialog/settings-dialog.css";
+@import "./components/popover/popup.css";

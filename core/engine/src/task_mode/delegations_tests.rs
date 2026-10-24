@@ -124,6 +124,7 @@ async fn unified_task_worker_preserves_multimodal_input() {
         .task_create(
             "owner".into(),
             TaskCreate {
+                source_thread_id: None,
                 request_id: "create".into(),
                 mode: TaskMode::Background,
                 objective: "Inspect an image".into(),
@@ -288,6 +289,7 @@ async fn fixture() -> (
         .task_create(
             "owner".into(),
             TaskCreate {
+                source_thread_id: None,
                 request_id: "create".into(),
                 mode: TaskMode::Background,
                 objective: "Implement independent work".into(),

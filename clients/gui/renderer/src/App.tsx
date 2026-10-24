@@ -1,7 +1,14 @@
+import { ExecutableSideChatPane } from "./ExecutableSideChatPane.js";
+import { useSideChatTabs, isSideChatTab, sideResourceTab, parseSideResourceTab, type SideChatTab, type SideResourceBinding } from "./useSideChatTabs.js";
+import { addConversationSelection, conversationSelectionScope, selectionLimitMessage, type ConversationSelectionReference } from "./conversationSelectionReference.js";
+import { useConversationEscape } from "./useConversationEscape.js";
+import { ComputerControlContext } from './ComputerControlEntry.js';
+import { ComputerSettings } from './settings/ComputerSettings.js';
+import { GenUiWorkspace } from "./GenUiWorkspace.js";
 import startupIcon from "../../app/assets/icon-1024.png";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { WorkspaceFileTree } from "./workspace-file-tree/WorkspaceFileTree.js";
-import { WorkspaceFilePane, confirmCloseFiles } from "./WorkspaceFilePane.js";
+import { WorkspaceFilePane, confirmCloseFiles, workspaceDocumentOwner } from "./WorkspaceFilePane.js";
 import { GitPane } from "./GitPane.js";
 import { PluginCenter } from "./settings/PluginCenter.js";
 import type { ResourceDraftSeed } from "./settings/PluginSkillsPage.js";
@@ -37,7 +44,7 @@ import {
   SettingsPluginIcon,
   SettingsUsageIcon,
 } from "./settings/settingsNavIcons.js";
-import { Cpu, Server, Smartphone, Database } from "lucide-react"; // 恢复 Inbox 入口时加回 Inbox as InboxIcon
+import { Cpu, Server, Smartphone, Database, Monitor, GitFork } from "lucide-react"; // 恢复 Inbox 入口时加回 Inbox as InboxIcon
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { DismissIcon as X } from "./interfaceIcons.js";
@@ -55,10 +62,12 @@ import { NewTaskButtonGroup } from "./NewTaskButtonGroup.js";
 import { ImageAnnotationPane } from "./ImageAnnotationViews.js";
 import { imageAnnotation, imageAnnotationTitle, setImageAnnotationEditing, useImageAnnotationPending, type ImageAnnotationTarget } from "./imageAnnotations.js";
 import { Composer, attachmentDrafts, sending, subscribeSending } from "./Composer.js";
-import { isTechnicalErrorMessage, recoveredOutcome, recoveryMessage, recoverySettings, sameRecoveryOwner, type RecoveryFailure, type RecoveryNotice, type RecoveryOwner } from "./recoveryPresentation.js";
+import { isIndependentCreation, isTechnicalErrorMessage, recoveredOutcome, recoveryMessage, recoverySettings, sameRecoveryOwner, type RecoveryFailure, type RecoveryNotice, type RecoveryOwner } from "./recoveryPresentation.js";
 import { DraftComposer } from "./DraftComposer.js";
 import { ProjectlessDraft } from "./ProjectlessDraft.js";
-import { WorktreeStarter } from "./WorktreeStarter.js";
+import { WorktreesSettings } from "./settings/WorktreesSettings.js";
+import { WorktreeActions } from "./WorktreeStatus.js";
+import { WorktreeStarter, type WorktreeSelection } from "./WorktreeStarter.js";
 import { ComposerWorkspaceContext } from "./ComposerWorkspaceContext.js";
 import { Queue } from "./Queue.js";
 import { browserAnnotationTitle } from "./browserAnnotations.js";
@@ -99,9 +108,8 @@ import {
 import { BrowserSettings } from "./settings/BrowserSettings.js";
 import { HooksSettings } from "./settings/HooksSettings.js";
 import { ExecutionsPane } from "./ExecutionsPane.js";
-import { AgentConversationPane } from "./AgentConversationPane.js";
+import { AgentHistoryPane } from "./AgentHistoryPane.js";
 import { SideChatPane } from "./SideChatPane.js";
-import { SideDraftWorkspace } from "./side-draft-owner.js";
 import { agentName, agentAssignment } from "./AgentIdentity.js";
 import { WorkgroupsPane } from "./WorkgroupsPane.js";
 import { ServiceStatusSettings } from "./settings/ServiceStatusSettings.js";
@@ -119,8 +127,10 @@ const settingsNavigationGroups = [
   { id: "integrations", label: "settings.navigation.integrations", items: [
     { id: "插件", label: "settings.plugins.title", icon: <SettingsPluginIcon /> },
     { id: "浏览器", label: "settings.browser.title", icon: <SettingsBrowserIcon /> },
+    { id: "电脑控制", label: "settings.computer.title", icon: <Monitor strokeWidth={1.5} /> },
   ] },
   { id: "coding", label: "settings.navigation.coding", items: [
+    { id: "Worktrees", label: "settings.worktrees.title", icon: <GitFork strokeWidth={1.5} /> },
     { id: "钩子", label: "settings.hooks.title", icon: <SettingsHooksIcon /> },
     { id: "模型服务", label: "settings.models.title", icon: <Cpu strokeWidth={1.5} /> },
     { id: "会话配置", label: "settings.session.title", icon: <SettingsConfigurationIcon /> },
@@ -156,6 +166,7 @@ function projectExecutionBlocked(lifecycle: Snapshot["lifecycle"], projectId: st
   ) ?? false;
 }
 type InitialLocation = { kind: "automatic" | "projectless" } | { kind: "project"; projectId: string; threadId: string };
+type PluginTaskOrigin = { projectId: string; threadId: string };
 type RestorationOwner = RecoveryOwner;
 type RestorationState = RestorationOwner & { pending: boolean; error: string; failureId?: string; failure?: RecoveryFailure };
 type RestorationAttempt = RestorationOwner & { operation: "connect" | "open"; pending: boolean; promise: Promise<void> };
@@ -201,26 +212,32 @@ function Usage({ thread }: { thread: Data }) {
   );
 }
 
-// 浮层只负责资源导航；子任务对话仍由已有侧栏标签持有。
-function TaskResourcesPopover({ project, thread, action, selectedAgent, onPanel, onAgent, onFile, scheduledTask, runHistory, revealKey, onReveal }: {
-  project: Data; thread: Data; action: Action; selectedAgent?: string; scheduledTask?: Data; runHistory?: React.ReactNode; revealKey?: string; onReveal?: (key: string) => void;
-  onPanel: (name: string) => void; onAgent: (id: string) => void; onFile: (path: string) => void;
+function TaskResourcesPopover({ project, thread, action, onPanel, onAgent, onFile, scheduledTask, runHistory, revealKey, onReveal, onAddSchedule, onOpenSchedule, onReadAgents, onAddSource, onLink }: {
+  onAddSource?: () => void; onLink?: (url: string) => void; onReadAgents?: (restore: () => void) => void; project: Data; thread: Data; action: Action; scheduledTask?: Data; runHistory?: React.ReactNode; revealKey?: string; onReveal?: (key: string) => void;
+  onPanel: (name: string) => void; onAgent: (id: string) => void; onFile: (path: string) => void; onAddSchedule?: () => void; onOpenSchedule?: (task: Data) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const trigger = React.useRef<HTMLButtonElement>(null);
   useEffect(() => { if (revealKey) { setOpen(true); onReveal?.(revealKey); } }, [revealKey, onReveal]);
   const navigate = <T,>(callback: (value: T) => void) => (value: T) => { setOpen(false); callback(value); };
-  return <Popover open={open} onOpenChange={setOpen}>
-    <PopoverTrigger render={<button className={`icon-button ${open ? "active" : ""}`} aria-label="任务资源" />}><TaskSummaryIcon /></PopoverTrigger>
-    <PopoverContent align="end" sideOffset={8} className="task-resources-popup" aria-label="任务资源面板">
-      <ConversationStatusCard project={project} thread={thread} action={action} selectedAgent={selectedAgent} scheduledTask={scheduledTask} runHistory={runHistory}
+  return <Popover open={open} onOpenChange={(next, details) => {
+    if (!next && ["outside-press", "focus-out"].includes(details.reason)) return;
+    setOpen(next);
+  }}>
+    <PopoverTrigger render={<button ref={trigger} className={`icon-button ${open ? "active" : ""}`} aria-label="任务资源" />}><TaskSummaryIcon /></PopoverTrigger>
+    <PopoverContent keepMounted finalFocus={trigger} align="end" sideOffset={8} className="task-resources-popup" aria-label="任务资源面板">
+      <React.Activity mode={open ? "visible" : "hidden"}>
+      <ConversationStatusCard onLink={onLink} onAddSource={onAddSource ? () => { setOpen(false); onAddSource(); } : undefined} project={project} thread={thread} action={action} scheduledTask={scheduledTask} runHistory={runHistory} onAddSchedule={onAddSchedule ? () => { setOpen(false); onAddSchedule(); } : undefined} onOpenSchedule={onOpenSchedule ? navigate(onOpenSchedule) : undefined}
+        onAgents={() => { setOpen(false); if (onReadAgents) onReadAgents(() => setOpen(true)); else onPanel("子代理"); }}
         onPanel={navigate(onPanel)} onAgent={navigate(onAgent)} onFile={navigate(onFile)} />
+      </React.Activity>
     </PopoverContent>
   </Popover>;
 }
 export function App({ services }: { services: PlatformServices }) {
   const [quitProgress, setQuitProgress] = useState<QuitProgress>({ state: "idle" });
   useEffect(() => services.onQuitProgress?.(setQuitProgress), [services]);
-  return <UnsavedChangesProvider><AppContent services={services} /><QuitProgressDialog progress={quitProgress} /></UnsavedChangesProvider>;
+  return <UnsavedChangesProvider><GenUiWorkspace services={services}><AppContent services={services} /></GenUiWorkspace><QuitProgressDialog progress={quitProgress} /></UnsavedChangesProvider>;
 }
 function AppContent({ services }: { services: PlatformServices }) {
   const { t } = useI18n();
@@ -233,6 +250,8 @@ function AppContent({ services }: { services: PlatformServices }) {
   useEffect(() => services.onQuitRequested?.(() => requestNavigation(() => {})), [services, requestNavigation]);
   const { terminalLocation, nextPromptSuggestions } = useApplicationPreferences();
   const [snapshot, updateSnapshot] = useState<Snapshot>({ projects: [], connection: { state: "connecting" } });
+  const [worktreeSettingsTarget, setWorktreeSettingsTarget] = useState<{ projectId?: string; tab: "general" | "environments" }>({ tab: "general" });
+  const [worktreeSelections, setWorktreeSelections] = useState<Record<string, WorktreeSelection | undefined>>({});
   const backendActionInFlight = React.useRef(false);
   const [backendActionPending, setBackendActionPending] = useState(false);
   const [backendActionError, setBackendActionError] = useState("");
@@ -271,7 +290,8 @@ function AppContent({ services }: { services: PlatformServices }) {
   const [panelTabs, setPanelTabs] = useState<string[]>([]);
   const [previewFileTab, setPreviewFileTab] = useState<string | undefined>();
   const sideNarrow = React.useRef(false);
-  const sideTrigger = React.useRef<{ element: HTMLElement; route: string } | null>(null);
+  const contextReturn = React.useRef<(() => void) | null>(null);
+  const panelReturnTarget = React.useRef<{ element: HTMLElement; route: string } | null>(null);
   const [workspaceView, setWorkspaceView] = useState<"split" | "panel" | "conversation">("split");
   const [filesOpen, setFilesOpen] = useState(false);
   const [revealedFile, setRevealedFile] = useState("");
@@ -292,11 +312,20 @@ function AppContent({ services }: { services: PlatformServices }) {
   const consumedResourceReveal = React.useRef<string | undefined>(undefined);
   const consumeResourceReveal = useCallback((key: string) => { consumedResourceReveal.current = key; }, []);
   const [pluginsOpen, setPluginsOpen] = useState(false);
+  const [pluginTaskOrigin, setPluginTaskOrigin] = useState<PluginTaskOrigin | null>(null);
+  const pluginTaskFocus = React.useRef<PluginTaskOrigin | null>(null);
   const [pluginMarketRequest, setPluginMarketRequest] = useState(0);
   const [settingsOpen, updateSettingsOpen] = useState(false);
+  const rememberPluginTask = () => {
+    if (!pluginsOpen && !settingsOpen) {
+      setPluginTaskOrigin(!taskCenterOpen && projectId && threadId ? { projectId, threadId } : null);
+      pluginTaskFocus.current = null;
+    }
+  };
   const settingsTrigger = React.useRef<{ element: HTMLElement; route: string } | null>(null);
   const setSettingsOpen = (open: boolean) => {
     if (open) {
+      rememberPluginTask();
       if (!settingsOpen && document.activeElement instanceof HTMLElement)
         settingsTrigger.current = { element: document.activeElement, route: `${projectId}:${threadId}` };
       setPluginsOpen(false); setTaskCenterOpen(false); updateSettingsOpen(true);
@@ -424,9 +453,20 @@ function AppContent({ services }: { services: PlatformServices }) {
       return rank(a.id) - rank(b.id);
     });
   // Sidebar visibility must not change the owner of an explicitly opened resource.
-  const project = noProject ? undefined : snapshot.projects.find((p) => p.id === projectId)
+  const logicalProject = noProject ? undefined : snapshot.projects.find((p) => p.id === projectId)
     ?? (snapshot.connection?.state === "ready" ? projects.find(p => !p.projectless) : undefined);
+  const executionThread = logicalProject?.state?.threads[threadId];
+  const project = logicalProject && executionThread?.worktree?.directory ? {
+    ...logicalProject, logicalRoot: logicalProject.root, root: executionThread.worktree.directory,
+    core: { ...logicalProject.core, ...executionThread.executionCore },
+    state: { ...logicalProject.state, connected: executionThread.executionConnected ?? logicalProject.state?.connected },
+    error: executionThread.executionError ?? logicalProject.error,
+  } : logicalProject;
   const thread = project?.state?.threads[threadId];
+  const worktreeSelection = project ? worktreeSelections[project.id] : undefined;
+  const changeWorktreeSelection = (pid: string, value: WorktreeSelection | undefined) => {
+    setWorktreeSelections(previous => ({ ...previous, [pid]: value }));
+  };
   const restorationOwner: RestorationOwner = { projectId: project?.id ?? "", threadId,
     connectionGeneration: project?.core?.connectionGeneration ?? 0 };
   const selectedRestoration = React.useRef(restorationOwner);
@@ -506,19 +546,19 @@ function AppContent({ services }: { services: PlatformServices }) {
   const previewOwner = React.useRef("");
   previewOwner.current = `${project?.id ?? ""}:${threadId}`;
   const browserWorkspace = useBrowserWorkspace(services, project?.id ?? "", threadId, browserPageId(panel));
-  const rememberSideTrigger = useCallback(() => {
+  const rememberPanelTrigger = useCallback(() => {
     const focused = document.activeElement;
     const element = focused?.getAttribute("role") === "menuitem"
       ? document.querySelector<HTMLElement>('[aria-haspopup="menu"][aria-expanded="true"]') ?? focused : focused;
-    if (element instanceof HTMLElement && panel !== "旁路讨论") sideTrigger.current = { element, route: `${projectId}:${threadId}` };
-  }, [panel, projectId, threadId]);
+    if (element instanceof HTMLElement && !element.closest(".side-panel")) panelReturnTarget.current = { element, route: `${projectId}:${threadId}` };
+  }, [projectId, threadId]);
   const openingBrowser = React.useRef<string | null>(null);
   const openBrowser = useCallback(async (create = false, url?: string) => {
     if (!project) return;
     const owner = `${project.id}:${threadId}`;
     if (openingBrowser.current === owner) return;
     openingBrowser.current = owner;
-    if (!isBrowserTab(panel)) rememberSideTrigger();
+    if (!isBrowserTab(panel)) rememberPanelTrigger();
     try {
       let value = await browserWorkspace.request("state");
       if (previewOwner.current !== owner) return;
@@ -534,7 +574,7 @@ function AppContent({ services }: { services: PlatformServices }) {
       setPanel(browserTabId(pageId));
     } catch (cause) { if (previewOwner.current === owner) setError((cause as Error).message); }
     finally { if (openingBrowser.current === owner) openingBrowser.current = null; }
-  }, [project?.id, threadId, browserWorkspace.request, panel, rememberSideTrigger]);
+  }, [project?.id, threadId, browserWorkspace.request, panel, rememberPanelTrigger]);
   useEffect(() => services.onPreviewEvent?.(event => {
     // 仅呈现当前聊天已由 Core 批准的页面，不切换后台聊天或重放导航。
     if (event.kind !== 'reveal' || previewOwner.current !== `${event.projectId}:${event.threadId}`) return;
@@ -543,6 +583,7 @@ function AppContent({ services }: { services: PlatformServices }) {
   }), [services]);
   const terminalState = useTerminalWorkspace(terminalOwner(project?.id ?? "", threadId));
   const panelOwner = `${project?.id ?? ""}:${threadId}`;
+  useEffect(() => { contextReturn.current = null; }, [panelOwner]);
   const annotationVisible = annotationTarget?.owner === panelOwner;
   const openImageAnnotation = (target: ImageAnnotationTarget) => {
     setAnnotationTarget({ ...target, owner: panelOwner, previousView: workspaceView, previousPanel: panel, sessionId: crypto.randomUUID() });
@@ -615,7 +656,9 @@ function AppContent({ services }: { services: PlatformServices }) {
       const target = recoverySnapshot.current.projects.find(item => item.id === (params.projectId ?? selected.projectId));
       const owner = { projectId: params.projectId ?? selected.projectId, threadId: params.threadId ?? selected.threadId,
         connectionGeneration: target?.core?.connectionGeneration ?? selected.connectionGeneration };
-      const request = ["create", "configure"].includes(name) ? { ...params, requestId: params.requestId ?? crypto.randomUUID() } : params;
+      const scoped = name === "workspace" && threadId && params.projectId === project?.id
+        && !params.threadId && !String(params.operation).startsWith("worktree") ? { ...params, threadId } : params;
+      const request = ["create", "configure"].includes(name) ? { ...scoped, requestId: params.requestId ?? crypto.randomUUID() } : scoped;
       try {
         return await call(services, name, request);
       } catch (cause) {
@@ -640,7 +683,7 @@ function AppContent({ services }: { services: PlatformServices }) {
         throw cause;
       }
     },
-    [services],
+    [services, project?.id, threadId],
   );
   const cancelledPredictions = React.useRef(new Set<string>());
   useEffect(() => {
@@ -662,9 +705,90 @@ function AppContent({ services }: { services: PlatformServices }) {
   }, [nextPromptSuggestions, snapshot.projects, action]);
   // Resource pages own their loading, validation and recovery feedback.
   const resourceAction: Action = useCallback(
-    (name: import("./services.js").CommandName, params: Data = {}) => call(services, name, params),
-    [services],
+    (name: import("./services.js").CommandName, params: Data = {}) => {
+      return call(services, name, name === "workspace" && threadId && params.projectId === project?.id
+        && !params.threadId && !String(params.operation).startsWith("worktree") ? { ...params, threadId } : params);
+    },
+    [services, project?.id, threadId],
   );
+  const contextualFileOpen = useMemo<PlatformServices["fileOpen"]>(() => services.fileOpen ? request => {
+    return services.fileOpen!("projectId" in request && request.projectId === project?.id && threadId
+      ? { ...request, threadId } : request);
+  } : undefined, [services.fileOpen, project?.id, threadId]);
+  const sideChats = useSideChatTabs(resourceAction);
+  const sideSource = React.useRef({ owner: panelOwner, instanceId: project?.core?.instanceId });
+  sideSource.current = { owner: panelOwner, instanceId: project?.core?.instanceId };
+  const mainPane = React.useRef<HTMLElement>(null);
+  const sideResourceBindings = React.useRef(new Map<string, SideResourceBinding>());
+  useConversationEscape({ pane: mainPane, project, thread, action, onError: setError,
+    enabled: initialReleased && !settingsOpen && !taskCenterOpen && !pluginsOpen && workspaceView !== "panel"
+      && !!project?.state?.connected && !projectExecutionBlocked(snapshot.lifecycle, project?.id ?? ""),
+    outsideFallback: !annotationVisible && (!panel || workspaceView === "conversation") });
+  const canCreateSide = !!project && !!thread && project.core?.features?.sideExecutableV2 === true
+    && !!project.state?.connected && !thread.desktop?.archived && !thread.parentThreadId && thread.conversation?.kind !== "side"
+    && !project.configurations?.[thread.id]?.options?.appendInstructions?.startsWith("AREAL_TASK_DRAFT_V1\n")
+    && !matchMedia("(max-width: 640px)").matches;
+  const revealSide = (tab: SideChatTab) => {
+    if (!sideChats.hasChild(tab.projectId, tab.childId)) return;
+    const owner = `${tab.projectId}:${tab.parentId}`;
+    if (activePanelOwner.current !== owner) {
+      const view = panelViews.current.get(owner);
+      panelViews.current.set(owner, { panel: tab.id, lastPanel: tab.id, tabs: [...new Set([...(view?.tabs ?? []), tab.id])], filesOpen: view?.filesOpen ?? false, revealedFile: view?.revealedFile ?? "", previewFileTab: view?.previewFileTab });
+      return;
+    }
+    setWorkspaceView(matchMedia("(max-width: 1200px)").matches ? "panel" : "split");
+    setPanelTabs(tabs => tabs.includes(tab.id) ? tabs : [...tabs, tab.id]);
+    setPanel(tab.id);
+  };
+  const openSideResource = (tab: SideChatTab, resource: string) => {
+    if (!sideChats.hasChild(tab.projectId, tab.childId)) return;
+    const owner = `${tab.projectId}:${tab.parentId}`;
+    const id = sideResourceTab(tab.childId, resource);
+    if (activePanelOwner.current !== owner) {
+      const view = panelViews.current.get(owner);
+      if (view) panelViews.current.set(owner, { ...view, tabs: [...new Set([...view.tabs, id])] });
+      return;
+    }
+    setPanelTabs(tabs => tabs.includes(id) ? tabs : [...tabs, id]); setPanel(id);
+  };
+  const removeSideResource = (tab: SideChatTab, resource: string) => {
+    const owner = `${tab.projectId}:${tab.parentId}`;
+    const id = sideResourceTab(tab.childId, resource);
+    const view = panelViews.current.get(owner);
+    if (view) panelViews.current.set(owner, { ...view, tabs: view.tabs.filter(name => name !== id), panel: view.panel === id ? tab.id : view.panel });
+    if (activePanelOwner.current === owner) {
+      setPanelTabs(tabs => tabs.filter(name => name !== id));
+      setPanel(current => current === id ? tab.id : current);
+    }
+  };
+  const createSide = async (text = "") => {
+    if (!canCreateSide || !project || !thread) throw new Error(t("chat.side.unavailable"));
+    rememberPanelTrigger();
+    const tab = await sideChats.create(project.id, thread.id, text);
+    revealSide(tab);
+    return tab;
+  };
+  const newSide = () => { void createSide().catch(cause => setError(cause.message)); };
+  const removeSideTab = (tab: SideChatTab) => {
+    sideChats.forget(tab);
+    const owner = `${tab.projectId}:${tab.parentId}`;
+    const view = panelViews.current.get(owner);
+    if (view) panelViews.current.set(owner, { ...view, tabs: view.tabs.filter(id => id !== tab.id && parseSideResourceTab(id)?.childId !== tab.childId), panel: view.panel === tab.id || parseSideResourceTab(view.panel)?.childId === tab.childId ? "功能" : view.panel });
+    if (activePanelOwner.current === owner) {
+      setPanelTabs(tabs => tabs.filter(id => id !== tab.id && parseSideResourceTab(id)?.childId !== tab.childId));
+      setPanel(current => current === tab.id || parseSideResourceTab(current)?.childId === tab.childId ? "功能" : current);
+    }
+  };
+  useEffect(() => {
+    for (const tab of sideChats.tabs) {
+      const owner = snapshot.projects.find(project => project.id === tab.projectId);
+      const observed = owner?.state?.threads?.[tab.childId];
+      if (observed?.conversation?.policy?.kind === "sideExecutableV2" && observed.desktop?.archived
+        && Object.values<Data>(owner?.outcomes ?? {}).some((outcome) => outcome.method === "areal/side/close"
+          && outcome.threadId === tab.childId && outcome.accepted === true && outcome.cleanupConfirmed === true))
+        removeSideTab(tab);
+    }
+  }, [snapshot.projects, sideChats.tabs]);
   const restoreConversation = useCallback((owner: RestorationOwner, operation: "connect" | "open", options: { connectService?: boolean } = {}) => {
     const previous = restorationAttempt.current;
     if (sameRestorationOwner(previous, owner) && previous?.operation === operation && previous.pending) return previous.promise;
@@ -791,6 +915,34 @@ function AppContent({ services }: { services: PlatformServices }) {
     },
     [initialReleased, snapshot.projects, restoreConversation, recordWorkspaceLocation],
   );
+  const returnToPluginTask = () => {
+    const origin = pluginTaskOrigin;
+    if (!origin) return;
+    void requestNavigation(() => {
+      pluginTaskFocus.current = origin;
+      updateSettingsOpen(false);
+      if (projectId === origin.projectId && threadId === origin.threadId) {
+        setPluginsOpen(false);
+        setTaskCenterOpen(false);
+      } else void open(origin.projectId, origin.threadId);
+    });
+  };
+  useEffect(() => {
+    const target = pluginTaskFocus.current;
+    if (!target) return;
+    if (pluginsOpen || settingsOpen || taskCenterOpen || projectId !== target.projectId || threadId !== target.threadId) {
+      pluginTaskFocus.current = null;
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      const composer = document.querySelector<HTMLElement>('[data-testid="chat-input"]');
+      if (composer) {
+        composer.focus({ preventScroll: true });
+        pluginTaskFocus.current = null;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pluginsOpen, settingsOpen, taskCenterOpen, projectId, threadId, thread]);
   const [mcpMentionsOpen, setMcpMentionsOpen] = useState(false);
   const mcpWorkspace = useMcpAppsWorkspace({ services, project, deepLinksEnabled: initialReleased, projects: snapshot.projects, activeTab: !annotationVisible && !pluginsOpen && !settingsOpen && !taskCenterOpen && workspaceView !== "conversation" ? panel : "", threadId, action: resourceAction,
     onOpenThread: async (pid, tid) => { updateSettingsOpen(false); await open(pid, tid); },
@@ -956,6 +1108,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     }).catch(cause => { if (previewOwner.current === owner) setError(cause.message); });
   }, [services, project?.id, threadId, openBrowser]);
   const openFile = (path: string) => {
+    rememberPanelTrigger();
     setWorkspaceView(mode => mode === "split" ? mode : "panel");
     const relative =
       project && path.startsWith(project.root + "/") ? path.slice(project.root.length + 1) : path;
@@ -964,8 +1117,8 @@ function AppContent({ services }: { services: PlatformServices }) {
       // A temporary view owns one clean document slot. Edited documents retain
       // their existing revision/draft owner and can never be replaced by browsing.
       const replace = previewFileTab && project &&
-        !dirtyFiles[`${project.id}:${previewFileTab.slice(5)}`] &&
-        confirmCloseFiles(project.id, [previewFileTab.slice(5)]);
+        !dirtyFiles[`${workspaceDocumentOwner(project.id, project.root)}:${previewFileTab.slice(5)}`] &&
+        confirmCloseFiles(project.id, [previewFileTab.slice(5)], project.root);
       setPanelTabs(tabs => replace && tabs.includes(previewFileTab)
         ? tabs.map(id => id === previewFileTab ? next : id)
         : [...tabs, next]);
@@ -995,19 +1148,24 @@ function AppContent({ services }: { services: PlatformServices }) {
     setPanel(create ? addTerminal(owner) : ensureTerminal(owner));
   };
   const hidePanel = () => {
-    const returning = panel === "旁路讨论" || panel.startsWith("agent:") || isBrowserTab(panel);
+    const returning = panel === "旁路讨论" || panel === "历史旁路讨论" || isSideChatTab(panel) || (panel === "子代理" || panel.startsWith("agent:")) || isBrowserTab(panel) || panel.startsWith("file:") || panel === "改动";
+    const owner = `${projectId}:${threadId}`;
+    const trigger = panelReturnTarget.current;
     setWorkspaceView("split"); setPanel("");
+    if (contextReturn.current && (panel === "子代理" || panel.startsWith("agent:"))) {
+      const restore = contextReturn.current; contextReturn.current = null;
+      requestAnimationFrame(restore); return;
+    }
     if (returning) requestAnimationFrame(() => {
-      const trigger = sideTrigger.current;
-      if (trigger?.route !== `${projectId}:${threadId}`) return;
-      if (trigger.element.isConnected) trigger.element.focus({ preventScroll: true });
+      if (previewOwner.current !== owner) return;
+      if (trigger?.route === owner && trigger.element.isConnected && trigger.element.getClientRects().length) trigger.element.focus({ preventScroll: true });
       else document.querySelector<HTMLElement>('[data-testid="chat-input"]')?.focus({ preventScroll: true });
     });
   };
   useEffect(() => {
     const query = matchMedia("(max-width: 1200px)");
     const resize = () => {
-      if (panel !== "旁路讨论") return;
+      if (panel !== "旁路讨论" && !isSideChatTab(panel)) return;
       if (query.matches) { sideNarrow.current = true; if (workspaceView === "split") setWorkspaceView("panel"); }
       else if (sideNarrow.current) { sideNarrow.current = false; setWorkspaceView("split"); }
     };
@@ -1017,7 +1175,9 @@ function AppContent({ services }: { services: PlatformServices }) {
   const showPanel = (name: string) => {
     if (!initialReleased) return;
     if (name === "预览") { void openBrowser(); return; }
-    if (name === "旁路讨论" || name.startsWith("agent:")) { if (panel === name) { hidePanel(); return; } rememberSideTrigger(); }
+    if (name === "旁路讨论" && canCreateSide) { newSide(); return; }
+    if (name === "改动") rememberPanelTrigger();
+    if (name === "旁路讨论" || name === "子代理" || name.startsWith("agent:")) { if (panel === name) { hidePanel(); return; } rememberPanelTrigger(); }
     setWorkspaceView(mode => name === "旁路讨论" && matchMedia("(max-width: 1200px)").matches ? "panel" : mode === "split" ? mode : "panel");
     if (["编辑目标", "执行计划", "上下文", "已保存授权", "进程"].includes(name)) {
       setPanel(name);
@@ -1138,6 +1298,10 @@ function AppContent({ services }: { services: PlatformServices }) {
     setRename(values);
     setRenameText(current);
   };
+  const conversationReferences = summaries
+    .filter(row => row.owner.id === project?.id && row.summary.id !== thread?.id && !row.archived)
+    .sort((a, b) => b.updatedAt - a.updatedAt || a.summary.id.localeCompare(b.summary.id))
+    .map(row => ({ threadId: row.summary.id, title: row.title, updatedAt: row.updatedAt }));
   const sidebarKey = (row: Data) => `${row.owner.id}:${row.summary.id}`;
   const sidebarGroup = (row: Data) => row.pinned ? "pinned" : (row.owner.projectless ? "chats" : row.owner.id);
   const sortMode = (area: "Chats" | "Projects" | "Pinned") => library.settings?.[`sidebarSort${area}`] ?? library.settings?.sidebarSort ?? "updated_at";
@@ -1180,6 +1344,7 @@ function AppContent({ services }: { services: PlatformServices }) {
       id={row.summary.id}
       nested={!row.owner.projectless && !row.pinned}
       title={row.title}
+      worktree={row.summary.worktree}
       active={project?.id === row.owner.id && threadId === row.summary.id}
       pinned={row.pinned}
       running={row.running}
@@ -1336,30 +1501,33 @@ function AppContent({ services }: { services: PlatformServices }) {
     if (!project) return null;
     const props = { project, thread, action };
     if (panel.startsWith("mcp-app:")) return mcpWorkspace.render(panel);
-    if (panel === "旁路讨论" && thread && project.core?.features?.sidePreview === true && !thread.parentThreadId && thread.conversation?.kind !== "side") {
+    if ((panel === "旁路讨论" || panel === "历史旁路讨论") && thread && project.core?.features?.sidePreview === true && !thread.parentThreadId && thread.conversation?.kind !== "side") {
       return <SideChatPane onPanel={showPanel} onReturn={hidePanel} key={`${project.core?.instanceId}:${project.id}:${thread.id}:side`} project={project} source={thread} executionBlocked={projectExecutionBlocked(snapshot.lifecycle, project.id)} action={resourceAction} dark={dark} />;
     }
-    if (panel.startsWith("agent:") && thread) {
-      const childId = panel.slice(6);
-      return <AgentConversationPane key={`${project.id}:${childId}`} project={project} parentId={project.state?.threads[childId]?.parentThreadId ?? thread.id} childId={childId} action={resourceAction} dark={dark} onLink={onLink} onFile={openFile}
-        onAgent={id => showPanel(`agent:${id}`)} onReview={(id, turnId) => { setReviewRequest({ owner: panelOwner, threadId: id, turnId }); showPanel("改动"); }} />;
+    if (isSideChatTab(panel) || parseSideResourceTab(panel)) return null;
+    if ((panel === "子代理" || panel.startsWith("agent:")) && thread) {
+      const childId = panel.startsWith("agent:") ? panel.slice(6) : undefined;
+      const parent = childId && project.state?.threads[childId]?.parentThreadId;
+      const ownerThread = parent && project.state?.threads[parent] || thread;
+      return <AgentHistoryPane key={`${panelOwner}:${panel}`} project={project} thread={ownerThread} initialId={childId} action={resourceAction} dark={dark} onLink={onLink} onFile={openFile}
+        onClose={hidePanel} onAgent={id => showPanel(`agent:${id}`)} onReview={(id, turnId) => { setReviewRequest({ owner: panelOwner, threadId: id, turnId }); showPanel("改动"); }} />;
     }
     if (panel === "编辑目标" && thread) return <GoalEditor key={`${project.id}:${thread.id}:${thread.goals?.goal?.id ?? "new"}`} project={project} thread={thread} action={resourceAction} />;
     if (panel.startsWith("file:"))
       return (
         <div className="flex h-full min-h-0 flex-col">
-        {threadId && <McpAppEntrypoints servers={mcpWorkspace.servers} loadMetadataImage={mcpWorkspace.loadMetadataImage} kind="file" fileName={panel.slice(5)} onOpen={(server, tool) => { if (dirtyFiles[`${project.id}:${panel.slice(5)}`]) { setError("请先保存当前文件，再用应用打开。"); return; } void mcpWorkspace.openApp(server, tool, {kind:"file",filePath:panel.slice(5)}).catch(cause=>setError(cause.message)); }}/>}<WorkspaceFilePane
-          key={`${project.id}:${panel}`}
+        {threadId && <McpAppEntrypoints servers={mcpWorkspace.servers} loadMetadataImage={mcpWorkspace.loadMetadataImage} kind="file" fileName={panel.slice(5)} onOpen={(server, tool) => { if (dirtyFiles[`${workspaceDocumentOwner(project.id, project.root)}:${panel.slice(5)}`]) { setError("请先保存当前文件，再用应用打开。"); return; } void mcpWorkspace.openApp(server, tool, {kind:"file",filePath:panel.slice(5)}).catch(cause=>setError(cause.message)); }}/>}<WorkspaceFilePane
+          key={`${project.id}:${project.root}:${panel}`}
           projectId={project.id}
           root={project.root}
           path={panel.slice(5)}
           action={action}
           onDirty={(path, dirty) => {
-            setDirtyFiles((current) => ({ ...current, [`${project.id}:${path}`]: dirty }));
+            setDirtyFiles((current) => ({ ...current, [`${workspaceDocumentOwner(project.id, project.root)}:${path}`]: dirty }));
             if (dirty) setPreviewFileTab(current => current === `file:${path}` ? undefined : current);
           }}
           onLink={onLink}
-          fileOpen={services.fileOpen}
+          fileOpen={contextualFileOpen}
           preferredFileOpenTarget={library.settings?.fileOpenTarget}
           filesOpen={filesOpen}
           onToggleFiles={() => setFilesOpen(value => !value)}
@@ -1380,7 +1548,7 @@ function AppContent({ services }: { services: PlatformServices }) {
           root={project.root}
           action={resourceAction}
           onFile={openFile}
-          fileOpen={services.fileOpen}
+          fileOpen={contextualFileOpen}
           commentsDisabled={!!(reviewRequest?.owner === panelOwner && reviewRequest.threadId && reviewRequest.threadId !== threadId) || !project.state?.connected || !!thread?.desktop?.archived || !!(thread?.source === "nativeTaskAgent" && thread?.goalOwner) || !!pending || admitting || (!!threadId && !thread)}
           filesOpen={filesOpen}
           onToggleFiles={() => setFilesOpen(value => !value)}
@@ -1416,7 +1584,7 @@ function AppContent({ services }: { services: PlatformServices }) {
           fullAddress={library.settings?.browserFullAddress === true}
           thread={thread}
           action={resourceAction}
-          onReview={turnId => { setReviewRequest({ owner: panelOwner, turnId }); setPanel("改动"); }}
+          onReview={turnId => { rememberPanelTrigger(); setReviewRequest({ owner: panelOwner, turnId }); setPanel("改动"); }}
           onTool={itemId => {
             setWorkspaceView("split");
             requestAnimationFrame(() => document.querySelector(`[data-tool-id="${CSS.escape(itemId)}"]`)?.scrollIntoView({ block: "center" }));
@@ -1483,42 +1651,52 @@ function AppContent({ services }: { services: PlatformServices }) {
   const canStageSelection = !!project && !!thread && !thread.desktop?.archived && !thread.parentThreadId
     && thread.conversation?.kind !== "side" && !!project.state?.connected && !project.observationErrors?.[thread.id]
     && snapshot.connection?.state === "ready" && !viewRefreshing && !projectExecutionBlocked(snapshot.lifecycle, project.id);
-  const addSelectionToChat = (text: string) => {
+  const addSelectionToChat = (reference: ConversationSelectionReference) => {
     if (!canStageSelection || !project || !thread) return;
     const key = `areal-gui:draft:${project.id}:${thread.id}`;
     if (sending.has(key) || localStorage.getItem(`${key}:pending`) || localStorage.getItem(`${key}:queue-edit`)
       || project.pending?.some((request: Data) => request.params?.threadId === thread.id)) return;
-    attachmentDrafts.set(key, [...(attachmentDrafts.get(key) ?? []), { kind: "pasted-text", text }]);
-    window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: key }));
+    const result = addConversationSelection(conversationSelectionScope(project.id, thread.id), reference);
+    if (!result.ok) setError(selectionLimitMessage(t, result.reason));
   };
-  const openSideSelection = (selection: Data, excerpt: string, anchor?: Data) => {
-    if (!canStageSelection || !project || !thread || project.core?.features?.sidePreview !== true) return;
-    rememberSideTrigger();
-    const workspace = new SideDraftWorkspace(localStorage, { instanceId: project.core?.instanceId ?? "unknown",
-      projectId: project.id, sourceThreadId: thread.id, randomId: () => crypto.randomUUID() });
-    const draft = workspace.current();
-    const owner = workspace.owner(draft);
-    if (localStorage.getItem(workspace.pendingKey(draft))) return;
-    const side = draft.kind === "side" ? project.state?.threads?.[draft.id] : undefined;
-    if (draft.kind === "side" && (!side || side.desktop?.archived || side.conversation?.kind !== "side"
-      || side.conversation.origin?.sourceThreadId !== thread.id
-      || project.pending?.some((request: Data) => request.params?.threadId === draft.id))) return;
-    if (draft.kind === "side" || localStorage.getItem(`${owner}:selection`)) {
-      // 首个冻结来源不被后来选区覆盖；后续引文作为可编辑问题追加。
-      const key = workspace.draftKey(draft);
-      const text = [localStorage.getItem(key) ?? "", excerpt].filter(Boolean).join("\n\n");
-      localStorage.setItem(key, text);
-      window.dispatchEvent(new CustomEvent("areal-side-draft", { detail: { owner, text } }));
-    } else {
-      localStorage.setItem(`${owner}:selection`, JSON.stringify(selection));
-      localStorage.setItem(`${owner}:selection-preview`, excerpt);
-      if (anchor) localStorage.setItem(`${owner}:anchor`, JSON.stringify(anchor));
-      else localStorage.removeItem(`${owner}:anchor`);
-    }
-    setWorkspaceView(mode => matchMedia("(max-width: 1200px)").matches ? "panel" : mode === "split" ? mode : "panel");
-    setPanel("旁路讨论");
-    setPanelTabs(tabs => tabs.includes("旁路讨论") ? tabs : [...tabs, "旁路讨论"]);
-    window.dispatchEvent(new CustomEvent("areal-side-selection", { detail: { owner, excerpt } }));
+  const openSideSelection = (_selection: Data, _excerpt: string, _anchor?: Data, reference?: ConversationSelectionReference) => {
+    if (!canStageSelection || !canCreateSide || !project || !thread || !reference) return;
+    const owner = { projectId: project.id, parentId: thread.id, coreInstanceId: project.core?.instanceId };
+    const sourceOwner = `${owner.projectId}:${owner.parentId}`;
+    const sourceCurrent = () => sideSource.current.owner === sourceOwner && sideSource.current.instanceId === owner.coreInstanceId;
+    const active = workspaceView !== "conversation" && !annotationVisible ? sideChats.tabs.find(tab => tab.id === panel && tab.projectId === owner.projectId && tab.parentId === owner.parentId) : undefined;
+    if (active?.closeRequestId) return;
+    void (async () => {
+      let tab = active;
+      if (tab) {
+        try {
+          const snapshot = await resourceAction("open", { projectId: tab.projectId, threadId: tab.childId });
+          const current = sideChats.getTab(tab.projectId, tab.childId);
+          const observedProject = snapshot.projects?.find((item: Data) => item.id === tab!.projectId);
+          const observed = observedProject?.state?.threads?.[tab.childId];
+          if (!current || current.closeRequestId || !sourceCurrent()
+            || (observed?.executionCore?.instanceId ?? observedProject?.core?.instanceId) !== owner.coreInstanceId || observed?.desktop?.archived
+            || observed?.conversation?.origin?.sourceThreadId !== owner.parentId) return;
+          tab = current;
+        } catch (cause) {
+          const failure = cause as RecoveryFailure;
+          if (failure.code !== -32004 && failure.code !== "THREAD_NOT_FOUND" && failure.reason !== "thread_not_found") throw cause;
+          const current = sideChats.getTab(tab.projectId, tab.childId);
+          if (!current || current.closeRequestId || !sourceCurrent()) return;
+          removeSideTab(current);
+          tab = undefined;
+        }
+      }
+      if (!sourceCurrent()) return;
+      tab ??= await createSide();
+      const current = sideChats.getTab(tab.projectId, tab.childId);
+      if (!current || current.closeRequestId || !sourceCurrent()) return;
+      const key = `areal-gui:draft:${tab.projectId}:${tab.childId}`;
+      if (sending.has(key) || project.pending?.some((request: Data) => request.params?.threadId === tab.childId)) return;
+      const result = addConversationSelection(conversationSelectionScope(tab.projectId, tab.childId), reference);
+      if (!result.ok) setError(selectionLimitMessage(t, result.reason));
+      revealSide(tab);
+    })().catch(cause => setError(cause.message));
   };
   const taskActions = <DropdownMenu>
                     <DropdownMenuTrigger
@@ -1529,6 +1707,7 @@ function AppContent({ services }: { services: PlatformServices }) {
                       }
                     />
                     <DropdownMenuContent align="end">
+                      {thread && project?.core?.features?.sidePreview === true && <DropdownMenuItem onClick={() => { setPanel("历史旁路讨论"); setWorkspaceView("split"); }}>{t("chat.side.history")}</DropdownMenuItem>}
                       <DropdownMenuItem onClick={() => { setArchived(!archived); setSidebar(true); }}>
                         <span aria-hidden="true" className="size-4 shrink-0" />
                         {archived ? "返回当前任务" : "查看归档"}
@@ -1608,7 +1787,7 @@ function AppContent({ services }: { services: PlatformServices }) {
               // 暂时隐藏 Inbox 入口（恢复时同时把 InboxIcon 加回 import）
               // { id: "inbox", label: "Inbox", icon: <InboxIcon />, onSelect: () => requestNavigation(() => { updateSettingsOpen(false); setTaskSurface("inbox"); if (matchMedia("(max-width: 640px)").matches) setSidebar(false); }) },
               { id: "tasks", label: "定时任务", icon: <CalendarClock />, onSelect: () => requestNavigation(() => { setPluginsOpen(false); updateSettingsOpen(false); setTaskScope(undefined); setTaskNotification(undefined); setTaskCenterOpen(true); if (matchMedia("(max-width: 640px)").matches) setSidebar(false); }) },
-              { id: "plugins", label: "插件", icon: <SettingsPluginIcon />, onSelect: () => requestNavigation(() => { updateSettingsOpen(false); setTaskCenterOpen(false); setPluginMarketRequest(value => value + 1); setPluginsOpen(true); }) },
+              { id: "plugins", label: "插件", icon: <SettingsPluginIcon />, onSelect: () => requestNavigation(() => { rememberPluginTask(); updateSettingsOpen(false); setTaskCenterOpen(false); setPluginMarketRequest(value => value + 1); setPluginsOpen(true); }) },
             ]} footer={<><UpdateIndicator services={services} /><Button variant="ghost" size="icon" className="application-rail-button relative" aria-label={t("settings.title")} title={t(trajectoryAttention ? "settings.attention" : "settings.title")} aria-current={settingsOpen ? "page" : undefined} onClick={() => showPanel("设置")}><Settings />{trajectoryAttention && <span aria-label={t("settings.trajectory.attention")} className="absolute top-1 right-1 size-2 rounded-full bg-amber-500" />}</Button></>} />;
   const workspaceNavigation = <div className="workspace-navigation">
     <button className="icon-button" aria-label="后退" title="后退 (⌘[)" disabled={taskCenterOpen || workspaceHistory.index <= 0} onClick={() => traverseWorkspaceHistory(-1)}><ArrowLeft size={16} /></button>
@@ -1629,9 +1808,13 @@ function AppContent({ services }: { services: PlatformServices }) {
           setFontSize={setUiFontSize}
         />
       ) : settingsTab === "常规" ? (
-        <GeneralSettings settings={library.settings} power={snapshot.power} menuBar={snapshot.menuBar} projectlessDirectory={snapshot.projectless?.directory} chooseProjectlessDirectory={services.chooseProjectlessDirectory} fileOpen={services.fileOpen} action={resourceAction} connected={snapshot.connection?.state === "ready"} />
+        <GeneralSettings settings={library.settings} power={snapshot.power} menuBar={snapshot.menuBar} projectlessDirectory={snapshot.projectless?.directory} chooseProjectlessDirectory={services.chooseProjectlessDirectory} fileOpen={contextualFileOpen} action={resourceAction} connected={snapshot.connection?.state === "ready"} />
       ) : settingsTab === "浏览器" ? (
         <BrowserSettings settings={library.settings} action={resourceAction} connected={snapshot.connection?.state === "ready"} />
+      ) : settingsTab === "电脑控制" ? (
+        <ComputerSettings settings={library.settings} action={resourceAction} connected={snapshot.connection?.state === "ready"} />
+      ) : settingsTab === "Worktrees" ? (
+        <WorktreesSettings onAddProject={async () => { const id = await services.chooseProject(); if (id) setSnapshot(await services.snapshot()); return id || undefined; }} action={resourceAction} projects={projects} initialProjectId={worktreeSettingsTarget.projectId} initialTab={worktreeSettingsTarget.tab} />
       ) : settingsTab === "钩子" ? (
         <HooksSettings action={resourceAction} connected={snapshot.connection?.state === "ready"} onConnect={reconnectService} />
       ) : settingsTab === "模型服务" ? (
@@ -1675,6 +1858,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     finally { backendActionInFlight.current = false; setBackendActionPending(false); }
   };
   return (
+    <ComputerControlContext.Provider value={{ visible: library.settings?.computerControlShowEntry === true, open: () => { setSettingsTab("电脑控制"); showPanel("设置"); } }}>
     <WorkbenchShell
       data-view={settingsOpen ? "settings" : pluginsOpen ? "plugins" : taskCenterOpen ? "tasks" : "workspace"}
       data-testid="areal-workbench"
@@ -1684,6 +1868,10 @@ function AppContent({ services }: { services: PlatformServices }) {
       data-shell-ready={shellReady}
     >
       <ToastHost />
+      {snapshot.computerControl?.active === true && <div role="status" className="fixed bottom-4 right-4 z-50 flex items-center justify-between gap-3 rounded-lg border bg-background px-4 py-2 text-ui-sm shadow-lg">
+        <span>{t('settings.computer.working')}{snapshot.computerControl.app?.name ? ` · ${snapshot.computerControl.app.name}` : ''}</span>
+        <Button variant="outline" size="sm" onClick={() => void resourceAction('computerControl', { operation: 'stop' })}>{t('settings.computer.stop')}</Button>
+      </div>}
       <BackendStatusNotice summary={snapshot.serviceSummary} connection={snapshot.connection} update={snapshot.backendUpdate} lifecycle={snapshot.lifecycle}
         currentCommands={snapshot.desktopCapabilities?.currentCommands ?? project?.desktopCapabilities?.currentCommands}
         pending={backendActionPending} error={backendActionError} onAction={kind => void runBackendAction(kind)} />
@@ -1799,7 +1987,15 @@ function AppContent({ services }: { services: PlatformServices }) {
               {!pluginsOpen && !settingsOpen && !taskCenterOpen && (
                 <>
                   {thread && !empty && (
-                    <TaskResourcesPopover key={panelOwner} project={project} thread={thread} action={resourceAction} selectedAgent={panel.startsWith("agent:") ? panel.slice(6) : undefined}
+                    <TaskResourcesPopover key={panelOwner} onLink={onLink} onAddSource={() => mainPane.current?.querySelector<HTMLInputElement>('input[type="file"]')?.click()} onReadAgents={restore => { contextReturn.current = restore; showPanel("子代理"); }} project={project} thread={thread} action={resourceAction}
+                      onAddSchedule={() => {
+                        const key = `areal-gui:draft:${project.id}:${thread.id}`;
+                        const text = localStorage.getItem(key) ?? "";
+                        const intent = t("operations.schedules.creationIntent");
+                        localStorage.setItem(key, text.trim() ? `${text}\n${intent}` : intent);
+                        requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: key })));
+                      }}
+                      onOpenSchedule={task => { setTaskNotification({ projectId: project.id, taskId: task.id }); setTaskCenterOpen(true); }}
                       onPanel={name => { if (name === "改动") setReviewRequest({ owner: panelOwner, scope: "unstaged" }); showPanel(name); }}
                       onAgent={id => showPanel(`agent:${id}`)} onFile={openFile} />
                   )}
@@ -1809,12 +2005,15 @@ function AppContent({ services }: { services: PlatformServices }) {
                     aria-pressed={Boolean(panel)}
                     disabled={!project}
                     onClick={() => {
+                      if (panel) { hidePanel(); return; }
+                      rememberPanelTrigger();
                       const last = panelViews.current.get(panelOwner)?.lastPanel;
-                      setPanel(panel ? "" : last && (last === "功能" || panelTabs.includes(last)) ? last : panelTabs.at(-1) ?? "功能");
+                      setPanel(last && (last === "功能" || panelTabs.includes(last)) ? last : panelTabs.at(-1) ?? "功能");
                     }}
                   >
                     <SidePanelIcon />
                   </button>
+                  {thread?.worktree && project && <WorktreeActions key={`${project.id}:${thread.id}`} projectId={project.id} threadId={thread.id} worktree={thread.worktree} action={resourceAction} />}
                   {taskActions}
                 </>
               )}
@@ -1822,7 +2021,8 @@ function AppContent({ services }: { services: PlatformServices }) {
           </WorkspaceHeader>}
           {operationNotices.map(notice => (
             <FeedbackNotice key={notice.id} tone={notice.kind === "unconfirmed" ? "warning" : "error"}
-              message={isTechnicalErrorMessage(notice.message) ? t("recovery.operationFailed") : notice.message} requestId={notice.requestId} onDismiss={() => dismissNotice(notice.id)}
+              transient
+              message={notice.kind === "unconfirmed" ? t("recovery.operationUnconfirmed") : isTechnicalErrorMessage(notice.message) ? t("recovery.operationFailed") : notice.message} requestId={notice.requestId} onDismiss={() => dismissNotice(notice.id)}
               detail={(notice.requestId || notice.detail || isTechnicalErrorMessage(notice.message)) ? <>
                 {notice.requestId && <div>{t("recovery.requestId", { id: notice.requestId })}</div>}
                 {(notice.detail || isTechnicalErrorMessage(notice.message)) && <pre>{notice.detail || notice.message}</pre>}
@@ -1847,9 +2047,10 @@ function AppContent({ services }: { services: PlatformServices }) {
             apps={pluginId => <McpAppsHub key={pluginId} pluginId={pluginId} workspace={mcpWorkspace} project={project} threadId={threadId} action={resourceAction} />}
             onOpenThread={(pid, tid) => { setPluginsOpen(false); updateSettingsOpen(false); void open(pid, tid); }}
             onSettings={() => { setPluginsOpen(false); updateSettingsTab("插件"); updateSettingsOpen(true); }}
-            onMarket={() => { updateSettingsOpen(false); setPluginMarketRequest(value => value + 1); setPluginsOpen(true); }}
+            onMarket={preserveDetail => { updateSettingsOpen(false); if (!preserveDetail) setPluginMarketRequest(value => value + 1); setPluginsOpen(true); }}
             onChooseProject={() => void choose()}
             onSelectProject={id => { setNoProject(false); setProjectId(id); }}
+            onReturnToTask={pluginTaskOrigin ? returnToPluginTask : undefined}
             onStartDraft={startResourceDraft} />}
           {pluginCenterActive ? null : settingsOpen ? (
             settingsPage
@@ -1860,7 +2061,7 @@ function AppContent({ services }: { services: PlatformServices }) {
               onFile={path => {void open(owner.id,managementThread.id).then(() => openFile(path));}}
               onReview={turnId => {void open(owner.id,managementThread.id).then(() => {setReviewRequest({owner:`${owner.id}:${managementThread.id}`,turnId});setPanel("改动");});}}
               readTurnReview={(turnId,itemId) => resourceAction("workspace",{projectId:owner.id,threadId:managementThread.id,turnId,itemId,operation:"turnReview"})}/>
-              {!options?.embedded && <Composer key={managementThread.id} project={owner} thread={managementThread} executionBlocked={projectExecutionBlocked(snapshot.lifecycle, owner.id)} action={resourceAction} readAction={resourceAction} onPanel={name => {if(name === "设置") {showPanel("设置");} else {void open(owner.id,managementThread.id).then(() => showPanel(name));}}} onNew={() => void newTask()}/>}</>}
+              {!options?.embedded && !options?.readOnly && <Composer key={managementThread.id} project={owner} thread={managementThread} executionBlocked={projectExecutionBlocked(snapshot.lifecycle, owner.id)} action={resourceAction} readAction={resourceAction} onPanel={name => {if(name === "设置") {showPanel("设置");} else {void open(owner.id,managementThread.id).then(() => showPanel(name));}}} onNew={() => void newTask()}/>}</>}
             renderResources={(owner,managementThread,scheduledTask,runHistory,revealKey?: string) => <TaskResourcesPopover revealKey={revealKey !== consumedResourceReveal.current ? revealKey : undefined} onReveal={consumeResourceReveal} project={owner} thread={managementThread} scheduledTask={scheduledTask} runHistory={runHistory} action={resourceAction} onPanel={name => {void open(owner.id,managementThread.id).then(() => showPanel(name));}} onAgent={id => void open(owner.id,id)} onFile={path => {void open(owner.id,managementThread.id).then(() => openFile(path));}} />}
 
             navigation={<>
@@ -1871,6 +2072,7 @@ function AppContent({ services }: { services: PlatformServices }) {
             <div className="workspace-content">
               <div className="conversation-column">
                 <section
+                  ref={mainPane}
                   className={`conversation-pane ${empty ? "draft-pane" : ""}`}
                   data-testid="chat-view"
                 >
@@ -1889,11 +2091,11 @@ function AppContent({ services }: { services: PlatformServices }) {
                           resultStates={mcpWorkspace.resultStates}
                           onFork={forkFromTurn}
                           onAddSelection={canStageSelection ? addSelectionToChat : undefined}
-                          onSideSelection={canStageSelection && project.core?.features?.sidePreview === true ? openSideSelection : undefined}
+                          onSideSelection={canStageSelection && canCreateSide ? openSideSelection : undefined}
                           dark={dark}
                           onLink={onLink}
                           onFile={openFile}
-                          onReview={turnId => { setReviewRequest({ owner: panelOwner, turnId }); setPanel("改动"); setWorkspaceView(mode => mode === "split" ? mode : "panel"); }}
+                          onReview={turnId => { rememberPanelTrigger(); setReviewRequest({ owner: panelOwner, turnId }); setPanel("改动"); setWorkspaceView(mode => mode === "split" ? mode : "panel"); }}
                           readTurnReview={readTurnReview}
                           onAgent={id => showPanel(`agent:${id}`)}
                         />
@@ -1906,10 +2108,13 @@ function AppContent({ services }: { services: PlatformServices }) {
                               <ProjectFolderIcon />
                               <span>{library.projects?.[project.id]?.title || project.root.split("/").pop()}</span>
                             </div>
-                            <ComposerWorkspaceContext project={project} action={resourceAction} backendReady={snapshot.connection?.state === "ready"} />
+                            <ComposerWorkspaceContext project={project} threadId={thread?.id} action={resourceAction} backendReady={snapshot.connection?.state === "ready"} />
                             </div>
                           </div>
                         )}
+                        {project && thread && sideChats.hasPendingCreation(project.id, thread.id) && <p role="status" className="notice">{t("chat.side.createUnconfirmed")}
+                          <Button variant="ghost" size="sm" onClick={() => { void sideChats.recoverCreation(project.id, thread.id).then(tab => { if (tab) revealSide(tab); }).catch(cause => setError(cause.message)); }}>{t("chat.side.inspectCreation")}</Button>
+                        </p>}
                         {mcpWorkspace.contexts}
                         {mcpWorkspace.formsView}
                         {mcpMentionsOpen && <McpMentionsPicker servers={mcpWorkspace.servers} projectId={project.id} threadId={thread.id} action={resourceAction} onClose={()=>setMcpMentionsOpen(false)}/>}
@@ -1919,27 +2124,14 @@ function AppContent({ services }: { services: PlatformServices }) {
                           key={`${project.id}:${thread.id}`}
                           onMcpMention={()=>setMcpMentionsOpen(true)}
                           appEntries={appEntries}
+                          conversationReferences={conversationReferences}
                           project={project}
                           thread={thread}
                           executionBlocked={snapshot.connection?.state !== "ready" || viewRefreshing || projectExecutionBlocked(snapshot.lifecycle, project.id)}
                           action={action}
                           readAction={resourceAction}
                           onPanel={showPanel}
-                          onSide={project.core?.features?.sidePreview === true && !thread.desktop?.archived && !thread.parentThreadId && thread.conversation?.kind !== "side" ? draft => {
-                            rememberSideTrigger();
-                            const workspace = new SideDraftWorkspace(localStorage, { instanceId: project.core?.instanceId ?? "unknown",
-                              projectId: project.id, sourceThreadId: thread.id, randomId: () => crypto.randomUUID() });
-                            const current = workspace.current();
-                            const selected = current.kind === "side" || localStorage.getItem(workspace.pendingKey(current)) ? workspace.newDraft() : current;
-                            const owner = workspace.owner(selected);
-                            const key = workspace.draftKey(selected);
-                            const existing = localStorage.getItem(key) ?? "";
-                            if (draft.trim()) localStorage.setItem(key, existing ? `${existing}\n${draft}` : draft);
-                            setWorkspaceView(mode => matchMedia("(max-width: 1200px)").matches ? "panel" : mode === "split" ? mode : "panel");
-                            setPanel("旁路讨论");
-                            setPanelTabs(tabs => tabs.includes("旁路讨论") ? tabs : [...tabs, "旁路讨论"]);
-                            window.dispatchEvent(new CustomEvent("areal-side-draft", { detail: { owner, text: localStorage.getItem(key) ?? "" } }));
-                          } : undefined}
+                          onSide={canCreateSide ? async text => { await createSide(text); } : undefined}
                           onNew={() => void newTask()}
                           onOpenTask={target => { updateSettingsOpen(false); setTaskScope(undefined); setTaskNotification({ ...target, eventId: crypto.randomUUID() }); setTaskCenterOpen(true); }}
                         />
@@ -1988,13 +2180,16 @@ function AppContent({ services }: { services: PlatformServices }) {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                          {project && <ComposerWorkspaceContext project={project} action={resourceAction} backendReady={snapshot.connection?.state === "ready"} />}
+                          {project && <ComposerWorkspaceContext project={project} showBranch={false} action={resourceAction} backendReady={snapshot.connection?.state === "ready"} />}
                           </div>
-                        {project && <WorktreeStarter key={project.id} project={project} action={resourceAction} onOpen={async id => { setSnapshot(await services.snapshot()); newTask(id); }} />}
+                        {project && <WorktreeStarter key={project.id} project={project} action={resourceAction} value={worktreeSelection} onChange={value => changeWorktreeSelection(project.id, value)} onConfigureEnvironments={() => { setWorktreeSettingsTarget({ projectId: project.id, tab: "environments" }); setSettingsTab("Worktrees"); setSettingsOpen(true); }} disabled={admitting || project.pending?.some((entry: Data) => !isIndependentCreation(entry, []))} />}
                       </div>
                       {project ? (
                           <DraftComposer
+                            worktree={worktreeSelection}
+                            onWorktreeCreated={() => changeWorktreeSelection(project.id, undefined)}
                             appEntries={appEntries}
+                            conversationReferences={conversationReferences}
                             surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
                             onAnnotate={openImageAnnotation}
                             key={project.id}
@@ -2046,32 +2241,65 @@ function AppContent({ services }: { services: PlatformServices }) {
           onSelect={() => {}} onChange={() => {}} onHide={finishImageAnnotation} dirtyFiles={{}} canClose={() => false}
           render={() => <ImageAnnotationPane key={annotationTarget.sessionId} file={annotationTarget.file} onDone={finishImageAnnotation} />}
         />}
-        {project && !annotationVisible && !pluginsOpen && !settingsOpen && !taskCenterOpen && (
+        {(project || sideChats.tabs.length > 0) && (
           <SidePane
-            key={`${project.id}:${threadId}`}
-            workspaceKey={project.root}
+            workspaceKey={project?.root ?? ""}
             ownerTaskId={threadId || null}
-            active={panel}
-            names={panelTabs}
+            active={project && !annotationVisible && !pluginsOpen && !settingsOpen && !taskCenterOpen ? panel : ""}
+            names={project ? panelTabs : []}
+            onNewSide={canCreateSide ? newSide : undefined}
+            retainedPanels={sideChats.tabs.flatMap(tab => {
+              const owner = snapshot.projects.find(item => item.id === tab.projectId);
+              if (!owner) return [];
+              const execution = owner.state?.threads?.[tab.childId];
+              const ownerProject = execution?.worktree?.directory ? {
+                ...owner, logicalRoot: owner.root, root: execution.worktree.directory,
+                core: { ...owner.core, ...execution.executionCore },
+                state: { ...owner.state, connected: execution.executionConnected ?? owner.state?.connected },
+                error: execution.executionError ?? owner.error,
+              } : owner;
+              const resource = parseSideResourceTab(panel);
+              const selected = tab.projectId === project?.id && tab.parentId === threadId && !annotationVisible && !pluginsOpen && !settingsOpen && !taskCenterOpen
+                && (panel === tab.id || resource?.childId === tab.childId);
+              return [{ id: tab.id, visible: selected, content: <ExecutableSideChatPane tab={tab} project={ownerProject} projects={snapshot.projects} services={services}
+                dark={dark} active={selected && workspaceView !== "conversation"} resource={selected ? resource?.resource ?? "" : ""}
+                executionBlocked={snapshot.connection?.state !== "ready" || projectExecutionBlocked(snapshot.lifecycle, tab.projectId)} onNew={newSide}
+                onOpenResource={name => openSideResource(tab, name)} onRemoveResource={name => removeSideResource(tab, name)}
+                onBackToChat={() => { if (activePanelOwner.current === `${tab.projectId}:${tab.parentId}` && sideChats.hasChild(tab.projectId, tab.childId)) setPanel(tab.id); }}
+                onBinding={binding => { if (binding) sideResourceBindings.current.set(tab.childId, binding); else sideResourceBindings.current.delete(tab.childId); }}
+                onInspectClose={() => { void sideChats.close(tab).then(() => removeSideTab(tab)).catch(cause => setError(cause.message)); }} /> }];
+            })}
             previewTabId={previewFileTab}
             onKeepTab={id => setPreviewFileTab(current => current === id ? undefined : current)}
             workspaceView={{ mode: workspaceView, title: empty ? "新对话" : currentTitle, onChange: mode => {
-              if (panel === "旁路讨论" && mode === "split" && matchMedia("(max-width: 1200px)").matches) hidePanel();
+              if ((panel === "旁路讨论" || isSideChatTab(panel)) && mode === "split" && matchMedia("(max-width: 1200px)").matches) hidePanel();
               else setWorkspaceView(mode);
             }, actions: taskActions,
               navigation: !sidebar ? <button className="icon-button" aria-label="展开侧栏" aria-expanded={false} aria-controls="areal-sidebar" onClick={() => setSidebar(true)}><SidebarToggleIcon /></button> : undefined }}
-            dirtyFiles={Object.fromEntries(
+            dirtyFiles={project ? Object.fromEntries(
               Object.entries(dirtyFiles)
-                .filter(([key]) => key.startsWith(`${project.id}:`))
-                .map(([key, value]) => [key.slice(project.id.length + 1), value]),
-            )}
+                .filter(([key]) => key.startsWith(`${workspaceDocumentOwner(project.id, project.root)}:`))
+                .map(([key, value]) => [key.slice(workspaceDocumentOwner(project.id, project.root).length + 1), value]),
+            ) : {}}
             canClose={async (names) => {
+              if (!project) return false;
               for (const name of names.filter(name => name.startsWith("mcp-app:"))) await mcpWorkspace.close(name);
-              const paths = names
-                .filter((name) => name.startsWith("file:"))
-                .map((name) => name.slice(5));
-              if (!confirmCloseFiles(project.id, paths)) return false;
+              const closingChildren = new Set(names.filter(isSideChatTab).map(name => name.slice(5)));
+              const paths = [...names.filter(name => name.startsWith("file:")).map(name => name.slice(5)),
+                ...panelTabs.flatMap(name => {
+                  const resource = parseSideResourceTab(name);
+                  return resource && (names.includes(name) || closingChildren.has(resource.childId)) && resource.resource.startsWith("file:") ? [resource.resource.slice(5)] : [];
+                })];
+              if (!confirmCloseFiles(project.id, paths, project.root)) return false;
               try {
+                for (const name of names.filter(isSideChatTab)) {
+                  const tab = sideChats.tabs.find(tab => tab.id === name && tab.projectId === project.id);
+                  if (tab) { await sideChats.close(tab); removeSideTab(tab); }
+                }
+                for (const name of names) {
+                  const resource = parseSideResourceTab(name);
+                  if (resource && !names.includes(`side:${resource.childId}`)) await sideResourceBindings.current.get(resource.childId)?.close(resource.resource);
+                }
                 for (const name of names.filter(isBrowserTab)) {
                   await browserWorkspace.request("release", { pageId: browserPageId(name), userIntent: true });
                 }
@@ -2079,12 +2307,15 @@ function AppContent({ services }: { services: PlatformServices }) {
               } catch (cause) { setError((cause as Error).message); return false; }
               setDirtyFiles((current) => {
                 const next = { ...current };
-                for (const path of paths) delete next[`${project.id}:${path}`];
+                for (const path of paths) delete next[`${workspaceDocumentOwner(project.id, project.root)}:${path}`];
                 return next;
               });
               return true;
             }}
             onSelect={(name) => {
+              if (!project) return;
+              const childId = isSideChatTab(name) ? name.slice(5) : parseSideResourceTab(name)?.childId;
+              if (childId && !sideChats.hasChild(project.id, childId)) { setPanel("功能"); return; }
               if (workspaceView !== "split") setWorkspaceView("panel");
               if (name === "文件") {
                 showFiles();
@@ -2103,14 +2334,20 @@ function AppContent({ services }: { services: PlatformServices }) {
               if (name.startsWith("file:")) setRevealedFile(name.slice(5));
               setPanel(name);
             }}
-            titleFor={name => name.startsWith("mcp-app:") ? mcpWorkspace.titleFor(name) : isBrowserTab(name) ? (() => {
+            titleFor={name => parseSideResourceTab(name) ? (() => {
+              const resource = parseSideResourceTab(name)!.resource;
+              return resource.startsWith("browser:") ? "浏览器" : resource.startsWith("mcp-app:") ? "应用" : resource.startsWith("file:") ? resource.slice(5).split("/").pop() : resource;
+            })() : isSideChatTab(name) ? t("chat.side.numbered", { ordinal: sideChats.tabs.find(tab => tab.id === name)?.ordinal ?? "" }) : name.startsWith("mcp-app:") ? mcpWorkspace.titleFor(name) : isBrowserTab(name) ? (() => {
               const page = browserWorkspace.pages.find(page => page.pageId === browserPageId(name));
               let title = page?.title;
               if (!title && page?.url) { try { title = new URL(page.url).host; } catch { title = page.url; } }
               return (title || "新标签页") + (page?.resource === "suspended" ? " · 已暂停" : "");
-            })() : name.startsWith("agent:") ? agentAssignment(thread ?? {}, name.slice(6)) || agentName(name.slice(6)) : isTerminalTab(name) ? terminalTitle(terminalOwner(project.id, threadId), name, project.root) : undefined}
+            })() : name.startsWith("agent:") ? agentAssignment(thread ?? {}, name.slice(6)) || agentName(name.slice(6)) : isTerminalTab(name) ? terminalTitle(terminalOwner(project?.id ?? "", threadId), name, project?.root ?? "") : undefined}
             onChange={tabs => {
-              setPanelTabs(tabs);
+              setPanelTabs(tabs.filter(name => {
+                const childId = isSideChatTab(name) ? name.slice(5) : parseSideResourceTab(name)?.childId;
+                return !childId || !!project && sideChats.hasChild(project.id, childId);
+              }));
               setPreviewFileTab(current => current && tabs.includes(current) ? current : undefined);
             }}
             onHide={hidePanel}
@@ -2217,5 +2454,6 @@ function AppContent({ services }: { services: PlatformServices }) {
         }} />}
       </>}
     </WorkbenchShell>
+    </ComputerControlContext.Provider>
   );
 }

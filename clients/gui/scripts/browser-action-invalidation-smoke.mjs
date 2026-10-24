@@ -257,7 +257,7 @@ try {
     await page.getByRole('button', { name: '接管页面', exact: true }).click();
     const state = await until(() => page.evaluate(({ projectId, threadId }) => window.arealDesktop.preview({ operation: 'state', projectId, threadId }).then(value => value.browser?.control === 'human' ? value : null), { projectId, threadId }), 'explicit external Human handoff');
     for (const toggle of await page.locator('.turn-progress-summary[aria-expanded="false"]').all()) await toggle.click();
-    for (const toggle of await page.locator('.execution-summary[aria-expanded="false"]').all()) await toggle.click();
+    for (const toggle of await page.locator('.areal-activity-group > .areal-disclosure > button[aria-expanded="false"]').all()) await toggle.click();
     const row = page.locator(`[data-tool-id="${denied.id}"]`);
     const toggle = row.locator('button.tool-summary-row');
     if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();

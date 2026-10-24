@@ -1,42 +1,82 @@
-# Base 设计系统候选
+# Base 设计系统 beta
 
-此处是[架构阶段 B](architecture.md#bbase-设计系统)的最小基础切片。复用已有生产角色和组件，以实际挂载上下文验证；独立模拟题目属于阶段 C。候选集的数据维护在 registry.json，下面的区块由 design:sync 生成。
+此处是[架构阶段 B](architecture.md#bbase-设计系统)的最小基础切片。复用已有生产角色和组件，以实际挂载上下文验证；独立模拟题目属于阶段 C。准入集的数据维护在 registry.json，下面的区块由 design:sync 生成。
 
 <!-- BEGIN GENERATED: base -->
 
-候选 ID：`desktop-core`；版本：`0.1.4`。该版本尚未冻结。
+候选 ID：`desktop-core`；版本：`0.4.0`；状态：`frozen-beta`。
+
+来源快照：`68530d8703a19baf023ff64b1026925545fb3151`；冻结与兼容所有者：[design-system/base.md](../design-system/base.md)。
 
 | 层 | 准入范围 |
 | --- | --- |
 | Foundations | 文字、表面与反馈、尺寸与间距、形状与动效 |
 | Primitives | Button、ActionButton、Switch、Select、Feedback |
-| Compositions | SettingsPage、SettingsSection、SettingsGroupCard、SettingsRow、SettingsSelect、SettingsSegmentedTabs、SettingsDisclosure、DecisionCard、ApprovalRequest、CollapsibleText、Messages、TurnProgress、TurnExecution、ToolEvent |
-| Patterns | P-SETTINGS、P-DECISION |
+| Compositions | SettingsPage、SettingsSection、SettingsGroupCard、SettingsRow、SettingsSelect、SettingsSegmentedTabs、SettingsDisclosure、DecisionCard、ApprovalRequest、CollapsibleText、Messages、TurnProgress、TurnExecution、ToolEvent、SettingsSearchInput |
+| Patterns | P-SETTINGS、P-DECISION、P-RESOURCES |
+
+### 成员准入
+
+| 成员 | 合同 / 生产消费者 | 有限变体 | 状态 | 证据ID |
+| --- | --- | --- | --- | --- |
+| Button | [合同](../packages/ui/src/components/button/button.md)；[消费者](../renderer/src/ApprovalRequest.tsx)、[消费者](../renderer/src/settings/PluginCenter.tsx) | default/default, secondary/sm, outline/default, ghost/sm | default, disabled, keyboard-focus | E-CONTROLS, E-PLUGINS |
+| ActionButton | [合同](../renderer/src/components/ui/action-button.md)；[消费者](../renderer/src/settings/DisplaySettings.tsx) | secondary/sm | default, disabled, pending | E-CONTROLS |
+| Switch | [合同](../renderer/src/components/ui/switch.md)；[消费者](../renderer/src/settings/SettingsPageParts.tsx)、[消费者](../renderer/src/settings/PluginCenter.tsx) | default | checked, unchecked, disabled, keyboard-focus | E-CONTROLS, E-PLUGINS |
+| Select | [合同](../renderer/src/components/ui/select.md)；[消费者](../renderer/src/settings/SettingsPageParts.tsx) | secondary/sm | closed, open, selected, disabled, keyboard-focus | E-CONTROLS |
+| Feedback | [合同](../renderer/src/components/ui/feedback.md)；[消费者](../renderer/src/DecisionCard.tsx)、[消费者](../renderer/src/settings/PluginCenter.tsx) | inline | empty, status, error, unknown-message | E-CONTROLS, E-PLUGINS |
+| SettingsPage | [合同](../renderer/src/settings/SettingsPageParts.md#settingspage)；[消费者](../renderer/src/App.tsx) | settings-workspace | titled, untitled, wide, narrow | E-SETTINGS |
+| SettingsSection | [合同](../renderer/src/settings/SettingsPageParts.md#settingssection)；[消费者](../renderer/src/settings/DisplaySettings.tsx) | heading, body-only | default | E-SETTINGS |
+| SettingsGroupCard | [合同](../renderer/src/settings/SettingsPageParts.md#settingsgroupcard)；[消费者](../renderer/src/settings/DisplaySettings.tsx) | default, compact | default | E-SETTINGS |
+| SettingsRow | [合同](../renderer/src/settings/SettingsPageParts.md#settingsrow)；[消费者](../renderer/src/settings/DisplaySettings.tsx) | default, wide | default, disabled, with-detail | E-SETTINGS |
+| SettingsSelect | [合同](../renderer/src/settings/SettingsPageParts.md#settingsselect)；[消费者](../renderer/src/settings/DisplaySettings.tsx) | two-value-segmented, multi-value-secondary-sm | selected, disabled | E-SETTINGS |
+| SettingsSegmentedTabs | [合同](../renderer/src/settings/SettingsPageParts.md#settingssegmentedtabs)；[消费者](../renderer/src/settings/DisplaySettings.tsx)、[消费者](../renderer/src/settings/PluginCenter.tsx) | automatic-activation, manual-activation | selected, disabled, keyboard-focus | E-SETTINGS, E-PLUGINS |
+| SettingsDisclosure | [合同](../renderer/src/settings/SettingsPageParts.md#settingsdisclosure)；[消费者](../renderer/src/settings/DisplaySettings.tsx)、[消费者](../renderer/src/settings/PluginCenter.tsx) | native-details | collapsed, expanded, keyboard-focus | E-SETTINGS, E-PLUGINS |
+| DecisionCard | [合同](../renderer/src/DecisionCard.md#decisioncard)；[消费者](../renderer/src/ApprovalRequest.tsx) | approval, question | ready, busy, failed, unknown-message | E-DECISION |
+| ApprovalRequest | [合同](../renderer/src/DecisionCard.md#approvalrequest)；[消费者](../renderer/src/TaskRunConversations.tsx) | once-only, remember-allowed | ready, busy, submitted, failed, unknown | E-DECISION |
+| CollapsibleText | [合同](../renderer/src/CollapsibleText.md)；[消费者](../renderer/src/Messages.tsx) | measured-preview | short, collapsed, expanded, keyboard-focus | E-DECISION |
+| Messages | [合同](../renderer/src/Messages.md#messages)；[消费者](../renderer/src/App.tsx) | main, embedded | accepted-placeholder, following-latest, reading-history, completed, failed, unknown, renderer-recovered-reading | E-CONVERSATION, E-RECOVERY |
+| TurnProgress | [合同](../renderer/src/Messages.md#turnprogress)；[消费者](../renderer/src/Messages.tsx) | ordered-progress | working, settled, manual-expanded, failed, unfinished | E-CONVERSATION |
+| TurnExecution | [合同](../renderer/src/Messages.md#turnexecution)；[消费者](../renderer/src/Messages.tsx) | direct-item, grouped-items | working, completed-summary, failed, unknown, manual-expanded | E-CONVERSATION |
+| ToolEvent | [合同](../renderer/src/Messages.md#toolevent)；[消费者](../renderer/src/Messages.tsx) | tool-summary, raw-record | running, completed, failed, unknown, expanded | E-CONVERSATION |
+| SettingsSearchInput | [合同](../renderer/src/settings/SettingsSearchInput.md)；[消费者](../renderer/src/settings/PluginCenter.tsx) | search-lg | empty, query, clear, keyboard-focus | E-PLUGINS |
+
+证据ID统一映射到 [Base证据索引](base-evidence.md)。路径验证只确认引用存在，不解析JSX证明消费者采用；真实符号导出由TypeScript检查。
 
 ### 验收条件
 
 - 角色引用现有生产来源；目录不存数值副本
-- 公共控件覆盖默认、禁用、处理中、失败和待确认
+- 按成员准入表检查有限变体与状态；证据索引区分复验命令和已完成运行
 - 设置组合挂载真实 SettingsPage 上下文；不只展示脱离页面的库默认
 - 明暗、14/18 字号、宽/窄与键盘交互有独立运行断言
 - 决策与长文本保留原权威状态、全文和焦点可达性
 - 设置单选沿SettingsSelect公共sm变体；普通设置开关使用default，不由调用方另改尺寸
 - 活跃设置说明保留独立角色、对比度偏好与自定义前景色，不连带修改禁用或过程信息
 - 对话过程组合在逐步投影中验证接受消息占位、可见阅读锚点、返回最新、完成收敛及人工详情保留；异常不因final默认隐藏
-- 输入表面由宿主显式选择default/compact；Side不继承全屏主输入器布局；业务草稿、模型与提交归属不共享
+- 插件资源目录的加载、搜索、空态、局部失败、项目启停、原提交核对与返回有真实 GUI 证据
+- 同主窗口 Renderer 重载与崩溃后显式重载保留已加载阅读段落、偏移与草稿；原执行继续且不重放，显式返回最新后保持跟随
 
 ### 边界
 
-- 候选集不是已冻结 Base，不代表用户视觉验收完成
-- 证据仅覆盖生产 renderer 组件和本地 fixture，不覆盖 Core、真实供应商或安装包
-- 未覆盖全仓组件、其它平台和所有自定义主题；未完成独立做题实验
-- 仅准入过程/阅读组合；复合fixture补充命令、图片和子对话组合证据，完整P-CONVERSATION、生产App宿主、重连和真实执行仍未准入
+- frozen-beta 仅表示列明 GUI 切片可作为固定输入，不代表稳定公共 API 或全 GUI 验收
+- Base 仅准入列明 renderer 组件；真实 GUI 路径沿既有 Core 验证，Core API、真实供应商、安装包、Web、CLI/TUI和完整自定义主题矩阵在范围外
+- 成员状态与变体是有限准入声明，不表示每项笛卡尔组合均已运行；已完成证据以索引记录为准
+- 完整P-CONVERSATION、SidePane、原生资源宿主、列明同窗口Renderer恢复以外的恢复生命周期和完整插件安装/认证/连接生命周期未准入；P-RESOURCES仅限列明插件路径
 
 <!-- END GENERATED: base -->
 
 ## 使用与变更
 
-页面先选候选模式，在现有组件的已定义接口上填内容和动作；生产数值与变体继续归原所有者。当前候选范围之外的组件仍是已有生产实现，不能据此称为 Base 已验收。新增公共成员需有真实消费者和对应状态证据；不能只把名字加入目录便视为准入完成。
+Base beta 是阶段 C 使用的固定 GUI 输入快照，尚不承诺稳定公共 API，也不代表全 GUI 已准入。`baseCandidate` 标识保留；`candidate` 表示等待验收，`frozen-beta` 表示完成列明验收并记录精确源码提交。冻结与兼容规则归本文件；成员、来源和状态归 registry.json；证据归 [base-evidence.md](base-evidence.md)。来源快照记录实际生产实现的完整提交；独立题目另外记录承载本合同与生成入口的完整冻结提交，不用会随分支移动的名称。
+
+阶段 C 的独立题目通过生成的 [base-components.ts](../renderer/src/design-system/base-components.ts) 复用真实成员。该入口只服务开发验证，不建立发布包，也不改变正式应用版本。生产 Props、数值 Token 与样式仍归原源码所有者，目录不复制它们。路径检查不解析 JSX 证明调用关系；实际导出由类型检查验证。
+
+删除已准入成员或改变已准入行为，需要提升 Base 版本并迁移消费者。新增验证夹具或补充同一合同的证据不提升版本，也不能悄悄改写已冻结快照的验收范围。新公共成员必须先有真实生产消费者、就近合同、有限变体和状态、可重复检查与可归属运行证据。未在成员表中的生产组件继续由原所有者维护。
+
+历史探索题及其候选版本保留，以复现当时输入。Base 内部版本与应用发布、发行渠道和安装包版本独立。当前以 GUI 为先，后续 Web 需另行验证；CLI/TUI 不在此准入范围。P-RESOURCES 只准入插件目录、详情、当前项目启停、原提交核对及任务返回；真实文件与 Diff 返回证据单独保留，完整资源生命周期继续按真实任务准入。
+
+0.3.0 新准入已有 SettingsSearchInput 的 search-lg 有限状态，并收敛插件管理路径，未新增生产组件或 Token 源。0.2.0 的独立输入 `c98af14e00faad1b28164f660629b57c4bccea6e` 与当时结果保留；既有消费者在 0.3.0 上的运行属于迁移回归，不再次称为独立盲试。
+
+0.4.0 只扩展 Messages 的同窗口 Renderer 阅读恢复合同，不增加成员、模式或 Token。已加载段落、偏移、草稿、原执行和显式跟随选择分别验证；完整应用重启与未加载历史不在范围内。0.2 与 0.3 的固定输入和历史结果保留，既有消费者的同题复验仍属于迁移回归。
 
 ## 复验入口
 

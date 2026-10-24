@@ -1,0 +1,69 @@
+/* Generated from @areal/ui/tokens.json. Run pnpm --dir clients/gui --filter @areal/ui generate. */
+:root {
+  --ui-font-size: 14px;
+  --ui-font-weight: 400;
+  --motion-fast: 100ms;
+  --motion-normal: 160ms;
+  --motion-slow: 240ms;
+  --ease-standard: cubic-bezier(.2, 0, 0, 1);
+  --layer-dialog: 50;
+  --layer-popover: 60;
+  --layer-tooltip: 70;
+  --border-width-default: 1px;
+  --reading-width: 768px;
+  --spacing-control-xs: max(20px, calc(var(--ui-font-size) + 6px));
+  --spacing-control-sm: max(24px, calc(var(--ui-font-size) + 10px));
+  --spacing-control: max(28px, calc(var(--ui-font-size) + 14px));
+  --spacing-control-lg: max(32px, calc(var(--ui-font-size) + 18px));
+  --spacing-control-form: max(38px, calc(var(--ui-font-size) + 24px));
+  --spacing-inline: 8px;
+  --spacing-field: 16px;
+  --spacing-section: 24px;
+  --spacing-panel: 16px;
+  --radius-control: 10px;
+  --radius-button: 8px;
+  --color-button-surface: color-mix(in srgb, var(--color-foreground) 10%, var(--color-card));
+  --color-button-hover: color-mix(in srgb, var(--color-foreground) 14%, var(--color-card));
+  --radius-inset: 8px;
+  --radius-pill: 999px;
+  --radius-overlay: 20px;
+  --radius-navigation: 12.5px;
+  --radius-composer: 22px;
+  --radius-panel: 12px;
+  --radius-dialog: 16px;
+  --shadow-menu: 0 0 0 0.5px var(--color-menu-border, var(--color-border)), 0 8px 16px -4px rgb(0 0 0 / 12%);
+  --shadow-overlay: 0 4px 12px rgb(0 0 0 / 10%), 0 14px 40px rgb(0 0 0 / 8%);
+  --shadow-composer: var(--composer-shadow-light);
+  --shadow-dialog: 0 12px 32px rgb(0 0 0 / 20%);
+  --font-sans: -apple-system, system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", monospace;
+  --line-height-ui: max(20px, calc(var(--ui-font-size) + 6px));
+  --line-height-ui-sm: max(18px, calc(var(--ui-font-size) + 4px));
+  --text-ui-xl: calc(var(--ui-font-size) + 4px);
+  --text-page-title: calc(var(--ui-font-size) + 8px);
+  --text-ui-lg: calc(var(--ui-font-size) + 2px);
+  --text-ui-base: var(--ui-font-size);
+  --text-ui-caption: calc(var(--ui-font-size) - 1px);
+  --text-content-caption: max(12px, calc(var(--content-font-size, 14px) - 1px));
+  --text-ui-sm: calc(var(--ui-font-size) - 2px);
+  --text-ui-xs: max(11px, calc(var(--ui-font-size) - 3px));
+  --text-ui-2xs: calc(var(--ui-font-size) - 5px);
+  --tracking-wf-label: 0.09em;
+  --text-mobile-input-safe: 16px;
+  --color-destructive: #e03131;
+  --color-destructive-foreground: var(--color-foreground-inverse);
+  --color-warning: #e07b00;
+  --color-warning-foreground: var(--color-foreground-inverse);
+  --color-foreground-inverse: #ffffff;
+  --color-ring: var(--color-input-border-focused);
+  --color-muted: var(--color-surface);
+  --color-muted-foreground: var(--color-foreground-subtle);
+  --color-success: #1e8a3e;
+}
+.dark {
+  --color-destructive: #ff5c5c;
+  --color-warning: #ff8a30;
+  --color-foreground-inverse: #000000;
+  --color-success: #46bf72;
+}
+:root[data-reduced-motion="true"] { --motion-fast: 0ms; --motion-normal: 0ms; --motion-slow: 0ms; }

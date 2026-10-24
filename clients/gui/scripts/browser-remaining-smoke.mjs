@@ -82,7 +82,7 @@ const site = createServer(async (request, response) => {
     siteFacts.cookieOnGets.push(request.headers.cookie?.includes('m1_session=synthetic_05') ?? false);
     siteFacts.getRequests.push({ url: request.url, cookie: siteFacts.cookieOnGets.at(-1) });
   }
-  response.setHeader('Set-Cookie', 'm1_session=synthetic_05; HttpOnly; SameSite=Lax');
+  response.setHeader('Set-Cookie', 'm1_session=synthetic_05; HttpOnly; SameSite=Lax; Max-Age=86400');
   response.setHeader('Content-Type', 'text/html; charset=utf-8');
   response.end(`<!doctype html><title>Human boundary fixture</title>
     <h1>HUMAN_BOUNDARY_05</h1>
@@ -390,8 +390,8 @@ try {
     await page.getByTestId('areal-workbench').waitFor({ timeout: 120000 });
     await until(async () => (await snapshot()).connection?.state === 'ready', 'restarted GUI uses original adapter');
     await selectConversation(page, threadId); await page.keyboard.press('Meta+t'); await page.locator('.preview-panel').waitFor();
-    const warning = page.getByText('临时登录只在当前浏览工作区使用；关闭工作区或重启后可能需要重新登录。', { exact: true });
-    await warning.waitFor();
+    const profile = await command('browserData', { operation: 'status' });
+    assert.equal(profile.persistent, true); assert.equal(profile.shared, true);
     await app.evaluate(({ dialog, BrowserWindow, app }, origin) => {
       dialog.showMessageBox = async (...args) => {
         const options = args.at(-1);
@@ -404,14 +404,14 @@ try {
     const restarted = await controlState(); assert.notEqual(restarted.browser.pageId, before.browser.pageId);
     await pv(threadId, { operation: 'navigate', pageId: restarted.browser.pageId, url: `${siteUrl}&restart=1` });
     const restartedId = await wcByUrl(`${siteUrl}&restart=1`), status = await siteStatus(`${siteUrl}&restart=1`);
-    assert.equal(status.beforeLocal, null); assert.equal(status.idb.before, null); assert.equal(status.swBefore, 0);
-    assert.equal(siteFacts.cookieOnGets.at(-1), false);
+    assert.equal(status.beforeLocal, 'first'); assert.equal(status.idb.before, 'first'); assert.ok(status.swBefore >= 1);
+    assert.equal(siteFacts.cookieOnGets.at(-1), true);
     const sessionFacts = await app.evaluate(({ webContents }, id) => ({ storagePath: webContents.fromId(id).session.storagePath }), restartedId);
-    assert.equal(sessionFacts.storagePath, null);
-    await page.screenshot({ path: join(scratch, 'restart-temporary-login-warning.png') });
-    events.restart = { before, after: await controlState(), status, sessionFacts, warning: await warning.innerText(),
+    assert.equal(typeof sessionFacts.storagePath, 'string'); assert.ok(sessionFacts.storagePath.length > 0);
+    await page.screenshot({ path: join(scratch, 'restart-shared-profile.png') });
+    events.restart = { before, after: await controlState(), status, sessionFacts, profile,
       sameGuiUserData: env.AREAL_GUI_USER_DATA, sameCoreHome: env.AREAL_CORE_HOME, lastRequestCookie: siteFacts.cookieOnGets.at(-1) };
-    checks.push('08c4: actual GUI restart shows temporary-login warning; new Native Page/temporary Session has no previous cookie/localStorage/IndexedDB/worker state and no persistent Session directory');
+    checks.push('08c4: actual GUI restart retains synthetic persistent cookie/localStorage/IndexedDB/worker state in the shared Profile while replacing the Native Page');
   } else if (mode === 'ownerRace') {
     await app.evaluate(({ dialog }, origin) => {
       const original = dialog.showMessageBox;
@@ -1106,15 +1106,15 @@ try {
     await pv(threadId,{operation:'navigate',pageId:reopenedPageId,url:reopenedUrl});
     const reopenedNativeId=await wcByUrl(reopenedUrl);
     const reopenedStatus=await siteStatus(reopenedUrl);
-    assert.equal(reopenedStatus.beforeLocal,null);
-    assert.equal(reopenedStatus.idb.before,null);
-    assert.equal(reopenedStatus.swBefore,0);
+    assert.equal(reopenedStatus.beforeLocal,'first');
+    assert.equal(reopenedStatus.idb.before,'first');
+    assert.ok(reopenedStatus.swBefore>=1);
     const sessionChanged=await app.evaluate(({webContents},id)=>
       webContents.fromId(id).session!==globalThis.__m1OldSession,reopenedNativeId);
-    assert.equal(sessionChanged,true);
+    assert.equal(sessionChanged,false);
     events.reopened={originalNativeId,reopenedNativeId,reopenedPageId,reopenedStatus,sessionChanged,
       originPromptCount:(await app.evaluate(()=>globalThis.__m1OriginPrompt))?.count};
-    checks.push('B-08: reopening after last Page release starts a fresh Native Session with empty localStorage, IndexedDB, and Service Worker state');
+    checks.push('B-08: reopening after last Page release retains the shared Session and synthetic localStorage, IndexedDB, and Service Worker state');
   } else if (mode === 'download') {
     assert.ok(workerObserver.rootAutoAttachFiltered>0,'test driver root auto-attach filter applied');
     events.workerObserver={...workerObserver,
@@ -1176,6 +1176,7 @@ try {
       playwrightWorkersAfter:app.context().serviceWorkers().map(worker=>worker.url())};
     assert.equal(events.downloadCleanup.playwrightWorkersAfter.length,0,
       'test driver remains detached from the synthetic Service Worker');
+    assert.equal((await command('browserData',{operation:'clearAll'})).success,true);
     const workerTimeline=[];
     for (const elapsedMs of [0,5000,15000,30000,55000]) {
       const waitMs=elapsedMs-(workerTimeline.at(-1)?.elapsedMs??0);
@@ -1189,8 +1190,8 @@ try {
       if (running.length===0) break;
     }
     checks.push('B-09: closing a Page cancels its hanging synthetic DownloadItem and network stream, and preserves a conservative stable unknown receipt');
-    assert.equal(workerTimeline.at(-1).running.length,0,'old temporary Session has no running workers');
-    checks.push('B-08/B-09: old temporary Session has no running Service Worker after final Page release');
+    assert.equal(workerTimeline.at(-1).running.length,0,'explicit full-data clearing stops shared Profile workers');
+    checks.push('B-08/B-09: explicit full-data clearing stops Service Workers after Page release');
   } else {
   const sameOriginTarget = new URL('/?marker=first&redirect=same', siteUrl).href;
   await pv(threadId,{operation:'navigate',pageId,url:new URL('/redirect-same',siteUrl).href});
@@ -1265,13 +1266,13 @@ try {
   assert.equal(firstPages[1].status.beforeLocal,'first');
   assert.equal(firstPages[1].status.idb.before,'first');
   assert.ok(firstPages[1].status.swBefore>=1);
-  assert.equal(secondPages[0].status.beforeLocal,null);
-  assert.equal(secondPages[0].status.idb.before,null);
-  assert.equal(secondPages[0].status.swBefore,0);
-  assert.equal(secondPages[1].status.beforeLocal,'second');
-  assert.equal(secondPages[1].status.idb.before,'second');
+  assert.equal(secondPages[0].status.beforeLocal,'first');
+  assert.equal(secondPages[0].status.idb.before,'first');
+  assert.ok(secondPages[0].status.swBefore>=1);
+  assert.equal(secondPages[1].status.beforeLocal,'first');
+  assert.equal(secondPages[1].status.idb.before,'first');
   assert.ok(secondPages[1].status.swBefore>=1);
-  checks.push('B-21/B-22: same-workspace Native pages share localStorage, IndexedDB, and Service Worker; separate Thread workspace starts empty');
+  checks.push('B-21/B-22: Native pages in different Thread workspaces share persistent localStorage, IndexedDB, and Service Worker data');
   const third=await command('create',{projectId,browserEnabled:true,profile:{id:'fixture',revision:'v1'}});
   const allPinnedAttempt=await pv(third.threadId,{operation:'newPage'}).then(()=>({accepted:true}),error=>({accepted:false,message:error.message}));
   assert.equal(allPinnedAttempt.accepted,false);
@@ -1292,7 +1293,7 @@ try {
 
   const cleanupBefore=await app.evaluate(({webContents},{first,second,url})=>{
     const a=webContents.fromId(first)?.session,b=webContents.fromId(second)?.session;
-    if (!a || !b || a===b) throw Error('two live Workspace Sessions required before cleanup');
+    if (!a || !b || a!==b) throw Error('both Workspaces must use the same persistent Session');
     globalThis.__m1CleanupSessions=[a,b];
     return Promise.all([a.cookies.get({url}),b.cookies.get({url})]).then(items=>items.map(value=>value.map(cookie=>cookie.name)));
   },{first:firstPages[1].wc,second:secondPages[0].wc,url:siteUrl});
@@ -1310,20 +1311,23 @@ try {
           registrations:await c.executeJavaScript('navigator.serviceWorker.getRegistrations().then(items=>items.length)'),
           cookies:(await c.session.cookies.get({url:c.getURL()})).map(cookie=>cookie.name)};
       },secondPages[0].wc);
-      assert.equal(other.localMarker,'second');
+      assert.equal(other.localMarker,'first');
       assert.ok(other.cookies.includes('m1_session'));
       events.otherWorkspaceAfterFirstClose=other;
       checks.push('B-22: closing first Workspace leaves second Workspace storage and cookie live');
     }
   }
   await until(async()=>await nativeCount()===0,'all Browser Native Views released');
+  const retainedCookies=await app.evaluate(async(_electron,url)=> (await globalThis.__m1CleanupSessions[0].cookies.get({url})).map(cookie=>cookie.name),siteUrl);
+  assert.ok(retainedCookies.includes('m1_session'),'closing the last Page preserves shared persistent login');
+  assert.equal((await command('browserData',{operation:'clearAll'})).success,true);
   const cleanupAfter=await until(()=>app.evaluate(async(_electron,url)=>{
     const sessions=globalThis.__m1CleanupSessions;
     const cookies=await Promise.all(sessions.map(item=>item.cookies.get({url})));
     return cookies.every(items=>items.length===0)?cookies.map(items=>items.length):null;
-  },siteUrl),'temporary Workspace Session cookies cleared',10000);
+  },siteUrl),'explicit full-data clearing removes persistent cookies',10000);
   events.cleanup={beforeCookieNames:cleanupBefore,afterCookieCounts:cleanupAfter,nativeCount:await nativeCount()};
-  checks.push('B-22/B-26: explicit Page closure releases both temporary Workspace Sessions and all owned Native Views');
+  checks.push('B-22/B-26: Page closure releases Native Views and preserves shared login; explicit full-data clearing removes persistent cookies');
 
   }
 

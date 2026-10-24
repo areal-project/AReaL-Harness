@@ -11,17 +11,23 @@ pub struct ComponentDocument {
     pub value: Value,
 }
 #[derive(Clone, Debug)]
+pub struct McpComponentDocument {
+    pub origin: String,
+    pub declaration: areal_mcp::PluginDeclaration,
+}
+#[derive(Clone, Debug)]
 pub struct InstalledComponents {
     pub id: String,
     pub root: PathBuf,
     pub data_root: PathBuf,
     pub digest: String,
-    pub mcp_documents: Vec<ComponentDocument>,
+    pub mcp_documents: Vec<McpComponentDocument>,
     pub hook_documents: Vec<ComponentDocument>,
     pub app_documents: Vec<ComponentDocument>,
     pub policy: Value,
     pub diagnostics: Vec<String>,
     pub support: crate::PackageComponentSupport,
+    pub disabled_mcp_servers: std::collections::BTreeSet<String>,
 }
 /// One atomic state-file read for publishing an activation directory. Package
 /// bytes remain immutable; concurrent commits cannot mix selection revisions.
@@ -43,31 +49,22 @@ impl Store {
         }
         let mut eligible_skill_refs = std::collections::BTreeSet::new();
         for skill in &state.history {
-            if enabled_ids.contains(&skill.plugin_id) && self.skill_compatible(&state, skill)? {
+            if self.skill_allowed(&state, skill)? {
                 eligible_skill_refs.insert((skill.id.clone(), skill.revision.clone()));
             }
         }
-        let enabled_skills = state
-            .installed
-            .iter()
-            .filter(|(id, _)| enabled_ids.contains(*id))
-            .flat_map(|(_, detail)| detail.skills.clone())
-            .collect();
+        let mut enabled_skills = Vec::new();
+        for detail in state.installed.values() {
+            for skill in &detail.skills {
+                if self.skill_allowed(&state, skill)? {
+                    enabled_skills.push(skill.clone());
+                }
+            }
+        }
         let components = state
             .installed
             .values()
-            .map(|detail| {
-                self.read_components(
-                    &detail.id,
-                    &detail.source_digest,
-                    self.root.join("cache").join(&detail.source_digest),
-                    state
-                        .installed_policies
-                        .get(&detail.id)
-                        .cloned()
-                        .unwrap_or(Value::Null),
-                )
-            })
+            .map(|detail| self.installed_component(&state, detail))
             .collect::<Result<_>>()?;
         Ok(InstalledSnapshot {
             retained_skills: state.history,
@@ -92,16 +89,33 @@ impl Store {
             "plugin disabled, uninstalled or statically incompatible"
         );
         let detail = state.installed.get(id).context("plugin not installed")?;
-        self.read_components(
+        self.installed_component(&state, detail)
+    }
+    fn installed_component(
+        &self,
+        state: &crate::State,
+        detail: &crate::PluginDetail,
+    ) -> Result<InstalledComponents> {
+        let mut component = self.read_components(
             &detail.id,
-            &detail.source_digest,
+            detail.review_digest(),
             self.root.join("cache").join(&detail.source_digest),
+            self.definition(
+                state,
+                &detail.id,
+                detail.review_digest(),
+                &detail.source_digest,
+            )?,
             state
                 .installed_policies
-                .get(id)
+                .get(&detail.id)
                 .cloned()
                 .unwrap_or(Value::Null),
-        )
+        )?;
+        component.disabled_mcp_servers = self
+            .component_choices(state, &detail.id)
+            .disabled_mcp_servers;
+        Ok(component)
     }
     fn components(&self, enabled_only: bool) -> Result<Vec<InstalledComponents>> {
         let state = self.state()?;
@@ -110,18 +124,7 @@ impl Store {
             if enabled_only && !self.effective(&state, &detail.id)? {
                 continue;
             }
-            result.push(
-                self.read_components(
-                    &detail.id,
-                    &detail.source_digest,
-                    self.root.join("cache").join(&detail.source_digest),
-                    state
-                        .installed_policies
-                        .get(&detail.id)
-                        .cloned()
-                        .unwrap_or(Value::Null),
-                )?,
-            );
+            result.push(self.installed_component(&state, detail)?);
         }
         Ok(result)
     }
@@ -144,8 +147,9 @@ impl Store {
             .unwrap_or_else(|| detail.source.clone());
         self.read_components(
             &detail.id,
-            &detail.source_digest,
+            detail.review_digest(),
             root,
+            detail.definition.as_ref(),
             detail.policy.clone(),
         )
     }
@@ -154,10 +158,26 @@ impl Store {
         id: &str,
         digest: &str,
         root: PathBuf,
+        definition: Option<&package::Definition>,
         policy: Value,
     ) -> Result<InstalledComponents> {
+        let raw_digest = if let Some(definition) = definition {
+            definition.validate(id, digest)?;
+            &definition.package_digest
+        } else {
+            ensure!(
+                !root.starts_with(self.root.join("cache"))
+                    || root.file_name().and_then(|name| name.to_str()) == Some(digest),
+                "plugin definition receipt missing"
+            );
+            digest
+        };
+        let policy = match definition {
+            Some(definition) => crate::metadata::policy(&definition.context.entry)?,
+            None => policy,
+        };
         let fingerprint = package::fingerprint(&root)?;
-        let cache_key = id.to_owned();
+        let cache_key = format!("{id}/{digest}");
         if let Some((previous, component)) = self.component_cache.lock().unwrap().get(&cache_key)
             && previous == &fingerprint
             && component.root == root
@@ -171,38 +191,17 @@ impl Store {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let files = package::snapshot(&root)?;
         ensure!(
-            package::digest(&files) == digest,
+            package::digest(&files) == raw_digest,
             "installed package integrity mismatch: {}",
             id
         );
-        let parsed = package::parse(&files, id, &root, &root)?;
-        let read = |path: &str| {
-            files
-                .get(path)
-                .and_then(|f| serde_json::from_slice::<Value>(&f.bytes).ok())
-        };
-        let manifest = read("plugin.json");
-        let portable = manifest
-            .as_ref()
-            .and_then(|v| v["$schema"].as_str())
-            .is_some_and(|s| s.contains("agent-plugins.org/"));
-        let inline = manifest
-            .as_ref()
-            .and_then(|v| v.pointer("/extensions/com.openai"))
-            .filter(|v| v.is_object());
-        let legacy = [
-            ".codex-plugin/plugin.json",
-            ".claude-plugin/plugin.json",
-            ".cursor-plugin/plugin.json",
-        ]
-        .into_iter()
-        .find(|p| files.contains_key(*p))
-        .and_then(read);
-        let overlay = if portable {
-            inline.or(legacy.as_ref())
-        } else {
-            legacy.as_ref()
-        };
+        let (mut parsed, selection) =
+            package::parse_context(&files, id, &root, &root, definition.map(|d| &d.context))?;
+        if let Some(support) = &mut parsed.component_support {
+            support.digest = digest.into();
+        }
+        let portable = selection.portable;
+        let overlay = &selection.overlay;
         let mut result = InstalledComponents {
             id: id.to_owned(),
             root,
@@ -213,19 +212,16 @@ impl Store {
             app_documents: vec![],
             policy,
             diagnostics: vec![],
+            disabled_mcp_servers: Default::default(),
             support: parsed
                 .component_support
                 .context("validated package support report missing")?,
         };
-        result.mcp_documents = documents(
-            if portable {
-                None
-            } else {
-                overlay.and_then(|v| v.get("mcpServers"))
-            },
-            if portable { "mcp.json" } else { ".mcp.json" },
+        result.mcp_documents = mcp_documents(
+            overlay.get("mcpServers"),
             &files,
             portable,
+            selection.claude_defaults,
             &mut result.diagnostics,
         )
         .documents
@@ -233,7 +229,7 @@ impl Store {
         .map(|(_, document)| document)
         .collect();
         result.app_documents = documents(
-            overlay.and_then(|v| v.get("apps")),
+            overlay.get("apps"),
             ".app.json",
             &files,
             portable,
@@ -247,7 +243,7 @@ impl Store {
             result.diagnostics.push("hooks: declarations do not execute during discovery; explicit hook definition trust is required".into());
         }
         result.hook_documents = crate::hooks::discover(
-            overlay.and_then(|v| v.get("hooks")),
+            overlay.get("hooks"),
             &files,
             portable,
             &mut result.diagnostics,
@@ -256,6 +252,26 @@ impl Store {
         .into_iter()
         .map(|(_, document)| document)
         .collect();
+        if selection.restricted {
+            result.hook_documents.clear();
+            result.app_documents.clear();
+        }
+        if result
+            .support
+            .compatibility
+            .reason_codes
+            .iter()
+            .any(|reason| {
+                matches!(
+                    reason.as_str(),
+                    "packageDependenciesUnsupported" | "userConfigUnsupported"
+                )
+            })
+        {
+            result.mcp_documents.clear();
+            result.hook_documents.clear();
+            result.app_documents.clear();
+        }
         ensure!(
             package::fingerprint(&result.root)? == fingerprint,
             "package changed during component validation"
@@ -268,6 +284,7 @@ impl Store {
     }
 }
 
+#[derive(Clone)]
 pub(crate) enum DocumentSource {
     Manifest(Vec<usize>),
     Path(String),
@@ -384,6 +401,72 @@ pub(crate) fn documents(
         );
     }
     result
+}
+
+pub(crate) struct McpDocumentSelection {
+    pub documents: Vec<(DocumentSource, McpComponentDocument)>,
+    pub rejected: Vec<DocumentSource>,
+}
+pub(crate) fn mcp_documents(
+    declaration: Option<&Value>,
+    files: &package::Files,
+    portable: bool,
+    claude_defaults: bool,
+    diagnostics: &mut Vec<String>,
+) -> McpDocumentSelection {
+    let default = if portable { "mcp.json" } else { ".mcp.json" };
+    let mut selected = documents(
+        if portable { None } else { declaration },
+        default,
+        files,
+        portable,
+        diagnostics,
+    );
+    if claude_defaults && declaration.is_some() {
+        let mut defaults = documents(None, default, files, false, diagnostics);
+        defaults.documents.append(&mut selected.documents);
+        defaults.rejected.append(&mut selected.rejected);
+        selected = defaults;
+    }
+    let mut selected = McpDocumentSelection {
+        documents: selected
+            .documents
+            .into_iter()
+            .map(|(source, document)| {
+                (
+                    source,
+                    McpComponentDocument {
+                        origin: document.origin,
+                        declaration: areal_mcp::PluginDeclaration::parse(
+                            document.portable,
+                            document.value,
+                        ),
+                    },
+                )
+            })
+            .collect(),
+        rejected: selected.rejected,
+    };
+    if !claude_defaults {
+        return selected;
+    }
+    let mut names = std::collections::BTreeSet::new();
+    selected.documents = selected
+        .documents
+        .into_iter()
+        .rev()
+        .filter_map(|(source, mut document)| {
+            if document
+                .declaration
+                .retain_servers(|name| names.insert(name.to_owned()))
+            {
+                return None;
+            }
+            Some((source, document))
+        })
+        .collect();
+    selected.documents.reverse();
+    selected
 }
 
 pub struct AppDeclaration {

@@ -18,6 +18,7 @@ import { Button } from "../components/ui/button.js";
 import { SidePaneTabTitleTooltip } from "./SidePaneTabTitleTooltip.js";
 import type { WorkspaceSidePaneTab } from "./sidePaneModel.js";
 export function SidePaneTabIcon({ tab }: { tab: WorkspaceSidePaneTab }) {
+  if (tab.id.startsWith("side:")) return <SideChatIcon className="size-4 shrink-0" />;
   if (tab.id.startsWith("agent:")) return <AgentAvatar id={tab.id.slice(6)} size={14} />;
   if (tab.id.startsWith("browser:")) return <BrowserPanelIcon className="size-4 shrink-0" />;
   if (tab.id.startsWith("terminal:")) return <TerminalPanelIcon className="size-4 shrink-0" />;
@@ -95,6 +96,8 @@ export function SortableSidePaneTabTrigger({
           <div
             ref={setNodeRef}
             data-side-pane-tab-id={tab.id}
+            data-testid={tab.id.startsWith("side:") ? "side-chat-tab" : undefined}
+            data-thread-id={tab.id.startsWith("side:") ? tab.id.slice(5) : undefined}
             data-active={isActive ? "" : undefined}
             style={style}
             className={cn(

@@ -22,3 +22,6 @@ tempfile.workspace = true
 tokio.workspace = true
 tokio-tungstenite.workspace = true
 uuid.workspace = true
+
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+sha2 = { workspace = true, features = ["asm"] }

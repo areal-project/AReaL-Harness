@@ -40,7 +40,9 @@ export type McpAppModelContext = {
     structuredContent?: Record<string, unknown>;
 };
 /** Source-bound SDK transport with a stricter initialization gate than MCP's generic transport. */
-class AppTransport extends PostMessageTransport {
+export class AppTransport extends PostMessageTransport {
+    boundedRequests = false;
+    private highestRequest = -1;
     ready = false;
     initialized = false;
     private initializing = false;
@@ -64,6 +66,11 @@ class AppTransport extends PostMessageTransport {
                         });
                     else if (previous.reply) void super.send(previous.reply);
                     return;
+                }
+                if (this.boundedRequests && typeof message.id === "number") {
+                    if (message.id <= this.highestRequest) { void super.send({ jsonrpc: "2.0", id: message.id, error: { code: -32600, message: "Request expired" } }); return; }
+                    this.highestRequest = message.id;
+                    for (const [oldKey, old] of this.requests) { if (this.requests.size < 128) break; if (old.reply) this.requests.delete(oldKey); }
                 }
                 if (this.requests.size >= 512) {
                     void super.send({

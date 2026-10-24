@@ -1,0 +1,52 @@
+.settings-workspace {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  padding: 64px 32px;
+  background: var(--color-background);
+  box-sizing: border-box;
+}
+
+.settings-workspace .settings-page {
+  padding: 0;
+  overflow: visible;
+  max-width: 728px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.settings-workspace .settings-page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 0;
+  margin-bottom: 0;
+}
+
+.settings-workspace .settings-page-title,
+.settings-workspace .settings-page > h1 {
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 33.6px;
+  letter-spacing: -0.015em;
+  color: var(--color-foreground);
+  margin: 0;
+}
+
+.settings-workspace .settings-page-subtitle {
+  font-size: var(--text-ui-caption);
+  color: var(--color-muted-foreground);
+  margin: 0;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .settings-workspace { padding: 16px 16px 32px; }
+}

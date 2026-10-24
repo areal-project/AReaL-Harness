@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useI18n } from "./i18n/IntlProvider.js";
+import { SubagentPanel, TaskContext } from "@areal/ui/wip";
+import "@areal/ui/conversation.css";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "./components/ui/button.js";
 import { Textarea } from "./components/ui/textarea.js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select.js";
@@ -22,7 +25,8 @@ function loadOptions(key: string): Options {
 const labels: Record<string, string> = { inProgress: "执行中", completed: "已完成", interrupted: "已中断", failed: "失败" };
 
 /** Direct Core children; isolated writers and Task workers retain their own owners. */
-export function AgentsPane({ project, thread, action, onOpen, compact = false, selectedAgent }: { project: Data; thread: Data; action: Action; onOpen: (id: string) => void; compact?: boolean; selectedAgent?: string }) {
+export function AgentsPane({ project, thread, action, onOpen, summary, reader }: { project: Data; thread: Data; action: Action; onOpen: (id: string) => void; summary?: { onOpen: () => void }; reader?: { selectedId?: string; onSelect: (id: string | undefined) => void; onClose: () => void; children: ReactNode } }) {
+  const { t } = useI18n();
   const key = `areal-gui:agent-draft:${project.id}:${thread.id}`;
   const [prompt, setPrompt] = useState(() => localStorage.getItem(key) ?? "");
   const [options, setOptions] = useState(() => loadOptions(key));
@@ -34,7 +38,7 @@ export function AgentsPane({ project, thread, action, onOpen, compact = false, s
   const [waiting, setWaiting] = useState<string | null>(null), [waitNotice, setWaitNotice] = useState<Record<string, string>>({});
   const generation = useRef(0), pages = useRef(1), locked = useRef(false), waitLock = useRef(false), mounted = useRef(true);
   const inflight = useRef<Promise<void> | null>(null);
-  const connected = !!project.state?.connected;
+  const connected = thread.executionConnected ?? !!project.state?.connected;
   const active = thread.turns?.some((turn: Data) => turn.status === "inProgress");
   const pending = project.pending?.some((entry: Data) => entry.params?.threadId === thread.id);
   const parentConfig = thread.turns?.at(-1)?.configuration ?? thread.desktop?.configuration;
@@ -179,15 +183,21 @@ export function AgentsPane({ project, thread, action, onOpen, compact = false, s
     } catch (cause) { if (mounted.current) setError(`等待结束，但结果未确认。${(cause as Error).message}`); }
     finally { waitLock.current = false; if (mounted.current) setWaiting(null); }
   };
-  if (compact) return !children.length && !readError ? null : <section className="task-resources-section task-resources-agents" aria-label="子智能体">
-    <h3 className="task-resources-heading"><span>子智能体</span><span>{Object.values(results).filter(result => result.status === "inProgress").length} 个运行中</span></h3>
-    {!connected && <p className="task-resource-note" role="status">连接不可用，结果可能已过期。</p>}
-    {readError && <p role="alert" className="text-destructive">{readError}</p>}
-    {children.map(child => <button type="button" key={child.id} className="task-resource-row" data-selected={selectedAgent === child.id || undefined} aria-label={`打开 ${child.id} 子对话`} onClick={() => onOpen(child.id)}>
-      <AgentAvatar id={child.id} /><div className="task-resource-agent-body"><span>{agentName(child.id)}</span><p title={agentAssignment(thread, child.id)}>{agentAssignment(thread, child.id) || "查看任务指令"}</p></div>
-      <small className="task-resource-status" data-running={results[child.id]?.status === "inProgress" || undefined}>{agentStatus(results[child.id]?.status)}</small>
-    </button>)}
-    {more && <Button variant="ghost" size="sm" disabled={reading} onClick={() => { pages.current++; void read(); }}>加载更多子智能体</Button>}
+  if (reader) return <section className="agent-history-reader">
+    {(!connected || readError) && <p role="status" className="task-resource-note">{!connected ? t("chat.agents.disconnected") : readError}</p>}
+    {reading && !children.length && <p role="status" className="task-resource-note">{t("chat.agents.reading")}</p>}
+    <SubagentPanel open hasMore={more} agents={children.map(child => {
+      const result = results[child.id];
+      const status = connected && !readError ? result?.status : undefined;
+      return { id: child.id, name: agentAssignment(thread, child.id) || child.preview || agentName(child.id), icon: <AgentAvatar id={child.id} />,
+        state: status === "inProgress" ? "running" : status === "completed" ? "completed" : "attention", statusLabel: agentStatus(status) };
+    })} selectedId={reader.selectedId} onSelect={reader.onSelect} onClose={reader.onClose}>{reader.children}</SubagentPanel>
+    {more && !reader.selectedId && <Button variant="ghost" size="sm" disabled={reading} onClick={() => { pages.current++; void read(); }}>{t("chat.agents.more")}</Button>}
+  </section>;
+  if (summary) return <section className="task-resources-section" aria-label={t("chat.agents.region")}>
+    <TaskContext.Item title={t("chat.agents.title")} aria-label={t("chat.agents.viewAll", { count: children.length, suffix: more ? "+" : "" })} onClick={summary.onOpen}
+      meta={<><span className="task-resource-identity">{children.slice(0, 4).map(child => <AgentAvatar key={child.id} id={child.id} />)}</span><small>{children.length}{more ? "+" : ""}</small></>} />
+    {readError && <p role="alert" className="task-resource-note">{readError}</p>}
   </section>;
   return <section aria-label="子任务" className="flex h-full min-h-0 flex-col text-ui-base">
     <div className="panel-toolbar flex shrink-0 items-center justify-between gap-2"><span>子任务 · {children.length}</span><Button size="sm" variant="ghost" disabled={!connected || reading} onClick={() => void read()}>刷新子任务</Button></div>

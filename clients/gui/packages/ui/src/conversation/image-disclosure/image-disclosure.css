@@ -1,0 +1,4 @@
+.areal-image-disclosure { min-width: 0; }
+.areal-image-content { max-width: 260px; padding-block: var(--spacing-inline); overflow-wrap: anywhere; }
+.areal-image-content img { display: block; max-width: 100%; height: auto; }
+.areal-image-feedback { font-size: var(--text-content-caption); line-height: 1.6; color: var(--color-foreground-subtle); margin-block: var(--spacing-inline); }

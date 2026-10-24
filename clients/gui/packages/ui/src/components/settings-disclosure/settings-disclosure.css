@@ -1,0 +1,8 @@
+/* Keep native keyboard/focus behavior while naming the disclosure action. */
+.settings-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-inline); list-style: none; cursor: pointer; padding-block: 8px; font-size: var(--text-ui-caption); }
+.settings-disclosure > summary::-webkit-details-marker { display: none; }
+.settings-disclosure > summary::marker { content: ""; }
+.settings-disclosure-title { display: flex; align-items: center; gap: var(--spacing-inline); min-width: 0; }
+.settings-disclosure-action { flex-shrink: 0; padding: 2px 8px; border-radius: var(--radius-button); background: var(--color-button-surface); color: var(--color-foreground); font-size: var(--text-ui-sm); }
+.settings-disclosure > summary:hover .settings-disclosure-action { background: var(--color-button-hover); }
+.settings-disclosure > summary:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; border-radius: var(--radius-button); }

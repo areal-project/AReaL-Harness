@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "id": "worktree-preparation",
+  "intent": "解释首条 Prompt 执行前的工作区准备，并提供准确取消和核对入口",
+  "pattern": "P-STATUS",
+  "target": "renderer/src/WorktreeStatus.tsx",
+  "runtime": "desktop",
+  "interactionFamilies": [
+    "I-OBSERVE",
+    "I-RECOVER"
+  ],
+  "reference": {
+    "kind": "screenshot",
+    "visualTarget": "WT-R05 创建详情、WT-R04 已创建、WT-R06 正常聊天；规则正文：design-system/worktrees.md。用户原图留本地，代表状态对照见 design-system/exercises/worktrees.md。"
+  },
+  "slots": {
+    "status": [
+      "Feedback",
+      "TurnProgress"
+    ],
+    "recovery": [
+      "Button",
+      "SettingsDisclosure"
+    ]
+  },
+  "states": [
+    {
+      "id": "loading",
+      "condition": "创建记录已受理，Git / 绑定尚在准备",
+      "expected": "Prompt 在前且只有一份，准备摘要和当前真实阶段在后，Composer 等待"
+    },
+    {
+      "id": "empty",
+      "condition": "没有该请求的 Worktree 记录",
+      "expected": "不渲染虚假的创建标识，不展示另一项目记录"
+    },
+    {
+      "id": "ready",
+      "condition": "绑定与环境均确认 ready",
+      "expected": "轻量创建事实及真实工作区标识保留，普通 Composer 恢复"
+    },
+    {
+      "id": "failed",
+      "condition": "创建或脚本明确失败",
+      "expected": "摘要可见失败原因，保留记录、目录与 Prompt，仅提供宿主允许的动作"
+    },
+    {
+      "id": "unknown",
+      "condition": "操作结果尚未确认",
+      "expected": "结果待核对，检查原请求，不自动重跑或回退"
+    },
+    {
+      "id": "created",
+      "condition": "checkout 已确认但尚未 ready",
+      "expected": "已创建标识与剩余准备说明分开，不提前解除等待"
+    },
+    {
+      "id": "setting-up",
+      "condition": "Setup 运行，日志追加，用户展开详情",
+      "expected": "阶段与输出真实，日志有界；人工展开和阅读锚点保留"
+    },
+    {
+      "id": "cancelling",
+      "condition": "取消请求已发出",
+      "expected": "显示正在取消，禁止重复动作，不宣称已终止"
+    },
+    {
+      "id": "cancelled",
+      "condition": "权威确认原准备已取消",
+      "expected": "明确目录保留情况，Prompt 保留，可按原合同重新选择"
+    },
+    {
+      "id": "use-source",
+      "condition": "用户显式选择不使用 Worktree",
+      "expected": "先确认原请求取消，再以新请求选择原目录；UNKNOWN 不回退"
+    }
+  ],
+  "conditions": {
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "fontSizes": [
+      14,
+      18
+    ],
+    "widthModes": [
+      "wide",
+      "narrow"
+    ],
+    "reducedMotion": [
+      false,
+      true
+    ]
+  },
+  "invariants": [
+    "遵循 WT-PROGRESS-01～03、WT-STATE-01 与原对话阅读合同",
+    "状态来自原请求与宿主，不从日志文本、动画或模型自述推断完成",
+    "只保留一个有界日志区；正常完成不常驻阶段大卡片",
+    "侧栏身份遵循 WT-IDENTITY-01，准备、绑定与取消明确区分"
+  ],
+  "evidence": {
+    "status": "compared",
+    "artifacts": [
+      {
+        "path": ".scratch/worktree-ui-20261024/renderer-4/state-creating-log-details.png",
+        "sha256": "ba2ef784886421d06f4592689def3f074e8e5016b126e4c6a494df899cd4e306",
+        "state": "state-creating-log-details"
+      },
+      {
+        "path": ".scratch/worktree-ui-20261024/renderer-4/state-created.png",
+        "sha256": "de8f73f359a75c16e2173322a7f9e35ddfd7cde6406b76cd578bd1d6fb571345",
+        "state": "state-created"
+      },
+      {
+        "path": ".scratch/worktree-ui-20261024/renderer-4/state-ready.png",
+        "sha256": "c0da8462719713ddfb9bf89cd910f7b74c24a128a65e713a5b3e42b9e2ee12ba",
+        "state": "state-ready"
+      },
+      {
+        "path": ".scratch/worktree-ui-20261024/renderer-4/state-unknown.png",
+        "sha256": "b221f5ad7d655470a42816cd7d2f68557606b7f107f4bea6735043708f9e9867",
+        "state": "state-unknown"
+      },
+      {
+        "path": ".scratch/worktree-ui-20261024/renderer-4/messages-inherited-first-own.png",
+        "sha256": "37b4da63f85aae953ffef230c3b6020506ed0479dab49f75d25476b00e7c87fa",
+        "state": "messages-inherited-first-own"
+      }
+    ],
+    "gaps": [
+      "组件异常状态使用声明的初始投影与服务 fixture；真实首次发送/取消另见桌面验收题",
+      "静态参考不证明完整时序；没有视频级瞬态无遗漏或跨平台结论",
+      "不完整本地历史只保留工作区身份入口，不把创建记录挂到后续可见 Prompt"
+    ]
+  }
+}

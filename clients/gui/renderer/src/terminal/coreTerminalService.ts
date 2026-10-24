@@ -1,5 +1,12 @@
 import type { ITheme, IWindowsPty } from '@xterm/xterm';
 import type { Action } from '../services.js';
+type TerminalPresentation = {
+    fontFamily?: string;
+    fontSize?: number;
+    theme?: ITheme;
+    fontFamilySource?: 'custom' | 'system' | 'fallback';
+    windowsPty?: IWindowsPty;
+};
 interface Disposable {
     dispose(): void;
 }
@@ -11,15 +18,7 @@ export interface TerminalServices {
             cwd?: string;
             lifetime?: "turn" | "thread";
             clientId?: string;
-        }): Promise<{
-            id: string;
-            shell: string;
-            fontFamily?: string;
-            fontSize?: number;
-            theme?: ITheme;
-            fontFamilySource?: string;
-            windowsPty?: IWindowsPty;
-        }>;
+        }): Promise<{ id: string; shell: string } & TerminalPresentation>;
         hasPartialOutput(id: string): boolean;
         recover(clientId: string): Promise<boolean>;
         hasAttempt(clientId: string): boolean;
@@ -60,7 +59,7 @@ export function createTerminalServices(action: Action, projectId: string, thread
     const processes = new Map<string, Process>();
     // A tab generation owns one create attempt. Unknown attempts are retained;
     // only an explicit receipt lookup can reconnect them, never another start.
-    type Attempt = { requestId: string; state: 'pending' | 'confirmed' | 'rejected'; inFlight?: boolean; message?: string; result?: { id: string; shell: string; closed?: boolean; controls?: number } };
+    type Attempt = { requestId: string; state: 'pending' | 'confirmed' | 'rejected'; inFlight?: boolean; message?: string; result?: { id: string; shell: string; closed?: boolean; controls?: number } & TerminalPresentation };
     const creations = new Map<string, Attempt>();
     const attemptKey = (clientId: string) => `areal-gui:terminal-create:${projectId}:${threadId}:${clientId}`;
     const saveAttempt = (clientId: string, attempt: Attempt) => {
@@ -189,7 +188,7 @@ export function createTerminalServices(action: Action, projectId: string, thread
                 const p: Process = { closed: result.closed === true, cleanupDone: result.closed === true, data: new Set(), exit: new Set(), chain: Promise.resolve(), controls: result.controls ?? 0, buffer: '', decoder: new TextDecoder() };
                 processes.set(result.id, p);
                 setTimeout(() => { if (p.closed) void publishExit(result.id, p); else void poll(result.id, p); }, 0);
-                return { id: result.id, shell: result.shell };
+                return { id: result.id, shell: result.shell, fontFamily: result.fontFamily, fontSize: result.fontSize, theme: result.theme, fontFamilySource: result.fontFamilySource, windowsPty: result.windowsPty };
             },
             hasPartialOutput: id => processes.get(id)?.partialOutput === true,
             recover,

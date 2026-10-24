@@ -337,7 +337,7 @@ pub(crate) async fn dispatch(
                 revision = row["revision"].as_u64().unwrap();
             }
             let request = uuid::Uuid::new_v4().to_string();
-            let arguments = json!({"id":id.clone(),"scope":"user","expectedRevision":revision,"source":row["source"],"expectedDigest":row["sourceDigest"]});
+            let arguments = json!({"id":id.clone(),"scope":"user","expectedRevision":revision,"source":row["source"],"expectedDigest":row["admissionDigest"].as_str().map(Value::from).unwrap_or_else(||row["sourceDigest"].clone())});
             let reply = engine
                 .management_submission(
                     identity.into(),

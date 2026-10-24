@@ -363,7 +363,11 @@ impl Engine {
                 "exclusive writers must return a handoff instead of recursively creating child executions",
             ));
         }
-        if self.read(&request.parent_thread_id, false).await?.is_side() {
+        if self
+            .read(&request.parent_thread_id, false)
+            .await?
+            .is_read_only_side()
+        {
             return Err(invalid("SIDE_POLICY_VIOLATION"));
         }
         if request.workspace_mode.as_deref() != Some("isolatedWrite") {

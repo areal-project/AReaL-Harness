@@ -7,7 +7,7 @@
 | ID / 用户任务 | 最小组合 / 生产参考 | 允许变化 | 验收重点 |
 | --- | --- | --- | --- |
 | P-SETTINGS 修改偏好或配置 | SettingsPage + SettingsSection + SettingsGroupCard + SettingsRow；[参考](../renderer/src/settings/DisplaySettings.tsx) | 分组、字段、文案与现有控件类型 | 标签/控件对齐，窄窗换行，值和反馈真实 |
-| P-RESOURCES 查找并管理资源 | SettingsSection + ActionButton + Feedback；[参考](../renderer/src/settings/PluginCenter.tsx) | 搜索、筛选、资源状态与详情 | 安装/连接状态分开；列表和详情职责清楚 |
+| P-RESOURCES 查找并管理资源 | SettingsSearchInput + SettingsSegmentedTabs + Button + Switch + SettingsDisclosure + Feedback；[参考](../renderer/src/settings/PluginCenter.tsx) | 当前市场与资源分类、查询、详情、项目启用状态和局部读取反馈 | 限插件目录/详情及当前项目启停；安装、启用和连接分开；原提交只读核对，返回保留上下文 |
 | P-CONVERSATION 阅读并推进任务 | Messages + TurnProgress + TurnExecution + ToolEvent + ConversationComposer + CommandDetails + AgentConversationPane + SentAttachment + ComposerSurface + SideChatPane + SidePane + Feedback；[参考](../renderer/src/design-system/ConversationFlowExercise.tsx) | 消息类型、工具结果、合法动作与上下文 | 权威状态、内容层级与阅读意图独立；按信息流合同验收完成收敛、人工展开和返回最新；未知提交不重放 |
 | P-DECISION 回答或批准请求 | DecisionCard + ApprovalRequest + Feedback；[参考](../renderer/src/ApprovalRequest.tsx) | 请求正文及已有决策动作 | 关键参数可核对，动作和结果可达 |
 | P-DETAIL 阅读或编辑详情 | SettingsDialog + SettingsDisclosure + Feedback；[参考](../renderer/src/settings/common.tsx) | 表单字段、正文及受控 footer | 返回/关闭路径和焦点恢复；不叠多层弹窗 |
@@ -15,7 +15,7 @@
 
 <!-- END GENERATED: patterns -->
 
-P-RESOURCES 尚无统一公共列表封装；registry 中的组件列表是可复用的最小组合，不表示页面必须或只能导入这些组件。布局槽位、状态及允许变化由本文件继续约束。
+P-RESOURCES 沿现有 PluginCenter 领域布局组合搜索、分类、列表、详情与反馈，不建立通用列表框架。共享意图与状态边界见[插件资源管理](../../../design/patterns/plugin-resources.md)，实际准入范围与运行证据见[Base](base.md)。目录成员仅表示列明的有限复用，不能扩大为完整插件安装、认证或连接生命周期。
 
 ## 控件选择
 
@@ -32,6 +32,8 @@ P-RESOURCES 尚无统一公共列表封装；registry 中的组件列表是可�
 
 ## 设置组合布局
 
+Worktree 的配置菜单、准备状态和项目环境按[领域设计规范](worktrees.md)组合既有模式。脚本平台标签、设置子页导航与目录层级 Chevron 的有限例外见[例外表](worktrees.md#有限例外与共享规则)；不改变普通设置的默认控件选择；迁移与验收范围见 [Worktree 验收题](exercises/worktrees.md)。
+
 `SET-LAYOUT-01`：复用 SettingsPage → SettingsSection → SettingsGroupCard → SettingsRow。宽组共享控件右边缘；窄组由 SettingsWorkspace.css 的容器规则切为上下排列，控件在完整标签/说明之后左对齐。页面不重新定义断点，不以缩字号、固定行高或偏移隐藏长文案。
 
 `SET-CONTENT-01`：标签、说明、值和反馈沿用生产语义角色，行高随内容增长。控件尺寸的唯一规则见 [DESIGN_SYSTEM.md](../DESIGN_SYSTEM.md#按交互类型选择控件)，页面不自行选择紧凑档。选项过长时由共享 Select 的截断和完整菜单承担，不为页面另造控件。参考与本产品组合不同的布局需要有界内容验证后决定采纳或保留；单次参考截图不覆盖现有共享规则。
@@ -39,6 +41,8 @@ P-RESOURCES 尚无统一公共列表封装；registry 中的组件列表是可�
 [设置迁移题](exercises/settings-reflow.md)固定内容和反证，用于探索这两条规则；题目不自行创建新设计值。
 
 ## 对话信息流
+
+活动类型、图片与命令组默认收起、组内纵向滚动，以及右侧上下文的新增设计要求见[对话流设计草案](conversation-flow.md)。该草案明确区分活动组与过程总组，列出当前源码差异；未实施部分不视为下列合同已经完成迁移。
 
 共享内容与阅读组织见[任务推进与过程阅读](../../../design/patterns/task-progress.md)，请求与回执含义见[控制与审批](../../../design/people-and-agents/control-and-approval.md)，父子关系与停止交接见[委派与交接](../../../design/people-and-agents/delegation-and-handoff.md)。以下保留 GUI 的 CONV-* 合同与实际所有者。
 

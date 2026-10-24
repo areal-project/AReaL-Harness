@@ -5,11 +5,15 @@ const { appendFileSync } = require('node:fs');
 const { WebSocketServer } = require('ws');
 const { validateCommand: validateDesktopCommand, desktopError, validateMcpPageDeclaration, validateMcpPageReply } = require('@areal/workbench/desktop-contract');
 const { inspectResources, recoverResource, blocked } = require('./resource-recovery.cjs');
-const { validToolInput, failure: browserFailure, success: browserSuccess } = require('./browser-tool.cjs');
+const { validToolInput, describeCommands, failure: browserFailure, success: browserSuccess } = require('./browser-tool.cjs');
+const { validComputerInput } = require('./computer-tool.cjs');
 const { ProjectionEncoder } = require('@areal/workbench/state-projection');
 const PROTOCOL = 'areal.desktop-service.v1';
 const COMMAND_CONTRACT = 'areal.desktop-commands.v2';
 const browserKey = (projectId, threadId) => JSON.stringify([projectId, threadId]);
+const computerSetting = (name, request) => name === 'library' && request?.operation === 'settings'
+  && ['computerControlEnabled', 'computerControlProvider', 'computerControlExecutable'].includes(request.key);
+
 function validateCommand(name, params) {
   validateDesktopCommand(name, params, { serviceOnly: true });
 }
@@ -47,6 +51,8 @@ class DesktopService {
     this.browserPending = new Map(); this.nextBrowserId = 0;
     this.browserTestTrace = process.env.AREAL_BROWSER_READ_TEST_TRACE;
     backend.browserRead = request => this.browserRead(request);
+    backend.computerRead = request => this.computerRead(request);
+    backend.cuaRead = request => this.cuaRead(request);
     this.sequence = 0; this.inflight = 0;
     this.idleSince = Date.now(); this.closed = false;
     backend.onChange = () => this.schedule();
@@ -71,16 +77,21 @@ class DesktopService {
       for (const socket of this.clients) this.send(socket, { method: 'mcpAppNotification', params });
     };
   }
+  projectForThread(projectId, threadId) {
+    const owner = this.backend.worktrees?.executionProjectId(projectId, threadId) ?? projectId;
+    return this.backend.projects.get(owner);
+  }
   bindMcpPageOwner(socket, project, client, request, response) {
     const instance = request.operation === 'mcpAppOpenFromResult' ? response?.status === 'open' && response.instance : response;
     if (!instance?.instanceId) return;
-    const key = JSON.stringify([request.projectId, instance.instanceId]);
+    const projectId = request.logicalProjectId ?? project.logicalProjectId ?? request.projectId;
+    const key = JSON.stringify([projectId, instance.instanceId]);
     const previous = this.mcpPageOwners.get(key);
     if (this.closed || !this.clients.has(socket) || socket.readyState !== 1 || project.client !== client || !client.ready
       || previous && (previous.socket !== socket || previous.client !== client || previous.revoked)) throw new Error('Page tool opening owner lease is stale');
     if (previous) return;
     if (this.mcpPageOwners.size >= 128) throw new Error('Page tool owner capacity reached');
-    this.mcpPageOwners.set(key, { project, client, socket, ownerId: socket.mcpPageOwnerId ??= randomUUID(), projectId: request.projectId,
+    this.mcpPageOwners.set(key, { project, client, socket, ownerId: socket.mcpPageOwnerId ??= randomUUID(), projectId,
       threadId: request.threadId, instanceId: instance.instanceId, generation: instance.generation, revoked: false });
   }
   async mcpPageTools(socket, params) {
@@ -310,6 +321,7 @@ class DesktopService {
   }
   notify(notice) {
     const settings = this.backend.library.value.settings;
+    if (settings.taskNotifications === false) return;
     const clients = [...this.clients].filter(s => s.notifications && s.readyState === 1);
     if (notice.kind === 'completion') {
       const policy = settings.turnNotifications ?? 'unfocused';
@@ -349,6 +361,7 @@ class DesktopService {
       socket.on('close', () => {
         this.revokeMcpPageTools(lease => lease.socket === socket);
         this.stopSending(socket); this.releaseHistoryViews(socket);
+        if (this.computerSocket === socket) this.computerSocket = null;
         for (const [key, claim] of this.browserClaims) if (claim.socket === socket) this.browserClaims.delete(key);
         for (const [id, record] of this.browserDiscoveryPlans)
           if (record.socket === socket) this.browserDiscoveryPlans.delete(id);
@@ -398,9 +411,12 @@ class DesktopService {
         if (params?.protocol !== PROTOCOL || params?.identity !== this.identity) throw Object.assign(new Error('后台服务版本或启动配置不兼容。请先安全停止旧后台服务。'), { code: 'SERVICE_INCOMPATIBLE' });
         socket.projection = params.capabilities?.projection === 1 ? socket.projection ?? new ProjectionEncoder(randomUUID()) : null;
         socket.notifications = params.notifications === true;
+        if (params.capabilities?.computerHost === 1
+          && (!this.computerSocket || this.computerSocket === socket || this.computerSocket.readyState !== 1))
+          this.computerSocket = socket;
         this.clients.add(socket);
         this.idleSince = null;
-        this.send(socket, { id, result: this.packet() }, true);
+        this.send(socket, { id, result: { ...this.packet(), computerHostOwned: this.computerSocket === socket } }, true);
         if (socket.notifications && this.pendingNotificationTarget) {
           this.send(socket, { method: 'notificationOpen', params: this.pendingNotificationTarget });
           this.pendingNotificationTarget = null;
@@ -434,10 +450,10 @@ class DesktopService {
         const { coreInstanceId: claimedCoreId, projectId, threadId, pageId,
           browserHostId, hostGeneration, pageGeneration, controlEpoch } = params ?? {};
         if (params?.protocol !== 'areal.browser.host.v1' || params?.available !== true
-          || JSON.stringify(params?.operations) !== JSON.stringify(['describe', 'observe', 'capture', 'act', 'wait', 'navigate', 'newPage', 'diagnostics', 'runBatch'])) throw new Error('浏览器宿主能力不兼容');
+          || JSON.stringify(params?.operations) !== JSON.stringify(['describe', 'observe', 'capture', 'act', 'wait', 'navigate', 'newPage', 'diagnostics', 'runBatch', 'command'])) throw new Error('浏览器宿主能力不兼容');
         if (![projectId, threadId, pageId, browserHostId].every(value => typeof value === 'string' && value.length > 0 && value.length <= 256)
           || ![hostGeneration, pageGeneration, controlEpoch].every(Number.isSafeInteger)) throw new Error('无效浏览页面身份');
-        const project = this.backend.projects.get(projectId);
+        const project = this.projectForThread(projectId, threadId);
         const thread = project?.model.state.threads[threadId];
         if (!thread?.dynamicTools?.some(tool => tool.name === 'browser_v1')) throw new Error('当前聊天未启用浏览器');
         const coreInstanceId = project.service?.serviceId, coreGeneration = project.service?.generation;
@@ -459,7 +475,7 @@ class DesktopService {
           } else await this.backend.bindBrowserHostForClaim(project, threadId);
           if (attempt.cancelled || this.browserClaimAttempts.get(key) !== attempt
             || this.browserClaims.get(key) !== previous || !this.clients.has(socket) || this.closed
-            || this.backend.projects.get(projectId) !== project || !this.backend.currentConnection(project, coreClient)
+            || this.projectForThread(projectId, threadId) !== project || !this.backend.currentConnection(project, coreClient)
             || project.service?.serviceId !== coreInstanceId
             || project.service?.generation !== coreGeneration || socket.readyState !== 1) {
             throw new Error('认领期间页面、Core 或桌面连接已换代，请重新操作');
@@ -542,13 +558,16 @@ class DesktopService {
         this.sampleActivity(); this.send(socket, { id, result: null }); return;
       }
       if (method !== 'addProject' && method !== 'command') throw new Error('不支持的后台服务操作');
-      if (method === 'command') validateCommand(params?.name, params?.request);
-      else if (typeof params?.path !== 'string') throw new Error('无效工作区路径');
+      if (method === 'command') {
+        validateCommand(params?.name, params?.request);
+        if (computerSetting(params.name, params.request) && this.computerSocket !== socket)
+          throw new Error('Computer provider settings belong to the local computer control host');
+      } else if (typeof params?.path !== 'string') throw new Error('无效工作区路径');
       this.inflight++; this.schedule();
       try {
         const entryKey = method === 'command' && ['send', 'editMessage', 'continue'].includes(params.name)
           ? browserKey(params.request.projectId, params.request.threadId) : null;
-        const entryProject = entryKey && this.backend.projects.get(params.request.projectId);
+        const entryProject = entryKey && this.projectForThread(params.request.projectId, params.request.threadId);
         const entry = entryProject?.model.state.threads[params.request.threadId]
           ? { socket, project: entryProject, client: entryProject.client } : null;
         if (entry) {
@@ -603,6 +622,7 @@ class DesktopService {
     this.server?.close();
   }
   async executeRemote(name, request) {
+    if (computerSetting(name, request)) throw new Error('Computer provider settings must be changed on the local control host');
     if (name === 'providers' && request?.operation === 'revealKey') throw new Error('API Key 仅可在本机模型设置中查看');
     if (this.closed || this.recovering) throw new Error('后台正在停止或恢复，请稍后重试');
     this.inflight++; this.schedule();
@@ -622,7 +642,7 @@ class DesktopService {
     for (const entry of [...this.browserEntrypoints.get(key) ?? []]) {
       const accepted = await entry.ready;
       const current = () => this.browserEntrypoints.get(key)?.has(entry) && entry.socket.readyState === 1
-        && this.backend.projects.get(request.projectId) === entry.project
+        && this.projectForThread(request.projectId, request.threadId) === entry.project
         && this.backend.currentConnection(entry.project, entry.client)
         && entry.project.service?.serviceId === request.coreInstanceId
         && entry.project.service?.generation === request.coreGeneration;
@@ -682,8 +702,8 @@ class DesktopService {
       && claim === this.browserClaims.get(key)
       && (!entry || this.browserEntrypoints.get(key)?.has(entry))
       && (!claim || (claim.coreInstanceId === request.coreInstanceId && claim.coreGeneration === request.coreGeneration))
-      && this.backend.projects.get(request.projectId)?.service?.serviceId === request.coreInstanceId
-      && this.backend.projects.get(request.projectId)?.service?.generation === request.coreGeneration;
+      && this.projectForThread(request.projectId, request.threadId)?.service?.serviceId === request.coreInstanceId
+      && this.projectForThread(request.projectId, request.threadId)?.service?.generation === request.coreGeneration;
     if (!current()) return { error: 'human_control', dispatch: 'not_sent' };
     const result = await this.dispatchBrowserDiscovery(request, key, socket, 'prepare');
     if (!current()) return { error: 'human_control', dispatch: 'not_sent' };
@@ -716,16 +736,133 @@ class DesktopService {
     if (!record || record.key !== key || !isDeepStrictEqual(record.plan, plan)
       || record.plan.expiresAt <= Date.now() || record.socket.readyState !== 1
       || record.claim !== claim || request.signal?.aborted
-      || this.backend.projects.get(request.projectId)?.service?.serviceId !== request.coreInstanceId
-      || this.backend.projects.get(request.projectId)?.service?.generation !== request.coreGeneration
+      || this.projectForThread(request.projectId, request.threadId)?.service?.serviceId !== request.coreInstanceId
+      || this.projectForThread(request.projectId, request.threadId)?.service?.generation !== request.coreGeneration
       || plan.coreInstanceId !== request.coreInstanceId || plan.coreGeneration !== request.coreGeneration
       || plan.projectId !== request.projectId || plan.threadId !== request.threadId
       || plan.turnId !== request.turnId || plan.callId !== request.callId
       || (record.entry && (!this.browserEntrypoints.get(key)?.has(record.entry)
-        || this.backend.projects.get(request.projectId) !== record.entry.project
+        || this.projectForThread(request.projectId, request.threadId) !== record.entry.project
         || !this.backend.currentConnection(record.entry.project, record.entry.client)))
       || (claim && !isDeepStrictEqual(record.pages, [...claim.pages.values()]))) return null;
     return record;
+  }
+
+  async uploadToolImage(request, image, current) {
+    if (typeof image.data !== 'string' || !['image/png', 'image/jpeg'].includes(image.mimeType)
+      || image.data.length > 12 * 1024 * 1024) throw new Error('Invalid desktop image');
+    const bytes = Buffer.from(image.data, 'base64');
+    if (!bytes.length || bytes.length > 8 * 1024 * 1024 || bytes.toString('base64') !== image.data)
+      throw new Error('Invalid desktop image encoding');
+    const project = this.projectForThread(request.projectId, request.threadId);
+    if (!current() || request.signal?.aborted || project?.service?.serviceId !== request.coreInstanceId
+      || project.service.generation !== request.coreGeneration) throw new Error('Desktop image owner changed');
+    const url = new URL(project.endpoint);
+    url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:'; url.pathname = '/areal/blobs'; url.search = '';
+    for (const [key, value] of Object.entries({ threadId: request.threadId, callId: request.callId, hostGeneration: request.toolHostGeneration }))
+      url.searchParams.set(key, value);
+    const signal = request.signal ? AbortSignal.any([request.signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000);
+    const uploaded = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${project.token}`, 'Content-Type': image.mimeType },
+      body: bytes, redirect: 'error', signal });
+    if (!uploaded.ok) throw new Error(`Desktop image upload failed (${uploaded.status})`);
+    const media = await uploaded.json();
+    if (!current() || request.signal?.aborted || project !== this.projectForThread(request.projectId, request.threadId)
+      || project.service?.serviceId !== request.coreInstanceId || project.service?.generation !== request.coreGeneration)
+      throw new Error('Desktop image owner changed');
+    return { type: 'arealMedia', modality: 'image', media };
+  }
+
+  async toolResult(request, envelope, current) {
+    const dispatch = envelope.structuredContent?.dispatch_status ?? envelope.dispatch_status;
+    if (dispatch === 'possibly_sent' || dispatch === 'unknown') return { success: false,
+      contentItems: [{ type: 'inputText', text: 'Desktop action outcome is UNKNOWN. Inspect before another action.' }],
+      structuredContent: { ...envelope.structuredContent, code: 'outcome_unknown', dispatch: 'unknown' } };
+    const contentItems = [];
+    if (!Array.isArray(envelope.content) || envelope.content.length > 32) throw new Error('Invalid desktop tool content');
+    for (const content of envelope.content) {
+      if (content?.type === 'text' && typeof content.text === 'string') contentItems.push({ type: 'inputText', text: content.text });
+      else if (content?.type === 'image') contentItems.push(await this.uploadToolImage(request, content, current));
+      else throw new Error('Unsupported desktop tool content');
+    }
+    if (!current() || request.signal?.aborted) throw new Error('Desktop tool owner changed after dispatch');
+    return { success: envelope.isError !== true, contentItems, ...(envelope.structuredContent ? { structuredContent: envelope.structuredContent } : {}) };
+  }
+
+  async cuaRead(request) {
+    const { projectId, signal, phase } = request;
+    const project = this.backend.projects.get(projectId), client = project?.client, socket = this.computerSocket;
+    const current = () => !this.closed && this.computerSocket === socket && this.clients.has(socket) && socket.readyState === 1
+      && (phase === 'revokeProject' || this.backend.projects.get(projectId) === project && this.backend.currentConnection(project, client)
+        && project.service?.serviceId === request.coreInstanceId && project.service?.generation === request.coreGeneration);
+    if (!socket || !current()) throw new Error('External CUA desktop host is unavailable');
+    if (['catalog', 'call'].includes(phase) && (this.backend.library.value.settings.computerControlEnabled !== true
+      || this.backend.library.value.settings.computerControlProvider !== 'lcu')) throw new Error('External CUA is not the selected computer provider');
+    if (signal?.aborted || this.browserPending.size >= 16) throw new Error('External CUA request cancelled or host busy before dispatch');
+    const requestId = ++this.nextBrowserId;
+    const result = await new Promise((resolve, reject) => {
+      let timer;
+      const finish = (next, value) => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); this.browserPending.delete(requestId); next(value); };
+      const cancel = () => this.send(socket, { method: 'browserCancel', params: { tool: 'external_cua', requestId } });
+      const onAbort = () => { cancel(); finish(reject, new Error('External CUA cancelled; outcome is UNKNOWN')); };
+      if (phase !== 'call') timer = setTimeout(() => { cancel(); finish(reject, new Error('External CUA host did not finish')); }, 130000);
+      this.browserPending.set(requestId, { socket, tool: 'external_cua', timer,
+        resolve: value => finish(resolve, value), reject: error => finish(reject, error) });
+      signal?.addEventListener('abort', onAbort, { once: true });
+      const { signal: ignoredSignal, ...params } = request;
+      this.send(socket, { method: 'browserRequest', params: { ...params, tool: 'external_cua', cuaTool: request.tool, requestId } });
+    });
+    if (!current() || signal?.aborted) throw new Error('External CUA owner changed; outcome is UNKNOWN');
+    if (result?.error) throw new Error(result.error);
+    if (!result || Buffer.byteLength(JSON.stringify(result)) > 32 * 1024 * 1024) throw new Error('Invalid external CUA response');
+    return result;
+  }
+
+  async computerRead(request) {
+    const { projectId, threadId, turnId, callId, coreInstanceId, coreGeneration, signal, phase } = request;
+    if (![projectId, threadId, turnId, callId, coreInstanceId].every(value => typeof value === 'string' && value)
+      || !validComputerInput(request.arguments)) return phase === 'prepare' ? { error: 'invalid_arguments', dispatch: 'not_sent' }
+        : browserFailure('invalid_arguments', 'Unsupported computer operation or parameters');
+    const project = this.backend.projects.get(projectId), client = project?.client, socket = this.computerSocket;
+    const current = () => !this.closed && this.computerSocket === socket && this.clients.has(socket) && socket.readyState === 1
+      && this.backend.projects.get(projectId) === project && this.backend.currentConnection(project, client)
+      && project.service?.serviceId === coreInstanceId && project.service?.generation === coreGeneration;
+    if (request.discardPreparedPlan !== true && (this.backend.library.value.settings.computerControlEnabled !== true || this.backend.library.value.settings.computerControlProvider === 'lcu')) {
+      const refusal = { code: 'not_authorized', message: 'Computer control is disabled', action_sent: false,
+        dispatch_status: 'not_sent', dispatch: 'not_sent' };
+      return phase === 'prepare' ? { ...refusal, error: refusal.code }
+        : { success: false, contentItems: [{ type: 'inputText', text: JSON.stringify(refusal) }], structuredContent: refusal };
+    }
+    if (!socket || !current()) return phase === 'prepare' ? { error: 'computer_unavailable', dispatch: 'not_sent' }
+      : browserFailure('computer_unavailable', 'The local computer control host is unavailable');
+    if (signal?.aborted) throw new Error('Computer request cancelled before dispatch');
+    if (this.browserPending.size >= 16) return phase === 'prepare'
+      ? { error: 'host_busy', dispatch: 'not_sent' }
+      : browserFailure('host_busy', 'Desktop host is busy; no action was sent');
+    const requestId = ++this.nextBrowserId;
+    const result = await new Promise((resolve, reject) => {
+      const finish = (next, value) => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); this.browserPending.delete(requestId); next(value); };
+      const cancel = () => this.send(socket, { method: 'browserCancel', params: { tool: 'computer_v1', requestId, projectId, threadId, turnId, callId } });
+      const onAbort = () => { cancel(); finish(reject, new Error('Computer request cancelled; dispatch may be unknown')); };
+      const timer = setTimeout(() => { cancel(); finish(reject, new Error('Computer host response unknown')); }, phase === 'prepare' ? 10000 : 125000);
+      this.browserPending.set(requestId, { socket, tool: 'computer_v1', timer,
+        resolve: value => finish(resolve, value), reject: error => finish(reject, error) });
+      signal?.addEventListener('abort', onAbort, { once: true });
+      const { signal: ignoredSignal, ...params } = request;
+      this.send(socket, { method: 'browserRequest', params: { ...params, tool: 'computer_v1', requestId } });
+    });
+    if (!current() || signal?.aborted) throw new Error('Computer owner changed during dispatch');
+    if (!result || JSON.stringify(result).length > 32 * 1024 * 1024) throw new Error('Invalid computer host response');
+    if (phase === 'prepare') {
+      if (request.discardPreparedPlan === true) return result;
+      if (result.error && result.dispatch === 'not_sent') return result;
+      if (result.operation !== request.arguments.operation || result.parameters === undefined
+        || !isDeepStrictEqual(result.parameters, request.arguments.parameters)
+        || result.coreInstanceId !== coreInstanceId || result.coreGeneration !== coreGeneration
+        || result.projectId !== projectId || result.threadId !== threadId || result.turnId !== turnId || result.callId !== callId
+        || result.toolHostGeneration !== request.toolHostGeneration) throw new Error('Invalid prepared computer identity');
+      return result;
+    }
+    return this.toolResult(request, result, current);
   }
 
   async browserRead(request) {
@@ -734,7 +871,7 @@ class DesktopService {
     if (typeof projectId !== 'string' || typeof threadId !== 'string' || typeof turnId !== 'string'
       || typeof callId !== 'string' || typeof coreInstanceId !== 'string' || !validToolInput(input))
       return browserFailure('invalid_arguments', 'Unsupported browser operation or parameters');
-    const action = ['act', 'wait', 'navigate', 'newPage', 'runBatch'].includes(input.operation);
+    const action = ['act', 'wait', 'navigate', 'newPage', 'runBatch', 'command'].includes(input.operation);
     const scoped = input.operation !== 'describe';
     const key = browserKey(projectId, threadId);
     let claim = this.browserClaims.get(key);
@@ -772,7 +909,8 @@ class DesktopService {
       return browserFailure('approval_required', 'Core approval metadata is required');
     if (input.operation === 'describe') return browserSuccess({ protocol: 'areal.browser.host.v1',
       browserHostId: claim.browserHostId, hostGeneration: claim.hostGeneration, available: true,
-      operations: ['describe', 'observe', 'capture', 'act', 'wait', 'navigate', 'newPage', 'diagnostics', 'runBatch'],
+      operations: ['describe', 'observe', 'capture', 'act', 'wait', 'navigate', 'newPage', 'diagnostics', 'runBatch', 'command'],
+      command: describeCommands(input.parameters.topic),
       instructions: 'Use navigate with a listed pageId and a URL to open a site, then observe to obtain current refs. Fill the search field and press Enter to submit an approved public search. describe creates or reuses the visible page after Core approval; no development service is needed. Human input revokes access; only a new explicit chat request can authorize re-entry.',
       parameterGuide: 'Invoke browser_v1 only when the current user task requires browser interaction. For ordinary chat and tasks that do not need a browser, do not call browser_v1 merely because it is available. Every new browser task starts with describe and empty parameters, then a fresh observe for an existing page; never reuse earlier-turn snapshotId or refs. Replace pageId with an ID from pages, snapshotId with the latest observe.observationId, and ref with a ref from that observation. act takes one nested action object. Observe again after fill before submitting with press Enter.',
       examples: [
@@ -803,6 +941,8 @@ class DesktopService {
       pages: [...claim.pages.keys()] });
     const pageClaim = claim.pages.get(input.parameters.pageId);
     if (!pageClaim) return browserFailure('wrong_page', 'Page does not belong to this thread');
+    const imagePageId = input.operation === 'command' ? input.parameters.command.tabId ?? pageClaim.pageId : pageClaim.pageId;
+    const imagePageClaim = claim.pages.get(imagePageId);
     if (this.browserPending.size >= 8) return browserFailure('host_busy', 'Too many pending browser observations');
     if (signal?.aborted) throw new Error('Browser request was cancelled');
     const requestId = ++this.nextBrowserId;
@@ -813,14 +953,15 @@ class DesktopService {
       const cancelNative = () => this.send(claim.socket, { method: 'browserCancel', params: {
         requestId, projectId, threadId, pageId: pageClaim.pageId, hostGeneration: claim.hostGeneration } });
       const onAbort = () => { cancelNative(); finish(reject, new Error('Browser request was cancelled')); };
-      const timeoutMs = phase === 'prepare' ? 10000 : input.operation === 'runBatch' ? 32000 : input.operation === 'wait'
+      const timeoutMs = phase === 'prepare' ? 10000 : input.operation === 'command' ? 125000 : input.operation === 'runBatch' ? 32000 : input.operation === 'wait'
         ? Math.min(35000, input.parameters.timeoutMs + 3000) : 15000;
       const timer = setTimeout(() => { cancelNative(); finish(reject, new Error('Browser host response unknown')); }, timeoutMs);
       this.browserPending.set(requestId, { socket: claim.socket, resolve: value => finish(resolve, value), reject: error => finish(reject, error), timer });
       trace('pending');
       signal?.addEventListener('abort', onAbort, { once: true });
       this.send(claim.socket, { method: 'browserRequest', params: { requestId, coreInstanceId, coreGeneration,
-        projectId, threadId, turnId, callId, pageId: pageClaim.pageId, browserHostId: claim.browserHostId,
+        projectId, threadId, turnId, callId, workspacePath: this.projectForThread(projectId, threadId)?.root,
+        pageId: pageClaim.pageId, browserHostId: claim.browserHostId,
         hostGeneration: claim.hostGeneration, pageGeneration: pageClaim.pageGeneration,
         controlEpoch: pageClaim.controlEpoch, operation: input.operation, parameters: input.parameters,
         phase, ...(scoped && phase === 'execute' ? { browserApproval } : {}) } });
@@ -830,7 +971,7 @@ class DesktopService {
       || result.coreInstanceId !== coreInstanceId || result.coreGeneration !== coreGeneration
       || result.browserHostId !== claim.browserHostId || result.hostGeneration !== claim.hostGeneration
       || result.pageGeneration !== pageClaim.pageGeneration || result.controlEpoch !== pageClaim.controlEpoch
-      || JSON.stringify(result).length > (input.operation === 'capture' ? 3 * 1024 * 1024 : 512 * 1024)) throw new Error('Invalid browser host response');
+      || JSON.stringify(result).length > (input.operation === 'command' ? 16 * 1024 * 1024 : input.operation === 'capture' ? 3 * 1024 * 1024 : 512 * 1024)) throw new Error('Invalid browser host response');
     const unknownBatch = () => ({ success: false,
       contentItems: [{ type: 'inputText', text: 'outcome_unknown: inspect the confirmed prefix before any new action' }],
       structuredContent: { code: 'outcome_unknown', dispatch: 'unknown', receipts: result.receipts ?? [],
@@ -842,7 +983,7 @@ class DesktopService {
       if (action && phase === 'execute') throw new Error('Browser action outcome unknown after takeover');
       return browserFailure('human_control', 'Browser authorization was revoked');
     }
-    const currentProject = this.backend.projects.get(projectId);
+    const currentProject = this.projectForThread(projectId, threadId);
     if (currentProject?.service?.serviceId !== coreInstanceId || currentProject.service.generation !== coreGeneration) {
       if (input.operation === 'runBatch' && phase === 'execute') return unknownBatch();
       if (action && phase === 'execute') throw new Error('Browser action outcome unknown after deployment change');
@@ -868,6 +1009,42 @@ class DesktopService {
         throw new Error('Invalid browser plan');
       return result.plan;
     }
+    if (input.operation === 'command') {
+      for (const pageId of [...(result.closedPageIds ?? []), ...(result.revokedPageIds ?? [])]) {
+        if (typeof pageId !== 'string') throw new Error('Invalid closed browser page');
+        claim.pages.delete(pageId);
+        claim.revokedPages.add(pageId);
+      }
+      if (Array.isArray(result.controlPermits)) for (const permit of result.controlPermits) {
+        if (permit?.browserHostId !== claim.browserHostId || permit.hostGeneration !== claim.hostGeneration
+          || typeof permit.pageId !== 'string' || !Number.isSafeInteger(permit.pageGeneration)
+          || !Number.isSafeInteger(permit.controlEpoch)) throw new Error('Invalid command page permit');
+        if (!claim.revokedPages.has(permit.pageId)) claim.pages.set(permit.pageId,
+          { pageId: permit.pageId, pageGeneration: permit.pageGeneration, controlEpoch: permit.controlEpoch });
+      }
+      const value = result.commandResult;
+      if (!value || typeof value.ok !== 'boolean') throw new Error('Invalid browser command result');
+      if (value.error?.sideEffect === 'uncertain') return {
+        success: false, contentItems: [{ type: 'inputText', text: 'Browser command dispatch is unknown. Inspect before another action.' }],
+        structuredContent: { code: 'outcome_unknown', dispatch: 'unknown', result: value } };
+      const { image, ...metadata } = value;
+      if (image) metadata.imageSource = imagePageClaim ? { ...imagePageClaim } : null;
+      return this.toolResult(request, { isError: !value.ok, structuredContent: metadata,
+        content: [{ type: 'text', text: JSON.stringify(metadata) },
+          ...(image ? [{ type: 'image', data: image.base64, mimeType: image.mimeType }] : [])] },
+        () => {
+          const source = claim.pages.get(image ? imagePageId : pageClaim.pageId);
+          const project = this.projectForThread(projectId, threadId);
+          return this.browserClaims.get(key) === claim && claim.socket.readyState === 1
+            && (!image && (result.closedPageIds?.includes(pageClaim.pageId) || result.revokedPageIds?.includes(pageClaim.pageId))
+              || !claim.revokedPages.has(image ? imagePageId : pageClaim.pageId)
+                && source?.pageGeneration === (image ? imagePageClaim?.pageGeneration : pageClaim.pageGeneration)
+                && source?.controlEpoch === (image ? imagePageClaim?.controlEpoch : pageClaim.controlEpoch)
+                && !!source)
+            && project?.service?.serviceId === coreInstanceId
+            && project.service.generation === coreGeneration;
+        });
+    }
     if (action) {
       if (input.operation === 'newPage' && result.createdPage) {
         const child = result.createdPage;
@@ -888,7 +1065,7 @@ class DesktopService {
       const bytes = Buffer.from(result.imageBase64, 'base64');
       if (!bytes.length || bytes.length > 2 * 1024 * 1024 || bytes.toString('base64') !== result.imageBase64)
         throw new Error('Invalid browser image');
-      const project = this.backend.projects.get(projectId);
+      const project = this.projectForThread(projectId, threadId);
       const url = new URL(project.endpoint);
       url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
       url.pathname = '/areal/blobs'; url.search = '';
@@ -901,7 +1078,7 @@ class DesktopService {
       const media = await uploaded.json();
       if (signal?.aborted || (this.browserClaims.get(key) !== claim || claim.pages.get(pageClaim.pageId) !== pageClaim) || claim.socket.readyState !== 1)
         return browserFailure('human_control', 'Browser authorization was revoked during capture');
-      const current = this.backend.projects.get(projectId);
+      const current = this.projectForThread(projectId, threadId);
       if (current?.service?.serviceId !== coreInstanceId || current.service.generation !== coreGeneration)
         return browserFailure('host_unavailable', 'Core deployment changed during capture');
       const { imageBase64, ...metadata } = result;

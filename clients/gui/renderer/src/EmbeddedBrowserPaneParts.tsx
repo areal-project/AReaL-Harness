@@ -182,7 +182,7 @@ function BrowserToolbarMoreMenu({
           render={
             <Button
               type="button"
-              size="icon-md"
+              size="icon"
               variant="ghost"
               aria-label={moreLabel}
               data-testid={"browser-more-button"}
@@ -318,7 +318,7 @@ function BrowserIconButton({
     <ControlHintTooltip title={title}>
       <Button
         type="button"
-        size="icon-md"
+        size="icon"
         variant={active ? "secondary" : "ghost"}
         aria-label={title}
         aria-pressed={pressed}

@@ -1,3 +1,4 @@
+import { ComposerActionButton } from "@areal/ui/wip";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ConversationComposer } from "../ConversationComposer.js";
 import { AgentConversationPane } from "../AgentConversationPane.js";
@@ -148,7 +149,7 @@ export function ConversationTimelinePreview({ dark }: { dark: boolean }) {
             taskId={thread.id} workspacePath={project.root} initialValue={draft} onChange={setDraft} inputTestId="timeline-composer"
             placeholder="可输入未发送草稿；用上方按钮切换演示状态" submitLabel="发送"
             enableMentionPanel={false} enterSubmits submitDisabled onSubmit={() => false}
-            submitControl={live ? <Button type="button" variant="composer" size="icon-md" aria-label="结束本地演示" onClick={() => setLive(false)}><StopIcon /></Button> : undefined} />
+            submitControl={live ? <ComposerActionButton type="button" size="icon" aria-label="结束本地演示" onClick={() => setLive(false)}><StopIcon /></ComposerActionButton> : undefined} />
         </div>
       </div>
       {panel && <aside className="design-preview-flow-context" aria-label="对话详情面板">

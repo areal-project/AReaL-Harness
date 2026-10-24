@@ -1,3 +1,4 @@
+import { AttachmentCard } from "@areal/ui/wip";
 import { useEffect, useState } from "react";
 import { ScanText } from "lucide-react";
 import { CloseIcon } from "./interfaceIcons.js";
@@ -44,36 +45,35 @@ export function ComposerQueueAttachment({
         };
     }, [part.url, projectId, threadId]);
     return (
-        <div
-            className={part.type === "image" ? "composer-image-card" : "composer-text-card"}
+        <AttachmentCard
+            image={part.type === "image"}
             data-testid="composer-queued-attachment"
         >
             {part.type === "image" && url ? (
                 <img src={url} alt={name} />
             ) : (
                 <>
-                    <span className="composer-text-icon">
+                    <AttachmentCard.Icon>
                         <ScanText size={22} />
-                    </span>
-                    <div className="composer-text-copy">
+                    </AttachmentCard.Icon>
+                    <AttachmentCard.Text>
                         <span>{name}</span>
-                    </div>
+                    </AttachmentCard.Text>
                 </>
             )}
-            <button
+            <AttachmentCard.Remove
                 type="button"
-                className="composer-remove-attachment"
                 disabled={disabled}
                 aria-label={`移除排队附件 ${name}`}
                 onClick={onRemove}
             >
                 <CloseIcon size={12} />
-            </button>
+            </AttachmentCard.Remove>
             {error && (
-                <p role="alert" className="composer-attachment-error">
+                <AttachmentCard.Error role="alert">
                     {error}
-                </p>
+                </AttachmentCard.Error>
             )}
-        </div>
+        </AttachmentCard>
     );
 }

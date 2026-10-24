@@ -162,7 +162,7 @@ export function SidePaneTabOverview({
           <Button
             type="button"
             variant="ghost"
-            size="icon-md"
+            size="icon"
             className="ml-auto shrink-0"
             aria-label={labels.title}
           >

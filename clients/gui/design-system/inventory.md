@@ -8,35 +8,36 @@
 
 | ID | 生产所有者 | 用途 |
 | --- | --- | --- |
-| Button | [Button](../renderer/src/components/ui/button.tsx) | 基础按钮与有限变体 |
-| ActionButton | [ActionButton](../renderer/src/components/ui/action-button.tsx) | 普通紧凑操作与 pending |
-| Switch | [Switch](../renderer/src/components/ui/switch.tsx) | 双向布尔值 |
-| Select | [Select](../renderer/src/components/ui/select.tsx) | 多个候选中的单选 |
-| SettingsPage | [SettingsPage](../renderer/src/settings/SettingsWorkspace.tsx) | 设置页面的生产表面、列宽与滚动边界 |
-| SettingsSection | [SettingsSection](../renderer/src/settings/SettingsPageParts.tsx) | 功能分区 |
-| SettingsGroupCard | [SettingsGroupCard](../renderer/src/settings/SettingsPageParts.tsx) | 相关行的公共外框 |
-| SettingsRow | [SettingsRow](../renderer/src/settings/SettingsPageParts.tsx) | 名称、说明与行内控件 |
-| SettingsSelect | [SettingsSelect](../renderer/src/settings/SettingsPageParts.tsx) | 二值分段或多值菜单 |
-| SettingsSegmentedTabs | [SettingsSegmentedTabs](../renderer/src/settings/SettingsSegmentedTabs.tsx) | 两个互斥设置值 |
-| SettingsDisclosure | [SettingsDisclosure](../renderer/src/settings/SettingsDisclosure.tsx) | 显式展开/收起详情 |
-| SettingsDialog | [SettingsDialog](../renderer/src/settings/common.tsx) | 设置编辑与确认详情 |
+| Button | [Button](../packages/ui/src/components/button/button.tsx) | 基础按钮与有限变体 |
+| ActionButton | [ActionButton](../packages/ui/src/components/action-button/action-button.tsx) | 普通紧凑操作与 pending |
+| Switch | [Switch](../packages/ui/src/components/switch/switch.tsx) | 双向布尔值 |
+| Select | [Select](../packages/ui/src/components/select/select.tsx) | 多个候选中的单选 |
+| SettingsPage | [SettingsPage](../packages/ui/src/settings/settings-page/settings-page.tsx) | 设置页面的生产表面、列宽与滚动边界 |
+| SettingsSection | [SettingsSection](../packages/ui/src/settings/settings-section/settings-section.tsx) | 功能分区 |
+| SettingsGroupCard | [SettingsGroupCard](../packages/ui/src/settings/settings-group-card/settings-group-card.tsx) | 相关行的公共外框 |
+| SettingsRow | [SettingsRow](../packages/ui/src/settings/settings-row/settings-row.tsx) | 名称、说明与行内控件 |
+| SettingsSelect | [SettingsSelect](../packages/ui/src/settings/settings-select/settings-select.tsx) | 二值分段或多值菜单 |
+| SettingsSegmentedTabs | [SettingsSegmentedTabs](../packages/ui/src/settings/settings-segmented-tabs/settings-segmented-tabs.tsx) | 两个互斥设置值 |
+| SettingsDisclosure | [SettingsDisclosure](../packages/ui/src/components/settings-disclosure/settings-disclosure.tsx) | 显式展开/收起详情 |
+| SettingsDialog | [SettingsDialog](../packages/ui/src/settings/settings-dialog/settings-dialog.tsx) | 设置编辑与确认详情 |
 | Feedback | [Feedback](../renderer/src/components/ui/feedback.tsx) | 错误与状态反馈 |
-| EmptySettings | [EmptySettings](../renderer/src/settings/common.tsx) | 设置空态 |
+| EmptySettings | [EmptySettings](../packages/ui/src/settings/settings-dialog/settings-dialog.tsx) | 设置空态 |
 | ConversationComposer | [ConversationComposer](../renderer/src/ConversationComposer.tsx) | 主与 Side 的输入组合 |
-| ComposerSurface | [ComposerSurface](../renderer/src/prompt-editor/ComposerSurface.tsx) | 输入区布局插槽 |
-| DecisionCard | [DecisionCard](../renderer/src/DecisionCard.tsx) | 决策布局插槽 |
+| ComposerSurface | [ComposerSurface](../packages/ui/src/conversation/composer-surface/composer-surface.tsx) | 输入区布局插槽 |
+| DecisionCard | [DecisionCard](../packages/ui/src/conversation/decision-card/decision-card.tsx) | 决策布局插槽 |
 | ApprovalRequest | [ApprovalRequest](../renderer/src/ApprovalRequest.tsx) | 具体审批交互 |
 | Messages | [Messages](../renderer/src/Messages.tsx) | 共享消息投影 |
 | TurnExecution | [TurnExecution](../renderer/src/TurnExecution.tsx) | 过程状态 |
 | ToolEvent | [ToolEvent](../renderer/src/ToolEvent.tsx) | 工具事件 |
-| CollapsibleText | [CollapsibleText](../renderer/src/CollapsibleText.tsx) | 长文本渐进展示 |
+| CollapsibleText | [CollapsibleText](../packages/ui/src/conversation/collapsible-text/collapsible-text.tsx) | 长文本渐进展示 |
 | SideChatPane | [SideChatPane](../renderer/src/SideChatPane.tsx) | 辅助会话组合 |
 | TurnProgress | [TurnProgress](../renderer/src/TurnProgress.tsx) | 保留子项身份与人工选择的过程总组 |
-| CommandDetails | [CommandDetails](../renderer/src/CommandDetails.tsx) | 同一进程的输入、连续输出、状态与原始记录 |
+| CommandDetails | [CommandDetails](../packages/ui/src/conversation/command-details/command-details.tsx) | 同一进程的输入、连续输出、状态与原始记录 |
 | AgentConversationPane | [AgentConversationPane](../renderer/src/AgentConversationPane.tsx) | 绑定父子身份的独立子对话阅读 |
 | SentAttachment | [SentAttachment](../renderer/src/MessageAttachment.tsx) | 已发送媒体的生产预览与关闭返回 |
-| SettingsNavigation | [SettingsNavigation](../renderer/src/settings/SettingsWorkspace.tsx) | 定位、筛选设置分类并沿原导航守卫返回 |
+| SettingsNavigation | [SettingsNavigation](../packages/ui/src/workbench/settings-navigation/settings-navigation.tsx) | 定位、筛选设置分类并沿原导航守卫返回 |
 | SidePane | [SidePane](../renderer/src/app-shell/SidePane.tsx) | 窗口局部的面板标签、视图切换与关闭焦点；资源生命周期沿原所有者 |
+| SettingsSearchInput | [SettingsSearchInput](../packages/ui/src/settings/settings-search-input/settings-search-input.tsx) | 带可读清除动作的资源搜索输入 |
 
 <!-- END GENERATED: components -->
 

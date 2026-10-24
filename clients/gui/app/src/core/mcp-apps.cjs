@@ -2,6 +2,7 @@
 const { randomUUID, randomBytes } = require("node:crypto");
 const { authorizeFile, fileRequest } = require("./mcp-apps-files.cjs");
 const { validateMcpPageDeclaration, validateMcpPageCall, validateMcpPageReply } = require("@areal/workbench/desktop-contract");
+const { openGenUi, genUiRequest, genUiVisibility, genUiResource } = require("./gen-ui.cjs");
 const METHODS = new Set([
     "tools/call",
     "tools/list",
@@ -106,6 +107,8 @@ class McpAppsHost {
         this.instanceTokens = new Map();
         this.pageToolCalls = new Map();
     }
+    openGenUi(params, ownerId) { return openGenUi(this, params, ownerId); }
+    genUiVisibility(params, ownerId) { return genUiVisibility(this, params, ownerId); }
     currentOwner() {
         try { return typeof this.ownerId === "function" ? this.ownerId() : this.ownerId; }
         catch { return undefined; }
@@ -267,6 +270,7 @@ class McpAppsHost {
             hostContext["openai/deepLink"] = { url: params.deepLink };
         }
         app.descriptor = {
+            kind: "mcp",
             token,
             frameUrl: `areal-mcp://${token}/`,
             instanceId: app.instanceId,
@@ -470,6 +474,7 @@ class McpAppsHost {
     }
     async request(token, request, ownerId) {
         const app = this.get(token, ownerId);
+        if (app.kind === "genUi") return genUiRequest(this, app, request, ownerId);
         if (
             !object(request) ||
             request.jsonrpc !== "2.0" ||
@@ -592,6 +597,12 @@ class McpAppsHost {
         const app = this.instances.get(token);
         if (!app) return {};
         if (ownerId !== app.ownerId) throw Error("Invalid app owner");
+        if (app.kind === "genUi") {
+            app.closed = true; app.abort.abort(); app.stateSubscription.dispose();
+            this.instances.delete(token);
+            if (ownerId === this.currentOwner()) this.notify({ token, notification: { jsonrpc: "2.0", method: "ui/notifications/closed" } });
+            return {};
+        }
         if (app.closePromise) return app.closePromise;
         if (!app.closed) {
             app.closed = true;
@@ -661,7 +672,7 @@ class McpAppsHost {
         const snapshot = this.backend.snapshot();
         if (snapshot.connection?.state && snapshot.connection.state !== "ready") return;
         for (const [token, app] of this.instances) {
-            if (this.backend.ownsThread(app.projectId, app.threadId)) continue;
+            if (this.backend.ownsThread(app.projectId, app.threadId) || this.backend.retainsThreadResources(app.projectId, app.threadId)) continue;
             const owner = snapshot.projects.find(project => project.id === app.projectId);
             if (owner && !owner.state?.connected) continue;
             void this.close(token, app.ownerId).catch(() => {});
@@ -679,12 +690,13 @@ class McpAppsHost {
             request.method !== "GET" ||
             !app ||
             app.closed ||
-            !["/", "/view"].includes(url.pathname) ||
+            !(app.kind === "genUi" ? genUiResource(app, url.pathname) : ["/", "/view"].includes(url.pathname)) ||
             url.search ||
             url.hash ||
             !this.backend.ownsThread(app.projectId, app.threadId)
         )
             return new Response("Not found", { status: 404 });
+        if (app.kind === "genUi" && !["/", "/view"].includes(url.pathname)) return genUiResource(app, url.pathname, true);
         const proxy = url.pathname === "/";
         return new Response(proxy ? proxyHtml(!!app.resultSourceKey) : app.resource.html, {
             headers: {

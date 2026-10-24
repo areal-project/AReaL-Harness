@@ -2,6 +2,7 @@ import type { McpUiHostContext } from "@modelcontextprotocol/ext-apps/app-bridge
 import type { CallToolResult, JSONRPCMessage } from "@modelcontextprotocol/client";
 
 export type McpAppDescriptor = {
+    kind: "mcp";
     token: string;
     frameUrl: string;
     instanceId: string;
@@ -22,6 +23,14 @@ export type McpAppDescriptor = {
     fileResource?: boolean;
     resultSource?: McpResultSource;
 };
+export type GenUiSource = { projectId: string; threadId: string; turnId: string; itemId: string; referenceOffset: number };
+export type GenUiDescriptor = {
+    kind: "genUi"; token: string; frameUrl: string; projectId: string; threadId: string;
+    source: GenUiSource; artifact: { artifactId: string; path: string; digest: string };
+    title: string; readOnly: boolean; hostContext: McpUiHostContext;
+};
+export type HostedPageDescriptor = McpAppDescriptor | GenUiDescriptor;
+export const genUiSourceKey = (source: GenUiSource) => JSON.stringify([source.projectId, source.threadId, source.turnId, source.itemId, source.referenceOffset]);
 export type McpResultSource = { projectId: string; threadId: string; turnId: string; itemId: string };
 export const mcpResultKey = (source: McpResultSource) => JSON.stringify([source.projectId, source.threadId, source.turnId, source.itemId]);
 export type McpResultReply = { status: "open"; app: McpAppDescriptor } | { status: "closed" } | { status: "unavailable"; reason: string };
@@ -31,6 +40,8 @@ export type McpAppEvent = { token: string; notification: JSONRPCMessage };
 export type McpAppDeepLink = { id: number; pluginId: string; marketplace?: string; toolName: string; path: string };
 export type McpMetadataImageLoader = (source: string) => Promise<string>;
 type McpAppOperations = {
+    openGenUi: { request: GenUiSource; response: GenUiDescriptor };
+    genUiVisibility: { request: { token: string; visible: boolean }; response: unknown };
     metadataImage: { request: { source: string }; response: string };
     open: {
         request: { projectId: string; threadId: string; serverId: string; expectedGeneration: string | number;

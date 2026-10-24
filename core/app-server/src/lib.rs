@@ -599,6 +599,7 @@ async fn connection(
                 || method == "areal/thread/start"
                 || method == "areal/thread/fork"
                 || method == "areal/side/start"
+                || method == "areal/side/create"
                 || method.starts_with("areal/workgroup/")
                 || method.starts_with("areal/workflow/start"))
         {
@@ -633,8 +634,11 @@ async fn connection(
                     method,
                     "areal/thread/fork"
                         | "areal/side/start"
+                        | "areal/side/create"
+                        | "areal/side/close"
                         | "areal/conversation/history"
                         | "areal/side/context/read"
+                        | "areal/genUi/source"
                         | "turn/interrupt"
                         | "turn/steer"
                         | "areal/queue/steer"
@@ -658,6 +662,7 @@ async fn connection(
                     | "areal/mcp/read"
                     | "areal/mcp/disconnect"
                     | "turn/interrupt"
+                    | "areal/side/close"
                     | "areal/mcp/forms/list"
                     | "areal/mcp/form/respond"
                     | "areal/mcp/form/resource/prepare"
@@ -695,8 +700,13 @@ async fn connection(
             let id = id.unwrap();
             conn.tasks.spawn(async move {
                 let _permit = permit;
-                let durable_derivation =
-                    matches!(method.as_str(), "areal/thread/fork" | "areal/side/start");
+                let durable_derivation = matches!(
+                    method.as_str(),
+                    "areal/thread/fork"
+                        | "areal/side/start"
+                        | "areal/side/create"
+                        | "areal/side/close"
+                );
                 let dispatch = async {
                     check_side_policy(&engine, &method, &params).await?;
                     if configuration::METHODS.contains(&method.as_str()) {
@@ -705,6 +715,13 @@ async fn connection(
                         interrupt(&engine, params).await
                     } else if method == "turn/steer" {
                         steer_request(&engine, &identity, params).await
+                    } else if method == "areal/side/create" {
+                        let host = (principal.id == "desktop-owner"
+                            && principal.allows(auth::Permission::Interact)
+                            && principal.allows(auth::Permission::Tools)
+                            && principal.thread_ids.is_none())
+                        .then_some(tool_host as Arc<dyn areal_engine::tools::DynamicToolHost>);
+                        desktop::create_side(&engine, &identity, params, host).await
                     } else if plugin_runtime::METHODS.contains(&method.as_str()) {
                         plugin_runtime::dispatch(&engine, &identity, tool_host, &method, params)
                             .await
@@ -804,6 +821,7 @@ async fn check_side_policy(engine: &Engine, method: &str, params: &Value) -> Res
             | "areal/turn/start"
             | "turn/interrupt"
             | "areal/side/context/read"
+            | "areal/genUi/source"
             | "areal/conversation/history"
             | "areal/tool/acknowledge"
             | "areal/context/read"
@@ -819,7 +837,7 @@ async fn check_side_policy(engine: &Engine, method: &str, params: &Value) -> Res
         && engine
             .read(thread_id, false)
             .await
-            .is_ok_and(|thread| thread.is_side())
+            .is_ok_and(|thread| thread.is_read_only_side())
     {
         return Err(RpcError {
             code: -32010,
@@ -836,6 +854,7 @@ async fn interrupt(engine: &Arc<Engine>, params: Value) -> Result<Value, RpcErro
     engine
         .interrupt_guarded(&p.thread_id, &p.turn_id, p.admission_guard)
         .await
+        .map_err(control_mutation_error)
         .map_err(map_error)?;
     Ok(json!({}))
 }
@@ -1269,7 +1288,9 @@ impl Connection {
                 Ok(thread_result(engine, thread))
             }
             "areal/capabilities" => {
-                use areal_protocol::desktop::{API_VERSION, METHODS, NOTIFICATIONS};
+                use areal_protocol::desktop::{
+                    API_VERSION, METHODS, NOTIFICATIONS, SERVER_REQUESTS,
+                };
                 let p: areal_protocol::desktop::CapabilitiesRequest = parse(params)?;
                 if p.api_version
                     .as_deref()
@@ -1317,13 +1338,23 @@ impl Connection {
                     "areal/mcp/app/tools/cancelled",
                 ]);
                 let mut capabilities = json!({"apiVersion": API_VERSION, "methods": methods, "methodSemantics":semantics,
-                    "notifications": notifications, "serverRequests":["item/tool/call","areal/task/prepare"],
+                    "notifications": notifications, "serverRequests":SERVER_REQUESTS,
                     "browserToolBundles":if can_attach_browser {json!([{"bundleId":areal_protocol::desktop::BROWSER_V1_BUNDLE,
                         "definition":areal_protocol::desktop::browser_v1_tool()}])} else {json!([])},
                     "features":json!({"operationOutcomes":true,"taskRequestReceipts":true,"atomicConfigureReceipt":true,"conversationDerivationV1":json!({"preview":false,"methods":["areal/thread/fork","areal/side/start","areal/conversation/list","areal/conversation/history","areal/conversation/unarchive","areal/side/context/read"],"limits":engine.conversation_derivation_limits(),"forkBoundaries":["after","before"],"workspaceModes":["sharedCurrent"],"sideWorkspaceAccess":if engine.side_workspace_read_available() {json!(["none","readOnly"])} else {json!(["none"])},"historyBytes":engine.fork_snapshot_limit()}),"subscriptionRemoval":true,"atomicResume":true,"atomicObserve":true,"atomicObserveOwnership":true,"browserToolAttachment":can_attach_browser,
                         "ordinaryTurnSubmit":true,"editLastMessage":true,"turnStartAdmissionGuard":true,"turnEnqueueAdmissionGuard":true,"turnInterruptAdmissionGuard":true,"threadStartAdmissionGuard":true,"taskPauseRunGuard":true,"taskModes":true,"taskChannels":true,"asyncQuestions":true,"headlessInteractions":true,"goals":true,"dynamicTools":true,"mediaOutput":true,"durableSubmissionDeduplication":true,"profiles":true,"skills":true,"plans":true,"interactions":true,"queue":true,"providerConfiguration":true,"modelReset":true,"toolMedia":true,"blobUpload":true}),
                     "limits":{"frameBytes":MAX_FRAME_BYTES,"responseBytes":MAX_RESPONSE_BYTES,"subscriptions":128,"sendQueue":256,"threadEventWindow":128},
                     "runtime":engine.runtime_capabilities()});
+                capabilities["features"]["sideExecutableV2"] = json!(true);
+                capabilities["desktopToolBundles"] = if can_attach_browser {
+                    json!([{ "bundleId":areal_protocol::desktop::COMPUTER_V1_BUNDLE,
+                        "definition":areal_protocol::desktop::computer_v1_tool() }])
+                } else {
+                    json!([])
+                };
+                capabilities["features"]["computerToolAttachment"] = json!(can_attach_browser);
+                capabilities["features"]["computerToolPreparation"] = json!(can_attach_browser);
+                capabilities["features"]["externalCua"] = json!(can_attach_browser);
                 capabilities["features"]["mcpPageToolsV1"] =
                     json!({"version":1,"kinds":["getSelection","applyPatch"]});
                 capabilities["features"]["permissionPresets"] =
@@ -1614,6 +1645,17 @@ fn atomic_mutation_error(error: Error) -> Error {
     }
 }
 
+// These controls validate under their owner lock before persisting. Capacity or
+// storage failure can follow a partial write (or cancellation), so keep it unknown.
+fn control_mutation_error(error: Error) -> Error {
+    match error {
+        Error::Conflict | Error::NotFound | Error::Invalid(_) | Error::Closed => {
+            Error::Rejected(Box::new(error))
+        }
+        error => error,
+    }
+}
+
 fn map_error(error: Error) -> RpcError {
     if let Error::Rejected(error) = error {
         return rejected(map_error(*error), "REQUEST_REJECTED");
@@ -1640,9 +1682,13 @@ fn map_error(error: Error) -> RpcError {
         };
     }
     if let Error::Invalid(reason) = &error
-        && let Some(code) = ["CREDENTIAL_UNAVAILABLE", "MODEL_CREDENTIAL_UNAVAILABLE"]
-            .into_iter()
-            .find(|code| reason == code || reason.starts_with(&format!("{code}:")))
+        && let Some(code) = [
+            "CREDENTIAL_UNAVAILABLE",
+            "MODEL_CREDENTIAL_UNAVAILABLE",
+            "UNSUPPORTED_PROFILE",
+        ]
+        .into_iter()
+        .find(|code| reason == code || reason.starts_with(&format!("{code}:")))
     {
         return rejected(RpcError::invalid(error.to_string()), code);
     }

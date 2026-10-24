@@ -135,7 +135,7 @@ try {
   );
   checks.push("wire install shares Core state");
   const report = await c.request("areal/plugin/read", { id: "sample@wire" });
-  assert.equal(report.componentSupport.digest, report.sourceDigest);
+  assert.equal(report.componentSupport.digest, report.admissionDigest ?? report.sourceDigest);
   assert.equal(report.installedComponentSupport.digest, report.installedDigest);
   assert.deepEqual(
     (await cli(["plugin", "--workspace", workspace, "read", "sample@wire"]))

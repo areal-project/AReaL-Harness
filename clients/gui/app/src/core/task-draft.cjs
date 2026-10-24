@@ -304,6 +304,7 @@ async function manageTaskDraft(backend, project, request) {
         const { action, ...patch } = draft.proposal;
         const method = action ? `areal/task/${action}` : 'areal/task/update';
         const requestId = key(threadId, `edit:${draft.turnId}`);
+        if (!['pause','cancel'].includes(action)) await backend.scheduleAdmission.admitTask(project, target.taskId, action ?? 'update');
         const updated = await backend.submit(project, method, patch, {requestId});
         project.model.setTask(updated);
         try {
@@ -320,13 +321,17 @@ async function manageTaskDraft(backend, project, request) {
       const values = {...draft.proposal};
       if (values.scheduleV2) await project.client.request('areal/task/schedule/preview', {schedule:values.scheduleV2,count:5});
       if (values.mode === 'scheduled') {
+        await backend.scheduleAdmission.reserveDraft(project, threadId, thread.cwd, {executionRequestId:key(threadId,'execution'),taskRequestId:key(threadId,'confirm')});
         await backend.resources.beforeCreate(project);
         const execution = await backend.submit(project, 'areal/thread/start', { cwd: thread.cwd }, {requestId:key(threadId,'execution')});
         values.threadId = execution.thread.id;
+        await backend.scheduleAdmission.setAnchor(project, values.threadId);
       }
       const created = await backend.submit(project, 'areal/task/create', values, {requestId:key(threadId,'confirm')});
       project.model.setTask(created);
       try {
+        if (created.mode === 'scheduled') await backend.scheduleAdmission.bind(project, created);
+        await backend.taskWorkspaceOwners?.observe(project, created);
         await backend.changeOutcomes(project, outcomes => ({...outcomes, [key(threadId,'confirm')]: {
           method:'areal/task/create', accepted:true, draftThreadId:threadId, turnId:draft.turnId, taskId:created.id, taskDraftMessage:savedMessage('areal/task/create', created, draft.timeZone),
         }}));

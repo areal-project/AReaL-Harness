@@ -449,7 +449,7 @@ impl Engine {
         let active = cell.state.lock().await.active.is_some();
         let configuration = self.context_configuration(thread, active);
         let tools = self
-            .visible_tools(cell, &configuration, thread.desktop.is_some())
+            .visible_tools(cell, &configuration, thread.desktop.is_some(), thread)
             .await;
         let logical = crate::history::logical_history(thread, &self.store)?;
         let instructions = logical
@@ -469,6 +469,32 @@ impl Engine {
         use crate::context_usage::InstructionText;
         use areal_protocol::context::ContextPartKind as Kind;
         let mut instructions = self.project_instruction_text(cell).await?;
+        let thread = cell.state.lock().await.thread.clone();
+        let configuration = thread
+            .turns
+            .last()
+            .and_then(|turn| turn.configuration.clone());
+        let gen_ui_available = if self.extensions.gen_ui {
+            if let Some(configuration) = configuration {
+                self.visible_tools(cell, &configuration, true, &thread)
+                    .await
+                    .iter()
+                    .any(|tool| tool["function"]["name"] == "gen_ui_publish")
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        if gen_ui_available {
+            instructions
+                .get_or_insert_with(|| InstructionText::new(String::new()))
+                .push(
+                    Kind::Other,
+                    "Interactive answers",
+                    crate::desktop::gen_ui::GUIDANCE,
+                );
+        }
         if let Some(workspace) = self.workspace_context(cell) {
             // 工作区能力随本轮指令冻结，并纳入同一文本快照的用量归因。
             instructions
@@ -490,11 +516,11 @@ impl Engine {
         use areal_protocol::context::ContextPartKind as Kind;
         if let Some(areal_protocol::Conversation::Side {
             reference_snapshot,
-            policy,
+            policy: areal_protocol::SidePolicy::ReadOnlyV1 { workspace_access },
             ..
         }) = &cell.state.lock().await.thread.conversation
         {
-            let workspace = if policy.workspace_access == "readOnly" {
+            let workspace = if *workspace_access == areal_protocol::SideWorkspaceAccess::ReadOnly {
                 "You may read and search only current workspace files with the native file tools. These observations are currentWorkspace data, not the historical version at the source anchor; compare file hashes across pages and report changes."
             } else {
                 "Workspace files are unavailable; use only the Side snapshot."
@@ -525,7 +551,7 @@ impl Engine {
             });
             let network = crate::permissions::base_network_policy(
                 policy_configuration,
-                state.thread.is_side(),
+                state.thread.is_read_only_side(),
             );
             (configuration, network)
         };

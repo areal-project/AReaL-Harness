@@ -8,15 +8,18 @@ import {createServer} from 'node:http';
 import {execFileSync} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {CoreClient} from '../packages/runtime-client/core.js';
-import {assertApplicationStopped} from './application-cleanup.mjs';
+import {assertApplicationStopped,closeSmokeApplication} from './application-cleanup.mjs';
 const gui=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+for(const name of ['AREAL_TASK_CREATION_REGRESSION','AREAL_TASK_LOADING_REGRESSION','AREAL_TASK_DAILY_START_REGRESSION','AREAL_TASK_INLINE_REGRESSION','AREAL_TASK_MANUAL_REGRESSION']){
+ assert.ok(!process.env[name],`${name} still targets the removed global unsaved TaskDraft entry and requires migration. Use test:thread-schedules for the ordinary-Thread replacement; this mode has not passed or been skipped.`);
+}
 const require=createRequire(join(gui,'app/package.json'));
 const {_electron:electron}=require('playwright-core');
 const binary=process.env.AREAL_CORE_BIN || resolve(gui,'../../target/debug/areal');
 const binarySha256=createHash('sha256').update(await readFile(binary)).digest('hex');
 const scratch=await mkdtemp('/private/tmp/areal-schedule-desktop-');
 const calendarRegression=process.env.AREAL_TASK_CALENDAR_REGRESSION==='1';
-const calendarDropGate=join(scratch,'calendar-drop-response'),calendarTrace=join(scratch,'calendar-create-requests.jsonl');
+const calendarDropGate=join(scratch,'calendar-drop-response'),calendarTrace=join(scratch,'calendar-create-requests.jsonl'),calendarReceiptTrace=join(scratch,'calendar-receipt-unavailable.jsonl');
 const manualRegression=process.env.AREAL_TASK_MANUAL_REGRESSION==='1';
 const manualDropGate=join(scratch,'drop-manual-response'),manualTrace=join(scratch,'manual-requests.jsonl');
 const manualPrepareGate=join(scratch,'hold-manual-prepare'),manualPrepareTrace=join(scratch,'manual-prepares.jsonl');
@@ -47,6 +50,7 @@ const taskDirectory=join(workspace,'task-working-directory'), independentDirecto
 await mkdir(taskDirectory);await mkdir(independentDirectory);
 execFileSync('git',['init','-b','main'],{cwd:workspace,stdio:'ignore'});
 const errors=[],checks=[],modelRequests=[],catalogEvents=[],held=new Set();
+const legacySetups=[];
 const regressionFailures=[];
 const pastDailyAnchor=new Date(Date.now()-86400000).toISOString().replace(/\.\d{3}Z$/,'Z');
 const changedAnchor=new Date(Date.now()+172800000).toISOString().replace(/\.\d{3}Z$/,'Z');
@@ -57,6 +61,11 @@ const model=createServer(async(request,response)=>{
   assert.equal(request.headers.authorization,'Bearer task-fixture-key','every scheduled model request carries its configured credential');
   let raw='';for await(const chunk of request)raw+=chunk;
   const body=JSON.parse(raw),messages=body.messages??[];
+  if(messages.some(message=>message.role==='system'&&typeof message.content==='string'&&message.content.startsWith('Predict the next user prompt from the conversation data.'))){
+   assert.ok(!body.tools?.length,'prompt prediction must not receive tools');
+   response.writeHead(200,{'Content-Type':'text/event-stream'});
+   response.end(`data: ${JSON.stringify({choices:[{index:0,delta:{content:''},finish_reason:'stop'}]})}\n\ndata: [DONE]\n\n`);return;
+  }
   modelRequests.push(body);
   if(body.stream===false){response.setHeader('Content-Type','application/json');response.end(JSON.stringify({choices:[{message:{role:'assistant',content:'OK'}}]}));return;}
   response.writeHead(200,{'Content-Type':'text/event-stream'});
@@ -69,6 +78,7 @@ const model=createServer(async(request,response)=>{
   if(messages.some(m=>text(m).includes('AREAL_TASK_DRAFT'))) {
    const last=messages.filter(m=>m.role==='user'&&!text(m).startsWith('AReaL runtime context')).at(-1);
    const requestText=text(last??{});
+   if(requestText.startsWith('LEGACY_EDITOR_SEED')){finish(JSON.stringify({kind:'proposal',message:'保存旧版任务验收前置数据。',objective:requestText,interactionMode:'interactive',schedule:{at:'2040-01-02T09:00:00+08:00'}}));return;}
    if(manualRegression&&requestText.includes('立即运行验收')){finish(JSON.stringify({kind:'proposal',message:'将保存手动验证任务。',objective:manualObjective,interactionMode:'interactive',dailyStart:{kind:'explicit',source:'后天的这个时间开始'},schedule:{at:changedAnchor,intervalSeconds:86400}}));return;}
    if(requestText.includes('创建体验验收')){finish(JSON.stringify({kind:'proposal',message:'将保存安排。',objective:requestText,interactionMode:'interactive',schedule:{at:changedAnchor}}));return;}
    if(inlineRegression&&requestText.includes('定时执行内联验收')){
@@ -156,6 +166,42 @@ const snapshot=()=>page.evaluate(()=>window.arealDesktop.snapshot());
 async function call(name,params){const reply=await page.evaluate(({name,params})=>window.arealDesktop.command(name,params),{name,params});assert.equal(reply.ok,true,JSON.stringify(reply));return reply.value;}
 const task=id=>call('manage',{projectId:pid,operation:'task',taskId:id});
 const control=async(id,operation,runId)=>{const current=await task(id);return call('manage',{projectId:pid,operation,taskId:id,expectedRevision:current.revision,...(runId?{expectedRunId:runId}:{})});};
+async function readAuthoritativeThread(threadId){
+ const owner=(await snapshot()).projects.find(project=>project.id===pid);
+ const descriptor=JSON.parse(execFileSync(binary,['service','status','--instance',owner.core.instanceId,'--json'],{env,encoding:'utf8'}));
+ assert.equal(descriptor.state,'ready');assert.equal(descriptor.serviceId,owner.core.instanceId);
+ const auth=JSON.parse(await readFile(descriptor.authFile,'utf8'));
+ const principal=auth.principals.find(value=>value.permissions.includes('observe'));
+ assert.ok(principal?.token);
+ const WebSocket=require('ws');
+ const client=new CoreClient({createSocket:()=>new WebSocket(descriptor.endpoint,{headers:{Authorization:`Bearer ${principal.token}`},followRedirects:false})});
+ try{await client.connect();return (await client.request('thread/read',{threadId,includeTurns:false})).thread;}
+ finally{client.close();}
+}
+async function prepareLegacyDraft(){
+ const prepared=await call('projectless',{operation:'prepare',requestId:randomUUID()});
+ await call('connect',{projectId:prepared.projectId});
+ const owner=await until(async()=>(await snapshot()).projects.find(project=>project.id===prepared.projectId&&project.state?.connected),'legacy fixture owner ready');
+ const started=await call('manage',{projectId:owner.id,operation:'taskDraftStart',draftId:randomUUID(),cwd:owner.root,timeZone:'Asia/Shanghai'});
+ return {owner,started};
+}
+async function legacyProposal(owner,started,message){
+ await call('manage',{projectId:owner.id,operation:'taskDraftSend',threadId:started.threadId,text:message,timeZone:'Asia/Shanghai'});
+ return until(async()=>{const value=await call('manage',{projectId:owner.id,operation:'taskDraftRead',threadId:started.threadId});return !value.running&&value.proposal&&value;},'legacy fixture proposal ready');
+}
+async function openLegacyFixture(){
+ const {owner,started}=await prepareLegacyDraft();
+ const proposal=await legacyProposal(owner,started,`LEGACY_EDITOR_SEED ${randomUUID()}`);
+ const seed=await call('manage',{projectId:owner.id,operation:'taskDraftConfirm',threadId:started.threadId,turnId:proposal.turnId,digest:proposal.digest});
+ legacySetups.push({ownerId:owner.id,threadId:started.threadId,task:seed,boundary:'Supported bridge setup creates an existing legacy task; subsequent editing and history use the real TaskCenter UI. This does not prove the removed new-task TaskDraft UI.'});
+ await page.getByRole('button',{name:`打开自动化 ${seed.objective}`,exact:true}).click();
+ await page.getByRole('main',{name:'定时任务会话',exact:true}).waitFor();
+ const chat=page.getByTestId('chat-input');await chat.waitFor();await until(()=>chat.isEditable(),'existing legacy management Composer ready');
+ const draft=await call('manage',{projectId:owner.id,operation:'taskDraftRead',threadId:started.threadId});
+ assert.equal(draft.thread.cwd,owner.root);
+ checks.push('explicit supported-bridge setup opens an existing legacy Task in its retained management UI');
+ return {owner,draft,seed,saved:{ownerId:owner.id,threadId:started.threadId}};
+}
 async function assertGlobalCreation(){
  const main=page.getByRole('main',{name:'新建定时任务',exact:true});
  await main.waitFor();
@@ -299,6 +345,10 @@ CoreBackend.prototype.connect=async function(...args){
     const original=fs.readFileSync(${JSON.stringify(manualTrace)},'utf8').trim().split(String.fromCharCode(10)).filter(Boolean).map(line=>JSON.parse(line));
     if(params.taskId||original.some(entry=>entry.requestId===params.requestId))throw new Error('receipt read fixture unavailable');
    }
+   if(method==='areal/request/read'&&fs.existsSync(${JSON.stringify(calendarDropGate)})&&fs.existsSync(${JSON.stringify(calendarTrace)})){
+    const original=fs.readFileSync(${JSON.stringify(calendarTrace)},'utf8').trim().split(String.fromCharCode(10)).filter(Boolean).map(line=>JSON.parse(line));
+    if(original.some(entry=>entry.requestId===params.requestId)){fs.appendFileSync(${JSON.stringify(calendarReceiptTrace)},JSON.stringify(params)+'\\n');throw new Error('original calendar receipt fixture unavailable');}
+   }
    const result=await request(method,params,options);
    if(method==='areal/task/create'&&params.objective==='日历重试验收'&&fs.existsSync(${JSON.stringify(calendarDropGate)}))throw Object.assign(new Error('calendar accepted response dropped'),{submissionUnknown:true});
    if(method==='areal/task/runNow'&&fs.existsSync(${JSON.stringify(manualDropGate)}))throw Object.assign(new Error('accepted response fixture dropped'),{submissionUnknown:true});
@@ -385,13 +435,12 @@ async function checkDailyStartRegression(){
 }
 async function checkCalendarRegression(){
  await page.getByRole('button',{name:'定时任务',exact:true}).click();
- await page.getByRole('button',{name:'新建自动化',exact:true}).click();
- const creation=await assertGlobalCreation();pid=creation.owner.id;
+ const creation=await openLegacyFixture();pid=creation.owner.id;
  await page.getByTestId('chat-input').fill('日历验收，工作日早上09:00执行，误给固定间隔。');await page.getByTestId('chat-send-button').click();
  await page.getByRole('alert').filter({hasText:'工作日'}).first().waitFor();
- assert.equal((await call('tasks',{operation:'list'})).data.some(t=>t.projectId===pid),false,'weekday intent cannot silently save a fixed interval');
+ assert.equal((await task(creation.seed.id)).revision,creation.seed.revision,'weekday intent cannot silently replace the saved legacy schedule with a fixed interval');
  await page.getByTestId('chat-input').fill('日历验收，2040年1月1日起工作日早上09:00执行。');await page.getByTestId('chat-send-button').click();
- const created=await until(async()=>(await call('tasks',{operation:'list'})).data.find(t=>t.projectId===pid),'calendar task saved');
+ const created=await until(async()=>{const value=await task(creation.seed.id);return value.revision>creation.seed.revision&&value.objective==='日历验收 SCHEDULE_FIXTURE_COMPLETE'&&value;},'legacy task updates to the requested calendar schedule');
  assert.deepEqual(created.scheduleV2.rule.weekdays,[1,2,3,4,5]);assert.deepEqual(created.scheduleV2.misfire,{kind:'skip',maxLatenessSeconds:300});assert.equal(created.schedule,null);
  await page.getByLabel('后续执行预览',{exact:true}).waitFor();await page.getByText('错过 5 分钟后跳过',{exact:false}).first().waitFor();
  const visible=await page.getByLabel('后续执行预览',{exact:true}).locator('time').allTextContents();
@@ -420,7 +469,7 @@ async function checkCalendarRegression(){
  await page.getByText('已超过允许的延迟，跳过 1 次计划执行。',{exact:true}).first().waitFor();
  await page.screenshot({path:join(scratch,'calendar-missed-once.png')});
  if(!await page.getByLabel('任务资源面板',{exact:true}).count())await page.getByRole('button',{name:'任务资源',exact:true}).click();
- const immediate=page.getByRole('button',{name:'立即运行',exact:true});await until(()=>immediate.isEnabled(),'missed schedule permits explicit manual admission');await immediate.click();
+ const immediate=page.getByLabel('定时任务安排',{exact:true}).getByRole('button',{name:'立即运行',exact:true});await until(()=>immediate.isEnabled(),'missed schedule permits explicit manual admission');await immediate.click();
  const manualAfterMissed=await until(async()=>{const value=await task(missed.id);return value.runs.at(-1)?.status==='running'&&value;},'manual run after missed once is running');
  assert.equal(manualAfterMissed.runs.at(-1).trigger,'manual');assert.deepEqual(manualAfterMissed.lastTriggerDecision,missedState.lastTriggerDecision);assert.equal(manualAfterMissed.nextRunAt,null);
  await page.getByRole('button',{name:'关闭任务详情',exact:true}).click();
@@ -438,23 +487,28 @@ async function checkCalendarRegression(){
  for(const label of ['已暂停','已完成']){await page.getByRole('button',{name:'筛选任务',exact:true}).click();const item=page.getByRole('menuitemcheckbox',{name:label,exact:true});if(await item.getAttribute('aria-checked')!=='true')await item.click();await page.keyboard.press('Escape');}
 
  await writeFile(calendarDropGate,'drop');
- await page.getByRole('button',{name:'新建自动化',exact:true}).click();
- const unknownCreation=await assertGlobalCreation();pid=unknownCreation.owner.id;
- await page.getByTestId('chat-input').fill('日历重试验收，两天后09:00执行。');await page.getByTestId('chat-send-button').click();
+ const unknownCreation=await prepareLegacyDraft();pid=unknownCreation.owner.id;
+ const unknownProposal=await legacyProposal(unknownCreation.owner,unknownCreation.started,'日历重试验收，两天后09:00执行。');
+ const unknownReply=await page.evaluate(params=>window.arealDesktop.command('manage',params),{projectId:pid,operation:'taskDraftConfirm',threadId:unknownCreation.started.threadId,turnId:unknownProposal.turnId,digest:unknownProposal.digest});
+ assert.equal(unknownReply.ok,false,'supplemental legacy bridge confirm surfaces the accepted response loss');
  const unknown=await until(async()=>{const owner=(await snapshot()).projects.find(p=>p.id===pid);return owner.pending?.find(p=>p.method==='areal/task/create'&&p.params.objective==='日历重试验收');},'original civil intent retained as UNKNOWN');
  calendarUnknownRequestId=unknown.params.requestId;
  assert.deepEqual(unknown.params.scheduleV2.rule,{kind:'onceLocal',timeZone:'Asia/Shanghai',localTime:'09:00',date:{kind:'relative',days:2}});
  const acceptedUnknown=(await call('tasks',{operation:'list'})).data.filter(t=>t.projectId===pid&&t.objective==='日历重试验收');assert.equal(acceptedUnknown.length,1);
  const creates=JSON.parse((await readFile(calendarTrace,'utf8')).trim());assert.deepEqual(creates,unknown.params);
+ const withheldReceipts=(await readFile(calendarReceiptTrace,'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse);
+ assert.ok(withheldReceipts.length>0,'calendar UNKNOWN fixture actually withholds original receipt reconciliation');
+ assert.ok(withheldReceipts.every(entry=>entry.requestId===unknown.params.requestId),'receipt fault is limited to the exact original calendar request');
+ await page.getByRole('button',{name:'打开自动化 日历重试验收',exact:true}).click();
  await page.screenshot({path:join(scratch,'calendar-unknown.png')});
- await page.getByRole('button',{name:'关闭创建对话',exact:true}).click();
- await page.getByRole('button',{name:'新建自动化',exact:true}).click();
+ await page.getByRole('button',{name:'关闭任务详情',exact:true}).click();
+ await page.getByRole('button',{name:'打开自动化 日历重试验收',exact:true}).click();
  await until(async()=>!!(await snapshot()).projects.find(p=>p.id===pid).pending?.some(p=>p.params.requestId===unknown.params.requestId),'same UNKNOWN remains after reopening');
  assert.deepEqual((await snapshot()).projects.find(p=>p.id===pid).pending.find(p=>p.params.requestId===unknown.params.requestId).params,unknown.params);
  assert.equal((await readFile(calendarTrace,'utf8')).trim().split('\n').length,1,'reopening never re-resolves or repeats UNKNOWN create');
  await rm(calendarDropGate);
- await writeFile(join(scratch,'calendar-manifest.json'),JSON.stringify({binary,binarySha256,created,edited,missedState,manualAfterMissed,unknown,acceptedUnknown,modelRequests,proxies:[],injections:["native project-directory chooser returns the isolated fixture workspace", "CoreClient wrapper drops only the accepted calendar create response; no fake save or clock", "an existing HOLD model fixture keeps the explicitly requested manual Run observable"],clock:'production Core SystemTime; explicit 2040 anchor'},null,2));
- checks.push('real management conversation rejects weekday-to-interval, saves weekday calendar, edits month-end, shows Core preview/skip300 and reopens same history');
+ await writeFile(join(scratch,'calendar-manifest.json'),JSON.stringify({binary,binarySha256,created,edited,missedState,manualAfterMissed,unknown,acceptedUnknown,unknownReply,withheldReceipts,legacySetups,modelRequests,proxies:[],injections:["native project-directory chooser returns the isolated fixture workspace", "supported TaskDraft bridge seeds existing legacy management UI", "supplemental legacy bridge confirm loses the accepted calendar create response and withholds only its exact original receipt reads; catalog revisit proves no replay, not removed creation UI", "an existing HOLD model fixture keeps the explicitly requested manual Run observable"],clock:'production Core SystemTime; explicit 2040 anchor'},null,2));
+ checks.push('legacy management rejects weekday-to-interval, updates weekday calendar, edits month-end, shows Core preview/skip300 and reopens same history; supplemental legacy confirm preserves original UNKNOWN create through catalog navigation without replay');
  assert.deepEqual(errors,[]);
 }
 async function checkCreationRegression(){
@@ -875,16 +929,16 @@ async function checkInlineRegression(){
  await page.getByRole('button',{name:`打开自动化 ${inlineObjective}`,exact:true}).click();
  await assertRestored('reopen');
 }
-async function closeManualApp(){
- await app.evaluate(({dialog},trace)=>{const old=dialog.showMessageBox;dialog.showMessageBox=async(...args)=>{const options=args.at(-1);if(options.message==='退出 AReaL Harness？'){require('node:fs').appendFileSync(trace,JSON.stringify({message:options.message,buttons:options.buttons})+'\n');return {response:1};}return old(...args);};},join(scratch,'manual-quit-dialogs.jsonl'));
- const processHandle=app.process();let timer;
- try{
-  await Promise.race([app.close(),new Promise((_resolve,reject)=>{timer=setTimeout(()=>reject(Error('owned Electron quit timed out')),15000);})]);
-  await until(()=>processHandle.exitCode!==null||processHandle.signalCode!==null,'owned Electron exits naturally',15000);
-  assert.equal(processHandle.exitCode,0,'owned Electron quit exit code');assert.equal(processHandle.signalCode,null,'owned Electron quit signal');
-  manualCleanup.exits.push({pid:processHandle.pid,exitCode:processHandle.exitCode,signal:processHandle.signalCode});
-  app=null;page=null;
- }finally{clearTimeout(timer);}
+async function closeOwnedApp(){
+ const metadata=await readFile(join(scratch,'core/service.json'),'utf8').then(JSON.parse).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
+ await app.evaluate(({dialog},trace)=>{const fs=process.getBuiltinModule('node:fs');if(typeof fs?.appendFileSync!=='function')throw Error('Main builtin filesystem is unavailable for quit evidence');const old=dialog.showMessageBox;dialog.showMessageBox=async(...args)=>{const options=args.at(-1);if(['退出 AReaL Harness？','Quit AReaL Harness?','确认取消后台任务？','Cancel background tasks?'].includes(options.message)){fs.appendFileSync(trace,JSON.stringify({message:options.message,buttons:options.buttons})+'\n');return {response:1};}return old(...args);};},join(scratch,'manual-quit-dialogs.jsonl'));
+ const processHandle=app.process();
+ await closeSmokeApplication(app,20000);
+ await until(()=>processHandle.exitCode!==null||processHandle.signalCode!==null,'owned Electron exits naturally',15000);
+ assert.equal(processHandle.exitCode,0,'owned Electron quit exit code');assert.equal(processHandle.signalCode,null,'owned Electron quit signal');
+ await assertApplicationStopped(binary,env,metadata);
+ manualCleanup.exits.push({pid:processHandle.pid,exitCode:processHandle.exitCode,signal:processHandle.signalCode,applicationStopped:true});
+ app=null;page=null;
 }
 async function checkManualRegression(){
  await page.getByRole('button',{name:'定时任务',exact:true}).click();
@@ -971,15 +1025,8 @@ try{
  await until(()=>page.locator('html').evaluate(el=>el.classList.contains('theme-areal-light')&&!el.classList.contains('dark')),'light theme');
  await page.getByRole('button',{name:'定时任务',exact:true}).click();
  assert.equal(await page.getByLabel('筛选任务归属',{exact:true}).count(),0,'task directory has no workspace filter');
- const retainedId=randomUUID(),retainedText='保留的任务描述';
- await page.evaluate(({projectId,cwd,draftId,text})=>localStorage.setItem(`areal-gui:task-draft:${projectId}`,JSON.stringify({draftId,location:{kind:'project',projectId,cwd},text})),{projectId:workspacePid,cwd:taskDirectory,draftId:retainedId,text:retainedText});
- await page.getByRole('button',{name:'新建自动化',exact:true}).click();
- const creation=await assertGlobalCreation();
+ const creation=await openLegacyFixture();
  pid=creation.owner.id;taskCwd=creation.owner.root;
- assert.equal(creation.saved.draftId,retainedId);
- assert.equal((await page.getByTestId('chat-input').textContent()).trim(),retainedText);
- assert.equal(creation.saved.location.kind,'independent');
- checks.push('unadmitted legacy draft retains identity and text while new task admission ignores the active project and cwd');
  let chat=page.getByTestId('chat-input');
  assert.equal(await page.locator('.task-management-composer').count(),0);
  assert.equal(await page.getByRole('dialog').count(),0);
@@ -988,10 +1035,11 @@ try{
  async function send(message){await chat.fill(message);await page.getByTestId('chat-send-button').click();}
  await send('检查项目提交和 PR，没有时间。');
  await page.getByText('你希望什么时候执行？',{exact:true}).waitFor();
- assert.equal((await call('tasks',{operation:'list'})).data.length,0);
+ assert.equal((await task(creation.seed.id)).revision,creation.seed.revision,'clarification does not mutate the existing legacy task');
  if(process.env.AREAL_TASK_SCHEDULE_REGRESSION==='1'){
   await send('过去的每日时间，请每天继续执行。');
   const recurring=await until(async()=>(await call('tasks',{operation:'list'})).data.find(t=>t.objective.includes('过去的每日时间')),'past recurring anchor advances to a future execution',6000);
+  assert.equal(recurring.id,creation.seed.id,'legacy schedule update preserves the seeded task identity');
   assert.equal(recurring.projectId,pid);
   assert.equal(recurring.scope,'independent');
   const history=await call('manage',{projectId:pid,operation:'taskDraftHistory',taskId:recurring.id});
@@ -1053,8 +1101,7 @@ try{
   assert.equal((await call('manage',{projectId:workspacePid,operation:'taskDraftRead',threadId:legacyHistory.threadId})).thread.cwd,taskDirectory);
   checks.push('legacy management history remains available when its bound directory is missing');
   await page.getByRole('button',{name:'关闭任务详情',exact:true}).click();
-  await page.getByRole('button',{name:'新建自动化',exact:true}).click();
-  const next=await assertGlobalCreation();
+  const next=await openLegacyFixture();
   await chat.fill('独立目录验收，定时执行。');await page.getByTestId('chat-send-button').click();
   const independent=await until(async()=>(await call('tasks',{operation:'list'})).data.find(t=>t.objective.startsWith('独立目录验收')),'independent task created');
   assert.equal(independent.scope,'independent');
@@ -1072,7 +1119,9 @@ try{
   passed=true;
  }else{
  await send('每天上午九点，稍后安排。');
- const created=await until(async()=>(await call('tasks',{operation:'list'})).data.find(t=>t.objective.includes('SCHEDULE_FIXTURE_COMPLETE')),'Agent created task');
+ const created=await until(async()=>(await call('tasks',{operation:'list'})).data.find(t=>t.id===creation.seed.id&&t.revision>creation.seed.revision&&t.objective.includes('SCHEDULE_FIXTURE_COMPLETE')),'Agent updates the seeded legacy task');
+ assert.equal(created.id,creation.seed.id,'legacy schedule update preserves task identity');
+ assert.ok(created.revision>creation.seed.revision,'existing fixture cannot satisfy the schedule-update wait');
  const taskId=created.id;
  let resources=page.getByRole('button',{name:'任务资源',exact:true});
  assert.equal(await page.getByLabel('任务资源面板').count(),0,'summary is closed initially');
@@ -1127,7 +1176,7 @@ try{
  assert.equal(await page.locator('.messages-shell').count(),1);
  assert.equal(await page.locator('[data-v4-composer-dock]').count(),1);
  assert.ok(!(await page.locator('.messages-shell').innerText()).includes('"kind"'));
- checks.push('shared Messages and Composer; no task textarea/dialog; Agent clarification, creation, description update, failed proposal, pause/resume; same management Thread; light/dark');
+ checks.push('shared Messages and Composer; no task textarea/dialog; legacy clarification, schedule and description update, failed proposal, pause/resume; same management Thread; light/dark');
  await page.getByRole('button',{name:'关闭任务详情',exact:true}).click();
  await page.getByRole('button',{name:`打开自动化 ${(await task(taskId)).objective}`,exact:true}).click();
  await page.getByText('你希望什么时候执行？',{exact:true}).waitFor();
@@ -1135,7 +1184,8 @@ try{
  const reopened=await call('manage',{projectId:pid,operation:'taskDraftHistory',taskId});assert.equal(reopened.threadId,managementThread);
  assert.equal((await call('tasks',{operation:'list'})).data.length,1);
  checks.push('navigation restores full creation/modification history without duplicate task');
- await app.close();await launch();
+ const beforeRestartTask=await task(taskId);
+ await closeOwnedApp();await launch();
  chat=page.getByTestId('chat-input');resources=page.getByRole('button',{name:'任务资源',exact:true});
  await page.getByRole('button',{name:'定时任务',exact:true}).click();
  await page.getByRole('button',{name:`打开自动化 ${(await task(taskId)).objective}`,exact:true}).click();
@@ -1144,15 +1194,24 @@ try{
  assert.equal((await call('manage',{projectId:pid,operation:'taskDraftRead',threadId:managementThread})).thread.cwd,taskCwd);
  assert.equal((await snapshot()).projects.find(project=>project.id===pid).root,taskCwd);
  assert.equal((await call('tasks',{operation:'list'})).data.length,1);
+ const afterRestartTask=await task(taskId);
+ assert.equal(afterRestartTask.cancelled,false,'confirmed application quit preserves the scheduled definition');
+ assert.deepEqual(afterRestartTask.schedule,beforeRestartTask.schedule);
+ assert.equal(afterRestartTask.objective,beforeRestartTask.objective);
  checks.push('desktop restart restores the same independent owner, management cwd and history without duplicate task');
  const runs=await until(async()=>{const value=await task(taskId);return value.runs.filter(r=>r.status==='completed').length>=2&&value.runs;},'two independent scheduled runs');
  assert.notEqual(runs[0].threadId,runs[1].threadId);assert.notEqual(runs[0].threadId,managementThread);
  for(const run of runs.slice(0,2)){
-  await call('open',{projectId:pid,threadId:run.threadId});
-  assert.equal((await snapshot()).projects.find(p=>p.id===pid).state.threads[run.threadId].cwd,taskCwd);
+  const execution=await readAuthoritativeThread(run.threadId);
+  assert.equal(execution.id,run.threadId);
+  assert.equal(execution.cwd,taskCwd);
  }
  checks.push('scheduled runs retain independent execution Threads');
  checks.push('scheduled execution Threads retain the task independent directory after navigation and restart');
+ await page.getByRole('button',{name:'关闭任务详情',exact:true}).click();
+ await page.getByRole('button',{name:`打开自动化 ${(await task(taskId)).objective}`,exact:true}).click();
+ await chat.waitFor();
+ await until(async()=>(await snapshot()).projects.find(project=>project.id===pid)?.configurations?.[managementThread],'reopened management configuration ready before cancellation');
  await send('取消任务。');
  await until(async()=>(await task(taskId)).cancelled,'Agent cancelled schedule');
  await resources.click();
@@ -1163,7 +1222,13 @@ try{
  }
  }
 }catch(error){
- if(page){await writeFile(join(scratch,'failure-state.json'),JSON.stringify(await snapshot(),null,2)).catch(()=>{});await writeFile(join(scratch,'failure.aria.txt'),await page.locator('body').ariaSnapshot()).catch(()=>{});await writeFile(join(scratch,'failure-ui.json'),JSON.stringify(await page.evaluate(()=>({focus:{tag:document.activeElement?.tagName,id:document.activeElement?.id,role:document.activeElement?.getAttribute('role'),label:document.activeElement?.getAttribute('aria-label')},hidden:document.hidden,options:[...document.querySelectorAll('[role=option]')].map(el=>({html:el.outerHTML,rect:el.getBoundingClientRect().toJSON(),visibility:getComputedStyle(el).visibility,display:getComputedStyle(el).display,opacity:getComputedStyle(el).opacity}))})),null,2)).catch(()=>{});await page.screenshot({path:join(scratch,'failure.png')}).catch(()=>{});}
+ errors.push(error.stack??String(error));
+ await writeFile(join(scratch,'failure-error.txt'),error.stack??String(error)).catch(()=>{});
+ if(page&&!page.isClosed()){
+  await snapshot().then(value=>writeFile(join(scratch,'failure-state.json'),JSON.stringify(value,null,2))).catch(()=>{});
+  await page.locator('body').ariaSnapshot().then(value=>writeFile(join(scratch,'failure.aria.txt'),value)).catch(()=>{});
+  await page.screenshot({path:join(scratch,'failure.png')}).catch(()=>{});
+ }
  throw error;
 }finally{
  await rm(manualPrepareGate,{force:true});await rm(manualDropGate,{force:true});await rm(calendarDropGate,{force:true});
@@ -1172,19 +1237,18 @@ try{
  await rm(prepareFailureGate,{force:true});
  for(const gate of watchGates)await rm(gate,{force:true});
  for(const response of held)response.destroy();
- if(page && pid){
+ if(page && !page.isClosed() && pid){
   try {
    const rows=await call('tasks',{operation:'list',limit:100});
    for(const entry of rows.data){if(!entry.cancelled)await call('manage',{projectId:entry.projectId,operation:'taskCancel',taskId:entry.id,expectedRevision:entry.revision}).catch(()=>{});}
    await until(async()=>{const state=await call('serviceStatus',{});if(state.activeCommands)return false;if(!state.busy)return true;if(!calendarUnknownRequestId)return false;const pending=(await snapshot()).projects.flatMap(project=>project.pending??[]);const onlyOriginal=pending.length===1&&pending[0].method==='areal/task/create'&&pending[0].params.requestId===calendarUnknownRequestId;if(onlyOriginal)manualCleanup.retainedUnknown=calendarUnknownRequestId;return onlyOriginal;},'fixture cleanup permits only the deliberately retained UNKNOWN receipt',20000);
    await app.evaluate(({dialog})=>{const old=dialog.showMessageBox;dialog.showMessageBox=async(...args)=>args.at(-1).message==='退出 AReaL Harness？'?{response:1}:old(...args);});
-   if(!manualRegression&&!calendarRegression)await call('stopService',{});
   }catch(error){errors.push(`cleanup: ${error.message}`);}
  }
- if(manualRegression||calendarRegression){
+ {
   const metadata=await readFile(join(scratch,'core/service.json'),'utf8').then(JSON.parse).catch(()=>null);
   manualCleanup.adapter=metadata&&{pid:metadata.pid,identity:metadata.identity,desktopGeneration:metadata.desktopGeneration};
-  try{if(app)await closeManualApp();await assertApplicationStopped(binary,env,metadata);manualCleanup.applicationStopped=true;}
+  try{if(app&&app.process().exitCode===null&&app.process().signalCode===null)await closeOwnedApp();await assertApplicationStopped(binary,env,metadata);manualCleanup.applicationStopped=true;}
   catch(error){errors.push('manual cleanup: '+error.message);}
   if(metadata&&!manualCleanup.applicationStopped){
    manualCleanup.assistedServiceStop=true;
@@ -1195,17 +1259,17 @@ try{
     await waitForServiceProcessExit(join(scratch,'core'),metadata);manualCleanup.desktopExited=true;
    }catch(error){if(!['ENOENT','ECONNREFUSED','ESRCH'].includes(error.code))errors.push('fallback stop service: '+error.message);}finally{connection.close();}
   }
-  if(app){const handle=app.process();if(handle.exitCode===null&&handle.signalCode===null){manualCleanup.forcedElectronExit=true;handle.kill('SIGKILL');await new Promise(resolve=>handle.once('exit',resolve));}}
+  if(app){const handle=app.process();if(handle.exitCode===null&&handle.signalCode===null){manualCleanup.forcedElectronExit=true;handle.kill('SIGKILL');await until(()=>handle.exitCode!==null||handle.signalCode!==null,'owned Electron forced cleanup exit',5000);}}
   try{manualCleanup.instances=JSON.parse(execFileSync(binary,['service','list','--json'],{env,encoding:'utf8'})).map(({serviceId,workspace,state,hostPid,corePid})=>({serviceId,workspace,state,hostPid,corePid}));assert.ok(manualCleanup.instances.every(instance=>instance.state==='stopped'),'owned Core instance remains live');}catch(error){errors.push('verify owned Core cleanup: '+error.message);}
-  manualCleanup.mainErrors=(await readFile(manualMainErrors,'utf8')).trim().split('\n').filter(Boolean).map(line=>JSON.parse(line));
+  manualCleanup.mainErrors=manualRegression||calendarRegression?(await readFile(manualMainErrors,'utf8')).trim().split('\n').filter(Boolean).map(line=>JSON.parse(line)):[];
   for(const error of manualCleanup.mainErrors)errors.push('uncaught Main '+error.origin+': '+error.message);
   await writeFile(join(scratch,'manual-cleanup.json'),JSON.stringify(manualCleanup,null,2));
   if(errors.length){passed=false;process.exitCode=1;}
- }else if(app)await app.close().catch(()=>{});
+ }
  model.closeAllConnections();await new Promise(resolve=>model.close(resolve));
  await writeFile(join(scratch,'catalog-events.json'),JSON.stringify(catalogEvents,null,2));
  await writeFile(join(scratch,'evidence.json'),JSON.stringify({passed,binary,binarySha256,checks,errors,regressionFailures,modelRequests:modelRequests.length},null,2));
  await writeFile(join(scratch,'model-requests.json'),JSON.stringify(modelRequests,null,2));
- await writeFile(join(scratch,'manifest.json'),JSON.stringify({passed,sourceCommit:execFileSync('git',['rev-parse','HEAD'],{cwd:gui,encoding:'utf8'}).trim(),diff:execFileSync('git',['diff','--stat'],{cwd:gui,encoding:'utf8'}),binary,binarySha256,checks,errors,boundaries:['real isolated Electron, preload, Desktop adapter and Core','synthetic local model replies','native directory dialog result is stubbed','not installed app or real provider']},null,2));
+ await writeFile(join(scratch,'manifest.json'),JSON.stringify({passed,sourceCommit:execFileSync('git',['rev-parse','HEAD'],{cwd:gui,encoding:'utf8'}).trim(),diff:execFileSync('git',['diff','--stat'],{cwd:gui,encoding:'utf8'}),binary,binarySha256,checks,errors,legacySetups,boundaries:['real isolated Electron, preload, Desktop adapter and Core','synthetic local model replies','native directory dialog result is stubbed','existing legacy Task seeded through supported bridge; subsequent editing uses real UI','calendar UNKNOWN create uses explicit legacy bridge confirm plus real catalog navigation; no removed creation-UI claim','new global ordinary creation is covered separately by thread-schedules-smoke','not installed app or real provider']},null,2));
  console.log(JSON.stringify({passed,scratch,checks,errors}));
 }

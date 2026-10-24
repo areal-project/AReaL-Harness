@@ -13,13 +13,13 @@
 .usage-heading p,
 .usage-section-heading p {
   margin: 6px 0 0;
-  font-size: 13px;
+  font-size: var(--text-ui-caption);
 }
 .usage-local {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-size: 12px;
+  font-size: var(--text-ui-sm);
   color: var(--color-foreground-subtle);
 }
 .usage-local > span {
@@ -57,7 +57,7 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 12px;
+  font-size: var(--text-ui-sm);
   color: var(--color-foreground-subtle);
 }
 .usage-metric strong {
@@ -67,7 +67,7 @@
   overflow-wrap: anywhere;
 }
 .usage-metric small {
-  font-size: 11px;
+  font-size: var(--text-ui-xs);
   color: var(--color-foreground-subtle);
 }
 .usage-section {
@@ -78,7 +78,7 @@
   margin-bottom: 20px;
 }
 .usage-section-heading h2 {
-  font-size: 16px;
+  font-size: var(--text-ui-lg);
 }
 .usage-section-heading select,
 .usage-section-heading input {
@@ -86,7 +86,7 @@
   border-radius: 7px;
   padding: 6px 9px;
   background: transparent;
-  font-size: 12px;
+  font-size: var(--text-ui-sm);
   max-width: 180px;
   min-width: 0;
 }
@@ -197,11 +197,11 @@ button.usage-cell:focus-visible {
   gap: 6px;
 }
 .usage-day strong {
-  font-size: 13px;
+  font-size: var(--text-ui-caption);
   font-weight: 500;
 }
 .usage-day small {
-  font-size: 11px;
+  font-size: var(--text-ui-xs);
   color: var(--color-foreground-subtle);
 }
 .usage-ranking {
@@ -224,14 +224,14 @@ button.usage-cell:focus-visible {
 .usage-rank {
   color: var(--color-foreground-subtle);
   width: 20px;
-  font-size: 12px;
+  font-size: var(--text-ui-sm);
 }
 .usage-skill-name {
   flex: 1;
   min-width: 0;
 }
 .usage-skill-name strong {
-  font-size: 13px;
+  font-size: var(--text-ui-caption);
   font-weight: 500;
   overflow-wrap: anywhere;
 }
@@ -250,7 +250,7 @@ button.usage-cell:focus-visible {
   border-radius: 3px;
 }
 .usage-ranking li > span:last-child {
-  font-size: 14px;
+  font-size: var(--text-ui-base);
 }
 .usage-ranking small {
   color: var(--color-foreground-subtle);
@@ -265,16 +265,16 @@ button.usage-cell:focus-visible {
   text-align: center;
 }
 .usage-empty strong {
-  font-size: 14px;
+  font-size: var(--text-ui-base);
   font-weight: 500;
 }
 .usage-empty p {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-ui-sm);
 }
 .usage-method {
   color: var(--color-foreground-subtle);
-  font-size: 12px;
+  font-size: var(--text-ui-sm);
   line-height: 1.8;
 }
 .usage-method summary {

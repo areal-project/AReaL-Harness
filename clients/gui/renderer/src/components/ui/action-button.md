@@ -6,7 +6,7 @@
 
 ## 不适用
 
-持续状态使用 [Switch](switch.md)。值选择使用 [Select](select.md)。需要其他按钮组合时读取 [Button](button.md) 合同。
+持续状态使用 [Switch](switch.md)。值选择使用 [Select](select.md)。需要其他按钮组合时读取 [Button](../../../../packages/ui/src/components/button/button.md) 合同。
 
 ## 状态
 

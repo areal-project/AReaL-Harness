@@ -253,6 +253,7 @@ impl DynamicToolHost for References {
         _: CancellationToken,
     ) -> anyhow::Result<DynamicToolResponse> {
         Ok(DynamicToolResponse {
+            raw_mcp_result: None,
             success: true,
             structured_content: None,
             content_items: vec![ToolContent::InputText {

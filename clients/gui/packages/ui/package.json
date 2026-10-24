@@ -1,0 +1,106 @@
+{
+  "name": "@areal/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "AReaL UI foundations, components, documentation and agent entry points.",
+  "files": [
+    "dist",
+    "tokens.json",
+    "agent-guide.md",
+    "README.md",
+    "README.en.md"
+  ],
+  "exports": {
+    "./content": {
+      "types": "./dist/lib/conversation-content.d.ts",
+      "default": "./dist/lib/conversation-content.js"
+    },
+    "./math-text": {
+      "types": "./dist/lib/math-text.d.ts",
+      "default": "./dist/lib/math-text.js"
+    },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./wip": {
+      "types": "./dist/wip.d.ts",
+      "default": "./dist/wip.js"
+    },
+    "./cn": {
+      "types": "./dist/lib/utils.d.ts",
+      "default": "./dist/lib/utils.js"
+    },
+    "./theme": {
+      "types": "./dist/theme.d.ts",
+      "default": "./dist/theme.js"
+    },
+    "./theme-defaults": {
+      "types": "./dist/generated/theme-defaults.d.ts",
+      "default": "./dist/generated/theme-defaults.js"
+    },
+    "./styles.css": "./dist/styles.css",
+    "./conversation.css": "./dist/conversation.css",
+    "./foundation.css": "./dist/generated/foundation.css",
+    "./themes.css": "./dist/generated/themes.css",
+    "./tokens.json": "./tokens.json",
+    "./components.json": "./dist/components.json",
+    "./llms.txt": "./dist/llms.txt",
+    "./agent-guide.md": "./agent-guide.md",
+    "./settings.css": "./dist/settings.css",
+    "./worktree.css": "./dist/worktree.css",
+    "./notifications.css": "./dist/notifications.css",
+    "./icons": {
+      "types": "./dist/icons.d.ts",
+      "default": "./dist/icons.js"
+    },
+    "./code-preview-settings": {
+      "types": "./dist/lib/code-preview-settings.d.ts",
+      "default": "./dist/lib/code-preview-settings.js"
+    },
+    "./code-preview-preferences": {
+      "types": "./dist/lib/code-preview-preferences.d.ts",
+      "default": "./dist/lib/code-preview-preferences.js"
+    },
+    "./diffs-highlighter-engine": {
+      "types": "./dist/lib/diffs-highlighter-engine.d.ts",
+      "default": "./dist/lib/diffs-highlighter-engine.js"
+    },
+    "./keyboard-shortcuts": {
+      "types": "./dist/lib/keyboard-shortcuts.d.ts",
+      "default": "./dist/lib/keyboard-shortcuts.js"
+    },
+    "./code-comment-types": {
+      "types": "./dist/lib/code-comment-types.d.ts",
+      "default": "./dist/lib/code-comment-types.js"
+    },
+    "./workbench.css": "./dist/workbench.css"
+  },
+  "scripts": {
+    "generate": "node scripts/foundations.mjs",
+    "build": "node scripts/foundations.mjs --check && tsc && node scripts/documents.mjs",
+    "check": "node scripts/foundations.mjs --check && node scripts/documents.mjs --check && node --test scripts/assets.test.mjs"
+  },
+  "dependencies": {
+    "@base-ui/react": "1.8.0",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "tailwind-merge": "3.7.0",
+    "lucide-react": "1.47.0",
+    "cmdk": "1.1.1",
+    "@pierre/diffs": "1.4.3",
+    "shiki": "4.4.3",
+    "streamdown": "2.6.0"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0"
+  }
+}

@@ -12,7 +12,7 @@ const reads = {
   taskRun: ['areal/task/run/read', ['taskId', 'runId']],
 };
 const writes = {
-  taskCreate: ['areal/task/create', ['mode', 'objective', 'threadId', 'interactionMode', 'schedule', 'scheduleV2', 'tokenBudget', 'maxTurns', 'maxActiveSeconds']],
+  taskCreate: ['areal/task/create', ['mode', 'objective', 'threadId', 'sourceThreadId', 'interactionMode', 'schedule', 'scheduleV2', 'tokenBudget', 'maxTurns', 'maxActiveSeconds']],
   taskUpdate: ['areal/task/update', ['taskId', 'expectedRevision', 'objective', 'schedule', 'scheduleV2']],
   taskRunNow: ['areal/task/runNow', ['taskId', 'expectedRevision']],
   taskPause: ['areal/task/pause', ['taskId', 'expectedRevision']],
@@ -20,6 +20,7 @@ const writes = {
   taskStopRun: ['areal/task/stopRun', ['taskId', 'expectedRevision', 'expectedRunId']],
   taskResumeRun: ['areal/task/resumeRun', ['taskId', 'expectedRevision', 'expectedRunId']],
   taskCancel: ['areal/task/cancel', ['taskId', 'expectedRevision']],
+  taskDelete: ['areal/task/delete', ['taskId', 'expectedRevision']],
   taskReply: ['areal/channel/reply', ['taskId', 'runId', 'questionId', 'answers']],
 };
 const taskMutationMethods = new Set(Object.values(writes).map(([method]) => method));
@@ -38,6 +39,7 @@ async function taskCreate(backend, project, request) {
   const next = previous.catch(() => {}).then(async () => {
     if (project.pending.some(entry => entry.params.requestId === requestId) || project.outcomes?.[requestId]) throw unknown();
     const params = pick(request, writes.taskCreate[1]);
+    if (params.mode === 'scheduled') await backend.scheduleAdmission.reserveCreate(project, requestId, params.threadId, {executionRequestId:params.threadId ? undefined : executionRequestId(requestId)});
     if (!params.threadId && params.mode === 'scheduled') {
       const preludeId = executionRequestId(requestId);
       let receipt;
@@ -59,8 +61,13 @@ async function taskCreate(backend, project, request) {
         params.threadId = thread.id;
       }
     }
+    if (params.mode === 'scheduled') await backend.scheduleAdmission.setAnchor(project, params.threadId);
     const value = await backend.submit(project, 'areal/task/create', params, { requestId });
     project.model.setTask(value);
+    try {
+      if (value.mode === 'scheduled') await backend.scheduleAdmission.bind(project, value);
+      await backend.taskWorkspaceOwners?.observe(project, value);
+    } catch (error) { throw Object.assign(new Error('任务已受理，执行目录归属确认尚未完成；请核对原任务。', {cause:error}), {submissionUnknown:true}); }
     return value;
   });
   project.taskCreateWrites.set(requestId, next);
@@ -115,10 +122,14 @@ async function manageTask(backend, project, request) {
     const client = project.client;
     const value = await client.request(method, params);
     backend.requireConnection(project, client);
-    if (operation === 'task') project.model.setTask(value);
+    if (operation === 'task') { project.model.setTask(value); await backend.taskWorkspaceOwners?.observe(project, value); }
     return value;
   }
   if (operation === 'taskCreate') return taskCreate(backend, project, request);
+  if (['taskRunNow','taskResume','taskResumeRun','taskReply','taskUpdate'].includes(operation)) {
+    const task = await project.client.request('areal/task/read', {taskId:params.taskId});
+    if (task.mode === 'scheduled') await backend.scheduleAdmission.admitTask(project, task.id, operation);
+  }
   const value = await backend.submit(project, method, params, { requestId: request.requestId });
   if (operation === 'taskRunNow') {
     await backend.refreshAfterAdmission(project, undefined, { method, requestId: request.requestId,
@@ -129,6 +140,7 @@ async function manageTask(backend, project, request) {
   // question too, so a delayed Desktop response cannot settle its sibling.
   if (operation === 'taskReply') return { ...value, questionId: params.questionId };
   project.model.setTask(value);
+    await backend.taskWorkspaceOwners?.observe(project, value);
   return value;
 }
 module.exports = { manageTask, taskOperations, taskMutationMethods };

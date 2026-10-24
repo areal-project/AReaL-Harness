@@ -505,8 +505,9 @@ impl Engine {
     async fn app_scope(&self, thread: &str) -> Result<Arc<Cell>> {
         let cell = self.cell(thread).await?;
         let state = cell.state.lock().await;
+        self.ensure_hook_session_open(&cell, &state.thread)?;
         let config = desktop(&state.thread).configuration;
-        if state.thread.is_side()
+        if state.thread.is_read_only_side()
             || cell.research
             || cell.exclusive_writer
             || state.thread.parent_thread_id.is_some()
@@ -681,6 +682,8 @@ impl Engine {
             let resource = app_resource(&read, &uri).map_err(|_| {
                 invalid("App HTML resource missing, invalid MIME or budget exceeded")
             })?;
+            let state = cell.state.lock().await;
+            self.ensure_hook_session_open(&cell, &state.thread)?;
             let saved = Instance {
                 tool_host_id: host.as_ref().map(|h| h.id().to_owned()),
                 page_tools_retired: false,
@@ -688,7 +691,7 @@ impl Engine {
                 instance_id: id(),
                 identity: identity.clone(),
                 thread_id: thread_id.clone(),
-                cwd: cell.state.lock().await.thread.cwd.clone(),
+                cwd: state.thread.cwd.clone(),
                 plugin: owner.plugin.clone(),
                 digest: owner.digest.clone(),
                 server_id: server_id.clone(),
@@ -1137,10 +1140,18 @@ impl Engine {
         }
         // Recheck live ownership under the gate. Stale instances remain closable, but
         // cannot send cleanup to a revoked/replaced connection or changed package.
-        let live = self
-            .app_bound(&identity, &thread_id, &instance_id, generation)
-            .await
-            .is_ok();
+        let live = if let Ok(cell) = self.raw_cell(&thread_id).await {
+            saved.runtime_epoch == self.desktop.mcp_apps.runtime_epoch
+                && cell.state.lock().await.thread.cwd == saved.cwd
+                && self
+                    .plugin_server(&saved.server_id, generation)
+                    .await
+                    .is_ok_and(|(owner, _)| {
+                        owner.plugin == saved.plugin && owner.digest == saved.digest
+                    })
+        } else {
+            false
+        };
         let mut instances = self.desktop.mcp_apps.instances.read().unwrap().clone();
         instances.remove(&instance_id);
         let mut operations = self
@@ -1682,6 +1693,7 @@ impl Engine {
         server: &areal_mcp::McpServer,
         uri: &str,
     ) -> Result<Value> {
+        let admission = self.desktop.lifecycle.gate.lock().await;
         let cell = self.app_scope(thread).await?;
         let cancellation = self.shutdown.child_token();
         let _drop = cancellation.clone().drop_guard();
@@ -1710,6 +1722,7 @@ impl Engine {
             }
             calls.insert(key.clone(), owner.clone());
         }
+        drop(admission);
         let owner_token = owner.token.clone();
         let context =
             self.mcp_request_context(owner, server.name().into(), server.generation(), None);
@@ -2522,10 +2535,19 @@ impl Engine {
         }) {
             return Ok(());
         }
+        let target = self.raw_cell(&input.thread_id).await.ok();
+        let target_state = match &target {
+            Some(cell) => Some(cell.state.lock().await),
+            None => None,
+        };
         let resource = match resource {
             Ok(resource) => match self.result_source_server(&saved.provenance).await {
-                Ok(_) => match self.app_scope(&input.thread_id).await {
-                    Ok(cell) if cell.state.lock().await.thread.cwd == saved.provenance.cwd => {
+                Ok(_) => match (&target, &target_state) {
+                    (Some(cell), Some(state))
+                        if state.thread.cwd == saved.provenance.cwd
+                            && self.ensure_hook_session_open(cell, &state.thread).is_ok()
+                            && !desktop(&state.thread).configuration.read_only =>
+                    {
                         Ok(resource)
                     }
                     _ => Err(ResultUnavailable::SourceUnavailable),
@@ -2582,5 +2604,46 @@ impl Engine {
             }
         }
         self.app_commit(instances, operations).await
+    }
+}
+
+impl Engine {
+    pub(super) async fn close_thread_apps(self: &Arc<Self>, thread_id: &str) -> Result<()> {
+        for owner in self.desktop.mcp_apps.calls.lock().await.values() {
+            if owner.thread == thread_id {
+                owner.cancellation.cancel();
+            }
+        }
+        let instances: Vec<_> = self
+            .desktop
+            .mcp_apps
+            .instances
+            .read()
+            .unwrap()
+            .values()
+            .filter(|instance| instance.thread_id == thread_id)
+            .cloned()
+            .collect();
+        for instance in instances {
+            self.mcp_app_close(
+                instance.identity,
+                instance.thread_id,
+                instance.instance_id,
+                instance.generation,
+            )
+            .await?;
+        }
+        while self
+            .desktop
+            .mcp_apps
+            .calls
+            .lock()
+            .await
+            .values()
+            .any(|owner| owner.thread == thread_id)
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        Ok(())
     }
 }

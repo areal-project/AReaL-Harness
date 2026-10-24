@@ -1,0 +1,5 @@
+
+
+.ui-popup { transform-origin: var(--transform-origin); transition: opacity var(--motion-normal) var(--ease-standard), scale var(--motion-normal) var(--ease-standard); }
+.ui-popup[data-starting-style], .ui-popup[data-ending-style] { opacity: 0; scale: .98; }
+:root[data-reduced-motion="true"] .ui-popup { transition: none; }

@@ -280,9 +280,12 @@ fn push_option(
     }
 }
 
-fn runtime_env(command: &mut tokio::process::Command, credentials: bool) {
+fn runtime_env(command: &mut tokio::process::Command, credentials: bool, network: bool) {
     command.env_clear();
     command.envs(areal_runtime_host_tools::deployment_environment());
+    if network {
+        command.envs(areal_runtime_host_tools::network_environment());
+    }
     for name in ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TERM"] {
         if let Some(value) = std::env::var_os(name) {
             command.env(name, value);
@@ -713,6 +716,7 @@ async fn launch(
     runtime_env(
         &mut runtime_command,
         !args.task_credential_command.is_empty(),
+        args.allow_network,
     );
     runtime_command.env("AREAL_RUNTIME_CLEANUP_FD", cleanup_fd.to_string());
     unsafe {

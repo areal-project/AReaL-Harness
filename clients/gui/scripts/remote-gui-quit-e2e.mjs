@@ -220,9 +220,12 @@ async function run() {
     const records = [];
     for (const name of await readdir(directory)) {
       const path = join(directory, name, "service.json");
-      if (await exists(path)) records.push(await json(path));
+      if (await exists(path)) {
+        const record = await json(path);
+        if (record.workspace === workspace) records.push(record);
+      }
     }
-    assert.equal(records.length, 1, "exactly one isolated Core service");
+    assert.equal(records.length, 1, "exactly one Core service for the isolated project workspace");
     assert.ok(records[0].generation);
     return records[0].generation;
   };
@@ -242,10 +245,10 @@ async function run() {
     await button("不在项目中工作").click();
     await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
     await until(
-      async () => (await state()).projects[0]?.state?.connected,
+      async () => (await state()).projects.find(project => project.root === workspace)?.state?.connected,
       "isolated project ready",
     );
-    projectId = (await state()).projects[0].id;
+    projectId = (await state()).projects.find(project => project.root === workspace).id;
     await button("设置").click();
     await button("手机连接").click();
     // 生产后台 safeStorage gate 是唯一 oracle；不替换加密实现。

@@ -9,8 +9,6 @@
   color: var(--color-foreground);
   font-size: var(--text-ui-base);
   --page-frame-left: 248px;
-  --color-composer-action: var(--color-foreground);
-  --color-composer-action-foreground: var(--color-background);
   border-radius: 0;
 }
 .product-candidate::after { display: none; }
@@ -36,7 +34,6 @@
 .product-candidate .candidate-body { display: flex; position: relative; flex: 1; min-width: 0; min-height: 0; }
 .product-candidate .candidate-conversation { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .product-candidate .candidate-conversation > .messages-shell { flex: 1; min-height: 0; padding-top: 28px; }
-.product-candidate .candidate-conversation .message-column { width: min(100%, 760px); padding-inline: 30px; }
 .product-candidate .candidate-empty { max-width: 60ch; margin: clamp(24px, 8vh, 100px) auto 36px; }
 .product-candidate .candidate-empty h2 { margin: 0 0 14px; font-size: calc(var(--ui-font-size) + 8px); line-height: 1.5; font-weight: 600; }
 .product-candidate .candidate-empty p { margin-bottom: 24px; color: var(--color-foreground-subtle); line-height: 1.8; }
@@ -47,7 +44,7 @@
 .product-candidate .candidate-proposal { margin-bottom: var(--spacing-field); }
 .product-candidate .candidate-proposal summary { width: fit-content; cursor: pointer; font-size: var(--text-ui-sm); }
 .product-candidate .candidate-proposal-content { max-height: 240px; overflow: auto; padding: var(--spacing-field); margin-top: var(--spacing-inline); border: var(--border-width-default) solid var(--color-border); border-radius: var(--radius-control); font-size: var(--content-font-size); }
-.product-candidate .candidate-composer-dock { flex: none; width: min(100%, 780px); margin-inline: auto; padding: 0 24px 10px; }
+.product-candidate .candidate-composer-dock { flex: none; }
 .product-candidate .candidate-execution { display: flex; min-height: 34px; align-items: center; justify-content: space-between; color: var(--color-foreground-subtle); font-size: var(--text-ui-sm); }
 .product-candidate .candidate-motion-sample { transition: color var(--motion-normal) var(--ease-standard); }
 .product-candidate .candidate-composer-note { min-height: 18px; margin: 8px 0 0; font-size: var(--text-ui-xs); text-align: center; color: var(--color-foreground-subtle); }
@@ -73,7 +70,6 @@
   .areal-workbench.product-candidate { grid-template-columns: 220px minmax(0, 1fr); }
   .product-candidate .candidate-sidebar { width: 220px; }
   .product-candidate .candidate-header { padding-inline: 18px; }
-  .product-candidate .candidate-conversation .message-column { padding-inline: 22px; }
   .product-candidate .candidate-resource { flex-basis: 46%; }
   .product-candidate .candidate-reader { padding: 20px; }
 }
@@ -87,10 +83,8 @@
   .product-candidate .candidate-header-actions button[aria-label="查看资源"] { padding-inline: 7px; }
   .product-candidate .candidate-header-actions button[aria-label="查看资源"] span { display: none; }
   .product-candidate .candidate-conversation > .messages-shell { padding-top: 20px; }
-  .product-candidate .candidate-conversation .message-column { padding-inline: 18px; }
   .product-candidate .candidate-empty { margin-top: 32px; }
   .product-candidate .candidate-empty h2 { font-size: var(--text-ui-xl); }
-  .product-candidate .candidate-composer-dock { padding-inline: 12px; }
   .product-candidate .candidate-resource { flex: 1; max-width: none; border-left: 0; }
   .product-candidate .candidate-reader { padding: 22px 18px; }
   .product-candidate .candidate-settings-back { padding-inline: 12px; }

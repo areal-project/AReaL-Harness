@@ -1,3 +1,4 @@
+import { validateWorkspaceFileReference } from "./lib/workspaceFileComposer.js";
 import { imageAnnotationBlocked, useImageAnnotationRevision, type ImageAnnotationTarget } from "./imageAnnotations.js";
 import { resolveDraftProfile } from "./ProfileDetails.js";
 import { resolveNewConversationModel, resolveModelEffort } from "@areal/workbench/model-selection";
@@ -10,18 +11,24 @@ import { FileTree, AttachmentIcon, GoalIcon, PlanModeIcon as Lightbulb } from ".
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { ChatPromptEditor } from "./prompt-editor/ChatPromptEditor.js";
 import { ComposerAttachment, composerInput, composerPaste, isComposerFile, type ComposerDraftAttachment } from "./ComposerAttachments.js";
+import { useComposerPlugins, revalidateComposerPlugins, clearComposerPlugins, transferComposerPlugins } from "./ComposerPlugins.js";
 import { useComposerSkills, transferComposerSkills, clearComposerSkills, readComposerSkills } from "./ComposerSkills.js";
 import { ComposerMcpIcon } from "./ComposerIcons.js";
 import { ComposerMcp } from "./ComposerMcp.js";
 import { useI18n } from "./i18n/IntlProvider.js";
+import { CircleAlert } from "lucide-react";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "./components/ui/dropdown-menu.js";
 import { FeedbackNotice } from "./FeedbackNotice.js";
 import { Button } from "./components/ui/button.js";
 import type { LexicalChatInputHandle } from "./LexicalChatInput.js";
 import type { Action, Data } from "./services.js";
 import type { ComposerCatalogEntry } from "./prompt-editor/ComposerCatalog.js";
-import { isTechnicalErrorMessage, recoveredOutcome, recoveryMessage, type RecoveryFailure } from "./recoveryPresentation.js";
+import { conversationReferenceEntries, type ConversationReference } from "./ConversationReferences.js";
+import { isIndependentCreation, isTechnicalErrorMessage, recoveredOutcome, recoveryMessage, type RecoveryFailure } from "./recoveryPresentation.js";
 import { attachedReviewComments, detachReviewComments, reviewCommentKey, transferNewReviewComments, useReviewComments } from "./reviewComments.js";
 import { ReviewCommentAttachment } from "./ReviewCommentViews.js";
+import type { WorktreeSelection } from "./WorktreeStarter.js";
+import { WorktreeStatus } from "./WorktreeStatus.js";
 import {
   attachmentDrafts,
   attachmentErrors,
@@ -40,11 +47,14 @@ export function DraftComposer({
   onOpen,
   onPanel,
   appEntries = [],
+  conversationReferences = [],
   draftKey,
   prepareProject,
   preparationStatus,
   onAnnotate,
   surfaceLayout = "default",
+  worktree,
+  onWorktreeCreated,
 }: {
   surfaceLayout?: "default" | "compact";
   project: Data;
@@ -54,12 +64,16 @@ export function DraftComposer({
   onOpen: (pid: string, tid: string) => Promise<void>;
   onPanel: (panel: string) => void;
   appEntries?: readonly ComposerCatalogEntry[];
+  conversationReferences?: readonly ConversationReference[];
   draftKey?: string;
   prepareProject?: () => Promise<Data>;
   preparationStatus?: ReactNode;
   onAnnotate?: (target: ImageAnnotationTarget) => void;
+  worktree?: WorktreeSelection;
+  onWorktreeCreated?: () => void;
 }) {
   const { t } = useI18n();
+  const referenceEntries = conversationReferenceEntries(conversationReferences, t("chat.composer.conversationReference"));
   const prefs = useApplicationPreferences();
   const defaultPermissionPreset = useRef(prefs.defaultPermissionPreset);
   defaultPermissionPreset.current = prefs.defaultPermissionPreset;
@@ -68,6 +82,7 @@ export function DraftComposer({
   const reviewDraft = useReviewComments(reviewKey);
   const comments = attachedReviewComments(reviewDraft.draft);
   const api = useRef<LexicalChatInputHandle | null>(null);
+  const [workspaceReferencePending, setWorkspaceReferencePending] = useState(false);
   const upload = useRef<HTMLInputElement>(null);
   const mounted = useRef(true);
   useEffect(() => {
@@ -122,16 +137,80 @@ export function DraftComposer({
       : initialSelection.notice === "effort-unsupported" ? t("chat.composer.previousEffortUnsupported") : ""
     : "";
   const [unknown, setUnknown] = useState(() => localStorage.getItem(`${key}:pending-create`));
+  const [checkingCreation, setCheckingCreation] = useState(false);
+  const [creationChecked, setCreationChecked] = useState(false);
+  const acceptedRecovery = useRef<string | null>(null);
+  const [activeCreation, setActiveCreation] = useState<{ requestId: string; text: string; worktree: boolean }>();
+  const stoppedCreation = useRef(new Set<string>());
+  const [cancellingCreation, setCancellingCreation] = useState(false);
+  const [sourceRetry, setSourceRetry] = useState<string>();
   const busy = useSyncExternalStore(subscribeSending, () => sending.has(key));
-  const editLocked = busy || !!project.pending.length || !!unknown || !!reviewDraft.error;
+  const editLocked = busy || !!unknown || !!reviewDraft.error;
   const executionReady = backendReady && !!project.state?.connected;
   const modelSelectionDisabled = editLocked || !executionReady || unavailableProfile;
-  const submitDisabled = modelSelectionDisabled || !currentModel || currentModel.available === false;
+  const blockingPending = project.pending.filter((entry: Data) => !isIndependentCreation(entry, [unknown, activeCreation?.requestId]));
+  const submitDisabled = modelSelectionDisabled || !!blockingPending.length || !currentModel || currentModel.available === false;
   const desktopUnsupported = project.desktopCapabilities?.currentCommands === false;
   const skills = useComposerSkills({
     project: executionReady ? project : { ...project, state: { ...project.state, connected: false } },
     profile: chosenProfile, draftKey: key, action: readAction, disabled: editLocked || !executionReady,
   });
+  const pluginContext = { kind: "mainDraft" as const, projectId: project.id,
+    coreInstanceId: project.core?.instanceId, connectionGeneration: project.core?.connectionGeneration,
+    ...(chosenProfile ? { profile: { id: chosenProfile.id, revision: chosenProfile.revision } } : {}) };
+  const plugins = useComposerPlugins({ project, context: pluginContext, draftKey: key, text: input.text, action: readAction });
+  const finishRecoveredCreation = (id: string) => {
+    if (acceptedRecovery.current === unknown) return;
+    transferNewReviewComments(project.id, id);
+    acceptedRecovery.current = unknown;
+    stageThreadDraft(project.id, id, localStorage.getItem(key) ?? "", attachmentDrafts.get(key) ?? []);
+    transferComposerSkills(key, `areal-gui:draft:${project.id}:${id}`);
+    transferComposerPlugins(key, `areal-gui:draft:${project.id}:${id}`);
+    if (goalMode) localStorage.setItem(`areal-gui:draft:${project.id}:${id}:goal`, "true");
+    localStorage.removeItem(`${key}:pending-create`);
+    localStorage.removeItem(`${key}:pending-create-request`);
+    onWorktreeCreated?.(); setUnknown(null); clear();
+    void onOpen(project.id, id);
+  };
+  const checkCreation = async () => {
+    if (!unknown || checkingCreation) return;
+    setCheckingCreation(true); setDraftError("");
+    try {
+      const frozen = JSON.parse(localStorage.getItem(`${key}:pending-create-request`) ?? "null");
+      if (!frozen) { await action("reconcile", { projectId: project.id, requestId: unknown }); return; }
+      if (frozen.requestId !== unknown || frozen.projectId !== project.id) throw new Error(t("worktree.recoveryMismatch"));
+      const worktreeRecord = await readAction("workspace", { projectId: project.id, operation: "worktreeRead", requestId: unknown });
+      if (worktreeRecord) {
+        if (worktreeRecord.state === "ready" && worktreeRecord.threadId) {
+          finishRecoveredCreation(worktreeRecord.threadId); return;
+        }
+        setCreationChecked(true);
+        throw Object.assign(new Error(t("worktree.unknown")), { submissionUnknown: true });
+      }
+      const result = await action("create", frozen);
+      if (!result?.threadId) throw new Error(t("worktree.unknown"));
+      finishRecoveredCreation(result.threadId);
+    } catch (cause) {
+      const failure = cause as RecoveryFailure;
+      setDraftError(recoveryMessage(failure));
+      if (failure.submissionUnknown === true) setCreationChecked(true);
+      if (failure.submissionUnknown === false) {
+        localStorage.removeItem(`${key}:pending-create`);
+        localStorage.removeItem(`${key}:pending-create-request`);
+        setUnknown(null);
+      }
+    } finally { setCheckingCreation(false); }
+  };
+  const leaveCreationForInspection = () => {
+    if (!unknown || checkingCreation || !creationChecked || !window.confirm(t("worktree.leavePendingConfirm"))) return;
+    localStorage.setItem(`${key}:retained-create:${unknown}`, JSON.stringify({
+      requestId: unknown, request: localStorage.getItem(`${key}:pending-create-request`),
+    }));
+    localStorage.removeItem(`${key}:pending-create`);
+    localStorage.removeItem(`${key}:pending-create-request`);
+    setUnknown(null); setCreationChecked(false); setDraftError("");
+    onWorktreeCreated?.();
+  };
   useEffect(() => {
     attachmentDrafts.set(key, files);
     window.dispatchEvent(new CustomEvent("areal-attachments-change", { detail: key }));
@@ -151,39 +230,31 @@ export function DraftComposer({
     setProfileSelection("");
     attachmentDrafts.delete(key);
     skills.clear();
+    plugins.clear();
     changeGoalMode(false);
     api.current?.clear();
     setText("");
     setFiles([]);
   };
   useEffect(() => {
-    if (!unknown || project.pending.length) return;
+    if (!unknown || stoppedCreation.current.has(unknown)) return;
     const outcome = recoveredOutcome(project, unknown, "");
     if (!outcome || outcome.operation && outcome.operation.method !== "areal/thread/start") return;
     if (outcome.status === "failed" || outcome.accepted === false) {
       localStorage.removeItem(`${key}:pending-create`);
+      localStorage.removeItem(`${key}:pending-create-request`);
       setUnknown(null);
       setDraftError(outcome.message || "创建对话未完成，草稿已保留，请检查后重试。");
       return;
     }
     if (!outcome.threadId || outcome.accepted !== true) return;
-    try { transferNewReviewComments(project.id, outcome.threadId); }
+    const worktreeRecord = project.worktreeOperations?.findLast((item: Data) => item.requestId === unknown);
+    if (worktreeRecord && worktreeRecord.state !== "ready") return;
+    try { finishRecoveredCreation(outcome.threadId); }
     catch (cause) { setDraftError((cause as Error).message); return; }
-    // A recovered creation opens the preserved draft; it never sends it automatically.
-    stageThreadDraft(
-      project.id,
-      outcome.threadId,
-      localStorage.getItem(key) ?? "",
-      attachmentDrafts.get(key) ?? [],
-    );
-    transferComposerSkills(key, `areal-gui:draft:${project.id}:${outcome.threadId}`);
-    if (goalMode) localStorage.setItem(`areal-gui:draft:${project.id}:${outcome.threadId}:goal`, "true");
-    localStorage.removeItem(`${key}:pending-create`);
-    setUnknown(null);
-    clear();
-    void onOpen(project.id, outcome.threadId);
-  }, [unknown, project.pending.length, project.outcomes]);
-  const submit = async (value: string) => {
+  }, [unknown, project.pending.length, project.outcomes, project.worktreeOperations]);
+  const submit = async (value: string, selection = worktree) => {
+    if (workspaceReferencePending) return;
     const submittedInput = composerInput(value, files);
     if ((desktopUnsupported && !goalMode) || submitDisabled || annotationBlocked || sending.has(key) || (!submittedInput.text.trim() && !submittedInput.files.length && !comments.length && !skills.selected.length) || (goalMode && !submittedInput.text.trim())) return;
     markSending(key, true);
@@ -201,6 +272,9 @@ export function DraftComposer({
       if (!chosenModel || chosenModel.available === false || chosenModel.modelId !== currentModel?.modelId) {
         throw new Error("所选模型已不可用，输入已保留，请重新选择模型。");
       }
+      await revalidateComposerPlugins(readAction, { kind: "mainDraft", projectId: owner.id,
+        coreInstanceId: owner.core?.instanceId, connectionGeneration: owner.core?.connectionGeneration,
+        ...(profile ? { profile: { id: profile.id, revision: profile.revision } } : {}) }, key, submittedInput.text, t("chat.composer.pluginReferenceUnavailable"));
       const selectedSkills = readComposerSkills(key);
       if (selectedSkills.length) {
         if (!profile) throw new Error("当前任务配置不可用，技能草稿已保留。");
@@ -217,7 +291,7 @@ export function DraftComposer({
         if (effort) parameters.reasoningEffort = effort;
       }
       creationAttempted = true;
-      const result = await action("create", {
+      const creationRequest = {
         projectId: owner.id,
         requestId: creationRequestId,
         parameters,
@@ -228,10 +302,18 @@ export function DraftComposer({
         ...(chosenModel.providerId
           ? { model: { providerId: chosenModel.providerId, modelId: chosenModel.modelId } }
           : {}),
-      });
+        ...(selection ? { worktree: { ...selection } } : {}),
+      };
+      localStorage.setItem(`${key}:pending-create-request`, JSON.stringify(creationRequest));
+      setActiveCreation({ requestId: creationRequestId, text: value, worktree: selection?.mode === "worktree" });
+      const result = await action("create", creationRequest);
+      if (stoppedCreation.current.has(creationRequestId)) return;
+      localStorage.removeItem(`${key}:pending-create-request`);
+      onWorktreeCreated?.();
       targetKey = stageThreadDraft(owner.id, result.threadId, value, files);
       transferNewReviewComments(owner.id, result.threadId);
       transferComposerSkills(key, targetKey);
+      transferComposerPlugins(key, targetKey);
       if (goalMode) localStorage.setItem(`${targetKey}:goal`, "true");
       markSending(targetKey, true);
       clear();
@@ -243,15 +325,20 @@ export function DraftComposer({
         localStorage.removeItem(`${targetKey}:goal`);
         attachmentDrafts.set(targetKey, submittedInput.files);
       } else {
-        await submitMessage(action, owner.id, result.threadId, value, files, { skillAction: readAction });
+        await submitMessage(action, owner.id, result.threadId, value, files, { skillAction: readAction,
+          pluginContext: { kind: "mainThread", projectId: owner.id, threadId: result.threadId, coreInstanceId: owner.core?.instanceId, connectionGeneration: owner.core?.connectionGeneration },
+          pluginMessages: { unavailable: t("chat.composer.pluginReferenceUnavailable"), intent: (name: string) => t("chat.composer.pluginReferenceIntent", { name }) } });
         attachmentDrafts.delete(targetKey);
         clearComposerSkills(targetKey);
+        clearComposerPlugins(targetKey);
       }
       localStorage.removeItem(targetKey);
       window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: targetKey }));
     } catch (e) {
       const failure = e as RecoveryFailure;
+      if (stoppedCreation.current.has(creationRequestId)) return;
       if (!failure.submissionUnknown) {
+        localStorage.removeItem(`${key}:pending-create-request`);
         setDraftError(recoveryMessage(failure));
         if (targetKey) attachmentErrors.set(targetKey, recoveryMessage(failure));
       }
@@ -271,10 +358,51 @@ export function DraftComposer({
     } finally {
       if (targetKey) markSending(targetKey, false);
       markSending(key, false);
+      if (targetKey) setActiveCreation(previous => previous?.requestId === creationRequestId ? undefined : previous);
     }
   };
+  const cancelCreation = async (useSource: boolean) => {
+    if (!activeCreation || cancellingCreation) return;
+    const current = activeCreation;
+    stoppedCreation.current.add(current.requestId);
+    localStorage.setItem(`${key}:pending-create`, current.requestId);
+    setCancellingCreation(true); setDraftError("");
+    try {
+      let result = await action("workspace", { projectId: project.id, operation: "worktreeCancel", requestId: current.requestId });
+      while (result.state === "cancelling") {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        result = await readAction("workspace", { projectId: project.id, operation: "worktreeRead", requestId: current.requestId });
+      }
+      const record = result;
+      if (record.state !== "cancelled") {
+        localStorage.setItem(`${key}:pending-create`, current.requestId); setUnknown(current.requestId);
+        setDraftError(t("worktree.cancelTooLate")); return;
+      }
+      localStorage.removeItem(`${key}:pending-create`);
+      localStorage.removeItem(`${key}:pending-create-request`);
+      setUnknown(null); setDraftError(t("worktree.cancelled"));
+      if (useSource) setSourceRetry(current.text);
+    } catch (cause) {
+      localStorage.setItem(`${key}:pending-create`, current.requestId); setUnknown(current.requestId);
+      setDraftError(recoveryMessage(cause as RecoveryFailure));
+    } finally { setCancellingCreation(false); }
+  };
+  useEffect(() => {
+    if (sourceRetry === undefined || busy || cancellingCreation) return;
+    const value = sourceRetry; setSourceRetry(undefined);
+    void submit(value, { sourceRoot: project.logicalRoot ?? project.root, ref: "HEAD", worktreeRoot: "", branch: "", branchPrefix: "areal", mode: "source" });
+  }, [sourceRetry, busy, cancellingCreation]);
+  const creationStatus = activeCreation && project.worktreeOperations?.findLast((item: Data) => item.requestId === activeCreation.requestId);
   return (
     <div className="composer-dock" data-v4-composer-dock="true">
+      {activeCreation?.worktree && (busy || creationStatus) && <div className="worktree-creation-preview" data-testid="worktree-creation-progress">
+        <div className="user-message"><div className="user-message-content"><div className="user-bubble">{activeCreation.text}</div></div></div>
+        <WorktreeStatus current={{ ...(creationStatus ?? { requestId: activeCreation.requestId, state: "creating" }), ...(cancellingCreation ? { state: "cancelling" } : {}) }}
+            controls={busy ? <>
+                <Button variant="ghost" size="sm" disabled={cancellingCreation} onClick={() => void cancelCreation(true)}>{t("worktree.useOriginal")}</Button>
+                <Button variant="ghost" size="sm" disabled={cancellingCreation} onClick={() => void cancelCreation(false)}>{t("worktree.cancelCreation")}</Button>
+            </> : undefined} />
+      </div>}
       <input
         ref={upload}
         type="file"
@@ -288,8 +416,12 @@ export function DraftComposer({
         }}
       />
       {unknown && <FeedbackNotice tone="warning" message={t("recovery.createUnconfirmed")} requestId={unknown}
-        detail={t("recovery.requestId", { id: unknown })} actions={<Button variant="ghost" size="sm"
-          onClick={() => void action("reconcile", { projectId: project.id }).catch(() => {})}>{t("recovery.checkOriginal")}</Button>} /> }
+        detail={t("recovery.requestId", { id: unknown })} actions={<>
+          <Button variant="ghost" size="sm" disabled={checkingCreation}
+            onClick={() => void checkCreation()}>{t("recovery.checkOriginal")}</Button>
+          {creationChecked && <Button variant="ghost" size="sm" disabled={checkingCreation}
+            onClick={leaveCreationForInspection}>{t("worktree.leavePending")}</Button>}
+        </>} /> }
       {backendReady && project.state?.connected && unavailableProfile && <FeedbackNotice tone="warning" message={t("recovery.profileUnavailable")}
         actions={<>
           {profileSelection && resolveDraftProfile(project) && <Button variant="ghost" size="sm" onClick={() => { setProfileSelection(""); localStorage.removeItem(`${key}:profile`); }}>{t("recovery.resetProfile")}</Button>}
@@ -301,35 +433,45 @@ export function DraftComposer({
       <div className="composer-input-stack">
       <div ref={setMenuAnchor} className="composer-menu-anchor" />
       <ChatPromptEditor
+        key={activeCreation?.worktree && busy ? "worktree-waiting" : "draft"}
         surfaceLayout={surfaceLayout}
         triggerPanelContainer={menuAnchor}
         shellClassName="@container/composer"
         workspacePath={project.root}
+        enableWorkspaceFileDrop={!!project.root && !editLocked}
+        enableExternalFileDrop={!editLocked}
+        validateWorkspaceFile={payload => validateWorkspaceFileReference(readAction, project.id, project.root, payload)}
+        onFileDrop={files => setFiles(current => [...current, ...files])}
+        onWorkspaceReferencePendingChange={setWorkspaceReferencePending}
         taskId={null}
-        initialValue={text}
+        initialValue={activeCreation?.worktree && busy ? "" : text}
         inputApiRef={api}
         inputTestId="chat-input"
         submitTestId="chat-send-button"
-        placeholder={goalMode ? "描述目标，明确可衡量的结果" : plan ? "描述任务，生成计划…" : "随心输入"}
+        placeholder={activeCreation?.worktree && busy ? t("worktree.waitSetup") : goalMode ? "描述目标，明确可衡量的结果" : plan ? "描述任务，生成计划…" : "随心输入"}
         disabled={editLocked}
-        submitDisabled={submitDisabled || annotationBlocked || (desktopUnsupported && !goalMode) || (goalMode ? !input.text.trim() : !input.text.trim() && !input.files.length && !comments.length && !skills.selected.length)}
+        submitDisabled={workspaceReferencePending || submitDisabled || annotationBlocked || (desktopUnsupported && !goalMode) || (goalMode ? !input.text.trim() : !input.text.trim() && !input.files.length && !comments.length && !skills.selected.length)}
         submitDisabledReason={desktopUnsupported && !goalMode ? t("backend.updateRequired") : undefined}
         submitting={busy}
         submitLabel={goalMode ? "开始目标" : "发送"}
         enterSubmits={prefs.sendShortcut === "enter"}
         enableMentionPanel={false}
+        pluginMentionCatalog={{ ...plugins.catalog, entries: [...plugins.catalog.entries, ...referenceEntries],
+          searchLabel: t("chat.composer.searchReferences"), label: t("chat.composer.references"), appGroupLabel: plugins.catalog.label }}
         composerCatalog={{ ...skills.catalog, loading: executionReady && skills.catalog.loading,
           error: executionReady ? skills.catalog.error : undefined,
           refresh: () => { if (executionReady && !editLocked) skills.catalog.refresh(); }, entries: [
           { value: "upload", label: "上传文件", description: "添加图片、文档或其他文件", group: "功能", icon: <AttachmentIcon />, disabled: editLocked, run: () => { if (!editLocked) upload.current?.click(); } },
           ...(project.id !== "projectless" ? [{ value: "mcp", label: "MCP", description: "查看服务器与连接状态", group: "功能" as const, icon: <ComposerMcpIcon />, disabled: !executionReady, run: () => { if (executionReady) setMcpOpen(true); } }] : []),
-          ...(project.root ? [{ value: "files", label: "工作区文件", description: "引用当前项目中的文件", group: "功能" as const, icon: <FileTree />, disabled: !executionReady, run: () => { if (executionReady) onPanel("文件"); } }] : []),
+          ...(project.root ? [{ value: "files", label: t("chat.composer.workspaceFiles"), description: t("chat.composer.workspaceFilesDescription"), group: "功能" as const, icon: <FileTree />, disabled: !executionReady, run: () => { if (executionReady) onPanel("文件"); } }] : []),
           { value: "plan", label: "计划模式", description: plan ? "关闭计划模式" : "先规划，再开始执行", group: "功能", icon: <Lightbulb />, disabled: editLocked || chosenProfile?.readOnly === true, run: () => { if (!editLocked) setPlanMode(!plan); } },
           { value: "goal", label: "设置目标", description: goalMode ? "关闭目标模式" : "设置持续目标与停止条件", group: "功能", icon: <GoalIcon />, disabled: editLocked, run: () => { if (!editLocked) changeGoalMode(!goalMode); } },
+          ...referenceEntries,
           ...appEntries.map(entry => ({ ...entry, disabled: entry.disabled || !executionReady })),
           ...skills.catalog.entries.map(entry => ({ ...entry, disabled: entry.disabled || !executionReady })),
         ] }}
         onChange={(value) => {
+          if (activeCreation?.worktree && busy) return;
           setText(value);
           localStorage.setItem(key, value);
         }}
@@ -352,7 +494,10 @@ export function DraftComposer({
           </div></>
         }
         leadingActions={
-          <>{!executionReady && preparationStatus}{executionReady && <ComposerPermissionMenu value={chosenProfile?.readOnly ? "readOnly" : permission} disabled={submitDisabled}
+          <>{unknown && <DropdownMenu><DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-sm" aria-label={t("recovery.pendingAction")} title={t("recovery.checkOriginal")}><CircleAlert size={16} /></Button>} /><DropdownMenuContent>
+            <DropdownMenuItem disabled={checkingCreation} onClick={() => void checkCreation()}>{t("recovery.checkOriginal")}</DropdownMenuItem>
+            {creationChecked && <DropdownMenuItem disabled={checkingCreation} onClick={leaveCreationForInspection}>{t("worktree.leavePending")}</DropdownMenuItem>}
+          </DropdownMenuContent></DropdownMenu>}{!executionReady && preparationStatus}{executionReady && <ComposerPermissionMenu value={chosenProfile?.readOnly ? "readOnly" : permission} disabled={submitDisabled}
             permissionsSupported={project.core?.features?.permissionPresets === true}
             fullAccessAvailable={project.core?.features?.permissionFullAccess === true}
             lockedReadOnly={chosenProfile?.readOnly === true}

@@ -23,6 +23,7 @@ Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后�
 | `verify_command` | `argv,cwd?,timeoutMs?,yieldMs?`；直接执行、拒绝 shell 入口，必须配置独立 scratch |
 | `read_process/write_process/terminate_process` | 本 Turn 进程句柄；续读、输入与终止 |
 | `read_history` | `itemId?,before?,limit?=8,after?,maxBytes?=8192`；按新到旧分页（1–16），nextBefore 续页；指定 itemId 后以 nextCursor 回取原始 JSON |
+| `read_conversation_context` | `threadId,cursor?,maxBytes?=8192`；按需读取本轮用户明确引用的同工作区主会话，预算为 1024–32768 bytes |
 | `read_tool_result` | `resultId,after?=null,maxBytes?=8192`；读取本 Thread 历史调用的原始 JSON，按 nextCursor 续页，不执行原工具 |
 | `task_state` | `{pendingAfter?}`；返回已观察文件/进程/子任务、workspacePath/workspaceUri/commandCwd/scratchPath 与 summaryThroughItemId；超大路径明确省略，不进行实时探测 |
 
@@ -144,6 +145,8 @@ Goal/Task 中 ask_user_question 支持 mode=async；提问持久写入独立频�
 ### 无损文件行视图
 
 `policy.resultViews.fileLines` 默认 true，独立于控制搜索/命令候选的 `mode`。read_file 的连续 `{number,text}` 行数组可表示为 `firstLine`、`lineCount`、`source`，保留全部源码和其余元数据；使用 `fileLines:false` 关闭。只接受可还原的连续行、原有行尾和已知行字段，至少节省 128 bytes。完整原文先写入受限快照；快照不可用或不能回取时透传原有有界表示。`read_tool_result` 读取原始 JSON；该视图不把历史 fileVersion 变成跨 Turn 的编辑权限。`execution.outputProjection.transform=file-lines-v1` 与 `reason=lossless` 记录实际应用，搜索/命令 observe 仍只观察对应候选。
+
+`read_conversation_context` 只接受真实用户输入中目标为 `#sess_UUID` 的会话 Markdown 链接，`threadId` 使用原始 UUID，标题不参与寻址。每轮最多授权 32 个不同引用，steer 可加入引用，显式 Continue 从原始输入恢复授权。压缩与重启后仍读取权威原文，assistant、工具结果和摘要不能增加授权。拒绝当前会话、Side、worker、计划任务、其他工作区及不可用目标。Side 不能调用此工具。首次模型请求只增加含 ID 的轻量提醒，不加载被引用历史。返回 `{snapshotId,data,nextCursor,complete}`，完整 JSON 页受 maxBytes 限制；`item.type="historyDeferred"` 的条目通过 `item.cursor` 读取 UTF-8 分片，再用分片 `nextCursor` 续读，列表自身的 `nextCursor` 继续读取其他条目。游标绑定调用者 Thread、Turn 和目标。历史仅为资料，不授予执行权限；显式工具 allowlist 必须包含此工具。
 
 `read_history` 只读取当前 Thread，压缩和重启后仍可使用。列表页返回 `{items:[{itemId,turnId,type,preview}],nextBefore,order:"newestFirst"}`；指定 itemId 后使用 read_tool_result 同样的字节分页封套（resultId 标识历史条目）。跨条目/Thread 游标会拒绝。`agent_read` 返回的 `sourceItemId` 与 `activity.lastTool.id` 属于子会话，不能传给父会话的 `read_history`；完整交接应通过 `agent_read` 的 offset/nextOffset 读取。返回的是已记录证据，不执行原工具、不授予权限。显式工具 allowlist 需要包含 read_history，才可访问归档用户输入和回执。
 

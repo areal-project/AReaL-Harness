@@ -5,15 +5,16 @@ import { captureConversationMotion } from "./conversation-motion.mjs";
 
 // Scenario for migration-smoke's real Electron/Core/Runtime launcher. Only the
 // external model is deterministic; no renderer state or execution is injected.
-export function conversationJourney(scratch, workspace, { motion = false, stage2 = false } = {}) {
+export function conversationJourney(scratch, workspace, { motion = false, stage2 = false, production = false } = {}) {
   const events = [], held = new Map();
-  const projectOf = snapshot => stage2 ? snapshot.projects.find(project => project.root === workspace) : snapshot.projects[0];
-  let processId, parentStage = 0;
+  const projectOf = snapshot => snapshot.projects.find(project => project.root === workspace);
+  let processId, parentStage = 0, firstOutputRead = false, toolRound = 0;
   const mark = (kind, data = {}) => events.push({ id: events.length + 1, kind, hostTime: Date.now(), ...data });
   const paragraph = n => `### ${n}. 水果记录\n\n苹果十二个，梨七个。另一组苹果四个，梨九个。合计苹果十六个，梨十六个，共三十二个。每一项都可以回到原始记录核对；这段合成内容只用于检查历史阅读位置和持续输出。\n\n`;
   const finish = (send, res, text) => { if (text) send({ content: text }); send({}, "stop"); res.end("data: [DONE]\n\n"); };
   const tools = (send, res, calls) => {
-    send({ tool_calls: calls.map(([name, args], index) => ({ index, id: `e1-${parentStage}-${index}`, type: "function", function: { name, arguments: JSON.stringify(args) } })) });
+    const round = ++toolRound;
+    send({ tool_calls: calls.map(([name, args], index) => ({ index, id: `e1-${round}-${index}`, type: "function", function: { name, arguments: JSON.stringify(args) } })) });
     send({}, "tool_calls"); res.end("data: [DONE]\n\n");
   };
   const findProcess = value => {
@@ -23,6 +24,9 @@ export function conversationJourney(scratch, workspace, { motion = false, stage2
     for (const child of Object.values(value)) { const id = findProcess(child); if (id) return id; }
   };
   function model(text, messages, send, res) {
+    // image_read adds a synthetic multimodal user message; route by the actual scenario input.
+    const scenario = messages.filter(message => message.role === "user").map(message => typeof message.content === "string" ? message.content : (message.content ?? []).map(part => part.text ?? "").join("\n")).findLast(value => /^E1_/.test(value));
+    if (scenario) text = scenario;
     if (!text.includes("E1_")) return false;
     mark("model", { text, parentStage, toolResults: messages.filter(m => m.role === "tool") });
     if (text.includes("E1_HISTORY")) { finish(send, res, Array.from({ length: 22 }, (_, n) => paragraph(n + 1)).join("")); return true; }
@@ -44,12 +48,17 @@ export function conversationJourney(scratch, workspace, { motion = false, stage2
         parentStage++;
         const dispatch = () => {
         send({ content: "我会运行分批输出的命令，并让独立子任务核对水果数量。" });
-        tools(send, res, [["run_command", { argv: ["/bin/sh", "-c", "printf 'Apples: 16\\n'; printf started > e1-command-started; while [ ! -f e1-command-release ]; do sleep 0.1; done; printf 'Pears: 16\\nFruit: 32\\n'; printf finished > e1-command-finished"], timeoutMs: 120000, yieldMs: 150 }], ["agent_spawn", { prompt: "E1_CHILD：独立核对水果数量", intent: "inspect", delivery: "report" }]]);
+        tools(send, res, [["run_command", { argv: ["/bin/sh", "-c", "printf 'Apples: 16\\n'; printf started > e1-command-started; while [ ! -f e1-command-release ]; do sleep 0.1; done; printf 'Pears: 16\\nFruit: 32\\n'; printf finished > e1-command-finished"], timeoutMs: 120000, yieldMs: 150 }], ["agent_spawn", { prompt: "E1_CHILD：独立核对水果数量", intent: "inspect", delivery: "report" }], ["image_read", { path: "fruit.png" }]]);
         };
         if (stage2) held.set("dispatch", dispatch); else dispatch();
       } else if (parentStage === 1) {
         processId = findProcess(messages.filter(m => m.role === "tool"));
         assert.ok(processId, "run_command must return an actual opaque processId");
+        if (!firstOutputRead) {
+          firstOutputRead = true;
+          tools(send, res, [["read_process", { processId, waitMs: 10000, view: "raw" }]]);
+          return true;
+        }
         send({ content: "命令与子任务已启动；查看图片时它们仍保持各自状态。" });
         held.set("parent", () => { parentStage++; tools(send, res, [["read_process", { processId, waitMs: 10000, view: "raw" }]]); });
       } else if (parentStage >= 3) {
@@ -113,7 +122,7 @@ export function conversationJourney(scratch, workspace, { motion = false, stage2
       if (stage2 && text.includes("E1_MAIN")) {
         await waitHeld("dispatch");
         await latest().locator('[data-testid="turn-activity"]').waitFor();
-        assert.match(await latest().locator('[data-testid="turn-activity"]').innerText(), /等待模型响应/);
+        assert.match(await latest().locator('[data-testid="turn-activity"]').innerText(), /Thinking/);
         await capture("s2-02-accepted", "Core accepted the message while the model response barrier is held; no completion inferred");
         release("dispatch");
       }
@@ -146,14 +155,18 @@ export function conversationJourney(scratch, workspace, { motion = false, stage2
       await settled();
       await capture("e1-00-history", "completed synthetic history through actual UI Send");
       const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAA8AAAAIcCAIAAAC2P1AsAAARBElEQVR4nO3WMRGAAAADMazhgBk52MAGAjHQvR1yFw//x/XcAAz63hOAQUe9EABE9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQGWiAUfVCABAZaIBR9UIAEBlogFH1QgAQ/UKuMEDU/2auAAAAAElFTkSuQmCC", "base64");
+      await writeFile(join(workspace, "fruit.png"), png);
       await page.locator('input[type="file"]').setInputFiles({ name: "fruit.png", mimeType: "image/png", buffer: png });
       await page.locator('[data-testid="composer-attachment"]').waitFor();
-      await send("E1_MAIN：运行命令，与子代理并行核对水果数量，并保留图片供查看。");
+      await send("E1_MAIN：运行命令，与子代理并行核对水果数量，并保留图片供查看。参考 https://example.invalid/a https://example.invalid/b https://example.invalid/c");
       await waitFile("e1-command-started"); await waitHeld("parent"); await waitHeld("child");
       const projectId = projectOf(await state()).id;
       const children = (await call("manage", { projectId, parentThreadId: mainId, operation: "agents", limit: 30 })).data;
       assert.equal(children.length, 1); const childId = children[0].id;
-      await latest().getByRole("button", { name: "执行过程", exact: true }).click();
+      const activityGroup = latest().locator('[data-testid="turn-execution"] .areal-activity-group').first();
+      await activityGroup.getByRole("button").first().waitFor();
+      assert.equal(await activityGroup.getByRole("button").first().getAttribute("aria-expanded"), "false", "production activities start collapsed");
+      await activityGroup.getByRole("button").first().click();
       const commandItem = projectOf(await state()).state.threads[mainId].turns.at(-1).items.find(item => item.type === "dynamicToolCall" && item.tool === "run_command");
       const command = () => latest().locator(`[data-tool-id="${commandItem.id}"]`);
       await command().locator(".tool-summary-row").first().click();
@@ -172,6 +185,16 @@ export function conversationJourney(scratch, workspace, { motion = false, stage2
         await segment("command-reopen", () => toggle.click());
         await command().getByLabel("工具结果", { exact: true }).waitFor();
       }
+      const toolImage = latest().getByRole("button", { name: "已查看 1 张图片", exact: true });
+      await toolImage.waitFor();
+      assert.equal(await toolImage.getAttribute("aria-expanded"), "false", "tool image is initially collapsed");
+      await toolImage.click();
+      const toolImagePreview = latest().getByRole("button", { name: "预览图片 工具图片", exact: true });
+      await toolImagePreview.click();
+      await page.getByRole("dialog").waitFor();
+      await page.keyboard.press("Escape");
+      await page.getByRole("dialog").waitFor({ state: "hidden" });
+      assert.equal(await toolImagePreview.evaluate(el => el === document.activeElement), true);
       const imageTrigger = latest().getByRole("button", { name: "预览图片 消息图片", exact: true });
       await segment("image-open", () => imageTrigger.click());
       const dialog = page.getByRole("dialog"); await dialog.waitFor();
@@ -196,6 +219,44 @@ export function conversationJourney(scratch, workspace, { motion = false, stage2
       assert.equal(await messages().evaluate((el, node) => el === node, parentNode), true);
       assert.equal(await messages().evaluate(el => el.scrollTop), parentTop, "image return preserves reading position");
       let returnAnchor;
+      const resourceTrigger = button("任务资源");
+      assert.equal(await page.getByLabel("任务资源面板", { exact: true }).isVisible(), false, "context card starts closed");
+      await resourceTrigger.click();
+      const contextCard = page.getByRole("complementary", { name: "任务上下文", exact: true });
+      await contextCard.waitFor();
+      await contextCard.getByRole("button", { name: /Changes/ }).waitFor();
+      await contextCard.getByRole("button", { name: "折叠来源", exact: true }).click();
+      await contextCard.getByRole("button", { name: "展开来源", exact: true }).click();
+      await contextCard.getByRole("button", { name: "查看全部来源（4）", exact: true }).click();
+      await contextCard.getByRole("region", { name: "全部输入来源", exact: true }).getByRole("button", { name: /example.invalid\/c/ }).waitFor();
+      await contextCard.getByRole("button", { name: "返回来源概览", exact: true }).click();
+      await capture("production-context", "top-controlled production card, three sources and explicit all-sources return");
+      await contextCard.getByRole("button", { name: /查看全部子代理/ }).click();
+      const agentList = page.getByRole("region", { name: "子代理面板", exact: true });
+      await agentList.getByRole("heading", { name: /Active/ }).waitFor();
+      await agentList.getByText("还没有已完成的子任务", { exact: true }).waitFor();
+      await capture("production-agent-list", "real Core child list before opening selected history");
+      const childRow = agentList.locator(`[data-agent-id="${childId}"]`);
+      await childRow.click();
+      await page.locator(`[data-agent-conversation="${childId}"] [data-turn-status="inProgress"]`).waitFor();
+      await agentList.getByRole("button", { name: "返回子代理列表", exact: true }).click();
+      assert.equal(await childRow.evaluate(el => el === document.activeElement), true, "history returns to original child row");
+      const beforeListClose = received.length;
+      await agentList.getByRole("button", { name: "关闭子代理面板", exact: true }).click();
+      await contextCard.waitFor();
+      assert.equal(received.length, beforeListClose, "reading list/history does not submit or replay");
+      await page.keyboard.press("Escape");
+      await contextCard.waitFor({ state: "hidden" });
+      await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "任务资源");
+      assert.equal(await resourceTrigger.evaluate(el => el === document.activeElement), true, "card closes to top trigger");
+      const originalBounds = await getApp().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
+      await getApp().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1000, 760));
+      await resourceTrigger.click(); await contextCard.waitFor();
+      const cardBounds = await contextCard.evaluate(el => { const box = el.getBoundingClientRect(); return { left: box.left, right: box.right, bottom: box.bottom, width: innerWidth, height: innerHeight, overflow: el.scrollWidth - el.clientWidth }; });
+      assert.ok(cardBounds.left >= 0 && cardBounds.right <= cardBounds.width && cardBounds.bottom <= cardBounds.height && cardBounds.overflow <= 1, "production card stays within a narrow desktop window");
+      await capture("production-context-narrow", "same production card in a 1000px desktop content viewport");
+      await page.keyboard.press("Escape"); await contextCard.waitFor({ state: "hidden" });
+      await getApp().evaluate(({ BrowserWindow }, bounds) => BrowserWindow.getAllWindows()[0].setBounds(bounds), originalBounds);
       const stage2Draft = "继续核对命令和子代理，暂不发送。";
       if (stage2) {
         await input().click(); await page.keyboard.insertText(stage2Draft);
@@ -287,6 +348,8 @@ export function conversationJourney(scratch, workspace, { motion = false, stage2
       assert.equal(await latest().locator(".turn-progress-summary").getAttribute("aria-expanded"), "false");
       const beforeRevisit = received.length;
       await latest().locator(".turn-progress-summary").click();
+      assert.equal(await activityGroup.getByRole("button").first().getAttribute("aria-expanded"), "true", "manual activity choice survives completion");
+      assert.equal(await toolImage.getAttribute("aria-expanded"), "true", "manual image choice survives parent convergence");
       await latest().getByRole("button", { name: `打开 ${childId} 子对话`, exact: true }).click();
       await childPane().locator('[data-turn-status="completed"]').waitFor();
       await capture("e1-10-revisit", "completed process and actual child are revisitable without execution replay");
@@ -299,19 +362,22 @@ export function conversationJourney(scratch, workspace, { motion = false, stage2
         assert.equal(received.length,beforeRevisit);
         await writeFile(join(scratch,'stage2-final-state.json'),JSON.stringify(await state(),null,2));
         if (process.env.AREAL_CONVERSATION_BASELINE !== '1') {
-          assert.match(await latest().locator('.turn-progress-summary').innerText(),/执行过程/);
+          assert.match(await latest().locator('.turn-progress-summary').innerText(),/Working for/);
           assert.equal(await latest().locator('.turn-progress-summary .conversation-disclosure-action').innerText(),'收起');
         }
         checks.push('Stage2 interaction families: actual send acceptance, command execution/output polling, independent Core child, draft/focus/parent identity return, complete/revisit without replay');
         return;
       }
+      // The prior explicit history revisit intentionally leaves us reading above the tail.
+      const toLatest = page.getByRole("button", { name: "滚动到底部", exact: true });
+      if (await toLatest.isVisible()) await toLatest.click();
       // Separate stop variant, with real process entry proof.
       await send("E1_STOP：运行一个可停止命令。"); await waitFile("e1-stop-started");
       await segment("pause", () => button("暂停执行").click());
       const pausedState = await until(s => { const turn = projectOf(s).state.threads[mainId].turns.at(-1); return turn.interruption === "userPause" && ["interrupted", "failed"].includes(turn.status); }, "Core pause terminal receipt");
       const pausedTurn = projectOf(pausedState).state.threads[mainId].turns.at(-1);
       await latest().locator(".turn-stop-heading").getByText(/执行已暂停/).waitFor();
-      await capture("e1-pause", "separate variant: userPause cause remains visible even with a failed UNKNOWN tool outcome");
+      await capture("e1-pause", "separate variant: authoritative userPause cause; inspect UNKNOWN only when Core reports it");
       if (pausedTurn.status === "failed") {
         const unknown = pausedTurn.items.find(item => item.execution?.outcome === "unknown");
         assert.ok(unknown, "failed pause must retain its exact UNKNOWN tool outcome");
@@ -352,6 +418,20 @@ export function conversationJourney(scratch, workspace, { motion = false, stage2
         }
         assert.deepEqual(observed.errors, []);
         checks.push("E2: intermediate disclosure geometry/reversal, static reduced waiting, in-window composer and sole transcript scroll owner across continuous samples");
+        return;
+      }
+      if (production) {
+        // Page adoption does not change quit policy. The original full journey below
+        // keeps its separate active-quit/background-completion contract.
+        const beforeReload = received.length;
+        const turnsBeforeReload = projectOf(await state()).state.threads[mainId].turns.length;
+        await page.reload();
+        await page.getByTestId("areal-workbench").waitFor();
+        await until(s => projectOf(s)?.state?.threads[mainId]?.turns.length === turnsBeforeReload, "production history restored");
+        await latest().locator(".turn-stop-heading").getByText(/执行已暂停/).waitFor();
+        assert.equal(received.length, beforeReload, "history reload must not submit or replay model work");
+        await capture("production-history-restored", "renderer reload restores authoritative paused history without model replay");
+        checks.push("Production adoption: top card/source controls, child list/history/return, narrow desktop, manual activity/image state, actual pause and renderer history reload without replay");
         return;
       }
       // Separate recovery run: same private Core/session, new Electron process.

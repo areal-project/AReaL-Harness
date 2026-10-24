@@ -11,6 +11,18 @@ const editors = [
   { id: 'cursor', label: 'Cursor', bundle: 'Cursor.app' },
 ];
 
+function fileWorkspace(backend, request) {
+  const project = backend.snapshot().projects.find(value => value.id === request.projectId);
+  if (!project) throw new Error('未知工作区');
+  if (request.threadId === undefined) return project;
+  if (typeof request.threadId !== 'string' || !request.threadId) throw new Error('无效会话身份');
+  const thread = project.state?.threads?.[request.threadId] ?? project.summaries?.find(value => value.id === request.threadId);
+  if (!thread) throw new Error('会话工作目录尚未确认，请先打开会话');
+  if (!thread.worktree) return project;
+  if (thread.worktree.state !== 'ready' || typeof thread.worktree.directory !== 'string') throw new Error('工作树绑定尚未确认');
+  return { ...project, root: thread.worktree.directory, executionProjectId: thread.executionProjectId };
+}
+
 // Main owns OS handoff. Renderer selects a registered workspace and an opaque
 // target ID, never an executable, command line or unrestricted absolute path.
 async function fileOpen({ backend, shell, home, authorize, chooseSave }, request) {
@@ -39,8 +51,7 @@ async function fileOpen({ backend, shell, home, authorize, chooseSave }, request
   }
   if (!['open', 'reveal', 'saveAs'].includes(request.operation) || typeof request.projectId !== 'string'
     || typeof request.path !== 'string' || !request.path || request.path.length > 4096 || request.path.includes('\0')) throw new Error('无效文件打开请求');
-  const project = backend.snapshot().projects.find(p => p.id === request.projectId);
-  if (!project) throw new Error('未知工作区');
+  const project = fileWorkspace(backend, request);
   const root = await realpath(project.root), path = await realpath(resolve(root, request.path));
   if (path !== root && !path.startsWith(root + sep)) throw new Error('文件不在当前工作区内');
   const info = await stat(path);
@@ -58,8 +69,8 @@ async function fileOpen({ backend, shell, home, authorize, chooseSave }, request
       const result = await chooseSave({ title: '另存文件', defaultPath: basename(path) });
       if (result.canceled || !result.filePath) return { saved: false };
       authorize();
-      const current = backend.snapshot().projects.find(p => p.id === request.projectId);
-      if (current?.root !== project.root || await realpath(resolve(root, request.path)) !== path || !sameVersion(await stat(path)) || !sameVersion(await source.stat())) throw new Error('源文件已变化，请重新另存');
+      const current = fileWorkspace(backend, request);
+      if (current.root !== project.root || current.executionProjectId !== project.executionProjectId || await realpath(resolve(root, request.path)) !== path || !sameVersion(await stat(path)) || !sameVersion(await source.stat())) throw new Error('源文件已变化，请重新另存');
       let destination;
       try { destination = await stat(result.filePath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
       if (destination?.dev === info.dev && destination?.ino === info.ino) throw new Error('另存位置不能是原文件');

@@ -80,11 +80,11 @@ try{
  assert.match(await page.locator('#remote-session-ui .messages').innerText(),/REAL_CORE_RESULT/);
  checks.push('two authorized projects, never-opened real Session, GUI Messages and project identity');
  await page.getByRole('button',{name:'更改权限',exact:true}).click();
- await page.getByRole('menuitemradio',{name:/请求审批/}).click();
- await waitFor(async()=> (await entries[1].project.client.request('thread/read',{threadId:entries[1].threadId,includeTurns:true})).thread.desktop.configuration.options.approvalTools?.includes('*'),'native permission change');
+ await page.getByRole('menuitemradio',{name:/^请求审批/}).click();
+ await waitFor(async()=> (await entries[1].project.client.request('thread/read',{threadId:entries[1].threadId,includeTurns:true})).thread.desktop.configuration.options.permissionPreset==='ask','native permission change');
  checks.push('GUI permission change reaches actual Core configuration');
  await page.getByRole('button',{name:'模型',exact:true}).click();
- assert.equal(await page.getByRole('button',{name:'配置模型',exact:true}).isVisible(),true);
+ await page.getByRole('dialog',{name:/模型/}).waitFor();
  await page.keyboard.press('Escape');
  // Drive the real Lexical editor, rather than mutating contenteditable DOM.
  async function type(text){const input=page.getByTestId('remote-chat-input');await input.fill(text);await waitFor(()=>page.getByRole('button',{name:'发送',exact:true}).isEnabled(),'enabled send');}

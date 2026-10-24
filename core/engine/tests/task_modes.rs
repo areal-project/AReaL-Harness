@@ -165,6 +165,7 @@ fn open(ask: bool, headless: bool) -> (tempfile::TempDir, Arc<Engine>, Arc<Fixtu
 }
 fn create(mode: TaskMode, thread_id: Option<String>) -> TaskCreate {
     TaskCreate {
+        source_thread_id: None,
         request_id: "create".into(),
         mode,
         objective: "Complete the fixture".into(),

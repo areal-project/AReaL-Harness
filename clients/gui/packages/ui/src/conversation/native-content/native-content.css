@@ -1,0 +1,23 @@
+.areal-native-content { min-width: 0; margin-block: var(--spacing-field); padding: var(--spacing-field); border: var(--border-width-default) solid var(--color-border); border-radius: var(--radius-panel); background: var(--color-settings-card, var(--color-background)); color: var(--color-foreground); font-size: var(--text-ui-base); line-height: var(--line-height-ui); overflow-wrap: anywhere; }
+.areal-native-content > header { display: flex; justify-content: space-between; align-items: start; gap: var(--spacing-inline); }
+.areal-native-content h3 { min-width: 0; margin: 0; font-size: var(--text-ui-base); font-weight: 500; }
+.areal-native-content p { margin: var(--spacing-inline) 0 0; }
+.areal-native-content .areal-native-metric { font-size: var(--text-ui-xl); font-weight: 600; font-variant-numeric: tabular-nums; }
+.areal-native-metric small { margin-left: var(--spacing-inline); font-size: var(--text-ui-sm); font-weight: 400; }
+.areal-native-content dl { margin: var(--spacing-inline) 0 0; }
+.areal-native-content dl > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--spacing-inline); padding-block: var(--spacing-inline); border-bottom: var(--border-width-default) solid var(--color-border); }
+.areal-native-content dt { color: var(--color-foreground-subtle); }
+.areal-native-content dd { margin: 0; }
+.areal-native-table { max-width: 100%; overflow-x: auto; margin-top: var(--spacing-inline); }
+.areal-native-table table { border-collapse: collapse; min-width: 100%; }
+.areal-native-table :is(th,td) { padding: var(--spacing-inline); border-bottom: var(--border-width-default) solid var(--color-border); text-align: start; white-space: pre-wrap; }
+.areal-native-table th { font-weight: 500; }
+.areal-native-timeline { margin: var(--spacing-inline) 0 0; padding-left: var(--spacing-section); }
+.areal-native-timeline li { padding-bottom: var(--spacing-inline); }
+.areal-native-bars { list-style: none; margin: var(--spacing-field) 0 0; padding: 0; }
+.areal-native-bars li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(32px, 2fr) minmax(0, 1fr); gap: var(--spacing-inline); align-items: center; margin-block: var(--spacing-inline); font-variant-numeric: tabular-nums; }
+.areal-native-track { height: 8px; overflow: hidden; background: var(--color-surface); border-radius: var(--radius-pill); }
+.areal-native-track > span { display: block; height: 100%; border-radius: inherit; background: var(--color-brand); }
+.areal-native-content pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.areal-native-content[data-tone="warning"] { border-color: var(--color-warning); }
+.areal-native-content[data-tone="success"] { border-color: var(--color-success); }

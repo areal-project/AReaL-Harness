@@ -126,6 +126,42 @@ async function showSideConversation() {
     await input.waitFor();
   }
 }
+// Legacy selection producers were replaced by executable Side Chat. Restore the old
+// persisted draft format here; current selection-to-Side UI is covered by side-chat-parity.
+async function restoreLegacySelection(text, turnId = anchorTurnId, persisted = true) {
+  const source = project(await state()).state.threads[sourceThreadId];
+  const turn = source.turns.find(turn => turn.id === turnId);
+  assert.ok(turn, "legacy fixture must refer to a real source Turn");
+  const item = persisted ? turn.items.find(item => item.type === "agentMessage" && item.text?.includes(text)) : undefined;
+  if (persisted) assert.ok(item, "legacy itemRange must come from actual Core source text");
+  const selection = persisted ? {
+    kind: "itemRange", turnId, itemId: item.id,
+    startUtf8: Buffer.byteLength(item.text.slice(0, item.text.indexOf(text))),
+    endUtf8: Buffer.byteLength(item.text.slice(0, item.text.indexOf(text))) + Buffer.byteLength(text),
+    textSha256: createHash("sha256").update(text).digest("hex"),
+  } : { kind: "userQuote", text, claimedTurnId: turnId };
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
+  await page.getByTestId("transcript-selection-actions").waitFor({ state: "hidden" });
+  await page.getByRole("button", { name: "任务操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: "历史旁路讨论", exact: true }).click();
+  const pane = page.getByRole("region", { name: "旁路讨论", exact: true });
+  const owner = await pane.locator("[data-side-owner]").getAttribute("data-side-owner");
+  const previous = await page.evaluate(owner => localStorage.getItem(`${owner}:selection`), owner);
+  if (/:side:[^:]+$/.test(owner) || previous) {
+    const input = pane.getByTestId("side-chat-input");
+    const draft = await input.innerText();
+    await input.fill(draft ? `${draft}\n\n${text}` : text);
+  } else {
+    await page.evaluate(({ owner, selection, text, anchor }) => {
+      localStorage.setItem(`${owner}:selection`, JSON.stringify(selection));
+      localStorage.setItem(`${owner}:selection-preview`, text);
+      if (anchor) localStorage.setItem(`${owner}:anchor`, JSON.stringify(anchor));
+      else localStorage.removeItem(`${owner}:anchor`);
+      window.dispatchEvent(new CustomEvent("areal-side-selection", { detail: { owner } }));
+    }, { owner, selection, text, anchor: persisted ? { kind: "turn", turnId, boundary: "after" } : null });
+  }
+  events.push({ legacySelectionFixture: { owner, selection, source: persisted ? "actual Core source item" : "observed live streamed text", boundary: "saved legacy draft restoration; no legacy selection UI claim" } });
+}
 async function selectMessageExcerpt(body, excerpt, keyboard = false) {
   await body.evaluate(async element => {
     element.scrollIntoView({ block: "center", behavior: "instant" });
@@ -675,19 +711,22 @@ try {
   await shot("04a-selection-floating-actions.png");
   const beforeStaging = requests.length;
   await addToChat.click();
-  const stagedMain = page.getByTestId("composer-attachment").filter({ hasText: unicodeExcerpt });
+  await page.locator(".composer-dock:not(.side-chat-composer) [data-conversation-selection-reference-count]").click();
+  const stagedMain = page.getByTestId("conversation-selection-reference").filter({ hasText: unicodeExcerpt });
   await stagedMain.waitFor();
   assert.equal(await page.getByTestId("chat-input").innerText(), mainDraftSentinel);
   assert.equal(await page.getByTestId("composer-attachment").filter({ hasText: "main-attachment.txt" }).count(), 1);
   assert.equal(requests.length, beforeStaging, "staging a quote must not send or steer");
-  await stagedMain.getByRole("button", { name: `移除附件 ${unicodeExcerpt}`, exact: true }).click();
+  await stagedMain.getByRole("button", { name: "移除引用", exact: true }).click();
   await selectSideExcerpt();
   await addToChat.click();
+  await page.locator(".composer-dock:not(.side-chat-composer) [data-conversation-selection-reference-count]").click();
   await stagedMain.waitFor();
-  await stagedMain.getByRole("button", { name: `移除附件 ${unicodeExcerpt}`, exact: true }).click();
+  await stagedMain.getByRole("button", { name: "移除引用", exact: true }).click();
   await selectSideExcerpt();
   await page.keyboard.press("Escape");
   await selectionActions.waitFor({ state: "hidden" });
+  assert.equal(project(await state()).state.threads[sourceThreadId].turns.at(-1).status, "inProgress", "dismissing selection actions must not stop the source Turn");
   await selectSideExcerpt();
   await page.evaluate(() => window.getSelection().removeAllRanges());
   await selectionActions.waitFor({ state: "hidden" });
@@ -714,10 +753,9 @@ try {
     return primary && !primary.disabled;
   });
   await selectSideExcerpt();
-  checks.push("AC55: floating Add to Chat and Side actions preserve main text/files, remove/readd quotes without sending, dismiss on Escape/collapse/outside/scroll, and invalidate on source navigation");
+  checks.push("AC55: floating selection actions and Add to Chat preserve main text/files, remove/readd quotes without sending, dismiss on Escape/collapse/outside/scroll, and invalidate on source navigation");
   await sideTrigger.evaluate(element => { window.__scfSideTrigger = element; });
-  await sideTrigger.focus();
-  await sideTrigger.press("Enter");
+  await restoreLegacySelection(unicodeExcerpt);
   let sidePane = page.getByRole("region", { name: "旁路讨论" });
   assert.equal(await sidePane.locator(".side-chat-information").isVisible(), false);
   const stagedSide = sidePane.getByTestId("side-selection-quote");
@@ -731,17 +769,17 @@ try {
   await stagedSide.waitFor({ state: "hidden" });
   await showMainConversation();
   await selectSideExcerpt();
-  await sideTrigger.click();
+  await restoreLegacySelection(unicodeExcerpt);
   await stagedSide.waitFor();
   assert.equal(await sidePane.getByTestId("side-chat-input").innerText(), sideDraftBeforeSelection, "staging into current Side draft preserves typed text");
   const sideSelectionOwner = await sidePane.locator("[data-side-owner]").getAttribute("data-side-owner");
   const firstSelection = await page.evaluate(owner => localStorage.getItem(`${owner}:selection`), sideSelectionOwner);
   await showMainConversation();
   await selectSideExcerpt();
-  await sideTrigger.click();
+  await restoreLegacySelection(unicodeExcerpt);
   assert.equal(await sidePane.getByTestId("side-chat-input").innerText(), `${sideDraftBeforeSelection}\n\n${unicodeExcerpt}`);
   assert.equal(await page.evaluate(owner => localStorage.getItem(`${owner}:selection`), sideSelectionOwner), firstSelection, "additional selection must not replace first frozen provenance");
-  assert.equal(requests.length, beforeStaging, "Side staging and removal must not call a model");
+  assert.equal(requests.length, beforeStaging, "legacy restored draft staging and removal must not call a model");
   await openSideContext(sidePane);
   await sidePane.getByLabel("文件访问范围").selectOption("none");
   assert.equal(await sidePane.getByLabel("文件访问范围").inputValue(), "none");
@@ -759,6 +797,7 @@ try {
   const narrowBounds = await app.evaluate(({ BrowserWindow }) => { const win = BrowserWindow.getAllWindows()[0]; win.setSize(980, 800); return win.getBounds(); });
   events.push({ narrowBounds });
   assert.equal(narrowBounds.width, 980, "native window should reach its configured minimum width");
+  await page.getByRole("button", { name: "进入完整视图", exact: true }).click();
   assert.ok(await sidePane.getByRole("textbox", { name: "随心输入" }).isVisible());
   await page.waitForFunction(() => document.querySelector('[data-workspace-view]')?.dataset.workspaceView === "panel");
   const narrowSideDraft = await sidePane.getByRole("textbox", { name: "随心输入" }).innerText();
@@ -768,13 +807,15 @@ try {
     ? window.__scfSideTrigger : document.querySelector('[data-testid="chat-input"]')));
   await page.getByRole("button", { name: "展开侧边面板", exact: true }).click();
   assert.equal(await sidePane.getByRole("textbox", { name: "随心输入" }).innerText(), narrowSideDraft);
+  await page.getByRole("button", { name: "进入完整视图", exact: true }).click();
   await page.waitForFunction(() => document.querySelector('[data-workspace-view]')?.dataset.workspaceView === "panel");
 
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 960));
+  await page.getByRole("button", { name: "退出完整视图", exact: true }).click();
   const sideStartRequests = requests.length;
   await app.evaluate(() => { globalThis.__scfRejectNext = "selection"; });
   await sidePane.getByRole("button", { name: "发送", exact: true }).click();
-  await sidePane.getByRole("alert").filter({ hasText: "STALE_SELECTION" }).waitFor();
+  await page.getByRole("alert").filter({ hasText: "STALE_SELECTION" }).waitFor();
   assert.equal(await sidePane.getByRole("textbox", { name: "随心输入" }).innerText(), sideQuestion);
   assert.equal(requests.length, sideStartRequests);
   assert.ok(!Object.values(project(await state()).state.threads).some(thread => thread.conversation?.kind === "side"));
@@ -968,7 +1009,7 @@ try {
   const rawHistory = page.locator(".messages .message-column");
   const rawProgress = rawHistory.locator(`[data-turn-id="${activeTurnId}"]`).getByTestId("turn-elapsed").getByRole("button");
   if (await rawProgress.getAttribute("aria-expanded") === "false") await rawProgress.click();
-  await rawHistory.locator(`[data-turn-id="${activeTurnId}"]`).getByRole("button", { name: "执行过程", exact: true }).click();
+  await rawHistory.locator(`[data-turn-id="${activeTurnId}"]`).locator(".areal-activity-group > .areal-disclosure > button").click();
   await rawHistory.locator(`[data-tool-id="${completedTool.id}"]`).getByRole("button").first().click();
   const rawDownload = rawHistory.getByRole("button", { name: "下载附件 原始结果", exact: true });
   await rawDownload.waitFor();
@@ -993,6 +1034,9 @@ try {
   await shot("07b-inherited-raw-result.png");
   checks.push("AC13/16: inherited raw Runtime result is read under the target identity and downloaded byte-for-byte; history has no source controls and the Fork has no local execution");
   await selectConversation(page, sourceThreadId);
+  // UTF-8 uploads are supported as Text; a PDF still requires File model capability.
+  await page.locator('.composer-dock:not(.side-chat-composer) input[type="file"]').setInputFiles({ name: "unsupported.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7\nfixture\n%%EOF\n") });
+  await page.getByTestId("composer-attachments").getByText("unsupported.pdf").waitFor();
   const beforeFileRefusal = { requests: requests.length,
     turns: project(await state()).state.threads[sourceThreadId].turns.length };
   await page.getByTestId("chat-input").fill(lateSentinel);
@@ -1004,6 +1048,7 @@ try {
   assert.ok(!(await sidePane.innerText()).includes("model does not support File input"));
   await page.getByTestId("composer-attachments").getByText("main-attachment.txt").waitFor();
   await shot("07a-main-error-isolated.png");
+  await page.getByRole("button", { name: "移除附件 unsupported.pdf", exact: true }).click();
   await page.getByRole("button", { name: "移除附件 main-attachment.txt", exact: true }).click();
   checks.push("AC74: real Core modality refusal preserves the main draft and attachment without a Turn/request; Side history and error state remain independent");
   const late = await send(lateSentinel, sourceThreadId);
@@ -1015,7 +1060,7 @@ try {
   await sidePane.getByRole("textbox", { name: "随心输入" }).fill(sideFollowUp);
   await showMainConversation();
   await selectSideExcerpt();
-  await sideTrigger.click();
+  await restoreLegacySelection(unicodeExcerpt);
   assert.equal(await sidePane.getByTestId("side-chat-input").innerText(), `${sideFollowUp}\n\n${unicodeExcerpt}`, "existing Side follow-up appends selection to current editable draft");
   assert.equal(requests.length, followStart, "staging into existing Side never sends automatically");
   await sidePane.getByRole("button", { name: "发送", exact: true }).click();
@@ -1100,7 +1145,7 @@ try {
     await sidePane.getByRole("textbox", { name: "随心输入" }).fill(question);
     await app.evaluate(() => { globalThis.__scfRejectNext = "workspace-read"; });
     await sidePane.getByRole("button", { name: "发送", exact: true }).click();
-    await sidePane.getByRole("alert").filter({ hasText: "WORKSPACE_READ_UNAVAILABLE" }).waitFor();
+    await page.getByRole("alert").filter({ hasText: "WORKSPACE_READ_UNAVAILABLE" }).waitFor();
     assert.equal(await sidePane.getByRole("textbox", { name: "随心输入" }).innerText(), question);
     assert.equal(Object.keys(project(await state()).state.threads).length, before.count);
     assert.equal(requests.length, before.requests);
@@ -1127,7 +1172,7 @@ try {
   await sidePane.getByRole("button", { name: "新讨论", exact: true }).click();
   await showMainConversation();
   await selectMessageExcerpt(streamingBody, streamExcerpt);
-  await page.getByTestId("transcript-selection-actions").getByRole("button", { name: "在旁路中询问所选内容", exact: true }).click();
+  await restoreLegacySelection(streamExcerpt, streamingTurnId, false);
   await sidePane.getByTestId("side-selection-quote").filter({ hasText: "用户引文，来源未确认" }).waitFor();
   await openSideContext(sidePane);
   await sidePane.getByLabel("文件访问范围").selectOption("none");
@@ -1153,7 +1198,7 @@ try {
   assert.ok(quotedEvidenceText.includes(capacitySourceQuestion) && quotedEvidenceText.includes("inProgress"));
   assert.ok(!quotedEvidenceText.includes(streamExcerpt), "unpersisted streamed text is only a user quote, not frozen source evidence");
   await shot("08e-streaming-user-quote.png");
-  checks.push("AC37: actual streamed plain text is an unverified userQuote; durable Side selection preserves the text while frozen inProgress evidence excludes the unpersisted delta");
+  checks.push("AC37: restored legacy draft of observed streamed plain text is an unverified userQuote; durable Side selection preserves the text while frozen inProgress evidence excludes the unpersisted delta");
   await sidePane.getByRole("status").filter({ hasText: "等待模型容量" }).waitFor();
   await shot("08a-side-waiting-capacity.png");
   await sidePane.getByRole("button", { name: "停止旁路", exact: true }).click();
@@ -1247,7 +1292,7 @@ try {
   await until(s => s.projects.some(project => project.id === projectId && project.state?.connected), "restarted Core connection");
   await selectConversation(page, sourceThreadId);
   await page.getByRole("button", { name: "任务操作", exact: true }).click();
-  await page.getByRole("menuitem", { name: "旁路讨论", exact: true }).click();
+  await page.getByRole("menuitem", { name: "历史旁路讨论", exact: true }).click();
   await showRelated(page.getByRole("region", { name: "旁路讨论" }));
   await page.getByRole("region", { name: "相关讨论" }).getByRole("button", { name: new RegExp(sideQuestion) }).click();
   const restored = await until(s => project(s)?.state?.threads?.[sourceThreadId]?.turns?.length === preRestart.sourceTurns &&
@@ -1333,7 +1378,7 @@ try {
     return primary && !primary.disabled;
   });
   await selectSideExcerpt();
-  await sideTrigger.click();
+  await restoreLegacySelection(unicodeExcerpt);
   assert.equal(await sidePane.getByTestId("side-chat-input").textContent(), "", "empty Lexical paragraph contains no draft text");
   const threadsBeforeQuoteOnly = new Set(Object.keys(project(await state()).state.threads));
   await sidePane.getByTestId("side-chat-send").click();
@@ -1407,7 +1452,7 @@ try {
     passed, failure, scenario: sharedWorkspace ? "shared-workspace" : "conversation-derivation", baselineLayout, checks, events, pageErrors, electronStderr, frames, sourceCommit,
     command: `pnpm --dir clients/gui run test:conversation-derivation${sharedWorkspace ? " --shared-workspace" : ""}${baselineLayout ? " --baseline" : ""}`,
     runtime: "source Electron renderer + Rust Core + actual Runtime run_command + deterministic local HTTP/SSE model",
-    limitations: ["local fixture model, not a real provider", "source build, not a copied installed package", "native project chooser, archive confirmation and download save location are fixtures and have no native-dialog acceptance claim", "Browser preview is outside this journey", "IME uses Chromium CDP composition and a candidate Enter event, not a physical input method", ...(sharedWorkspace
+    limitations: ["legacy Side selection uses saved draft/anchor fixtures from real Core source items or observed streamed text; current default Side UI is covered by side-chat-parity", "local fixture model, not a real provider", "source build, not a copied installed package", "native project chooser, archive confirmation and download save location are fixtures and have no native-dialog acceptance claim", "Browser preview is outside this journey", "IME uses Chromium CDP composition and a candidate Enter event, not a physical input method", ...(sharedWorkspace
       ? ["bounded shared-workspace journey only; restart, bring-back and persisted UNKNOWN recovery matrix are not run"]
       : ["UNKNOWN uses a persisted test record after safe Core stop, not an induced process crash"])],
     operatingSystem: { platform: process.platform, release: (await import("node:os")).release(), architecture: process.arch },

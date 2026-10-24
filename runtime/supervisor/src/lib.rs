@@ -807,7 +807,10 @@ impl Supervisor {
                             execution.env.entry(name.into()).or_insert(value);
                         }
                     }
-                    for (name, value) in areal_runtime_host_tools::deployment_environment() {
+                    for (name, value) in areal_runtime_host_tools::deployment_environment()
+                        .into_iter()
+                        .chain(areal_runtime_host_tools::network_environment())
+                    {
                         if let Some(value) = value.to_str() {
                             execution
                                 .env

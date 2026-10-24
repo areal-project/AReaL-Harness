@@ -1,0 +1,36 @@
+
+.settings-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.settings-toolbar > div {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.settings-toolbar p {
+  flex: 1;
+  font-size: var(--text-ui-base);
+}
+.settings-empty {
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--color-foreground-subtle);
+}
+.settings-dialog {
+  max-height: calc(100dvh - 64px);
+  overflow: auto;
+}
+.resource-settings > .settings-toolbar {
+  align-items: center;
+  margin-bottom: 16px;
+}
+.resource-settings > .settings-toolbar p {
+  color: var(--color-foreground);
+  font-weight: 500;
+}
+.resource-settings > .settings-toolbar p { color: var(--color-muted-foreground); font-size: var(--text-ui-sm); font-weight: 400; }
+.plugin-settings .settings-toolbar { margin: 0 0 16px; gap: 12px; }

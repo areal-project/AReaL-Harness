@@ -1,3 +1,5 @@
+import { AttachmentCard } from "@areal/ui/wip";
+import { useI18n } from "./i18n/IntlProvider.js";
 import { useEffect, useState } from "react";
 import type { ChatComposerPasteEvent } from "./LexicalChatInput.js";
 import { ScanText } from "lucide-react";
@@ -38,7 +40,7 @@ export function composerPaste(event: ChatComposerPasteEvent, add: (files: Compos
     }
 }
 const isText = (file: File) =>
-    file.type.startsWith("text/") ||
+    !file.type || file.type === "application/octet-stream" || file.type.startsWith("text/") ||
     /\.(txt|md|json|ya?ml|csv|log|tsx?|jsx?|css|html|py|rs|toml)$/i.test(file.name);
 export function ComposerAttachment({
     file,
@@ -53,6 +55,7 @@ export function ComposerAttachment({
     onExpand: (text: string) => void;
     onAnnotate?: (file: File) => void;
 }) {
+    const { t } = useI18n();
     useImageAnnotationRevision();
     const [previewOpen, setPreviewOpen] = useState(false);
     const [url, setUrl] = useState("");
@@ -69,21 +72,21 @@ export function ComposerAttachment({
         return () => URL.revokeObjectURL(value);
     }, [actualFile, image]);
     const tile = (
-        <div
-            className={image ? "composer-image-card" : "composer-text-card"}
+        <AttachmentCard
+            image={image}
             data-testid="composer-attachment"
         >
             {image ? (
                 <>
-                <button type="button" className="composer-image-open" aria-label={`预览图片 ${name}`} disabled={disabled} onClick={() => setPreviewOpen(true)}><img src={url} alt={name} /></button>
+                <AttachmentCard.Open type="button" aria-label={`预览图片 ${name}`} disabled={disabled} onClick={() => setPreviewOpen(true)}><img src={url} alt={name} /></AttachmentCard.Open>
                 {previewOpen && <ImagePreview name={name} url={url} onClose={() => setPreviewOpen(false)} onAnnotate={onAnnotate && actualFile ? () => { setPreviewOpen(false); onAnnotate(actualFile); } : undefined} />}
                 </>
             ) : (
                 <>
-                    <span className="composer-text-icon">
+                    <AttachmentCard.Icon>
                         <ScanText size={22} />
-                    </span>
-                    <div className="composer-text-copy">
+                    </AttachmentCard.Icon>
+                    <AttachmentCard.Text>
                         <span title={name}>{name}</span>
                         {!actualFile || isText(actualFile) ? (
                             <button
@@ -101,6 +104,7 @@ export function ComposerAttachment({
                                         const text = isComposerFile(file) ? new TextDecoder("utf-8", {
                                             fatal: true,
                                         }).decode(await file.arrayBuffer()) : file.text;
+                                        if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(text)) throw new Error(t("chat.composer.textFileBinaryControls"));
                                         onExpand(text);
                                     } catch (cause) {
                                         setError(
@@ -116,24 +120,23 @@ export function ComposerAttachment({
                         ) : (
                             <small>{Math.ceil(actualFile.size / 1024)} KB</small>
                         )}
-                    </div>
+                    </AttachmentCard.Text>
                 </>
             )}
-            <button
+            <AttachmentCard.Remove
                 type="button"
-                className="composer-remove-attachment"
                 disabled={disabled || reading}
                 aria-label={`移除附件 ${name}`}
                 onClick={onRemove}
             >
                 <CloseIcon size={12} />
-            </button>
+            </AttachmentCard.Remove>
             {error && (
-                <p role="alert" className="composer-attachment-error">
+                <AttachmentCard.Error role="alert">
                     {error}
-                </p>
+                </AttachmentCard.Error>
             )}
-        </div>
+        </AttachmentCard>
     );
-    return image ? <div className="composer-image-attachment">{tile}{!!count && <button type="button" className="composer-image-note-count" disabled={disabled} aria-label={`${count} 条标注`} onClick={() => { if (actualFile) onAnnotate?.(actualFile); }}><ReviewCommentGlyph size={13} />{count} 条标注</button>}</div> : tile;
+    return image ? <AttachmentCard.WithNote>{tile}{!!count && <AttachmentCard.Note type="button" disabled={disabled} aria-label={`${count} 条标注`} onClick={() => { if (actualFile) onAnnotate?.(actualFile); }}><ReviewCommentGlyph size={13} />{count} 条标注</AttachmentCard.Note>}</AttachmentCard.WithNote> : tile;
 }

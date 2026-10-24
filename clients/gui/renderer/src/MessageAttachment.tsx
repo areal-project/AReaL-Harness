@@ -118,7 +118,7 @@ export function ImagePreview({ name, url, annotation, onClose, onAnnotate }: {
       className="image-inspection-dialog h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none overflow-hidden border-0 bg-transparent shadow-none [app-region:no-drag]">
       <DialogTitle className="sr-only">{name}</DialogTitle>
       <Button type="button" variant="outline" size="sm" aria-label={`下载附件 ${name}`} className="absolute right-16 top-4 z-10" onClick={() => downloadMedia(url, name)}>下载</Button>
-      <DialogClose render={<Button type="button" variant="ghost" size="icon-md" aria-label="关闭图片预览" className="absolute right-4 top-4 z-10 rounded-full border border-border bg-background text-foreground" />}><XIcon /></DialogClose>
+      <DialogClose render={<Button type="button" variant="ghost" size="icon" aria-label="关闭图片预览" className="absolute right-4 top-4 z-10 rounded-full border border-border bg-background text-foreground" />}><XIcon /></DialogClose>
       {annotation ? <div className="image-preview-body">
         <div className="image-preview-original"><img src={url} alt={name} />
           {annotation?.points.map((point, index) => <span key={point.id} className="browser-annotation-marker" aria-label={`已确认标注 ${index + 1}`} title={point.comment} style={{ left: `${point.xPercent}%`, top: `${point.yPercent}%` }}>{index + 1}</span>)}
@@ -140,8 +140,8 @@ export function DraftAttachment({ file, onRemove }: { file: File; onRemove: () =
   return <AttachmentTile name={file.name} mime={file.type} url={url} onRemove={onRemove} />;
 }
 
-export function SentAttachment({ part, projectId, threadId, action, compact = false, annotation }: {
-  part: Data; projectId: string; threadId: string; action: Action; compact?: boolean; annotation?: SentImageAnnotation;
+export function SentAttachment({ part, projectId, threadId, action, compact = false, annotation, onError }: {
+  part: Data; projectId: string; threadId: string; action: Action; compact?: boolean; annotation?: SentImageAnnotation; onError?: (message: string) => void;
 }) {
   const [media, setMedia] = useState<{ url: string; mime: string } | null>(null);
   const [failure, setFailure] = useState("");
@@ -158,12 +158,15 @@ export function SentAttachment({ part, projectId, threadId, action, compact = fa
         objectUrl = URL.createObjectURL(new Blob([value.bytes], { type: blobMime }));
         setMedia({ url: objectUrl, mime: displayMime });
       })
-      .catch((cause) => { if (active) setFailure(cause instanceof Error ? cause.message : "读取附件失败"); });
+      .catch((cause) => { if (active) {
+        const message = cause instanceof Error ? cause.message : "读取附件失败";
+        setFailure(message); onError?.(message);
+      } });
     return () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [part.url, part.uri, projectId, threadId, action]);
+  }, [part.url, part.uri, projectId, threadId, action, onError]);
   const name = annotation?.name ?? part.name ?? (part.type === "image" ? "消息图片" : "附件");
   if (failure) return <span role="status" className="text-ui-sm text-foreground-subtle">{failure}</span>;
   if (!media) return <span className="text-ui-sm text-foreground-subtle">读取附件…</span>;

@@ -1,3 +1,5 @@
+import { composerDraftStorage } from "./composerDraftStorage.js";
+import { useI18n } from "./i18n/IntlProvider.js";
 import {
   BrowserToolbar,
   BrowserEmptyState,
@@ -46,6 +48,7 @@ export function Preview({
   onTool: (itemId: string) => void;
   onError: (s: string) => void;
 }) {
+  const { t } = useI18n();
   const owner = `${projectId}:${threadId}:${pageId}`;
   const draftKey = `areal-gui:draft:${projectId}:${threadId}`;
   const stagedAnnotations = (attachmentDrafts.get(draftKey) ?? []).filter(isComposerFile).flatMap(file => { const note = browserAnnotation(file); return note ? [note] : []; });
@@ -370,12 +373,12 @@ export function Preview({
       const capture = draft.before;
       const description = `页面试改意图（已清除临时效果，未写入代码）\nURL: ${capture.url}\n截图时间: ${capture.capturedAt}\nCore: ${capture.coreInstanceId}; Page: ${capture.pageId}; pageGeneration: ${capture.pageGeneration}; documentEpoch: ${capture.documentEpoch}; controlEpoch: ${capture.controlEpoch}; viewportRevision: ${capture.viewportRevision}\n选择时元素: role=${JSON.stringify(draft.element.role)}; name=${JSON.stringify(draft.element.name)}; historicalRef=${draft.element.evidenceRef}; sourceMapping=${draft.element.sourceMapping}; React 源码位置未知。Agent 必须重新 observe 并取得新 Ref。\n属性值: ${JSON.stringify(draft.edits)}\n前后证据: browser-style-before-${capture.captureId}.png; browser-style-after-${draft.after!.capture.captureId}.png\n用户意图: ${draft.intent.trim()}\n最终验证必须在清除试改后基于真实页面执行。`;
       const draftKey = `areal-gui:draft:${projectId}:${threadId}`;
-      if (sending.has(draftKey) || localStorage.getItem(`${draftKey}:pending`))
+      if (sending.has(draftKey) || composerDraftStorage.getItem(`${draftKey}:pending`))
         throw new Error('当前聊天有结果待核对的发送；请先确认结果，再加入试改意图');
       const files = [...(attachmentDrafts.get(draftKey) ?? []),
         new File([beforeBlob], `browser-style-before-${capture.captureId}.png`, { type: 'image/png' }),
         new File([afterBlob], `browser-style-after-${draft.after!.capture.captureId}.png`, { type: 'image/png' })];
-      const existing = localStorage.getItem(draftKey) ?? '';
+      const existing = composerDraftStorage.getItem(draftKey) ?? '';
       const key = stageThreadDraft(projectId, threadId, [existing, description].filter(Boolean).join('\n\n'), files);
       window.dispatchEvent(new CustomEvent('areal-draft-change', { detail: key }));
       updateStyleTrial(null);
@@ -558,9 +561,9 @@ export function Preview({
                 ? `\n嵌入站点截图检查: ${JSON.stringify(capture.frameEvidence)}；仅区域证据，无选择器或 Agent 跨源授权。`
                 : "";
             const description = `页面${draft.element && draft.mode === 'element' ? '元素' : '区域'}标注（冻结截图，页面之后可能变化；仅分享选中区域）\nURL: ${capture.url}\n截图时间: ${capture.capturedAt}\nCore: ${capture.coreInstanceId}; Page: ${capture.pageId}; pageGeneration: ${capture.pageGeneration}; documentEpoch: ${capture.documentEpoch}; controlEpoch: ${capture.controlEpoch}; viewportRevision: ${capture.viewportRevision}; captureId: ${capture.captureId}\n原截图 bitmap(px): ${capture.viewport.bitmapWidth}×${capture.viewport.bitmapHeight}; CSS viewport(px): ${capture.viewport.width}×${capture.viewport.height}; scroll(px): ${capture.viewport.scrollX},${capture.viewport.scrollY}; pageZoom: ${capture.viewport.pageZoom}; GUI zoom: ${capture.viewport.guiZoom}; DPR: ${capture.viewport.deviceScaleFactor}; native DIP bounds: ${JSON.stringify(capture.viewport.nativeBounds)}\n选区 bitmap(px): ${x},${y},${width},${height}; viewport CSS(px): ${(x * scaleX).toFixed(1)},${(y * scaleY).toFixed(1)},${(width * scaleX).toFixed(1)},${(height * scaleY).toFixed(1)}${elementDescription}${frameDescription}\n裁图: browser-region-${capture.captureId}.png`;
-            if (localStorage.getItem(`${draftKey}:queue-edit`))
+            if (composerDraftStorage.getItem(`${draftKey}:queue-edit`))
                 throw new Error("请先结束排队消息编辑，再加入标注");
-            if (sending.has(draftKey) || localStorage.getItem(`${draftKey}:pending`))
+            if (sending.has(draftKey) || composerDraftStorage.getItem(`${draftKey}:pending`))
                 throw new Error("当前聊天有结果待核对的发送；请先确认结果，再加入标注草稿");
             // 附件及其说明在同一同步段加入所属草稿；不覆盖用户正在编辑的正文。
             const existingFiles = attachmentDrafts.get(draftKey) ?? [];
@@ -584,7 +587,7 @@ export function Preview({
             const key = stageThreadDraft(
                 projectId,
                 threadId,
-                localStorage.getItem(draftKey) ?? "",
+                composerDraftStorage.getItem(draftKey) ?? "",
                 [...existingFiles, file],
             );
             window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: key }));
@@ -673,7 +676,7 @@ export function Preview({
       {batch?.status === 'running' && <div className="sr-only" role="status">正在浏览 · {batch.completed}/{batch.total}</div>}
       {detailsOpen && <div className="browser-details" aria-label="浏览器详情">
         <div className="preview-viewport-toolbar">
-          <span>临时登录仅在当前浏览工作区使用。</span>
+          <span>{t("settings.browserData.sharedShort")}</span>
           <Button type="button" size="sm" variant="ghost" onClick={() => setDetailsOpen(false)}>关闭详情</Button>
         </div>
       {state.url && <div className="preview-viewport-toolbar" role="group" aria-label="网页文件交接">

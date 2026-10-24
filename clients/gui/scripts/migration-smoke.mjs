@@ -64,13 +64,15 @@ await writeFile(
   }),
 );
 const conversationStage2 = process.argv.includes("--conversation-stage2");
+const conversationProduction = process.argv.includes("--conversation-production");
 const settingsMode = process.argv.includes("--settings-stage1");
+const desktopSettingsMode = process.argv.includes("--desktop-settings");
 const i18nMode = process.argv.includes("--settings-i18n");
 const nativeI18nMode = process.argv.includes("--native-dialog-i18n");
 const hostMode = process.argv.includes("--conversation-host");
 const motionMode = hostMode || process.argv.includes("--conversation-motion");
-const journeyMode = nativeI18nMode || i18nMode || conversationStage2 || settingsMode || motionMode || process.argv.includes("--conversation-journey");
-const journey = nativeI18nMode ? (await import("./native-dialog-i18n.mjs")).nativeDialogI18n(scratch) : i18nMode ? (await import("./settings-i18n.mjs")).settingsI18n(scratch) : settingsMode ? (await import("./settings-stage1.mjs")).settingsStage1(scratch) : hostMode ? (await import("./conversation-host.mjs")).conversationHost(scratch, workspace) : journeyMode ? (await import("./conversation-journey.mjs")).conversationJourney(scratch, workspace, { motion: motionMode, stage2: conversationStage2 }) : null;
+const journeyMode = desktopSettingsMode || conversationProduction || nativeI18nMode || i18nMode || conversationStage2 || settingsMode || motionMode || process.argv.includes("--conversation-journey");
+const journey = desktopSettingsMode ? (await import("./desktop-settings-smoke.mjs")).desktopSettingsSmoke(scratch, workspace) : nativeI18nMode ? (await import("./native-dialog-i18n.mjs")).nativeDialogI18n(scratch) : i18nMode ? (await import("./settings-i18n.mjs")).settingsI18n(scratch) : settingsMode ? (await import("./settings-stage1.mjs")).settingsStage1(scratch) : hostMode ? (await import("./conversation-host.mjs")).conversationHost(scratch, workspace) : journeyMode ? (await import("./conversation-journey.mjs")).conversationJourney(scratch, workspace, { motion: motionMode, stage2: conversationStage2, production: conversationProduction }) : null;
 const received = [];
 let finishBackground, finishAgentParent;
 const server = createServer(async (req, res) => {
@@ -223,7 +225,7 @@ const env = {
   AREAL_CORE_CONFIG: config,
   AREAL_CORE_DESKTOP_CONFIG: deployment,
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
-  ...(journey ? { AREAL_HARNESS_SERVICE_HOME: join(scratch, "services") } : {}),
+  AREAL_HARNESS_SERVICE_HOME: join(scratch, "services"),
 };
 delete env.AREAL_CORE_WORKSPACE;
 if (process.env.AREAL_GUI_EXECUTABLE) delete env.AREAL_CORE_BIN;
@@ -350,11 +352,11 @@ async function quit() {
 }
 async function hideWindow() {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
-  assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()), false);
+  await waitForSnapshot(async () => !await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()), "window hidden after owned activity settles");
 }
 async function revealWindow() {
   await app.evaluate(({ app }) => app.emit("activate"));
-  assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()), true);
+  await waitForSnapshot(async () => await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()), "window visible after activate");
 }
 console.log("GUI evidence:", scratch);
 console.log("Core binary SHA-256 at start:", binarySha256AtStart);
@@ -449,17 +451,18 @@ try {
   assert.ok(backgroundState.process.processId, "a start receipt alone does not prove Runtime execution");
   const mainWidth = await page.locator("[data-testid=chat-view]").evaluate(el => el.getBoundingClientRect().width);
   await button("任务资源").click();
-  const resources = page.getByRole("region", { name: "任务资源", exact: true });
-  await resources.getByRole("button", { name: `打开 ${liveChild.id} 子对话`, exact: true }).waitFor();
-  await resources.getByRole("region", { name: "工作区变更", exact: true }).waitFor();
+  const resources = page.getByRole("complementary", { name: "任务上下文", exact: true });
+  await resources.getByRole("button", { name: "查看全部子代理（3）", exact: true }).waitFor();
+  await resources.getByRole("button").filter({ hasText: "Changes" }).waitFor();
   await resources.getByRole("heading", { name: "后台进程", exact: false }).waitFor();
-  assert.equal(await resources.getByRole("button", { name: /子对话$/ }).count(), 3);
+  assert.equal(await resources.getByRole("region", { name: "子智能体", exact: true }).locator("[data-agent-avatar]").count(), 3);
   assert.equal(await page.locator("[data-testid=chat-view]").evaluate(el => el.getBoundingClientRect().width), mainWidth);
   // 等待入场缩放结束再检查最终宽度，避免把动画中的 98% 尺寸当成布局回归。
   await waitForPopupMotion(".task-resources-popup");
   assert.equal(await page.locator(".task-resources-popup").evaluate(el => el.getBoundingClientRect().width), 332);
   await page.keyboard.press("Escape");
   await resources.waitFor({ state: "hidden" });
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "任务资源");
   assert.equal(await button("任务资源").evaluate(el => el === document.activeElement), true);
   await button("任务资源").click();
   await resources.getByRole("button", { name: "预览图片 消息图片", exact: true }).waitFor();
@@ -470,8 +473,8 @@ try {
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "关闭图片预览", exact: true }).waitFor({ state: "hidden" });
   await resources.waitFor();
-  await resources.getByRole("button", { name: /变更.*个文件/ }).waitFor();
-  assert.ok(await resources.getByRole("button", { name: /变更.*1 个文件/ }).count());
+  await resources.getByRole("button").filter({ hasText: "Changes" }).waitFor();
+  assert.match(await resources.getByRole("button").filter({ hasText: "Changes" }).innerText(), /1 个文件/);
   await resources.getByRole("heading", { name: "workspace", exact: true }).click();
   await waitForPopupMotion(".task-resources-popup");
   await writeFile(join(scratch, "resource-layout.json"), JSON.stringify(await page.locator(".task-resources-popup").evaluate(el => ({
@@ -488,26 +491,34 @@ try {
   const liveAgentCard = page.locator("[data-testid=chat-view]").getByRole("button", { name: `打开 ${liveChild.id} 子对话`, exact: true });
   assert.equal(await liveAgentCard.count(), 1);
   assert.equal(await liveAgentCard.locator(".agent-spawn-title").innerText(), "子任务等待停止");
-  await resources.getByRole("button", { name: `打开 ${liveChild.id} 子对话`, exact: true }).click();
+  await resources.getByRole("button", { name: "查看全部子代理（3）", exact: true }).click();
+  const agentsPanel = page.getByRole("region", { name: "子代理面板", exact: true });
+  await agentsPanel.locator(`[data-agent-id="${liveChild.id}"]`).waitFor();
+  assert.deepEqual((await agentsPanel.locator("[data-agent-id]").evaluateAll(rows => rows.map(row => row.dataset.agentId))).sort(), children.map(child => child.id).sort());
+  await agentsPanel.locator(`[data-agent-id="${liveChild.id}"]`).click();
   await page.locator(`[data-agent-conversation="${liveChild.id}"] [data-turn-status=inProgress]`).waitFor();
   assert.equal(await page.locator("[data-testid=areal-workbench]").getAttribute("data-thread-id"), tid);
   assert.equal(await input().count(), 1);
   await input().fill("主对话草稿保持");
-  assert.equal(await page.locator(`.agent-conversation-heading [data-agent-avatar="${liveChild.id}"]`).getAttribute("src"), liveAvatar);
+  assert.equal(await agentsPanel.locator(`header [data-agent-avatar="${liveChild.id}"]`).getAttribute("src"), liveAvatar);
   assert.equal(await page.locator(`[data-testid=chat-view] [data-agent-avatar="${liveChild.id}"]`).getAttribute("src"), liveAvatar);
   await shot("02a-agent-running");
-  await page.locator('[aria-label="关闭 子任务等待停止 标签"]').click();
+  await agentsPanel.getByRole("button", { name: "关闭子代理面板", exact: true }).click();
+  await resources.waitFor();
+  await page.keyboard.press("Escape");
+  await resources.waitFor({ state: "hidden" });
   const afterClose = await call("manage", { projectId: pid, parentThreadId: tid, operation: "agentWait", threadIds: [liveChild.id], timeoutMs: 0 });
   assert.equal(afterClose.data[0].status, "inProgress");
   await page.locator("[data-testid=chat-view]").getByRole("button", { name: `打开 ${liveChild.id} 子对话`, exact: true }).click();
   await page.locator(`[data-agent-conversation="${liveChild.id}"] [data-turn-status=inProgress]`).waitFor();
   await button("任务资源").click();
-  await resources.getByRole("button", { name: /变更.*个文件/ }).click();
+  await resources.getByRole("button").filter({ hasText: "Changes" }).click();
   assert.equal(await page.locator("[data-testid=workspace-review]").getAttribute("data-review-source"), "git");
   await page.getByRole("button", { name: "改动范围", exact: true }).waitFor();
   assert.equal(await page.getByRole("button", { name: "改动范围", exact: true }).innerText(), "未暂存的更改");
   await button("任务资源").click();
-  await resources.getByRole("button", { name: `打开 ${doneChild.id} 子对话`, exact: true }).click();
+  await resources.getByRole("button", { name: "查看全部子代理（3）", exact: true }).click();
+  await agentsPanel.locator(`[data-agent-id="${doneChild.id}"]`).click();
   await page.locator(`[data-agent-conversation="${doneChild.id}"] [data-turn-status=completed]`).waitFor();
   assert.equal(await input().innerText(), "主对话草稿保持");
   const donePane = page.locator(`[data-agent-conversation="${doneChild.id}"]`);
@@ -517,8 +528,11 @@ try {
   await donePane.getByRole("button", { name: "查看工具原始记录", exact: true }).click();
   await donePane.getByLabel("工具结果", { exact: true }).waitFor();
   await shot("02b-agent-completed");
-  await page.locator('[aria-label="关闭 子任务完成 标签"]').click();
-  await page.getByRole("tab", { name: "子任务等待停止", exact: true }).click();
+  await agentsPanel.getByRole("button", { name: "关闭子代理面板", exact: true }).click();
+  await resources.waitFor();
+  await page.keyboard.press("Escape");
+  await resources.waitFor({ state: "hidden" });
+  await liveAgentCard.click();
   await call("stop", { projectId: pid, threadId: liveChild.id, turnId: project(await state()).state.threads[liveChild.id].turns.at(-1).id, requestId: randomUUID() });
   await page.locator(`[data-agent-conversation="${liveChild.id}"] [data-turn-status=interrupted]`).waitFor();
   await button("新聊天").click();
@@ -565,6 +579,7 @@ try {
   assert.equal(await readFile(join(workspace, "approved.txt"), "utf8"), "approved once");
   await send("需要问答");
   await page.getByRole("radio", { name: /最小修改/ }).click();
+  await page.getByRole("region", { name: "需要你的回答", exact: true }).getByRole("button", { name: "发送", exact: true }).click();
   await waitForSnapshot((s) => current(s).turns.at(-1)?.status === "completed", "question resumed");
   checks.push("tool approval executes filesystem write; question reply resumes same turn");
   await send("等待停止");
@@ -759,10 +774,11 @@ try {
   assert.equal(await input().textContent(), "保留未发送草稿");
   await shot("07-background-recovered");
   await button("任务资源").click();
-  await page.getByRole("region", { name: "任务资源", exact: true }).getByRole("button", { name: `打开 ${doneChild.id} 子对话`, exact: true }).click();
+  await resources.getByRole("button", { name: "查看全部子代理（3）", exact: true }).click();
+  await agentsPanel.locator(`[data-agent-id="${doneChild.id}"]`).click();
   await page.locator(`[data-agent-conversation="${doneChild.id}"] [data-turn-status=completed]`).waitFor();
   assert.ok(await page.locator(`[data-agent-conversation="${doneChild.id}"] .tool-event`).count() > 0);
-  assert.equal(await page.locator(`.agent-conversation-heading [data-agent-avatar="${doneChild.id}"]`).getAttribute("src"), await page.locator(`[data-testid=chat-view] [data-agent-avatar="${doneChild.id}"]`).getAttribute("src"));
+  assert.equal(await agentsPanel.locator(`header [data-agent-avatar="${doneChild.id}"]`).getAttribute("src"), await page.locator(`[data-testid=chat-view] [data-agent-avatar="${doneChild.id}"]`).getAttribute("src"));
   assert.equal(received.length, requestCount);
   await shot("07a-agent-restored");
   await button("关闭面板").click();
@@ -816,8 +832,10 @@ try {
   assert.equal(received.length, requestsBeforeQuit, "cold application reopen never replays model requests");
   assert.equal(await input().textContent(), "冷启动保留草稿");
   checks.push("application exit stops its original service generations and processes; cold reopen restores history and draft without replay");
+  const scheduledOwner = await call("projectless", { operation: "prepare", requestId: randomUUID() });
+  await writeFile(join(scheduledOwner.cwd, "hello.ts"), await readFile(join(workspace, "hello.ts")));
   const scheduled = await call("manage", {
-    projectId: pid,
+    projectId: scheduledOwner.projectId,
     operation: "taskCreate",
     mode: "scheduled",
     objective: "检查当前项目",
@@ -833,14 +851,14 @@ try {
   await waitForSnapshot((s) => project(s)?.state?.connected, "scheduled task reconnect");
   let task;
   for (let i = 0; i < 100; i++) {
-    task = await call("manage", { projectId: pid, operation: "task", taskId: scheduled.id });
+    task = await call("manage", { projectId: scheduledOwner.projectId, operation: "task", taskId: scheduled.id });
     if (task.runs?.length && !["running", "queued"].includes(task.runs.at(-1).status)) break;
     await new Promise((r) => setTimeout(r, 100));
   }
   assert.equal(task.runs.length, 1);
   assert.ok(!["running", "queued"].includes(task.runs[0].status));
   await call("manage", {
-    projectId: pid,
+    projectId: scheduledOwner.projectId,
     operation: "taskCancel",
     taskId: task.id,
     expectedRevision: task.revision,
@@ -867,7 +885,7 @@ try {
 } finally {
   try {
     await quit();
-    await waitForApplicationStop((await services()).filter(record => record.workspace === workspace));
+    await waitForApplicationStop(await services());
     const metadata = await readFile(join(scratch, "core/service.json"), "utf8").then(JSON.parse).catch(error => { if (error.code === "ENOENT") return null; throw error; });
     if (metadata) assert.throws(() => process.kill(metadata.pid, 0), error => error.code === "ESRCH", "the GUI adapter exits with its application");
     checks.push("application lifecycle cleanup leaves no live adapter or original Core service");
@@ -882,7 +900,7 @@ try {
     try {
       const instances = await services();
       for (const instance of instances)
-        if (instance.workspace === workspace && instance.state !== "stopped") {
+        if (instance.state !== "stopped") {
           await executeCore(
             binary,
             ["service", "stop", "--instance", instance.serviceId, "--cancel", "--json"],
@@ -938,7 +956,7 @@ try {
         arch: process.arch,
         runtime: "real Electron + real Rust Core/Runtime + deterministic local HTTP/SSE model",
         nativeDialogs: nativeI18nMode ? "initial project picker injected; archive/save/directory dialog options captured and canceled; OS appearance not verified" : "project picker and archive/quit confirmations injected",
-        scenario: nativeI18nMode ? "native-dialog-i18n" : i18nMode ? "settings-i18n" : conversationStage2 ? "conversation-stage2" : settingsMode ? "settings-stage1" : hostMode ? "conversation-host" : motionMode ? "conversation-motion" : journey ? "conversation-journey" : "migration",
+        scenario: desktopSettingsMode ? "desktop-settings" : conversationProduction ? "conversation-production" : nativeI18nMode ? "native-dialog-i18n" : i18nMode ? "settings-i18n" : conversationStage2 ? "conversation-stage2" : settingsMode ? "settings-stage1" : hostMode ? "conversation-host" : motionMode ? "conversation-motion" : journey ? "conversation-journey" : "migration",
         scratch,
         frames: journey ? journey.frames() : frames,
         journeyEvents: journey && !nativeI18nMode ? "journey-events.json" : null,

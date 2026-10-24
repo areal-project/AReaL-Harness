@@ -74,7 +74,7 @@ try {
     window.unrelatedError=()=>document.dispatchEvent(new CustomEvent('areal:toast',{detail:'UNRELATED_ERROR_SENTINEL'}));
     window.arealDesktop={
       snapshot:async()=>structuredClone(snapshot),onProjection:callback=>{projectionListener=callback;listener=value=>callback({frame:{projection:1,stream:'diagnosis-fixture',sequence:++sequence,kind:'full',snapshot:value}});return()=>{};},requestProjection:requestId=>projectionListener({requestId,frame:{projection:1,stream:'diagnosis-fixture',sequence:++sequence,kind:'full',snapshot:structuredClone(snapshot)}}),
-      theme:async()=>({platform:'darwin',dark:false,id:'light'}),onTheme:()=>()=>{},onMcpAppEvent:()=>()=>{},presentReady:async()=>{},preview:async()=>({}),
+      setInterfaceLocale:()=>{},theme:async()=>({platform:'darwin',dark:false,id:'light'}),onTheme:()=>()=>{},onMcpAppEvent:()=>()=>{},presentReady:async()=>{},preview:async()=>({}),
       command:async(name,params)=>{
         window.calls.push({name,params});
         if(name==='connect'&&fail)return {ok:false,error:{code:'RESPONSE_UNKNOWN',message:'Core disconnected; request outcome may be unknown',submissionUnknown:true}};

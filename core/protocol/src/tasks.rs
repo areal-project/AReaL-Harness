@@ -284,6 +284,8 @@ pub struct AcceptedSchedule {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TaskCreate {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_thread_id: Option<String>,
     pub request_id: String,
     pub mode: TaskMode,
     pub objective: String,
@@ -455,6 +457,10 @@ impl TaskWorker {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Task {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_thread_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<i64>,
     #[serde(default)]
     pub run_count: u64,
     #[serde(default)]

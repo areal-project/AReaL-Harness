@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "id": "plugin-resources",
+  "intent": "从原任务查找插件，查看详情并调整当前项目启用状态，观察真实结果后返回原任务",
+  "pattern": "P-RESOURCES",
+  "target": "renderer/src/settings/PluginCenter.tsx",
+  "runtime": "desktop",
+  "reference": {
+    "kind": "existing-code",
+    "path": "renderer/src/settings/PluginCenter.tsx",
+    "visualTarget": "既有生产插件中心及Base语义角色，非外部产品像素对齐"
+  },
+  "slots": {
+    "toolbar": [
+      "SettingsSearchInput",
+      "Button",
+      "SettingsSegmentedTabs"
+    ],
+    "list": [
+      "Button",
+      "Switch"
+    ],
+    "detail": [
+      "SettingsDisclosure",
+      "Feedback",
+      "Button"
+    ]
+  },
+  "states": [
+    {
+      "id": "loading",
+      "condition": "目录读取被屏障延迟，首次进入或显式刷新",
+      "expected": "有可读加载反馈，首次不显示空态；刷新不清空已确认目录"
+    },
+    {
+      "id": "empty",
+      "condition": "搜索不匹配当前市场范围",
+      "expected": "就近无结果与清除动作，保留查询及真实目录"
+    },
+    {
+      "id": "ready",
+      "condition": "选择个人市场和插件，返回列表或刷新",
+      "expected": "详情身份、搜索、筛选和合理列表位置保留，键盘焦点可回到原行"
+    },
+    {
+      "id": "failed",
+      "condition": "可选连接或hooks读取失败，或真实配置revision冲突",
+      "expected": "局部读取失败保留成功目录；配置明确失败不伪造enabled或自动重试"
+    },
+    {
+      "id": "busy",
+      "condition": "当前项目pluginConfigure实际受理后延迟响应",
+      "expected": "保留原插件/范围，可见等待且重复动作禁用"
+    },
+    {
+      "id": "unknown",
+      "condition": "Main到Renderer丢失一次真实配置响应",
+      "expected": "保留原requestId并只读核对，禁止自动重放"
+    },
+    {
+      "id": "return",
+      "condition": "用户从详情返回列表，再返回原任务",
+      "expected": "草稿、当前阅读和project/thread保留，焦点合理恢复，不发送新消息"
+    }
+  ],
+  "conditions": {
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "fontSizes": [
+      14,
+      18
+    ],
+    "widthModes": [
+      "wide",
+      "narrow"
+    ],
+    "reducedMotion": [
+      false,
+      true
+    ]
+  },
+  "invariants": [
+    "安装、启用范围与连接是独立事实，不由文案互相推断",
+    "管理动作沿实际Electron/Main/Core，fixture只提供隔离本地包和外部模型事件",
+    "目录/详情迟到结果不能写入其他项目或插件；隐藏页不能抢焦点",
+    "不复制Token或列表框架，域布局仍归PluginCenter，公共控件沿原所有者",
+    "模型媒体分析不可用且未授权外发，使用本地动作、帧和日志核查动态行为"
+  ],
+  "evidence": {
+    "status": "pending",
+    "artifacts": [],
+    "gaps": [
+      "当前为验收合同，运行结果与用户视觉认可分别记录",
+      "真实供应商、OAuth、远程市场、安装包及全主题矩阵不在本轮范围"
+    ]
+  }
+}

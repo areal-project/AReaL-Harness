@@ -462,7 +462,7 @@ impl Engine {
             }
         }
         let schemas = self
-            .visible_tools(cell, &configuration, thread.desktop.is_some())
+            .visible_tools(cell, &configuration, thread.desktop.is_some(), thread)
             .await;
         let mut messages = self.request_prefix(
             cell,

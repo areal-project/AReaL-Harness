@@ -157,7 +157,9 @@ impl Client {
             command.arg("--allow-write");
         }
         if network == areal_runtime_protocol::NetworkRequest::Inherit {
-            command.arg("--allow-network");
+            command
+                .arg("--allow-network")
+                .envs(areal_runtime_host_tools::network_environment());
         }
         let mut child = command.spawn().map_err(|_| {
             let mut error = unavailable("cannot launch Runtime");

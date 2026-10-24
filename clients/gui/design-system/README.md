@@ -1,18 +1,28 @@
 # AReaL GUI 设计系统 v1
 
+**只是使用设计系统**（写页面、选组件、写样式）：读 [@areal/ui](../packages/ui/README.md) 与 [Token 速查](../packages/ui/src/generated/tokens.md) 即可，规则的理由在 [design/](../../../design/README.md)。本目录下面的内容面向维护者：交互分类、页面合同、Base 准入、证据与自动化。
+
 GUI 设计知识与后续 Web 复用边界从[设计文档](../../../design/README.md)进入。本目录保留 GUI 设计与 Agent 实现合同。目标是让同类任务得到同类页面：先选已有组合与控件，再填入业务内容。适用于桌面 renderer；Remote 复用组件时遵循同一展示合同，原生平台适配仍归各自所有者。
 
 ## 当前阶段
 
+[UI 包与架构](../renderer/design-system.html?ui-library)展示首批私有 workspace 包、生成基础值、真实组件合同、类型与 Agent 索引。采用或修改包内基础能力前读 [Agent 指南](../packages/ui/agent-guide.md)；边界与取舍见 [D-004](../../../design/decisions/004-local-ui-package.md)。其余模式、组件和 Base 沿本目录继续维护。
+
 下一轮整体设计方向见[设计系统建设计划](../../../design/roadmap.md)。该计划基于 AReaL Harness 当前产品任务和生产代码，明确整体候选、产物及迁移顺序，不扩大当前 Base 准入。
 
-先读[设计系统架构](architecture.md)：架构 → Base → 固定题目 → 比较与改进。当前交付包含 v1 规范、可运行目录、Base候选、已运行的设置/决策探索题和对话动态题；尚未冻结 Base，也未完成盲测。下列规则作为现有生产约束与候选模式的入口，具体准入按架构阶段执行。
+先读[设计系统架构](architecture.md)：架构 → Base → 固定题目 → 比较与改进。当前交付包含规范、可运行目录、有限 Base 和固定输入的独立复用结果。版本、冻结状态与具体范围以 Base 为准，不把早期探索题等同于独立验证。下列规则作为现有生产约束与候选模式的入口，具体准入按架构阶段执行。
 
-当前最小实现范围见 [Base 候选 0.1.4](base.md)：只准入有真实组件与代表状态验证的基础切片，不把整个目录等同于 Base。
+当前最小实现范围见 [Base 当前范围](base.md)：只准入有真实组件与代表状态验证的基础切片，不把整个目录等同于 Base。
 
-本轮交付、复验入口与范围见[候选交付](delivery.md)。对话信息流从[证据→规则→所有者→检查点](patterns.md#从证据回溯到规则和组件)进入；其[结构化合同](surfaces/conversation-flow.json)已可校验，逐步投影预览及共享过程组已实现，只有已复验的过程/阅读组合进入Base0.1.4，完整对话模式仍保留准入缺口。
+本轮交付、复验入口与范围见[候选交付](delivery.md)。对话信息流从[证据→规则→所有者→检查点](patterns.md#从证据回溯到规则和组件)进入；其[结构化合同](surfaces/conversation-flow.json)已可校验，逐步投影预览及共享过程组已实现，只有列明且已复验的过程/阅读组合进入 Base，完整对话模式仍保留准入缺口。
+
+两张用户标注图对应的[对话流设计候选](conversation-flow.md)定义活动行、默认折叠、纵向滚动及右侧 Changes、关联项目、Subagents、Sources。[独立交互预览](../renderer/design-system.html?conversation-system)支持运行/完成/待关注、来源数量、图片查看和窄窗返回；沿现有系统与 Raft 分层组织，生产对话已采用同一包内组件，接线与验收范围见[对话流规范](conversation-flow.md#生产接线)；Base范围不自动扩大。
+
+九张用户参考图对应的[Worktree 设计规范](worktrees.md)定义 Composer 配置菜单、准备过程、侧栏身份，以及 General / Environments 的布局与状态。生产组合已迁移，代表状态的[视觉对照与交互验收](exercises/worktrees.md)分别记录 renderer 与真实桌面范围；不扩大 Base。
 
 后续从 renderer 题推进到真实桌面的覆盖、顺序和停止条件见[Electron 旅程推进计划](roadmap.md)；该计划与已通过证据分别维护。
+
+共享组件的迁移范围与保留适配见[组件迁移](component-migration.md)。原路径消费同一包实现；后续外观和交互微调先改包内组件及就近MD，再验证实际产品路径。
 
 ## 开工顺序
 
@@ -35,6 +45,7 @@ GUI 设计知识与后续 Web 复用边界从[设计文档](../../../design/READ
 | 按用户意图选 GUI 交互类别、必须/默认/可探索规则、处理例外 | [interactions.md](interactions.md)（[English](interactions.en.md)） |
 | 字体、色彩、层级、尺寸、密度如何选 | [foundations.md](foundations.md) |
 | 设置、资源列表、对话、审批、详情怎么组成 | [patterns.md](patterns.md) |
+| Worktree 配置、准备、目录与项目环境怎样对齐参考图 | [worktrees.md](worktrees.md) |
 | 已有什么、由谁实现、哪些仍未统一 | [inventory.md](inventory.md) |
 | 新变体、例外、截图与验收如何进入 | [governance.md](governance.md) |
 | 自动化如何工作、哪些已接入 | [automation.md](automation.md) |
@@ -51,9 +62,9 @@ GUI 设计知识与后续 Web 复用边界从[设计文档](../../../design/READ
 
 ## 目录与完成边界
 
-本目录只放内部规范与稳定目录。生产 Token 继续放 `renderer/src/styles.css` 及外观所有者；公共控件继续放 `renderer/src/components/ui/`；组合继续由 `settings/`、Composer、DecisionCard 等既有模块拥有；预览继续放 `renderer/src/design-system/`。原始截图、DOM 与运行 manifest 保存在本地证据目录，不复制用户数据到公开源码。
+本目录只放内部规范与稳定目录。已迁入的基础值、纯组件与就近MD归 `packages/ui/`；未迁入Token和主题偏好继续归原renderer所有者。共享控件与设置、对话、工作台组合使用包内导出，原路径保留适配；编辑器、模型权限、提交、导航守卫与配置保存仍由原业务模块拥有。预览继续放 `renderer/src/design-system/`，组件目录展示同一包的合同、API和独立状态实例。原始截图、DOM 与运行 manifest 保存在本地证据目录，不复制用户数据到公开源码。
 
-目录原型提供有限选择和增量迁移约束，不声明 Base 已冻结或全仓视觉已统一。当前缺口集中在[目录状态](inventory.md#覆盖与缺口)；本次不批量重写业务页，不引入另一套组件库或 Token 生成链。
+目录提供有限选择和增量迁移约束。Base 冻结仅对应其列明范围，不代表全仓视觉已经统一。当前缺口集中在[目录状态](inventory.md#覆盖与缺口)；本次不批量重写业务页，不引入另一套组件库或 Token 生成链。
 
 交互分类是规范入口，既有 P-* 是组合示例，不是互斥页面类型。首个生产迁移见[设置阶段一](exercises/settings-stage1.md)，视觉审查与第二阶段泛化验收分开。
 

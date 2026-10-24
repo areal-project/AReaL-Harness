@@ -20,9 +20,13 @@ mod session_name;
 mod sessions;
 mod store;
 mod task_mode;
+pub use areal_plugins::PluginComponentId;
 #[cfg(feature = "test-support")]
 pub use task_mode::TaskCommitFault;
 pub use task_mode::TaskRunNowAdmission;
+pub use task_mode::{
+    PublishedTaskCatalog, PublishedTaskCatalogFallback, read_published_task_catalog,
+};
 pub mod tools;
 mod trajectory;
 pub use trajectory::{configure_trajectory_capture_budget, record_json as record_trajectory_json};
@@ -204,6 +208,7 @@ struct Active {
     direct_tool: Option<model::ToolCall>,
     tool_meta: Option<serde_json::Map<String, Value>>,
     tool_calls: usize,
+    cua_used: bool,
     waiting_for_model_capacity: bool,
     started: std::time::Instant,
     isolated_children: usize,
@@ -422,7 +427,7 @@ fn restore_cells(
         .into_iter()
         .map(|(id, thread)| {
             let bindings = tools::Bindings {
-                registry: if thread.is_side() {
+                registry: if thread.is_read_only_side() {
                     registry.clone().side_only(thread.side_workspace_read())
                 } else if thread.source == "nativeResearchAgent" {
                     registry.clone().research_only()

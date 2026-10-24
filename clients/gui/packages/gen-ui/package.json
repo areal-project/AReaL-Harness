@@ -1,0 +1,27 @@
+{
+  "name": "@areal/gen-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "exports": {
+    "./contract": "./contract.ts",
+    "./references": "./references.ts",
+    "./node": "./dist/node.cjs",
+    "./runtime": "./dist/guest.js",
+    "./assets/*": "./assets/*"
+  },
+  "dependencies": {
+    "zod": "4.6.6",
+    "@modelcontextprotocol/ext-apps": "2.0.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "@types/node": "26.6.4",
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit"
+  }
+}

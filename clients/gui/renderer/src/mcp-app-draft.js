@@ -1,10 +1,11 @@
+import { composerDraftStorage } from "./composerDraftStorage.js";
 // Unsent MCP content belongs to the same durable key as the ordinary composer text.
 const suffix = ":mcpContent";
 function changed(key) {
   if (typeof window !== "undefined")
     window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: key }));
 }
-export function readMcpDraft(key, storage = globalThis.localStorage) {
+export function readMcpDraft(key, storage = composerDraftStorage) {
   const raw = storage.getItem(key + suffix);
   if (!raw) return [];
   const value = JSON.parse(raw);
@@ -12,14 +13,14 @@ export function readMcpDraft(key, storage = globalThis.localStorage) {
     throw Error("应用草稿格式无效，请保留原内容后重试。");
   return value;
 }
-export function writeMcpDraft(key, entries, storage = globalThis.localStorage) {
+export function writeMcpDraft(key, entries, storage = composerDraftStorage) {
   const text = JSON.stringify(entries);
   if (text.length > 4 * 1024 * 1024) throw Error("应用附件过大，未更改草稿。");
   if (entries.length) storage.setItem(key + suffix, text);
   else storage.removeItem(key + suffix);
   changed(key);
 }
-export function appendMcpDraft(key, blocks, storage = globalThis.localStorage) {
+export function appendMcpDraft(key, blocks, storage = composerDraftStorage) {
   if (
     !Array.isArray(blocks) ||
     blocks.some(
@@ -45,14 +46,14 @@ export function appendMcpDraft(key, blocks, storage = globalThis.localStorage) {
   }
   changed(key);
 }
-export function removeMcpDraft(key, id, storage = globalThis.localStorage) {
+export function removeMcpDraft(key, id, storage = composerDraftStorage) {
   writeMcpDraft(
     key,
     readMcpDraft(key, storage).filter((entry) => entry.id !== id),
     storage,
   );
 }
-export function consumeMcpDraft(key, capture, storage = globalThis.localStorage) {
+export function consumeMcpDraft(key, capture, storage = composerDraftStorage) {
   const consumed = new Set(capture.map((entry) => entry.id));
   writeMcpDraft(
     key,
@@ -60,6 +61,6 @@ export function consumeMcpDraft(key, capture, storage = globalThis.localStorage)
     storage,
   );
 }
-export function clearMcpDraft(key, storage = globalThis.localStorage) {
+export function clearMcpDraft(key, storage = composerDraftStorage) {
   writeMcpDraft(key, [], storage);
 }

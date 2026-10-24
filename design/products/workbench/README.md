@@ -15,6 +15,10 @@
 
 [WorkbenchShell](../../../clients/gui/renderer/src/app-shell/WorkbenchShell.tsx)提供布局，不拥有导航和持久化。[SettingsWorkspace](../../../clients/gui/renderer/src/settings/SettingsWorkspace.tsx)提供导航与内容布局，宿主仍负责当前页及未保存内容保护。业务事实不能移入这些公共布局组件。
 
+右侧任务上下文的候选组织见[对话流设计草案](../../../clients/gui/design-system/conversation-flow.md#右侧任务上下文)：Changes、当前 Worktree 关联项目、Subagents 与可折叠的 Sources。概览与深入阅读共用原宿主，不能从参考图推断跨项目数据能力；该草案尚未迁移生产页面。
+
+Worktree 从 Composer 配置、准备过程到侧栏身份与设置管理的布局见[Worktree 设计规范](../../../clients/gui/design-system/worktrees.md)。它沿原工作台区域组织，不迁移已有会话或新增工作区执行所有者；生产组合与代表状态已迁移，验收范围见 [Worktree 验收题](../../../clients/gui/design-system/exercises/worktrees.md)。
+
 ## 进入、深入查看与返回
 
 从项目或聊天进入时，标题、内容和可用动作指向同一对象。读取未完成或失败时保留归属，不用另一会话的内容填补。前进与后退表达位置变化，不恢复未知执行。
@@ -40,3 +44,5 @@ App 已有按项目与 Thread 记录面板归属及返回焦点的处理。具�
 共享工作区示例组合生产聊天、输入、侧面板与设置组件，使用本地数据和展示状态。示例可以检查所挂载状态的布局、草稿操作和焦点行为。它不连接 Core，不执行真实提交，也不能证明服务受理、权限、恢复、原生浏览器或终端生命周期。
 
 生产接线继续经过 App、Desktop 服务和 Core。首条真实路径的验收需覆盖提交、观察过程、处理决定、查看资源、返回阅读和修改外观，并列明未知或失败状态的实际覆盖。完整候选与迁移进度见[建设计划](../../roadmap.md)。
+
+定时任务目录使用[ScheduledWorkspace](../../../clients/gui/packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.md)：按已开启、已暂停、已结束分组，默认只展示名称与计划摘要；创建入口用轻量模板。项目 UUID 与目录加载诊断不作为常规导航内容，失败保留重试，只有目录读取完成后才能显示无任务。

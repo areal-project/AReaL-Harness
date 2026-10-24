@@ -1,5 +1,5 @@
 .image-annotation-pane { display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--color-background); }
-.image-annotation-pane > header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; font-size: 12px; border-bottom: 1px solid var(--color-border); }
+.image-annotation-pane > header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; font-size: var(--text-ui-sm); border-bottom: 1px solid var(--color-border); }
 .image-annotation-pane > header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .image-annotation-pane > header span { margin-left: auto; white-space: nowrap; color: var(--color-foreground-subtle); }
 .image-annotation-stage { position: relative; min-height: 220px; min-width: 0; flex: 1; }
@@ -8,19 +8,19 @@
 .image-annotation-original { position: relative; flex: none; line-height: normal; }
 .image-annotation-original > img { display: block; width: 100%; height: 100%; object-fit: contain; cursor: crosshair; user-select: none; }
 .image-annotation-marker { pointer-events: auto; cursor: pointer; }
-.image-annotation-help { padding: 4px 16px; font-size: 11px; color: var(--color-foreground-subtle); }
-.image-annotation-draft-list { max-height: 150px; overflow: auto; padding: 6px 16px; border-top: 1px solid var(--color-border); font-size: 12px; }
+.image-annotation-help { padding: 4px 16px; font-size: var(--text-ui-xs); color: var(--color-foreground-subtle); }
+.image-annotation-draft-list { max-height: 150px; overflow: auto; padding: 6px 16px; border-top: 1px solid var(--color-border); font-size: var(--text-ui-sm); }
 .image-annotation-draft-list li { display: flex; align-items: flex-start; gap: 8px; }
 .image-annotation-draft-list li > button:first-child { flex: 1; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; padding: 6px 0; }
 .image-annotation-pane > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--color-border); }
-.image-annotation-list { max-width: 520px; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.image-annotation-list { max-width: 520px; font-size: var(--text-ui-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
 .image-annotation-list ol { padding-left: 20px; list-style-type: decimal; }
 .image-annotation-list li { margin-top: 5px; }
 .image-annotation-list li > span { color: var(--color-foreground-subtle); }
 .composer-image-open { display: block; width: 100%; height: 100%; border-radius: inherit; overflow: hidden; }
 .composer-image-open img { width: 100%; height: 100%; object-fit: cover; }
 .composer-image-attachment { display: flex; align-items: flex-end; gap: 6px; flex-shrink: 0; }
-.composer-image-note-count { display: flex; align-items: center; gap: 3px; padding: 3px 5px; border-radius: 5px; color: var(--color-foreground-subtle); font-size: 11px; }
+.composer-image-note-count { display: flex; align-items: center; gap: 3px; padding: 3px 5px; border-radius: 5px; color: var(--color-foreground-subtle); font-size: var(--text-ui-xs); }
 .image-preview-body { display: flex; max-width: 100%; max-height: 100%; flex-direction: column; align-items: center; gap: 12px; overflow: auto; }
 .image-preview-original { position: relative; line-height: 0; max-width: 100%; }
 .image-preview-original > img { display: block; max-height: 70vh; max-width: 100%; width: auto; height: auto; border-radius: 12px; }

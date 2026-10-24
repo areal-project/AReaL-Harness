@@ -1,0 +1,192 @@
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-inline);
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 0;
+  min-height: 24px;
+  padding-bottom: 0;
+}
+
+.settings-section-heading .settings-section-title {
+  font-size: var(--text-ui-base);
+  font-weight: 500;
+  line-height: 21px;
+  color: var(--color-foreground);
+  margin: 0;
+}
+
+.settings-section-desc,
+.settings-section-heading .settings-section-desc {
+  font-size: var(--text-ui-sm);
+  color: var(--color-settings-secondary, var(--color-muted-foreground));
+  margin: 2px 0 0;
+  line-height: var(--line-height-ui-sm);
+}
+
+.settings-section-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-inline);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.settings-group-card {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--color-foreground);
+  font-size: var(--text-ui-base);
+  line-height: var(--line-height-ui);
+  border-radius: var(--radius-overlay);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-settings-card, var(--color-card));
+  overflow: hidden;
+  box-shadow: none;
+}
+
+.settings-group-content { padding: 0; }
+
+.settings-field-row {
+  position: relative;
+  padding: 12px 16px;
+  min-height: 48px;
+  box-sizing: border-box;
+}
+
+.settings-group-card[data-density="compact"] .settings-field-row {
+  padding-block: 8px;
+  min-height: 40px;
+}
+
+/* 调用方仍须禁用实际控件，行只阻止指针操作。 */
+.settings-field-row[aria-disabled="true"] .settings-field-control {
+  pointer-events: none;
+}
+
+.settings-group-card .settings-field-row:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 16px;
+  right: 16px;
+  height: 0.5px;
+  background: var(--color-border);
+  pointer-events: none;
+}
+
+.settings-field-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) fit-content(280px);
+  align-items: center;
+  gap: 24px;
+  width: 100%;
+}
+
+.settings-field-layout-wide {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
+  align-items: center;
+}
+
+.settings-field-label {
+  font-size: var(--text-ui-caption);
+  font-weight: 500;
+  color: var(--color-foreground);
+  line-height: 1.428571;
+  overflow-wrap: break-word;
+}
+
+.settings-field-description {
+  margin-top: 2px;
+  font-size: var(--text-ui-sm);
+  font-weight: 430;
+  line-height: 1.333333;
+  color: var(--color-settings-secondary, var(--color-muted-foreground));
+  overflow-wrap: break-word;
+}
+
+.settings-field-control {
+  font-size: var(--text-ui-caption);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  flex-shrink: 0;
+}
+
+.settings-field-control > * { max-width: 100%; }
+
+@container (max-width: 520px) {
+  .settings-field-layout,
+  .settings-field-layout-wide {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .settings-field-control {
+    justify-content: flex-start;
+  }
+}
+
+.settings-field-row .settings-field-control input[type="number"],
+.settings-field-row .settings-field-control input[type="text"] {
+  height: var(--spacing-control);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-size: var(--text-ui-caption);
+  font-weight: 430;
+  line-height: calc(var(--ui-font-size) + 4px);
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+
+.settings-field-row .settings-field-control input[type="range"] {
+  appearance: none;
+  width: 146px;
+  min-width: 0;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  color: var(--color-foreground);
+  cursor: var(--interactive-cursor, pointer);
+}
+
+.settings-field-row .settings-field-control input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 9999px;
+  background: var(--color-brand);
+}
+
+.settings-field-row .settings-field-control input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -9px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 1px 2px var(--color-border);
+}
+
+.settings-field-row .settings-field-control output {
+  font-size: var(--text-ui-sm);
+  color: var(--color-muted-foreground);
+  min-width: 24px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

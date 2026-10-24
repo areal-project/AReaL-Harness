@@ -1,12 +1,11 @@
+import type { CodeCommentRange, CodeCommentPreview } from "@areal/ui/code-comment-types";
+export type { CodeCommentRange, CodeCommentPreview } from "@areal/ui/code-comment-types";
 export const CODE_COMMENT_ADD_TO_CHAT_EVENT = "areal:code-comment-add-to-chat";
 export const CODE_COMMENT_REMOVE_FROM_CHAT_EVENT = "areal:code-comment-remove-from-chat";
 export const CODE_COMMENT_REMOVE_BROADCAST_CHANNEL = "code-comment:remove-from-chat";
 export const CODE_COMMENT_PREVIEW_RESTORE_BROADCAST_CHANNEL = "code-comment:restore-preview";
 
-export interface CodeCommentRange {
-  startLine: number;
-  endLine: number;
-}
+
 
 export interface CodeCommentPayload extends CodeCommentRange {
   id?: string;
@@ -30,13 +29,7 @@ export interface CodeCommentRemovePayload {
   workspaceIdentity?: string;
 }
 
-export interface CodeCommentPreview extends CodeCommentRange {
-  id: string;
-  sourcePath?: string;
-  sourceTitle: string;
-  selectedText: string;
-  comment: string;
-}
+
 
 interface ParsedCodeCommentPrompt {
   visibleContent: string;

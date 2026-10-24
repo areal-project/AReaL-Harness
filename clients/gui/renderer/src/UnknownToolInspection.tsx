@@ -18,7 +18,8 @@ export function UnknownToolInspection({ item, project, thread, action }: {
     || item.execution?.plugin?.operations?.some((operation: Data) => operation.outcome === "unknown");
   const active = thread.turns?.some((turn: Data) => turn.status === "inProgress");
   const bytes = new TextEncoder().encode(inspection.trim()).length;
-  const disabled = busy || !connected || active || thread.desktop?.archived || !!confirmed;
+  const archived = thread.desktop?.archived && thread.conversation?.policy?.kind !== "sideExecutableV2";
+  const disabled = busy || !connected || active || archived || !!confirmed;
   useEffect(() => { if (!connected) setChecked(false); }, [connected]);
   if (!unknown) return null;
   const params = { projectId: project.id, threadId: thread.id };

@@ -105,7 +105,7 @@ test('an authenticated owner claim refuses a request from another Core generatio
   const service = new DesktopService(backend, 'fixture-identity');
   const receive = (id, method, params) => service.receive(owner, Buffer.from(JSON.stringify({ id, method, params })));
   await receive(1, 'hello', { protocol: PROTOCOL, identity: 'fixture-identity' });
-  await receive(2, 'browserClaim', { protocol: 'areal.browser.host.v1', operations: ['describe', 'observe', 'capture', 'act', 'wait', 'navigate', 'newPage', 'diagnostics', 'runBatch'],
+  await receive(2, 'browserClaim', { protocol: 'areal.browser.host.v1', operations: ['describe', 'observe', 'capture', 'act', 'wait', 'navigate', 'newPage', 'diagnostics', 'runBatch', 'command'],
     available: true, coreInstanceId: 'core-1', projectId: 'project-1', threadId: 'thread-1', pageId, browserHostId: 'host-1',
     hostGeneration: 1, pageGeneration: 1, controlEpoch: 1 });
   assert.equal(sent.at(-1).result.claimed, true);
@@ -133,7 +133,7 @@ test('revoked or competing claim cannot publish after the Core bind awaits', asy
   const service = new DesktopService(backend, 'fixture-identity');
   const receive = (socket, id, method, params) => service.receive(socket, Buffer.from(JSON.stringify({ id, method, params })));
   const claim = (host, epoch = 1) => ({ protocol: 'areal.browser.host.v1',
-    operations: ['describe', 'observe', 'capture', 'act', 'wait', 'navigate', 'newPage', 'diagnostics', 'runBatch'],
+    operations: ['describe', 'observe', 'capture', 'act', 'wait', 'navigate', 'newPage', 'diagnostics', 'runBatch', 'command'],
     available: true, coreInstanceId: 'core-1', projectId: 'project-1', threadId: 'thread-1', pageId,
     browserHostId: host, hostGeneration: 1, pageGeneration: 1, controlEpoch: epoch });
   await receive(owner, 1, 'hello', { protocol: PROTOCOL, identity: 'fixture-identity' });

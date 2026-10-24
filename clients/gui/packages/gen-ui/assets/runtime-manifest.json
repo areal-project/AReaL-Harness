@@ -1,0 +1,13 @@
+{
+  "files": {
+    "visualize.css": {
+      "sha256": "f75125ca6efcf855d8f354984f603f81a4cfc758b476698be1cc665630c00a41"
+    },
+    "visualize.html": {
+      "sha256": "42d9c7d924174a23545ad2ffc31ec0692ca589b3999c2ffdc21c1d358f4185bf"
+    },
+    "calendar.js": {
+      "sha256": "19f40e0a15ae7a9b9a4e17bc53c5bb47c5b21e6d32317d80cf030f9e012c221b"
+    }
+  }
+}

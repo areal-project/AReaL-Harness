@@ -192,6 +192,33 @@ impl Snapshot {
         digest: &str,
         limit: usize,
     ) -> Result<T> {
+        let path = self.leaf_path(digest)?;
+        use std::{io::Read, os::unix::fs::OpenOptionsExt};
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(
+                (rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK).bits() as i32,
+            )
+            .open(path)
+            .map_err(storage)?;
+        let metadata = file.metadata().map_err(storage)?;
+        if !metadata.is_file() || metadata.len() > limit as u64 {
+            return Err(storage("task ledger leaf exceeds read limit"));
+        }
+        let mut bytes = Vec::new();
+        file.take(limit as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(storage)?;
+        if bytes.len() > limit {
+            return Err(storage("task ledger leaf exceeds read limit"));
+        }
+        if format!("{:x}", Sha256::digest(&bytes)) != digest {
+            return Err(storage("task ledger checksum mismatch"));
+        }
+        serde_json::from_slice(&bytes).map_err(storage)
+    }
+
+    fn leaf_path(&self, digest: &str) -> Result<std::path::PathBuf> {
         if digest.len() != 64
             || !digest
                 .bytes()
@@ -199,16 +226,7 @@ impl Snapshot {
         {
             return Err(storage("invalid task ledger reference"));
         }
-        let path = self.root.join("desktop/task-ledger").join(digest);
-        let metadata = std::fs::symlink_metadata(&path).map_err(storage)?;
-        if !metadata.is_file() || metadata.len() > limit as u64 {
-            return Err(storage("task ledger leaf exceeds read limit"));
-        }
-        let bytes = std::fs::read(path).map_err(storage)?;
-        if format!("{:x}", Sha256::digest(&bytes)) != digest {
-            return Err(storage("task ledger checksum mismatch"));
-        }
-        serde_json::from_slice(&bytes).map_err(storage)
+        Ok(self.root.join("desktop/task-ledger").join(digest))
     }
 
     #[cfg(feature = "test-support")]
@@ -262,34 +280,8 @@ impl Snapshot {
             if upgrading {
                 crate::store::write_immutable(&root.join("desktop/task-legacy"), &bytes)?;
             }
-            anyhow::ensure!(bytes.len() <= ROOT_BYTES, "task catalog exceeds capacity");
-            let catalog: Catalog = serde_json::from_slice(&bytes)?;
-            anyhow::ensure!(catalog.index_version == 3, "unsupported Task index version");
-            anyhow::ensure!(
-                catalog.tasks.len() <= MAX_TASKS
-                    && catalog.receipts.len() <= 256
-                    && catalog.bindings.len() <= 256,
-                "task catalog exceeds capacity"
-            );
-            let mut state = Self {
-                version: 5,
-                root: root.into(),
-                catalog,
-                ..Default::default()
-            };
-            for (task_key, head) in &state.catalog.tasks {
-                let task: Task = state.read_leaf(&head.body)?;
-                let bytes = std::fs::metadata(root.join("desktop/task-ledger").join(&head.body))?
-                    .len() as usize;
-                anyhow::ensure!(
-                    bytes == head.hot_bytes
-                        && head.settlement_limit >= bytes
-                        && head.settlement_limit <= FILE_BYTES,
-                    "invalid Task hot-state bounds"
-                );
-                anyhow::ensure!(key(&task.id) == *task_key, "task ledger identity mismatch");
-                state.tasks.insert(task.id.clone(), task);
-            }
+            let mut state = Self::read_current_catalog(root, &bytes, usize::MAX)?
+                .ok_or_else(|| anyhow::anyhow!("Task hot-state exceeds read budget"))?;
             if let Some(digest) = &state.catalog.preparations {
                 state.preparations = state.read_leaf(digest)?;
             }
@@ -319,6 +311,58 @@ impl Snapshot {
             state.persist(None, None)?;
             Ok(state)
         }
+    }
+
+    pub(super) fn read_current_catalog(
+        root: &Path,
+        bytes: &[u8],
+        hot_budget: usize,
+    ) -> anyhow::Result<Option<Self>> {
+        anyhow::ensure!(bytes.len() <= ROOT_BYTES, "task catalog exceeds capacity");
+        let catalog: Catalog = serde_json::from_slice(bytes)?;
+        anyhow::ensure!(matches!(catalog.version, 4 | 5), "unsupported task store");
+        anyhow::ensure!(catalog.index_version == 3, "unsupported Task index version");
+        anyhow::ensure!(
+            catalog.tasks.len() <= MAX_TASKS
+                && catalog.receipts.len() <= 256
+                && catalog.bindings.len() <= 256,
+            "task catalog exceeds capacity"
+        );
+        let mut state = Self {
+            version: 5,
+            root: root.into(),
+            catalog,
+            ..Default::default()
+        };
+        if !state.catalog.tasks.is_empty() {
+            let directory = std::fs::symlink_metadata(root.join("desktop/task-ledger"))?;
+            anyhow::ensure!(
+                directory.is_dir() && !directory.file_type().is_symlink(),
+                "invalid Task ledger directory"
+            );
+        }
+        let mut total = 0usize;
+        for head in state.catalog.tasks.values() {
+            let metadata = std::fs::symlink_metadata(state.leaf_path(&head.body)?)?;
+            anyhow::ensure!(
+                metadata.is_file()
+                    && metadata.len() <= FILE_BYTES as u64
+                    && metadata.len() == head.hot_bytes as u64
+                    && head.settlement_limit >= head.hot_bytes
+                    && head.settlement_limit <= FILE_BYTES,
+                "invalid Task hot-state bounds"
+            );
+            total = total.saturating_add(head.hot_bytes);
+        }
+        if total > hot_budget {
+            return Ok(None);
+        }
+        for (task_key, head) in &state.catalog.tasks {
+            let task: Task = state.read_leaf(&head.body)?;
+            anyhow::ensure!(key(&task.id) == *task_key, "task ledger identity mismatch");
+            state.tasks.insert(task.id.clone(), task);
+        }
+        Ok(Some(state))
     }
 
     pub(super) fn visit_history(
@@ -1199,6 +1243,7 @@ fn settlement_only(old: &Task, new: &Task) -> bool {
         "channelSequence",
         "paused",
         "cancelled",
+        "deletedAt",
         "nextRunAt",
         "skippedRuns",
         "lastSkippedAt",

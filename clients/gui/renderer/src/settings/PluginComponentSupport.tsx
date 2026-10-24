@@ -17,10 +17,14 @@ export type PackageComponentSupport = {
 };
 const kinds = (t: Translate): Record<string, string> => ({
   skills: "Skills", mcp: "MCP", hooks: "Hooks", apps: "Connector", commands: "Commands", agents: "Agents", uiSurfaces: t("operations.uiPages"),
+  outputStyles: t("operations.outputStyles"), themes: t("operations.themes"), lsp: t("operations.languageServers"),
 });
 const statuses = (t: Translate) => ({ supported: t("operations.supported"), partial: t("operations.partial"), unsupported: t("operations.unsupported") });
 const reasons = (t: Translate): Record<string, string> => ({
   componentNotImplemented: t("operations.notImplemented"),
+  hostRuntimeUnsupported: t("operations.hostRuntimeUnsupported"),
+  packageDependenciesUnsupported: t("operations.packageDependenciesUnsupported"),
+  userConfigUnsupported: t("operations.userConfigUnsupported"),
   invalidMcpEnvelope: t("operations.invalidMcp"),
   emptyMcpEnvelope: t("operations.emptyMcp"),
   invalidHookEnvelope: t("operations.invalidHook"),
@@ -32,6 +36,7 @@ const reasons = (t: Translate): Record<string, string> => ({
   emptyComponentDeclaration: t("operations.emptyDeclaration"),
 });
 const requirements = (t: Translate): Record<string, string> => ({
+  declaredHostTools: t("operations.declaredHostTools"),
   installed: t("operations.installSnapshot"), enabled: t("operations.enableProject"), profileAllowsPluginSkills: t("operations.profileAllows"),
   explicitMcpTrust: t("operations.trustMcp"), mcpConnection: t("operations.connectMcp"), authentication: t("operations.authenticate"),
   authenticationWhenDeclared: t("operations.declaredAuth"), connectorMapping: t("operations.connectorMapping"),

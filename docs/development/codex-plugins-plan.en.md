@@ -10,6 +10,37 @@ Codex 0.162.1 (`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`), Agent Plugins 1.0.0,
 
 Do not execute package code during discovery/install, overwrite explicit Profiles, mutate an active Turn revision, replay UNKNOWN effects, or share credentials with Renderer. Preserve existing standalone Skills/MCP and Native Hosts.
 
+## Multiple-format imports
+
+This section implements the [import decision](../design/architecture.en.md#multiple-plugin-formats). It does not replace the P0 through P3 evidence below. Validate each stage separately. Format recognition does not establish complete host compatibility.
+
+| Stage | Scope and owner | Completion criteria |
+|---|---|---|
+| I1 · MCP declarations | Consolidate existing Portable and legacy MCP interpretation. `core/plugins` selects packages, `core/mcp` owns configuration and connections, and Engine combines runtime state | Reports, previews, and execution share declarations. Equivalent formats and existing override rules pass. No package execution or secret disclosure. Static envelope checks remain separate from runtime validation |
+| I2 · Commands | Route supported Markdown prompts, arguments, and namespaces through ordinary submission | Discovery, explicit invocation, and arguments pass. Reject unimplemented model, tool, and Hook semantics explicitly |
+| I3 · User configuration | Configuration owners retain values and secret references. Importers interpret declarations and substitution locations | Diagnose missing values. Resolve sensitive values only at authorized boundaries, outside ordinary display and model fields |
+| I4 · Plugin dependencies | Installation owners manage versions, sources, missing dependencies, cycles, and cross-marketplace rules | Review the complete dependency plan. Failure leaves no partially effective activation. Keep package dependencies distinct from Skill tool requirements |
+| I5 · Agents and Hooks | Reuse Profile and Hook owners. Map models, tools, events, and permissions individually | Validate parent restrictions, separate trust, revocation, cancellation, and recovery. Format compatibility grants no authority |
+
+I1 preserves behavior. Pin Portable and legacy server discovery, placeholders, paths, headers, invalid-server isolation, and redaction before migrating consumers. Preserve Claude default and explicit-definition overrides, source locations, and the distinction between candidate and installed definitions. Static reports continue to check only MCP envelopes. Record authentication, connectivity, and real-provider validation separately.
+
+I1 adds no installation state, cache, connection retry, schema support, user configuration, or dependency execution. Preserve existing document errors, per-server failure boundaries, and duplicate-server handling. Run package and configuration integration checks, an actual Core/MCP path, and public documentation checks before updating this stage from its evidence.
+
+Current status: I1 is implemented. Relevant package, MCP, and Engine integration checks and fixed-artifact Core CLI/wire acceptance pass. The [import integration tests](../../core/engine/tests/plugin_mcp_import.rs) pin behavior before implementation and observe actual stdio arguments, environment, working directory, and HTTP headers. Existing authentication-timing, CLI, and wire fixtures now use the established admission-digest contract while retaining identity and authentication assertions. Workspace Rust formatting still reports existing differences in untouched files. Targeted formatting checks pass for this task's files.
+
+Repeat with binaries from one build and isolated home and workspace directories. Use separate `CARGO_TARGET_DIR` values when comparing source trees.
+
+```sh
+make build
+cargo test --locked -p areal-plugins --test component_support --test ecosystem --test remote
+cargo test --locked -p areal-mcp --test plugin --test substrate --test portable_auth
+cargo test --locked -p areal-engine --test plugin_mcp_import --test plugin_mcp_runtime
+AREAL_TEST_BIN_DIR=/absolute/same-build/bin node scripts/plugin-cli-p1-smoke.mjs
+AREAL_TEST_BIN_DIR=/absolute/same-build/bin node scripts/plugin-wire-smoke.mjs
+```
+
+Additional compatibility work in I2 through I5 is not implemented. This slice does not close signed distribution, real OAuth, cross-platform, or full ecosystem compatibility.
+
 ## P0 · Local packages and Skills
 
 | Task | Owner/entry | Work | Observable acceptance |

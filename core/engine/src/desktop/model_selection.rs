@@ -7,7 +7,7 @@ impl Engine {
         thread: &mut Thread,
         configuration: &EffectiveConfig,
     ) -> Result<()> {
-        if thread.is_side()
+        if thread.is_read_only_side()
             || thread.parent_thread_id.is_some()
             || thread.source == "nativeTaskAgent"
             || thread.goal_owner.is_some()

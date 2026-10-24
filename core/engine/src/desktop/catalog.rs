@@ -948,9 +948,12 @@ impl Engine {
     ) -> Result<Value> {
         self.refresh_plugins().await?;
         let cell = self.cell(thread_id).await?;
-        let config = {
+        let (config, mut thread) = {
             let state = cell.state.lock().await;
-            self.skill_configuration(&state.thread, turn_id)?
+            (
+                self.skill_configuration(&state.thread, turn_id)?,
+                state.thread.clone(),
+            )
         };
         if turn_id.is_some()
             && !self
@@ -960,6 +963,20 @@ impl Engine {
             return Err(invalid("skill is not selected for this Turn"));
         }
         let skill = self.selected_skill(&config, &reference)?;
+        if skill
+            .plugin
+            .as_ref()
+            .is_some_and(|p| !p.required_tools.is_empty())
+        {
+            thread
+                .desktop
+                .get_or_insert_with(Default::default)
+                .configuration = config.clone();
+            let registry = self
+                .managed_registry(&thread, cell.research)
+                .map_err(invalid)?;
+            self.check_plugin_skill_tools(&skill, &config, &registry)?;
+        }
         let page = self
             .read_skill_page(skill, &reference, resource, offset, max_bytes)
             .await?;

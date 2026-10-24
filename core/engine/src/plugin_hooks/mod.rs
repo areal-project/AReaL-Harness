@@ -247,7 +247,7 @@ fn hook_agent_type(thread: &Thread) -> &str {
 /// Read-only command consent applies only to ordinary child Sessions; it never
 /// turns Side, research, native workers or restricted Profiles into hook callers.
 fn hook_scope(thread: &Thread, research: bool) -> Option<bool> {
-    if thread.is_side()
+    if thread.is_read_only_side()
         || research
         || matches!(
             thread.source.as_str(),
@@ -308,8 +308,12 @@ pub(super) async fn ensure_current(
 }
 impl Engine {
     pub(super) fn ensure_hook_session_open(&self, cell: &Cell, thread: &Thread) -> Result<()> {
+        if thread.is_executable_side() && thread.desktop.as_ref().is_some_and(|data| data.archived)
+        {
+            return Err(invalid("THREAD_ARCHIVED"));
+        }
         if cell.hooks.closing.load(Ordering::Acquire)
-            && !thread.is_side()
+            && !thread.is_read_only_side()
             && !matches!(
                 thread.source.as_str(),
                 "nativeResearchAgent" | "nativeTaskAgent"
@@ -448,12 +452,34 @@ impl Engine {
         if p.inspection.trim().is_empty() || p.inspection.len() > 8192 {
             return Err(invalid("bounded operator inspection required"));
         }
-        let cell = self.cell(&p.thread_id).await?;
+        let cell = self.raw_cell(&p.thread_id).await?;
         let mut state = cell.state.lock().await;
+        if state
+            .thread
+            .desktop
+            .as_ref()
+            .is_some_and(|data| data.archived)
+            && !state.thread.is_executable_side()
+        {
+            return Err(invalid("THREAD_ARCHIVED"));
+        }
         if state.active.is_some() {
             return Err(Error::Conflict);
         }
-        let mut candidate = state.thread.clone();
+        let mut candidate = if state.thread.is_executable_side()
+            && state
+                .thread
+                .desktop
+                .as_ref()
+                .is_some_and(|data| data.archived)
+        {
+            self.store
+                .read_thread(&p.thread_id)
+                .await
+                .map_err(invalid)?
+        } else {
+            state.thread.clone()
+        };
         let r = candidate
             .desktop
             .get_or_insert_with(Default::default)
@@ -464,6 +490,7 @@ impl Engine {
         r.inspection = Some(p.inspection);
         self.persist(&candidate).await?;
         state.thread = candidate;
+        self.finish_side_close(&cell, &mut state).await?;
         Ok(json!({"threadId":p.thread_id,"invocationId":p.invocation_id,"acknowledged":true}))
     }
 }

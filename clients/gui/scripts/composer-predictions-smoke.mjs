@@ -115,8 +115,12 @@ async function verifyInteraction(scope, inputId, id, expected, screenshot) {
   const input = scope.getByTestId(inputId);
   const ghost = await waitGhost(scope, expected);
   assert.equal((await input.innerText()).trim(), '');
-  const typography = async locator => locator.evaluate(element => { const style = getComputedStyle(element); return [style.fontSize, style.lineHeight, style.fontFamily]; });
-  assert.deepEqual(await typography(ghost), await typography(input), 'ghost and accepted draft share typography');
+  const typography = async locator => locator.evaluate(element => { const style = getComputedStyle(element); return { size: parseFloat(style.fontSize), weight: style.fontWeight, family: style.fontFamily }; });
+  const ghostType = await typography(ghost), inputType = await typography(input);
+  assert.ok(ghostType.size < inputType.size, 'prediction uses smaller type than the editable draft');
+  assert.equal(ghostType.weight, '400', 'prediction uses regular weight');
+  assert.equal(ghostType.family, inputType.family, 'prediction keeps the composer font family');
+  assert.equal(await ghost.innerText(), expected, 'prediction shows only text without a Tab badge');
   const ghostBounds = await ghost.boundingBox();
   const submitBounds = await scope.locator('[type="submit"]').boundingBox();
   assert.ok(ghostBounds && submitBounds && ghostBounds.y + ghostBounds.height <= submitBounds.y + 1, 'multiline ghost stays above the toolbar');

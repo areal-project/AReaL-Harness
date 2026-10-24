@@ -1,0 +1,34 @@
+{
+  "name": "@areal/browser-data",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "commonjs",
+  "main": "./dist/index.cjs",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist", "src", "LICENSE", "NOTICE", "UPSTREAM.json", "README.md", "README.zh-CN.md"],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "verify:upstream": "node scripts/verify-upstream.mjs",
+    "test:fixtures": "node scripts/build.mjs --fixtures && node acceptance/node.cjs",
+    "test:electron": "node scripts/run-electron.mjs"
+  },
+  "dependencies": {
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.4",
+    "@types/ws": "8.18.1",
+    "electron": "44.9.1",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  }
+}

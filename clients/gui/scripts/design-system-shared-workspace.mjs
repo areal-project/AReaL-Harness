@@ -58,6 +58,29 @@ export async function runSharedWorkspace(page, scratch, report, baseline) {
   await scope.getByRole('button',{name:'返回主会话',exact:true}).click();assert.equal(await main.innerText(),'主草稿：检查面板返回');
   await scope.getByRole('button',{name:'打开共享设置',exact:true}).click();await page.getByRole('dialog').getByLabel('共享阅读密度',{exact:true}).click();await page.getByRole('option',{name:'宽松',exact:true}).click();await page.keyboard.press('Escape');
   assert.equal(await main.innerText(),'主草稿：检查面板返回');await scope.getByRole('button',{name:'打开侧边聊天',exact:true}).click();await page.waitForFunction(() => document.querySelector('[data-testid="side-chat-input"]')?.textContent === 'Side草稿：保留独立问题');assert.equal(await side().innerText(),'Side草稿：保留独立问题');await capture('04-return');
+  const panel = scope.locator('.workspace-side-panel');
+  const fileTab = scope.locator('[data-side-pane-tab-id="文件"]');
+  await fileTab.hover();
+  await fileTab.locator('[aria-label="关闭 文件 标签"]').click();
+  await fileTab.waitFor({state:'detached'});
+  assert.equal(await panel.isVisible(),true,'closing a sibling tab keeps the remaining panel open');
+  const sideTab = scope.getByRole('tab',{name:'侧边聊天',exact:true});
+  await sideTab.focus();await sideTab.press('Delete');
+  await panel.waitFor({state:'hidden'});
+  assert.equal(await main.innerText(),'主草稿：检查面板返回','last tab close preserves the main draft');
+  await capture('06-last-tab-closed');
+  await scope.getByRole('button',{name:'打开侧边聊天',exact:true}).click();
+  assert.equal(await panel.locator('[data-side-pane-tab-id]').count(),1,'reopening does not resurrect the closed file tab');
+  await scope.getByRole('button',{name:'进入完整视图',exact:true}).click();
+  await scope.getByRole('tab',{name:'侧边聊天',exact:true}).click({button:'right'});
+  await page.getByRole('menuitem',{name:'关闭所有标签页',exact:true}).click();
+  await panel.waitFor({state:'hidden'});
+  assert.equal(await scope.locator('[data-shared-mode]').getAttribute('data-shared-mode'),'split','closing all tabs exits full panel view');
+  assert.equal(await main.innerText(),'主草稿：检查面板返回');
+  await capture('07-all-tabs-closed');
+  report.checks.push('Closing a sibling keeps the panel; closing the last tab or all tabs hides it, exits full view and preserves the main draft');
+  await scope.getByRole('button',{name:'打开侧边聊天',exact:true}).click();
+  await side().waitFor();
   for(const sample of [{theme:'light',font:'14',width:1440},{theme:'dark',font:'18',width:900}]){
     await page.setViewportSize({width:sample.width,height:1100});await page.getByLabel('主题',{exact:true}).selectOption(sample.theme);await page.getByLabel('字号',{exact:true}).selectOption(sample.font);
     const f=await capture('05-'+sample.theme+'-'+sample.font);if(!baseline)for(const owner of ['main','side']){assert.ok(f[owner].overflow<=1,owner+' surface stays within its column');for(const b of f[owner].buttons)assert.ok(b.left>=-1&&b.right<=1,owner+' '+b.label+' stays reachable');}

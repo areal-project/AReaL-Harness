@@ -1,3 +1,4 @@
+import { composerDraftStorage } from "./composerDraftStorage.js";
 import { imageAnnotationText, sentImageAnnotations, serializeImageAnnotations, snapshotImageAnnotations, type SentImageAnnotation } from "./imageAnnotations.js";
 import { useRef, useState, useEffect } from "react";
 import type { RefObject } from "react";
@@ -52,7 +53,7 @@ export function useComposerQueueEdit({
   const storageKey = `${draftKey}:queue-edit`;
   const backupKey = `${storageKey}:original`;
   const [edit, setEdit] = useState<QueueEdit | null>(() =>
-    JSON.parse(localStorage.getItem(storageKey) ?? "null"),
+    JSON.parse(composerDraftStorage.getItem(storageKey) ?? "null"),
   );
   const [localBusy, setLocalBusy] = useState(false);
   const busy = localBusy || inFlight;
@@ -71,7 +72,7 @@ export function useComposerQueueEdit({
   useEffect(() => {
     const refresh = (event: Event) => {
       if ((event as CustomEvent<string>).detail === draftKey)
-        setEdit(JSON.parse(localStorage.getItem(storageKey) ?? "null"));
+        setEdit(JSON.parse(composerDraftStorage.getItem(storageKey) ?? "null"));
     };
     window.addEventListener("areal-draft-change", refresh);
     return () => window.removeEventListener("areal-draft-change", refresh);
@@ -90,30 +91,30 @@ export function useComposerQueueEdit({
       ? "队列或消息已有更新，编辑内容已保留。请取消编辑后核对当前队列；不会覆盖新版本或自动继续。"
       : error;
   const saveRecord = (value: QueueEdit | null) => {
-    if (value) localStorage.setItem(storageKey, JSON.stringify(value));
-    else localStorage.removeItem(storageKey);
+    if (value) composerDraftStorage.setItem(storageKey, JSON.stringify(value));
+    else composerDraftStorage.removeItem(storageKey);
     if (owner.current) setEdit(value);
     window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: draftKey }));
   };
   const sync = () => {
     window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: draftKey }));
     if (owner.current) {
-      const text = localStorage.getItem(draftKey) ?? "";
+      const text = composerDraftStorage.getItem(draftKey) ?? "";
       api.current?.setText(text);
       setText(text);
       setFiles(draftFiles.get(draftKey) ?? []);
-      setGoalMode(localStorage.getItem(`${draftKey}:goal`) === "true");
+      setGoalMode(composerDraftStorage.getItem(`${draftKey}:goal`) === "true");
       api.current?.focus();
     }
   };
   const restoreLocal = (record: QueueEdit, message = "") => {
-    localStorage.setItem(draftKey, record.original.text);
+    composerDraftStorage.setItem(draftKey, record.original.text);
     for (const [suffix, value] of [
       ["skills", record.original.skills],
       ["goal", record.original.goal],
     ] as const) {
-      if (value !== null) localStorage.setItem(`${draftKey}:${suffix}`, value);
-      else localStorage.removeItem(`${draftKey}:${suffix}`);
+      if (value !== null) composerDraftStorage.setItem(`${draftKey}:${suffix}`, value);
+      else composerDraftStorage.removeItem(`${draftKey}:${suffix}`);
     }
     draftFiles.set(draftKey, draftFiles.get(backupKey) ?? []);
     draftFiles.delete(backupKey);
@@ -125,9 +126,9 @@ export function useComposerQueueEdit({
     if (!confirmed.paused) throw new Error("队列未确认暂停，原草稿已保留");
     const parsed = sentImageAnnotations(input.filter(part => part.type === "text").map(part => part.text).join("\n"), record.attachments);
     saveRecord({ ...record, imageNotes: parsed.notes, revision: confirmed.revision, phase: "editing", unknown: undefined });
-    localStorage.setItem(draftKey, parsed.text);
-    localStorage.removeItem(`${draftKey}:skills`);
-    localStorage.removeItem(`${draftKey}:goal`);
+    composerDraftStorage.setItem(draftKey, parsed.text);
+    composerDraftStorage.removeItem(`${draftKey}:skills`);
+    composerDraftStorage.removeItem(`${draftKey}:goal`);
     draftFiles.set(draftKey, []);
     sync();
   };
@@ -170,9 +171,9 @@ export function useComposerQueueEdit({
       phase: "opening",
       attachments: target.input.filter((part: Data) => part.type !== "text"),
       original: {
-        text: api.current?.getMarkdown() ?? localStorage.getItem(draftKey) ?? "",
-        skills: localStorage.getItem(`${draftKey}:skills`),
-        goal: localStorage.getItem(`${draftKey}:goal`),
+        text: api.current?.getMarkdown() ?? composerDraftStorage.getItem(draftKey) ?? "",
+        skills: composerDraftStorage.getItem(`${draftKey}:skills`),
+        goal: composerDraftStorage.getItem(`${draftKey}:goal`),
       },
     };
     saveRecord(record);
@@ -233,7 +234,7 @@ export function useComposerQueueEdit({
     const record = { ...edit, phase: "saving" as const };
     saveRecord(record);
     try {
-      const input = composerInput(localStorage.getItem(draftKey) ?? "", draftFiles.get(draftKey) ?? []);
+      const input = composerInput(composerDraftStorage.getItem(draftKey) ?? "", draftFiles.get(draftKey) ?? []);
       const imageSnapshot = snapshotImageAnnotations(input.files);
       const additions = await uploadFiles(input.files);
       const updated = await mutation(record, "update", {

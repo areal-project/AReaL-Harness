@@ -20,14 +20,16 @@ import type { Action, PlatformServices, FileOpenTargets } from "./services.js";
 import { useCodePreferences } from "./settings/preferences.js";
 type Document = { text: string; original: string; revision: string; editing: boolean; markdownState?: EditorState; saveError?: string; saving?: Promise<void> };
 const documents = new Map<string, Document>();
-export function confirmCloseFiles(projectId: string, paths: string[]) {
+export const workspaceDocumentOwner = (projectId: string, root: string) => JSON.stringify([projectId, root]);
+export function confirmCloseFiles(projectId: string, paths: string[], root: string) {
+  const owner = workspaceDocumentOwner(projectId, root);
   const dirty = paths.filter((path) => {
-    const doc = documents.get(`${projectId}:${path}`);
+    const doc = documents.get(`${owner}:${path}`);
     return doc && doc.text !== doc.original;
   });
   if (dirty.length && !window.confirm(`放弃以下文件的未保存修改？\n${dirty.join("\n")}`))
     return false;
-  for (const path of paths) documents.delete(`${projectId}:${path}`);
+  for (const path of paths) documents.delete(`${owner}:${path}`);
   return true;
 }
 export function WorkspaceFilePane({
@@ -55,7 +57,7 @@ export function WorkspaceFilePane({
   onToggleFiles: () => void;
   tree?: ReactNode;
 }) {
-  const key = `${projectId}:${path}`;
+  const key = `${workspaceDocumentOwner(projectId, root)}:${path}`;
   const [doc, setDoc] = useState<Document | undefined>(documents.get(key));
   const [message, setMessage] = useState(doc?.saveError ?? "");
   const [busy, setBusy] = useState(!!doc?.saving);
@@ -221,7 +223,7 @@ export function WorkspaceFilePane({
         </nav>
         <div className="file-preview-actions flex shrink-0 items-center gap-1.5">
           {isMarkdown && !doc?.editing && <Button size="sm" variant="ghost" className="file-preview-control" disabled={!doc} onClick={() => setMarkdown(value => !value)}>{markdown ? "查看源代码" : "渲染预览"}</Button>}
-          <Button size="icon-md" variant="ghost" className="file-preview-control file-preview-icon" aria-label="切换文件树" aria-pressed={filesOpen} onClick={onToggleFiles}><FileTree className="size-4" /></Button>
+          <Button size="icon" variant="ghost" className="file-preview-control file-preview-icon" aria-label="切换文件树" aria-pressed={filesOpen} onClick={onToggleFiles}><FileTree className="size-4" /></Button>
           {doc && (doc.editing || doc.text !== doc.original) && (
             <Button
               size="sm"
@@ -237,7 +239,7 @@ export function WorkspaceFilePane({
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <Button size="icon-md" variant="ghost" className="file-preview-control file-preview-open-options" aria-label="文件更多">
+                <Button size="icon" variant="ghost" className="file-preview-control file-preview-open-options" aria-label="文件更多">
                   <ChevronDown className="size-3" />
                 </Button>
               }
@@ -328,7 +330,7 @@ export function WorkspaceFilePane({
                     if (current) update({ ...current, text, markdownState });
                   }}
                   onBlur={() => { void save(true); }} />
-                <Button size="icon-md" variant="ghost" className="workspace-markdown-copy" aria-label="复制 Markdown" onClick={() => { void navigator.clipboard.writeText(doc.text).then(() => setMessage("")).catch(error => setMessage(error.message)); }}><Copy className="size-4" /></Button>
+                <Button size="icon" variant="ghost" className="workspace-markdown-copy" aria-label="复制 Markdown" onClick={() => { void navigator.clipboard.writeText(doc.text).then(() => setMessage("")).catch(error => setMessage(error.message)); }}><Copy className="size-4" /></Button>
               </div>
             ) : (
               <CodeViewer

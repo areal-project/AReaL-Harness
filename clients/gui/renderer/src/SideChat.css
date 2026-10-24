@@ -21,3 +21,25 @@
 .side-chat-feedback textarea { width:100%; min-height:90px; padding:var(--spacing-inline); background:var(--color-surface); border:var(--border-width-default) solid var(--color-border); border-radius:var(--radius-inset); }
 .side-chat-feedback:empty { display:none; }
 .side-bring-action { font-size:var(--text-ui-xs); color:var(--color-foreground-subtle); }
+
+.conversation-selection-references { display:flex; min-width:0; padding:4px 10px; }
+.conversation-selection-pill { display:inline-flex; align-items:center; min-width:0; max-width:100%; height:32px; border-radius:var(--radius-pill); background:var(--color-surface); transition:background-color 150ms; }
+.conversation-selection-pill:hover { background:var(--color-surface-hover); }
+.conversation-selection-reference-trigger { justify-content:flex-start; gap:6px; height:32px; min-width:0; padding:6px 12px; border:0; border-radius:var(--radius-pill); background:transparent; font-size:var(--text-ui-base); font-weight:500; color:var(--color-foreground); }
+.conversation-selection-reference-trigger:hover, .conversation-selection-reference-trigger[aria-expanded="true"] { background:transparent; }
+.conversation-selection-reference-trigger > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.conversation-selection-reference-trigger > svg { color:var(--color-foreground-subtle); }
+.conversation-selection-pill[data-removable] .conversation-selection-reference-trigger { padding-right:6px; }
+.conversation-selection-remove-all { width:20px; height:20px; margin-right:6px; border-radius:var(--radius-pill); color:var(--color-foreground-subtle); opacity:0; transition:opacity 150ms; }
+.conversation-selection-pill:hover .conversation-selection-remove-all, .conversation-selection-pill:focus-within .conversation-selection-remove-all { opacity:1; }
+.conversation-selection-details { width:320px; gap:0; padding:4px; border:var(--border-width-default) solid var(--color-border); border-radius:var(--radius-panel); background:var(--color-tooltip); color:var(--color-tooltip-foreground); box-shadow:var(--shadow-overlay); }
+.conversation-selection-detail-list { max-height:256px; overflow-y:auto; }
+.conversation-selection-reference { display:flex; align-items:flex-start; gap:8px; min-width:0; padding:6px 8px; border-radius:var(--radius-inset); font-size:var(--text-ui-base); }
+.conversation-selection-reference:hover { background:var(--color-menu-hover); }
+.conversation-selection-row-icon { flex-shrink:0; margin-top:2px; color:var(--color-foreground-subtle); }
+.conversation-selection-reference-body { flex:1; min-width:0; }
+.conversation-selection-reference-text { white-space:pre-wrap; overflow-wrap:anywhere; }
+.conversation-selection-reference-source { margin-top:2px; overflow-wrap:anywhere; font-size:var(--text-ui-sm); color:var(--color-foreground-subtlest); }
+.conversation-selection-remove { width:20px; height:20px; flex-shrink:0; color:var(--color-foreground-subtle); opacity:0; }
+.conversation-selection-reference:hover .conversation-selection-remove, .conversation-selection-reference:focus-within .conversation-selection-remove { opacity:1; }
+.side-chat-resource { display:flex; flex:1; min-height:0; flex-direction:column; }

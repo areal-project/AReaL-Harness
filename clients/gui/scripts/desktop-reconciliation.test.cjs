@@ -31,8 +31,10 @@ const receipt = item => ({ requestId: item.params.requestId, method: item.method
 test('accepted manual run survives a failed Task refresh without a second submission', async t => {
   const item = entry('areal/task/runNow', { taskId: 'manual', expectedRevision: 1 });
   const accepted = { taskId: 'manual', runId: 'original-run', accepted: true, revision: 2 };
+  let reads = 0;
   const f = await fixture(t, [], async method => {
     assert.equal(method, 'areal/task/read');
+    if (reads++ === 0) return { id: 'manual', mode: 'manual' };
     throw new Error('Task view temporarily unavailable');
   });
   f.project.client.capabilities.methods = ['areal/task/runNow'];
@@ -46,6 +48,7 @@ test('accepted manual run survives a failed Task refresh without a second submis
   const result = await manageTask(f.backend, f.project, { operation: 'taskRunNow', ...item.params });
   assert.deepEqual(result, accepted);
   assert.equal(submissions, 1);
+  assert.ok(reads >= 2, 'preflight read succeeds; only the post-admission refresh fails');
   assert.ok(f.project.refreshErrors[item.params.requestId]);
   assert.equal(f.project.refreshErrors[item.params.requestId].operation.target.taskId, 'manual');
 });
@@ -53,6 +56,7 @@ test('accepted manual run survives a failed Task refresh without a second submis
 test('manual-run receipt reconciles its original request and refreshes a Task rather than its admission reply', async t => {
   const item = entry('areal/task/runNow', { taskId: 'manual', expectedRevision: 1 });
   const accepted = { taskId: 'manual', runId: 'original-run', accepted: true, revision: 2 };
+  let reads = 0;
   const task = { id: 'manual', revision: 2, runs: [{ id: 'original-run', status: 'running' }] };
   const installed = [];
   const f = await fixture(t, [item], async method => {

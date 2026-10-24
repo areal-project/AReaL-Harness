@@ -44,6 +44,139 @@ fn open(t: &tempfile::TempDir) -> Store {
     Store::open(t.path().join("state"), t.path().to_owned(), None).unwrap()
 }
 #[test]
+fn component_choices_are_project_local_and_survive_package_updates() {
+    use areal_plugins::PluginComponentId;
+    let t = fixture();
+    let store = open(&t);
+    let installed = install(&store, "sample@local", "user", 0).unwrap();
+    let selected = installed.installed_skills[0].clone();
+    let component = PluginComponentId::Skill {
+        id: selected.id.clone(),
+    };
+    assert!(
+        store
+            .configure_component(
+                &installed.id,
+                &component,
+                false,
+                installed.revision,
+                "stale"
+            )
+            .is_err()
+    );
+    assert_eq!(
+        store.read(&installed.id).unwrap().revision,
+        installed.revision
+    );
+    let disabled = store
+        .configure_component(
+            &installed.id,
+            &component,
+            false,
+            installed.revision,
+            installed.installed_digest.as_ref().unwrap(),
+        )
+        .unwrap();
+    assert!(
+        disabled
+            .component_choices
+            .disabled_skills
+            .contains(&selected.id)
+    );
+    assert!(
+        !open(&t)
+            .is_skill_enabled(&selected.id, &selected.revision)
+            .unwrap()
+    );
+    assert_eq!(store.enabled_skills().unwrap().len(), 1);
+    assert!(
+        !store
+            .installed_snapshot()
+            .unwrap()
+            .eligible_skill_refs
+            .contains(&(selected.id.clone(), selected.revision.clone()))
+    );
+    assert!(
+        store
+            .configure_component(
+                &installed.id,
+                &component,
+                true,
+                installed.revision,
+                installed.installed_digest.as_ref().unwrap()
+            )
+            .is_err()
+    );
+    let other = tempfile::tempdir().unwrap();
+    let other_store = Store::open(t.path().join("state"), other.path().into(), None).unwrap();
+    assert!(
+        other_store
+            .is_skill_enabled(&selected.id, &selected.revision)
+            .unwrap()
+    );
+    write(t.path(), "pkg/shared/data.txt", "updated bytes");
+    let updated = install(&store, &installed.id, "user", disabled.revision).unwrap();
+    let current = updated
+        .installed_skills
+        .iter()
+        .find(|skill| skill.id == selected.id)
+        .unwrap();
+    assert_ne!(current.revision, selected.revision);
+    assert!(
+        !store
+            .is_skill_enabled(&current.id, &current.revision)
+            .unwrap()
+    );
+    assert!(
+        !store
+            .is_skill_enabled(&selected.id, &selected.revision)
+            .unwrap()
+    );
+    assert!(
+        store
+            .configure_component(
+                &installed.id,
+                &component,
+                true,
+                updated.revision,
+                installed.installed_digest.as_ref().unwrap()
+            )
+            .is_err()
+    );
+    let enabled = store
+        .configure_component(
+            &installed.id,
+            &component,
+            true,
+            updated.revision,
+            updated.installed_digest.as_ref().unwrap(),
+        )
+        .unwrap();
+    assert!(
+        store
+            .is_skill_enabled(&selected.id, &selected.revision)
+            .unwrap()
+    );
+    let disabled = store
+        .configure_component(
+            &installed.id,
+            &component,
+            false,
+            enabled.revision,
+            updated.installed_digest.as_ref().unwrap(),
+        )
+        .unwrap();
+    store.uninstall(&installed.id, disabled.revision).unwrap();
+    let revision = store.list().unwrap().revision;
+    let reinstalled = install(&store, &installed.id, "user", revision).unwrap();
+    assert!(reinstalled.component_choices.disabled_skills.is_empty());
+    assert!(
+        store
+            .is_skill_enabled(&selected.id, &selected.revision)
+            .unwrap()
+    );
+}
+#[test]
 fn portable_snapshot_restart_and_cas() {
     let t = fixture();
     let a = open(&t);

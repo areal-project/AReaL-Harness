@@ -1,0 +1,11 @@
+AReaL Computer Helper
+
+The fourteen command names, parameter vocabulary, dense AX element result table,
+frame receipt, and dispatch-status conventions derive from the ZCode Computer
+Use SDK at revision 3c5b227649371507ddc4eb46ac5133afe6db1cab:
+apps/zcode-cli/packages/zcode-cua-plugin/scripts/computer-use-client.mjs
+apps/zcode-cli/packages/zcode-cua-plugin/docs/computer-use.md
+
+The native implementation is new AReaL source. The examined ZCode native producer
+is unavailable, so this does not claim binary or private broker compatibility.
+No unused SDK runtime or ZCode native placeholder is distributed here.

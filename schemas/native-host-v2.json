@@ -136,6 +136,7 @@
             },
             "type": "array"
           },
+          "rawMcpResult": true,
           "structuredContent": true,
           "success": {
             "type": "boolean"
@@ -1015,6 +1016,7 @@
         },
         "type": "array"
       },
+      "rawMcpResult": true,
       "structuredContent": true,
       "success": {
         "type": "boolean"

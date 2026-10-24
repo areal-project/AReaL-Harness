@@ -10,9 +10,9 @@ Start with the [quickstart](guides/quickstart.en.md). [Capabilities and limitati
 
 | Category | Documents |
 |---|---|
-| Guides | [Quickstart](guides/quickstart.en.md) · [CLI, TUI and Web](guides/clients.en.md) · [Configuration](guides/configuration.en.md) · [Runtime deployment](guides/runtime.en.md) |
+| Guides | [Quickstart](guides/quickstart.en.md) · [CLI, TUI and Web](guides/clients.en.md) · [Configuration](guides/configuration.en.md) · [Runtime deployment](guides/runtime.en.md) · [Desktop worktrees](guides/worktrees.en.md) |
 | Extensions and collaboration | [Tools and hooks](guides/tools.en.md) · [MCP](guides/mcp.en.md) · [Skills](guides/skills.en.md) · [Workgroups](guides/workgroups.en.md) |
-| API contracts | [Core](api/core.en.md) · [Desktop](api/desktop.en.md) · [Task Mode and channels](api/tasks.en.md) · [Runtime](api/runtime.en.md) · [TypeScript SDKs](api/typescript-sdk.en.md) · [Native Host](api/native-host.en.md) · [Claude CLI](api/claude-cli.en.md) · [Local services](api/local-service.en.md) |
+| API contracts | [Core](api/core.en.md) · [Desktop](api/desktop.en.md) · [Task Mode and channels](api/tasks.en.md) · [Browser](api/browser.en.md) · [Computer control](api/computer.en.md) · [Runtime](api/runtime.en.md) · [TypeScript SDKs](api/typescript-sdk.en.md) · [Native Host](api/native-host.en.md) · [Claude CLI](api/claude-cli.en.md) · [Local services](api/local-service.en.md) |
 | Architecture | [Layers and repository](design/architecture.en.md) · [Context management](design/context-management.en.md) · [Agent delegation](design/multi-agent.en.md) · [Workgroups](design/workgroups.en.md) · [Plugins](design/plugins.en.md) · [TUI](design/tui.en.md) · [Diagram style](design/STYLE_GUIDE.en.md) |
 | Runnable examples | [Desktop API and packaging](examples/desktop-api.en.md) · [DSH editor](examples/dsh-editor-plugin.en.md) |
 | Development | [Development guide](development/README.en.md) · [Agent improvement goals and method](development/agent-improvement.en.md) · [Testing](development/testing.en.md) · [Cordis upgrades](development/cordis.en.md) |

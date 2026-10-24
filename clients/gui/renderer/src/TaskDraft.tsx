@@ -89,12 +89,15 @@ export function TaskDraft({ projects, initialProjectId, task, action, disabled, 
   const currentView = useRef(view); currentView.current = view;
   const [error, setError] = useState("");
   const [readError, setReadError] = useState("");
+  const [restoredConnection, setRestoredConnection] = useState<string>();
   const [opening, setOpening] = useState(false), [saving, setSaving] = useState(false);
   const [startRequested, setStartRequested] = useState(true);
   const [retry, setRetry] = useState(0);
   const callbacks = useRef({ onCreated }); callbacks.current = { onCreated };
   const notified = useRef("");
   const project = projects.find(p => p.id === saved.ownerId);
+  const connectionKey = project?.state?.connected && saved.threadId
+    ? `${project.id}:${saved.threadId}:${project.core?.connectionGeneration ?? 0}` : undefined;
   const persist = (patch: Partial<SavedDraft>) => {
     const next = mergeDraft(storageKey, current.current, patch);
     current.current = next; setSaved(next);
@@ -168,11 +171,16 @@ export function TaskDraft({ projects, initialProjectId, task, action, disabled, 
   }, [action, disabled, saved.threadId, saved.pending, startRequested, retry]);
   useEffect(() => {
     if (!saved.threadId || !project?.state?.connected) return;
-    let live = true, reading = false;
+    let live = true, reading = false, restored = false;
     const read = async () => {
       if (reading) return;
       reading = true;
       try {
+        if (!restored) {
+          await action("open", { projectId: project.id, threadId: saved.threadId });
+          if (!live) return;
+          restored = true; setRestoredConnection(connectionKey);
+        }
         let result = await action("manage", { projectId: project.id, operation: "taskDraftRead", threadId: saved.threadId });
         if (!live) return;
         setReadError(""); showView(result, project.id);
@@ -208,7 +216,7 @@ export function TaskDraft({ projects, initialProjectId, task, action, disabled, 
     };
     void read(); const timer = window.setInterval(() => void read(), 1000);
     return () => { live = false; clearInterval(timer); };
-  }, [action, saved.threadId, project?.id, project?.state?.connected, disabled, retry]);
+  }, [action, saved.threadId, project?.id, project?.state?.connected, connectionKey, disabled, retry]);
   const thread = view?.thread;
   const preparingInput = !task && !thread && saved.text !== undefined;
   const credentialUnavailable = !saved.threadId && !saved.pending && /^(?:MODEL_)?CREDENTIAL_UNAVAILABLE(?::|$)/.test(error);
@@ -223,7 +231,7 @@ export function TaskDraft({ projects, initialProjectId, task, action, disabled, 
     } else { persist({ text }); inputApi.current?.setText(text); inputApi.current?.focus(); }
   }}><h3>{title}</h3><p>{text}</p></button>)}</div></div>;
   // Keep all message/history/attachment rendering in the existing components.
-  const owner = project && { ...project, state: { ...project.state, connected: project.state?.connected && !disabled && !saving && !task?.cancelled && !readError && !current.current.pending } };
+  const owner = project && { ...project, state: { ...project.state, connected: project.state?.connected && restoredConnection === connectionKey && !disabled && !saving && !task?.cancelled && !readError && !current.current.pending } };
   return <main className="task-conversation" aria-label={task ? "定时任务会话" : "新建定时任务"}>
     <header><h2>{task?.objective ?? "新建任务"}</h2>{task && project && thread && renderResources?.(project, thread)}
       <Button size="icon-sm" variant="ghost" aria-label={task ? "关闭任务详情" : "关闭创建对话"} onClick={onClose}><X size={16}/></Button></header>

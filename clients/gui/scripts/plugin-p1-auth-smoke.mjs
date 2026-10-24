@@ -7,6 +7,7 @@
 // - explicit enable + trust/connect fails to send the declared bearer to the local server.
 // No Main/Core/auth mocking, real credentials, external vendor calls or native launch in syntax checks.
 import assert from 'node:assert/strict';
+import { assertApplicationStopped } from './application-cleanup.mjs';
 import { createRequire } from 'node:module';
 import { mkdtemp, mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve, relative } from 'node:path';
@@ -23,6 +24,7 @@ const { _electron: electron } = require('playwright-core');
 const scratch = await mkdtemp('/private/tmp/areal-plugin-auth-gui-');
 const workspace = join(scratch, 'workspace'), userHome = join(scratch, 'user');
 const pluginId = 'auth-fixture@gui-auth';
+const privacyUrl = 'https://example.com/plugin-auth-fixture/privacy';
 let serverId;
 // Only memory and the transient password input see this value before real Main encryption.
 const sentinel = 'AREAL_AUTH_FIXTURE_' + randomUUID();
@@ -69,10 +71,11 @@ await new Promise(r => fixture.listen(0, '127.0.0.1', r));
 fixture.unref();
 const endpoint = 'http://127.0.0.1:' + fixture.address().port;
 const source = join(workspace, 'packages', 'auth-fixture');
-await mkdir(source, { recursive: true });
-await writeFile(join(source, 'plugin.json'), JSON.stringify({ $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json', name: 'auth-fixture', version: '1.0.0', description: 'Local API-key acceptance fixture', extensions: { 'com.openai': { interface: { displayName: 'API-key acceptance' } } } }));
+await mkdir(join(source, 'skills', 'review'), { recursive: true });
+await writeFile(join(source, 'skills', 'review', 'SKILL.md'), '---\nname: review\ndescription: Review a local fixture.\n---\nMIXED_PLUGIN_SKILL_BODY\n');
+await writeFile(join(source, 'plugin.json'), JSON.stringify({ $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json', name: 'auth-fixture', version: '1.0.0', description: 'Local API-key acceptance fixture', extensions: { 'com.openai': { interface: { displayName: 'API-key acceptance', privacyPolicyUrl: privacyUrl, termsOfServiceUrl: 'https://example.com/plugin-auth-fixture/terms' } } } }));
 await writeFile(join(source, 'mcp.json'), JSON.stringify({ $schema: 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json', mcpServers: { fixture: { type: 'streamable-http', url: endpoint + '/mcp', extensions: { 'com.openai': { auth: { type: 'api_key', headerScheme: 'bearer' } } } } } }));
-await writeFile(join(workspace, '.agents', 'plugins', 'marketplace.json'), JSON.stringify({ name: 'gui-auth', plugins: [{ name: 'auth-fixture', source: { source: 'local', path: './packages/auth-fixture' }, policy: { installation: 'AVAILABLE', authentication: 'ON_USE' }, category: 'Productivity' }] }));
+await writeFile(join(workspace, '.agents', 'plugins', 'marketplace.json'), JSON.stringify({ name: 'gui-auth', plugins: [{ name: 'auth-fixture', source: { source: 'local', path: './packages/auth-fixture' }, policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' }, category: 'Productivity' }] }));
 await writeFile(join(userHome, '.areal', 'config.toml'), 'schema_version=1\n[model]\nname="fixture"\n[model.providers.default]\nprotocol="chat-completions"\nendpoint="' + endpoint + '/model"\n');
 const env = { ...process.env, AREAL_GUI_USER_DATA: join(scratch, 'electron'), AREAL_CORE_HOME: join(scratch, 'core'), AREAL_CORE_USER_HOME: userHome, AREAL_HARNESS_SERVICE_HOME: join(scratch, 'registry'), AREAL_CORE_BIN: process.env.AREAL_CORE_BIN ?? resolve(gui, '../../target/debug/areal') };
 for (const key of Object.keys(env)) {
@@ -140,17 +143,30 @@ try {
   await app.evaluate(({ dialog, BrowserWindow }, path) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] }); dialog.showMessageBox = async () => ({ response: 1 }); BrowserWindow.getAllWindows()[0].setSize(1440, 960); }, workspace);
   await page.evaluate(() => window.arealDesktop.chooseProject());
   await createProjectConversation(page, 'workspace');
-  const ready = await poll(state, s => s.projects.find(p=>p.root===workspace)?.state?.connected, 'project connected'); projectId = ready.projects.find(p=>p.root===workspace).id;
+  const ready = await poll(state, s => s.projects.find(p=>p.root===workspace)?.state?.connected, 'project connected');
+  const project = ready.projects.find(p=>p.root===workspace); projectId = project.id;
+  const selectedProfile = project.profiles.find(profile => profile.id === project.defaultProfile?.id && profile.revision === project.defaultProfile?.revision);
+  assert(selectedProfile, 'the current project has its configured default Profile');
+  const agentProfile = { id: selectedProfile.id, revision: selectedProfile.revision };
   if (await button('返回应用').isVisible()) await button('返回应用').click();
   await page.getByTestId('chat-input').waitFor();
   await page.getByRole('navigation', { name: '应用导航', exact: true }).getByRole('button', { name: '插件', exact: true }).click();
   await page.getByRole('tablist', { name: '市场范围', exact: true }).getByRole('tab', { name: '个人', exact: true }).click();
   await button('查看插件 ' + pluginId).click();
-  await button('核对来源并安装').click();
+  const detailUrl = page.url(), windowCount = (await app.windows()).length;
+  await button('复制隐私政策链接').click();
+  await page.getByText('已复制隐私政策链接。', { exact: true }).waitFor();
+  assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), privacyUrl, 'legal link copy writes the declared URL to the actual desktop clipboard');
+  assert.equal(page.url(), detailUrl); assert.equal((await app.windows()).length, windowCount);
+  checks.push('plugin legal URL copies through desktop clipboard without navigation or new windows');
+  await button('安装').click();
   await page.getByRole('checkbox', { name: '我已核对以上来源、版本和内容摘要', exact: true }).waitFor();
   assert.equal(await button('安装到用户').isEnabled(), false);
   await page.getByText('我已核对以上来源、版本和内容摘要', { exact: true }).click();
-  await button('安装到用户').click(); await page.getByRole('heading', { name: '需要认证', exact: true }).waitFor();
+  await button('安装到用户').click();
+  await button('管理').click();
+  await button('查看插件详情').waitFor();
+  await page.getByRole('heading', { name: '需要认证', exact: true }).waitFor();
   const detail = await call('plugin', { id: pluginId });
   // The management read returns the plugin itself, unlike list responses' data array.
   const digest = detail.installedDigest; assert.equal(typeof digest, 'string'); assert(digest.length > 0);
@@ -161,6 +177,31 @@ try {
   assert(row.servers[0].config?.authenticationRequirements?.apiKey);
   assert.equal(wire.length, 0); assert.equal(modelRequests, 0);
   checks.push('GUI preview and digest confirmation install portable API-key package without transport or inference');
+
+  const reviewSkill = detail.installedSkills.find(skill => skill.name === 'review');
+  assert(reviewSkill, 'the mixed package exposes its installed Skill identity');
+  const skillReference = { id: reviewSkill.id, revision: reviewSkill.revision };
+  const skillCatalog = () => call('skills', { agentProfile });
+  const skillRead = () => call('skill', { agentProfile, skill: skillReference, resource: 'SKILL.md', offset: 0, maxBytes: 8192 });
+  assert.equal(row.servers[0].state, 'authRequired');
+  assert((await skillCatalog()).data.some(skill => skill.available && skill.id === reviewSkill.id && skill.revision === reviewSkill.revision), 'a permitted mixed-package Skill remains available while MCP requires authentication');
+  assert.match(Buffer.from((await skillRead()).dataBase64, 'base64').toString('utf8'), /MIXED_PLUGIN_SKILL_BODY/);
+  const skillSwitch = () => page.getByRole('switch', { name: '在当前项目启用 Skill review', exact: true });
+  await skillSwitch().click();
+  await poll(() => call('plugin', { id: pluginId }), value => value.componentChoices.disabledSkills.includes(reviewSkill.id), 'mixed package Skill choice reaches Core');
+  await poll(() => skillSwitch().isEnabled(), value => value, 'Skill disable operation settled in the GUI');
+  assert(!(await skillCatalog()).data.some(skill => skill.id === reviewSkill.id), 'the current project Skill choice removes actual Core discovery');
+  const disabledRead = await raw('skill', { agentProfile, skill: skillReference, resource: 'SKILL.md', offset: 0, maxBytes: 8192 });
+  assert.equal(disabledRead.ok, false, 'the disabled mixed-package Skill denies its retained reference');
+  await skillSwitch().click();
+  await poll(() => call('plugin', { id: pluginId }), value => !value.componentChoices.disabledSkills.includes(reviewSkill.id), 'mixed package Skill choice restored in Core');
+  await poll(() => skillSwitch().isEnabled(), value => value, 'Skill enable operation settled in the GUI');
+  assert((await skillCatalog()).data.some(skill => skill.available && skill.id === reviewSkill.id && skill.revision === reviewSkill.revision));
+  assert.match(Buffer.from((await skillRead()).dataBase64, 'base64').toString('utf8'), /MIXED_PLUGIN_SKILL_BODY/);
+  const pendingMcp = (await call('pluginMcp')).data.find(plugin => plugin.pluginId === pluginId);
+  assert.equal(pendingMcp.servers[0].state, 'authRequired', 'Skill changes do not authenticate or connect MCP');
+  assert.equal(wire.length, 0); assert.equal(modelRequests, 0);
+  checks.push('mixed package Skill reads and project switches reach Core independently while MCP authentication remains pending');
 
   const before = await coreIdentity();
   await (await openAuth()).fill(sentinel); await button('保存认证配置').click();
@@ -228,11 +269,12 @@ try {
   if (page) await captureSmokeFailure(page, scratch, new Error(failure.message)).catch(e => errors.push('failure capture: ' + redacted(e.message)));
 } finally {
   if (app) {
+    const metadata = await readFile(join(scratch, 'core', 'service.json'), 'utf8').then(JSON.parse).catch(e => {
+      if (e.code !== 'ENOENT') errors.push('read cleanup identity: ' + redacted(e.message));
+      return null;
+    });
     await app.close().catch(e => errors.push('close GUI: ' + redacted(e.message)));
-    try {
-      const { ServiceConnection, waitForServiceExit } = require('../app/src/core/service-client.cjs'); const connection = new ServiceConnection();
-      try { const metadata = JSON.parse(await readFile(join(scratch, 'core', 'service.json'), 'utf8')); await connection.connect(metadata); await connection.request('stopService', { protocol: metadata.protocol }, true); await waitForServiceExit(join(scratch, 'core'), metadata); } finally { connection.close(); }
-    } catch (e) { errors.push('stop service: ' + redacted(e.message)); }
+    await assertApplicationStopped(coreBinary, env, metadata).catch(e => errors.push('verify application cleanup: ' + redacted(e.message)));
   }
   fixture.closeAllConnections(); await new Promise(r => fixture.close(r));
   let scannedFiles = 0;

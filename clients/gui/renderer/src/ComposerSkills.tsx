@@ -1,3 +1,4 @@
+import { composerDraftStorage } from "./composerDraftStorage.js";
 import { useEffect, useState } from "react";
 import { Box } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover.js";
@@ -14,7 +15,7 @@ export interface ComposerSkill {
 }
 const identity = (skill: ComposerSkill) => `${skill.id}/${skill.revision}`;
 export function readComposerSkills(key: string): ComposerSkill[] {
-    const value: unknown = JSON.parse(localStorage.getItem(`${key}:skills`) ?? "[]");
+    const value: unknown = JSON.parse(composerDraftStorage.getItem(`${key}:skills`) ?? "[]");
     if (
         !Array.isArray(value) ||
         value.some(
@@ -27,10 +28,10 @@ export function readComposerSkills(key: string): ComposerSkill[] {
         throw new Error("技能草稿无法读取，请移除后重新附加。");
     return value;
 }
-export const clearComposerSkills = (key: string) => localStorage.removeItem(`${key}:skills`);
+export const clearComposerSkills = (key: string) => composerDraftStorage.removeItem(`${key}:skills`);
 export function transferComposerSkills(from: string, to: string) {
-    const value = localStorage.getItem(`${from}:skills`);
-    if (value) localStorage.setItem(`${to}:skills`, value);
+    const value = composerDraftStorage.getItem(`${from}:skills`);
+    if (value) composerDraftStorage.setItem(`${to}:skills`, value);
 }
 export function useComposerSkills({
     project,
@@ -158,7 +159,7 @@ export function useComposerSkills({
         revision,
     ]);
     const update = (next: ComposerSkill[]) => {
-        localStorage.setItem(`${draftKey}:skills`, JSON.stringify(next));
+        composerDraftStorage.setItem(`${draftKey}:skills`, JSON.stringify(next));
         setSelected(next);
     };
     const entries: ComposerCatalogEntry[] = catalog.map((row) => {

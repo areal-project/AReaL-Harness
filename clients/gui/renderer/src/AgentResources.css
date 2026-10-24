@@ -11,26 +11,26 @@
 .agent-conversation-heading > span { margin-left: auto; color: var(--color-foreground-subtle); font-size: var(--text-ui-sm); }
 .agent-conversation-pane > .messages-shell { flex: 1; min-height: 0; }
 .agent-conversation-pane .message-column { width: 100%; padding: 16px; }
-.agent-pane-notice { padding: 8px 16px; font-size: 12px; color: var(--color-foreground-subtle); }
+.agent-pane-notice { padding: 8px 16px; font-size: var(--text-ui-sm); color: var(--color-foreground-subtle); }
 .agent-pane-notice button { margin-left: 8px; text-decoration: underline; }
 .task-resources-popup { width: 332px; padding: 0; gap: 0; background: linear-gradient(var(--color-menu), var(--color-menu)), var(--color-background); }
-.task-resources { padding: 8px 12px; font-size: 13px; }
+.task-resources { padding: 8px 12px; font-size: var(--text-ui-caption); }
 .task-resources-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 8px 10px; }
 .task-resources-header .icon-button { width: 18px; height: 18px; padding: 0; }
-.task-resources-header h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 400; color: var(--color-foreground-subtle); }
+.task-resources-header h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-base); font-weight: 400; color: var(--color-foreground-subtle); }
 .task-resources-section { padding: 11px 0; }
 .task-resources-section + .task-resources-section { border-top: 1px solid var(--color-border); }
-.task-resources-heading { display: flex; gap: 8px; align-items: center; color: var(--color-foreground-subtle); font-size: 12px; font-weight: 400; padding: 0 8px 7px; min-height: 25px; margin: 0; }
+.task-resources-heading { display: flex; gap: 8px; align-items: center; color: var(--color-foreground-subtle); font-size: var(--text-ui-sm); font-weight: 400; padding: 0 8px 7px; min-height: 25px; margin: 0; }
 .task-resources-heading > span:last-child { margin-left: auto; }
 .task-resource-row { width: 100%; border: 0; background: transparent; display: flex; align-items: center; gap: 11px; padding: 8px; text-align: left; border-radius: 6px; font: inherit; font-weight: 400; }
 .task-resource-row:hover, .task-resource-row[data-selected] { background: var(--color-hover); }
 .task-resource-row > svg { flex-shrink: 0; }
 .task-resource-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-resource-row small, .task-resource-note { color: var(--color-foreground-subtle); font-size: 11px; }
+.task-resource-row small, .task-resource-note { color: var(--color-foreground-subtle); font-size: var(--text-ui-xs); }
 .task-resource-row small.task-resource-status, .task-resources-heading > span:last-child { font-size: 10px; }
 .task-resource-identity { display: flex; gap: 6px; align-items: center; }
 .task-resource-agent-body { flex: 1; min-width: 0; }
-.task-resource-agent-body p { margin: 3px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground-subtle); font-size: 11px; }
+.task-resource-agent-body p { margin: 3px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground-subtle); font-size: var(--text-ui-xs); }
 .task-resources-agents { height: auto; }
 
 .task-resource-description { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -51,3 +51,18 @@
 .agent-conversation-title > span { color: var(--color-foreground-subtle); font-size: var(--text-ui-sm); }
 .agent-conversation-title strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .agent-conversation-heading > [role="status"] { flex-shrink: 0; }
+
+.scheduled-task-summary { display: grid; gap: 4px; margin: 4px 8px 8px; font-size: var(--text-ui-sm); line-height: 1.5; overflow-wrap: anywhere; }
+.scheduled-task-resource + .scheduled-task-resource { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--color-border); }
+.scheduled-task-actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 4px; }
+.scheduled-task-actions > p { flex-basis: 100%; font-size: var(--text-ui-sm); }
+.scheduled-task-message-card { display: grid; gap: 6px; margin: 12px 0; padding: 14px 16px; border: 1px solid var(--color-border); border-radius: var(--radius-control); font-size: var(--text-ui-caption); line-height: 1.5; }
+.scheduled-task-message-card h3 { font-size: var(--text-ui-base); font-weight: 500; overflow-wrap: anywhere; }
+.scheduled-task-message-card .scheduled-task-summary { margin: 0; }
+
+/* Production hosts compose the same package card and history reader as the catalog. */
+.task-resources-popup > .areal-task-context { border: 0; border-radius: inherit; max-height: min(75dvh, var(--available-height)); }
+.agent-history-reader { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.agent-history-reader > .areal-subagent-panel { flex: 1; min-height: 0; border: 0; }
+.agent-history-reader .areal-subagent-history:has(> .agent-conversation-pane) { padding: 0; overflow: hidden; }
+.agent-history-reader .areal-subagent-name { white-space: nowrap; }

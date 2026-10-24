@@ -161,6 +161,7 @@ impl DynamicToolHost for Writes {
     async fn call(&self, _: Value, _: CancellationToken) -> anyhow::Result<DynamicToolResponse> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(DynamicToolResponse {
+            raw_mcp_result: None,
             success: true,
             content_items: vec![],
             structured_content: Some(json!({"written":true})),

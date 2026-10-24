@@ -49,7 +49,7 @@ The table omits the `areal/` prefix. create/update/control/reply require interac
 
 | Method | Parameters | Response |
 |---|---|---|
-| task/create | `requestId, mode, objective, threadId?, interactionMode?, schedule?, scheduleV2?, tokenBudget?, maxTurns?, maxActiveSeconds?` | Task projection |
+| task/create | `requestId, mode, objective, threadId?, sourceThreadId?, interactionMode?, schedule?, scheduleV2?, tokenBudget?, maxTurns?, maxActiveSeconds?` | Task projection |
 | task/schedule/context | `timeZone` | `{coreNow,timeZone,localDate,localTime}` |
 | task/schedule/preview | `schedule: ScheduleIntent, from?, count: 1..10` | `{coreNow,from,schedule,timeZone,occurrences,warnings}` |
 | task/list | `after?, limit?` | `{data: Task[], nextCursor}` |
@@ -58,7 +58,7 @@ The table omits the `areal/` prefix. create/update/control/reply require interac
 | task/run/read | `taskId, runId` | One complete TaskRun |
 | task/update | `requestId, taskId, expectedRevision, objective?, schedule?, scheduleV2?` | Updated Task projection |
 | task/runNow | `requestId, taskId, expectedRevision` | `{taskId, runId, revision, accepted:true}` |
-| task/pause, task/resume, task/cancel | `requestId, taskId, expectedRevision` | Task projection after persisting control intent |
+| task/pause, task/resume, task/cancel, task/delete | `requestId, taskId, expectedRevision` | Task projection after persisting control intent |
 | task/stopRun, task/resumeRun | `requestId, taskId, expectedRevision, expectedRunId` | Current Run stop/resume intent without changing recurrence |
 | task/host/ready | `{}`; unrestricted manage + tools required | `{ready:true}`; register current desktop connection |
 | task/subscribe | `taskId` | Atomic snapshot and subsequent task/updated notifications |
@@ -67,9 +67,9 @@ The table omits the `areal/` prefix. create/update/control/reply require interac
 | channel/reply | `requestId, taskId, runId, questionId, answers` | `{accepted:true, messageId, taskId, runId, channelSequence}` |
 | inbox/list | `after?, limit?` | `{data:[{taskId, objective, message}], nextCursor}` |
 
-`task/pause` also accepts optional `expectedRunId`, advertised by `features.taskPauseRunGuard`. After receipt lookup, Core checks it against the latest Run together with `expectedRevision` under the same Task lock; a missing or changed Run conflicts. Supplying it to resume/cancel is invalid. An identical accepted duplicate returns its original receipt even after revision/Run changes or restart; changing the Run under the same request key conflicts. Omission preserves existing callers and receipt digests. For scheduled Tasks pause affects future triggers only; stopRun stops current work. Run and worker settlement determine when execution has stopped.
+`task/pause` also accepts optional `expectedRunId`, advertised by `features.taskPauseRunGuard`. After receipt lookup, Core checks it against the latest Run together with `expectedRevision` under the same Task lock; a missing or changed Run conflicts. Supplying it to resume, cancel, or delete is invalid. An identical accepted duplicate returns its original receipt even after revision/Run changes or restart; changing the Run under the same request key conflicts. Omission preserves existing callers and receipt digests. For scheduled Tasks pause affects future triggers only; stopRun stops current work. Run and worker settlement determine when execution has stopped.
 
-Task projections contain `id, revision, channelSequence, owner, mode, interactionMode, objective, threadId, schedule, nextRunAt, paused, cancelled, tokenBudget, maxTurns, maxActiveSeconds, runs, runCount, archivedRunCount, runsComplete, skippedRuns, lastSkippedAt, pendingQuestions`, without embedded messages. A Run contains `id, threadId, goalId, status, reason, objective?, trigger, scheduledAt, startedAt, completedAt, usage, waitRequested, workers`. Workers contain `threadId, turnId, status, settled`, with running/completed/cancelled/failed status.
+Task projections contain `id, revision, channelSequence, owner, mode, interactionMode, objective, threadId, sourceThreadId?, deletedAt?, schedule, nextRunAt, paused, cancelled, tokenBudget, maxTurns, maxActiveSeconds, runs, runCount, archivedRunCount, runsComplete, skippedRuns, lastSkippedAt, pendingQuestions`, without embedded messages. A Run contains `id, threadId, goalId, status, reason, objective?, trigger, scheduledAt, startedAt, completedAt, usage, waitRequested, workers`. Workers contain `threadId, turnId, status, settled`, with running/completed/cancelled/failed status.
 
 Run status is `queued/running/waitingForInput/waitingForAgents/paused/blocked/completed/failed/cancelled`; the last three are terminal. Task paused/cancelled fields express control intent; the Run can remain running during cleanup. Determine settlement from Run termination and worker.settled, not a control response or coordinator Turn completion.
 
@@ -78,6 +78,28 @@ Cancelling a Task removes future dispatches and terminates unfinished Runs. Runs
 ChannelMessage contains `id, sequence, runId, author, kind, status, createdAt, expiresAt, questions, required, inReplyTo, answers, text`. kind is question/reply/workerReport/report. Question status is pending/answered/expired/cancelled; other messages are published. questionId references the question message id. answers maps each question ID to one nonempty string of at most 4096 bytes, covering exactly all questions; closed-choice answers must match an offered option.
 
 A question must belong to the specified Task/Run, remain pending and not have expired. New replies are rejected for cancelled Tasks, completed/failed/budget-limited Goals or replaced Goals. Valid replies may be accepted during pause without resuming execution. Successful retries with the same requestId still return their receipt. Errors use Core codes: `-32602` invalid arguments, `-32009` state/revision conflict, `-32003` permission denied, `-32004` not found, `-32001` capacity exhausted; storage failures use the actual returned Core error.
+
+## Schedules in ordinary conversations
+
+Writable ordinary desktop root Threads expose `scheduled_task_list/create/update/control/receipt`. Core checks the source Thread's bound Host against the currently registered identity and connection ID. Side conversations, children, workers, Task execution anchors and Run Threads, read-only Threads, and Workflow Threads cannot use these tools. The immutable Turn tool allowlist still applies. Knowing a Task ID does not grant access to another source conversation's tasks.
+
+| Tool | Arguments | Result |
+|---|---|---|
+| scheduled_task_list | `taskId?` | `{tasks}` belonging to this source, including tombstones |
+| scheduled_task_create | `objective, scheduleV2: ScheduleIntent` | `{task, receipt:{requestId,method}}` |
+| scheduled_task_update | `taskId, expectedRevision, objective?, scheduleV2?` | The same write result; omitted fields stay unchanged |
+| scheduled_task_control | `taskId, expectedRevision, action, expectedRunId?` | action is pause, resume, runNow, delete, or stopRun |
+| scheduled_task_receipt | `requestId` | `{receipts,retention}` visible to the current Host identity and source |
+
+Core derives the requestId from durable Thread, Turn, and tool-call IDs. The model cannot choose it. Error results retain `error.reason`, `error.outcome.kind`, and `error.recovery`. Stale revisions return `REVISION_CONFLICT`, denied access returns `PERMISSION_DENIED`, and uncertain storage returns `UNKNOWN` with the original requestId. UNKNOWN permits receipt inspection, not another write with a new tool-call ID. An empty receipt does not prove rejection.
+
+Creation binds the source Thread and cwd, creates a separate execution anchor, and calls the existing task_create owner. Public `TaskCreate.sourceThreadId` also requires an existing ordinary source, the same cwd and registered Host connection, and a separate anchor. The objective contains the complete execution method, required references, and output requirements. Runs do not continuously read the source conversation. Each Run still gets an independent Thread and the current default model, while its workspace may be shared.
+
+Chat cards bind the Task identity and receipt from an actual successful tool result. On reload they read the current Task, keeping historical success separate from paused, deleted, or unavailable current state. The source list in Thread resources and the global center read the same Core Task. Direct pause, enable, run-now, and delete commands do not require a model. Historical task-draft management conversations remain readable and retain their existing management path.
+
+`task/delete` uses the existing cancellation settlement path and persists a `deletedAt` UTC Unix seconds tombstone. It sets `cancelled=true` and `nextRunAt=null`, rejecting later updates, enabling, and run-now. Success confirms durable deletion intent. A nonterminal Run or unsettled worker keeps the deletion pending and its history reachable. Tasks, Channels, Runs, and original receipts are retained. Tombstones still count toward the 1024-Task limit. `task/list` and `task/read` include tombstones; active catalogs may hide them only after all execution settles. Restore and physical purge are unsupported.
+
+`sourceThreadId` and `deletedAt` are optional. Old snapshots default to no source and no deletion. The v5 Task ledger stores these fields without a migration or inferred source relation. Older binaries that ignore the tombstone field still honor the existing cancelled state. Deleting or archiving the source Thread does not cancel its Tasks.
 
 ## Independent Inbox and subscriptions
 

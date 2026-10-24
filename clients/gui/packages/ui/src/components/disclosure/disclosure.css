@@ -1,0 +1,12 @@
+.areal-disclosure { min-width: 0; margin-block: var(--spacing-inline); }
+.areal-disclosure > .areal-disclosure-trigger { display: flex; justify-content: flex-start; width: 100%; min-width: 0; height: auto; min-height: var(--spacing-control-sm); padding: var(--spacing-inline) 0; text-align: left; white-space: normal; font-weight: normal; font-size: var(--text-content-caption); color: var(--color-foreground-subtle); }
+.areal-disclosure[data-text-role="interface"] > .areal-disclosure-trigger { font-size: var(--text-ui-sm); }
+.areal-disclosure-trigger > span { min-width: 0; overflow-wrap: anywhere; }
+.areal-disclosure-trigger:hover { color: var(--color-foreground); background: transparent; }
+.areal-disclosure-indicator { flex: none; transition: transform var(--motion-normal); }
+.areal-disclosure-trigger[aria-expanded="true"] > .areal-disclosure-indicator { transform: rotate(90deg); }
+.areal-disclosure-panel { min-width: 0; }
+@media (prefers-reduced-motion: reduce) { .areal-disclosure-indicator { transition: none; } }
+@scope (:root[data-reduced-motion="true"]) { .areal-disclosure-indicator { transition: none; } }
+
+.areal-disclosure[data-presentation="inline"] > .areal-disclosure-trigger { display: none; }

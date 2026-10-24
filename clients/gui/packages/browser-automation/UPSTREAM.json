@@ -1,0 +1,188 @@
+{
+  "repository": "https://github.com/zai-org/ZCode",
+  "revision": "3c5b227649371507ddc4eb46ac5133afe6db1cab",
+  "license": "Apache-2.0",
+  "files": [
+    {
+      "source": "packages/desktop/src/main/browserView/browserCommandExecutor.ts",
+      "target": "src/upstream/browser/browserCommandExecutor.ts",
+      "sha256": "fb5d0206e73083b427dc07c19beedd85643ab8ff2757faa0be5408d8d3f207e2",
+      "changes": [
+        "Use package-local shared schema exports."
+      ]
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserCommandInput.ts",
+      "target": "src/upstream/browser/browserCommandInput.ts",
+      "sha256": "a4c6460e3cfd974989f444049dcf57d5db3e2a891e6fac513cd80ddf9eda00c6",
+      "changes": [
+        "Use package-local shared schema exports."
+      ]
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserCommandInteractionHandlers.ts",
+      "target": "src/upstream/browser/browserCommandInteractionHandlers.ts",
+      "sha256": "cf611590ce3f9260b42bcff6f158dc70e15582e8e24c4df780d81774df6e32b4",
+      "changes": [
+        "Use package-local shared schema exports."
+      ]
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserCommandPageHandlers.ts",
+      "target": "src/upstream/browser/browserCommandPageHandlers.ts",
+      "sha256": "7d644223452509136f80f780cfe54094465212e2bf24a24b44274ae19a7d2c72",
+      "changes": [
+        "Use package-local shared schema exports."
+      ]
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserCommandResult.ts",
+      "target": "src/upstream/browser/browserCommandResult.ts",
+      "sha256": "18900db590dd49ee08635f53f9e42311488bfb22fbe25b7616e1f15ee4e95ce3",
+      "changes": [
+        "Use package-local shared schema exports."
+      ]
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserCommandScripts.ts",
+      "target": "src/upstream/browser/browserCommandScripts.ts",
+      "sha256": "8058bf6a96cfa689abb67c13f7543bd182ee3fed62f45b2ad6f6d1204eb980f2",
+      "changes": []
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserCommandState.ts",
+      "target": "src/upstream/browser/browserCommandState.ts",
+      "sha256": "27c4c94ffe254a2fab350def3b3336e0a2c280c1f9306ca36dd6bdf47835608d",
+      "changes": [
+        "Use package-local shared schema exports."
+      ]
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserCommandTypes.ts",
+      "target": "src/upstream/browser/browserCommandTypes.ts",
+      "sha256": "0b8f5fee0fdce1a96dc7ad74993f50d579c1476580ef68dbb7198738cbdd2450",
+      "changes": []
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserPlaywrightDomSnapshot.ts",
+      "target": "src/upstream/browser/browserPlaywrightDomSnapshot.ts",
+      "sha256": "e0a33c2f39484614faf9bb892a0f2721a58130915b3451c42d248419b72d74ec",
+      "changes": []
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserPlaywrightExecutor.ts",
+      "target": "src/upstream/browser/browserPlaywrightExecutor.ts",
+      "sha256": "837b92d2f4f4630f5fc8b7623a09a53bd242fa171ef52b3e5a9fbb0d5dcf0102",
+      "changes": [
+        "Use package-local shared schema exports."
+      ]
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserPlaywrightLocatorExecutor.ts",
+      "target": "src/upstream/browser/browserPlaywrightLocatorExecutor.ts",
+      "sha256": "c430211d09e946fa57c0fa25419af039b9749c6a358d382195d7bb10ec6583e2",
+      "changes": [
+        "Use package-local shared schema exports.",
+        "Use package-local debug logger."
+      ]
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserPlaywrightTimeout.ts",
+      "target": "src/upstream/browser/browserPlaywrightTimeout.ts",
+      "sha256": "deeae57f28d559138e45961f1e830811237f0387279602596f5689ef1d9ecb43",
+      "changes": []
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserScreenshotCapture.ts",
+      "target": "src/upstream/browser/browserScreenshotCapture.ts",
+      "sha256": "8c82ee5005a64e878104ae36359881d00d3f7481439b46ad63c567af95bc4b7b",
+      "changes": []
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserVirtualClipboard.ts",
+      "target": "src/upstream/browser/browserVirtualClipboard.ts",
+      "sha256": "cc53459d27bcd94ea04322103cc3ceb56998c715ac366634d2aee7dad4a2a25e",
+      "changes": []
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserVirtualClipboardPageScript.ts",
+      "target": "src/upstream/browser/browserVirtualClipboardPageScript.ts",
+      "sha256": "961d8acdd0ca7b2ec000a6cbbde255a43cbfaea587b609ab07a7b0b7276b9bf8",
+      "changes": []
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/playwrightInjectedScriptSource.ts",
+      "target": "src/upstream/browser/playwrightInjectedScriptSource.ts",
+      "sha256": "1f80508de134caa00a0c6b4cd583e894f329109bd1c0879ad46611e77a28c835",
+      "changes": [
+        "Resolve runtime dependencies from CommonJS output."
+      ]
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserVideoRecorder.ts",
+      "target": "src/upstream/browser/browserVideoRecorder.ts",
+      "sha256": "8674cd75313850c63b77a6458ca8784848bde87c6044e6ecbe9d23f31ead2d54",
+      "changes": [
+        "Use package-local shared schema exports."
+      ]
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/electronBrowserWebmRecorder.ts",
+      "target": "src/upstream/browser/electronBrowserWebmRecorder.ts",
+      "sha256": "41915fb75a487bfa98dbcf62e19e2e15226f24821b19876adde054ac9c62db98",
+      "changes": [
+        "Resolve copied recorder preload alongside CommonJS bundle."
+      ]
+    },
+    {
+      "source": "packages/shared/src/browser-use/command-metadata.ts",
+      "target": "src/upstream/schema/command-metadata.ts",
+      "sha256": "37eb04347f44f01d1315811be00e131880eb6d1685399f68aab29239bbb7594f",
+      "changes": []
+    },
+    {
+      "source": "packages/shared/src/browser-use/commands.ts",
+      "target": "src/upstream/schema/commands.ts",
+      "sha256": "05608884b185005fa81bdc3a1036c923f92ee586e46bce18f8add7d0187e3599",
+      "changes": []
+    },
+    {
+      "source": "packages/shared/src/browser-use/backend.ts",
+      "target": "src/upstream/schema/backend.ts",
+      "sha256": "8e205855dbef21727292730172dfda34deee0b8bdcd2937534f7aeb8b3cbaba7",
+      "changes": []
+    },
+    {
+      "source": "packages/shared/src/browser-use/snapshot.ts",
+      "target": "src/upstream/schema/snapshot.ts",
+      "sha256": "b11568e155d1aabf9771d4a9e9df98dbd692add80b3adb4d193fb92fd1568168",
+      "changes": []
+    },
+    {
+      "source": "packages/shared/src/browser-use/result.ts",
+      "target": "src/upstream/schema/result.ts",
+      "sha256": "b1fd3bda2e8787c12ab6090c923dd8ac67b8f42b00d84d28e4f5db1e54374599",
+      "changes": []
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserGuestManager.ts",
+      "target": "src/recordingScenario.ts",
+      "sha256": "063f7d3e3e7adfa118609a0a84649f31b04f5aa41b763e418fdad9a711340648",
+      "changes": [
+        "Extract recording action methods and bounded wait helpers; retain algorithms; use guarded ControlledView for cursor overlay."
+      ]
+    },
+    {
+      "source": "packages/desktop/src/preload/browserVideoRecorder.ts",
+      "target": "src/upstream/browserVideoRecorderPreload.ts",
+      "sha256": "665a94f45ca240ef6e3a8226abc21bce671bc6846eba58ebad72ae685ef1ddd0",
+      "changes": []
+    },
+    {
+      "source": "packages/desktop/src/main/browserView/browserTransparentWindowBootstrap.ts",
+      "target": "src/upstream/browser/browserTransparentWindowBootstrap.ts",
+      "sha256": "ae65cd2c4e482ffb23aabf13f7b216c15890c81c186d43d1ed4db4afaea12b73",
+      "changes": []
+    }
+  ]
+}

@@ -44,23 +44,28 @@
 
 ## Token 选择
 
-基础定义见 [styles.css](renderer/src/styles.css)，用户外观覆盖由 [applicationSettings.ts](renderer/src/settings/applicationSettings.ts) 和 [applicationPreferences.ts](renderer/src/settings/applicationPreferences.ts) 提供。以下目录描述用途，不复制数值；预览使用同一外观路径并显示当前计算值。
+首批基础值与纯调色板已移入私有 [@areal/ui](packages/ui/README.md)。修改包内 Token/控件前读 [Agent 指南](packages/ui/agent-guide.md)；实际成员、生成 API 与独立示例见 [UI 包与架构](renderer/design-system.html?ui-library)。以下角色表继续描述用途，已迁入值以包内源为准，旧路径仅转接同一实现。
+
+基础值与默认调色板的唯一来源是 [tokens.json](packages/ui/tokens.json) 与 [theme.ts](packages/ui/src/theme.ts)，完整清单见生成的 [Token 速查](packages/ui/src/generated/tokens.md)；[styles.css](renderer/src/styles.css) 只放产品专用主题别名。用户外观覆盖由 [applicationSettings.ts](renderer/src/settings/applicationSettings.ts) 和 [applicationPreferences.ts](renderer/src/settings/applicationPreferences.ts) 提供。以下表格说明用途，不复制数值。
 
 | 角色 | Token | 使用约定 |
 |---|---|---|
 | 输入与强调文字 | `--text-ui-lg` | 编辑器、较突出标题 |
 | 正文 | `--text-ui-base` | 卡片内容、普通反馈 |
 | 控件标签 | `--text-ui-caption` | 按钮、菜单及紧凑标签 |
+| 过程与结果附注 | `--text-content-caption` | 执行摘要、状态和失败次数，跟随内容字号；不替代按钮的 UI 字号 |
 | 说明 | `--text-ui-sm` | Side 标题、上下文说明、次要反馈 |
 | 辅助信息 | `--text-ui-xs` | 来源细节；不用于主要正文 |
 | 公共行高 | `--line-height-ui`、`--line-height-ui-sm` | 决策正文与紧凑说明，随 UI 字号增长 |
 | 设置说明 | `--color-settings-secondary` | 活跃设置标签的说明；独立于禁用透明度及已完成过程信息，偏好派生归 applicationSettings.ts |
 | 文字层级 | `--color-foreground`、`--color-foreground-subtle/subtlest` | 主内容、说明、低强调信息；不能只用颜色表达状态 |
 | 表面 | `--color-background`、`--color-composer`、`--color-composer-catalog` | 页面、输入区、相关浮层；明暗由主题提供 |
+| 主要动作 | `--color-primary`、`--color-primary-foreground` | 审批主动作与发送动作共用配对；`--color-composer-action` 及其前景是同一配对的别名，强调色继续用于链接与焦点 |
 | 按钮填充 | `--color-button-surface`、`--color-button-hover` | 普通操作与下拉按钮的默认 / 悬停表面 |
 | 边框与错误 | `--color-border`、`--color-destructive` | 边界与错误反馈 |
 | 控件尺寸 | `--spacing-control` 及 `--spacing-control-xs/sm/lg/form`，对应 Tailwind 的 `h-control-*` | 根据控件用途选尺寸，跟随用户字号 |
 | 间距 | `--spacing-inline/field/section/panel` | 相邻内容、内容块、分区与面板；具体组合可以使用这些角色的倍数 |
+| 对话阅读列 | `--reading-width` | 消息列与输入停靠区使用同一宽度上限，内侧留白采用 `--spacing-field`；嵌入式对话保留宿主宽度 |
 | 圆角 | `--radius-button/control/overlay/composer/panel/dialog` | 按表面角色选择，不能为“看起来差不多”任意互换 |
 | 内嵌与动作形状 | `--radius-inset`、`--radius-pill` | 表面内的预览内容、胶囊或圆形动作 |
 | 焦点与动效 | `--focus-width/offset`、`--motion-fast/normal/slow` | 复用 focus-visible、ui-control/ui-popup；遵守 reduced motion |
@@ -86,6 +91,8 @@ Tailwind 的 `text-ui-sm`、`rounded-overlay` 等直接消费同一套 Token。�
 | [SideChatPane](renderer/src/SideChatPane.tsx) | 组合共享 Composer 与 Side 上下文，样式在 [SideChat.css](renderer/src/SideChat.css) | 保留服务/来源/Side 草稿隔离与独立执行 |
 
 审批按钮的 split 几何、Side 面板比例、Composer 紧凑布局是当前组合规则，不作为全局控件的新默认值。
+
+主 Composer 的模型配置保存与消息发送反馈分开：保存期间仍可编辑草稿，不播放发送中的 Spinner，也不通过禁用滑块打断焦点。`ConversationComposer.modelPending` 只锁定模型配置动作，发送入口仍由宿主阻止；滑块保留待保存位置，完成或失败后回到 Core 确认值。未知结果继续沿原恢复路径处理，不自动重试。
 
 ## 长文本统一采用渐进展示
 

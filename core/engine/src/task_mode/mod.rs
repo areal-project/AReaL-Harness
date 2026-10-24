@@ -1,10 +1,16 @@
 //! 任务身份与通信独立持久化；执行继续复用 Goal、Thread 和 Runtime 的准入边界。
+mod catalog;
 mod channel;
+pub use catalog::{
+    PublishedTaskCatalog, PublishedTaskCatalogFallback, read_published_task_catalog,
+};
 mod ledger;
 #[cfg(feature = "test-support")]
 pub use ledger::TaskCommitFault;
 mod delegations;
 mod desktop_schedules;
+mod schedule_tools;
+pub(crate) use schedule_tools::definitions as schedule_tool_definitions;
 #[cfg(test)]
 mod desktop_schedules_tests;
 
@@ -268,6 +274,57 @@ impl Engine {
         (ownership, OrdinaryAdmission { _tasks: tasks })
     }
 
+    pub(crate) async fn conversation_reference_available(&self, thread: &Thread) -> Result<bool> {
+        if thread.is_side()
+            || thread.parent_thread_id.is_some()
+            || thread.goal_owner.is_some()
+            || thread.source == "nativeTaskAgent"
+            || thread.desktop.as_ref().is_some_and(|desktop| {
+                desktop
+                    .configuration
+                    .options
+                    .append_instructions
+                    .starts_with("AREAL_TASK_DRAFT_V1\n")
+            })
+        {
+            return Ok(false);
+        }
+        let tasks = self.task_modes.state.lock().await;
+        if thread_ownership(thread, &tasks, None)
+            != areal_protocol::desktop::ThreadOwnership::Ordinary
+        {
+            return Ok(false);
+        }
+        if tasks.tasks.values().any(|task| {
+            task.mode == TaskMode::Scheduled
+                && (task.thread_id.as_deref() == Some(thread.id.as_str())
+                    || task
+                        .runs
+                        .iter()
+                        .any(|run| run.thread_id.as_deref() == Some(thread.id.as_str())))
+        }) {
+            return Ok(false);
+        }
+        for task in tasks
+            .tasks
+            .values()
+            .filter(|task| task.mode == TaskMode::Scheduled)
+        {
+            let mut scheduled = false;
+            tasks.visit_history(&task.id, |segment| {
+                scheduled |= segment
+                    .runs
+                    .iter()
+                    .any(|run| run.thread_id.as_deref() == Some(thread.id.as_str()));
+                Ok(())
+            })?;
+            if scheduled {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     pub(super) async fn ordinary_admission(
         &self,
         thread: &Thread,
@@ -369,6 +426,11 @@ impl Engine {
     ) -> Result<Value> {
         self.mutate(move |engine| async move {
             let _gate = engine.desktop.lifecycle.gate.lock().await;
+            let hash = desktop::digest(&request)?;
+            {
+                let state = engine.task_modes.state.lock().await;
+                if let Some(result) = receipt(&state, &owner, "create", &request.request_id, &hash)? { return Ok(result); }
+            }
             if !engine.accepting_work() { return Err(Error::Closed); }
             if request.objective.trim().is_empty() || request.objective.chars().count() > 4000 {
                 return Err(invalid("objective must contain 1..4000 characters"));
@@ -393,7 +455,7 @@ impl Engine {
                 if request.mode == TaskMode::Background && !state.thread.dynamic_tools.is_empty() { return Err(invalid("detached tasks require server-owned tools")); }
             }
             if request.mode == TaskMode::Background && request.interaction_mode == Some(InteractionMode::Interactive) { return Err(invalid("detached tasks require asynchronous or headless interactions")); }
-            let hash = desktop::digest(&request)?;
+            engine.validate_schedule_source(&owner, &request).await?;
             let mut state = engine.task_modes.state.lock().await;
             if let Some(result) = receipt(&state, &owner, "create", &request.request_id, &hash)? { return Ok(result); }
             let captured_now = engine.schedule_now();
@@ -402,6 +464,7 @@ impl Engine {
             if state.tasks.len() >= MAX_TASKS { return Err(Error::Exhausted("task capacity reached".into())); }
             let mut candidate = state.clone();
             let task = Task {
+                source_thread_id: request.source_thread_id, deleted_at: None,
                 run_count: 0, archived_run_count: 0, runs_complete: true,
                 skipped_runs: 0, last_skipped_at: None,
                 id: id(), revision: 1, channel_sequence: 0, owner: owner.clone(), mode: request.mode,
@@ -664,7 +727,10 @@ impl Engine {
                 .tasks
                 .get_mut(&request.task_id)
                 .ok_or(Error::NotFound)?;
-            if task.revision != request.expected_revision || task.cancelled {
+            if task.revision != request.expected_revision
+                || (task.cancelled && action != "delete")
+                || task.deleted_at.is_some()
+            {
                 return Err(Error::Conflict);
             }
             if request
@@ -727,7 +793,10 @@ impl Engine {
                         );
                     }
                 }
-                "cancel" => {
+                "cancel" | "delete" => {
+                    if action == "delete" {
+                        task.deleted_at = Some(now());
+                    }
                     task.cancelled = true;
                     task.next_run_at = None;
                 }
@@ -828,6 +897,8 @@ impl Engine {
             candidate.tasks.insert(
                 task_id.clone(),
                 Task {
+                    source_thread_id: None,
+                    deleted_at: None,
                     run_count: 0,
                     archived_run_count: 0,
                     runs_complete: true,
@@ -1235,6 +1306,7 @@ impl Engine {
             "pause",
             "resume",
             "cancel",
+            "delete",
             "stopRun",
             "resumeRun",
             "reply",

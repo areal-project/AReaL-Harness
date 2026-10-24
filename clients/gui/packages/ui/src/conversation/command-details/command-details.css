@@ -1,0 +1,22 @@
+
+.tool-event-body.command-card { border: 1px solid var(--color-border); border-radius: 12.5px; background: color-mix(in srgb, var(--color-foreground) 5.5%, transparent); padding: 0; margin-top: 8px; overflow: hidden; }
+.command-card pre { white-space: pre; overflow: auto; overflow-wrap: normal; }
+.command-input-toggle { display: block; width: 100%; min-width: 0; padding: 8px 32px 0 8px; border: 0; border-radius: 0; text-align: left; color: inherit; background: transparent; }
+.command-card .command-input { margin: 0; padding: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.command-input-toggle[aria-expanded="false"] .command-input { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.command-input-toggle[aria-expanded="true"] .command-input { max-height: none; }
+.command-card .command-output { max-height: 160px; margin: 0; padding: 8px 32px 8px 12px; font-weight: 400; }
+.command-outcome { padding: 2px 10px 4px; text-align: right; font-size: var(--text-ui-caption); color: var(--color-foreground-subtle); }
+.command-outcome.tool-failed { color: var(--color-destructive, #dc4747); }
+:root:not(.dark) .command-outcome.tool-failed { color: color-mix(in srgb, var(--color-destructive) 92%, var(--color-foreground)); }
+.command-raw { margin: 4px 8px 8px; font-size: var(--text-ui-xs); color: var(--color-foreground-subtle); }
+.command-raw pre { max-height: 240px; }
+.command-heading { padding: 4px 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: var(--text-ui-caption); line-height: 1.42857; }
+.command-directory { padding: 0 8px; color: var(--color-foreground-subtle); font-size: var(--text-ui-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.command-text { position: relative; min-width: 0; }
+.command-text pre { padding-right: 28px; font-size: calc(var(--code-font-size, 12px) + 1px); line-height: 1.5; }
+.command-copy { position: absolute; top: 4px; right: 8px; width: 24px; height: 24px; opacity: 0; }
+.command-text:hover .command-copy, .command-text:focus-within .command-copy { opacity: 1; }
+.command-output-notice { font-size: var(--text-ui-caption); color: var(--color-foreground-subtle); margin: 4px 8px; }
+.command-heading .command-outcome { margin-left: auto; padding: 0; }
+.turn-execution .areal-activity-list .command-card pre { white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: hidden; }

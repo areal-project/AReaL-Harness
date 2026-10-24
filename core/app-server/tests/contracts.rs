@@ -579,6 +579,45 @@ async fn ordinary_admission_capabilities_and_rpc_errors_are_explicit() {
     assert_eq!(semantics["areal/plugin/read"]["effect"], "read");
     assert_eq!(semantics["areal/task/subscribe"]["effect"], "subscription");
     assert_eq!(semantics["areal/thread/configure"]["receipt"], "thread");
+    for (request_id, configuration) in [
+        (
+            "missing-profile",
+            json!({"agentProfile":{"id":"missing","revision":"1"}}),
+        ),
+        (
+            "missing-provider",
+            json!({"model":{"providerId":"missing","modelId":"test"}}),
+        ),
+    ] {
+        let mut request = configuration;
+        request["requestId"] = json!(request_id);
+        request["admissionGuard"] = json!({"ordinarySession":true});
+        let (invalid, events) = call(&mut socket, 200, "areal/thread/start", request).await;
+        assert_eq!(invalid["error"]["code"], -32004, "{invalid}");
+        assert_eq!(
+            invalid["error"]["data"]["outcome"]["kind"], "rejected",
+            "{invalid}"
+        );
+        assert_eq!(
+            invalid["error"]["data"]["recovery"]["kind"], "none",
+            "{invalid}"
+        );
+        assert!(
+            events
+                .iter()
+                .all(|event| event["method"] != "thread/started")
+        );
+        let (threads, _) = call(&mut socket, 201, "thread/list", json!({})).await;
+        assert_eq!(threads["result"]["data"], json!([]), "{threads}");
+        let (receipt, _) = call(
+            &mut socket,
+            202,
+            "areal/request/read",
+            json!({"requestId":request_id}),
+        )
+        .await;
+        assert_eq!(receipt["result"]["data"], json!([]), "{receipt}");
+    }
     let (invalid, _) = call(
         &mut socket,
         3,

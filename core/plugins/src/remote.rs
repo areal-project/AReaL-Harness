@@ -17,6 +17,8 @@ const LIMIT: u64 = 64 * 1024 * 1024;
 pub(crate) struct Candidate {
     pub detail: PluginDetail,
     pub root: PathBuf,
+    #[serde(default)]
+    pub definition: Option<package::Definition>,
 }
 #[derive(Serialize, Deserialize)]
 pub(crate) struct GitPin {
@@ -29,7 +31,7 @@ pub(crate) struct GitPin {
 pub(crate) fn is_remote(v: &Value) -> bool {
     matches!(
         v["source"].as_str().or(v["type"].as_str()),
-        Some("url" | "git" | "git-subdir" | "npm")
+        Some("url" | "git" | "git-subdir" | "npm" | "github" | "archive" | "command" | "pip")
     )
 }
 fn identity(entry: &Value, root: &Path) -> PathBuf {
@@ -45,6 +47,7 @@ pub(crate) fn preview(
     let source = identity(entry, root);
     if let Some(c) = candidate.filter(|c| c.detail.source == source) {
         let mut detail = c.detail.clone();
+        detail.definition = c.definition.clone();
         detail.catalog_source = crate::metadata::source(entry, root, None)?;
         detail.policy = crate::metadata::policy(entry)?;
         return Ok(detail);
@@ -68,7 +71,12 @@ pub(crate) fn preview(
         installed: false,
         installed_version: None,
         installed_digest: None,
+        installed_source_digest: None,
+        admission_digest: None,
+        definition: None,
         installed_skills: vec![],
+        component_choices: Default::default(),
+        installed_metadata: None,
         component_support: None,
         installed_component_support: None,
         installed_onboarding_skill: None,
@@ -90,9 +98,14 @@ pub(crate) fn preview(
         integrity: None,
         components: vec![],
         diagnostics: vec![
-            "Remote source requires explicit resolution and review before install".into(),
+            if crate::metadata::source(entry, root, None)?["unsupported"] == true {
+                "sourceUnsupported: this source type cannot be resolved or installed".into()
+            } else {
+                "Remote source requires explicit resolution and review before install".into()
+            },
         ],
         skills: vec![],
+        required_tools: vec![],
         onboarding_skill: None,
     })
 }
@@ -551,32 +564,6 @@ pub(crate) fn publish(
     Ok(root)
 }
 impl Store {
-    pub(crate) fn catalog_policy(&self, state: &crate::State, id: &str) -> Result<Value> {
-        let (markets, _, _) = self.catalogs(state);
-        for market in markets {
-            for path in CATALOG_PATHS {
-                if !market.root.join(path).exists() {
-                    continue;
-                }
-                let value: Value = serde_json::from_slice(&package::read_catalog(
-                    &market.root,
-                    &market.root.join(path),
-                )?)?;
-                for entry in value["plugins"].as_array().context("plugins missing")? {
-                    if format!(
-                        "{}@{}",
-                        entry["name"].as_str().unwrap_or_default(),
-                        market.name
-                    ) == id
-                    {
-                        return crate::metadata::policy(entry);
-                    }
-                }
-                break;
-            }
-        }
-        Ok(Value::Null)
-    }
     fn prepare_git_marketplace(
         &self,
         url: &str,
@@ -768,16 +755,32 @@ impl Store {
                     &market.root,
                     &market.root.join(path),
                 )?)?;
-                for e in v["plugins"].as_array().context("plugins missing")? {
+                for (index, e) in v["plugins"]
+                    .as_array()
+                    .context("plugins missing")?
+                    .iter()
+                    .enumerate()
+                {
                     if identity(e, &market.root) == selected.source {
-                        entry = Some((e.clone(), market.root.clone()));
+                        entry = Some((
+                            e.clone(),
+                            market.root.clone(),
+                            package::CatalogContext {
+                                entry: e.clone(),
+                                origin: format!("{path}#/plugins/{index}"),
+                            },
+                        ));
                     }
                 }
                 break;
             }
         }
-        let (entry, marketplace_root) = entry.context("remote source selector missing")?;
+        let (entry, marketplace_root, context) = entry.context("remote source selector missing")?;
         let source = &selected.catalog_source;
+        ensure!(
+            matches!(source["type"].as_str(), Some("git" | "npm")),
+            "sourceUnsupported: source cannot be resolved"
+        );
         let stage = tempfile::tempdir_in(self.root.join("staging"))?;
         let mut commit = None;
         let mut version = None;
@@ -808,7 +811,8 @@ impl Store {
         };
         let files = package::snapshot(&content)?;
         let cache = self.root.join("cache").join(package::digest(&files));
-        let mut detail = package::parse(&files, id, &selected.source, &cache)?;
+        let (mut detail, _) =
+            package::parse_context(&files, id, &selected.source, &cache, Some(&context))?;
         ensure!(
             detail.name == selected.name,
             "catalog/manifest plugin name mismatch"
@@ -820,6 +824,9 @@ impl Store {
         detail.resolved_commit = commit;
         detail.package_version = version;
         detail.integrity = integrity;
+        if detail.definition.is_some() {
+            package::bind_definition(&mut detail, context)?;
+        }
         self.transact(expected_revision, |s| {
             let (_, current, _) = self.catalogs(s);
             ensure!(
@@ -834,6 +841,7 @@ impl Store {
                 Candidate {
                     detail: detail.clone(),
                     root,
+                    definition: detail.definition.clone(),
                 },
             );
             Ok(())

@@ -19,6 +19,12 @@ type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 struct ModelFixture;
 #[async_trait]
 impl Model for ModelFixture {
+    fn configure(
+        &self,
+        _: &areal_protocol::desktop::ModelParameters,
+    ) -> anyhow::Result<Arc<dyn Model>> {
+        Ok(Arc::new(ModelFixture))
+    }
     fn name(&self) -> &str {
         "browser-attach-fixture"
     }
@@ -74,6 +80,104 @@ impl Model for ModelFixture {
         };
         Ok(Box::pin(futures_util::stream::iter([Ok(event)])))
     }
+}
+
+#[tokio::test]
+async fn executable_side_first_input_binds_desktop_browser_before_activation() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(ModelFixture), Limits::default()).unwrap();
+    let source = engine.create("/workspace".into()).await.unwrap();
+    let (url, stop, task) = server(engine.clone()).await;
+    let mut owner = connected(&url).await;
+    let attached = call(&mut owner, "areal/thread/tools/attach", json!({
+        "threadId":source.id,"requestId":"attach-computer-side","expectedToolsetRevision":0,"bundleId":"areal.computer.v1"
+    })).await;
+    assert!(attached.get("result").is_some(), "{attached}");
+    let created = call(
+        &mut owner,
+        "areal/side/create",
+        json!({"sourceThreadId":source.id,
+        "requestId":"browser-side","firstInput":[{"type":"text","text":"inspect browser"}]}),
+    )
+    .await;
+    let id = created["result"]["thread"]["id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("{created}"))
+        .to_owned();
+    assert_eq!(
+        created["result"]["thread"]["dynamicTools"][0]["name"],
+        "browser_v1"
+    );
+    assert!(
+        created["result"]["thread"]["dynamicTools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tool| tool["name"] == "computer_v1"),
+        "{created}"
+    );
+    let interaction = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let listed = call(&mut owner, "areal/interaction/list", json!({"threadId":id})).await;
+            if let Some(value) = listed["result"]["data"]
+                .as_array()
+                .and_then(|rows| rows.iter().find(|row| row["status"] == "pending"))
+            {
+                break value.clone();
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(interaction["threadId"], id);
+    owner
+        .send(Wire::Text(
+            json!({"id":700,"method":"areal/interaction/respond","params":{
+                "threadId":id,"turnId":interaction["turnId"],"requestId":interaction["requestId"],
+                "argumentsDigest":interaction["argumentsDigest"],"decision":"allowOnce"
+            }})
+            .to_string()
+            .into(),
+        ))
+        .await
+        .unwrap();
+    let request = loop {
+        let message = next(&mut owner).await;
+        if message["method"] == "item/tool/call" {
+            break message;
+        }
+    };
+    assert_eq!(request["params"]["threadId"], id);
+    assert_eq!(request["params"]["turnId"], created["result"]["turn"]["id"]);
+    assert_eq!(request["params"]["tool"], "browser_v1");
+    owner
+        .send(Wire::Text(
+            json!({"id":request["id"],"result":{"success":true,
+        "contentItems":[{"type":"inputText","text":"child-bound browser result"}]}})
+            .to_string()
+            .into(),
+        ))
+        .await
+        .unwrap();
+    let completed = engine.wait(&id).await.unwrap();
+    assert_eq!(completed.turns.len(), 1);
+    assert_eq!(
+        completed.turns[0].status,
+        areal_protocol::TurnStatus::Completed
+    );
+    assert!(
+        engine
+            .read(&source.id, true)
+            .await
+            .unwrap()
+            .turns
+            .is_empty()
+    );
+    owner.close(None).await.unwrap();
+    stop.cancel();
+    task.await.unwrap().unwrap();
+    engine.shutdown().await;
 }
 
 async fn server(

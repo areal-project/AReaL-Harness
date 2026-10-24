@@ -408,7 +408,11 @@ impl Engine {
     ) -> anyhow::Result<crate::tools::Registry> {
         let mut tools = self.desktop.mcp.tools();
         let config = desktop(thread).configuration;
-        if !thread.is_side() && !research && config.allow_plugin_skills && !config.read_only {
+        if !thread.is_read_only_side()
+            && !research
+            && config.allow_plugin_skills
+            && !config.read_only
+        {
             tools.extend(self.desktop.plugin_mcp.tools());
         }
         let mut registry = self.registry.clone();
@@ -425,13 +429,16 @@ impl Engine {
         let registry = registry
             .with_mcp(tools)?
             .with_dynamic(&thread.dynamic_tools)?;
-        let registry =
-            if !thread.is_side() && !research && config.allow_plugin_skills && !config.read_only {
-                self.page_registry(registry, thread)?
-            } else {
-                registry
-            };
-        Ok(if thread.is_side() {
+        let registry = if !thread.is_read_only_side()
+            && !research
+            && config.allow_plugin_skills
+            && !config.read_only
+        {
+            self.page_registry(registry, thread)?
+        } else {
+            registry
+        };
+        Ok(if thread.is_read_only_side() {
             registry.side_only(thread.side_workspace_read())
         } else if research {
             registry.research_only()

@@ -2,6 +2,7 @@
 const {configurePluginAuthentication} = require('./plugin-authentication.cjs');
 const { manageTask, taskOperations } = require('./tasks.cjs');
 const { workgroupArtifactFile } = require('./workgroup-artifacts.cjs');
+const { resolveTerminalPresentation } = require('./terminal-profile.cjs');
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -30,7 +31,7 @@ const mutations = {
   pluginArchiveImport: 'areal/plugin/importArchive',
   mcpFormResourceStage: 'areal/mcp/form/resource/stage',
   pluginHooksConfigure:'areal/plugin/hooks/configure', hookAcknowledge:'areal/hook/acknowledge', marketplaceAdd: 'areal/marketplace/add', marketplaceAddGit: 'areal/marketplace/addGit', marketplaceRemove: 'areal/marketplace/remove', marketplaceUpdate: 'areal/marketplace/update', pluginResolve: 'areal/plugin/resolve', pluginAuthConfigure:'areal/plugin/auth/configure', pluginConnection: 'areal/plugin/connection', connectorConfigure: 'areal/plugin/connector/configure', pluginInstall: 'areal/plugin/install',
-  pluginConfigure: 'areal/plugin/configure', pluginUninstall: 'areal/plugin/uninstall', pluginSetup: 'areal/plugin/setup',
+  pluginConfigure: 'areal/plugin/configure', pluginComponentConfigure: 'areal/plugin/component/configure', pluginUninstall: 'areal/plugin/uninstall', pluginSetup: 'areal/plugin/setup',
   providerSave: 'areal/provider/upsert', providerRemove: 'areal/provider/remove',
   mcpSave: 'areal/mcp/configure', mcpConnect: 'areal/mcp/connect', mcpDisconnect: 'areal/mcp/disconnect',
   archive: 'areal/thread/archive', unarchive: 'areal/conversation/unarchive',
@@ -44,7 +45,7 @@ const fields = {
   pluginArchiveImport: ['path', 'expectedRevision'],
   mcpFormResourceStage: ['selectionToken', 'paths'],
   pluginHooksConfigure:['id','expectedDigest','definitionDigest','enabled','trusted','allowReadOnlyCommands'], hookAcknowledge:['threadId','invocationId','inspection'], marketplaceAdd: ['root', 'expectedRevision'], marketplaceAddGit: ['url', 'refName', 'sparsePaths', 'expectedRevision'], marketplaceRemove: ['root', 'expectedRevision'], marketplaceUpdate: ['expectedRevision'], pluginResolve: ['id', 'expectedRevision'], pluginAuthConfigure:['id','server','expectedDigest','configuration'], pluginConnection: ['id', 'expectedDigest', 'connect'], connectorConfigure: ['id', 'connectorId', 'provider', 'credentialRef', 'expectedDigest'], pluginInstall: ['id', 'scope', 'expectedRevision', 'source', 'expectedDigest'],
-  pluginConfigure: ['id', 'scope', 'enabled', 'expectedRevision'], pluginUninstall: ['id', 'expectedRevision'],
+  pluginConfigure: ['id', 'scope', 'enabled', 'expectedRevision'], pluginComponentConfigure: ['id', 'component', 'enabled', 'expectedRevision', 'expectedDigest'], pluginUninstall: ['id', 'expectedRevision'],
   pluginSetup: ['id', 'threadId'],
   providerSave: ['provider', 'expectedRevision'], providerRemove: ['id', 'expectedRevision'],
   mcpSave: ['id', 'expectedRevision', 'config'], mcpConnect: ['id', 'expectedRevision'], mcpDisconnect: ['id', 'expectedRevision'],
@@ -58,7 +59,7 @@ const fields = {
 const reads = {
   mcpFormResourcePrepare: ['areal/mcp/form/resource/prepare', ['threadId', 'requestId', 'fieldName']],
   mcpFormResourceRelease: ['areal/mcp/form/resource/release', ['threadId', 'requestId', 'fieldName', 'uri']],
-  pluginHooks:['areal/plugin/hooks/list',[]], pluginMcp: ['areal/plugin/mcp/list', []], mcpApps: ['areal/mcp/apps/list', ['threadId']], mcpForms: ['areal/mcp/forms/list', ['threadId']], mcpToolResult:['areal/mcp/tool/result',['threadId','callId']], plugins: ['areal/plugin/list', []], plugin: ['areal/plugin/read', ['id']],
+  pluginHooks:['areal/plugin/hooks/list',[]], pluginMcp: ['areal/plugin/mcp/list', []], mcpApps: ['areal/mcp/apps/list', ['threadId']], genUiSource: ['areal/genUi/source', ['threadId','turnId','itemId','path']], mcpForms: ['areal/mcp/forms/list', ['threadId']], mcpToolResult:['areal/mcp/tool/result',['threadId','callId']], plugins: ['areal/plugin/list', []], plugin: ['areal/plugin/read', ['id']],
   providers: ['areal/provider/list', []], mcp: ['areal/mcp/list', []],
   profile: ['areal/profile/read', ['id', 'revision']], skills: ['areal/skill/list', ['threadId', 'agentProfile']],
   skill: ['areal/skill/read', ['threadId', 'agentProfile', 'skill', 'resource', 'offset', 'maxBytes']],
@@ -93,7 +94,7 @@ async function manage(backend, project, request, context = {}) {
   }
   if (operation === 'pluginSubmission') {
     const method = mutations[request.mutation];
-    if (!['pluginArchiveImport', 'marketplaceAdd', 'marketplaceAddGit', 'marketplaceRemove', 'marketplaceUpdate', 'pluginResolve', 'pluginConnection', 'pluginHooksConfigure', 'hookAcknowledge', 'pluginAuthConfigure', 'connectorConfigure', 'pluginInstall', 'pluginConfigure', 'pluginUninstall', 'pluginSetup'].includes(request.mutation)
+    if (!['pluginArchiveImport', 'marketplaceAdd', 'marketplaceAddGit', 'marketplaceRemove', 'marketplaceUpdate', 'pluginResolve', 'pluginConnection', 'pluginHooksConfigure', 'hookAcknowledge', 'pluginAuthConfigure', 'connectorConfigure', 'pluginInstall', 'pluginConfigure', 'pluginComponentConfigure', 'pluginUninstall', 'pluginSetup'].includes(request.mutation)
       || typeof request.requestId !== 'string' || !request.requestId.trim()) throw new Error('缺少原插件提交标识');
     const receipt = await backend.readSubmission(project, method, { requestId: request.requestId, ...(request.threadId ? { threadId: request.threadId } : {}) });
     if (!receipt.confirmed) return receipt;
@@ -137,14 +138,30 @@ async function manage(backend, project, request, context = {}) {
     }[operation];
     const params=pick(request,keys);
     if (operation === 'pluginAuth') params.operation=request.authOperation;
+    const client = project.client;
+    if (operation === 'mcpAppOpen') {
+      // Manual opens execute a tool turn, so bind the existing tools before submitting it.
+      await backend.readObservation(project, request.threadId, { client, resume: true });
+      backend.requireConnection(project, client);
+    }
     try {
-      const client = project.client;
       const result = await client.request(method,params,{timeoutMs:120000});
       if (operation === 'mcpAppOpen' || operation === 'mcpAppOpenFromResult')
         context.onMcpAppOpened?.(project, client, request, result);
       return result;
     }
     catch (error) { if (typeof error.code !== 'number' || error.code === -32603) {error.submissionUnknown=true;error.message=`操作结果待核对，不会自动重发。${error.message}`;} throw error; }
+  }
+  if (operation === 'pluginReadiness') {
+    if (typeof request.id !== 'string' || !request.id.trim() || typeof request.expectedDigest !== 'string' || !request.expectedDigest.trim()) throw new Error('Missing installed plugin snapshot');
+    const detail = await project.client.request('areal/plugin/read', {id: request.id});
+    if (detail.id !== request.id || !detail.installed || detail.installedDigest !== request.expectedDigest) throw new Error('Installed plugin snapshot changed; refresh plugin details');
+    if (!detail.enabled) throw new Error('Plugin is disabled in this project');
+    const disabledSkills = new Set(detail.componentChoices?.disabledSkills ?? []);
+    const requiredTools = [...new Set((detail.installedSkills ?? []).filter(skill => !disabledSkills.has(skill.id)).flatMap(skill => skill.requiredTools ?? []))].sort();
+    const deployed = new Set(backend.desktopTools(project).map(tool => tool.name));
+    const missingTools = requiredTools.filter(name => !deployed.has(name));
+    return {pluginId: detail.id, installedDigest: detail.installedDigest, requiredTools, missingTools, available: missingTools.length === 0};
   }
   if (operation === 'pluginCapabilities') return { enabled: project.client.capabilities?.methods?.includes('areal/plugin/list') === true };
   if (operation === 'executionCancel') return project.client.request('areal/execution/cancel', pick(request, ['parentThreadId', 'executionId', 'mode']));
@@ -199,7 +216,9 @@ async function manage(backend, project, request, context = {}) {
   if (operation === 'processSubmission') {
     if (typeof request.threadId !== 'string' || !request.threadId || typeof request.requestId !== 'string' || !/^[0-9a-f-]{36}$/.test(request.requestId)) throw new Error('缺少原终端请求标识或任务');
     const result = await backend.recoverProcessSubmission(project, request.threadId, request.requestId);
-    return result ? { confirmed: true, result: { ...result, shell: shellFromManagedArgv(result.argv) } } : { confirmed: false };
+    if (!result) return { confirmed: false };
+    const presentation = await resolveTerminalPresentation(backend.library?.value.settings, backend.userHome);
+    return { confirmed: true, result: { ...result, shell: shellFromManagedArgv(result.argv), ...presentation } };
   }
   if (operation === 'agentSubmission') {
     if (typeof request.parentThreadId !== 'string' || !request.parentThreadId || typeof request.requestId !== 'string' || !request.requestId) throw new Error('缺少原创建请求标识或父任务');
@@ -336,6 +355,6 @@ async function manage(backend, project, request, context = {}) {
   }
   } catch (error) { if (request.threadId) backend.observationFailure(project, request.threadId, error); }
   backend.onChange();
-  return terminal ? { ...result, shell: terminal.shell } : result;
+  return terminal ? { ...result, shell: terminal.shell, ...await resolveTerminalPresentation(backend.library?.value.settings, backend.userHome) } : result;
 }
 module.exports = { manage, managementMethods, threadMutationMethods };

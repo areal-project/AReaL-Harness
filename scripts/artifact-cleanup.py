@@ -5,6 +5,7 @@ import argparse
 import fcntl
 import hashlib
 import json
+import math
 import os
 import plistlib
 import re
@@ -96,6 +97,9 @@ def activity(roots):
         for line in opened.stdout.splitlines():
             if line.startswith("p") and line[1:].isdigit():
                 pid = int(line[1:])
+            elif line.startswith("c") and pid in processes:
+                # macOS ps 的 comm 会截断长路径；lsof 的程序名保留 make/cargo 等名称。
+                processes[pid]["program"] = line[1:]
             elif line.startswith("f"):
                 fd = line[1:]
             elif line.startswith("n/") and pid not in ignored:
@@ -117,6 +121,7 @@ def activity(roots):
             "ninja",
             "make",
             "gmake",
+            "gnumake",
             "dsymutil",
         }
         debuggers = {"lldb", "debugserver", "gdb"}
@@ -407,7 +412,11 @@ def rust_plan(repos, roots, may_remove_loose, bundles):
         for base, dirs, _ in os.walk(target, followlinks=False):
             profile = Path(base)
             dirs[:] = [
-                d for d in dirs if not (profile / d).is_symlink() and not d.startswith("delivery-")
+                d
+                for d in dirs
+                if d not in PRUNE
+                and not (profile / d).is_symlink()
+                and not d.startswith("delivery-")
             ]
             caches = [profile / name for name in sorted(CACHE_DIRS) if safe(profile / name, roots)]
             if not caches:
@@ -466,6 +475,9 @@ def rust_plan(repos, roots, may_remove_loose, bundles):
 
 def item_busy(item, observations):
     path = Path(item["path"])
+    if item.get("temporary_worktree"):
+        # 定期回收保护整个 profile，直接启动的 Core/Runtime 也可能再加载伴随资源。
+        return busy(Path(item["profile"]), observations, Path(item["scope"]))
     if item["kind"] == "rust-intermediate":
         return busy(path, observations, Path(item["scope"]))
     if item["kind"] == "loose-rust-output":
@@ -473,6 +485,86 @@ def item_busy(item, observations):
         profile = Path(item["profile"])
         return busy(profile, observations, Path(item["scope"]))
     return busy(path, observations)
+
+
+def registered_worktrees(warnings):
+    result = command(["git", "-C", str(REPO), "worktree", "list", "--porcelain"])
+    if result.returncode:
+        raise RuntimeError("Cannot enumerate repository worktrees")
+    paths = [Path(line[9:]) for line in result.stdout.splitlines() if line.startswith("worktree ")]
+    if not paths:
+        raise RuntimeError("No primary worktree found")
+    existing = []
+    for path in paths:
+        if not path.is_dir():
+            warnings.append(f"Missing registered worktree skipped: {path}")
+        elif path.resolve() != path:
+            warnings.append(f"Symlink worktree skipped: {path}")
+        else:
+            existing.append(path)
+    return paths[0], existing
+
+
+def cache_groups(items):
+    groups = {}
+    for item in items:
+        groups.setdefault(item.get("profile", item["path"]), []).append(item)
+    return groups
+
+
+def remaining_cache_bytes(items):
+    return sum(i["estimated_bytes"] for i in items if i["status"] != "deleted")
+
+
+def measure_items(items, temporary, warnings):
+    groups = cache_groups(items).values() if temporary else [items]
+    for group in groups:
+        if not group:
+            continue
+        sizes = command(["du", "-sk", *[i["path"] for i in group]])
+        if sizes.returncode and not temporary:
+            raise RuntimeError("Size scan failed: " + sizes.stderr.strip())
+        by_path = {
+            line.split("\t", 1)[1]: int(line.split("\t", 1)[0]) * 1024
+            for line in sizes.stdout.splitlines()
+        }
+        known = sizes.returncode == 0
+        if not known:
+            warnings.append(f"Cache size unavailable; profile retained: {group[0]['profile']}")
+        for item in group:
+            item["estimated_bytes"] = by_path.get(item["path"], 0)
+            item["size_known"] = known
+            if not known and item["status"] == "eligible":
+                item["status"] = "blocked-size-unknown"
+
+
+def free_bytes(path):
+    info = os.statvfs(path)
+    return info.f_bavail * info.f_frsize
+
+
+def plan_cache_budget(items, budget, min_free):
+    remaining = remaining_cache_bytes(items)
+    groups = cache_groups(items)
+    # 目录修改时间表示最近写入，不把复用过的缓存宣称为精确 LRU。
+    ordered = sorted(
+        groups.items(),
+        key=lambda pair: (max(i["last_modified_ns"] for i in pair[1]), pair[0]),
+    )
+    selected = []
+    for profile, group in ordered:
+        if any(i["status"] != "eligible" for i in group):
+            for item in group:
+                if item["status"] == "eligible":
+                    item["status"] = "blocked-profile"
+            continue
+        if remaining > budget or free_bytes(profile) < min_free:
+            selected.extend(group)
+            remaining -= sum(i["estimated_bytes"] for i in group)
+        else:
+            for item in group:
+                item["status"] = "retained-budget"
+    return selected
 
 
 def main():
@@ -490,6 +582,15 @@ def main():
         help="Complete GUI/Core bundle versions to retain per category",
     )
     parser.add_argument("--no-worktrees", action="store_true", help="Only scan explicit roots")
+    parser.add_argument(
+        "--temporary-worktrees",
+        action="store_true",
+        help="Only budget Rust intermediate caches in registered secondary worktrees",
+    )
+    parser.add_argument("--cache-budget-gib", type=float, default=40, help="Secondary cache budget")
+    parser.add_argument(
+        "--min-free-gib", type=float, default=30, help="Free-space collection threshold"
+    )
     parser.add_argument("--json", action="store_true", help="Print the complete JSON preview")
     parser.add_argument(
         "--report", type=Path, help="Save the complete JSON preview outside artifact roots"
@@ -500,16 +601,23 @@ def main():
     args = parser.parse_args()
     if args.keep < 1:
         parser.error("--keep must be at least 1")
+    if any(not math.isfinite(v) or v < 0 for v in [args.cache_budget_gib, args.min_free_gib]):
+        parser.error("Cache budget and free-space threshold must be finite and nonnegative")
+    if args.apply and not args.report:
+        parser.error("--apply requires --report for a durable deletion receipt")
+    if args.temporary_worktrees and (args.root or args.no_worktrees):
+        parser.error(
+            "--temporary-worktrees selects registered worktrees; do not pass root overrides"
+        )
+    warnings = []
     roots = [p.expanduser().resolve() for p in (args.root or [Path.home() / "Documents/Codex"])]
     if not args.no_worktrees:
-        result = command(["git", "-C", str(REPO), "worktree", "list", "--porcelain"])
-        if result.returncode:
-            parser.error("Cannot enumerate repository worktrees")
-        roots.extend(
-            Path(line[9:]).resolve()
-            for line in result.stdout.splitlines()
-            if line.startswith("worktree ")
-        )
+        primary, worktrees = registered_worktrees(warnings)
+        if args.temporary_worktrees:
+            roots = [p for p in worktrees if p != primary]
+        else:
+            roots.extend(worktrees)
+    temporary_repos = list(roots)
     roots = sorted(set(roots), key=lambda p: (len(p.parts), str(p)))
     roots = [p for i, p in enumerate(roots) if not any(within(p, r) for r in roots[:i])]
     if any(not p.is_dir() or p == Path("/") or p == Path.home() for p in roots):
@@ -518,19 +626,42 @@ def main():
         args.report = args.report.expanduser().resolve()
         if any(within(args.report, r) for r in roots):
             parser.error("--report must be outside scan roots")
-    warnings = []
     observations, activity_error = activity(roots)
     if activity_error:
         warnings.append(activity_error + "; all deletions blocked")
-    print("Scanning GUI build records and Rust profiles...", file=sys.stderr)
-    evidence, apps, archives, repos, manifests = discover(roots)
-    gui, gui_items = gui_plan(evidence, apps, archives, args.keep, roots, warnings)
-    bundles, bundle_items, may_remove_loose = rust_bundles(manifests, args.keep, roots, warnings)
-    rust, rust_items = rust_plan(repos, roots, may_remove_loose, bundles)
-    if not may_remove_loose:
-        warnings.append(
-            "Fewer than keep verified standalone Core bundles; loose profile outputs retained"
+    if args.temporary_worktrees:
+        print("Scanning registered secondary worktree caches...", file=sys.stderr)
+        repos = [
+            p
+            for p in temporary_repos
+            if (p / "Cargo.toml").is_file() and (p / "core/engine/Cargo.toml").is_file()
+        ]
+        gui, bundles, gui_items, bundle_items = [], [], [], []
+        rust, rust_items = rust_plan(repos, roots, False, [])
+        rust_items = [
+            i
+            for i in rust_items
+            if (Path(i["profile"]) / ".cargo-lock").is_file()
+            or (Path(i["profile"]) / ".fingerprint").is_dir()
+        ]
+        for item in rust_items:
+            item["temporary_worktree"] = True
+            item["last_modified_ns"] = max(
+                Path(item["path"]).stat().st_mtime_ns,
+                Path(item["profile"]).stat().st_mtime_ns,
+            )
+    else:
+        print("Scanning GUI build records and Rust profiles...", file=sys.stderr)
+        evidence, apps, archives, repos, manifests = discover(roots)
+        gui, gui_items = gui_plan(evidence, apps, archives, args.keep, roots, warnings)
+        bundles, bundle_items, may_remove_loose = rust_bundles(
+            manifests, args.keep, roots, warnings
         )
+        rust, rust_items = rust_plan(repos, roots, may_remove_loose, bundles)
+        if not may_remove_loose:
+            warnings.append(
+                "Fewer than keep verified standalone Core bundles; loose profile outputs retained"
+            )
     retained_bundles = [Path(bundle["path"]) for bundle in bundles if bundle["retained"]]
     raw = sorted(
         [
@@ -574,15 +705,10 @@ def main():
         items.append(item)
     if items:
         print(f"Measuring {len(items)} cleanup paths (allocated blocks)...", file=sys.stderr)
-        sizes = command(["du", "-sk", *[i["path"] for i in items]])
-        if sizes.returncode:
-            raise RuntimeError("Size scan failed: " + sizes.stderr.strip())
-        by_path = {
-            line.split("\t", 1)[1]: int(line.split("\t", 1)[0]) * 1024
-            for line in sizes.stdout.splitlines()
-        }
-        for item in items:
-            item["estimated_bytes"] = by_path[item["path"]]
+        measure_items(items, args.temporary_worktrees, warnings)
+    budget = int(args.cache_budget_gib * 1024**3)
+    min_free = int(args.min_free_gib * 1024**3)
+    selected = plan_cache_budget(items, budget, min_free) if args.temporary_worktrees else items
     report = {
         "mode": "apply" if args.apply else "preview",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -596,18 +722,30 @@ def main():
         "eligible_bytes": sum(i["estimated_bytes"] for i in items if i["status"] == "eligible"),
         "pending_bytes": 0,
     }
+    if args.temporary_worktrees:
+        report["cache_policy"] = {
+            "budget_bytes": budget,
+            "min_free_bytes": min_free,
+            "before_bytes": remaining_cache_bytes(items),
+            "unmeasured_profiles": sorted({i["profile"] for i in items if not i["size_known"]}),
+        }
     if args.apply:
         if not args.report:
             parser.error("--apply requires --report for a durable deletion receipt")
         args.report.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
-        groups = {}
-        for item in items:
-            if item["status"] == "eligible":
-                groups.setdefault(item.get("profile", item["path"]), []).append(item)
+        groups = cache_groups([i for i in selected if i["status"] == "eligible"])
         for key, group in groups.items():
             try:
                 profile = Path(key) if "profile" in group[0] else None
                 with build_locks(profile, create=True) if profile else nullcontext():
+                    if (
+                        args.temporary_worktrees
+                        and remaining_cache_bytes(items) <= budget
+                        and free_bytes(profile) >= min_free
+                    ):
+                        for item in group:
+                            item["status"] = "retained-budget"
+                        continue
                     fresh, error = activity(roots)
                     if error:
                         raise RuntimeError("Deletion refused: " + error)
@@ -639,14 +777,29 @@ def main():
         report["deleted_estimated_bytes"] = sum(
             i["estimated_bytes"] for i in items if i["status"] == "deleted"
         )
+    if args.temporary_worktrees:
+        remaining = remaining_cache_bytes(items)
+        report["cache_policy"]["remaining_estimated_bytes"] = remaining
+        report["cache_policy"]["budget_excess_bytes"] = max(0, remaining - budget)
+        available = [free_bytes(root) for root in roots if root.is_dir()]
+        report["cache_policy"]["min_observed_free_bytes"] = min(available, default=free_bytes(REPO))
+        if args.apply and remaining > budget:
+            warnings.append("Secondary cache budget remains exceeded; active or locked caches kept")
+        if args.apply and available and min(available) < min_free:
+            warnings.append(
+                "Disk remains below free-space threshold; protected or unrelated data kept"
+            )
     if args.report:
         args.report.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
     if args.json:
         print(json.dumps(report, indent=2, ensure_ascii=False))
     else:
-        print(
-            f"{report['mode'].upper()}: keep {args.keep} complete GUI/Core bundle versions; caches are independent"
-        )
+        if args.temporary_worktrees:
+            print(f"{report['mode'].upper()}: secondary cache budget {args.cache_budget_gib:g} GiB")
+        else:
+            print(
+                f"{report['mode'].upper()}: keep {args.keep} complete GUI/Core bundle versions; caches are independent"
+            )
         for label, rounds in [("GUI", gui), ("Core bundle", bundles)]:
             for entry in rounds:
                 print(f"{'KEEP' if entry['retained'] else 'OLD '} {label}: {entry['path']}")

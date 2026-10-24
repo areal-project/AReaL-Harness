@@ -51,6 +51,21 @@ Descriptor fields are defined in [local-service-v1.json](../../schemas/local-ser
 | `hostPid`, `corePid` | Diagnostic only; never signal a stale PID from discovery |
 | `state` | `ready`, `stopping`, `stopped` or `unavailable` |
 
+## Published task catalog preview
+
+Trusted local callers can read the published scheduled-task catalog before connecting to the execution Core for live state:
+
+```sh
+areal service task-catalog --workspace /absolute/workspace \
+  --data-dir /absolute/state --limit 30 --json
+```
+
+This command does not start Engine, Runtime, models or plugins, restore runs, migrate older formats, or replay operations. It validates canonical workspace and data-directory identity and the `service-workspace` binding. Core reads one atomically published root and its content-hash-verified immutable Task files. The entry point is for trusted local users, not HTTP/WS or thread-restricted principals. `--source-thread-id` filters provenance; it is not an authorization parameter.
+
+The response contains `version: 1`, `target: {workspace, dataDir, instanceId}`, `source: "published"`, `executionState: "unobserved"`, and `catalog`. A `snapshot` catalog includes `rootDigest`, `data`, and `hasMore`. A valid binding with no root returns `empty`, meaning no published catalog was observed. An unbound store, known older format, or exceeded 32 MiB hot-state read budget returns `requiresCore`, with reason `unbound`, `legacyFormat`, or `readBudgetExceeded`. Corruption, unknown formats, identity mismatches and read errors do not become empty catalogs. `--limit` defaults to 30 and accepts 1–1024. The reader selects scheduled tasks, filters by source, and excludes settled deleted tasks before sorting by task ID and applying the limit. Deleted tasks with nonterminal Runs or unsettled workers remain visible. One read uses one root, without combining publication versions.
+
+A published catalog does not establish execution liveness, full-store recoverability, or acceptance of an unknown submission. It does not restore runs, so saved status and revisions can differ from the subsequently started Core. The GUI shows task names with a status-refreshing notice while preserving normal Core startup and live catalog reads. Previews do not enter the live task model or supply revisions for management operations. Live results replace previews; late previews cannot replace live results. A failed live read retains an unconfirmed notice and retry action.
+
 ## Inspectable stop operations
 
 When the original instance still holds its lease but its control endpoint has closed or disconnected, `status` reports `unavailable`, not a completed stop. Protocol, permission and timeout errors remain failures. `ensure` does not take over that active owner. Store startup allows about 100 ms for inherited-descriptor handoff, never cleans pending writes before acquiring the exclusive lock, and still refuses a persistent owner.

@@ -344,14 +344,117 @@ fn asset(v: &Value, files: &Files, diagnostics: &mut Vec<String>) -> Result<()> 
     }
     Ok(())
 }
-pub(crate) fn parse(files: &Files, id: &str, source: &Path, cache: &Path) -> Result<PluginDetail> {
-    // Unrelated/malformed root JSON is not a recognized portable manifest and
-    // may coexist with a valid compatibility package.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub(crate) struct CatalogContext {
+    pub entry: Value,
+    pub origin: String,
+}
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub(crate) struct Definition {
+    pub version: u32,
+    pub id: String,
+    pub package_digest: String,
+    pub source: PathBuf,
+    pub context: CatalogContext,
+    pub resolved_commit: Option<String>,
+    pub integrity: Option<String>,
+}
+impl Definition {
+    pub fn digest(&self) -> Result<String> {
+        Ok(format!("{:x}", Sha256::digest(serde_json::to_vec(self)?)))
+    }
+    pub fn validate(&self, id: &str, revision: &str) -> Result<()> {
+        ensure!(
+            self.version == 1 && self.id == id && self.digest()? == revision,
+            "invalid plugin definition receipt: {id}"
+        );
+        Ok(())
+    }
+}
+pub(crate) struct Selection {
+    pub portable: bool,
+    pub format: crate::ManifestFormat,
+    pub manifest_path: String,
+    pub manifest: Value,
+    pub overlay_path: String,
+    pub overlay: Value,
+    pub inline: bool,
+    pub contextual: bool,
+    pub restricted: bool,
+    pub claude_defaults: bool,
+    pub field_origins: BTreeMap<String, String>,
+}
+pub(crate) const CLAUDE_MERGE_FIELDS: &[&str] = &[
+    "skills",
+    "commands",
+    "agents",
+    "hooks",
+    "outputStyles",
+    "themes",
+];
+const COMPONENT_FIELDS: &[&str] = &[
+    "skills",
+    "commands",
+    "agents",
+    "hooks",
+    "mcpServers",
+    "outputStyles",
+    "themes",
+    "lspServers",
+    "apps",
+    "ui",
+    "channels",
+];
+fn append_paths(base: Option<&Value>, extra: &Value) -> Result<Value> {
+    let mut combined = base.map(paths).transpose()?.unwrap_or_default();
+    combined.extend(paths(extra)?);
+    combined.sort();
+    combined.dedup();
+    Ok(serde_json::to_value(combined)?)
+}
+fn hook_events(
+    value: Option<&Value>,
+    files: &Files,
+    field: &str,
+) -> Result<(serde_json::Map<String, Value>, BTreeMap<String, String>)> {
+    let found = crate::components::documents(value, "hooks/hooks.json", files, false, &mut vec![]);
+    ensure!(
+        found.rejected.is_empty(),
+        "invalid catalog hook declaration"
+    );
+    let mut events = serde_json::Map::new();
+    let mut origins = BTreeMap::new();
+    for (source, document) in found.documents {
+        let mut origin = match source {
+            crate::components::DocumentSource::Manifest(indices) => {
+                let mut origin = field.to_owned();
+                for index in indices {
+                    origin.push_str(&format!("/{index}"));
+                }
+                origin
+            }
+            crate::components::DocumentSource::Path(path) => format!("{path}#"),
+        };
+        if document.value.get("hooks").is_some() {
+            origin.push_str("/hooks");
+        }
+        let value = document.value.get("hooks").unwrap_or(&document.value);
+        for (event, groups) in value.as_object().context("hook events must be an object")? {
+            let escaped = event.replace('~', "~0").replace('/', "~1");
+            origins.insert(
+                format!("hooks/hooks/{escaped}"),
+                format!("{origin}/{escaped}"),
+            );
+            events.insert(event.clone(), groups.clone());
+        }
+    }
+    Ok((events, origins))
+}
+fn select(files: &Files, context: Option<&CatalogContext>) -> Result<Selection> {
     let root = json(files, "plugin.json").unwrap_or(None);
     let portable = root
         .as_ref()
-        .and_then(|v| v.get("$schema"))
-        .and_then(Value::as_str)
+        .and_then(|v| v["$schema"].as_str())
         .is_some_and(|s| s.contains("agent-plugins.org/"));
     if portable {
         ensure!(
@@ -364,10 +467,10 @@ pub(crate) fn parse(files: &Files, id: &str, source: &Path, cache: &Path) -> Res
         ".codex-plugin/plugin.json",
         ".claude-plugin/plugin.json",
         ".cursor-plugin/plugin.json",
+        ".zcode-plugin/plugin.json",
     ]
     .into_iter()
     .find(|p| files.contains_key(*p));
-    // A valid inline object replaces the whole overlay, including an empty object.
     let inline = root
         .as_ref()
         .and_then(|r| r.pointer("/extensions/com.openai"))
@@ -377,22 +480,187 @@ pub(crate) fn parse(files: &Files, id: &str, source: &Path, cache: &Path) -> Res
     } else {
         legacy_path.map(|p| json(files, p)).transpose()?.flatten()
     };
+    let claude_context =
+        context.filter(|c| c.origin.starts_with(".claude-plugin/marketplace.json#"));
+    let manifestless = !portable && legacy.is_none();
     let manifest = if portable {
-        root.as_ref().unwrap()
+        root.as_ref().unwrap().clone()
+    } else if let Some(manifest) = legacy.as_ref() {
+        manifest.clone()
     } else {
-        legacy.as_ref().with_context(|| {
-            if files.contains_key(".zcode-plugin/plugin.json") {
-                "unsupported .zcode-plugin manifest; use portable, Codex, Claude or Cursor format; see docs/guides/plugins.en.md"
-            } else {
-                "no supported plugin manifest"
+        claude_context
+            .context("no supported plugin manifest")?
+            .entry
+            .clone()
+    };
+    let manifest_path = if portable {
+        "plugin.json".into()
+    } else if let Some(path) = legacy_path {
+        path.into()
+    } else {
+        claude_context.unwrap().origin.clone()
+    };
+    let format = if portable {
+        crate::ManifestFormat::Portable1
+    } else {
+        match legacy_path {
+            Some(".codex-plugin/plugin.json") => crate::ManifestFormat::Codex,
+            Some(".cursor-plugin/plugin.json") => crate::ManifestFormat::Cursor,
+            Some(".zcode-plugin/plugin.json") => crate::ManifestFormat::Zcode,
+            _ => crate::ManifestFormat::Claude,
+        }
+    };
+    let mut overlay = if portable {
+        inline.or(legacy.as_ref()).cloned().unwrap_or(Value::Null)
+    } else {
+        manifest.clone()
+    };
+    let overlay_path = if portable && inline.is_some() {
+        "plugin.json#/extensions/com.openai".into()
+    } else {
+        legacy_path.unwrap_or(&manifest_path).into()
+    };
+    let claude_defaults = !manifestless && matches!(format, crate::ManifestFormat::Claude);
+    let mut contextual = manifestless;
+    let mut field_origins = BTreeMap::new();
+    if let Some(context) = context {
+        let entry = &context.entry;
+        let has_components = COMPONENT_FIELDS.iter().any(|key| entry.get(*key).is_some());
+        let has_requirements = ["dependencies", "userConfig"]
+            .iter()
+            .any(|key| entry.get(*key).is_some());
+        if let Some(strict) = entry.get("strict") {
+            ensure!(strict.is_boolean(), "strict must be boolean");
+        }
+        contextual |= has_components || has_requirements || entry.get("policy").is_some();
+        let merge_fields = if claude_defaults {
+            CLAUDE_MERGE_FIELDS
+        } else {
+            COMPONENT_FIELDS
+        };
+        if !manifestless && merge_fields.iter().any(|key| entry.get(*key).is_some()) {
+            ensure!(
+                claude_context.is_some() && matches!(format, crate::ManifestFormat::Claude),
+                "catalog component definition conflicts with selected manifest format"
+            );
+            ensure!(
+                entry
+                    .get("strict")
+                    .map(|v| v.as_bool().context("strict must be boolean"))
+                    .transpose()?
+                    .unwrap_or(true),
+                "strict:false conflicts with manifest and catalog component declarations"
+            );
+            for key in merge_fields {
+                let Some(value) = entry.get(*key) else {
+                    continue;
+                };
+                let merged = match *key {
+                    "skills"
+                        if overlay.get("skills").is_none()
+                            && files.keys().any(|p| p.starts_with("skills/")) =>
+                    {
+                        append_paths(Some(&Value::String("skills".into())), value)?
+                    }
+                    "skills" | "commands" | "agents" | "outputStyles" | "themes" => {
+                        append_paths(overlay.get(*key), value)?
+                    }
+                    "hooks" => {
+                        let field = format!("{overlay_path}#/hooks");
+                        let (mut events, origins) =
+                            hook_events(overlay.get("hooks"), files, &field)?;
+                        field_origins.extend(origins);
+                        let (extra, origins) =
+                            hook_events(Some(value), files, &format!("{}/hooks", context.origin))?;
+                        events.extend(extra);
+                        field_origins.extend(origins);
+                        serde_json::json!({"hooks":events})
+                    }
+                    _ => value.clone(),
+                };
+                overlay[*key] = merged;
             }
-        })?
+        }
+        if contextual && !claude_defaults {
+            for key in COMPONENT_FIELDS
+                .iter()
+                .chain(["dependencies", "userConfig"].iter())
+            {
+                if let Some(value) = entry.get(*key) {
+                    if matches!(*key, "dependencies" | "userConfig") {
+                        overlay[*key] = value.clone();
+                    }
+                    if *key == "mcpServers" || (*key == "hooks" && manifestless) {
+                        field_origins.insert((*key).into(), format!("{}/{}", context.origin, key));
+                    }
+                }
+            }
+        }
+    }
+    if (claude_defaults || matches!(format, crate::ManifestFormat::Zcode))
+        && let Some(explicit) = overlay.get("skills")
+    {
+        let mut roots = paths(explicit)?;
+        if files.keys().any(|p| p.starts_with("skills/")) {
+            roots.push("skills".into());
+        }
+        roots.sort();
+        roots.dedup();
+        overlay["skills"] = serde_json::to_value(roots)?;
+    }
+    let restricted = matches!(
+        format,
+        crate::ManifestFormat::Claude | crate::ManifestFormat::Zcode
+    );
+    Ok(Selection {
+        portable,
+        format,
+        manifest_path,
+        manifest,
+        overlay_path,
+        overlay,
+        inline: inline.is_some(),
+        contextual,
+        restricted,
+        claude_defaults,
+        field_origins,
+    })
+}
+pub(crate) fn bind_definition(detail: &mut PluginDetail, context: CatalogContext) -> Result<()> {
+    let definition = Definition {
+        version: 1,
+        id: detail.id.clone(),
+        package_digest: detail.source_digest.clone(),
+        source: detail.source.clone(),
+        context,
+        resolved_commit: detail.resolved_commit.clone(),
+        integrity: detail.integrity.clone(),
     };
-    let overlay = if portable {
-        inline.or(legacy.as_ref()).unwrap_or(&Value::Null)
-    } else {
-        manifest
-    };
+    let revision = definition.digest()?;
+    detail.admission_digest = Some(revision.clone());
+    for skill in &mut detail.skills {
+        skill.revision = revision.clone();
+    }
+    if let Some(support) = &mut detail.component_support {
+        support.digest = revision;
+    }
+    detail.definition = Some(definition);
+    Ok(())
+}
+pub(crate) fn parse(files: &Files, id: &str, source: &Path, cache: &Path) -> Result<PluginDetail> {
+    Ok(parse_context(files, id, source, cache, None)?.0)
+}
+pub(crate) fn parse_context(
+    files: &Files,
+    id: &str,
+    source: &Path,
+    cache: &Path,
+    context: Option<&CatalogContext>,
+) -> Result<(PluginDetail, Selection)> {
+    let selection = select(files, context)?;
+    let portable = selection.portable;
+    let manifest = &selection.manifest;
+    let overlay = &selection.overlay;
     let mut name = text(manifest, "name");
     if !portable && name.trim().is_empty() {
         name = source
@@ -426,7 +694,12 @@ pub(crate) fn parse(files: &Files, id: &str, source: &Path, cache: &Path) -> Res
         installed: false,
         installed_version: None,
         installed_digest: None,
+        installed_source_digest: None,
+        admission_digest: None,
+        definition: None,
         installed_skills: vec![],
+        component_choices: Default::default(),
+        installed_metadata: None,
         component_support: None,
         installed_component_support: None,
         installed_onboarding_skill: None,
@@ -443,8 +716,40 @@ pub(crate) fn parse(files: &Files, id: &str, source: &Path, cache: &Path) -> Res
         components: vec![],
         diagnostics: vec![],
         skills: vec![],
+        required_tools: vec![],
         onboarding_skill: None,
     };
+    if portable && let Some(value) = manifest.pointer("/extensions/org.areal/hostRequirements") {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct HostRequirements {
+            version: u32,
+            tools: Vec<String>,
+        }
+        let requirements: HostRequirements =
+            serde_json::from_value(value.clone()).context("invalid org.areal hostRequirements")?;
+        ensure!(
+            requirements.version == 1,
+            "unsupported hostRequirements version"
+        );
+        ensure!(
+            requirements.tools.len() <= 64,
+            "too many required host tools"
+        );
+        let mut seen = std::collections::BTreeSet::new();
+        for tool in &requirements.tools {
+            ensure!(
+                !tool.is_empty()
+                    && tool.len() <= 128
+                    && tool
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"_-.:".contains(&b))
+                    && seen.insert(tool.clone()),
+                "invalid or duplicate required host tool"
+            );
+        }
+        d.required_tools = requirements.tools;
+    }
     if let Some(interface) = overlay.get("interface") {
         if !interface.is_object() {
             d.diagnostics
@@ -475,7 +780,7 @@ pub(crate) fn parse(files: &Files, id: &str, source: &Path, cache: &Path) -> Res
             .transpose()?
             .unwrap_or_else(|| vec!["skills".into()])
     };
-    let onboarding_value = if portable && inline.is_some() {
+    let onboarding_value = if portable && selection.inline {
         overlay.get("onboardingSkill")
     } else {
         overlay
@@ -600,6 +905,7 @@ pub(crate) fn parse(files: &Files, id: &str, source: &Path, cache: &Path) -> Res
             description: description.into(),
             allow_implicit_invocation: implicit,
             onboarding: onboarding_match,
+            required_tools: d.required_tools.clone(),
         });
     }
     if onboarding.is_some() && d.onboarding_skill.is_none() {
@@ -655,36 +961,42 @@ pub(crate) fn parse(files: &Files, id: &str, source: &Path, cache: &Path) -> Res
         d.diagnostics
             .push("legacy commands migration not yet supported".into());
     }
-    let manifest_path = if portable {
-        "plugin.json"
-    } else {
-        legacy_path.unwrap()
-    };
-    let format = if portable {
-        crate::ManifestFormat::Portable1
-    } else {
-        match manifest_path {
-            ".codex-plugin/plugin.json" => crate::ManifestFormat::Codex,
-            ".claude-plugin/plugin.json" => crate::ManifestFormat::Claude,
-            _ => crate::ManifestFormat::Cursor,
-        }
-    };
-    let overlay_path = if portable && inline.is_some() {
-        "plugin.json#/extensions/com.openai".into()
-    } else {
-        legacy_path.unwrap_or(manifest_path).into()
-    };
     d.component_support = Some(crate::support::parse(
         files,
         crate::support::ManifestSelection {
             portable,
-            format,
-            manifest_path,
+            format: selection.format,
+            manifest_path: &selection.manifest_path,
             manifest,
-            overlay_path,
+            overlay_path: selection.overlay_path.clone(),
             overlay,
+            restricted: selection.restricted,
+            claude_defaults: selection.claude_defaults,
+            field_origins: &selection.field_origins,
+            catalog: context,
         },
         &d.skills,
     )?);
-    Ok(d)
+    if let Some(support) = &d.component_support {
+        d.diagnostics
+            .extend(support.compatibility.reason_codes.iter().cloned());
+        if selection.restricted {
+            for component in &support.components {
+                if component.status == crate::SupportStatus::Unsupported {
+                    d.diagnostics.push(format!(
+                        "{:?}: {}",
+                        component.kind,
+                        component.reason_codes.join(", ")
+                    ));
+                }
+            }
+        }
+    }
+    if selection.contextual {
+        bind_definition(
+            &mut d,
+            context.context("catalog definition missing")?.clone(),
+        )?;
+    }
+    Ok((d, selection))
 }

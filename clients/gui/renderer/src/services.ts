@@ -6,7 +6,7 @@ export type { CommandName };
 export type Data = Record<string, any>;
 export type FileOpenTargets = { targets: { id: string; label: string }[]; preferred: string; preferredLabel: string };
 export type FileOpenRequest = { operation: 'targets' } | { operation: 'setDefault'; target: string }
-    | { operation: 'open' | 'reveal' | 'saveAs'; projectId: string; path: string };
+    | { operation: 'open' | 'reveal' | 'saveAs'; projectId: string; threadId?: string; path: string };
 export interface Snapshot {
     projects: Data[];
     desktopCapabilities?: { currentCommands: boolean };
@@ -22,6 +22,7 @@ export interface Snapshot {
       operations: { requestId: string; kind: string; phase: string; message?: string; threadId?: string; turnId?: string;
         desktopExit?: string; targets: { projectId: string; phase: string; message?: string }[] }[] };
     library?: Data;
+    computerControl?: Data | null;
 }
 export interface UpdateState {
     enabled: boolean;
@@ -76,8 +77,9 @@ export type PreparedCreator = {
   provenance: { upstream: string; revision: string; contentDigest: string };
 };
 type SideResult<Operation extends SideRequest["operation"]> =
-  Operation extends "start" ? { threadId: string; requestId: string; turnId?: string } :
-  Operation extends "recover" ? { confirmed: false } | { confirmed: true; threadId: string } :
+  Operation extends "start" | "create" ? { threadId: string; requestId: string; turnId?: string } :
+  Operation extends "close" ? { requestId: string; threadId: string; accepted: boolean; cleanupConfirmed: boolean } :
+  Operation extends "recover" ? { confirmed: false } | { confirmed: true; requestId: string; threadId: string; turnId?: string; accepted?: boolean; cleanupConfirmed?: boolean } :
   Operation extends "list" ? { data: Record<string, unknown>[]; nextCursor?: string | null } :
   Operation extends "context" ? { snapshotId: string; evidence: Record<string, unknown>[]; nextCursor?: string | null } :
   { turn: { id: string } };

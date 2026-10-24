@@ -252,6 +252,7 @@ impl DynamicToolHost for Writes {
             .push(request["callId"].as_str().unwrap().into());
         anyhow::ensure!(!self.unknown, "fixture connection lost after submission");
         Ok(DynamicToolResponse {
+            raw_mcp_result: None,
             success: true,
             content_items: vec![],
             structured_content: Some(json!({"written":true})),

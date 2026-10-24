@@ -8,6 +8,29 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Network configuration for explicitly authorized host network access.
+pub fn network_environment() -> std::collections::BTreeMap<String, std::ffi::OsString> {
+    [
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "NODE_EXTRA_CA_CERTS",
+        "REQUESTS_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+        "GIT_SSL_CAINFO",
+    ]
+    .into_iter()
+    .filter_map(|key| std::env::var_os(key).map(|value| (key.to_owned(), value)))
+    .collect()
+}
+
 /// Core 工具与 Runtime 命令使用同一解释器和路径校验规则。
 pub fn system_python() -> io::Result<PathBuf> {
     #[cfg(target_os = "macos")]

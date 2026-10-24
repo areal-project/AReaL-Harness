@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { captureSmokeFailure, createProjectConversation } from "./smoke-navigation.mjs";
+import { captureSmokeFailure, createProjectConversation, selectConversation } from "./smoke-navigation.mjs";
+import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
+import { respondToSessionName } from "./model-fixture.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
@@ -41,7 +43,12 @@ const checks = [];
 const errors = [];
 const requests = [];
 const instances = [];
+const auxiliaryRequests = [];
+const creatorOnly = process.argv.includes("--creator-only");
+assert.ok(process.argv.slice(2).every(arg => arg === "--creator-only"), "Usage: plugin-concepts-smoke.mjs [--creator-only]");
+const creatorWorkspace = creatorOnly ? workspace : join(scratch, "creator-workspace");
 const archiveEvidence = {};
+let appEvidence;
 let creatorEvidence;
 const sha = value => createHash("sha256").update(value).digest("hex");
 const json = (path, value) => writeFile(path, JSON.stringify(value, null, 2));
@@ -105,6 +112,8 @@ await json(join(source, "mcp.json"), {
   mcpServers: { [fixture.packageServer]: { type: "stdio", command: "node",
     args: ["${PLUGIN_ROOT}/server.mjs", "package", transportLog] } },
 });
+execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
+execFileSync("git", ["-c", "user.name=Plugin Fixture", "-c", "user.email=plugin-fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "-m", "Add plugin acceptance fixture"], { cwd: workspace, stdio: "ignore" });
 execFileSync("python3", ["-c", String.raw`import json,os,stat,sys,warnings,zipfile
 warnings.filterwarnings("ignore",category=UserWarning)
 manifest={"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":sys.argv[3],"version":"1.0.0","description":"Archive source review acceptance.","extensions":{"com.openai":{"interface":{"displayName":sys.argv[4]}}}}
@@ -130,25 +139,80 @@ const createdSkillBody = "---\nname: creator-project-proof\ndescription: Produce
 const creatorBody = await readFile(join(gui, "app/assets/builtin-skills", fixture.creatorId, "SKILL.md"), "utf8");
 const creatorSource = JSON.parse(await readFile(join(gui, "app/assets/builtin-skills", `${fixture.creatorId}.source.json`), "utf8"));
 
+const creatorToolRoot = ".scratch/creator-tools";
+const creatorResources = await Promise.all(["init_skill.py", "generate_openai_yaml.py", "quick_validate.py"].map(async name => {
+  const resource = `scripts/${name}`;
+  const expected = creatorSource.files.find(file => file.path === resource);
+  assert.ok(expected);
+  return { name, resource, sha256: expected.sha256, size: (await readFile(join(gui, "app/assets/builtin-skills", fixture.creatorId, resource))).length };
+}));
+const creatorReadSteps = creatorResources.flatMap(file => Array.from({ length: Math.ceil(file.size / 8192) }, (_, index) =>
+  ["skill_read", { skill: { id: fixture.creatorId, revision: `builtin-${creatorSource.contentDigest}` }, resource: file.resource, offset: index * 8192, maxBytes: 8192 }]));
+const creatorToolCount = creatorReadSteps.length + 8;
+function creatorResourceText(payload, file) {
+  const calls = new Map((payload.messages ?? []).flatMap(message => message.tool_calls ?? []).map(call => [call.id, call]));
+  const pages = (payload.messages ?? []).filter(message => message.role === "tool" && calls.get(message.tool_call_id)?.function.name === "skill_read")
+    .map(message => ({ args: JSON.parse(calls.get(message.tool_call_id).function.arguments), result: JSON.parse(message.content) }))
+    .filter(page => page.args.resource === file.resource).sort((a, b) => a.args.offset - b.args.offset);
+  let offset = 0;
+  const chunks = pages.map(({ args, result }) => {
+    assert.equal(args.offset, offset); assert.equal(result.resource, file.resource);
+    assert.equal(result.revision, `builtin-${creatorSource.contentDigest}`);
+    const bytes = typeof result.text === "string" ? Buffer.from(result.text, "utf8") : Buffer.from(result.dataBase64, "base64"); offset += bytes.length;
+    assert.equal(result.nextOffset, offset); return bytes;
+  });
+  assert.equal(pages.at(-1)?.result.eof, true);
+  const bytes = Buffer.concat(chunks);
+  assert.equal(bytes.length, file.size); assert.equal(sha(bytes), file.sha256, "Core resource bytes match the pinned official file");
+  return bytes.toString("utf8");
+}
+
 const model = createServer(async (request, response) => {
+  try {
   let body = "";
   for await (const part of request) body += part;
   const payload = JSON.parse(body);
+  if (respondToSessionName(payload, response)) { auxiliaryRequests.push({ purpose: "sessionName" }); return; }
+  const system = payload.messages?.filter(message => message.role === "system").map(message => message.content).filter(content => typeof content === "string") ?? [];
+  if (system.some(content => content.startsWith("Predict the next user prompt from the conversation data."))) {
+    assert.ok(!payload.tools?.length, "prompt predictions have no tools");
+    auxiliaryRequests.push({ purpose: "promptPrediction" });
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    response.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "" }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`);
+    return;
+  }
+  if (system.some(content => content.startsWith("AReaL permission review."))) {
+    assert.ok(!payload.tools?.length, "permission review has no tools");
+    const packet = JSON.parse(payload.messages.findLast(message => message.role === "user").content);
+    assert.match(packet.digest, /^[a-f0-9]{64}$/);
+    auxiliaryRequests.push({ purpose: "permissionReview", tool: packet.tool, digest: packet.digest });
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    response.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: JSON.stringify({ decision: "ask", reason: "The fixture requires explicit user approval.", digest: packet.digest }) }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`);
+    return;
+  }
   requests.push(payload);
   const calls = (payload.messages ?? []).flatMap(message => message.tool_calls ?? []);
   const completed = calls.length;
-  const creatorRoot = join(scratch, "core/builtin-skills", creatorSource.contentDigest);
   const steps = [
-    ["run_command", { argv: [creatorPython, join(creatorRoot, "scripts/init_skill.py"), createdSkillId, "--path", ".agents/skills", "--interface", "short_description=Create a concise project-local acceptance proof"], yieldMs: 10000 }],
+    ...creatorReadSteps,
+    ["run_command", { argv: [creatorPython, "-c", `from pathlib import Path; Path('${creatorToolRoot}').mkdir(parents=True, exist_ok=False)`], yieldMs: 10000 }],
+    ...creatorResources.map(file => ["fs_create", () => ({ path: `${creatorToolRoot}/${file.name}`, text: creatorResourceText(payload, file) })]),
+    ["run_command", { argv: [creatorPython, `${creatorToolRoot}/init_skill.py`, createdSkillId, "--path", ".agents/skills", "--interface", "short_description=Create a concise project-local acceptance proof"], yieldMs: 10000 }],
     ["fs_read", { path: `.agents/skills/${createdSkillId}/SKILL.md` }],
     ["fs_write", { path: `.agents/skills/${createdSkillId}/SKILL.md`, text: createdSkillBody }],
-    ["run_command", { argv: [creatorPython, join(creatorRoot, "scripts/quick_validate.py"), `.agents/skills/${createdSkillId}`], yieldMs: 10000 }],
+    ["run_command", { argv: [creatorPython, `${creatorToolRoot}/quick_validate.py`, `.agents/skills/${createdSkillId}`], yieldMs: 10000 }],
   ];
-  const step = steps[completed];
+  const planned = steps[completed];
+  const step = planned && [planned[0], typeof planned[1] === "function" ? planned[1]() : planned[1]];
   const delta = step ? { tool_calls: [{ index: 0, id: `creator-tool-${completed}`, type: "function", function: { name: step[0], arguments: JSON.stringify(step[1]) } }] } : { content: "CONCEPT_MODEL_REPLY" };
   response.writeHead(200, { "Content-Type": "text/event-stream" });
   response.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] })}\n\n` +
     `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: step ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`);
+  } catch (error) {
+    errors.push(`Creator model fixture: ${error.stack ?? error}`);
+    if (!response.headersSent) response.writeHead(500);
+    response.end();
+  }
 });
 await new Promise(resolve => model.listen(0, "127.0.0.1", resolve));
 await writeFile(join(userHome, ".areal/config.toml"),
@@ -171,7 +235,7 @@ for (const path of new Set(execFileSync("git", ["ls-files", "--modified", "--oth
   }
 }
 const sourceDiffSha256 = sha(execFileSync("git", ["diff", "--binary", "HEAD"], { cwd: root, maxBuffer: 32 * 1024 * 1024 }));
-let app, page, projectId, threadId, failure;
+let app, page, projectId, pluginProjectId, threadId, failure;
 let passed = false;
 let cleanup = {};
 const button = name => page.getByRole("button", { name, exact: true });
@@ -204,6 +268,25 @@ async function capture(name) {
 async function launch() {
   app = await electron.launch({ executablePath: require("electron"), args: [join(gui, "app")], env, timeout: 120_000 });
   page = await app.firstWindow();
+  await app.evaluate(({}, modulePath) => {
+    const { McpAppsHost } = process.getBuiltinModule("node:module").createRequire(modulePath)(modulePath);
+    globalThis.__conceptAppTrace = [];
+    for (const method of ["open", "adopt"]) {
+      const original = McpAppsHost.prototype[method];
+      McpAppsHost.prototype[method] = async function (...args) {
+        try { return await original.apply(this, args); }
+        catch (error) { globalThis.__conceptAppTrace.push({ method, at: Date.now(), message: error.message, stack: error.stack }); throw error; }
+      };
+    }
+  }, join(gui, "app/src/core/mcp-apps.cjs"));
+  await app.evaluate(({ dialog }) => {
+    const original = dialog.showMessageBox;
+    dialog.showMessageBox = async (...args) => {
+      const options = args.at(-1);
+      return options?.type === "question" && /退出|关闭/.test(options.message ?? "")
+        ? { response: 1, checkboxChecked: false } : original(...args);
+    };
+  });
   page.setDefaultTimeout(20_000);
   page.on("pageerror", error => errors.push(error.message));
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120_000 });
@@ -226,11 +309,12 @@ async function launch() {
     await connection.connect(metadata);
     await connection.request("hello", { protocol: metadata.protocol, identity: metadata.identity });
   } finally { connection.close(); }
-  instances.push({ ...identity, servicePid: metadata.pid, serviceProtocol: metadata.protocol });
+  instances.push({ ...identity, servicePid: metadata.pid, serviceProtocol: metadata.protocol, desktopGeneration: metadata.desktopGeneration });
 }
 async function settings() {
   await button("设置").click();
   await page.getByLabel("集成", { exact: true }).getByRole("button", { name: "插件", exact: true }).click();
+  if (await button("返回插件列表").isVisible()) await button("返回插件列表").click();
   await page.getByRole("heading", { name: "插件", exact: true }).first().waitFor();
   await primaryTabs().waitFor();
   assert.deepEqual(await primaryTabs().getByRole("tab").allTextContents(), ["插件", "MCP", "Skills", "市场"]);
@@ -271,10 +355,106 @@ async function detailFromResource(row) {
   await row.getByRole("button", { name: "管理插件", exact: true }).click();
   const detail = page.getByTestId("plugin-detail-page");
   await detail.getByRole("heading", { name: fixture.pluginName, exact: true }).waitFor();
-  await detail.getByText(fixture.pluginId, { exact: true }).waitFor();
+  await reconcilePluginSubmission(detail);
+  const sourceDetails = detail.locator("#plugin-source-details");
+  const revealDetails = detail.getByRole("button", { name: "查看详情", exact: true });
+  if (await revealDetails.isVisible()) await revealDetails.click();
+  const pluginIdentity = sourceDetails.getByText(fixture.pluginId, { exact: true });
+  if (!await pluginIdentity.isVisible()) await detail.getByText("技术详情", { exact: true }).click();
+  await pluginIdentity.waitFor();
   await detail.getByRole("button", { name: "卸载插件", exact: true }).waitFor();
   assert.equal(await page.getByRole("dialog").count(), 0, "plugin details are a content page");
   return detail;
+}
+async function reconcilePluginSubmission(container) {
+  const recovery = container.getByRole("button", { name: "核对插件提交", exact: true });
+  const before = await manage("plugins");
+  if (!await recovery.isVisible()) return;
+  try { await recovery.click({ timeout: 2000 }); }
+  catch (error) {
+    // A completed receipt read may remove this control while the locator is resolving.
+    // Never replay the failed import; accept disappearance only with unchanged catalog below.
+    if (await recovery.isVisible()) throw error;
+  }
+  await until(async () => !(await recovery.isVisible()), "original failed archive receipt is confirmed");
+  assert.deepEqual(await manage("plugins"), before, "receipt recovery does not replay or mutate the catalog");
+  checks.push("failed archive submission is reconciled by reading its original receipt without replay");
+}
+async function selectOwner(ownerThreadId) {
+  await page.getByRole("navigation", { name: "应用导航", exact: true }).getByRole("button", { name: "首页", exact: true }).click();
+  if (await button("展开侧栏").isVisible()) await button("展开侧栏").click();
+  await selectConversation(page, ownerThreadId);
+  assert.equal(await page.getByTestId("areal-workbench").getAttribute("data-project-id"), projectId);
+  const queue = (await state()).projects.find(project => project.id === projectId).state.queues?.[ownerThreadId];
+  assert.ok(queue, "persisted App owner exposes its authoritative queue");
+  assert.equal(queue.items.some(item => ["pending", "running"].includes(item.status)), false, "fixture resume cannot execute queued work");
+  if (queue.paused) {
+    assert.equal(queue.pauseReason, "serverDraining", "only the fixture's known shutdown pause is resumed");
+    await button("任务操作").click();
+    await page.getByRole("menuitem", { name: "队列", exact: true }).click();
+    await button("继续队列").click();
+    await until(async () => (await state()).projects.find(project => project.id === projectId).state.queues?.[ownerThreadId]?.paused === false,
+      "explicit UI resumes the empty queue after cold service shutdown");
+  }
+}
+async function connectPackage(detail) {
+  await detail.getByRole("button", { name: "审阅并连接", exact: true }).click();
+  assert.equal(await detail.getByRole("button", { name: "信任并连接", exact: true }).isEnabled(), false);
+  await detail.getByRole("checkbox", { name: "我信任当前安装快照，并允许启动其 MCP 服务。", exact: true }).check();
+  await detail.getByRole("button", { name: "信任并连接", exact: true }).click();
+  return until(async () => {
+    const plugin = (await manage("pluginMcp")).data.find(item => item.pluginId === fixture.pluginId);
+    return plugin?.servers.length === 1 && plugin.servers[0].state === "connected" ? plugin : null;
+  }, "explicit digest trust connects package MCP");
+}
+const echoRequests = entries => entries.filter(event => event.owner === "package" && event.event === "request"
+  && event.method === "tools/call" && event.params.name === "concept.echo");
+async function settleAppApproval(read, label) {
+  let approvals = 0;
+  const value = await until(async () => {
+    const result = await read();
+    if (result) return result;
+    const approval = page.locator('[data-interaction="approval"]');
+    const allow = approval.getByRole("button", { name: "允许一次", exact: true });
+    if (!approvals && await allow.count() && await allow.isVisible()) {
+      let enabled = false;
+      try { enabled = await allow.isEnabled({ timeout: 250 }); }
+      catch (error) { if (await allow.count()) throw error; }
+      if (enabled) { await allow.click(); approvals++; }
+    }
+    return null;
+  }, label);
+  assert.equal(approvals, 1, "the App action uses its ordinary visible Core approval");
+  return value;
+}
+async function openAndEchoApp(detail, ownerThreadId, expectedCalls) {
+  const before = (await state()).projects.find(project => project.id === projectId);
+  const beforeThreads = Object.keys(before.state.threads).sort();
+  assert.equal(before.root, workspace);
+  assert.ok(before.state.threads[ownerThreadId], "App owner is a persisted source conversation");
+  assert.equal(await page.getByTestId("areal-workbench").getAttribute("data-thread-id"), ownerThreadId);
+  await detail.getByRole("button", { name: "Concept App", exact: true }).click();
+  await page.getByTestId("chat-input").waitFor();
+  const frame = await settleAppApproval(async () => page.frames().find(frame => /^areal-mcp:\/\/[^/]+\/view$/.test(frame.url())), "actual MCP App frame after ordinary approval");
+  await frame.locator("#ready").filter({ hasText: "initialized" }).waitFor();
+  assert.equal(await page.getByTestId("areal-workbench").getAttribute("data-thread-id"), ownerThreadId, "global App preserves its selected persisted owner");
+  assert.deepEqual(Object.keys((await state()).projects.find(project => project.id === projectId).state.threads).sort(), beforeThreads, "opening App cannot create another execution thread");
+  assert.equal(requests.length, 0, "opening App cannot invoke inference");
+  await frame.getByRole("button", { name: "Echo literal", exact: true }).click();
+  await settleAppApproval(async () => await frame.locator("#result").filter({ hasText: "ECHO_CONCEPT_LITERAL" }).isVisible(), "App Echo after ordinary approval");
+  assert.deepEqual(JSON.parse(await frame.locator("#result").innerText()).content, [{ type: "text", text: "ECHO_CONCEPT_LITERAL" }]);
+  const echoes = echoRequests(await events());
+  assert.equal(echoes.length, expectedCalls, "one explicit Echo produces one transport call without replay");
+  assert.ok(echoes.every(event => event.params.arguments.value === "CONCEPT_LITERAL"));
+  assert.equal(requests.length, 0, "interactive App echo cannot invoke model inference");
+  return { frameUrl: frame.url(), threadId: ownerThreadId };
+}
+async function ownedCoreGeneration(ownerRoot) {
+  return until(async () => {
+    const entries = JSON.parse(execFileSync(env.AREAL_CORE_BIN, ["service", "list", "--json"], { env, encoding: "utf8", timeout: 30_000 }));
+    const owner = entries.find(entry => entry.workspace === ownerRoot && entry.owner?.profile === env.AREAL_GUI_USER_DATA && entry.state !== "stopped");
+    return owner?.corePid && owner?.generation ? owner : null;
+  }, "owned Core generation is running");
 }
 async function closeDetail() {
   await button("返回插件列表").click();
@@ -324,25 +504,48 @@ async function stopService() {
       catch (error) { if (error.code === "ESRCH") return true; throw error; }
     }, "owned desktop service exits");
   }
+  await assertApplicationStopped(env.AREAL_CORE_BIN, env, metadata);
   const remaining = JSON.parse(execFileSync(env.AREAL_CORE_BIN, ["service", "list", "--json"], { env, encoding: "utf8", timeout: 30_000 }));
-  for (const service of remaining) assert.equal(service.workspace, workspace, "registry contains only this fixture workspace");
+  const owners = JSON.parse(await readFile(join(scratch, "core/projects.json"), "utf8"));
+  const projectless = JSON.parse(await readFile(join(scratch, "core/projectless-drafts.json"), "utf8"));
+  for (const service of remaining) {
+    const owner = owners.find(owner => owner.root === service.workspace);
+    assert.ok(owner && ([workspace, creatorWorkspace].includes(owner.root) || owner.projectless === true
+      && projectless[owner.projectlessRequestId]?.root === owner.root && owner.root.startsWith(`${userHome}/`)), "registry contains only persisted fixture owners");
+    assert.equal(service.owner?.kind, "gui");
+    assert.equal(service.owner?.profile, env.AREAL_GUI_USER_DATA);
+    assert.equal(service.dataDir, join(scratch, "core", owner.id, "state"));
+  }
   assert.equal(remaining.every(service => service.state === "stopped"), true, "owned Core services stopped");
   return { desktopStopped: true, coreStopped: true, remaining };
 }
 
 try {
+  if (creatorOnly) {
+    await launch();
+    await selectNative(workspace);
+    await page.evaluate(() => window.arealDesktop.chooseProject());
+    await page.getByRole("navigation", { name: "应用导航", exact: true }).getByRole("button", { name: "首页", exact: true }).click();
+    await createProjectConversation(page, "workspace");
+    const owner = await until(async () => (await state()).projects.find(project => project.root === workspace && project.state?.connected), "Creator fixture project connected");
+    projectId = owner.id;
+    assert.equal(Object.keys(owner.state.threads).length, 0, "Creator scenario starts before any task occupies the source workspace");
+    await page.getByTestId("chat-input").fill("CREATOR_EXISTING_DRAFT");
+    await skillWorkspace();
+  } else {
   const legacyDeployment = join(scratch, "legacy-desktop.json");
   await json(legacyDeployment, { profiles: [{ id: "areal-standard", revision: "resources-00000000", displayName: "标准", instructions: "Legacy deployment", allowPluginSkills: true, skills: [] }] });
   env.AREAL_CORE_DESKTOP_CONFIG = legacyDeployment;
   await launch();
-  assert.equal((await state()).projects.length, 0);
+  const initialProjects = (await state()).projects;
+  assert.equal(initialProjects.filter(project => !project.projectless).length, 0, "no workspace project exists before opening Plugins");
   await pluginWorkspace();
-  assert.equal((await state()).projects.length, 0, "opening Plugins cannot create a hidden project");
+  assert.deepEqual((await state()).projects.map(project => project.id).sort(), initialProjects.map(project => project.id).sort(), "opening Plugins cannot create a hidden project");
   assert.equal(await page.getByTestId("areal-workbench").getAttribute("data-thread-id"), "",
     "opening Plugins cannot create an execution thread");
   assert.equal(requests.length, 0, "opening Plugins cannot invoke inference");
   assert.equal((await events()).length, 0, "opening Plugins cannot start MCP");
-  checks.push("the global Plugins workspace opens before any project without creating project, task or execution");
+  checks.push("the global Plugins workspace opens before any workspace project without creating project, task or execution");
   await capture("00-projectless-plugins");
   await selectNative(workspace);
   await page.evaluate(() => window.arealDesktop.chooseProject());
@@ -350,12 +553,14 @@ try {
   await createProjectConversation(page, "workspace");
   const ready = await until(async () => {
     const value = await state();
-    return value.projects[0]?.state?.connected ? value : null;
+    return value.projects.find(project => project.root === workspace && project.state?.connected);
   }, "fixture project connected");
-  projectId = ready.projects[0].id;
+  projectId = ready.id;
+  pluginProjectId = projectId;
   threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-  assert.equal(typeof threadId, "string");
+  assert.equal(threadId, "", "new project conversation is an unsubmitted draft");
   const legacyThread = await call("create", { projectId, profile: { id: "areal-standard", revision: "resources-00000000" } });
+  assert.ok(legacyThread.threadId, "legacy profile fixture has a persisted conversation owner");
   await page.getByTestId("chat-input").fill("RESTRICTED_CREATOR_DRAFT");
   await settings();
   await tab("Skills");
@@ -368,12 +573,11 @@ try {
   assert.equal(await page.evaluate(id => localStorage.getItem(`areal-gui:draft:${id}:new`), projectId), "RESTRICTED_CREATOR_DRAFT");
   assert.equal(requests.length, 0);
   checks.push("custom deployment without Creator keeps its permissions and preserves the existing chat draft");
-  await app.close(); app = null;
+  await closeSmokeApplication(app); app = null;
   await stopService();
   delete env.AREAL_CORE_DESKTOP_CONFIG;
   await launch();
-  await until(async () => (await state()).projects[0]?.state?.connected, "upgraded project connected");
-  const upgraded = (await state()).projects[0];
+  const upgraded = await until(async () => (await state()).projects.find(project => project.id === projectId && project.root === workspace && project.state?.connected), "upgraded project connected");
   assert.equal(upgraded.profiles.find(profile => profile.id === "areal-standard").revision, "resources-00000000", "fixture retains a historical first profile without Creator");
   await json(join(scratch, "creator-upgraded-project.json"), upgraded);
   await settings();
@@ -426,12 +630,13 @@ try {
   await button(`查看插件 ${fixture.pluginId}`).click();
   await page.getByTestId("plugin-detail-page").waitFor();
   assert.equal(await page.getByRole("dialog").count(), 0, "market plugin detail is a content page");
+  await button("安装").click();
+  await page.getByRole("checkbox", { name: "我已核对以上来源、版本和摘要", exact: true }).waitFor();
   await scopeProject();
   assert.equal(await button("安装到当前项目").isEnabled(), false, "package install needs source review");
-  await button("解析并预览来源").click();
-  await page.getByRole("checkbox", { name: "我已核对以上来源、版本和内容摘要", exact: true }).check();
+  await page.getByRole("checkbox", { name: "我已核对以上来源、版本和摘要", exact: true }).check();
   await button("安装到当前项目").click();
-  await button("卸载插件").waitFor();
+  await button("管理").waitFor();
   const installed = (await manage("plugins")).data.find(plugin => plugin.id === fixture.pluginId);
   assert.equal(installed.installed, true);
   assert.equal(installed.enabled, true);
@@ -475,7 +680,8 @@ try {
   await capture("01a-skills-personal-preview-light");
   await button("设置").click();
   await page.getByRole("button", { name: "外观", exact: true }).click();
-  await page.getByRole("button", { name: "深色", exact: true }).click();
+  await page.getByRole("combobox", { name: "界面主题", exact: true }).click();
+  await page.getByRole("option", { name: "深色", exact: true }).click();
   await skillWorkspace();
   await capture("01a-skills-personal-preview-dark");
   await sourceTabs.getByRole("tab", { name: "workspace", exact: true }).click();
@@ -512,13 +718,14 @@ try {
   const imported = (await manage("plugins")).data.find(plugin => plugin.id === archivePluginId);
   assert.equal(imported.installed, false, "archive import publishes a candidate without installation");
   assert.equal(imported.enabled, false);
+  await page.getByRole("checkbox", { name: "我已核对以上来源、版本和摘要", exact: true }).waitFor();
+  await scopeProject();
   assert.equal(await button("安装到当前项目").isEnabled(), false, "archive candidate needs explicit source review");
   assert.equal((await events()).length, 0, "archive import cannot start MCP");
   assert.equal(requests.length, 0, "archive import cannot start inference");
-  await scopeProject();
-  await page.getByRole("checkbox", { name: "我已核对以上来源、版本和内容摘要", exact: true }).check();
+  await page.getByRole("checkbox", { name: "我已核对以上来源、版本和摘要", exact: true }).check();
   await button("安装到当前项目").click();
-  await button("卸载插件").waitFor();
+  await button("管理").waitFor();
   const archiveInstalled = (await manage("plugins")).data.find(plugin => plugin.id === archivePluginId);
   assert.equal(archiveInstalled.installed, true);
   assert.equal(archiveInstalled.enabled, true);
@@ -534,6 +741,7 @@ try {
   assert.deepEqual(await manage("plugins"), beforeRejected, "traversal rejection leaves catalog and installed state unchanged");
   assert.equal((await readdir(scratch, { recursive: true })).some(path => path.split("/").at(-1) === "plugin-traversal-escape.txt"), false,
     "traversal entry cannot escape archive staging");
+  await reconcilePluginSubmission(page.getByRole("dialog"));
   await page.getByRole("dialog").getByRole("button", { name: "取消", exact: true }).click();
   await page.getByRole("dialog").waitFor({ state: "hidden" });
   checks.push("native-selected ZIP imports to an uninstalled candidate, installs only after digest review, and rejects traversal without publication or filesystem escape");
@@ -622,13 +830,7 @@ try {
   checks.push("standalone project MCP creation, readback, editing and connection use the real UI and preserve the package connection boundary");
   packagedMcp = mcpRow("plugin");
   const dialog = await detailFromResource(packagedMcp);
-  assert.equal(await dialog.getByRole("button", { name: "信任并连接", exact: true }).isEnabled(), false);
-  await dialog.getByRole("checkbox", { name: "我信任此已安装快照并允许启动其 MCP 服务器", exact: true }).check();
-  await dialog.getByRole("button", { name: "信任并连接", exact: true }).click();
-  const packageConnection = await until(async () => {
-    const plugin = (await manage("pluginMcp")).data.find(item => item.pluginId === fixture.pluginId);
-    return plugin?.servers.length === 1 && plugin.servers[0].state === "connected" ? plugin : null;
-  }, "explicit digest trust connects package MCP");
+  const packageConnection = await connectPackage(dialog);
   assert.equal(packageConnection.trusted, true);
   assert.equal(packageConnection.installedDigest, installed.installedDigest);
   await capture("03-plugin-detail-connected");
@@ -640,23 +842,48 @@ try {
   await mcpRow("standalone").getByText("已连接", { exact: true }).waitFor();
   await capture("04-source-aware-mcp");
   checks.push("package MCP is listed before connection, delegates management to the package, and shows the real connected state after explicit digest trust");
+  const unboundThreads = Object.keys((await state()).projects.find(project => project.id === projectId).state.threads).sort();
+  assert.equal(await page.getByTestId("areal-workbench").getAttribute("data-thread-id"), "");
+  const unboundDetail = await detailFromResource(mcpRow("plugin"));
+  await unboundDetail.getByRole("button", { name: "Concept App", exact: true }).click();
+  await page.getByText("请先在侧栏选择已有会话，再打开应用。", { exact: true }).waitFor();
+  assert.deepEqual(Object.keys((await state()).projects.find(project => project.id === projectId).state.threads).sort(), unboundThreads,
+    "unbound global App refuses without implicitly creating or choosing a conversation");
+  assert.equal(echoRequests(await events()).length, 0);
+  assert.equal(requests.length, 0);
+  checks.push("unbound global App requests an explicit conversation without creating a worktree, dispatching a tool or submitting a draft");
+  await selectOwner(legacyThread.threadId);
+  threadId = legacyThread.threadId;
+  await settings();
+  await tab("MCP");
+  await scopeProject();
   const appDialog = await detailFromResource(mcpRow("plugin"));
-  await appDialog.getByRole("button", { name: "Concept App", exact: true }).click();
-  await page.getByTestId("chat-input").waitFor();
-  const frame = await until(async () => page.frames().find(frame => /^areal-mcp:\/\/[^/]+\/view$/.test(frame.url())), "actual MCP App frame");
-  await frame.locator("#ready").filter({ hasText: "initialized" }).waitFor();
-  await frame.getByRole("button", { name: "Echo literal", exact: true }).click();
-  await frame.locator("#result").filter({ hasText: "ECHO_CONCEPT_LITERAL" }).waitFor();
-  assert.deepEqual(JSON.parse(await frame.locator("#result").innerText()).content, [{ type: "text", text: "ECHO_CONCEPT_LITERAL" }]);
-  assert.equal((await events()).some(event => event.owner === "package" && event.event === "request" && event.method === "tools/call" &&
-    event.params.name === "concept.echo" && event.params.arguments.value === "CONCEPT_LITERAL"), true);
-  assert.equal(requests.length, 0, "interactive App echo cannot invoke model inference");
+  const directoryBeforeRestart = await call("manage", { operation: "mcpApps", projectId, threadId });
+  const initialApp = await openAndEchoApp(appDialog, threadId, 1);
+  const appOwner = await call("manage", { projectId, threadId, operation: "inspect" });
+  assert.deepEqual({ id: appOwner.configuration.profile.id, revision: appOwner.configuration.profile.revision },
+    { id: "areal-standard", revision: "resources-00000000" }, "App preserves the selected historical profile binding");
+  appEvidence = { initial: initialApp, epochBefore: directoryBeforeRestart.requestEpoch,
+    serverBefore: directoryBeforeRestart.data.find(server => server.pluginId === fixture.pluginId) };
   checks.push("interactive App remains reachable from plugin detail and returns the literal echo through an actual sandbox frame and MCP transport");
   await capture("05-plugin-interactive-app");
-  await app.close();
+  const oldDesktop = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
+  const oldCore = await ownedCoreGeneration(workspace);
+  const oldElectronPid = app.process().pid;
+  await closeSmokeApplication(app);
   app = null;
+  await assertApplicationStopped(env.AREAL_CORE_BIN, env, oldDesktop);
+  appEvidence.applicationStopped = true;
   await launch();
-  await until(async () => (await state()).projects.find(project => project.id === projectId)?.state?.connected, "reopened project connected");
+  await until(async () => (await state()).projects.find(project => project.id === projectId && project.root === workspace)?.state?.connected, "reopened project connected");
+  const newDesktop = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
+  const newCore = await ownedCoreGeneration(workspace);
+  assert.notEqual(app.process().pid, oldElectronPid, "cold reopen starts a new Electron process");
+  assert.notEqual(newDesktop.pid, oldDesktop.pid, "cold reopen starts a new Desktop service process");
+  assert.notEqual(newDesktop.desktopGeneration, oldDesktop.desktopGeneration, "cold reopen starts a new Desktop service generation");
+  assert.notEqual(newCore.corePid, oldCore.corePid, "cold reopen starts a new Core process");
+  assert.notEqual(newCore.generation, oldCore.generation, "cold reopen starts a new Core generation");
+  await selectOwner(threadId);
   await settings();
   await tab("Skills");
   skills = await assertSkillOwners();
@@ -674,7 +901,27 @@ try {
   assert.equal(restoredMcp.config.transport.command, process.execPath);
   assert.equal(restoredMcp.config.callTimeoutMs, 20000);
   assert.equal(requests.length, 0);
-  checks.push("GUI reopen retains package identity, standalone Skill toggle, MCP configuration and ownership-aware management paths");
+  const restoredPackage = (await manage("pluginMcp")).data.find(plugin => plugin.pluginId === fixture.pluginId);
+  assert.equal(restoredPackage.trusted, true, "installed digest trust survives cold restart");
+  assert.equal(restoredPackage.installedDigest, installed.installedDigest);
+  assert.equal(echoRequests(await events()).length, 1, "cold restart cannot replay the previous Echo");
+  const reopenedDetail = await detailFromResource(mcpRow("plugin"));
+  const reconnectedPackage = await connectPackage(reopenedDetail);
+  assert.equal(reconnectedPackage.trusted, true);
+  assert.equal(reconnectedPackage.installedDigest, installed.installedDigest);
+  const directoryAfterRestart = await call("manage", { operation: "mcpApps", projectId, threadId });
+  assert.equal(typeof directoryBeforeRestart.requestEpoch, "string");
+  assert.equal(typeof directoryAfterRestart.requestEpoch, "string");
+  assert.notEqual(directoryAfterRestart.requestEpoch, directoryBeforeRestart.requestEpoch, "cold Core restart invalidates the previous App epoch");
+  const reopenedApp = await openAndEchoApp(reopenedDetail, threadId, 2);
+  assert.notEqual(reopenedApp.frameUrl, initialApp.frameUrl, "explicit reopen uses a new sandbox App token");
+  Object.assign(appEvidence, { reopened: reopenedApp, oldElectronPid, newElectronPid: app.process().pid,
+    desktopBefore: { pid: oldDesktop.pid, generation: oldDesktop.desktopGeneration },
+    desktopAfter: { pid: newDesktop.pid, generation: newDesktop.desktopGeneration }, coreBefore: oldCore, coreAfter: newCore,
+    epochBefore: directoryBeforeRestart.requestEpoch, epochAfter: directoryAfterRestart.requestEpoch,
+    serverBefore: directoryBeforeRestart.data.find(server => server.pluginId === fixture.pluginId),
+    serverAfter: directoryAfterRestart.data.find(server => server.pluginId === fixture.pluginId) });
+  checks.push("cold GUI restart stops old Desktop and Core generations, retains resource identity and trust, and explicitly reconnects and reopens App for one new literal Echo without inference or replay");
   await capture("06-reopened-resources");
   const beforeTry = Object.keys((await state()).projects.find(project => project.id === projectId).state.threads).sort();
   await pluginWorkspace();
@@ -688,9 +935,22 @@ try {
   assert.equal(requests.length, 0, "trying a plugin stages a draft without inference");
   checks.push("a plugin without Skills can open an ordinary draft without a fabricated Skill or premature execution");
   await capture("06b-plugin-without-skills-draft");
+  // The resource fixture already owns a persisted source conversation. Give the
+  // Creator its own empty project so its first ordinary Send owns this path.
+  await mkdir(creatorWorkspace);
+  execFileSync("git", ["init", "-b", "main"], { cwd: creatorWorkspace, stdio: "ignore" });
+  await selectNative(creatorWorkspace);
+  await page.evaluate(() => window.arealDesktop.chooseProject());
+  await page.getByRole("navigation", { name: "应用导航", exact: true }).getByRole("button", { name: "首页", exact: true }).click();
+  await createProjectConversation(page, "creator-workspace");
+  const creatorOwner = await until(async () => (await state()).projects.find(project => project.root === creatorWorkspace && project.state?.connected), "isolated Creator project connected");
+  projectId = creatorOwner.id;
+  assert.equal(Object.keys(creatorOwner.state.threads).length, 0, "Creator first Send starts in an unoccupied project workspace");
+  assert.equal(await page.getByTestId("areal-workbench").getAttribute("data-thread-id"), "");
   await page.getByTestId("chat-input").fill("CREATOR_EXISTING_DRAFT");
   await page.evaluate(id => localStorage.setItem(`areal-gui:draft:${id}:new:profile`, JSON.stringify({ id: "areal-standard", revision: "v1" })), projectId);
   await skillWorkspace();
+  }
   const creator = await call("resources", { operation: "builtinSkill", id: fixture.creatorId });
   assert.equal(creator.skill.id, fixture.creatorId);
   assert.equal(creator.skill.revision, `builtin-${creatorSource.contentDigest}`);
@@ -706,7 +966,7 @@ try {
   const draftText = await draft.innerText();
   assert.equal(draftText.includes("CREATOR_EXISTING_DRAFT"), true, "Create Skill preserves the existing ordinary chat draft");
   assert.equal(draftText.includes("Skill Creator"), true);
-  assert.equal(draftText.includes(join(workspace, ".agents/skills")), true, "creation prompt binds the selected project installation directory");
+  assert.equal(draftText.includes(join(creatorWorkspace, ".agents/skills")), true, "creation prompt binds the selected project installation directory");
   assert.equal(await page.getByRole("dialog").count(), 0, "Create Skill enters an ordinary chat draft without a creation form");
   assert.deepEqual(threadIds(await state()), threadIds(beforeCreator), "Create Skill cannot create an execution thread before Send");
   assert.equal(requests.length, 0, "Create Skill cannot invoke the model before Send");
@@ -716,10 +976,31 @@ try {
   assert.notEqual(boundProfile.revision, "resources-00000000");
   await capture("07-official-creator-chat-draft");
   await button("发送").click();
-  await page.getByText("CONCEPT_MODEL_REPLY", { exact: true }).waitFor();
-  assert.equal(requests.length, 5, "one ordinary turn runs official initialization, project editing and official validation through Runtime");
-  assert.equal(await readFile(join(workspace, ".agents/skills", createdSkillId, "SKILL.md"), "utf8"), createdSkillBody);
-  await readFile(join(workspace, ".agents/skills", createdSkillId, "agents/openai.yaml"), "utf8");
+  let creatorApprovals = 0;
+  await until(async () => {
+    if (await page.getByText("CONCEPT_MODEL_REPLY", { exact: true }).isVisible()) return true;
+    const approval = page.locator('[data-interaction="approval"]');
+    const allow = approval.getByRole("button", { name: "允许一次", exact: true });
+    if (await allow.count() && await allow.isVisible()) {
+      let enabled = false;
+      try { enabled = await allow.isEnabled({ timeout: 250 }); }
+      catch (error) { if (await allow.count()) throw error; }
+      if (enabled) {
+        assert.match(await approval.innerText(), /run_command|fs_create|fs_write|fs_read|skill_read/);
+        await allow.click();
+        assert.ok(++creatorApprovals <= creatorToolCount, "Creator cannot request more approvals than its bounded tool calls");
+      }
+    }
+    return false;
+  }, "official Creator tool chain finishes");
+  assert.equal(requests.length, creatorToolCount + 1, "one ordinary turn reads official resources, materializes them through Runtime, initializes and validates the project Skill");
+  for (const file of creatorResources)
+    assert.equal(sha(await readFile(join(creatorWorkspace, creatorToolRoot, file.name))), file.sha256, "Runtime script copy retains the pinned official bytes");
+  checks.push("official Creator resources are paginated through skill_read and copied by Runtime with pinned SHA-256 equality");
+  assert.equal(await readFile(join(creatorWorkspace, ".agents/skills", createdSkillId, "SKILL.md"), "utf8"), createdSkillBody);
+  await readFile(join(creatorWorkspace, ".agents/skills", createdSkillId, "agents/openai.yaml"), "utf8");
+  if (!creatorOnly) assert.equal((await readdir(join(workspace, ".agents/skills"))).includes(createdSkillId), false,
+    "Creator cannot install into the earlier resource project's source workspace");
   assert.equal((await readdir(join(userHome, ".agents/skills")).catch(error => error.code === "ENOENT" ? [] : Promise.reject(error))).includes(createdSkillId), false);
   const projectSkills = await resources("skills");
   assert.equal(projectSkills.data.some(skill => skill.id === createdSkillId && skill.scope === "project" && skill.enabled), true, "Agent-created Skill is discovered in the selected project");
@@ -737,7 +1018,10 @@ try {
   const authoring = await call("manage", { projectId, threadId: authoringThreadId, operation: "inspect" });
   assert.deepEqual({ id: authoring.configuration.profile.id, revision: authoring.configuration.profile.revision }, boundProfile, "ordinary created thread uses the exact prepared profile");
   await json(join(scratch, "creator-thread.json"), authoring);
-  creatorEvidence = { profile: boundProfile, installedSkillRoot: join(workspace, ".agents/skills", createdSkillId), skill: creator.skill, provenance: creator.provenance, bodySha256: sha(creatorBody), modelUserTextSha256: sha(userText) };
+  const authoringCore = await ownedCoreGeneration(creatorWorkspace);
+  assert.equal(authoringCore.workspace, creatorWorkspace, "Creator Runtime writes use the selected project's actual source root");
+  creatorEvidence = { approvals: creatorApprovals, profile: boundProfile, workspace: creatorWorkspace, core: authoringCore,
+    installedSkillRoot: join(creatorWorkspace, ".agents/skills", createdSkillId), skill: creator.skill, provenance: creator.provenance, bodySha256: sha(creatorBody), modelUserTextSha256: sha(userText) };
   checks.push("Create Skill preserves draft input, binds the verified official Creator, starts no execution before Send, and sends its exact body in an ordinary first chat turn");
   await capture("08-official-creator-first-turn");
   assert.deepEqual(errors, []);
@@ -746,23 +1030,24 @@ try {
 } catch (error) {
   failure = { message: error.message, stack: error.stack };
   process.exitCode = 1;
+  if (app) await json(join(scratch, "app-failure-trace.json"), await app.evaluate(() => globalThis.__conceptAppTrace).catch(e => ({ unavailable: e.message })));
   if (page) await captureSmokeFailure(page, scratch, error);
 } finally {
-  if (app) await app.close().catch(error => errors.push(`close GUI: ${error.message}`));
+  if (app) await closeSmokeApplication(app).catch(error => errors.push(`close GUI: ${error.message}`));
   try { cleanup = await stopService(); }
   catch (error) { cleanup = { error: error.message }; errors.push(`stop owned service: ${error.message}`); }
   await new Promise(resolve => model.close(resolve));
   if (errors.length) { passed = false; process.exitCode = 1; }
   const manifest = {
-    passed, checks, errors, failure, scratch, workspace, projectId, threadId, fixture, instances, cleanup,
-    archive: archiveEvidence, creator: creatorEvidence,
+    passed, checks, errors, failure, scratch, workspace, creatorWorkspace, projectId, pluginProjectId, threadId, fixture, instances, cleanup,
+    archive: archiveEvidence, app: appEvidence, creator: creatorEvidence,
     source: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
     sourceFiles, sourceDiffSha256,
     core: { binary: env.AREAL_CORE_BIN, sha256: coreSha256, unchanged: sha(await readFile(env.AREAL_CORE_BIN)) === coreSha256 },
-    modelRequests: requests.length,
-    scope: "source Electron/Main/Core plugin workspace, reviewed portable local and ZIP plugins, standalone resources, stdio MCP, native App iframe, official bundled Creator ordinary chat turn; deterministic loopback model; no packaged or remote-provider acceptance",
+    mode: creatorOnly ? "creator-only" : "comprehensive", modelRequests: requests.length, auxiliaryRequests,
+    scope: creatorOnly ? "source Electron/Main/Core official Creator first ordinary turn in an otherwise unoccupied project workspace; deterministic model; actual Runtime writes and validation; no MCP App, worktree inheritance, package or real-provider acceptance" : "source Electron/Main/Core plugin workspace, reviewed portable local and ZIP plugins, standalone resources, stdio MCP, native App iframe before and after cold Desktop/Core restart, official bundled Creator ordinary chat turn in a separate unoccupied project; deterministic loopback model; no packaged or remote-provider acceptance",
     creatorPython,
-    injectedBoundary: "native directory and ZIP selection return isolated fixture paths; explicit Python with PyYAML; deterministic loopback model emits official Creator init, project read/write and validation tool calls, then the literal response",
+    injectedBoundary: "native directory and ZIP selection return isolated fixture paths; explicit Python with PyYAML; auxiliary model requests are fixtures; deterministic loopback model reads official resources with skill_read, materializes those returned bytes through Runtime into authorized workspace scratch, then emits official Creator init, project read/write and validation tool calls, then the literal response",
   };
   await json(join(scratch, "manifest.json"), manifest);
   await json(join(scratch, "model-requests.json"), requests);

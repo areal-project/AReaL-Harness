@@ -55,6 +55,7 @@ impl DynamicToolHost for Host {
     }
     async fn call(&self, _: Value, _: CancellationToken) -> anyhow::Result<DynamicToolResponse> {
         Ok(DynamicToolResponse {
+            raw_mcp_result: None,
             success: true,
             content_items: vec![],
             structured_content: None,

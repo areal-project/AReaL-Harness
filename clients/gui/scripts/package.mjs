@@ -18,11 +18,11 @@ const { values: options } = parseArgs({ options: {
   platform: { type: "string", default: "mac" }, arch: { type: "string", default: "arm64" },
   formats: { type: "string" }, signing: { type: "string" }, output: { type: "string" },
   identity: { type: "string" }, "keychain-profile": { type: "string" },
-  "dmg-only": { type: "boolean" },
+  "dmg-only": { type: "boolean" }, "skip-tests": { type: "boolean" },
 } });
 if (options.help) {
-  console.log("Usage: pnpm --dir clients/gui run dist --platform mac --arch arm64 --formats dmg,zip --signing none|adhoc|developer-id [--output NEW_DIRECTORY] [--identity ID --keychain-profile PROFILE]\n" +
-    "dist builds release Core and GUI. Only native macOS arm64 is supported. none preserves input signatures; no launch trust is implied. developer-id requires both formats and performs notarization/acceptance. Never publishes. Resume pending Apple work with sign:mac --resume --output OUTPUT/signed.");
+  console.log("Usage: pnpm --dir clients/gui run dist --platform mac --arch arm64 --formats dmg,zip --signing none|adhoc|developer-id [--output NEW_DIRECTORY] [--identity ID --keychain-profile PROFILE] [--skip-tests]\n" +
+    "dist builds release Core and GUI. Only native macOS arm64 is supported. none preserves input signatures; no launch trust is implied. developer-id requires both formats and performs notarization/acceptance (post-signing tests may be explicitly skipped). Never publishes. Resume pending Apple work with sign:mac --resume --output OUTPUT/signed.");
   process.exit(0);
 }
 assert.ok(options.platform === "mac" && options.arch === "arm64", "Supported GUI target: mac/arm64 only; Linux/Windows and cross-compilation are not implemented");
@@ -32,6 +32,7 @@ assert.ok(!options.formats || !options["dmg-only"], "Choose --formats or --dmg-o
 const formats = (options.formats || (options["dmg-only"] ? "dmg" : "dmg,zip")).split(",");
 assert.ok(formats.length > 0 && new Set(formats).size === formats.length && formats.every(f => ["dmg", "zip"].includes(f)), "--formats must contain dmg, zip or dmg,zip");
 const developerId = signing === "developer-id";
+assert.ok(!options["skip-tests"] || developerId, "--skip-tests applies only to Developer ID package acceptance");
 const identity = options.identity || process.env.CSC_NAME;
 const profile = options["keychain-profile"] || process.env.APPLE_KEYCHAIN_PROFILE;
 assert.ok(developerId || (!options.identity && !options["keychain-profile"]), "Signing credentials require --signing developer-id");
@@ -153,6 +154,7 @@ await build({
     extraResources: [
       { from: bundle, to: "areal-core" },
       { from: join(gui, "renderer/dist"), to: "areal-gui" },
+      { from: join(gui, "native/computer-helper/build/AReaL Computer Helper.app"), to: "computer-helper/AReaL Computer Helper.app" },
       ...(release
         ? [
             { from: updateConfig, to: "areal-update.json" },
@@ -242,6 +244,6 @@ console.log(JSON.stringify({ app, archive, dmg, evidence: join(output, "package-
 if (developerId) {
   try { execFileSync(process.execPath, [join(gui, "scripts/notarize-macos.mjs"),
     "--app", app, "--output", join(output, "signed"), "--identity", identity,
-    "--keychain-profile", profile], { cwd: root, stdio: "inherit" });
+    "--keychain-profile", profile, ...(options["skip-tests"] ? ["--skip-tests"] : [])], { cwd: root, stdio: "inherit" });
   } catch (error) { process.exit(error.status || 1); }
 }

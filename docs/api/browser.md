@@ -4,7 +4,7 @@
 
 **设计契约，部分实现。** 当前源码支持具备 Browser 能力的 GUI 聊天自然发现固定工具包、经 Core 审批绑定同一原生页、观察/截图/诊断、Ref 动作、受限本地坐标动作、等待、导航、新页面和有界批量，以及人工直接介入和宿主缺失拒绝。实际集合通过 `describe` 发现；未公布的操作仍是提案。自然浏览流程的统一原生与安装包验收尚未完成，不改变现有 [Core UNKNOWN 规则](core.md#dynamic-tools)。
 
-支持 Browser 的 GUI 新聊天登记固定 `browser_v1` 工具包；旧 Thread 在下一次空闲时的明确用户发送中，按 [ADR-0007](../adr/0007-browser-tool-compatibility.md) 受控追加部署固定包，保留原工具和历史。无需 Composer 开关或页面交还按钮。首次经 Core 批准的 `describe` 延迟绑定当前同一原生页；没有页面时才分配空白页。模型回调仍由该 Thread 绑定的 Core 连接承接。工具定义的 `operation:string` 保持可扩展包络；`describe` 返回参数示例，明确 `act` 的单个嵌套 `action` 与来自 `observe.observationId` 的 `snapshotId`。二次校验接受 `describe`（空参数）、`observe`（`pageId`、可选文档范围、Ref 与预算）、`capture`（当前视口）、`act`（pageId、snapshotId 与已公布的 Ref 动作及受限本地截图坐标动作）和 `wait`（pageId、1–30000 毫秒和可选 condition）。观察使用有界原生 AX 读取，按实际 Frame 覆盖状态报告不可读部分，并在可用时提供 role、name、state、value 与父节点关联。Ref 绑定原生节点和代次；预算截断本身不使被省略的存活 Ref 失效。结果 URL 去除查询和片段。截图限制在 800 万像素、单边 4096 像素和 2 MiB PNG，使用现有 Core Blob 和工具媒体通道交给模型与聊天。已知敏感表单或不可读 Frame 存在时拒绝自动截图；这不是截图遮罩，也无法识别所有敏感内容。持久 Profile 尚未实现。人工接管、导航、Core/宿主换代会撤销读取；在途取消或超时不会自动重试。
+支持 Browser 的 GUI 新聊天登记固定 `browser_v1` 工具包；旧 Thread 在下一次空闲时的明确用户发送中，按 [ADR-0007](../adr/0007-browser-tool-compatibility.md) 受控追加部署固定包，保留原工具和历史。无需 Composer 开关或页面交还按钮。首次经 Core 批准的 `describe` 延迟绑定当前同一原生页；没有页面时才分配空白页。模型回调仍由该 Thread 绑定的 Core 连接承接。工具定义的 `operation:string` 保持可扩展包络；`describe` 返回参数示例，明确 `act` 的单个嵌套 `action` 与来自 `observe.observationId` 的 `snapshotId`。二次校验接受 `describe`（空参数）、`observe`（`pageId`、可选文档范围、Ref 与预算）、`capture`（当前视口）、`act`（pageId、snapshotId 与已公布的 Ref 动作及受限本地截图坐标动作）和 `wait`（pageId、1–30000 毫秒和可选 condition）。观察使用有界原生 AX 读取，按实际 Frame 覆盖状态报告不可读部分，并在可用时提供 role、name、state、value 与父节点关联。Ref 绑定原生节点和代次；预算截断本身不使被省略的存活 Ref 失效。结果 URL 去除查询和片段。截图限制在 800 万像素、单边 4096 像素和 2 MiB PNG，使用现有 Core Blob 和工具媒体通道交给模型与聊天。已知敏感表单或不可读 Frame 存在时拒绝自动截图；这不是截图遮罩，也无法识别所有敏感内容。所有项目共用当前用户数据目录中的持久浏览器 Profile，登录态跨项目和重启保留。人工接管、导航、Core/宿主换代会撤销读取；在途取消或超时不会自动重试。
 
 预览地址栏首次聚焦时展开并选中完整 URL，输入新地址会替换旧地址；再次点击可编辑地址的一部分。地址栏、导航和标签用于普通人工浏览，批注与发送上下文不依赖 Agent 工具启用或页面认领。工具包存在不等于页面读取或动作获准；Core 按实际页面、目标、操作和控制代次审批。
 
@@ -48,6 +48,19 @@
 
 主文档 Ref `press` 的原生 keyDown 已确认后，若只有非目标子 Frame 导航使全页观察代次失效，可在主文档、原生 Page、Host/Core 归属、控制和视口均未变化且未取消时完成该按键的唯一 keyUp。该例外只结束已确认的输入，不允许复用旧 Ref、继续其他输入或扩大导航许可；旧读取计划仍失效，后续动作须 fresh observe 并经 Core 权限检查。回执仍为 `inputConfirmed:true / verification:not_checked`；ACK 丢失或其他 fence 失效仍保持 UNKNOWN，不重放。
 
+## ZCode 命令适配
+
+新增 `{operation:"command",parameters:{pageId,command}}`。`describe` 的 `command` 字段返回实际方法、有效示例和不支持项。通过 `describe` 的 `parameters.topic` 指定 `command.<method>` 或 `command.playwright.<action>` 获取对应的上游严格 schema，避免完整 schema 被结果预算截断。命令 schema 与执行器复用 ZCode `3c5b227649371507ddc4eb46ac5133afe6db1cab`，来源和适配点见[包说明](../../clients/gui/packages/browser-automation/README.md)。
+
+命令组包括 Playwright 风格定位器与跨域 iframe、语义快照、页面和元素求值、CUA 输入、整页/裁剪/元素截图、视口管理、alert/confirm、下载、WebM 录制与标签交付。所有命令沿既有 Core 准备和审批路径，不提供任意 Node 或原始 CDP。`evaluate` 只在已授权网页上下文运行；这不授予宿主文件或产品 bridge 访问。录制输出路径由可信项目根约束。
+
+准备记录绑定原始命令和涉及的每个真实 Page。执行不因审批等待而换目标；取消、页面接管、关闭、原生代次变化撤销后续输入。隐藏页面临时借用不可聚焦透明窗口取得 compositor surface，然后交还同一个 WebContentsView。截图经 Core Blob 返回，交付前后复核来源页控制代次。未知副作用保留 UNKNOWN，不重发。
+
+上游声明并非全部可执行。普通 `fill`/`waitFor` 应改用 locator；上传、file chooser 和 `networkidle` 明确不支持。locator `downloadMedia` 复用上游下载锚点实现，并绑定修改操作审批与下载回执。Electron WebContentsView 的 `prompt()` 不可用。该适配不提供完整 Playwright/ZCode JavaScript SDK、外部 CDP、扩展或 CLI 无头后端。全部项目和聊天共用 Main 持有的 `persist:areal-embedded-browser` Session。关闭 Workspace 或聊天只销毁 Page 和控制引用，保留 Cookie、localStorage、IndexedDB 及登录状态。Profile 存放在当前 GUI userData 中，隔离测试 home 和不同安装配置不共享。旧临时 Session 不自动迁移。共享登录不授予其他聊天的页面控制权。
+
+`pnpm --dir clients/gui run test:automation --suite browser` 通过真实 Core、隔离 Electron 和确定性本地模型验证命令效果、审批拒绝、截图媒体和录屏产物。包内直接执行器验收与这一模型调用链分别保留证据，不能代替真实供应商或安装包验收。
+
+
 ## 原生控件与状态等待
 
 `act` 另接受 `{kind:"scroll",target:"viewport",deltaX,deltaY}`、`{kind:"hover",ref}`、`{kind:"selectOption",ref,value}` 和 `{kind:"setChecked",ref,checked}`。滚动量必须是 `[-4096,4096]` 内的安全整数，不能同时为零。选择操作只接受原生单选 SELECT 中唯一、启用选项的 exact value，最多 256 字符。checkbox 状态为布尔值。自定义控件、多选 SELECT 和 radio 不受支持。这些变体沿用 Core 准备、批准链和公网 Origin 政策。审批显示具体滚动量、选项值或选中状态。
@@ -78,7 +91,7 @@
 
 固定模型工具名：`browser_v1`。稳定的最外层输入是 `{operation:string, parameters:object}`，严格禁止其他顶层字段。字段长度/深度/字节有界；`parameters` 由实际操作的 schema 二次严格校验。这个可扩展包络使已持久化工具定义不因新增能力而改写。
 
-第一步调用 `describe` 获得支持的操作及短说明；只返回本 Host 已实现能力，不一次灌入全部开发文档。拒绝未知 operation/参数，绝不把字符串转成 shell、JS 或原始 CDP。规格描述未来能力不等于提前公布可用 capability。
+第一步调用 `describe` 获得支持的操作及短说明；只返回本 Host 已实现能力，不一次灌入全部开发文档。拒绝未知 operation/参数，不把未知参数转成 shell、JS 或原始 CDP。已授权网页求值仅通过 `command` 的严格 schema 开放。规格描述未来能力不等于提前公布可用 capability。
 
 | operation | parameters 的意图 | 关键限制 |
 |---|---|---|
@@ -93,6 +106,7 @@
 | wait | pageId、condition、timeoutMs | 有界状态等待；不用全页 networkidle 当通用完成条件 |
 | closePage | pageId | 人工/未知来源需用户确认；不能关闭其他 Thread |
 | diagnostics | pageId、kind、cursor、limit | Console/network 摘要；隐藏正文、凭据和敏感 header |
+| command | pageId、上游 BrowserCommand | 真实方法和限制见 describe.command；逐条准备与审批 |
 | runBatch | pageId、snapshotId、steps | ≤8 个已知动作/等待；总预算；逐步 fence；不能跨页、包含任意代码或提升授权 |
 
 每项操作、capability 和用户可见错误必须有行为测试。阶段构建未启用的 capability 返回确定的 `unsupported`，不创建占位浏览器。浏览器关联 Thread/Turn 来自 Core，不接受模型指定别人的 threadId、hostId、webContentsId 或 CDP sessionId。
@@ -147,7 +161,7 @@ Controller 提供**原子 snapshot + subscribe**，UI 先安装 snapshot 的序�
 | 可达性 | connected / disconnected / incompatible | 已认证适配器与 Controller |
 | 操作 | prepared / dispatched / confirmed / rejected / unknown | 原生事实在 Controller，正式工具结果在 Core |
 
-Page shell 可恢复 URL 与标题，但不恢复原生对象身份或表单/JS heap；崩溃恢复仅使用最后已提交的文档地址，不恢复下载等未提交导航的暂存 URL；失去临时上下文必须明确显示“临时登录可能需要重做”。不要通过读取历史截图宣称恢复了 live page。
+Page shell 可恢复 URL 与标题，但不恢复原生对象身份或表单/JS heap；崩溃恢复仅使用最后已提交的文档地址，不恢复下载等未提交导航的暂存 URL；共享持久 Profile 保留登录数据，但这不恢复原生页面、表单或 JS heap。不要通过读取历史截图宣称恢复了 live page。
 
 ## 5. 语义观察、Ref 与视觉坐标
 
@@ -259,3 +273,7 @@ Core 的4 MiB WS帧上限是全链路实际约束；适配器更大的本地帧�
 ## 11. 版本与回退
 
 能力关闭后恢复普通预览；已有 Browser历史可读，live对象不重放。回退不得删掉历史工具定义或伪造旧版本可执行。若旧Core不能读取新增快照，明确阻止二进制降级并提供数据备份指引；禁止为了回退去改存储格式数字。每次客户端/Core契约变更同步生成类型、schema、文档和fixture。
+
+## 共享登录数据
+
+设置页提供从 Chrome 导入、清除缓存与清除全部浏览数据。操作影响所有项目；开始前关闭现有浏览页并撤销控制，阻止新页面和迟到审批重新写入。仅清缓存保留 Cookie、localStorage 和 IndexedDB；全部清理还清除登录、站点存储和 HTTP 认证缓存。全部清理需要用户在界面确认。导入只在用户点击后读取 Chrome 的 Cookie 和 localStorage，macOS 可能要求钥匙串授权；拒绝授权会停止导入。结果只显示计数和错误码，不向模型或日志暴露凭据。网站权限仍采用现有拒绝默认。

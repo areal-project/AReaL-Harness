@@ -1207,5 +1207,61 @@
         "zip.svg": "dad79a45f756542d37abd422502ecfbea15720b92ea1c9d80ef0439ab6b9448a"
       }
     }
-  ]
+  ],
+  "sideChatImports": {
+    "repository": "https://github.com/zai-org/ZCode",
+    "commit": "3c5b227649371507ddc4eb46ac5133afe6db1cab",
+    "license": "Apache-2.0",
+    "sources": [
+      {
+        "source": "packages/shared/src/conversationSelection.ts",
+        "destination": "src/conversationSelectionReference.ts",
+        "sourceSha256": "b76e80d143f71afea20dcddee9414324c4964f1d1ef36e836a39a810a6960e75",
+        "status": "adapted",
+        "adaptation": "Reference limits and text-only serialization contract."
+      },
+      {
+        "source": "packages/ui/src/lib/conversationSelectionReference.ts",
+        "destination": "src/conversationSelectionReference.ts",
+        "sourceSha256": "2123d668a9d822f73ab046428e8691566561ec4006916ca337ef5df69741c7df",
+        "status": "adapted",
+        "adaptation": "Source-aware deduplication, atomic append limits, target scope, and historical block parser adapted to AReaL."
+      },
+      {
+        "source": "packages/ui/src/v4/slashCommands.ts",
+        "destination": "src/sideSlashCommand.ts",
+        "sourceSha256": "db42b7eedcd334f195abd47fcbd991cef6ed424e63232f8d1b9f3a6c648fa663",
+        "status": "adapted",
+        "adaptation": "Whole-input app command parser adapted for side and btw creation."
+      },
+      {
+        "source": "packages/ui/src/v4/SessionPane.tsx",
+        "destination": "src/useConversationEscape.ts",
+        "sourceSha256": "56d1cc7dd7609e8df1e42552fe39e77fbb1c6c8bda83e971dc51c49073c9f2a6",
+        "status": "adapted",
+        "adaptation": "Pane composed-path Escape ownership adapted to AReaL stop receipts."
+      },
+      {
+        "source": "packages/ui/src/v4/composer/escapeStop.ts",
+        "destination": "src/useConversationEscape.ts",
+        "sourceSha256": "c2572e432d6cb7b19ee808fdc41c32bdff6ca0702a2749fbbd5cbfb80ea04cbd",
+        "status": "adapted",
+        "adaptation": "Consumed-event, composition, and dialog stop guards adapted to AReaL."
+      },
+      {
+        "source": "packages/ui/src/v4/composer/ConversationSelectionReferenceChip.tsx",
+        "destination": "src/ConversationSelectionReferences.tsx",
+        "sourceSha256": "f7af403f384073c9d330ad8522d415001eabe6410b13068a9651d5d83cd29934",
+        "status": "adapted",
+        "adaptation": "Count pill, per-reference detail rows, source metadata, individual removal, and captured-reference remove-all adapted to AReaL i18n and existing Popover."
+      },
+      {
+        "source": "packages/ui/src/v4/composer/ContextAttachmentPill.tsx",
+        "destination": "src/ConversationSelectionReferences.tsx",
+        "sourceSha256": "4e450bf999daa8a352a6b71e505f71dba4860598e8e57176e59ef431c46ba27c",
+        "status": "adapted",
+        "adaptation": "Single rounded context pill and portal detail geometry adapted with the existing BaseUI hover/click/keyboard Popover."
+      }
+    ]
+  }
 }

@@ -210,7 +210,8 @@ try {
   assert.match(resolved.sourceDigest, /^[a-f0-9]{64}$/);
   assert.equal((await plugin("read", id)).sourceDigest, resolved.sourceDigest);
   const installed = await plugin("install", id);
-  assert.equal(installed.installedDigest, resolved.sourceDigest);
+  assert.equal(installed.installedDigest, resolved.admissionDigest ?? resolved.sourceDigest);
+  assert.equal(installed.installedSourceDigest, resolved.sourceDigest);
   let runtime = (await plugin("mcp-list")).data.find((row) => row.pluginId === id);
   assert.equal(runtime.installedDigest, installed.installedDigest);
   assert.equal(runtime.servers.length, 1);

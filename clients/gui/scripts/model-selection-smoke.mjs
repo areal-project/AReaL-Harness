@@ -160,8 +160,23 @@ async function assertCompactEffort() {
 }
 async function chooseEffort(name, key) {
   const slider = page.getByRole("slider", { name: "思考强度", exact: true });
-  if (await slider.count()) await slider.press(key);
-  else {
+  const hasSlider = await slider.count();
+  if (hasSlider) {
+    await page.evaluate(() => {
+      const input = document.querySelector('[aria-label="思考强度"]');
+      const editor = document.querySelector('[data-testid="chat-input"]');
+      const violations = [];
+      const observer = new MutationObserver(records => {
+        for (const record of records) {
+          if (record.target === input && record.attributeName === "disabled") violations.push("slider disabled");
+          if (record.target === editor && record.attributeName === "contenteditable") violations.push("editor editability changed");
+        }
+      });
+      observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ["disabled", "contenteditable"] });
+      window.effortContinuity = { observer, violations, input };
+    });
+    await slider.press(key);
+  } else {
     const choice = page.getByRole("group", { name: "选择思考强度", exact: true }).getByRole("button", { name, exact: true });
     await button("选择模型").focus();
     await page.keyboard.press("Tab");
@@ -169,8 +184,24 @@ async function chooseEffort(name, key) {
     await page.getByRole("tooltip").filter({ hasText: name }).waitFor();
     await choice.press("Enter");
   }
-  await page.waitForFunction(name => document.querySelector('[aria-label="思考强度"]')?.getAttribute("aria-valuetext") === name, name);
+  await waitForSavedEffort(name);
   assert.equal(await page.locator(".composer-effort-center strong").innerText(), name, "top label follows the saved selection");
+  if (hasSlider) {
+    const continuity = await page.evaluate(() => {
+      const { observer, violations, input } = window.effortContinuity;
+      observer.disconnect();
+      delete window.effortContinuity;
+      return { violations, focused: document.activeElement === input };
+    });
+    assert.deepEqual(continuity.violations, [], "saving effort never disables the editor or blurs the slider");
+    assert.equal(continuity.focused, true, "keyboard effort changes retain slider focus");
+  }
+}
+async function waitForSavedEffort(name) {
+  // The range previews pointerIndex while Core saves; the label reflects confirmed configuration.
+  await page.waitForFunction(name => document.querySelector('[aria-label="思考强度"]')?.getAttribute("aria-valuetext") === name
+    && document.querySelector(".composer-effort-center strong")?.textContent === name
+    && !document.querySelector(".composer-model-trigger")?.hasAttribute("aria-busy"), name);
 }
 async function saveProvider() {
   await button("保存").click();
@@ -342,13 +373,13 @@ async function verifyModelCapabilities() {
   await page.mouse.down();
   await page.mouse.move(dragBounds.x + 14, dragBounds.y + 14, { steps: 8 });
   await page.mouse.up();
-  await page.waitForFunction(() => document.querySelector('[aria-label="思考强度"]')?.getAttribute("aria-valuetext") === "低");
+  await waitForSavedEffort("低");
   await page.waitForFunction(() => document.querySelector('[aria-label="思考强度"]')?.disabled === false);
   await page.mouse.move(dragBounds.x + 14, dragBounds.y + 14);
   await page.mouse.down();
   await page.mouse.move(dragBounds.x + dragBounds.width - 14, dragBounds.y + 14, { steps: 8 });
   await page.mouse.up();
-  await page.waitForFunction(() => document.querySelector('[aria-label="思考强度"]')?.getAttribute("aria-valuetext") === "极高");
+  await waitForSavedEffort("极高");
   await page.keyboard.press("Escape");
   await send("Recommended extra-high effort reaches provider", { model: "capability-model", effort: "xhigh", hasEffort: true });
   const editCapabilities = async () => {
@@ -388,13 +419,13 @@ async function verifyModelCapabilities() {
   await slider.waitFor();
   assert.equal(await slider.getAttribute("max"), "1");
   await slider.press("End");
-  await page.waitForFunction(() => document.querySelector('[aria-label="思考强度"]')?.getAttribute("aria-valuetext") === "高");
+  await waitForSavedEffort("高");
   await slider.press("Home");
-  await page.waitForFunction(() => document.querySelector('[aria-label="思考强度"]')?.getAttribute("aria-valuetext") === "低");
+  await waitForSavedEffort("低");
   await page.keyboard.press("Escape");
   await send("Configured lower effort reaches provider", { model: "capability-model", effort: "low", hasEffort: true });
   await button("模型").click(); await slider.press("End");
-  await page.waitForFunction(() => document.querySelector('[aria-label="思考强度"]')?.getAttribute("aria-valuetext") === "高");
+  await waitForSavedEffort("高");
   await page.keyboard.press("Escape");
   await send("Configured upper effort reaches provider", { model: "capability-model", effort: "high", hasEffort: true });
   await editCapabilities(); await editor.getByRole("switch", { name: "推理能力", exact: true }).click();
@@ -410,7 +441,7 @@ async function verifyModelCapabilities() {
   await button("返回应用").click(); await button("模型").click();
   slider = page.getByRole("slider", { name: "思考强度", exact: true });
   assert.equal(await slider.getAttribute("max"), "5"); await slider.press("End");
-  await page.waitForFunction(() => document.querySelector('[aria-label="思考强度"]')?.getAttribute("aria-valuetext") === "极高");
+  await waitForSavedEffort("极高");
   await page.screenshot({ path: join(scratch, "custom-model-effort-fallback.png"), animations: "disabled" }); await page.keyboard.press("Escape");
   await send("Empty effort subset uses the standard maximum", { model: "capability-model", effort: "xhigh", hasEffort: true });
   await editCapabilities(); await editor.getByRole("switch", { name: "推理能力", exact: true }).click();
@@ -657,19 +688,19 @@ try {
   await page.screenshot({ path: join(scratch, "unavailable-models.png"), animations: "disabled" });
   await page.keyboard.press("Escape");
   await button("定时任务").click();
-  const taskDraftKey = `areal-gui:task-draft:${projectId}`;
+  const taskDraftKey = "areal-gui:ordinary-schedule-creation";
   const taskDescription = "保留凭据修复前的任务描述";
-  await page.evaluate(({ key, text }) => localStorage.setItem(key, JSON.stringify({ draftId: crypto.randomUUID(), location: { kind: "independent" }, text })), { key: taskDraftKey, text: taskDescription });
+  await page.evaluate(({ key, text }) => localStorage.setItem(key, JSON.stringify({ prepareId: crypto.randomUUID(), requestId: crypto.randomUUID(), text })), { key: taskDraftKey, text: taskDescription });
   await button("新建自动化").click();
-  await page.getByRole("alert").filter({ hasText: "模型凭据不可用" }).waitFor();
-  assert.equal(await page.getByTestId("chat-input").isEditable(), true);
-  assert.equal(await page.getByTestId("chat-send-button").isDisabled(), true, "credential failure retains editable local text without allowing submission");
+  await page.getByRole("alert").filter({ hasText: /凭据/ }).waitFor();
   assert.equal(requests.length, 0, "a rejected task configuration cannot issue a model request");
   const rejectedDraft = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), taskDraftKey);
-  assert.ok(rejectedDraft.ownerId);
+  assert.ok(rejectedDraft.projectId);
+  assert.equal(rejectedDraft.pending, false);
+  assert.equal(rejectedDraft.text, taskDescription, "credential rejection retains the complete local scheduling draft");
   assert.equal(rejectedDraft.threadId, undefined);
   await page.screenshot({ path: join(scratch, "scheduled-model-recovery.png"), animations: "disabled" });
-  await button("打开模型设置").click();
+  await openModelSettings();
   await page.getByRole("heading", { name: "模型设置", exact: true }).waitFor();
   checks.push("a missing default-provider credential permits Core connection and model settings without an upstream request");
   await page.locator(".provider-catalog-row").filter({ hasText: "theta" }).click();
@@ -757,18 +788,17 @@ try {
   await button("定时任务").click();
   await button("新建自动化").click();
   await page.getByTestId("chat-input").waitFor();
-  await page.waitForFunction(key => { const draft = JSON.parse(localStorage.getItem(key)); return !!draft?.threadId && draft.text === undefined; }, taskDraftKey);
+  await page.waitForFunction(key => localStorage.getItem(key) === null, taskDraftKey);
   await page.waitForFunction(text => document.querySelector('[data-testid="chat-input"]')?.textContent?.trim() === text, taskDescription);
-  const recoveredDraft = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), taskDraftKey);
-  assert.equal(recoveredDraft.draftId, rejectedDraft.draftId);
-  assert.equal(recoveredDraft.ownerId, rejectedDraft.ownerId);
-  assert.equal(recoveredDraft.location.cwd, rejectedDraft.location.cwd);
-  assert.ok(recoveredDraft.threadId);
+  const recoveredProjectId = await page.getByTestId("areal-workbench").getAttribute("data-project-id");
+  assert.equal(recoveredProjectId, rejectedDraft.projectId, "credential repair reuses the originally allocated independent workspace");
+  const recoveredThreadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+  assert.ok(recoveredThreadId);
+  assert.equal((await state()).projects.find(item => item.id === recoveredProjectId)?.state?.threads[recoveredThreadId]?.turns?.length, 0);
   assert.equal((await page.getByTestId("chat-input").textContent()).trim(), taskDescription);
   assert.equal(requests.length, 0, "repairing credentials and reopening the same task draft cannot replay or send input");
   await page.screenshot({ path: join(scratch, "scheduled-model-recovered.png"), animations: "disabled" });
   checks.push("scheduled creation explains unavailable credentials, opens model settings, and restores the same independent draft after a saved-key repair without sending input");
-  await button("关闭创建对话").click();
   await button("首页").click();
   await createProjectConversation(page, "workspace");
   await button("模型").click(); await button("选择模型").click();

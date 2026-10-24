@@ -1,0 +1,163 @@
+{
+  "$description": "生产 UI 字面量存量上限，由 scripts/design-system-baseline.mjs --write 生成；只允许减少。",
+  "total": {
+    "typography": 86,
+    "color": 145,
+    "radius": 164
+  },
+  "files": {
+    "renderer/src/AgentResources.css": {
+      "typography": 1,
+      "color": 1,
+      "radius": 2
+    },
+    "renderer/src/AnnotationNoteEditor.css": {
+      "color": 3,
+      "typography": 1,
+      "radius": 3
+    },
+    "renderer/src/App.tsx": {
+      "color": 1
+    },
+    "renderer/src/BrowserKeyboardElementPicker.tsx": {
+      "color": 2
+    },
+    "renderer/src/BrowserRegionAnnotation.css": {
+      "color": 4,
+      "typography": 3,
+      "radius": 4
+    },
+    "renderer/src/BrowserStyleTrial.css": {
+      "radius": 2
+    },
+    "renderer/src/Goal.css": {
+      "radius": 1
+    },
+    "renderer/src/ImageAnnotationViews.css": {
+      "radius": 3
+    },
+    "renderer/src/ProcessesPane.tsx": {
+      "typography": 2
+    },
+    "renderer/src/SideChat.css": {
+      "radius": 1
+    },
+    "renderer/src/TaskCenter.css": {
+      "typography": 2,
+      "radius": 4
+    },
+    "renderer/src/UnknownToolInspection.tsx": {
+      "typography": 4
+    },
+    "renderer/src/UserPromptEdit.css": {
+      "radius": 1
+    },
+    "renderer/src/lib/fileDisplay.tsx": {
+      "color": 1
+    },
+    "renderer/src/prompt-editor/ComposerSurface.css": {
+      "radius": 3
+    },
+    "renderer/src/remote/remote.css": {
+      "color": 3,
+      "typography": 5
+    },
+    "renderer/src/settings/MobileSettings.css": {
+      "color": 22,
+      "typography": 15,
+      "radius": 7
+    },
+    "renderer/src/settings/PluginCenter.css": {
+      "typography": 7,
+      "radius": 8
+    },
+    "renderer/src/settings/ProjectlessDirectorySetting.tsx": {
+      "typography": 1
+    },
+    "renderer/src/settings/SettingsWorkspace.css": {
+      "color": 37,
+      "typography": 1,
+      "radius": 7
+    },
+    "renderer/src/settings/trajectory-settings.css": {
+      "color": 8
+    },
+    "renderer/src/settings/usage.css": {
+      "color": 10,
+      "typography": 5,
+      "radius": 6
+    },
+    "renderer/src/slash-command-menu.css": {
+      "radius": 2
+    },
+    "renderer/src/styles.css": {
+      "color": 7
+    },
+    "renderer/src/terminal/TerminalPane.tsx": {
+      "typography": 2
+    },
+    "renderer/src/user-feedback.css": {
+      "typography": 4,
+      "radius": 3
+    },
+    "renderer/src/workbench.css": {
+      "typography": 24,
+      "color": 37,
+      "radius": 88
+    },
+    "packages/ui/src/components/dialog/dialog.tsx": {
+      "color": 1
+    },
+    "packages/ui/src/settings/settings-page/settings-page.css": {
+      "typography": 1
+    },
+    "packages/ui/src/settings/settings-row/settings-row.css": {
+      "radius": 1
+    },
+    "packages/ui/src/settings/settings-segmented-tabs/settings-segmented-tabs.css": {
+      "radius": 2
+    },
+    "packages/ui/src/components/switch/switch.tsx": {
+      "color": 1
+    },
+    "packages/ui/src/components/tabs/tabs.tsx": {
+      "color": 1
+    },
+    "packages/ui/src/conversation/attachment-card/attachment-card.css": {
+      "typography": 3,
+      "radius": 3
+    },
+    "packages/ui/src/conversation/command-details/command-details.css": {
+      "color": 1,
+      "typography": 1,
+      "radius": 1
+    },
+    "packages/ui/src/conversation/composer-surface/composer-surface.css": {
+      "radius": 1
+    },
+    "packages/ui/src/conversation/decision-card/decision-card.css": {
+      "radius": 1
+    },
+    "packages/ui/src/conversation/message-attachments/message-attachments.tsx": {
+      "color": 2
+    },
+    "packages/ui/src/conversation/message-code-block/message-code-block.css": {
+      "radius": 1
+    },
+    "packages/ui/src/conversation/question-card/question-card.css": {
+      "radius": 3
+    },
+    "packages/ui/src/conversation/thinking-status/thinking-status.css": {
+      "color": 1
+    },
+    "packages/ui/src/workbench/settings-navigation/settings-navigation.css": {
+      "typography": 1,
+      "radius": 1
+    },
+    "packages/ui/src/workbench/workbench-shell/workbench-shell.css": {
+      "typography": 3,
+      "color": 2,
+      "radius": 5
+    }
+  }
+}

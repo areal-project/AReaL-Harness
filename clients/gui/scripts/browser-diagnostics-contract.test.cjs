@@ -37,6 +37,7 @@ test('direct human input fences before drain and delivers only after convergence
     requestedVisible: true, view: { webContents: c, getBounds: () => ({ width: 500, height: 300 }) } };
   const preview = Object.create(CorePreview.prototype);
   Object.assign(preview, { page: () => page, pageStillOwned: () => true,
+    profile: { status: () => ({ busy: false }) },
     owner: JSON.stringify(['core', 'project', 'thread', 'page']),
     selected: new Map([[JSON.stringify(['core', 'project', 'thread']), 'page']]),
     window: { isVisible: () => true, isMinimized: () => false, isFocused: () => true },
@@ -58,6 +59,7 @@ test('human input never delivers to a replacement document while draining', asyn
       getBounds: () => ({ width: 500, height: 300 }) } };
   const preview = Object.create(CorePreview.prototype);
   Object.assign(preview, { page: () => page, pageStillOwned: () => true,
+    profile: { status: () => ({ busy: false }) },
     owner: JSON.stringify(['core', 'project', 'thread', 'page']),
     selected: new Map([[JSON.stringify(['core', 'project', 'thread']), 'page']]),
     window: { isVisible: () => true, isMinimized: () => false, isFocused: () => true },
@@ -116,6 +118,7 @@ test('a queued physical release outside the page completes its owned gesture', a
       focus() {}, sendInputEvent: input => log.push(input.type) } } };
   const preview = Object.create(CorePreview.prototype);
   Object.assign(preview, { page: () => page, pageStillOwned: () => true,
+    profile: { status: () => ({ busy: false }) },
     owner: JSON.stringify(['core', 'project', 'thread', 'page']),
     selected: new Map([[JSON.stringify(['core', 'project', 'thread']), 'page']]),
     window: { isVisible: () => true, isMinimized: () => false, isFocused: () => true }, state: () => ({}),
@@ -167,6 +170,7 @@ test('rejected terminal release clears a stale gesture without injecting into a 
     view: { getBounds: () => ({ width: 100, height: 100 }), webContents: { isDestroyed: () => false,
       sendInputEvent: () => assert.fail('release injected into replacement document') } } };
   Object.assign(preview, { page: () => page, pageStillOwned: () => true,
+    profile: { status: () => ({ busy: false }) },
     owner: JSON.stringify(['core', 'project', 'thread', 'page']),
     selected: new Map([[JSON.stringify(['core', 'project', 'thread']), 'page']]),
     window: { isVisible: () => true, isMinimized: () => false, isFocused: () => true },
@@ -265,6 +269,7 @@ test('same-document unchanged URL invalidates observations without revoking curr
     const window = new EventEmitter(); window.webContents = new EventEmitter();
     window.contentView = { addChildView() {} };
     const preview = new CorePreview(window, View, () => true, () => ({}), () => 'core');
+    preview.profile = { assertAvailable() {}, partition: 'fixture', session: c.session, registerPage: () => () => {} };
     preview.reservePageSlot = preview.changed = () => {};
     preview.ensureWorkspaceContext = () => ({});
     preview.convergeInput = async () => {};

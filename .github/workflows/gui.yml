@@ -86,6 +86,8 @@ jobs:
           rustup show
           if ! command -v cmake; then brew install cmake; fi
           make gui-install
+      - name: Build desktop package entry points
+        run: pnpm --dir clients/gui build:desktop
       - name: Verify design contracts and incremental audit
         run: pnpm --dir clients/gui verify:design 2>&1 | tee target/ci/gui/design.log
       - name: Verify fast GUI regressions
@@ -156,6 +158,8 @@ jobs:
             script: test:queue
           - scenario: conversation-derivation
             script: test:conversation-derivation
+          - scenario: side-chat
+            script: test:side-chat-parity
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -178,6 +182,8 @@ jobs:
           key: gui-deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('clients/gui/pnpm-lock.yaml') }}
       - name: Prepare locked GUI dependencies
         run: make gui-install
+      - name: Build desktop package entry points
+        run: pnpm --dir clients/gui build:desktop
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: macos-gui-smoke-inputs
@@ -193,6 +199,7 @@ jobs:
         timeout-minutes: 10
         env:
           SMOKE_SCRIPT: ${{ matrix.script }}
+          AREAL_CORE_BIN: ${{ github.workspace }}/target/debug/areal
         run: pnpm --dir clients/gui run "$SMOKE_SCRIPT" 2>&1 | tee target/ci/gui/smoke.log
       - name: Collect isolated evidence
         if: always()
@@ -200,8 +207,8 @@ jobs:
           python3 - <<'PYTHON'
           import glob
           import tarfile
-          roots = ["target/ci/gui/smoke.log", ".scratch/gui-evidence"]
-          roots += [path for pattern in ("/private/tmp/areal-gui-*", "/private/tmp/ams-*", "/private/tmp/ahc-*") for path in glob.glob(pattern)]
+          roots = ["target/ci/gui/smoke.log", ".scratch/gui-evidence", ".scratch/side-chat-parity"]
+          roots += [path for pattern in ("/private/tmp/areal-gui-*", "/private/tmp/ams-*", "/private/tmp/ahc-*", "/private/tmp/scp-*") for path in glob.glob(pattern)]
           with tarfile.open("gui-smoke-evidence.tar.gz", "w:gz") as archive:
               for path in roots:
                   if glob.glob(path):

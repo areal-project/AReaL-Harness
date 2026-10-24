@@ -8,7 +8,18 @@ const { isDeepStrictEqual } = require('node:util');
 const { basename } = require('node:path');
 const { validatePreview } = require('@areal/workbench/desktop-contract');
 const { WorkspaceNetworkPolicy } = require('./browser-network.cjs');
+const { sharedBrowserProfile } = require('./shared-browser-profile.cjs');
+const { attachAgentDialogPresentation } = require('./agent-dialog-presentation.cjs');
 const { waitAction } = require('./browser-tool.cjs');
+const { validateBrowserCommand, browserCommandResultSchema, executeBrowserCommandOnView, supportedMethods, unsupportedCapabilities,
+  recordBrowserVideo, RecordingScenario, waitForDelay, waitForCondition } = require('@areal/browser-automation');
+const { createElectronBrowserWebmRecorder, acquireBackgroundSurface } = require('@areal/browser-automation/electron');
+function browserCommandMutates(command) {
+  if (command.method === 'playwright') return !['domSnapshot', 'elementInfo', 'elementScreenshot', 'waitForLoadState', 'waitForURL', 'waitForEvent', 'downloadPath', 'fileChooserSetFiles'].includes(command.action.name)
+    && (command.action.name !== 'locator' || !['count', 'allTextContents', 'getAttribute', 'innerText', 'textContent', 'isVisible', 'isEnabled', 'waitFor'].includes(command.action.operation));
+  return !['getState', 'snapshot', 'screenshot', 'elementInfo', 'fill', 'waitFor'].includes(command.method);
+}
+
 const { validateEdit, mutate: mutateStyleTrial } = require('./browser-style-trial.cjs');
 
 function webUrl(value) {
@@ -383,16 +394,20 @@ function rendererBoundsWithinWindow(value, window) {
 /** 网页没有 preload/Node/产品 IPC；任务拥有独立内容与导航历史。 */
 class CorePreview {
   constructor(window, WebContentsView, owns, preferences = () => ({}), coreIdentity = () => null,
-    controlEndpoints = () => [], confirmDevelopmentOrigin = async () => false) {
+    controlEndpoints = () => [], confirmDevelopmentOrigin = async () => false, retainsOwner = () => false) {
     this.window = window;
     this.WebContentsView = WebContentsView;
     this.owns = owns;
+    this.retainsOwner = retainsOwner;
     this.preferences = preferences;
     this.coreIdentity = coreIdentity;
     this.controlEndpoints = controlEndpoints;
     this.confirmDevelopmentOrigin = confirmDevelopmentOrigin;
     this.pages = new Map();
     this.contexts = new Map();
+    this.profile = sharedBrowserProfile;
+    this.profileHost = { controlEndpoints, quiesce: () => this.quiesceBrowserPages() };
+    this.unregisterProfileHost = this.profile.registerHost(this.profileHost);
     this.selected = new Map();
     this.eventSequences = new Map();
     this.listeners = new Set();
@@ -463,16 +478,16 @@ class CorePreview {
       view.setVisible(true);
   }
   workspacePages(projectId, threadId) {
-    return [...this.pages.values()].filter(page => page.coreInstanceId === this.coreIdentity(projectId)
+    return [...this.pages.values()].filter(page => page.coreInstanceId === this.coreIdentity(projectId, threadId)
       && page.projectId === projectId && page.threadId === threadId);
   }
   page(projectId, threadId, id) {
-    const selected = id ?? this.selected.get(workspaceKey(this.coreIdentity(projectId), projectId, threadId));
-    return selected ? this.pages.get(pageKey(this.coreIdentity(projectId), projectId, threadId, selected)) : null;
+    const selected = id ?? this.selected.get(workspaceKey(this.coreIdentity(projectId, threadId), projectId, threadId));
+    return selected ? this.pages.get(pageKey(this.coreIdentity(projectId, threadId), projectId, threadId, selected)) : null;
   }
   pageStillOwned(page) {
     return this.pages.get(pageKey(page.coreInstanceId, page.projectId, page.threadId, page.id)) === page
-      && page.coreInstanceId === this.coreIdentity(page.projectId)
+      && page.coreInstanceId === this.coreIdentity(page.projectId, page.threadId)
       && this.owns(page.projectId, page.threadId);
   }
   developmentPromptFence(page) {
@@ -480,6 +495,7 @@ class CorePreview {
       documentGeneration: page.documentGeneration, controlEpoch: page.controlEpoch };
   }
   currentDevelopmentPrompt(page, fence) {
+    if (this.profile.status().busy) return false;
     if (!this.pageStillOwned(page) || !page.view || page.view.webContents.isDestroyed()) return false;
     const key = pageKey(page.coreInstanceId, page.projectId, page.threadId, page.id);
     const workspace = workspaceKey(page.coreInstanceId, page.projectId, page.threadId);
@@ -506,14 +522,14 @@ class CorePreview {
       operation: page.batchProgress ?? null };
   }
   snapshot(projectId, threadId) {
-    const key = workspaceKey(this.coreIdentity(projectId), projectId, threadId);
+    const key = workspaceKey(this.coreIdentity(projectId, threadId), projectId, threadId);
     return { sequence: this.eventSequences.get(key) ?? 0, workspaceId: key,
       selectedPageId: this.selected.get(key) ?? null,
       pages: this.workspacePages(projectId, threadId).map(page => this.metadata(page)),
       fileReceipts: this.fileReceipts.get(key) ?? [] };
   }
   subscribe(projectId, threadId, listener) {
-    const item = { key: workspaceKey(this.coreIdentity(projectId), projectId, threadId), listener };
+    const item = { key: workspaceKey(this.coreIdentity(projectId, threadId), projectId, threadId), listener };
     this.listeners.add(item);
     return { snapshot: this.snapshot(projectId, threadId), unsubscribe: () => this.listeners.delete(item) };
   }
@@ -527,10 +543,35 @@ class CorePreview {
     for (const item of this.listeners) if (item.key === event.workspaceId) item.listener(event);
   }
   dispose() {
+    const recordings = [...this.pages.values()].map(page => page.commandRecording?.promise).filter(Boolean);
+    const contents = [...this.pages.values()].map(page => page.view?.webContents).filter(Boolean);
     this.discoveryPlans.clear();
     for (const key of [...this.pages.keys()]) this.release(key);
     this.view = null; this.owner = null;
     this.fileReceipts.clear();
+    this.unregisterProfileHost?.(); this.unregisterProfileHost = null;
+    return nativeWithin(Promise.allSettled([...recordings,
+      ...contents.filter(c => !c.isDestroyed()).map(c => new Promise(resolve => c.once('destroyed', resolve)))]),
+    performance.now() + 10000).then(() => this.profile.flush());
+  }
+  browserData(operation, options) { return this.profile.browserData(operation, options); }
+  async quiesceBrowserPages() {
+    const pages = [...this.pages.values()];
+    const recordings = pages.map(page => page.commandRecording?.promise).filter(Boolean);
+    const native = pages.map(page => page.view?.webContents).filter(Boolean);
+    this.discoveryPlans.clear();
+    for (const page of pages) {
+      this.cancelHumanGesture(page);
+      page.activeRead?.cancel(); page.activeSelection?.cancel(); page.claiming?.cancel();
+      this.revoke(page);
+    }
+    try {
+      await nativeWithin(Promise.allSettled(pages.map(page => this.convergeInput(page))), performance.now() + 5000);
+    } finally {
+      for (const page of pages) this.release(pageKey(page.coreInstanceId, page.projectId, page.threadId, page.id));
+    }
+    await nativeWithin(Promise.allSettled(recordings), performance.now() + 10000);
+    await nativeWithin(Promise.all(native.filter(c => !c.isDestroyed()).map(c => new Promise(resolve => c.once('destroyed', resolve)))), performance.now() + 5000);
   }
   fileReceipt(page, record) {
     const key = workspaceKey(page.coreInstanceId, page.projectId, page.threadId);
@@ -545,10 +586,10 @@ class CorePreview {
     while (this.fileReceipts.size > 32) this.fileReceipts.delete(this.fileReceipts.keys().next().value);
     this.changed(page);
   }
-  release(key, { preserveContext = false } = {}) {
+  release(key, { preserveContext = false, notifyRevocation = true } = {}) {
     const page = this.pages.get(key);
     if (!page) return;
-    this.revoke(page);
+    this.revoke(page, { notify: notifyRevocation });
     page.activeRead?.cancel();
     page.activeSelection?.cancel();
     this.pages.delete(key);
@@ -560,59 +601,44 @@ class CorePreview {
       if (next) this.selected.set(workspace, next.id); else this.selected.delete(workspace);
     }
     this.changed(page, 'pageRemoved');
-    if (!this.owns(page.projectId, page.threadId) || page.coreInstanceId !== this.coreIdentity(page.projectId))
+    if (!this.owns(page.projectId, page.threadId) || page.coreInstanceId !== this.coreIdentity(page.projectId, page.threadId))
       this.fileReceipts.delete(workspace);
-    if (!preserveContext && ![...this.pages.values()].some(other => other.partition === page.partition))
+    if (!preserveContext && !this.workspacePages(page.projectId, page.threadId).length)
       this.releaseWorkspaceContext(page);
   }
   releaseWorkspaceContext(page) {
-    const context = this.contexts.get(page.partition);
-    if (!context || context.session !== page.session) return;
-    this.contexts.delete(page.partition);
-    context.policy.close();
-    // The deny-only webRequest listener remains installed while Chromium
-    // closes sockets, unregisters workers and clears this in-memory Session.
-    void (async () => {
-      const results = await Promise.allSettled([
-        context.session.closeAllConnections(), context.session.clearStorageData(),
-        context.session.clearCache(), context.session.clearAuthCache(),
-      ]);
-      if (results.some(result => result.status === 'rejected'))
-        console.warn('Browser Workspace Session cleanup failed');
-    })();
+    this.contexts.delete(workspaceKey(page.coreInstanceId, page.projectId, page.threadId));
   }
   ensureWorkspaceContext(page) {
     const key = workspaceKey(page.coreInstanceId, page.projectId, page.threadId);
-    const existing = this.contexts.get(page.partition);
-    if (existing) {
-      if (existing.workspace !== key || existing.session !== page.session)
-        throw new Error('浏览工作区上下文归属不匹配');
-      return existing.policy;
-    }
-    if (page.session.storagePath !== null) throw new Error('浏览工作区需要临时 Session');
-    const policy = new WorkspaceNetworkPolicy(this.controlEndpoints, webContentsId =>
-      Number.isSafeInteger(webContentsId) && [...this.pages.values()].some(candidate =>
-        candidate.partition === page.partition && this.pageStillOwned(candidate)
-        && (candidate.view?.webContents.devToolsWebContents ?? candidate.openingDevTools)?.id === webContentsId));
-    policy.install(page.session);
-    this.contexts.set(page.partition, { workspace: key, session: page.session, policy });
-    return policy;
+    if (page.session !== this.profile.session) throw new Error('浏览共享 Profile 归属不匹配');
+    if (!this.contexts.has(key)) this.contexts.set(key, { commandName: null });
+    return this.profile.policy;
   }
   releaseInvalidOwners() {
-    for (const [key, page] of this.pages) if (!this.owns(page.projectId, page.threadId)
-      || page.coreInstanceId !== this.coreIdentity(page.projectId)) this.release(key);
+    for (const [key, page] of this.pages) if ((!this.owns(page.projectId, page.threadId) && !this.retainsOwner(page.projectId, page.threadId))
+      || page.coreInstanceId !== this.coreIdentity(page.projectId, page.threadId)) this.release(key);
   }
   closeNative(page) {
     this.cancelHumanGesture(page);
+    page.dialogPresentation?.dispose();
+    page.dialogPresentation = null;
     if (!page.view) return;
     page.styleTrial = null;
     const c = page.view.webContents;
     page.networkPolicy?.revokeFrameGrant(c.id);
     page.frameGrant = null;
     this.cancelFileOperations(page, 'page_closed_after_dispatch');
+    const recording = page.commandRecording; recording?.controller.abort();
+    page.commandDownloadIntent = null;
+    for (const download of page.commandDownloads.values()) download.item?.cancel();
+    if (page.commandArtifactRoot) {
+      const artifactRoot = page.commandArtifactRoot; page.commandArtifactRoot = null;
+      void Promise.resolve(recording?.promise).finally(() => require('node:fs/promises').rm(artifactRoot, { recursive: true, force: true })).catch(() => {});
+    }
     if (page.openingDevTools && !page.openingDevTools.isDestroyed()) page.openingDevTools.close();
     page.openingDevTools = null;
-    if (page.onDownload) c.session.removeListener('will-download', page.onDownload);
+    page.unregisterProfilePage?.(); page.unregisterProfilePage = null;
     page.diagnosticsReady = false; page.diagnosticRequests?.clear();
     page.claiming?.cancel();
     if (!this.window.isDestroyed()) this.window.contentView.removeChildView(page.view);
@@ -676,10 +702,11 @@ class CorePreview {
     };
     return page ? { ...state, workspace: this.snapshot(page.projectId, page.threadId) } : state;
   }
-  revoke(page) {
+  revoke(page, { notify = true } = {}) {
     if (page.control !== 'agent') return;
     // This local fence runs before any Core request and before awaiting native input.
     page.control = 'transferring'; page.controlEpoch++; page.refs.clear(); page.plans.clear();
+    page.dialogPresentation?.cancel();
     page.approvedActionNavigation = null;
     this.clearDiagnostics(page, 'control_changed');
     page.lastObservation = null; page.lastCapture = null; page.needsObservation = true;
@@ -687,11 +714,14 @@ class CorePreview {
     page.activeRead?.cancel();
     page.activeSelection?.cancel();
     page.activeAction?.cancel();
-    this.onRevoke?.({ projectId: page.projectId, threadId: page.threadId, pageId: page.id });
+    page.commandRecording?.controller.abort();
+    page.commandDownloadIntent = null;
+    for (const download of page.commandDownloads.values()) download.item?.cancel();
+    if (notify) this.onRevoke?.({ projectId: page.projectId, threadId: page.threadId, pageId: page.id });
     this.changed(page, 'controlChanged');
     void this.convergeInput(page);
   }
-  dispatchInput(page, method, params) {
+  dispatchInput(page, method, params, sessionId) {
     const c = page.view.webContents;
     // Record the native call before awaiting its receipt. A lost receipt leaves
     // takeover transferring rather than pretending the held input was released.
@@ -700,9 +730,9 @@ class CorePreview {
       if (params.type === 'mouseMoved' && page.heldButtons.has(params.button))
         page.heldButtons.set(params.button, { x: params.x, y: params.y });
     } else if (method === 'Input.dispatchKeyEvent') {
-      if (params.type === 'keyDown') page.heldKeys.set(params.key, params);
+      if (['keyDown', 'rawKeyDown'].includes(params.type)) page.heldKeys.set(params.key, params);
     }
-    const pending = c.debugger.sendCommand(method, params).then(value => {
+    const pending = c.debugger.sendCommand(method, params, sessionId).then(value => {
       if (method === 'Input.dispatchMouseEvent' && params.type === 'mouseReleased') page.heldButtons.delete(params.button);
       if (method === 'Input.dispatchKeyEvent' && params.type === 'keyUp') page.heldKeys.delete(params.key);
       return value;
@@ -765,8 +795,9 @@ class CorePreview {
   }
   revokeAll() { for (const page of this.pages.values()) this.revoke(page); }
   prepareDiscovery(request) {
+    this.profile.assertAvailable();
     if (!this.owns(request.projectId, request.threadId)
-      || this.coreIdentity(request.projectId) !== request.coreInstanceId) throw new Error('plan_stale');
+      || this.coreIdentity(request.projectId, request.threadId) !== request.coreInstanceId) throw new Error('plan_stale');
     for (const [id, record] of this.discoveryPlans)
       if (record.plan.expiresAt <= Date.now()) this.discoveryPlans.delete(id);
     if (this.discoveryPlans.size >= 128) throw new Error('not_sent');
@@ -795,6 +826,7 @@ class CorePreview {
       controlEpoch: plan.controlEpoch, plan };
   }
   consumeDiscovery(request) {
+    this.profile.assertAvailable();
     const approved = request.browserApproval?.plan;
     const saved = approved && this.discoveryPlans.get(approved.preparedActionId);
     if (saved) this.discoveryPlans.delete(approved.preparedActionId);
@@ -805,7 +837,7 @@ class CorePreview {
       || approved.coreGeneration !== request.coreGeneration || approved.projectId !== request.projectId
       || approved.threadId !== request.threadId || approved.turnId !== request.turnId || approved.callId !== request.callId
       || approved.browserHostId !== this.browserHostId || approved.hostGeneration !== this.hostGeneration
-      || this.coreIdentity(request.projectId) !== request.coreInstanceId || !this.owns(request.projectId, request.threadId)
+      || this.coreIdentity(request.projectId, request.threadId) !== request.coreInstanceId || !this.owns(request.projectId, request.threadId)
       || page !== saved.page || (this.eventSequences.get(workspace) ?? 0) !== saved.sequence)
       throw new Error('plan_stale');
     if (page) {
@@ -819,6 +851,7 @@ class CorePreview {
     return saved;
   }
   controlPermit(projectId, threadId, pageId) {
+    this.profile.assertAvailable();
     const page = this.page(projectId, threadId, pageId);
     const c = page?.view?.webContents;
     if (!page || !this.pageStillOwned(page) || page.control !== 'agent' || !c || c.isDestroyed() || page.crashed)
@@ -827,12 +860,13 @@ class CorePreview {
       pageGeneration: page.pageGeneration, controlEpoch: page.controlEpoch, origin: new URL(c.getURL()).origin };
   }
   async ensureAgentPage(projectId, threadId) {
+    this.profile.assertAvailable();
     // 仅供已通过 Core 权限的工具回调调用；展示页面不会隐式认领。
-    if (!this.owns(projectId, threadId) || !this.coreIdentity(projectId)) throw new Error('Browser thread unavailable');
+    if (!this.owns(projectId, threadId) || !this.coreIdentity(projectId, threadId)) throw new Error('Browser thread unavailable');
     let page = this.page(projectId, threadId);
     if (!page) {
       const id = randomUUID();
-      page = this.create(pageKey(this.coreIdentity(projectId), projectId, threadId, id), projectId, threadId, { id });
+      page = this.create(pageKey(this.coreIdentity(projectId, threadId), projectId, threadId, id), projectId, threadId, { id });
     }
     if (!page.view || page.crashed || page.view.webContents.isDestroyed()) throw new Error('Browser page unavailable');
     const c = page.view.webContents;
@@ -840,9 +874,10 @@ class CorePreview {
     if (!c.getURL()) await c.loadURL('about:blank');
     if (!this.pageStillOwned(page)) throw new Error('Browser page unavailable');
     if (page.control === 'transferring') await this.convergeInput(page);
+    this.profile.assertAvailable();
     if ((page.humanRevision ?? 0) !== humanRevision) throw new Error('Browser authorization was revoked');
     if (page.control === 'agent') return { protocol: 'areal.browser.host.v1',
-      operations: ['describe', 'observe', 'capture', 'act', 'wait', 'navigate', 'newPage', 'diagnostics', 'runBatch'], available: true,
+      operations: ['describe', 'observe', 'capture', 'act', 'wait', 'navigate', 'newPage', 'diagnostics', 'runBatch', 'command'], available: true,
       coreInstanceId: page.coreInstanceId, projectId, threadId, pageId: page.id, browserHostId: this.browserHostId,
       hostGeneration: this.hostGeneration, pageGeneration: page.pageGeneration, controlEpoch: page.controlEpoch };
     return this.claim(projectId, threadId, page.id);
@@ -874,7 +909,7 @@ class CorePreview {
   async humanInput(projectId, threadId, pageId, input) {
     const page = this.page(projectId, threadId, pageId);
     const c = page?.view?.webContents;
-    const current = () => !!c && !c.isDestroyed() && this.pageStillOwned(page)
+    const current = () => !this.profile.status().busy && !!c && !c.isDestroyed() && this.pageStillOwned(page)
       && this.owner === pageKey(page.coreInstanceId, projectId, threadId, pageId)
       && this.selected.get(workspaceKey(page.coreInstanceId, projectId, threadId)) === pageId
       && page.requestedVisible && !page.annotationCaptureId
@@ -922,6 +957,7 @@ class CorePreview {
     } finally { if (page.humanInputPending === pending) page.humanInputPending = null; }
   }
   async claim(projectId, threadId, pageId) {
+    this.profile.assertAvailable();
     const page = this.page(projectId, threadId, pageId);
     if (!page?.view || page.crashed || page.view.webContents.isDestroyed() || page.view.webContents.isDevToolsOpened()
       || !page.view.webContents.getURL()
@@ -930,8 +966,10 @@ class CorePreview {
     if (page.control !== 'human' || this.humanMouseGesture?.page === page || page.claiming || page.activeSelection || page.annotationCaptureId
       || page.activeRead || page.activePrepare || page.activeAction || page.fileHandoff || page.downloads.size)
       throw new Error('浏览页面当前不可认领');
+    page.dialogPresentation.assertClaimable();
     if (page.styleTrial && !(await this.clearStyleTrial(page)).cleared)
       throw new Error('页面试改已失效，请刷新页面后再交还 Agent');
+    this.profile.assertAvailable();
     const c = page.view.webContents;
     const initial = { pageGeneration: page.pageGeneration, documentEpoch: page.documentGeneration,
       controlEpoch: page.controlEpoch, url: c.getURL() };
@@ -946,10 +984,12 @@ class CorePreview {
       // Any capture guard left by a revoked read observed only a private
       // boolean; discard it before re-enabling Agent observations.
       await Promise.race([readIsolated(c, clearCaptureGuardScript), cancelled]);
+      this.profile.assertAvailable();
       if (!this.pageStillOwned(page) || page.claiming !== claim || page.control !== 'human'
         || page.pageGeneration !== initial.pageGeneration || page.documentGeneration !== initial.documentEpoch
         || page.controlEpoch !== initial.controlEpoch || c.isDestroyed() || c.getURL() !== initial.url
         || c.isDevToolsOpened()) throw new Error('Browser claim was revoked');
+      page.dialogPresentation.assertClaimable();
       page.control = 'agent'; grantedEpoch = ++page.controlEpoch; page.refs.clear(); page.plans.clear(); page.batchProgress = null;
       page.lastObservation = null; page.needsObservation = true;
       this.clearDiagnostics(page, 'new_control_epoch');
@@ -970,7 +1010,7 @@ class CorePreview {
       page.diagnosticsStartedAt = Date.now() / 1000;
       page.diagnosticsReady = true;
       this.changed(page, 'controlChanged');
-      return { protocol: 'areal.browser.host.v1', operations: ['describe', 'observe', 'capture', 'act', 'wait', 'navigate', 'newPage', 'diagnostics', 'runBatch'], available: true,
+      return { protocol: 'areal.browser.host.v1', operations: ['describe', 'observe', 'capture', 'act', 'wait', 'navigate', 'newPage', 'diagnostics', 'runBatch', 'command'], available: true,
         coreInstanceId: page.coreInstanceId, projectId, threadId, pageId: page.id, browserHostId: this.browserHostId,
         hostGeneration: this.hostGeneration, pageGeneration: initial.pageGeneration, controlEpoch: grantedEpoch };
     } catch (error) {
@@ -1531,12 +1571,10 @@ class CorePreview {
   }
   cancelRead({ projectId, threadId, pageId, requestId, hostGeneration }) {
     if (hostGeneration !== this.hostGeneration) return;
-    const batch = this.page(projectId, threadId, pageId)?.activeBatch;
-    if (batch?.requestId === requestId) batch.cancel();
-    const active = this.page(projectId, threadId, pageId)?.activeRead;
-    if (active?.requestId === requestId) active.cancel();
-    const action = this.page(projectId, threadId, pageId)?.activeAction;
-    if (action?.requestId === requestId) action.cancel();
+    for (const page of this.workspacePages(projectId, threadId)) {
+      for (const active of [page.activeBatch, page.activeRead, page.activeAction])
+        if (active?.requestId === requestId) active.cancel();
+    }
   }
   clearDiagnostics(page, reason) {
     page.diagnosticsReady = false;
@@ -1583,6 +1621,7 @@ class CorePreview {
       coverage: 'live Electron Console and CDP Network metadata; no bodies or headers' };
   }
   actionPage(request) {
+    this.profile.assertAvailable();
     const { projectId, threadId, pageId, browserHostId, hostGeneration, pageGeneration, controlEpoch } = request;
     const page = this.page(projectId, threadId, pageId);
     if (!page || page.id !== pageId || page.projectId !== projectId || page.threadId !== threadId
@@ -2040,8 +2079,394 @@ class CorePreview {
     page.plans.delete(approved.preparedActionId);
     return request.operation === 'diagnostics' ? this.diagnostics(request) : this.observe(request);
   }
+  commandIdentity(request, page) {
+    return { coreInstanceId: request.coreInstanceId, coreGeneration: request.coreGeneration,
+      projectId: request.projectId, threadId: request.threadId, turnId: request.turnId, callId: request.callId,
+      pageId: page.id, browserHostId: this.browserHostId, hostGeneration: this.hostGeneration,
+      pageGeneration: page.pageGeneration, controlEpoch: page.controlEpoch };
+  }
+  commandFacts(page) {
+    return { pageId: page.id, pageGeneration: page.pageGeneration, documentEpoch: page.documentGeneration,
+      controlEpoch: page.controlEpoch, control: page.control, humanRevision: page.humanRevision ?? 0,
+      url: page.view?.webContents.getURL() ?? page.url, viewportRevision: page.viewportRevision,
+      bounds: page.view?.getBounds() ?? null, zoom: page.view?.webContents.getZoomFactor() ?? null };
+  }
+  commandTargets(request, command, page) {
+    const ids = ['finalizeTabs', 'closeSession', 'turnEnded'].includes(command.method)
+      ? this.workspacePages(request.projectId, request.threadId).map(item => item.id)
+      : [command.tabId ?? page.id];
+    if (command.method === 'finalizeTabs') ids.push(...command.keep.map(item => item.tabId));
+    return [...new Set(ids)].map(id => {
+      const target = this.page(request.projectId, request.threadId, id);
+      if (!target || !this.pageStillOwned(target) || !target.view || target.crashed
+        || target.view.webContents.isDestroyed() || target.view.webContents.isDevToolsOpened()) throw new Error('plan_stale');
+      if (!['claimTab', 'listUserTabs', 'finalizeTabs', 'closeSession', 'turnEnded'].includes(command.method)
+        && target.control !== 'agent') throw new Error('human_takeover_required');
+      if (!['agent', 'human'].includes(target.control)) throw new Error('plan_stale');
+      return target;
+    });
+  }
+  async prepareCommand(request) {
+    const { page, c } = this.actionPage(request);
+    const command = validateBrowserCommand(request.parameters.command);
+    if (request.parameters.pageId !== page.id) throw new Error('plan_stale');
+    const management = ['recordingStatus', 'recordingCancel', 'getDialog', 'handleDialog', 'cancelRequest', 'close', 'closeSession', 'turnEnded'].includes(command.method);
+    if (page.activeRead || page.activePrepare || (page.activeAction && !management)
+      || this.workspaceOutstanding(page.projectId, page.threadId) >= 16) throw new Error('not_sent');
+    const targets = this.commandTargets(request, command, page);
+    if (command.method === 'navigate' && command.url !== 'about:blank' && !page.networkPolicy.canAuthorize(webUrl(command.url))) throw new Error('not_sent');
+    const source = c.getURL() || 'about:blank';
+    const commandPage = targets.find(target => target.id === (command.tabId ?? page.id)) ?? page;
+    const targetSource = commandPage.view.webContents.getURL() || 'about:blank';
+    const parameters = structuredClone(request.parameters);
+    const plan = { preparedActionId: randomUUID(), operation: 'command', pageId: page.id,
+      origin: new URL(targetSource).origin, url: observationUrl(targetSource), parameters,
+      ...(command.method === 'navigate' ? { targetUrl: command.url === 'about:blank' ? command.url : webUrl(command.url), targetOrigin: new URL(command.url === 'about:blank' ? command.url : webUrl(command.url)).origin } : {}),
+      target: { pages: targets.map(target => this.commandFacts(target)) },
+      pageGeneration: page.pageGeneration, documentEpoch: page.documentGeneration, controlEpoch: page.controlEpoch,
+      browserHostId: this.browserHostId, hostGeneration: this.hostGeneration,
+      threadId: request.threadId, turnId: request.turnId, callId: request.callId, expiresAt: Date.now() + 300000 };
+    plan.fingerprint = createHash('sha256').update(JSON.stringify(plan)).digest('hex');
+    page.plans.set(plan.preparedActionId, { plan: structuredClone(plan), pageUrl: source, targets,
+      dialog: command.method === 'handleDialog' ? commandPage.commandDialog : undefined });
+    return { ...this.commandIdentity(request, page), plan };
+  }
+  async assertCommandPrivacy(page, send) {
+    const c = page.view.webContents;
+    await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false,
+      flatten: true, filter: [{ type: 'iframe', exclude: false }, { exclude: true }] });
+    const frames = new Map();
+    const visit = (node, sessionId) => {
+      frames.set(node.frame.id, { frame: node.frame, sessionId });
+      for (const child of node.childFrames ?? []) visit(child, sessionId);
+    };
+    visit((await send('Page.getFrameTree')).frameTree);
+    for (const sessionId of page.commandFrameSessions.values())
+      visit((await send('Page.getFrameTree', {}, sessionId)).frameTree, sessionId);
+    if (frames.size > 32 || frames.size !== c.mainFrame.framesInSubtree.length) throw new Error('human_takeover_required');
+    for (const { frame, sessionId } of frames.values()) {
+      const world = await send('Page.createIsolatedWorld', { frameId: frame.id, worldName: 'areal-command-privacy' }, sessionId);
+      const result = await send('Runtime.evaluate', { expression: sensitiveCaptureScript(false),
+        contextId: world.executionContextId, returnByValue: true }, sessionId);
+      if (result.result?.value !== false) throw new Error('human_takeover_required');
+    }
+  }
+  async executeCommand(request) {
+    const { page, c } = this.actionPage(request);
+    const approved = request.browserApproval?.plan;
+    const saved = approved && page.plans.get(approved.preparedActionId);
+    if (!saved || !isDeepStrictEqual(saved.plan, approved) || approved.operation !== 'command'
+      || saved.pageUrl !== (c.getURL() || 'about:blank') || approved.pageId !== page.id
+      || approved.threadId !== request.threadId || approved.turnId !== request.turnId || approved.callId !== request.callId
+      || approved.expiresAt < Date.now() || approved.documentEpoch !== page.documentGeneration
+      || approved.pageGeneration !== page.pageGeneration || approved.controlEpoch !== page.controlEpoch
+      || !isDeepStrictEqual(approved.parameters, request.parameters)
+      || saved.targets.some((target, index) => !this.pageStillOwned(target)
+        || !isDeepStrictEqual(this.commandFacts(target), approved.target.pages[index]))) throw new Error('plan_stale');
+    page.plans.delete(approved.preparedActionId);
+    const command = validateBrowserCommand(request.parameters.command);
+    const target = saved.targets.find(item => item.id === (command.tabId ?? page.id)) ?? page;
+    if (command.method === 'handleDialog' && saved.dialog !== target.commandDialog) throw new Error('plan_stale');
+    const identity = this.commandIdentity(request, page);
+    const result = await this.runBrowserCommand(request, target, command, approved, saved.targets);
+    return { ...identity, commandResult: browserCommandResultSchema.parse(result.commandResult),
+      ...(result.createdPage ? { createdPage: result.createdPage } : {}),
+      ...(result.controlPermits ? { controlPermits: result.controlPermits } : {}),
+      ...(result.closedPageIds ? { closedPageIds: result.closedPageIds } : {}),
+      ...(result.revokedPageIds ? { revokedPageIds: result.revokedPageIds } : {}),
+      dispatch: 'confirmed', preparedActionId: approved.preparedActionId };
+  }
+  async runBrowserCommand(request, page, command, approved, targets) {
+    const started = Date.now(), c = page.view.webContents;
+    const done = partial => ({ commandResult: { elapsedMs: Date.now() - started, ...partial } });
+    const summary = target => ({ tabId: target.id, viewport: target.commandViewport ?? { width: target.view?.getBounds().width || 1280, height: target.view?.getBounds().height || 720 }, url: target.view?.webContents.getURL() || target.url || 'about:blank',
+      title: target.view?.webContents.getTitle() || target.title, lifecycle: target.commandLifecycle ?? 'active',
+      active: this.selected.get(workspaceKey(page.coreInstanceId, page.projectId, page.threadId)) === target.id });
+    const permit = target => ({ pageId: target.id, pageGeneration: target.pageGeneration, controlEpoch: target.controlEpoch });
+    const close = target => this.release(pageKey(target.coreInstanceId, target.projectId, target.threadId, target.id), { notifyRevocation: false });
+    switch (command.method) {
+      case 'capabilities': return done({ ok: true, value: { backend: 'iab', supportedMethods, unsupportedCapabilities } });
+      case 'list': return done({ ok: true, tabs: this.workspacePages(page.projectId, page.threadId).map(summary) });
+      case 'listUserTabs': return done({ ok: true, userTabs: this.workspacePages(page.projectId, page.threadId).filter(item => item.control === 'human').map(item => ({ id: item.id, title: item.title, url: item.url })) });
+      case 'nameSession': this.contexts.get(workspaceKey(page.coreInstanceId, page.projectId, page.threadId)).commandName = command.name; return done({ ok: true });
+      case 'browserVisibilityGet': return done({ ok: true, value: { visible: page.requestedVisible } });
+      case 'browserVisibilitySet':
+        page.requestedVisible = command.visible;
+        page.view.setVisible(command.visible && this.owner === pageKey(page.coreInstanceId, page.projectId, page.threadId, page.id)
+          && !this.suppressedPresentation && !page.activeAction);
+        this.changed(page); return done({ ok: true, value: { visible: command.visible } });
+      case 'activateTab':
+        this.selected.set(workspaceKey(page.coreInstanceId, page.projectId, page.threadId), page.id);
+        this.changed(page); return done({ ok: true, tab: summary(page) });
+      case 'claimTab': {
+        if (page.control !== 'agent') await this.claim(page.projectId, page.threadId, page.id);
+        return { ...done({ ok: true, tab: summary(page) }), controlPermits: [permit(page)] };
+      }
+      case 'newTab': {
+        const id = randomUUID(), epoch = page.controlEpoch;
+        const child = this.create(pageKey(page.coreInstanceId, page.projectId, page.threadId, id), page.projectId, page.threadId,
+          { id, openerId: page.id, origin: 'agent' });
+        try {
+          await child.view.webContents.loadURL('about:blank');
+          if (!this.pageStillOwned(page) || page.control !== 'agent' || page.controlEpoch !== epoch) throw new Error('outcome_unknown');
+          await this.claim(page.projectId, page.threadId, child.id);
+          if (!this.pageStillOwned(page) || page.control !== 'agent' || page.controlEpoch !== epoch) throw new Error('outcome_unknown');
+        } catch (error) { close(child); throw new Error('outcome_unknown', { cause: error }); }
+        return { ...done({ ok: true, tab: summary(child) }), createdPage: permit(child), controlPermits: [permit(child)] };
+      }
+      case 'finalize': page.commandLifecycle = command.deliverable === false ? 'active' : 'deliverable'; this.changed(page); return done({ ok: true });
+      case 'markDeliverable': case 'markHandoff':
+        page.commandLifecycle = command.method === 'markHandoff' ? 'handoff' : 'deliverable'; this.changed(page); return done({ ok: true });
+      case 'finalizeTabs': {
+        const keep = new Map(command.keep.map(item => [item.tabId, item.status])); const closedPageIds = [];
+        for (const target of targets) {
+          if (keep.has(target.id)) { target.commandLifecycle = keep.get(target.id); this.changed(target); }
+          else if (target.origin === 'agent') { closedPageIds.push(target.id); close(target); }
+        }
+        return { ...done({ ok: true }), closedPageIds };
+      }
+      case 'turnEnded':
+        for (const target of targets) {
+          if (!command.turnId || target.activeAction?.turnId === command.turnId) target.activeAction?.cancel();
+          target.commandRecording?.controller.abort();
+        }
+        return done({ ok: true });
+      case 'closeSession': {
+        const closedPageIds = [], revokedPageIds = [];
+        for (const target of targets) {
+          target.commandRecording?.controller.abort();
+          if (command.closeTabs) { closedPageIds.push(target.id); close(target); }
+          else { revokedPageIds.push(target.id); this.revoke(target, { notify: false }); }
+        }
+        return { ...done({ ok: true }), closedPageIds, revokedPageIds };
+      }
+      case 'close': close(page); return { ...done({ ok: true }), closedPageIds: [page.id] };
+      case 'cancelRequest':
+        if (page.activeAction?.requestId === command.requestId) page.activeAction.cancel();
+        return done({ ok: true });
+      case 'getDialog': return done({ ok: true, dialog: page.commandDialog ?? null });
+      case 'handleDialog': {
+        if (!page.commandDialog) return done({ ok: false, error: { code: 'execution_error', message: 'No pending JavaScript dialog' } });
+        const epoch = page.controlEpoch;
+        try {
+          await nativeWithin(this.dispatchInput(page, 'Page.handleJavaScriptDialog', { accept: command.accept,
+            ...(command.promptText !== undefined ? { promptText: command.promptText } : {}) }), performance.now() + 5000);
+          if (!this.pageStillOwned(page) || page.control !== 'agent' || page.controlEpoch !== epoch) throw new Error('outcome_unknown');
+          return done({ ok: true });
+        } catch (error) { throw new Error('outcome_unknown', { cause: error }); }
+      }
+      case 'recordingStatus': case 'recordingCancel': {
+        const entry = page.commandRecordings?.get(command.recordingId);
+        if (!entry) return done({ ok: false, error: { code: 'backend_unavailable', message: 'Recording belongs to another or closed page' } });
+        if (command.method === 'recordingCancel') { entry.controller.abort(); await entry.promise; }
+        if (command.method === 'recordingStatus' && command.outputPath && entry.artifact) {
+          if (!request.workspacePath) throw new Error('not_sent');
+          const fs = require('node:fs/promises'), path = require('node:path');
+          const destination = path.resolve(request.workspacePath, command.outputPath);
+          const parent = path.dirname(destination);
+          const realRoot = await fs.realpath(request.workspacePath);
+          let directory = realRoot;
+          for (const part of path.relative(request.workspacePath, parent).split(path.sep).filter(Boolean)) {
+            directory = path.join(directory, part);
+            await fs.mkdir(directory).catch(error => { if (error.code !== 'EEXIST') throw error; });
+            const stat = await fs.lstat(directory);
+            if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error('not_sent');
+          }
+          const realParent = await fs.realpath(parent);
+          if (realParent !== realRoot && !realParent.startsWith(realRoot + path.sep)) throw new Error('not_sent');
+          entry.publications ??= new Set();
+          if (!entry.publications.has(destination)) {
+            await fs.copyFile(entry.artifact.path, destination, require('node:fs').constants.COPYFILE_EXCL);
+            entry.publications.add(destination);
+          }
+          return done({ ok: true, recording: { ...this.commandRecordingStatus(entry), artifact: { ...entry.artifact, path: destination } } });
+        }
+        return done({ ok: true, recording: this.commandRecordingStatus(entry) });
+      }
+    }
+    if (page.activeRead || page.activePrepare || page.activeAction) throw new Error('not_sent');
+    const epoch = page.controlEpoch, generation = page.pageGeneration;
+    const controller = new AbortController();
+    let rejectStop;
+    const stopped = new Promise((_, reject) => { rejectStop = reject; });
+    void stopped.catch(() => {});
+    const action = { requestId: request.requestId, turnId: request.turnId, syntheticInput: true, command: true, dispatched: false,
+      cancelled: false, controller, controlEpoch: epoch,
+      cancel: () => { action.cancelled = true; controller.abort(); rejectStop(new Error(action.dispatched ? 'outcome_unknown' : 'not_sent')); } };
+    page.activeAction = action;
+    const live = () => {
+      if (controller.signal.aborted || !this.pageStillOwned(page) || !page.view || c.isDestroyed()
+        || page.view.webContents !== c || page.pageGeneration !== generation || page.control !== 'agent'
+        || page.controlEpoch !== epoch) throw new Error(action.dispatched ? 'outcome_unknown' : 'not_sent');
+    };
+    const send = async (method, params, sessionId) => {
+      live();
+      if (method.startsWith('Input.') || method === 'Page.handleJavaScriptDialog') action.dispatched = true;
+      const result = await this.dispatchInput(page, method, params ?? {}, sessionId);
+      live(); return result;
+    };
+    const race = promise => Promise.race([promise, stopped]);
+    const timeoutMs = command.method === 'playwright' && ['waitForEvent', 'downloadPath'].includes(command.action.name)
+      ? Math.min(120000, command.action.timeoutMs ?? 3000) + 2000 : 32000;
+    let timeout = setTimeout(() => action.cancel(), timeoutMs), surface;
+    const restoreVisible = () => this.pageStillOwned(page) && page.control === 'agent' && page.controlEpoch === epoch
+      && this.owner === pageKey(page.coreInstanceId, page.projectId, page.threadId, page.id)
+      && page.requestedVisible && !this.suppressedPresentation;
+    const acquireSurface = async () => {
+      if (surface) return;
+      page.commandSurface = true;
+      const bounds = (command.method === 'recordingStart' ? command.options?.viewport : null) ?? page.commandViewport ?? page.view.getBounds();
+      surface = await acquireBackgroundSurface({ owner: this.window, view: page.view,
+        viewport: { width: bounds.width || 1280, height: bounds.height || 720 }, signal: controller.signal, restoreVisible });
+    };
+    const navigate = url => {
+      live(); const targetUrl = url === 'about:blank' ? url : webUrl(url);
+      if (targetUrl !== 'about:blank' && !page.networkPolicy.allowApprovedNavigation(targetUrl)) throw new Error('not_sent');
+      page.approvedNavigation = targetUrl; action.dispatched = true; return race(c.loadURL(targetUrl));
+    };
+    const view = { webContents: {
+      loadURL: navigate, getURL: () => { live(); return c.getURL(); }, getTitle: () => { live(); return c.getTitle(); },
+      canGoBack: () => c.navigationHistory.canGoBack(), canGoForward: () => c.navigationHistory.canGoForward(),
+      goBack: () => { live(); page.approvedNavigation = c.navigationHistory.getAllEntries()[c.navigationHistory.getActiveIndex() - 1]?.url; action.dispatched = true; c.navigationHistory.goBack(); },
+      goForward: () => { live(); page.approvedNavigation = c.navigationHistory.getAllEntries()[c.navigationHistory.getActiveIndex() + 1]?.url; action.dispatched = true; c.navigationHistory.goForward(); },
+      reload: () => { live(); page.approvedNavigation = c.getURL(); action.dispatched = true; c.reload(); },
+      executeJavaScript: script => { live(); if (browserCommandMutates(command)) action.dispatched = true;
+        return race(c.executeJavaScript(script, true)); },
+    }, cdp: { send }, normalizeScreenshotToCssPixels: true,
+      captureViewportScreenshot: async () => { await acquireSurface(); live(); return (await race(c.capturePage())).toPNG().toString('base64'); },
+      resizeScreenshotToCssPixels: (base64, size) => require('electron').nativeImage.createFromBuffer(Buffer.from(base64, 'base64'))
+        .resize({ ...size, quality: 'best' }).toPNG().toString('base64') };
+    const cleanup = async () => {
+      clearTimeout(timeout); surface?.release(); page.commandSurface = false;
+      if (page.activeAction === action) page.activeAction = null;
+      if (this.pageStillOwned(page) && page.control === 'agent' && page.controlEpoch === epoch) {
+        if (page.inputPending.size || page.heldKeys.size || page.heldButtons.size) this.revoke(page);
+        else page.view?.setVisible(restoreVisible());
+      }
+    };
+    try {
+      if (this.window.isFocused() && c.isFocused()) { this.nativeInputOwner = page.id; this.window.webContents.focus(); }
+      page.view.setVisible(false);
+      if (!c.debugger.isAttached()) c.debugger.attach('1.3');
+      await race(send('Page.enable'));
+      const pageMethod = !['browserViewportSet', 'browserViewportReset', 'handleDialog', 'playwrightWaitForTimeout'].includes(command.method)
+        && !(command.method === 'playwright' && ['downloadPath', 'waitForEvent', 'fileChooserSetFiles'].includes(command.action.name));
+      if (pageMethod) { await acquireSurface(); await race(this.assertCommandPrivacy(page, send)); }
+      if (command.method === 'browserViewportSet' || command.method === 'browserViewportReset') {
+        action.dispatched = true;
+        if (command.method === 'browserViewportSet') {
+          page.commandViewport = { width: command.width, height: command.height };
+          c.setZoomFactor(1);
+          await send('Emulation.setDeviceMetricsOverride', { ...page.commandViewport, deviceScaleFactor: 1, mobile: false });
+        } else { page.commandViewport = null; await send('Emulation.clearDeviceMetricsOverride'); }
+        page.viewportRevision++; invalidateActionObservation(page);
+        return done({ ok: true, value: { viewport: page.commandViewport } });
+      }
+      if (command.method === 'playwrightWaitForTimeout') {
+        await race(waitForDelay(command.timeoutMs, controller.signal)); return done({ ok: true });
+      }
+      if (command.method === 'playwright' && ['waitForEvent', 'downloadPath'].includes(command.action.name)
+        && command.action.event !== 'filechooser') {
+        const argument = command.action;
+        const found = () => argument.name === 'downloadPath' ? page.commandDownloads.get(argument.downloadId)
+          : [...page.commandDownloads.values()].find(item => !item.consumed);
+        const state = await race(waitForCondition(() => !!found() && (argument.name !== 'downloadPath' || found().state !== 'pending'),
+          Math.min(120000, argument.timeoutMs ?? 3000), controller.signal));
+        if (state !== 'matched') return done({ ok: false, error: { code: state === 'cancelled' ? 'cancelled' : 'timeout', message: 'Download wait did not complete' } });
+        const item = found(); item.consumed = true;
+        return argument.name === 'waitForEvent' ? done({ ok: true, value: { id: item.id } })
+          : item.state === 'completed' ? done({ ok: true, value: item.path })
+          : done({ ok: false, error: { code: 'execution_error', message: `Download ${item.state}` } });
+      }
+      if (command.method === 'recordingStart') {
+        clearTimeout(timeout); timeout = null;
+        await acquireSurface();
+        const options = command.options ?? {}, viewport = options.viewport ?? page.commandViewport ?? page.view.getBounds();
+        if (options.viewport) await send('Emulation.setDeviceMetricsOverride', { width: viewport.width, height: viewport.height, deviceScaleFactor: 1, mobile: false });
+        const entry = { id: randomUUID(), status: 'running', phase: 'preparing', startedAt: Date.now(),
+          controller, action, promise: null, artifact: null, error: null };
+        page.commandRecordings ??= new Map(); page.commandRecordings.set(entry.id, entry); page.commandRecording = entry;
+        const scenario = new RecordingScenario();
+        action.dispatched = true;
+        entry.promise = (async () => {
+          const duration = setTimeout(() => controller.abort(new DOMException('Recording duration exceeded', 'TimeoutError')), options.maxDurationMs ?? 30000);
+          try {
+            if (options.showCursor !== false) await scenario.installRecordingCursorOverlay(view.webContents);
+            entry.artifact = await recordBrowserVideo({ targetFrame: c.mainFrame,
+              tempRoot: this.commandArtifactRoot(page), recordingId: entry.id,
+              viewport: { width: viewport.width || 1280, height: viewport.height || 720 }, fps: options.fps ?? 30,
+              signal: controller.signal, createRecorder: createElectronBrowserWebmRecorder,
+              onPhase: phase => { entry.phase = phase; }, onCaptureComplete: () => clearTimeout(duration),
+              executeScenario: async () => {
+                if (options.settleMs && !await waitForDelay(options.settleMs, controller.signal)) throw new Error('cancelled');
+                await scenario.executeRecordingActions(view, options.actions ?? [], controller.signal, viewport);
+              } });
+            entry.status = 'completed'; entry.phase = 'completed';
+          } catch (error) {
+            entry.status = controller.signal.aborted ? 'cancelled' : 'failed'; entry.phase = entry.status;
+            entry.error = error.message;
+          } finally {
+            clearTimeout(duration); entry.finishedAt = Date.now();
+            if (!controller.signal.aborted) await scenario.removeRecordingCursorOverlay(view.webContents).catch(() => {});
+            if (options.viewport && this.pageStillOwned(page) && page.control === 'agent' && page.controlEpoch === epoch && !c.isDestroyed()) {
+              const previous = page.commandViewport;
+              await this.dispatchInput(page, previous ? 'Emulation.setDeviceMetricsOverride' : 'Emulation.clearDeviceMetricsOverride',
+                previous ? { ...previous, deviceScaleFactor: 1, mobile: false } : {}).catch(() => this.revoke(page));
+            }
+            if (page.commandRecording === entry) page.commandRecording = null;
+            await cleanup();
+          }
+        })();
+        return done({ ok: true, recording: this.commandRecordingStatus(entry) });
+      }
+      if (command.method === 'screenshot' || (command.method === 'playwright' && command.action.name === 'elementScreenshot')) await acquireSurface();
+      if (browserCommandMutates(command)) {
+        action.dispatched = true;
+        page.commandDownloadIntent = { controlEpoch: epoch, pageGeneration: generation, expiresAt: Date.now() + DOWNLOAD_INTENT_MS };
+      }
+      const commandResult = await race(executeBrowserCommandOnView(view, command, { signal: controller.signal }));
+      live();
+      if (pageMethod && commandResult.ok && !browserCommandMutates(command)) await race(this.assertCommandPrivacy(page, send));
+      if (action.dispatched && !commandResult.ok && commandResult.error?.sideEffect !== 'none') throw new Error('outcome_unknown', { cause: new Error(commandResult.error.message) });
+      if (browserCommandMutates(command)) invalidateActionObservation(page);
+      return { commandResult };
+    } catch (error) {
+      if (action.dispatched) throw new Error('outcome_unknown', { cause: error });
+      if (controller.signal.aborted) throw new Error('not_sent');
+      throw error;
+    } finally {
+      if (!page.commandRecording || page.commandRecording.action !== action) await cleanup();
+    }
+  }
+  commandArtifactRoot(page) {
+    if (!page.commandArtifactRoot) page.commandArtifactRoot = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'areal-browser-artifacts-'));
+    return page.commandArtifactRoot;
+  }
+  commandRecordingStatus(entry) {
+    return { id: entry.id, status: entry.status, phase: entry.phase, startedAt: entry.startedAt,
+      progress: entry.status === 'completed' ? 1 : entry.phase === 'finalizing' ? 0.9 : entry.phase === 'capturing' ? 0.5 : 0,
+      updatedAt: entry.finishedAt ?? Date.now(),
+      ...(entry.artifact ? { artifact: entry.artifact } : {}), ...(entry.error ? { error: entry.error } : {}) };
+  }
+  acceptCommandDownload(page, event, item) {
+    const intent = page.commandDownloadIntent;
+    const approved = (page.activeAction?.command && page.activeAction.dispatched) || (intent
+      && intent.controlEpoch === page.controlEpoch && intent.pageGeneration === page.pageGeneration && intent.expiresAt > Date.now());
+    if (page.control !== 'agent' || !approved || !this.pageStillOwned(page)) return false;
+    if (item.getTotalBytes() > MAX_FILE_BYTES || page.commandDownloads.size >= 8) { event.preventDefault(); return true; }
+    const id = randomUUID(), path = require('node:path').join(this.commandArtifactRoot(page), id + '-' + basename(item.getFilename()));
+    const record = { id, path, state: 'pending', item, consumed: false, controlEpoch: page.controlEpoch };
+    page.commandDownloads.set(id, record); item.setSavePath(path);
+    const timer = setTimeout(() => item.cancel(), DOWNLOAD_TIMEOUT_MS);
+    item.on('updated', () => { if (item.getReceivedBytes() > MAX_FILE_BYTES || !this.pageStillOwned(page)
+      || page.control !== 'agent' || page.controlEpoch !== record.controlEpoch) item.cancel(); });
+    item.once('done', (_event, state) => { clearTimeout(timer); record.state = state; delete record.item; });
+    return true;
+  }
   async prepare(request) {
+    this.profile.assertAvailable();
     if (request.phase !== 'prepare') throw new Error('not_sent');
+    if (request.operation === 'command') return this.prepareCommand(request);
     if (['observe', 'capture', 'diagnostics'].includes(request.operation)) return this.prepareRead(request);
     if (!['act', 'wait', 'navigate', 'newPage', 'runBatch'].includes(request.operation)) throw new Error('not_sent');
     if (request.operation === 'runBatch') return this.prepareBatch(request);
@@ -2137,7 +2562,9 @@ class CorePreview {
     }
   }
   async execute(request) {
+    this.profile.assertAvailable();
     if (request.phase !== 'execute') throw new Error('not_sent');
+    if (request.operation === 'command') return this.executeCommand(request);
     if (['observe', 'capture', 'diagnostics'].includes(request.operation)) return this.executeRead(request);
     if (!['act', 'wait', 'navigate', 'newPage', 'runBatch'].includes(request.operation)) throw new Error('not_sent');
     if (request.operation === 'runBatch') return this.executeBatch(request);
@@ -2658,24 +3085,27 @@ class CorePreview {
     }
   }
   create(owner, projectId, threadId, options = {}) {
+    this.profile.assertAvailable();
+    this.unregisterProfileHost ??= this.profile.registerHost(this.profileHost);
+    this.profile.assertAvailable();
     this.reservePageSlot(projectId, threadId, options.replacing === true);
-    const siblings = this.workspacePages(projectId, threadId);
-    const partition = options.partition ?? siblings[0]?.partition ?? `areal-preview-${randomUUID()}`;
+    const partition = this.profile.partition;
     const view = new this.WebContentsView({
       webPreferences: {
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
-        partition,
+        session: this.profile.session,
       },
     });
     const page = { id: options.id ?? randomUUID(), pageGeneration: options.pageGeneration ?? 1, view, partition,
-      session: view.webContents.session, coreInstanceId: this.coreIdentity(projectId), projectId, threadId,
+      session: view.webContents.session, coreInstanceId: this.coreIdentity(projectId, threadId), projectId, threadId,
       openerId: options.openerId ?? null, origin: options.origin ?? 'human', title: '', error: '', url: '', committedUrl: '', crashed: false,
       control: 'human', controlEpoch: 0, documentGeneration: 0, viewportRevision: 0, refs: new Map(), nativeControls: new Map(), optionIds: new Map(), nativeControlKey: randomUUID(), observedViewportKey: null,
       plans: new Map(), lastObservation: null, needsObservation: true, nextRef: 0,
       heldButtons: new Map(), heldKeys: new Map(), inputPending: new Set(), requestedVisible: false,
       downloads: new Set(), downloadRecords: new Map(), dialogPending: false, fileHandoff: null,
+      commandDownloads: new Map(), commandFrameSessions: new Map(), commandDialog: null, commandLifecycle: 'active',
       fileChooserIntercepted: false,
       stateLoss: options.stateLoss ?? null,
       diagnosticsReady: false, diagnosticsStartedAt: null, diagnosticEvents: [], diagnosticRequests: new Map(), diagnosticBytes: 0,
@@ -2683,6 +3113,10 @@ class CorePreview {
       c = view.webContents;
     try { page.networkPolicy = this.ensureWorkspaceContext(page); }
     catch (error) { if (!c.isDestroyed()) c.close(); throw error; }
+    page.dialogPresentation = attachAgentDialogPresentation(c, {
+      ownership: () => ({ control: page.control }),
+      onFault: error => { page.error = error.message; this.revoke(page); },
+    });
     c.on('console-message', details => {
       if (page.control !== 'agent' || !page.diagnosticsReady) return;
       const value = details && typeof details === 'object' ? details : {};
@@ -2691,6 +3125,10 @@ class CorePreview {
         line: Number.isSafeInteger(value.lineNumber) ? value.lineNumber : null });
     });
     c.debugger.on('message', (_event, method, params) => {
+      if (method === 'Target.attachedToTarget' && params.targetInfo?.type === 'iframe') page.commandFrameSessions.set(params.targetInfo.targetId, params.sessionId);
+      if (method === 'Target.detachedFromTarget') for (const [id, sessionId] of page.commandFrameSessions) if (sessionId === params.sessionId) page.commandFrameSessions.delete(id);
+      if (method === 'Page.javascriptDialogOpening') page.commandDialog = { type: params.type, message: params.message, defaultPrompt: params.defaultPrompt };
+      if (method === 'Page.javascriptDialogClosed') page.commandDialog = null;
       if (method === 'Page.fileChooserOpened') {
         if (page.control === 'agent') this.revoke(page);
         return;
@@ -2736,6 +3174,7 @@ class CorePreview {
       }
     });
     c.debugger.on('detach', () => {
+      page.commandFrameSessions.clear();
       page.fileChooserIntercepted = false;
       this.clearDiagnostics(page, 'debugger_detached');
       if (page.control === 'agent') this.revoke(page);
@@ -2747,13 +3186,7 @@ class CorePreview {
       page.needsObservation = true; this.clearDiagnostics(page, 'devtools_closed'); this.changed(page);
     });
     page.onDownload = (event, item, source) => {
-      if (source !== c) {
-        // No page listener owns downloads started by Session APIs or an
-        // already released WebContents; do not let Electron choose a path.
-        if (![...this.pages.values()].some(other => other.session === c.session && other.view?.webContents === source))
-          event.preventDefault();
-        return;
-      }
+      if (this.acceptCommandDownload(page, event, item)) return;
       const intent = page.fileHandoff;
       const key = pageKey(page.coreInstanceId, projectId, threadId, page.id);
       const current = () => this.pageStillOwned(page) && page.view?.webContents === c
@@ -2830,12 +3263,15 @@ class CorePreview {
       });
       this.fileReceipt(page, record);
     };
-    c.session.on('will-download', page.onDownload);
+    page.unregisterProfilePage = this.profile.registerPage({ contents: c,
+      current: () => this.pageStillOwned(page) && page.view?.webContents === c && !c.isDestroyed(),
+      devToolsContents: () => c.isDestroyed() ? null : c.devToolsWebContents ?? page.openingDevTools,
+      download: page.onDownload });
     c.setWindowOpenHandler(details => {
       // Electron must never create an unowned BrowserWindow. A local human click
       // may create a sibling only after URL and current ownership checks.
       if (page.control !== 'human' || !this.pageStillOwned(page) || !this.owns(projectId, threadId)
-        || page.coreInstanceId !== this.coreIdentity(projectId)
+        || page.coreInstanceId !== this.coreIdentity(projectId, threadId)
         || Date.now() > (page.userPopupIntentUntil ?? 0))
         return { action: 'deny' };
       page.userPopupIntentUntil = 0;
@@ -2863,10 +3299,6 @@ class CorePreview {
       this.changed(child);
       return { action: 'deny' };
     });
-    c.session.setPermissionRequestHandler((_contents, _permission, respond) =>
-      respond(false),
-    );
-    c.session.setPermissionCheckHandler(() => false);
     const navigate = (event, url) => {
       try {
         webUrl(url);
@@ -2888,6 +3320,7 @@ class CorePreview {
     });
     c.on("did-start-navigation", (_event, url, inPlace, main) => {
       if (!this.pageStillOwned(page)) return;
+      if (main && !inPlace) page.dialogPresentation?.cancel();
       page.dialogPending = false;
       page.activeSelection?.cancel();
       if (main) {
@@ -2911,7 +3344,9 @@ class CorePreview {
         page.activeRead?.cancel('plan_stale');
         // 同文档且完整 URL 未变的 history 更新不产生新导航权限；旧观察仍在下方失效。
         const unchangedDocument = inPlace === true && !!page.committedUrl && url === page.committedUrl;
-        const approvedAction = !unchangedDocument && this.acceptActionNavigation(page, url);
+        const approvedCommand = page.activeAction?.command && !page.activeAction.cancelled
+          && page.activeAction.controlEpoch === page.controlEpoch && page.networkPolicy.canAuthorize(url);
+        const approvedAction = !unchangedDocument && (approvedCommand || this.acceptActionNavigation(page, url));
         if (!unchangedDocument) {
           if (page.approvedNavigation === url) page.approvedNavigation = null;
           else if (!approvedAction) this.revoke(page);
@@ -2983,7 +3418,7 @@ class CorePreview {
       this.changed(page);
     });
     c.on('before-input-event', (event, input) => {
-      if (!this.pageStillOwned(page)) { event.preventDefault(); return; }
+      if (this.profile.status().busy || !this.pageStillOwned(page)) { event.preventDefault(); return; }
       // 仅当前台窗口中当前可见页面由人工控制时，才允许将焦点移回应用。
       if (input.type === 'keyDown' && input.key === 'F6' && !input.isAutoRepeat
         && page.control === 'human' && this.owns(projectId, threadId)
@@ -2995,7 +3430,7 @@ class CorePreview {
         && ['Enter', 'Space'].includes(input.key)) page.userPopupIntentUntil = Date.now() + 1000;
       // CDP keys may echo while the native view is hidden. Only an action on a
       // page without native focus may pass here; a focused page is local input.
-      if (page.control === 'agent' && (!page.activeAction?.syntheticInput || page.view.getVisible()
+      if (page.control === 'agent' && (!page.activeAction?.syntheticInput || (page.view.getVisible() && !page.commandSurface)
         || (this.window.isFocused() && c.isFocused()))) {
         event.preventDefault();
         void this.humanKey(page, input).catch(() => {});
@@ -3003,12 +3438,12 @@ class CorePreview {
       else if (page.control === 'human') this.noteHumanInput(page);
     });
     c.on('before-mouse-event', (event, mouse) => {
-      if (!this.pageStillOwned(page)) { event.preventDefault(); return; }
+      if (this.profile.status().busy || !this.pageStillOwned(page)) { event.preventDefault(); return; }
       if (page.control === 'human' && mouse.type === 'mouseUp' && this.humanMouseGesture?.page === page)
         this.humanMouseGesture = null;
       if (page.control === 'human' && mouse.type === 'mouseDown' && c.isFocused())
         page.userPopupIntentUntil = Date.now() + 1000;
-      if (page.control === 'agent' && page.view.getVisible() && ['mouseDown', 'mouseWheel'].includes(mouse.type)) {
+      if (page.control === 'agent' && page.view.getVisible() && !page.commandSurface && ['mouseDown', 'mouseWheel'].includes(mouse.type)) {
         event.preventDefault(); this.nativeInputOwner = page.id;
         void this.humanInput(projectId, threadId, page.id, mouse).catch(() => {});
       } else if (page.control === 'transferring') event.preventDefault();
@@ -3020,7 +3455,7 @@ class CorePreview {
     this.window.contentView.addChildView(view);
     view.setVisible(false);
     this.pages.set(owner, page);
-    const workspace = workspaceKey(this.coreIdentity(projectId), projectId, threadId);
+    const workspace = workspaceKey(this.coreIdentity(projectId, threadId), projectId, threadId);
     if (!this.selected.has(workspace)) this.selected.set(workspace, page.id);
     this.changed(page, 'pageAdded');
     return page;
@@ -3072,9 +3507,10 @@ class CorePreview {
   }
   async command(request) {
     validatePreview(request);
+    if (!['state', 'subscribe', 'hide', 'stop', 'release', 'endRegion'].includes(request.operation)) this.profile.assertAvailable();
     if (request.operation === 'state' && !this.owns(request.projectId, request.threadId))
       return this.state(null);
-    const workspace = workspaceKey(this.coreIdentity(request.projectId), request.projectId, request.threadId);
+    const workspace = workspaceKey(this.coreIdentity(request.projectId, request.threadId), request.projectId, request.threadId);
     let page = this.page(request.projectId, request.threadId, request.pageId);
     let key = page && pageKey(page.coreInstanceId, request.projectId, request.threadId, page.id);
     if (!page && request.operation === 'state') {
@@ -3198,7 +3634,7 @@ class CorePreview {
       return this.state(page);
     }
     if (request.operation !== 'state' && (!this.owns(request.projectId, request.threadId)
-      || !this.coreIdentity(request.projectId)))
+      || !this.coreIdentity(request.projectId, request.threadId)))
       throw new Error('请选择已连接 Core 的有效任务');
     if (request.operation === 'openLink') {
       const url = webUrl(request.url), host = new URL(url).hostname;
@@ -3212,7 +3648,7 @@ class CorePreview {
     }
     if (request.operation === 'newPage') {
       const id = randomUUID();
-      const child = this.create(pageKey(this.coreIdentity(request.projectId), request.projectId, request.threadId, id), request.projectId, request.threadId,
+      const child = this.create(pageKey(this.coreIdentity(request.projectId, request.threadId), request.projectId, request.threadId, id), request.projectId, request.threadId,
         { id, openerId: page?.id ?? null, origin: 'human' });
       this.selected.set(workspace, child.id);
       this.changed(child);
@@ -3238,7 +3674,7 @@ class CorePreview {
     }
     if (!page && ['show', 'navigate', 'reload'].includes(request.operation)) {
       const id = randomUUID();
-      key = pageKey(this.coreIdentity(request.projectId), request.projectId, request.threadId, id);
+      key = pageKey(this.coreIdentity(request.projectId, request.threadId), request.projectId, request.threadId, id);
       page = this.create(key, request.projectId, request.threadId, { id });
     }
     if (page && ['show', 'navigate', 'reload'].includes(request.operation)
@@ -3268,6 +3704,7 @@ class CorePreview {
     }
     if (['navigate', 'back', 'forward', 'reload', 'devtools'].includes(request.operation) && page.styleTrial) {
       const cleared = await this.clearStyleTrial(page);
+      this.profile.assertAvailable();
       if (!cleared.cleared && request.operation !== 'reload')
         throw new Error('试改已失效，请刷新页面后继续导航');
     }
@@ -3278,6 +3715,7 @@ class CorePreview {
       this.revoke(page); // Fence old Agent work before waiting on the local native channel.
       const controlEpoch = page.controlEpoch;
       if (page.control === 'transferring') await this.convergeInput(page);
+      this.profile.assertAvailable();
       if (!this.pageStillOwned(page) || page.view !== view || page.pageGeneration !== nativeGeneration
         || page.crashed || c.isDestroyed())
         throw new Error('页面已关闭');
@@ -3354,6 +3792,7 @@ class CorePreview {
       case 'devtools':
         this.revoke(page);
         await this.convergeInput(page);
+        this.profile.assertAvailable();
         if (page.control !== 'human') throw new Error('原生输入尚未收敛，请停止或关闭页面');
         // Electron 在首个文档加载后才公开 devToolsWebContents；
         // 在这次可信调用期间绑定其内部创建的前端。

@@ -202,6 +202,8 @@ else if (command === 'cleanup' && process.argv[3]) {
     processHandle = app.process(); processHandle.stderr.on('data', data => stderr.push(String(data)));
     page = await app.firstWindow(); page.setDefaultTimeout(20000); page.on('pageerror', error => errors.push(error.message));
     await page.getByTestId('areal-workbench').waitFor({ timeout: 120000 });
+    const configured = await page.evaluate(() => { const key = 'areal-gui:application-preferences'; const value = JSON.parse(localStorage.getItem(key) || '{}'); if (value.nextPromptSuggestions === false) return false; localStorage.setItem(key, JSON.stringify({ ...value, nextPromptSuggestions: false })); return true; });
+    if (configured) { await page.reload(); await page.getByTestId('areal-workbench').waitFor({ timeout: 120000 }); }
     await until(async () => (await snapshot()).connection?.state === 'ready', 'source Desktop ready');
     const actual = await app.evaluate(({ app, BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0], p = window.webContents.getLastWebPreferences(); window.setSize(1440, 960);
@@ -274,12 +276,12 @@ else if (command === 'cleanup' && process.argv[3]) {
     await page.getByTestId('chat-input').fill('Accept exactly this original send once'); await page.getByTestId('chat-send-button').click();
     await until(() => send.completed, 'real accepted Desktop send response intercepted');
     assert.equal(send.hadError, false, JSON.stringify(send.response)); assert.ok(send.requestId); assert.equal(send.threadId, threadId);
-    const unknown = page.getByTestId('chat-view').locator('.composer-dock [role="status"]').filter({ hasText: '发送结果尚未确认，草稿已保留，正在核对原请求。' });
+    const unknown = page.getByTestId('toast').filter({ has: page.locator('[data-recovery-request-id]') });
     await unknown.waitFor();
     await capture('03-send-response-lost');
-    const matchingSelector = process.env.AREAL_RECOVERY_NOTICE_SELECTOR ?? '.work-area [data-recovery-request-id="{requestId}"]';
+    const matchingSelector = process.env.AREAL_RECOVERY_NOTICE_SELECTOR ?? '[data-testid="toast"] [data-recovery-request-id="{requestId}"]';
     const matching = page.locator(matchingSelector.replaceAll('{requestId}', send.requestId));
-    assert.equal(await matching.count(), 1, 'Expected the global recovery notice to expose original request identity');
+    assert.equal(await matching.count(), 1, 'A single unified toast exposes the original request identity');
     await matching.waitFor();
     proxy.release();
     await until(async () => (await snapshot()).connection?.state === 'ready' && project(await snapshot())?.outcomes?.[send.requestId]?.accepted === true, 'original accepted outcome converges automatically');
@@ -310,10 +312,11 @@ else if (command === 'cleanup' && process.argv[3]) {
     await restoreDescriptor(run, original); await stopGUI(); await cleanup(run);
     await proxy.close(); proxy = null; original = null;
     await launch(); await until(async () => project(await snapshot())?.state?.connected, 'same private project restored after fresh Main launch');
+    await createProjectConversation(page, 'workspace');
     await page.getByTestId(`task-item-${threadId}`).click();
     await page.getByTestId('chat-view').getByText('RECOVERY_HISTORY_SENTINEL_2', { exact: true }).waitFor();
     assert.deepEqual(displayTurns(thread(await snapshot()).turns), history); assert.equal(workRequests(), readModel);
-    checks.push('fresh source Electron process restores original history from real Core without replay');
+    checks.push('fresh source Electron process opens original history from a new draft by sidebar click without replay');
     await capture('07-fresh-process-history'); await stopGUI();
     manifest.threadId = threadId; manifest.projectId = projectId; manifest.modelWorkRequests = workRequests();
   } catch (error) {

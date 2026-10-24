@@ -1,0 +1,24 @@
+.areal-task-context { min-width: 0; min-height: 0; display: flex; flex-direction: column; border: var(--border-width-default) solid var(--color-border); border-radius: var(--radius-panel); background: var(--color-composer); }
+.areal-task-context[hidden] { display: none; }
+.areal-context-top { padding: var(--spacing-field); display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-inline); }
+.areal-context-top h2 { margin: 0; font-size: var(--text-ui-sm); font-weight: var(--ui-font-weight); overflow-wrap: anywhere; }
+.areal-context-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0 var(--spacing-field) var(--spacing-field); scrollbar-width: thin; scrollbar-color: var(--color-border) transparent; overflow-wrap: anywhere; }
+.areal-context-section { padding-block: var(--spacing-field); border-bottom: var(--border-width-default) solid var(--color-border); }
+.areal-context-section:first-child { padding-top: 0; }
+.areal-context-section:last-child { border-bottom: 0; }
+.areal-context-section h3 { margin: 0 0 var(--spacing-inline); font-size: var(--text-ui-sm); font-weight: normal; color: var(--color-foreground-subtle); }
+.areal-context-item { display: flex; justify-content: flex-start; align-items: center; gap: var(--spacing-inline); width: 100%; height: auto; min-height: var(--spacing-control); padding: var(--spacing-inline) 0; text-align: left; font-weight: normal; white-space: normal; }
+.areal-context-item-body { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.areal-context-item-body > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.areal-context-item-body > small { font-size: var(--text-ui-xs); color: var(--color-foreground-subtle); overflow-wrap: anywhere; }
+.areal-context-back { align-self: flex-start; margin: 0 var(--spacing-field) var(--spacing-inline); }
+.areal-sources-heading { display: flex; align-items: center; min-width: 0; gap: var(--spacing-inline); }
+.areal-sources-heading > .areal-sources-trigger { flex: 1; justify-content: flex-start; min-width: 0; height: auto; min-height: var(--spacing-control-sm); padding: var(--spacing-inline) 0; text-align: left; white-space: normal; font-weight: normal; font-size: var(--text-ui-sm); color: var(--color-foreground-subtle); }
+.areal-sources-trigger > span { min-width: 0; overflow-wrap: anywhere; }
+.areal-sources-trigger:hover { color: var(--color-foreground); background: transparent; }
+.areal-sources-indicator { flex: none; transition: transform var(--motion-normal); }
+.areal-sources-trigger[aria-expanded="true"] > .areal-sources-indicator { transform: rotate(90deg); }
+.areal-context-empty { color: var(--color-foreground-subtle); font-size: var(--text-ui-sm); line-height: 1.6; }
+.areal-sources-view-all { margin-top: var(--spacing-inline); color: var(--color-foreground-subtle); }
+@media (prefers-reduced-motion: reduce) { .areal-sources-indicator { transition: none; } }
+@scope (:root[data-reduced-motion="true"]) { .areal-sources-indicator { transition: none; } }

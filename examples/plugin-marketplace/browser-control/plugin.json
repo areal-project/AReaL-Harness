@@ -1,0 +1,26 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "browser-control",
+  "version": "1.0.0",
+  "description": "AReaL-authored adapter guidance for the existing browser_v1 host tool.",
+  "extensions": {
+    "org.areal": {
+      "hostRequirements": {
+        "version": 1,
+        "tools": [
+          "browser_v1"
+        ]
+      }
+    },
+    "com.openai": {
+      "interface": {
+        "displayName": "Browser control \u00b7 AReaL adapter",
+        "developerName": "AReaL Harness",
+        "category": "Productivity",
+        "defaultPrompt": [
+          "Inspect the selected browser page and help me complete the task. Describe your plan before changing anything."
+        ]
+      }
+    }
+  }
+}

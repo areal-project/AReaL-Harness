@@ -21,7 +21,7 @@ GUI 的两项与多项设置选择、按钮变体和展开形式继续见[控件
 
 | 查阅目的 | 就近合同 |
 | --- | --- |
-| 选择按钮变体与尺寸 | [Button 合同](../../clients/gui/renderer/src/components/ui/button.md) |
+| 选择按钮变体与尺寸 | [Button 合同](../../clients/gui/packages/ui/src/components/button/button.md) |
 | 表达工作台内的普通操作与提交中状态 | [ActionButton 合同](../../clients/gui/renderer/src/components/ui/action-button.md) |
 | 从候选中选择一个值 | [Select 合同](../../clients/gui/renderer/src/components/ui/select.md) |
 | 切换持续状态 | [Switch 合同](../../clients/gui/renderer/src/components/ui/switch.md) |

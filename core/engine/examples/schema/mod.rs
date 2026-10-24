@@ -148,6 +148,7 @@ pub fn projections() -> (Value, Value) {
             "task/pause",
             "task/resume",
             "task/cancel",
+            "task/delete",
             "task/stopRun",
             "task/resumeRun",
         ],
@@ -478,6 +479,18 @@ pub fn projections() -> (Value, Value) {
     insert(
         &["side/start"],
         object(json!({"thread":thread.clone(),"turn":turn.clone(),"requestId":string.clone()})),
+    );
+    insert(
+        &["side/create"],
+        object(
+            json!({"thread":thread.clone(),"turn":nullable(turn.clone()),"requestId":string.clone()}),
+        ),
+    );
+    insert(
+        &["side/close"],
+        object(
+            json!({"threadId":string.clone(),"requestId":string.clone(),"accepted":boolean.clone(),"cleanupConfirmed":boolean.clone()}),
+        ),
     );
     insert(
         &["side/context/read"],

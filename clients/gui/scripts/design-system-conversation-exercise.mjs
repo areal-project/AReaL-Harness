@@ -30,6 +30,7 @@ export async function runConversationExercise(page, scratch, gui, report) {
   const messages = main.locator(".messages");
   const latest = () => messages.locator('[data-latest-turn="true"]');
   const command = () => latest().locator('[data-tool-id="flow-command"]');
+  const image = () => latest().locator('[data-tool-id="flow-image"]');
   const child = () => region.locator('[data-agent-conversation="fixture-summary"]');
   const final = () => latest().locator('[data-side-item-id="flow-final"]');
   const advance = async (step) => {
@@ -42,7 +43,7 @@ export async function runConversationExercise(page, scratch, gui, report) {
   };
   const expandActivities = async () => {
     for (const button of await latest()
-      .getByRole("button", { name: "执行过程", exact: true })
+      .locator(".areal-activity-group > .areal-disclosure > button")
       .all())
       if ((await button.getAttribute("aria-expanded")) === "false") await button.click();
   };
@@ -148,9 +149,26 @@ export async function runConversationExercise(page, scratch, gui, report) {
   );
   await advance(4);
   await region.getByRole("button", { name: "返回主对话", exact: true }).click();
+  assert.equal(await image().getByText("已查看 1 张图片", { exact: true }).isVisible(), true);
+  const imageToggle = image().getByRole("button", { name: "已查看 1 张图片", exact: true });
+  assert.equal(await imageToggle.getAttribute("aria-expanded"), "false", "tool image starts collapsed independently of its group");
+  await imageToggle.click();
+  const imagePreview = image().getByRole("button", { name: "预览图片 工具图片", exact: true });
+  await imagePreview.waitFor();
+  const imageRecord = image().getByRole("button", { name: "查看工具原始记录", exact: true });
+  assert.equal(await imageRecord.getAttribute("aria-expanded"), "false");
+  await imageRecord.click();
+  assert.equal(await imageRecord.getAttribute("aria-expanded"), "true");
+  assert.match(await image().getByLabel("工具参数", { exact: true }).innerText(), /inspect_image/);
+  await imageRecord.click();
+  assert.equal(await imageRecord.getAttribute("aria-expanded"), "false");
+  assert.equal(
+    await imagePreview.isVisible(),
+    true,
+    "image preview remains available when its raw record is collapsed",
+  );
   await region.getByRole("button", { name: "继续演示", exact: true }).click();
-  await latest().getByRole("button", { name: "已查看 1 张图片", exact: true }).click();
-  await latest().getByRole("button", { name: "预览图片 工具图片", exact: true }).click();
+  await imagePreview.click();
   const dialog = page.getByRole("dialog");
   await dialog.waitFor();
   assert.equal(
@@ -188,9 +206,7 @@ export async function runConversationExercise(page, scratch, gui, report) {
     "parent reading owner stays mounted",
   );
   assert.equal(
-    await latest()
-      .getByRole("button", { name: "预览图片 工具图片", exact: true })
-      .evaluate((el) => el === document.activeElement),
+    await imagePreview.evaluate((el) => el === document.activeElement),
     true,
     "closing image restores trigger focus",
   );
@@ -298,7 +314,7 @@ export async function runConversationExercise(page, scratch, gui, report) {
   assert.equal(await latest().locator(".assistant-message-final").isVisible(), true);
   assert.equal(await latest().locator(".turn-progress-body .assistant-message-final").count(), 0);
   assert.ok((await final().innerText()).includes("共 32 个水果"));
-  const total = () => latest().getByRole("button", { name: "执行过程：用时 36秒", exact: true });
+  const total = () => latest().getByRole("button", { name: "执行过程：Working for 36s", exact: true });
   // Frame the settled disclosure through the real reading owner. A DOM jump
   // can be counteracted by response-space layout and is not a reader action.
   await messages.hover({ position: { x: 40, y: 40 } });
@@ -339,8 +355,8 @@ export async function runConversationExercise(page, scratch, gui, report) {
   assert.ok(
     (await region.getByLabel("本地调用记录", { exact: true }).innerText())
       .split(", ")
-      .every((name) => /^(open|media):/.test(name)),
-    "inspection only reads child/media",
+      .every((name) => /^(open|media):/.test(name) || name === "feedback:status"),
+    "inspection only reads child/media and feedback availability",
   );
   report.checks.push(
     "one continuous composite run: command pages aggregate; parent/child run independently; image modal and child pane work; parent identity and command disclosure survive return and completion",
@@ -356,6 +372,8 @@ export async function runConversationExercise(page, scratch, gui, report) {
       scenario === "失败" ? "失败" : "结果待确认",
     );
     assert.equal(await latest().locator(".turn-progress-body").isVisible(), true);
+    assert.equal(await latest().locator(".areal-activity-status").filter({ hasText: scenario === "失败" ? "工具失败" : "结果待确认" }).first().isVisible(), true, "exception remains discoverable outside the collapsed group");
+    await expandActivities();
     await command().scrollIntoViewIfNeeded();
     await snapshot(`12-${scenario}`, "independent exception does not silently converge");
   }
@@ -364,7 +382,19 @@ export async function runConversationExercise(page, scratch, gui, report) {
   await page.getByRole("dialog").getByRole("button", { name: "刷新原记录", exact: true }).click();
   await page.getByText(/刷新失败，仍显示上次记录/).waitFor();
   await page.getByRole("button", { name: "取消核查", exact: true }).click();
-  assert.match(await region.getByLabel("本地调用记录", { exact: true }).innerText(), /^open:flow-preview-\d+$/, "unknown refresh only reads original parent, never resubmits");
+  const unknownCalls = (
+    await region.getByLabel("本地调用记录", { exact: true }).innerText()
+  ).split(", ");
+  const parentReads = unknownCalls.filter((name) => name.startsWith("open:"));
+  assert.equal(parentReads.length, 1, "unknown refresh reads the original parent once");
+  assert.match(parentReads[0], /^open:flow-preview-\d+$/);
+  assert.ok(
+    unknownCalls.every((name) =>
+      name === parentReads[0] ||
+      name === `media:${parentReads[0].slice(5)}` ||
+      name === "feedback:status"),
+    "unknown inspection only reads the parent, its image and feedback availability, never resubmits",
+  );
   assert.equal(await command().getAttribute("data-tool-status"), "结果待确认");
   report.checks.push("UNKNOWN inspection read failure preserves original result without resubmission");
   for (const [theme, font, width] of [

@@ -1,5 +1,7 @@
 //! TUI、CLI 与可信 Desktop Main 共用的本地服务入口。
+mod catalog;
 mod client;
+pub use catalog::{CatalogTarget, catalog_target};
 pub mod gui_owner;
 pub mod native_process;
 mod spec;

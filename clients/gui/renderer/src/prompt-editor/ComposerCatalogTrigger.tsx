@@ -2,17 +2,21 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ComposerPlusIcon } from "../homeChromeIcons.js";
 import { Button } from "../components/ui/button.js";
-import { ComposerCatalog, filterCatalog, type ComposerCatalogData } from "./ComposerCatalog.js";
+import { ComposerCatalog, filterCatalog, type ComposerCatalogData, type ComposerCatalogEntry } from "./ComposerCatalog.js";
 
 export function ComposerCatalogTrigger({
     catalog,
     anchor,
     disabled,
+    onOpen,
+    onChoose,
     onClose,
 }: {
     catalog: ComposerCatalogData;
     anchor?: HTMLElement | null;
     disabled?: boolean;
+    onOpen: () => void;
+    onChoose: (entry: ComposerCatalogEntry) => void;
     onClose: () => void;
 }) {
     const [open, setOpen] = useState(false);
@@ -49,17 +53,18 @@ export function ComposerCatalogTrigger({
                 ref={trigger}
                 type="button"
                 variant="ghost"
-                size="icon-md"
+                size="icon"
                 aria-label="添加功能与 Skills"
                 aria-haspopup="listbox"
                 aria-expanded={open}
                 aria-controls={open ? id : undefined}
                 disabled={disabled}
+                onMouseDown={event => event.preventDefault()}
                 onClick={() => {
                     setQuery("");
                     setIndex(0);
                     setOpen((value) => !value);
-                    if (!open) catalog.refresh();
+                    if (!open) { onOpen(); catalog.refresh(); }
                 }}
             >
                 <ComposerPlusIcon width={20} height={20} />
@@ -90,7 +95,7 @@ export function ComposerCatalogTrigger({
                             if (event.key === "Enter") {
                                 event.preventDefault();
                                 if (rows[selected] && !rows[selected].disabled) {
-                                    rows[selected].run();
+                                    onChoose(rows[selected]);
                                     close();
                                 }
                             }
@@ -105,7 +110,7 @@ export function ComposerCatalogTrigger({
                             onQuery={setQuery}
                             onIndex={setIndex}
                             onChoose={(row) => {
-                                row.run();
+                                onChoose(row);
                                 close();
                             }}
                         />

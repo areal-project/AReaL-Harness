@@ -1,0 +1,16 @@
+.worktree-status { min-width: 0; margin-block: var(--spacing-field); font-size: var(--text-ui-caption); color: var(--color-foreground-subtle); }
+.worktree-status-heading { display: flex; align-items: center; gap: var(--spacing-inline); min-width: 0; min-height: var(--spacing-control); }
+.worktree-status-heading > svg { flex-shrink: 0; }
+.worktree-status-heading p { margin: 0; }
+.worktree-status[data-worktree-state="failed"] .worktree-status-heading { color: var(--color-destructive); }
+.worktree-status-panel { margin-top: var(--spacing-inline); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: var(--spacing-inline); }
+.worktree-status-stages { margin: 0; list-style: none; display: grid; gap: var(--spacing-inline); padding: var(--spacing-inline); }
+.worktree-status-stage { display: flex; align-items: center; gap: var(--spacing-inline); }
+.worktree-status-stage[data-current="true"] { color: var(--color-primary); }
+.worktree-status-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--spacing-inline); }
+.worktree-status-disclosure { margin-right: auto; color: var(--color-foreground-subtle); gap: var(--spacing-inline); }
+.worktree-status-actions { display: flex; flex-wrap: wrap; gap: var(--spacing-inline); }
+.worktree-status-details { display: grid; gap: var(--spacing-inline); padding: var(--spacing-inline); min-width: 0; }
+.worktree-status-details p { margin: 0; overflow-wrap: anywhere; }
+.worktree-status-details code { overflow-wrap: anywhere; font-family: var(--font-mono); }
+.worktree-status-log { max-height: 12rem; overflow-y: auto; margin: 0; padding: var(--spacing-inline); border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-surface); white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: var(--text-ui-caption); }

@@ -31,6 +31,7 @@ type InstalledPackage = {
   installedDigest: string | null;
   enabled: boolean;
   installedComponentSupport?: PackageComponentSupport | null;
+  componentChoices?: { disabledSkills: string[]; disabledMcpServers: string[] };
   installedSkills: { id: string; name: string; description: string }[];
 };
 type PluginConnection = {
@@ -139,7 +140,7 @@ export function useInstalledPluginResources(
           for (const skill of item.installedSkills) {
             next.skills.push({
               key: JSON.stringify([item.id, item.installedDigest, "skill", skill.id]),
-              id: skill.id, name: skill.name, description: skill.description, owner,
+              id: skill.id, name: skill.name, description: skill.description, owner: { ...owner, enabled: owner.enabled && !item.componentChoices?.disabledSkills.includes(skill.id) },
             });
           }
         }

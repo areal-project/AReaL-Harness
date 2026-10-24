@@ -25,6 +25,16 @@ pub const PROXY_ENV_VARS: [&str; 8] = [
     "no_proxy",
 ];
 
+/// Additional certificate roots for trusted network clients.
+pub const TLS_ENV_VARS: [&str; 6] = [
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "NODE_EXTRA_CA_CERTS",
+    "REQUESTS_CA_BUNDLE",
+    "CURL_CA_BUNDLE",
+    "GIT_SSL_CAINFO",
+];
+
 /// Contains secrets: deliberately does not implement Debug or Serialize.
 #[derive(Clone, Default)]
 pub struct ConfigInputs {

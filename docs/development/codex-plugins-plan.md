@@ -10,6 +10,37 @@
 
 发现/安装不执行包代码；显式 Profile 不自动扩权；活动 Turn 不替换版本；UNKNOWN 不重放；Renderer 不取得秘密。现有独立 Skills/MCP 与 Native Host 保持原契约。
 
+## 多格式导入演进
+
+本节执行[多格式导入决策](../design/architecture.md#多格式插件导入决策)，不替代下方 P0 至 P3 的历史证据。每阶段独立验收，不将格式识别升级为完整宿主兼容。
+
+| 阶段 | 范围与所有者 | 完成条件 |
+|---|---|---|
+| I1 · MCP 声明 | 收拢既有 Portable/legacy MCP 声明解释；包选择归 `core/plugins`，配置与连接归 `core/mcp`，Engine 组合运行状态 | 支持报告、预览与执行共享声明；两格式等价用例与原覆盖规则通过；无包执行或秘密泄露；静态 envelope 与运行时校验仍分开 |
+| I2 · Commands | 将受支持的 Markdown 提示词、参数和命名空间接入普通提交路径 | 发现、显式调用及参数保留通过；未实现的模型、工具和 Hook 语义明确拒绝 |
+| I3 · 用户配置 | 配置所有者持有值与秘密引用；导入器解释声明与替换位置 | 缺失值可诊断；敏感值只在获授权边界解析，不进入普通展示或模型字段 |
+| I4 · 插件依赖 | 安装所有者维护版本、来源、缺失、循环及跨市场规则 | 审阅完整依赖计划，失败不产生部分有效激活；不把包依赖与 Skill 工具依赖混为一体 |
+| I5 · Agents 与 Hooks | 复用 Profile 和既有 Hook 所有者，逐项映射模型、工具、事件与权限 | 父任务限制、独立信任、撤权、取消和恢复通过；不借格式兼容自动授权 |
+
+I1 是行为保持的首个切片。先固定 Portable 与 legacy 的服务器发现、占位符、路径、headers、坏服务隔离及脱敏行为，再迁移消费者。保留 Claude 默认与显式定义的覆盖规则、来源位置，以及候选和已安装定义的区别。静态报告继续只检查 MCP envelope；认证、连接和真实供应商验收单独记录。
+
+I1 不新增安装状态、缓存、连接重试、schema 兼容范围、用户配置或依赖执行。文档级错误、每服务失败与重复服务的原处理边界均保持。实现后运行包/配置集成检查、实际 Core/MCP 路径和公共文档检查，再按真实证据更新本节状态。
+
+当前状态：I1 已实现，相关包、MCP 和 Engine 集成检查及固定产物 Core CLI/wire 验收通过。[导入集成用例](../../core/engine/tests/plugin_mcp_import.rs) 在实现前固定行为，并实际观察 stdio 参数、环境、工作目录和 HTTP 请求头。认证时机、CLI 与 wire 的旧验收夹具改用既有准入摘要契约，保留身份与认证断言。全仓 Rust 格式检查仍命中未修改文件的既有差异；本任务文件的定向格式检查通过。
+
+使用同次构建、隔离 home/workspace 及真实二进制复验；对照不同源码树时分别使用独立的 `CARGO_TARGET_DIR`。
+
+```sh
+make build
+cargo test --locked -p areal-plugins --test component_support --test ecosystem --test remote
+cargo test --locked -p areal-mcp --test plugin --test substrate --test portable_auth
+cargo test --locked -p areal-engine --test plugin_mcp_import --test plugin_mcp_runtime
+AREAL_TEST_BIN_DIR=/absolute/same-build/bin node scripts/plugin-cli-p1-smoke.mjs
+AREAL_TEST_BIN_DIR=/absolute/same-build/bin node scripts/plugin-wire-smoke.mjs
+```
+
+I2 至 I5 的新增兼容工作尚未实施。签名发行包、真实 OAuth、跨平台与完整生态兼容不由本切片关闭。
+
 ## P0 · 本地插件包与 Skills
 
 | 任务 | 所有者/入口 | 工作 | 可观察验收标准 |

@@ -38,6 +38,12 @@ function validToolInput(value) {
     || Object.keys(value).some(key => !['operation', 'parameters'].includes(key))
     || !value.parameters || typeof value.parameters !== 'object' || Array.isArray(value.parameters)) return false;
   const keys = Object.keys(value.parameters);
+  if (value.operation === 'command') {
+    if (!keys.every(key => ['pageId', 'command'].includes(key))
+      || typeof value.parameters.pageId !== 'string' || !/^[0-9a-f-]{36}$/.test(value.parameters.pageId)) return false;
+    try { require('@areal/browser-automation').validateBrowserCommand(value.parameters.command); return true; }
+    catch { return false; }
+  }
   if (['navigate', 'newPage'].includes(value.operation)) {
     if (!keys.every(key => ['pageId', 'url'].includes(key)) ||
       typeof value.parameters.pageId !== 'string' || !/^[0-9a-f-]{36}$/.test(value.parameters.pageId) ||
@@ -47,7 +53,11 @@ function validToolInput(value) {
       return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password;
     } catch { return false; }
   }
-  if (value.operation === 'describe') return keys.length === 0;
+  if (value.operation === 'describe') {
+    if (keys.length === 0) return true;
+    if (keys.length !== 1 || keys[0] !== 'topic' || typeof value.parameters.topic !== 'string' || value.parameters.topic.length > 96) return false;
+    try { describeCommands(value.parameters.topic); return true; } catch { return false; }
+  }
   if (value.operation === 'runBatch') {
     if (!keys.every(key => ['pageId', 'snapshotId', 'steps'].includes(key))
       || typeof value.parameters.pageId !== 'string' || !/^[0-9a-f-]{36}$/.test(value.parameters.pageId)
@@ -118,6 +128,24 @@ function validToolInput(value) {
     && (budget.textBytes === undefined || (Number.isSafeInteger(budget.textBytes) && budget.textBytes >= 256 && budget.textBytes <= 128 * 1024)));
 }
 
+function describeCommands(topic) {
+  const { commandSchema, ...summary } = require('@areal/browser-automation').describeBrowserCommands();
+  if (topic === undefined) return { ...summary,
+    schemaGuide: 'Call describe with {topic:"command.<method>"} for that exact command schema. For Playwright use {topic:"command.playwright.<action>"}, for example command.playwright.locator.',
+    playwrightActions: commandSchema.oneOf.find(schema => schema.properties.method.const === 'playwright').properties.action.oneOf.map(schema => schema.properties.name.const) };
+  const parts = topic.split('.');
+  if (parts[0] !== 'command' || parts.length < 2 || parts.length > 3) throw new Error('Unknown browser command topic');
+  let schema = commandSchema.oneOf.find(item => item.properties.method.const === parts[1]);
+  if (!schema) throw new Error('Unknown browser method');
+  if (parts.length === 3) {
+    if (parts[1] !== 'playwright') throw new Error('Only Playwright has action topics');
+    const action = schema.properties.action.oneOf.find(item => item.properties.name.const === parts[2]);
+    if (!action) throw new Error('Unknown Playwright action');
+    schema = { ...schema, properties: { ...schema.properties, action } };
+  }
+  return { topic, example: summary.example, unsupportedCapabilities: summary.unsupportedCapabilities, commandSchema: schema };
+}
+
 function failure(code, message) {
   return { success: false, contentItems: [{ type: 'inputText', text: `${code}: ${message}` }],
     structuredContent: { code, dispatch: 'not_sent' } };
@@ -127,4 +155,4 @@ function success(value) {
   return { success: true, contentItems: [{ type: 'inputText', text: JSON.stringify(value) }] };
 }
 
-module.exports = { definition, validToolInput, waitAction, failure, success };
+module.exports = { definition, validToolInput, describeCommands, waitAction, failure, success };

@@ -18,10 +18,10 @@ Retain the native browser. One Browser Controller owns physical pages and input 
 |---|---|---|
 | R0 | Real Electron/Core feasibility for shared-page read, input shield, capture coordinates and CDP/DevTools conflict | Production or general website support |
 | R1 | Shared page, semantic observation, capture, approved actions, takeover/resume, existing Threads, tabs, transient contexts, recovery | Complete developer collaboration |
-| R2 | R1 plus annotations, diagnostics, responsive/Canvas input, service/code/verification loop, temporary style experiments, controlled file handoff, short batches, observers and package acceptance | All Codex functionality, unattended background browsing or persistent Profiles |
-| Separate later proposals | Persistent Profiles, personal Chrome import, independent background browser, remote streaming, arbitrary code execution | An implicit commitment of this spec |
+| R2 | R1 plus annotations, diagnostics, responsive/Canvas input, service/code/verification loop, temporary style experiments, controlled file handoff, short batches, observers and package acceptance | All Codex functionality, unattended background browsing or cloud browsers |
+| Separate later proposals | Independent background browser, remote streaming, arbitrary host code execution | An implicit commitment of this spec |
 
-Only passing the full R2 release gate qualifies as this project's Codex-like browser development experience. Profile management may wait; transient isolation may not. Ship capability-gated stages with explicit unsupported responses, never fake success.
+Only passing the full R2 release gate qualifies as this project's Codex-like browser development experience. The desktop now shares one persistent Profile across projects by explicit product requirement; Page control and task ownership remain isolated. Ship capability-gated stages with explicit unsupported responses, never fake success.
 
 
 ### Project experience coverage
@@ -32,7 +32,7 @@ This is the project’s target matrix, not a vendor feature inventory.
 |---|---|---|
 | Existing page, tabs, address, navigation, shared inspection/actions | R1 | Same native object; no background focus theft |
 | Approval, action indication, takeover, privacy and resume | R1 | Agent observation stops during human control |
-| Temporary login and Workspace isolation | R1 | No restart persistence or personal Profile import |
+| Persistent shared login with conversation-scoped Page control | R1 | Data operations require explicit user actions; separate userData stays isolated |
 | Failure, connection, cache and crash handling | R1 | UNKNOWN retained; URL restoration is not memory restoration |
 | Region/element comments, drafts and chat submission | R2 | Frozen region capture first; explicit element fallback |
 | Temporary text/style preview, undo and edit intent | R2 | Not a source edit; clear overrides before verification |
@@ -41,7 +41,7 @@ This is the project’s target matrix, not a vendor feature inventory.
 | Viewport, zoom, Canvas and coordinates | R2 | Real platform/version tests; hidden capture not guaranteed |
 | Download/upload handoff | R2 | User-selected files/destinations, no arbitrary host paths |
 | CLI/other observers of the same task | R2 | Preserve ToolHost; no substitute browser without GUI |
-| Persistent Profiles, unrestricted CDP, remote video, background browser | Separate proposal | Not implied by “complete experience” |
+| Unrestricted CDP, remote video, background browser | Separate proposal | Not implied by “complete experience” |
 
 ## User Stories
 
@@ -130,8 +130,8 @@ The main acceptance seam is deterministic model → tool → same native page �
 
 ## Out of Scope
 
-Persistent Profiles and login import/persistence, Chrome extensions, unrestricted CDP, arbitrary host JavaScript, OS computer use, cloud browsing, full remote video streaming, concurrent same-page agent writers, CAPTCHA bypass, automated payment/irreversible sensitive operations, and universal site/platform compatibility. High-impact external submissions use human takeover. Real-account compatibility requires separate testing.
+Chrome extensions, unrestricted CDP, arbitrary host JavaScript, OS computer use, cloud browsing, full remote video streaming, concurrent same-page agent writers, CAPTCHA bypass, automated payment/irreversible sensitive operations, and universal site/platform compatibility. High-impact external submissions use human takeover. Real-account compatibility requires separate testing.
 
 ## Further Notes
 
-Core/adapter/Main/Renderer ownership boundaries are integrated; operation availability follows Host capability discovery and the implementation limits in the public API. Persistent Profiles, cloud browsers and other deferred capabilities remain unavailable. Source evidence, baseline SHA, run results and remaining checks belong to their acceptance records, rather than this durable specification. External page content is untrusted; publishing GitHub Issues, PRs or production changes requires corresponding authorization.
+Core/adapter/Main/Renderer ownership boundaries are integrated; operation availability follows Host capability discovery and the implementation limits in the public API. Shared persistent Profiles and explicit Chrome import follow the Browser API; cloud browsers remain unavailable. Source evidence, baseline SHA, run results and remaining checks belong to their acceptance records, rather than this durable specification. External page content is untrusted; publishing GitHub Issues, PRs or production changes requires corresponding authorization.

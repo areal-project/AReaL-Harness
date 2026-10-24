@@ -12,7 +12,7 @@ export function ReasoningGroup({ items }: { items: Data[] }) {
       <ActivityIcon kind="chevron" size={14} className={open ? "tool-chevron open" : "tool-chevron"} />
     </button>
     <div id={id} className="reasoning-group-details reasoning-details" hidden={!open}>
-      {items.map(item => <div key={item.id} className="reasoning-group-entry" data-testid="reasoning">
+      {items.map(item => <div key={item.id} className="reasoning-group-entry" data-side-item-id={item.id} data-testid="reasoning">
         {(item.summary ?? []).filter((part: unknown) => typeof part === "string" && part.trim()).map((part: string, index: number) => <p key={`summary-${index}`}>{part}</p>)}
         {(item.content ?? []).filter((part: unknown) => typeof part === "string" && part.trim()).map((part: string, index: number) => <p key={`content-${index}`}>{part}</p>)}
       </div>)}

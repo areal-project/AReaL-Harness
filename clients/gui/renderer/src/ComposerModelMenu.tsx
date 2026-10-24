@@ -47,6 +47,7 @@ export function ComposerModelMenu({
     options,
     value,
     disabled,
+    pending = false,
     effort,
     onEffortChange,
     onChange,
@@ -55,8 +56,9 @@ export function ComposerModelMenu({
     options: ComposerModelOption[];
     value: string;
     disabled?: boolean;
+    pending?: boolean;
     effort?: string;
-    onEffortChange?: (value: string) => void;
+    onEffortChange?: (value: string) => void | Promise<void>;
     onChange: (value: string) => void;
     onClose: () => void;
 }) {
@@ -76,6 +78,13 @@ export function ComposerModelMenu({
     const selectedEffort = effort && (!model?.efforts || efforts.includes(effort)) ? effort : undefined;
     const index = selectedEffort ? efforts.indexOf(selectedEffort) : -1;
     const sliderIndex = pointerIndex ?? index;
+    const commitEffort = async (next: number) => {
+        if (disabled || pending || !onEffortChange) return;
+        // 保存期间保持预览位置，不能先退回旧配置再跳到新配置。
+        setPointerIndex(next);
+        try { await onEffortChange(efforts[next]); }
+        finally { setPointerIndex(null); }
+    };
     const feedbackIndex = Math.min(hoveredIndex ?? (sliderFocused ? index : -1), efforts.length - 1);
     const effortLabel = selectedEffort ? labels[selectedEffort] ?? selectedEffort : unspecified;
     const modelLabel = `${label}${reasoning ? ` ${effortLabel}` : ""}`;
@@ -114,6 +123,7 @@ export function ComposerModelMenu({
                         aria-label="模型"
                         title={label}
                         disabled={disabled}
+                        aria-busy={pending || undefined}
                         className="composer-model-trigger"
                     />
                 }
@@ -141,7 +151,8 @@ export function ComposerModelMenu({
                             <button
                                 type="button"
                                 aria-label="选择模型"
-                                onClick={() => setPage("models")}
+                                aria-disabled={pending || undefined}
+                                onClick={() => { if (!pending) setPage("models"); }}
                             >
                                 {label} ›
                             </button>
@@ -159,6 +170,10 @@ export function ComposerModelMenu({
                                         <TooltipTrigger render={<input
                                             type="range"
                                             disabled={disabled}
+                                            aria-disabled={pending || undefined}
+                                            onKeyDown={(event) => {
+                                                if (pending && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(event.key)) event.preventDefault();
+                                            }}
                                             aria-label="思考强度"
                                             aria-valuetext={labels[efforts[sliderIndex]] ?? efforts[sliderIndex]}
                                             min={0}
@@ -168,6 +183,7 @@ export function ComposerModelMenu({
                                             onFocus={() => setSliderFocused(true)}
                                             onBlur={() => { setSliderFocused(false); setHoveredIndex(null); setPointerIndex(null); pointerActive.current = false; }}
                                             onPointerDown={(event) => {
+                                                if (pending) { event.preventDefault(); return; }
                                                 pointerActive.current = true;
                                                 setPointerIndex(index);
                                                 event.currentTarget.setPointerCapture(event.pointerId);
@@ -176,11 +192,13 @@ export function ComposerModelMenu({
                                                 if (!pointerActive.current) return;
                                                 pointerActive.current = false;
                                                 const next = Number(event.currentTarget.value);
-                                                setPointerIndex(null);
-                                                if (next !== index) onEffortChange(efforts[next]);
+                                                if (next !== index) void commitEffort(next);
+                                                else setPointerIndex(null);
                                             }}
                                             onPointerCancel={() => { pointerActive.current = false; setPointerIndex(null); setHoveredIndex(null); }}
-                                            onLostPointerCapture={() => { pointerActive.current = false; setPointerIndex(null); }}
+                                            onLostPointerCapture={() => {
+                                                if (pointerActive.current) { pointerActive.current = false; setPointerIndex(null); }
+                                            }}
                                             onPointerMove={(event) => {
                                                 const bounds = event.currentTarget.getBoundingClientRect();
                                                 const fraction = (event.clientX - bounds.left - 14) / Math.max(1, bounds.width - 28);
@@ -188,10 +206,11 @@ export function ComposerModelMenu({
                                             }}
                                             onPointerLeave={() => setHoveredIndex(null)}
                                             onChange={(event) => {
+                                                if (pending) return;
                                                 const next = Number(event.target.value);
                                                 setHoveredIndex(next);
                                                 if (pointerActive.current) setPointerIndex(next);
-                                                else onEffortChange(efforts[next]);
+                                                else void commitEffort(next);
                                             }}
                                         />} />
                                         <TooltipContent role="tooltip" sideOffset={8}>{labels[efforts[feedbackIndex]] ?? efforts[feedbackIndex]}</TooltipContent>
@@ -200,14 +219,14 @@ export function ComposerModelMenu({
                                     <Tooltip key={item}>
                                         <TooltipTrigger render={<Button
                                             type="button"
-                                            disabled={disabled}
+                                            disabled={disabled || pending}
                                             variant="ghost"
                                             size="icon"
                                             className="composer-slider-option"
                                             style={{ left: sliderPosition(i) }}
                                             aria-label={labels[item] ?? item}
                                             aria-pressed={false}
-                                            onClick={() => onEffortChange(item)}
+                                            onClick={() => { void commitEffort(i); }}
                                         />} />
                                         <TooltipContent role="tooltip" sideOffset={8}>{labels[item] ?? item}</TooltipContent>
                                     </Tooltip>
@@ -237,6 +256,7 @@ export function ComposerModelMenu({
                                     aria-checked={value === option.value}
                                     key={option.value}
                                     data-model-value={option.value}
+                                    disabled={disabled || pending}
                                     onClick={() => {
                                         onChange(option.value);
                                         if (option.reasoning === false) setOpen(false);

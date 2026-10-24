@@ -54,6 +54,8 @@ export async function runDecisionExercise(page, scratch, gui, report) {
   assert.equal(await collapse.getAttribute("aria-expanded"), "true", "clipped link focus expands the complete content");
   await collapse.click();
   report.checks.push("new long notes: bounded preview, keyboard full text, focus-preserving collapse and focused-tail expansion");
+  assert.equal(await card.locator("details").first().getAttribute("open"), null);
+  await card.getByText("查看完整请求", { exact: true }).click();
   await frame("ready", "collapse notes; inspect original parameters", "ready request with full command");
   const original = await card.locator(".approval-preview").textContent();
   assert.ok(original.includes("configuration.json") && original.includes("verify parameters before continuing"));
@@ -75,6 +77,7 @@ export async function runDecisionExercise(page, scratch, gui, report) {
   assert.ok(narrow.box.width < 400);
   for (const b of narrow.buttons) assert.ok(b.box.x >= narrow.box.x && b.box.x + b.box.width <= narrow.box.x + narrow.box.width + 1);
   assert.equal(await card.locator(".approval-preview").textContent(), original);
+  await card.getByText("查看完整请求", { exact: true }).click();
   const body = card.locator(".decision-card-body");
   const scroll = await body.evaluate(el => ({ height: el.clientHeight, full: el.scrollHeight, horizontalOverflow: el.scrollWidth > el.clientWidth + 1 }));
   assert.equal(scroll.horizontalOverflow, false);
@@ -83,8 +86,10 @@ export async function runDecisionExercise(page, scratch, gui, report) {
   await page.waitForFunction(() => { const el = document.querySelector('.decision-card-body'); return el.scrollTop + el.clientHeight >= el.scrollHeight - 1; });
   await frame("narrow-parameters-end", "wheel within existing request body", "last purpose parameter visible; footer remains outside the scroll body");
   await body.evaluate(el => el.scrollTo(0, 0));
-  await card.getByRole("button", { name: "允许一次", exact: true }).click(); await card.getByRole("alert").waitFor();
-  assert.ok((await card.getByRole("alert").innerText()).includes("明确未受理"));
+  await card.getByRole("button", { name: "允许一次", exact: true }).click();
+  const failureToast = page.getByTestId("toast").getByRole("alert");
+  await failureToast.waitFor();
+  assert.ok((await failureToast.innerText()).includes("明确未受理"));
   assert.equal(await card.getByRole("button", { name: "允许一次", exact: true }).isEnabled(), true);
   await card.getByRole("button", { name: "允许一次", exact: true }).click();
   assert.ok((await calls.innerText()).includes("模拟响应：2；模拟核对：0"));
@@ -109,7 +114,7 @@ export async function runDecisionExercise(page, scratch, gui, report) {
   assert.equal(await card.getByRole("button", { name: "允许一次", exact: true }).count(), 0);
   await frame("unknown", "independent unknown scenario; approve once", "only reconciliation offered, full command retained");
   await reconcile.focus(); await page.keyboard.press("Enter");
-  await page.waitForFunction(() => document.querySelector('.decision-card [role="alert"]')?.textContent.includes("无法核对审批状态"));
+  await page.getByTestId("toast").getByRole("alert").filter({ hasText: "无法核对审批状态" }).waitFor();
   assert.equal(await card.getByRole("button", { name: "允许一次", exact: true }).count(), 0);
   assert.ok((await calls.innerText()).includes("模拟响应：1；模拟核对：1"));
   assert.equal(await card.locator(".approval-preview").textContent(), original);

@@ -183,11 +183,16 @@ try {
   assert.equal(await page.getByTestId('side-chat-send').isDisabled(), true, 'The same project interruption also blocks Side submission');
   await sideDraft.press('Enter');
   await page.screenshot({ path: join(scratch, 'pending-side-draft.png') });
-  await page.getByRole('region', { name: '旁路讨论', exact: true }).getByRole('button', { name: '返回主会话', exact: true }).click();
+  const childId = await page.getByTestId('side-chat-pane').filter({ visible: true }).getAttribute('data-thread-id');
+  assert.equal(project(await snapshot()).state.threads[childId].turns.length, 0, 'Pending interruption keeps the eager child empty');
+  await page.getByRole('button', { name: '关闭面板', exact: true }).click();
   assert.equal((await page.getByTestId('chat-input').innerText()).trim(), followup, 'Returning from Side preserves the pending main draft');
   const beforeRelease = (await readFile(commandLog, 'utf8')).split('\n').filter(Boolean).map(JSON.parse);
   assert.equal(beforeRelease.filter(item => item.name === 'send').length, 2, 'Enter submits no command while the original interruption receipt is pending');
-  assert.equal(beforeRelease.filter(item => item.name === 'side' && item.request.operation === 'start').length, 0, 'Pending project interruption does not start a Side turn');
+  const childCreates = beforeRelease.filter(item => item.name === 'side' && item.request.operation === 'create');
+  assert.equal(childCreates.length, 1, 'Opening Side admits one distinct empty child');
+  assert.equal(childCreates[0].request.firstInput, undefined, 'Pending project interruption admits no child first input');
+  assert.equal(beforeRelease.filter(item => item.name === 'side' && item.request.operation === 'send').length, 0, 'Pending project interruption does not submit a Side turn');
   assert.equal(requests.length, 1, 'Pending interruption admits no follow-up model request');
   assert.doesNotMatch(await page.locator('body').innerText(), /此任务的原后台操作尚未结算/, 'Waiting to send must not surface a lifecycle rejection');
   await rm(receiptGate);

@@ -455,6 +455,7 @@ impl areal_engine::tools::DynamicToolHost for CountWrites {
     ) -> anyhow::Result<areal_protocol::DynamicToolResponse> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(areal_protocol::DynamicToolResponse {
+            raw_mcp_result: None,
             success: true,
             content_items: vec![],
             structured_content: Some(serde_json::json!({"written":true})),

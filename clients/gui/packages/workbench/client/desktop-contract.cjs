@@ -4,8 +4,9 @@
 /** @template T @typedef {{ok:true,value:T}|{ok:false,error:DesktopError}} DesktopResult */
 /** @typedef {{id:string,revision:string}} ResourceRef */
 /** @typedef {{projectId:string,profile?:ResourceRef}} PrepareCreatorRequest */
+/** @typedef {{sourceRoot?:string,ref?:string,worktreeRoot?:string,branch?:string,branchPrefix?:string,environmentId?:string,environmentRevision?:number,mode?:'source'|'worktree'}} WorktreeSpec */
 /** @typedef {{projectId:string,threadId:string,requestId?:string,expectedRevision?:number,model?:{providerId:string,modelId:string}|null,profile?:ResourceRef,options?:Record<string,unknown>,parameters?:Record<string,unknown>,selectedSkills?:ResourceRef[]}} ConfigureRequest */
-/** @typedef {{projectId:string,operation:'start',sourceThreadId:string,requestId:string,text:string,workspaceAccess:'none'|'readOnly',model?:{providerId:string,modelId:string},resetModel?:boolean,anchor?:Record<string,unknown>|null,selection?:Record<string,unknown>|null,parameters?:Record<string,unknown>}|{projectId:string,operation:'recover',requestId:string}|{projectId:string,operation:'send',threadId:string,text:string}|{projectId:string,operation:'context',threadId:string,cursor?:string,evidenceRef?:string,maxBytes?:number}|{projectId:string,operation:'list',sourceThreadId:string,includeArchived?:boolean,cursor?:string}} SideRequest */
+/** @typedef {{projectId:string,operation:'start',sourceThreadId:string,requestId:string,text:string,workspaceAccess:'none'|'readOnly',model?:{providerId:string,modelId:string},resetModel?:boolean,anchor?:Record<string,unknown>|null,selection?:Record<string,unknown>|null,parameters?:Record<string,unknown>}|{projectId:string,operation:'create',sourceThreadId:string,requestId:string,firstInput?:{text:string}}|{projectId:string,operation:'close',threadId:string,requestId:string}|{projectId:string,operation:'recover',requestId:string,sourceThreadId?:string,threadId?:string,method?:'areal/side/start'|'areal/side/create'|'areal/side/close'}|{projectId:string,operation:'send',threadId:string,text:string}|{projectId:string,operation:'context',threadId:string,cursor?:string,evidenceRef?:string,maxBytes?:number}|{projectId:string,operation:'list',sourceThreadId:string,includeArchived?:boolean,cursor?:string}} SideRequest */
 /** @typedef {{projectId:string,threadId:string,expectedTurnId:string,expectedConfigRevision?:number,requestId?:string}} ContinueRequest */
 /** @typedef {{projectId:string,sourceThreadId:string,requestId?:string,workspaceMode:'sharedCurrent',anchor:{turnId:string,boundary:'before'|'after'},target?:Record<string,unknown>}} ForkRequest */
 /** @typedef {{projectId:string,threadId:string,viewId:string,operation:'acquire'|'loadOlder'|'release'}|{projectId:string,threadId:string,viewId:string,operation:'loadItem',itemId:string}} HistoryRequest */
@@ -30,31 +31,33 @@ const commandDefinitions = Object.freeze({
   connect: ['service', 'project', subscription], list: ['service', 'project', read], open: ['service', 'thread', subscription],
   history: ['service', 'thread', operations(read, 'acquire loadOlder loadItem release')],
   create: ['service', 'project', recoverable], prepareCreator: ['service', 'project', mutation], fork: ['service', 'project', recoverable],
-  side: ['service', 'project', { ...operations(read, 'recover context list'), ...operations(recoverable, 'start send') }],
+  side: ['service', 'project', { ...operations(read, 'recover context list'), ...operations(recoverable, 'start send create close') }],
   prediction: ['service', 'thread', mutation],
   send: ['service', 'thread', recoverable], editMessage: ['service', 'thread', recoverable], continue: ['service', 'thread', recoverable], stop: ['service', 'thread', recoverable],
   attachBrowser: ['service', 'thread', recoverable], respond: ['service', 'thread', mutation], reconcile: ['service', 'project', read], configure: ['service', 'thread', recoverable],
   queue: ['service', 'thread', read], queueEdit: ['service', 'thread', recoverable],
   library: ['service', 'app', operations(mutation, 'dropSidebar renameProject renameThread pinThread pinProject createSection renameSection removeSection orderSection moveThread moveProject readThread markAllRead orderSidebarThread hideProject orderProject orderThread settings')],
   manage: ['service', 'project', {
-    ...operations(read, 'pluginHooks pluginMcp mcpApps mcpForms mcpToolResult plugins plugin providers mcp profile skills skill inspect context inheritedHistory plan processes process processWait goal permissions interactions processOutput executions execution executionArtifact executionWait agents agentWait workflows server workflow workgroupPolicy workgroups workgroup workgroupWait workgroupArtifact workgroupArtifactStatus workgroupCapabilities workgroupSubmission pluginCapabilities pluginSubmission processSubmission agentSubmission mcpFormResourceSubmission tasks task taskInbox taskChannel taskDraftHistory taskDraftRead taskSchedulePreview taskScheduleContext taskHistoryCapabilities taskRuns taskRun'),
+    ...operations(read, 'pluginHooks pluginMcp mcpApps genUiSource mcpForms mcpToolResult plugins plugin providers mcp profile skills skill inspect context inheritedHistory plan processes process processWait goal permissions interactions processOutput executions execution executionArtifact executionWait agents agentWait workflows server workflow workgroupPolicy workgroups workgroup workgroupWait workgroupArtifact workgroupArtifactStatus workgroupCapabilities workgroupSubmission pluginCapabilities pluginReadiness pluginSubmission processSubmission agentSubmission mcpFormResourceSubmission tasks task taskInbox taskChannel taskDraftHistory taskDraftRead taskSchedulePreview taskScheduleContext taskHistoryCapabilities taskRuns taskRun'),
     ...operations(subscription, 'taskWatch taskUnwatch'),
-    ...operations(recoverable, 'pluginArchiveImport mcpFormResourceStage pluginHooksConfigure hookAcknowledge marketplaceAdd marketplaceAddGit marketplaceRemove marketplaceUpdate pluginResolve pluginAuthConfigure pluginConnection connectorConfigure connectorCredential pluginInstall pluginConfigure pluginUninstall pluginSetup providerSave providerRemove mcpSave mcpConnect mcpDisconnect archive unarchive processCloseStdin processStart processWrite processResize processTerminate goalCreate goalUpdate goalPause goalResume goalClear workgroupStart workflowStart workgroupRevise agentSpawn taskCreate taskUpdate taskRunNow taskPause taskResume taskStopRun taskResumeRun taskCancel taskReply taskDraftSend'),
+    ...operations(recoverable, 'pluginArchiveImport mcpFormResourceStage pluginHooksConfigure hookAcknowledge marketplaceAdd marketplaceAddGit marketplaceRemove marketplaceUpdate pluginResolve pluginAuthConfigure pluginConnection connectorConfigure connectorCredential pluginInstall pluginConfigure pluginComponentConfigure pluginUninstall pluginSetup providerSave providerRemove mcpSave mcpConnect mcpDisconnect archive unarchive processCloseStdin processStart processWrite processResize processTerminate goalCreate goalUpdate goalPause goalResume goalClear workgroupStart workflowStart workgroupRevise agentSpawn taskCreate taskUpdate taskRunNow taskPause taskResume taskStopRun taskResumeRun taskCancel taskDelete taskReply taskDraftSend'),
     ...operations(mutation, 'pluginArchivePick pluginAuth pluginAuthCredential mcpAppOpen mcpAppOpenFromResult mcpAppRequest mcpAppClose mcpExtensionCall mcpFormRespond mcpFormPreview mcpFormResourcePrepare mcpFormResourceRelease executionCancel executionApply serverDrain serverGc workgroupApplyArtifact workgroupCancel closeResources planUpdate toolAcknowledge contextCompact permissionsForget providerProbe taskDraftConfirm'),
     taskDraftStart: { effect: 'mutation', requestId: 'draftId' },
   }],
-  workspace: ['service', 'project', { ...operations(read, 'worktreeRead list search read review reviewCommits reviewBranches turnReview status info gitState'), ...operations(recoverable, 'worktreeCreate'), ...operations(mutation, 'worktreeOpen save gitStage gitUnstage gitCommit gitPush') }],
+  workspace: ['service', 'project', { ...operations(read, 'worktreeList worktreeOptions worktreeRead list search read review reviewCommits reviewBranches turnReview status info gitState'), ...operations(recoverable, 'worktreeCreate worktreeAction worktreeDelete'), ...operations(mutation, 'worktreeSettings worktreeEnvironmentSave worktreeEnvironmentDelete worktreeCancel worktreeOpen save gitStage gitUnstage gitCommit gitPush') }],
   media: ['service', 'thread', { ...operations(read, 'list read'), upload: mutation, release: recoverable }],
   steer: ['service', 'thread', recoverable], dismissRecovery: ['service', 'project', mutation],
   providers: ['service', 'app', { ...operations(read, 'list revealKey discover'), ...operations(mutation, 'probe apply save saveAndApply removeAndApply defaultAndApply remove default') }],
   chatgpt: ['service', 'app', operations(mutation, 'status login forget logout selectAccount cancel probe')],
   analytics: ['service', 'app', { ...operations(read, 'read sync') }],
   resources: ['service', 'app', { ...operations(read, 'hooks builtinSkill skills mcp skillRead'), ...operations(mutation, 'hooksSave skillToggle skillSave mcpSave mcpConnect mcpDisconnect') }],
-  projectless: ['service', 'app', { directory: mutation, prepare: recoverable }], tasks: ['service', 'app', operations(read, 'list inbox')],
+  projectless: ['service', 'app', { directory: mutation, prepare: recoverable }], tasks: ['service', 'app', operations(read, 'list inbox preview')],
   trajectory: ['service', 'app', { status: read, ...operations(mutation, 'retry setEnabled') }],
   feedback: ['service', 'app', { ...operations(read, 'status read'), ...operations(mutation, 'preference prepare draft refine submit close') }],
   serviceLifecycle: ['main', 'app', { check: read, ...operations(mutation, 'update stop recover quitInterface stopAndQuit') }],
   serviceStatus: ['main', 'app', read], stopService: ['main', 'app', mutation], recoverResources: ['main', 'app', mutation],
+  browserData: ['main', 'app', { status: read, ...operations(mutation, 'importChrome clearCache clearAll') }],
+  computerControl: ['main', 'app', { status: read, ...operations(mutation, 'requestAccess openSettings restart stop') }],
   exportDiagnostics: ['main', 'app', read], connectService: ['main', 'app', subscription], export: ['main', 'thread', read], remoteControl: ['main', 'app', mutation],
 });
 /** @param {string} name @param {Record<string,unknown>} request @returns {CommandEffect} */
@@ -84,13 +87,18 @@ function validateCommand(name, params, { serviceOnly = false } = {}) {
   if (!Object.hasOwn(commandDefinitions, name) || !record(params)) invalid();
   const [layer, scope] = commandDefinitions[/** @type {CommandName} */ (name)];
   if (serviceOnly && layer !== 'service') invalid();
-  if (scope !== 'app' && !identifier(params.projectId)) invalid();
+  if (scope !== 'app' && !(name === 'workspace' && ['worktreeList','worktreeSettings'].includes(String(params.operation))) && !identifier(params.projectId)) invalid();
   if (scope === 'thread' && !identifier(params.threadId)) invalid();
   if (name === 'prediction' && (!identifier(params.sourceTurnId) || !['request', 'cancel'].includes(String(params.operation))
     || Object.keys(params).some(key => !['projectId', 'threadId', 'sourceTurnId', 'operation'].includes(key)))) invalid();
   if (name === 'history' && (!identifier(params.viewId) || !['acquire', 'loadOlder', 'loadItem', 'release'].includes(String(params.operation))
     || params.operation === 'loadItem' && !identifier(params.itemId)
     || Object.keys(params).some(key => !['projectId', 'threadId', 'viewId', 'operation', ...(params.operation === 'loadItem' ? ['itemId'] : [])].includes(key)))) invalid();
+  if (name === 'browserData' && Object.keys(params).some(key => key !== 'operation')) invalid();
+  if (name === 'computerControl' && (Object.keys(params).some(key => !['operation', 'capability'].includes(key))
+    || (['requestAccess', 'openSettings'].includes(String(params.operation))
+      ? !['accessibility', 'screenRecording', 'inputMonitoring'].includes(String(params.capability))
+      : params.capability !== undefined))) invalid();
   if (name === 'exportDiagnostics' && Object.keys(params).length !== 0) invalid();
   if (name === 'serviceLifecycle' && (!['update', 'stop', 'check', 'recover', 'quitInterface', 'stopAndQuit'].includes(String(params.operation))
     || Object.keys(params).some(key => key !== 'operation'))) invalid();
@@ -99,12 +107,16 @@ function validateCommand(name, params, { serviceOnly = false } = {}) {
     || Object.keys(params).some(key => !['projectId', 'threadId', 'turnId', 'requestId'].includes(key)))) invalid();
   if (name === 'prepareCreator' && (Object.keys(params).some(key => !['projectId', 'profile'].includes(key))
     || params.profile !== undefined && (!record(params.profile) || !resource(params.profile) || Object.keys(params.profile).some(key => !['id', 'revision'].includes(key))))) invalid();
+  if (params.conversationQuotes !== undefined && (!['send', 'editMessage', 'steer', 'queueEdit'].includes(name)
+    || !Array.isArray(params.conversationQuotes) || params.conversationQuotes.length > 8
+    || params.conversationQuotes.some(quote => !record(quote) || Object.keys(quote).some(key => key !== 'text') || typeof quote.text !== 'string' || !quote.text.trim() || quote.text.length > 8000)
+    || params.conversationQuotes.reduce((total, quote) => total + quote.text.length, 0) > 16000)) invalid();
   if (name === 'send' && params.requestId !== undefined && (typeof params.requestId !== 'string' || !/^[0-9a-f-]{36}$/.test(params.requestId))) invalid();
   if (name === 'editMessage' && (!identifier(params.expectedTurnId) || !identifier(params.itemId)
     || typeof params.text !== 'string' || !params.text.trim()
     || !Number.isSafeInteger(params.expectedConfigRevision) || Number(params.expectedConfigRevision) < 0
     || typeof params.requestId !== 'string' || !/^[0-9a-f-]{36}$/.test(params.requestId)
-    || Object.keys(params).some(key => !['projectId', 'threadId', 'expectedTurnId', 'itemId', 'expectedConfigRevision', 'requestId', 'text', 'attachments', 'mcpContent'].includes(key)))) invalid();
+    || Object.keys(params).some(key => !['projectId', 'threadId', 'expectedTurnId', 'itemId', 'expectedConfigRevision', 'requestId', 'text', 'attachments', 'mcpContent', 'conversationQuotes'].includes(key)))) invalid();
   if (name === 'continue' && (!identifier(params.expectedTurnId)
     || Object.keys(params).some(key => !['projectId', 'threadId', 'expectedTurnId', 'expectedConfigRevision', 'requestId'].includes(key))
     || params.requestId !== undefined && (typeof params.requestId !== 'string' || !/^[0-9a-f-]{36}$/.test(params.requestId))
@@ -112,13 +124,52 @@ function validateCommand(name, params, { serviceOnly = false } = {}) {
   if (['create', 'configure', 'fork', 'attachBrowser'].includes(name) && params.requestId !== undefined
     && (typeof params.requestId !== 'string' || !/^[0-9a-f-]{36}$/.test(params.requestId))) invalid();
   if (name === 'create' && params.browserEnabled !== undefined && typeof params.browserEnabled !== 'boolean') invalid();
+  if (name === 'create' && params.worktree !== undefined) {
+    const spec = params.worktree;
+    if (!record(spec) || Object.keys(spec).some(key => !['sourceRoot', 'ref', 'worktreeRoot', 'branch', 'branchPrefix', 'environmentId', 'environmentRevision', 'mode'].includes(key))
+      || Object.entries(spec).some(([key,value]) => key === 'environmentRevision' ? !Number.isSafeInteger(value) || Number(value) < 0 : typeof value !== 'string' || value.length > 4096 || /[\x00-\x1f\x7f]/.test(value))
+      || spec.mode !== undefined && !['source','worktree'].includes(String(spec.mode))) invalid();
+  }
+  if (name === 'workspace' && String(params.operation).startsWith('worktree')) {
+    const optionalRevision = value => value === undefined || Number.isSafeInteger(value) && Number(value) >= 0;
+    const script = value => record(value) && Object.keys(value).every(key => ['default','macos','linux'].includes(key))
+      && typeof value.default === 'string' && Object.values(value).every(item => typeof item === 'string' && item.length <= 32768 && !item.includes('\0'));
+    const environment = value => record(value) && Object.keys(value).every(key => ['id','name','setup','cleanup','actions'].includes(key))
+      && identifier(value.id) && identifier(value.name) && script(value.setup) && script(value.cleanup) && Array.isArray(value.actions) && value.actions.length <= 50
+      && new Set(value.actions.map(action => action.id)).size === value.actions.length
+      && value.actions.every(action => record(action) && Object.keys(action).every(key => ['id','name','script'].includes(key)) && identifier(action.id) && identifier(action.name) && script(action.script));
+    const keys = {
+      worktreeList: [], worktreeOptions: ['sourceRoot'], worktreeSettings: ['worktreeRoot','branchPrefix','fetchBeforeCreate','autoCleanup','keepCount','expectedRevision'],
+      worktreeEnvironmentSave: ['environment','expectedRevision'], worktreeEnvironmentDelete: ['environmentId','expectedRevision'],
+      worktreeCancel: ['requestId'], worktreeRead: ['requestId'], worktreeOpen: ['requestId'],
+      worktreeAction: ['requestId','worktreeRequestId','actionId'], worktreeDelete: ['requestId','worktreeRequestId'],
+    }[String(params.operation)];
+    if (keys && Object.keys(params).some(key => !['projectId','operation',...keys].includes(key))) invalid();
+    if (['worktreeCancel','worktreeRead','worktreeOpen','worktreeAction','worktreeDelete'].includes(String(params.operation))
+      && (typeof params.requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(params.requestId))) invalid();
+    if (['worktreeAction','worktreeDelete'].includes(String(params.operation)) && (typeof params.worktreeRequestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(params.worktreeRequestId))) invalid();
+    if (params.operation === 'worktreeAction' && !identifier(params.actionId)) invalid();
+    if (params.operation === 'worktreeOptions' && params.sourceRoot !== undefined && (typeof params.sourceRoot !== 'string' || !params.sourceRoot || params.sourceRoot.length > 4096 || /[\x00-\x1f\x7f]/.test(params.sourceRoot))) invalid();
+    if (params.operation === 'worktreeSettings' && (typeof params.worktreeRoot !== 'string' || params.worktreeRoot.length > 4096 || /[\x00-\x1f\x7f]/.test(params.worktreeRoot)
+      || typeof params.branchPrefix !== 'string' || !params.branchPrefix || params.branchPrefix.length > 128 || /[\x00-\x1f\x7f]/.test(params.branchPrefix)
+      || ['fetchBeforeCreate','autoCleanup'].some(key => params[key] !== undefined && typeof params[key] !== 'boolean')
+      || params.keepCount !== undefined && (!Number.isSafeInteger(params.keepCount) || Number(params.keepCount) < 1 || Number(params.keepCount) > 1000) || !optionalRevision(params.expectedRevision))) invalid();
+    if (['worktreeEnvironmentSave','worktreeEnvironmentDelete'].includes(String(params.operation)) && (!Number.isSafeInteger(params.expectedRevision) || Number(params.expectedRevision) < 0)) invalid();
+    if (params.operation === 'worktreeEnvironmentSave' && !environment(params.environment)) invalid();
+    if (params.operation === 'worktreeEnvironmentDelete' && !identifier(params.environmentId)) invalid();
+  }
   if (name === 'fork' && (!identifier(params.sourceThreadId) || !record(params.anchor)
     || !identifier(params.anchor.turnId) || !['before', 'after'].includes(String(params.anchor.boundary))
     || params.workspaceMode !== 'sharedCurrent')) invalid();
-  if (name === 'side' && (!['start', 'recover', 'send', 'context', 'list'].includes(String(params.operation))
+  if (name === 'side' && (!['start', 'create', 'close', 'recover', 'send', 'context', 'list'].includes(String(params.operation))
     || (params.operation === 'start' && (!identifier(params.sourceThreadId) || typeof params.text !== 'string' || !params.text.trim()))
     || (params.operation === 'send' && (!identifier(params.threadId) || typeof params.text !== 'string' || !params.text.trim()))
-    || (params.operation === 'recover' && !identifier(params.requestId))
+    || (params.operation === 'create' && (!identifier(params.sourceThreadId) || !identifier(params.requestId)
+      || params.firstInput !== undefined && (!record(params.firstInput) || typeof params.firstInput.text !== 'string' || !params.firstInput.text.trim() || Object.keys(params.firstInput).some(key => key !== 'text'))
+      || Object.keys(params).some(key => !['operation', 'projectId', 'sourceThreadId', 'requestId', 'firstInput'].includes(key))))
+    || (params.operation === 'close' && (!identifier(params.threadId) || !identifier(params.requestId)
+      || Object.keys(params).some(key => !['operation', 'projectId', 'threadId', 'requestId'].includes(key))))
+    || (params.operation === 'recover' && (!identifier(params.requestId) || params.method !== undefined && !['areal/side/start', 'areal/side/create', 'areal/side/close'].includes(String(params.method))))
     || (params.operation === 'context' && !identifier(params.threadId))
     || (params.operation === 'list' && (!identifier(params.sourceThreadId) || params.includeArchived !== undefined && typeof params.includeArchived !== 'boolean')))) invalid();
   if (name === 'side' && (params.resetModel !== undefined && typeof params.resetModel !== 'boolean' || params.resetModel === true && params.model !== undefined || params.workspaceAccess !== undefined && !['none', 'readOnly'].includes(String(params.workspaceAccess)) || params.model !== undefined && (!record(params.model) || !identifier(params.model.providerId) || !identifier(params.model.modelId)))) invalid();
@@ -156,14 +207,18 @@ function validateCommand(name, params, { serviceOnly = false } = {}) {
   if (name === 'providers' && params.operation === 'revealKey'
     && (!identifier(params.id) || !identifier(params.expectedRevision)
       || Object.keys(params).some(key => !['operation', 'id', 'expectedRevision'].includes(key)))) invalid();
-  if (name === 'tasks' && (!['list', 'inbox'].includes(String(params.operation))
-    || Object.keys(params).some(key => !['operation', 'projectId', 'limit', 'requestId', 'viewEpoch'].includes(key))
+  if (name === 'tasks' && (!['list', 'inbox', 'preview'].includes(String(params.operation))
+    || Object.keys(params).some(key => !['operation', 'projectId', 'sourceThreadId', 'limit', 'requestId', 'viewEpoch'].includes(key))
     || params.projectId !== undefined && !identifier(params.projectId)
+    || params.sourceThreadId !== undefined && (!['list', 'preview'].includes(String(params.operation)) || !identifier(params.sourceThreadId) || !identifier(params.projectId))
     || params.limit !== undefined && (!Number.isSafeInteger(params.limit) || Number(params.limit) < 1 || Number(params.limit) > 1024)
     || params.requestId !== undefined && (typeof params.requestId !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(params.requestId))
     || params.viewEpoch !== undefined && (!Number.isSafeInteger(params.viewEpoch) || Number(params.viewEpoch) < 0))) invalid();
   if (name === 'resources' && params.operation === 'builtinSkill'
     && (params.id !== 'openai-skill-creator' || Object.keys(params).some(key => !['operation', 'id'].includes(key)))) invalid();
+  if (name === 'manage' && params.operation === 'pluginReadiness'
+    && (!identifier(params.id) || !identifier(params.expectedDigest)
+      || Object.keys(params).some(key => !['operation', 'projectId', 'id', 'expectedDigest'].includes(key)))) invalid();
   if (name === 'manage' && ['pluginArchivePick', 'pluginArchiveImport'].includes(String(params.operation))) {
     const importing = params.operation === 'pluginArchiveImport';
     if (serviceOnly && !importing) invalid();
@@ -174,18 +229,19 @@ function validateCommand(name, params, { serviceOnly = false } = {}) {
       ? typeof params.path !== 'string' || params.path.length > 4096 || params.path.includes('\0') || !params.path.startsWith('/')
       : !identifier(params.selectionToken))) invalid();
   }
-  if (name === 'manage' && ['plugin', 'pluginInstall', 'pluginConfigure', 'pluginUninstall', 'pluginSetup', 'pluginResolve', 'marketplaceAdd', 'marketplaceAddGit', 'marketplaceRemove', 'marketplaceUpdate'].includes(String(params.operation))) {
+  if (name === 'manage' && ['plugin', 'pluginInstall', 'pluginConfigure', 'pluginComponentConfigure', 'pluginUninstall', 'pluginSetup', 'pluginResolve', 'marketplaceAdd', 'marketplaceAddGit', 'marketplaceRemove', 'marketplaceUpdate'].includes(String(params.operation))) {
     if (!String(params.operation).startsWith('marketplace') && !identifier(params.id)) invalid();
     if (params.operation === 'marketplaceAdd' && (typeof params.root !== 'string' || !params.root.trim() || params.root.length > 4096 || params.root.includes('\0'))) invalid();
     if (['pluginInstall', 'pluginConfigure'].includes(String(params.operation)) && !['user', 'project'].includes(String(params.scope))) invalid();
     if (params.operation === 'pluginInstall' && (typeof params.source !== 'string' || !params.source.trim() || params.source.length > 4096 || params.source.includes('\0') || !identifier(params.expectedDigest))) invalid();
     if (params.operation === 'pluginConfigure' && typeof params.enabled !== 'boolean') invalid();
+    if (params.operation === 'pluginComponentConfigure' && (typeof params.enabled !== 'boolean' || !identifier(params.expectedDigest) || !record(params.component) || !['skill', 'mcpServer'].includes(String(params.component.kind)) || !identifier(params.component.id) || Object.keys(params.component).some(key => !['kind', 'id'].includes(key)))) invalid();
     if (params.operation !== 'plugin' && params.operation !== 'pluginSetup' && (!Number.isSafeInteger(params.expectedRevision) || Number(params.expectedRevision) < 0)) invalid();
     if (params.threadId !== undefined && !identifier(params.threadId)) invalid();
     if (params.requestId !== undefined && !identifier(params.requestId)) invalid();
   }
   if (name === 'manage' && params.operation === 'pluginSubmission'
-    && (!identifier(params.requestId) || !['pluginArchiveImport', 'marketplaceAdd', 'marketplaceAddGit', 'marketplaceRemove', 'marketplaceUpdate', 'pluginResolve', 'pluginConnection', 'pluginHooksConfigure', 'hookAcknowledge', 'pluginAuthConfigure', 'connectorConfigure', 'pluginInstall', 'pluginConfigure', 'pluginUninstall', 'pluginSetup'].includes(String(params.mutation)))) invalid();
+    && (!identifier(params.requestId) || !['pluginArchiveImport', 'marketplaceAdd', 'marketplaceAddGit', 'marketplaceRemove', 'marketplaceUpdate', 'pluginResolve', 'pluginConnection', 'pluginHooksConfigure', 'hookAcknowledge', 'pluginAuthConfigure', 'connectorConfigure', 'pluginInstall', 'pluginConfigure', 'pluginComponentConfigure', 'pluginUninstall', 'pluginSetup'].includes(String(params.mutation)))) invalid();
   if (name === 'manage') {
     if (['mcpFormResourcePrepare', 'mcpFormResourceStage', 'mcpFormResourceSubmission', 'mcpFormResourceRelease'].includes(String(params.operation))) {
       const operation = String(params.operation);
@@ -333,6 +389,14 @@ function desktopError(error) {
 /** @param {string} name @param {unknown} params @param {unknown} value */
 function validateCommandResponse(name, params, value) {
   if (!record(params)) invalid();
+  if (name === 'manage' && params.operation === 'pluginReadiness') {
+    if (!record(value) || value.pluginId !== params.id || value.installedDigest !== params.expectedDigest
+      || !Array.isArray(value.requiredTools) || !value.requiredTools.every(identifier)
+      || !Array.isArray(value.missingTools) || !value.missingTools.every(name => identifier(name) && Array.isArray(value.requiredTools) && value.requiredTools.includes(name))
+      || value.available !== (value.missingTools.length === 0)
+      || Object.keys(value).some(key => !['pluginId', 'installedDigest', 'requiredTools', 'missingTools', 'available'].includes(key))) invalid();
+  }
+
   if (name === 'providers' && params.operation === 'revealKey') {
     if (!record(value) || typeof value.apiKey !== 'string' || !value.apiKey.trim() || value.apiKey.length > 16384
       || Object.keys(value).some(key => key !== 'apiKey')) invalid();
@@ -351,6 +415,7 @@ function validateCommandResponse(name, params, value) {
     return;
   }
   if (name === 'tasks') {
+    const preview = params.operation === 'preview';
     if (params.projectId !== undefined && (!record(value) || value.projectId !== params.projectId
       || value.requestId !== params.requestId || value.viewEpoch !== params.viewEpoch
       || !Array.isArray(value.owners) || value.owners.length !== 1 || !record(value.owners[0]) || value.owners[0].projectId !== params.projectId)) {
@@ -358,7 +423,9 @@ function validateCommandResponse(name, params, value) {
     }
     if (!record(value) || !Array.isArray(value.data) || !value.data.every(record) || !Array.isArray(value.errors) || !value.errors.every(record) || typeof value.hasMore !== 'boolean'
       || params.projectId !== undefined && (value.data.some(row => row.projectId !== params.projectId) || value.errors.some(error => error.projectId !== params.projectId)
-        || !['ready', 'error'].includes(String(value.owners[0].status)) || value.owners[0].status === 'ready' && (!Number.isSafeInteger(value.owners[0].connectionGeneration) || value.owners[0].connectionGeneration < 0))) invalid();
+        || !(preview ? ['unobserved', 'error'] : ['ready', 'error']).includes(String(value.owners[0].status)) || value.owners[0].status === 'ready' && (!Number.isSafeInteger(value.owners[0].connectionGeneration) || value.owners[0].connectionGeneration < 0))
+      || preview && (value.source !== 'published' || value.executionState !== 'unobserved' || !Array.isArray(value.owners)
+        || value.owners.some(owner => !record(owner) || !identifier(owner.projectId) || !['unobserved', 'error'].includes(String(owner.status)) || 'connectionGeneration' in owner))) invalid();
     return;
   }
   if (name === 'continue' && (!record(value) || !(record(value.turn) && identifier(value.turn.id) || Number.isSafeInteger(value.queueRevision) && Number(value.queueRevision) >= 0))) invalid();
@@ -366,7 +433,9 @@ function validateCommandResponse(name, params, value) {
   if (name === 'fork' && (!record(value) || !identifier(value.threadId) || !identifier(value.requestId))) invalid();
   if (name !== 'side') return;
   if (!record(value)) invalid();
-  if (params.operation === 'start' && (!identifier(value.threadId) || !identifier(value.requestId))) invalid();
+  if (['start', 'create'].includes(String(params.operation)) && (!identifier(value.threadId) || !identifier(value.requestId))) invalid();
+  if (params.operation === 'create' && value.turnId !== undefined && !identifier(value.turnId)) invalid();
+  if (params.operation === 'close' && (!identifier(value.threadId) || !identifier(value.requestId) || typeof value.accepted !== 'boolean' || typeof value.cleanupConfirmed !== 'boolean')) invalid();
   if (params.operation === 'recover' && (typeof value.confirmed !== 'boolean' || value.confirmed && !identifier(value.threadId))) invalid();
   if (params.operation === 'list' && (!Array.isArray(value.data) || !value.data.every(record) || value.nextCursor !== undefined && value.nextCursor !== null && typeof value.nextCursor !== 'string')) invalid();
   if (params.operation === 'context' && (!identifier(value.snapshotId) || !Array.isArray(value.evidence) || !value.evidence.every(record) || value.nextCursor !== undefined && value.nextCursor !== null && typeof value.nextCursor !== 'string')) invalid();

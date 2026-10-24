@@ -301,7 +301,20 @@ impl Engine {
             effects.updated_input = latest_rewrite;
         }
         // Async results are drained only by lifecycle/generation safe points.
-        self.drain_hook_results(cell, false).await?;
+        let closing_side = if event == HookEvent::SessionEnd {
+            let state = cell.state.lock().await;
+            state.thread.is_executable_side()
+                && state
+                    .thread
+                    .desktop
+                    .as_ref()
+                    .is_some_and(|data| data.archived)
+        } else {
+            false
+        };
+        if !closing_side {
+            self.drain_hook_results(cell, false).await?;
+        }
         Ok(effects)
     }
     pub(crate) async fn drain_hook_results(

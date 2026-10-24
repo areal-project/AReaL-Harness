@@ -4,7 +4,7 @@ use super::*;
 
 // 读取与订阅快照共用当前执行状态；冻结历史不持久化模型容量等待。
 fn project_side_capacity(thread: &mut Thread, active: Option<&Active>) {
-    if thread.is_side()
+    if thread.is_read_only_side()
         && let Some(desktop) = thread.desktop.as_mut()
     {
         desktop.side_capacity_status = active.map(|active| {
@@ -59,6 +59,7 @@ impl Engine {
     ) -> Result<()> {
         let cell = self.cell(thread_id).await?;
         let state = cell.state.lock().await;
+        self.ensure_hook_session_open(&cell, &state.thread)?;
         if state.thread.dynamic_tools.is_empty() {
             return Ok(());
         }
@@ -660,7 +661,7 @@ impl Engine {
             if state.thread.desktop.is_none() {
                 // 为预算创建配置不能顺带开放原父任务未启用的桌面工具。
                 let mut allowed: Vec<_> = self
-                    .visible_tools(&parent, config, false)
+                    .visible_tools(&parent, config, false, &state.thread)
                     .await
                     .iter()
                     .filter_map(|d| d["function"]["name"].as_str().map(str::to_owned))

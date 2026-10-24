@@ -111,6 +111,20 @@ mbx setup
 
 不要对常驻 Core、固定路径验收或发布产物执行递归 `mbx adopt`。托管目录的租约不保护直接从 target 启动的二进制和 mbx 退出后仍存活的子进程。Rust 1.94 可使用共享编译结果，但不支持要求 rustc 1.98 的跨工作树私有增量 seed 或要求 Cargo 1.100 的 target unit seed。移除 shim 的 PATH 激活即可恢复普通 Cargo；不会删除现有产物或共享缓存。
 
+### 临时工作树缓存回收
+
+共享缓存不会限制普通 `target` 的增长。临时工作树使用同一清理入口的预算模式，默认预览：
+
+```sh
+make artifact-cleanup ARGS='--temporary-worktrees --cache-budget-gib 40 --min-free-gib 30 --report /private/tmp/worktree-cache-preview.json'
+```
+
+审阅后追加 `--apply`，并为每次运行指定独立报告路径。该模式只选择本仓 Git 登记中仍存在的次级工作树，主工作树始终排除，不接受 `--root` 或 `--no-worktrees` 覆盖。它只回收已识别 Cargo profile 下的 `deps`、`incremental`、`build` 和 `.fingerprint`；保留 profile 中的可执行文件、shell、完整包、delivery 目录、依赖和符号链接。失效工作树登记只跳过，不移除。
+
+40 GiB 是所有次级工作树缓存的分配块估算总预算，独立于 mbx 共享缓存的 40 GiB。超预算或磁盘低于 30 GiB 时，按 profile 目录最近修改时间优先选择旧缓存；预算内保留，避免每轮全清。目录时间不是精确 LRU，APFS 共享块也使估算不同于实际释放量。删除前持有 Cargo 锁并重新检查占用；同一 profile 内任何打开文件或该工作树中的构建/调试进程都会阻止整组回收。单个 profile 无法统计时保留并记录，不阻断其他组。活动缓存和不属于本模式的数据可能使预算或空闲线无法满足，报告会列出剩余压力。
+
+可在 Codex 为本聊天配置每 30 分钟调用一次该命令的心跳，追加 `--apply` 并保存独立报告；无删除或无需处理的占用跳过保持安静，仅通知实际回收、失败或无法缓解的磁盘告急。自动化复用此模式，不调用全量包清理，也不停止构建或服务。它不会自动迁移 target；主工作树缓存和完整 GUI/Core 包继续使用下述按需清理入口。
+
 ## 验证产物保留
 
 运行 `make artifact-cleanup` 预览 `~/Documents/Codex` 及本仓已登记工作树中的 AReaL 产物，默认只读。GUI 以打包记录识别轮次并检查可执行文件及 Core 的完整性，匹配的应用和 ZIP 副本归入同轮。独立 Core 则保留最新 5 个完整且通过清单校验的版本包，以构建身份和文件哈希去重。Cargo profile 是可变构建输出，不作为历史轮次计数。只有某 profile 的三个二进制均匹配已知完整包、且已有至少 5 个校验通过的版本包时，才清理其散装产物；无法识别的产物保留。
@@ -119,4 +133,4 @@ Rust 的 `deps`、`incremental`、`build`、`.fingerprint` 独立于版本保留
 
 单独扫描使用 `python3 scripts/artifact-cleanup.py --root /path/to/artifacts --no-worktrees --json`；`--root` 可重复，`--keep` 修改保留上限。`--report /path/outside/scanned/roots/preview.json` 保存完整清单。空间按已分配块估算并排除路径重叠；硬链接、APFS 克隆和快照可能降低实际回收量。
 
-审阅预览后，显式使用 `--apply --report /path/outside/scanned/roots/result.json` 执行删除。执行会持有 profile 的 Cargo 锁文件排他锁、复查活动，并在每项删除前后记录结果；锁文件保留，检查失败时跳过路径。无法检查进程时阻止删除。命令不停止进程，不移除工作树、源码、配置和历史。失败以非零退出；结果文件记录已完成与可能中断的删除，部分失败后先检查记录并重新预览。不安装定时清理。
+审阅预览后，显式使用 `--apply --report /path/outside/scanned/roots/result.json` 执行删除。执行会持有 profile 的 Cargo 锁文件排他锁、复查活动，并在每项删除前后记录结果；锁文件保留，检查失败时跳过路径。无法检查进程时阻止删除。命令不停止进程，不移除工作树、源码、配置和历史。失败以非零退出；结果文件记录已完成与可能中断的删除，部分失败后先检查记录并重新预览。命令本身不安装定时任务。

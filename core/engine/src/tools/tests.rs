@@ -1332,6 +1332,7 @@ impl DynamicToolHost for InheritedLeaseHost {
     ) -> anyhow::Result<areal_protocol::DynamicToolResponse> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(areal_protocol::DynamicToolResponse {
+            raw_mcp_result: None,
             success: true,
             content_items: vec![],
             structured_content: None,
@@ -1583,6 +1584,7 @@ impl DynamicToolHost for ExternalAgentNamedHost {
         self.saw_read_lease
             .store(self.gate.try_write().is_err(), Ordering::Release);
         Ok(areal_protocol::DynamicToolResponse {
+            raw_mcp_result: None,
             success: true,
             content_items: vec![],
             structured_content: None,

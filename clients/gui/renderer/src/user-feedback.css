@@ -159,6 +159,6 @@
 }
 @media (max-width: 640px) {
   .user-feedback-panel textarea {
-    font-size: 16px;
+    font-size: var(--text-mobile-input-safe);
   }
 }

@@ -17,7 +17,7 @@ export function RelatedSideChats({ project, sourceId, selectedId, onSelect, acti
     let current = true;
     setBusy(true); setError("");
     void action("side", { projectId: project.id, operation: "list", sourceThreadId: sourceId, includeArchived: archived })
-      .then((page: Data) => { if (current && generation.current === requestGeneration) { setItems(page.data ?? []); setCursor(page.nextCursor ?? undefined); } })
+      .then((page: Data) => { if (current && generation.current === requestGeneration) { setItems((page.data ?? []).filter((item: Data) => item.conversation?.policy?.kind === "sideReadOnlyV1")); setCursor(page.nextCursor ?? undefined); } })
       .catch((cause: Error) => { if (current && generation.current === requestGeneration) setError(cause.message); })
       .finally(() => { if (current && generation.current === requestGeneration) setBusy(false); });
     return () => { current = false; generation.current++; };
@@ -30,7 +30,7 @@ export function RelatedSideChats({ project, sourceId, selectedId, onSelect, acti
     try {
       const page = await action("side", { projectId: project.id, operation: "list", sourceThreadId: sourceId,
         includeArchived: archived, cursor: expected });
-      if (generation.current === requestGeneration) { setItems(previous => [...previous, ...page.data]); setCursor(page.nextCursor ?? undefined); }
+      if (generation.current === requestGeneration) { setItems(previous => [...previous, ...page.data.filter((item: Data) => item.conversation?.policy?.kind === "sideReadOnlyV1")]); setCursor(page.nextCursor ?? undefined); }
     } catch (cause) { if (generation.current === requestGeneration) setError((cause as Error).message); }
     finally { if (generation.current === requestGeneration) setBusy(false); }
   };

@@ -1,0 +1,165 @@
+{
+  "repository": "https://github.com/zai-org/ZCode",
+  "commit": "3c5b227649371507ddc4eb46ac5133afe6db1cab",
+  "adaptations": [
+    "Local imports and Desktop event/logger adapters.",
+    "No Tweak, external navigation, or standalone export APIs.",
+    "Core owns publication and historical artifact admission.",
+    "Runtime manifest omits the unsupported upstream Tweak entry. Retained assets keep upstream hashes.",
+    "Atomic writes fsync the file and directory before acknowledgement; removed upstream test-only fault injection.",
+    "State listing waits for the local scope write queue before freezing model context.",
+    "Authoring guidance copies supported visualize styles, composition, accessibility, charts and utilities; omits export, Tweak, remote maps, external navigation and filesystem instructions."
+  ],
+  "sources": [
+    {
+      "source": "packages/shared/src/gen-ui/contract.ts",
+      "destination": "contract.ts",
+      "sourceSha256": "42b26cf4971b60236d2cf6da07eea1b629fef5d4d89881e8484f268987e8020b",
+      "status": "adapted"
+    },
+    {
+      "source": "packages/ui/src/gen-ui/domain/references.ts",
+      "destination": "references.ts",
+      "sourceSha256": "9f6b76e49f09f997991f4a8511743f60828c180d41923812cb53998304f85c62",
+      "status": "adapted"
+    },
+    {
+      "source": "packages/ui/src/lib/assistantDirectiveParser.ts",
+      "destination": "assistantDirectiveParser.ts",
+      "sourceSha256": "c64b119e46f917e2d869658559cb1113cc40caae1a89d68328b256ee4d76e09f",
+      "status": "copied"
+    },
+    {
+      "source": "packages/desktop/src/renderer/src/plugin-sandbox/genUi.ts",
+      "destination": "guest.ts",
+      "sourceSha256": "a75b04276744a37e8ba17e615c471c0b797415a026824bb391b5ef84eb218c6b",
+      "status": "adapted"
+    },
+    {
+      "source": "packages/services/src/gen-ui/adapters/stateStorage.ts",
+      "destination": "stateStorage.ts",
+      "sourceSha256": "4eecfedaa9be20183bca4581a036eab74ab2b79ca086923d5d5b952e7f0cfa11",
+      "status": "adapted"
+    },
+    {
+      "source": "packages/services/src/gen-ui/app/ports.ts",
+      "destination": "ports.ts",
+      "sourceSha256": "188c132bf6ce304909037462e238066068b06b806e6ba1f8c175b30f5f422037",
+      "status": "adapted"
+    },
+    {
+      "source": "packages/shared/src/node/atomicFileLock.ts",
+      "destination": "atomicFileLock.ts",
+      "sourceSha256": "6d8262cac1ee95c0fb6843b774ce195733ede7075589a258266e709953333040",
+      "status": "adapted"
+    },
+    {
+      "source": "packages/shared/src/node/lockInstanceObserver.ts",
+      "destination": "lockInstanceObserver.ts",
+      "sourceSha256": "4bb0d22be444d1d6b2aea3979702fc396fc2e981b0499b87687cdee3e56fd3f0",
+      "status": "copied"
+    },
+    {
+      "source": "packages/services/src/fs/atomicFileUtils.ts",
+      "destination": "atomicFileUtils.ts",
+      "sourceSha256": "fc52b715d7eb710a26995310b7ccd7e2fd0665550c2554bbfff83ee84bc3f37d",
+      "status": "adapted"
+    },
+    {
+      "source": "LICENSE",
+      "destination": "LICENSE",
+      "sourceSha256": "606c36baf38b973227273df12a74930e4b4137280eea835c5cd623aa4553c13b",
+      "status": "copied"
+    },
+    {
+      "source": "apps/zcode-cli/packages/visualize-plugin/skills/visualize/SKILL.md",
+      "destination": "../../../../core/engine/src/desktop/gen-ui-authoring.md",
+      "sourceSha256": "395662af568069f2ac2daf639037c70da2fde15cedb291b4b774f60abd1a7037",
+      "status": "adapted"
+    },
+    {
+      "source": "apps/zcode-cli/packages/visualize-plugin/skills/visualize/assets/calendar.js",
+      "destination": "assets/calendar.js",
+      "sourceSha256": "19f40e0a15ae7a9b9a4e17bc53c5bb47c5b21e6d32317d80cf030f9e012c221b",
+      "status": "copied"
+    },
+    {
+      "source": "apps/zcode-cli/packages/visualize-plugin/skills/visualize/assets/runtime-manifest.json",
+      "destination": "assets/runtime-manifest.json",
+      "sourceSha256": "2a4a205d747cf33d984cd05c2d8c9da44a83a19eb71e016a93a36d98aaac9026",
+      "status": "adapted"
+    },
+    {
+      "source": "apps/zcode-cli/packages/visualize-plugin/skills/visualize/assets/vendor/d3-7.9.0.min.js",
+      "destination": "assets/vendor/d3-7.9.0.min.js",
+      "sourceSha256": "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539",
+      "status": "copied"
+    },
+    {
+      "source": "apps/zcode-cli/packages/visualize-plugin/skills/visualize/assets/vendor/d3-7.9.0.min.js.LICENSE",
+      "destination": "assets/vendor/d3-7.9.0.min.js.LICENSE",
+      "sourceSha256": "3e6849627f74ff73c257a3ae1efb574015d94fc1035c05ec3c15805165efcbc4",
+      "status": "copied"
+    },
+    {
+      "source": "apps/zcode-cli/packages/visualize-plugin/skills/visualize/assets/vendor/floating-ui-core-1.7.3.min.js",
+      "destination": "assets/vendor/floating-ui-core-1.7.3.min.js",
+      "sourceSha256": "6985ce661153c01d97f6be9babb6a9566f923c716c2b7fbead48fbb09f419ba8",
+      "status": "copied"
+    },
+    {
+      "source": "apps/zcode-cli/packages/visualize-plugin/skills/visualize/assets/vendor/floating-ui-core-1.7.3.min.js.LICENSE",
+      "destination": "assets/vendor/floating-ui-core-1.7.3.min.js.LICENSE",
+      "sourceSha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+      "status": "copied"
+    },
+    {
+      "source": "apps/zcode-cli/packages/visualize-plugin/skills/visualize/assets/vendor/floating-ui-dom-1.7.4.min.js",
+      "destination": "assets/vendor/floating-ui-dom-1.7.4.min.js",
+      "sourceSha256": "b8199f76adccb9b17b3ab57124c42585dc19197127d1a5d19307d1983f80bd89",
+      "status": "copied"
+    },
+    {
+      "source": "apps/zcode-cli/packages/visualize-plugin/skills/visualize/assets/vendor/floating-ui-dom-1.7.4.min.js.LICENSE",
+      "destination": "assets/vendor/floating-ui-dom-1.7.4.min.js.LICENSE",
+      "sourceSha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+      "status": "copied"
+    },
+    {
+      "source": "apps/zcode-cli/packages/visualize-plugin/skills/visualize/assets/vendor/lucide-1.17.0.js",
+      "destination": "assets/vendor/lucide-1.17.0.js",
+      "sourceSha256": "fde878a4f7aebe548b071eaaf343d898f66d275e93970abe95d8ca5fda290b51",
+      "status": "copied"
+    },
+    {
+      "source": "apps/zcode-cli/packages/visualize-plugin/skills/visualize/assets/vendor/lucide-1.17.0.js.LICENSE",
+      "destination": "assets/vendor/lucide-1.17.0.js.LICENSE",
+      "sourceSha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57",
+      "status": "copied"
+    },
+    {
+      "source": "apps/zcode-cli/packages/visualize-plugin/skills/visualize/assets/vendor/manifest.json",
+      "destination": "assets/vendor/manifest.json",
+      "sourceSha256": "3ad48a2f0b4ef3d7cbb82cab35b169227dd2f812565ef60deb086b55125bb982",
+      "status": "copied"
+    },
+    {
+      "source": "apps/zcode-cli/packages/visualize-plugin/skills/visualize/assets/visualize.css",
+      "destination": "assets/visualize.css",
+      "sourceSha256": "f75125ca6efcf855d8f354984f603f81a4cfc758b476698be1cc665630c00a41",
+      "status": "copied"
+    },
+    {
+      "source": "apps/zcode-cli/packages/visualize-plugin/skills/visualize/assets/visualize.html",
+      "destination": "assets/visualize.html",
+      "sourceSha256": "42d9c7d924174a23545ad2ffc31ec0692ca589b3999c2ffdc21c1d358f4185bf",
+      "status": "copied"
+    },
+    {
+      "source": "apps/zcode-cli/packages/visualize-plugin/skills/visualize/LICENSE.md",
+      "destination": "VISUALIZE-LICENSE.md",
+      "sourceSha256": "b1733e816a7d5a8240f28e4633b37f7f6181734c9c0424836da3e768827239f4",
+      "status": "copied"
+    }
+  ]
+}

@@ -1,5 +1,10 @@
 use super::*;
 
+fn close_reply(mut result: Value) -> Value {
+    result.as_object_mut().unwrap().remove("cleanupSettled");
+    result
+}
+
 fn canonical_text(item: &Item) -> Option<String> {
     match item {
         Item::UserMessage { content, .. } if content.len() == 1 => match &content[0] {
@@ -86,6 +91,7 @@ impl Engine {
                     }
                 };
                 if state.active.is_some()
+                    && state.thread.is_read_only_side()
                     && let Some(areal_protocol::Conversation::Side { origin, .. }) =
                         &state.thread.conversation
                 {
@@ -117,7 +123,7 @@ impl Engine {
                 continue;
             }
             let state = cell.state.lock().await;
-            if state.active.is_none() {
+            if state.active.is_none() || !state.thread.is_read_only_side() {
                 continue;
             }
             if let Some(areal_protocol::Conversation::Side { origin, .. }) =
@@ -400,6 +406,12 @@ impl Engine {
             config.tool_allowlist = Some(
                 std::iter::once("side_context_read".to_owned())
                     .chain(
+                        engine
+                            .extensions
+                            .gen_ui
+                            .then(|| "gen_ui_publish".to_owned()),
+                    )
+                    .chain(
                         ["fs_read", "fs_list", "fs_stat", "search_files"]
                             .into_iter()
                             .filter(|name| {
@@ -485,9 +497,12 @@ impl Engine {
                         item_count: prefix.iter().map(|t| t.items.len()).sum(),
                         logical_bytes,
                     },
-                    policy: areal_protocol::SidePolicy {
-                        kind: "sideReadOnlyV1".into(),
-                        workspace_access: request.workspace_access.clone(),
+                    policy: areal_protocol::SidePolicy::ReadOnlyV1 {
+                        workspace_access: if request.workspace_access == "readOnly" {
+                            areal_protocol::SideWorkspaceAccess::ReadOnly
+                        } else {
+                            areal_protocol::SideWorkspaceAccess::None
+                        },
                     },
                     selection,
                 }),
@@ -569,5 +584,361 @@ impl Engine {
             Ok((thread, turn))
         })
         .await
+    }
+}
+
+impl Engine {
+    pub async fn side_create(
+        self: &Arc<Self>,
+        identity: String,
+        request: SideCreate,
+        host: Option<Arc<dyn crate::tools::DynamicToolHost>>,
+    ) -> Result<(Thread, Option<Turn>)> {
+        self.refresh_plugins().await?;
+        self.mutate(move |engine| async move {
+            let _serial = engine.desktop.creation.lock().await;
+            let _admission = engine.desktop.lifecycle.gate.lock().await;
+            let method = "areal/side/create";
+            let hash = digest(&request)?;
+            if !valid_id(&request.request_id) {
+                return Err(invalid("invalid requestId"));
+            }
+            let cells: Vec<_> = engine.threads.read().await.values().cloned().collect();
+            for cell in cells {
+                let state = cell.state.lock().await;
+                if let Some(data) = &state.thread.desktop
+                    && let Some(found) = data.receipts.iter().find(|r| {
+                        r.identity == identity
+                            && r.request_id == request.request_id
+                            && r.method == method
+                    })
+                {
+                    if found.digest != hash {
+                        return Err(Error::Conflict);
+                    }
+                    let turn = if let Some(id) = found.result.get("turnId").and_then(Value::as_str)
+                    {
+                        Some(
+                            engine
+                                .store
+                                .read_thread(&state.thread.id)
+                                .await
+                                .map_err(invalid)?
+                                .turns
+                                .into_iter()
+                                .find(|turn| turn.id == id)
+                                .ok_or_else(|| Error::Storage("Side first turn missing".into()))?,
+                        )
+                    } else {
+                        None
+                    };
+                    return Ok((state.thread.clone(), turn));
+                }
+            }
+            if !engine.accepting_work() {
+                return Err(Error::Closed);
+            }
+            if host
+                .as_ref()
+                .is_some_and(|host| host.is_closed() || host.identity() != identity)
+            {
+                return Err(Error::Conflict);
+            }
+            let source_cell = engine.cell(&request.source_thread_id).await?;
+            let source_state = source_cell.state.lock().await;
+            if source_state.thread.is_side()
+                || source_state.thread.parent_thread_id.is_some()
+                || source_state
+                    .thread
+                    .desktop
+                    .as_ref()
+                    .is_some_and(|d| d.workflow_run.is_some())
+            {
+                return Err(invalid("SOURCE_KIND_UNSUPPORTED"));
+            }
+            let config =
+                engine.next_request_configuration(desktop(&source_state.thread).configuration);
+            if config
+                .profile
+                .as_ref()
+                .is_some_and(|profile| profile.workflow.is_some())
+            {
+                return Err(invalid("PROFILE_NOT_SUPPORTED"));
+            }
+            let source = engine
+                .store
+                .read_thread(&request.source_thread_id)
+                .await
+                .map_err(invalid)?;
+            drop(source_state);
+            let (mut prefix, mut sources) = match source.model_history_seed() {
+                Some(seed) => engine
+                    .store
+                    .read_fork_snapshot_with_sources(&seed.snapshot_id)
+                    .map_err(invalid)?,
+                None => (Vec::new(), Vec::new()),
+            };
+            for mut turn in source.turns.clone() {
+                if turn.status == TurnStatus::InProgress {
+                    turn.items
+                        .retain(|item| matches!(item, Item::UserMessage { .. }));
+                    if turn.items.is_empty() {
+                        break;
+                    }
+                    turn.status = TurnStatus::Completed;
+                    turn.error = None;
+                    turn.generation = None;
+                    turn.instruction_snapshot = None;
+                    turn.instruction_attribution = None;
+                    prefix.push(turn);
+                    sources.push(source.id.clone());
+                    break;
+                }
+                prefix.push(turn);
+                sources.push(source.id.clone());
+            }
+            let model = engine
+                .configured_model(&config)
+                .map_err(|_| invalid("MODEL_CONTEXT_INCOMPATIBLE"))?;
+            engine.validate_fork_replay(&prefix, model.as_ref()).await?;
+            let limit = if engine.limits.max_history_bytes == 0 {
+                64 * 1024 * 1024
+            } else {
+                engine.limits.max_history_bytes.min(64 * 1024 * 1024)
+            };
+            let (snapshot_id, logical_bytes) = engine
+                .store
+                .write_fork_snapshot(prefix.clone(), sources, limit)
+                .await
+                .map_err(invalid)?;
+            let thread_id = id();
+            let base = Thread {
+                conversation: Some(areal_protocol::Conversation::Side {
+                    version: 2,
+                    origin: areal_protocol::ConversationOrigin {
+                        source_thread_id: source.id,
+                        source_turn_id: prefix
+                            .last()
+                            .map(|turn| turn.id.clone())
+                            .unwrap_or_default(),
+                        boundary: "stableInput".into(),
+                        snapshot_id: snapshot_id.clone(),
+                    },
+                    reference_snapshot: areal_protocol::HistorySeed {
+                        snapshot_id,
+                        turn_count: prefix.len(),
+                        item_count: prefix.iter().map(|turn| turn.items.len()).sum(),
+                        logical_bytes,
+                    },
+                    policy: areal_protocol::SidePolicy::ExecutableV2,
+                    selection: None,
+                }),
+                goals: Default::default(),
+                goal_owner: None,
+                desktop: Some(DesktopState {
+                    configuration: config,
+                    ..Default::default()
+                }),
+                id: thread_id.clone(),
+                session_id: thread_id.clone(),
+                parent_thread_id: None,
+                preview: String::new(),
+                name: None,
+                name_attempt_turn_id: None,
+                model_provider: engine.model_provider(),
+                created_at: now(),
+                updated_at: now(),
+                status: ThreadStatus::Idle,
+                cwd: source.cwd,
+                cli_version: env!("CARGO_PKG_VERSION").into(),
+                source: "appServer".into(),
+                ephemeral: false,
+                turns: Vec::new(),
+                history_archive: None,
+                context_checkpoint: None,
+                dynamic_tools: host
+                    .as_ref()
+                    .map(|_| {
+                        let mut tools = vec![areal_protocol::desktop::browser_v1_tool()];
+                        let computer = areal_protocol::desktop::computer_v1_tool();
+                        if source.dynamic_tools.iter().any(|tool| {
+                            tool.name == computer.name
+                                && tool.description == computer.description
+                                && tool.input_schema == computer.input_schema
+                                && tool.output_schema == computer.output_schema
+                        }) {
+                            tools.push(computer);
+                        }
+                        tools
+                    })
+                    .unwrap_or_default(),
+                toolset_revision: u64::from(host.is_some()),
+            };
+            let (mut thread, turn) = match request.first_input {
+                Some(input) => {
+                    let (thread, turn) = engine.prepare_turn(&base, input)?;
+                    (thread, Some(turn))
+                }
+                None => (base, None),
+            };
+            let mut result = json!({"threadId":thread_id});
+            if let Some(turn) = &turn {
+                result["turnId"] = json!(turn.id);
+            }
+            remember(
+                thread.desktop.as_mut().unwrap(),
+                &identity,
+                &request.request_id,
+                method,
+                hash.clone(),
+                result,
+            );
+            let admission = turn
+                .as_ref()
+                .map(|_| engine.reserve_active_turn())
+                .transpose()?;
+            let registry = engine.managed_registry(&thread, false).map_err(invalid)?;
+            let cell = Cell::new(
+                thread.clone(),
+                0,
+                crate::tools::Bindings { registry, host },
+                None,
+            );
+            let _creation = engine.thread_creation.lock().await;
+            if engine.threads.read().await.len() >= engine.limits.max_threads {
+                return Err(Error::Exhausted("thread capacity reached".into()));
+            }
+            if let Err(error) = engine.persist(&thread).await {
+                if engine
+                    .store
+                    .read_thread(&thread_id)
+                    .await
+                    .is_ok_and(|saved| {
+                        saved.desktop.as_ref().is_some_and(|data| {
+                            receipt(data, &identity, &request.request_id, method, &hash)
+                                .ok()
+                                .flatten()
+                                .is_some()
+                        })
+                    })
+                {
+                    cell.state.lock().await.poisoned = true;
+                    engine.threads.write().await.insert(thread_id, cell);
+                }
+                return Err(error);
+            }
+            if let (Some(turn), Some(admission)) = (&turn, admission) {
+                let mut state = cell.state.lock().await;
+                engine.activate(
+                    &cell,
+                    &mut state,
+                    turn,
+                    engine.shutdown.child_token(),
+                    admission,
+                );
+            }
+            engine.threads.write().await.insert(thread_id, cell);
+            Ok((thread, turn))
+        })
+        .await
+    }
+
+    pub async fn side_close(
+        self: &Arc<Self>,
+        identity: String,
+        request: SideClose,
+    ) -> Result<Value> {
+        self.mutate(move |engine| async move {
+            let method = "areal/side/close";
+            let hash = digest(&request)?;
+            let admission = engine.desktop.lifecycle.gate.lock().await;
+            let cell = engine.raw_cell(&request.thread_id).await?;
+            let mut settled = cell.settled.subscribe();
+            {
+                let mut state = cell.state.lock().await;
+                if !state.thread.is_executable_side() { return Err(invalid("SIDE_POLICY_VIOLATION")); }
+                let data = desktop(&state.thread);
+                if let Some(result) = receipt(&data, &identity, &request.request_id, method, &hash)? { return Ok(close_reply(result)); }
+                if let Some(previous) = data.receipts.iter().find(|r| r.method == method) {
+                    return Ok(close_reply(previous.result.clone()));
+                }
+                if data.archived { return Err(invalid("THREAD_ARCHIVED")); }
+                let mut candidate = state.thread.clone();
+                let data = candidate.desktop.as_mut().unwrap();
+                data.archived = true;
+                data.prompt_prediction = None;
+                data.queue.paused = true;
+                data.queue.pause_reason = Some("sideClosed".into());
+                data.queue.revision += 1;
+                for item in &mut data.queue.items {
+                    if item.status == "pending" { item.status = "cancelled".into(); }
+                }
+                remember(data, &identity, &request.request_id, method, hash,
+                    json!({"requestId":request.request_id,"threadId":request.thread_id,"accepted":true,"cleanupConfirmed":false}));
+                if let Err(error) = engine.persist(&candidate).await {
+                    state.poisoned = true;
+                    if let Some(active) = &state.active { active.cancel.cancel(); }
+                    return Err(error);
+                }
+                state.thread = candidate;
+                crate::prompt_prediction::invalidate(&mut state);
+                if let Some(active) = &state.active { active.cancel.cancel(); }
+                if let Some(owner) = &state.compaction_owner { owner.cancellation.cancel(); }
+                cell.emit("areal/queue/updated", json!({"threadId":request.thread_id,"queue":state.thread.desktop.as_ref().unwrap().queue}));
+            }
+            drop(admission);
+            let cleanup_engine = engine.clone();
+            let cleanup_cell = cell.clone();
+            let cleanup_request = request.clone();
+            let cleanup_identity = identity.clone();
+            let cleanup = engine.tasks.spawn(async move {
+                let engine = cleanup_engine;
+                let cell = cleanup_cell;
+                let settled = settled.wait_for(|done| *done).await.is_ok();
+                while cell.state.lock().await.compacting { tokio::time::sleep(Duration::from_millis(10)).await; }
+                // Retained process records gate final confirmation after inspection.
+                let _ = engine.close_managed(&cell, None).await;
+                let hooks = engine.plugin_hooks_end(&cell).await;
+                let apps = engine.close_thread_apps(&cleanup_request.thread_id).await;
+                cell.bindings.write().await.host = None;
+                let mut state = cell.state.lock().await;
+                if settled && hooks.is_ok() && apps.is_ok() {
+                    let mut candidate = state.thread.clone();
+                    let record = candidate.desktop.as_mut().unwrap().receipts.iter_mut()
+                        .find(|record| record.method == method && record.request_id == cleanup_request.request_id && record.identity == cleanup_identity).unwrap();
+                    record.result["cleanupSettled"] = json!(true);
+                    engine.persist(&candidate).await?;
+                    state.thread = candidate;
+                    engine.finish_side_close(&cell, &mut state).await?;
+                }
+                Ok::<(), Error>(())
+            });
+            let _ = tokio::time::timeout(Duration::from_secs(30), cleanup).await;
+            let state = cell.state.lock().await;
+            Ok(close_reply(state.thread.desktop.as_ref().unwrap().receipts.iter()
+                .find(|record| record.method == method && record.request_id == request.request_id && record.identity == identity).unwrap().result.clone()))
+        }).await
+    }
+
+    pub(crate) async fn finish_side_close(&self, cell: &Cell, state: &mut State) -> Result<()> {
+        if !state.thread.is_executable_side() || super::retention::validate_archive(state).is_err()
+        {
+            return Ok(());
+        }
+        let mut candidate = state.thread.clone();
+        let Some(record) = candidate.desktop.as_mut().and_then(|data| {
+            data.receipts.iter_mut().find(|record| {
+                record.method == "areal/side/close"
+                    && record.result["cleanupSettled"] == true
+                    && record.result["cleanupConfirmed"] != true
+            })
+        }) else {
+            return Ok(());
+        };
+        record.result["cleanupConfirmed"] = json!(true);
+        self.persist(&candidate).await?;
+        state.thread = candidate;
+        cell.emit("areal/thread/archived", json!({"threadId":cell.id}));
+        Ok(())
     }
 }

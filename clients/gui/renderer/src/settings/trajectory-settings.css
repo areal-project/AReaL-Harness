@@ -4,9 +4,9 @@
   gap: 10px;
 }
 .trajectory-toggle-label {
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 3px 9px;
-  font-size: 12px;
+  font-size: var(--text-ui-sm);
   white-space: nowrap;
   background: #ffedd5;
   color: #9a3412;

@@ -193,6 +193,7 @@ impl PluginHost {
         for key in ["PATH", "LANG", "LC_ALL", "SYSTEMROOT"]
             .into_iter()
             .chain(areal_config::PROXY_ENV_VARS)
+            .chain(areal_config::TLS_ENV_VARS)
         {
             if let Some(value) = env.get(std::ffi::OsStr::new(key)) {
                 command.env(key, value);

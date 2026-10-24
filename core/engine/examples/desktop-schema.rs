@@ -29,6 +29,10 @@ fn desktop_schema() -> Value {
         };
     }
     add!("areal/capabilities", CapabilitiesRequest);
+    add!(
+        "areal/genUi/source",
+        areal_protocol::plugin_runtime::GenUiSource
+    );
     add!("areal/thread/prediction", PromptPredictionRequest);
     add!(
         "areal/mcp/app/tools/register",
@@ -155,7 +159,11 @@ fn desktop_schema() -> Value {
         control["properties"]["expectedRunId"] = json!({"type":"string"});
         methods.insert(method.into(), control);
     }
-    for action in ["areal/task/resume", "areal/task/cancel"] {
+    for action in [
+        "areal/task/resume",
+        "areal/task/cancel",
+        "areal/task/delete",
+    ] {
         let mut control =
             serde_json::to_value(schemars::schema_for!(areal_protocol::tasks::TaskControl))
                 .unwrap();
@@ -200,6 +208,8 @@ fn desktop_schema() -> Value {
     );
     add!("areal/thread/fork", ForkThread);
     add!("areal/side/start", SideStart);
+    add!("areal/side/create", SideCreate);
+    add!("areal/side/close", SideClose);
     add!("areal/profile/read", VersionRef);
     add!("areal/workflow/read", VersionRef);
     add!(
@@ -312,6 +322,9 @@ fn desktop_schema() -> Value {
     methods.insert("areal/plugin/configure".into(), object(
         json!({"id":string,"scope":scope,"enabled":{"type":"boolean"},"expectedRevision":integer,"requestId":string}),
         vec!["id","scope","enabled","expectedRevision","requestId"]));
+    methods.insert("areal/plugin/component/configure".into(), object(
+        json!({"id":string,"component":schemars::schema_for!(areal_plugins::PluginComponentId),"enabled":{"type":"boolean"},"expectedRevision":integer,"expectedDigest":{"type":"string","pattern":"^[0-9a-f]{64}$"},"requestId":string}),
+        vec!["id","component","enabled","expectedRevision","expectedDigest","requestId"]));
     methods.insert(
         "areal/plugin/uninstall".into(),
         object(
@@ -560,11 +573,32 @@ fn desktop_schema() -> Value {
     output["serverRequests"] = json!({"item/tool/call":browser_request,
         "areal/browser/prepare":object(json!({"threadId":string,"turnId":string,"callId":string,"tool":string,"arguments":{},"hostGeneration":string}),vec!["threadId","turnId","callId","tool","arguments","hostGeneration"])});
     output["serverRequests"]["item/tool/call"]["properties"]["browserApproval"] = json!({"type":"object","properties":{"plan":{"type":"object"}},"required":["plan"],"additionalProperties":false});
+    output["serverRequests"]["item/tool/call"]["properties"]["computerApproval"] =
+        output["serverRequests"]["item/tool/call"]["properties"]["browserApproval"].clone();
+    output["serverRequests"]["areal/computer/prepare"] =
+        output["serverRequests"]["areal/browser/prepare"].clone();
+    output["serverRequests"]["areal/computer/prepare"]["properties"]["discardPreparedPlan"] =
+        json!({"type":"boolean"});
+    output["serverRequests"]["areal/computer/prepare"]["properties"]["computerApproval"] =
+        output["serverRequests"]["item/tool/call"]["properties"]["computerApproval"].clone();
+    output["serverRequests"]["areal/cua/turnEnded"] = object(
+        json!({"threadId":string,"turnId":string,"hostGeneration":string,"event":{"enum":["Stop","Interrupt"]}}),
+        vec!["threadId", "turnId", "hostGeneration", "event"],
+    );
     output["serverRequests"]["areal/task/prepare"] = object(
         json!({"taskId":string,"runId":string,"threadId":string,"scheduledAt":integer,"intent":{"enum":["start","resume"]}}),
         vec!["taskId", "runId", "threadId", "scheduledAt", "intent"],
     );
     output["serverResponses"] = json!({"item/tool/call":schemars::schema_for!(areal_protocol::DynamicToolResponse),"areal/browser/prepare":{"type":"object"},"areal/task/prepare":{"type":"object"}});
+    output["serverResponses"]["areal/computer/prepare"] = json!({"type":"object"});
+    output["serverResponses"]["areal/cua/turnEnded"] = empty;
+    for method in SERVER_REQUESTS {
+        assert!(
+            output["serverRequests"].get(*method).is_some()
+                && output["serverResponses"].get(*method).is_some(),
+            "advertised server request lacks request or response schema: {method}"
+        );
+    }
     for (name, value) in output.as_object_mut().unwrap() {
         match name.as_str() {
             "apiVersion" => {}

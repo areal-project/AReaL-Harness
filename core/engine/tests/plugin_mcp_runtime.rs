@@ -449,6 +449,188 @@ struct GatedModel {
     rounds: std::sync::atomic::AtomicUsize,
     schemas: std::sync::Mutex<Vec<Vec<serde_json::Value>>>,
 }
+#[tokio::test]
+async fn component_disable_revokes_captured_tools_and_retained_app_handles() {
+    let workspace = tempfile::tempdir().unwrap();
+    let state = tempfile::tempdir().unwrap();
+    write(
+        workspace.path(),
+        ".agents/plugins/marketplace.json",
+        r#"{"name":"local","plugins":[{"name":"sample","source":"./pkg"}]}"#,
+    );
+    write(
+        workspace.path(),
+        "pkg/.codex-plugin/plugin.json",
+        r#"{"name":"sample"}"#,
+    );
+    let script = include_str!("../../mcp/tests/substrate.py")
+        .replace("[\"app\"]", "[\"app\",\"model\"]")
+        .replace("r=json.loads(line);m=r.get(\"method\");p=r.get(\"params\",{});out=None", "r=json.loads(line);m=r.get(\"method\");p=r.get(\"params\",{});out=None\n if m==\"tools/call\":open(os.environ[\"COUNTER\"],\"a\").write(\"called\\n\")");
+    write(workspace.path(), "pkg/server.py", &script);
+    write(workspace.path(), "pkg/.mcp.json", &json!({"mcpServers":{"fixture":{"command":"python3","args":["server.py"],"env":{"COUNTER":workspace.path().join("calls.txt")}}}}).to_string());
+    let model = Arc::new(GatedModel {
+        entered: Default::default(),
+        release: Default::default(),
+        rounds: Default::default(),
+        schemas: Default::default(),
+    });
+    let engine = Engine::open(state.path(), model.clone(), Limits::default()).unwrap();
+    let store = Arc::new(
+        Store::open(
+            workspace.path().join("plugins"),
+            workspace.path().into(),
+            None,
+        )
+        .unwrap(),
+    );
+    engine.install_plugin_store(store.clone()).unwrap();
+    let detail = store.read("sample@local").unwrap();
+    engine
+        .plugin_install(
+            detail.id.clone(),
+            "user".into(),
+            detail.revision,
+            detail.source,
+            detail.source_digest,
+        )
+        .await
+        .unwrap();
+    let detail = store.read(&detail.id).unwrap();
+    engine
+        .plugin_connection(
+            detail.id.clone(),
+            detail.installed_digest.clone().unwrap(),
+            true,
+        )
+        .await
+        .unwrap();
+    let apps = engine.mcp_apps_list(None).await.unwrap();
+    let server = apps["data"][0]["serverId"].as_str().unwrap().to_owned();
+    let generation = apps["data"][0]["generation"].as_u64().unwrap();
+    let thread = engine
+        .create(workspace.path().to_str().unwrap().into())
+        .await
+        .unwrap();
+    let app = engine
+        .mcp_app_open(
+            "owner".into(),
+            None,
+            thread.id.clone(),
+            server.clone(),
+            generation,
+            "app".into(),
+            None,
+            "component-open".into(),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    engine
+        .start(&thread.id, vec![areal_protocol::Input::text("run")])
+        .await
+        .unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), model.entered.notified())
+        .await
+        .unwrap();
+    write(workspace.path(), "pkg/version.txt", "new package bytes");
+    let updated = store.read(&detail.id).unwrap();
+    engine
+        .plugin_install(
+            updated.id.clone(),
+            "user".into(),
+            updated.revision,
+            updated.source,
+            updated.source_digest,
+        )
+        .await
+        .unwrap();
+    let updated = store.read(&detail.id).unwrap();
+    let component = areal_plugins::PluginComponentId::McpServer { id: server.clone() };
+    assert!(
+        engine
+            .plugin_component_configure(
+                updated.id.clone(),
+                component.clone(),
+                false,
+                updated.revision,
+                detail.installed_digest.unwrap()
+            )
+            .await
+            .is_err()
+    );
+    engine
+        .plugin_component_configure(
+            updated.id.clone(),
+            component.clone(),
+            false,
+            updated.revision,
+            updated.installed_digest.clone().unwrap(),
+        )
+        .await
+        .unwrap();
+    let rows = engine.plugin_mcp_list().await.unwrap();
+    assert_eq!(rows["data"][0]["servers"][0]["projectEnabled"], false);
+    assert_eq!(rows["data"][0]["servers"][0]["state"], "disabled");
+    assert!(engine.mcp_app_request("owner".into(), thread.id.clone(), app["instanceId"].as_str().unwrap().into(), generation, json!({"jsonrpc":"2.0","id":2,"method":"resources/read","params":{"uri":"ui://app"}}), None).await.is_err());
+    assert!(
+        engine
+            .mcp_app_open(
+                "owner".into(),
+                None,
+                thread.id.clone(),
+                server,
+                generation,
+                "app".into(),
+                None,
+                "component-reopen".into(),
+                None,
+                None
+            )
+            .await
+            .is_err()
+    );
+    model.release.notify_one();
+    tokio::time::timeout(std::time::Duration::from_secs(5), engine.wait(&thread.id))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        !workspace.path().join("calls.txt").exists(),
+        "captured disabled MCP tool executed"
+    );
+    let disabled = store.read(&detail.id).unwrap();
+    engine
+        .plugin_component_configure(
+            disabled.id.clone(),
+            component,
+            true,
+            disabled.revision,
+            disabled.installed_digest.unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(
+        engine.mcp_apps_list(None).await.unwrap()["data"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "enabling must not reconnect"
+    );
+    let enabled = store.read(&detail.id).unwrap();
+    engine
+        .plugin_connection(enabled.id, enabled.installed_digest.unwrap(), true)
+        .await
+        .unwrap();
+    assert_eq!(
+        engine.mcp_apps_list(None).await.unwrap()["data"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    engine.shutdown().await;
+}
 #[async_trait]
 impl Model for GatedModel {
     fn name(&self) -> &str {
@@ -539,6 +721,7 @@ async fn active_schema_survives_update_and_busy_configure() {
         "pkg/server.py",
         &script.replace("\"name\":\"app\"", "\"name\":\"replacement\""),
     );
+    write(t.path(), "pkg/.mcp.json", &json!({"mcpServers":{"renamed":{"command":"python3","args":["server.py"],"env":{"LITERAL":"new-generation"}}}}).to_string());
     let next = s.read(&d.id).unwrap();
     e.plugin_install(
         next.id.clone(),
@@ -1901,12 +2084,13 @@ async fn marketplace_authentication_timing_gates_only_declared_servers() {
         );
         e.install_plugin_store(store.clone()).unwrap();
         let d = store.read("sample@local").unwrap();
+        let review_digest = d.review_digest().to_owned();
         e.plugin_install(
             d.id.clone(),
             "user".into(),
             d.revision,
             d.source,
-            d.source_digest,
+            review_digest,
         )
         .await
         .unwrap();

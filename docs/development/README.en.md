@@ -113,6 +113,20 @@ These settings belong to the local user configuration, not the project's `.mbx.t
 
 Do not recursively run `mbx adopt` over long-running Core processes, fixed-path acceptance artifacts or release outputs. Managed-target leases do not protect binaries launched directly from target or children that survive the mbx process. Rust 1.94 supports shared compiler outputs, but not cross-checkout private incremental seeding requiring rustc 1.98 or target unit seeding requiring Cargo 1.100. Remove the shim's PATH activation to return to plain Cargo; this does not delete outputs or the shared cache.
 
+### Temporary worktree cache collection
+
+The shared cache does not bound ordinary `target` growth. Use the existing cleanup entry point's budget mode for temporary worktrees; the default is a preview:
+
+```sh
+make artifact-cleanup ARGS='--temporary-worktrees --cache-budget-gib 40 --min-free-gib 30 --report /private/tmp/worktree-cache-preview.json'
+```
+
+After reviewing the preview, add `--apply` and choose a separate report path for each run. This mode selects existing secondary worktrees registered with this repository's Git checkout. It always excludes the primary worktree and rejects `--root` and `--no-worktrees` overrides. It only collects `deps`, `incremental`, `build` and `.fingerprint` under identified Cargo profiles. Profile executables, shells, complete bundles, delivery directories, dependencies and symlinks remain. Missing worktree registrations are skipped, not removed.
+
+The 40 GiB budget covers estimated allocated blocks across secondary worktree caches, separately from the mbx shared-cache budget. When over budget or below 30 GiB free, older caches are selected by profile-directory modification time; caches within budget remain to avoid clearing them on every run. Directory times are not exact LRU, and APFS shared blocks make estimates differ from recovered space. Each deletion holds Cargo locks and rechecks activity. Any open file in the same profile, or a build/debug process in that worktree, protects the entire group. A profile that cannot be measured is retained and reported without blocking other groups. Active caches and unrelated data can prevent meeting either threshold; the report records remaining pressure.
+
+In Codex, a heartbeat attached to this chat can run the command every 30 minutes with `--apply` and separate reports. Stay quiet when nothing is deleted or normal activity prevents collection; notify only for actual collection, failure or unresolved disk pressure. The automation reuses this mode, without invoking full bundle cleanup or stopping builds or services. It does not migrate targets. Primary-worktree caches and complete GUI/Core bundles continue to use the on-demand cleanup below.
+
 ## Validation artifact retention
 
 Run `make artifact-cleanup` to preview AReaL artifacts under `~/Documents/Codex` and this repository's registered worktrees. The default is read-only. GUI packaging evidence identifies rounds, with executable/Core completeness checks; matching app/ZIP copies belong to the same round. For standalone Core, the command retains the newest five complete, manifest-verified bundle versions, deduplicated by build identity and file hashes. Cargo profile directories are mutable build outputs and are never counted as historical rounds. Loose profile outputs are removed only when all three binaries match a known complete bundle and at least five verified bundle versions remain; unidentified outputs remain.
@@ -121,4 +135,4 @@ Rust `deps`, `incremental`, `build`, and `.fingerprint` directories are managed 
 
 Use `python3 scripts/artifact-cleanup.py --root /path/to/artifacts --no-worktrees --json` for an isolated scan. `--root` is repeatable, and `--keep` changes the retention limit. `--report /path/outside/scanned/roots/preview.json` saves the complete plan. Sizes use allocated blocks and exclude overlapping paths; hard links, APFS clones and snapshots may reduce actual recovered space.
 
-After reviewing the preview, use `--apply --report /path/outside/scanned/roots/result.json` for explicit deletion. Execution takes exclusive locks on the profile's Cargo lock files, rechecks activity, and records each deletion before and after it happens. Locks are preserved; a failed check skips the path. Failed activity inspection blocks deletion. The command does not stop processes or remove worktrees, source, configuration or history. A failure exits nonzero; the result file records completed and potentially interrupted deletions. Inspect the receipt and rerun the preview after partial failure. No recurring cleanup is installed.
+After reviewing the preview, use `--apply --report /path/outside/scanned/roots/result.json` for explicit deletion. Execution takes exclusive locks on the profile's Cargo lock files, rechecks activity, and records each deletion before and after it happens. Locks are preserved; a failed check skips the path. Failed activity inspection blocks deletion. The command does not stop processes or remove worktrees, source, configuration or history. A failure exits nonzero; the result file records completed and potentially interrupted deletions. Inspect the receipt and rerun the preview after partial failure. The command itself does not install recurring tasks.

@@ -35,7 +35,7 @@ async function fixture(name) {
   const client = {
     ready: true,
     capabilities: {
-      features: { threadStartAdmissionGuard: true, turnStartAdmissionGuard: true },
+      features: { threadStartAdmissionGuard: true, turnStartAdmissionGuard: true, permissionPresets: true },
       methods: ["areal/thread/start", "areal/turn/start"],
     },
     request(method, params) {

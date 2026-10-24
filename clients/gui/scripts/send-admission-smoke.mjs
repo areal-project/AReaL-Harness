@@ -17,6 +17,7 @@ const require = createRequire(join(gui, 'app/package.json'));
 const { _electron: electron } = require('playwright-core');
 const binary = process.env.AREAL_CORE_BIN;
 const failList = process.env.AREAL_SEND_LIST_FAILURE === '1';
+const beforeCreate = process.env.AREAL_SEND_LIST_BEFORE_CREATE === '1';
 assert.ok(binary && isAbsolute(binary), 'Set AREAL_CORE_BIN to an absolute fixed Core binary');
 const scratch = await mkdtemp('/private/tmp/send-admission-');
 const workspace = join(scratch, 'workspace');
@@ -51,9 +52,11 @@ const { CoreBackend } = require(${JSON.stringify(join(gui, 'app/src/core/backend
 const { appendFileSync, existsSync } = require('node:fs');
 let sequence = 0;
 const record = value => appendFileSync(${JSON.stringify(tracePath)}, JSON.stringify({ sequence: ++sequence, at: Date.now(), ...value }) + '\\n');
-const submit = CoreBackend.prototype.submit;
-CoreBackend.prototype.submit = async function(project, method, ...args) {
-  if (!project.client.__sendAdmissionTrace) {
+const execute = CoreBackend.prototype.executeCommand;
+CoreBackend.prototype.executeCommand = async function(name, params, ...args) {
+  const project = this.projects.get(params?.projectId);
+  if (name === 'create' && project?.client && !project.client.__sendAdmissionTrace) {
+    record({ boundary: 'createCommand', mode: params.worktree?.mode ?? 'source', requestId: params.requestId });
     const client = project.client;
     client.__sendAdmissionTrace = true;
     const request = client.request.bind(client);
@@ -62,21 +65,21 @@ CoreBackend.prototype.submit = async function(project, method, ...args) {
       const id = ++sequence;
       record({ boundary: 'rpc', phase: 'start', id, method });
       try {
-        if (admitted && !held && method === 'areal/conversation/list') {
+        const value = await request(method, ...args);
+        if (!held && method === 'areal/conversation/list' && (${JSON.stringify(beforeCreate)} || admitted)) {
           held = true;
-          record({ boundary: 'listGate', phase: 'held', method });
+          record({ boundary: 'listGate', phase: 'held', method, admitted, responseReady: true });
           const deadline = Date.now() + 60000;
           while (existsSync(${JSON.stringify(listGate)})) {
             if (Date.now() > deadline) throw new Error('Fixture conversation-list gate was not released');
             await new Promise(resolve => setTimeout(resolve, 10));
           }
           record({ boundary: 'listGate', phase: 'released', method });
-          if (${JSON.stringify(failList)}) throw new Error('Fixture conversation-list failure after accepted create');
+          if (${JSON.stringify(failList)}) throw new Error('Fixture conversation-list failure');
         }
-        const value = await request(method, ...args);
         if (method === 'areal/thread/start') {
           admitted = true;
-          record({ boundary: 'threadAdmission', phase: 'accepted', method });
+          record({ boundary: 'threadAdmission', phase: 'accepted', method, requestId: args[0]?.requestId });
         }
         record({ boundary: 'rpc', phase: 'finish', id, method, ok: true });
         return value;
@@ -86,7 +89,7 @@ CoreBackend.prototype.submit = async function(project, method, ...args) {
       }
     };
   }
-  return submit.call(this, project, method, ...args);
+  return execute.call(this, name, params, ...args);
 };
 `;
 const hash = async () => createHash('sha256').update(await readFile(binary)).digest('hex');
@@ -123,21 +126,29 @@ try {
   await app.evaluate(({ dialog }, path) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] }); }, workspace);
   await page.getByRole('button', { name: '不在项目中工作', exact: true }).click();
   await page.getByRole('menuitem', { name: '新建项目', exact: true }).click();
-  await until(async () => project(await snapshot())?.state?.connected, 'Project ready');
+  await until(async () => project(await snapshot())?.state?.connected && project(await snapshot())?.summariesLoaded, 'Project and navigation summaries ready');
+  await page.evaluate(() => localStorage.setItem('areal-gui:application-preferences', JSON.stringify({ nextPromptSuggestions: false })));
+  await page.reload();
+  await until(async () => (await snapshot()).connection?.state === 'ready' && project(await snapshot())?.state?.connected, 'Reloaded isolated preferences');
   await page.getByTestId('chat-input').fill(originalText);
   await page.getByTestId('chat-send-button').click();
-  await until(async () => (await trace()).some(item => item.boundary === 'listGate' && item.phase === 'held'), 'Post-admission list held');
-  await until(async () => Object.keys(project(await snapshot())?.state?.threads ?? {}).length > 0, 'Created thread observed independently of list refresh');
+  await until(async () => (await trace()).some(item => item.boundary === 'listGate' && item.phase === 'held'), 'Conversation-list response held');
   try {
-    await until(async () => requests.length === 1 && (await editorText()).trim() === '', 'First message admitted and Composer cleared while list is held', 10000);
+    await until(async () => {
+      const current = project(await snapshot());
+      const user = Object.values(current?.state?.threads ?? {}).flatMap(thread => thread.turns ?? [])
+        .flatMap(turn => turn.items ?? []).find(item => item.type === 'userMessage' && item.content?.some(part => part.text === originalText));
+      const visible = await page.locator('.user-message-body').allTextContents();
+      return requests.length === 1 && (await editorText()).trim() === '' && user && visible.includes(originalText);
+    }, 'First message admitted, visible and Composer cleared while list response is held', 10000);
   } catch (error) {
     failure = error.stack;
   }
-  heldObservation = { modelRequests: requests.length, editorText: await editorText(), admittedBeforeRelease: !failure };
+  heldObservation = { modelRequests: requests.length, editorText: await editorText(), admittedBeforeRelease: !failure, trace: await trace() };
   await capture('list-held');
   console.log(heldObservation.admittedBeforeRelease
-    ? 'PASS: first message reaches the model and clears Composer while the post-create list is held'
-    : 'FAIL: post-create list refresh blocks the first message while its text remains in Composer');
+    ? 'PASS: first message is visible and Composer clears while the conversation-list response is held'
+    : 'FAIL: conversation-list response blocks the first message while its text remains in Composer');
   await rm(listGate);
   await until(async () => requests.length > 0, 'Original message reaches model after list release');
   await until(async () => (await editorText()).trim() === '', 'Composer clears after send admission');
@@ -155,9 +166,17 @@ try {
   assert.equal(userMessages.length, 1, 'The fixture receives one user message');
   assert.equal(messageText(userMessages[0]), originalText, 'The exact original text reaches the model');
   assert.equal((await trace()).filter(item => item.boundary === 'threadAdmission').length, 1, 'Delayed observation never replays thread creation');
+  const create = (await trace()).filter(item => item.boundary === 'createCommand');
+  assert.equal(create.length, 1, 'One Send issues one create command');
+  assert.equal(create[0].mode, 'source', 'Fresh drafts use the source directory unless the user opts into a worktree');
+  assert.equal((await trace()).find(item => item.boundary === 'threadAdmission')?.requestId, create[0].requestId, 'Core accepts the original creation request UUID once');
+  const finalProject = project(await snapshot());
+  const binding = finalProject.worktreeOperations?.find(item => item.requestId === create[0].requestId);
+  assert.equal(binding?.usesSource, true, 'Source-mode send retains its source-directory binding');
+  assert.equal(binding?.state, 'ready', 'Source-mode send completes its existing creation lifecycle');
   assert.deepEqual(errors, [], 'No renderer or fixture errors');
   checks.push('Releasing the list delivers the exact original text once and completes a reply');
-  assert.equal(heldObservation.admittedBeforeRelease, true, 'An accepted create must not block the first message on an unrelated list refresh');
+  assert.equal(heldObservation.admittedBeforeRelease, true, 'Conversation-list responses must not block fresh source-mode message admission');
   checks.push('An accepted create permits the first message and clears Composer while the list refresh is held');
   passed = true;
 } catch (error) {
@@ -174,8 +193,8 @@ try {
   catch (error) { cleanup = error.stack; passed = false; }
   if (server.listening) await new Promise(resolve => server.close(resolve));
   assert.equal(await hash(), coreHash, 'Core binary stays unchanged');
-  await writeFile(join(scratch, 'manifest.json'), JSON.stringify({ passed, source, guiDiffHash, binary, coreHash, originalText, failList, checks, heldObservation, failure, cleanup, errors,
-    boundaries: 'Source Electron and real Core. Deterministic loopback model. One filesystem barrier holds the first conversation-list RPC after a successful thread-start response. Native folder picker stubbed. Deadline controls fixture completion, not a latency benchmark. No packaged app or physical input.' }, null, 2));
+  await writeFile(join(scratch, 'manifest.json'), JSON.stringify({ passed, source, guiDiffHash, binary, coreHash, originalText, failList, beforeCreate, checks, heldObservation, failure, cleanup, errors,
+    boundaries: 'Source Electron and real Core. Deterministic loopback model. One filesystem barrier holds a real conversation-list response at the create boundary or after successful thread admission. Native folder picker stubbed. Deadline controls fixture completion, not a latency benchmark. No packaged app or physical input.' }, null, 2));
   console.log('Send admission result:', passed ? 'PASS' : 'FAIL');
   if (!passed) process.exitCode = 1;
 }

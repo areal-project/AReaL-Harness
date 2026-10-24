@@ -1,12 +1,1 @@
-.collapsible-text {
-  --long-text-preview-lines: 8;
-  min-width: 0;
-  line-height: 1.7;
-}
-.collapsible-text-viewport { max-block-size: calc(var(--long-text-preview-lines) * 1lh); overflow: hidden; }
-.collapsible-text[data-expanded="true"] > .collapsible-text-viewport { max-block-size: none; overflow: visible; }
-.collapsible-text-content { display: flow-root; }
-.collapsible-text[data-expandable="true"][data-expanded="false"] > .collapsible-text-viewport {
-  mask-image: linear-gradient(to bottom, black calc(100% - 1lh), transparent);
-}
-.collapsible-text-toggle { display: flex; margin-block-start: var(--spacing-inline); color: inherit; }
+@import "@areal/ui/conversation.css";

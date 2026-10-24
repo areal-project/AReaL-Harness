@@ -85,10 +85,13 @@ class DesktopLifecycle {
   async prepare({ kind, mode = 'ifIdle', observed, projectId, threadId, turnId } = {}) {
     if (!['ifIdle', 'cancel'].includes(mode)) throw new Error('无效的停止意图');
     if (kind === 'interruptTurn') {
-      const { service } = await this.connection.request('snapshot');
+      const { service, snapshot } = await this.connection.request('snapshot');
       const capability = assertLifecycleSupport(service, kind);
-      const expectedTargets = targets(service.targets ?? []).filter(target => target.projectId === projectId);
-      if (expectedTargets.length !== 1) throw Object.assign(new Error('原项目后台身份不完整，请重新核查'), { code: 'CONFIRMATION_STALE' });
+      const thread = snapshot?.projects?.find(project => project.id === projectId)?.state?.threads?.[threadId];
+      const executionProjectId = thread?.executionProjectId ?? projectId;
+      const expectedTargets = targets(service.targets ?? []).filter(target => target.projectId === executionProjectId);
+      if (expectedTargets.length !== 1 || thread?.executionCore?.instanceId && thread.executionCore.instanceId !== expectedTargets[0].serviceId)
+        throw Object.assign(new Error('原项目后台身份不完整，请重新核查'), { code: 'CONFIRMATION_STALE' });
       return { kind, mode, expectedDesktopGeneration: capability.desktopGeneration, expectedTargets, threadId, turnId };
     }
     const before = observed ?? await this.observe();

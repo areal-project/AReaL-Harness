@@ -2,6 +2,7 @@ import nodeFetch from "node-fetch";
 import { ProxyAgent } from "proxy-agent";
 import { ReadableStream } from "node:stream/web";
 import { getCACertificates } from "node:tls";
+import { readFileSync } from "node:fs";
 import { BlockList, isIP } from "node:net";
 
 export function proxyForUrl(url, source = process.env) {
@@ -67,7 +68,9 @@ export function subscriptionNetwork(source = process.env) {
   // 继续保留系统、内置和额外 CA，绝不关闭 TLS 或主机名校验。
   function transport() {
     if (!agent) {
-      const ca = [...new Set([...getCACertificates("default"), ...getCACertificates("system")])];
+      const extra = [...new Set([source.SSL_CERT_FILE, source.NODE_EXTRA_CA_CERTS].filter(Boolean))]
+        .map(path => readFileSync(path, "utf8"));
+      const ca = [...new Set([...getCACertificates("default"), ...getCACertificates("system"), ...extra])];
       agent = new ProxyAgent({ ca, getProxyForUrl: (url) => proxyForUrl(url, source) });
     }
     return agent;

@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "id": "worktree-picker",
+  "intent": "发送前选择新 Worktree、提交起点与项目环境，只修改同项目草稿",
+  "pattern": "P-DETAIL",
+  "target": "renderer/src/WorktreeStarter.tsx",
+  "runtime": "desktop",
+  "interactionFamilies": [
+    "I-INPUT",
+    "I-RETURN",
+    "I-RECOVER"
+  ],
+  "reference": {
+    "kind": "screenshot",
+    "visualTarget": "WT-R09 主菜单、WT-R08 分支子页；规则正文：design-system/worktrees.md。用户原图留本地，代表状态对照见 design-system/exercises/worktrees.md。"
+  },
+  "slots": {
+    "body": [
+      "Switch",
+      "SettingsSearchInput",
+      "Feedback"
+    ],
+    "actions": [
+      "Button"
+    ]
+  },
+  "states": [
+    {
+      "id": "ready",
+      "condition": "Git 项目，开关关闭 / 开启",
+      "expected": "上下文条尾部齿轮打开三行菜单，标签和值同排；只修改草稿"
+    },
+    {
+      "id": "busy",
+      "condition": "正在读取选项",
+      "expected": "保留原值与归属，局部等待，防止使用未确认选项"
+    },
+    {
+      "id": "failed",
+      "condition": "选项读取明确失败",
+      "expected": "就近反馈并允许重读，不当作空列表"
+    },
+    {
+      "id": "disabled",
+      "condition": "非 Git 项目或项目外模式",
+      "expected": "创建不可用且原因可读，环境不跨项目补值"
+    },
+    {
+      "id": "branch-search",
+      "condition": "分组分支列表、长名称、无匹配、dirty 来源",
+      "expected": "同一浮层内进入搜索子页；选中勾可辨，明确只用已提交版本"
+    },
+    {
+      "id": "environment-empty",
+      "condition": "当前项目没有环境",
+      "expected": "无环境仍可选择，配置入口进入所属项目设置"
+    },
+    {
+      "id": "environment-return",
+      "condition": "进入设置保存环境再返回",
+      "expected": "Prompt、附件、项目与分支保留，不自动创建或发送"
+    },
+    {
+      "id": "stale-selection",
+      "condition": "原选环境被删除或不可用",
+      "expected": "显示失效并要求重选，不静默替换环境"
+    }
+  ],
+  "conditions": {
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "fontSizes": [
+      14,
+      18
+    ],
+    "widthModes": [
+      "wide",
+      "narrow"
+    ],
+    "reducedMotion": [
+      false,
+      true
+    ]
+  },
+  "invariants": [
+    "遵循 WT-PICKER-01～03 与 WT-VISUAL-01，仅列明代表状态已复验",
+    "主菜单与子页共用锚点和宽度，不堆叠弹窗",
+    "打开、搜索、选择、返回和关闭不创建目录或改变原目录分支",
+    "选项与迟到响应只属于原项目，关闭恢复合理焦点"
+  ],
+  "evidence": {
+    "status": "compared",
+    "artifacts": [
+      {
+        "path": ".scratch/worktree-ui-20261024/renderer-4/picker-off.png",
+        "sha256": "3e50c24f044fe5e445a925ca01ad00f929c7e2a11191bb35e808dc6a7f712cfd",
+        "state": "picker-off"
+      },
+      {
+        "path": ".scratch/worktree-ui-20261024/renderer-4/picker-branches.png",
+        "sha256": "e2507a2862afc14b1d45d30044dda08b1be61903396d22ee681bbf9cd17fcf6c",
+        "state": "picker-branches"
+      },
+      {
+        "path": ".scratch/worktree-ui-20261024/renderer-4/picker-configured.png",
+        "sha256": "94871a7de9fd3dc274912d70f9297fda9fe6afb8795b0ffe83e40b70bc3c177c",
+        "state": "picker-configured"
+      },
+      {
+        "path": ".scratch/worktree-ui-20261024/renderer-4/picker-dark-18-wide.png",
+        "sha256": "8bfaa1654c24ec21d033a3273014317aee956614b002d7a21dba865c2abce9a7",
+        "state": "picker-dark-18-wide"
+      }
+    ],
+    "gaps": [
+      "参考缺少 viewport/DPR，保留 AReaL 主题与尺寸，不声明像素相等",
+      "分支类型元数据未暴露，不猜本地/远端分组；非 Git、加载中等未采集瞬态不计为完整覆盖",
+      "原生目录选择器与物理输入未验收"
+    ]
+  }
+}

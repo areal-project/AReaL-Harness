@@ -24,6 +24,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 areal-engine = { path = "../engine", features = ["test-support"] }
+areal-plugins.workspace = true
 areal-local-service.workspace = true
 areal-runtime = { path = "../../runtime/daemon" }
 areal-runtime-client.workspace = true

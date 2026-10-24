@@ -62,8 +62,9 @@ CoreBackend.prototype.connect = async function(project, ...args) {
  }
  return connectProject.call(this, project, ...args);
 };
-const sync = AppProviders.prototype.sync;
-AppProviders.prototype.sync = async function(project, ...args) {
+const sync = AppProviders.prototype.reconcileProject;
+if (typeof sync !== 'function') throw new Error('Provider reconciliation startup boundary is unavailable');
+AppProviders.prototype.reconcileProject = async function(project, ...args) {
  if (project.root === ${JSON.stringify(workspace)} && fs.existsSync(${JSON.stringify(gate)})) {
   record('provider_sync_held', {projectId:project.id, clientReady:project.client?.ready, generation:project.connectionGeneration});
   const deadline = Date.now()+20000;
@@ -205,13 +206,14 @@ try {
     assert.equal(startupObservation.events.some(event => event.kind === 'catalog_command_end' && event.projectId === projectId), false, 'Catalog waits for authentication before its page deadline begins');
     checks.push('Startup exceeding five seconds stays pending and recovers without catalog timeout');
   }
-  const independentOwners = (await snapshot()).projects.filter(owner => owner.projectless === true).map(owner => owner.id).sort();
-  assert.ok(independentOwners.includes(projectId));
-  assert.ok(!independentOwners.includes(primaryProjectId));
+  const registeredOwners = (await snapshot()).projects.map(owner => owner.id).sort();
+  assert.ok(registeredOwners.includes(projectId));
+  assert.ok(registeredOwners.includes(primaryProjectId));
   const queriedOwners = [...new Set(heldObservation.events.filter(event => event.kind === 'catalog_command_begin').map(event => event.projectId))].sort();
-  assert.deepEqual(queriedOwners, independentOwners, 'Global scheduled-task navigation queries only independent owners');
-  assert.equal(await page.getByRole('button', { name: `打开自动化 ${workspaceTask.objective}`, exact: true }).count(), 0, 'Global scheduled-task navigation excludes workspace-owned rows');
-  checks.push('Global catalog excludes workspace owners from both requests and projected rows');
+  assert.deepEqual(queriedOwners, registeredOwners, 'Global scheduled-task navigation queries all registered owners');
+  await page.getByRole('button', { name: `打开自动化 ${workspaceTask.objective}`, exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: `打开自动化 ${workspaceTask.objective}`, exact: true }).count(), 1, 'Global scheduled-task navigation includes ready workspace-owned rows');
+  checks.push('Global catalog includes registered workspace and independent owners in requests and projected rows');
   assert.equal(heldObservation.visible, true, 'Saved task row must appear before unrelated startup warmup releases');
   assert.equal(heldObservation.disabled, true, 'Task management remains disabled before full owner readiness');
   assert.equal(heldObservation.projectConnected, false, 'Catalog reads must not mark execution ready');
@@ -226,14 +228,15 @@ try {
     const offset = (await trace()).length;
     const openedAt = Date.now();
     await page.getByRole('button', { name: '定时任务', exact: true }).click();
-    await until(async () => (await trace()).slice(offset).some(event => event.kind === 'catalog_command_end' && event.projectId === projectId), 'independent catalog response after reopening');
+    await until(async () => { const events = (await trace()).slice(offset); return registeredOwners.every(id => events.some(event => event.kind === 'catalog_command_end' && event.projectId === id)); }, 'registered owner catalog responses after reopening');
     await row.waitFor();
-    assert.equal(await page.getByRole('button', { name: `打开自动化 ${workspaceTask.objective}`, exact: true }).count(), 0, 'Workspace live snapshots stay outside the global catalog');
+    await page.getByRole('button', { name: `打开自动化 ${workspaceTask.objective}`, exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: `打开自动化 ${workspaceTask.objective}`, exact: true }).count(), 1, 'Ready workspace task remains included in the global catalog');
     const events = (await trace()).slice(offset);
-    assert.deepEqual([...new Set(events.filter(event => event.kind === 'catalog_command_begin').map(event => event.projectId))].sort(), independentOwners);
+    assert.deepEqual([...new Set(events.filter(event => event.kind === 'catalog_command_begin').map(event => event.projectId))].sort(), registeredOwners);
     navigationObservations.push({ index, openedAt, visibleAt: Date.now(), visibleLatencyMs: Date.now() - openedAt, queryCount: events.filter(event => event.kind === 'catalog_command_begin').length });
   }
-  checks.push('Five global catalog reopens query only independent owners and exclude workspace live rows');
+  checks.push('Five global catalog reopens query all registered owners and include ready workspace rows');
   await capture('scoped-navigation');
   assert.deepEqual(errors, [], 'No renderer errors after repeated navigation');
   assert.equal((await trace()).some(event => event.kind === 'uncaught' || event.kind === 'bootstrap_error'), false, 'No Main errors after repeated navigation');
@@ -250,7 +253,7 @@ try {
   await writeFile(join(scratch, 'manifest.json'), JSON.stringify({ passed, startedAt, finishedAt: new Date().toISOString(), command, cwd: process.cwd(), testSha256, sourceCommit, sourceDiff, sourceDiffSha256,
     binary, binarySha256, baselineSource, baselineSha256, primaryProjectId, projectId, savedTask, workspaceTask, checks, navigationObservations, slowHandshake, startupObservation, heldObservation, eventualObservation, failure, cleanup, errors,
     boundaries: ['Real isolated source Electron, preload, Desktop adapter and Core', 'Production bridge creates independent and workspace future tasks; no model response or task list is mocked',
-      'Native folder picker selects only the isolated workspace', 'Filesystem barrier holds AppProviders.sync after authenticated Core handshake for at least 6.5 seconds',
+      'Native folder picker selects only the isolated workspace', 'Filesystem barrier holds AppProviders.reconcileProject after authenticated Core handshake for at least 6.5 seconds',
       'Controlled startup delay verifies catalog responsiveness and does not predict real-account latency', 'Not an installed app or real provider acceptance'] }, null, 2));
   console.log(JSON.stringify({ passed, scratch, checks, eventualObservation: eventualObservation && { visibleLatencyMs: eventualObservation.visibleLatencyMs, earlyVisibleLatencyMs: eventualObservation.earlyVisibleLatencyMs, alertCountWhileHeld: eventualObservation.alertCountWhileHeld }, failure, cleanup }));
   if (!passed) process.exitCode = 1;

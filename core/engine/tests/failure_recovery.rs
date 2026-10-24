@@ -29,6 +29,7 @@ impl DynamicToolHost for Fixture {
             self.failures_before_success.is_some_and(|n| *calls > n)
         };
         Ok(DynamicToolResponse {
+            raw_mcp_result: None,
             success,
             content_items: vec![
                 serde_json::from_value(

@@ -1,0 +1,9 @@
+AReaL browser automation includes source from ZCode at revision
+3c5b227649371507ddc4eb46ac5133afe6db1cab under the Apache License 2.0.
+The upstream license is included as LICENSE-ZCODE. Original attribution and
+comments are retained in copied files. UPSTREAM.json lists source file hashes
+and local adaptations. The BrowserGuestManager recording action algorithms are
+adapted to Preview's existing Page ownership and guarded ControlledView.
+
+Playwright's injected runtime is loaded from the pinned playwright-core 1.59.1
+runtime dependency, distributed under Apache License 2.0 by Microsoft.

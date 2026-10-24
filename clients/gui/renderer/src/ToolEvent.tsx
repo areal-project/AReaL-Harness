@@ -2,9 +2,11 @@ import { useI18n } from "./i18n/IntlProvider.js";
 // Adapted from ZCode ToolSummaryRow / ToolLayout; Codex reference guides presentation.
 // Core owns all outcomes.
 import { useEffect, useId, useState } from "react";
+import { ImageDisclosure } from "@areal/ui/wip";
+import "@areal/ui/conversation.css";
 import { Collapsible } from "@base-ui/react/collapsible";
 import { AgentAvatar, agentName, agentStatus, agentTask, spawnedAgent } from "./AgentIdentity.js";
-import { GlobeIcon, ImageIcon } from "lucide-react";
+import { GlobeIcon } from "lucide-react";
 import { ActivityIcon } from "./ActivityIcon.js";
 import { toolPresentation } from "./conversationPresentation.js";
 import { CommandDetails } from "./CommandDetails.js";
@@ -16,16 +18,17 @@ import { MessageActions } from "./MessageActions.js";
 import { SentAttachment } from "./MessageAttachment.js";
 import type { McpResultSource, McpResultState } from "./mcp-app-services.js";
 import type { Action, Data } from "./services.js";
-export function ToolEvent({ item, onFile, onAgent, agents, turnId, readTurnReview, action, projectId, threadId, animate = false, onDisclosureChange, onOpenResult, resultState }: {
+export function ToolEvent({ item, onFile, onAgent, agents, turnId, readTurnReview, action, projectId, threadId, animate = false, onOpenResult, resultState }: {
   onOpenResult?: (source: McpResultSource) => Promise<void>; resultState?: McpResultState;
-  animate?: boolean; onDisclosureChange?: (open: boolean) => void;
+  animate?: boolean;
   item: Data; onAgent?: (id: string) => void; agents?: Data; onFile?: (path: string) => void; turnId?: string;
   readTurnReview?: (turnId: string, itemId?: string) => Promise<Data>;
   action?: Action; projectId?: string; threadId?: string;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  const toggle = () => { setOpen(!open); onDisclosureChange?.(!open); };
+  const toggle = () => { setOpen(!open); };
+  const [imageError, setImageError] = useState("");
   const [diffOpen, setDiffOpen] = useState(false);
   const [review, setReview] = useState<{ itemId: string; diff?: string; file?: { path: string; additions: number; deletions: number; beforeText: string; afterText: string }; error?: string }>();
   const recordId = useId();
@@ -66,7 +69,9 @@ export function ToolEvent({ item, onFile, onAgent, agents, turnId, readTurnRevie
         <button type="button" className="agent-spawn-link" aria-label={t("chat.agent.openConversation", { id: childId })} title={childTitle} onClick={() => onAgent?.(childId)}><AgentAvatar id={childId} size={14} /><span className="agent-spawn-kind">{t("chat.agent.kind")}</span><span className="agent-spawn-title">{childTitle}</span><span className="agent-spawn-status">{childStatus}</span><span className="conversation-disclosure-action" aria-hidden="true">{t("chat.agent.view")}</span></button>
         <button type="button" className="agent-spawn-record" aria-label="查看工具原始记录" aria-expanded={open} aria-controls={recordId} onClick={toggle}><ActivityIcon kind="chevron" size={14} className={open ? "tool-chevron open" : "tool-chevron"} /></button>
       </div> : images.length && action && projectId && threadId ? <div className="tool-summary-row tool-image-row">
-        <span className="tool-summary-row"><ImageIcon size={16} aria-hidden="true" /><span>已查看 {images.length} 张图片</span></span>
+        <ImageDisclosure label={t("chat.tool.images", { count: images.length })} state="available">
+          <div className="tool-image-preview">{images.map(part => <SentAttachment key={part.media.uri} onError={setImageError} part={{ type: "image", uri: part.media.uri, name: "工具图片" }} projectId={projectId} threadId={threadId} action={action} />)}</div>
+        </ImageDisclosure>
         <button type="button" className="agent-spawn-record" aria-label="查看工具原始记录" aria-expanded={open} aria-controls={recordId} onClick={toggle}><ActivityIcon kind="chevron" size={14} className={open ? "tool-chevron open" : "tool-chevron"} /></button>
       </div> : file ? <div className="tool-summary-row tool-file-row">
         <ActivityIcon kind={readOnly ? "read" : "edit"} />
@@ -99,10 +104,8 @@ export function ToolEvent({ item, onFile, onAgent, agents, turnId, readTurnRevie
       {eligibleResult && <Button variant="ghost" disabled={resultState?.opening} onClick={() => void onOpenResult({ projectId, threadId, turnId, itemId: item.id })}>
         {resultState?.opening ? t("operations.openingResult") : t("operations.openResult")}
       </Button>}
+      {imageError && <p role="status" className="tool-result tool-failed">{imageError}</p>}
       {resultState?.message && <p role="status" className="notice">{resultState.message}</p>}
-      {images.length > 0 && action && projectId && threadId && <div className="tool-image-preview">
-        {images.map(part => <SentAttachment key={part.media.uri} part={{ type: "image", uri: part.media.uri, name: "工具图片" }} projectId={projectId} threadId={threadId} action={action} />)}
-      </div>}
       {file && diffOpen && current && !current.error && <div className="tool-file-diff" id={diffId} role="region" aria-label="本次文件更改">
         <div className="tool-file-diff-header">
           <Button variant="ghost" className="tool-file-link" aria-label={`打开 ${file.path}`} title={file.path} onClick={() => onFile?.(file.path)}>{file.path.split("/").at(-1)}</Button>

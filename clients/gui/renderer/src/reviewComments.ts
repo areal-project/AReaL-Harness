@@ -1,3 +1,4 @@
+import { composerDraftStorage } from "./composerDraftStorage.js";
 import type { SelectedLineRange } from "@pierre/diffs";
 import { useEffect, useState } from "react";
 
@@ -17,14 +18,14 @@ const validComment = (value: unknown): value is ReviewComment => {
     (v.side === "additions" || v.side === "deletions") && Number.isSafeInteger(v.start) && Number.isSafeInteger(v.end) && Number(v.start) > 0 && Number(v.end) >= Number(v.start);
 };
 export function readReviewComments(key: string): ReviewCommentDraft {
-  const value = JSON.parse(localStorage.getItem(key) ?? '{"comments":[]}');
+  const value = JSON.parse(composerDraftStorage.getItem(key) ?? '{"comments":[]}');
   if (!value || !Array.isArray(value.comments) || !value.comments.every(validComment) || (value.editing && !validComment(value.editing)) ||
     (value.attachedIds !== undefined && (!Array.isArray(value.attachedIds) || !value.attachedIds.every((id: unknown) => typeof id === "string" && value.comments.some((c: ReviewComment) => c.id === id)))) ||
     (value.submission !== undefined && (typeof value.submission?.requestId !== "string" || !Array.isArray(value.submission.comments) || !value.submission.comments.every(validComment)))) throw new Error("评论草稿无法读取，原记录已保留。");
   return value;
 }
 export function writeReviewComments(key: string, draft: ReviewCommentDraft) {
-  localStorage.setItem(key, JSON.stringify(draft));
+  composerDraftStorage.setItem(key, JSON.stringify(draft));
   window.dispatchEvent(new CustomEvent("areal-review-comments-change", { detail: key }));
 }
 export function useReviewComments(key: string) {
@@ -68,14 +69,14 @@ export function reconcileReviewSubmission(key: string, requestId: string, accept
 }
 export function transferNewReviewComments(projectId: string, threadId: string) {
   const sourceKey = reviewCommentKey(projectId, "new"), targetKey = reviewCommentKey(projectId, threadId);
-  if (!localStorage.getItem(sourceKey)) return;
+  if (!composerDraftStorage.getItem(sourceKey)) return;
   const source = readReviewComments(sourceKey), target = readReviewComments(targetKey);
   if (target.editing && source.editing && target.editing.id !== source.editing.id) throw new Error("目标任务已有评论草稿，原评论已保留。");
   const comments = new Map(target.comments.map(comment => [comment.id, comment]));
   for (const comment of source.comments) if (!comments.has(comment.id)) comments.set(comment.id, comment);
   writeReviewComments(targetKey, { comments: [...comments.values()], editing: target.editing ?? source.editing,
     attachedIds: [...new Set([...(target.attachedIds ?? []), ...(source.attachedIds ?? [])])] });
-  localStorage.removeItem(sourceKey);
+  composerDraftStorage.removeItem(sourceKey);
   window.dispatchEvent(new CustomEvent("areal-review-comments-change", { detail: sourceKey }));
 }
 export function captureReviewComment(path: string, patch: string, range: SelectedLineRange, version: ReviewVersion, historicalText?: string): ReviewComment {

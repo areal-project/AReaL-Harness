@@ -1,5 +1,7 @@
 import { captureSmokeFailure, resizeConversation } from "./smoke-navigation.mjs";
 import assert from "node:assert/strict";
+import { appearanceReply, verifyAppearanceSlice } from "./appearance-smoke.mjs";
+import { resourceMarkdown, resourcePath, resourceReply, verifyResourceSlice } from "./resource-smoke.mjs";
 
 import { createRequire } from "node:module";
 import { mkdtemp, mkdir, writeFile, readFile, rename } from "node:fs/promises";
@@ -7,12 +9,32 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = join(gui, "app");
 const require = createRequire(join(desktop, "package.json"));
 const { _electron: electron } = require("playwright-core");
-const focusOnly = process.argv.includes("--focus-only");
+const requestedModes = ["focus-only", "task-slice", "appearance-slice", "resource-slice", "manual"].filter(mode => process.argv.includes(`--${mode}`));
+assert.ok(requestedModes.length <= 1, "Choose one interaction mode");
+const runMode = requestedModes[0] ?? "verify";
+const focusOnly = runMode === "focus-only";
+const taskSlice = runMode === "task-slice";
+const manual = runMode === "manual";
+const appearanceSlice = runMode === "appearance-slice";
+const resourceSlice = runMode === "resource-slice";
+const readingSample = process.argv.includes("--reading-sample");
+assert.ok(!readingSample || manual, "--reading-sample requires --manual");
+const forcedProfile = runMode !== "verify";
+let manualExitReason;
+let finishManual;
+const manualExit = manual ? new Promise(resolve => { finishManual = resolve; }) : null;
+const stopManual = reason => { manualExitReason ??= reason; finishManual?.(); };
+const onInterrupt = () => stopManual("SIGINT");
+const onTerminate = () => stopManual("SIGTERM");
+if (manual) {
+  process.on("SIGINT", onInterrupt);
+  process.on("SIGTERM", onTerminate);
+}
 const root = resolve(gui, "../..");
 const binary = process.env.AREAL_GUI_EXECUTABLE
   ? resolve(dirname(process.env.AREAL_GUI_EXECUTABLE), "../Resources/areal-core/bin/areal")
@@ -66,7 +88,7 @@ await writeFile(
         displayName: "标准",
         instructions: "Complete the task",
         allowThreadProcesses: true,
-        approvalTools: focusOnly ? ["fs_create"] : [],
+        approvalTools: forcedProfile ? ["fs_create"] : [],
 
         skills: [
           { id: "fixture-skill", revision: "v1" },
@@ -77,7 +99,11 @@ await writeFile(
   }),
 );
 const received = [];
-let releaseWrite;
+let releaseWrite, releaseSliceWrite;
+const manualWrites = new Map();
+let manualSequence = 0;
+const messageText = message => typeof message?.content === "string" ? message.content
+  : (message?.content ?? []).map(part => part.text ?? "").join("\n");
 const binarySha256AtStart = createHash("sha256").update(await readFile(binary)).digest("hex");
 const server = createServer(async (req, res) => {
   let raw = "";
@@ -85,16 +111,62 @@ const server = createServer(async (req, res) => {
   const body = JSON.parse(raw);
   received.push(body);
   const messages = body.messages ?? [];
-  const index = messages.findLastIndex(m => m.role === "user" && /(?:write:|question:|browser:)/.test(
-    typeof m.content === "string" ? m.content : (m.content ?? []).map(p => p.text ?? "").join("\n")));
-  const content = messages[index]?.content;
-  const text = typeof content === "string" ? content : (content ?? []).map(p => p.text ?? "").join("\n");
+  const index = messages.findLastIndex(m => m.role === "user" && (manual
+    ? !messageText(m).startsWith("AReaL runtime context (not a user request):")
+    : /(?:write:|question:|browser:|appearance:|resource:)/.test(messageText(m))));
+  const text = messageText(messages[index]);
   const responded = messages.slice(index + 1).some(m => m.role === "tool");
   res.writeHead(200, { "Content-Type": "text/event-stream" });
   const send = (delta, finish_reason = null) => res.write(`data: ${JSON.stringify({ id:"fixture", choices:[{ index:0, delta, finish_reason }] })}\n\n`);
-  if (!responded && text.includes("write:")) {
+  if (resourceSlice && !messages.some(message => message.role === "user" && messageText(message).startsWith("resource:"))) {
+    send({ content: "项目资源简报" });
+    send({}, "stop");
+  } else if (manual) {
+    const tool = messages.slice(index + 1).findLast(message => message.role === "tool" && manualWrites.has(message.tool_call_id));
+    if (tool) {
+      const write = manualWrites.get(tool.tool_call_id);
+      const resultText = messageText(tool);
+      let result;
+      try { result = JSON.parse(resultText); } catch {}
+      const confirmed = result?.sha256 === write.sha256 && result?.size === write.size && !result?.error;
+      const denied = /tool approval denied|permission.*denied/i.test(resultText);
+      const reply = confirmed
+        ? `已根据你的批准写入 \`${write.path}\`。可从下方文件结果查看内容。`
+        : denied ? "你已拒绝本次写入。没有创建本轮需求文件。"
+        : "本次写入未获成功确认。请查看真实工具结果，不能将它视为已完成。";
+      send({ content: reply + (confirmed && readingSample ? "\n\n# 阅读样例\n\n以下为对话阅读样例，不是已写入文件的全文。\n\n" + appearanceReply : "") });
+      send({}, "stop");
+    } else if (!responded && text.trim()) {
+      const id = `manual-write-${++manualSequence}-${randomUUID()}`;
+      const path = `任务简报-${String(manualSequence).padStart(2, "0")}.md`;
+      const markdown = `# 项目需求\n\n## 本轮请求\n\n${text.replaceAll("\0", "").slice(0, 16000)}\n\n## 交付\n\n将本轮请求保存在当前隔离项目，供后续阅读。\n`;
+      manualWrites.set(id, { path, sha256: createHash("sha256").update(markdown).digest("hex"), size: Buffer.byteLength(markdown) });
+      send({ content: "我会将本轮需求整理成 Markdown，等待你审批后写入隔离项目。" });
+      await new Promise(resolve => setTimeout(resolve, 900));
+      send({ tool_calls: [{ index: 0, id, type: "function", function: { name: "fs_create", arguments: JSON.stringify({ path, text: markdown }) } }] });
+      send({}, "tool_calls");
+    } else {
+      send({ content: "本轮没有可确认的写入结果。" });
+      send({}, "stop");
+    }
+  } else if (resourceSlice && text.includes("resource:")) {
+    if (!responded) {
+      send({ tool_calls: [{ index: 0, id: "resource-write", type: "function", function: { name: "fs_create", arguments: JSON.stringify({ path: resourcePath, text: resourceMarkdown }) } }] });
+      send({}, "tool_calls");
+    } else {
+      const receipt = messages.slice(index + 1).findLast(message => message.role === "tool");
+      const result = JSON.parse(messageText(receipt));
+      assert.equal(result.sha256, createHash("sha256").update(resourceMarkdown).digest("hex"), "fixture reply requires genuine Core file receipt");
+      send({ content: resourceReply(workspace) });
+      send({}, "stop");
+    }
+  } else if (appearanceSlice && text.includes("appearance:")) {
+    send({ content: appearanceReply });
+    send({}, "stop");
+  } else if (!responded && text.includes("write:")) {
     const path = text.match(/write:([a-z.-]+)/)[1];
     if (path === "draft.txt") await new Promise(resolve => { releaseWrite = resolve; });
+    if (taskSlice) await new Promise(resolve => { releaseSliceWrite = resolve; });
     send({tool_calls:[{index:0,id:"write",type:"function",function:{name:"fs_create",arguments:JSON.stringify({path,text:"approved by user"})}}]});
     send({},"tool_calls");
   } else if (!responded && text.includes("question:")) {
@@ -116,7 +188,7 @@ const endpoint = `http://127.0.0.1:${server.address().port}/v1/chat/completions`
 const config = join(scratch, "config.toml");
 await writeFile(
   config,
-  `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[permissions]\nmode="ASK_PERMISSIONS"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint=${JSON.stringify(endpoint)}\n`,
+  `schema_version=1\n[model]\nprovider="fixture"\nname=${JSON.stringify(manual ? "本地设计体验" : "fixture")}\n[permissions]\nmode="ASK_PERMISSIONS"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint=${JSON.stringify(endpoint)}\n`,
 );
 const env = {
   ...process.env,
@@ -140,7 +212,9 @@ const errors = [],
   frames = [],
   checks = [],
   focusEvidence = [],
-  identities = [];
+  identities = [],
+  visualEvidence = [];
+let manualReady = false;
 const button = (name) => page.getByRole("button", { name, exact: true });
 const state = () => page.evaluate(() => window.arealDesktop.snapshot());
 async function call(name, params) {
@@ -186,6 +260,78 @@ async function shot(name) {
     animations: "disabled",
   });
   frames.push(name + ".png");
+}
+async function fullShot(name) {
+  await page.screenshot({ path: join(scratch, name + ".png"), scale: "css", animations: "disabled" });
+  frames.push(name + ".png");
+}
+async function recordCoreIdentity() {
+  const instanceId = project(await state()).core.instanceId;
+  const descriptor = JSON.parse(execFileSync(binary, ["service", "status", "--instance", instanceId, "--json"], { env, encoding: "utf8", timeout: 20000 }));
+  assert.equal(descriptor.serviceId, instanceId);
+  assert.equal(descriptor.workspace, workspace);
+  assert.ok(descriptor.dataDir.startsWith(scratch + "/"), "Core data belongs to the isolated run");
+  identities.push({ surface: "Desktop GUI", serviceId: instanceId, generation: descriptor.generation, pid: descriptor.pid, workspace: descriptor.workspace, dataDir: descriptor.dataDir, registry: env.AREAL_HARNESS_SERVICE_HOME, binary, binarySha256: binarySha256AtStart });
+}
+async function verifySliceConditions(request, filename, stage) {
+  for (const condition of [
+    { name: "light-wide-14-14", theme: "soft-glass", dark: false, width: 1440, ui: 14, content: 14, caption: 13 },
+    { name: "dark-wide-14-14", theme: "data-dense", dark: true, width: 1440, ui: 14, content: 14, caption: 13 },
+    { name: "light-narrow-18-14", theme: "soft-glass", dark: false, width: 980, ui: 18, content: 14, caption: 13 },
+    { name: "dark-narrow-14-18", theme: "data-dense", dark: true, width: 980, ui: 14, content: 18, caption: 17 },
+  ]) {
+    await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setSize(width, 960), condition.width);
+    await page.evaluate(condition => {
+      const key = "areal-gui:application-preferences";
+      const saved = JSON.parse(localStorage.getItem(key) ?? "{}");
+      localStorage.setItem(key, JSON.stringify({ ...saved, contentSize: condition.content }));
+      localStorage.setItem("areal-gui:font-size", String(condition.ui));
+      localStorage.setItem("areal-gui:theme", condition.theme);
+    }, condition);
+    await page.reload();
+    await page.getByRole("region", { name: "工具审批", exact: true }).waitFor();
+    await until(s => interaction(s, "approval")?.requestId === request.requestId, "original approval restored after preference injection");
+    await assert.rejects(readFile(join(workspace, filename)), { code: "ENOENT" });
+    await page.waitForFunction(condition => document.documentElement.classList.contains("dark") === condition.dark
+      && getComputedStyle(document.documentElement).getPropertyValue("--ui-font-size").trim() === `${condition.ui}px`
+      && getComputedStyle(document.documentElement).getPropertyValue("--content-font-size").trim() === `${condition.content}px`, condition);
+    const observation = await page.evaluate(() => {
+      const measure = element => {
+        const bounds = element.getBoundingClientRect(), style = getComputedStyle(element);
+        return { name: element.getAttribute("aria-label") ?? element.className, processMetadata: element.matches(".turn-progress-summary"), x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height,
+          visible: bounds.width > 0 && bounds.height > 0, overflow: element.scrollWidth > element.clientWidth + 1,
+          fontSize: style.fontSize, color: style.color, background: style.backgroundColor };
+      };
+      const probe = document.createElement("span");
+      probe.style.cssText = "position:fixed;visibility:hidden;font-size:var(--text-content-caption)";
+      document.body.append(probe);
+      const caption = getComputedStyle(probe).fontSize;
+      probe.remove();
+      const card = document.querySelector('.decision-card[data-interaction="approval"]');
+      return { viewport: { width: innerWidth, height: innerHeight }, caption, documentOverflow: document.documentElement.scrollWidth > innerWidth + 1,
+        elements: [...document.querySelectorAll('.composer-dock, .decision-card, .decision-card-body, .messages, .turn-progress-summary, .execution-label')].filter(element => element.getBoundingClientRect().width > 0).map(measure),
+        actions: [...card.querySelectorAll("button")].filter(element => element.getBoundingClientRect().width > 0).map(measure) };
+    });
+    assert.equal(observation.viewport.width, condition.width, "capture uses the requested supported window width");
+    assert.equal(observation.caption, `${condition.caption}px`, "content metadata follows content size independently of UI size");
+    assert.equal(observation.documentOverflow, false, "window has no horizontal overflow");
+    const processMetadata = observation.elements.filter(element => element.processMetadata);
+    assert.ok(processMetadata.length, "real pending turn exposes process metadata");
+    for (const element of processMetadata) assert.equal(element.fontSize, `${condition.caption}px`, "visible process metadata uses the content caption size");
+    for (const element of observation.elements) {
+      assert.equal(element.overflow, false, `${element.name} has no horizontal overflow`);
+      assert.ok(element.x >= -1 && element.x + element.width <= observation.viewport.width + 1, `${element.name} stays inside the window`);
+    }
+    for (const action of observation.actions) {
+      assert.ok(action.visible && action.x >= 0 && action.x + action.width <= observation.viewport.width + 1
+        && action.y >= 0 && action.y + action.height <= observation.viewport.height + 1, "approval action is visible and reachable");
+    }
+    await focusGeometry(page, button("拒绝"), `${stage} ${condition.name} deny action`);
+    await focusGeometry(page, button("允许一次"), `${stage} ${condition.name} allow action`);
+    assert.equal(interaction(await state(), "approval").requestId, request.requestId, "visual checks never decide the request");
+    await fullShot(`slice-${stage}-${condition.name}-pending`);
+    visualEvidence.push({ stage, condition, observation, preferences: "existing localStorage preferences injected before reload; settings UI is not tested" });
+  }
 }
 async function tabTo(targetPage, target) {
   for (let index = 0; index < 100; index++) {
@@ -283,16 +429,27 @@ async function verifyWebFocus() {
   }
 }
 async function launch() {
+  const signalListeners = manual ? new Map(["SIGINT", "SIGTERM"].map(signal => [signal, new Set(process.listeners(signal))])) : new Map();
   app = await electron.launch({
     executablePath: process.env.AREAL_GUI_EXECUTABLE || require("electron"),
     args: process.env.AREAL_GUI_EXECUTABLE ? [] : [desktop],
     env,
     timeout: 120000,
   });
+  for (const [signal, before] of signalListeners) {
+    for (const listener of process.listeners(signal)) if (!before.has(listener)) process.off(signal, listener);
+  }
+  if (manual) app.once("close", () => stopManual("window closed"));
   app.process().stderr.on("data", (d) => {
     if (String(d).includes("Error")) process.stderr.write(d);
   });
   page = await app.firstWindow();
+  if (manual) {
+    page.once("close", () => stopManual("window closed"));
+    void app.evaluate(({ BrowserWindow }) => new Promise(resolve => {
+      BrowserWindow.getAllWindows()[0].once("hide", () => resolve());
+    })).then(() => stopManual("window hidden"), () => stopManual("window closed"));
+  }
   page.setDefaultTimeout(15000);
   page.on("pageerror", (e) => errors.push(e.message));
   await page.locator("[data-testid=areal-workbench]").waitFor({ timeout: 120000 });
@@ -300,11 +457,17 @@ async function launch() {
 }
 async function quit() {
   if (!app) return;
-  await app.evaluate(({ dialog }) => {
-    dialog.showMessageBox = async () => ({ response: 1 });
-  });
-  await app.close();
+  const owned = app;
   app = null;
+  if (owned.process().exitCode !== null) return;
+  try {
+    await owned.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 });
+    });
+    await owned.close();
+  } catch (error) {
+    if (owned.process().exitCode === null) throw error;
+  }
 }
 console.log("Interaction evidence:", scratch);
 let pid, tid;
@@ -313,15 +476,17 @@ const interaction = (snapshot, kind) => project(snapshot).state.interactions[tid
 const current = snapshot => project(snapshot).state.threads[tid];
 try {
   await launch();
-  await page.evaluate(() => localStorage.setItem("areal-gui:theme", "data-dense"));
-  await page.reload();
+  if (!appearanceSlice) {
+    await page.evaluate(() => localStorage.setItem("areal-gui:theme", "data-dense"));
+    await page.reload();
+  }
   await page.getByTestId("areal-workbench").waitFor();
   await app.evaluate(({ dialog }, workspace) => { dialog.showOpenDialog = async () => ({canceled:false,filePaths:[workspace]}); }, workspace);
   await button("不在项目中工作").click();
   await page.getByRole("menuitem",{name:"新建项目",exact:true}).click();
   await until(s => project(s)?.state?.connected,"project ready");
   pid=project(await state()).id;
-  if (focusOnly) {
+  if (forcedProfile) {
     await page.waitForFunction(id => document.querySelector('[data-testid="areal-workbench"]')?.dataset.projectId === id, pid);
     assert.ok(project(await state()).profiles.some(item => item.id === "standard" && item.revision === "v1"));
     await page.evaluate(id => {
@@ -330,18 +495,52 @@ try {
       window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: key }));
     }, pid);
   }
+  if (manual || taskSlice || appearanceSlice || resourceSlice) await recordCoreIdentity();
+  if (manual) {
+    await page.getByTestId("chat-input").waitFor();
+    assert.equal(received.length, 0, "manual startup sends no model request");
+    manualReady = true;
+    await fullShot("manual-ready");
+    await writeFile(join(scratch, "manual-ready.json"), JSON.stringify({
+      passed: false, mode: runMode, manualReady, verification: "manual operation available; automated acceptance not run",
+      scratch, workspace, identities, electronPid: app.process().pid, binarySha256: binarySha256AtStart,
+      commit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root }).toString().trim(),
+      diffSha256: createHash("sha256").update(execFileSync("git", ["diff", "--binary", "HEAD"], { cwd: root })).digest("hex"),
+    }, null, 2));
+    console.log(`MANUAL READY. 输入普通中文要求，例如“请为项目写一份快速开始说明”。每轮生成独立 Markdown，只有你批准才写入。\n隔离项目 ${workspace}\n关闭窗口或 Ctrl+C 退出并清理本实例。`);
+    await manualExit;
+  } else if (appearanceSlice || resourceSlice) {
+    const verify = resourceSlice ? verifyResourceSlice : verifyAppearanceSlice;
+    await verify({ app, page, state, project, until, received, visualEvidence, checks, fullShot, workspace, setThread: id => { tid = id; } });
+    assert.equal(errors.length, 0, "renderer has no page errors");
+    await writeFile(join(scratch, "final-state.json"), JSON.stringify(await state(), null, 2));
+    assert.equal(createHash("sha256").update(await readFile(binary)).digest("hex"), binarySha256AtStart, "Core binary stayed frozen during acceptance");
+    passed = true;
+    console.log("PASS:", checks);
+  } else {
+  let sliceRequest = 0;
   const input=()=>page.getByTestId("chat-input");
   const send=async text=>{
+    if (taskSlice) await assert.rejects(readFile(join(workspace, text.slice("write:".length))), { code: "ENOENT" });
     await input().fill(text);
+    if (taskSlice) await fullShot(`slice-${++sliceRequest}-input`);
     await page.getByTestId("chat-send-button").click();
     await until(s=>Object.values(project(s).state.threads).some(t=>t.turns?.at(-1)?.status==="inProgress"),"admitted turn");
     tid=Object.values(project(await state()).state.threads).find(t=>t.turns?.length)?.id;
     assert.ok(tid,"Core thread created");
+    if (taskSlice) {
+      await until(() => !!releaseSliceWrite, "model holds tool submission for process evidence");
+      await assert.rejects(readFile(join(workspace, text.slice("write:".length))), { code: "ENOENT" });
+      await page.getByTestId("turn-activity").last().waitFor();
+      await fullShot(`slice-${sliceRequest}-processing`);
+      releaseSliceWrite();
+      releaseSliceWrite = undefined;
+    }
   };
   const done=()=>until(s=>current(s)?.turns.at(-1)?.status==="completed","same turn completed");
   const approval=()=>page.getByRole("region",{name:"工具审批",exact:true});
   const question=()=>page.getByRole("region",{name:"需要你的回答",exact:true});
-  if (!focusOnly) {
+  if (!focusOnly && !taskSlice) {
     // 本专项覆盖 ASK_PERMISSIONS 的单次/任务/项目授权；新草稿的 autoReview 预设不会要求普通工作区写入审批。
     await send("initialize approval fixture");
     await done();
@@ -350,12 +549,13 @@ try {
     assert.equal(project(await state()).configurations[tid].options.permissionPreset, undefined);
   }
   await send("write:denied.txt");
-  if (focusOnly) assert.deepEqual(project(await state()).configurations[tid].profile.approvalTools, ["fs_create"], "real Core requires fixture tool approval");
+  if (forcedProfile) assert.deepEqual(project(await state()).configurations[tid].profile.approvalTools, ["fs_create"], "real Core requires fixture tool approval");
   await until(s=>interaction(s,"approval"),"approval request");
   const denial=interaction(await state(),"approval");
   await approval().waitFor();
   await focusGeometry(page, approval(), "GUI approval DecisionCard");
   await shot("01-approval-pending");
+  if (taskSlice) await verifySliceConditions(denial, "denied.txt", "denied");
   assert.equal(await input().isVisible(),false,"approval replaces ordinary input");
   assert.equal(await approval().locator(".decision-card-label").innerText(),"工具");
   await tabTo(page, button("拒绝"));
@@ -363,6 +563,7 @@ try {
   await done();
   await assertDecision(denial, "deny", "denied.txt");
   checks.push("deny resumes the original turn without writing the file");
+  if (taskSlice) await fullShot("slice-denied-result");
 
   await send("write:allowed.txt");
   await until(s=>interaction(s,"approval"),"once request");
@@ -370,20 +571,26 @@ try {
   await focusGeometry(page, approval(), "GUI allowOnce DecisionCard");
   // The hidden Lexical editor is mounted, preserving draft ownership.
   await page.evaluate(()=>{const el=document.querySelector('[data-testid="chat-input"]');if(!el)throw Error("missing retained editor")});
-  if (!focusOnly) {
+  if (!focusOnly && !taskSlice) {
     await button("更多授权范围").click();
     await page.getByRole("menuitem",{name:/本任务允许此操作/}).waitFor();
     await shot("02-approval-scope-menu");
     await page.keyboard.press("Escape");
   }
+  if (taskSlice) await verifySliceConditions(allowance, "allowed.txt", "allowed");
   await tabTo(page, button("允许一次"));
   await page.keyboard.press("Enter");
   await done();
   await assertDecision(allowance, "allowOnce", "allowed.txt");
   await approval().waitFor({state:"hidden"});
   checks.push("allowOnce writes the requested file and restores the normal composer");
+  if (taskSlice) {
+    await page.getByTestId("turn-file-summary").last().waitFor();
+    await fullShot("slice-allowed-result");
+    checks.push("task slice captures full-window input, real in-progress turn, pending approvals, results and preference conditions without premature writes");
+  }
 
-  if (!focusOnly) {
+  if (!focusOnly && !taskSlice) {
   await send("write:session.txt");
   await until(s=>interaction(s,"approval"),"session request");
   await button("更多授权范围").click();
@@ -436,6 +643,8 @@ try {
   assert.equal(await question().getByRole("button",{name:"发送",exact:true}).isEnabled(),false,"unanswered question cannot submit a default");
   await shot("03-question-pending");
   await page.getByRole("radio",{name:/重构/}).click();
+  assert.equal(interaction(await state(),"question").requestId, optionRequest.requestId, "selection edits the draft without submitting");
+  await question().getByRole("button",{name:"发送",exact:true}).click();
   await done();
   assert.equal(project(await state()).state.interactions[tid].data.find(i=>i.requestId===optionRequest.requestId).response.answers.choice,"重构");
   await page.locator('[data-question-answer]').last().getByText("重构",{exact:true}).waitFor();
@@ -452,7 +661,7 @@ try {
   assert.ok(interaction(await state(),"question"),"close never completes Core request");
   await button("展开待回答问题").click();
   assert.equal(await reply.inputValue(),"保留原有审批逻辑");
-  await button("跳过").click();
+  await button("稍后回答").click();
   await button("展开待回答问题").click();
   assert.equal(await reply.inputValue(),"保留原有审批逻辑");
   await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(800,700));
@@ -503,6 +712,7 @@ try {
   assert.equal(createHash("sha256").update(await readFile(binary)).digest("hex"),binarySha256AtStart,"Core binary stayed frozen during acceptance");
   passed=true;
   console.log("PASS:",checks);
+  }
 } catch(error){
   errors.push(error.stack||String(error));
   await writeFile(join(scratch,"received.json"),JSON.stringify(received,null,2));
@@ -511,11 +721,21 @@ try {
   process.exitCode=1;
   if(page) await page.screenshot({path:join(scratch,"failure.png")}).catch(()=>{});
 } finally {
+  releaseWrite?.();
+  releaseSliceWrite?.();
+  if (manual) {
+    process.off("SIGINT", onInterrupt);
+    process.off("SIGTERM", onTerminate);
+  }
   const serviceMetadata = await readFile(join(scratch, "core/service.json"), "utf8").then(JSON.parse).catch(error => {
     if (error.code !== "ENOENT") throw error;
     return null;
   });
-  await quit();
+  await quit().catch(error => {
+    process.exitCode = 1;
+    passed = false;
+    errors.push(`Electron cleanup failed: ${error.message}`);
+  });
   try {
     const alive = () => {
       if (!serviceMetadata) return false;
@@ -539,7 +759,7 @@ try {
     checks.push("owned Desktop service exits and private Core registry contains no running instances");
   } catch (error) {
     console.error("Adapter fixture cleanup:", error.message);
-    if (passed) {
+    if (passed || manualReady) {
       passed = false;
       process.exitCode = 1;
       errors.push(`Explicit safe stop failed: ${error.message}`);
@@ -565,6 +785,7 @@ try {
       process.kill(metadata.pid, "SIGTERM");
     } catch {}
   }
+  await writeFile(join(scratch, "received.json"), JSON.stringify(received, null, 2));
   server.closeAllConnections();
   await new Promise((r) => server.close(r));
   const sourceFiles = {};
@@ -586,6 +807,10 @@ try {
     JSON.stringify(
       {
         passed,
+        mode: runMode,
+        manualReady,
+        manualExitReason,
+        verification: manual ? "manual operation available; automated acceptance not run" : "automated interaction assertions",
         commit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root }).toString().trim(),
         sourceFiles,
         binarySha256: createHash("sha256")
@@ -597,13 +822,14 @@ try {
         arch: process.arch,
         runtime: "real Electron + real Rust Core/Runtime + deterministic local HTTP/SSE model",
         nativeDialogs: "project picker and archive/quit confirmations injected",
-        fixtureProfile: focusOnly ? "Core profile standard@v1 requires fs_create approval; Composer draft selection injected" : null,
+        fixtureProfile: forcedProfile ? "Core profile standard@v1 requires fs_create approval; Composer draft selection injected" : null,
         scratch,
         frames,
         checks,
         focusEvidence,
         identities,
         focusOnly,
+        visualEvidence,
         errors,
       },
       null,

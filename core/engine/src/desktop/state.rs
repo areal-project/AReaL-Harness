@@ -467,9 +467,11 @@ impl Engine {
         host: Arc<dyn crate::tools::DynamicToolHost>,
     ) -> Result<Value> {
         self.mutate(move |engine| async move {
-            if request.bundle_id != BROWSER_V1_BUNDLE {
-                return Err(invalid("unsupported browser bundle"));
-            }
+            let tool = match request.bundle_id.as_str() {
+                BROWSER_V1_BUNDLE => areal_protocol::desktop::browser_v1_tool(),
+                areal_protocol::desktop::COMPUTER_V1_BUNDLE => areal_protocol::desktop::computer_v1_tool(),
+                _ => return Err(invalid("unsupported desktop tool bundle")),
+            };
             if host.is_closed() || host.identity() != identity {
                 return Err(Error::Conflict);
             }
@@ -488,7 +490,7 @@ impl Engine {
             }
             let cell = engine.cell(&request.thread_id).await?;
             let mut state = cell.state.lock().await;
-            if state.thread.is_side() { return Err(invalid("SIDE_POLICY_VIOLATION")); }
+            if state.thread.is_read_only_side() { return Err(invalid("SIDE_POLICY_VIOLATION")); }
             let mut data = desktop(&state.thread);
             if let Some(result) = receipt(&data, &identity, &request.request_id, method, &hash)? {
                 return Ok(result);
@@ -504,13 +506,13 @@ impl Engine {
             if bindings.host.as_ref().is_some_and(|old| old.id() != host.id() && !old.is_closed()) {
                 return Err(Error::Conflict);
             }
-            let tool = areal_protocol::desktop::browser_v1_tool();
             let present = state.thread.dynamic_tools.iter().find(|entry| entry.name == tool.name);
             if present.is_some_and(|entry| digest(entry).ok() != digest(&tool).ok()) {
                 return Err(Error::Conflict);
             }
             // 旧工具仅在原 live ToolHost 当前连接上继续执行；不能改绑给不认识它们的 GUI。
-            if state.thread.dynamic_tools.iter().any(|entry| entry.name != tool.name)
+            let deployed = [areal_protocol::desktop::browser_v1_tool(), areal_protocol::desktop::computer_v1_tool()];
+            if state.thread.dynamic_tools.iter().any(|entry| !deployed.iter().any(|known| digest(entry).ok() == digest(known).ok()))
                 && !bindings.host.as_ref().is_some_and(|old| old.id() == host.id() && !old.is_closed())
             {
                 return Err(invalid("existing client tools require their original live host; browser attachment unavailable"));
@@ -524,7 +526,7 @@ impl Engine {
                     .ok_or(Error::Conflict)?;
             }
             let result = json!({"threadId": candidate.id, "toolsetRevision":candidate.toolset_revision,
-                "bundleId":BROWSER_V1_BUNDLE});
+                "bundleId":request.bundle_id});
             remember(&mut data, &identity, &request.request_id, method, hash, result.clone());
             candidate.desktop = Some(data);
             engine.persist(&candidate).await?;
@@ -576,14 +578,16 @@ impl Engine {
             }
             let allow_plugin_skills = request.agent_profile.is_none();
             let mut data = DesktopState {
-                configuration: engine.resolve_config(
-                    request
-                        .agent_profile
-                        .or_else(|| engine.desktop.default_profile.read().unwrap().clone()),
-                    request.model,
-                    request.parameters,
-                    1,
-                )?,
+                configuration: engine
+                    .resolve_config(
+                        request
+                            .agent_profile
+                            .or_else(|| engine.desktop.default_profile.read().unwrap().clone()),
+                        request.model,
+                        request.parameters,
+                        1,
+                    )
+                    .map_err(|error| Error::Rejected(Box::new(error)))?,
                 ..Default::default()
             };
             data.configuration.options = request.options.unwrap_or_default();
@@ -720,10 +724,11 @@ impl Engine {
     ) -> Result<EffectiveConfig> {
         self.refresh_plugins().await?;
         self.mutate(move |engine| async move {
+            let _admission = engine.desktop.lifecycle.gate.lock().await;
             let hash = digest(&request)?;
             let request_id = request.request_id.clone();
             let cell = engine.cell(&request.thread_id).await?;
-            let is_side = cell.state.lock().await.thread.is_side();
+            let is_side = cell.state.lock().await.thread.is_read_only_side();
             let mut state = cell.state.lock().await;
             if let Some(request_id) = &request_id
                 && let Some(result) = receipt(
@@ -998,7 +1003,11 @@ impl Engine {
             .await
     }
     pub(super) async fn update_plan_inner(&self, request: PlanUpdate) -> Result<Plan> {
-        if self.read(&request.thread_id, false).await?.is_side() {
+        if self
+            .read(&request.thread_id, false)
+            .await?
+            .is_read_only_side()
+        {
             return Err(invalid("SIDE_POLICY_VIOLATION"));
         }
         let mut ids = HashSet::new();
@@ -1043,6 +1052,7 @@ impl Engine {
         cell: &Cell,
         config: &EffectiveConfig,
         desktop_enabled: bool,
+        thread: &Thread,
     ) -> Vec<Value> {
         let declared = match (&config.model, &config.provider) {
             (Some(model), Some(provider)) => {
@@ -1074,6 +1084,8 @@ impl Engine {
                 .runtime
                 .as_ref()
                 .is_none_or(|runtime| !runtime.writable);
+        let schedules_available =
+            desktop_enabled && self.schedule_tools_available(cell, config, thread).await;
         let bindings = cell.bindings.read().await;
         let mut definitions = bindings.registry.definitions();
         let core_names: Vec<_> = crate::desktop::definitions()
@@ -1099,7 +1111,8 @@ impl Engine {
             {
                 return false;
             }
-            (!matches!(name, "task_spawn" | "task_wait" | "task_channel_read") || goal_enabled)
+            (!name.starts_with("scheduled_task_") || schedules_available)
+                && (!matches!(name, "task_spawn" | "task_wait" | "task_channel_read") || goal_enabled)
                 && (!matches!(name, "task_spawn" | "task_wait")
                     || cell.goal_role.load(Ordering::Acquire) == 1)
                 && (!name.starts_with("goal_")
@@ -1119,7 +1132,7 @@ impl Engine {
                     || !matches!(name, "agent_spawn_configured" | "agent_wait_all"))
                 && (name != "agent_report" || cell.depth > 0 || cell.handoff_worker.load(Ordering::Acquire))
                 // 原文回取属于所有 Core 会话，不依赖桌面扩展状态。
-                && (desktop_enabled || matches!(name, "read_tool_result" | "read_history") || !core_names.iter().any(|n| n == name))
+                && (desktop_enabled || matches!(name, "read_tool_result" | "read_history" | "read_conversation_context") || !core_names.iter().any(|n| n == name))
                 && config
                     .tool_allowlist
                     .as_ref()
@@ -1210,8 +1223,11 @@ impl Engine {
             .filter(|_| state.active.is_some())
             .and_then(|t| t.configuration.clone())
             .unwrap_or_else(|| desktop(&state.thread).configuration);
+        let thread = state.thread.clone();
+        let active_turn_id = state.active.as_ref().map(|active| active.id.clone());
+        drop(state);
         let tools = self
-            .visible_tools(&cell, &config, state.thread.desktop.is_some())
+            .visible_tools(&cell, &config, thread.desktop.is_some(), &thread)
             .await;
         let model_metadata = config
             .model
@@ -1224,11 +1240,11 @@ impl Engine {
             })
             .flatten();
         Ok(
-            json!({"modelName":model_metadata.as_ref().map(|(name, _)| name),"resolvedParameters":model_metadata.map(|(_, parameters)| super::catalog::merge_model_parameters(config.parameters.clone(), parameters)),"threadId":thread_id,"sessionId":state.thread.session_id,"parentThreadId":state.thread.parent_thread_id,
-            "activeTurnId":state.active.as_ref().map(|a| &a.id),"configuration":config,
-            "instructionSnapshot":state.thread.turns.last().and_then(|t|t.instruction_snapshot.as_ref()),"instructionSources":["runtime/defaultOrClientSystem","profile","childTask","clientAppend","workspace/AGENTS.md"],"tools":tools,"loadedSkills":state.thread.desktop.as_ref().map(|d| &d.loaded_skills),
-            "contextCheckpoint":state.thread.context_checkpoint,"usage":state.thread.turns.last().and_then(|t| t.usage.as_ref()),
-            "usageKnown":state.thread.turns.last().is_some_and(|t| t.usage.is_some()),
+            json!({"modelName":model_metadata.as_ref().map(|(name, _)| name),"resolvedParameters":model_metadata.map(|(_, parameters)| super::catalog::merge_model_parameters(config.parameters.clone(), parameters)),"threadId":thread_id,"sessionId":thread.session_id,"parentThreadId":thread.parent_thread_id,
+            "activeTurnId":active_turn_id,"configuration":config,
+            "instructionSnapshot":thread.turns.last().and_then(|t|t.instruction_snapshot.as_ref()),"instructionSources":["runtime/defaultOrClientSystem","profile","childTask","clientAppend","workspace/AGENTS.md"],"tools":tools,"loadedSkills":thread.desktop.as_ref().map(|d| &d.loaded_skills),
+            "contextCheckpoint":thread.context_checkpoint,"usage":thread.turns.last().and_then(|t| t.usage.as_ref()),
+            "usageKnown":thread.turns.last().is_some_and(|t| t.usage.is_some()),
             "limits":{"historyBytes":self.limits.max_history_bytes,"contextBytes":self.limits.context_window_bytes},
             "runtime":self.runtime_capabilities()}),
         )
@@ -1277,7 +1293,7 @@ impl Engine {
         &self,
         cell: &Cell,
     ) -> anyhow::Result<areal_runtime_protocol::PermissionRequest> {
-        if !cell.state.lock().await.thread.is_side()
+        if !cell.state.lock().await.thread.is_read_only_side()
             && let Some(scratch) = self.command_scratch(cell)
         {
             // 目录由可信 Core 创建，Runtime 再绑定和校验目录身份。
@@ -1294,7 +1310,7 @@ impl Engine {
             .and_then(|c| c.options.permission_preset)
             .is_some_and(|preset| preset != PermissionPreset::FullAccess);
         let readonly = configuration.is_some_and(|c| c.read_only);
-        let side = state.thread.is_side();
+        let side = state.thread.is_read_only_side();
         Ok(areal_runtime_protocol::PermissionRequest {
             read_roots: if side {
                 let configuration = desktop(&state.thread).configuration;

@@ -1,0 +1,17 @@
+@import "@areal/ui/worktree.css";
+
+.settings-workspace .settings-page:has(> .worktrees-settings) {
+  position: relative;
+  max-width: 41rem;
+  gap: var(--spacing-inline);
+}
+
+.settings-page:has(> .worktrees-settings) > .settings-page-header { padding-right: var(--spacing-control-lg); }
+.settings-page:has(> .worktrees-settings[data-view="editor"]) > .settings-page-header { display: none; }
+
+.worktrees-refresh { position: absolute; top: 12px; right: 0; }
+.worktrees-variables { width: min(24rem, var(--available-width)); }
+.worktrees-variables dl { display: grid; gap: var(--spacing-field); margin: 0; font-size: var(--text-ui-sm); }
+.worktrees-variables dt { user-select: text; overflow-wrap: anywhere; }
+.worktrees-variables code { font-family: var(--font-mono); }
+.worktrees-variables dd { margin: 4px 0 0; color: var(--color-foreground-subtle); }

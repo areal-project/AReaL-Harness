@@ -11,6 +11,14 @@ pub struct ToolResult {
 }
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GenUiSource {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub item_id: String,
+    pub path: Option<String>,
+}
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Connection {
     pub request_id: String,
     pub id: String,

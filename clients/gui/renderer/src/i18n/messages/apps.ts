@@ -1,4 +1,14 @@
 export const appMessages = {
+  "genUi.title": { "zh-CN": "交互式回答", en: "Interactive answer" },
+  "genUi.loading": { "zh-CN": "正在打开交互式回答…", en: "Opening interactive answer…" },
+  "genUi.preparing": { "zh-CN": "正在生成交互式回答…", en: "Preparing interactive answer…" },
+  "genUi.unavailable": { "zh-CN": "此交互式回答暂不可用。", en: "This interactive answer is unavailable." },
+  "genUi.submission": { "zh-CN": "追问未确认完成，请查看会话提交状态。不会自动重发。", en: "The follow-up is not confirmed. Check the conversation submission status. It will not be resent automatically." },
+  "genUi.close": { "zh-CN": "关闭", en: "Close" },
+  "genUi.reopen": { "zh-CN": "重新打开", en: "Reopen" },
+  "genUi.confirm": { "zh-CN": "确认追问", en: "Confirm follow-up" },
+  "genUi.send": { "zh-CN": "发送", en: "Send" },
+  "genUi.cancel": { "zh-CN": "取消", en: "Cancel" },
   "settings.apps.localResourceUnavailable": { "zh-CN": "本机资源选择不可用", en: "Local resource selection is unavailable" },
   "settings.apps.upgradeBackend": { "zh-CN": "当前后台版本不支持 MCP 应用和表单，升级后台后可使用。", en: "This background service version does not support MCP apps and forms. Update it to use them." },
   "settings.apps.contextItems": { "zh-CN": "· {count, number} 项", en: "· {count, plural, one {# item} other {# items}}" },
@@ -107,8 +117,8 @@ export const appMessages = {
     "en": "Text preview is unavailable for this binary resource."
   },
   "settings.mcpAppsWorkspace.chooseAnAppConversationFirst": {
-    "zh-CN": "请先选择应用会话",
-    "en": "Choose an app conversation first"
+    "zh-CN": "请先在侧栏选择已有会话，再打开应用。",
+    "en": "Select an existing conversation in the sidebar, then open the app."
   },
   "settings.mcpAppsWorkspace.theAppActionDidNotComplete": {
     "zh-CN": "应用操作未完成",

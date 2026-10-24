@@ -18,6 +18,8 @@ import {
   secureChannel,
 } from "../packages/remote/src/channel.mjs";
 import { selectConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
+import { applicationFixture } from "./application-fixture.mjs";
+import { respondToSessionName } from "./model-fixture.mjs";
 import {
   nativeReady,
   assertObserve,
@@ -33,8 +35,16 @@ const { CoreBackend } = require("../app/src/core/backend.cjs");
 const { DesktopService } = require("../app/src/core/service-protocol.cjs");
 const { serviceIdentity } = require("../app/src/core/service-config.cjs");
 const { RemoteControl } = require("../app/src/core/remote.cjs");
+const { createOwner } = require("../app/src/core/application-owner.cjs");
 const WebSocket = require("ws");
 const scratch = await mkdtemp("/private/tmp/areal-remote-rc04-");
+// Share one fixture app identity with the externally hosted DesktopService.
+const applicationOwner = createOwner(join(scratch, "electron"));
+const application = await applicationFixture(gui, join(scratch, "application"), `
+require(${JSON.stringify(join(gui, "app/src/core/application-owner.cjs"))}).createOwner = profile => {
+  require('node:assert/strict').equal(require('node:fs').realpathSync(profile), ${JSON.stringify(applicationOwner.profile)});
+  return ${JSON.stringify(applicationOwner)};
+};`);
 console.log(`RC04 evidence ${scratch}`);
 const workspace = join(scratch, "workspace"),
   home = join(scratch, "desktop"),
@@ -86,8 +96,12 @@ const model = createServer(async (request, response) => {
   try {
     let raw = "";
     for await (const part of request) raw += part;
-    const body = JSON.parse(raw),
-      all = JSON.stringify(body.messages),
+    const body = JSON.parse(raw);
+    if (respondToSessionName(body, response)) {
+      modelRequests.push({ at: Date.now(), auxiliary: "sessionName", bytes: raw.length });
+      return;
+    }
+    const all = JSON.stringify(body.messages),
       hasTool = body.messages.some((value) => value.role === "tool");
     modelRequests.push({
       at: Date.now(),
@@ -168,6 +182,7 @@ await writeFile(
   }),
 );
 const backendOptions = {
+  applicationOwner,
   binary: process.env.AREAL_CORE_BIN || resolve(root, "target/debug/areal"),
   home,
   harnessHome: join(scratch, "registry"),
@@ -541,6 +556,9 @@ async function desktopCommand(name, params) {
 async function pairBrowser() {
   const invite = await remote.control({ operation: "pair" });
   const target = await browser.newPage();
+  await target.addInitScript(() => localStorage.setItem(
+    "areal-gui:application-preferences", JSON.stringify({ nextPromptSuggestions: false }),
+  ));
   target.setDefaultTimeout(15000);
   target.on("pageerror", (error) => errors.push(error.message));
   await target.goto(invite.payload);
@@ -789,11 +807,16 @@ try {
   await writeFile(join(home, "service.json"), JSON.stringify(descriptor), { mode: 0o600 });
   app = await electron.launch({
     executablePath: process.env.AREAL_ELECTRON_EXECUTABLE || require("electron"),
-    args: [join(gui, "app")],
+    args: [application.path],
     env,
     timeout: 60000,
   });
   desktop = await app.firstWindow();
+  await desktop.getByTestId("areal-workbench").waitFor({ timeout: 60000 });
+  await desktop.evaluate(() => localStorage.setItem(
+    "areal-gui:application-preferences", JSON.stringify({ nextPromptSuggestions: false }),
+  ));
+  await desktop.reload();
   desktop.setDefaultTimeout(15000);
   await desktop.getByTestId("areal-workbench").waitFor({ timeout: 60000 });
   let desktopConnection;
@@ -1660,6 +1683,7 @@ try {
   for (const socket of remoteSockets) socket.terminate();
   for (const client of clients) client.close();
   await browser?.close();
+  await application.close();
   await app?.close();
   service?.close();
   proxy?.close();
@@ -1740,6 +1764,8 @@ try {
     transport: "Direct loopback; transparent real-Core transport fault proxy",
     environment: { node: process.version, platform: process.platform, arch: process.arch },
     notRun: [
+      "next-prompt predictions (disabled); auxiliary session names use the shared model fixture",
+      "application-owner lifecycle (shared Main/Host identity fixture)",
       "actual system keychain (safeStorage boundary fixture)",
       "installed/signed package",
       "public HTTPS/WSS",

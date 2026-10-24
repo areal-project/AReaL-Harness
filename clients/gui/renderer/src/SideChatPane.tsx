@@ -4,6 +4,7 @@ import { useI18n } from "./i18n/IntlProvider.js";
 import "./SideChat.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Messages } from "./Messages.js";
+import { useComposerPlugins, revalidateComposerPlugins, composerPluginIntent } from "./ComposerPlugins.js";
 import { ConversationComposer } from "./ConversationComposer.js";
 import type { LexicalChatInputHandle } from "./LexicalChatInput.js";
 import { useApplicationPreferences } from "./settings/applicationPreferences.js";
@@ -81,6 +82,10 @@ function SideChatEditor({ project, source, executionBlocked, action, dark, works
   const configKey = `${owner}:configuration`;
   const [draftConfig, setDraftConfig] = useState<Data | null>(() => { try { return JSON.parse(localStorage.getItem(configKey) ?? "null"); } catch { return null; } });
   const [text, setText] = useState(() => localStorage.getItem(draftKey) ?? "");
+  const pluginContext = { projectId: project.id, coreInstanceId: project.core?.instanceId,
+    connectionGeneration: project.core?.connectionGeneration, sourceThreadId: source.id,
+    ...(sideId ? { kind: "sideThread" as const, threadId: sideId } : { kind: "sideDraft" as const, draftId: selected.id }) };
+  const plugins = useComposerPlugins({ project, context: pluginContext, draftKey, text, action });
   const workspaceReadAvailable = project.core?.features?.sideWorkspaceRead === true;
   const [workspaceAccess, setWorkspaceAccess] = useState<"none" | "readOnly">(() => {
     const saved = localStorage.getItem(workspaceAccessKey);
@@ -112,7 +117,7 @@ function SideChatEditor({ project, source, executionBlocked, action, dark, works
   const [bringResult, setBringResult] = useState("");
   const mounted = useRef(true);
   const side = sideId ? project.state?.threads?.[sideId] : undefined;
-  const validSide = side?.conversation?.kind === "side" && side.conversation.origin?.sourceThreadId === source.id;
+  const validSide = side?.conversation?.kind === "side" && side.conversation.policy?.kind === "sideReadOnlyV1" && side.conversation.origin?.sourceThreadId === source.id;
   const active = validSide && side.turns?.some((turn: Data) => turn.status === "inProgress");
   const unsettled = !!sideId && project.pending?.some((request: Data) => request.params?.threadId === sideId);
   const config = validSide ? project.configurations?.[sideId] : draftConfig ?? {};
@@ -207,11 +212,14 @@ function SideChatEditor({ project, source, executionBlocked, action, dark, works
   }, [pendingId, busy, action, project.id, pendingKey, draftKey, selectionKey, anchorKey, previewKey, workspaceAccessKey, workspace, generation, onSelected]);
   useEffect(() => { if (pendingId && project.state?.connected) void recover(); }, [project.state?.connected]);
   const submit = async (value = api.current?.getMarkdown() ?? text) => {
-    const question = value.trim() || (!sideId && selection ? (selectionPreview || selection.text || "") : "");
+    let question = value.trim() || (!sideId && selection ? (selectionPreview || selection.text || "") : "");
     if (executionBlocked || modelUnavailable || !question || busy || pendingId || unsettled || active || !project.state?.connected || sideId && (!validSide || side.desktop?.archived)) return;
     const token = workspace.capture(generation);
     setBusy(true); setError("");
     try {
+      const references = await revalidateComposerPlugins(action, pluginContext, draftKey, value, t("chat.composer.pluginReferenceUnavailable"));
+      const intent = composerPluginIntent(references, name => t("chat.composer.pluginReferenceIntent", { name }));
+      if (intent) question += `\n\n${intent}`;
       if (sideId) {
         await action("side", { projectId: project.id, operation: "send", threadId: sideId, text: question });
       } else {
@@ -224,6 +232,7 @@ function SideChatEditor({ project, source, executionBlocked, action, dark, works
         onSelected({ kind: "side", id: result.threadId });
       }
       if (!mounted.current || !workspace.isCurrent(token, generation)) return;
+      plugins.clear();
       workspace.clearAfterSend(token, generation); localStorage.removeItem(selectionKey); localStorage.removeItem(anchorKey); localStorage.removeItem(previewKey);
       setSelection(null); setAnchor(null); setSelectionPreview(""); setText(""); api.current?.clear();
     } catch (cause) {
@@ -231,6 +240,15 @@ function SideChatEditor({ project, source, executionBlocked, action, dark, works
       if (!mounted.current || !workspace.isCurrent(token, generation)) return;
       if (!failure.submissionUnknown && !sideId) { localStorage.removeItem(pendingKey); setPendingId(""); }
       setError(failure.message);
+    } finally { if (mounted.current && workspace.isCurrent(token, generation)) setBusy(false); }
+  };
+  const submitGenUi = async (question: string) => {
+    if (executionBlocked || modelUnavailable || busy || pendingId || unsettled || active || !project.state?.connected || !sideId || !validSide || side.desktop?.archived) throw Error("Side conversation is not available");
+    const token = workspace.capture(generation);
+    setBusy(true); setError("");
+    try {
+      if (!mounted.current || !workspace.isCurrent(token, generation)) throw Error("Side conversation changed");
+      await action("side", { projectId: project.id, operation: "send", threadId: sideId, text: question });
     } finally { if (mounted.current && workspace.isCurrent(token, generation)) setBusy(false); }
   };
   const configure = async (values: Data) => {
@@ -289,7 +307,7 @@ function SideChatEditor({ project, source, executionBlocked, action, dark, works
     </div>
     <div className="side-chat-transcript">
       {!sideId && <div className="side-chat-empty"><SideChatIcon size={30} /><h2>侧边聊天</h2><p>岔开一个问题，主聊天留在原处。</p><small>讨论会保留，可从相关讨论中恢复。</small></div>}
-      {validSide && <Messages key={`${owner}:${sideId}`} project={project} thread={side} action={action} dark={dark} reserveResponseSpace={false}
+      {validSide && <Messages onGenUiFollowUp={submitGenUi} key={`${owner}:${sideId}`} project={project} thread={side} action={action} dark={dark} reserveResponseSpace={false}
         onLink={() => setError("旁路不提供链接预览；可复制链接后从主会话打开。")}
         onFile={() => setError(side.conversation.policy?.workspaceAccess === "readOnly" ? "旁路模型可只读查询当前工作区；请在问题中指定文件路径。" : "此旁路仅能读取冻结会话证据。")}
         onReview={() => {}} readTurnReview={async () => ({})} responseActions={answer => <><Button type="button" variant="ghost" size="sm" className="side-bring-action" onClick={() => prepareBringBack(answer.text, true)}>带回整条回复</Button><Button type="button" variant="ghost" size="sm" className="side-bring-action" onClick={() => prepareBringBack(answer.text, false)}>带回选中文字</Button></>} />}
@@ -315,6 +333,7 @@ function SideChatEditor({ project, source, executionBlocked, action, dark, works
       {pendingId && <button type="button" onClick={() => void recover()} disabled={busy}>核对首问结果</button>}
     </div>
     <div className="composer-dock side-chat-composer" data-side-owner={owner}>
+      <div className="composer-input-stack">
       <div ref={setMenuAnchor} className="composer-menu-anchor" />
       <ConversationComposer nextPrompt={nextPrompt} project={project} contextControl={<ContextMeter key={`${project.id}:${sideId ?? "draft"}`} project={project} thread={validSide ? side : undefined} action={action} />} modelConfig={config} fallbackModelConfig={!sideId ? project.configurations?.[source.id] : undefined} modelDisabled={editorDisabled || !!active || !!sideId && (executionBlocked || !config)}
         onConfigureModel={values => { void configure(values); }}
@@ -331,6 +350,7 @@ function SideChatEditor({ project, source, executionBlocked, action, dark, works
             setSelection(null); setSelectionPreview(""); setAnchor(null); api.current?.focus();
           }}><CloseIcon /></Button>
         </section> : undefined}
+        pluginMentionCatalog={plugins.catalog}
         composerCatalog={{ entries: [], refresh: () => {} }}
         placeholder="随心输入" disabled={editorDisabled} submitDisabled={disabled || modelUnavailable || !!active || (!text.trim() && !selection)}
         submitDisabledReason={modelUnavailable ? t("chat.composer.previousModelUnavailable") : undefined}
@@ -339,8 +359,9 @@ function SideChatEditor({ project, source, executionBlocked, action, dark, works
         onChange={value => { setText(value); localStorage.setItem(draftKey, value); }}
         onSubmit={value => { void submit(value); return false; }} onCancel={active ? stop : undefined}
         promptHistory={(side?.turns ?? []).flatMap((turn: Data) => (turn.items ?? []).filter((item: Data) => item.type === "userMessage").map((item: Data) => (item.content ?? []).filter((part: Data) => part.type === "text").map((part: Data) => part.text).join("\n")))}
-        submitControl={active && !text.trim() ? <Button type="button" variant="secondary" size="icon-md" className="composer-primary-action composer-stop-action" aria-label="停止旁路" disabled={executionBlocked} onClick={stop}><StopIcon className="size-4" /></Button> : undefined}
+        submitControl={active && !text.trim() ? <Button type="button" variant="secondary" size="icon" className="composer-primary-action composer-stop-action" aria-label="停止旁路" disabled={executionBlocked} onClick={stop}><StopIcon className="size-4" /></Button> : undefined}
       />
+      </div>
     </div>
   </>;
 }

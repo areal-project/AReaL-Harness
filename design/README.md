@@ -2,6 +2,8 @@
 
 这里是 AReaL Harness 的设计地图，供设计师、客户端工程师和 Agent 使用。从用户任务进入，找到负责该判断的唯一文档，再前往实现与验证位置。
 
+本目录是设计规则的源头，[@areal/ui](../clients/gui/packages/ui/README.md) 是它的实现：改变外观的修改同时更新这里的规则与理由；两者不一致时修改其中之一，不让它们并存（[P5](principles/README.md#p5-共享规则只维护一次)）。写代码时从 @areal/ui 的说明和 [Token 速查](../clients/gui/packages/ui/src/generated/tokens.md) 开始。
+
 设计系统以桌面 GUI 为准，先完成 GUI 的视觉、交互与生产迁移。后续 Web 复用适用的设计原则、Token、组件和模式，并按浏览器能力适配。TUI、CLI 不在本设计系统的建设与验收范围内。设计知识仍集中在根目录 `design/`，范围取舍见[D-001](decisions/001-shared-design-knowledge.md)。
 
 本目录只维护中文。外部使用与 API 文档由 `docs/` 维护。文档归档不改变产品行为、GUI Base 准入或视觉基线。
@@ -22,6 +24,8 @@
 [设计系统架构](architecture.md)说明知识、实现与验证如何依赖。[建设计划](roadmap.md)维护当前缺口、下一步产物与完成条件。具体工作先选主题，只有改变跨主题职责时才回到架构与决策。作者流程见[修改设计文档](contributing.md)。
 
 ## 阅读与预览
+
+打开 `/design-system.html?dashboard` 查看建设看板，了解目标、当前阶段、下一步与验证边界。看板是带日期的来源摘要，具体计划与准入仍由原文档维护。
 
 从仓库根运行 `pnpm --dir clients/gui design:dev` 打开现有预览。文档入口使用 `?docs=design/README.md`，内容和示例仍由各自所有者维护。`pnpm --dir clients/gui design:build` 检查预览构建。组件合同与真实示例从[组件目录](components/README.md)进入，预览证据的边界见[工作台](products/workbench/README.md#预览与真实路径分别核对)。
 

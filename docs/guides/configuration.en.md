@@ -243,6 +243,20 @@ Existing `HTTP_PROXY` / `HTTPS_PROXY` and lowercase equivalents override `ALL_PR
 
 Trusted stdio MCP servers and plugin Hosts automatically inherit these eight variables, including credentials in proxy URLs; other variables retain their respective allowlists. External tools such as `web_search` must use HTTP libraries that support the selected proxy scheme and environment variables. Core does not intercept their custom sockets or configure a remote MCP server's connection to its search provider. Runtime command environments and network authorization remain separate; proxies do not expand Scope permissions. See [MCP](mcp.en.md) and [plugin boundaries](../design/plugins.en.md).
 
+## Desktop general settings
+
+The Terminal section provides system profile inheritance and a font override. Inheritance is enabled by default and tries the current user's iTerm2, macOS Terminal, or Kitty appearance settings. An explicit font takes precedence. Clear it to restore automatic selection. Fonts, font sizes, and ANSI colors apply to new or reopened terminals. Existing terminals keep running. The app still controls base background and text colors. Detection failures use the default appearance. Login shell startup and restricted Runtime HOME and permissions remain unchanged.
+
+The Network section saves an HTTP(S) proxy, comma-separated bypass addresses, and an absolute path to a PEM root certificate bundle. An explicit proxy overrides environment and system proxies. Clear it to restore existing discovery. The app proxy field does not accept credentials. Authenticated proxies can continue to use the environment-variable route above. Bypass entries support hostnames, domain suffixes, IP addresses, and CIDRs. Local control connections always stay direct. Custom certificates add trust roots while retaining hostname, expiry, and certificate-chain validation. The file must be a PEM bundle of self-signed CAs, limited to 1 MiB and 128 certificates. Chromium additional-root validation supports critical basic constraints, key usage, extended key usage, and subject alternative names. It rejects other critical extensions. Desktop saves these settings without changing system proxies or the system trust store.
+
+Proxy and certificate settings cover Core HTTP models, model connection tests, subscription connections, trusted MCP servers, and plugin Hosts. Runtime commands with full access and network permission also receive proxy and certificate environment variables. Third-party commands must support those variables. Network permissions do not expand. Explicit Responses WebSocket mode retains its direct-connection limitation. The default Chromium session and shared embedded browser also use the explicit proxy and certificate settings. With the proxy left blank, the browser follows the system proxy and its bypass rules. The app bypass list applies to Chromium only with an explicit proxy.
+
+After changing network settings or Chromium hardware acceleration, wait for active tasks to finish, quit the app completely, and restart it. Saving does not restart tasks. Hardware acceleration is enabled by default. Turning it off can help diagnose rendering problems caused by graphics drivers.
+
+Task notifications is the master switch for completion, approval, and question notifications. Turning it off preserves category and sound preferences. Re-enabling it does not replay old notifications. Interaction behavior uses the existing queue and steer paths. Queue waits until the current run ends. Steer requests an interruption of current output and continues in the same turn. It does not promise to stop tools immediately. Hold ⌘/Ctrl while clicking Send to reverse the selected behavior for that submission.
+
+`pnpm --dir clients/gui run test:desktop-settings` checks settings persistence, terminal appearance, and restart behavior with isolated Electron and Core. `pnpm --dir clients/gui run test:desktop-network` checks local proxy and TLS boundaries. These runners do not establish packaged-app, real-provider, or cross-platform acceptance.
+
 ## Diagnostics and runtime catalogs
 
 ```sh

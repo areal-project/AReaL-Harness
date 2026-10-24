@@ -5,7 +5,7 @@ AReaL 是围绕任务执行与结果阅读的工作台。本目录维护 GUI 基
 | 查阅目的 | 所有者 |
 | --- | --- |
 | 选择颜色、文字、空间、图标、动效和焦点角色 | [基础表达角色](roles.md) |
-| 找到真实数值、偏好链和当前平台映射 | [Token 语义与平台映射](tokens.md) |
+| 数值在哪里改、写样式用哪个变量、有哪些自动检查 | [Token 来源与使用](tokens.md)；变量清单见 [Token 速查](../../clients/gui/packages/ui/src/generated/tokens.md) |
 | 命名对象、操作和反馈 | [内容与文案](../content/README.md) |
 
 ## 内容层级与表面
@@ -27,4 +27,4 @@ AReaL 是围绕任务执行与结果阅读的工作台。本目录维护 GUI 基
 ## 平台接线
 
 - [GUI 基础与布局约束](../../clients/gui/design-system/foundations.md)维护 CSS 角色、控件档位和工作台几何。
-- [Token 地图](tokens.md)指向 GUI 数值所有者及 Web 已有来源，不复制其数值。
+- [Token 来源与使用](tokens.md)说明每类值的唯一来源与 Web 映射。

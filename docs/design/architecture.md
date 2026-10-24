@@ -49,15 +49,33 @@ server 在安装遥测时为 Engine 注入共享采集预算；Engine 用借用�
 
 Skill 发现由 `core/config` 根据可信启动参数执行，只返回元信息和独立告警；其无状态文件头解析器由 Engine 的显式部署登记复用。Engine 不自行查找用户配置。`core/engine/src/desktop/skills.rs` 保存登记目录描述符，异步、有界地读取当前资源，不持有 Skill 内容快照。配置与读取契约见 [Skill 指南](../guides/skills.md)。
 
-Codex 兼容包由 `core/plugins` 持有本地安装与范围选择；Engine 登记不可变插件 Skill 根，并在 Turn 提交时固定引用、读取时检查当前撤权。普通会话可以发现新安装，显式 Profile、Side 和隔离 worker 不自动扩权。onboarding 使用已有普通 Turn 入口；客户端通过现有管理收据恢复 UNKNOWN。独立 Skills 保持动态描述符读取契约。当前支持及限制见[插件指南](../guides/plugins.md)，后续完整兼容任务见[实施计划](../development/codex-plugins-plan.md)。
+Codex 兼容包由 `core/plugins` 持有本地安装与范围选择；Engine 登记不可变插件 Skill 根，并在 Turn 提交时固定引用、读取时检查当前撤权。普通会话可以发现新安装，显式 Profile、旧版只读 Side 和隔离 worker 不自动扩权。onboarding 使用已有普通 Turn 入口；客户端通过现有管理收据恢复 UNKNOWN。独立 Skills 保持动态描述符读取契约。当前支持及限制见[插件指南](../guides/plugins.md)，后续完整兼容任务见[实施计划](../development/codex-plugins-plan.md)。
 
-组件支持报告归同一包解析器，候选与安装报告分别绑定 sourceDigest 与 installedDigest。Store 将当前启用意图与准确包摘要的静态兼容组合为有效选择；历史 Skill 以自身不可变包检查，Engine 按精确 id/revision 投影准入。Hook 声明和 Apps 文档复用原解析所有者，报告读取不执行包代码，认证、连接与信任仍归现有运行所有者。
+组件支持报告归同一包解析器，候选报告绑定 `admissionDigest ?? sourceDigest`，安装报告绑定 `installedDigest`。Store 将当前启用意图与准确包摘要的静态兼容组合为有效选择；历史 Skill 以自身不可变包检查，Engine 按精确 id/revision 投影准入。Hook 声明和 Apps 文档复用原解析所有者，报告读取不执行包代码，认证、连接与信任仍归现有运行所有者。
+
+### 多格式插件导入决策
+
+插件按格式及其支持版本导入，再接入同一套 AReaL 原生组件与执行所有者。新包优先使用 Agent Plugins 1.0.0 的 Skills/MCP 结构；Codex、Claude、Cursor 和 ZCode 的发现顺序、默认目录、marketplace 合并及扩展规则由兼容导入边界解释。可读取 manifest 不代表支持该宿主的全部运行语义。未知 Portable schema 不回退为另一格式。
+
+导入结果保留包身份、组件名称、声明位置及所需语义。包发现与有效定义仍归 `core/plugins`；MCP 配置校验、认证与连接仍归 `core/mcp`。支持报告、预览与执行复用同一声明解释，管理结果仅输出脱敏投影。来源格式不授予 Hook、工具、网络或文件权限。可选组件失败按其边界隔离，必需组件或包级要求不满足时阻止有效激活。
+
+首个 MCP 切片由现有 `core/mcp` 持有文档声明解释，`core/plugins` 单向依赖该库并保存带来源的声明。接受包工具扩大到 MCP 库的编译依赖，换取一个解释入口，以及现有 MCP 调用接口和每服务校验的复用。该依赖不授予包发现网络或进程执行权，也不把连接状态写入 Store。
+
+`PluginDeclaration` 私有保留原文、文档包装与延迟校验错误，公开安全的 envelope 投影和归一化配置。`McpComponentDocument` 关联原声明来源。Claude 按服务器保留最后定义后，再检查服务器数量及当前文档引用。原始 JSON 调用入口也经同一声明解释，静态报告不因完整运行校验而提前改变安装准入。
+
+兼容证据分为格式识别、组件语义支持、当前环境可用和真实路径验收。当前 MCP 静态报告只承诺 `areal-mcp-document-envelope-v1`，不代表服务配置已通过运行时校验、已经认证或能够连接。用户配置值与秘密由配置所有者持有；插件依赖属于安装图，不与 MCP 连接状态合并。
+
+选择这一结构是为了集中来源差异并复用现有权威。每个生态独立运行时会重复授权、取消和恢复逻辑；把所有字段压成通用 JSON 会丢失覆盖与执行语义，因此均不采用。原始安装包、来源与准入摘要、Store 事务、Turn 版本、撤权及 UNKNOWN 不重放保持原契约。以后导入规则若改变有效执行含义，必须定义重新审阅与旧引用策略，不能静默继承旧信任。分阶段范围与完成条件见[插件实施计划](../development/codex-plugins-plan.md#多格式导入演进)。
 
 插件来源解析仍归 `core/plugins`，Git/npm 不执行安装脚本。`core/mcp` 持有认证、资源与连接版本，Engine 固定 Turn 的 schema/调用对象并拥有撤权、受理和清理。Apps 绑定 Core 进程 epoch、Thread 与包摘要；Electron 的独立沙箱只持窄能力。Main 为每个 App 实例记录原窗口 owner，普通导航保留活 iframe；销毁和撤权按实例归属回收，不依赖原生窗口仍然存活。异步打开返回时复核 owner 与 epoch，旧 token 不随活动窗口转移。文件实际读写复用 Runtime 的目录描述符助手，模型投影剔除 `_meta`。原始 Connector ID 通过明确映射接到 GitHub；客户端凭据仅由可信启动环境注入。
 
 成功 MCP 结果的交互入口只提交原 Thread、Turn、Core item 和打开请求身份。Core 校验原始快照的完整性及调用时保存的来源，再用原连接准备资源；挂载不重新执行业务工具。结果打开操作与 App 实例由同一 Manager 原子保存，关闭事实独立于活页面保留，旧进程 epoch 请求不能重开。Main 按原窗口和 Core instance 复用 token，Workspace 保留 iframe。缺来源、摘要改变、撤权或页面失败时保留普通可读结果。
 
 有限页面工具沿用普通 Core 工具目录、审批和 ToolCall 历史。注册只声明固定的选区读取与 revision 条件修改。Core 固定原始 ToolHost、App epoch、包摘要和登记版本；Desktop 服务固定打开实例的 Main socket，Main 固定窗口、token 与已初始化的 bridge。通知仅唤醒原执行端，持久 claim 才授予一次执行。单次调用拥有 claim 与结算写入，已确认终态不能被后续 hook 或通用 finalizer 覆盖。断线撤销工具执行，保留未保存页面；UNKNOWN 不自动重放。协议和预算见[桌面 API](../api/desktop.md#有限页面工具)。
+
+生成式交互回答复用同一个 MCP Apps 页面宿主，不创建插件或第二套沙箱。Core 的 `gen_ui_publish` 原生工具发布不可变 HTML 制品，`areal/genUi/source` 按已完成的助手消息读取来源与制品。Main 使用移植的 ZCode 指令解析器核对 `::visualize` 引用与 Core 返回的制品，不能凭 Renderer 提供的文件路径打开任意 HTML。页面与 MCP Apps 共用窗口 token、资源代理和 8 页额度。
+
+Core 持有执行、历史与 HTML 来源，Desktop 持有当前用户配置目录下的视图状态。移植的 `packages/gen-ui` 状态存储按项目、Thread 和制品路径隔离，原子保存 `{modelContent,privateContent}`。每项最多 16 KiB，每个会话最多保留 100 项。普通主会话和 Side 提交只将有界 `modelContent` 作为不可信上下文附加到下一次输入，`privateContent` 不进入模型请求。该状态可在同一 Desktop 配置下恢复，不提供跨设备同步。生成页没有 Node、文件、工具或网络访问权，生成页不会改变宿主会话权限；旧版只读 Side 保留只读权限。
 
 插件下载与准备不持有 Engine 目录刷新锁；Store 的跨进程锁和 revision CAS 负责提交，随后从同一安装状态快照在刷新锁内发布目录，连接排空在锁外执行。MCP 清理未确认以类型化错误进入 `cleanupUnknown`，不能按普通失败重连；没有清理凭据的后续断开操作也不能清除此状态。跨实例共享启用状态与本实例受审阅定义分开：hook 调用前读取当前启用状态，后台协调取消已停用包的在途 hooks（包括升级后新版已删除定义的旧调用）；固定 Turn 版本不会固定启用权限。显式 Profile 默认排除插件，仅部署定义的 `allowPluginSkills` 可选择加入，且子任务继续受父任务插件范围约束；hook 角色与 matcher 使用已受理 Profile 身份，压缩保留子任务归属。状态轮询只读安装状态，不枚举包。组件解析按包身份、摘要和政策缓存，每次使用通过 NOFOLLOW 描述符检查文件/目录身份、权限、大小、mtime/ctime；变化后重新校验完整摘要。MCP 调用只验证所属包。该缓存不增加对任意同 UID 并发目录替换的隔离承诺。
 
@@ -73,9 +91,13 @@ Task Mode 由 `core/engine/src/task_mode` 管理 Task/TaskRun、定时触发、�
 
 手动 Run Now 复用 Task 的原子提交、总预算与 queued Run 执行链。Core 持久保存 Run、目标快照和收据后才调用 Host 准备；客户端通过原请求的只读收据核对恢复，不改写计划或重放未知提交。
 
-Task 持久化的唯一提交点为版本 5 的 `desktop/task-mode.json`。紧凑根引用不可变热 Task、按 Task 链接的历史与固定桶头的压缩 radix 收据/归属索引，索引深度受 256 位键宽限制，终止叶最多 64 行、普通打包 128 KiB，合法大单条仍受 256 MiB 硬上限约束。控制不触发历史扫描，只发布变更 Task、原始收据与根；普通保留检查有界，无法确认的历史继续留热。冷 Run 用量与计数同根提交，旧 Goal 身份不因归档变成普通 Goal。读取在短锁内捕获 Snapshot，再在锁外以同一快照完成授权和投影。文件先同步，根最后原子替换并同步目录；结果不明时冻结写入，重启校验、同步全部可达引用后再恢复。版本 1 至 4 的原字节先备份，原根引用的不可变文件保留；版本 5 阻止旧二进制忽略新规则，迁移不依赖孤儿扫描。
+Task 持久化的唯一提交点为版本 5 的 `desktop/task-mode.json`。紧凑根引用不可变热 Task、按 Task 链接的历史与固定桶头的压缩 radix 收据/归属索引，索引深度受 256 位键宽限制，终止叶最多 64 行、普通打包 128 KiB，合法大单条仍受 256 MiB 硬上限约束。控制不触发历史扫描，只发布变更 Task、原始收据与根；普通保留检查有界，无法确认的历史继续留热。冷 Run 用量与计数同根提交，旧 Goal 身份不因归档变成普通 Goal。实时读取在短锁内捕获 Snapshot，再在锁外以同一快照完成授权和投影。文件先同步，根最后原子替换并同步目录；结果不明时冻结写入，重启校验、同步全部可达引用后再恢复。版本 1 至 4 的原字节先备份，原根引用的不可变文件保留；版本 5 阻止旧二进制忽略新规则，迁移不依赖孤儿扫描。
 
-定时任务管理界面复用普通 Messages 与 Composer，直接复用普通会话的 TaskResourcesPopover；ConversationStatusCard 增加任务描述与状态概要，不建立固定右栏。宿主 task-draft 在同一管理 Thread 中解释 Agent 回复并校验保存；Core 历史保持原样，界面只读取解码后的显示投影。创建收据和逐轮修改收据阻止重复处理；执行限制不由 Renderer 的权限菜单解除。新建自动准备独立工作目录和管理 Thread，目录归 ProjectlessWorkspaces 分配；已有任务保留原归属，宿主和 Core 校验目录边界。管理 Thread 与执行 Thread 分离，执行锚点继承管理 Thread 的 cwd。提案摘要绑定原始结构化时间意图；Core 先重放原收据，再按一次捕获的时钟解析新提交。日历规则与固定间隔由同一 Core 计算器验证、预览和推进，宿主只格式化展示。旧固定间隔保持秒数和原游标，日历按保存时区处理缺日和夏令时。最近触发决定与游标原子提交；新 Run 保存已受理规则，后续修改不改写其规则、目标或准备事实。安排与控制消息的成功状态仅来自匹配宿主收据。定时 Task 的根 Thread 只定位执行环境；每个 Run 新建会话并冻结配置。Core 持有触发、离线补执行和忙碌跳过，经认证桌面 Host 通过 prepare/ready 提供配置及工具。暂停安排只影响后续触发，停止或恢复通过 Run 控制，审批超时保留受阻执行。
+可信本机的任务目录预览由 Core 直接读取一次原子发布根及其不可变 Task 叶，不打开 Store 或执行恢复，不新增持久索引。该投影明确标记为已发布、执行状态未观察；它不证明提交回执或实时运行状态，不进入 live model，也不能提供控制操作的修订。Desktop 仅通过窄 CLI 获取投影，Renderer 并行等待原 Core 的实时目录；实时结果优先，迟到预览按请求身份丢弃。边界见[本地服务 API](../api/local-service.md#已发布任务目录预览)。
+
+普通可写桌面会话通过 Core 的 `scheduled_task_*` 工具创建和管理定时任务。工具上下文绑定当前已注册 Host 的身份与连接、来源 Thread 及 cwd，冻结的权限和工具 allowlist 继续生效。`sourceThreadId` 仅负责来源关联，`threadId` 保留独立执行锚点，每次 Run 另建 Thread。写入键来自持久 tool-call 身份，回执核对保留 UNKNOWN，修订冲突不能静默覆盖。`deletedAt` 墓碑复用取消与停止结算路径，保留历史、回执和容量占用。来源对话中的持久任务卡、右上角列表和全局中心读取同一 Task。新建独立任务也使用普通会话工具链路，不依赖 Renderer 轮询确认。
+
+历史 task-draft 定时任务管理界面复用普通 Messages 与 Composer，直接复用普通会话的 TaskResourcesPopover；ConversationStatusCard 增加任务描述与状态概要，不建立固定右栏。宿主 task-draft 在同一管理 Thread 中解释 Agent 回复并校验保存；Core 历史保持原样，界面只读取解码后的显示投影。创建收据和逐轮修改收据阻止重复处理；执行限制不由 Renderer 的权限菜单解除。新建自动准备独立工作目录和管理 Thread，目录归 ProjectlessWorkspaces 分配；已有任务保留原归属，宿主和 Core 校验目录边界。管理 Thread 与执行 Thread 分离，执行锚点继承管理 Thread 的 cwd。提案摘要绑定原始结构化时间意图；Core 先重放原收据，再按一次捕获的时钟解析新提交。日历规则与固定间隔由同一 Core 计算器验证、预览和推进，宿主只格式化展示。旧固定间隔保持秒数和原游标，日历按保存时区处理缺日和夏令时。最近触发决定与游标原子提交；新 Run 保存已受理规则，后续修改不改写其规则、目标或准备事实。安排与控制消息的成功状态仅来自匹配宿主收据。定时 Task 的根 Thread 只定位执行环境；每个 Run 新建会话并冻结配置。Core 持有触发、离线补执行和忙碌跳过，经认证桌面 Host 通过 prepare/ready 提供配置及工具。暂停安排只影响后续触发，停止或恢复通过 Run 控制，审批超时保留受阻执行。
 
 ![Task Mode](diagrams/task-mode-mailbox-architecture.svg)
 
@@ -111,13 +133,15 @@ Workgroup 的 `handoff` 模块投影隔离 worker 已提交的阶段与最终报
 
 Engine 的 `diagnostics` 模块对非权威排障制品执行有界保留，server 装配启动与周期清理；service-host 管理宿主/launcher 日志与握手临时目录的租约回收。诊断回收不改变历史与 Goal 账本的恢复语义，策略见 [Core API](../api/core.md#recovery) 和 [本地服务契约](../api/local-service.md)。
 
-Fork 与 Side 的开发预览复用上述 Core/Runtime 所有权：Engine 创建独立根 Thread/Session，Store 为目标持有不可变继承或参考快照；`conversation.origin` 不承担 Agent 委派、取消或权限继承。Fork 只分支对话，使用当前共享工作区；Side 的持久只读角色在旧执行入口、模型工具和 Runtime Scope 中校验。主会话与 Side 共用 `Messages` 与 `ConversationComposer` 展示边界（Lexical 输入与模型目录菜单）；各自控制器保留草稿、首问回执与配置归属。Renderer 只投影分页历史、相关讨论和草稿回传；关闭面板不结束 Core 工作，回传只追加本地草稿。协议与权限边界见[桌面 API](../api/desktop.md#turn-fork-开发预览)。源码实现与局部验证不等于完整 P0 验收；原生桌面路径、完整组合验收、安装包与真实供应商证据仍需分别完成。
+Fork 与 Side 复用 Core/Runtime 的会话、历史和执行所有者。`conversation.origin` 记录内容来源，不承担 Agent 委派或取消归属。Fork 在当前共享工作区分支对话。新建 Side 保存版本 2 和 `sideExecutableV2` 策略，继承来源当前配置并复用普通会话的提交、工具、权限和压缩路径。稳定来源历史仅供模型参考，活动轮次只复制用户输入，子会话界面与执行账本从空白开始。旧版 `sideReadOnlyV1` 在存储校验、工具目录、指令和 Runtime Scope 中保持只读。Renderer 用完整 `Composer` 与 `Messages` 展示每个子会话，以项目、来源和子会话 ID 管理临时标签、草稿与引用。Core 持有创建及关闭收据；关闭先建立持久准入屏障，再停止并结算资源，UNKNOWN 不重放。隐藏面板和切换来源保留活动会话，关闭标签释放该子会话，重启不恢复新标签。Esc 按面板 DOM 归属路由。接口见[桌面 API](../api/desktop.md#side-chat)。源码、确定性本地模型、真实供应商与安装包分别验证。
+
+桌面目录准入核对 Core 保存的 V2 来源与相同物理 cwd，将 Side 及其委派子任务映射到来源 Session 作者；原子首问同样先准入。文件与浏览器结果沿子会话的执行 Core/root 路由。首轮只继承来源已挂载的固定电脑工具定义，旧版 Side 不扩权。
 
 提示词预测复用这两个 Composer。只有已显示且开启该功能的 GUI 请求最新成功轮次的候选；Core 保留该轮实际模型实例，独立发送无工具 `promptPrediction` 请求。一个持久化的 `DesktopState.promptPrediction` 标签槽负责来源、去重、恢复与失效；专用通知只更新该槽，Thread 快照负责恢复。待定尝试在重启后不可重试，已有候选原样恢复。预测不创建 Turn/Item、不进入 Solve 上下文。Lexical 在真实文档外显示候选，裸 Tab 仅接受到草稿；新输入暂时隐藏而不删除候选。模型容量、取消和最终发布验证归 Core；设置、需求与呈现归 GUI。详见[Core API](../api/core.md#下一条提示词预测)。
 
 共享 Browser 的普通网络加载使用 Chromium 的系统代理、DNS 与站点策略；Main 只隔离活动控制端口，网页不取得产品 bridge。适配器把用户新发送绑定到确切 Turn 和 GUI 连接，首次经 Core 审批的工具发现才懒绑定当前原生页；不以 `thread/resume` 抢宿主。人工键鼠事件由 Main 在派发前撤销页面读取与动作代次，排空在途输入后交付首个用户事件。Core 的读取和动作许可绑定页面、控制代次及具体计划，UNKNOWN 不重放。产品流程及局限见 [Browser 契约](../api/browser.md)。
 
-客户端设计规则与页面模式归 [`clients/gui/design-system/`](../../clients/gui/design-system/README.md)，数值、公共组件和开发预览沿用现有 renderer 所有者；规则目录不承载业务执行或另一份 Token 数值源。 [设计系统架构草案](../../clients/gui/design-system/architecture.md)明确架构、Base、独立题目与反馈的阶段准入；当前目录生成原型不代表 Base 或视觉验收完成。
+客户端设计规则与页面模式归 [`clients/gui/design-system/`](../../clients/gui/design-system/README.md)。首批基础值、纯调色板、基础控件，以及Composer表面/工具栏和设置页面/分区/组/行的纯布局由私有 workspace 包 [`@areal/ui`](../../clients/gui/packages/ui/README.md)承接，原 renderer 保留其余控件、命名主题、偏好与开发预览；规则目录不承载业务执行或第二份可编辑值。迁移边界见 [D-004](../../design/decisions/004-local-ui-package.md)。[设计系统架构](../../clients/gui/design-system/architecture.md)明确架构、Base、独立题目与反馈的阶段准入；包构建和目录生成不代表完整 Base 或视觉验收完成。
 
 有限浏览器动作仍由 Main 的原生预览所有者执行。观察持有独立视口及原生 OPTION 身份，准备和执行复核同一目标；状态等待只读原生事实。scroll/hover 后失效观察保留批量确认前缀与调用去重，固定 select 语义不开放任意脚本入口。
 
@@ -137,11 +161,17 @@ Fork 与 Side 的开发预览复用上述 Core/Runtime 所有权：Engine 创建
 
 服务崩溃后的自动换代必须经过现有本地服务所有者：原 Host 对意外 Core 退出和 Runtime 清理发布正向证明，在启动锁内复核原代际、同一 GUI owner、存活期、部署配置和二进制，并排除已受理或结算未知的显式停止。恢复预留与原代际到后继代际的回执只允许一个后继，丢失回复也不能启动第二个。缺少证明、Host 丢失、配置变化或明确停止均不自动换代。换代后只恢复观察和原请求核查，Core 的启动恢复负责将未完成执行标为 UNKNOWN，不重放未完成任务的模型请求、工具或外部效果；已授权且尚未开始的定时安排沿用其原有规则。详细保证见 [本地服务契约](../api/local-service.md)。
 
+桌面 Worktree 由 `clients/gui/app/src/core/worktrees.cjs` 持有创建与线程绑定日志，`worktree-admission.cjs` 核对线程身份与定时任务目录的持久作者预约，`task-workspace-owners.cjs` 持久记录任务的实际宿主及可信线程锚点，`schedule-admission.cjs` 持有自动分配项目外目录的任务家庭预约、执行准备和精确交互作者映射核查，`packages/workspace-git` 持有受控 Git 创建与事实核查。逻辑项目和物理执行目录分别登记。普通新会话使用当前目录与 Core；只有当前创建明确选择 Worktree 才分配新 checkout，不根据会话数量或旧偏好自动隔离。每个隔离 checkout 通过原服务入口启动独立 Core/Runtime，客户端仅聚合线程投影，不迁移 Core 历史。线程、子线程及请求收据定位原执行宿主，文件、进程和浏览器回调沿同一归属路由。接口和保证范围见[桌面宿主契约](../api/desktop.md#桌面宿主-worktree-契约)及[Worktree 指南](../guides/worktrees.md)。 环境配置归现有 library 的逻辑项目元数据，创建时冻结脚本；`worktree-environment.cjs` 仅适配 Core 受管进程回执。空线程绑定不代表环境就绪，首条 Prompt 需等待 setup 成功。取消和删除保留原创建身份，删除 tombstone 阻止旧 owner 重连或回退来源。
+
 ## 仓库目录
 
 桌面客户端归属见[迁移决策](../adr/0001-desktop-client-module.md)。`clients/gui` 的独立 Electron 适配器保留系统凭据与订阅转发，通过共享服务公共入口连接 Core；退出 GUI 不终止 Core 任务。macOS 安装包中，前台与后台适配器使用不同的应用身份，后台共享主包资源与原有数据目录，避免 Finder 将重开前台的请求交给无窗口后台。GUI 构建、数据隔离与本地包见 [GUI 指南](../../clients/gui/README.md)。移动端源码后续迁移。
 
+GUI的混合消息采用可重建展示投影：Markdown沿Streamdown，严格版本化`areal-ui`数据由共享UI目录校验并以只读React组件展示，Gen UI/MCP仍由原隔离宿主处理。Core保留原始消息和制品权威，复制可使用同一文字投影；这不是持久历史迁移或可执行组件协议。审批和Ask User共享展示外壳，合法动作、草稿、提交锁与UNKNOWN核对仍归原请求控制器。
+
 桌面适配器的项目连接所有者管理退避、连接身份和快照重订；先连接兼容的运行中服务，仅对满足上述正向证明与代际约束的 Core 崩溃请求受控恢复，不重放未知提交。Main 初始化只连接原后台，部署变化展示显式更新入口，不自动换代。Desktop 生命周期 owner 在副作用前持久化绑定目标代际的意图，逐项目通过 Host 回执结算；Main 只保存引用与连接投影并核验原 Desktop 退出。受理未确认只核查原请求，已完成目标不重做；Core 的配置与权限重启边界继续生效。Workbench 共享桌面能力契约，Main 和服务入口校验各自允许的能力并保留结构化错误；Core 仍拥有配置和执行的最终校验。原生预览归 Electron Main，按项目/Thread 释放并有界缓存页面；界面从 Main 的权威快照投影每页一个顶层标签，与文件和终端共用标签栏；页面列表订阅归当前项目/Thread 的窗口投影，标签使用 `pageId` 定位，不建立另一套 Browser 生命周期或执行权限。具体恢复、类型覆盖及页面状态丢失边界见 GUI 指南的生命周期章节。
+
+Desktop 后台在同一进程内按职责装配三个模块：`project-connections.cjs` 管理连接身份、只读等待器、退避与受约束重连；`history-observation.cjs` 管理历史观察、分页、显示窗口和读取恢复，不获得写命令入口；`submission-recovery.cjs` 串行写入 pending/outcomes 并核对原请求收据，空收据和断线继续保持 UNKNOWN，不重发修改。`CoreBackend` 保留项目登记、部署、业务命令编排和既有调用入口，只注入显式依赖；模块共用原项目对象，不复制业务状态。历史窗口归观察模块，连接与核对计时器受原连接身份约束；重试时序、持久文件和 Core/Runtime 所有权不变，不新增进程。
 
 [Remote v2](remote-control.md) 的 Gateway 归现有桌面后台适配器，浏览器只持有受限投影；Core 与 Runtime 继续拥有执行和历史。Direct 与 Relay 共用 RemoteControl 拥有的 session acceptor、观察器和授权预算，传输适配器只提供字节/存活/背压。Direct 使用独立低权限入口，Relay 仅拥有连接路由与登记元数据；两者都不转发高权限本地接口。契约与实施状态见 [Remote API](../api/remote-control.md)，决策见 [Host 所有权](../adr/0008-remote-host-ownership.md)。
 
@@ -187,18 +217,24 @@ macOS 系统静态代理由 GUI 可信后台适配器读取，转换成标准代
 
 平台公开输入物化与清单属于外部消费端；只读目录身份、文件操作拒绝及 OS 挂载保护属于 Runtime。Core 的媒体工具生成有界派生图与动画视图，模型适配器计量最终请求字节；外部消费端不维护 Core 的模型循环。契约见[工具](../guides/tools.md)、[Runtime](../api/runtime.md)和[评测](../benchmarks/README.md)。
 
-共享 Browser 沿用 Core 会话、审批与历史所有权，独立桌面适配器负责认证工具回调，Electron Main 拥有原生页面，Renderer 投影状态。已实现能力通过 Host 发现；持久 Profile 与云浏览器等延期能力仍属于设计范围之外。契约和限制见[Browser 规格](browser.md)、[Browser API](../api/browser.md)及[所有权决策](../adr/0002-shared-browser-ownership.md)。人工独立 Frame 授权与逐 Frame 截图隐私检查也归 Main，绑定当前 Human Page，不授予 Agent 跨源权限，复用既有 ThreadBlob/MediaRef。源码实现不等于安装版或真人验收通过。
+共享 Browser 沿用 Core 会话、审批与历史所有权，独立桌面适配器负责认证工具回调，Electron Main 拥有原生页面，Renderer 投影状态。已实现能力通过 Host 发现；所有项目共用 Main 拥有的持久 Browser Profile；Page 和控制权继续按聊天隔离。云浏览器仍未提供。契约和限制见[Browser 规格](browser.md)、[Browser API](../api/browser.md)及[所有权决策](../adr/0002-shared-browser-ownership.md)。人工独立 Frame 授权与逐 Frame 截图隐私检查也归 Main，绑定当前 Human Page，不授予 Agent 跨源权限，复用既有 ThreadBlob/MediaRef。源码实现不等于安装版或真人验收通过。
 
 `core/engine/src/observations.rs` 在显式启用实验策略时，于模型历史投影层实施旧工具观察的软预算，原文由 Store 保留，不改变 Runtime 操作。配置与兼容性见[配置指南](../guides/configuration.md)。
 
 Core 可通过默认关闭的实验配置，在请求投影与检查点证据中有界保留完整文件参考；执行等待仍由 Runtime 管理。参考回取、非交互 stdin 和连续失败上限见[配置指南](../guides/configuration.md#参考保留与有界工具恢复)。
 
+`core/plugins` 持有不可变插件包与当前项目组件选择；稳定 Skill/MCP 关闭身份跨安装更新保留。Engine 统一执行目录、保留 Skill 读取、onboarding 与 MCP 旧代调用检查，组件变更复用管理回执。Renderer 的插件详情、设置与 Composer 只消费投影；插件标签复用精确 Skill 引用和现有发送路径，旧版只读 Side 保留只读意图边界；可执行 Side 使用继承的普通会话权限。接口和重连语义见[桌面契约](../api/desktop.md#插件包管理)。
+
 ## 插件 Hooks 所有者
 
 `core/plugins/{hooks,hook_sources}` 只解析原包和受控用户/项目来源、matcher、模板与摘要。`core/engine/src/plugin_hooks` 拥有独立定义信任、Session/Turn 布点、持久受理与结果投影；同步任务同时登记在 Session 与当前 Turn，后台任务由 Session 持有。Runtime 沿用路径授权、进程预算、有界任务组写入调度和确认清理，hook 不继承任务 provider 秘密。Main 仅转发管理与恢复收据，Renderer 审阅当前定义；安装和 MCP 信任不能替代 hook 信任。
 
-MCP hook 绑定原工具 generation 与真实 Turn/compaction owner，取消旧 owner 不得移除新 owner。`core/mcp/active_timeout` 在同一逻辑请求的全部 MRTR rounds 中扣减活跃预算，broker 的人工等待守卫暂停该预算；取消/撤权不暂停。管理提交按业务键跨执行去重，日志发布短时串行并为每个在途响应预留空间，因此等待表单不挡住上传或撤销。Core 持有 epoch 绑定的 Session Task Scope；Runtime 校验 Hook 类型参与及有界组 FIFO，不扩大各进程授权。同任务 Hook/Ordinary 可重叠，ordinary/ordinary 与跨任务冲突仍独占；关闭先等待任务再关闭 anchor，UNKNOWN 不重放。普通只读子任务 command hooks 需要另行同意并绑定摘要，准入与实时检查使用同一条件，继承计划也须过滤。Runtime 确认受限隔离，只授予工作区/包读取和私有 scratch/本插件 data 写入，禁止网络和 provider 秘密继承；data 根固定身份，重定向拒绝。Side/研究任务/nativeTaskAgent/受限 Profile/只读根会话/MCP 继续排除，见 [P2 矩阵](../development/codex-plugins-p2-acceptance.md)。
+MCP hook 绑定原工具 generation 与真实 Turn/compaction owner，取消旧 owner 不得移除新 owner。`core/mcp/active_timeout` 在同一逻辑请求的全部 MRTR rounds 中扣减活跃预算，broker 的人工等待守卫暂停该预算；取消/撤权不暂停。管理提交按业务键跨执行去重，日志发布短时串行并为每个在途响应预留空间，因此等待表单不挡住上传或撤销。Core 持有 epoch 绑定的 Session Task Scope；Runtime 校验 Hook 类型参与及有界组 FIFO，不扩大各进程授权。同任务 Hook/Ordinary 可重叠，ordinary/ordinary 与跨任务冲突仍独占；关闭先等待任务再关闭 anchor，UNKNOWN 不重放。普通只读子任务 command hooks 需要另行同意并绑定摘要，准入与实时检查使用同一条件，继承计划也须过滤。Runtime 确认受限隔离，只授予工作区/包读取和私有 scratch/本插件 data 写入，禁止网络和 provider 秘密继承；data 根固定身份，重定向拒绝。旧版只读 Side/研究任务/nativeTaskAgent/受限 Profile/只读根会话/MCP 继续排除，见 [P2 矩阵](../development/codex-plugins-p2-acceptance.md)。
 
 用户评价在 Clients 层冻结公开历史并复用独立 Side；Core Server 仅适配既有轨迹接收端。边界见 [user feedback](../guides/user-feedback.md).
 
 `core/engine/src/workspace.rs` 在已确认的受管副作用结算边界管理共享作者租约；工具调用并发由 `tools/scheduling.rs` 按可信后端和顺序屏障控制。Runtime 仍拥有进程与清理事实，Core 不通过 shell 文本推断只读或资源已释放。
+
+电脑控制采用独立原生 Helper，Main 拥有生命周期、系统授权与停止，Core 保留准备计划、审批与历史权威。设置只发起用户明确点击的系统授权；观察与模型请求不会弹出授权。原生 AX、截图与输入结果经认证桌面通道返回，未知输入不自动重放。边界与构建见[电脑控制](../api/computer.md)。
+
+外部 LCU 是显式选择的电脑控制方式。Main 持有固定版本原始 CUA client 与每聊天 JS 会话，沿现有 computerHost 认证连接提供原始工具与原生应用授权。Core 向手动新建聊天注入完整初始化指令，产生可信调用身份，复用 MCP 结果投影与媒体持久化，并在权威 turn 结算前等待清理。旧聊天不迁移工具表；provider 切换在执行准入再次校验。LCU 不承载内置浏览器，Preview/browser_v1 的所有者保持不变。

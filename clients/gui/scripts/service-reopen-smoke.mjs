@@ -15,7 +15,9 @@ const { _electron: electron, chromium } = require('playwright-core');
 const binary = process.env.AREAL_CORE_BIN;
 assert.ok(binary?.startsWith(join(root, '.local/dev-bin/')), 'Use a private fixed Core slot');
 assert.ok(!process.env.AREAL_REOPEN_LEGACY, 'Detached legacy migration requires the explicit legacy recovery runner');
+const readingSlice = process.argv.includes('--reading-slice'), manualReading = readingSlice && process.argv.includes('--manual');
 const replacement = process.env.AREAL_REOPEN_REPLACEMENT_BIN;
+assert.ok(!readingSlice || !replacement, 'Reading continuity does not replace the Core binary');
 const originalStat = await lstat(binary), originalHash = createHash('sha256').update(await readFile(binary)).digest('hex');
 assert.ok(originalStat.isFile() && originalStat.nlink === 1 && await realpath(binary) === binary, 'The private fixed binary must be a regular copy');
 if (replacement) {
@@ -27,7 +29,10 @@ const force = process.env.AREAL_REOPEN_FORCE_GUI === '1';
 const scratch = await mkdtemp('/private/tmp/ar-'), workspace = join(scratch, 'workspace'), config = join(scratch, 'config.toml');
 await mkdir(workspace); await mkdir(join(scratch, 'user/.areal'), { recursive: true });
 execFileSync('git', ['init', '-b', 'main'], { cwd: workspace, stdio: 'ignore' });
-const requests = [], modelRequests = [], held = new Set(), checks = [], errors = [], generations = [], attachments = [];
+const requests = [], modelRequests = [], held = new Set(), checks = [], errors = [], generations = [], attachments = [], readingEvidence = [];
+const readingHistory = 'COMPLETED_HISTORY\n\n' + Array.from({ length: 48 }, (_, index) =>
+  `【恢复第${String(index + 1).padStart(2, '0')}段】同一个任务正在继续执行。阅读这一段时，请保留当前项目、已完成的回复和下一条未发送的草稿。刷新页面或者恢复意外退出的页面之后，应继续从这一段阅读，无需再次发送任务。段落的编号用于核对阅读位置，正文换行与窗口宽度共同决定实际的阅读偏移。`
+).join('\n\n');
 checks.push = (...items) => { console.log('CHECK', ...items); return Array.prototype.push.apply(checks, items); };
 const model = createServer(async (request, response) => {
   try {
@@ -37,7 +42,7 @@ const model = createServer(async (request, response) => {
     if (naming) return;
     requests.push(body);
     response.writeHead(200, { 'Content-Type': 'text/event-stream' });
-    const text = requests.length === 1 ? 'COMPLETED_HISTORY' : 'REOPEN_HELD';
+    const text = requests.length === 1 ? readingSlice ? readingHistory : 'COMPLETED_HISTORY' : 'REOPEN_HELD';
     response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: text }, finish_reason: null }] })}\n\n`);
     if (requests.length === 1) response.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`);
     else { held.add(response); response.on('close', () => held.delete(response)); }
@@ -111,12 +116,21 @@ const quiescent = async () => {
   await until(async () => (await records()).every(service => !alive(service.hostPid) && !alive(service.corePid)), 'old engine processes exit');
   await until(() => [...desktopPids].every(pid => !alive(pid)), 'all observed Desktop generations exit');
 };
-const sourcePaths = ['app/src/core/main.cjs', 'app/src/core/service-main.cjs', 'app/src/core/service-client.cjs', 'app/src/core/backend.cjs', 'scripts/service-reopen-smoke.mjs', 'scripts/model-fixture.mjs', 'renderer/dist/index.html'];
+const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+const builtEntry = await readFile(join(gui, 'renderer/dist/index.html'), 'utf8');
+const entryAssets = [...builtEntry.matchAll(/(?:src|href)="\.\/(assets\/[^"]+\.(?:js|css))"/g)].map(match => 'renderer/dist/' + match[1]);
+const sourcePaths = ['app/src/core/main.cjs', 'app/src/core/service-main.cjs', 'app/src/core/service-client.cjs', 'app/src/core/backend.cjs', 'renderer/src/Messages.tsx', 'scripts/service-reopen-smoke.mjs', 'scripts/model-fixture.mjs', 'renderer/dist/index.html', ...entryAssets];
 const sourceHashes = Object.fromEntries(await Promise.all(sourcePaths.map(async path => [path, createHash('sha256').update(await readFile(join(gui, path))).digest('hex')])));
 const sourceHash = createHash('sha256').update(execFileSync('git', ['diff', 'HEAD'], { cwd: root, maxBuffer: 16 * 1024 * 1024 })).digest('hex');
 console.log('Service reopen evidence:', scratch);
 try {
   await launch();
+  if (readingSlice) {
+    await page.getByRole('button', { name: '设置', exact: true }).click();
+    await page.getByRole('button', { name: '常规', exact: true }).click();
+    await page.getByRole('switch', { name: '预测下一条提示词', exact: true }).uncheck();
+    await page.getByRole('button', { name: '返回应用', exact: true }).click();
+  }
   await app.evaluate(({ dialog }, workspace) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [workspace] }); }, workspace);
   await page.locator('.composer-project').click();
   await page.getByRole('menuitem', { name: '新建项目', exact: true }).click();
@@ -157,8 +171,79 @@ try {
     const screenshot = `${label}.png`; await page.screenshot({ path: join(scratch, screenshot) });
     attachments.push({ label, projectId, threadId, turnId: attachedTurnId, identity: currentIdentity, rendererPid, connection, text: await answer.innerText(), status: snapshotThread.turns.at(-1).status, draft: await page.getByTestId('chat-input').innerText(), screenshot });
   };
+  const readView = () => page.evaluate(() => {
+    const viewport = document.querySelector('.messages'), box = viewport.getBoundingClientRect();
+    const paragraph = [...viewport.querySelectorAll('.assistant-message .conversation-markdown p')].find(element =>
+      /【恢复第\d+段】/.test(element.textContent) && element.getBoundingClientRect().bottom > box.top && element.getBoundingClientRect().top < box.bottom);
+    return { turnId: paragraph?.closest('[data-turn-id]')?.dataset.turnId,
+      itemId: paragraph?.closest('[data-side-item-id]')?.dataset.sideItemId,
+      paragraph: paragraph?.textContent.match(/【恢复第\d+段】/)?.[0] ?? null,
+      offset: paragraph ? paragraph.getBoundingClientRect().top - box.top : null,
+      scrollTop: viewport.scrollTop, remaining: viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight };
+  });
+  const settledView = async () => {
+    let previous, stable = 0;
+    return until(async () => {
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+      const current = await readView();
+      stable = previous && current.paragraph === previous.paragraph && current.itemId === previous.itemId
+        && Math.abs(current.scrollTop - previous.scrollTop) < 0.5 && Math.abs(current.remaining - previous.remaining) < 0.5 ? stable + 1 : 0;
+      previous = current;
+      return stable >= 3 && current;
+    }, 'reading viewport settles', 20000);
+  };
+  const expectReading = async (before, label) => {
+    const matches = value => value.turnId === before.turnId && value.itemId === before.itemId
+      && value.paragraph === before.paragraph && Math.abs(value.offset - before.offset) <= 2 && value.remaining > 500;
+    try { await until(async () => matches(await readView()), `${label} restores the same paragraph and offset`, 20000); }
+    finally { readingEvidence.push({ label, expected: before, observed: await readView() }); }
+    assert.ok(matches(await settledView()), `${label} retains semantic history position within 2px after layout settles`);
+    await page.getByRole('button', { name: '滚动到底部', exact: true }).waitFor({ state: 'visible' });
+  };
+  const prepareReading = async (condition, label) => {
+    await page.getByRole('button', { name: '设置', exact: true }).click();
+    await page.getByRole('button', { name: '外观', exact: true }).click();
+    await page.getByRole('combobox', { name: '界面主题', exact: true }).click();
+    await page.getByRole('option', { name: condition.dark ? '深色' : '浅色', exact: true }).click();
+    await page.getByRole('spinbutton', { name: '界面字号', exact: true }).fill(String(condition.font));
+    const content = page.getByRole('spinbutton', { name: '内容字号', exact: true });
+    if (!await content.isVisible()) await page.locator('summary').filter({ hasText: '阅读与代码' }).click();
+    await content.fill(String(condition.font));
+    await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setSize(width, 960), condition.width);
+    await page.getByRole('button', { name: '返回应用', exact: true }).click();
+    await page.waitForFunction(condition => document.documentElement.classList.contains('dark') === condition.dark
+      && getComputedStyle(document.documentElement).getPropertyValue('--content-font-size').trim() === `${condition.font}px`
+      && getComputedStyle(document.documentElement).getPropertyValue('--ui-font-size').trim() === `${condition.font}px`, condition);
+    const viewport = page.locator('.messages'), box = await viewport.boundingBox();
+    assert.ok(box && box.width > 0 && box.height > 0);
+    const target = page.locator(`[data-turn-id="${attachedThread.turns[0].id}"] .conversation-markdown p`).filter({ hasText: '【恢复第24段】' });
+    const top = await target.evaluate(element => element.getBoundingClientRect().top);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, top - box.y - 40);
+    await until(async () => { const view = await readView(); return view.paragraph && view.remaining > 500 && view.scrollTop > 0; }, 'wheel reaches numbered history');
+    const before = await settledView();
+    assert.equal(before.turnId, attachedThread.turns[0].id, 'reader is inside the completed first turn');
+    assert.ok(before.itemId && before.paragraph && before.remaining > 500);
+    readingEvidence.push({ label: `${label}-before`, condition, observed: before });
+    await page.screenshot({ path: join(scratch, `${label}-reading-before.png`) });
+    return before;
+  };
+  const appendReading = async label => {
+    const continuation = `READING_APPEND_${label.replaceAll('-', '_').toUpperCase()}`;
+    const text = '\n\n' + Array.from({ length: 12 }, (_, index) => `${continuation}_${index + 1} 正在继续输出新的任务内容。新输出应出现在同一条回复中，已经离开末尾的读者继续阅读历史。只有主动返回最新内容后，后续输出才继续跟随。`).join('\n\n');
+    heldResponse.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: text }, finish_reason: null }] })}\n\n`);
+    streamedParts.push(continuation);
+    await until(async () => (await page.locator(`[data-turn-id="${attachedTurnId}"] .assistant-message .conversation-markdown`).innerText()).includes(`${continuation}_12`), `${label} streams through the original model connection`);
+  };
+  const expectFollowing = async label => {
+    await until(async () => (await readView()).remaining <= 2, `${label} follows the latest output`, 20000);
+    const view = await settledView();
+    assert.ok(view.remaining <= 2, `${label} remains at the tail after layout settles`);
+    readingEvidence.push({ label, observed: view });
+  };
   await observeAttachment('before-reload');
-  for (const label of ['renderer-reload', 'renderer-crash-reload']) {
+  for (const [index, label] of ['renderer-reload', 'renderer-crash-reload'].entries()) {
+    const before = readingSlice ? await prepareReading(index === 0 ? { dark: false, font: 14, width: 1440 } : { dark: true, font: 18, width: 980 }, label) : null;
     if (label === 'renderer-crash-reload') {
       await Promise.all([page.waitForEvent('crash'), app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.forcefullyCrashRenderer())]);
       assert.deepEqual(await identity(), originalIdentity, 'renderer crash retains the running application and engines');
@@ -177,10 +262,29 @@ try {
       page.setDefaultTimeout(20000); page.on('pageerror', error => errors.push(error.stack));
     } else await page.reload({ waitUntil: 'domcontentloaded' });
     await observeAttachment(`${label}-reattached`);
+    if (readingSlice) await expectReading(before, `${label}-reattached`);
     const continuation = `LIVE_AFTER_${label.replaceAll('-', '_').toUpperCase()}`;
     heldResponse.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: `\n${continuation}` }, finish_reason: null }] })}\n\n`);
     streamedParts.push(continuation);
     await observeAttachment(`${label}-continued`);
+    if (readingSlice) {
+      await appendReading(`${label}-while-reading`);
+      await expectReading(before, `${label}-after-append`);
+      const latest = page.getByRole('button', { name: '滚动到底部', exact: true });
+      await latest.focus();
+      assert.equal(await latest.evaluate(element => element === document.activeElement), true);
+      await page.keyboard.press('Enter');
+      await expectFollowing(`${label}-keyboard-latest`);
+      await appendReading(`${label}-following`);
+      await expectFollowing(`${label}-following-append`);
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await observeAttachment(`${label}-following-reattached`);
+      await expectFollowing(`${label}-following-reattached`);
+      await appendReading(`${label}-following-after-reload`);
+      await expectFollowing(`${label}-following-after-reload`);
+      await observeAttachment(`${label}-following-continued`);
+      checks.push(`${label} preserves the same completed-turn paragraph and offset through history hydration and streaming; keyboard return resumes following and following survives reload`);
+    }
     checks.push(`${label} reattaches the production App to the original live turn and model connection, retains history and draft, and renders a new continuation without replay`);
   }
   heldResponse.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`);
@@ -197,6 +301,29 @@ try {
   await page.screenshot({ path: join(scratch, 'attached-turn-completed.png') });
   attachments.push({ label: 'attached-turn-completed', projectId, threadId, turnId: attachedTurnId, status: 'completed', requests: requests.length, screenshot: 'attached-turn-completed.png' });
   checks.push('the original attached turn completes once with one final response and no duplicate input or model work');
+  if (readingSlice) {
+    if (manualReading) {
+      const viewport = page.locator('.messages'), box = await viewport.boundingBox();
+      const target = page.locator(`[data-turn-id="${attachedThread.turns[0].id}"] .conversation-markdown p`).filter({ hasText: '【恢复第24段】' });
+      const top = await target.evaluate(element => element.getBoundingClientRect().top);
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.wheel(0, top - box.y - 40);
+      await until(async () => { const view = await readView(); return view.paragraph && view.remaining > 500; }, 'manual reading origin');
+      const ready = { automaticAcceptancePassed: true, sourceCommit, sourceHashes, originalHash, projectId, threadId,
+        identity: await identity(), draft: await page.getByTestId('chat-input').innerText(), reading: await settledView(),
+        checks, readingEvidence, scope: 'same-window renderer reload; isolated local model; close this window to clean up' };
+      await page.screenshot({ path: join(scratch, 'manual-ready.png') });
+      const closed = new Promise(resolve => {
+        const onConsole = message => { if (message.text() === 'AREAL_READING_MANUAL_CLOSED') resolve(); };
+        app.on('console', onConsole); app.once('close', resolve);
+      });
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].once('close', () => console.info('AREAL_READING_MANUAL_CLOSED')));
+      await writeFile(join(scratch, 'manual-ready.json'), JSON.stringify(ready, null, 2));
+      console.log('Manual ready: ' + join(scratch, 'manual-ready.json'));
+      await closed;
+    }
+    await stop(); await quiescent(); passed = true;
+  } else {
   await page.getByTestId('chat-input').fill('hold application restart'); await page.getByRole('button', { name: '发送', exact: true }).click();
   await until(async () => held.size === 1 && thread(await state())?.turns.length === 3 && thread(await state()).turns.at(-1).status === 'inProgress', 'independent third turn held for application restart');
   assert.equal(requests.length, 3); assert.equal(held.size, 1);
@@ -241,6 +368,7 @@ try {
   assert.equal(await page.getByTestId('chat-input').innerText(), draft); assert.equal(requests.length, 3);
   checks.push('application restart creates a new owner and engine generation, retains history and unsent draft, and never replays interrupted input');
   await stop(); await quiescent(); passed = true;
+  }
 } catch (error) { errors.push(error.stack); if (page && app) await page.screenshot({ path: join(scratch, 'failure.png') }).catch(() => {}); }
 finally {
   await rendererConnection?.close().catch(() => {});
@@ -254,6 +382,6 @@ finally {
   for (const [path, hash] of Object.entries(sourceHashes)) if (createHash('sha256').update(await readFile(join(gui, path))).digest('hex') !== hash) errors.push(`source changed during test: ${path}`);
   passed = passed && errors.length === 0;
   const desktopCleanup = [...desktopPids].map(pid => ({ pid, exited: !alive(pid) }));
-  await writeFile(join(scratch, 'manifest.json'), JSON.stringify({ passed, checks, errors, force, generations, attachments, desktopCleanup, sourceHash, sourceHashes, binary, replacement, originalHash, requests: requests.length, namingRequests: modelRequests.filter(request => request.kind === 'naming').length, modelRequests, scope: 'isolated source Electron/Main/Desktop/Core; Runtime PID presence recorded without requiring tool execution; local model; native dialog/picker responses injected; no installed package' }, null, 2));
+  await writeFile(join(scratch, 'manifest.json'), JSON.stringify({ passed, checks, errors, sourceCommit, force, readingSlice, manualReading, readingEvidence, generations, attachments, desktopCleanup, sourceHash, sourceHashes, binary, replacement, originalHash, requests: requests.length, namingRequests: modelRequests.filter(request => request.kind === 'naming').length, modelRequests, scope: 'isolated source Electron/Main/Desktop/Core; Runtime PID presence recorded without requiring tool execution; local model; native dialog/picker responses injected; no installed package' }, null, 2));
 }
 assert.ok(passed, errors.join('\n')); console.log('PASS', checks);

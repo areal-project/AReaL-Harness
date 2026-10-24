@@ -70,7 +70,7 @@ impl Engine {
             };
             configuration.options.max_model_rounds=rounds;
             if configuration.options.interaction_mode == InteractionMode::Interactive { configuration.options.interaction_mode=InteractionMode::Asynchronous; }
-            let definitions=engine.visible_tools(&parent,&configuration,true).await;
+            let definitions=engine.visible_tools(&parent,&configuration,true,&state.thread).await;
             configuration.tool_allowlist=Some(definitions.iter().filter_map(|d|d["function"]["name"].as_str())
                 .filter(|n|!matches!(*n,"task_spawn"|"task_wait"|"goal_update"|"agent_spawn"|"agent_spawn_configured"|"delegate_tasks"))
                 .map(str::to_owned).collect());

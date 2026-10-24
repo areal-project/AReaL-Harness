@@ -170,9 +170,14 @@ impl Store {
         detail.integrity = Some(format!("sha256:{archive_digest}"));
         self.transact(expected_revision, |state| {
             let root = remote::publish(self, &files, package::SnapshotBudget::Plugin)?;
-            state
-                .candidates
-                .insert(id.clone(), remote::Candidate { detail, root });
+            state.candidates.insert(
+                id.clone(),
+                remote::Candidate {
+                    detail,
+                    root,
+                    definition: None,
+                },
+            );
             Ok(())
         })?;
         self.read(&id)

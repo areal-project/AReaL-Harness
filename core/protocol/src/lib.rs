@@ -401,6 +401,8 @@ pub struct ToolDefinition {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DynamicToolResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_mcp_result: Option<Value>,
     pub success: bool,
     pub content_items: Vec<ToolContent>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -553,18 +555,67 @@ pub struct SideReference {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SidePolicy {
-    pub kind: String,
-    pub workspace_access: String,
+#[serde(tag = "kind", deny_unknown_fields)]
+pub enum SidePolicy {
+    #[serde(rename = "sideReadOnlyV1")]
+    ReadOnlyV1 {
+        #[serde(rename = "workspaceAccess")]
+        workspace_access: SideWorkspaceAccess,
+    },
+    #[serde(rename = "sideExecutableV2")]
+    ExecutableV2,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum SideWorkspaceAccess {
+    None,
+    ReadOnly,
 }
 
 impl Thread {
     pub fn is_side(&self) -> bool {
         matches!(self.conversation, Some(Conversation::Side { .. }))
     }
+    pub fn is_read_only_side(&self) -> bool {
+        matches!(
+            &self.conversation,
+            Some(Conversation::Side {
+                policy: SidePolicy::ReadOnlyV1 { .. },
+                ..
+            })
+        )
+    }
+    pub fn is_executable_side(&self) -> bool {
+        matches!(
+            &self.conversation,
+            Some(Conversation::Side {
+                policy: SidePolicy::ExecutableV2,
+                ..
+            })
+        )
+    }
     pub fn side_workspace_read(&self) -> bool {
-        matches!(&self.conversation, Some(Conversation::Side { policy, .. }) if policy.workspace_access == "readOnly")
+        matches!(
+            &self.conversation,
+            Some(Conversation::Side {
+                policy: SidePolicy::ReadOnlyV1 {
+                    workspace_access: SideWorkspaceAccess::ReadOnly
+                },
+                ..
+            })
+        )
+    }
+    pub fn model_history_seed(&self) -> Option<&HistorySeed> {
+        match &self.conversation {
+            Some(Conversation::Fork { history_seed, .. }) => Some(history_seed),
+            Some(Conversation::Side {
+                reference_snapshot,
+                policy: SidePolicy::ExecutableV2,
+                ..
+            }) => Some(reference_snapshot),
+            _ => None,
+        }
     }
 }
 

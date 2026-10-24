@@ -1,0 +1,18 @@
+
+.settings-locked-value {
+  display: inline-flex;
+  align-items: center;
+  height: var(--spacing-control);
+  min-height: var(--spacing-control);
+  max-width: 100%;
+  padding: 0 12px;
+  font-size: var(--text-ui-caption);
+  font-weight: 430;
+  line-height: calc(var(--ui-font-size) + 4px);
+  border-radius: var(--radius-navigation);
+  border: 1px solid var(--color-border);
+  background: var(--color-hover);
+  color: var(--color-foreground);
+  cursor: default;
+  user-select: none;
+}

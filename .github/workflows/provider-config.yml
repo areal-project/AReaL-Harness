@@ -37,6 +37,7 @@ jobs:
           node-version: '22'
       - run: npm install --global pnpm@11.7.0
       - run: pnpm --dir clients/gui install --frozen-lockfile --ignore-scripts
+      - run: pnpm --dir clients/gui build:desktop
       - run: node --test clients/gui/scripts/provider-*.test.mjs
       - run: pnpm --dir clients/gui typecheck
       - run: pnpm --dir clients/gui run verify

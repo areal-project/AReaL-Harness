@@ -2,6 +2,7 @@ import { useI18n, UiMessageError, formatUiMessage, type UiMessage } from "../i18
 import { ActionButton } from "../components/ui/action-button.js";
 import { SettingsSelect } from "./SettingsPageParts.js";
 import { SettingsDisclosure } from "./SettingsDisclosure.js";
+import { DesktopEnvironmentSettings } from "./DesktopEnvironmentSettings.js";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Input } from "../components/ui/input.js";
 import { CODE_PREVIEW_THEME_OPTIONS } from "../lib/codePreviewPreferences.js";
@@ -156,6 +157,7 @@ export function GeneralSettings({ settings = {}, power, menuBar, projectlessDire
           />
         </SettingsGroupCard>
       </SettingsSection>
+      <DesktopEnvironmentSettings settings={settings} action={action} connected={connected} />
       <SettingsSection title={t("settings.displaySettings.power")}>
         <SettingsGroupCard>
           <SettingsRow
@@ -341,6 +343,12 @@ export function AppearanceSettings({
           <SettingsRow label={t("settings.displaySettings.interfaceFontSize")} description={t("settings.displaySettings.setTheBaseFontSizeForNavigation")} control={sizeInput(t("settings.displaySettings.interfaceFontSize"), fontSize, 12, 18, setFontSize)} />
         </SettingsGroupCard>
       </SettingsSection>
+      <SettingsSection title={t("settings.displaySettings.reading")}>
+        <SettingsGroupCard>
+          <SettingsRow label={t("settings.displaySettings.contentFontSize")} description={t("settings.displaySettings.setTheBaseFontSizeForBody")} control={sizeInput(t("settings.displaySettings.contentFontSize2"), prefs.contentSize, 12, 24, n => setApplicationPreferences({ contentSize: n }))} />
+          <p className="appearance-reading-preview">{t("settings.displaySettings.readingPreview")}</p>
+        </SettingsGroupCard>
+      </SettingsSection>
       <SettingsSection title={t("settings.displaySettings.interactionAndMotion")}>
         <SettingsGroupCard>
           <SettingsRow label={t("settings.displaySettings.reduceMotion")} description={t("settings.displaySettings.reduceAnimationOrFollowSystemPreferences")} control={
@@ -358,7 +366,6 @@ export function AppearanceSettings({
           <div className="appearance-theme-content">
             <SettingsGroupCard>
               <SettingsRow label={t("settings.displaySettings.contentFont")} control={fontSelect(activeMode, "contentFont", t("settings.displaySettings.contentFont"))} />
-              <SettingsRow label={t("settings.displaySettings.contentFontSize")} description={t("settings.displaySettings.setTheBaseFontSizeForBody")} control={sizeInput(t("settings.displaySettings.contentFontSize2"), prefs.contentSize, 12, 24, n => setApplicationPreferences({ contentSize: n }))} />
               <SettingsRow label={t("settings.displaySettings.codeFont")} control={fontSelect(activeMode, "codeFont", t("settings.displaySettings.codeFont"))} />
               <SettingsRow label={t("settings.displaySettings.codeFontSize")} description={t("settings.displaySettings.codeFontSizeInChatAndDiff")} control={sizeInput(t("settings.displaySettings.codeFontSize2"), code.fontSizePx, 10, 24, n => setCodePreferences({ fontSizePx: n }))} />
               <SettingsRow label={t("settings.displaySettings.showLineNumbers")} control={<SettingsSwitch aria-label={t("settings.displaySettings.showLineNumbers")} checked={code.showLineNumbers} onCheckedChange={showLineNumbers => setCodePreferences({ showLineNumbers })} />} />

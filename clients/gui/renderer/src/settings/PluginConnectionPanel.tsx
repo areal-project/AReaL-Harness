@@ -5,6 +5,7 @@ import { Feedback } from "./common.js";
 import { SettingsDisclosure } from "./SettingsDisclosure.js";
 import { PluginAuthConfiguration } from "./PluginAuthConfiguration.js";
 import { supportBlocked } from "./PluginComponentSupport.js";
+import { Switch } from "../components/ui/switch.js";
 import { pluginMcpStateLabel } from "./pluginResources.js";
 import type { PluginDetail } from "./PluginCenter.js";
 import type { Data } from "../services.js";
@@ -20,14 +21,13 @@ type Props = {
   mutate: (operation: "pluginAuth" | "pluginConnection", values: Data) => Promise<Data | undefined>;
   onRefresh: () => void;
   onAuthActivity: (id: string, pending: boolean) => void;
-  onStart: () => void;
-  draftBusy: boolean;
+  onComponentChange: (serverId: string, enabled: boolean) => void;
   connectorConfiguration: ReactNode;
 };
 
 /** Projects the installed package's authoritative connection snapshot; consent is only a local draft. */
 export function PluginConnectionPanel({ detail, snapshot, loading, error, disabled, command, mutate,
-  onRefresh, onAuthActivity, onStart, draftBusy, connectorConfiguration }: Props) {
+  onRefresh, onAuthActivity, onComponentChange, connectorConfiguration }: Props) {
   const { t } = useI18n();
   const [auth, setAuth] = useState<Record<string, AuthState>>({});
   const [authLoading, setAuthLoading] = useState(true);
@@ -40,7 +40,7 @@ export function PluginConnectionPanel({ detail, snapshot, loading, error, disabl
   const actingRef = useRef(false);
   const servers: Data[] = snapshot?.servers ?? [];
   const connectors: Data[] = snapshot?.connectors ?? [];
-  const authenticatedServers = servers.filter(server => server.config?.authentication);
+  const authenticatedServers = servers.filter(server => server.projectEnabled !== false && server.state !== "disabled" && server.config?.authentication);
   useEffect(() => {
     const request = ++generation.current;
     setAuthLoading(true);
@@ -107,12 +107,13 @@ export function PluginConnectionPanel({ detail, snapshot, loading, error, disabl
     : authPending ? t("settings.pluginConnectionPanel.completeAuthenticationAndCheckItsStatusDisconnected")
     : authRequired ? t("settings.pluginConnectionPanel.completeAuthenticationThenConfirmTrustAndConnect")
     : mappingRequired ? t("settings.pluginConnectionPanel.configureTheConnectorsDeclaredByThisPlugin")
-    : connected ? t("settings.pluginConnectionPanel.pluginServicesAreAvailableInConversations")
+    : connected ? t("settings.pluginConnectionPanel.connectedServicesSubjectToProfile")
     : partial ? t("settings.pluginConnectionPanel.someServicesAreAvailableCheckTheStatus")
     : !hasConnections && snapshot ? t("settings.pluginConnectionPanel.thePluginIsInstalledAndEnabled") : t("settings.pluginConnectionPanel.confirmThatYouTrustTheCurrentInstallation");
 
   return <section className="plugin-status-panel" aria-label={t("settings.pluginConnectionPanel.pluginConnectionStatus")}>
     <h2>{title}</h2><p className="plugin-status-description">{description}</p>
+    {servers.length > 0 && <p className="plugin-status-note">{t("settings.pluginConnectionPanel.componentReconnectRequired")}</p>}
     <Feedback error={error || authError} />
     {!!error && <Button variant="outline" onClick={onRefresh}>{t("settings.pluginConnectionPanel.reloadConnectionStatus")}</Button>}
     {!loading && snapshot && <>
@@ -123,9 +124,11 @@ export function PluginConnectionPanel({ detail, snapshot, loading, error, disabl
         return <div className="plugin-service-row" key={server.serverId}>
           <div className="plugin-service-info"><strong>{server.config?.title || (servers.length === 1 ? `${detail.displayName || detail.name} MCP` : server.serverId)}</strong>
             <p>{status === "unknown" ? t("settings.pluginConnectionPanel.authenticationResultUnconfirmed") : pending ? t("settings.pluginConnectionPanel.authenticationInProgress") : requires ? t("settings.pluginConnectionPanel.authenticationRequired") : status === "ready" ? t("settings.pluginConnectionPanel.authenticatedServiceState", { state: pluginMcpStateLabel(server.state, t) }) : pluginMcpStateLabel(server.state, t)}</p>
+            {server.projectEnabled !== false && server.config?.enabled === false && <p>{t("settings.pluginCenter.componentOnRestricted")}</p>}
             {server.message && <Feedback error={String(server.message)} />}
           </div>
-          {server.config?.authentication && <div className="plugin-service-actions">
+          <Switch checked={server.projectEnabled !== false} disabled={disabled || loading || authLoading || !!acting} aria-label={t("settings.pluginCenter.enableMcpInProject", { name: server.config?.title || server.serverId })} onCheckedChange={enabled => onComponentChange(server.serverId, enabled)} />
+          {server.projectEnabled !== false && server.state !== "disabled" && server.config?.authentication && <div className="plugin-service-actions">
             {pending ? <><Button disabled={blocked} onClick={() => void authenticate(server, "status")}>{t("settings.pluginConnectionPanel.checkAuthenticationStatus")}</Button>
               {status === "pending" && <Button variant="outline" disabled={blocked} onClick={() => void authenticate(server, "cancel")}>{t("settings.pluginConnectionPanel.cancelThisAuthentication")}</Button>}</>
               : requires ? <Button disabled={blocked} onClick={() => void authenticate(server, "start")}>{server.config.authenticationRequirements?.apiKey ? t("settings.pluginConnectionPanel.enableAuthentication") : t("settings.pluginConnectionPanel.authenticateInBrowser")}</Button> : null}
@@ -134,12 +137,11 @@ export function PluginConnectionPanel({ detail, snapshot, loading, error, disabl
       })}
       {mappingRequired && connectorConfiguration}
       {uncertain && <Button variant="outline" disabled={loading} onClick={onRefresh}>{t("settings.pluginConnectionPanel.checkConnectionStatus")}</Button>}
-      {(connected || partial || (!hasConnections && !configurationBlocked)) && <div className="plugin-connection-actions plugin-service-actions">
-        <Button disabled={disabled || draftBusy || !detail.enabled || supportBlocked(detail.installedComponentSupport, detail.installedDigest)} onClick={onStart}>{t("settings.pluginConnectionPanel.startConversation")}</Button>
-        {(connected || partial) && <Button variant="outline" disabled={blocked} onClick={() => {
+      {(connected || partial) && <div className="plugin-connection-actions plugin-service-actions">
+        <Button variant="outline" disabled={blocked} onClick={() => {
           setConsent(false); setConsentOpen(false);
           void mutate("pluginConnection", { id: detail.id, expectedDigest: detail.installedDigest, connect: false });
-        }}>{t("settings.pluginConnectionPanel.disconnectAndRevokeTrust")}</Button>}
+        }}>{t("settings.pluginConnectionPanel.disconnectAndRevokeTrust")}</Button>
       </div>}
       {(connected || partial) && <p className="plugin-status-note">{t("settings.pluginConnectionPanel.afterDisconnectingConfirmTrustAgainToReconnect")}</p>}
       {hasConnections && !connected && !cleanupUnknown && !uncertain && !allDisabled && !authPending && !authRequired && !mappingRequired && <>
