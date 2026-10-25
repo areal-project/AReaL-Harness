@@ -11,6 +11,8 @@ import tempfile
 import threading
 from pathlib import Path
 
+from fixture_session_title import reply_to_session_title
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -36,18 +38,7 @@ def main():
         def do_POST(self):
             try:
                 request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-                if any(
-                    message.get("role") == "system"
-                    and isinstance(message.get("content"), str)
-                    and message["content"].startswith("Generate a concise semantic session title")
-                    for message in request["messages"]
-                ):
-                    assert not request.get("tools"), "session naming must not receive tools"
-                    response = 'data: {"choices":[{"index":0,"delta":{"content":"Release fixture"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/event-stream")
-                    self.end_headers()
-                    self.wfile.write(response.encode())
+                if reply_to_session_title(self, request, "Release fixture"):
                     return
                 results = [
                     json.loads(m["content"]) for m in request["messages"] if m["role"] == "tool"

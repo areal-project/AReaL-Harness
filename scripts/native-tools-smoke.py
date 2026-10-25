@@ -8,6 +8,8 @@ import http.server
 import json
 import os
 from pathlib import Path
+
+from fixture_session_title import reply_to_session_title
 import random
 import struct
 import subprocess
@@ -70,22 +72,8 @@ def main():
             def do_POST(self):
                 try:
                     request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-                    if any(
-                        message.get("role") == "system"
-                        and isinstance(message.get("content"), str)
-                        and message["content"].startswith(
-                            "Generate a concise semantic session title"
-                        )
-                        for message in request["messages"]
-                    ):
-                        assert not request.get("tools"), "session naming must not receive tools"
+                    if reply_to_session_title(self, request, "Native fixture"):
                         naming_requests.append(request)
-                        self.send_response(200)
-                        self.send_header("Content-Type", "text/event-stream")
-                        self.end_headers()
-                        self.wfile.write(
-                            b'data: {"choices":[{"index":0,"delta":{"content":"Native fixture"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'
-                        )
                         return
                     requests.append(request)
                     names = {tool["function"]["name"] for tool in request["tools"]}
