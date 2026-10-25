@@ -37,6 +37,10 @@ macOS 的 `make build/release` 还按 SHA-256 锁定的源码和补丁构建独�
 
 `python3 scripts/tool-capacity-smoke.py --report /tmp/tool-capacity.json` 用真实原生 Runtime 在两个后台进程占满名额后提交 16 个文件操作，并检查受限 Node 创建/关闭订阅适配器。先运行 `make build` 和 `make gui-install`。`node scripts/permission-presets-smoke.mjs` 同时覆盖带 `AGENTS.md` 的审批隔离，以及同一 Turn 的并发 `read_file`/`search_files`。均为确定性机制回归，不代表整体 Agent 收益。
 
+`scripts/managed-toolchains-smoke.py --help` 提供本机已有 Node/npm/pnpm 的输入参数。该测试并发检查常见安装布局，并在 NVM、mise 的父/子 Scope 中实际执行 `node --test`、`npm test`、`pnpm test` 及嵌套 Node 子进程；版本号查询不代替这些执行检查。它同时保留凭据读取、工具链写入、子 Scope 源码写入和网络访问的拒绝断言，不下载依赖。
+
+GUI 验收的服务清理检查复用产品的原生 Core 启动适配，并异步查询进程状态，让同进程内的模型 HTTP 夹具继续响应。验收必须同时确认任务结果、工具结果和所属服务退出；测试驱动完成不等于任务成功，预期权限拒绝或主动终止测试应单独断言。
+
 ## 验证入口
 
 | 修改范围 | 命令 |

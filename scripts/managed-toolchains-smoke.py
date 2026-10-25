@@ -99,6 +99,25 @@ def fixture(root, name, node, npm, pnpm):
         for tool, source, entry in [("npm", npm, "npm-cli.js"), ("pnpm", pnpm, "pnpm.cjs")]:
             copy_install(source, install / f"lib/node_modules/{tool}")
             (install / f"bin/{tool}").symlink_to(f"../lib/node_modules/{tool}/bin/{entry}")
+        # 版本查询不经过测试 runner 和嵌套子进程，不能替代真实工具链验收。
+        write(
+            repo / "package.json",
+            json.dumps(
+                {
+                    "private": True,
+                    "scripts": {"test": "node --test --test-reporter=tap child.test.cjs"},
+                }
+            ),
+        )
+        write(
+            repo / "child.test.cjs",
+            "const test=require('node:test'),assert=require('node:assert/strict');\n"
+            "const {spawnSync}=require('node:child_process');\n"
+            "test('child inherits managed Node',()=>{"
+            "const child=spawnSync('node',['-p','process.execPath'],{encoding:'utf8'});"
+            "assert.equal(child.status,0,JSON.stringify({signal:child.signal,stderr:child.stderr}));"
+            "assert.equal(child.stdout.trim(),process.execPath);});\n",
+        )
     return home, repo, scratch, install, env, real_node
 
 
@@ -142,6 +161,14 @@ def run_case(args, root, name, tools):
                         ),
                         ("npm", "npm --version", True, None),
                         ("pnpm", "pnpm --version", True, None),
+                        (
+                            "node-test-child",
+                            "node --test --test-reporter=tap child.test.cjs",
+                            True,
+                            None,
+                        ),
+                        ("npm-test-child", "npm test", True, None),
+                        ("pnpm-test-child", "pnpm test", True, None),
                     ]
                 )
             probes.extend(
@@ -182,6 +209,10 @@ def run_case(args, root, name, tools):
                 passed = (result["exitCode"] == 0) == allowed and result["cleanupConfirmed"]
                 if expected is not None:
                     passed = passed and content.strip() == expected
+                if label.endswith("-test-child"):
+                    passed = passed and {"# tests 1", "# pass 1", "# fail 0"}.issubset(
+                        content.splitlines()
+                    )
                 checks.append(
                     {
                         "scope": scope_name,
