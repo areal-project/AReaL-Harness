@@ -368,7 +368,7 @@ turn_model_rounds = 0
 
 `ToolPolicy.completionFocus`（JSON `completionFocus`）是默认 false 的显式行为实验。启用后提示 Agent 先完成用户要求的交付与必要验证，仅为具体未解问题增加复查，子任务按自身边界及时交接，空闲时使用较长等待与回执游标。计划应提前明确有限验收证据，让文档、检查准备与实现并行；后期集成验证须观察已应用输入，不能把隔离快照中准备的脚本当成最终验收。必需交付、相关验收及资源结算完成后及时答复，不把可选截图、额外检查或反复更新计划追加为收尾条件。它不强制 final、不免除验收、不扩大预算，也不推断题目要求。示例：`{"policy":{"parallelReadCalls":4,"completionFocus":true}}`。隔离 worker 继承纯工具策略；缺少未见来源证据时不推广为全局默认。
 
-`ToolPolicy.executionFocus`（JSON `executionFocus`）是默认 false 的独立行为实验。启用后，Core 提示 Agent 在同一回复批量请求已知且独立的读取；对下一步必须等待结果的有限命令，优先使用工具已声明的等待默认值；仅在交互、明确期限或实际独立工作需要时选择短等待。依赖读取、写入、进程游标及 UNKNOWN 保持原有顺序和语义。该策略不改写模型指定的 yieldMs/waitMs，不改变预算、验证要求或取消行为；隔离 worker 继承纯工具策略。示例：`{"policy":{"executionFocus":true,"parallelReadCalls":4,"resultViews":{"mode":"on"}}}`。这是一组显式组合实验，不可把组合效果归因于单项，也不能以机制测试替代真实任务及未参与调优来源的效果确认。
+`ToolPolicy.executionFocus`（JSON `executionFocus`）是默认 false 的独立行为实验。启用后，Core 提示 Agent 在同一回复批量请求已知且独立的读取；对下一步必须等待结果的有限命令，优先使用工具已声明的等待默认值；仅在交互、明确期限或实际独立工作需要时选择短等待。对能基于当前快照与约定接口独立准备的实现或检查，明确声明 `independent=true` 和精确、不重叠的 `writes`；依赖演进中的共享状态或最终集成验证时保留共享执行。提示同时区分隔离检查准备与已应用产物的集成验收，不移除工作区冲突保护。依赖读取、写入、进程游标及 UNKNOWN 保持原有顺序和语义。该策略不改写模型指定的 yieldMs/waitMs，不改变预算、验证要求或取消行为；隔离 worker 继承纯工具策略。示例：`{"policy":{"executionFocus":true,"parallelReadCalls":4,"resultViews":{"mode":"on"}}}`。这是一组显式组合实验，不可把组合效果归因于单项，也不能以机制测试替代真实任务及未参与调优来源的效果确认。
 
 工具结果视图通过 `[tools] extensions_file` 指向的 JSON 配置，在 `policy.resultViews` 下设置 `mode: off|observe|on`（默认 observe）及 `searchGroups`、`repeatLines` 开关。大结果快照与内置 rg 不依赖该开关；额度和回取行为见[工具指南](tools.md)。
 
