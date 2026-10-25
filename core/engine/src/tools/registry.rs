@@ -11,6 +11,8 @@ pub struct ToolPolicy {
     pub parallel_read_calls: usize,
     /// 显式实验：按交付契约收敛验证与协作；不替模型判定任务已完成。
     pub completion_focus: bool,
+    /// 显式实验：减少独立读取与等待之间的无效模型往返，不改写工具参数。
+    pub execution_focus: bool,
     pub result_views: ResultViewPolicy,
     pub command_wait_ms: u64,
     pub pty_wait_ms: u64,
@@ -28,6 +30,7 @@ impl Default for ToolPolicy {
         Self {
             parallel_read_calls: 1,
             completion_focus: false,
+            execution_focus: false,
             result_views: ResultViewPolicy::default(),
             command_wait_ms: 120_000,
             pty_wait_ms: 1000,

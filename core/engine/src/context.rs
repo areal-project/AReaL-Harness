@@ -417,6 +417,9 @@ impl Engine {
         if self.extensions.policy.completion_focus {
             prefix.push(Message::text("system", agents::COMPLETION_FOCUS));
         }
+        if self.extensions.policy.execution_focus {
+            prefix.push(Message::text("system", include_str!("execution-focus.md")));
+        }
         if self.extensions.agents.is_none()
             && !cell.research
             && self.limits.max_children_per_turn > 0
