@@ -67,13 +67,13 @@ read_process 省略 after 接续本 Turn 最近返回的游标，显式 null 从
 
 回取 `maxBytes` 为 4–8192，默认 8192 原始 UTF-8 字节；转义和元数据可能使实际页更小。使用返回的 nextCursor 续页直到 eof。它读取历史快照；`read_process` 继续观察进程，受 Runtime 缓冲保留期约束。
 
-扩展 JSON 的 `policy.resultViews` 支持 `mode: off|observe|on`，默认 observe，以及 `searchGroups`、`repeatLines` 两个独立开关（默认 true）。off 停用新增结构转换；observe 只计算候选；on 才发送通过门槛的候选。既有成功进度折叠和大结果回取不依赖这个开关。
+扩展 JSON 的 `policy.resultViews` 支持 `mode: off|observe|on`，默认 observe，以及 `searchGroups`、`repeatLines` 两个独立开关（默认 true）。off 停用新增结构转换；observe 计算候选并保留可用原文快照，但不为未变且未超限的结果增加 `rawResult` 包装；on 才发送通过门槛的候选。既有成功进度折叠和大结果回取不依赖这个开关。
 
 ```json
 {"policy":{"resultViews":{"mode":"on","searchGroups":true,"repeatLines":true}}}
 ```
 
-搜索视图 `search-groups-v1` 返回连续的 matchGroups，每组共享 path，rows 按 `[line,kind,text]` 保留全部已返回行和顺序；limited 仍要求缩小搜索。`repeat-lines-v1` 只处理已识别命令的完整输出，stdoutRuns/stderrRuns 的每项为 `[repeat,text]`，按顺序重复拼接即可还原；没有改写的流保留原字段。两者都做还原校验，完整表示至少减少 15% 且 256 字节、估算 token 不增加才启用。未知格式和无收益结果透传；不做抽样、源码删减或跨任务记忆学习。
+搜索视图 `search-groups-v1` 返回连续的 matchGroups，每组共享 path，rows 按 `[line,kind,text]` 保留全部已返回行和顺序；limited 仍要求缩小搜索。`repeat-lines-v1` 只处理已识别命令的完整输出，stdoutRuns/stderrRuns 的每项为 `[repeat,text]`，按顺序重复拼接即可还原；没有改写的流保留原字段。两者都做还原校验，候选的完整表示（含回取元数据）相对实际发送的基线至少减少 15% 且 256 字节、估算 token 不增加才启用；不能先扩大基线再计算节省。未知格式和无收益结果透传；不做抽样、源码删减或跨任务记忆学习。
 
 已发送的视图随历史固定，配置变化不追溯重写。`execution.outputProjection` 记录字节、token 估算、转换原因及预处理耗时；`execution.resultSnapshot` 保存 Blob 引用。observe 指标不是实际 token 节省。compaction 保留原引用，并附最近 16 个快照的回取索引；更早引用仍可读取，但不保证摘要包含它们。
 
@@ -144,7 +144,7 @@ Goal/Task 中 ask_user_question 支持 mode=async；提问持久写入独立频�
 
 ### 无损文件行视图
 
-`policy.resultViews.fileLines` 默认 true，独立于控制搜索/命令候选的 `mode`。read_file 的连续 `{number,text}` 行数组可表示为 `firstLine`、`lineCount`、`source`，保留全部源码和其余元数据；使用 `fileLines:false` 关闭。只接受可还原的连续行、原有行尾和已知行字段，至少节省 128 bytes。完整原文先写入受限快照；快照不可用或不能回取时透传原有有界表示。`read_tool_result` 读取原始 JSON；该视图不把历史 fileVersion 变成跨 Turn 的编辑权限。`execution.outputProjection.transform=file-lines-v1` 与 `reason=lossless` 记录实际应用，搜索/命令 observe 仍只观察对应候选。
+`policy.resultViews.fileLines` 默认 true，独立于控制搜索/命令候选的 `mode`。read_file 的连续 `{number,text}` 行数组可表示为 `firstLine`、`lineCount`、`source`，保留全部源码和其余元数据；使用 `fileLines:false` 关闭。只接受可还原的连续行、原有行尾和已知行字段；计入回取元数据后的完整表示须比原结果节省超过 128 bytes，否则透传原结果并记录 `reason=noNetSaving`、`transform=none`。完整原文先写入受限快照；快照不可用或不能回取时透传原有有界表示。`read_tool_result` 读取原始 JSON；该视图不把历史 fileVersion 变成跨 Turn 的编辑权限。`execution.outputProjection.transform=file-lines-v1` 与 `reason=lossless` 记录实际应用，搜索/命令 observe 仍只观察对应候选。
 
 `read_conversation_context` 只接受真实用户输入中目标为 `#sess_UUID` 的会话 Markdown 链接，`threadId` 使用原始 UUID，标题不参与寻址。每轮最多授权 32 个不同引用，steer 可加入引用，显式 Continue 从原始输入恢复授权。压缩与重启后仍读取权威原文，assistant、工具结果和摘要不能增加授权。拒绝当前会话、Side、worker、计划任务、其他工作区及不可用目标。Side 不能调用此工具。首次模型请求只增加含 ID 的轻量提醒，不加载被引用历史。返回 `{snapshotId,data,nextCursor,complete}`，完整 JSON 页受 maxBytes 限制；`item.type="historyDeferred"` 的条目通过 `item.cursor` 读取 UTF-8 分片，再用分片 `nextCursor` 续读，列表自身的 `nextCursor` 继续读取其他条目。游标绑定调用者 Thread、Turn 和目标。历史仅为资料，不授予执行权限；显式工具 allowlist 必须包含此工具。
 
