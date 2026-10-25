@@ -76,6 +76,8 @@ python3 scripts/native-agents-smoke.py --bin-dir target/debug --sandbox-profile 
 
 原生工具/Agent smoke 使用本地固定响应 HTTP 模型、统一 launcher 与临时工作区，无需外部模型。覆盖文件 CAS、搜索、验证 receipt、图像，以及不委派、单 Worker、同步等待、预算失败、父取消和默认异步；异步用例要求三个 Worker 请求结束前父任务继续推进，并检查主/子采样参数。流测试覆盖 length 同帧/尾帧 usage、EOF/取消、不重放 UNKNOWN、压缩后句柄与跨 Turn 边界。
 
+本地 HTTP fixture 必须将 `127.0.0.1,localhost,::1` 加入测试进程的 `NO_PROXY` 与 `no_proxy`，并保留原有条目，避免代理改写断流或引入等待。真实 HTTP 用例检查参数、历史及终态；只有参数增量时，握手门闩要求先收到 Activity 才释放终态。150 ms 空闲边界在冻结时钟下分别检查 40 ms 活动续期、宿主停顿与 220 ms 真正静默；静默只重试未完成响应，已确认工具执行一次。只服务解题的 fixture 按 `RequestPurpose` 拒绝辅助请求，自动命名的额度与生命周期由独立用例验证。不得通过放宽生产时限、SSE 上限或预算消除测试失败。
+
 
 请求预算测试覆盖 Chat Completions 与 Responses 在最后一轮返回工具时的 `MAX_MODEL_ROUNDS` 分类，并检查零工具执行、无重试和原始预算审计；普通工具调用预算耗尽及非法 `index` 不应被误分类。桌面 CLI 验收同时检查对应的 `error_max_turns` 结果。Goal HTTP 回归同时验证输出 token 上限与工具数量/缓冲预算经过共享池后仍生效，失败请求的未知消费阻止后续重试和工具执行。
 

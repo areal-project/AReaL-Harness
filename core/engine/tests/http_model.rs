@@ -1,3 +1,7 @@
+#[path = "support/solve_only_http.rs"]
+mod solve_only_http;
+use solve_only_http::SolveOnlyHttpModel;
+
 use areal_engine::{
     Engine, Limits,
     model::{ChatModel, HttpModel, ModelProtocol},
@@ -16,6 +20,58 @@ use std::{
         atomic::{AtomicUsize, Ordering},
     },
 };
+
+#[tokio::test]
+async fn responses_argument_chunks_signal_activity_before_completion() {
+    use areal_engine::model::{Message, Model, ModelEvent};
+    use futures_util::{StreamExt, stream};
+    use std::time::Duration;
+    let release = Arc::new(tokio::sync::Notify::new());
+    let gate = release.clone();
+    let app = Router::new().route("/", post(move || {
+        let gate = gate.clone();
+        async move {
+            let argument = json!({"type":"response.function_call_arguments.delta","delta":" ","item_id":"fc_test","output_index":0});
+            let first = stream::once(async move {
+                Ok::<_, Infallible>(Event::default().data(argument.to_string()))
+            });
+            let terminal = stream::once(async move {
+                // 客户端观察到 Activity 才允许终态到达，避免靠 sleep 猜测 HTTP 分包。
+                gate.notified().await;
+                Ok::<_, Infallible>(Event::default().data(json!({"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":5,"output_tokens":2}}}).to_string()))
+            });
+            Sse::new(first.chain(terminal))
+        }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let model = HttpModel::with_protocol(
+        format!("http://{address}/"),
+        "fixture".into(),
+        None,
+        ModelProtocol::Responses,
+    )
+    .unwrap();
+    let mut response = model
+        .stream(vec![Message::text("user", "write")])
+        .await
+        .unwrap();
+    let first = tokio::time::timeout(Duration::from_secs(5), response.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(matches!(first, ModelEvent::Activity));
+    release.notify_one();
+    let rest = tokio::time::timeout(Duration::from_secs(5), response.collect::<Vec<_>>())
+        .await
+        .unwrap();
+    assert!(rest.iter().all(Result::is_ok));
+    assert!(rest.iter().any(|event| matches!(event, Ok(ModelEvent::Usage(usage)) if usage.input_tokens == 5 && usage.output_tokens == 2)));
+    server.abort();
+    let _ = server.await;
+}
 
 #[tokio::test]
 async fn sampling_parameters_reach_solve_and_summary_http_requests_without_dropping_zero() {
@@ -389,7 +445,12 @@ async fn responses_adapter_preserves_multimodal_input_and_persists_output() {
         ModelProtocol::Responses,
     )
     .unwrap();
-    let engine = Engine::open(dir.path(), Arc::new(model), Limits::default()).unwrap();
+    let engine = Engine::open(
+        dir.path(),
+        Arc::new(SolveOnlyHttpModel(model)),
+        Limits::default(),
+    )
+    .unwrap();
     let thread = engine.create("/a".into()).await.unwrap();
     engine
         .start(

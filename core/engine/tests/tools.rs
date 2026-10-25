@@ -1,3 +1,7 @@
+#[path = "support/solve_only_http.rs"]
+mod solve_only_http;
+use solve_only_http::SolveOnlyHttpModel;
+
 use areal_engine::{
     Engine, Limits,
     model::{AgentStream, HttpModel, Message, Model, ModelEvent, ModelStream, ToolCall},
@@ -419,7 +423,7 @@ async fn bounded<T>(future: impl std::future::Future<Output = T>) -> T {
 }
 
 #[tokio::test]
-async fn responses_tools_survive_active_argument_stream_and_retain_provider_context() {
+async fn responses_tools_retain_provider_context_and_exact_arguments() {
     use areal_engine::model::{ModelOptions, ModelProtocol};
     use axum::{
         Json, Router,
@@ -466,11 +470,10 @@ async fn responses_tools_survive_active_argument_stream_and_retain_provider_cont
                 events.push(json!({"type":"response.output_text.delta","delta":"verified Responses result"}));
                 events.push(json!({"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":7,"output_tokens":3}}}));
             }
-            Sse::new(futures_util::stream::unfold(events.into_iter(), |mut events| async move {
-                let event = events.next()?;
-                tokio::time::sleep(Duration::from_millis(40)).await;
-                Some((Ok::<_, Infallible>(Event::default().data(event.to_string())), events))
-            }))
+            // 这里只验证真实 HTTP 协议与历史；150 ms 空闲边界由 watchdog 的虚拟时钟覆盖。
+            Sse::new(futures_util::stream::iter(events.into_iter().map(|event| {
+                Ok::<_, Infallible>(Event::default().data(event.to_string()))
+            })))
         }
     }));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -499,11 +502,8 @@ async fn responses_tools_survive_active_argument_stream_and_retain_provider_cont
     .unwrap();
     let engine = Engine::open_with_runtime(
         &data,
-        Arc::new(model),
-        Limits {
-            stream_idle_timeout: Duration::from_millis(150),
-            ..Limits::default()
-        },
+        Arc::new(SolveOnlyHttpModel(model)),
+        Limits::default(),
         RuntimeConfig {
             client: fixture.client.clone(),
             workspace: workspace.clone(),
@@ -529,6 +529,7 @@ async fn responses_tools_survive_active_argument_stream_and_retain_provider_cont
         done.turns[0].error
     );
     assert_eq!(done.turns[0].usage.as_ref().unwrap().input_tokens, 12);
+    assert_eq!(requests.load(Ordering::SeqCst), 2);
     assert_eq!(
         fixture
             .methods
@@ -930,7 +931,8 @@ async fn http_tool_loop(done_marker: bool) {
     let workspace = dir.path().join("workspace");
     std::fs::create_dir(&workspace).unwrap();
     let fixture = runtime(data.clone(), false).await;
-    let model = HttpModel::new(endpoint, "http-tool-fixture".into(), None).unwrap();
+    let model =
+        SolveOnlyHttpModel(HttpModel::new(endpoint, "http-tool-fixture".into(), None).unwrap());
     let engine = Engine::open_with_runtime(
         &data,
         Arc::new(model),

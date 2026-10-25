@@ -175,6 +175,146 @@ async fn settled(engine: &Arc<Engine>, id: &str) -> areal_protocol::Thread {
         .unwrap()
 }
 
+struct PacedToolResponse {
+    requests: AtomicUsize,
+    stall: bool,
+}
+#[async_trait]
+impl Model for PacedToolResponse {
+    fn name(&self) -> &str {
+        "paced-tool-response"
+    }
+    async fn stream(&self, _: Vec<Message>) -> anyhow::Result<ModelStream> {
+        let round = self.requests.fetch_add(1, Ordering::SeqCst);
+        if round == 0 {
+            return Ok(Box::pin(stream::iter([
+                Ok(call("confirmed")),
+                Ok(ModelEvent::Usage(ModelUsage {
+                    input_tokens: 5,
+                    output_tokens: 2,
+                    cached_input_tokens: 0,
+                })),
+            ])));
+        }
+        assert!(round <= if self.stall { 2 } else { 1 });
+        let stall = self.stall && round == 1;
+        Ok(Box::pin(stream::unfold(0, move |index| async move {
+            let event = match index {
+                0 => ModelEvent::text("working "),
+                1..9 => {
+                    if index == 4 {
+                        // 模拟宿主调度停顿；冻结的模型时钟不应把它当成供应商静默。
+                        std::thread::sleep(Duration::from_millis(220));
+                    }
+                    tokio::time::sleep(Duration::from_millis(40)).await;
+                    ModelEvent::Activity
+                }
+                9 => ModelEvent::text(if stall {
+                    "discard partial"
+                } else {
+                    "Verified result"
+                }),
+                10 => {
+                    if stall {
+                        tokio::time::sleep(Duration::from_millis(220)).await;
+                    }
+                    ModelEvent::Usage(ModelUsage {
+                        input_tokens: 7,
+                        output_tokens: 3,
+                        cached_input_tokens: 0,
+                    })
+                }
+                _ => return None,
+            };
+            Some((Ok(event), index + 1))
+        })))
+    }
+}
+
+async fn paced_tool_response(stall: bool) {
+    let data = tempfile::tempdir().unwrap();
+    let model = Arc::new(PacedToolResponse {
+        requests: AtomicUsize::new(0),
+        stall,
+    });
+    let engine = Engine::open(
+        data.path(),
+        model.clone(),
+        Limits {
+            stream_idle_timeout: Duration::from_millis(150),
+            ..Limits::default()
+        },
+    )
+    .unwrap();
+    let writes = Arc::new(Writes::default());
+    let thread = engine
+        .create_with_tools(
+            "/workspace".into(),
+            vec![areal_protocol::ToolDefinition {
+                name: "write_once".into(),
+                description: "fixture mutation".into(),
+                input_schema: json!({"type":"object"}),
+                output_schema: None,
+            }],
+            writes.clone(),
+        )
+        .await
+        .unwrap();
+    let mut audit = engine.subscribe(&thread.id).await.unwrap();
+    let started = tokio::time::Instant::now();
+    engine
+        .start(&thread.id, vec![Input::text("Implement once")])
+        .await
+        .unwrap();
+    let result = settled(&engine, &thread.id).await;
+    assert_eq!(
+        result.turns[0].status,
+        TurnStatus::Completed,
+        "{:?}",
+        result.turns[0].error
+    );
+    assert!(started.elapsed() >= Duration::from_millis(320));
+    assert_eq!(
+        model.requests.load(Ordering::SeqCst),
+        if stall { 3 } else { 2 }
+    );
+    assert_eq!(writes.0.load(Ordering::SeqCst), 1);
+    assert_eq!(result.turns[0].usage.as_ref().unwrap().input_tokens, 12);
+    assert!(
+        !result.turns[0].items.iter().any(
+            |item| matches!(item, Item::AgentMessage { text, .. } if text.contains("discard"))
+        )
+    );
+    let mut retries = 0;
+    let mut discarded = 0;
+    while let Ok(event) = audit.try_recv() {
+        match event["method"].as_str() {
+            Some("areal/model/watchdogRetry") => {
+                retries += 1;
+                assert_eq!(event["params"]["retry"], 1);
+            }
+            Some("areal/model/completionDiscarded") => {
+                discarded += 1;
+                assert_eq!(event["params"]["retryKind"], "network");
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(retries, usize::from(stall));
+    assert_eq!(discarded, usize::from(stall));
+    engine.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn activity_keeps_tool_response_alive_across_host_stalls() {
+    paced_tool_response(false).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn silence_retries_only_the_incomplete_response_without_replaying_tools() {
+    paced_tool_response(true).await;
+}
+
 #[tokio::test]
 async fn repeated_network_failures_preserve_request_usage_and_confirmed_tools() {
     let data = tempfile::tempdir().unwrap();
