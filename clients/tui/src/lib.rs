@@ -73,6 +73,9 @@ pub struct Args {
     /// 非交互输入拒绝的结构化诊断；不写提示词或媒体内容。
     #[arg(long, requires = "input_file")]
     input_error_file: Option<std::path::PathBuf>,
+    /// 脚本入口显式关闭自动命名；会话历史与恢复仍保留。
+    #[arg(long)]
+    no_session_name: bool,
 }
 
 impl Args {
@@ -123,6 +126,10 @@ pub async fn run_with_trajectory_notice(
     mut args: Args,
     mut trajectory_notice: Option<tokio::sync::oneshot::Receiver<String>>,
 ) -> Result<()> {
+    anyhow::ensure!(
+        !args.no_session_name || args.prompt.is_some() || args.input_file.is_some(),
+        "--no-session-name requires --prompt or --input-file; use areal exec for other scripts"
+    );
     let agent_profile = args
         .agent
         .as_deref()
@@ -179,6 +186,7 @@ pub async fn run_with_trajectory_notice(
             args.resume,
             vec![Input::text(prompt)],
             agent_profile,
+            args.no_session_name,
         )
         .await;
     }
@@ -186,7 +194,14 @@ pub async fn run_with_trajectory_notice(
         let bytes = input_file::read(&path, args.input_error_file.as_deref())?;
         let input: Vec<Input> = serde_json::from_slice(&bytes).context("parse turn input array")?;
         anyhow::ensure!(!input.is_empty(), "turn input must not be empty");
-        return headless::run_with_profile(&mut client, args.resume, input, agent_profile).await;
+        return headless::run_with_profile(
+            &mut client,
+            args.resume,
+            input,
+            agent_profile,
+            args.no_session_name,
+        )
+        .await;
     }
     let mut app = App::new(prefs.unwrap());
     app.agent_profile = agent_profile;

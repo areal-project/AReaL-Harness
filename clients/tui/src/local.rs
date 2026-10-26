@@ -37,6 +37,9 @@ pub fn launch(args: &super::Args) -> Result<()> {
         }
     }
     command.args(args.local.launcher_args());
+    if args.no_session_name {
+        command.arg("--no-session-name");
+    }
     if let Some(agent) = &args.agent {
         command.arg(format!("--agent={agent}"));
     }

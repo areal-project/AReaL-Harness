@@ -105,6 +105,8 @@ TUI 顶部和 Web 显示 YOLO/ASK_PERMISSIONS，以 Core 状态为准。TUI 审�
 
 `--prompt` 只输出本次 Turn 的文本，Thread ID 写 stderr；失败返回非零，不读取 TUI 偏好。外观配置见[配置指南](configuration.md#tui)。
 
+`--prompt` 和 `--input-file` 可显式加 `--no-session-name`，关闭展示用自动命名并保留持久历史；`areal serve --tui` 同样传递该选项。客户端先检查 Core 能力，再按原入口创建或恢复会话，仅修改命名选项，等待配置成功后提交任务；配置冲突会报错，不自动重试。省略开关不会改写已有选择。该开关不适用于全屏 TUI 或 `--goal`；`areal exec/-p` 的同名选项见 [CLI 契约](../api/claude-cli.md)。这只省去可选命名请求，不表示任务 token 或耗时已有测量收益。
+
 ## 思考与等待状态
 
 Web 将 Chat Completions / Responses 返回的思考文本放在可展开的“模型思考”区域，只有摘要时标为“思考摘要”，正文独立展示。等待正文期间显示“正在等待模型回复”或“已收到模型思考”，并显示本页观察到的等待秒数；超过 30 秒提示可继续等待、刷新或停止。这是界面提醒，不表示模型超时或停止。刷新当前任务保留同一请求的观察计时，重新打开页面从当前观察时刻计时。

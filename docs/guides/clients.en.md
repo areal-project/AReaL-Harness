@@ -105,6 +105,8 @@ Subtask lists are paginated; TUI `/more` loads later records. Waiting or disconn
 
 `--prompt` emits only the current Turn's text, writes Thread ID to stderr and exits nonzero on failure. It skips TUI preferences. See [appearance configuration](configuration.en.md#tui).
 
+`--prompt` and `--input-file` accept explicit `--no-session-name` to disable display-only automatic naming while preserving persistent history; `areal serve --tui` forwards the same option. The client checks Core support before creating or observing a session through the existing entry, changes only the naming option, and waits for configuration acceptance before submitting the task. Configuration conflicts fail without an automatic retry. Omitting the flag preserves the existing choice. It is unavailable in fullscreen TUI or with `--goal`; the matching `areal exec/-p` option is described in the [CLI contract](../api/claude-cli.en.md). This only avoids optional naming requests; task token or latency savings have not been measured.
+
 ## Reasoning and waiting state
 
 Web displays Chat Completions / Responses reasoning in an expandable section, labeled as a reasoning summary when only summary text is available, separately from the answer. While waiting for body text it shows whether reasoning has arrived and how many seconds this page has observed the wait. After 30 seconds it offers a reminder to keep waiting, refresh, or stop. This is a UI reminder, not a model timeout or stop signal. Refresh preserves the observation timer for the same request; reopening the page starts timing from the new observation.

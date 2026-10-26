@@ -125,6 +125,8 @@ struct Args {
     input_file: Option<PathBuf>,
     #[arg(long, requires = "input_file")]
     input_error_file: Option<PathBuf>,
+    #[arg(long, requires = "tui")]
+    no_session_name: bool,
     #[arg(long)]
     theme: Option<String>,
     #[arg(long)]
@@ -141,6 +143,10 @@ struct Args {
 
 impl Args {
     fn validate(&mut self) -> Result<()> {
+        ensure!(
+            !self.no_session_name || self.prompt.is_some() || self.input_file.is_some(),
+            "--no-session-name requires --prompt or --input-file"
+        );
         ensure!(
             !(self.desktop && self.tui),
             "--desktop and --tui are mutually exclusive"
@@ -945,6 +951,9 @@ async fn supervise(
         );
         push_option(&mut command, "--tui-config", args.tui_config.as_ref());
         push_option(&mut command, "--input-file", args.input_file.as_ref());
+        if args.no_session_name {
+            command.arg("--no-session-name");
+        }
         push_option(
             &mut command,
             "--input-error-file",
@@ -1012,6 +1021,31 @@ fn owner_alive(pid: Option<u32>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn naming_opt_out_is_scoped_to_script_clients() {
+        for extra in [vec![], vec!["--goal", "fixture"]] {
+            let mut args = Args::try_parse_from(
+                ["launcher", "--tui", "--no-session-name"]
+                    .into_iter()
+                    .chain(extra),
+            )
+            .unwrap();
+            assert!(args.validate().is_err());
+        }
+        for input in ["--prompt", "--input-file"] {
+            let mut args =
+                Args::try_parse_from(["launcher", "--tui", "--no-session-name", input, "fixture"])
+                    .unwrap();
+            args.validate().unwrap();
+            assert!(
+                !args
+                    .core_overrides()
+                    .iter()
+                    .any(|v| v == "--no-session-name")
+            );
+        }
+    }
 
     #[test]
     fn owned_tui_uses_resolved_local_trajectory_identity_only() {

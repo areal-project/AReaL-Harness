@@ -10,7 +10,7 @@ pub(crate) async fn run(
     resume: Option<String>,
     input: Vec<Input>,
 ) -> Result<()> {
-    run_with_profile(client, resume, input, None).await
+    run_with_profile(client, resume, input, None, false).await
 }
 
 pub(crate) async fn run_with_profile(
@@ -18,11 +18,30 @@ pub(crate) async fn run_with_profile(
     resume: Option<String>,
     input: Vec<Input>,
     agent_profile: Option<VersionRef>,
+    no_session_name: bool,
 ) -> Result<()> {
     anyhow::ensure!(
         resume.is_none() || agent_profile.is_none(),
         "--agent cannot be used when resuming a thread"
     );
+    if no_session_name {
+        // 能力检查先于会话创建；旧 Core 不能静默忽略显式选项。
+        let capability = client.send("areal/capabilities", json!({}))?;
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                let event = client.rx.recv().await.context("connection closed")?;
+                if event["id"] == capability {
+                    anyhow::ensure!(
+                        event["result"]["features"]["automaticSessionName"] == true,
+                        "Core does not support --no-session-name; upgrade Core before submitting the task"
+                    );
+                    return Ok::<_, anyhow::Error>(());
+                }
+            }
+        })
+        .await
+        .context("timed out checking automatic session naming support")??;
+    }
     let id = match resume {
         Some(id) => client.send("areal/thread/observe", json!({"threadId":id}))?,
         None => match agent_profile {
@@ -35,6 +54,8 @@ pub(crate) async fn run_with_profile(
     };
     let mut target_thread = None;
     let mut start_id = None;
+    let mut configure_id = None;
+    let mut config_revision = None;
     let mut target_turn = None;
     let mut interaction_required = false;
     loop {
@@ -43,15 +64,59 @@ pub(crate) async fn run_with_profile(
         if let Some(error) = event.get("error") {
             bail!("{}", error["message"]);
         }
+        let mut ready_to_start = false;
         if event["id"] == id {
-            let thread_id = event["result"]["thread"]["id"]
+            let thread = &event["result"]["thread"];
+            let thread_id = thread["id"]
                 .as_str()
                 .context("missing thread id")?
                 .to_owned();
             eprintln!("Thread: {thread_id}");
-            start_id =
-                Some(client.send("areal/turn/start", json!({"requestId":crate::goal_request_id(),"threadId":thread_id,"input":input,"interactionMode":"headless"}))?);
+            if no_session_name {
+                let config = &thread["desktop"]["configuration"];
+                let revision = if config.is_null() {
+                    areal_protocol::desktop::EffectiveConfig::default().revision
+                } else {
+                    config["revision"]
+                        .as_u64()
+                        .context("missing configuration revision")?
+                };
+                config_revision = Some(revision);
+                if config["options"]["automaticSessionName"] != false {
+                    // options 是完整替换；只改命名选择，保留已有权限与工具限制。
+                    let mut options = if config["options"].is_null() {
+                        json!({})
+                    } else {
+                        config["options"].clone()
+                    };
+                    options["automaticSessionName"] = json!(false);
+                    configure_id = Some(client.send(
+                        "areal/thread/configure",
+                        json!({"requestId":crate::goal_request_id(),"threadId":thread_id,"expectedRevision":revision,"options":options}),
+                    )?);
+                } else {
+                    ready_to_start = true;
+                }
+            } else {
+                ready_to_start = true;
+            }
             target_thread = Some(thread_id);
+        }
+        if configure_id.is_some() && event["id"].as_u64() == configure_id {
+            config_revision = Some(
+                event["result"]["revision"]
+                    .as_u64()
+                    .context("missing configuration revision")?,
+            );
+            ready_to_start = true;
+        }
+        if ready_to_start {
+            let mut params = json!({"requestId":crate::goal_request_id(),"threadId":target_thread,"input":input,"interactionMode":"headless"});
+            if let Some(revision) = config_revision {
+                // 配置被其他客户端改动时由 Core 拒绝本次提交，不自行重试。
+                params["expectedConfigRevision"] = json!(revision);
+            }
+            start_id = Some(client.send("areal/turn/start", params)?);
         }
         if start_id.is_some() && event["id"].as_u64() == start_id {
             target_turn = Some(
@@ -210,6 +275,143 @@ mod tests {
     use areal_protocol::notification;
     use std::time::Duration;
     use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn naming_opt_out_rejects_old_core_before_creating_a_thread() {
+        let (tx, mut requests) = mpsc::channel(8);
+        let (events, rx) = mpsc::channel(8);
+        let mut client = Client { tx, rx, next: 1 };
+        let task = tokio::spawn(async move {
+            run_with_profile(&mut client, None, vec![Input::text("fixture")], None, true).await
+        });
+        let capability = requests.recv().await.unwrap();
+        assert_eq!(capability["method"], "areal/capabilities");
+        events
+            .send(json!({"id":capability["id"],"result":{"features":{}}}))
+            .await
+            .unwrap();
+        assert!(
+            task.await
+                .unwrap()
+                .unwrap_err()
+                .to_string()
+                .contains("does not support")
+        );
+        assert!(requests.recv().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn naming_opt_out_preserves_creation_and_existing_options_before_submission() {
+        for resume in [false, true] {
+            let (tx, mut requests) = mpsc::channel(8);
+            let (events, rx) = mpsc::channel(8);
+            let mut client = Client { tx, rx, next: 1 };
+            let task = tokio::spawn(async move {
+                run_with_profile(
+                    &mut client,
+                    resume.then(|| "thread".into()),
+                    vec![Input::text("fixture")],
+                    None,
+                    true,
+                )
+                .await
+            });
+            let capability = requests.recv().await.unwrap();
+            events.send(json!({"id":capability["id"],"result":{"features":{"automaticSessionName":true}}})).await.unwrap();
+            let create = requests.recv().await.unwrap();
+            assert_eq!(
+                create["method"],
+                if resume {
+                    "areal/thread/observe"
+                } else {
+                    "thread/start"
+                }
+            );
+            let original_options = json!({"readOnly":true,"toolAllowlist":["fs_read"],"appendInstructions":"preserve context"});
+            let mut thread = json!({"id":"thread"});
+            if resume {
+                thread["desktop"] =
+                    json!({"configuration":{"revision":7,"options":original_options}});
+            }
+            events
+                .send(json!({"id":create["id"],"result":{"thread":thread}}))
+                .await
+                .unwrap();
+            let configure = requests.recv().await.unwrap();
+            assert_eq!(configure["method"], "areal/thread/configure");
+            assert_eq!(
+                configure["params"]["expectedRevision"],
+                if resume { 7 } else { 1 }
+            );
+            let mut expected_options = if resume { original_options } else { json!({}) };
+            expected_options["automaticSessionName"] = json!(false);
+            assert_eq!(configure["params"]["options"], expected_options);
+            assert!(
+                requests.try_recv().is_err(),
+                "task must wait for configuration acceptance"
+            );
+            events
+                .send(json!({"id":configure["id"],"result":{"revision":8}}))
+                .await
+                .unwrap();
+            let start = requests.recv().await.unwrap();
+            assert_eq!(start["method"], "areal/turn/start");
+            assert_eq!(start["params"]["expectedConfigRevision"], 8);
+            events
+                .send(json!({"id":start["id"],"result":{"turn":{"id":"turn"}}}))
+                .await
+                .unwrap();
+            events
+                .send(notification(
+                    "turn/completed",
+                    json!({"threadId":"thread","turn":{"id":"turn","status":"completed"}}),
+                ))
+                .await
+                .unwrap();
+            task.await.unwrap().unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn naming_opt_out_keeps_configuration_conflicts_terminal() {
+        let (tx, mut requests) = mpsc::channel(8);
+        let (events, rx) = mpsc::channel(8);
+        let mut client = Client { tx, rx, next: 1 };
+        let task = tokio::spawn(async move {
+            run_with_profile(
+                &mut client,
+                Some("thread".into()),
+                vec![Input::text("fixture")],
+                None,
+                true,
+            )
+            .await
+        });
+        let capability = requests.recv().await.unwrap();
+        events
+            .send(
+                json!({"id":capability["id"],"result":{"features":{"automaticSessionName":true}}}),
+            )
+            .await
+            .unwrap();
+        let observe = requests.recv().await.unwrap();
+        events.send(json!({"id":observe["id"],"result":{"thread":{"id":"thread","desktop":{"configuration":{"revision":9,"options":{"automaticSessionName":false}}}}}})).await.unwrap();
+        let start = requests.recv().await.unwrap();
+        assert_eq!(start["method"], "areal/turn/start");
+        assert_eq!(start["params"]["expectedConfigRevision"], 9);
+        events
+            .send(json!({"id":start["id"],"error":{"message":"configuration conflict"}}))
+            .await
+            .unwrap();
+        assert!(
+            task.await
+                .unwrap()
+                .unwrap_err()
+                .to_string()
+                .contains("configuration conflict")
+        );
+        assert!(requests.recv().await.is_none());
+    }
 
     #[tokio::test]
     async fn headless_interrupts_when_approval_requires_a_human() {

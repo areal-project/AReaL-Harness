@@ -258,6 +258,22 @@ endpoint = "http://127.0.0.1:{model.server_port}"
         assert len(snapshot["thread"]["turns"]) == 2
         assert snapshot["thread"]["turns"][-1]["status"] == "completed"
         assert any(m["role"] == "tool" for m in requests[-1]["messages"])
+        # 两条真实脚本入口都保留持久历史；省略恢复开关不能重启展示用推理。
+        input_file = root / "input.json"
+        input_file.write_text(json.dumps([{"type": "text", "text": "read-fixture"}]))
+        naming_count = len(summary_requests)
+        for entry in [args, [args[0], "serve", "--tui", *args[1:]]]:
+            disabled = run([*entry, "--input-file", str(input_file), "--no-session-name"])
+            assert disabled.stdout.strip() == "reply:read-fixture", disabled
+            disabled_id = re.search(r"Thread: ([a-f0-9-]+)", disabled.stderr)[1]
+            resumed = run([*entry, "--resume", disabled_id, "--prompt=resume-no-title"])
+            assert resumed.stdout.strip() == "reply:resume-no-title", resumed
+            thread = json.loads((data / f"{disabled_id}.json").read_text())["thread"]
+            assert thread["desktop"]["configuration"]["options"]["automaticSessionName"] is False
+            assert not thread["ephemeral"] and len(thread["turns"]) == 2
+            assert all(turn["status"] == "completed" for turn in thread["turns"])
+            assert not thread.get("nameAttemptTurnId") and not thread.get("name")
+            assert len(summary_requests) == naming_count, summary_requests
         # 仅修改隔离配置；无效地址应只停用导出，不得阻止 owned TUI 和 Runtime。
         with config.open("a") as file:
             file.write('\n[trajectory]\nenabled = true\nendpoint = "invalid"\n')
