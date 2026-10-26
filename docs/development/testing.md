@@ -58,6 +58,8 @@ Composer 和队列 smoke 共用 `clients/gui/scripts/smoke-navigation.mjs` 的�
 
 derivation 的连续录屏需要 Playwright 固定版本的 FFmpeg，不能只安装 Electron/npm 包。GUI CI 使用 `pnpm --dir clients/gui --filter @areal/gui-desktop exec playwright-core install ffmpeg` 安装；本地首次运行此 smoke 前也执行该命令。
 
+录屏场景在等待 Playwright `close()` 前请求正常 `app.quit()`，让产品退出与录像收尾同时进行；仍等待 `close()` 结算完成。Playwright 自身先收尾录像再请求退出，串行耗时会挤占同一个 20 秒期限。回归通过受控录像等待验证先后关系，退出不完成仍在原期限失败；不跳过草稿确认、不强制成功，也不丢弃录像。
+
 满屏 Side 使用自己的 Composer，主聊天草稿保持挂载但隐藏，避免浮动操作遮挡 Side 的模型与发送入口；分栏模式仍显示两个 Composer。derivation smoke 经真实点击检查 Side 模型选择与首问提交，并核对主草稿保留。
 
 Linux 回收测试使用随 `cargo test -p areal-runtime-exec-native` 构建的 `areal-runtime-reaper`。若单独运行 `--lib`，先执行 `cargo build --locked -p areal-runtime-exec-native --bin areal-runtime-reaper`，且构建和测试须使用相同 profile。macOS 后代测试让祖先存活至跟踪窗口内再退出，验证已观察后代清理；不把该测试解释为快速孤儿化的完整保证。

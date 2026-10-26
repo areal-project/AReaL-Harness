@@ -1,10 +1,48 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { EventEmitter } from "node:events";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import { assertApplicationStopped, closeRecordedSmokeApplication } from "./application-cleanup.mjs";
+
+test("recorded cleanup starts native quit before a blocked recorder drain", async () => {
+  const child = new EventEmitter();
+  child.exitCode = child.signalCode = null;
+  child.kill = signal => { child.signalCode = signal; queueMicrotask(() => child.emit("exit", null, signal)); };
+  const events = [];
+  let releaseDrain;
+  const nativeQuitStarted = new Promise(resolve => { releaseDrain = resolve; });
+  await closeRecordedSmokeApplication({
+    process: () => child,
+    evaluate: callback => callback({ app: { quit() { events.push("native-quit"); releaseDrain(); } } }),
+    close: async () => {
+      events.push("recorder-drain");
+      // 录像前置等待只有收到 native quit 后才释放，确定性地暴露串行关闭死锁。
+      await nativeQuitStarted;
+      events.push("recorder-finished");
+      child.exitCode = 0;
+      child.emit("exit", 0, null);
+    },
+  }, 250, async () => { events.push("prepare"); });
+  assert.deepEqual(events, ["prepare", "native-quit", "recorder-drain", "recorder-finished"]);
+  assert.equal(child.signalCode, null);
+});
+
+test("recorded cleanup preserves its deadline when native quit never completes", async () => {
+  const child = new EventEmitter();
+  child.exitCode = child.signalCode = null;
+  let killed = 0;
+  child.kill = signal => { killed++; child.signalCode = signal; queueMicrotask(() => child.emit("exit", null, signal)); };
+  await assert.rejects(closeRecordedSmokeApplication({
+    process: () => child,
+    evaluate: callback => callback({ app: { quit() {} } }),
+    close: () => new Promise(() => {}),
+  }, 250), /Electron cleanup timed out after 250ms/);
+  assert.equal(killed, 1);
+  assert.equal(child.signalCode, "SIGKILL");
+});
 
 test(
   "cleanup inventory uses the native launcher without blocking the fixture server",

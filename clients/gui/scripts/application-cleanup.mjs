@@ -51,3 +51,16 @@ export async function closeSmokeApplication(application, timeoutMs = 20000) {
     throw error;
   }
 }
+
+export async function closeRecordedSmokeApplication(application, timeoutMs = 20000, prepare = async () => {}) {
+  return closeSmokeApplication({
+    process: () => application.process(),
+    close: async () => {
+      await prepare();
+      // Playwright 的 close 先结算录像才请求 app.quit；提前走同一产品退出流程，避免录像挤占退出期限。
+      // 仍等待 close 结算录像和进程，不绕过草稿确认、生命周期检查或原有失败期限。
+      await application.evaluate(({ app }) => { app.quit(); });
+      await application.close();
+    },
+  }, timeoutMs);
+}
