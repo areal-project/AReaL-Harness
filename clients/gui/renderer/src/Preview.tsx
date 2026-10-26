@@ -19,6 +19,7 @@ import {
   setBrowserAnnotationEditing,
 } from "./browserAnnotations.js";
 import { BrowserVerificationCard } from "./BrowserVerificationCard.js";
+import { uninspectedToolCalls } from "./toolInspection.js";
 import "./BrowserFileHandoff.layout.css";
 import { BrowserStyleTrial, type StyleTrialDraft } from "./BrowserStyleTrial.js";
 import { BrowserKeyboardElementPicker } from "./BrowserKeyboardElementPicker.js";
@@ -872,16 +873,9 @@ export function Preview({
     }
   }, [state.url, state.browser?.pageId, owner, pageId]);
   const failure = error || state.error;
-  const uninspectedUnknown =
-    thread?.turns?.some((turn: Data) =>
-      turn.items?.some(
-        (item: Data) =>
-          item.type === "dynamicToolCall" &&
-          !item.execution?.inspection &&
-          (item.execution?.outcome === "unknown" ||
-            item.execution?.hooks?.some((hook: Data) => hook.outcome === "unknown")),
-      ),
-    ) === true;
+  const uninspectedUnknown = uninspectedToolCalls(thread ?? {}).some(
+    (item) => item.tool === "browser_v1",
+  );
   const batch = state.workspace?.pages?.find(
     (page: Data) => page.pageId === state.browser?.pageId,
   )?.operation;
@@ -982,7 +976,7 @@ export function Preview({
       )}
       {uninspectedUnknown && (
         <div className="preview-viewport-toolbar" role="status">
-          上次浏览器操作的结果待核对，请在聊天中确认后继续。
+          {t("operations.browserRecovery")}
         </div>
       )}
       {annotationBusy && !annotating && (

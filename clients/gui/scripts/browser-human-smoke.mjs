@@ -1,7 +1,7 @@
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile, realpath } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
@@ -14,6 +14,7 @@ const faultMode = process.argv[2] ?? "full";
 assert.ok(
   [
     "full",
+    "navigation",
     "nonconverging",
     "longwait",
     "lateObserve",
@@ -27,6 +28,18 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
+const packaged = !!process.env.AREAL_GUI_EXECUTABLE;
+assert.ok(
+  !packaged || faultMode === "navigation",
+  "packaged acceptance currently covers navigation recovery",
+);
+const executable = packaged ? resolve(process.env.AREAL_GUI_EXECUTABLE) : require("electron");
+const resources = packaged ? join(dirname(dirname(executable)), "Resources") : null;
+const bundled = packaged
+  ? require("../app/src/core/bundle.cjs").verifyCoreBundle(resources, { hashes: true })
+  : null;
+const coreBinary =
+  bundled?.paths.areal ?? process.env.AREAL_CORE_BIN ?? resolve(root, "target/debug/areal");
 const scratch = await makeTempDir("areal-browser-human-");
 const workspace = join(scratch, "workspace"),
   userHome = join(scratch, "user");
@@ -48,6 +61,19 @@ const forbidden = createServer((_request, response) => {
 await new Promise((resolve) => forbidden.listen(0, "127.0.0.1", resolve));
 const forbiddenUrl = `http://127.0.0.1:${forbidden.address().port}/target`;
 const site = createServer(async (request, response) => {
+  if (request.url === "/slow-image" || request.url === "/no-document") return;
+  if (request.url === "/login-redirect") {
+    response.writeHead(302, { Location: "/login" });
+    response.end();
+    return;
+  }
+  if (request.url === "/slow-page" || request.url === "/login") {
+    response.setHeader("Content-Type", "text/html");
+    response.end(
+      `<!doctype html><title>Sign in fixture</title><h1>Sign in</h1><img src="/slow-image">${request.url === "/login" ? '<label>Password<input type="password" value="fixture-private-value"></label>' : ""}`,
+    );
+    return;
+  }
   if (request.url === "/redirect") {
     siteFacts.redirects++;
     response.writeHead(302, { Location: forbiddenUrl });
@@ -89,7 +115,9 @@ let pageId,
   targetRef,
   phase = "initial",
   issued = false,
-  waitParameters;
+  waitParameters,
+  navigationUrl,
+  bootstrapDescribed = false;
 const modelCalls = [];
 async function until(predicate, label, timeout = 60000) {
   const deadline = Date.now() + timeout;
@@ -116,39 +144,57 @@ const model = createServer(async (request, response) => {
     response.write(
       `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason }] })}\n\n`,
     );
+  // 命名与输入建议共享模型端点，但不消耗本轮浏览器夹具的动作序列。
+  if (!(body.tools ?? []).some((tool) => tool.function?.name === "browser_v1")) {
+    send({ content: "Browser fixture" });
+    send({}, "stop");
+    response.end("data: [DONE]\n\n");
+    return;
+  }
   if (!issued) {
-    issued = true;
-    const args = ["click", "keyPress", "staleAfterCrash"].includes(phase)
-      ? {
-          operation: "act",
-          parameters: {
-            pageId,
-            snapshotId,
-            action:
-              phase === "keyPress"
-                ? { kind: "press", ref: targetRef, key: "Enter" }
-                : { kind: "click", ref: targetRef },
-          },
-        }
-      : phase === "humanCapture"
-        ? { operation: "capture", parameters: { pageId, scope: "viewport" } }
-        : phase === "humanDiagnostics"
-          ? { operation: "diagnostics", parameters: { pageId, kind: "console", limit: 20 } }
-          : phase === "boundedDiagnostics"
-            ? {
-                operation: "diagnostics",
-                parameters: { pageId, kind: "console", cursor: 0, limit: 20 },
-              }
-            : phase.startsWith("condition")
-              ? { operation: "wait", parameters: { pageId, ...waitParameters } }
-              : phase === "longWait"
-                ? { operation: "wait", parameters: { pageId, timeoutMs: 20000 } }
-                : { operation: "observe", parameters: { pageId } };
+    const bootstrap = faultMode === "navigation" && phase === "initial" && !bootstrapDescribed;
+    const navigationObservation = phase === "navigation" && last?.role !== "tool";
+    if (bootstrap) bootstrapDescribed = true;
+    else if (!navigationObservation) issued = true;
+    const args = bootstrap
+      ? { operation: "describe", parameters: {} }
+      : navigationObservation
+        ? { operation: "observe", parameters: { pageId } }
+        : phase === "navigation"
+          ? { operation: "navigate", parameters: { pageId, url: navigationUrl } }
+          : phase === "navigationResume"
+            ? { operation: "describe", parameters: {} }
+            : ["click", "keyPress", "staleAfterCrash"].includes(phase)
+              ? {
+                  operation: "act",
+                  parameters: {
+                    pageId,
+                    snapshotId,
+                    action:
+                      phase === "keyPress"
+                        ? { kind: "press", ref: targetRef, key: "Enter" }
+                        : { kind: "click", ref: targetRef },
+                  },
+                }
+              : ["humanCapture", "navigationCapture"].includes(phase)
+                ? { operation: "capture", parameters: { pageId, scope: "viewport" } }
+                : phase === "humanDiagnostics"
+                  ? { operation: "diagnostics", parameters: { pageId, kind: "console", limit: 20 } }
+                  : phase === "boundedDiagnostics"
+                    ? {
+                        operation: "diagnostics",
+                        parameters: { pageId, kind: "console", cursor: 0, limit: 20 },
+                      }
+                    : phase.startsWith("condition")
+                      ? { operation: "wait", parameters: { pageId, ...waitParameters } }
+                      : phase === "longWait"
+                        ? { operation: "wait", parameters: { pageId, timeoutMs: 20000 } }
+                        : { operation: "observe", parameters: { pageId } };
     send({
       tool_calls: [
         {
           index: 0,
-          id: `human-${phase}`,
+          id: `human-${phase}-${args.operation}-${modelCalls.length}`,
           type: "function",
           function: { name: "browser_v1", arguments: JSON.stringify(args) },
         },
@@ -187,7 +233,7 @@ const env = {
   AREAL_CORE_USER_HOME: userHome,
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
   AREAL_CORE_DESKTOP_CONFIG: deployment,
-  AREAL_CORE_BIN: process.env.AREAL_CORE_BIN || resolve(root, "target/debug/areal"),
+  ...(!packaged ? { AREAL_CORE_BIN: coreBinary } : {}),
 };
 for (const key of [
   "AREAL_CORE_WORKSPACE",
@@ -196,6 +242,7 @@ for (const key of [
   "AREAL_HARNESS_CONFIG",
 ])
   delete env[key];
+if (packaged) delete env.AREAL_CORE_BIN;
 const startedAt = new Date().toISOString(),
   events = {},
   checks = [],
@@ -248,8 +295,8 @@ async function controlState() {
 }
 try {
   app = await electron.launch({
-    executablePath: require("electron"),
-    args: [join(gui, "app")],
+    executablePath: executable,
+    args: packaged ? [] : [join(gui, "app")],
     env,
     timeout: 120000,
   });
@@ -261,7 +308,10 @@ try {
     electron: process.versions.electron,
     chromium: process.versions.chrome,
     node: process.versions.node,
+    packaged: app.isPackaged,
+    appPath: app.getAppPath(),
   }));
+  assert.equal(events.runtime.packaged, packaged);
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
   await until(async () => (await snapshot()).connection?.state === "ready", "desktop ready");
   await app.evaluate(
@@ -293,6 +343,12 @@ try {
       (await snapshot()).projects.find((item) => item.root === workspace && item.state?.connected),
     "project ready",
   );
+  assert.equal(
+    await realpath(project.core.binary),
+    await realpath(coreBinary),
+    "the app uses its expected bundled or source Core",
+  );
+  events.loadedCoreBinary = project.core.binary;
   projectId = project.id;
   const first = await command("create", {
     projectId,
@@ -300,6 +356,14 @@ try {
     profile: { id: "fixture", revision: "v1" },
   });
   threadId = first.threadId;
+  if (faultMode === "navigation")
+    await command("configure", {
+      projectId,
+      threadId,
+      expectedRevision: (await snapshot()).projects.find((item) => item.id === projectId)
+        .configurations[threadId].revision,
+      options: { permissionPreset: "fullAccess" },
+    });
   await selectConversation(page, threadId);
   await page.keyboard.press("Meta+t");
   await page.locator(".preview-panel").waitFor();
@@ -307,18 +371,35 @@ try {
     app.focus({ steal: true });
     BrowserWindow.getAllWindows()[0].focus();
   });
-  await until(
-    () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFocused()),
-    "focused Main Origin prompt",
-  );
+  if (faultMode === "navigation") {
+    // 完全访问夹具不触发本地站点授权弹框；截图仍要求真实窗口可见。
+    await until(
+      () =>
+        app.evaluate(({ BrowserWindow }) => {
+          const window = BrowserWindow.getAllWindows()[0];
+          return window.isVisible() && !window.isMinimized();
+        }),
+      "visible navigation fixture",
+    );
+  } else
+    await until(
+      () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFocused()),
+      "focused Main Origin prompt",
+    );
   await page.evaluate(
     ({ projectId, threadId, url }) =>
       window.arealDesktop.preview({ operation: "navigate", projectId, threadId, url }),
     { projectId, threadId, url: siteUrl },
   );
   events.developmentOriginPrompt = await app.evaluate(() => globalThis.__m1OriginPrompt);
-  assert.equal(events.developmentOriginPrompt?.count, 1, "exact-Origin Main prompt occurred once");
-  events.developmentOriginPrompt.response = "fixture-stub-allow-exact-origin";
+  if (faultMode !== "navigation") {
+    assert.equal(
+      events.developmentOriginPrompt?.count,
+      1,
+      "exact-Origin Main prompt occurred once",
+    );
+    events.developmentOriginPrompt.response = "fixture-stub-allow-exact-origin";
+  }
   nativeId = await until(
     () =>
       app.evaluate(
@@ -328,14 +409,23 @@ try {
       ),
     "native page",
   );
-  await page.getByRole("button", { name: "让 Agent 检查当前页" }).click();
+  if (faultMode === "navigation") {
+    pageId = (await controlState()).browser.pageId;
+    await command("send", { projectId, threadId, text: "Inspect this browser page" });
+  } else await page.getByRole("button", { name: "让 Agent 检查当前页" }).click();
   pageId = (
     await until(async () => {
       const value = await controlState();
       return value.browser?.control === "agent" ? value : null;
     }, "initial claim")
   ).browser.pageId;
-  const initial = browserItem(await terminalTurn(0));
+  const initialTurn = await terminalTurn(0);
+  const initial =
+    faultMode === "navigation"
+      ? initialTurn.items.find(
+          (item) => item.tool === "browser_v1" && item.arguments.operation === "observe",
+        )
+      : browserItem(initialTurn);
   const observed = JSON.parse(initial.contentItems[0].text);
   snapshotId = observed.observationId;
   targetRef = observed.nodes.find((node) => node.name === "Submit once" && node.ref)?.ref;
@@ -349,7 +439,134 @@ try {
     postCount: siteFacts.posts,
   };
 
-  if (faultMode === "offline") {
+  if (faultMode === "navigation") {
+    let previousTurns = 1;
+    for (const route of ["/slow-page", "/login-redirect"]) {
+      phase = "navigation";
+      issued = false;
+      navigationUrl = new URL(route, siteUrl).href;
+      await command("send", { projectId, threadId, text: `Open ${route}` });
+      const navigation = (await terminalTurn(previousTurns++)).items.find(
+        (item) => item.tool === "browser_v1" && item.arguments.operation === "navigate",
+      );
+      assert.ok(navigation);
+      assert.equal(navigation.execution.outcome, "succeeded", JSON.stringify(navigation));
+      const receipt = JSON.parse(navigation.contentItems[0].text);
+      assert.equal(receipt.readiness, "interactive");
+      assert.equal(
+        await app.evaluate(({ webContents }, id) => webContents.fromId(id).isLoading(), nativeId),
+        true,
+      );
+      events[route] = { item: navigation, pageStillLoading: true };
+      phase = "navigationCapture";
+      issued = false;
+      await command("send", {
+        projectId,
+        threadId,
+        text: "Capture the current page using its existing privacy checks",
+      });
+      const captured = browserItem(await terminalTurn(previousTurns++));
+      events[route].capture = captured;
+      assert.equal(captured.success, route === "/slow-page", JSON.stringify(captured));
+      assert.equal(
+        captured.contentItems.some(
+          (item) => item.type === "arealMedia" && item.modality === "image",
+        ),
+        route === "/slow-page",
+      );
+      if (route === "/login-redirect")
+        assert.match(JSON.stringify(captured), /evidence_unavailable/);
+      assert.notEqual(captured.execution.outcome, "unknown");
+      assert.ok(!JSON.stringify(captured).includes("fixture-private-value"));
+    }
+    checks.push(
+      "A committed interactive page and login redirect settle while subresources are loading; isolated screenshot checks succeed on public content and still refuse a password form",
+    );
+    phase = "navigation";
+    issued = false;
+    navigationUrl = new URL("/no-document", siteUrl).href;
+    await command("send", {
+      projectId,
+      threadId,
+      text: "Open a page whose server never returns a document",
+    });
+    const unknown = (await terminalTurn(previousTurns++)).items.find(
+      (item) => item.tool === "browser_v1" && item.arguments.operation === "navigate",
+    );
+    assert.ok(unknown);
+    assert.equal(unknown.execution.outcome, "unknown");
+    assert.match(JSON.stringify(unknown), /navigation_timeout/);
+    await page.getByRole("button", { name: "停止加载", exact: true }).click();
+    await until(
+      async () => (await controlState()).browser?.control === "human",
+      "stopped loading and released Agent control",
+    );
+    await page.evaluate(
+      ({ projectId, threadId, url }) =>
+        window.arealDesktop.preview({ operation: "navigate", projectId, threadId, url }),
+      { projectId, threadId, url: siteUrl },
+    );
+    await until(
+      () => app.evaluate(({ webContents }, id) => !webContents.fromId(id).isLoading(), nativeId),
+      "human finished navigation",
+    );
+    const input = page.getByTestId("chat-input");
+    const draft = "已完成登录，继续检查当前页面";
+    await input.fill(draft);
+    const before = modelCalls.length;
+    await page.getByTestId("chat-send-button").click();
+    const inspection = page.getByRole("dialog", { name: "核对浏览器结果", exact: true });
+    await inspection.waitFor();
+    assert.equal(
+      modelCalls.length,
+      before,
+      "blocked send must open inspection before contacting Core/model",
+    );
+    events.presentation = await page.evaluate(() => ({
+      viewport: { width: innerWidth, height: innerHeight },
+      dpr: devicePixelRatio,
+      language: document.documentElement.lang,
+      dark: document.documentElement.classList.contains("dark"),
+      font: getComputedStyle(document.body).fontFamily,
+      fontSize: getComputedStyle(document.body).fontSize,
+    }));
+    await page.screenshot({ path: join(scratch, "navigation-inspection.png") });
+    await inspection.getByRole("button", { name: "取消核查", exact: true }).click();
+    assert.equal(await input.innerText(), draft, "cancel keeps the draft");
+    await page.getByRole("button", { name: "核对后继续", exact: true }).click();
+    await inspection
+      .getByLabel("核查说明", { exact: true })
+      .fill("已在当前浏览器打开测试页面，页面可交互；未重放原超时导航。");
+    await inspection
+      .getByRole("checkbox", { name: "已核对当前页面及操作结果", exact: true })
+      .check();
+    await inspection.getByRole("button", { name: "确认已核查", exact: true }).click();
+    await inspection.waitFor({ state: "hidden" });
+    assert.equal(await input.innerText(), draft);
+    const preserved = (await thread()).turns
+      .flatMap((turn) => turn.items)
+      .find((item) => item.id === unknown.id);
+    assert.equal(preserved.execution.outcome, "unknown");
+    assert.ok(preserved.execution.inspection);
+    assert.equal(
+      modelCalls.length,
+      before,
+      "inspection itself must not run the model or replay navigation",
+    );
+    phase = "navigationResume";
+    issued = false;
+    await page.getByTestId("chat-send-button").click();
+    const resumed = await terminalTurn(previousTurns);
+    assert.equal(resumed.status, "completed", JSON.stringify(resumed));
+    assert.equal(browserItem(resumed).execution.outcome, "succeeded");
+    assert.equal(resumed.items.filter((item) => item.type === "userMessage").length, 1);
+    assert.equal(siteFacts.posts, 0);
+    await page.screenshot({ path: join(scratch, "navigation-resumed.png") });
+    events.recovery = { unknown, preserved, resumed, draft };
+    checks.push(
+      "Real UNKNOWN keeps its timeout reason; Composer inspection/cancel preserve draft; acknowledged history stays UNKNOWN; explicit send resumes once",
+    );
+  } else if (faultMode === "offline") {
     const serviceDirs = await readdir(join(scratch, "registry", "services"));
     assert.equal(serviceDirs.length, 1, "one isolated Core service for this fixture");
     const service = JSON.parse(
@@ -1603,6 +1820,7 @@ try {
   passed = true;
 } catch (error) {
   errors.push(error.stack ?? String(error));
+  console.error(error.stack ?? String(error));
   if (page) await captureSmokeFailure(page, scratch, error);
   throw error;
 } finally {
@@ -1613,7 +1831,14 @@ try {
       /* exact task host already exited */
     }
   }
-  if (app) await app.close();
+  if (app) {
+    await app
+      .evaluate(({ dialog }) => {
+        dialog.showMessageBox = async () => ({ response: 1 });
+      })
+      .catch(() => {});
+    await app.close();
+  }
   site.closeAllConnections();
   model.closeAllConnections();
   forbidden.closeAllConnections();
@@ -1626,8 +1851,16 @@ try {
     "app/src/core/preview.cjs",
     "app/src/core/main.cjs",
     "app/src/core/service-protocol.cjs",
+    "app/src/core/browser-navigation.cjs",
+    "app/src/core/preview-native/navigation.cjs",
+    "app/src/core/preview-native/read-session.cjs",
     "renderer/src/Preview.tsx",
     "renderer/src/UnknownToolInspection.tsx",
+    "renderer/src/Composer.tsx",
+    "renderer/src/Messages.tsx",
+    "renderer/src/TurnExecution.tsx",
+    "renderer/src/toolInspection.ts",
+    "renderer/src/i18n/messages/operations.ts",
     "scripts/browser-human-smoke.mjs",
   ];
   const hashes = Object.fromEntries(
@@ -1660,24 +1893,57 @@ try {
           .update(execFileSync("git", ["diff", "HEAD"], { cwd: root }))
           .digest("hex"),
         hashes,
-        coreBinary: env.AREAL_CORE_BIN,
+        executable,
+        packaged,
+        coreBinary,
         coreBinarySHA256: createHash("sha256")
-          .update(await readFile(env.AREAL_CORE_BIN))
+          .update(await readFile(coreBinary))
           .digest("hex"),
-        runtimeBinary: join(dirname(env.AREAL_CORE_BIN), "areal-runtime"),
+        runtimeBinary:
+          bundled?.paths["areal-runtime"] ?? join(dirname(coreBinary), "areal-runtime"),
         runtimeBinarySHA256: createHash("sha256")
-          .update(await readFile(join(dirname(env.AREAL_CORE_BIN), "areal-runtime")))
+          .update(
+            await readFile(
+              bundled?.paths["areal-runtime"] ?? join(dirname(coreBinary), "areal-runtime"),
+            ),
+          )
           .digest("hex"),
-        reaperBinary: join(dirname(env.AREAL_CORE_BIN), "areal-runtime-reaper"),
-        reaperBinarySHA256: createHash("sha256")
-          .update(await readFile(join(dirname(env.AREAL_CORE_BIN), "areal-runtime-reaper")))
-          .digest("hex"),
-        runtimeFsBinary: join(dirname(env.AREAL_CORE_BIN), "areal-runtime-fs"),
+        ...(!packaged
+          ? {
+              reaperBinary: join(dirname(coreBinary), "areal-runtime-reaper"),
+              reaperBinarySHA256: createHash("sha256")
+                .update(await readFile(join(dirname(coreBinary), "areal-runtime-reaper")))
+                .digest("hex"),
+            }
+          : {}),
+        runtimeFsBinary:
+          bundled?.paths["areal-runtime-fs"] ?? join(dirname(coreBinary), "areal-runtime-fs"),
         runtimeFsBinarySHA256: createHash("sha256")
-          .update(await readFile(join(dirname(env.AREAL_CORE_BIN), "areal-runtime-fs")))
+          .update(
+            await readFile(
+              bundled?.paths["areal-runtime-fs"] ?? join(dirname(coreBinary), "areal-runtime-fs"),
+            ),
+          )
           .digest("hex"),
+        ...(packaged
+          ? {
+              packagedHashes: Object.fromEntries(
+                await Promise.all(
+                  ["app.asar", "areal-gui/index.html"].map(async (file) => [
+                    file,
+                    createHash("sha256")
+                      .update(await readFile(join(resources, file)))
+                      .digest("hex"),
+                  ]),
+                ),
+              ),
+              coreManifest: bundled.manifest,
+            }
+          : {}),
         scope:
-          "source Electron + independent adapter + Core/Runtime + deterministic local model + synthetic site; OS chooser and exact-Origin bootstrap stubbed",
+          faultMode === "navigation"
+            ? `${packaged ? "packaged app with bundled Core/Runtime" : "source Electron + independent adapter + Core/Runtime"} + deterministic local model + synthetic site; OS chooser stubbed, fullAccess fixture, production describe/observe claim`
+            : "source Electron + independent adapter + Core/Runtime + deterministic local model + synthetic site; OS chooser and exact-Origin bootstrap stubbed",
         entrypoint: `node clients/gui/scripts/browser-human-smoke.mjs${faultMode === "full" ? "" : ` ${faultMode}`}`,
       },
       null,

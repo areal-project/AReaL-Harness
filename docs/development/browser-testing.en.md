@@ -143,6 +143,10 @@ Use the Core media/Blob path to verify screenshot input to the model and GUI dis
 
 ## Commands
 
+`pnpm --dir clients/gui run test:browser-navigation` uses isolated Electron, real Core/Runtime and a deterministic local model. It covers interactive documents with slow resources, login redirects, main-document timeout UNKNOWN, manual navigation followed by Composer inspection and explicit sending. It checks draft preservation on cancellation, no model call during inspection, unchanged UNKNOWN history and exactly one accepted message. It also verifies that pages with slow resources can be captured while password forms still block automatic screenshots. The fixture explicitly configures full access and acquires control through production `describe`/`observe`. It does not establish real-account, provider or installed-package acceptance. Navigation-event counterexamples also run in `test:browser-contracts`.
+
+Set `AREAL_GUI_EXECUTABLE` to the absolute executable path of a candidate or installed app to run the same navigation recovery scenario against its package. The script does not override `AREAL_CORE_BIN`; it checks the loaded bundled Core path, component integrity and application resource hashes. User data, site and model remain isolated fixtures and do not use a real account. This mode currently supports only `navigation`.
+
 `pnpm --dir clients/gui run test:browser-contracts` runs the existing read, network, and diagnostics contract checks plus evidence classification and startup-probe checks. GUI CI runs it without desktop windows. It does not replace real Core/Native/GUI acceptance on a frozen candidate at milestone completion. During implementation run necessary local checks; causal repairs rerun affected cases while retaining earlier failures.
 
 Existing commands include make gui-smoke; pnpm --dir clients/gui run test:connection, test:architecture and test:composer; GUI typecheck and verify. Use the Browser scripts listed here; do not assume an unadvertised test:browser command exists. Follow current repository documentation/type checks.

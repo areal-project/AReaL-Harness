@@ -143,6 +143,10 @@ node clients/gui/scripts/browser-evidence.mjs B-04.same-page,B-05.forged-receipt
 
 ## 现有命令与新增命令
 
+`pnpm --dir clients/gui run test:browser-navigation` 使用隔离 Electron、真实 Core/Runtime 与确定性本地模型，覆盖可交互文档仍有慢资源、登录重定向、主文档超时 UNKNOWN、人工打开页面后从 Composer 核对并继续发送。验证取消保留草稿、核对本身不调用模型、UNKNOWN 历史不改写及消息只受理一次，并检查慢资源页面可以截图、含密码框的页面仍拒绝自动截图。夹具显式配置完全访问，以生产 `describe`/`observe` 取得控制；不代表真实账号、供应商或安装包验收。导航事件的反例回归随 `test:browser-contracts` 运行。
+
+设置 `AREAL_GUI_EXECUTABLE` 为候选或已安装应用的绝对可执行文件路径，可对同一导航恢复场景进行包内验收。脚本不覆盖 `AREAL_CORE_BIN`，核对实际加载的包内 Core 路径、组件完整性及应用资源哈希；用户数据、站点和模型仍使用隔离夹具，不操作真实账号。此模式目前只支持 `navigation`。
+
 `pnpm --dir clients/gui run test:browser-contracts` 执行现有读取、网络与诊断契约检查，以及证据分类和启动探针检查；已接入 GUI CI，无需启动桌面窗口。这不替代 milestone 收尾时在冻结候选上的真实 Core/Native/GUI 验收。开发期间运行必要局部检查，因果修复只重跑受影响场景并保留先前失败。
 
 现有可用入口包括 `make gui-smoke`、`pnpm --dir clients/gui run test:connection`、`pnpm --dir clients/gui run test:architecture`、`pnpm --dir clients/gui run test:composer`、GUI typecheck与verify；详见GUI指南。Browser 专用脚本见本页所列入口；不得假设存在未公布的 `test:browser` 命令。

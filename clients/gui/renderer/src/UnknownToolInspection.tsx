@@ -10,6 +10,9 @@ import {
   DialogTrigger,
 } from "./components/ui/dialog.js";
 import type { Action, Data } from "./services.js";
+import { hasUnknownToolOutcome, uninspectedToolCalls } from "./toolInspection.js";
+import { FeedbackNotice } from "./FeedbackNotice.js";
+import { useI18n } from "./i18n/IntlProvider.js";
 
 /** Core owns both the UNKNOWN journal and the operator's inspection. Acknowledging
  * records facts only: it never retries the operation or changes its outcome. */
@@ -18,24 +21,34 @@ export function UnknownToolInspection({
   project,
   thread,
   action,
+  open: controlledOpen,
+  onOpenChange,
+  compact = false,
 }: {
   item: Data;
   project: Data;
   thread: Data;
   action: Action;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  compact?: boolean;
 }) {
-  const [open, setOpen] = useState(false),
+  const { t } = useI18n();
+  const [localOpen, setLocalOpen] = useState(false),
     [inspection, setInspection] = useState("");
+  const open = controlledOpen ?? localOpen;
+  const setOpen = (value: boolean) => {
+    setLocalOpen(value);
+    onOpenChange?.(value);
+  };
   const [checked, setChecked] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const locked = useRef(false);
   const connected = !!project.state?.connected;
   const confirmed = item.execution?.inspection;
-  const unknown =
-    item.execution?.outcome === "unknown" ||
-    item.execution?.hooks?.some((hook: Data) => hook.outcome === "unknown") ||
-    item.execution?.plugin?.operations?.some((operation: Data) => operation.outcome === "unknown");
+  const unknown = hasUnknownToolOutcome(item);
+  const browser = item.tool === "browser_v1";
   const active = thread.turns?.some((turn: Data) => turn.status === "inProgress");
   const bytes = new TextEncoder().encode(inspection.trim()).length;
   const archived =
@@ -81,12 +94,18 @@ export function UnknownToolInspection({
     }
   };
   return (
-    <div className="notice">
-      <p>
-        {confirmed
-          ? "UNKNOWN · 已记录人工核查，原结果仍未知。"
-          : "UNKNOWN · 工具或钩子结果未确认，核查前会话保持阻塞。"}
-      </p>
+    <div className={compact ? undefined : "notice"}>
+      {!compact && (
+        <p>
+          {confirmed
+            ? browser
+              ? t("operations.browserInspected")
+              : "UNKNOWN · 已记录人工核查，原结果仍未知。"
+            : browser
+              ? t("operations.browserUnconfirmed")
+              : "UNKNOWN · 工具或钩子结果未确认，核查前会话保持阻塞。"}
+        </p>
+      )}
       <Dialog
         open={open}
         onOpenChange={(value) => {
@@ -94,51 +113,64 @@ export function UnknownToolInspection({
           if (value) setChecked(false);
         }}
       >
-        <DialogTrigger render={<Button variant="outline" size="sm" />}>
-          {confirmed ? "查看 UNKNOWN 核查" : "核查 UNKNOWN"}
-        </DialogTrigger>
+        {!compact && (
+          <DialogTrigger render={<Button variant="outline" size="sm" />}>
+            {browser
+              ? t("operations.browserInspect")
+              : confirmed
+                ? "查看 UNKNOWN 核查"
+                : "核查 UNKNOWN"}
+          </DialogTrigger>
+        )}
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogTitle>核查工具结果 UNKNOWN</DialogTitle>
+          <DialogTitle>
+            {browser ? t("operations.browserInspect") : "核查工具结果 UNKNOWN"}
+          </DialogTitle>
           <DialogDescription>
-            请先核对工作区的实际文件或进程。确认只记录核查事实，不重放原操作，也不将历史改写为成功。证据不足时取消核查。
+            {browser
+              ? t("operations.browserInspectionHelp")
+              : "请先核对工作区的实际文件或进程。确认只记录核查事实，不重放原操作，也不将历史改写为成功。证据不足时取消核查。"}
           </DialogDescription>
-          <dl className="grid gap-1 text-compact-body break-all">
-            <dt>原工具</dt>
-            <dd>{item.tool}</dd>
-            <dt>执行项</dt>
-            <dd>{item.id}</dd>
-            <dt>操作</dt>
-            <dd>{item.execution.operationId}</dd>
-            <dt>历史状态</dt>
-            <dd>
-              {item.execution.outcome}
-              {item.execution.hooks?.some((hook: Data) => hook.outcome === "unknown")
-                ? " · 钩子 UNKNOWN"
-                : ""}
-              {item.execution.plugin?.operations?.some(
-                (operation: Data) => operation.outcome === "unknown",
-              )
-                ? " · 插件 UNKNOWN"
-                : ""}
-            </dd>
-          </dl>
-          <div>
-            <h3>原操作参数</h3>
-            <pre
-              className="whitespace-pre-wrap break-all text-compact-caption"
-              aria-label="原操作参数"
-            >
-              {JSON.stringify(item.arguments, null, 2)}
-            </pre>
-          </div>
-          <details>
-            <summary>Core 原始结果与核查事实</summary>
-            <pre
-              className="whitespace-pre-wrap break-all text-compact-caption"
-              aria-label="Core 原始结果"
-            >
-              {JSON.stringify({ output: item.contentItems, execution: item.execution }, null, 2)}
-            </pre>
+          <details open={browser ? undefined : true}>
+            <summary>{t("operations.inspectionDetails")}</summary>
+            <dl className="grid gap-1 text-compact-body break-all">
+              <dt>原工具</dt>
+              <dd>{item.tool}</dd>
+              <dt>执行项</dt>
+              <dd>{item.id}</dd>
+              <dt>操作</dt>
+              <dd>{item.execution.operationId}</dd>
+              <dt>历史状态</dt>
+              <dd>
+                {item.execution.outcome}
+                {item.execution.hooks?.some((hook: Data) => hook.outcome === "unknown")
+                  ? " · 钩子 UNKNOWN"
+                  : ""}
+                {item.execution.plugin?.operations?.some(
+                  (operation: Data) => operation.outcome === "unknown",
+                )
+                  ? " · 插件 UNKNOWN"
+                  : ""}
+              </dd>
+            </dl>
+            <div>
+              <h3>原操作参数</h3>
+              <pre
+                className="whitespace-pre-wrap break-all text-compact-caption"
+                aria-label="原操作参数"
+              >
+                {JSON.stringify(item.arguments, null, 2)}
+              </pre>
+            </div>
+            <details>
+              <summary>Core 原始结果与核查事实</summary>
+              <pre
+                className="whitespace-pre-wrap break-all text-compact-caption"
+                aria-label="Core 原始结果"
+              >
+                {JSON.stringify({ output: item.contentItems, execution: item.execution }, null, 2)}
+              </pre>
+            </details>
           </details>
           {confirmed ? (
             <div role="status">
@@ -154,7 +186,11 @@ export function UnknownToolInspection({
                   value={inspection}
                   onChange={(event) => setInspection(event.target.value)}
                   disabled={busy}
-                  placeholder="记录已检查的文件、进程及观察到的事实；不确定时不要确认。"
+                  placeholder={
+                    browser
+                      ? t("operations.browserInspectionPlaceholder")
+                      : "记录已检查的文件、进程及观察到的事实；不确定时不要确认。"
+                  }
                 />
               </label>
               <p className="text-compact-caption">{bytes} / 1024 UTF-8 字节</p>
@@ -167,7 +203,7 @@ export function UnknownToolInspection({
                   onChange={(event) => setChecked(event.target.checked)}
                   disabled={disabled}
                 />
-                已核查实际文件或进程
+                {browser ? t("operations.browserInspectionChecked") : "已核查实际文件或进程"}
               </label>
               {!connected && <p role="status">连接中断，不能确认。恢复连接后刷新原记录。</p>}
               {active && <p role="status">会话仍在执行，结算后才能确认。</p>}
@@ -194,4 +230,79 @@ export function UnknownToolInspection({
       </Dialog>
     </div>
   );
+}
+
+/** 核对不发送草稿；只有 Core 保存核对事实后才移除当前入口。 */
+export function useToolInspection(
+  project: Data,
+  thread: Data,
+  action: Action,
+  onClose: () => void,
+) {
+  const { t } = useI18n();
+  const [inspectionId, setInspectionId] = useState<string | null>(null);
+  const pending = uninspectedToolCalls(thread);
+  const selected = pending.find((item) => item.id === inspectionId);
+  const running = thread.turns?.some((turn: Data) => turn.status === "inProgress");
+  const request = () => {
+    if (!pending.length) return false;
+    setInspectionId(pending[0].id);
+    return true;
+  };
+  const submitLabel = (editingQueue: boolean, creatingGoal: boolean, canContinue: boolean) =>
+    editingQueue
+      ? "保存排队消息"
+      : !running && pending.length
+        ? t("operations.inspectBeforeSend")
+        : creatingGoal
+          ? "开始目标"
+          : canContinue
+            ? "继续执行"
+            : "发送";
+  return {
+    submitLabel,
+    request,
+    notice: (
+      <>
+        {!running && pending.length > 0 && (
+          <FeedbackNotice
+            transient={false}
+            tone="warning"
+            message={t(
+              pending[0].tool === "browser_v1"
+                ? "operations.browserRecovery"
+                : "operations.toolRecovery",
+            )}
+            actions={
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!project.state?.connected}
+                onClick={request}
+              >
+                {t("operations.inspectToContinue")}
+              </Button>
+            }
+          />
+        )}
+        {selected && (
+          <UnknownToolInspection
+            key={selected.id}
+            compact
+            open
+            item={selected}
+            project={project}
+            thread={thread}
+            action={action}
+            onOpenChange={(open) => {
+              if (!open) {
+                setInspectionId(null);
+                onClose();
+              }
+            }}
+          />
+        )}
+      </>
+    ),
+  };
 }

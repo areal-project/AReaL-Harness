@@ -36,7 +36,7 @@ const { readCommandInvocation, desktopError } = require("@areal/workbench/deskto
 /** @type {typeof import("@areal/workbench/desktop-contract").validatePreview} */
 const validatePreview = require("@areal/workbench/desktop-contract").validatePreview;
 const { modelRecord } = require("@areal/workbench/core-model-contract");
-const { readBrowserHostRequest } = require("./browser-host-request.cjs");
+const { readBrowserHostRequest, browserHostFailure } = require("./browser-host-request.cjs");
 const { CorePreview } = require("./preview.cjs");
 const { ComputerControl } = require("./computer-control.cjs");
 const { ExternalCua, upstream: cuaUpstream } = require("./external-cua.cjs");
@@ -1108,39 +1108,7 @@ function startDesktop() {
           }
           return result;
         } catch (error) {
-          const message = desktopError(error).message;
-          if (message === "outcome_unknown") throw error;
-          return {
-            coreInstanceId: request.coreInstanceId,
-            coreGeneration: request.coreGeneration,
-            projectId: request.projectId,
-            threadId: request.threadId,
-            turnId: request.turnId,
-            callId: request.callId,
-            pageId: request.pageId,
-            browserHostId: request.browserHostId,
-            hostGeneration: request.hostGeneration,
-            pageGeneration: request.pageGeneration,
-            controlEpoch: request.controlEpoch,
-            error:
-              message === "human_control" || /Human controls|revoked/.test(message)
-                ? "human_control"
-                : message === "stale_ref"
-                  ? "stale_ref"
-                  : /plan_stale/.test(message)
-                    ? "plan_stale"
-                    : message === "human_takeover_required"
-                      ? "human_takeover_required"
-                      : message === "condition_timeout"
-                        ? "condition_timeout"
-                        : /not_sent|target_unavailable/.test(message)
-                          ? "not_sent"
-                          : /budget exceeded|Sensitive field|viewport changed|content changed during capture|capture guard unavailable/.test(
-                                message,
-                              )
-                            ? "evidence_unavailable"
-                            : "page_unavailable",
-          };
+          return browserHostFailure(request, error);
         }
       };
       app.on("will-quit", () => {

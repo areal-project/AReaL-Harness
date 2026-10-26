@@ -778,5 +778,12 @@
     "platforms": ["darwin", "linux", "win32"],
     "areas": ["design"],
     "requires": []
+  },
+  {
+    "script": "test:browser-navigation",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["browser"],
+    "requires": ["electron", "core-binary", "git", "gui-build"]
   }
 ]

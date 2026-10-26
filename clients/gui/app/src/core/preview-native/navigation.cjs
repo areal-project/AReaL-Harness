@@ -1,5 +1,6 @@
 // @ts-check
 "use strict";
+const { loadNavigationDocument } = require("../browser-navigation.cjs");
 const { preparedActionId } = require("../preview/approval.cjs");
 const { webUrl, observationUrl } = require("../preview/urls.cjs");
 const { pageKey } = require("./identity.cjs");
@@ -113,14 +114,18 @@ class ApprovedNavigation {
       requestId: request.requestId,
       dispatched: false,
       cancelled: false,
+      timedOut: false,
       cancel() {
         this.cancelled = true;
         cancel();
       },
     };
     page.activeAction = action;
-    let child;
-    const deadline = setTimeout(() => action.cancel(), 12000);
+    let child, navigation;
+    const deadline = setTimeout(() => {
+      action.timedOut = true;
+      action.cancel();
+    }, 12000);
     try {
       page.approvedActionNavigation = null;
       if (request.operation === "navigate") {
@@ -128,7 +133,7 @@ class ApprovedNavigation {
         page.url = target;
         page.error = "";
         action.dispatched = true;
-        await Promise.race([c.loadURL(target), stopped]);
+        navigation = await loadNavigationDocument(c, target, stopped);
       } else {
         const id = randomUUID();
         child = this.lifecycle.create(
@@ -140,7 +145,7 @@ class ApprovedNavigation {
         child.approvedNavigation = target;
         child.url = target;
         action.dispatched = true;
-        await Promise.race([child.view.webContents.loadURL(target), stopped]);
+        navigation = await loadNavigationDocument(child.view.webContents, target, stopped);
       }
       if (
         action.cancelled ||
@@ -188,7 +193,8 @@ class ApprovedNavigation {
               },
             }
           : {}),
-        url: target,
+        url: observationUrl(navigation.url),
+        readiness: navigation.readiness,
         dispatch: "confirmed",
       };
     } catch (error) {
@@ -198,7 +204,10 @@ class ApprovedNavigation {
         child.claiming?.cancel();
         if (child.control === "agent") this.control.revoke(child);
       }
-      if (action.dispatched) throw new Error("outcome_unknown");
+      if (action.dispatched)
+        throw Object.assign(new Error("outcome_unknown", { cause: error }), {
+          reason: action.timedOut ? "navigation_timeout" : "navigation_interrupted",
+        });
       throw error;
     } finally {
       clearTimeout(deadline);

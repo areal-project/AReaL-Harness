@@ -1,4 +1,40 @@
 export const operationMessages = {
+  "operations.inspectionDetails": {
+    "zh-CN": "查看原操作与诊断",
+    en: "View original operation and diagnostics",
+  },
+  "operations.browserUnconfirmed": {
+    "zh-CN": "浏览器操作未确认，任务已暂停。请核对当前页面后继续。",
+    en: "The browser operation is unconfirmed. Check the current page to continue the paused task.",
+  },
+  "operations.browserInspected": {
+    "zh-CN": "已记录页面核对，可以继续发送消息。原操作不会重放。",
+    en: "Page inspection recorded. You can send another message; the original operation will not be replayed.",
+  },
+  "operations.browserInspect": { "zh-CN": "核对浏览器结果", en: "Check browser result" },
+  "operations.browserInspectionHelp": {
+    "zh-CN":
+      "请核对浏览器当前页面。如果刚完成登录，记录当前已打开的页面；如果涉及提交，先确认是否已提交。核对后可发送保留的草稿继续任务，原操作不会重放。",
+    en: "Check the current browser page. If you just signed in, describe the page now open. If a submission was involved, check whether it went through. Then send your saved draft to continue; the original operation will not be replayed.",
+  },
+  "operations.browserInspectionPlaceholder": {
+    "zh-CN": "例如：已完成登录，当前显示任务列表；没有再次点击提交。",
+    en: "For example: Signed in and the task list is visible. I did not submit again.",
+  },
+  "operations.browserInspectionChecked": {
+    "zh-CN": "已核对当前页面及操作结果",
+    en: "I checked the current page and operation result",
+  },
+  "operations.browserRecovery": {
+    "zh-CN": "请核对当前页面；如需登录，请先完成登录。点击聊天中的“核对后继续”，再发送保留的草稿。",
+    en: "Check the current page and finish signing in if needed. Choose “Check to continue” in the chat, then send your saved draft.",
+  },
+  "operations.toolRecovery": {
+    "zh-CN": "上次操作的结果待核对。请核查实际状态后继续发送，草稿已保留。",
+    en: "The previous operation needs checking. Inspect its actual result before sending. Your draft is preserved.",
+  },
+  "operations.inspectToContinue": { "zh-CN": "核对后继续", en: "Check to continue" },
+  "operations.inspectBeforeSend": { "zh-CN": "核对后发送", en: "Check before sending" },
   "operations.outputStyles": { "zh-CN": "输出样式", en: "Output styles" },
   "operations.themes": { "zh-CN": "主题", en: "Themes" },
   "operations.languageServers": { "zh-CN": "语言服务器", en: "Language servers" },

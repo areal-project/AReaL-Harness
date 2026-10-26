@@ -1,5 +1,6 @@
 // @ts-check
 "use strict";
+const { desktopError } = require("@areal/workbench/desktop-contract");
 const { modelRecord } = require("@areal/workbench/core-model-contract");
 const { validToolInput } = require("./browser-tool.cjs");
 /** @typedef {import('./preview-native/model.js').HostRequest|import('./preview-native/model.js').DiscoveryRequest} BrowserHostRequest */
@@ -34,4 +35,53 @@ function browserHostRequest(value) {
     validToolInput({ operation: value.operation, parameters: value.parameters })
   );
 }
-module.exports = { readBrowserHostRequest };
+/** 原请求身份与白名单原因沿宿主回执保留，派发后未知不能退化成未发送。
+ * @param {Record<string,unknown>} request @param {unknown} error
+ */
+function browserHostFailure(request, error) {
+  const message = desktopError(error).message;
+  const reason = modelRecord(error) ? error.reason : undefined;
+  return {
+    coreInstanceId: request.coreInstanceId,
+    coreGeneration: request.coreGeneration,
+    projectId: request.projectId,
+    threadId: request.threadId,
+    turnId: request.turnId,
+    callId: request.callId,
+    pageId: request.pageId,
+    browserHostId: request.browserHostId,
+    hostGeneration: request.hostGeneration,
+    pageGeneration: request.pageGeneration,
+    controlEpoch: request.controlEpoch,
+    ...(message === "outcome_unknown"
+      ? {
+          dispatch: "unknown",
+          reason:
+            reason === "navigation_timeout" || reason === "navigation_interrupted"
+              ? reason
+              : "action_unconfirmed",
+        }
+      : {}),
+    error:
+      message === "outcome_unknown"
+        ? "outcome_unknown"
+        : message === "human_control" || /Human controls|revoked/.test(message)
+          ? "human_control"
+          : message === "stale_ref"
+            ? "stale_ref"
+            : /plan_stale/.test(message)
+              ? "plan_stale"
+              : message === "human_takeover_required"
+                ? "human_takeover_required"
+                : message === "condition_timeout"
+                  ? "condition_timeout"
+                  : /not_sent|target_unavailable/.test(message)
+                    ? "not_sent"
+                    : /budget exceeded|Sensitive field|viewport changed|content changed during capture|capture guard unavailable/.test(
+                          message,
+                        )
+                      ? "evidence_unavailable"
+                      : "page_unavailable",
+  };
+}
+module.exports = { readBrowserHostRequest, browserHostFailure };

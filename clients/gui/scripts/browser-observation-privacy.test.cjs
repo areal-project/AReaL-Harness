@@ -81,12 +81,14 @@ async function observe(options = {}) {
       detach: () => {},
       sendCommand: async (method, params) => {
         if (method === "Page.createIsolatedWorld") return { executionContextId: 7 };
-        if (method === "Runtime.evaluate")
+        if (method === "Runtime.evaluate") {
+          assert.equal(params.contextId, 7);
           return {
             result: {
               value: { width: 800, height: 600, scrollX: 0, scrollY: 0, deviceScaleFactor: 1 },
             },
           };
+        }
         if (options.realClassification) {
           if (method === "DOM.resolveNode")
             return { object: { objectId: String(params.backendNodeId) } };

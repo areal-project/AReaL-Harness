@@ -17,6 +17,7 @@ const {
   describeCommands,
   failure: browserFailure,
   success: browserSuccess,
+  unconfirmed: browserUnconfirmed,
 } = require("./browser-tool.cjs");
 const { validComputerInput } = require("./computer-tool.cjs");
 const { ProjectionEncoder } = require("@areal/workbench/state-projection");
@@ -2150,29 +2151,13 @@ class DesktopService {
             : 512 * 1024)
     )
       throw new Error("Invalid browser host response");
-    const unknownBatch = () => ({
-      success: false,
-      contentItems: [
-        {
-          type: "inputText",
-          text: "outcome_unknown: inspect the confirmed prefix before any new action",
-        },
-      ],
-      structuredContent: {
-        code: "outcome_unknown",
-        dispatch: "unknown",
-        receipts: result.receipts ?? [],
-        failedStep: result.failedStep,
-        remaining: "not_sent",
-        remainingSteps: result.remainingSteps,
-      },
-    });
     if (this.browserClaims.get(key) !== claim || claim.pages.get(pageClaim.pageId) !== pageClaim) {
       // Execute may already have reached native input. Revocation cannot turn
       // its receipt into a factual claim that nothing was sent.
-      if (input.operation === "runBatch" && phase === "execute") return unknownBatch();
+      if (input.operation === "runBatch" && phase === "execute")
+        return browserUnconfirmed("runBatch", "action_unconfirmed", result);
       if (action && phase === "execute")
-        throw new Error("Browser action outcome unknown after takeover");
+        return browserUnconfirmed(input.operation, "control_changed");
       return browserFailure("human_control", "Browser authorization was revoked");
     }
     const currentProject = this.projectForThread(projectId, threadId);
@@ -2180,9 +2165,10 @@ class DesktopService {
       currentProject?.service?.serviceId !== coreInstanceId ||
       currentProject.service.generation !== coreGeneration
     ) {
-      if (input.operation === "runBatch" && phase === "execute") return unknownBatch();
+      if (input.operation === "runBatch" && phase === "execute")
+        return browserUnconfirmed("runBatch", "action_unconfirmed", result);
       if (action && phase === "execute")
-        throw new Error("Browser action outcome unknown after deployment change");
+        return browserUnconfirmed(input.operation, "deployment_changed");
       return browserFailure("host_unavailable", "Core deployment changed during observation");
     }
     if (result.error) {
@@ -2192,9 +2178,9 @@ class DesktopService {
         phase === "execute" &&
         result.error === "outcome_unknown"
       )
-        return unknownBatch();
+        return browserUnconfirmed("runBatch", "action_unconfirmed", result);
       if (action && phase === "execute" && result.error === "outcome_unknown")
-        throw new Error("Browser action outcome unknown");
+        return browserUnconfirmed(input.operation, result.reason);
       if (phase === "prepare") return { error: result.error, dispatch: "not_sent" };
       /** @type {Record<string,string>} */
       const hints = {

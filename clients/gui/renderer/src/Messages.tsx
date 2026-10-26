@@ -14,6 +14,7 @@ import { McpContentLabel } from "./McpComposerAttachments.js";
 import { useForkHistory } from "./ForkHistory.js";
 import { DeferredHistoryItem, useConversationHistory } from "./ConversationHistory.js";
 import { UnknownToolInspection } from "./UnknownToolInspection.js";
+import { showTurnStatus } from "./toolInspection.js";
 import { TurnNavigation } from "./TurnNavigation.js";
 import {
   executionOutcome,
@@ -1631,16 +1632,14 @@ export function Messages({
                   </p>
                 )}
                 {hasInterruption && stopHeaderIndex < 0 && stopHeading}
-                {turn.status !== "inProgress" &&
-                  !hasInterruption &&
-                  !(turn.status === "completed" && hasReadingSummary) && (
-                    <div className="turn-status">
-                      {({ completed: "已完成", interrupted: "已停止", failed: "执行失败" } as Data)[
-                        turn.status
-                      ] ?? turn.status}
-                      {turn.error ? `：${turnFailureMessage(turn)}` : ""}
-                    </div>
-                  )}
+                {showTurnStatus(turn, hasInterruption, hasReadingSummary) && (
+                  <div className="turn-status">
+                    {({ completed: "已完成", interrupted: "已停止", failed: "执行失败" } as Data)[
+                      turn.status
+                    ] ?? turn.status}
+                    {turn.error ? `：${turnFailureMessage(turn)}` : ""}
+                  </div>
+                )}
                 {!finalMessage &&
                   turn.status !== "inProgress" &&
                   turn.items?.some(

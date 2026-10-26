@@ -348,9 +348,47 @@ function success(value) {
   return { success: true, contentItems: [{ type: "inputText", text: JSON.stringify(value) }] };
 }
 
-module.exports = { definition, validToolInput, describeCommands, waitAction, failure, success };
+module.exports = {
+  definition,
+  validToolInput,
+  describeCommands,
+  waitAction,
+  failure,
+  success,
+  unconfirmed,
+};
 
 /** @param {string[]} choices @param {unknown} value @returns {value is string} */
 function oneOf(choices, value) {
   return typeof value === "string" && choices.includes(value);
+}
+
+/** 保留 UNKNOWN 和批量已确认前缀，让 Core 继续沿原人工核对屏障结算。
+ * @param {string} operation @param {unknown} reason @param {Record<string,unknown>} [result]
+ */
+function unconfirmed(operation, reason, result = {}) {
+  const batch = operation === "runBatch";
+  return {
+    success: false,
+    contentItems: [
+      {
+        type: "inputText",
+        text: batch
+          ? "outcome_unknown: inspect the confirmed prefix before any new action"
+          : "Browser operation result is unconfirmed. Inspect the current page before continuing; do not replay the operation.",
+      },
+    ],
+    structuredContent: {
+      code: "outcome_unknown",
+      dispatch: "unknown",
+      ...(batch
+        ? {
+            receipts: result.receipts ?? [],
+            failedStep: result.failedStep,
+            remaining: "not_sent",
+            remainingSteps: result.remainingSteps,
+          }
+        : { operation, reason: typeof reason === "string" ? reason : "action_unconfirmed" }),
+    },
+  };
 }

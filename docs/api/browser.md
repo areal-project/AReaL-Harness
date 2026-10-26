@@ -215,13 +215,17 @@ Core 将模型工具参数与内部审批计划分开记录：后续模型历史
 | 参数错、未授权、旧 Ref、用户控制、配额/能力不支持，确定未派发 | `success:false`，带 code 与 `dispatch:not_sent` | 可修正参数/重新观察；不能自动夺回控制 |
 | 动作派发和完成已确认 | `success:true`，回执与新状态 | 验证业务结果另算 |
 | 动作确认完成但业务检查未通过 | 动作仍成功，verification=failed | 新观察后决定新动作，不掩盖已提交事实 |
-| execute 派发后失去回执、超时、崩溃或取消，无法确定 | RPC error/既有 UNKNOWN 路径，附脱敏关联 ID | Core 停止自动执行；人工核对；不重放 |
+| execute 派发后失去回执、超时、崩溃或取消，无法确定 | 有回包时返回 `code:outcome_unknown,dispatch:unknown` 与原因；连接丢失仍走既有 UNKNOWN 路径 | Core 停止自动执行；人工核对；不重放 |
 | 批量前几步确认，后一步确定未派发 | 已确认步骤+确定失败+剩余未执行，`success:false` | 不重复前几步 |
 | 批量任何一步结果不明 | 整体工具 UNKNOWN，保留此前已确认回执 | 剩余步骤不派发 |
 
 超时分 prepare、审批等待、执行和传输。内层预算必须先于外层剩余期限结束，为结构化回执留空间；审批等待不沿用 3 秒动作预算。建议初始单动作默认 5 秒、上限 30 秒；普通 wait 默认 3 秒、上限 30 秒；批量执行总上限 30 秒、最多8步。它们是资源策略初值，不是性能承诺；以真实测试调优。墙钟变化不延长本地单调预算。
 
+`navigate` 与 `newPage` 接受本次主文档的提交和 `dom-ready` 作为可交互证据，不必等待图片等全部资源完成；回执增加 `readiness:interactive|complete`，`url` 是去除查询和片段的实际页面地址。既有控制代次与所有权检查仍须通过；旧文档的 ready 事件、仅开始导航或已撤销权限不能构成完成证明。12 秒内没有完成证据仍为 UNKNOWN，结构化原因 `navigation_timeout` 经宿主、适配器与 Core 保留；导航中断为 `navigation_interrupted`，不重放导航。这是完成证据修复，不增加执行预算或放宽授权。
+
 `areal/tool/cancelled` 传播到 adapter/Main，匹配原 requestId 和代次。尽力取消不保证回滚。迟到回执仅作核对证据，不能复活 Turn 或把 Core 已结算 UNKNOWN 静默改成成功。
+
+Agent 的页面认领、观察、截图隐私检查和 Ref 动作所需的有界文档读取，使用当前主 Frame 的独立 CDP world，避免 Electron `executeJavaScriptInIsolatedWorld` 等待整页资源完成。读取不启用 `Runtime` 事件回放，不转为页面主 world；原文档、控制代次和隐私核查仍在发布结果前复验。人工批注仍使用原有冻结读取路径。
 
 ## 9. 资源、证据与安全限制
 

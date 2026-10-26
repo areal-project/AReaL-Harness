@@ -182,13 +182,17 @@ Dedup key: `(hostGeneration, threadId, turnId, callId, stepIndex)`. requestId is
 | Invalid/denied/stale/user-control/quota/unsupported and certainly not sent | success=false, code, dispatch=not_sent | Correct/observe, not automatic takeover |
 | Confirmed action | success=true with receipt | Verify business result separately |
 | Confirmed action but failed business check | action succeeds, verification fails | Inspect and decide a new action |
-| Execute sent but receipt lost, timeout/crash/cancel ambiguous | RPC error/existing UNKNOWN | Stop automatic execution; inspect, never replay |
+| Execute sent but receipt lost, timeout/crash/cancel ambiguous | An available reply carries `code:outcome_unknown,dispatch:unknown` and a reason; connection loss retains the existing UNKNOWN path | Stop automatic execution; inspect, never replay |
 | Batch prior steps confirmed, later step certainly not sent | confirmed receipts + known failure + remaining not sent | Do not repeat prior steps |
 | Any batch step ambiguous | tool UNKNOWN, preserve confirmed prefixes | Dispatch no remaining steps |
 
 Separate prepare, approval, execution and transport timeouts. Inner work ends before outer deadline to return a structured receipt. Approval does not use the short action timeout. Initial policy: action5s default/30s maximum; wait3s default/30s maximum; batch≤8 steps/30s execution total. These are adjustable protection values, not measured performance claims. Local budgets use monotonic time.
 
+`navigate` and `newPage` accept a committed main document followed by its `dom-ready` event as interactive evidence, without waiting for all images or other resources. Receipts add `readiness:interactive|complete`; `url` is the actual page address with query and fragment removed. Existing ownership and control-epoch checks must still pass. Readiness from an old document, navigation start alone, or revoked control cannot prove completion. Missing evidence after 12 seconds remains UNKNOWN, with structured `navigation_timeout` preserved through Main, the adapter and Core; interrupted navigation reports `navigation_interrupted`. Navigation is never replayed. This fixes completion evidence without increasing budgets or broadening authorization.
+
 Propagate existing `areal/tool/cancelled` by original request and generation. Best effort is not rollback. Late receipts may aid inspection but cannot resurrect a Turn or silently change finalized UNKNOWN.
+
+Bounded document reads for Agent claiming, observation, screenshot privacy checks and Ref actions use an isolated CDP world in the current main Frame, avoiding Electron `executeJavaScriptInIsolatedWorld` waiting for all resources to finish. Reads do not enable Runtime event replay or enter the page's main world. Original document, control epoch and privacy checks are still revalidated before publishing results. Human annotations retain their existing frozen-read path.
 
 ## 9. Resources, media and safety
 
