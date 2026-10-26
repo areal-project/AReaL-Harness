@@ -12,6 +12,7 @@ import {
 } from "./conversationSelectionReference.js";
 import { parseSideSlashCommand } from "./sideSlashCommand.js";
 import { composerDraftStorage } from "./composerDraftStorage.js";
+import { composerPending } from "./composerPending.js";
 import { validateWorkspaceFileReference } from "./lib/workspaceFileComposer.js";
 import { stripGenUiModelContext } from "@areal/gen-ui/contract";
 import { useI18n } from "./i18n/IntlProvider.js";
@@ -196,7 +197,11 @@ export function Composer({
   };
   const busy = useSyncExternalStore(subscribeSending, () => sending.has(key));
   const [configurationRequestId, setConfigurationRequestId] = useState<string | null>(null);
-  const configuring = configurationRequestId !== null;
+  const { configuring, pending } = composerPending(
+    project.pending,
+    thread.id,
+    configurationRequestId,
+  );
   const [files, setFiles] = useState<ComposerDraftAttachment[]>(
     () => attachmentDrafts.get(key) ?? [],
   );
@@ -227,9 +232,6 @@ export function Composer({
   useEffect(() => {
     releaseSettledStops(project.id, thread);
   }, [project.id, thread]);
-  const pending = project.pending.some(
-    (p: Data) => p.params?.threadId === thread.id && p.params?.requestId !== configurationRequestId,
-  );
   const archived = thread.desktop?.archived;
   const questions = (project.state?.interactions?.[thread.id]?.data ?? []).filter(
     (item: Data) => item.status === "pending" && item.kind !== "approval" && !archived,

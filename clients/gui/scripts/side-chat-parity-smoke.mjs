@@ -89,6 +89,7 @@ const checks = [],
   errors = [],
   coreReads = [];
 const streams = new Map();
+const streamSteps = new Map();
 let marker = join(workspace, "parent-tool.txt");
 let release = join(workspace, "release-parent-tool");
 const sourceText = "PARITY_SELECTION_🌊_汉字";
@@ -141,7 +142,9 @@ const model = createServer((request, response) => {
       const emit = () =>
         response.write(chunk({ content: ` ${prompt.replace("PARITY:", "")}_${++sequence}` }));
       emit();
-      const timer = setInterval(emit, 120);
+      // 引用题明确控制“先选取，再追加”；不要求键盘动作赶在下一次定时输出之前完成。
+      const timer = prompt === "PARITY:STREAM_SELECTION" ? undefined : setInterval(emit, 120);
+      streamSteps.set(prompt, emit);
       const settle = () => {
         clearInterval(timer);
         if (!response.destroyed) finish(response, " STREAM_SETTLED");
@@ -150,6 +153,7 @@ const model = createServer((request, response) => {
       response.once("close", () => {
         clearInterval(timer);
         streams.delete(prompt);
+        streamSteps.delete(prompt);
       });
       return;
     }
@@ -1053,6 +1057,13 @@ async function selectionReferences() {
   await streamed.waitFor();
   const streamRequests = requests.length;
   await addReference(streamed, "STREAM_SELECTION_1");
+  assert.equal(
+    threads(await state())[await currentId()]?.turns.at(-1).status,
+    "inProgress",
+    "the quote is staged while the response stream remains open",
+  );
+  assert.ok(streamSteps.has("PARITY:STREAM_SELECTION"));
+  streamSteps.get("PARITY:STREAM_SELECTION")();
   await until(
     async () => (await streamed.innerText()).includes("STREAM_SELECTION_2"),
     "stream advances after selection",

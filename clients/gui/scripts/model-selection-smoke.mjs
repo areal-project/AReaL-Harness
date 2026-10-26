@@ -1328,7 +1328,15 @@ async function verifyModelDefaults(projectId) {
   await setDefault("Legacy Beta", { providerId: "legacy", modelId: "legacy-beta" });
   await button("返回应用").click();
   await expectModel("legacy-alpha", "高");
-  await chooseNone();
+  // 放大回执与投影的到达差异，连续编辑断言仍覆盖整个真实保存过程。
+  const effortSession = await page.context().newCDPSession(page);
+  try {
+    await effortSession.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+    await chooseNone();
+  } finally {
+    await effortSession.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+    await effortSession.detach();
+  }
   await expectModel("legacy-alpha", "无");
   await send("Implicit history keeps old identity while configuring effort", {
     model: "legacy-alpha",

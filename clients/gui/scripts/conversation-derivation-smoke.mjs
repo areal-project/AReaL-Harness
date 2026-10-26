@@ -238,7 +238,21 @@ const modelConfiguration = (config) => {
 };
 
 async function state() {
-  return page.evaluate(() => window.arealDesktop.snapshot());
+  return withSmokeDeadline("renderer snapshot", () =>
+    page.evaluate(() => window.arealDesktop.snapshot()),
+  );
+}
+
+async function recordMainFailures(application) {
+  // 原生异常弹窗可能阻塞 IPC；先落盘错误栈，保留默认异常处理与失败事实。
+  await application.evaluate(
+    (_, path) => {
+      process.on("uncaughtExceptionMonitor", (error) => {
+        process.getBuiltinModule("fs").appendFileSync(path, `${error.stack ?? error}\n`);
+      });
+    },
+    join(scratch, "main-exceptions.log"),
+  );
 }
 const project = (snapshot) => snapshot.projects.find((p) => p.root === workspace && !p.projectless);
 async function showMainConversation() {
@@ -869,6 +883,7 @@ try {
     recordVideo: { dir: videoDir, size: { width: 1440, height: 960 } },
   };
   app = await electron.launch(launchOptions);
+  await recordMainFailures(app);
   app.process().stderr.on("data", (chunk) => {
     electronStderr.push(String(chunk));
     if (String(chunk).includes("Error")) process.stderr.write(chunk);
@@ -2346,26 +2361,28 @@ try {
     const beforeDisconnect = project(await state());
     // 保持本次真实断线，避免 500ms 被动重连抢在 React/Playwright 的离线断言之前完成。
     try {
-      await app.evaluate(
-        ({ app }, connectionPath) => {
-          const read = process
-            .getBuiltinModule("module")
-            .createRequire(app.getAppPath() + "/package.json");
-          const { SharedCoreBackend } = read(connectionPath);
-          const original = SharedCoreBackend.prototype.scheduleReconnect;
-          const connection = globalThis.__scfConnection;
-          let disconnectedBackend;
-          SharedCoreBackend.prototype.scheduleReconnect = function () {
-            if (this.connection === connection) disconnectedBackend = this;
-            // 手动重连会替换 connection；该后端仍不能靠被动重试掩盖手动恢复失败。
-            if (this !== disconnectedBackend) return original.call(this);
-          };
-          globalThis.__scfRestoreReconnect = () => {
-            SharedCoreBackend.prototype.scheduleReconnect = original;
-          };
-          connection.socket.terminate();
-        },
-        join(desktop, "src/core/service-client.cjs"),
+      await withSmokeDeadline("disconnect fixture installation", () =>
+        app.evaluate(
+          ({ app }, connectionPath) => {
+            const read = process
+              .getBuiltinModule("module")
+              .createRequire(app.getAppPath() + "/package.json");
+            const { SharedCoreBackend } = read(connectionPath);
+            const original = SharedCoreBackend.prototype.scheduleReconnect;
+            const connection = globalThis.__scfConnection;
+            let disconnectedBackend;
+            SharedCoreBackend.prototype.scheduleReconnect = function () {
+              if (this.connection === connection) disconnectedBackend = this;
+              // 手动重连会替换 connection；该后端仍不能靠被动重试掩盖手动恢复失败。
+              if (this !== disconnectedBackend) return original.call(this);
+            };
+            globalThis.__scfRestoreReconnect = () => {
+              SharedCoreBackend.prototype.scheduleReconnect = original;
+            };
+            connection.socket.terminate();
+          },
+          join(desktop, "src/core/service-client.cjs"),
+        ),
       );
       await until(
         (s) => s.connection?.state === "unavailable" && project(s)?.state?.connected === false,
@@ -2396,10 +2413,12 @@ try {
       );
       await page.getByRole("button", { name: "返回应用", exact: true }).click();
     } finally {
-      await app.evaluate(() => {
-        globalThis.__scfRestoreReconnect?.();
-        delete globalThis.__scfRestoreReconnect;
-      });
+      await withSmokeDeadline("disconnect fixture cleanup", () =>
+        app.evaluate(() => {
+          globalThis.__scfRestoreReconnect?.();
+          delete globalThis.__scfRestoreReconnect;
+        }),
+      );
     }
     checks.push(
       "AC49: real GUI transport disconnect/reconnect restored distinct source and Side identities without duplicate Turns",
@@ -2447,6 +2466,7 @@ try {
       },
     });
     app = await electron.launch(launchOptions);
+    await recordMainFailures(app);
     page = await app.firstWindow();
     page.setDefaultTimeout(15000);
     page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -2737,6 +2757,17 @@ try {
   if (server) {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
+  }
+  const mainFailures = await readFile(join(scratch, "main-exceptions.log"), "utf8").catch(
+    (error) => {
+      if (error.code !== "ENOENT") throw error;
+      return "";
+    },
+  );
+  if (mainFailures) {
+    failure ??= mainFailures;
+    passed = false;
+    process.exitCode = 1;
   }
   const videos = await readdir(join(scratch, "video")).catch(() => []);
   if (!videoPath && videos.length === 1) videoPath = join(scratch, "video", videos[0]);
