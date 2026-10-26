@@ -2379,7 +2379,8 @@ try {
             globalThis.__scfRestoreReconnect = () => {
               SharedCoreBackend.prototype.scheduleReconnect = original;
             };
-            connection.socket.terminate();
+            // Inspector 可在 TCP 读取栈中执行 evaluate；回到事件循环后再制造真实断线。
+            setImmediate(() => connection.socket.terminate());
           },
           join(desktop, "src/core/service-client.cjs"),
         ),
