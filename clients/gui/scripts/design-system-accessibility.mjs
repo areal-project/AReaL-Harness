@@ -264,6 +264,15 @@ export async function runAccessibility(page, scratch, gui, checks, samples) {
         const states = route ? ["ready"] : ["ready", "busy", "failed", "unknown"];
         for (const state of states) {
           if (!route) await scenario.getByLabel("状态", { exact: true }).selectOption(state);
+          // 扫描所选主题的稳定状态，避免把继承文字与尚在过渡的旧背景混合取样。
+          await scenario.waitForFunction(() =>
+            document
+              .getAnimations()
+              .every(
+                (animation) =>
+                  !(animation instanceof CSSTransition) || animation.playState === "finished",
+              ),
+          );
           const result = await new AxeBuilder({ page: scenario })
             .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
             .analyze();

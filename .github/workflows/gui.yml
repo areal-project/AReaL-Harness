@@ -248,7 +248,8 @@ jobs:
           git rev-parse HEAD > target/ci/gui/source.sha
           tar -czf target/ci/gui/gui-smoke-inputs.tar.gz \
             target/ci/gui/source.sha target/debug/areal target/debug/areal-runtime \
-            target/debug/areal-runtime-fs target/debug/shells clients/gui/renderer/dist clients/gui/dist/design-system
+            target/debug/areal-runtime-fs target/debug/areal-runtime-reaper \
+            target/debug/shells clients/gui/renderer/dist clients/gui/dist/design-system
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: macos-gui-smoke-inputs
@@ -314,6 +315,7 @@ jobs:
           test -x target/debug/areal
           test -x target/debug/areal-runtime
           test -x target/debug/areal-runtime-fs
+          test -x target/debug/areal-runtime-reaper
       - name: Verify registered Core-dependent contracts
         env:
           AREAL_CORE_BIN: ${{ github.workspace }}/target/debug/areal
@@ -380,6 +382,7 @@ jobs:
           test -x target/debug/areal
           test -x target/debug/areal-runtime
           test -x target/debug/areal-runtime-fs
+          test -x target/debug/areal-runtime-reaper
       - name: Run ${{ matrix.scenario }} smoke
         timeout-minutes: 10
         env:

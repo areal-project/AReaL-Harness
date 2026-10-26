@@ -694,7 +694,9 @@ async function toolAndPermission() {
     "fixture profile configured",
   );
   const before = await readCoreThread(parent);
-  const configBefore = structuredClone(project(await state()).configurations[parent]);
+  // GUI 刷新会补充显示字段；父配置隔离应前后比较同一 Core 权威记录。
+  const configBefore = before.desktop?.configuration;
+  assert.ok(configBefore, "authoritative parent configuration is present");
   await openSide();
   const child = await sendSide("PARITY:P1_READ");
   const read = await readCoreThread(child);
@@ -752,16 +754,13 @@ async function toolAndPermission() {
       project(await state()).configurations[child]?.model?.modelId === "fixture-alternate",
     "independent child model",
   );
+  const parentAfter = await readCoreThread(parent);
   assert.deepEqual(
-    project(await state()).configurations[parent],
+    parentAfter.desktop?.configuration,
     configBefore,
     "child configuration leaves parent unchanged",
   );
-  assert.deepEqual(
-    (await readCoreThread(parent)).turns,
-    before.turns,
-    "child tools leave parent turns unchanged",
-  );
+  assert.deepEqual(parentAfter.turns, before.turns, "child tools leave parent turns unchanged");
   checks.push(
     "P1 real child fs_read, approved and denied fs_create, exact bytes, independent configuration, unchanged parent",
   );
