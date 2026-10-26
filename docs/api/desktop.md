@@ -172,6 +172,8 @@ thread/configure 使用 expectedRevision，仅空闲且不压缩时生效。rese
 
 options.readOnly 收窄 Scope 写根和网络；toolAllowlist 收窄 Profile；preapprovedTools 不能取消部署强制审批，且只匹配当前工具名；预批准读取工具不会豁免它触发的 hook。maxModelRounds 为 1–1024，最后一轮仅交接，不等于团队请求预算。Profile/Workflow 定义使用不可变 id/revision；Skill 引用不冻结资源内容，见下文。
 
+`features.automaticSessionName` 表示支持 `options.automaticSessionName: boolean`；`areal/thread/start` 与 `areal/thread/configure` 使用同一选项，省略或 true 保留自动命名，false 禁止后续命名请求。配置替换时客户端应保留已有选择；来源 Turn 的冻结配置、在途请求和恢复边界见 [Core 会话名称](core.md#会话名称)。
+
 <a id="skills"></a>
 ### 有界历史显示
 

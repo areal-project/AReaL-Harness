@@ -172,6 +172,8 @@ Optional `parameters.reasoningSummary` accepts `auto` / `concise` / `detailed` f
 
 options.readOnly narrows Scope write roots and networking. toolAllowlist narrows the Profile; preapprovedTools cannot remove mandatory deployment approvals and matches only the current tool name; preapproving a read tool does not exempt its hooks. maxModelRounds is 1–1024 with a handoff-only final round, not a team request budget. Profile/Workflow definitions use immutable id/revision pairs; Skill references do not freeze resource content, as described below.
 
+`features.automaticSessionName` advertises `options.automaticSessionName: boolean` on `areal/thread/start` and `areal/thread/configure`. Omission or true retains automatic naming; false prevents subsequent naming requests. Clients replacing options should preserve the existing choice. Frozen source-Turn configuration, in-flight requests and resume semantics are defined in [Core session names](core.en.md#session-names).
+
 `areal/model/list.reasoningEffortOptions` reports declared custom choices, or the existing HTTP adapter's accepted values when no list is configured (`none/minimal/low/medium/high/xhigh`; empty for other adapters). This does not guarantee support by every remote model. Composer reads these options from the catalog and submits parameters through the existing thread configuration path.
 
 <a id="skills"></a>

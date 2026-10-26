@@ -566,6 +566,7 @@ async fn ordinary_admission_capabilities_and_rpc_errors_are_explicit() {
         "operationOutcomes",
         "taskRequestReceipts",
         "atomicConfigureReceipt",
+        "automaticSessionName",
     ] {
         assert_eq!(caps["result"]["features"][feature], true, "{caps}");
     }

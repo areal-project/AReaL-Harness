@@ -1362,6 +1362,7 @@ impl Connection {
                 capabilities["features"]["permissionFullAccess"] =
                     json!(engine.permission_full_access_available());
                 capabilities["features"]["taskRunHistory"] = json!(true);
+                capabilities["features"]["automaticSessionName"] = json!(true);
                 capabilities["features"]["boundedObservation"] = json!(true);
                 capabilities["features"]["boundedResume"] = json!(true);
                 capabilities["features"]["boundedHistory"] = json!(true);

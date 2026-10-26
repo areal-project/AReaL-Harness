@@ -499,6 +499,9 @@ pub struct EffectivePermissions {
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClientOptions {
+    /// 显式关闭展示用命名推理；缺失时保留既有自动命名行为。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub automatic_session_name: Option<bool>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub external_cua: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]

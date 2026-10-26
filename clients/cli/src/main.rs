@@ -109,6 +109,9 @@ struct Cli {
     /// 同时输出原生 Core 通知，保留工具媒体及结构化终态供原生消费者使用。
     #[arg(long)]
     include_native_events: bool,
+    /// 关闭此会话的自动命名请求；保留历史、恢复与任务推理。
+    #[arg(long)]
+    no_session_name: bool,
 
     #[arg(short = 'r', long)]
     resume: Option<String>,
@@ -305,6 +308,31 @@ fn service_result(result: Result<()>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn automatic_naming_opt_out_is_explicit_for_both_script_entries() {
+        let Some(Command::Exec(default)) = MultitoolCli::try_parse_from(["areal", "exec", "hello"])
+            .unwrap()
+            .command
+        else {
+            panic!("expected exec");
+        };
+        assert!(!default.no_session_name);
+        let Some(Command::Exec(disabled)) =
+            MultitoolCli::try_parse_from(["areal", "exec", "--no-session-name", "hello"])
+                .unwrap()
+                .command
+        else {
+            panic!("expected exec");
+        };
+        assert!(disabled.no_session_name);
+        assert!(
+            LegacyArgs::try_parse_from(["areal", "-p", "hello", "--no-session-name"])
+                .unwrap()
+                .cli
+                .no_session_name
+        );
+    }
 
     #[test]
     fn native_consumers_can_bind_readonly_inputs_without_remote_escalation() {

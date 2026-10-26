@@ -13,6 +13,10 @@ fn eligible(thread: &Thread) -> bool {
         && !thread.is_side()
         && !thread.ephemeral
         && !thread.desktop.as_ref().is_some_and(|d| d.archived)
+        && thread
+            .desktop
+            .as_ref()
+            .is_none_or(|d| d.configuration.options.automatic_session_name != Some(false))
 }
 
 fn ordinary(turn: &Turn) -> bool {
@@ -26,6 +30,10 @@ fn ordinary(turn: &Turn) -> bool {
 
 fn source_matches(thread: &Thread, turn: &Turn) -> bool {
     eligible(thread)
+        // 关闭命名的来源轮次不能因后续改回配置而补发请求。
+        && turn.configuration.as_ref().is_none_or(|c| {
+            c.options.automatic_session_name != Some(false)
+        })
         && thread.turns.iter().find(|t| ordinary(t)).is_some_and(|t| {
             t.id == turn.id && serde_json::to_value(t).ok() == serde_json::to_value(turn).ok()
         })
@@ -258,6 +266,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn disabled_naming_never_claims_or_calls_the_model() {
+        for frozen_turn in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let m = model(ModelEvent::text("must not be requested"), false);
+            let e = Engine::open(dir.path(), m.clone(), Limits::default()).unwrap();
+            let (cell, mut turn) = source(&e).await;
+            {
+                let mut state = cell.state.lock().await;
+                if frozen_turn {
+                    let mut config = areal_protocol::desktop::EffectiveConfig::default();
+                    config.options.automatic_session_name = Some(false);
+                    turn.configuration = Some(config);
+                    state.thread.turns[0] = turn.clone();
+                } else {
+                    state
+                        .thread
+                        .desktop
+                        .get_or_insert_with(Default::default)
+                        .configuration
+                        .options
+                        .automatic_session_name = Some(false);
+                }
+            }
+            let before = serde_json::to_value(&cell.state.lock().await.thread).unwrap();
+            e.generate_session_name(&cell, &turn, m.clone())
+                .await
+                .unwrap();
+            assert_eq!(m.calls.load(Ordering::SeqCst), 0);
+            assert_eq!(
+                serde_json::to_value(&cell.state.lock().await.thread).unwrap(),
+                before
+            );
+            e.shutdown().await;
+        }
+    }
+
+    #[tokio::test]
     async fn deleted_cell_cannot_claim_or_send_request() {
         let dir = tempfile::tempdir().unwrap();
         let m = model(ModelEvent::text("unused"), false);
@@ -288,7 +333,7 @@ mod tests {
 
     #[tokio::test]
     async fn stale_results_cannot_revive_deleted_archived_cleared_or_changed_sources() {
-        for change in ["delete", "archive", "clear", "source"] {
+        for change in ["delete", "archive", "clear", "source", "disableNaming"] {
             let dir = tempfile::tempdir().unwrap();
             let m = model(ModelEvent::text("late name"), true);
             let e = Engine::open(dir.path(), m.clone(), Limits::default()).unwrap();
@@ -314,6 +359,15 @@ mod tests {
                     }
                     "clear" => state.thread.turns.clear(),
                     "source" => state.thread.turns[0].items.clear(),
+                    "disableNaming" => {
+                        state
+                            .thread
+                            .desktop
+                            .get_or_insert_with(Default::default)
+                            .configuration
+                            .options
+                            .automatic_session_name = Some(false);
+                    }
                     _ => unreachable!(),
                 }
             }

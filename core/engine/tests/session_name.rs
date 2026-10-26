@@ -101,6 +101,79 @@ async fn named(e: &Engine, id: &str) -> Value {
     .unwrap()
 }
 #[tokio::test]
+async fn naming_opt_out_preserves_solves_and_persists_without_backfill() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = model(Some("must not be requested"), false);
+    let e = Engine::open(dir.path(), m.clone(), Limits::default()).unwrap();
+    let t = e.create("/workspace".into()).await.unwrap();
+    e.configure_thread(
+        serde_json::from_value(json!({
+            "threadId":t.id,"expectedRevision":1,
+            "options":{"automaticSessionName":false}
+        }))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+    let first = solve(&e, &t.id, "persist this ordinary session").await;
+    assert_eq!(first["turns"][0]["status"], "completed");
+    assert_eq!(first["ephemeral"], false);
+    e.shutdown().await;
+    drop(e);
+    let e = Engine::open(dir.path(), m.clone(), Limits::default()).unwrap();
+    let restored = serde_json::to_value(e.read(&t.id, true).await.unwrap()).unwrap();
+    assert_eq!(
+        restored["desktop"]["configuration"]["options"]["automaticSessionName"],
+        false
+    );
+    assert_eq!(restored["turns"], first["turns"]);
+    // 后续启用只改变未来配置，不能重写第一轮的关闭决定或补发命名。
+    e.configure_thread(
+        serde_json::from_value(json!({
+            "threadId":t.id,"expectedRevision":restored["desktop"]["configuration"]["revision"],
+            "options":{"automaticSessionName":true}
+        }))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+    let resumed = solve(&e, &t.id, "resume normally").await;
+    assert_eq!(resumed["turns"].as_array().unwrap().len(), 2);
+    assert_eq!(resumed["turns"][0], first["turns"][0]);
+    assert_eq!(resumed["turns"][1]["status"], "completed");
+    e.shutdown().await;
+    assert_eq!(m.summaries.load(Ordering::SeqCst), 0);
+    drop(e);
+    let reopened = Engine::open(dir.path(), m, Limits::default()).unwrap();
+    let final_state = reopened.read(&t.id, true).await.unwrap();
+    assert!(final_state.name.is_none());
+    assert!(final_state.name_attempt_turn_id.is_none());
+    reopened.shutdown().await;
+}
+
+#[tokio::test]
+async fn explicit_naming_enabled_keeps_the_single_request_contract() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = model(Some("Configured session"), false);
+    let e = Engine::open(dir.path(), m.clone(), Limits::default()).unwrap();
+    let t = e.create("/workspace".into()).await.unwrap();
+    e.configure_thread(
+        serde_json::from_value(json!({
+            "threadId":t.id,"expectedRevision":1,
+            "options":{"automaticSessionName":true}
+        }))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+    solve(&e, &t.id, "use a session title").await;
+    assert_eq!(named(&e, &t.id).await["name"], "Configured session");
+    solve(&e, &t.id, "continue").await;
+    e.shutdown().await;
+    assert_eq!(m.summaries.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn name_is_nonblocking_preserves_turns_merges_latest_and_survives_restart() {
     let dir = tempfile::tempdir().unwrap();
     let m = model(Some("修复会话标题"), true);

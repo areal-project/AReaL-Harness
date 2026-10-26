@@ -8,6 +8,10 @@ use std::{
     time::Duration,
 };
 use tokio::sync::mpsc;
+#[cfg(test)]
+#[path = "run_tests.rs"]
+mod tests;
+
 pub fn emit(value: &Value) -> Result<()> {
     let mut out = std::io::stdout().lock();
     serde_json::to_writer(&mut out, value)?;
@@ -205,8 +209,13 @@ async fn execute_connected(args: &Cli, local: &local::Local) -> Result<(i32, Vec
     .await?;
     rpc.send(json!({"method":"initialized","params":{}}))
         .await?;
-    rpc.call("areal/capabilities", json!({"apiVersion":"areal.core.v1"}))
+    let capabilities = rpc
+        .call("areal/capabilities", json!({"apiVersion":"areal.core.v1"}))
         .await?;
+    ensure!(
+        !args.no_session_name || capabilities["features"]["automaticSessionName"] == true,
+        "Core does not support --no-session-name; upgrade Core before submitting the task"
+    );
     for (id, config) in &local.mcp {
         let catalog = rpc.call("areal/mcp/list", json!({})).await?;
         let revision = catalog["data"]
@@ -310,6 +319,12 @@ async fn execute_connected(args: &Cli, local: &local::Local) -> Result<(i32, Vec
         args.append_system_prompt.clone().unwrap_or_default()
     };
     let mut configure = json!({"threadId":session,"expectedRevision":config["revision"].as_u64().unwrap_or(1),"options":{"readOnly":args.permission_mode=="plan","systemPrompt":system,"appendInstructions":append,"toolAllowlist":visible,"approvalTools":approvals,"preapprovedTools":approved,"maxModelRounds":args.max_turns}});
+    // options 是完整替换；恢复时须保留既有选择，不能因省略 CLI 开关重新启用。
+    if args.no_session_name {
+        configure["options"]["automaticSessionName"] = json!(false);
+    } else if let Some(enabled) = config["options"]["automaticSessionName"].as_bool() {
+        configure["options"]["automaticSessionName"] = json!(enabled);
+    }
     if local.profile.is_some() {
         configure["agentProfile"] = local.profile.clone().unwrap();
     }
