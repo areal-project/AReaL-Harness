@@ -627,6 +627,8 @@ async function normalComposerAndSideCommands() {
   checks.push("P5 normal Side attachment and slash composer, bare /side and /btw, immediate text first-send, attachment fallback");
 }
 async function escapeOwnership() {
+  // 拉长关闭动画，稳定覆盖内部 Activity 已隐藏、外层弹层仍持有 Esc 的时段。
+  const closeMotion = await page.addStyleTag({ content: '.task-resources-popup { transition: opacity 1500ms linear, scale 1500ms linear !important; }' });
   const parent = await newParent("PARITY:P6_PARENT");
   await openSide();
   const commandRecords = async () => (await readFile(commandLog, "utf8")).trim().split("\n").filter(Boolean).map(JSON.parse);
@@ -686,9 +688,20 @@ async function escapeOwnership() {
     await page.getByRole("button", { name: "任务资源", exact: true }).click();
     const resources = page.getByRole("complementary", { name: "任务上下文", exact: true });
     await resources.waitFor();
+    await until(() => page.locator('.task-resources-popup').evaluate(element => getComputedStyle(element).opacity === '1'), 'resources open transition completed');
     await page.keyboard.press("Escape");
     await resources.waitFor({ state: "hidden" });
+    (facts.resourceInnerHiddenProbes ??= []).push(await page.locator('.task-resources-popup').evaluate(element => ({
+      rects: element.getClientRects().length, ending: element.hasAttribute('data-ending-style'),
+      transition: getComputedStyle(element).transition, opacity: getComputedStyle(element).opacity,
+    })));
     await grows(parent, "dismissing visible resources preserves the main stream");
+    // Activity 隐藏不代表 keepMounted 弹层已退出；外层仍有布局时应继续保护主任务。
+    await until(() => page.locator('.task-resources-popup').evaluate(element => element.getClientRects().length === 0), 'resources popup released Escape ownership');
+    (facts.resourceCloseProbes ??= []).push(await page.locator('.task-resources-popup').evaluate(element => ({
+      rects: element.getClientRects().length, ending: element.hasAttribute('data-ending-style'),
+      display: getComputedStyle(element).display, opacity: getComputedStyle(element).opacity,
+    })));
     await page.getByRole("button", { name: "收起侧栏", exact: true }).focus(); await page.keyboard.press("Escape");
     await until(async () => threads(await state())[parent]?.turns.at(-1).status !== "inProgress", "panel-closed outside Esc falls back to main");
     await grows(child, "hidden Side survivor grows after main fallback stop");
@@ -702,6 +715,7 @@ async function escapeOwnership() {
     assert.deepEqual(secondStops.map(item => item.request.turnId), [mainSecond, closedMainTurn, sideSecond], "focused and fallback stops keep exact original turn ownership without replay");
   }
   await shot("P6-focus-scoped-stop");
+  await closeMotion.evaluate(element => element.remove());
   checks.push("P6 both start orders, focus-scoped and repeated idle Esc, main and Side survivor growth, panel-closed main fallback, exact stop ownership");
 }
 const scenarios = [

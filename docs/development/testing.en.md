@@ -2,6 +2,8 @@
 
 # Testing
 
+The Side Chat Escape fallback test waits for the outer task-resources popup to leave layout before checking that the main turn stops. Hiding its inner `Activity` precedes the closing animation of the `keepMounted` popup; that animation must continue protecting the main turn. The test explicitly slows this animation and records popup state for both main/Side start orders, without a fixed sleep or repeated Escape presses to hide the race.
+
 Model-usage observer non-interference tests await the `drained` settlement signal while disk writes remain blocked, then inspect the in-memory ledger under the observer lock. Receiving HTTP EOF does not establish that the server's `finally` block has completed; longer sleeps or releasing the blocked disk first cannot substitute for that ordering.
 
 
