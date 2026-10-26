@@ -294,7 +294,10 @@ class NonInterferenceTests(unittest.TestCase):
                     self.assertEqual(request(proxy), (200, payload))
                     self.assertTrue(blocked.wait(timeout=1))
                     self.assertFalse(release.is_set())
-                    self.assertEqual(len(proxy.records), 1)
+                    # HTTP EOF 先于服务端 finally；等待明确结算，且不能先放开磁盘写入。
+                    self.assertTrue(proxy.drained.wait(timeout=1))
+                    with proxy.lock:
+                        self.assertEqual(len(proxy.records), 1)
                     release.set()
                     self.assertEqual(proxy.close()["metadata_persistence"]["errors"], 0)
             finally:

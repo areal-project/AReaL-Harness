@@ -2,6 +2,8 @@
 
 # Testing
 
+Model-usage observer non-interference tests await the `drained` settlement signal while disk writes remain blocked, then inspect the in-memory ledger under the observer lock. Receiving HTTP EOF does not establish that the server's `finally` block has completed; longer sleeps or releasing the blocked disk first cannot substitute for that ordering.
+
 
 The release smoke fixture handles auxiliary session titles separately from solve requests. Main-task exit may cancel an unfinished title request; BrokenPipe/ConnectionReset while replying to that title must not turn successful read/write acceptance into failure. Interrupted solve responses, tools on naming requests and other protocol errors still fail. `scripts/fixture_session_title.py` is a local fixture helper and does not change production retries, timeouts or model usage.
 
