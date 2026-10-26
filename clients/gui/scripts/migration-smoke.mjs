@@ -1097,6 +1097,12 @@ try {
       await page
         .locator(`[data-agent-conversation="${doneChild.id}"] [data-turn-status=completed]`)
         .waitFor();
+      // 重新挂载的已完成过程组默认收起，先按用户操作展开，再核验恢复的工具记录。
+      const restoredProgress = page.locator(
+        `[data-agent-conversation="${doneChild.id}"] .turn-progress-summary`,
+      );
+      if ((await restoredProgress.getAttribute("aria-expanded")) === "false")
+        await restoredProgress.click();
       assert.ok(
         (await page.locator(`[data-agent-conversation="${doneChild.id}"] .tool-event`).count()) > 0,
       );

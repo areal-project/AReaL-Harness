@@ -295,7 +295,8 @@ try {
   threadId = created.value.threadId;
   await selectConversation(page, threadId);
   await page.getByTestId("chat-input").fill("使用内置浏览器搜索 Agent，读取仍在加载的结果。");
-  await page.getByTestId("chat-input").press("Enter");
+  // 浏览器场景通过可见发送按钮进入；原生 Enter 与 IME 由 Composer 场景独立验收。
+  await page.getByTestId("chat-send-button").click();
   facts.turn = await until(async () => {
     if (facts.modelError) throw new Error(facts.modelError);
     const allow = page

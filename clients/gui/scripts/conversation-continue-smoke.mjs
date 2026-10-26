@@ -9,6 +9,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureSmokeFailure, selectConversation } from "./smoke-navigation.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
+import { respondToSessionName } from "./model-fixture.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
@@ -148,7 +149,9 @@ async function launch() {
   await desktopMetadata();
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 960));
   await app.evaluate(
-    ({ app }, path) => {
+    ({ app, dialog }, path) => {
+      // 本夹具验证暂停与重启后的会话，退出确认由独立场景覆盖。
+      dialog.showMessageBox = async () => ({ response: 1 });
       const read = process
         .getBuiltinModule("module")
         .createRequire(app.getAppPath() + "/package.json");
@@ -416,6 +419,8 @@ try {
     filter: (path) => path !== join(sourceDesktop, "node_modules"),
   });
   await symlink(join(sourceDesktop, "node_modules"), join(desktop, "node_modules"), "dir");
+  // 源码 Electron 的桌面契约同时使用 workspace 相对路径，保留其原有目录关系。
+  await symlink(join(gui, "packages"), join(scratch, "application/packages"), "dir");
   await cp(sourceRenderer, renderer, { recursive: true });
   assert.deepEqual(
     await artifactFiles(sourceDesktop),
@@ -453,6 +458,23 @@ try {
       let raw = "";
       for await (const piece of req) raw += piece;
       const body = JSON.parse(raw);
+      if (respondToSessionName(body, res)) return;
+      // 输入建议不属于继续执行请求，且不能获得会话工具。
+      if (
+        body.messages?.some(
+          (message) =>
+            message.role === "system" &&
+            typeof message.content === "string" &&
+            message.content.startsWith("Predict the next user prompt from the conversation data."),
+        )
+      ) {
+        assert.ok(!body.tools?.length, "prompt prediction must not receive conversation tools");
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.end(
+          `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "" }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+        );
+        return;
+      }
       requests.push({ sequence: requests.length + 1, body });
       const last = body.messages?.findLast(
         (m) =>
@@ -1180,6 +1202,9 @@ try {
     "steer continuation",
   );
   const beforeSteerEdit = await turns();
+  // 拒绝提交前后比较同一 Core 权威记录；GUI 投影会省略较早轮次的配置与指令字段。
+  const authoritativeBeforeSteerEdit = (await rpc("thread/read", { threadId, includeTurns: true }))
+    .result.thread.turns;
   const steeredTurn = beforeSteerEdit.find((t) => t.id === steerBase.id);
   const steeredIndex = steeredTurn.items.findIndex(
     (i) => i.type === "userMessage" && i.content.some((c) => c.text === steerText),
@@ -1202,7 +1227,7 @@ try {
   );
   assert.deepEqual(
     (await rpc("thread/read", { threadId, includeTurns: true })).result.thread.turns,
-    beforeSteerEdit,
+    authoritativeBeforeSteerEdit,
     "rejected edit leaves all history intact",
   );
   await page.getByRole("button", { name: "编辑消息", exact: true }).click();
@@ -1438,12 +1463,15 @@ try {
   );
   const inspection =
     "Inspected synthetic acceptance fixture. This record was injected after the isolated Core stopped. No Runtime or external operation was dispatched. Preserve UNKNOWN history; cleanup may proceed.";
-  const acknowledged = await rpc("areal/tool/acknowledge", {
-    threadId,
-    itemId: unknownItem.id,
-    inspection,
-  });
-  assert.ok(acknowledged.result, JSON.stringify(acknowledged));
+  // 使用用户实际入口记录核对，并让 Desktop 同步 Core 的权威结果。
+  await page.getByRole("button", { name: "核对后继续", exact: true }).click();
+  const inspectionDialog = page.getByRole("dialog", { name: "核查工具结果 UNKNOWN", exact: true });
+  await inspectionDialog.getByLabel("核查说明", { exact: true }).fill(inspection);
+  await inspectionDialog
+    .getByRole("checkbox", { name: "已核查实际文件或进程", exact: true })
+    .check();
+  await inspectionDialog.getByRole("button", { name: "确认已核查", exact: true }).click();
+  await inspectionDialog.waitFor({ state: "hidden" });
   const inspected = await rpc("thread/read", { threadId, includeTurns: true });
   const inspectedItem = inspected.result?.thread.turns
     .flatMap((turn) => turn.items)
