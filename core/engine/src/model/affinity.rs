@@ -1,4 +1,5 @@
-//! 通用 Responses HTTP 的短期路由状态；不进入模型正文、历史或持久日志。
+//! 通用 Responses 请求身份；HTTP 短期路由状态不进入正文、历史或持久日志。
+//! 显式正文缓存键由可信请求所有者派生，不复用服务端响应状态。
 use super::RequestPurpose;
 use reqwest::{
     StatusCode,

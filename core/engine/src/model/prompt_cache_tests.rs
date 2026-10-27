@@ -26,6 +26,7 @@ fn prompt_cache_requires_responses_and_a_valid_owner() {
 
 #[tokio::test]
 async fn prompt_cache_is_opt_in_scoped_and_keeps_the_complete_request() {
+    let audit_directory = tempfile::tempdir().unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let app = Router::new().route("/", post(move |Json(body): Json<Value>| {
         let tx = tx.clone();
@@ -50,6 +51,7 @@ async fn prompt_cache_is_opt_in_scoped_and_keeps_the_complete_request() {
             ..Default::default()
         })
         .unwrap()
+        .with_audit_directory(audit_directory.path().into())
     };
     let cases = [
         (
@@ -156,6 +158,25 @@ async fn prompt_cache_is_opt_in_scoped_and_keeps_the_complete_request() {
     enabled.as_object_mut().unwrap().remove("prompt_cache_key");
     assert_eq!(enabled, bodies[0], "只增加传输字段，不能改输入、工具或预算");
     assert!(!key.contains("fixture-account"));
+    let journal = std::fs::read_to_string(audit_directory.path().join("requests.jsonl")).unwrap();
+    let audits = journal
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(audits.len(), bodies.len());
+    for (body, audit) in bodies.iter().zip(audits) {
+        if let Some(key) = body.get("prompt_cache_key").and_then(Value::as_str) {
+            use sha2::{Digest, Sha256};
+            assert_eq!(
+                audit["promptCacheKeySha256"],
+                format!("{:x}", Sha256::digest(key.as_bytes()))
+            );
+            assert!(!journal.contains(key), "审计不能保存正文键原文");
+        } else {
+            assert_eq!(audit.get("promptCacheKeySha256"), Some(&Value::Null));
+        }
+    }
+    assert!(!journal.contains("fixture-account"));
     server.abort();
     let _ = server.await;
 }
