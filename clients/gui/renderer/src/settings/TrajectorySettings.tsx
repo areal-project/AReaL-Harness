@@ -11,6 +11,8 @@ import { TrajectoryToggle } from "./TrajectoryToggle.js";
 import type { TrajectoryOperation } from "../lib/trajectory-polling.js";
 import { SettingsBadge } from "./SettingsPageParts.js";
 
+const RECORDS_PER_PAGE = 15;
+
 const recordLabels = {
   pending: "settings.trajectorySettings.recordStatus.pending",
   uploading: "settings.trajectorySettings.recordStatus.uploading",
@@ -55,6 +57,8 @@ export function TrajectorySettings({
           maximumFractionDigits: 3,
         });
   const [status, setStatus] = useState<TrajectoryStatus | null>(null);
+  const [recordPage, setRecordPage] = useState(1);
+  const recordsTop = useRef<HTMLElement>(null);
   const [busy, setBusy] = useState<TrajectoryOperation | null>(null);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | UiMessage>(""),
@@ -67,6 +71,10 @@ export function TrajectorySettings({
     onResult(value, operation) {
       lastStatus.current = value;
       setStatus(value);
+      // 刷新保留正在阅读的页；记录减少时收敛到仍然存在的最后一页。
+      setRecordPage((page) =>
+        Math.min(page, Math.max(1, Math.ceil(value.records.length / RECORDS_PER_PAGE))),
+      );
       setError("");
       setCheckedAt(Date.now());
       onStatus(value);
@@ -105,6 +113,58 @@ export function TrajectorySettings({
     }
   };
   const stale = !connected || !!error;
+  const recordCount = status?.records.length ?? 0;
+  const recordPageCount = Math.max(1, Math.ceil(recordCount / RECORDS_PER_PAGE));
+  const recordOffset = (recordPage - 1) * RECORDS_PER_PAGE;
+  const visibleRecords = status?.records.slice(recordOffset, recordOffset + RECORDS_PER_PAGE) ?? [];
+  const changeRecordPage = (page: number, position: "top" | "bottom") => {
+    setRecordPage(page);
+    if (position === "bottom") {
+      recordsTop.current?.focus({ preventScroll: true });
+      recordsTop.current?.scrollIntoView({ block: "start" });
+    }
+  };
+  const recordPagination = (position: "top" | "bottom") =>
+    recordCount > 0 && (
+      <nav
+        ref={position === "top" ? recordsTop : undefined}
+        tabIndex={-1}
+        aria-label={t("settings.trajectorySettings.uploadRecordsPagination")}
+        className="flex flex-wrap items-center justify-between gap-field"
+      >
+        <p className="settings-section-desc" role={position === "top" ? "status" : undefined}>
+          {t("settings.trajectorySettings.recordRange", {
+            from: recordOffset + 1,
+            to: Math.min(recordOffset + RECORDS_PER_PAGE, recordCount),
+            total: recordCount,
+          })}
+        </p>
+        <div className="flex items-center gap-inline">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={recordPage === 1}
+            onClick={() => changeRecordPage(recordPage - 1, position)}
+          >
+            {t("settings.trajectorySettings.previousPage")}
+          </Button>
+          <span className="settings-section-desc whitespace-nowrap">
+            {t("settings.trajectorySettings.recordPage", {
+              page: recordPage,
+              total: recordPageCount,
+            })}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={recordPage >= recordPageCount}
+            onClick={() => changeRecordPage(recordPage + 1, position)}
+          >
+            {t("settings.trajectorySettings.nextPage")}
+          </Button>
+        </div>
+      </nav>
+    );
   return (
     <div
       className="settings-sections"
@@ -314,15 +374,18 @@ export function TrajectorySettings({
           </SettingsSection>
           <SettingsSection
             title={t("settings.trajectorySettings.recentUploadRecords")}
-            description={t("settings.trajectorySettings.showsUpToTheLatest100Records")}
+            description={t("settings.trajectorySettings.showsUpToTheLatest100Records", {
+              pageSize: RECORDS_PER_PAGE,
+            })}
           >
+            {recordPagination("top")}
             <SettingsGroupCard>
               {status.records.length === 0 ? (
                 <p className="p-4 settings-section-desc">
                   {t("settings.trajectorySettings.noTrajectoryUploadRecordsYet")}
                 </p>
               ) : (
-                status.records.map((record) => (
+                visibleRecords.map((record) => (
                   <SettingsRow
                     key={record.id}
                     label={<span className="break-all">{record.id}</span>}
@@ -331,7 +394,9 @@ export function TrajectorySettings({
                       <>
                         {record.turn_id && (
                           <p className="break-all">
-                            {t("settings.trajectorySettings.recordTurn", { turn: record.turn_id })}
+                            {t("settings.trajectorySettings.recordTurn", {
+                              turn: record.turn_id,
+                            })}
                           </p>
                         )}
                         {(record.model_name || record.harness_version) && (
@@ -410,6 +475,7 @@ export function TrajectorySettings({
                 ))
               )}
             </SettingsGroupCard>
+            {recordPagination("bottom")}
           </SettingsSection>
         </>
       )}
