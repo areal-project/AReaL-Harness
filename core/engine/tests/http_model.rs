@@ -1216,6 +1216,7 @@ async fn model_catalog_refreshes_credentials_and_provider_revisions_before_local
                 .install_configured_models(ConfiguredModels {
                     providers: vec![provider],
                     provider_ids: ["local".into()].into_iter().collect(),
+                    responses_prompt_cache: true,
                     ..Default::default()
                 })
                 .unwrap();
@@ -1288,6 +1289,11 @@ async fn model_catalog_refreshes_credentials_and_provider_revisions_before_local
                 format!("Bearer {secret}")
             );
             assert_eq!(request["model"], "primary");
+            if protocol == "responses" {
+                assert_eq!(request["prompt_cache_key"].as_str().unwrap().len(), 64);
+            } else {
+                assert!(request.get("prompt_cache_key").is_none());
+            }
             assert_eq!(request["temperature"], 0.0);
             assert_eq!(
                 if protocol == "responses" {

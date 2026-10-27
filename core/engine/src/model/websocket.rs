@@ -518,7 +518,14 @@ mod tests {
     async fn same_turn_uses_delta_other_turns_and_parameter_changes_use_full_input() {
         let (endpoint, mut rx, connections, server) = fixture().await;
         let data = tempfile::tempdir().unwrap();
-        let model = model(endpoint, "fixture").with_audit_directory(data.path().into());
+        let model = model(endpoint, "fixture")
+            .with_options(ModelOptions {
+                responses_websocket: true,
+                responses_prompt_cache: true,
+                ..Default::default()
+            })
+            .unwrap()
+            .with_audit_directory(data.path().into());
         let mut history = vec![Message::text("user", "first")];
         assert!(
             run(&model, ("thread", "turn"), history.clone())
@@ -529,6 +536,7 @@ mod tests {
         let first = rx.recv().await.unwrap();
         assert!(first.get("previous_response_id").is_none());
         assert_eq!(first["sessionHeader"], "thread");
+        assert!(first["prompt_cache_key"].is_string());
         history.extend([
             Message::text("assistant", "ok"),
             Message::text("user", "next"),
@@ -540,6 +548,7 @@ mod tests {
                 .all(Result::is_ok)
         );
         let second = rx.recv().await.unwrap();
+        assert_eq!(first["prompt_cache_key"], second["prompt_cache_key"]);
         assert_eq!(second["previous_response_id"], "resp_fixture");
         assert_eq!(second["input"].as_array().unwrap().len(), 1);
         assert_eq!(first["connection"], second["connection"]);

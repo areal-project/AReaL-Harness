@@ -7,6 +7,8 @@ mod capacity;
 pub(crate) use capacity::{RequestCapacity, RequestPhase};
 mod context_windows;
 pub(crate) use context_windows::known_context_window;
+#[cfg(test)]
+mod prompt_cache_tests;
 mod request_budget;
 mod telemetry;
 mod tool_calls;
@@ -630,6 +632,7 @@ pub struct ModelOptions {
     pub summary_max_output_tokens: Option<u64>,
     pub reasoning_summary: Option<String>,
     pub responses_websocket: bool,
+    pub responses_prompt_cache: bool,
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
     pub top_k: Option<i64>,
@@ -652,6 +655,7 @@ impl Default for ModelOptions {
             summary_max_output_tokens: None,
             reasoning_summary: None,
             responses_websocket: false,
+            responses_prompt_cache: false,
             temperature: None,
             top_p: None,
             top_k: None,
@@ -784,6 +788,10 @@ impl HttpModel {
         anyhow::ensure!(
             !options.responses_websocket || self.protocol == ModelProtocol::Responses,
             "responses_websocket requires responses protocol"
+        );
+        anyhow::ensure!(
+            !options.responses_prompt_cache || self.protocol == ModelProtocol::Responses,
+            "responses_prompt_cache requires responses protocol"
         );
         anyhow::ensure!(
             options
@@ -1179,6 +1187,16 @@ impl Model for HttpModel {
                 .is_none_or(|capabilities| capabilities.tools)
         {
             body["tool_choice"] = json!("none");
+        }
+        if self.options.responses_prompt_cache
+            && let Some(key) = affinity::prompt_cache_key(
+                &self.name,
+                self.key.as_deref(),
+                REQUEST_OWNER.try_with(Clone::clone).ok(),
+                purpose,
+            )
+        {
+            body["prompt_cache_key"] = json!(key);
         }
         // Retrying before accepting a stream cannot replay a tool operation.
         // Never automatically replay a partially consumed model stream here.

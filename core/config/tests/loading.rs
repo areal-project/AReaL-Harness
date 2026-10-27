@@ -1228,6 +1228,34 @@ fn responses_websocket_is_opt_in_and_rejects_chat_protocol() {
 }
 
 #[test]
+fn responses_prompt_cache_is_opt_in_and_rejects_chat_protocol() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    assert!(!load_config(&i).unwrap().model.responses_prompt_cache);
+    write(
+        &mut i,
+        "schema_version=1\n[model]\nresponses_prompt_cache=true\n",
+    );
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+    i.overrides.model_protocol = Some("responses".into());
+    let configured = load_config(&i).unwrap();
+    assert!(configured.model.responses_prompt_cache);
+    assert_eq!(
+        configured.diagnostic(false)["model"]["responses_prompt_cache"],
+        true
+    );
+    set(&mut i, "AREAL_HARNESS_RESPONSES_PROMPT_CACHE", "false");
+    let disabled = load_config(&i).unwrap();
+    assert!(!disabled.model.responses_prompt_cache);
+    assert!(
+        !serde_json::to_string(&disabled.model)
+            .unwrap()
+            .contains("responses_prompt_cache")
+    );
+    assert_ne!(disabled.model.fingerprint(), configured.model.fingerprint());
+}
+
+#[test]
 fn compaction_target_is_explicit_bounded_and_overridable() {
     let temp = tempfile::tempdir().unwrap();
     let mut i = inputs(temp.path());

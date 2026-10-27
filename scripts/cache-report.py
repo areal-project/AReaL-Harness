@@ -33,6 +33,8 @@ def report(directory):
         "knownUncachedInputTokens": 0,
         "comparablePrefixPairs": 0,
         "preservedPrefixPairs": 0,
+        "comparableCacheKeyPairs": 0,
+        "changedCacheKeyPairs": 0,
     }
     outcomes = defaultdict(int)
     details = []
@@ -51,6 +53,7 @@ def report(directory):
             "wireBodyBytes",
             "gatewayTraceId",
             "httpRequestId",
+            "promptCacheKeySha256",
             "timeToFirstResponseBytesMs",
             "timeToFirstTextDeltaMs",
             "timeToFirstReasoningDeltaMs",
@@ -110,6 +113,11 @@ def report(directory):
                 stableTools=stable_tools,
                 stableInstructions=stable_instructions,
             )
+            if "promptCacheKeySha256" in old and "promptCacheKeySha256" in row:
+                stable_key = old["promptCacheKeySha256"] == row["promptCacheKeySha256"]
+                totals["comparableCacheKeyPairs"] += 1
+                totals["changedCacheKeyPairs"] += not stable_key
+                item["stablePromptCacheKey"] = stable_key
         previous[key] = row
         details.append(item)
     denominator = totals["cacheComparableInputTokens"]

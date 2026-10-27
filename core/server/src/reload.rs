@@ -54,6 +54,7 @@ pub fn model(
             context_window: None,
             context_window_tokens: config.context_window_tokens,
             responses_websocket: config.responses_websocket,
+            responses_prompt_cache: config.responses_prompt_cache,
             reasoning_effort: config.reasoning_effort.clone(),
             summary_reasoning_effort: config.summary_reasoning_effort.clone(),
             summary_max_output_tokens: config.summary_max_output_tokens,
@@ -271,6 +272,7 @@ mod tests {
             let mut encoded = serde_json::to_string(&config.model).unwrap();
             assert!(!encoded.contains("summary_reasoning_effort"));
             assert!(!encoded.contains("responses_websocket"));
+            assert!(!encoded.contains("responses_prompt_cache"));
             if variant == 1 || variant == 2 {
                 encoded = encoded.replace(
                     ",\"temperature\":",

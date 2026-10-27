@@ -422,6 +422,7 @@ fn walk(
             "watchdog_disable" | "context_compaction_enabled" | "command_stdin_closed"
         ] | ["trajectory", "enabled"]
             | ["model", "responses_websocket"]
+            | ["model", "responses_prompt_cache"]
     );
     if !numeric && !string && !decimal && !boolean {
         return Err(error(

@@ -735,7 +735,10 @@ fn configured_models(
         reasoning_effort: value.reasoning_effort.clone(),
         reasoning_summary: None,
     };
-    let mut result = areal_engine::desktop::ConfiguredModels::default();
+    let mut result = areal_engine::desktop::ConfiguredModels {
+        responses_prompt_cache: config.model.responses_prompt_cache,
+        ..Default::default()
+    };
     let mut credentials = std::collections::BTreeMap::new();
     for item in &config.model_catalog {
         result.provider_ids.insert(item.id.clone());

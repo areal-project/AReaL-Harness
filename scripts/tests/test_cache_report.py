@@ -81,6 +81,33 @@ class CacheReportTests(unittest.TestCase):
             self.assertEqual(result["unknownCacheRequests"], 1)
             self.assertIsNone(result["weightedCacheRate"])
 
+    def test_cache_key_changes_are_separate_from_prefix_and_legacy_absence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            data = root / "model-requests"
+            data.mkdir()
+            for index, digest in enumerate(["legacy", None, "key-a", "key-a", "key-b"]):
+                row = {
+                    "requestId": str(index),
+                    "startedAtUnixMs": index,
+                    "threadId": "thread",
+                    "purpose": "Solve",
+                    "protocol": "responses",
+                    "parameters": {"model": "fixture"},
+                    "messageBlocks": [{"sha256": "stable", "bytes": 100}],
+                }
+                if digest != "legacy":
+                    row["promptCacheKeySha256"] = digest
+                (data / f"{index}.json").write_text(json.dumps(row))
+            result = module.report(root)
+            self.assertEqual(result["totals"]["comparableCacheKeyPairs"], 3)
+            self.assertEqual(result["totals"]["changedCacheKeyPairs"], 2)
+            self.assertEqual(result["totals"]["preservedPrefixPairs"], 4)
+            self.assertNotIn("stablePromptCacheKey", result["requests"][1])
+            self.assertFalse(result["requests"][2]["stablePromptCacheKey"])
+            self.assertTrue(result["requests"][3]["stablePromptCacheKey"])
+            self.assertFalse(result["requests"][4]["stablePromptCacheKey"])
+
 
 if __name__ == "__main__":
     unittest.main()

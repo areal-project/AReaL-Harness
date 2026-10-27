@@ -9,6 +9,11 @@ use std::{
 
 const ENV: &[(&str, &str, &str)] = &[
     (
+        "AREAL_HARNESS_RESPONSES_PROMPT_CACHE",
+        "",
+        "model.responses_prompt_cache",
+    ),
+    (
         "AREAL_HARNESS_INSPECTION_PERMISSIONS",
         "",
         "delegation.inspection_permissions",
@@ -432,6 +437,7 @@ pub(crate) fn valid(field: &str, entry: &Entry) -> Result<()> {
         "watchdog_disable"
         | "context_compaction_enabled"
         | "responses_websocket"
+        | "responses_prompt_cache"
         | "command_stdin_closed" => {
             if !matches!(value.as_str(), "0" | "1" | "false" | "true") {
                 return Err(reject("boolean must be 0/1 or false/true"));
@@ -675,6 +681,7 @@ pub(crate) fn load_mode(
         ("model.max_retries", "2"),
         ("model.max_request_bytes", "16777216"),
         ("model.responses_websocket", "false"),
+        ("model.responses_prompt_cache", "false"),
         ("limits.max_completion_retries", "0"),
         ("limits.max_empty_completion_retries", "0"),
         ("limits.context_observation_tokens", "0"),
@@ -999,6 +1006,10 @@ pub(crate) fn load_mode(
                 values["model.responses_websocket"].value.as_str(),
                 "true" | "1"
             ),
+            responses_prompt_cache: matches!(
+                values["model.responses_prompt_cache"].value.as_str(),
+                "true" | "1"
+            ),
             provider,
             name: values["model.name"].value.clone(),
             endpoint: values[&format!("{prefix}.endpoint")].value.clone(),
@@ -1157,6 +1168,16 @@ pub(crate) fn load_mode(
             "model.responses_websocket",
             &result.sources["model.responses_websocket"],
             "responses_websocket requires responses protocol",
+        ));
+    }
+    if result.model.responses_prompt_cache
+        && result.model.protocol != ModelProtocolConfig::Responses
+    {
+        return Err(error(
+            ConfigErrorKind::InvalidValue,
+            "model.responses_prompt_cache",
+            &result.sources["model.responses_prompt_cache"],
+            "responses_prompt_cache requires responses protocol",
         ));
     }
     if result.context_window_bytes > 0 && result.context_recent_bytes >= result.context_window_bytes

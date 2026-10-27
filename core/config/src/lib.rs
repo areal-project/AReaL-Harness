@@ -221,6 +221,8 @@ pub struct SelectedModelConfig {
     pub reasoning_summary: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub responses_websocket: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub responses_prompt_cache: bool,
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
     pub top_k: Option<i64>,
@@ -360,6 +362,7 @@ impl ResolvedCoreConfig {
                 "api_key_env": self.model.api_key_env, "reasoning_effort": self.model.reasoning_effort, "summary_reasoning_effort":self.model.summary_reasoning_effort,"summary_max_output_tokens":self.model.summary_max_output_tokens,
                 "reasoning_summary": self.model.reasoning_summary,
                 "responses_websocket": self.model.responses_websocket,
+                "responses_prompt_cache": self.model.responses_prompt_cache,
                 "temperature": self.model.temperature,
                 "top_p": self.model.top_p,
                 "top_k": self.model.top_k,

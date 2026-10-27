@@ -525,6 +525,10 @@ export OTEL_EXPORTER_OTLP_TIMEOUT=10000
 
 ## 缓存诊断
 
+`[model] responses_prompt_cache = true` 或 `AREAL_HARNESS_RESPONSES_PROMPT_CACHE=true` 显式启用实验性 Responses 正文缓存键；默认 false。可信模型装配和目录中的 Responses Provider 均生效，Chat Completions 不发送该字段；选定 Chat 协议时配置为 true 会提前拒绝。键根据 Core 线程、模型、凭据和请求用途派生为不含原文的 64 位十六进制摘要，同线程跨 Turn 与进程重建保持稳定；更换线程、模型、凭据或用途会更换键。无有效 Core 所有者的直接调用不设置键。该选项不改变输入、工具、预算、重试或压缩，也不保存服务端响应状态。更改可信启动配置后需按已有服务兼容性流程重启。旧配置和归档省略此字段时仍可读取；旧二进制不能读取记录了 true 的新配置归档，实验与回退使用独立状态目录。
+
+该字段只为公开协议支持的缓存分组提供身份，不能保证命中或降低时延；网关对正文键和会话头的处理可能不同。[OpenAI 缓存指南](https://developers.openai.com/api/docs/guides/prompt-caching)说明 GPT-6 官方 API 的路由不要求此键，其他网关应实测后显式选用。审计仅增加 `promptCacheKeySha256` 摘要，null 表示本请求未发送键，旧记录缺字段保持未知；缓存报告将键变化与输入前缀变化分开。它仍是实验候选，不代表完整制题流水线提速或默认策略晋级。
+
 使用 `python3 scripts/cache-report.py /absolute/Core-state --output cache-report.json` 汇总 `model-requests` 和 `model-requests-child`。报告按线程、协议、模型参数及请求用途比较 wire 消息块，展示完整前缀保留、工具定义变化、输入/缓存/未缓存 token 和未返回用量的请求。`usageDetails.cachedInputTokens=null` 或旧审计缺少该字段时计为未知，不补零；网络失败的未知用量不计入命中率分母。报告的字节前缀不等于供应商 tokenizer 前缀，不能证明缓存驻留。新审计在供应商返回规范 ID 时记录 `usageDetails.providerResponseId`，并记录显式返回的 `cacheWriteTokens`；它们用于关联上游日志，不推断缺失的后端路由。缓存百分比必须同时结合成功率、总输入与未缓存输入评估，不能通过填充历史或删除必要 reasoning 提升比例。
 
 审计另外记录首次响应字节、首个非空正文 delta、首个非空思考 delta 的毫秒耗时（仅发生时才有字段）。三者口径不同，不以总请求 duration 代替首 token 延迟；加密 reasoning 无可见 delta 时保持未知。

@@ -69,6 +69,11 @@ impl Audit {
             "{:x}",
             Sha256::digest(body["instructions"].to_string().as_bytes())
         ));
+        value["promptCacheKeySha256"] = body
+            .get("prompt_cache_key")
+            .and_then(Value::as_str)
+            .map(|key| json!(format!("{:x}", Sha256::digest(key.as_bytes()))))
+            .unwrap_or(Value::Null);
         if let Ok((thread, turn)) = REQUEST_OWNER.try_with(Clone::clone) {
             value["threadId"] = json!(thread);
             value["turnId"] = json!(turn);
