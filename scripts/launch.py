@@ -407,6 +407,12 @@ def main():
                         )
                         if name in os.environ
                     },
+                    # 与产品 launcher 一致：只有完整授权部署才接入宿主 SSH agent。
+                    **{
+                        name: os.environ[name]
+                        for name in ("SSH_AUTH_SOCK",)
+                        if args.sandbox_profile == "full-access" and name in os.environ
+                    },
                     **{
                         name: os.environ[name]
                         for name in (

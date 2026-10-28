@@ -24,6 +24,7 @@ Side Chat 的 Esc 回退测试等待任务资源外层弹层完全退出布局�
 | `make verify-native` | macOS 原生后端测试与 Harness 集成 smoke；通用回归由 `make verify` 覆盖 |
 | `make examples-desktop-api` | [直接 API、CLI、Skill 与搬迁打包产物](../examples/desktop-api.md) |
 | `make workgroup-smoke` | 独立 Runtime 写入、组合验收、命令期限与失败后结算 |
+| `make git-auth-smoke` | 公开共享服务到真实 Runtime 的 Git 身份、SSH agent 签名、HTTPS push 与认证失败保护 |
 | `make unified-execution-smoke` | 统一模型工具、并行隔离候选、组合交付、所有权检查、取消与重启恢复 |
 
 快照格式变更须运行 `make verify-harness`：Harness 与插件 smoke 核对写入版本，桌面搬迁测试同时核对发行 manifest、`areal/server/status.stateVersion` 与实际快照版本一致。
@@ -148,6 +149,16 @@ Linux portable job 的 10 分钟 timeout 是上限，不是耗时达标证据。
 
 公开源码扫描允许随产品分发的内置 Skill 和 UI 包两份使用/审查 Skill 的确切路径；这些文件继续接受私有路径与凭据内容扫描。`test:regressions` 验证公开文件通过、其他 Skill 被拒绝，以及公开 Skill 中的私有内容仍会失败。
 
+## Git 身份与认证
+
+`make git-auth-smoke`（也随 `make harness-smoke` 执行）使用独立 HOME、前台 SSH agent、确定性本地模型和 loopback HTTPS bare repo，经公开 `service ensure`、CoreClient、Core 工具调用和真实 Runtime 完成提交/签名/推送。加载测试密钥后删除磁盘私钥，缺少 agent 时必须签名失败且 HEAD 不变；错误密码必须被 HTTPS 拒绝且远端 ref 不变。证书使用临时 CA 显式信任，不关闭 TLS 校验。检查同时核对原配置字节不变、模型/结果/服务日志不含测试密码，以及服务进程退出。
+
+先构建完整产物并安装现有 Node 开发依赖，单独执行 `node scripts/git-auth-smoke.mjs`；`AREAL_TEST_BIN_DIR` 可指定 bin 目录，`AREAL_GIT_AUTH_EVIDENCE_DIR` 保存证据。需要 Git SSH 签名、OpenSSH、OpenSSL 和 loopback 监听能力。macOS 的临时根默认 `/tmp`，避免登录会话默认长路径超过 Unix socket 上限；Linux 默认使用系统临时目录。可用 `AREAL_GIT_AUTH_TMPDIR` 显式指定已授权的短目录，需要该目录的写权限；目录不可用或过长直接失败，不自动换路径重试。该检查不读取用户凭据、不操作已有桌面服务，也不代替真实供应商、GUI 点击或模型分支选择行为测试。
+
+验证本机 Keychain 的实存条目认证时，须先明确获得临时测试条目写入许可，再运行 `AREAL_GIT_AUTH_EVIDENCE_DIR=/已授权的证据目录 node scripts/git-auth-smoke.mjs --keychain`。该可选模式使用登录 HOME 和系统 `git-credential-osxkeychain`，但 Git 全局配置显式指向合成文件；只对随机账户、精确 loopback 端口和路径创建、读取、更新及删除合成凭据，不使用已有凭据、不自动解锁、不修改默认钥匙串或搜索列表。它检查成功 HTTPS push、错误及缺失凭据的失败保护，并核对清理及 Keychain 设置不变。`SIGINT`/`SIGTERM` 会进入有界清理；强制终止或清理失败时，证据目录的 `*-keychain-cleanup.json` 保留不含密码的精确 helper/query，须先核对原服务退出并按该条目恢复清理，不能把未确认清理记为成功。该模式不加入默认 CI，且本机通过不等于原反馈用户或真实远端已验证。
+
+macOS 登录会话中的 Keychain 权限边界另用 `python3 scripts/git-keychain-smoke.py --bin-dir target/debug` 检查；可传 `--report` 保存 JSON。它仅查询随机不存在的域名/账户，不枚举、读取或写入用户凭据。完整授权应成功返回未匹配；显式 native、固定只读输入、禁网及写根收窄应保留拒绝。`-50` 只记录为观测，不作为通用的密码错误分类。缺少系统 helper 或可用登录会话会失败，不跳过或记为通过；该检查不进入无登录会话的通用 CI，也不证明真实钥匙串条目已解锁或远端授权有效。
+
 ## GUI 与桌面路由门禁
 
 `cargo test --locked -p areal-app-server --lib desktop_registered_methods_have_dispatch_routes` 对每个已注册桌面 RPC 经真实连接分派发送非对象参数，要求返回参数错误而不是方法不存在；包含连接层单独接管的 `areal/thread/start`。该检查随 `make test-protocol`、`make test` 和 CI 执行，不启动模型请求或创建 Thread。
@@ -185,6 +196,8 @@ derivation 的连续录屏需要 Playwright 固定版本的 FFmpeg，不能只�
 满屏 Side 使用自己的 Composer，主聊天草稿保持挂载但隐藏，避免浮动操作遮挡 Side 的模型与发送入口；分栏模式仍显示两个 Composer。derivation smoke 经真实点击检查 Side 模型选择与首问提交，并核对主草稿保留。
 
 Linux 回收测试使用随 `cargo test -p areal-runtime-exec-native` 构建的 `areal-runtime-reaper`。若单独运行 `--lib`，先执行 `cargo build --locked -p areal-runtime-exec-native --bin areal-runtime-reaper`，且构建和测试须使用相同 profile。macOS 后代测试让祖先存活至跟踪窗口内再退出，验证已观察后代清理；不把该测试解释为快速孤儿化的完整保证。
+
+`areal-local-service` 的 macOS 输出超时回归先等待真实子进程就绪，再短暂推进 Tokio 时钟触发超时；定位握手后清理的用例还须确认 Rust 已消费握手，不能仅凭 PID 文件判断。随后恢复实时时钟，验证取消等待者仍会回收真实子进程和桥；被停止的桥按实现已有的两段 5s 清理预算观察。这些测试不放宽生产超时或权限，也不以固定 sleep 猜测清理阶段。
 
 macOS Python/scratch 的独立回归（本地模型，不需要供应商密钥）：
 

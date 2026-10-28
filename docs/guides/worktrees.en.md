@@ -12,6 +12,12 @@ Ordinary new conversations use the current directory and branch, sharing the cur
 
 Preparation shows its stage, output, and the submitted prompt preview. Cancellation blocks the first message and confirms that preparation has stopped. Created directories remain. **Don't use worktree** creates a new explicit request for the original checkout only after cancellation is confirmed. Unknown results never trigger an automatic fallback. The sidebar fork icon and creation status reflect the actual worktree binding.
 
+## Agent Git branch convention
+
+Core's default guidance uses `areal/<short-task-slug>`, for example `areal/fix-git-auth`, when the task calls for a new branch and neither the user nor the repository specifies a naming convention. Naming is not authorization to switch branches: ordinary conversations keep the current branch, explicit user choices and existing task branches take precedence, and read-only investigations create no branches. Switching a shared checkout affects other conversations. Inspect the working tree and task scope first; explicitly choose a worktree when an independent directory is needed.
+
+Existing `areal-UUID`, `areal/task-UUID`, and custom worktree branches remain unchanged, as does the host's request-UUID naming mechanism. The convention does not trigger rename, stash, reset, commit, or push operations. An explicit `system_prompt` can replace the default guidance; this is not Runtime enforcement. Branch names neither isolate files nor resolve commit identity or remote authentication. See [Runtime deployment](runtime.en.md#git-identity-and-remote-authentication) for authentication diagnostics.
+
 ## General settings and directory management
 
 **Settings > Worktrees > General** stores the root, branch prefix, fetch preference, automatic cleanup, and retention count. An empty root uses `~/.areal/worktrees`, with a directory per project. The default branch prefix is `areal`. An unnamed branch uses that prefix and the request UUID. Changes affect future creations only. They do not move existing directories or rename branches. Fetch is off by default. When enabled, the host fetches before pinning the starting commit.

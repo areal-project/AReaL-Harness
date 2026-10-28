@@ -18,9 +18,16 @@
 
 launcher 的 `--command-timeout-ms` 默认 300000，与独立 daemon 默认不同。桌面模式可设置 `--desktop-process-timeout-ms`（1–86400000）；根 Thread 的受管服务可使用 Runtime 桌面额度，普通命令工具和 Turn 进程仍受 `--command-timeout-ms` 限制。子任务、hooks 及额外收窄的 Scope 始终受相应祖先约束；桌面额度不扩大其权限与预算。显式进程时长超过父限额时在受理前拒绝。本地 TUI/Web/CLI 和 launcher 默认 full-access：YOLO 直接开放宿主文件与网络，ASK_PERMISSIONS 在 Core 增加审批。全开放命令以当前用户身份执行，不经过 OS 沙箱；显式只读、研究 Agent 和插件收窄的 Scope 仍使用 native 隔离。模型和审批不能扩大显式受限 Runtime 的授权，见[权限模式](configuration.md#permissions)。
 
-命令不继承模型凭据。full-access 继承宿主 PATH/HOME/TMPDIR/LANG/LC_ALL/TERM，其中 Core 将 TMPDIR 改为 Thread scratch；显式任务凭据仍只传给指定 executable。收窄命令保留受限环境。process.start.env 接受 PATH/LANG/LC_ALL/TERM/CI/RUST_BACKTRACE/TMPDIR/PYTHONDONTWRITEBYTECODE；TMPDIR 只改变临时文件位置，不扩大路径授权。
+命令不继承模型凭据。未收窄且无固定只读输入、继承网络的 full-access 命令继承宿主 PATH/HOME/TMPDIR/LANG/LC_ALL/TERM/SSH_AUTH_SOCK，其中 Core 将 TMPDIR 改为 Thread scratch。SSH_AUTH_SOCK 只引用可信启动会话已有的 agent，不读取、复制私钥或透传 Git token；显式任务凭据仍只传给指定 executable。收窄命令保留受限环境，不继承宿主 SSH agent。process.start.env 接受 PATH/LANG/LC_ALL/TERM/CI/RUST_BACKTRACE/TMPDIR/PYTHONDONTWRITEBYTECODE；TMPDIR 只改变临时文件位置，不扩大路径授权。
 
 launcher 自动创建与 dataDir 同级的 `scratch/`，每个 Thread 使用 `agent-<threadId>/`。`--scratch <directory>` 可选择与工作区/dataDir 不重叠的现有目录。仓库只读时 scratch 仍可写，数据保留至人工清理。显式 `--sandbox-profile native` 下，可信二进制和 Core data 必须位于可写 workspace/scratch 之外；full-access 允许二进制位于工作区，便于开发。
+
+## Git 身份与远端认证
+
+- **提交身份**由 Git 的有效配置决定。执行已授权的 commit 前，用 `git var GIT_AUTHOR_IDENT` 和 `git var GIT_COMMITTER_IDENT` 核对当前环境中的身份；不要仅检查仓库级 `user.name`，也不要替用户编造姓名或邮箱。受限 HOME 或配置访问被拒绝时，只能说明当前执行环境无法解析身份，不能断言宿主未配置。需要临时指定身份时先取得用户提供或确认的值，不擅改全局配置。
+- **HTTPS 认证**依赖已有 credential helper 及其宿主权限。macOS 受限 Scope 不默认开放 Keychain；`osxkeychain: failed to get: -50` 等错误不能单独证明密码错误。先区分沙箱限制、登录会话/钥匙串状态和远端拒绝，不自动关闭 helper、改 remote 或导出凭据。网络授权本身不授予 Keychain：显式 native、收窄的文件/网络权限或固定只读输入仍会保留原生隔离。需要宿主认证时，须由用户明确允许未收窄且无固定只读输入的 full-access 执行，或在有权限的终端完成；不自动放宽受限任务或解锁钥匙串。
+- **SSH 认证**在完整授权下复用启动 AReaL 时已有的 `SSH_AUTH_SOCK`。启动时没有 agent、socket 已失效、钥匙未解锁或远端未授权仍会失败；环境改变后需重启所属 Core/Runtime 服务。传递 socket 不会加载私钥、修改 SSH 配置、允许受限子 Scope 访问 agent，或保证 push 成功。
+- 认证检查使用有界、非交互的命令，并遵循网络和文件审批。不要输出 `git credential fill` 的结果、token、私钥或完整凭据配置。切换 HTTPS/SSH、commit 和 push 是独立操作；不以换分支修复认证，不自动重试结果不明的 push。报告本地 commit 和远端 push 的各自实际状态。
 
 ## 平台与信任
 

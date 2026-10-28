@@ -792,14 +792,24 @@ impl Supervisor {
                     execution.write_roots.clear();
                 }
                 let unrestricted_environment = self.config.full_access
+                    && execution.read_only_paths.is_empty()
                     && execution
                         .write_roots
                         .iter()
                         .any(|p| p == std::path::Path::new("/"))
                     && execution.network == NetworkRequest::Inherit;
                 if unrestricted_environment {
-                    // 只继承工具链所需的宿主环境，模型凭据仍不自动传入。
-                    for name in ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TERM"] {
+                    // 只有未收窄的宿主执行复用登录会话的 SSH agent；不继承 token 或私钥。
+                    // 固定只读输入也会启用 native 沙箱，不能因此泄漏宿主 HOME 或认证 socket。
+                    for name in [
+                        "PATH",
+                        "HOME",
+                        "TMPDIR",
+                        "LANG",
+                        "LC_ALL",
+                        "TERM",
+                        "SSH_AUTH_SOCK",
+                    ] {
                         if name == "PATH" && self.config.command_search_path.is_some() {
                             continue;
                         }

@@ -204,6 +204,224 @@ async fn trusted_launch_inherits_only_granted_network_and_child_scopes_can_deny_
     }
 }
 
+// 使用合成 HOME、临时密钥和独立 SSH agent；不访问开发者凭据、Keychain 或真实远端。
+#[tokio::test]
+async fn git_identity_and_ssh_agent_follow_effective_scope_permissions() {
+    let temp = tempfile::Builder::new()
+        .prefix("areal-git-")
+        .tempdir_in("/tmp")
+        .unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let home = root.join("home");
+    let repo = root.join("repo");
+    let scratch = root.join("scratch");
+    for path in [&home, &repo, &scratch] {
+        std::fs::create_dir(path).unwrap();
+    }
+    let config = "[user]\nname = Runtime Fixture\nemail = runtime@example.invalid\n[commit]\ngpgSign = false\n[core]\nhooksPath = /dev/null\n";
+    std::fs::write(home.join(".gitconfig"), config).unwrap();
+    let socket = root.join("agent.sock");
+    // 前台 agent 由测试持有，任何失败都会关闭它；不复用登录会话的 agent。
+    let mut agent = Command::new("/usr/bin/ssh-agent")
+        .args(["-D", "-a"])
+        .arg(&socket)
+        .env_clear()
+        .env("HOME", &home)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !socket.exists() {
+            assert!(agent.try_wait().unwrap().is_none());
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let key = root.join("key");
+    assert!(
+        Command::new("/usr/bin/ssh-keygen")
+            .args([
+                "-q",
+                "-t",
+                "ed25519",
+                "-N",
+                "",
+                "-C",
+                "runtime-fixture",
+                "-f"
+            ])
+            .arg(&key)
+            .env_clear()
+            .env("HOME", &home)
+            .stdin(Stdio::null())
+            .status()
+            .await
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("/usr/bin/ssh-add")
+            .arg(&key)
+            .env_clear()
+            .env("HOME", &home)
+            .env("SSH_AUTH_SOCK", &socket)
+            .stdin(Stdio::null())
+            .status()
+            .await
+            .unwrap()
+            .success()
+    );
+    let public_key = std::fs::read_to_string(key.with_extension("pub")).unwrap();
+    std::fs::write(repo.join("signing-key.pub"), &public_key).unwrap();
+    std::fs::write(
+        repo.join("allowed-signers"),
+        format!("runtime@example.invalid {public_key}"),
+    )
+    .unwrap();
+    // 签名时磁盘只剩公钥，成功必须来自 agent，不能被私钥文件回退掩盖。
+    std::fs::remove_file(&key).unwrap();
+    for protected in [false, true] {
+        #[cfg(target_os = "macos")]
+        let mut command = {
+            let mut command = Command::new("/usr/bin/python3");
+            command.args(["-I", "-S", "-c", "import subprocess,sys; r=subprocess.run(sys.argv[1:]).returncode; sys.exit(r if r>=0 else 128-r)"]);
+            command.arg(env!("CARGO_BIN_EXE_areal-runtime"));
+            command
+        };
+        #[cfg(not(target_os = "macos"))]
+        let mut command = Command::new(env!("CARGO_BIN_EXE_areal-runtime"));
+        if protected {
+            command.arg("--read-only-path").arg(&home);
+        }
+        let mut daemon = command
+            .arg("--workspace")
+            .arg(&repo)
+            .arg("--scratch")
+            .arg(&scratch)
+            .args([
+                "--sandbox-profile",
+                "full-access",
+                "--wall-time-ms",
+                "10000",
+            ])
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("HOME", &home)
+            .env("SSH_AUTH_SOCK", &socket)
+            .env("MODEL_KEY", "synthetic-model-secret")
+            .env("GITHUB_TOKEN", "synthetic-git-secret")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let client = areal_runtime_client::Client::connect(
+            daemon.stdout.take().unwrap(),
+            daemon.stdin.take().unwrap(),
+        )
+        .await
+        .unwrap();
+        let parent = client.info().root_scope_id.clone();
+        let mut scopes = vec![(parent.clone(), !protected)];
+        for (reads, writes, network) in [
+            (None, None, NetworkRequest::Deny),
+            (
+                Some(vec![
+                    "workspace://repo".into(),
+                    "workspace://scratch".into(),
+                ]),
+                Some(vec!["workspace://scratch".into()]),
+                NetworkRequest::Inherit,
+            ),
+        ] {
+            let child = client
+                .create_scope(CreateScope {
+                    operation_id: client.operation_id(),
+                    parent_scope_id: parent.clone(),
+                    owner: Owner {
+                        task_id: "git-environment".into(),
+                        plugin_instance_id: None,
+                    },
+                    permissions: PermissionRequest {
+                        read_roots: reads,
+                        write_roots: writes,
+                        network,
+                    },
+                    limits: LimitRequest::default(),
+                })
+                .await
+                .unwrap();
+            scopes.push((child.scope_id, false));
+        }
+        for (scope_id, unrestricted) in scopes {
+            let code = if unrestricted {
+                // 真正完成 SSH 签名和验证；只移除 socket 的负对照必须失败且不改变 HEAD。
+                r#"set -e
+                    test -z "${MODEL_KEY-}${GITHUB_TOKEN-}"
+                    test -S "$SSH_AUTH_SOCK"
+                    /usr/bin/ssh-add -l
+                    git init -q
+                    printf fixture > fixture
+                    git add fixture
+                    git -c gpg.format=ssh -c user.signingkey=signing-key.pub -c commit.gpgsign=true commit -qm fixture
+                    git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile=allowed-signers verify-commit HEAD
+                    test "$(git log -1 --format='%an <%ae>|%cn <%ce>')" = 'Runtime Fixture <runtime@example.invalid>|Runtime Fixture <runtime@example.invalid>'
+                    before=$(git rev-parse HEAD)
+                    if SSH_AUTH_SOCK= git -c gpg.format=ssh -c user.signingkey=signing-key.pub -c commit.gpgsign=true commit --allow-empty -qm missing-agent; then
+                        echo 'unexpected signing success without agent' >&2
+                        exit 1
+                    fi
+                    test "$(git rev-parse HEAD)" = "$before"
+                "#
+            } else {
+                "set -e; test -z \"${SSH_AUTH_SOCK-}${MODEL_KEY-}${GITHUB_TOKEN-}\"; test \"$HOME\" = \"$TMPDIR\"; test ! -e \"$HOME/.gitconfig\""
+            };
+            let process = client
+                .start(StartProcess {
+                    operation_id: client.operation_id(),
+                    scope_id,
+                    argv: vec!["/bin/sh".into(), "-c".into(), code.into()],
+                    cwd: "workspace://repo".into(),
+                    env: std::collections::BTreeMap::from([(
+                        "TMPDIR".into(),
+                        scratch.to_string_lossy().into_owned(),
+                    )]),
+                    tty: false,
+                    pipe_stdin: false,
+                    limits: LimitRequest::default(),
+                })
+                .await
+                .unwrap();
+            let result = client.wait(&process.process_id).await.unwrap();
+            let output: serde_json::Value = client
+                .call(
+                    "output.read",
+                    serde_json::json!({"processId":process.process_id,"maxBytes":8192}),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                result.exit_code,
+                Some(0),
+                "protected={protected} unrestricted={unrestricted}: {output}"
+            );
+            assert!(result.cleanup_confirmed);
+        }
+        client.shutdown().await.unwrap();
+        assert!(daemon.wait().await.unwrap().success());
+    }
+    agent.kill().await.unwrap();
+    assert_eq!(
+        std::fs::read_to_string(home.join(".gitconfig")).unwrap(),
+        config
+    );
+}
+
 // End-to-end contract: the public client/daemon admission reaches the native
 // sandbox, and a same-task ordinary command can release two concurrent hooks.
 #[tokio::test]

@@ -54,6 +54,9 @@ pub struct TrustedCommand {
     control: UnixStream,
     #[cfg(target_os = "macos")]
     _child_control: UnixStream,
+    // 测试观察 Rust 已接收握手的时刻，不改变生产协议或启动时限。
+    #[cfg(all(test, target_os = "macos"))]
+    handshake_observer: Option<tokio::sync::oneshot::Sender<u32>>,
 }
 
 impl TrustedCommand {
@@ -131,6 +134,8 @@ impl TrustedCommand {
             control,
             #[cfg(target_os = "macos")]
             _child_control: child_control,
+            #[cfg(all(test, target_os = "macos"))]
+            handshake_observer: None,
         })
     }
 
@@ -169,6 +174,10 @@ impl TrustedCommand {
                     let control = self.control.try_clone()?;
                     let mut child = pending.child.take().unwrap();
                     let group = child.id().unwrap();
+                    #[cfg(test)]
+                    if let Some(observer) = self.handshake_observer.take() {
+                        let _ = observer.send(pid);
+                    }
                     return Ok(TrustedChild {
                         stdin: child.stdin.take(),
                         child,

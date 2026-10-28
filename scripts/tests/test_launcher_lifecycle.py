@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Launcher lifecycle regression tests using isolated executable fixtures."""
 
+import json
 import os
 import signal
 import subprocess
@@ -144,6 +145,43 @@ print('fixture reply')
         self.assertEqual(out.strip(), "fixture reply")
         self.assertTrue(list(self.data.glob("launch-*.log")))
         self.assert_reaped()
+
+    def test_ssh_agent_environment_reaches_only_full_access_runtime(self):
+        report = self.root / "runtime-environment.json"
+        self.fixture(
+            "areal-runtime",
+            f"""
+Path({str(report)!r}).write_text(json.dumps({{
+    'socket': os.environ.get('SSH_AUTH_SOCK'),
+    'model_key': os.environ.get('MODEL_KEY'),
+    'git_token': os.environ.get('GITHUB_TOKEN'),
+}}))
+sys.stdin.read()
+""",
+        )
+        socket = str(self.root / "synthetic agent.sock")
+        for profile in ["full-access", "native"]:
+            with self.subTest(profile=profile):
+                child = subprocess.Popen(
+                    [*self.command, "--sandbox-profile", profile, "--allow-network"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    env={
+                        **os.environ,
+                        "SSH_AUTH_SOCK": socket,
+                        "MODEL_KEY": "synthetic-model-secret",
+                        "GITHUB_TOKEN": "synthetic-git-secret",
+                    },
+                )
+                self.children.append(child)
+                _, err = child.communicate(timeout=10)
+                self.assertEqual(child.returncode, 0, err)
+                observed = json.loads(report.read_text())
+                self.assertEqual(observed["socket"], socket if profile == "full-access" else None)
+                self.assertIsNone(observed["model_key"])
+                self.assertIsNone(observed["git_token"])
+                self.assert_reaped()
 
     def test_startup_failure_reports_diagnostics_and_reaps_runtime(self):
         self.fixture(

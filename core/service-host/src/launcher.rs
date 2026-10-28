@@ -286,7 +286,12 @@ fn push_option(
     }
 }
 
-fn runtime_env(command: &mut tokio::process::Command, credentials: bool, network: bool) {
+fn runtime_env(
+    command: &mut tokio::process::Command,
+    credentials: bool,
+    network: bool,
+    full_access: bool,
+) {
     command.env_clear();
     command.envs(areal_runtime_host_tools::deployment_environment());
     if network {
@@ -296,6 +301,11 @@ fn runtime_env(command: &mut tokio::process::Command, credentials: bool, network
         if let Some(value) = std::env::var_os(name) {
             command.env(name, value);
         }
+    }
+    // SSH agent 是宿主认证能力；只交给完整授权部署，Runtime 再按有效 Scope 收窄。
+    // 不透传 token、私钥或 askpass 程序，也不把该能力放入普通工具链发现环境。
+    if full_access && let Some(socket) = std::env::var_os("SSH_AUTH_SOCK") {
+        command.env("SSH_AUTH_SOCK", socket);
     }
     if credentials {
         for name in [
@@ -723,6 +733,7 @@ async fn launch(
         &mut runtime_command,
         !args.task_credential_command.is_empty(),
         args.allow_network,
+        args.sandbox_profile == "full-access",
     );
     runtime_command.env("AREAL_RUNTIME_CLEANUP_FD", cleanup_fd.to_string());
     unsafe {

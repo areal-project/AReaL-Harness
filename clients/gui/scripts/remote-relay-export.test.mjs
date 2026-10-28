@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { mkdtemp, readFile, writeFile, readdir, mkdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
@@ -10,7 +11,7 @@ test("Relay export contains exactly the verified Remote closure and never Deskto
   const { exportRemoteAssets } = await import("./export-remote-assets.mjs");
   const root = await mkdtemp(join(tmpdir(), "rc12-export-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const source = new URL("../renderer/dist/", import.meta.url).pathname,
+  const source = fileURLToPath(new URL("../renderer/dist/", import.meta.url)),
     output = join(root, "out");
   const descriptor = JSON.parse(await readFile(join(source, "remote-assets.json"), "utf8"));
   await exportRemoteAssets(source, output);

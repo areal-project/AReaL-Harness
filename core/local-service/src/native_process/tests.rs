@@ -7,7 +7,11 @@ fn python() -> &'static Path {
 }
 
 async fn gone(pid: u32) {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    gone_within(pid, Duration::from_secs(5)).await;
+}
+
+async fn gone_within(pid: u32, limit: Duration) {
+    tokio::time::timeout(limit, async {
         while unsafe { libc::kill(pid as i32, 0) } == 0 {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
@@ -238,21 +242,17 @@ async fn captured_output_timeout_and_cancellation_reap_the_real_child_and_bridge
         let path = directory.path().join("pid");
         let mut command = TrustedCommand::supervised(python(), &[]).unwrap();
         command.args(["-I", "-S", "-c", "import os,sys,time; from pathlib import Path; Path(sys.argv[1]).write_text(str(os.getpid())+','+str(os.getppid())); time.sleep(60)"]).arg(&path);
-        let task = tokio::spawn(async move {
-            command
-                .output(if cancel {
-                    Duration::from_secs(30)
-                } else {
-                    Duration::from_millis(800)
-                })
-                .await
-        });
+        let (observer, handshake) = tokio::sync::oneshot::channel();
+        command.handshake_observer = Some(observer);
+        let task = tokio::spawn(async move { command.output(Duration::from_secs(30)).await });
         let (pid, bridge) = tokio::time::timeout(Duration::from_secs(5), async {
+            let acknowledged = handshake.await.unwrap();
             loop {
                 if let Ok(value) = std::fs::read_to_string(&path)
                     && let Some((pid, bridge)) = value.split_once(',')
                     && let (Ok(pid), Ok(bridge)) = (pid.parse::<u32>(), bridge.parse::<u32>())
                 {
+                    assert_eq!(acknowledged, pid);
                     break (pid, bridge);
                 }
                 tokio::time::sleep(Duration::from_millis(10)).await;
@@ -264,6 +264,10 @@ async fn captured_output_timeout_and_cancellation_reap_the_real_child_and_bridge
             task.abort();
             assert!(matches!(task.await, Err(error) if error.is_cancelled()));
         } else {
+            // 先等待真实子进程就绪，再触发超时；并发冷启动不应耗尽测试的清理窗口。
+            tokio::time::pause();
+            tokio::time::advance(Duration::from_secs(30)).await;
+            tokio::time::resume();
             assert_eq!(
                 task.await.unwrap().unwrap_err().kind(),
                 io::ErrorKind::TimedOut
@@ -293,26 +297,38 @@ async fn cancelling_timeout_cleanup_waiter_still_reaps_a_stopped_bridge() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("pid");
     let mut command = TrustedCommand::supervised(python(), &[]).unwrap();
+    let (observer, handshake) = tokio::sync::oneshot::channel();
+    command.handshake_observer = Some(observer);
     command.args(["-I", "-S", "-c", "import os,sys,time; from pathlib import Path; Path(sys.argv[1]).write_text(str(os.getpid())+','+str(os.getppid())); time.sleep(60)"]).arg(&path);
-    let task = tokio::spawn(async move { command.output(Duration::from_millis(800)).await });
-    let (pid, bridge) = tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            if let Ok(value) = std::fs::read_to_string(&path)
-                && let Some((pid, bridge)) = value.split_once(',')
-                && let (Ok(pid), Ok(bridge)) = (pid.parse::<u32>(), bridge.parse::<u32>())
-            {
-                break (pid, bridge);
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .unwrap();
-    assert_eq!(unsafe { libc::kill(bridge as i32, libc::SIGSTOP) }, 0);
-    // 超时已进入清理等待，但暂停的桥尚不能 wait/reap；此时取消外层 waiter。
-    tokio::time::sleep(Duration::from_millis(1100)).await;
-    task.abort();
-    assert!(matches!(task.await, Err(error) if error.is_cancelled()));
-    gone(bridge).await;
+    let (pid, bridge) = {
+        let output = command.output(Duration::from_secs(30));
+        tokio::pin!(output);
+        let (pid, bridge) = tokio::select! {
+            result = &mut output => panic!("output completed before fixture readiness: {result:?}"),
+            ready = tokio::time::timeout(Duration::from_secs(5), async {
+                // 子进程写 PID 与桥发送握手可并发；必须先确认 Rust 已消费握手。
+                let acknowledged = handshake.await.unwrap();
+                loop {
+                    if let Ok(value) = std::fs::read_to_string(&path)
+                        && let Some((pid, bridge)) = value.split_once(',')
+                        && let (Ok(pid), Ok(bridge)) = (pid.parse::<u32>(), bridge.parse::<u32>())
+                    {
+                        assert_eq!(acknowledged, pid);
+                        break (pid, bridge);
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            }) => ready.unwrap(),
+        };
+        assert_eq!(unsafe { libc::kill(bridge as i32, libc::SIGSTOP) }, 0);
+        tokio::time::pause();
+        tokio::time::advance(Duration::from_secs(30)).await;
+        tokio::time::resume();
+        // 显式轮询到超时后的清理等待，再销毁 waiter；不靠 sleep 猜测清理已开始。
+        assert!(futures_util::poll!(output.as_mut()).is_pending());
+        (pid, bridge)
+    };
+    // 观察期限覆盖已有的两段 5s 清理预算；不用虚拟时钟催促真实 OS 回收。
+    gone_within(bridge, Duration::from_secs(10)).await;
     gone(pid).await;
 }
