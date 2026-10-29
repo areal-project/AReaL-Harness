@@ -2,6 +2,8 @@
 
 # Session catalog: compact metadata and lazy history
 
+See [integration verification and remeasurement](#integration-verification-and-remeasurement) for the latest-main cohort, reported separately from earlier executables.
+
 ## Selection
 
 Recommend `sqlite-lazy`: **persist compact metadata in SQLite, query existing ordered memory indexes, and load a session's history on first demand**. Keep `memory` as the compatibility default; the new mode is explicit and preserves fact/recovery semantics. See [configuration](../../guides/configuration.en.md#session-catalog-backends).
@@ -176,3 +178,50 @@ The mixed large-metadata fixture shows slower first execution: the original `sql
 Preloading history itself takes about 0.33 ms in both lazy modes but does not consistently remove total-execution differences. Traced executions all make three fact commits and one model request with identical history inputs. Durable synchronization accounts for a median 90.4% of elapsed time (range 71.2%–95.5%); combined serialization and write-queue medians stay below 0.25 ms in every mode. Code inspection confirms normal `sqlite-lazy` Turns do not access the metadata database; runtime queries remain in memory. Diagnostics identify existing durable commits as the main cost in these samples, without fully attributing earlier untraced differences or proving zero first-execution regression. Original slower samples remain intact and are not replaced by later lower medians.
 
 Selection prioritizes startup and initial residency for many dormant histories plus growing metadata; `sqlite-lazy` remains recommended within that scope. Initial build, full traversal, first reads and some execution samples are slower, and all-open memory can be higher. `memory` remains reasonable when first-execution latency matters more or all history stays active, and remains the current default. Unimplemented streaming JSON, a separate cold directory and history eviction may improve other metrics; these four implementations cannot establish a global optimum.
+
+## Integration verification and remeasurement
+
+After integrating main with the Cloud lifecycle changes, freeze production code again. Full Engine/config/app-server suites pass in both default `memory` and recommended `sqlite-lazy`: **896 passed, zero failed, 20 explicitly ignored** per mode. The 20 cache/recovery boundaries include cold and reused caches, archives, clock rollback and drain. GUI history/catalog contracts (68), regressions (100) and Cloud contracts (19) pass; groups overlap and are not summed as independent tests. Real TUI/Core/Runtime smoke passes in all four modes. Default and recommended modes pass large-history, archive, over-64-MiB Unicode item, view-release and reconnect checks. Clippy, full GUI types, formatting, health gates and paired documentation checks pass.
+
+Integration reproduced an idle-reaping compatibility bug: idle calculation takes the maximum activity across all Turns, but tail-only cold metadata could lose an earlier larger timestamp after clock rollback. Retain a private maximum, include it in the projection checksum and verify it against complete facts at first materialization. Archive timing follows existing recovery semantics; public tail timestamps and RPCs do not change. GUI reads keep current shared decoders and the disconnect read barrier. Extract catalog scheduling into `catalog-observation` behind existing entry points and satisfy the existing source-size cap without relaxing its baseline.
+
+Retain environment failures and controls. Host proxy interception of loopback also stalled the fork test on unmodified main; preserving exclusions and adding loopback made it pass. Downloader contracts deliberately change uppercase proxy variables, which host lowercase proxy variables and `no_proxy` overrode; isolating host proxy settings only for that fixture process passes the original assertions. No production downloader change or assertion relaxation was committed. Missing dependencies and early type/format/source-cap failures remain recorded. The first GUI baseline attempt failed before measurement because the loader lacked pnpm application dependency paths; reusing the loaded production module paths fixes the benchmark harness, and the failed attempt is retained separately.
+
+Use the same final release executable for four modes, four cases and five independent processes per cell, totaling 324 preparation/observation processes. Build and functional verification precede measurement; OS file cache is warm. Each cell is **reusable-cache startup ms / initial Core RSS MiB**; Runtime/Electron, process creation and fixture preparation are excluded. Do not pool these values with older executables above. The metadata case also has 1 KiB history/session; the mixed case has 12 KiB history and 6 KiB metadata/session, including children and archives. Raw samples, costs, source/executable identities and failures are in [integration results](conversation-catalog-integration-results.json).
+
+| 场景 / Scenario | memory | sqlite | memory-lazy | sqlite-lazy |
+|---|---:|---:|---:|---:|
+| 20,000 | 1378.7 / 583.9 | 1322.5 / 586.8 | 300.9 / 215.2 | 278.5 / 211.5 |
+| 2,000 × 64 KiB | 163.6 / 327.9 | 180.9 / 329.8 | 61.5 / 127.6 | 61.6 / 127.2 |
+| 2,000 × 4 KiB metadata | 159.4 / 182.6 | 162.3 / 184.3 | 100.3 / 179.1 | 99.3 / 158.8 |
+| 1,500 mixed / 6 KiB metadata | 129.5 / 186.3 | 137.5 / 187.8 | 115.2 / 198.4 | 106.0 / 163.4 |
+
+At 20,000 sessions, recommended-mode reusable startup falls 79.8% and initial Core RSS falls 63.8% relative to eager memory. All four modes already contain the compact directory and paging changes; this table isolates loading policies, not SQLite alone. Fixtures use sequential UUIDs and fixed distributions; five processes do not establish a stable p95 or a production population result.
+
+| 场景 / Scenario | memory | sqlite | memory-lazy | sqlite-lazy |
+|---|---:|---:|---:|---:|
+| 20,000 / first build (ms) | 1767.588 | 1995.810 | 2001.340 | 2461.234 |
+| 4 KiB metadata / first build (ms) | 175.392 | 172.226 | 222.118 | 368.484 |
+| 20,000 / one changed fact (ms) | 1136.277 | 1276.711 | 338.688 | 283.390 |
+| 20,000 / first 100 (ms) | 0.120 | 0.143 | 0.180 | 0.175 |
+| 20,000 / full directory (ms) | 34.475 | 43.722 | 41.909 | 40.640 |
+| 20,000 / no origin match (ms) | 5.685 | 11.176 | 3.436 | 3.223 |
+| 64 KiB / first history (ms) | 0.049 | 0.047 | 0.383 | 0.299 |
+| 64 KiB / first execution (ms) | 18.601 | 18.479 | 18.029 | 20.925 |
+| 64 KiB / all-open RSS (MiB) | 329.656 | 332.328 | 321.875 | 323.953 |
+| 4 KiB metadata / full directory (ms) | 10.991 | 11.837 | 14.896 | 15.953 |
+| mixed / first execution (ms) | 27.370 | 27.087 | 28.130 | 27.767 |
+| mixed / all-open RSS (MiB) | 191.188 | 193.406 | 246.812 | 211.469 |
+
+Retain first-build, query, first-body, first-execution and all-open costs. Every deterministic execution uses one model request and identical recovered user/assistant input hashes across modes. These new execution samples do not replace the [earlier slower first-execution cohort](#additional-fault-recovery-audit) or prove zero real-task regression. Loaded history is not evicted, so all-open memory gains can disappear.
+
+Compare the production GUI coordinator, CoreLibrary and CoreBackend.save against the original directory implementation on current main. Each arm has five independent Node 24 processes with five samples per process, taking process medians; 2,000 rows, 100/page, bursts of 20. Core transport is a fixture; JSON writes and rename are real. IPC, Renderer and network are excluded. Final summaries, completion identity and unread state agree.
+
+| GUI operation | Baseline ms | Current ms | RPCs | All library writes | Summary writes |
+|---|---:|---:|---|---|---|
+| 20 simultaneous full refreshes | 63.62 | 2.84 | 400 → 20 | 20 → 1 | 20 → 1 |
+| 20 same-session Turn notices | 84.20 | 38.15 | 400 → 1 | 40 → 21 | 20 → 1 |
+
+Plain Engine shutdown leaves unopened bodies cold: the regression's next open hits 2/2 cache rows with unchanged fact bytes. Explicit drain preserves queue-pausing/revision semantics by restoring and committing unarchived sessions; the next open hits 0/2 and parses two complete facts with intact history. This can approach eager memory and pay rebuilding cost again: **cache-reuse startup is not a guarantee for every restart**. This change neither postpones fsync nor coalesces authoritative commits.
+
+Continue recommending `sqlite-lazy` for many settled histories and growing metadata, while default remains `memory`. SQL key lookup cannot substitute for loading separation. SQLite metadata adds row-level maintenance and future schema/index options while hot directory queries reuse ordered memory indexes. Small catalogs, fully active histories or first-execution-sensitive workloads can retain `memory`. Covered paths show compatibility, not global optimality or an absolute absence of availability issues; local release installers and four-domain model evaluations were not rerun.

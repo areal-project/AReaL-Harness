@@ -14,7 +14,7 @@ let { HistoryObservation } = require(filename);
 if (process.argv[2]) {
   const baseline = new Module(filename, module);
   baseline.filename = filename;
-  baseline.paths = module.paths;
+  baseline.paths = require.cache[filename].paths;
   baseline._compile(readFileSync(process.argv[2], "utf8"), filename);
   ({ HistoryObservation } = baseline.exports);
 }
