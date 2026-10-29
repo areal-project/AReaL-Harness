@@ -112,9 +112,11 @@ try:
         expect(rb"reply:pty-initial")
         expect(rb"Completed")
         os.write(master, b"/welcome\r")
-    expect(rb"[a-f0-9]{8}-[a-f0-9]{4}-")
-    root_id = re.search(rb"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9-]+", screen.text())[0]
     expect(rb"Welcome")
+    # 欢迎页的会话 ID 独占一行；工作区路径也可能包含 UUID，不能取任意首个匹配。
+    session_row = rb"(?m)^[^\w\n]*([a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12})[^\w\n]*$"
+    expect(session_row)
+    root_id = re.search(session_row, screen.text())[1]
     expect_trajectory_notice()
     os.write(master, b"/theme\r")
     expect(rb"Preview.*Enter save")
@@ -241,8 +243,11 @@ try:
     os.write(master, b"/spawn pty-child\r")
     os.write(master, b"/topology\r")
     expect(rb"Agents.*session tree")
-    expect(rb"pty-child")
-    os.write(master, b"\x1b[B\r")
+    # 创建状态先于异步树刷新；必须等具体行出现并确认选中，不能把状态栏当作导航证据。
+    expect(rb"[a-f0-9]{8} pty-child")
+    os.write(master, b"\x1b[B")
+    expect(rb">[^\n]*[a-f0-9]{8} pty-child")
+    os.write(master, b"\r")
     expect(rb"reply:pty-child")
     os.write(master, b"/open " + root_id + b"\r")
     expect(rb"reply:hang")

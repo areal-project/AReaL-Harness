@@ -53,6 +53,7 @@ async fn default_git_guidance_reaches_the_model_and_frozen_snapshot() {
         .create_configured(
             "owner".into(),
             ThreadStart {
+                creation_admission: None,
                 request_id: "git-guidance".into(),
                 cwd: Some(workspace.path().to_string_lossy().into_owned()),
                 options: None,

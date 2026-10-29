@@ -22,7 +22,9 @@ RUN cargo build --locked --profile "${BUILD_PROFILE}" -p areal-runtime -p areal-
 
 FROM runtime-builder AS runtime-tests
 
-RUN apk add --no-cache bubblewrap python3 coreutils
+# Git 凭据回归使用临时 agent 与签名密钥，只在测试镜像安装 SSH 客户端。
+RUN apk add --no-cache bubblewrap python3 coreutils openssh-client
+RUN test -x /usr/bin/ssh-agent && test -x /usr/bin/ssh-keygen && test -x /usr/bin/ssh-add
 RUN cargo build --locked --profile ci -p areal-runtime -p areal-runtime-fs \
     && cargo test --locked --profile ci -p areal-runtime-exec-native -p areal-runtime --features areal-runtime/native-tests --no-run \
     && cargo test --locked --profile ci -p areal-engine --features native-tests --test provider_replay --no-run \
