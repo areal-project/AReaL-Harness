@@ -147,7 +147,7 @@ sequence 的重置仍绑定新 stream/reader，未照搬 T3 的低序号重置�
 
 **实现。** [model_input_budget.rs](../../core/engine/tests/model_input_budget.rs) 经生产 `Engine::create_configured`、默认配置和真实 HTTP 适配器捕获求解请求；辅助命名由已有 SolveOnlyHttpModel 边界隔离。首个 profile 是 `desktop-default-no-runtime-or-plugins`，不把本机 Runtime 或第三方插件能力计入默认无宿主测试。
 
-固定基线 [model-input-budget.json](../../core/engine/tests/fixtures/model-input-budget.json) 分别记录 system 指令 11,758 UTF-8 字节、Execution settings 段 563 字节，以及 18 个工具的 name/description/parameters 计量，模型可见工具函数 JSON 合计 12,686 字节。不同临时目录、ID 与用户正文的两次独立 Engine 请求计量一致。动态用户历史、Skills 正文、检索和媒体不纳入该固定 profile。
+固定基线 [model-input-budget.json](../../core/engine/tests/fixtures/model-input-budget.json) 分别记录 system 指令 13,259 UTF-8 字节、Execution settings 段 563 字节，以及 18 个工具的 name/description/parameters 计量，模型可见工具函数 JSON 合计 12,686 字节。system 指令包含 1,501 字节的 Git 分支与认证边界说明；这两段说明不改变工具或固定环境体积。不同临时目录、ID 与用户正文的两次独立 Engine 请求计量一致。动态用户历史、Skills 正文、检索和媒体不纳入该固定 profile。
 
 `cargo test --locked -p areal-engine --test model_input_budget` 的 1 项测试通过，包括增加/减少工具描述和增加 system 指令的反例；变化输出分项与工具名称，基线必须人工审阅更新。该检查不自动删提示、截断工具或改变生产预算。字节是确定性增长信号，不转换成未验证的 token、费用或成功率结论；Agent 行为修改仍遵循[改进方法](agent-improvement.md)。
 
