@@ -116,7 +116,7 @@ workflow-lint: ## 校验 GitHub Actions workflow
 hooks-install: ## 显式安装仓库的推送前门禁
 	python3 scripts/git-hooks.py install --base "$(CI_BASE)"
 
-check-changed: ## 本地影响范围快检；显式 CI_BASE，ARGS=--plan 仅输出计划
+check-changed: ## 受影响快检加失败专项；显式 CI_BASE，ARGS=--plan 仅输出计划
 	python3 scripts/check-changed.py --base "$(CI_BASE)" $(ARGS)
 
 ci-gui-static: ## 共享计划的 GUI 提交前静态、类型、生产构建与预算检查
@@ -145,7 +145,7 @@ ci-core-contracts: ## 构建匹配输入并执行全部 Core 合同；固定 Cor
 	@test -n "$(CI_BASE)" || { echo 'CI_BASE is required' >&2; exit 1; }
 	python3 scripts/ci-preflight.py --base "$(CI_BASE)" --groups core-contracts --with-dependencies
 
-ci-preflight: ## 推送前完整门禁与逐阶段报告；显式 CI_BASE，不替代完整 CI
+ci-preflight: ## 按需完整本机验收与逐阶段报告；显式 CI_BASE，不替代完整 CI
 	@test -n "$(CI_BASE)" || { echo 'CI_BASE is required' >&2; exit 1; }
 	python3 scripts/ci-preflight.py --base "$(CI_BASE)"
 

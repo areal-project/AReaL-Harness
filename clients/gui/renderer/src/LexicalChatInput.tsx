@@ -1,3 +1,4 @@
+import type { ComposerWorkspaceFiles } from "./lib/workspaceFileComposer.js";
 import { HISTORY_NAVIGATION_UPDATE_TAG, PROGRAMMATIC_UPDATE_TAG } from "./lib/editorUpdateTags.js";
 import {
   shouldSubmitLexicalEnter,
@@ -23,7 +24,13 @@ import {
  * 2. ChatComposerPasteEvent 收口为本文件导出的结构类型；
  * 3. mention 面板用 enableMentionPanel 控制；slash command 始终读取 CLI workspace catalog。
  */
-import { $getPromptMarkdown } from "@/mentions/promptSerialization.js";
+import {
+  INLINE_PROMPT_MENTION_PATTERN,
+  $getPromptMarkdown,
+  $appendPromptTextLines,
+  $createPromptParagraph,
+} from "@/mentions/promptSerialization.js";
+import { PromptMentionTooltipPlugin } from "@/mentions/PromptMentionTooltipPlugin.js";
 import { PromptClipboardPlugin } from "@/mentions/PromptClipboardPlugin.js";
 import {
   resolveComposerKeyAction,
@@ -38,7 +45,6 @@ import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import {
   $createParagraphNode,
-  $createLineBreakNode,
   $createTextNode,
   $getSelection,
   $getNodeByKey,
@@ -55,11 +61,9 @@ import {
   KEY_TAB_COMMAND,
   type EditorState,
   type LexicalEditor,
-  type ParagraphNode,
 } from "lexical";
 import { SlashCommandPlugin } from "./SlashCommandPlugin.js";
 import type { ComposerCatalogData } from "./prompt-editor/ComposerCatalog.js";
-import { parsePluginStableId, parseSessionThreadId } from "./mentions/mentionMarkdown.js";
 import type { AppSlashCommand } from "./slashCommandHelpers.js";
 
 import {
@@ -113,20 +117,10 @@ function getEditorMarkdown(editorState: EditorState): string {
   return text;
 }
 
-// Literal TextNode newlines do not produce a final empty line, and adjacent
-// zero-margin Paragraph nodes collapse a canonical double newline visually.
-// Match keyboard/paste line boxes without changing the serialized draft text.
-function appendPlainTextLines(paragraph: ParagraphNode, text: string) {
-  for (const [index, line] of text.split("\n").entries()) {
-    if (index) paragraph.append($createLineBreakNode());
-    if (line) paragraph.append($createTextNode(line));
-  }
-}
-
 function replacePlainTextRoot(text: string) {
   const root = $getRoot();
   const paragraph = $createParagraphNode();
-  appendPlainTextLines(paragraph, text);
+  $appendPromptTextLines(paragraph, text);
   root.clear();
   root.append(paragraph);
   paragraph.selectEnd();
@@ -136,40 +130,10 @@ function replaceEditorText(editor: LexicalEditor, text: string) {
   editor.update(() => replacePlainTextRoot(text), { tag: PROGRAMMATIC_UPDATE_TAG });
 }
 
-const INLINE_PROMPT_MENTION_PATTERN =
-  /\[((?:\\.|[^\\\]])*)\]\((plugin:\/\/[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+|#sess_[a-zA-Z0-9._-]+)\)/g;
-
-function inlineMentionNodes(text: string) {
-  const paragraph = $createParagraphNode();
-  let cursor = 0;
-  for (const match of text.matchAll(INLINE_PROMPT_MENTION_PATTERN)) {
-    const destination = match[2] ?? "";
-    const pluginId = parsePluginStableId(destination);
-    const threadId = parseSessionThreadId(destination);
-    if (!pluginId && !threadId) continue;
-    const start = match.index ?? 0;
-    if (start > cursor) appendPlainTextLines(paragraph, text.slice(cursor, start));
-    const label = (match[1]?.replace(/\\(.)/g, "$1") ?? "").replace(pluginId ? /^@/ : /^#/, "");
-    paragraph.append(
-      $createPromptMentionNode({
-        id: pluginId ? `plugin:${pluginId}` : `session:${threadId}`,
-        category: pluginId ? "plugins" : "sessions",
-        label,
-        value: pluginId ?? threadId!,
-        markdown: match[0],
-        ...(pluginId ? { data: { pluginId } } : {}),
-      }),
-    );
-    cursor = start + match[0].length;
-  }
-  if (cursor < text.length) appendPlainTextLines(paragraph, text.slice(cursor));
-  return paragraph;
-}
-
 function replaceEditorTextWithMentions(editor: LexicalEditor, text: string) {
   editor.update(
     () => {
-      const paragraph = inlineMentionNodes(text);
+      const paragraph = $createPromptParagraph(text);
       $getRoot().clear().append(paragraph);
       paragraph.selectEnd();
     },
@@ -367,7 +331,7 @@ function appendEditorPlainText(editor: LexicalEditor, text: string) {
         paragraph.append($createTextNode(" "));
       }
 
-      paragraph.append(...inlineMentionNodes(text).getChildren());
+      paragraph.append(...$createPromptParagraph(text).getChildren());
       paragraph.selectEnd();
     },
     { tag: PROGRAMMATIC_UPDATE_TAG },
@@ -1143,7 +1107,7 @@ function PasteCapturePlugin({
         editor.update(() => {
           const selection = $getSelection();
           if ($isRangeSelection(selection))
-            selection.insertNodes(inlineMentionNodes(text).getChildren());
+            selection.insertNodes($createPromptParagraph(text).getChildren());
         });
         return;
       }
@@ -1344,6 +1308,7 @@ interface LexicalChatInputProps {
   excludedSlashCommandNames?: readonly string[];
   composerCatalog?: ComposerCatalogData;
   pluginMentionCatalog?: ComposerCatalogData;
+  workspaceFiles?: ComposerWorkspaceFiles;
   /** App 层本地斜杠命令（如 `/side`），选中即执行 UI 行为，不发送。 */
   appSlashCommands?: readonly AppSlashCommand[];
   /** mention（@/#）面板开关。v4 数据面未就绪时显式关闭，入口保留。 */
@@ -1380,6 +1345,7 @@ export function LexicalChatInput({
   appSlashCommands,
   composerCatalog,
   pluginMentionCatalog,
+  workspaceFiles,
 }: LexicalChatInputProps) {
   const activeTaskProvider = "areal";
   const handleSubmit = useCallback(
@@ -1447,6 +1413,7 @@ export function LexicalChatInput({
           <PromptPredictionPlugin text={nextPrompt} disabled={disabled} />
           <HistoryPlugin />
           <PromptClipboardPlugin />
+          <PromptMentionTooltipPlugin workspacePath={workspacePath} />
           <PluginMentionMetadataPlugin catalog={pluginMentionCatalog} />
           <TextContentPlugin onChange={onChange} />
           <KeyboardPlugin
@@ -1475,6 +1442,7 @@ export function LexicalChatInput({
           appCommands={appSlashCommands}
           catalog={composerCatalog}
           mentionCatalog={pluginMentionCatalog}
+          workspaceFiles={workspaceFiles}
         />
       </LexicalComposer>
     </div>

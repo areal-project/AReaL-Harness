@@ -253,9 +253,23 @@ const handle = ipcMain.handle.bind(ipcMain);
 globalThis.filesHoldList = false;
 globalThis.filesListEntered = false;
 globalThis.filesListCompleted = false;
+globalThis.filesHoldSearch = null;
+globalThis.filesSearchEntered = false;
+globalThis.filesSearchCompleted = false;
 ipcMain.handle = function(channel, listener) {
   if (channel !== "areal-core:command") return handle(channel, listener);
   return handle(channel, async (event, name, params) => {
+    if (name === "workspace" && params?.operation === "search" && params.query === globalThis.filesFailSearch) {
+      globalThis.filesFailSearch = null;
+      return { ok: false, error: { code: "INTERNAL", message: "FILE_SEARCH_FIXTURE_FAILURE" } };
+    }
+    if (name === "workspace" && params?.operation === "search" && params.query === globalThis.filesHoldSearch) {
+      globalThis.filesHoldSearch = null;
+      globalThis.filesSearchEntered = true;
+      await new Promise(resolve => { globalThis.filesReleaseSearch = () => { globalThis.filesReleaseSearch = null; resolve(); }; });
+      try { return await listener(event, name, params); }
+      finally { globalThis.filesSearchCompleted = true; }
+    }
     const held = name === "workspace" && params?.operation === "list" && !params.path && globalThis.filesHoldList;
     if (!held) return listener(event, name, params);
     globalThis.filesHoldList = false;
@@ -301,7 +315,7 @@ async function shot(name) {
   const clip = await page.evaluate(() => {
     const boxes = [
       ...document.querySelectorAll(
-        '.composer-dock, [data-slot="popover-content"], [data-testid="composer-catalog"]',
+        '.composer-dock, [data-slot="popover-content"], [data-testid="composer-catalog"], [data-slot="tooltip-content"]',
       ),
     ]
       .map((element) => element.getBoundingClientRect())
@@ -477,7 +491,6 @@ try {
       workspace,
       scratch,
       endpoint,
-      desktop,
       call,
       state,
       project,
@@ -1834,7 +1847,10 @@ try {
     await input().fill("@");
     await page.getByRole("group", { name: "Actions", exact: true }).waitFor();
     await input().fill("@no-such-plugin-reference");
-    await page.getByTestId("composer-catalog").getByText("No matches", { exact: true }).waitFor();
+    await page
+      .getByTestId("composer-catalog")
+      .getByText("No files found. Type a filename or relative path", { exact: true })
+      .waitFor();
     assert.ok(!(await page.getByTestId("composer-catalog").textContent()).match(/[\u4e00-\u9fff]/));
     await shot("plugin-mention-english-no-matches");
     await input().press("Escape");
@@ -1851,7 +1867,11 @@ try {
   throw error;
 } finally {
   await writeFile(join(scratch, "model-requests.json"), JSON.stringify(received, null, 2));
-  if (filesRegression && app) await app.evaluate(() => globalThis.filesReleaseList?.());
+  if (filesRegression && app)
+    await app.evaluate(() => {
+      globalThis.filesReleaseList?.();
+      globalThis.filesReleaseSearch?.();
+    });
   for (const finish of filesFixture.held) finish();
   for (const gate of labelGates)
     await unlink(gate).catch((error) => {
@@ -1963,7 +1983,10 @@ try {
         skillCatalogEvents,
         nativeDialogs: "project picker and archive/quit confirmations injected",
         filesBarrier: filesRegression
-          ? "Source Main IPC delivery delay for workspace/list; original handler performs all validation and returns actual results"
+          ? "Source Main IPC delivery delay for workspace/list and search, plus one injected search failure; original handler performs validation and returns real file results"
+          : undefined,
+        worktreeFixture: filesRegression
+          ? "Public create command prepares a real Git worktree thread; search, selection, and send use UI"
           : undefined,
         scratch,
         frames,

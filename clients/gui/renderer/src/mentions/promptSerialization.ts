@@ -1,4 +1,8 @@
 import {
+  $createParagraphNode,
+  $createTextNode,
+  $createLineBreakNode,
+  type ParagraphNode,
   $getCharacterOffsets,
   $getRoot,
   $isElementNode,
@@ -6,7 +10,12 @@ import {
   type LexicalNode,
   type RangeSelection,
 } from "lexical";
-import { $isPromptMentionNode } from "@/mentions/nodes/PromptMentionNode.js";
+import {
+  $createPromptMentionNode,
+  $isPromptMentionNode,
+} from "@/mentions/nodes/PromptMentionNode.js";
+
+import { parsePluginStableId, parseSessionThreadId } from "./mentionMarkdown.js";
 
 /** 编辑器文本用于光标；业务输出显式读取 canonical，不能覆写 TextNode 文本语义。 */
 export function $getPromptMarkdown(node: LexicalNode = $getRoot()): string {
@@ -81,4 +90,79 @@ export function $getAtomicPromptSelection(selection: RangeSelection): RangeSelec
     end.set(end.key, endNode.getTextContentSize(), "text");
   }
   return normalized;
+}
+
+// Literal TextNode newlines do not produce a final empty line, and adjacent
+// zero-margin Paragraph nodes collapse a canonical double newline visually.
+// Match keyboard/paste line boxes without changing the serialized draft text.
+export function $appendPromptTextLines(paragraph: ParagraphNode, text: string) {
+  for (const [index, line] of text.split("\n").entries()) {
+    if (index) paragraph.append($createLineBreakNode());
+    if (line) paragraph.append($createTextNode(line));
+  }
+}
+
+export const INLINE_PROMPT_MENTION_PATTERN = /\[((?:\\.|[^\\\]])*)\]\(/g;
+
+export function $createPromptParagraph(text: string) {
+  const paragraph = $createParagraphNode();
+  let cursor = 0;
+  for (const match of text.matchAll(INLINE_PROMPT_MENTION_PATTERN)) {
+    const start = match.index ?? 0;
+    if (start < cursor) continue;
+    const destinationStart = start + match[0].length;
+    const angleDestination = text[destinationStart] === "<";
+    let depth = 1;
+    let destinationEnd = destinationStart + (angleDestination ? 1 : 0);
+    for (; destinationEnd < text.length; destinationEnd += 1) {
+      const character = text[destinationEnd];
+      if (character === "\\") {
+        destinationEnd += 1;
+        continue;
+      }
+      if (angleDestination) {
+        if (character === ">") break;
+        continue;
+      }
+      if (character === "(") depth += 1;
+      if (character === ")" && --depth === 0) break;
+    }
+    if (destinationEnd >= text.length || (angleDestination && text[destinationEnd + 1] !== ")"))
+      continue;
+    const markdownEnd = destinationEnd + (angleDestination ? 2 : 1);
+    const destination = text.slice(destinationStart + (angleDestination ? 1 : 0), destinationEnd);
+    const pluginId = parsePluginStableId(destination);
+    const threadId = parseSessionThreadId(destination);
+    const relativePath =
+      destination.startsWith("./") && !match[1]?.startsWith("$")
+        ? destination.slice(2).replace(/\\(.)/g, "$1")
+        : undefined;
+    if (!pluginId && !threadId && !relativePath) continue;
+    if (start > cursor) $appendPromptTextLines(paragraph, text.slice(cursor, start));
+    const label = (match[1]?.replace(/\\(.)/g, "$1") ?? "").replace(
+      pluginId ? /^@/ : threadId ? /^#/ : /^@/,
+      "",
+    );
+    paragraph.append(
+      $createPromptMentionNode({
+        id: pluginId
+          ? `plugin:${pluginId}`
+          : threadId
+            ? `session:${threadId}`
+            : `file:${relativePath}`,
+        category: pluginId ? "plugins" : threadId ? "sessions" : "files",
+        label,
+        value: pluginId ?? threadId ?? relativePath!,
+        markdown: text.slice(start, markdownEnd),
+        ...(pluginId
+          ? { data: { pluginId } }
+          : relativePath
+            ? { data: { relativePath, kind: relativePath.endsWith("/") ? "directory" : "file" } }
+            : {}),
+      }),
+    );
+    cursor = markdownEnd;
+  }
+  if (cursor < text.length) $appendPromptTextLines(paragraph, text.slice(cursor));
+  return paragraph;
 }

@@ -15,25 +15,35 @@ body,
 .mobile-stack p {
   margin: 0;
 }
-.mobile-session .messages-shell {
-  min-height: 0;
-  flex: 1;
+.mobile-page h1,
+.mobile-page h2,
+.mobile-page h3,
+.mobile-model-sheet h2,
+.mobile-model-sheet h3 {
+  margin: 0;
 }
-.mobile-page:has(.mobile-session) {
-  height: 100dvh;
-}
-.mobile-page:has(.mobile-session) > .mobile-stack {
-  min-height: 0;
-  flex: 1;
-}
+/* 浮层覆盖共享 Dialog 的视口居中与进出动画，并保留底部安全区。 */
 .mobile-model-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   top: auto;
   bottom: 0;
   left: 0;
-  transform: none;
-  translate: none;
   width: 100%;
   max-width: 100%;
   max-height: 90dvh;
-  padding-bottom: calc(env(safe-area-inset-bottom) + var(--spacing-panel));
+  padding: 0 var(--spacing-field) calc(env(safe-area-inset-bottom) + var(--spacing-field));
+  transform: none;
+  translate: 0 0;
+  scale: 1;
+}
+.mobile-model-sheet[data-starting-style],
+.mobile-model-sheet[data-ending-style] {
+  scale: 1;
+  translate: 0 100%;
+}
+.mobile-model-sheet[data-panel="model"][data-view="advanced"],
+.mobile-model-sheet[data-panel="permissions"] {
+  min-height: 52dvh;
 }

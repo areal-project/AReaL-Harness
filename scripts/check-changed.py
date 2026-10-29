@@ -26,20 +26,84 @@ changed_paths = ci_scope.changed_paths
 input_key = ci_scope.input_key
 
 
+def failure_checks(plan, root, extra_reports=()):
+    # 历史报告只提供重验线索；旧命令和通过结果都不参与本轮执行。
+    paths = {
+        path
+        for directory in ("preflight", "changed", "failures")
+        for path in (root / "target/ci" / directory).glob("*/report.json")
+    } | set(extra_reports)
+    latest = {}
+    source = plan["source"]
+    revisions = (
+        ci_scope.git(
+            root, "rev-list", "--topo-order", source["headRevision"], "^" + source["baseRevision"]
+        )
+        .decode()
+        .splitlines()
+    )
+    ancestors = {
+        revision: -index for index, revision in enumerate(revisions or [source["headRevision"]])
+    }
+    for path in sorted(paths):
+        report = json.loads(path.read_text())
+        if report.get("kind") != "verification-report":
+            raise ValueError(f"Not a verification report: {path}")
+        revision = report["identity"]["headRevision"]
+        if revision not in ancestors:
+            if path in extra_reports:
+                raise ValueError(f"Failure report is outside the current branch: {path}")
+            continue
+        for result in report["results"]:
+            key = (result["id"], report["platform"])
+            timestamp = (
+                result.get("completedAt") or report.get("completedAt") or report["startedAt"]
+            )
+            status = "invalidated" if report.get("status") == "invalidated" else result["status"]
+            # 祖先提交晚结束的检查不能清除后续提交已经发现的失败。
+            order = (ancestors[revision], timestamp)
+            if key not in latest or order > latest[key][0]:
+                latest[key] = (order, status, str(path))
+    required = {item["id"] for item in plan["items"]}
+    failures = {}
+    for (name, _), (_, status, path) in sorted(latest.items()):
+        if name in required and status != "passed":
+            failures.setdefault(name, []).append(path)
+    return failures
+
+
+def select_checks(plan, phase, failures):
+    names = {item["id"] for item in plan["items"] if phase == "full" or item["phase"] == "commit"}
+    names.update(failures)
+    while True:
+        expanded = names | {
+            dependency
+            for item in plan["items"]
+            if item["id"] in names
+            for dependency in item["dependsOn"]
+        }
+        if expanded == names:
+            return [item for item in plan["items"] if item["id"] in names]
+        names = expanded
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", required=True)
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--phase", choices=("commit", "full"), default="commit")
+    parser.add_argument("--failure-report", type=Path, action="append", default=[])
     args = parser.parse_args(argv)
     plan = ci_scope.repository_plan(ROOT, args.base)
-    selected = [item for item in plan["items"] if args.phase == "full" or item["phase"] == "commit"]
+    failures = failure_checks(plan, ROOT, args.failure_report)
+    selected = select_checks(plan, args.phase, failures)
     print(
         json.dumps(
             {
                 "plan": plan,
                 "selected": [item["id"] for item in selected],
                 "pendingFull": [item["id"] for item in plan["items"] if item not in selected],
+                "failureChecks": failures,
             },
             ensure_ascii=False,
         ),
@@ -60,7 +124,7 @@ def main(argv=None):
         ),
         flush=True,
     )
-    return 0 if report["status"] == "passed" else 1
+    return 0 if report["status"] in {"passed", "not-applicable"} else 1
 
 
 if __name__ == "__main__":

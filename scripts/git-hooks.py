@@ -1,4 +1,4 @@
-"""在暂存快照检查提交，在当前干净 HEAD 上运行完整推送前门禁。"""
+"""在暂存快照检查提交，在干净 HEAD 上运行受影响快检与失败专项。"""
 
 import argparse
 import importlib.util
@@ -73,6 +73,7 @@ def precommit():
     with tempfile.TemporaryDirectory(prefix="areal-staged-check-") as directory:
         snapshot = Path(directory)
         git("checkout-index", "--all", f"--prefix={snapshot}{os.sep}", capture=False)
+        run(["node", "scripts/test-manifest.mjs", "--list"], cwd=snapshot / "clients/gui")
         # 使用同一暂存快照中的规则和 manifest，避免未暂存规则掩盖漏测。
         spec = importlib.util.spec_from_file_location(
             "staged_ci_scope", snapshot / "scripts/ci-scope.py"
@@ -98,7 +99,6 @@ def precommit():
             f"Staged impact plan: {output}; {len(plan['items'])} required checks (not yet executed)",
             flush=True,
         )
-        run(["node", "scripts/test-manifest.mjs", "--list"], cwd=snapshot / "clients/gui")
         # 只复用依赖，不链接源码或 .git；未暂存的用户修改不进入验收快照。
         packages = git("ls-files", "-z", "--", "*package.json").split("\0")
         for parent in {Path("."), *(Path(path).parent for path in packages if path)}:
@@ -203,7 +203,7 @@ def prepush():
     # Git hooks 继承调用者的仓库定位变量；不能把它们传给会创建独立仓库的检查。
     local_variables = git("rev-parse", "--local-env-vars").splitlines()
     environment = {key: value for key, value in os.environ.items() if key not in local_variables}
-    run(["make", "ci-preflight", f"CI_BASE={revision}"], env=environment)
+    run(["make", "check-changed", f"CI_BASE={revision}", "ARGS="], env=environment)
     require_clean_head(head)
 
 

@@ -249,9 +249,19 @@
     "script": "test:composer",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
-    "areas": ["composer"],
+    "areas": ["composer", "design"],
     "requires": ["electron", "core-binary", "git", "gui-build"],
-    "ciSmoke": "composer"
+    "ciSmoke": "composer",
+    "notes": "Composer input, Skills, plugins, IME and executable Side interaction."
+  },
+  {
+    "script": "test:composer-files",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["composer", "design"],
+    "requires": ["electron", "core-binary", "git", "gui-build"],
+    "ciSmoke": "composer-files",
+    "notes": "R-COMPOSERSURFACE-007: real workspace @ file search, query priority, canonical references, hover paths, stale responses, bounded results, retry and Git worktree routing."
   },
   {
     "script": "test:send-admission",
@@ -899,5 +909,19 @@
     "platforms": ["darwin", "linux"],
     "areas": ["build", "ci"],
     "requires": ["gui-build", "node-24.22.1"]
+  },
+  {
+    "script": "test:mobile-browser",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["remote", "mobile"],
+    "requires": [
+      "node-24.22.1",
+      "relay-node-24.2.0",
+      "openssl",
+      "playwright-chromium",
+      "playwright-webkit"
+    ],
+    "notes": "Production mobile UI, encrypted pairing and reload in Chromium/WebKit; browser memory and fixture Host only."
   }
 ]

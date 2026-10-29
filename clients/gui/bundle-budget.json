@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "description": "Production build byte budgets with 5% headroom. HTML entries include static imports and modulepreloads. Review every budget change.",
-  "totalJsBytes": 19686287,
+  "totalJsBytes": 19690923,
   "entries": {
-    "index.html": 4031643,
+    "index.html": 4033709,
     "remote.html": 3420541
   },
   "lazyChunks": {

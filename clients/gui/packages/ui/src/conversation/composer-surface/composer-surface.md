@@ -32,6 +32,10 @@ editor、toolbar为必要插槽；context承载附件/引用/可读阻塞理由�
 
 `R-COMPOSERSURFACE-004` 占位说明输入目标；阻塞发送时呈现准确原因并保留草稿。模型、权限、附件名与引用来源来自真实目录，不能从灰按钮推断后台受理。
 
+## 工作区文件引用
+
+`R-COMPOSERSURFACE-007` 裸 `@` 或清空关键词时隐藏文件候选及搜索状态。关键词在 Composer 输入，菜单不另设搜索框；搜索结果中的文件组排在最后。文件引用复用 Skills 行内标识的图标、文件名与展示所有者，覆盖编辑器和已发送正文，不采用上传附件卡片或新展示组件、样式。既有 Tooltip 显示实际项目或 Worktree 根目录与规范相对引用组成的完整绝对路径；发送、排队、持久化只保存相对引用。上传文件沿用附件链路。生产接线为 `PromptMentionNode`、`promptMentionDecoration`、`UserMessageBody`、`message-response-renderer`；`Messages` 提供根目录。运行 `AREAL_COMPOSER_FILES_REGRESSION=1 pnpm --dir clients/gui test:composer` 复验标识、悬停路径、Worktree 归属和上传附件。**检查：**`clients/gui/scripts/composer-files-acceptance.mjs`
+
 ## 可访问性
 
 `R-COMPOSERSURFACE-005` 宿主标注编辑器与图标按钮；输入、工具与发送遵循DOM顺序。submitDisabledReason在生产ChatPromptEditor中可见且关联发送按钮，不能只靠hover；中文组合输入、快捷键及提交仍由Lexical拥有。

@@ -51,6 +51,7 @@ WORKFLOW_GROUPS = {
         "gui-build",
         "core-contracts",
         "smoke",
+        "mobile",
     },
     "verify": {"early", "verify", "native", "container", "audit"},
 }
@@ -63,6 +64,7 @@ JOB_GROUPS = {
         "gui": {"gui-build"},
         "core-contracts": {"core-contracts"},
         "smoke": {"smoke"},
+        "mobile": {"mobile"},
     },
     "verify": {
         "plan": None,
@@ -88,6 +90,9 @@ REQUIREMENT_HINTS = {
     "node-24.2.0": "use the pinned Relay runtime or set AREAL_RELAY_NODE_BIN to Node 24.2.0",
     "electron": "install the locked GUI Electron dependency",
     "browser": "install Google Chrome for the browser acceptance checks",
+    "relay-node-24.2.0": "set AREAL_RELAY_NODE_BIN to the independent Relay Node 24.2.0 runtime",
+    "playwright-chromium": "install the locked playwright-core Chromium browser",
+    "playwright-webkit": "install the locked playwright-core WebKit browser",
 }
 
 
@@ -248,14 +253,14 @@ def build_plan(paths, source, manifest):
             item["expectedTests"] = expected
         items.append(item)
 
-    def gui_builds(prefix, group, platforms=("darwin", "linux")):
+    def gui_builds(prefix, group, platforms=("darwin", "linux"), phase="full"):
         desktop, ui, renderer = (prefix + suffix for suffix in ("desktop", "ui", "renderer"))
         add(
             desktop,
             ["pnpm", "--dir", "clients/gui", "build:desktop"],
             group,
             requires=("node-24.22.1",),
-            phase="commit",
+            phase=phase,
             platforms=platforms,
         )
         add(
@@ -263,7 +268,7 @@ def build_plan(paths, source, manifest):
             ["pnpm", "--dir", "clients/gui", "--filter", "@areal/ui", "build"],
             group,
             requires=("node-24.22.1",),
-            phase="commit",
+            phase=phase,
             platforms=platforms,
         )
         add(
@@ -272,7 +277,7 @@ def build_plan(paths, source, manifest):
             group,
             (desktop, ui),
             ("node-24.22.1",),
-            phase="commit",
+            phase=phase,
             platforms=platforms,
         )
         add(
@@ -280,7 +285,7 @@ def build_plan(paths, source, manifest):
             ["node", "clients/gui/scripts/bundle-budget.mjs", "--check"],
             group,
             (renderer,),
-            phase="commit",
+            phase=phase,
             platforms=platforms,
         )
         return desktop, ui, renderer
@@ -329,7 +334,7 @@ def build_plan(paths, source, manifest):
             "gui-portable",
             phase="commit",
         )
-        desktop, ui, renderer = gui_builds("portable:", "gui-portable")
+        desktop, ui, renderer = gui_builds("portable:", "gui-portable", phase="commit")
         for name, command in (
             ("gui-check", "check"),
             ("gui-design-contracts", "verify:design"),
@@ -365,6 +370,30 @@ def build_plan(paths, source, manifest):
             expected=portable,
         )
         add("gui-audit", ["pnpm", "--dir", "clients/gui", "audit"], "gui-portable")
+        mobile = next(entry for entry in manifest if entry["script"] == "test:mobile-browser")
+        add(
+            "mobile-types",
+            ["pnpm", "--dir", "clients/gui", "mobile:typecheck"],
+            "mobile",
+            requires=("node-24.22.1",),
+            phase="commit",
+            platforms=tuple(mobile["platforms"]),
+        )
+        add(
+            "mobile-relay-install",
+            ["npm", "ci", "--ignore-scripts", "--prefix", "services/remote-relay"],
+            "mobile",
+            requires=("node-24.2.0",),
+            platforms=tuple(mobile["platforms"]),
+        )
+        add(
+            "mobile-browser",
+            ["pnpm", "--dir", "clients/gui", mobile["script"]],
+            "mobile",
+            ("mobile-relay-install",),
+            tuple(mobile["requires"]),
+            platforms=tuple(mobile["platforms"]),
+        )
     if affected["relay"]:
         _, _, renderer = gui_builds("relay:", "relay-build")
         add(
@@ -579,7 +608,6 @@ def build_plan(paths, source, manifest):
             ["node", "clients/gui/scripts/build-computer-helper.mjs"],
             "gui-build",
             requires=("node-24.22.1", "macos-tools", "xcode"),
-            phase="commit",
             platforms=("darwin",),
         )
         for entry in manifest:

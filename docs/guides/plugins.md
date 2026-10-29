@@ -30,7 +30,9 @@ Claude 市场允许由条目定义没有独立 manifest 的插件。例如 `sour
 
 自有可移植包可以声明 `extensions.org.areal.hostRequirements` 为 `{"version":1,"tools":["browser_v1"]}`。这些要求只收窄可用性，不注册、开启或授权工具。桌面试用前检查当前部署；Core 在实际会话与 Turn 准入时检查可用工具及 Profile 限制。电脑控制关闭或使用不同 provider 时，要求 `computer_v1` 的 Skill 不会自动切换输入通道。工具存在不代表 OS 权限已授予，审批、系统权限、Stop 与 UNKNOWN 规则继续由原所有者执行。没有结构化声明的任意 Skill 文本不被当作可自动推断的完整依赖图，其行为兼容保持未验证。
 
-仓库提供 [本地市场示例](../../examples/plugin-marketplace/README.zh-CN.md)，包含调用现有工具的 AReaL 浏览器和电脑适配 Skill。它们是 AReaL 适配包，不宣称原始 ZCode JavaScript SDK 可以原样执行。创建技能继续使用既有 **Create Skill** 和固定官方 Creator，市场发现、创建产物和发布分别处理。
+仓库提供 [本地市场示例](../../examples/plugin-marketplace/README.zh-CN.md)，包含调用现有工具的 AReaL 浏览器和电脑适配 Skill，以及固定版本的官方 Heptabase 来源。浏览器和电脑包是 AReaL 适配包，不宣称原始 ZCode JavaScript SDK 可以原样执行。创建技能继续使用既有 **Create Skill** 和固定官方 Creator，市场发现、创建产物和发布分别处理。
+
+要安装官方 Heptabase，在示例市场选择 **Heptabase**，或将 `https://github.com/heptameta/heptabase-agent-plugins.git` 作为 Git 市场添加，ref 使用 `7cae4b5988bb4a2875e7ba9ea3f9eec12c644826`。解析来源、预览并核对摘要后安装到当前项目。示例目录固定 `plugins/heptabase` 原包的 `0.2.0` 版本，保留便携 manifest、MCP、Skills、许可证与 Codex overlay 的 `.app.json` 注册。安装验证覆盖原包导入与安装。当前 Heptabase App ID 缺少 AReaL Connector 映射，包内 MCP 也未显式声明 OAuth，因此账号连接与真实工具调用尚未打通。
 
 ## 插件、Skills 与 MCP
 
@@ -39,6 +41,8 @@ Claude 市场允许由条目定义没有独立 manifest 的插件。例如 `sour
 “设置 → 插件”管理已安装的插件、MCP、Skills 和市场来源。Skills 和 MCP 同时展示独立资源与已安装包内的组件，并标明来源。同名资源按所有者区分，不复制配置或合并身份。
 
 插件沿用 OpenAI 的包结构。便携包使用根目录 `plugin.json`、`skills/` 和 `mcp.json`，OpenAI 专用设置位于 `extensions.com.openai`；兼容 manifest 仍按既有规则解析。安装、启用、认证与连接状态由 AReaL 的原有所有者管理，不写回包声明。
+
+新增用户范围的独立 MCP 时，其他项目的连接未就绪不会阻止保存。配置立即持久化并同步到就绪项目，未就绪项目在后续显式启动或连接 MCP 时同步。存在未确认操作时仍需先核对。编辑已有用户 MCP 前，已启动项目必须恢复连接，并断开该 MCP 的活动连接。
 
 独立技能支持内容页和范围启停；“创建 Skill”先核对所选项目当前部署的任务配置，再进入该项目的普通聊天草稿并加载产品内固定版本的官方 Skill Creator。旧任务保留原配置；产品默认部署下保存的基础配置会使用当前资源版本，自定义受限配置不会获得额外权限。用户发送需求后，Agent 按 Creator 流程在该项目的 `.agents/skills/<skill-name>/` 中创建并校验技能。该资源保留上游版本、许可证与内容摘要，不读取其他 Agent 应用的本机配置。独立 MCP 保留配置编辑与连接入口。范围选择只筛选独立资源。包内组件显示当前项目的选择；详情页“管理”打开同一插件的设置，保留整包范围、摘要信任、认证和提交核对流程。每个 Skill 与 MCP 服务都有当前项目开关。关闭选择跨更新保留，卸载清除；包声明和会话 Profile 继续限制实际准入。包内组件不通过独立资源接口修改，目录展示不扩大当前聊天的有效技能或工具范围。
 

@@ -64,12 +64,14 @@ export function decoratePromptMention(
   data?: MentionItemData,
 ) {
   pendingImages.delete(dom);
+  dom.removeAttribute("data-file-reference-path");
   if (category === "plugins") {
     const fallback = () => setMask(dom, PLUGIN_MENTION_ICON_NODE);
     fallback();
     return;
   }
   if (category === "files") {
+    dom.setAttribute("data-file-reference-path", data?.path ?? data?.relativePath ?? value);
     const descriptor = resolveFileDisplayDescriptor(data?.path ?? data?.relativePath ?? value);
     const url = data?.kind === "directory" ? FOLDER_FILE_ICON_SRC : descriptor.fileIconSrc;
     setImage(dom, url, () =>

@@ -555,7 +555,7 @@ class ScopedResources {
         const old = next.mcp.find((m) => m.id === request.id);
         if (!old && next.mcp.length >= 16) throw new Error("最多配置 16 个用户 MCP");
         for (const p of this.backend.projects.values()) {
-          if (p.pending.length || (p.service && !p.client?.ready))
+          if (p.pending.length || (old && p.service && !p.client?.ready))
             throw new Error("请先恢复所有项目连接并核对未确认操作");
           if (old && p.client?.ready) {
             const m = (

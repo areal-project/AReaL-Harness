@@ -2898,7 +2898,7 @@
       "title": "不作为唯一按钮名称，不在提示中放必须完成的业务动作",
       "owner": "clients/gui/packages/ui/src/components/tooltip/tooltip.md#行为",
       "strength": "must",
-      "textSha256": "e59b6ff24a943f852ffbc0f2a3fc86633806ae429b0a85dd7c0fee1fee4e2e70"
+      "textSha256": "401293e49814e2878d39e928166d85b6a028af2e2085c8c170d38295b8cb6b2d"
     },
     {
       "id": "R-ACTIVITYGROUP-001",
@@ -6595,6 +6595,14 @@
       "strength": "must",
       "textSha256": "394c716975c0b2fa5296b3eea3021b906857c711494cdaf3888a3faa72f434e6",
       "check": "clients/gui/oxlint-plugin-areal/rules/require-suppression-reason.ts"
+    },
+    {
+      "id": "R-COMPOSERSURFACE-007",
+      "title": "裸 @ 或清空关键词时隐藏文件候选及搜索状态",
+      "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#工作区文件引用",
+      "strength": "must",
+      "textSha256": "82a90147c08c174be6ca5bccd97e524cd969ff6e8da61092930e9e46df13acc5",
+      "check": "clients/gui/scripts/composer-files-acceptance.mjs"
     }
   ]
 }

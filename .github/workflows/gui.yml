@@ -47,6 +47,7 @@ jobs:
       gui_portable: ${{ steps.scope.outputs.gui_portable }}
       relay: ${{ steps.scope.outputs.relay }}
       gui_build: ${{ steps.scope.outputs.gui_build }}
+      mobile: ${{ steps.scope.outputs.mobile }}
       baseline_matrix: ${{ steps.tests.outputs.baseline }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -128,6 +129,52 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+
+  mobile:
+    name: Linux mobile browser contracts
+    needs: scope
+    if: needs.scope.outputs.mobile == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24.2.0'
+      - name: Retain Relay runtime
+        run: |
+          echo "AREAL_RELAY_NODE=$(command -v node)" >> "$GITHUB_ENV"
+          echo "AREAL_RELAY_NODE_BIN=$(command -v node)" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24.22.1'
+      - name: Install locked dependencies and browsers
+        run: |
+          npm install --global pnpm@11.7.0
+          pnpm --dir clients/gui install --frozen-lockfile
+          pnpm --dir clients/gui/app exec playwright-core install --with-deps chromium webkit
+      - name: Verify the shared mobile plan
+        run: python3 scripts/ci-preflight.py --groups mobile --output target/ci/checks/mobile
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: mobile-browser-evidence
+          path: .scratch/ios-development/browser/
+          include-hidden-files: true
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: ci-checks-${{ github.run_id }}-${{ github.run_attempt }}-mobile
+          path: target/ci/checks/mobile/
+          if-no-files-found: error
+          retention-days: 7
 
   gui-portable:
     name: Linux GUI portable contracts
@@ -601,7 +648,7 @@ jobs:
 
   gate:
     name: GUI gate
-    needs: [scope, gui-health, gui-portable, relay-contracts, gui, core-contracts, smoke]
+    needs: [scope, gui-health, gui-portable, relay-contracts, gui, core-contracts, smoke, mobile]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

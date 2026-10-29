@@ -6,6 +6,8 @@
 
 `R-MESSAGES-002` [Messages.tsx](Messages.tsx) 由 [App.tsx](App.tsx) 挂载，在主阅读区或嵌入上下文中展示传入的任务投影。已受理占位、逐步内容与终态内容保留各自身份。阅读历史时保留可见内容锚点；显式返回最新后恢复跟随。阅读状态按 project/thread 隔离。失败、结果未知与完成分别表达。投影不重放未知是否受理的提交。传入回调继续拥有业务动作；只读消费者不会因此获得编辑能力。移动端完整阅读页可传入 `showTurnNavigation={false}` 隐藏轮次导航栏，同时保留消息滚动、阅读锚点与自动历史分页。该参数默认开启。`embedded` 仍用于外层拥有滚动的嵌入内容，不能代替完整移动阅读页。触摸指针与滚动条共用起点记录，由后续真实滚动方向决定向上读取意图。
 
+工作区文件引用的行内展示与悬停路径合同见 [R-COMPOSERSURFACE-007](../../packages/ui/src/conversation/composer-surface/composer-surface.md#工作区文件引用)。
+
 ## 同窗口 Renderer 恢复阅读
 
 `R-MESSAGES-003` 此有限合同已通过隔离真实 Electron/Core 验证，见 [E-RECOVERY](../../design-system/base-evidence.md#e-recovery)。同一主窗口的 Renderer 重载或崩溃后显式重载，保留当前任务中仍已加载的可见正文段落与段落偏移。恢复期间的新输出不把正在阅读历史的用户带到末尾。显式返回最新后恢复跟随，后续重载也保留该选择。App 与 Composer 继续恢复所选任务和未发送草稿，Core 权威快照继续恢复历史与活动执行，不重放原提交。

@@ -59,7 +59,11 @@ pnpm --dir clients/gui test:unit renderer/src/readingViews.test.ts
 
 `scripts/ci-scope.py` 是本地与 CI 共用的检查计划所有者；`check-changed` 解析一次 merge-base，合并暂存、未暂存与未跟踪路径，重命名两侧均纳入，部分暂存相互抵消也保留选检。计划登记命令、依赖、环境能力、平台和 manifest 子测试全集，并绑定 base/source/head 与输入摘要。共享 Rust、schema、锁文件、构建与 CI 变化扩大范围，未知代码保守扩大；比较基准不可用时不得放行。
 
-快检默认只运行计划的 `commit` 阶段，`ARGS=--phase=full` 执行完整计划。命令读取 `working-tree`，暂存内容影响选检和漂移检测；快检不证明部分暂存内容已执行验收。报告将未选的完整验收列为 `pendingRequired`，其他平台列为 `remoteRequired`。`passed` 只表示本轮所选项通过，`blocked`、`invalidated`、`failed` 均不得作为通过。
+快检默认运行计划的 `commit` 阶段，加上历史报告中尚未通过的项目及其依赖，`ARGS=--phase=full` 执行完整计划。命令读取 `working-tree`，暂存内容影响选检和漂移检测；快检不证明部分暂存内容已执行验收。报告将未选的完整验收列为 `pendingRequired`，其他平台列为 `remoteRequired`。`passed` 只表示本轮所选项通过，`blocked`、`invalidated`、`failed` 均不得作为通过。
+
+失败专项自动读取 `target/ci/{preflight,changed,failures}/*/report.json`。只考虑当前 HEAD 祖先链中、比较基线之后（含当前 HEAD）的报告，按检查 ID 和平台取最近提交的结果，同一提交内按完成时间排序；尚未通过且仍在当前计划中的项目与其依赖进入本轮重验。其他分支和已合入基线的记录不参与，祖先提交晚结束的通过结果不能清除后续提交的失败。报告只提供选检线索，命令始终取自当前计划，旧通过结果不作本轮证据。远端报告需先下载到 `target/ci/failures/<attempt>/report.json`；也可使用 `ARGS='--failure-report /path/to/report.json'` 显式导入，跨分支报告会报错。其他平台的专项保留为远端待验收，本机缺能力的专项明确阻塞。
+
+进度直接读取结构化报告：`python3 scripts/ci-preflight.py --report target/ci/changed/<run-id>/report.json`。相邻 `plan.json` 必须与报告身份匹配。执行器在开始、执行中和每项完成时更新 `progress`：分别列出 `passed`、`failed`、`blocked`、`pending`、`running`、`invalidated`、`cancelled` 的数量和检查 ID。未选完整项和远端项都属于待执行，另列 `pendingFull`、`remoteRequired`；失败后独立检查继续通过也不清除失败。顶层 `status=passed` 仅表示所选本机项通过，`progress.status=pending` 表示完整计划仍有待验收项。读取进度命令的退出码只表示报告可读，不能作为验收通过的证据。
 
 `make ci-preflight` 将工具版本、锁文件和输入摘要写入 `target/ci/preflight/<run-id>/metadata.json`，同目录 `plan.json` 冻结计划，`report.json` 保存每项命令、开始/结束时间、耗时、退出码与状态。格式、manifest/门禁契约、环境探针和生产包预算尽早执行；独立检查继续收集失败，只有真实依赖失败的消费者记录 `blocked`。每轮使用新目录保留失败，不缓存通过结果。
 
@@ -349,13 +353,17 @@ PR #111 在初始 G0 快照后整合历史恢复与定时任务所有权。以�
 | `renderer/src/Messages.tsx` | 1561 → 1718 | 加载早期历史时保持阅读锚点 |
 | `renderer/src/TaskCenter.tsx` | 2356 → 2380 | 观察任务目录修订与共享 owner 激活 |
 
-推送 GUI/Core 集成分支前，获取实际目标引用并准备锁定依赖，运行 `make ci-preflight CI_BASE=upstream-readonly/main`。共享计划包含适用的 Rust/SDK、schema、静态检查、生产构建与预算、Portable/Core 契约、原生与 Electron smoke。GUI 普通检查使用 Node 24.22.1；Relay 合同使用 Node 24.2.0，本机可通过 `AREAL_RELAY_NODE_BIN` 指定其可执行文件。本机执行当前平台全部适用项；Linux 容器和其他平台列为远端必需项，不计作本地通过。
+推送 GUI/Core 集成分支前，获取实际目标引用并准备锁定依赖，运行 `make check-changed CI_BASE=upstream-readonly/main`；按需使用 `make ci-preflight CI_BASE=upstream-readonly/main` 完整本机验收。共享计划包含适用的 Rust/SDK、schema、静态检查、生产构建与预算、Portable/Core 契约、原生与 Electron smoke。GUI 普通检查使用 Node 24.22.1；Relay 合同使用 Node 24.2.0，本机可通过 `AREAL_RELAY_NODE_BIN` 指定其可执行文件。完整本机验收执行当前平台全部适用项；快检仍列出未执行的完整验收项，Linux 容器和其他平台列为远端必需项，不计作本地通过。
+
+快检只运行一套 Portable 生产构建和包体预算，Relay 与 macOS 的独立构建及原生 helper 留给完整验收。`mobile-types` 在快检执行；`mobile-browser` 与 Relay 安装在完整 `mobile` 组执行。GUI 主进程使用 Node 24.22.1，Relay 子进程通过 `AREAL_RELAY_NODE_BIN` 指定 Node 24.2.0，执行器将它传给夹具的 `AREAL_RELAY_NODE`。移动浏览器需要锁定 Playwright 的 Chromium 和 WebKit，Chrome 能力不代替这两项。类型失败不阻止独立浏览器场景收集结果。
+
+`test:composer-files` 是文件引用的独立必需 smoke，保留普通 `test:composer` 的输入与 IME 检查。移动浏览器与文件专项都由同轮 `GUI gate` 校验，缺失结果、错误平台或旧 attempt 均失败。推送钩子固定执行参数，继承的 `ARGS=--plan` 不得跳过快检。
 
 本机预检使用项目 Python 环境：`export PATH="$PWD/.venv/bin:$PATH"`。能力探针要求 Python 至少 3.11，且具备 `tomllib` 和 tar 解包过滤；缺失时提前 blocked。Cargo 自身管理 verify/native 的可变构建目录与重建，产物哈希冻结限于发布给其他 job 的 GUI bundle；该 bundle 的消费者仍逐文件复核哈希。
 
 本地与 CI 通过 `scripts/ci-preflight.py --groups <组名>` 执行同一计划，`--plan` 只展示。`make ci-gui-static CI_BASE=<ref>` 运行 Portable 的提交阶段，`make ci-gui-portable CI_BASE=<ref>` 运行完整 Portable 组，`make ci-core-contracts CI_BASE=<ref>` 连同产物依赖运行 Core 契约。`make ci-gui-health` 保留轻量健康入口。显式 `AREAL_CORE_BIN` 必须与刚构建的 Core 哈希一致；macOS 原生执行按固定产物路径流程准备。CI 只有同一 run/attempt 的产物依赖报告可跨 job 使用，消费者重新核对产物哈希。最终 gate 独立重算计划，严格核对结果全集、子测试全集和源码/计划/run/attempt 身份，缺项或意外 skip 拒绝放行。
 
-运行 `make hooks-install CI_BASE=upstream-readonly/main` 激活本地 hooks。安装器保存实际远程目标，不覆盖其他 hooks。提交钩子在暂存快照验证 manifest、生成 `target/ci/staged-plan.json`，再检查格式和 workflow；计划展示不等于执行验收。推送钩子要求推送 SHA 等于当前 HEAD、受控文件及非忽略未跟踪输入干净，抓取目标后运行完整预检。并发工作使用独立干净 worktree。`make workflow-lint` 使用校验 SHA-256 的 actionlint 1.7.12。远端独立执行适用检查；真实供应商、设备和签名安装包仍需专项验收。
+运行 `make hooks-install CI_BASE=upstream-readonly/main` 激活本地 hooks。安装器保存实际远程目标，不覆盖其他 hooks。提交钩子在暂存快照验证 manifest、生成 `target/ci/staged-plan.json`，再检查格式和 workflow；计划展示不等于执行验收。推送钩子要求推送 SHA 等于当前 HEAD、受控文件及非忽略未跟踪输入干净，抓取目标后运行受影响快检加失败专项和依赖。并发工作使用独立干净 worktree。`make workflow-lint` 使用校验 SHA-256 的 actionlint 1.7.12。远端独立执行适用检查；真实供应商、设备和签名安装包仍需专项验收。
 
 `pnpm --dir clients/gui test:macos-dmg` 在 macOS 上独立通过真实 `codesign` 和 `hdiutil` 验证签名 framework 暂存。它需要允许磁盘映像设备访问的环境；受限 Agent 沙箱可能返回 `Device not configured`。应记录环境失败，并在允许的宿主环境重跑相同测试，不跳过断言，也不据此宣称安装包验收通过。macOS GUI job 显式执行该检查；可移植 `verify` 不创建磁盘映像。
 
@@ -371,7 +379,7 @@ GUI CI 只构建一次 Core 和 Renderer。构建 job 完成后，10 项原生 C
 
 模型保留检查比较 Core 配置版本和选择的模型、参数、Profile、选项与 Skills，不再将包含派生元数据的整个有效快照序列化比较。smoke 为 Electron 退出设置期限；退出失败时只终止该 fixture 启动返回的子进程，保留测试失败，并继续按代际核对 Core 清理，避免 Node 一直等待到 job 超时。
 
-`make test` 使用 Cargo `--no-fail-fast`，先收集 workspace 各测试目标的失败，再返回失败退出码；断言和 job 超时继续生效。大范围 Core/协议/存储集成在推送前除 `ci-preflight` 外，还需完成适用的 Rust 行为测试。可移植 CI 排除 `areal-runtime-exec-native`，专用 native/container 通道仍须通过。
+`make test` 使用 Cargo `--no-fail-fast`，先收集 workspace 各测试目标的失败，再返回失败退出码；断言和 job 超时继续生效。大范围 Core/协议/存储集成仍需完成适用的 Rust 行为测试，由远端完整验收执行，也可使用 `ci-preflight` 提前在本机验证。可移植 CI 排除 `areal-runtime-exec-native`，专用 native/container 通道仍须通过。
 
 `make script-test` 不要求产品二进制；`make launcher-test` 先构建整个 workspace，再执行真实 Rust launcher 回归。直接运行 launcher suite 时缺二进制是失败，不是 skip。`make verify` 包含两个入口。GUI 低成本隐私和 trajectory polling 回归通过 `pnpm --dir clients/gui test:regressions` 执行；`make gui-install` 同时准备 Electron 和 FFmpeg。
 

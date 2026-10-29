@@ -1,6 +1,6 @@
 import { UiMessageError } from "@/i18n/IntlProvider.js";
-import type { Action } from "@/services.js";
-import type { MutableRefObject } from "react";
+import type { Action, Data } from "@/services.js";
+import { useMemo, type MutableRefObject } from "react";
 // LexicalChatInput 壳恢复后回归原始句柄类型（过渡的 ComposerInputHandle 最小面退役）。
 import type { LexicalChatInputHandle } from "@/LexicalChatInput.js";
 import {
@@ -37,24 +37,89 @@ export function appendWorkspaceFileMentionToComposer(params: {
   return nextText;
 }
 
-export async function validateWorkspaceFileReference(
-  action: Action, projectId: string, workspacePath: string,
+async function validateWorkspaceFileReference(
+  action: Action,
+  projectId: string,
+  workspacePath: string,
   payload: WorkspaceFileDragPayload,
 ): Promise<WorkspaceFileDragPayload> {
-  if (!payload || payload.workspacePath !== workspacePath || payload.workspaceIdentity
-    || typeof payload.relativePath !== "string" || !["file", "directory"].includes(payload.type)) {
+  if (
+    !payload ||
+    payload.workspacePath !== workspacePath ||
+    payload.workspaceIdentity ||
+    typeof payload.relativePath !== "string" ||
+    !["file", "directory"].includes(payload.type)
+  ) {
     throw new UiMessageError({ id: "chat.composer.workspaceReferenceCurrentOnly" });
   }
   const parts = payload.relativePath.split("/");
-  if (parts.some(part => !part || part === "." || part === ".." || part.includes("\\") || /[\u0000-\u001f]/.test(part))
-    || /^[A-Za-z]:/.test(payload.relativePath)
-    || payload.path !== `${workspacePath}/${payload.relativePath}` || payload.name !== parts.at(-1)) {
+  if (
+    parts.some(
+      (part) =>
+        !part ||
+        part === "." ||
+        part === ".." ||
+        part.includes("\\") ||
+        [...part].some((character) => character.charCodeAt(0) < 32),
+    ) ||
+    /^[A-Za-z]:/.test(payload.relativePath) ||
+    payload.path !== `${workspacePath}/${payload.relativePath}` ||
+    payload.name !== parts.at(-1)
+  ) {
     throw new UiMessageError({ id: "chat.composer.workspaceReferencePathInvalid" });
   }
-  const listing = await action("workspace", { projectId, operation: "list", path: parts.slice(0, -1).join("/"), showAll: true });
-  const entry = listing.entries?.find((entry: { name: string; dir: boolean }) => entry.name === payload.name);
+  const listing = await action("workspace", {
+    projectId,
+    operation: "list",
+    path: parts.slice(0, -1).join("/"),
+    showAll: true,
+  });
+  const entry = listing.entries?.find(
+    (entry: { name: string; dir: boolean }) => entry.name === payload.name,
+  );
   if (!entry || entry.dir !== (payload.type === "directory")) {
     throw new UiMessageError({ id: "chat.composer.workspaceReferenceChanged" });
   }
   return payload;
+}
+
+export interface ComposerWorkspaceFiles {
+  owner: string;
+  root: string;
+  search: (query: string) => Promise<{
+    entries: readonly { path: string; dir: boolean }[];
+    truncated: boolean;
+  }>;
+}
+
+export function useComposerWorkspaceFiles(action: Action, project: Data, scope: string) {
+  const { id: projectId, root, core } = project;
+  const connectionGeneration = core?.connectionGeneration;
+  return useMemo(
+    () =>
+      root
+        ? {
+            owner: JSON.stringify([projectId, root, connectionGeneration, scope]),
+            root,
+            validate: (payload: WorkspaceFileDragPayload) =>
+              validateWorkspaceFileReference(action, projectId, root, payload),
+            search: async (query: string) => {
+              if (query.length > 256)
+                throw new UiMessageError({ id: "chat.composer.fileQueryTooLong" });
+              if (query) return action("workspace", { projectId, operation: "search", query });
+              const result = await action("workspace", {
+                projectId,
+                operation: "list",
+                path: "",
+                showAll: true,
+              });
+              return {
+                entries: result.entries.map((entry) => ({ path: entry.name, dir: entry.dir })),
+                truncated: result.truncated,
+              };
+            },
+          }
+        : undefined,
+    [action, projectId, root, connectionGeneration, scope],
+  );
 }

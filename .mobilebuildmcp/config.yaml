@@ -1,0 +1,7 @@
+schemaVersion: 1
+enabledWorkflows: [simulator, ui-automation, debugging]
+sentryDisabled: true
+sessionDefaults:
+  projectPath: ./clients/mobile/ios/App/App.xcodeproj
+  scheme: App
+  configuration: Debug

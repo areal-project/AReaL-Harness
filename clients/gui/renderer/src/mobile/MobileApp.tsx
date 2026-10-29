@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button, Input } from "@areal/ui";
+import { Monitor, Settings } from "lucide-react";
 import { FeedbackNotice } from "@areal/ui/experimental";
 import { SettingsGroupCard, SettingsRow } from "@areal/ui/compositions";
 import { ApplicationIntlProvider, useI18n, type MessageId } from "../i18n/IntlProvider.js";
@@ -32,17 +33,26 @@ function MobileApp() {
       .deviceName()
       .then(({ name }) => setName(name))
       .catch(() => {});
-    const lifecycle = observeLifecycle((active) => void client.setActive(active));
+    let disposed = false;
+    const lifecycle = observeLifecycle((active) => {
+      if (!disposed) void client.setActive(active);
+    });
+    const close = () => {
+      void client.setActive(false);
+    };
+    window.addEventListener("pagehide", close);
     const theme = matchMedia("(prefers-color-scheme: dark)");
     const update = () => document.documentElement.classList.toggle("dark", theme.matches);
     update();
     theme.addEventListener("change", update);
     return () => {
+      disposed = true;
+      window.removeEventListener("pagehide", close);
       void lifecycle.then((remove) => remove());
       theme.removeEventListener("change", update);
       commands.dispose();
       workspace.dispose();
-      client.disconnect();
+      void client.setActive(false);
     };
   }, []);
   const pair = (value: string) => {
@@ -86,39 +96,61 @@ function MobileApp() {
               : "mobile.blocked";
   return (
     <main
-      className="mobile-page flex flex-col gap-section [padding:calc(env(safe-area-inset-top)+var(--spacing-panel))_var(--spacing-panel)_calc(env(safe-area-inset-bottom)+var(--spacing-panel))] min-h-dvh box-border bg-background text-foreground font-sans text-fixed-body"
+      className="mobile-page data-[state=connected]:h-dvh data-[state=connected]:min-h-0 data-[state=connected]:overflow-hidden data-[state=connected]:[&>.mobile-stack]:flex-1 data-[state=connected]:[&>.mobile-stack]:min-h-0 [&_h1]:[line-height:1.3] [&_h1]:font-semibold [&_h2]:[line-height:1.3] [&_h2]:font-semibold [&_h3]:[line-height:1.3] [&_h3]:font-semibold [&_[data-action=new-session]]:text-fixed-control [&_[data-action=new-session]]:font-semibold [&_[data-action=new-session]]:bg-primary [&_[data-action=new-session]]:text-primary-foreground flex flex-col gap-section [padding:calc(env(safe-area-inset-top)+var(--spacing-panel))_var(--spacing-panel)_calc(env(safe-area-inset-bottom)+var(--spacing-panel))] min-h-dvh box-border bg-background text-foreground font-sans text-fixed-body"
       data-state={state.kind}
+      data-workspace-page={state.kind === "connected" && !settings ? view.page.kind : undefined}
       data-remembered={state.kind === "connected" ? state.remembered : undefined}
     >
       {(state.kind !== "connected" || settings || view.page.kind === "projects") && (
-        <header className="mobile-header flex items-center justify-between gap-inline">
-          <h1
+        <header className="mobile-header shrink-0 min-h-[var(--size-touch-target)] flex items-center justify-between gap-inline">
+          {state.kind === "connected" && !settings && (
+            <Monitor
+              className="mobile-host-icon size-[var(--spacing-section)]"
+              aria-hidden="true"
+            />
+          )}
+          <div
             className={
               state.kind === "connected" && !settings
-                ? "text-fixed-emphasis"
-                : "text-fixed-page-title"
+                ? "mobile-host-copy flex-1 min-w-0 [&_h1]:block [&_h1]:min-w-0 [&_h1]:max-w-full [&_h1]:truncate [&_h1]:text-fixed-body"
+                : "mobile-host-copy flex-1 min-w-0 [&_h1]:block [&_h1]:min-w-0 [&_h1]:max-w-full [&_h1]:truncate"
             }
           >
-            {t(
-              settings
-                ? "mobile.settings"
-                : state.kind === "unpaired"
-                  ? "mobile.connect"
-                  : state.kind === "pairing"
-                    ? "mobile.waiting"
-                    : state.kind === "connected"
-                      ? "mobile.computer"
-                      : "mobile.projects",
+            <h1
+              className={
+                state.kind === "connected" && !settings
+                  ? "text-fixed-emphasis"
+                  : "text-fixed-page-title"
+              }
+            >
+              {t(
+                settings
+                  ? "mobile.settings"
+                  : state.kind === "unpaired"
+                    ? "mobile.connect"
+                    : state.kind === "pairing"
+                      ? "mobile.waiting"
+                      : state.kind === "connected"
+                        ? "mobile.computer"
+                        : "mobile.projects",
+              )}
+            </h1>
+            {state.kind === "connected" && !settings && (
+              <p className="mobile-host-status m-0 flex items-center gap-[calc(var(--spacing-inline)/2)] text-foreground-subtle text-fixed-caption">
+                <span className="bg-success mobile-status-dot inline-block size-[var(--size-status-dot)] [border-radius:var(--radius-pill)]" />
+                {t(statusKey)}
+              </p>
             )}
-          </h1>
+          </div>
           {state.kind !== "unpaired" && state.kind !== "pairing" && (
             <Button
-              className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
+              className="mobile-touch size-[var(--size-touch-target)] min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] p-inline"
               variant="ghost"
               data-action="settings"
+              aria-label={t(settings ? "mobile.back" : "mobile.settings")}
               onClick={() => setSettings(!settings)}
             >
-              {t(settings ? "mobile.back" : "mobile.settings")}
+              {settings ? t("mobile.back") : <Settings aria-hidden="true" />}
             </Button>
           )}
         </header>
@@ -251,14 +283,8 @@ function MobileApp() {
         </section>
       ) : (
         <section className="mobile-stack flex flex-col gap-field">
-          {(state.kind !== "connected" || view.page.kind === "projects") && (
+          {state.kind !== "connected" && (
             <p role="status" className="mobile-status inline-flex gap-inline items-center">
-              {state.kind === "connected" && (
-                <span
-                  aria-hidden="true"
-                  className="mobile-status-dot w-[var(--size-status-dot)] h-[var(--size-status-dot)] rounded-[var(--radius-status-dot)] bg-success"
-                />
-              )}
               {t(statusKey)}
             </p>
           )}

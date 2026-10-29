@@ -22,6 +22,49 @@ pnpm --dir clients/gui --filter @areal/mobile open
 
 The default Bundle ID is the development placeholder `com.example.arealharness`. The gate accepts `AREAL_MOBILE_BUNDLE_ID` and passes it to Xcode as `AREAL_MOBILE_BUNDLE_ID`. Before device signing, choose a Bundle ID you own in both the Xcode project and Capacitor configuration, then configure your development team.
 
+## Daily development loop
+
+Use a Node version supported by the GUI engines; Relay fixtures still require a separate Node 24.2.0 executable. Mobile commands build the shared UI package first, including in a fresh worktree.
+
+```sh
+pnpm --dir clients/gui mobile:dev
+# In a second terminal, target your own simulator rather than a physical device.
+pnpm --dir clients/gui mobile:ios:live --target <simulator-udid>
+```
+
+The development server binds to `127.0.0.1:5174` and fails if the port is occupied, preventing accidental attachment to another worktree. Open its URL in a browser to edit mobile pages. CSS updates in place; script changes reload the page to recreate connection and subscription owners. Leaving the page closes the connection and stops reconnect attempts. Native mode continues to use Keychain. The browser development substitute holds identity only in page memory, loses it on reload, and uses pasted links instead of scanning. It does not establish native storage, permission, or background behavior acceptance.
+
+`mobile:ios:live` verifies that the server belongs to this worktree, syncs local assets, temporarily sets the generated configuration's development URL, then uses MobileBuildMCP to build and launch a dedicated Debug app. It restores the generated configuration on completion or failure; the development server keeps serving updates. This avoids native-run's dependency on the old Simulator.app path. Run `mobile:sync` before protocol gates, archive, or release validation to use bundled local assets. Live Reload targets local simulator page development. Relay connections must still satisfy HTTPS origin allowlists, certificate trust, and WSS contracts. The browser gate exercises this through an ephemeral HTTPS fixture; an ordinary HTTP development URL is not thereby authorized by a production Relay.
+
+The following commands exercise the production mobile React UI in Chromium and WebKit: unpaired state, invalid links, actual Noise pairing with fixture approval, successful connection, reload after a script update, and light/dark screenshots. Storage uses the browser memory substitute and the Host uses the existing fixture. The gate also checks that release assets exclude the browser substitute and development CSP. It does not start Rust Core or replace native gates.
+
+```sh
+npm --prefix services/remote-relay ci --ignore-scripts
+pnpm --dir clients/gui/app exec playwright-core install chromium webkit
+AREAL_RELAY_NODE=/path/to/node-24.2.0/bin/node pnpm --dir clients/gui test:mobile-browser
+```
+
+Each attempt writes `.scratch/ios-development/browser/<attempt>/` with source SHA, dirty paths, runtime versions, screenshots and hashes, timings, outcomes, and cleanup errors. Browser contexts ignore certificate errors only inside the isolated TLS fixture; production connection code and Relay origin checks retain their existing contracts.
+
+This workflow draws on t3code's mobile lifecycle, reproducible scenes, and device evidence organization: script updates must handle connection ownership, native changes require rebuilding, and screenshots need device and scene attribution. Its Expo/React Native, Effect runtime, and device pool are not dependencies here. Vite page reloads and existing Remote gates serve those responsibilities.
+
+For relevant GUI, mobile, and Relay changes, the `Linux mobile browser contracts` job in `GUI checks` runs mobile type checks, both browser paths, and production asset checks. It executes the shared `mobile` group, uploads reports and evidence, and contributes required results to `GUI gate`. Native builds and OS-version gates use the local entry points above; this CI does not establish native iOS or physical-device acceptance. The browser gate uses an independent Vite cache and removes it afterward to avoid sharing optimized dependencies with a daily development server.
+
+## Agent simulator tools
+
+`mobile:tools` pins MobileBuildMCP 2.7.1 and reads `.mobilebuildmcp/config.yaml` from the repository root. The configuration enables simulator, UI automation, and debugging tools and supplies the project and scheme. Callers select their simulator ID to avoid another task's device.
+
+```sh
+pnpm --dir clients/gui mobile:sync
+pnpm --dir clients/gui mobile:tools simulator list --output json
+pnpm --dir clients/gui mobile:tools simulator build-and-run --simulator-id <simulator-udid>
+pnpm --dir clients/gui mobile:tools simulator snapshot-ui --simulator-id <simulator-udid>
+pnpm --dir clients/gui mobile:tools ui-automation type-text --help
+pnpm --dir clients/gui mobile:tools daemon stop
+```
+
+CLI and MCP share tool implementations, so agents can use the CLI without changing global assistant configuration. For MCP, start `pnpm dlx mobilebuildmcp@2.7.1 mcp` from the repository root. Consult the pinned version's `--help` for arguments. Record build success, screenshot capture, and WebView control interaction separately. Existing `xcodebuild`/`simctl` gates continue to verify deterministic protocol and recovery behavior.
+
 ## Run the WKWebView handshake gate
 
 Check installed runtimes with `xcrun simctl list runtimes`. The default is iOS 17.5. Select another installed version as needed.
@@ -74,9 +117,9 @@ Run the real Core gate inside `slot_lock` from `scripts/verification.py`, holdin
 
 ## Validate conversation commands
 
-New conversations read the desktop catalog through `project.models` and initially display “Computer default”. Model, reasoning, and permission selections remain an in-memory intent. The first send creates the session, reads its `session.open` baseline, applies the selection against its actual configuration revision, and sends the message. Unavailable or rejected configuration preserves the draft and the created session. Sending during a turn uses `enqueue` and the exact Turn ID; stopping targets the current Turn. Task sessions require their dedicated controls.
+New conversations read the desktop catalog through `project.models` and initially display “Computer default”. Unspecified permissions display “Computer permissions” and inherit the computer configuration. Model, reasoning, and permission selections remain an in-memory intent. The first send creates the session, reads its `session.open` baseline, applies the selection against its actual configuration revision, and sends the message. Unavailable or rejected configuration preserves the draft and the created session. Sending during a turn uses `enqueue` and the exact Turn ID; stopping targets the current Turn. Task sessions require their dedicated controls.
 
-Mobile reuses `ConversationComposer`, `ComposerQueue`, and the permission menu. Drafts stay in memory. Before a write, the same device identity must be saved successfully to Keychain, followed by the shared `ClientState` locator. Locators contain no message body or model selection. Lost replies, disconnection, and restart recover only through `command.read` for the original commandId. Recovering an accepted creation does not automatically send. An unknown stop retains its exact record while allowing a new message once Core confirms the session is idle.
+The mobile UI reuses `ConversationComposer`, `ComposerQueue`, and the shared Dialog. The composer toolbar shows permissions on the left and the model and reasoning effort on the right. Each opens its own bottom sheet. Done applies the selection; dismissing the sheet discards unconfirmed edits. The model sheet offers quick effort selection from the catalog and advanced rows for choosing the model and reasoning level. The permission sheet shares the GUI’s Ask for approval, Review for me, and Full access semantics, icons, and descriptions. Existing read-only, custom, and other states reflect the actual configuration and remain constrained by desktop capabilities and locked read-only profiles. Settings remain view-only while a turn runs. Drafts stay in memory. Before a write, the same device identity must be saved successfully to Keychain, followed by the shared `ClientState` locator. Locators contain no message body or model selection. Lost replies, disconnection, and restart recover only through `command.read` for the original commandId. Recovering an accepted creation does not automatically send. An unknown stop retains its exact record while allowing a new message once Core confirms the session is idle.
 
 ```sh
 node --test clients/gui/scripts/mobile-commands.test.mjs
@@ -87,6 +130,8 @@ node clients/gui/scripts/mobile-command-smoke.mjs
 ```
 
 Hold `slot_lock` for the entire command gate. The runner uses real Core, two deterministic local models, DOM input, and native Keychain to check first send with a non-default model, queueing during a turn, stopping, loss of an admitted reply, and reconciliation after restart. Each attempt has a separate evidence directory under `.scratch/ios-remote-v1/mobile-commands/`, including measured CSS hit targets for visible buttons. `AREAL_MOBILE_DERIVED` can select a shared DerivedData cache; evidence does not overwrite previous attempts. DOM input checks do not replace physical keyboard or touch acceptance.
+
+Project and conversation lists use content-sized cards without shadows. Project names, conversation names, and navigation titles stay on one line within the available width, with an ellipsis on overflow. Full values remain in the DOM and `title` attribute. Refreshes update accessibility state and existing controls without inserting a loading row that shifts content. Message bodies remain complete.
 
 The touch Composer uses the existing 16px font token to avoid iOS focus zoom. Message copy, statistics, and execution disclosure controls use a 44pt minimum target. This build does not include approvals, synchronous or Task question replies, Task pause, edge-swipe navigation, or push. Task details remain read-only.
 

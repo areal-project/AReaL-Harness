@@ -17,6 +17,7 @@ function TooltipContent({
   className,
   side = "top",
   align = "center",
+  anchor,
   sideOffset = 0,
   children,
   ...props
@@ -24,12 +25,13 @@ function TooltipContent({
   className?: string;
 } & Pick<
     React.ComponentProps<typeof TooltipPrimitive.Positioner>,
-    "side" | "align" | "sideOffset"
+    "side" | "align" | "sideOffset" | "anchor"
   >) {
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Positioner
         side={side}
+        anchor={anchor}
         align={align}
         sideOffset={sideOffset}
         collisionPadding={8}
@@ -37,6 +39,7 @@ function TooltipContent({
       >
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"
+          role="tooltip"
           className={cn(
             "ui-popup inline-flex w-fit max-w-[min(20rem,var(--available-width))] items-center gap-1.5 rounded-overlay border border-border bg-tooltip px-3 py-1.5 text-ui-sm text-tooltip-foreground shadow-overlay has-data-[slot=kbd]:pr-1.5 **:data-[slot=kbd]:relative **:data-[slot=kbd]:rounded-sm",
             className,

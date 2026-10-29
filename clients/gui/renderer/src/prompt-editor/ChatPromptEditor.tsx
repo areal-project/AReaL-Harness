@@ -1,3 +1,4 @@
+import type { ComposerWorkspaceFiles } from "../lib/workspaceFileComposer.js";
 import { ComposerActionButton } from "@areal/ui/experimental";
 import { ComputerControlEntry } from "../ComputerControlEntry.js";
 /* oxlint-disable eslint(max-lines) -- 输入壳同时收口 Lexical 同步、拖拽和工具栏插槽，暂不拆组件。 */
@@ -82,6 +83,7 @@ export function ChatPromptEditor({
   menuActions,
   composerCatalog,
   pluginMentionCatalog,
+  workspaceFiles,
   betweenCancelAndSubmitAction,
   submitControl,
   inputTestId,
@@ -147,6 +149,7 @@ export function ChatPromptEditor({
   };
   composerCatalog?: ComposerCatalogData;
   pluginMentionCatalog?: ComposerCatalogData;
+  workspaceFiles?: ComposerWorkspaceFiles;
   menuActions?: readonly import("./ChatPromptActionMenu.js").ComposerMenuAction[];
   /** 行内编辑专用：固定插在取消与主提交之间的第二动作。 */
   betweenCancelAndSubmitAction?: ReactNode;
@@ -575,6 +578,7 @@ export function ChatPromptEditor({
             appSlashCommands={appSlashCommands}
             composerCatalog={composerCatalog}
             pluginMentionCatalog={pluginMentionCatalog}
+            workspaceFiles={workspaceFiles}
             enableMentionPanel={enableMentionPanel}
           />
         }

@@ -4,8 +4,10 @@ from contextlib import redirect_stdout
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -18,6 +20,7 @@ spec.loader.exec_module(checks)
 
 class ChangedChecks(unittest.TestCase):
     def setUp(self):
+        self.enterContext(patch.dict(os.environ, {"GITHUB_EVENT_PATH": ""}))
         self.directory = tempfile.TemporaryDirectory(prefix="areal-changed-check-")
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
@@ -199,6 +202,7 @@ class ChangedChecks(unittest.TestCase):
             self.assertEqual(checks.main(["--base", self.base, "--plan"]), 0)
         value = json.loads(output.getvalue())
         self.assertEqual(value["plan"]["source"]["baseRevision"], self.base)
+        self.assertEqual(value["plan"]["source"]["headRevision"], self.base)
         self.assertEqual(value["plan"]["paths"], ["docs/new.md"])
         self.assertEqual(
             value["plan"]["source"]["inputHash"], checks.input_key(self.root, self.base)
@@ -240,6 +244,219 @@ class ChangedChecks(unittest.TestCase):
         )
         saved = json.loads((self.root / "target/ci/1/report.json").read_text())
         self.assertEqual(saved["results"][0]["exitCode"], 7)
+
+    def history_report(self, name, revision, status, timestamp, platform="darwin"):
+        path = self.root / "target/ci/failures" / name / "report.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "kind": "verification-report",
+                    "identity": {"headRevision": revision},
+                    "platform": platform,
+                    "startedAt": timestamp,
+                    "results": [
+                        {"id": "smoke:test:composer", "status": status, "completedAt": timestamp}
+                    ],
+                }
+            )
+        )
+        return path
+
+    def test_failure_selection_uses_current_branch_and_latest_result_per_platform(self):
+        self.history_report("merged", self.base, "failed", "2026-01-01T01:00:00Z")
+        (self.root / "source.rs").write_text("branch\n")
+        self.git("commit", "-am", "branch")
+        head = self.git("rev-parse", "HEAD").strip()
+        plan = self.plan(["clients/gui/renderer/src/Composer.tsx"])
+        plan["source"]["headRevision"] = head
+        self.assertEqual(checks.failure_checks(plan, self.root), {})
+        failed = self.history_report("failed", head, "failed", "2026-01-01T02:00:00Z")
+        self.assertEqual(
+            checks.failure_checks(plan, self.root), {"smoke:test:composer": [str(failed)]}
+        )
+        self.history_report("other-platform-pass", head, "passed", "2026-01-01T03:00:00Z", "linux")
+        self.assertIn("smoke:test:composer", checks.failure_checks(plan, self.root))
+        self.history_report("passed", head, "passed", "2026-01-01T04:00:00Z")
+        self.assertEqual(checks.failure_checks(plan, self.root), {})
+        invalidated = self.history_report("invalidated", head, "passed", "2026-01-01T04:30:00Z")
+        value = json.loads(invalidated.read_text())
+        value["status"] = "invalidated"
+        invalidated.write_text(json.dumps(value))
+        self.assertEqual(
+            checks.failure_checks(plan, self.root), {"smoke:test:composer": [str(invalidated)]}
+        )
+        foreign = self.history_report("foreign", "f" * 40, "failed", "2026-01-01T05:00:00Z")
+        self.assertEqual(
+            checks.failure_checks(plan, self.root), {"smoke:test:composer": [str(invalidated)]}
+        )
+        with self.assertRaisesRegex(ValueError, "outside the current branch"):
+            checks.failure_checks(plan, self.root, [foreign])
+        (self.root / "source.rs").write_text("next revision\n")
+        self.git("commit", "-am", "next revision")
+        next_head = self.git("rev-parse", "HEAD").strip()
+        plan["source"]["headRevision"] = next_head
+        current = self.history_report(
+            "current-failure", next_head, "failed", "2026-01-01T06:00:00Z"
+        )
+        self.history_report("late-ancestor-pass", head, "passed", "2026-01-01T07:00:00Z")
+        self.assertEqual(
+            checks.failure_checks(plan, self.root), {"smoke:test:composer": [str(current)]}
+        )
+
+    def test_fast_selection_adds_failed_smoke_and_build_dependencies_without_full_suite(self):
+        plan = self.plan(["clients/gui/renderer/src/Composer.tsx"])
+        selected = checks.select_checks(
+            plan, "commit", {"smoke:test:composer": ["failure/report.json"]}
+        )
+        names = {item["id"] for item in selected}
+        self.assertTrue(
+            {
+                "gui-types",
+                "portable:bundle",
+                "smoke:test:composer",
+                "gui-core-build",
+                "macos:renderer",
+            }
+            <= names
+        )
+        self.assertNotIn("smoke:test:model-selection", names)
+        self.assertNotIn("core-contracts", names)
+        for item in selected:
+            self.assertTrue(set(item["dependsOn"]) <= names)
+        self.assertIn("smoke:test:model-selection", {item["id"] for item in plan["items"]})
+        self.assertEqual(checks.select_checks(plan, "full", {}), plan["items"])
+
+    def test_quick_command_executes_failed_special_with_dependencies_and_propagates_failure(self):
+        plan = self.plan([])
+        plan["items"] = [
+            self.item("fast"),
+            self.item("build"),
+            self.item("smoke:test:composer", ("build",)),
+            self.item("unrelated-full"),
+        ]
+        for item in plan["items"]:
+            item["phase"] = "commit" if item["id"] == "fast" else "full"
+            item["command"] = [
+                sys.executable,
+                "-c",
+                "from pathlib import Path; import sys; p=Path('target/executed'); p.parent.mkdir(exist_ok=True); p.open('a').write(sys.argv[1]+'\\n'); sys.exit(int(sys.argv[2]))",
+                item["id"],
+                "7" if item["id"] == "smoke:test:composer" else "0",
+            ]
+        self.history_report("known-failure", self.base, "failed", "2026-01-01T00:00:00Z")
+        with (
+            patch.object(checks, "ROOT", self.root),
+            patch.object(checks.ci_scope, "repository_plan", return_value=plan),
+            redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(checks.main(["--base", self.base]), 1)
+        self.assertEqual(
+            (self.root / "target/executed").read_text().splitlines(),
+            ["fast", "build", "smoke:test:composer"],
+        )
+        report = json.loads(
+            next((self.root / "target/ci/changed").glob("*/report.json")).read_text()
+        )
+        self.assertEqual(report["progress"]["counts"]["passed"], 2)
+        self.assertEqual(report["progress"]["failed"], ["smoke:test:composer"])
+        self.assertEqual(report["progress"]["pending"], ["unrelated-full"])
+
+    def test_progress_keeps_failure_while_independent_commands_continue(self):
+        items = [
+            self.item("fails"),
+            self.item("passes"),
+            self.item("blocked", ("fails",)),
+            self.item("remote"),
+        ]
+        items[-1]["platforms"] = ["other-platform"]
+        snapshots = []
+
+        def runner(command, **kwargs):
+            snapshots.append(
+                json.loads((self.root / "target/ci/1/report.json").read_text())["progress"]
+            )
+            return subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; sys.exit(" + ("7" if command == ["fails"] else "0") + ")",
+                ],
+                **kwargs,
+            )
+
+        report = self.execute(items, runner)
+        self.assertEqual(snapshots[0]["counts"]["passed"], 0)
+        self.assertEqual(snapshots[0]["running"], ["fails"])
+        self.assertEqual(snapshots[0]["pending"], ["passes", "blocked", "remote"])
+        self.assertEqual(snapshots[1]["status"], "failed")
+        self.assertEqual(snapshots[1]["failed"], ["fails"])
+        summary = report["progress"]
+        self.assertEqual(
+            summary["counts"],
+            {
+                "passed": 1,
+                "failed": 1,
+                "blocked": 1,
+                "pending": 1,
+                "running": 0,
+                "invalidated": 0,
+                "cancelled": 0,
+            },
+        )
+        self.assertEqual(summary["remoteRequired"], ["remote"])
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts/ci-preflight.py"),
+                "--report",
+                str(self.root / "target/ci/1/report.json"),
+            ],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        self.assertEqual(json.loads(result.stdout)["progress"], summary)
+
+    def test_progress_counts_unselected_full_checks_as_pending_and_rejects_mismatched_plan(self):
+        plan = self.plan([])
+        plan["items"] = [self.item("fast"), self.item("full")]
+        output = self.root / "target/ci/progress"
+        report = checks.preflight.run_plan(
+            plan,
+            self.root,
+            plan["items"][:1],
+            output,
+            runner=lambda *a, **k: subprocess.CompletedProcess(a, 0),
+        )
+        self.assertEqual(report["status"], "passed")
+        self.assertEqual(report["progress"]["status"], "pending")
+        self.assertEqual(report["progress"]["passed"], ["fast"])
+        self.assertEqual(report["progress"]["pendingFull"], ["full"])
+        plan["planHash"] = "other-plan"
+        (output / "plan.json").write_text(json.dumps(plan))
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts/ci-preflight.py"),
+                "--report",
+                str(output / "report.json"),
+            ],
+            text=True,
+            capture_output=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not match", result.stderr)
+
+    def test_final_input_invalidation_cannot_leave_progress_green(self):
+        report = self.execute([self.item("a")])
+        report["status"] = "invalidated"
+        plan = self.plan([])
+        plan["items"] = [self.item("a")]
+        summary = checks.preflight.progress(plan, report)
+        self.assertEqual(summary["status"], "invalidated")
+        self.assertEqual(summary["counts"]["passed"], 0)
+        self.assertEqual(summary["invalidated"], ["a"])
 
     def test_mutable_cargo_outputs_do_not_block_building_consumers_but_published_bundle_does(self):
         binary = self.root / "target/debug"

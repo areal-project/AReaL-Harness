@@ -78,11 +78,13 @@ export function UserMessageBody({
   theme,
   onOpenExternalUrl,
   onOpenFileLink,
+  fileReferenceRoot,
 }: {
   children: string;
   theme: "light" | "dark";
   onOpenExternalUrl?: (url: string) => void;
   onOpenFileLink?: (path: string) => void;
+  fileReferenceRoot?: string;
 }) {
   const selection = parsePromptConversationSelections(stripGenUiModelContext(children));
   const { text, skills } = projectUserMessage(selection.visibleContent);
@@ -93,6 +95,7 @@ export function UserMessageBody({
       theme={theme}
       onOpenExternalUrl={onOpenExternalUrl}
       onOpenFileLink={onOpenFileLink}
+      fileReferenceRoot={fileReferenceRoot}
     >
       {text}
     </MessageResponse>
@@ -115,7 +118,15 @@ export function UserMessageBody({
   );
 }
 
-export function PendingMessageView({ message }: { message: PendingMessage }) {
+export function PendingMessageView({
+  message,
+  fileReferenceRoot,
+  theme = "light",
+}: {
+  message: PendingMessage;
+  fileReferenceRoot?: string;
+  theme?: "light" | "dark";
+}) {
   const { t } = useI18n();
   return (
     <section className="pending-message" data-testid="pending-message" aria-busy="true">
@@ -129,7 +140,13 @@ export function PendingMessageView({ message }: { message: PendingMessage }) {
             </div>
           )}
           <div className="user-bubble whitespace-pre-wrap break-words">
-            {message.text || (!message.files.length && t("chat.submission.context"))}
+            {message.text ? (
+              <UserMessageBody theme={theme} fileReferenceRoot={fileReferenceRoot}>
+                {message.text}
+              </UserMessageBody>
+            ) : (
+              !message.files.length && t("chat.submission.context")
+            )}
           </div>
         </div>
       </div>

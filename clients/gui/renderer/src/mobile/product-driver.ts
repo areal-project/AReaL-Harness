@@ -146,13 +146,16 @@ export async function runProduct(
         await wait(() => document.querySelector('[data-action="model-sheet"]:not(:disabled)'));
         if (config.mode !== "new") {
           await click("model-sheet");
+          await click("model-advanced");
+          await click("model-list");
           const alternative = await wait(() =>
-            document.querySelector<HTMLButtonElement>('[data-model-id="fixture-alt"]'),
+            document.querySelector<HTMLElement>('[data-model-id="fixture-alt"]'),
           );
           if (config.mode === "send") {
             alternative.click();
+            await click("effort-list");
             const effort = await wait(() =>
-              [...document.querySelectorAll<HTMLButtonElement>(".mobile-efforts button")].find(
+              [...document.querySelectorAll<HTMLElement>('.mobile-efforts [role="radio"]')].find(
                 (button) => button.textContent === "High" || button.textContent === "高",
               ),
             );
@@ -192,25 +195,23 @@ export async function runProduct(
         );
       }
       if (config.mode === "permissions") {
-        await click("model-sheet");
+        await click("permission-sheet");
         const full = await wait(() =>
-          document.querySelector<HTMLButtonElement>(
-            '[data-permission-preset="fullAccess"]:not(:disabled)',
+          document.querySelector<HTMLElement>(
+            '[data-permission-preset="fullAccess"]:not([data-disabled])',
           ),
         );
         full.click();
         await wait(
-          () =>
-            full.getAttribute("aria-pressed") === "true" &&
-            full.getAttribute("data-variant") === "secondary",
+          () => full.getAttribute("aria-checked") === "true",
           "PermissionSelectionMismatch",
         );
-        const ask = document.querySelector<HTMLButtonElement>('[data-permission-preset="ask"]')!;
+        const ask = document.querySelector<HTMLElement>('[data-permission-preset="ask"]')!;
         ask.click();
         await wait(
           () =>
-            ask.getAttribute("aria-pressed") === "true" &&
-            full.getAttribute("aria-pressed") === "false",
+            ask.getAttribute("aria-checked") === "true" &&
+            full.getAttribute("aria-checked") === "false",
           "PermissionSelectionMismatch",
         );
         observations.permissionSelection = true;

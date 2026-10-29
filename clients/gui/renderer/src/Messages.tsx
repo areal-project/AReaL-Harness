@@ -1325,6 +1325,9 @@ export function Messages({
                                     }}
                                   >
                                     <UserMessageBody
+                                      fileReferenceRoot={
+                                        localThread.worktree?.directory ?? project.root
+                                      }
                                       theme={dark ? "dark" : "light"}
                                       onOpenExternalUrl={onLink}
                                       onOpenFileLink={onFile}
@@ -1576,7 +1579,13 @@ export function Messages({
               </section>
             );
           })}
-          {outgoingVisible && <PendingMessageView message={outgoing} />}
+          {outgoingVisible && (
+            <PendingMessageView
+              message={outgoing}
+              fileReferenceRoot={localThread.worktree?.directory ?? project.root}
+              theme={dark ? "dark" : "light"}
+            />
+          )}
           {afterTurns}
         </div>
         {!embedded && (

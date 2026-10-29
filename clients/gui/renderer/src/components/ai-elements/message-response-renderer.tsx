@@ -25,6 +25,8 @@ import { cjk } from "@streamdown/cjk";
 import { createMathPlugin } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import { cn } from "../lib/utils.js";
+import { ControlHintTooltip } from "../../ControlHintTooltip.js";
+import { decodeFilePathUriEscapes, joinFilePath } from "../../lib/path.js";
 import { Button } from "../ui/button.js";
 import { MessageCodeBlock } from "./message-code-block.js";
 import { useCodePreferences } from "../../settings/preferences.js";
@@ -66,6 +68,29 @@ function pluginReferenceLabels() {
     visit(tree);
   };
 }
+type WorkspaceLinkTree = {
+  type: string;
+  tagName?: string;
+  properties?: Record<string, unknown>;
+  data?: Record<string, unknown>;
+  children?: WorkspaceLinkTree[];
+};
+function preserveWorkspaceFilePaths() {
+  return (tree: WorkspaceLinkTree) => {
+    const visit = (node: WorkspaceLinkTree) => {
+      const href = node.properties?.href;
+      if (
+        node.type === "element" &&
+        node.tagName === "a" &&
+        typeof href === "string" &&
+        href.startsWith("./")
+      )
+        node.data = { ...node.data, workspaceFilePath: href };
+      node.children?.forEach(visit);
+    };
+    visit(tree);
+  };
+}
 function isImageContent(node: NonNullable<ExtraProps["node"]>["children"][number]): boolean {
   if (node.type === "text") return !node.value.trim();
   if (node.type !== "element") return false;
@@ -82,6 +107,7 @@ export type MessageResponseProps = {
   fileLinks?: boolean;
   // 文档读取器以当前资源地址解析相对链接，再由 Streamdown 规范化路径。
   fileLinkBase?: string;
+  fileReferenceRoot?: string;
   preserveLineBreaks?: boolean;
   streaming?: boolean;
   theme?: "light" | "dark";
@@ -102,6 +128,7 @@ export const MessageResponse = memo(function MessageResponse({
   className,
   fileLinks = false,
   fileLinkBase,
+  fileReferenceRoot,
   preserveLineBreaks = false,
 }: MessageResponseProps) {
   const { fontSizePx } = useCodePreferences();
@@ -113,27 +140,33 @@ export const MessageResponse = memo(function MessageResponse({
   // The caller still validates the exact blob URI and reads it through Core.
   const rehypePlugins = useMemo(
     () =>
-      onRenderImage || fileLinkBase
-        ? Object.entries(defaultRehypePlugins).map(
-            ([name, plugin]): (typeof defaultRehypePlugins)[string] => {
+      onRenderImage || fileLinkBase || fileReferenceRoot
+        ? Object.entries(defaultRehypePlugins).flatMap(
+            ([name, plugin]): (typeof defaultRehypePlugins)[string][] => {
+              const before =
+                name === "harden" && fileReferenceRoot ? [preserveWorkspaceFilePaths] : [];
               if (name === "harden" && fileLinkBase && Array.isArray(plugin))
-                return [plugin[0], { ...plugin[1], defaultOrigin: fileLinkBase }];
-              if (name !== "sanitize" || !onRenderImage || !Array.isArray(plugin)) return plugin;
+                return [...before, [plugin[0], { ...plugin[1], defaultOrigin: fileLinkBase }]];
+              if (name !== "sanitize" || !onRenderImage || !Array.isArray(plugin))
+                return [...before, plugin];
               const schema = plugin[1] ?? {};
               return [
-                plugin[0],
-                {
-                  ...schema,
-                  protocols: {
-                    ...schema.protocols,
-                    src: [...(schema.protocols?.src ?? []), "areal"],
+                ...before,
+                [
+                  plugin[0],
+                  {
+                    ...schema,
+                    protocols: {
+                      ...schema.protocols,
+                      src: [...(schema.protocols?.src ?? []), "areal"],
+                    },
                   },
-                },
+                ],
               ];
             },
           )
         : undefined,
-    [Boolean(onRenderImage), fileLinkBase],
+    [Boolean(onRenderImage), fileLinkBase, Boolean(fileReferenceRoot)],
   );
   const remarkPlugins = useMemo(
     () =>
@@ -157,32 +190,53 @@ export const MessageResponse = memo(function MessageResponse({
         node,
       }: ComponentProps<"a"> & {
         node?: ExtraProps["node"];
-      }) =>
-        node?.children.length && node.children.every(isImageContent) ? (
-          <span title={href}>{children}</span>
-        ) : (
+      }) => {
+        if (node?.children.length && node.children.every(isImageContent))
+          return <span title={href}>{children}</span>;
+        const data = node?.data;
+        const originalPath =
+          data && "workspaceFilePath" in data && typeof data.workspaceFilePath === "string"
+            ? data.workspaceFilePath
+            : undefined;
+        const fileReference =
+          !!href &&
+          !href.startsWith("#") &&
+          !/^[\w+.-]+:/.test(href) &&
+          (!!callbacks.current.onOpenFileLink || !!fileReferenceRoot);
+        const link = (
           <Button
             unstyled
             type="button"
             className={
-              href && !/^[\w+.-]+:/.test(href) && callbacks.current.onOpenFileLink
+              fileReference
                 ? "markdown-file-reference"
                 : "inline text-brand underline underline-offset-2"
             }
-            title={href}
+            title={fileReference ? undefined : href}
             onClick={() => {
               if (/^https?:\/\//i.test(href ?? "")) callbacks.current.onOpenExternalUrl?.(href!);
-              else if (href && !/^[\w+.-]+:/.test(href)) callbacks.current.onOpenFileLink?.(href);
+              else if (href && !/^[\w+.-]+:/.test(href))
+                callbacks.current.onOpenFileLink?.(originalPath ?? href);
             }}
           >
-            {href && !/^[\w+.-]+:/.test(href) && callbacks.current.onOpenFileLink && (
+            {fileReference && (
               <span className="markdown-file-reference-icon">
                 <FileReference aria-hidden="true" />
               </span>
             )}
             <span>{children}</span>
           </Button>
-        ),
+        );
+        if (!fileReference) return link;
+        const path = decodeFilePathUriEscapes(originalPath ? originalPath.slice(2) : href!);
+        return (
+          <ControlHintTooltip
+            title={fileReferenceRoot ? joinFilePath(fileReferenceRoot, path) : path}
+          >
+            {link}
+          </ControlHintTooltip>
+        );
+      },
       img: function MarkdownImage({ src, alt }: ComponentProps<"img">) {
         const { t } = useI18n();
         return (
@@ -327,6 +381,7 @@ export const MessageResponse = memo(function MessageResponse({
       Boolean(onRenderImage),
       webPreviews,
       fontSizePx,
+      fileReferenceRoot,
     ],
   );
   return (

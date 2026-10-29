@@ -2,7 +2,7 @@ import type { DraftComposerProps } from "./draftComposerTypes.js";
 import { PendingMessageView } from "./UserMessageBody.js";
 import { setPendingMessage, usePendingMessage } from "./pendingMessage.js";
 import { Input } from "@areal/ui";
-import { validateWorkspaceFileReference } from "./lib/workspaceFileComposer.js";
+import { useComposerWorkspaceFiles } from "./lib/workspaceFileComposer.js";
 import { imageAnnotationBlocked, useImageAnnotationRevision } from "./imageAnnotations.js";
 import { resolveDraftProfile } from "./ProfileDetails.js";
 import { draftModelSelection, modelValue } from "./lib/draftModelSelection.js";
@@ -95,6 +95,7 @@ export function DraftComposer({
   worktree,
   onWorktreeCreated,
 }: DraftComposerProps) {
+  const workspaceFiles = useComposerWorkspaceFiles(readAction, project, draftKey ?? "new");
   const { t } = useI18n();
   const referenceEntries = conversationReferenceEntries(
     conversationReferences,
@@ -630,7 +631,7 @@ export function DraftComposer({
     <div className="composer-dock" data-v4-composer-dock="true">
       {outgoing && (
         <div className="draft-message-preview">
-          <PendingMessageView message={outgoing} />
+          <PendingMessageView message={outgoing} fileReferenceRoot={project.root} />
         </div>
       )}
       {activeCreation?.worktree && (busy || creationStatus) && (
@@ -761,9 +762,7 @@ export function DraftComposer({
           workspacePath={project.root}
           enableWorkspaceFileDrop={!!project.root && !editLocked}
           enableExternalFileDrop={!editLocked}
-          validateWorkspaceFile={(payload) =>
-            validateWorkspaceFileReference(readAction, project.id, project.root, payload)
-          }
+          validateWorkspaceFile={workspaceFiles?.validate}
           onFileDrop={(files) => setFiles((current) => [...current, ...files])}
           onWorkspaceReferencePendingChange={setWorkspaceReferencePending}
           taskId={null}
@@ -800,6 +799,7 @@ export function DraftComposer({
           submitLabel={goalMode ? "开始目标" : "发送"}
           enterSubmits={prefs.sendShortcut === "enter"}
           enableMentionPanel={false}
+          workspaceFiles={workspaceFiles}
           pluginMentionCatalog={{
             ...plugins.catalog,
             entries: [...plugins.catalog.entries, ...referenceEntries],

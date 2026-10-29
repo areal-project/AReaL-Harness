@@ -22,6 +22,49 @@ pnpm --dir clients/gui --filter @areal/mobile open
 
 默认 Bundle ID 是开发占位值 `com.example.arealharness`。门禁脚本支持 `AREAL_MOBILE_BUNDLE_ID`，并把值作为仅 App 使用的 Xcode `AREAL_MOBILE_BUNDLE_ID` 设置传入。准备设备签名时，在 Xcode 工程和 Capacitor 配置中选定自己拥有的 Bundle ID，再配置开发团队。
 
+## 日常开发快速循环
+
+先使用符合 GUI engines 的 Node；Relay 夹具仍使用独立的 Node 24.2.0。移动命令会先构建共享 UI 包，适用于新 worktree。
+
+```sh
+pnpm --dir clients/gui mobile:dev
+# 第二个终端；只选择自己的模拟器，不选择真机。
+pnpm --dir clients/gui mobile:ios:live --target <simulator-udid>
+```
+
+开发服务器固定监听 `127.0.0.1:5174`，端口占用时直接失败，避免连接到另一个 worktree。浏览器打开服务器地址即可修改移动页面。CSS 使用热更新；脚本更新整页重载，重建连接和订阅所有者。离开页面时关闭连接并停止重连。原生模式继续使用 Keychain；浏览器开发替身只在页面内存保存身份，刷新后重新配对，扫码路径使用粘贴代替。它不提供原生密钥存储、权限或后台行为的验收证据。
+
+`mobile:ios:live` 先确认服务器来自当前 worktree，再同步本地资源，临时设置生成配置的开发 URL，使用 MobileBuildMCP 构建并启动专用 Debug App；命令完成或失败后恢复生成配置。开发服务器继续提供更新。该入口避开 `native-run` 对旧 `Simulator.app` 路径的依赖。协议门禁、archive 或发布验证仍先运行 `mobile:sync`，使用本地打包资源。Live Reload 只面向本机模拟器页面开发；连接 Relay 时仍需符合 HTTPS origin 白名单、证书和 WSS 契约。浏览器门禁使用一次性 HTTPS 夹具完成该链路，不代表普通 HTTP 开发地址已获生产 Relay 授权。
+
+以下命令运行生产移动 React 页面，在 Chromium 和 WebKit 中检查未配对、无效链接、真实 Noise 配对与夹具批准、连接成功、脚本更新后的重载，以及浅色和深色截图。平台存储使用浏览器内存替身，Host 使用现有夹具。最后检查发布资源不包含浏览器替身或开发 CSP。它不启动 Rust Core，也不代替原生门禁。
+
+```sh
+npm --prefix services/remote-relay ci --ignore-scripts
+pnpm --dir clients/gui/app exec playwright-core install chromium webkit
+AREAL_RELAY_NODE=/path/to/node-24.2.0/bin/node pnpm --dir clients/gui test:mobile-browser
+```
+
+每次尝试保存到 `.scratch/ios-development/browser/<attempt>/`，包含源码 SHA、dirty 路径、运行时版本、截图与哈希、耗时、结果及清理错误。浏览器上下文仅在隔离的 TLS 夹具中忽略证书错误；生产连接实现和 Relay origin 检查沿用原契约。
+
+本流程参考 t3code 的移动开发生命周期、可重复场景与设备证据组织：脚本热更要处理连接所有者，原生变化需要重建，截图要绑定设备和场景。其 Expo/React Native、Effect runtime 与设备池实现不作为本工程依赖。我们使用 Vite 整页重载与既有 Remote 门禁完成这些职责。
+
+相关 GUI、移动端和 Relay 改动由 `GUI checks` 的 `Linux mobile browser contracts` 检查移动类型、双浏览器路径和生产资源。该 job 执行共享计划的 `mobile` 组，上传报告与证据，并由 `GUI gate` 核对完整结果。原生构建与系统版本门禁使用上述本机入口；该 CI 不声明 iOS 原生或真机验收。浏览器门禁使用独立 Vite 缓存，结束后回收，避免与日常开发服务器共用预打包结果。
+
+## Agent 模拟器工具
+
+`mobile:tools` 固定使用 MobileBuildMCP 2.7.1，在仓库根读取 `.mobilebuildmcp/config.yaml`。配置只启用模拟器、UI 自动化和调试工具，默认工程和 scheme 已设置；模拟器 ID 由调用者指定，避免选中其他任务的设备。
+
+```sh
+pnpm --dir clients/gui mobile:sync
+pnpm --dir clients/gui mobile:tools simulator list --output json
+pnpm --dir clients/gui mobile:tools simulator build-and-run --simulator-id <simulator-udid>
+pnpm --dir clients/gui mobile:tools simulator snapshot-ui --simulator-id <simulator-udid>
+pnpm --dir clients/gui mobile:tools ui-automation type-text --help
+pnpm --dir clients/gui mobile:tools daemon stop
+```
+
+CLI 与 MCP 共用工具实现，Agent 可直接使用 CLI，不需要修改全局助手配置。需要 MCP 时，从仓库根以 `pnpm dlx mobilebuildmcp@2.7.1 mcp` 启动。具体参数以该固定版本的 `--help` 为准；构建成功、截图成功和 WebView 控件可操作分别取证。现有 `xcodebuild`／`simctl` 门禁继续负责确定性协议与恢复验收。
+
 ## 运行 WKWebView 握手门禁
 
 先通过 `xcrun simctl list runtimes` 查看安装的运行时。默认使用 iOS 17.5，可以指定其他已安装版本。
@@ -74,9 +117,9 @@ node clients/gui/scripts/mobile-workspace-smoke.mjs
 
 ## 验证会话命令
 
-新会话通过 `project.models` 读取电脑目录，初始显示“电脑默认”。模型、推理强度与权限选择先保留为内存意图。首发依次创建会话、读取 `session.open` 基线、按实际配置 revision 应用选择，再发送消息。配置不可用或被拒绝时保留草稿与已创建会话。运行中发送使用 `enqueue` 和精确 Turn ID；停止针对当前 Turn，Task 会话需要专属控制入口。
+新会话通过 `project.models` 读取电脑目录，初始模型显示“电脑默认”，未指定权限时显示“电脑权限”并继承电脑配置。模型、推理强度与权限选择先保留为内存意图。首发依次创建会话、读取 `session.open` 基线、按实际配置 revision 应用选择，再发送消息。配置不可用或被拒绝时保留草稿与已创建会话。运行中发送使用 `enqueue` 和精确 Turn ID；停止针对当前 Turn，Task 会话需要专属控制入口。
 
-移动页面复用 `ConversationComposer`、`ComposerQueue` 和权限菜单。草稿只保存在内存。每次写入前，同一设备身份必须成功保存到 Keychain，再保存共享 `ClientState` 定位信息。定位信息不含正文或模型选择。回包丢失、断线或重启后只通过 `command.read` 核对原 commandId；核对创建成功不会继续自动发送。未知停止保留原精确记录，但 Core 已确认空闲后可以发送新消息。
+移动页面复用 `ConversationComposer`、`ComposerQueue` 和共享 Dialog。输入器工具栏左侧显示权限，右侧显示模型与推理强度。两个入口分别打开独立底部面板，顶部“完成”确认后应用选择；关闭面板丢弃面板内未确认的改动。模型面板支持按目录档位快速选择推理强度，并通过高级设置分别选择模型和推理档位。权限面板复用 GUI 的请求审批、帮我审批和完全访问语义、图标与说明；已有只读或自定义等状态按实际配置显示，受电脑能力与固定只读 Profile 限制。运行中只能查看设置。草稿只保存在内存。每次写入前，同一设备身份必须成功保存到 Keychain，再保存共享 `ClientState` 定位信息。定位信息不含正文或模型选择。回包丢失、断线或重启后只通过 `command.read` 核对原 commandId；核对创建成功不会继续自动发送。未知停止保留原精确记录，但 Core 已确认空闲后可以发送新消息。
 
 ```sh
 node --test clients/gui/scripts/mobile-commands.test.mjs
@@ -87,6 +130,8 @@ node clients/gui/scripts/mobile-command-smoke.mjs
 ```
 
 命令门禁同样需要 `slot_lock` 覆盖全程。runner 使用真实 Core、两个确定性本地模型、真实 DOM 输入与原生 Keychain，检查非默认模型首发、运行中排队、停止、受理后丢回包与重启核对。结果按独立 attempt 目录保存在 `.scratch/ios-remote-v1/mobile-commands/`，包括可见按钮的实际 CSS 触控尺寸。`AREAL_MOBILE_DERIVED` 可指定共享 DerivedData 缓存；证据目录不复用旧尝试。DOM 输入检查不替代实体键盘或触摸验收。
+
+移动项目和会话列表使用内容自适应高度的无阴影卡片；项目名、会话名和顶部标题限制为可用宽度内的单行，超长时显示省略号，完整值保留在 DOM 和 `title` 属性。列表刷新只更新无障碍状态与原位控件，不插入会推移内容的加载行。消息正文继续完整显示。
 
 触摸形态的 Composer 输入使用现有 16px 字号 token，避免 iOS 聚焦时自动放大；消息复制、统计和执行过程折叠入口使用 44pt 最小触控区域。当前构建不包含审批、同步或 Task 提问回复、Task 暂停、边缘滑返和推送；Task 详情仍只读。
 

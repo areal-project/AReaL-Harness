@@ -12,6 +12,7 @@ import shutil
 import sys
 import tomllib
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -30,6 +31,67 @@ preflight = load("ci-preflight")
 
 
 class CiContracts(unittest.TestCase):
+    def test_mobile_environment_keeps_the_gui_runtime_and_passes_the_relay_runtime(self):
+        with patch.dict(
+            os.environ, {"PATH": "/gui-node/bin", "AREAL_RELAY_NODE_BIN": "/relay-node/bin/node"}
+        ):
+            env = preflight.environment(
+                {
+                    "id": "mobile-browser",
+                    "group": "mobile",
+                    "requires": ["node-24.22.1", "relay-node-24.2.0"],
+                },
+                ROOT,
+            )
+        self.assertEqual(env["PATH"], "/gui-node/bin")
+        self.assertEqual(env["AREAL_RELAY_NODE"], "/relay-node/bin/node")
+
+    def test_new_feature_acceptance_is_required_by_the_shared_gui_gate(self):
+        plan, reports = self.gate_fixture(("clients/gui/renderer/src/Composer.tsx",))
+        required = {
+            "smoke:test:composer-files",
+            "mobile-types",
+            "mobile-relay-install",
+            "mobile-browser",
+        }
+        items = {item["id"]: item for item in plan["items"]}
+        self.assertTrue(required <= items.keys(), required - items.keys())
+        self.assertEqual(items["mobile-browser"]["dependsOn"], ["mobile-relay-install"])
+        self.assertEqual(scope.CI_PLATFORMS["mobile"], "linux")
+        self.assertEqual(scope.JOB_GROUPS["gui"]["mobile"], {"mobile"})
+        for name in required:
+            missing = copy.deepcopy(reports)
+            for report in missing:
+                report["results"] = [row for row in report["results"] if row["id"] != name]
+            self.assertIn(
+                "missing required check " + name,
+                gate.validate(plan, missing, scope.WORKFLOW_GROUPS["gui"], ("run", "2")),
+            )
+
+    def test_quick_plan_avoids_duplicate_builds_and_preserves_full_acceptance(self):
+        plan, _ = self.gate_fixture()
+        quick = {item["id"] for item in plan["items"] if item["phase"] == "commit"}
+        full = {item["id"] for item in plan["items"]}
+        expensive = {
+            "relay:desktop",
+            "relay:ui",
+            "relay:renderer",
+            "relay:bundle",
+            "macos:desktop",
+            "macos:ui",
+            "macos:renderer",
+            "macos:bundle",
+            "computer-helper",
+            "mobile-browser",
+            "smoke:test:composer-files",
+        }
+        self.assertTrue(expensive <= full)
+        self.assertFalse(expensive & quick)
+        self.assertTrue({"portable:renderer", "portable:bundle", "mobile-types"} <= quick)
+        for item in plan["items"]:
+            if item["id"] in quick:
+                self.assertTrue(set(item["dependsOn"]) <= quick, item["id"])
+
     def test_native_container_copies_side_test_runtime_fixture_inputs(self):
         dockerfile = (ROOT / "tests/e2e/docker/Dockerfile").read_text()
         image = dockerfile.split("\nFROM ${BASE_IMAGE}", 1)[0]
@@ -218,6 +280,7 @@ class CiContracts(unittest.TestCase):
             "gui",
             "core-contracts",
             "smoke",
+            "mobile",
         }
         self.assertEqual(set(scope.JOB_GROUPS["gui"]), expected)
         jobs = {name: {"result": "success"} for name in expected}

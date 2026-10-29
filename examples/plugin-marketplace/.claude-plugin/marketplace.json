@@ -13,6 +13,17 @@
       "name": "computer-control",
       "source": "./computer-control",
       "description": "AReaL adapter guidance for the host computer_v1 tool."
+    },
+    {
+      "name": "heptabase",
+      "version": "0.2.0",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/heptameta/heptabase-agent-plugins.git",
+        "ref": "7cae4b5988bb4a2875e7ba9ea3f9eec12c644826",
+        "path": "plugins/heptabase"
+      },
+      "description": "Official Heptabase plugin for research, writing, and knowledge management."
     }
   ]
 }
