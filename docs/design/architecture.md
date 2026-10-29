@@ -174,7 +174,7 @@ GUI 订阅展示状态由 Desktop 的 `AppProviders` 统一投影，设置分组
 
 桌面 Worktree 由 `clients/gui/app/src/core/worktrees.cjs` 持有创建与线程绑定日志，`worktree-admission.cjs` 核对线程身份与定时任务目录的持久作者预约，`task-workspace-owners.cjs` 持久记录任务的实际宿主及可信线程锚点，`schedule-admission.cjs` 从 Core Task、桌面 owner、来源与执行锚点的同一 cwd 派生普通来源安排的共享资格，并保留自动分配项目外目录的旧任务家庭预约、执行准备和精确交互作者映射核查，`packages/workspace-git` 持有受控 Git 创建与事实核查。逻辑项目和物理执行目录分别登记。普通新会话使用当前目录与 Core；只有当前创建明确选择 Worktree 才分配新 checkout，不根据会话数量或旧偏好自动隔离。每个隔离 checkout 通过原服务入口启动独立 Core/Runtime，客户端仅聚合线程投影，不迁移 Core 历史。线程、子线程及请求收据定位原执行宿主，文件、进程和浏览器回调沿同一归属路由。接口和保证范围见[桌面宿主契约](../api/desktop.md#桌面宿主-worktree-契约)及[Worktree 指南](../guides/worktrees.md)。 环境配置归现有 library 的逻辑项目元数据，创建时冻结脚本；`worktree-environment.cjs` 仅适配 Core 受管进程回执。空线程绑定不代表环境就绪，首条 Prompt 需等待 setup 成功。取消和删除保留原创建身份，删除 tombstone 阻止旧 owner 重连或回退来源。
 
-GUI 的 `history-observation` 按项目、连接和代际合并目录读取：最多一批在途与一批待办，初次加载及显式刷新读取完整分页目录，生命周期通知只回读受影响会话的元数据。完整目录才交给 Worktree 所有者判断绑定；旧连接结果不发布，持续通知不延长已经完成批次的等待。导航缓存仍是可重建投影。
+GUI 的 `history-observation` 委托 `catalog-observation` 按项目、连接和代际合并目录读取：最多一批在途与一批待办，初次加载及显式刷新读取完整分页目录，生命周期通知只回读受影响会话的元数据。完整目录才交给 Worktree 所有者判断绑定；旧连接结果不发布，持续通知不延长已经完成批次的等待。导航缓存仍是可重建投影。
 
 ## 仓库目录
 
