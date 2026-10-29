@@ -9,6 +9,7 @@ enum Contents {
         json: String,
         pinned: Option<Box<State>>,
         fields: catalog::ConversationFields,
+        activity_at: i64,
     },
 }
 
@@ -32,19 +33,20 @@ impl State {
 }
 
 impl StateSlot {
-    pub(crate) fn new(thread: Thread, deferred: bool) -> Self {
-        let contents = if deferred {
+    pub(crate) fn new(thread: Thread, activity_at: Option<i64>) -> Self {
+        let contents = if let Some(activity_at) = activity_at {
             Contents::Dormant {
                 json: serde_json::to_string(&thread).expect("validated metadata serializes"),
                 pinned: None,
                 fields: catalog::ConversationFields::new(&thread),
+                activity_at,
             }
         } else {
             Contents::Loaded(Box::new(State::recovered(thread)))
         };
         Self {
             contents: Mutex::new(contents),
-            loaded: AtomicBool::new(!deferred),
+            loaded: AtomicBool::new(activity_at.is_none()),
         }
     }
 
@@ -115,6 +117,12 @@ impl<'a> Guard<'a> {
     pub(crate) fn materialized(&mut self) {
         self.promote = true;
     }
+    pub(crate) fn latest_activity_at(&self) -> i64 {
+        match &*self.guard {
+            Contents::Loaded(state) => catalog::latest_activity_at(&state.thread),
+            Contents::Dormant { activity_at, .. } => *activity_at,
+        }
+    }
 }
 
 impl Deref for Guard<'_> {
@@ -151,12 +159,14 @@ impl Drop for Guard<'_> {
             json,
             pinned,
             fields,
+            activity_at,
         } = &mut *self.guard
         else {
             unreachable!()
         };
         if self.changed || self.was_pinned {
             *fields = catalog::ConversationFields::new(&state.thread);
+            *activity_at = (*activity_at).max(catalog::latest_activity_at(&state.thread));
             match serde_json::to_string(&state.thread) {
                 Ok(encoded) => *json = encoded,
                 Err(_) => {

@@ -26,7 +26,7 @@ async fn configure_requests(
             let result = match method {
                 "initialize" => json!({}),
                 "areal/capabilities" => json!({"features":{"automaticSessionName":supported}}),
-                "areal/thread/start" | "areal/thread/observe" => {
+                "areal/thread/start" | "areal/thread/observe" | "thread/read" => {
                     let mut options = json!({});
                     if let Some(enabled) = previous {
                         options["automaticSessionName"] = json!(enabled);
@@ -35,7 +35,7 @@ async fn configure_requests(
                         "desktop":{"configuration":{"revision":3,"options":options}}}})
                 }
                 "areal/thread/inspect" => json!({"tools":[]}),
-                "areal/mcp/list" => json!({"data":[]}),
+                "areal/mcp/list" | "areal/profile/list" => json!({"data":[]}),
                 "areal/thread/configure" => {
                     // 在读取 stdin/提交 Turn 之前结束夹具，检验真实 RPC 请求而非重复拼装逻辑。
                     socket

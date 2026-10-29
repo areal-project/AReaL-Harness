@@ -77,7 +77,7 @@ async function executeMediaCommand(project, request, backend) {
   if (!project.endpoint) throw new Error("Core 连接不可用");
   const url = new URL(project.endpoint);
   url.protocol = url.protocol === "wss:" ? "https:" : "http:";
-  url.pathname = "/areal/blobs";
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}/areal/blobs`;
   url.search = "";
   url.searchParams.set("threadId", request.threadId);
   if (request.operation === "read") {
@@ -128,14 +128,44 @@ async function executeMediaCommand(project, request, backend) {
     });
   } catch (error) {
     // 响应没回到客户端时不能判断 Core 是否已写入，也不能再发一次。
-    throw new Error(
-      `附件上传结果待核对：${error instanceof Error ? error.message : String(error)}。草稿已保留，不会自动重发。`,
+    const failure = Object.assign(
+      new Error(
+        `附件上传结果待核对：${error instanceof Error ? error.message : String(error)}。草稿已保留，不会自动重发。`,
+      ),
+      { submissionUnknown: true },
     );
+    throw failure;
   }
-  if (!response.ok) throw uploadError(response.status, await response.text());
-  /** @type {unknown} */
-  const result = await response.json();
-  return result;
+  if (!response.ok) {
+    let detail;
+    try {
+      detail = await response.text();
+    } catch {
+      detail = "无法读取上传响应";
+    }
+    const failure = Object.assign(uploadError(response.status, detail), {
+      submissionUnknown: response.status >= 500,
+    });
+    throw failure;
+  }
+  try {
+    const receipt = await response.json();
+    if (
+      !/^areal:\/\/blob\/[A-Za-z0-9_-]+$/.test(receipt?.uri) ||
+      typeof receipt.mimeType !== "string" ||
+      receipt.sizeBytes !== request.bytes.length
+    )
+      throw new Error("上传回执不完整");
+    return receipt;
+  } catch (cause) {
+    const failure = Object.assign(
+      new Error(
+        `附件上传结果待核对：${cause instanceof Error ? cause.message : String(cause)}。不会自动重发。`,
+      ),
+      { submissionUnknown: true },
+    );
+    throw failure;
+  }
 }
 /** @param {InputHost} backend @param {Record<string,unknown>} request @returns {MessageInput[]} */
 function messageInput(backend, request) {

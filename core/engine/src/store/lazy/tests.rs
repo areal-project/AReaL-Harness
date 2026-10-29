@@ -63,6 +63,70 @@ fn facts(root: &Path) -> BTreeMap<String, Vec<u8>> {
 }
 
 #[tokio::test]
+async fn cold_history_preserves_the_maximum_activity_time_for_idle_drain() {
+    for mode in [
+        SessionCatalog::Memory,
+        SessionCatalog::Sqlite,
+        SessionCatalog::MemoryLazy,
+        SessionCatalog::SqliteLazy,
+    ] {
+        for archived in [false, true] {
+            let (root, mut threads) = fixture(1, 1024).await;
+            let thread = &mut threads[0];
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+            thread.updated_at = now - 300;
+            thread.turns[0].completed_at = Some(now + 300);
+            let mut tail = thread.turns[0].clone();
+            tail.id = "tail-after-clock-rollback".into();
+            tail.started_at = Some(now - 120);
+            tail.completed_at = Some(now - 60);
+            thread.turns.push(tail);
+            thread.desktop = Some(areal_protocol::desktop::DesktopState {
+                archived,
+                ..Default::default()
+            });
+            std::fs::write(
+                root.path().join(format!("{}.json", thread.id)),
+                encode(thread).unwrap(),
+            )
+            .unwrap();
+            for _ in 0..2 {
+                let engine = open(root.path(), mode);
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                let status = engine.server_status().await;
+                if archived {
+                    assert!(
+                        status["idleForMs"].as_u64().unwrap() > 0,
+                        "{mode:?} must preserve archived recovery's timestamp semantics"
+                    );
+                } else {
+                    assert_eq!(
+                        status["idleForMs"], 0,
+                        "{mode:?} must retain the earlier future timestamp"
+                    );
+                }
+                assert_eq!(
+                    engine
+                        .drain_with_idle("ifIdle".into(), 1000, Some(1))
+                        .await
+                        .is_ok(),
+                    archived
+                );
+                assert_eq!(engine.server_status().await["acceptingWork"], !archived);
+                assert_eq!(
+                    engine.catalog_metrics().await["loading"]["historyMaterializations"],
+                    0
+                );
+                engine.shutdown().await;
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn dormant_directory_preserves_metadata_overview_and_facts_then_loads_exact_history_once() {
     for mode in [SessionCatalog::MemoryLazy, SessionCatalog::SqliteLazy] {
         let (root, original) = fixture(3, 16384).await;

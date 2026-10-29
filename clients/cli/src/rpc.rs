@@ -24,7 +24,11 @@ impl Rpc {
         request
             .headers_mut()
             .insert("Authorization", format!("Bearer {token}").parse()?);
-        let (socket, _) = tokio_tungstenite::connect_async(request).await?;
+        let (socket, _) = tokio::time::timeout(
+            Duration::from_secs(180),
+            tokio_tungstenite::connect_async(request),
+        )
+        .await??;
         let (mut writer, mut reader) = socket.split();
         let (out, mut messages) = mpsc::channel::<Value>(32);
         let (events_tx, events) = mpsc::channel(512);

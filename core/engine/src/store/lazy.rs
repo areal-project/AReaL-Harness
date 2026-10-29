@@ -52,6 +52,7 @@ struct Cached {
     stamp: Stamp,
     fact_hash: String,
     dependency: Option<Dependency>,
+    activity_at: i64,
     metadata: String,
     checksum: String,
 }
@@ -65,6 +66,7 @@ impl Cached {
                 &self.stamp,
                 &self.fact_hash,
                 &self.dependency,
+                self.activity_at,
                 &self.metadata,
             ))?)
         ))
@@ -79,6 +81,7 @@ impl Cached {
                     && thread.turns.len() <= 1
                     && thread.turns.iter().all(|turn| turn.items.is_empty())
                     && thread.context_checkpoint.is_none()
+                    && self.activity_at >= crate::catalog::latest_activity_at(&thread)
                     && eligible(&thread)
                     && (max_bytes == 0
                         || stamp
@@ -105,6 +108,15 @@ impl Cached {
 
 fn safe_digest(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn restored_activity_at(thread: &Thread) -> i64 {
+    // 归档在原恢复语义中不常驻正文；其空闲状态只观察 updated_at。
+    if thread.desktop.as_ref().is_some_and(|d| d.archived) {
+        thread.updated_at.max(0)
+    } else {
+        crate::catalog::latest_activity_at(thread)
+    }
 }
 
 fn eligible(thread: &Thread) -> bool {
@@ -158,6 +170,12 @@ impl RestoredSession {
     }
     pub(crate) fn is_deferred(&self) -> bool {
         matches!(self.content, Content::Deferred(_))
+    }
+    pub(crate) fn deferred_activity_at(&self) -> Option<i64> {
+        match &self.content {
+            Content::Deferred(row) => Some(row.activity_at),
+            Content::Eager(_) => None,
+        }
     }
     pub(crate) fn into_thread(self) -> Result<Thread> {
         match self.content {
@@ -390,6 +408,7 @@ impl Store {
                             stamp,
                             fact_hash: digest,
                             dependency,
+                            activity_at: restored_activity_at(&thread),
                             metadata,
                             checksum: String::new(),
                         };
@@ -427,7 +446,12 @@ impl Store {
         self.lazy.cache_errors.fetch_add(1, Ordering::Relaxed);
         tracing::warn!(target:"areal::catalog", %error, "metadata cache unavailable; facts remain authoritative");
     }
-    pub(crate) async fn materialize(&self, id: &str, max_bytes: usize) -> Result<Thread> {
+    pub(crate) async fn materialize(
+        &self,
+        id: &str,
+        max_bytes: usize,
+        activity_at: i64,
+    ) -> Result<Thread> {
         let (stamp, digest, _) = self
             .lazy
             .pending
@@ -479,6 +503,10 @@ impl Store {
             anyhow::ensure!(
                 (1..=STATE_VERSION).contains(&record.version) && record.thread.id == id,
                 "deferred session identity mismatch"
+            );
+            anyhow::ensure!(
+                restored_activity_at(&record.thread) == activity_at,
+                "deferred activity differs from authoritative facts; restart Core"
             );
             Ok(record.thread)
         })

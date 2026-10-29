@@ -16,6 +16,67 @@ use tokio_util::sync::CancellationToken;
 type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 
 #[tokio::test]
+async fn idle_drain_duration_is_enforced_over_native_websocket() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(
+        dir.path(),
+        Arc::new(TextModel(Mutex::new(Vec::new()))),
+        Limits::default(),
+    )
+    .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let stop = CancellationToken::new();
+    let server = tokio::spawn(areal_app_server::serve(
+        listener,
+        engine.clone(),
+        stop.clone(),
+    ));
+    let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://{addr}"))
+        .await
+        .unwrap();
+    call(
+        &mut socket,
+        1,
+        "initialize",
+        json!({"clientInfo":{"name":"idle-test","version":"1"}}),
+    )
+    .await;
+    socket
+        .send(Wire::Text(
+            json!({"method":"initialized"}).to_string().into(),
+        ))
+        .await
+        .unwrap();
+    let status = call(&mut socket, 2, "areal/server/status", json!({})).await;
+    assert!(status["result"]["idleForMs"].is_u64(), "{status}");
+    let rejected = call(
+        &mut socket,
+        3,
+        "areal/server/drain",
+        json!({"strategy":"ifIdle","timeoutMs":1000,"idleTimeoutMs":604800000}),
+    )
+    .await;
+    assert!(rejected.get("error").is_some(), "{rejected}");
+    let status = call(&mut socket, 4, "areal/server/status", json!({})).await;
+    assert_eq!(status["result"]["acceptingWork"], true, "{status}");
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    let drained = call(
+        &mut socket,
+        5,
+        "areal/server/drain",
+        json!({"strategy":"ifIdle","timeoutMs":1000,"idleTimeoutMs":1}),
+    )
+    .await;
+    assert_eq!(drained["result"]["restartSafe"], true, "{drained}");
+    assert_eq!(drained["result"]["acceptingWork"], false, "{drained}");
+    drop(socket);
+    stop.cancel();
+    server.await.unwrap().unwrap();
+    engine.shutdown().await;
+}
+
+#[tokio::test]
 async fn side_read_only_requires_verified_runtime_and_none_remains_available() {
     unsafe {
         std::env::set_var("AREAL_DEV_CONVERSATION_DERIVATION", "1");

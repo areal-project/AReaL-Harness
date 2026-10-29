@@ -14,6 +14,7 @@ const catalog = require("./desktop-contract/catalog.cjs");
 const trajectory = require("./desktop-contract/trajectory.cjs");
 const feedback = require("./desktop-contract/feedback.cjs");
 const management = require("./desktop-contract/management.cjs");
+const cloud = require("./desktop-contract/cloud.cjs");
 const workspace = require("./desktop-contract/workspace.cjs");
 const libraryMedia = require("./desktop-contract/library-media.cjs");
 const {
@@ -126,6 +127,8 @@ const {
  * manage:import('./desktop-contract/management.cjs').ManagementRequest,
  * workspace:import('./desktop-contract/workspace.cjs').WorkspaceRequest,
  * library:import('./desktop-contract/library-media.cjs').LibraryRequest,
+ * cloud:import('./desktop-contract/cloud.cjs').SettingsRequest,
+ * cloudSession:import('./desktop-contract/cloud.cjs').SessionRequest,
  * media:import('./desktop-contract/library-media.cjs').MediaRequest
  * }} Requests */
 /** @template {string} N @typedef {N extends keyof Requests ? Requests[N] : never} CommandParams */
@@ -156,6 +159,8 @@ function isCommandInvocation(invocation, options) {
  * : N extends 'manage' ? import('./desktop-contract/management.cjs').ManagementResponse<Extract<P,Requests['manage']>>
  * : N extends 'workspace' ? import('./desktop-contract/workspace.cjs').WorkspaceResponse<Extract<P,Requests['workspace']>>
  * : N extends 'library' ? import('./desktop-contract/library-media.cjs').LibraryState
+ * : N extends 'cloud' ? import('./desktop-contract/cloud.cjs').SettingsResponse
+ * : N extends 'cloudSession' ? import('./desktop-contract/cloud.cjs').SessionResponse<Extract<P,Requests['cloudSession']>>
  * : N extends 'media' ? import('./desktop-contract/library-media.cjs').MediaResponse<Extract<P,Requests['media']>> : never} CommandResponse */
 /** @typedef {'show'|'navigate'|'back'|'forward'|'reload'|'stop'|'state'|'external'|'devtools'|'openLink'|'release'|'claim'|'takeover'|'captureRegion'|'captureElement'|'selectElement'|'cancelElementSelection'|'checkElement'|'endRegion'|'beginStyleTrial'|'applyStyleTrial'|'undoStyleTrial'|'redoStyleTrial'|'styleTrialState'|'captureStyleTrialAfter'|'clearStyleTrial'|'newPage'|'selectPage'|'subscribe'|'unsubscribe'|'allowNextDownload'|'cancelFileHandoff'|'cancelDownload'|'authorizeFrameOrigin'|'reloadFrameOrigin'|'revokeFrameOrigin'} OwnedPreviewOperation */
 /** @typedef {{projectId:string,threadId:string,pageId?:string,captureId?:string,downloadId?:string,url?:string,userIntent?:boolean,visible?:boolean,bounds?:{x:number,y:number,width:number,height:number},[key:string]:unknown}} PreviewOwner */
@@ -192,6 +197,10 @@ function validateCommand(name, params, { serviceOnly = false } = {}) {
     invalid();
   if (scope === "thread" && !identifier(params.threadId)) invalid();
   switch (name) {
+    case "cloud":
+    case "cloudSession":
+      cloud.validateRequest(name, params);
+      return;
     case "connect":
     case "list":
     case "open":
@@ -489,6 +498,10 @@ function validateCommandResponse(name, params, value) {
     case "workspace":
       workspace.validateWorkspaceResponse(invocation.request, value);
       return;
+    case "cloud":
+    case "cloudSession":
+      if (cloud.isResponse(invocation.name, invocation.request, value)) return;
+      break;
     case "library":
       if (libraryMedia.isLibraryState(value)) return;
       break;

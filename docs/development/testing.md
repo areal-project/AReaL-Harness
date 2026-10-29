@@ -181,7 +181,7 @@ macOS 登录会话中的 Keychain 权限边界另用 `python3 scripts/git-keycha
 
 `memory-lazy`、`sqlite-lazy` 复用同一套目录回归，`catalog_observation` 同时覆盖四种模式及恢复后继续执行、原工具不重放。`cargo test --locked -p areal-engine --lib store::lazy --jobs 3 -- --test-threads=4` 覆盖首次加载并发/取消、目录与工作概览、事实字节、同长度离线编辑、成员增删、限制收紧、错误/未知版本缓存及执行前核对。完整 Engine/config/app-server 回归可分别设置测试专用 `AREAL_TEST_SESSION_CATALOG=memory-lazy`、`sqlite-lazy`；仅编译 `test-support` 时生效，生产默认不读取该变量。显式 `Limits.session_catalog` 优先，避免覆盖用于对照的 eager 实例。
 
-GUI 刷新回归随 `test:regressions` 执行，保留共享列表/元数据解码与后端断连读取屏障；畸形响应不能覆盖最后一份完整缓存。生命周期回归区分普通 shutdown 与显式 drain，核对重启后的队列暂停和完整历史，并记录缓存重新校验的边界。
+GUI 刷新回归随 `test:regressions` 执行，保留共享列表/元数据解码与后端断连读取屏障；畸形响应不能覆盖最后一份完整缓存。生命周期回归区分普通 shutdown 与显式 drain，核对重启后的队列暂停和完整历史，并记录缓存重新校验的边界。 四模式另对照时钟回拨下的空闲回收判断，覆盖归档恢复及缓存复用，同时确认冷历史不被展开。
 
 缓存故障回归还覆盖：缓存成员数大于收紧后的上限而事实数合法、SQLite 初始化五阶段中断残片、事实验证后等待发布锁时取消、重复缓存身份、外部缓存写者占用，以及符号/硬链接路径。所有缓存重建仍核对事实字节不变、下一次打开能命中缓存；外来数据库与未知版本的原字节必须保留。
 

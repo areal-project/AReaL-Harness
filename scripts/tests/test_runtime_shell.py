@@ -106,7 +106,16 @@ class RuntimeShellTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stdout)
                     self.assertEqual(
                         subprocess.check_output(
-                            [str(output / "bash"), "--version"], text=True
+                            [
+                                "/usr/bin/python3",
+                                "-I",
+                                "-S",
+                                "-c",
+                                "import subprocess,sys; sys.stdout.buffer.write(subprocess.check_output(sys.argv[1:]))",
+                                str(output / "bash"),
+                                "--version",
+                            ],
+                            text=True,
                         ).strip(),
                         VERSION,
                     )

@@ -385,7 +385,7 @@ fn desktop_schema() -> Value {
             schemars::schema_for!(areal_protocol::tasks::TaskRunNow)
         ]}),
     );
-    methods.insert("areal/server/drain".into(),object(json!({"strategy":{"enum":["wait","cancel","ifIdle"]},"timeoutMs":{"type":"integer","minimum":0,"maximum":60000}}),vec!["strategy","timeoutMs"]));
+    methods.insert("areal/server/drain".into(),object(json!({"strategy":{"enum":["wait","cancel","ifIdle"]},"timeoutMs":{"type":"integer","minimum":0,"maximum":60000},"idleTimeoutMs":{"type":"integer","minimum":1,"maximum":604800000}}),vec!["strategy","timeoutMs"]));
     methods.insert(
         "areal/blob/release".into(),
         object(

@@ -1452,7 +1452,7 @@ export function Messages({
                       {group.progress ? (
                         <TurnProgress
                           summaryAvailable
-                          turn={groupIndex === firstProgress ? turn : undefined}
+                          turn={!thread.cloud && groupIndex === firstProgress ? turn : undefined}
                           connected={!!project.state?.connected}
                           label={legacyReply ? "早前消息与活动" : "本轮过程"}
                           settled={
@@ -1468,7 +1468,7 @@ export function Messages({
                       ) : (
                         contents
                       )}
-                      {group.entries.some(({ item }) => item === initialUser) &&
+                      {group.entries.some(({ item }) => !thread.cloud && item === initialUser) &&
                         firstProgress < 0 && (
                           <TurnElapsed turn={turn} connected={!!project.state?.connected} />
                         )}

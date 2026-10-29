@@ -3,6 +3,7 @@ import { Button } from "../components/ui/button.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import type { Action, PlatformServices } from "../services.js";
 import { BrowserSettings } from "../settings/BrowserSettings.js";
+import { CloudSettings } from "../settings/CloudSettings.js";
 import { ComputerSettings } from "../settings/ComputerSettings.js";
 import { CreationRecoverySettings } from "../settings/CreationRecoverySettings.js";
 import { CoreCapabilitiesSettings } from "../settings/CoreCapabilitiesSettings.js";
@@ -111,6 +112,8 @@ export function WorkbenchSettings({
           action={resourceAction}
           connected={snapshot.connection?.state === "ready"}
         />
+      ) : settingsTab === "Cloud" ? (
+        <CloudSettings action={resourceAction} />
       ) : settingsTab === "电脑控制" ? (
         <ComputerSettings
           settings={library.settings}

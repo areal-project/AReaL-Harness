@@ -2,6 +2,7 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const {
+  commandSemantics,
   validateCommand,
   validateCommandResponse,
 } = require("../packages/workbench/client/desktop-contract.cjs");
@@ -76,5 +77,29 @@ test("remote control cannot reveal local provider credentials", async () => {
       expectedRevision: "r",
     }),
     /本机/,
+  );
+});
+
+test("Cloud reconnect is an explicit identity-bound mutation", () => {
+  const request = { operation: "reconnect", projectId: "project", threadId: "thread" };
+  assert.doesNotThrow(() => validateCommand("cloudSession", request));
+  assert.equal(commandSemantics("cloudSession", request).effect, "mutation");
+  for (const invalid of [
+    { ...request, threadId: "" },
+    { ...request, projectId: "" },
+    { ...request, endpoint: "ws://replacement" },
+    { ...request, attachments: [] },
+  ])
+    assert.throws(() => validateCommand("cloudSession", invalid));
+});
+
+test("Cloud send requires an authoritative admission receipt", () => {
+  const params = { operation: "send", projectId: "project", threadId: "thread", text: "once" };
+  assert.throws(() => validateCommandResponse("cloudSession", params, {}));
+  assert.throws(() => validateCommandResponse("cloudSession", params, { turn: { id: "turn" } }));
+  assert.doesNotThrow(() =>
+    validateCommandResponse("cloudSession", params, {
+      turn: { id: "turn", status: "inProgress", items: [] },
+    }),
   );
 });

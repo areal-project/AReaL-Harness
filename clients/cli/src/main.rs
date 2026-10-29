@@ -1,4 +1,5 @@
 //! 统一产品命令；子命令只装配已有入口，历史、工具循环和队列仍属于 Core。
+mod cloud;
 mod local;
 mod plugins;
 mod rpc;
@@ -28,6 +29,8 @@ struct MultitoolCli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// 在通用 Cloud 后端提交和读取无状态任务。
+    Cloud(cloud::Options),
     /// 显示当前版本；等价于 --version。
     Version,
     /// 查询可信 Core 二进制内嵌构建身份，不启动服务。
@@ -214,6 +217,7 @@ async fn main() {
             println!("{}", areal_server::build_info());
             return;
         }
+        Some(Command::Cloud(options)) => cloud::run(options).await,
         Some(Command::Upgrade { check }) => upgrade::run(check).await,
         Some(Command::Plugin(options)) => plugins::run(options).await,
         None => {

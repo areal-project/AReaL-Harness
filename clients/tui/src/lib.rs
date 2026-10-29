@@ -130,7 +130,7 @@ pub async fn run_with_trajectory_notice(
         !args.no_session_name || args.prompt.is_some() || args.input_file.is_some(),
         "--no-session-name requires --prompt or --input-file; use areal exec for other scripts"
     );
-    let agent_profile = args
+    let mut agent_profile = args
         .agent
         .as_deref()
         .map(areal_local_service::parse_agent_profile)
@@ -170,6 +170,9 @@ pub async fn run_with_trajectory_notice(
     let mut client = Client::connect(endpoint, args.auth_file.as_deref()).await.with_context(|| {
         format!("Cannot connect to Core at {endpoint}. Start the server first, or omit --endpoint to start a local Harness.")
     })?;
+    if agent_profile.is_none() && args.resume.is_none() && args.shared_service.is_none() {
+        agent_profile = client.default_profile().await?;
+    }
     if let Some(goal) = args.goal {
         return headless::goal_with_profile(
             &mut client,

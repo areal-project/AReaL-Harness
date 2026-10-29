@@ -590,6 +590,39 @@ mod linux_reaping;
 mod macos_reaping;
 
 #[tokio::test]
+async fn native_scope_reads_public_inputs_and_writes_scratch() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let public = root.join("scratch/public");
+    std::fs::create_dir_all(&public).unwrap();
+    std::fs::write(public.join("task"), "input-sentinel").unwrap();
+    let backend = NativeBackend::launch_with_profile(SandboxProfile::FullAccess)
+        .await
+        .unwrap();
+    for access in [ScopeAccess::Restricted, ScopeAccess::Unrestricted] {
+        let mut request = execution(
+            &root,
+            "cat scratch/public/task && printf output-sentinel > scratch/result",
+        );
+        request.scope_access = access;
+        if access == ScopeAccess::Unrestricted {
+            request.read_roots = vec!["/".into()];
+            request.write_roots = vec!["/".into()];
+        }
+        request.read_only_paths = vec![public.clone()];
+        let mut rx = backend.start(request).await.unwrap();
+        let (output, status) = collect(&mut rx, &backend).await;
+        assert_eq!(status, Some(0), "{}", String::from_utf8_lossy(&output));
+        assert_eq!(output, b"input-sentinel");
+        assert_eq!(
+            std::fs::read(root.join("scratch/result")).unwrap(),
+            b"output-sentinel"
+        );
+    }
+    backend.shutdown().await.unwrap();
+}
+
+#[tokio::test]
 async fn public_inputs_block_mutation_and_ancestor_replacement_in_full_access() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().canonicalize().unwrap();

@@ -230,7 +230,7 @@ function runningToolLabel(item: Data): string {
 
 export function activityLabel(project: Data, threadId: string, turn: Data) {
   if (!(project.state?.threads?.[threadId]?.executionConnected ?? project.state?.connected))
-    return "连接已中断，任务状态待同步";
+    return project.cloud ? "等待会话恢复…" : "连接已中断，任务状态待同步";
   if (project.state?.interactions?.[threadId]?.data?.some((i: Data) => i.status === "pending"))
     return "等待你的确认或回答";
   if (turn.modelRetry) {

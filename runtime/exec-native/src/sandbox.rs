@@ -130,12 +130,51 @@ pub fn preflight(profile: Profile) -> Result<()> {
     if profile != Profile::Native {
         return Ok(());
     }
-    static PREFLIGHT: OnceLock<Result<()>> = OnceLock::new();
-    PREFLIGHT.get_or_init(run_linux_preflight).clone()
+    linux_proc_mount().map(|_| ())
 }
 
 #[cfg(target_os = "linux")]
-fn run_linux_preflight() -> Result<()> {
+#[derive(Clone, Copy)]
+enum LinuxProcMount {
+    Private,
+    Empty,
+}
+
+#[cfg(target_os = "linux")]
+fn linux_proc_mount() -> Result<LinuxProcMount> {
+    static PREFLIGHT: OnceLock<Result<LinuxProcMount>> = OnceLock::new();
+    PREFLIGHT
+        .get_or_init(|| {
+            match run_linux_preflight(LinuxProcMount::Private) {
+                Ok(()) => Ok(LinuxProcMount::Private),
+                Err(private_error) => {
+                    // 外层容器屏蔽部分 proc 路径时，内层重新挂载 proc 会被内核拒绝。
+                    // 空的只读 proc 保留 PID/mount 隔离，绝不绑定外层 proc 或直接执行命令。
+                    run_linux_preflight(LinuxProcMount::Empty).map_err(|empty_error| {
+                        Error::new(
+                            ErrorCode::Unsupported,
+                            format!(
+                                "{private_error}; empty proc preflight also failed: {empty_error}"
+                            ),
+                        )
+                    })?;
+                    Ok(LinuxProcMount::Empty)
+                }
+            }
+        })
+        .clone()
+}
+
+#[cfg(target_os = "linux")]
+fn proc_mount_args(mount: LinuxProcMount) -> &'static [&'static str] {
+    match mount {
+        LinuxProcMount::Private => &["--proc", "/proc"],
+        LinuxProcMount::Empty => &["--tmpfs", "/proc", "--remount-ro", "/proc"],
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn run_linux_preflight(proc_mount: LinuxProcMount) -> Result<()> {
     let mut command = std::process::Command::new("/usr/bin/bwrap");
     command.args([
         "--unshare-all",
@@ -145,9 +184,8 @@ fn run_linux_preflight() -> Result<()> {
         "ALL",
         "--dev",
         "/dev",
-        "--proc",
-        "/proc",
     ]);
+    command.args(proc_mount_args(proc_mount));
     // BusyBox 系统只有 /bin/true；与实际 native 命令一致，绑定其可执行文件及解释器。
     for path in ["/bin", "/usr", "/lib", "/lib64"] {
         if Path::new(path).exists() {
@@ -372,12 +410,11 @@ fn linux_command(execution: &Execution) -> Result<Vec<String>> {
     if execution.network == areal_runtime_protocol::NetworkRequest::Inherit {
         argv.push("--share-net".into());
     }
-    argv.extend([
-        "--tmpfs".into(),
-        "/tmp".into(),
-        "--proc".into(),
-        "/proc".into(),
-    ]);
+    argv.extend(["--tmpfs".into(), "/tmp".into()]);
+    #[cfg(target_os = "linux")]
+    let proc_mount = linux_proc_mount()?;
+    #[cfg(target_os = "linux")]
+    argv.extend(proc_mount_args(proc_mount).iter().map(|arg| (*arg).into()));
     for path in [
         "/usr/bin",
         "/usr/local/bin",
@@ -488,12 +525,9 @@ fn linux_command(execution: &Execution) -> Result<Vec<String>> {
         }
     }
     // full-access 的根挂载不能覆盖私有 PID namespace 的 proc/dev；否则可经宿主 /proc/PID/root 绕过输入挂载。
-    argv.extend([
-        "--proc".into(),
-        "/proc".into(),
-        "--dev".into(),
-        "/dev".into(),
-    ]);
+    #[cfg(target_os = "linux")]
+    argv.extend(proc_mount_args(proc_mount).iter().map(|arg| (*arg).into()));
+    argv.extend(["--dev".into(), "/dev".into()]);
     argv.extend([
         "--chdir".into(),
         absolute_utf8(&execution.cwd)?.into(),
@@ -634,7 +668,38 @@ mod policy_tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn native_preflight_runs_the_command_inside_its_system_mounts() {
-        run_linux_preflight().expect("native container must support the Runtime preflight");
+        preflight(Profile::Native).expect("native container must support the Runtime preflight");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn empty_proc_mount_hides_outer_processes_and_rejects_writes() {
+        let mut command = std::process::Command::new("/usr/bin/bwrap");
+        command.args([
+            "--unshare-all",
+            "--die-with-parent",
+            "--new-session",
+            "--cap-drop",
+            "ALL",
+            "--ro-bind",
+            "/",
+            "/",
+            "--dev",
+            "/dev",
+        ]);
+        command.args(proc_mount_args(LinuxProcMount::Empty));
+        command.args([
+            "--",
+            "/bin/sh",
+            "-c",
+            "test -d /proc && test ! -e /proc/1/root && ! touch /proc/write-probe",
+        ]);
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     #[test]

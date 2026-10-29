@@ -299,7 +299,7 @@ impl Cell {
         bindings: tools::Bindings,
         parent_scratch: Option<&Path>,
     ) -> Arc<Self> {
-        Self::restored(thread, depth, bindings, parent_scratch, None)
+        Self::restored(thread, depth, bindings, parent_scratch, None, None)
     }
     fn restored(
         mut thread: Thread,
@@ -307,8 +307,10 @@ impl Cell {
         bindings: tools::Bindings,
         parent_scratch: Option<&Path>,
         pending_registry: Option<Arc<tools::Registry>>,
+        activity_at: Option<i64>,
     ) -> Arc<Self> {
         let deferred = pending_registry.is_some();
+        debug_assert_eq!(deferred, activity_at.is_some());
         if let Some(data) = &mut thread.desktop
             && let Some(areal_protocol::desktop::PromptPrediction::Pending {
                 source_turn_id,
@@ -343,7 +345,7 @@ impl Cell {
             agent_tools: AtomicUsize::new(0),
             cancel_grace_ms: AtomicUsize::new(1000),
             bindings: RwLock::new(bindings),
-            state: dormant::StateSlot::new(thread, deferred),
+            state: dormant::StateSlot::new(thread, activity_at),
             pending_registry: std::sync::Mutex::new(pending_registry),
             events: dormant::Events::new(deferred),
             settled: watch::channel(true).0,
@@ -464,6 +466,7 @@ fn restore_sessions(
         .into_iter()
         .map(|(id, session)| {
             let deferred = session.is_deferred();
+            let activity_at = session.deferred_activity_at();
             let thread = session.into_thread()?;
             let mut bindings = tools::Bindings {
                 registry: if thread.is_read_only_side() {
@@ -490,6 +493,7 @@ fn restore_sessions(
                 bindings,
                 parent_scratch,
                 pending_registry,
+                activity_at,
             );
             if root_session {
                 *cell.hooks.pending.try_lock().expect("new hook session") = vec!["resume".into()];
@@ -869,7 +873,11 @@ impl Engine {
         }
         let mut thread = match self
             .store
-            .materialize(&cell.id, self.limits.max_history_bytes)
+            .materialize(
+                &cell.id,
+                self.limits.max_history_bytes,
+                state.latest_activity_at(),
+            )
             .await
         {
             Ok(thread) => thread,

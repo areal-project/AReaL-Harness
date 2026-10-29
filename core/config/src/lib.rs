@@ -1,4 +1,5 @@
 //! User configuration. All process context is supplied by the caller.
+pub mod cloud;
 mod file;
 pub mod models;
 mod resolve;

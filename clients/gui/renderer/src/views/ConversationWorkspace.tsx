@@ -7,6 +7,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu.js";
+import { CloudComposer } from "../CloudComposer.js";
+import { useCloudEnvironment } from "../cloudEnvironment.js";
 import { FeedbackNotice } from "../FeedbackNotice.js";
 import { Composer } from "../Composer.js";
 import { ComposerWorkspaceContext } from "../ComposerWorkspaceContext.js";
@@ -206,6 +208,7 @@ function ActiveConversation() {
     navigationCommands,
     conversationReferences,
     readTurnReview,
+    setError,
   } = useConversationContext();
   const { project, thread, threadId, library, snapshot, resourceAction } = session;
   const panelOwner = `${project?.id ?? ""}:${threadId}`;
@@ -249,18 +252,28 @@ function ActiveConversation() {
         </div>
       ) : (
         <Messages
-          project={project}
+          project={
+            thread.cloud
+              ? {
+                  ...project,
+                  cloud: true,
+                  state: { ...project.state, connected: thread.cloud.connected },
+                }
+              : project
+          }
           thread={thread}
           action={action}
           decisionShown
           onOpenResult={mcpWorkspace.openResult}
           resultStates={mcpWorkspace.resultStates}
-          onFork={forkFromTurn}
-          onAddSelection={canStageSelection ? addSelectionToChat : undefined}
-          onSideSelection={canStageSelection && canCreateSide ? openSideSelection : undefined}
+          onFork={thread.cloud ? undefined : forkFromTurn}
+          onAddSelection={!thread.cloud && canStageSelection ? addSelectionToChat : undefined}
+          onSideSelection={
+            !thread.cloud && canStageSelection && canCreateSide ? openSideSelection : undefined
+          }
           dark={dark}
           onLink={onLink}
-          onFile={openFile}
+          onFile={thread.cloud ? () => setError(t("cloud.remoteFile")) : openFile}
           onReview={(turnId) => {
             rememberPanelTrigger();
             setReviewRequest({ owner: panelOwner, turnId });
@@ -287,6 +300,7 @@ function ActiveConversation() {
               <ComposerWorkspaceContext
                 project={project}
                 threadId={thread?.id}
+                cloud={!!thread.cloud}
                 action={resourceAction}
                 backendReady={snapshot.connection?.state === "ready"}
               />
@@ -305,9 +319,9 @@ function ActiveConversation() {
             }
           />
         )}
-        {mcpWorkspace.contexts}
-        {mcpWorkspace.formsView}
-        {mcpMentionsOpen && (
+        {!thread.cloud && mcpWorkspace.contexts}
+        {!thread.cloud && mcpWorkspace.formsView}
+        {!thread.cloud && mcpMentionsOpen && (
           <McpMentionsPicker
             servers={mcpWorkspace.servers}
             projectId={project.id}
@@ -316,36 +330,45 @@ function ActiveConversation() {
             onClose={() => setMcpMentionsOpen(false)}
           />
         )}
-        <Composer
-          surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
-          onAnnotate={openImageAnnotation}
-          key={`${project.id}:${thread.id}`}
-          onMcpMention={() => setMcpMentionsOpen(true)}
-          appEntries={appEntries}
-          conversationReferences={conversationReferences}
-          project={project}
-          thread={thread}
-          executionBlocked={
-            snapshot.connection?.state !== "ready" ||
-            viewRefreshing ||
-            projectExecutionBlocked(snapshot.lifecycle, project.id)
-          }
-          action={action}
-          readAction={resourceAction}
-          onPanel={showPanel}
-          onSide={
-            canCreateSide
-              ? async (text) => {
-                  await createSide(text);
-                }
-              : undefined
-          }
-          onNew={() => void newTask()}
-          onOpenTask={(target) => {
-            surfaces.leaveSettings();
-            tasks.openTarget({ ...target, eventId: crypto.randomUUID() });
-          }}
-        />
+        {thread.cloud ? (
+          <CloudComposer
+            key={`${project.id}:${thread.id}`}
+            project={project}
+            thread={thread}
+            action={resourceAction}
+          />
+        ) : (
+          <Composer
+            surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
+            onAnnotate={openImageAnnotation}
+            key={`${project.id}:${thread.id}`}
+            onMcpMention={() => setMcpMentionsOpen(true)}
+            appEntries={appEntries}
+            conversationReferences={conversationReferences}
+            project={project}
+            thread={thread}
+            executionBlocked={
+              snapshot.connection?.state !== "ready" ||
+              viewRefreshing ||
+              projectExecutionBlocked(snapshot.lifecycle, project.id)
+            }
+            action={action}
+            readAction={resourceAction}
+            onPanel={showPanel}
+            onSide={
+              canCreateSide
+                ? async (text) => {
+                    await createSide(text);
+                  }
+                : undefined
+            }
+            onNew={() => void newTask()}
+            onOpenTask={(target) => {
+              surfaces.leaveSettings();
+              tasks.openTarget({ ...target, eventId: crypto.randomUUID() });
+            }}
+          />
+        )}
       </div>
     </>
   );
@@ -365,6 +388,7 @@ function DraftConversation() {
     conversationReferences,
   } = useConversationContext();
   const { project, thread, projects, library, snapshot, resourceAction } = session;
+  const { environment } = useCloudEnvironment(project ?? { id: "projectless" }, resourceAction);
   const { workspaceView } = workspacePanels.view;
 
   const { showPanel } = panelNavigation;
@@ -444,12 +468,13 @@ function DraftConversation() {
               <ComposerWorkspaceContext
                 project={project}
                 showBranch={false}
+                selectable
                 action={resourceAction}
                 backendReady={snapshot.connection?.state === "ready"}
               />
             )}
           </div>
-          {project && (
+          {project && environment !== "cloud" && (
             <WorktreeStarter
               key={project.id}
               project={project}
@@ -472,21 +497,29 @@ function DraftConversation() {
           )}
         </div>
         {project ? (
-          <DraftComposer
-            worktree={worktreeSelection}
-            onWorktreeCreated={() => changeWorktreeSelection(project.id, undefined)}
-            appEntries={appEntries}
-            conversationReferences={conversationReferences}
-            surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
-            onAnnotate={openImageAnnotation}
-            key={project.id}
-            project={project}
-            backendReady={snapshot.connection?.state === "ready"}
-            action={action}
-            readAction={resourceAction}
-            onOpen={(pid, id) => open(pid, id, "replace")}
-            onPanel={showPanel}
-          />
+          environment === "cloud" ? (
+            <CloudComposer
+              project={project}
+              action={resourceAction}
+              onOpen={(pid, id) => open(pid, id, "replace")}
+            />
+          ) : (
+            <DraftComposer
+              worktree={worktreeSelection}
+              onWorktreeCreated={() => changeWorktreeSelection(project.id, undefined)}
+              appEntries={appEntries}
+              conversationReferences={conversationReferences}
+              surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
+              onAnnotate={openImageAnnotation}
+              key={project.id}
+              project={project}
+              backendReady={snapshot.connection?.state === "ready"}
+              action={action}
+              readAction={resourceAction}
+              onOpen={(pid, id) => open(pid, id, "replace")}
+              onPanel={showPanel}
+            />
+          )
         ) : (
           <ProjectlessDraft
             onAnnotate={openImageAnnotation}

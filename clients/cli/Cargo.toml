@@ -19,6 +19,7 @@ areal-engine.workspace = true
 areal-config.workspace = true
 areal-protocol.workspace = true
 anyhow.workspace = true
+reqwest.workspace = true
 clap.workspace = true
 fs2.workspace = true
 futures-util.workspace = true

@@ -160,3 +160,55 @@ Core 提供统一的 [Task Mode API](../api/tasks.md)，可创建前台、定时
 TUI headless 与无双向应答通道的 Claude CLI 使用 headless 交互策略；明确启用双向 stream-json 的 CLI 保留宿主应答，dontAsk 仍禁止等待。headless 中：问题立即返回不可用，必须人工批准的工具立即拒绝，模型继续其他工作或报告 blocker。要让任务在窗口关闭后运行，连接持续存活的共享或外部 Core 服务；owned launcher 退出仍会关闭其服务。
 
 TUI 默认启用鼠标捕获，支持点击和滚动。需要终端原生拖选复制时使用 `areal --mouse=false`，选中后使用终端的复制快捷键；这不会把 Ctrl-C 改成复制。
+
+## 统一远端 app-server
+
+GUI Cloud 设置使用固定服务地址 `/openapi/v1/app-server/`，保存时不连接；新会话 UUID 自动作为 workspace，具体生命周期见 [GUI 指南](../../clients/gui/README.md#cloud-后端配置)。CLI/TUI 的 `--endpoint` 继续填写含 workspace 的完整原生 endpoint。
+
+GUI、CLI 与 TUI 可连接同一 AReaL 原生 WS 服务。Arena 负责工作区分配与 UPFS；远程机器或 Docker 负责预先运行 `areal serve`。客户端协议相同，仅地址和认证文件不同。CLI/TUI 未指定 `--agent` 且只部署一个 Profile 时自动使用它；没有或存在多个 Profile 时沿用服务端默认配置，不猜选候选。需要固定某个 Profile 时显式传 `--agent id@revision`。GUI Cloud 要求服务端至多部署一个 Profile。连接冷启动超时为三分钟。
+
+```sh
+# TUI；替换地址和认证文件即可直连远程机器
+areal --endpoint ws://127.0.0.1:18088/openapi/v1/app-server/my-workspace/ --auth-file /private/arena-auth.json
+# CLI 使用同一协议，可输出流式 JSON
+areal exec --endpoint ws://127.0.0.1:18457/ --auth-file /private/remote-auth.json --output-format stream-json --verbose '检查工作区'
+```
+
+认证文件沿用原生 `security/auth.json` 的 `principals[0].token` 格式。远端部署必须提供兼容的 `areal.core.v1` 能力；这不表示支持 OpenAI Codex 的全部扩展。下面的 `areal cloud` 保留为原有批任务 HTTP 兼容入口，不是原生远端模式。
+
+远端 CLI 与 GUI Cloud 恢复线程时按能力选择 `areal/thread/observe`；旧 Core 使用 `thread/read` 读取状态（GUI 显式读取完整 Turn 历史），提交新 Turn 时订阅事件，不通过 `thread/resume` 接管已有桌面工具宿主。旧版读取与订阅不是原子快照；权限或网络错误不会触发降级重试。
+
+## Cloud
+
+`areal cloud` 连接通用 HTTP 后端，提交无状态 Task，不启动本地 Core，不挂载本地项目、不提供 UPFS，也不指定或同步 Harness。GUI 的持久 Session 入口见[GUI 指南](../../clients/gui/README.md#cloud-后端配置)。后端需支持 `POST /harness-tasks` 的 `{ "prompt": "..." }` 请求，并根据服务端默认配置选择运行包、模型与任务环境；客户端不会自行猜测 Harness 或 stream。尚未实现默认契约的后端会明确拒绝提交。
+
+
+Cloud 也可独立使用配置文件，无需本地模型配置：
+
+```toml
+schema_version = 1
+[cloud]
+url = "https://backend.example/openapi/v1"
+token_file = "cloud-token"
+# 或 token_env = "MY_CLOUD_TOKEN"，不能与 token_file 同时配置。
+```
+
+运行 `areal cloud --config ./config.toml exec '完成任务'`。配置路径沿用共享规则：`--config`、`AREAL_HARNESS_CONFIG`、`$AREAL_HARNESS_HOME/config.toml`，最后为 `~/.areal/config.toml`。文件中的相对 `token_file` 相对于配置文件目录；参数/环境变量中的相对路径相对于当前工作目录。URL 优先级为显式参数、环境变量、文件。凭据优先级为 `--token-file`、`AREAL_CLOUD_TOKEN_FILE`、`AREAL_CLOUD_TOKEN`、文件中的凭据引用；未指定引用时使用 `AREAL_CLOUD_TOKEN`。配置文件不接受明文 token 字段。
+
+```sh
+export AREAL_CLOUD_URL=https://backend.example/openapi/v1
+export AREAL_CLOUD_TOKEN_FILE=/absolute/path/to/private-token
+areal cloud exec '完成任务并生成产物'
+areal cloud exec --no-wait '后台执行任务'
+areal cloud status JOB_ID
+areal cloud result TASK_ID
+areal cloud artifact TASK_ID artifact.json --output ./artifact.json
+```
+
+本地可运行 `node scripts/cloud-task-smoke.mjs`，使用当前构建的 CLI 和隔离 HTTP 协议夹具验证等待、后台受理、状态与结果、产物下载、失败终态及未知提交不重发。该检查不代表真实 Arena、沙箱或模型验收。
+
+token 文件只包含原始 token；Unix 权限须为 `0600` 或更严格。也可以通过 `AREAL_CLOUD_TOKEN` 注入，不提供会暴露在进程参数中的 token 参数。`--url` 和 `--token-file` 可覆盖环境变量。GUI token 独立使用系统安全存储加密，不将其导出给 CLI。
+
+`exec` 省略 prompt 时读取标准输入，最多 1 MiB；默认等待最多 900 秒，可通过 `--timeout-seconds` 调整。输出为 JSON：先给受理身份，完成后给 TaskResult 和产物清单。仅作业 DONE 不算成功，结果还必须为 OK。`--no-wait` 只证明受理，不代表任务完成。等待超时或退出 CLI 不取消远端任务；可使用返回的 ID 查询。网络中断不会自动重发 POST，stderr 的请求 UUID 用于核对未知提交。
+
+查询和下载时直接使用受理回执中的原始 ID；CLI 会转义 URL 路径段，包括 Task ID 中的冒号，以兼容 API Space 网关。不要手动将 ID 预编码为 `%3A`。

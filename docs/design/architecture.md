@@ -248,6 +248,7 @@ MCP hook 绑定原工具 generation 与真实 Turn/compaction owner，取消旧 
 
 用户评价在 Clients 层冻结公开历史并复用独立 Side；Core Server 仅适配既有轨迹接收端。边界见 [user feedback](../guides/user-feedback.md).
 
+Cloud 接入归 Clients：桌面适配器保存远端原生 Thread 身份及加密凭据，GUI、CLI 和 TUI 使用同一 app-server 协议连接 Arena 或远程 Core。Arena 工作区生命周期不进入客户端，批任务 HTTP CLI 仅保留兼容入口；消息与执行事实仍归远端 Core/Runtime。本地 Project 不因此变成另一份权威历史，后端运行默认值不由客户端选择。见[Cloud 客户端](../guides/clients.md#cloud)。
 `core/engine/src/workspace.rs` 在已确认的受管副作用结算边界管理共享作者租约；工具调用并发由 `tools/scheduling.rs` 按可信后端和顺序屏障控制。Runtime 仍拥有进程与清理事实，Core 不通过 shell 文本推断只读或资源已释放。
 
 电脑控制采用独立原生 Helper，Main 拥有生命周期、系统授权与停止，Core 保留准备计划、审批与历史权威。设置只发起用户明确点击的系统授权；观察与模型请求不会弹出授权。原生 AX、截图与输入结果经认证桌面通道返回，未知输入不自动重放。边界与构建见[电脑控制](../api/computer.md)。

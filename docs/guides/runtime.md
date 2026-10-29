@@ -37,6 +37,8 @@ Linux native profile 使用 Bubblewrap 创建空 mount namespace、显式系统�
 
 Core、Node Host、stdio MCP 不在 Runtime 沙箱内。进程组终止与输出关闭不证明所有逃逸后代结束；Runtime SIGKILL 后完整清理、宿主隔离和可靠 sandboxDenied 归因未验证。
 
+如果外层容器禁止在内层 PID namespace 挂载 proc，启动检查改用空的只读 `/proc`，仍保留 Bubblewrap namespace、Scope 挂载和 seccomp；不会绑定外层 `/proc`，也不会降级为直接执行。此时依赖 proc 内容的命令和 `/dev/fd` 路径不可用；宿主侧进程回收仍使用外层 `/proc`。两种检查均失败时拒绝执行并保留诊断。
+
 Linux profile 在派生 Bubblewrap 时建立会话，namespace init 保留在受管进程组内，取消同时覆盖 init 与其 PID namespace；这不将全平台 processTreeCleanupVerified 改为 true。当前没有每 Scope 的 cgroup pids/memory 限额，内部 fork 与内存需由部署层约束。内部命令被信号终止时 launcher 可能正常返回 `128 + signal`；Runtime 保留实际 launcher 的 exitCode/signal，不推断内部信号或 OOM。清理仍需回执确认。
 
 native macOS profile 的默认 Xcode、`/Applications/Xcode_<数字版本>.app`（例如 `Xcode_16.4.app`）及 Command Line Tools Python 由 Core 与 Runtime 共用 `runtime/host-tools`，在可信宿主侧调用 `/usr/bin/xcrun --find python3` 并解析、校验真实文件后进入原有沙箱；不依赖 `/var/select/developer_dir` 链接；直接 `/usr/bin/python3` 和默认 PATH 中的 `python3` 使用实际解释器，避免 xcode-select shim。仅开放系统 Python framework 的读取和执行，工作区外文件和共享 `/tmp` 写入仍被拒绝。自定义 Xcode 位置、Homebrew Node/Python 不会自动获得权限，需要显式准备工具链。

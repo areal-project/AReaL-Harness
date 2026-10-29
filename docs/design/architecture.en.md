@@ -248,6 +248,7 @@ MCP hooks bind the original tool generation and a real Turn/compaction owner; re
 
 Clients freeze public history and reuse an independent Side for feedback. Core Server only adapts the existing trajectory receiver. See [user feedback](../guides/user-feedback.en.md).
 
+Cloud integration belongs to Clients: the desktop adapter stores native Thread identities and encrypted credentials. GUI, CLI and TUI use the same app-server protocol for Arena and remote Core; workspace lifecycle stays behind the endpoint. The batch HTTP CLI remains a compatibility entry. Messages and execution facts remain authoritative in remote Core/Runtime. Local Projects do not become another history owner, and clients do not select backend runtime defaults. See [Cloud clients](../guides/clients.en.md#cloud).
 `core/engine/src/workspace.rs` manages shared-writer leases at confirmed managed-effect settlement boundaries. `tools/scheduling.rs` admits concurrent calls by trusted backend and ordered barriers. Runtime retains process and cleanup facts; Core does not infer read-only behavior or release from shell text.
 
 Computer control uses a separate native helper. Main owns its lifecycle, OS authorization and Stop. Core retains prepared plans, approval and history authority. Only an explicit settings click requests OS access; observation and model requests never prompt. AX, capture and input results return over the authenticated desktop channel. Unknown input is never replayed automatically. See [Computer control](../api/computer.en.md).

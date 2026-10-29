@@ -66,9 +66,15 @@ const cases = [
     { threadId: "thread", requestId: "request", accepted: true, cleanupConfirmed: false },
     { threadId: "thread", requestId: "request", accepted: true, cleanupConfirmed: "unknown" },
   ],
+  [
+    "cloudSession",
+    { operation: "stop", projectId: "project", threadId: "thread", turnId: "turn" },
+    {},
+    null,
+  ],
 ];
 
-test("five command response type examples agree with runtime rejection", () => {
+test("command response type examples agree with runtime rejection", () => {
   for (const [name, params, valid, invalid] of cases) {
     assert.equal(validateCommandResponse(name, params, valid), undefined, name);
     assert.throws(() => validateCommandResponse(name, params, invalid), undefined, name);
@@ -91,7 +97,9 @@ test("the contract accepts typed examples and rejects invalid requests and respo
   const directory = mkdtempSync(join(tmpdir(), "areal-command-types-"));
   const filename = join(directory, "fixture.mts");
   const unsupportedResponses = Object.keys(commandDefinitions).map(
-    (name) => `const unsupported_${name}: CommandResponse<'${name}'> = {opaque:true};`,
+    // Cloud stop 的回执允许扩展对象，但和运行时一样拒绝 null。
+    (name) =>
+      `const unsupported_${name}: CommandResponse<'${name}'> = ${name === "cloudSession" ? "null" : "{opaque:true}"};`,
   );
   const source = `import type { CommandName, CommandParams, CommandResponse } from ${JSON.stringify(resolve("packages/workbench/client/desktop-contract.cjs"))};\n${rows.join("\n")}\n${invalidRequests.join("\n")}\nconst known: CommandName = 'fork';\n${unsupportedResponses.join("\n")}\n`;
   try {

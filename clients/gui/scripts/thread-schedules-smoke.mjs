@@ -1226,7 +1226,9 @@ try {
     frames,
     sourceHead: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
     status: execFileSync("git", ["status", "--short"], { cwd: root, encoding: "utf8" }),
-    diffSHA256: sha(execFileSync("git", ["diff", "HEAD"], { cwd: root })),
+    diffSHA256: sha(
+      execFileSync("git", ["diff", "HEAD"], { cwd: root, maxBuffer: 64 * 1024 * 1024 }),
+    ),
     scriptSHA256: sha(await readFile(fileURLToPath(import.meta.url))),
     binary,
     binarySHA256: binaryHash,

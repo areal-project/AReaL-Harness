@@ -237,14 +237,25 @@ async fn execute_connected(args: &Cli, local: &local::Local) -> Result<(i32, Vec
         )
         .await?;
     }
+    let mut profile = local.profile.clone();
+    // 唯一 Profile 自动绑定；多个候选沿用服务端默认值，不替调用方猜选。
+    if args.endpoint.is_some() && args.resume.is_none() && profile.is_none() {
+        let catalog = rpc.call("areal/profile/list", json!({})).await?;
+        let profiles = catalog["data"]
+            .as_array()
+            .context("invalid profile catalog")?;
+        if let [entry] = profiles.as_slice() {
+            profile = Some(json!({"id":entry["id"],"revision":entry["revision"]}));
+        }
+    }
     let thread = if let Some(id) = &args.resume {
-        // CLI cannot answer ambient tool callbacks; keep any live desktop owner bound.
-        rpc.call("areal/thread/observe", json!({"threadId":id}))
-            .await?
+        // 旧 Core 通过 turn/start 订阅事件；只读恢复避免接管桌面工具宿主。
+        let method = resume_method(&capabilities);
+        rpc.call(method, json!({"threadId":id})).await?
     } else {
         rpc.call(
             "areal/thread/start",
-            json!({"requestId":key(),"agentProfile":local.profile}),
+            json!({"requestId":key(),"agentProfile":profile}),
         )
         .await?
     };
@@ -459,4 +470,31 @@ async fn execute_connected(args: &Cli, local: &local::Local) -> Result<(i32, Vec
                 }
     }
     Ok((if failed { 1 } else { 0 }, terminal_results))
+}
+
+fn resume_method(capabilities: &Value) -> &'static str {
+    if capabilities["methods"]
+        .as_array()
+        .is_some_and(|methods| methods.iter().any(|m| m == "areal/thread/observe"))
+    {
+        "areal/thread/observe"
+    } else {
+        "thread/read"
+    }
+}
+
+#[cfg(test)]
+mod resume_compatibility {
+    use super::*;
+    #[test]
+    fn legacy_resume_does_not_claim_desktop_tool_host() {
+        assert_eq!(
+            resume_method(&json!({"methods":["thread/read", "thread/resume", "areal/turn/start"]})),
+            "thread/read"
+        );
+        assert_eq!(
+            resume_method(&json!({"methods":["areal/thread/observe", "thread/read"]})),
+            "areal/thread/observe"
+        );
+    }
 }

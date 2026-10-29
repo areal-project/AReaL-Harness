@@ -822,6 +822,20 @@
     "requires": []
   },
   {
+    "script": "test:cloud-lifecycle",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux", "win32"],
+    "areas": ["conversation", "desktop"],
+    "requires": ["browser", "gui-build"]
+  },
+  {
+    "script": "test:cloud-contracts",
+    "layer": "contract",
+    "platforms": ["darwin", "linux", "win32"],
+    "areas": ["conversation", "desktop"],
+    "requires": []
+  },
+  {
     "script": "test:mobile-handshake",
     "layer": "e2e",
     "platforms": ["darwin"],

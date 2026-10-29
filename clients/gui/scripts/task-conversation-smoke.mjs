@@ -1358,7 +1358,7 @@ async function checkCalendarRegression() {
   await page.getByRole("button", { name: "打开自动化 日历错过验收 HOLD", exact: true }).click();
   await page.getByText("已超过允许的延迟，跳过 1 次计划执行。", { exact: true }).first().waitFor();
   await page.screenshot({ path: join(scratch, "calendar-missed-once.png") });
-  if (!(await page.getByLabel("任务资源面板", { exact: true }).count()))
+  if (!(await page.getByLabel("任务资源面板", { exact: true }).isVisible()))
     await page.getByRole("button", { name: "任务资源", exact: true }).click();
   const immediate = page
     .getByLabel("定时任务安排", { exact: true })
@@ -2433,8 +2433,8 @@ async function checkInlineRegression() {
   async function assertManagement() {
     assert.equal(await main().count(), 1);
     assert.equal(
-      await page.getByLabel("任务资源面板", { exact: true }).count(),
-      0,
+      await page.getByLabel("任务资源面板", { exact: true }).isVisible(),
+      false,
       "resources stay closed",
     );
     assert.equal(
@@ -2670,7 +2670,7 @@ async function checkManualRegression() {
       skippedRuns: value.skippedRuns,
     });
   const showResources = async () => {
-    if (!(await page.getByLabel("任务资源面板", { exact: true }).count()))
+    if (!(await page.getByLabel("任务资源面板", { exact: true }).isVisible()))
       await page.getByRole("button", { name: "任务资源", exact: true }).click();
   };
   await showResources();
@@ -3202,7 +3202,11 @@ try {
       );
       const taskId = created.id;
       let resources = page.getByRole("button", { name: "任务资源", exact: true });
-      assert.equal(await page.getByLabel("任务资源面板").count(), 0, "summary is closed initially");
+      assert.equal(
+        await page.getByLabel("任务资源面板").isVisible(),
+        false,
+        "summary is closed initially",
+      );
       assert.equal(await page.locator(".task-resource-sidebar").count(), 0, "no fixed sidebar");
       const closedWidth = (await chat.boundingBox()).width;
       await resources.click();
@@ -3213,14 +3217,14 @@ try {
       assert.ok(!(await page.getByLabel("定时任务安排").innerText()).includes("本机执行"));
       await resources.click();
       await until(
-        async () => (await page.getByLabel("任务资源面板").count()) === 0,
+        async () => !(await page.getByLabel("任务资源面板").isVisible()),
         "same button closes popup",
       );
       await resources.click();
       await page.getByLabel("任务资源面板").waitFor();
       await page.keyboard.press("Escape");
       await until(
-        async () => (await page.getByLabel("任务资源面板").count()) === 0,
+        async () => !(await page.getByLabel("任务资源面板").isVisible()),
         "Escape closes popup",
       );
       checks.push(

@@ -616,9 +616,13 @@ async fn dispatch_inner(
             struct Drain {
                 strategy: String,
                 timeout_ms: u64,
+                #[serde(default)]
+                idle_timeout_ms: Option<u64>,
             }
             let p: Drain = parse(params)?;
-            engine.drain(p.strategy, p.timeout_ms).await
+            engine
+                .drain_with_idle(p.strategy, p.timeout_ms, p.idle_timeout_ms)
+                .await
         }
         "areal/plugin/list" => {
             let _: ModelList = parse(params)?;

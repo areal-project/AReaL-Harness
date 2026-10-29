@@ -595,6 +595,7 @@ export const commonMessages = {
   "settings.usage.title": { "zh-CN": "使用情况", en: "Usage" },
   "settings.plugins.title": { "zh-CN": "插件", en: "Plugins" },
   "settings.models.title": { "zh-CN": "模型设置", en: "Models" },
+  "settings.cloud.title": { "zh-CN": "Cloud", en: "Cloud" },
   "settings.permissions.title": { "zh-CN": "会话权限", en: "Permissions" },
   "settings.browser.title": { "zh-CN": "浏览器", en: "Browser" },
   "settings.browser.subtitle": {
@@ -787,4 +788,69 @@ export const commonMessages = {
     "zh-CN": "{measured, number} / {total, plural, other {# 次请求}}",
     en: "{measured, number} / {total, plural, one {# request} other {# requests}}",
   },
+  "workspace.environment": { "zh-CN": "会话运行环境", en: "Session environment" },
+  "workspace.cloud": { "zh-CN": "Cloud", en: "Cloud" },
+  "cloud.attachmentsLimit": {
+    "zh-CN": "每条消息最多 16 个附件",
+    en: "Each message supports up to 16 attachments.",
+  },
+  "cloud.attachmentSize": {
+    "zh-CN": "附件必须为 1 B–16 MiB",
+    en: "Attachments must be 1 B–16 MiB.",
+  },
+  "cloud.remoteFile": {
+    "zh-CN": "Cloud 文件位于远端工作区，不能按本机路径打开。",
+    en: "Cloud files are in the remote workspace and cannot be opened as local files.",
+  },
+  "cloud.connected": { "zh-CN": "Cloud 已连接", en: "Cloud connected" },
+  "cloud.connecting": { "zh-CN": "正在连接 Cloud…", en: "Connecting to Cloud…" },
+  "cloud.disconnected": {
+    "zh-CN": "Cloud 未连接，发送消息时恢复",
+    en: "Cloud disconnected; send a message to reconnect.",
+  },
+  "cloud.attachments": { "zh-CN": "Cloud 附件", en: "Cloud attachments" },
+  "cloud.prompt": { "zh-CN": "随心输入", en: "Write a message" },
+  "cloud.upload": { "zh-CN": "上传文件", en: "Upload files" },
+  "cloud.uploadDescription": {
+    "zh-CN": "添加图片、音频或文档",
+    en: "Add images, audio, or documents",
+  },
+  "cloud.send": { "zh-CN": "发送", en: "Send" },
+  "cloud.stop": { "zh-CN": "停止", en: "Stop" },
+  "cloud.submissionUnknown": {
+    "zh-CN": "提交结果未知，不会自动重发。请重新打开会话并核对历史。",
+    en: "Submission outcome is unknown and will not be retried automatically. Reconnect and check the conversation history.",
+  },
+  "cloud.acknowledgeUnknown": {
+    "zh-CN": "已核对，编辑后续消息",
+    en: "History checked; edit a new message",
+  },
+  "cloud.retryConnection": { "zh-CN": "重试连接", en: "Retry connection" },
+  "cloud.reconnect": { "zh-CN": "恢复连接", en: "Reconnect" },
+  "cloud.settings.saved": {
+    "zh-CN": "配置已保存；新建 Cloud 会话时连接。",
+    en: "Settings saved. A new Cloud conversation will connect when opened.",
+  },
+  "cloud.settings.title": { "zh-CN": "Cloud 设置", en: "Cloud settings" },
+  "cloud.settings.connection": { "zh-CN": "Cloud 连接", en: "Cloud connection" },
+  "cloud.settings.description": {
+    "zh-CN": "保存服务地址与认证信息，新建 Cloud 会话时才连接并启动沙箱。",
+    en: "Save the service address and credentials. Opening a new Cloud conversation connects and starts its sandbox.",
+  },
+  "cloud.settings.address": { "zh-CN": "后端地址", en: "Backend address" },
+  "cloud.settings.addressDescription": {
+    "zh-CN": "固定服务地址，无需填写工作区或会话 ID。",
+    en: "Use the fixed service address without a workspace or session ID.",
+  },
+  "cloud.settings.addressLabel": { "zh-CN": "Cloud 后端地址", en: "Cloud backend address" },
+  "cloud.settings.token": { "zh-CN": "Token", en: "Token" },
+  "cloud.settings.tokenDescription": {
+    "zh-CN": "在本机安全存储",
+    en: "Stored securely on this device",
+  },
+  "cloud.settings.tokenLabel": { "zh-CN": "Cloud token", en: "Cloud token" },
+  "cloud.settings.tokenSaved": { "zh-CN": "已保存，留空保留", en: "Saved; leave blank to keep" },
+  "cloud.settings.tokenInput": { "zh-CN": "输入 token", en: "Enter token" },
+  "cloud.settings.saving": { "zh-CN": "保存中…", en: "Saving…" },
+  "cloud.settings.save": { "zh-CN": "保存", en: "Save" },
 } as const;

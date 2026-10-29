@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   recoveryMessage,
   sameRecoveryOwner,
   type RecoveryFailure,
   type RecoveryOwner,
 } from "../recoveryPresentation.js";
+import { useCloudEnvironment } from "../cloudEnvironment.js";
 import { call, type Action, type PlatformServices, type Snapshot } from "../services.js";
 import { conversationCatalog } from "./conversationCatalog.js";
 type InitialLocation =
@@ -135,6 +136,30 @@ export function useSessionNavigation(
     },
     [services, project?.id, threadId],
   );
+  const { environment, ready: environmentReady } = useCloudEnvironment(
+    project ?? { id: "projectless" },
+    resourceAction,
+  );
+  useEffect(() => {
+    if (
+      !project?.id ||
+      threadId ||
+      !environmentReady ||
+      environment !== "local" ||
+      snapshot.connection?.state !== "ready"
+    )
+      return;
+    void resourceAction("connect", { projectId: project.id }).catch(() => {});
+  }, [
+    project?.id,
+    threadId,
+    environmentReady,
+    environment,
+    snapshot.connection?.state,
+    resourceAction,
+  ]);
+  const restorationProjects = useRef(snapshot.projects);
+  restorationProjects.current = snapshot.projects;
   const contextualFileOpen = useMemo<PlatformServices["fileOpen"]>(
     () =>
       services.fileOpen
@@ -204,7 +229,12 @@ export function useSessionNavigation(
             await resourceAction("connectService", {});
             if (!current()) return;
           }
-          if (operation === "connect")
+          const target = restorationProjects.current.find((item) => item.id === owner.projectId);
+          const cloud =
+            target?.state?.threads?.[owner.threadId]?.cloud ||
+            (!owner.threadId &&
+              localStorage.getItem(`areal-draft-environment:${owner.projectId}`) === "cloud");
+          if (operation === "connect" && !cloud)
             await resourceAction("connect", {
               projectId: owner.projectId,
               ...(owner.threadId ? { threadId: owner.threadId } : {}),

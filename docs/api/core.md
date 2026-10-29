@@ -43,7 +43,7 @@ Core 拥有 Thread/Turn/Item 的稳定 ID 与历史。read 不订阅，resume �
 
 目录读取保留原有 `Thread` 元数据字段，`turns` 为空且不包含 checkpoint、冷历史清单；`thread/read(includeTurns:false)` 使用相同的元数据投影。`thread/list` 与 `areal/agent/list` 按 UUID 升序，后者可按 `parentThreadId` 过滤；[桌面会话目录](desktop.md#side-chat)的 `areal/conversation/list` 按 `(createdAt,id)` 升序。权限、会话类型及归档过滤先于页大小计算，`nextCursor` 仅在还有符合条件的会话时返回。既有游标格式、默认页大小与参数保持兼容。
 
-目录后端由部署配置选择，默认 `memory`，显式 `sqlite` 仅索引身份与创建顺序。按需历史模式可选 `memory-lazy`（JSON 元数据缓存）或 `sqlite-lazy`（SQLite 元数据缓存），两者均沿内存有序目录查询；使用相同授权、当前元数据、状态和游标，目录/`includeTurns:false` 不加载正文。首次需要完整历史或控制会话时恢复事实，可能增加首次访问延迟；内部未加载状态不作为新 RPC 状态暴露。Rust 嵌入方新增 `Engine::list_conversations`、`ConversationFilter` 与 `ConversationView` 来共用视图过滤；原有接收过滤闭包的方法保持签名与行为，`SessionCatalog` 的穷尽匹配需覆盖两个新按需变体。索引失败回退内存，不增加 RPC 参数或客户端迁移要求。授权 ID 在取得会话锁前筛选，无权访问的会话锁不会阻塞目录。详见[配置](../guides/configuration.md#会话目录后端)。
+目录后端由部署配置选择，默认 `memory`，显式 `sqlite` 仅索引身份与创建顺序。按需历史模式可选 `memory-lazy`（JSON 元数据缓存）或 `sqlite-lazy`（SQLite 元数据缓存），两者均沿内存有序目录查询；使用相同授权、当前元数据、状态和游标，目录/`includeTurns:false` 不加载正文。首次需要完整历史或控制会话时恢复事实，可能增加首次访问延迟；内部未加载状态不作为新 RPC 状态暴露。Rust 嵌入方新增 `Engine::list_conversations`、`ConversationFilter` 与 `ConversationView` 来共用视图过滤；原有接收过滤闭包的方法保持签名与行为，`SessionCatalog` 的穷尽匹配需覆盖两个新按需变体。 完整列出 `Limits` 或 `ResolvedCoreConfig` 字段的 Rust 构造代码需补上 `session_catalog`；`Limits` 使用 `..Default::default()` 的构造沿用原默认。索引失败回退内存，不增加 RPC 参数或客户端迁移要求。授权 ID 在取得会话锁前筛选，无权访问的会话锁不会阻塞目录。详见[配置](../guides/configuration.md#会话目录后端)。
 
 分页使用不可变排序键推进，不提供跨页一致快照：并发新建或分类变化仍可能影响后续页。名称、归档、配置和权限读取当前会话状态；查询会等待实际检查的会话锁，但不先复制全部历史或收集重排整个目录。
 
@@ -499,6 +499,11 @@ Core 可通过默认关闭的实验配置，在请求投影与检查点证据中
 
 Rust `Limits` 与 `ResolvedCoreConfig` 增加上述实验控制字段及 `command_stdin_closed`。直接使用完整结构体字面量的调用方需补齐字段，或使用 `..Limits::default()`；默认值不启用四项实验策略。
 
+## 空闲回收
+
+`areal/server/status` 返回 `idleForMs`，表示当前执行实例连续无工作的毫秒数。Core 重启、活动工作、持久 thread/turn 的最新变更都会收紧此值；只读观察和连接心跳不延长空闲时间。该字段不作为执行完成的独立凭据。
+
+`areal/server/drain` 新增可选 `idleTimeoutMs`（1–604800000），仅用于 `strategy:"ifIdle"`。Core 在同一准入锁中检查空闲时长和全部生命周期阻塞条件；不满足时拒绝且保持准入开放。满足时关闭新工作准入并执行既有安全排空。控制面必须继续验证排空响应和 writer 隔离凭据，再销毁沙箱。旧客户端省略此字段时行为保持不变；不支持该字段的旧 Core 不能用于自动空闲回收。
 ## 工具并发与执行进度
 
 工具执行按注册后端分类，`ToolPolicy.parallelReadCalls` 范围 1–4，默认 1 保留串行；并发性能候选须通过部署显式开启。连续的可信内置 `read_file/fs_read/fs_list/fs_stat/search_files` 可并行；写入、进程输入与游标、协调状态及外部同名工具形成顺序屏障。连续安全区段内按空闲槽滚动补位，遇到屏障必须先排空。匹配调用的全局 hook（精确工具名或 `*`）会使该调用串行；不匹配的全局 hooks 不阻塞读取。本 Turn 插件 hooks 或重复失败门禁仍使整段串行。有限输出额度对可信读取逐调用预留有界收据与参数转义空间，并保留最终交接额度；空闲槽只使用尚未预留的容量，结算后回收未使用部分。余额不足以容纳并行收据时退回串行；不足以执行下一调用时返回未执行交接。收据违反预留约束时停止补位，保留已结算结果。每个调用独立准入、持久化意图和结算，部分失败先收齐在途结果；取消与 UNKNOWN 不自动重放。

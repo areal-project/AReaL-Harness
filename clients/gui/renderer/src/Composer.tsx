@@ -1,5 +1,7 @@
+import { uploadComposerFiles } from "./ComposerUploads.js";
+export { uploadComposerFiles } from "./ComposerUploads.js";
+
 import { setPendingMessage, usePendingMessage } from "./pendingMessage.js";
-import type { Attachment } from "@areal/workbench/desktop-contract/conversation";
 import { Input } from "@areal/ui";
 import { ComposerActionButton } from "@areal/ui/experimental";
 import { parseMentionMarkdown } from "./mentions/mentionMarkdown.js";
@@ -938,7 +940,9 @@ export function Composer({
                 const storageKey = `areal-gui:workgroup:${project.id}`;
                 composerDraftStorage.setItem(storageKey, thread.desktop.workflowRun.workgroupId);
                 document.dispatchEvent(
-                  new CustomEvent("areal:workgroup-operation", { detail: storageKey }),
+                  new CustomEvent("areal:workgroup-operation", {
+                    detail: storageKey,
+                  }),
                 );
                 onPanel("工作组");
               }}
@@ -1242,7 +1246,9 @@ export function Composer({
                   aria-label={t("recovery.pendingAction")}
                   title={t("recovery.checkOriginal")}
                   onClick={() =>
-                    void readAction("reconcile", { projectId: project.id }).catch(() => {})
+                    void readAction("reconcile", {
+                      projectId: project.id,
+                    }).catch(() => {})
                   }
                 >
                   <CircleAlert size={16} />
@@ -1272,7 +1278,9 @@ export function Composer({
                     config?.profile?.readOnly === true
                   }
                   onExit={() => {
-                    void configure({ options: planModeOptions(false, config?.options) });
+                    void configure({
+                      options: planModeOptions(false, config?.options),
+                    });
                   }}
                 />
               )}
@@ -1540,41 +1548,4 @@ export function stageThreadDraft(
   composerDraftStorage.setItem(key, text);
   attachmentDrafts.set(key, files);
   return key;
-}
-
-// 发送和队列更新共用上传边界，编辑中现存 Core 引用不经过此函数。
-export async function uploadComposerFiles(
-  action: Action,
-  projectId: string,
-  threadId: string,
-  files: File[],
-) {
-  const attachments: Attachment[] = [];
-  for (const file of files) {
-    let bytes: Uint8Array;
-    try {
-      bytes = new Uint8Array(await file.arrayBuffer());
-    } catch (cause) {
-      const reason = cause instanceof Error ? cause.message : String(cause);
-      throw new Error(`无法读取附件 ${file.name}：${reason}`);
-    }
-    const media = await action("media", {
-      projectId,
-      threadId,
-      operation: "upload",
-      mime: file.type || "application/octet-stream",
-      bytes,
-    });
-    attachments.push({
-      type: media.mimeType.startsWith("image/")
-        ? "image"
-        : media.mimeType.startsWith("audio/")
-          ? "audio"
-          : "file",
-      url: media.uri,
-      name: file.name,
-      mimeType: media.mimeType,
-    });
-  }
-  return attachments;
 }

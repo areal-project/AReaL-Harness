@@ -4,6 +4,17 @@ use std::collections::BTreeSet;
 use std::ops::{Bound, Deref};
 mod sqlite;
 
+pub(crate) fn latest_activity_at(thread: &Thread) -> i64 {
+    thread
+        .turns
+        .iter()
+        .fold(thread.updated_at.max(0), |latest, turn| {
+            latest
+                .max(turn.started_at.unwrap_or(0))
+                .max(turn.completed_at.unwrap_or(0))
+        })
+}
+
 /// 桌面目录的既有视图；只用于共享过滤，不改变 RPC 游标或持久化状态。
 #[derive(Clone, Copy, Debug, Default)]
 pub enum ConversationView {

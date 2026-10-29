@@ -268,6 +268,7 @@ fn walk(
             | ["permissions"]
             | ["trajectory"]
             | ["storage"]
+            | ["cloud"]
     );
     if table {
         let values = item
@@ -383,6 +384,7 @@ fn walk(
     let string = matches!(
         names.as_slice(),
         ["server", "listen" | "data_dir"]
+            | ["cloud", "url" | "token_file" | "token_env"]
             | [
                 "trajectory",
                 "endpoint" | "spool_dir" | "headers_env" | "headers_file"

@@ -909,3 +909,44 @@ async fn legacy_text_sessions_load_and_upgrade_on_next_write() {
         assert_eq!(record["version"], 15);
     }
 }
+
+#[tokio::test]
+async fn idle_drain_does_not_close_admission_before_timeout_or_while_busy() {
+    let (_dir, engine, _model, mut entered) = setup(Limits::default());
+    assert!(
+        engine
+            .drain_with_idle("ifIdle".into(), 1000, Some(60_000))
+            .await
+            .is_err()
+    );
+    assert_eq!(engine.server_status().await["acceptingWork"], true);
+    let thread = engine.create("/workspace".into()).await.unwrap();
+    let turn = engine
+        .start(&thread.id, vec![Input::text("hold")])
+        .await
+        .unwrap();
+    entered.recv().await.unwrap();
+    assert!(
+        engine
+            .drain_with_idle("ifIdle".into(), 1000, Some(1))
+            .await
+            .is_err()
+    );
+    assert_eq!(engine.server_status().await["acceptingWork"], true);
+    engine.interrupt(&thread.id, &turn.id).await.unwrap();
+    settled(&engine, &thread.id).await;
+    assert!(
+        engine
+            .drain_with_idle("ifIdle".into(), 1000, Some(60_000))
+            .await
+            .is_err()
+    );
+    // 秒级持久时间戳向后取整，完成后至少保留一个完整的空闲区间。
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    let status = engine
+        .drain_with_idle("ifIdle".into(), 1000, Some(1))
+        .await
+        .unwrap();
+    assert_eq!(status["acceptingWork"], false);
+    assert_eq!(status["restartSafe"], true);
+}

@@ -49,6 +49,7 @@ export const settingsNavigationGroups = [
         label: "settings.session.title",
         icon: <SettingsConfigurationIcon />,
       },
+      { id: "Cloud", label: "settings.cloud.title", icon: <Server strokeWidth={1.5} /> },
       { id: "后台服务", label: "settings.service.title", icon: <Server strokeWidth={1.5} /> },
       {
         id: "数据飞轮",

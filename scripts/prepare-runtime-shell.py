@@ -163,8 +163,18 @@ def prepare(root, output):
                 subprocess.run(
                     ["/usr/bin/codesign", "--force", "--sign", "-", str(binary)], check=True
                 )
+                # 与原生 smoke 保持相同父进程边界，避免构建用 Python 触发 macOS 的执行拒绝。
                 version = subprocess.check_output(
-                    [str(binary), "--version"], text=True
+                    [
+                        "/usr/bin/python3",
+                        "-I",
+                        "-S",
+                        "-c",
+                        "import subprocess,sys; sys.stdout.buffer.write(subprocess.check_output(sys.argv[1:]))",
+                        str(binary),
+                        "--version",
+                    ],
+                    text=True,
                 ).splitlines()[0]
                 if f"version {lock['version']}" not in version:
                     raise ValueError(f"unexpected built Bash version: {version}")

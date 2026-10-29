@@ -20,16 +20,15 @@ const { AppHooks } = require("./hooks.cjs");
 const { TrajectoryExport } = require("./trajectory.cjs");
 const { UserFeedback } = require("./feedback.cjs");
 const { AppProviders } = require("./providers.cjs");
+const { snapshotProject } = require("./project-snapshot.cjs");
+const { CloudSettings } = require("./cloud-settings.cjs");
+const { CloudConversations } = require("./cloud-conversations.cjs");
 const { UsageAnalytics } = require("./analytics.cjs");
 const { CoreLibrary } = require("./library.cjs");
 const { CoreNotifications } = require("./notifications.cjs");
 const { manage } = require("./management.cjs");
 const { taskCatalog, OwnerTasks } = require("./task-catalog.cjs");
-const {
-  isTaskDraftConfiguration,
-  manageTaskDraft,
-  displayTaskDraftThread,
-} = require("./task-draft.cjs");
+const { isTaskDraftConfiguration, manageTaskDraft } = require("./task-draft.cjs");
 const { mediaCommand, messageInput } = require("./media.cjs");
 const { workspaceCommand } = require("./workspace.cjs");
 const { CoreWorktrees } = require("./worktrees.cjs");
@@ -152,6 +151,8 @@ class CoreBackend {
     this.trajectory = new TrajectoryExport(this);
     this.feedback = new UserFeedback(this);
     this.providers = new AppProviders(this, encryption);
+    this.cloud = new CloudSettings(this, encryption);
+    this.cloudConversations = new CloudConversations(this);
     this.activeCommands = 0;
     /** @type {boolean|undefined} */
     this.providerUpdating = undefined;
@@ -368,6 +369,7 @@ class CoreBackend {
       }
       trace.advance("library");
       await this.library.init();
+      await this.cloudConversations.init();
       await this.worktrees.init();
       await this.taskWorkspaceOwners.init();
       trace.advance("projectless");
@@ -462,54 +464,7 @@ class CoreBackend {
       projectless: this.projectless.snapshot(),
       power: this.power ?? null,
       projects: this.worktrees.aggregate(
-        this.saved.map((project) => {
-          const live = this.projects.get(project.id);
-          const snapshot = live?.model.getSnapshot() ?? null;
-          // Management conversations remain hidden from chat navigation, but use the
-          // same snapshot/message components through a decoded display projection.
-          const state =
-            snapshot?.threads && live
-              ? {
-                  ...snapshot,
-                  threads: Object.fromEntries(
-                    Object.entries(snapshot.threads).map(([id, thread]) => [
-                      id,
-                      isTaskDraftConfiguration(
-                        live.configurations?.[id] ?? thread.desktop?.configuration,
-                      )
-                        ? displayTaskDraftThread(thread, live)
-                        : thread,
-                    ]),
-                  ),
-                }
-              : snapshot;
-          return {
-            ...project,
-            hasTaskHistory: taskHistoryOwners.has(project.logicalProjectId ?? project.id),
-            backend: "areal",
-            core: {
-              ...projectCoreCapabilities(this.binary, live?.client?.capabilities),
-              instanceId: live?.service?.serviceId ?? null,
-              connectionGeneration: live?.connectionGeneration ?? 0,
-              taskDirectoryRevision: this.ownerTasks.revision,
-            },
-            state: state && live?.resourceInitializing ? { ...state, connected: false } : state,
-            pending: (live?.pending ?? [])
-              .filter((entry) => !isRemoteControl(entry))
-              .map((entry) => ({ ...entry, awaitingResponse: this.awaitingResponses.has(entry) })),
-            outcomes: live?.outcomes ?? {},
-            models: live ? this.providers.catalog(live.models ?? [], live) : [],
-            profiles: live?.profiles ?? [],
-            lastAcceptedModel: this.providers.lastAcceptedModel ?? null,
-            defaultProfile: live?.resourceProfile ?? this.defaultProfile ?? null,
-            configurations: live?.configurations ?? {},
-            summaries: live?.summaries ?? [],
-            summariesLoaded: live?.summariesLoaded === true,
-            observationErrors: live?.observationErrors ?? {},
-            refreshErrors: live?.refreshErrors ?? {},
-            error: live?.error ?? null,
-          };
-        }),
+        this.saved.map((project) => snapshotProject(this, project, taskHistoryOwners)),
       ),
     };
   }
@@ -1183,7 +1138,10 @@ class CoreBackend {
         : await client.request(
             "thread/read",
             { threadId, includeTurns: true },
-            { timeoutMs, decode: require("./history-contract.cjs").readObservationResult },
+            {
+              timeoutMs,
+              decode: require("./history-contract.cjs").readObservationResult,
+            },
           );
       if (thread?.id !== threadId || thread.conversation?.kind !== "side")
         throw new Error("Side 配置快照与目标会话不匹配");
@@ -1446,7 +1404,7 @@ class CoreBackend {
     if (semantics.requestId && !rawRequest[semantics.requestId])
       rawRequest = { ...rawRequest, [semantics.requestId]: randomUUID() };
     const invocation = readCommandInvocation(commandName, { ...rawRequest });
-    if (this.worktrees)
+    if (this.worktrees && !this.cloudConversations?.routes(commandName, rawRequest))
       Object.assign(
         invocation.request,
         await this.worktrees.resolveRequest(commandName, invocation.request),
@@ -1531,6 +1489,10 @@ class CoreBackend {
       return this.feedback.command(request);
     if (name === "chatgpt") return this.providers.chatgpt(request);
     if (name === "providers") return this.providers.command(request);
+    if (name === "cloud") return this.cloud.command(request);
+    if (name === "cloudSession") return this.cloudConversations.command(request);
+    if (this.cloudConversations?.owns(projectId, threadId))
+      return this.cloudConversations.route(name, request);
     if (name === "resources") return this.resources.command(request);
     if (this.providerUpdating || this.resourcesUpdating)
       throw new Error("配置正在应用，请稍后重试");
@@ -1626,7 +1588,9 @@ class CoreBackend {
           options,
           ...(request.model ? { model: request.model } : {}),
           ...((request.profile ?? project.resourceProfile ?? this.defaultProfile)
-            ? { agentProfile: request.profile ?? project.resourceProfile ?? this.defaultProfile }
+            ? {
+                agentProfile: request.profile ?? project.resourceProfile ?? this.defaultProfile,
+              }
             : {}),
         },
         { requestId: request.requestId },
@@ -2019,9 +1983,16 @@ class CoreBackend {
         await this.refreshAfterAdmission(
           project,
           result.thread.id,
-          operationOf("areal/side/start", { requestId, sourceThreadId: request.sourceThreadId }),
+          operationOf("areal/side/start", {
+            requestId,
+            sourceThreadId: request.sourceThreadId,
+          }),
         );
-        return { threadId: result.thread.id, turnId: result.turn?.id, requestId: result.requestId };
+        return {
+          threadId: result.thread.id,
+          turnId: result.turn?.id,
+          requestId: result.requestId,
+        };
       }
       case "send": {
         this.requireConnection(project, project.client);
@@ -2135,8 +2106,9 @@ class CoreBackend {
               threadId: request.threadId,
               expectedConfigRevision:
                 request.expectedConfigRevision ??
-                readInspection({ configuration: project.configurations[request.threadId] })
-                  .configuration.revision,
+                readInspection({
+                  configuration: project.configurations[request.threadId],
+                }).configuration.revision,
               intent: { type: "continue", expectedTurnId: request.expectedTurnId },
             },
             { requestId: request.requestId },
@@ -2184,7 +2156,10 @@ class CoreBackend {
             turnId: interaction.turnId,
             requestId: interaction.requestId,
             ...(interaction.kind === "approval"
-              ? { decision: request.decision, argumentsDigest: interaction.argumentsDigest }
+              ? {
+                  decision: request.decision,
+                  argumentsDigest: interaction.argumentsDigest,
+                }
               : { answers: request.answers }),
           });
         } catch (error) {
@@ -2249,6 +2224,7 @@ class CoreBackend {
 
   async disconnect() {
     this.closing = true;
+    this.cloudConversations.close();
     this.ownerTasks.stop();
     this.scheduleOwners?.stop();
     for (const project of new Set([
