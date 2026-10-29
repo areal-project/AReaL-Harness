@@ -113,7 +113,7 @@
     "test:design": "node scripts/design-system-smoke.mjs",
     "verify:design": "vp run design-suite",
     "test:ci-budget-counterexample": "node scripts/ci-budget-counterexample.mjs",
-    "test:regressions": "node --test scripts/verify-public.test.mjs scripts/desktop-ipc-contract.test.cjs scripts/browser-observation-privacy.test.cjs scripts/trajectory-polling.test.mjs scripts/builder-download.test.mjs scripts/bundle-budget.test.mjs scripts/preview-pure.test.cjs scripts/preview-residency.test.cjs scripts/desktop-contract-types.test.cjs scripts/host-prerequisites.test.mjs scripts/design-system-baseline.test.mjs scripts/core-read-recovery.test.mjs",
+    "test:regressions": "node --test scripts/verify-public.test.mjs scripts/desktop-ipc-contract.test.cjs scripts/browser-observation-privacy.test.cjs scripts/trajectory-polling.test.mjs scripts/builder-download.test.mjs scripts/bundle-budget.test.mjs scripts/preview-pure.test.cjs scripts/preview-residency.test.cjs scripts/desktop-contract-types.test.cjs scripts/host-prerequisites.test.mjs scripts/design-system-baseline.test.mjs scripts/core-read-recovery.test.mjs scripts/catalog-refresh.test.cjs",
     "test:proxy": "node --test scripts/system-proxy.test.mjs",
     "test:desktop-settings": "node scripts/migration-smoke.mjs --desktop-settings",
     "test:desktop-network": "node scripts/desktop-network-smoke.mjs",

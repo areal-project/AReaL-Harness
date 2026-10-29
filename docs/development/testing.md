@@ -165,6 +165,28 @@ macOS 登录会话中的 Keychain 权限边界另用 `python3 scripts/git-keycha
 
 ## GUI 与桌面路由门禁
 
+会话目录回归使用 `cargo test --locked -p areal-app-server --lib catalog_tests`、`cargo test --locked -p areal-engine --lib catalog::tests`、`cargo test --locked -p areal-engine --test catalog_observation` 和 `node --test clients/gui/scripts/catalog-refresh.test.cjs`（从仓库根运行）。覆盖旧元数据与持久字节兼容、过滤先于分页、完整参考对照、长过滤空洞、游标排序与授权、会话锁与注册互不阻塞、注册回滚，以及 GUI 合并刷新和连接换代。观察回归还核对模型输入、工具副作用、用量及重启历史不受目录读取影响。GUI 用例已纳入 `pnpm --dir clients/gui verify`。
+
+显式局部性能对照使用 `cargo test --locked --release -p areal-app-server --lib catalog_performance_comparison -- --ignored --nocapture` 与 `node clients/gui/scripts/catalog-refresh-benchmark.cjs`。后者可传入旧版 `history-observation.cjs` 路径，在相同 fixture 下比较旧协调器。耗时不作为 CI 阈值；固定源码、原始样本、复现方法与测量限制见[会话目录性能报告](../benchmarks/reports/conversation-catalog.md)。
+
+稀疏过滤性能入口为同一 Rust 测试模块的 `catalog_filter_performance_comparison`，同样显式 `--ignored --nocapture` 运行。GUI 脚本设置 `AREAL_CATALOG_BENCH_CACHE=production` 后使用真实 library 序列化、写文件与 rename，并保留活动标记写入；`AREAL_CATALOG_BENCH_THREADS` 可选择 1–20,000 行。交替运行与剩余成本见[目录迭代验证](../benchmarks/reports/conversation-catalog-validation.md)。
+
+会话目录两种后端使用同一套 RPC 回归：分别设置 `AREAL_CATALOG_TEST_BACKEND=memory`、`sqlite` 运行 `cargo test --locked -p areal-app-server --lib catalog_tests --jobs 3 -- --test-threads=4`。该变量仅由测试读取；生产使用 `[storage].session_catalog`。`cargo test --locked -p areal-engine --lib catalog:: --jobs 3 -- --test-threads=4` 覆盖索引重用、离线更改核对、损坏保留重建、外部写锁、索引积压回退、队列溢出、读取期限、安全路径和注册结果未知后的回滚；`catalog_observation` 同时覆盖两个后端的模型输入、真实文件副作用、用量及重启不重放。配置入口使用 `cargo test --locked -p areal-config --test session_catalog`。
+
+`catalog_backend_performance_comparison` 是显式忽略用例，比较文件缓存已暖时的完整恢复、索引构建/重用、完整分页、大元数据、真实事实创建与产生快照的 Turn 并发读取。用同一个 release `--lib` 可执行文件切换后端，交替独立进程各至少 5 次，保留 active backend、索引命中、回退、写入行数和峰值 RSS。不要同时构建其他目标或将 fixture 准备算入查询；索引重用不等同于磁盘冷启动。构建后的 `scripts/smoke.mjs` 与 `clients/gui/scripts/large-history-smoke.mjs` 也接受 `AREAL_CATALOG_TEST_BACKEND=sqlite`，向隔离配置写入该选择并检查数据库已生成。结果和边界见[SQLite 对照](../benchmarks/reports/conversation-catalog-sqlite.md)。
+
+追加的 `catalog_cooperative_concurrency_performance_comparison` 让两种后端在每次读取后主动让出调度，诊断闭环 fixture 的写锁重叠差异。它也是显式 `--ignored --nocapture` 用例，需各后端独立交替 5 次；保留原始非协作结果，不能把单线程 fixture 的读延迟差距直接写成生产退化。
+
+
+
+`memory-lazy`、`sqlite-lazy` 复用同一套目录回归，`catalog_observation` 同时覆盖四种模式及恢复后继续执行、原工具不重放。`cargo test --locked -p areal-engine --lib store::lazy --jobs 3 -- --test-threads=4` 覆盖首次加载并发/取消、目录与工作概览、事实字节、同长度离线编辑、成员增删、限制收紧、错误/未知版本缓存及执行前核对。完整 Engine/config/app-server 回归可分别设置测试专用 `AREAL_TEST_SESSION_CATALOG=memory-lazy`、`sqlite-lazy`；仅编译 `test-support` 时生效，生产默认不读取该变量。显式 `Limits.session_catalog` 优先，避免覆盖用于对照的 eager 实例。
+
+GUI 刷新回归随 `test:regressions` 执行，保留共享列表/元数据解码与后端断连读取屏障；畸形响应不能覆盖最后一份完整缓存。生命周期回归区分普通 shutdown 与显式 drain，核对重启后的队列暂停和完整历史，并记录缓存重新校验的边界。
+
+缓存故障回归还覆盖：缓存成员数大于收紧后的上限而事实数合法、SQLite 初始化五阶段中断残片、事实验证后等待发布锁时取消、重复缓存身份、外部缓存写者占用，以及符号/硬链接路径。所有缓存重建仍核对事实字节不变、下一次打开能命中缓存；外来数据库与未知版本的原字节必须保留。
+
+`catalog_lazy_tests::lazy_catalog_process_comparison` 是独立的忽略用例。先构建 release app-server `--lib` 并冻结一个程序，然后为四种 `AREAL_CATALOG_TEST_BACKEND` 分别创建隔离文件副本。环境变量 `AREAL_LAZY_PERF_ROOT`（绝对目录）、`AREAL_LAZY_PERF_COUNT`、`AREAL_LAZY_PERF_CASE=ordinary|archiveGap|cli|mixed` 和 `AREAL_LAZY_PERF_OPERATION=prepare|startup|directory|execution|preloaded-execution|all` 控制场景；`prepare` 另需 `AREAL_LAZY_PERF_BODY`、`AREAL_LAZY_PERF_METADATA`。准备进程与观测进程必须分开。 `execution` 包含冷正文的首次恢复；`preloaded-execution` 在执行计时前读取目标历史，并将该成本单列为 `preloadMs`。两者均拆分准入 `startMs` 与准入后的完成等待 `waitMs`，预加载结果不能替代冷执行结果。 诊断时可选 `AREAL_LAZY_PERF_PERSISTENCE=1`，在隔离进程采集已有持久化序列化、排队、写入和同步计时点；带采集的样本须与普通计时分开保留。比较首次缓存构建、复用、单文件修改后的启动，记录准备好的文件总量、事实解析量、缓存命中、阶段 RSS、进程峰值、首次/重复历史读取、首次继续执行和全部打开后的代价。查询含 RPC 投影与 JSON 编码，预热 2 次后保留 10 次（完整目录 5 次）；每模式交替运行至少 5 个独立进程，不并行运行构建/功能测试，不称为磁盘冷启动。保留所有不利样本和退出状态，见[按需加载对照](../benchmarks/reports/conversation-catalog-lazy.md)。原生 smoke 的后端变量也接受两个按需值。
+
 `cargo test --locked -p areal-app-server --lib desktop_registered_methods_have_dispatch_routes` 对每个已注册桌面 RPC 经真实连接分派发送非对象参数，要求返回参数错误而不是方法不存在；包含连接层单独接管的 `areal/thread/start`。该检查随 `make test-protocol`、`make test` 和 CI 执行，不启动模型请求或创建 Thread。
 
 [GUI CI](../../.github/workflows/gui.yml) 按影响范围运行冻结依赖安装、GUI 类型检查、公开边界、Core/GUI 构建、桌面路由检查及已登记的 macOS smoke 矩阵。Linux 静态健康检查和 portable 单元/契约使用独立 job。测试使用隔离目录与确定性本地模型，保留日志、截图与源码 manifest；这些证据不替代真实供应商或安装包验收。

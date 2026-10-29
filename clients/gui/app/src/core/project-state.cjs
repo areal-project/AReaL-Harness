@@ -11,6 +11,8 @@ const {
 /** @typedef {{id?:string,projectId?:string,threadId?:string,connectionGeneration?:number,code:unknown,reason?:unknown,message:string,retryable:boolean,refreshPending?:boolean,recovery?:import('@areal/runtime-client/core').Recovery}} ObservationError */
 /** @typedef {{id:string,projectId:string,connectionGeneration?:number,operation?:import('@areal/runtime-client/core').OperationRef,scope?:string,message:string,refreshPending:boolean}} RefreshError */
 /** @typedef {{client:import('@areal/runtime-client/core').CoreClient|null|undefined,generation?:number,id:string,promise:Promise<void>}} ObservationRead */
+/** @typedef {{full:boolean,ids:Set<string>,promise:Promise<import('@areal/workbench/core-model-contract').CoreThread[]>,resolve:(rows:import('@areal/workbench/core-model-contract').CoreThread[])=>void,reject:(error:unknown)=>void}} SummaryBatch */
+/** @typedef {{client:import('@areal/runtime-client/core').CoreClient,generation?:number,pending:SummaryBatch|null,finished:boolean,promise?:SummaryBatch['promise']}} SummaryRead */
 /** @typedef {PendingSubmission & {operationId:string,remote:RemoteAssociation}} RemotePending */
 /** @typedef {(PendingSubmission|SubmissionOutcome) & {method:string,operationId:string,remote:RemoteAssociation}} RemoteRecord */
 /** @typedef {{client:import('@areal/runtime-client/core').CoreClient,generation?:number,deadline:number,attempt:number,running:boolean,timer?:NodeJS.Timeout|null}} Reconciliation */
@@ -26,7 +28,7 @@ const {
  * models?:import('./provider-contract.cjs').ModelCatalogEntry[],profiles?:unknown,resourceProfile?:import('@areal/workbench/desktop-contract').ResourceRef,resourceFingerprint?:string,providerRevision?:string|null,providerSnapshot?:import('./provider-contract.cjs').ModelSnapshot,summariesLoaded?:boolean,
  * providerProof?:import('./provider-contract.cjs').ConfigurationProof,providerError?:string|null,providerFailure?:{revision:string,serviceId?:string,generation?:string,message:string},
  * observationErrors?:Record<string,ObservationError>,refreshErrors?:Record<string,RefreshError>,
- * observationReads?:Map<string,ObservationRead>,summaryReads?:Promise<void|import('@areal/workbench/core-model-contract').CoreThread[]>,
+ * observationReads?:Map<string,ObservationRead>,summaryRead?:SummaryRead,summaryReads?:Promise<void|import('@areal/workbench/core-model-contract').CoreThread[]>,
  * taskNotificationMonitor?:InstanceType<typeof import('./notifications.cjs').TaskNotificationMonitor>,taskViews?:Map<string,string>,
  * error:string|null,summaries:import('@areal/workbench/core-model-contract').CoreThread[],
  * service?:(import('./local-service.cjs').RecoveryTarget & {endpoint?:string,owner?:unknown,hostPid?:unknown,corePid?:unknown})|null,resourceInitializing?:boolean,endpoint?:string|null,token?:string,connectionGeneration?:number,

@@ -18,6 +18,38 @@ Shared TUI/Web entry points use a workspace-specific default data directory; exp
 
 A missing default file is allowed. A missing explicit file, unknown field, type/version error or explicitly empty value is rejected. Files must be regular UTF-8, at most 1 MiB, with `schema_version=1` or `2`. TOML paths resolve against its directory; CLI/env paths resolve against startup cwd. There is no tilde, variable or glob expansion. Malformed lower-priority inputs are rejected even when overridden.
 
+## Session catalog backends
+
+```toml
+[storage]
+session_catalog = "memory"
+```
+
+Both `schema_version=1` and `2` accept this setting. `AREAL_HARNESS_SESSION_CATALOG` overrides TOML with one of the modes below. Diagnostics expose the requested mode as `storage.session_catalog`. This startup setting participates in local-service configuration identity; explicitly restart an idle service with its original deployment arguments after changing it. There is no GUI toggle or automatic modification of existing services.
+
+| Mode | Directory queries | Startup history loading | Rebuildable caches |
+|---|---|---|---|
+| `memory` (default) | Ordered memory indexes | Eager recovery | None |
+| `sqlite` | Immutable SQLite keys with memory fallback | Eager recovery | `catalog/index.sqlite3` |
+| `memory-lazy` | Ordered memory indexes | Eligible sessions on demand | `catalog/metadata.json` |
+| `sqlite-lazy` | Ordered memory indexes | The same lazy mechanism | `catalog/metadata.sqlite3` |
+
+All four modes retain authoritative JSON facts, state version, synchronous persistence order, UNKNOWN, permissions, cursors and API responses. Names, archive state, configuration and permissions come from current instance state; ordinary Turn snapshots do not dual-write the directory database. Memory order indexes remain available for fallback. Every mode enumerates fact files at startup, and lazy modes check each file identity; startup is neither constant-time nor scan-free.
+
+Lazy modes use compact metadata only for settled ordinary roots (`appServer`, `cli`, `exec`). Children, Fork/Side, Goals, unsettled tools/processes/queues/interactions and records requiring legacy default-model migration retain full recovery. First use, changed facts and invalid caches use the original recovery and validation path before caching metadata. An item-free tail-turn summary supports work overview; context checkpoints and history bodies are absent.
+
+Cache validation checks device, inode, length, nanosecond modification/change times, file mode and single-link regular-file identity, plus projection checksums, archive-head dependencies and a recovery-implementation fingerprint. Offline changes invalidate the corresponding row even with unchanged length and restored mtime. Before history access, execution, control or persistence, Core restores complete facts, checks SHA-256 and metadata, and publishes state atomically. Concurrent first loads restore once; cancellation cannot publish partial history, and dormant projections cannot be persisted. If an external writer changes facts while Core runs, loading fails and requires restart rather than executing stale cached state.
+
+Ordinary `Engine::shutdown` does not proactively load unused history or rewrite idle facts. An explicit service drain restores and commits unarchived sessions to preserve existing queue-pause and revision semantics. Memory can temporarily approach eager recovery, and rewritten facts require metadata revalidation on the next startup. Reusable-cache startup and reconstruction after drain must be measured separately; reuse gains do not apply to every restart.
+
+Metadata caches are written only during startup rebuild or reconciliation. JSON rewrites the whole manifest when anything changes; SQLite transactions update invalid rows and membership changes. Neither is a new fact commit point. The first history read pays deferred parsing costs, and loaded history is not automatically evicted; opening every session approaches eager memory use. Metadata is decoded per page. Desktop views first reject archive, type or origin mismatches using compact fields; arbitrary Rust predicates still decode candidate metadata. Long filters and large configuration require separate measurements. Metadata rows are limited to 4 MiB and the JSON manifest to 256 MiB; exceeding bounds abandons that cache or uses original recovery, without truncating facts. Platforms without supported file identity do not reuse this cache.
+
+SQLite uses private WAL/SHM files with `synchronous=NORMAL`; original fact fsync guarantees remain. Only `sqlite` uses one bounded batch writer and two reader threads to maintain immutable keys. Stale generations or busy readers fall back to memory; writer queue overflow, database faults or reads exceeding 250 ms disable SQL queries for the instance. Each control operation has a one-second limit; shutdown may wait for each thread in sequence. SQL deadlines cannot forcibly cancel stuck filesystem calls. The `sqlite-lazy` metadata database opens only during synchronous startup recovery. Runtime queries use the memory order indexes, and ordinary Turns add no dual write.
+
+Recognized SQLite bootstrap fragments (this application marker with reserved initialization version zero, or an empty zero-version schema), stale catalogs exceeding a tightened session limit, and duplicate identities preserve the old cache and rebuild from facts. SQLite identity, schema and version initialize in one transaction. Foreign databases and unknown established versions remain preserved and use fact recovery.
+
+Corrupt regular caches are preserved under `catalog/rejected-<uuid>/` (keys) or `catalog/rejected-metadata-<uuid>/` (metadata) before rebuilding. Unknown metadata versions, busy databases, permissions or unsafe paths preserve the cache and recover facts directly. Errors do not change fact-commit outcomes. Core reserves the entire private `catalog/` directory; do not store unrelated data there. See the [lazy loading comparison](../benchmarks/reports/conversation-catalog-lazy.en.md) for four-mode startup, memory, first-load costs and selection; the [SQLite comparison](../benchmarks/reports/conversation-catalog-sqlite.en.md) covers the earlier eager design.
+
 <a id="permissions"></a>
 ## Permission modes
 

@@ -6,6 +6,7 @@ This page describes implemented behavior. Compilation, mechanism tests and real-
 
 | Capability | Implementation and entry point |
 |---|---|
+| Session directory | Default memory indexes, pagination after authorization and coalesced GUI refreshes. An explicit SQLite index supports memory fallback; both can explicitly enable compact metadata directories and lazy history loading. Files retain authority and complex recovery stays eager. No automatic history eviction or full-text search. [Configuration](guides/configuration.en.md#session-catalog-backends) |
 | Project instructions | Load `AGENTS.md` from workspace root to session cwd, with closer-directory precedence, per-Turn refresh and bounded Runtime reads. [Clients](guides/clients.en.md) |
 | Task Mode and channels | foreground/scheduled/background, durable TaskRuns, independent Inbox replies, headless without human waits, and unified TaskRun workers surviving coordinator Turns under shared budgets. Web includes task controls, schedule creation and an independent Inbox. [API](api/tasks.en.md) Schedules support explicit Run Now. It creates a separate manual Run while preserving pause state and the next scheduled time, using the original total budget. Lost responses are reconciled through the original receipt. |
 | Plugin component support | Plugin reports separately bind candidate and installed digests to component parser support, static required compatibility and activation prerequisites. MCP connection, authentication and Hook trust remain separate facts. [Plugins](guides/plugins.en.md) |

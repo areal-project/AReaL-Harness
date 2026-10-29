@@ -911,64 +911,34 @@ impl Connection {
                 Ok((saved.created_at, saved.id))
             })
             .transpose()?;
-        let mut data = Vec::new();
-        let mut cursor = None;
-        loop {
-            let (page, next) = engine
-                .list(cursor.as_deref(), 100, None)
-                .await
-                .map_err(map_error)?;
-            data.extend(page.into_iter().filter(|thread| {
-                self.principal.sees(&thread.id)
-                    && (p.include_archived.unwrap_or(false)
-                        || !thread.desktop.as_ref().is_some_and(|d| d.archived))
-                    && match view {
-                        "main" => {
-                            thread.parent_thread_id.is_none()
-                                && !thread.is_side()
-                                && !matches!(
-                                    thread.source.as_str(),
-                                    "nativeTaskAgent" | "nativeResearchAgent"
-                                )
-                        }
-                        "side" => thread.is_side(),
-                        _ => true,
-                    }
-                    && p.source_thread_id
-                        .as_ref()
-                        .is_none_or(|source| match &thread.conversation {
-                            Some(areal_protocol::Conversation::Side { origin, .. })
-                            | Some(areal_protocol::Conversation::Fork { origin, .. }) => {
-                                &origin.source_thread_id == source
-                            }
-                            _ => false,
-                        })
-            }));
-            match next {
-                Some(next) => cursor = Some(next),
-                None => break,
-            }
-        }
-        data.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
-        if let Some(after) = after {
-            data.retain(|thread| (thread.created_at, thread.id.clone()) > after);
-        }
-        let has_more = data.len() > limit;
-        data.truncate(limit);
-        let next_cursor = if has_more {
-            data.last().map(|thread| {
-                URL_SAFE_NO_PAD.encode(
-                    serde_json::to_vec(&ConversationCursor {
-                        filter: digest,
-                        created_at: thread.created_at,
-                        id: thread.id.clone(),
-                    })
-                    .expect("cursor serializes"),
-                )
-            })
-        } else {
-            None
+        let filter = areal_engine::ConversationFilter {
+            view: match view {
+                "main" => areal_engine::ConversationView::Main,
+                "side" => areal_engine::ConversationView::Side,
+                _ => areal_engine::ConversationView::All,
+            },
+            include_archived: p.include_archived.unwrap_or(false),
+            source_thread_id: p.source_thread_id.clone(),
         };
+        let (data, next) = engine
+            .list_conversations(
+                after.as_ref(),
+                limit,
+                self.principal.thread_ids.as_ref(),
+                &filter,
+            )
+            .await
+            .map_err(map_error)?;
+        let next_cursor = next.map(|(created_at, id)| {
+            URL_SAFE_NO_PAD.encode(
+                serde_json::to_vec(&ConversationCursor {
+                    filter: digest,
+                    created_at,
+                    id,
+                })
+                .expect("cursor serializes"),
+            )
+        });
         Ok(json!({"data":data,"nextCursor":next_cursor}))
     }
     fn send(&self, value: Value) {
@@ -1569,15 +1539,21 @@ impl Connection {
                         "use areal/agent/list for parent filtering",
                     ));
                 }
-                let (mut data, cursor) = engine
-                    .list(
+                let (data, cursor) = engine
+                    .list_authorized(
                         p.cursor.as_deref(),
                         p.limit.unwrap_or(30),
-                        p.parent_thread_id.as_deref(),
+                        self.principal.thread_ids.as_ref(),
+                        |thread| {
+                            self.principal.sees(&thread.id)
+                                && !thread.is_side()
+                                && p.parent_thread_id.as_deref().is_none_or(|parent| {
+                                    thread.parent_thread_id.as_deref() == Some(parent)
+                                })
+                        },
                     )
                     .await
                     .map_err(map_error)?;
-                data.retain(|thread| self.principal.sees(&thread.id) && !thread.is_side());
                 Ok(json!({"data":data,"nextCursor":cursor}))
             }
             "turn/start" => {
@@ -2007,6 +1983,9 @@ mod tests {
 #[cfg(test)]
 mod rpc_isolation_tests;
 
+#[cfg(test)]
+mod catalog_tests;
+
 // Steer can wait for hook elicitation; it needs no mutable Connection state.
 async fn steer_request(
     engine: &Arc<Engine>,
@@ -2050,3 +2029,6 @@ async fn steer_request(
         .map_err(map_error)?;
     Ok(json!({"turnId":p.expected_turn_id}))
 }
+
+#[cfg(test)]
+mod catalog_lazy_tests;

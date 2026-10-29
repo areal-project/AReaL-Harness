@@ -41,6 +41,12 @@ GUI 默认开启，可在“预测下一条提示词”设置中关闭。关闭�
 
 Core 拥有 Thread/Turn/Item 的稳定 ID 与历史。read 不订阅，resume 原子读取快照并建立增量边界，先返回基线再发事件。每连接最多 128 订阅，发送队列 256、Thread 事件窗口 128；落后时断连，重连后重新 resume。普通观察断连不取消任务。
 
+目录读取保留原有 `Thread` 元数据字段，`turns` 为空且不包含 checkpoint、冷历史清单；`thread/read(includeTurns:false)` 使用相同的元数据投影。`thread/list` 与 `areal/agent/list` 按 UUID 升序，后者可按 `parentThreadId` 过滤；[桌面会话目录](desktop.md#side-chat)的 `areal/conversation/list` 按 `(createdAt,id)` 升序。权限、会话类型及归档过滤先于页大小计算，`nextCursor` 仅在还有符合条件的会话时返回。既有游标格式、默认页大小与参数保持兼容。
+
+目录后端由部署配置选择，默认 `memory`，显式 `sqlite` 仅索引身份与创建顺序。按需历史模式可选 `memory-lazy`（JSON 元数据缓存）或 `sqlite-lazy`（SQLite 元数据缓存），两者均沿内存有序目录查询；使用相同授权、当前元数据、状态和游标，目录/`includeTurns:false` 不加载正文。首次需要完整历史或控制会话时恢复事实，可能增加首次访问延迟；内部未加载状态不作为新 RPC 状态暴露。Rust 嵌入方新增 `Engine::list_conversations`、`ConversationFilter` 与 `ConversationView` 来共用视图过滤；原有接收过滤闭包的方法保持签名与行为，`SessionCatalog` 的穷尽匹配需覆盖两个新按需变体。索引失败回退内存，不增加 RPC 参数或客户端迁移要求。授权 ID 在取得会话锁前筛选，无权访问的会话锁不会阻塞目录。详见[配置](../guides/configuration.md#会话目录后端)。
+
+分页使用不可变排序键推进，不提供跨页一致快照：并发新建或分类变化仍可能影响后续页。名称、归档、配置和权限读取当前会话状态；查询会等待实际检查的会话锁，但不先复制全部历史或收集重排整个目录。
+
 `areal/thread/fork` 的 `anchor:{turnId,boundary}` 必须明确选择 `before` 或 `after`，并使用 `workspaceMode:"sharedCurrent"`。`before` 排除所选轮次及之后的全部历史，包括活动轮次；`after` 只接受已终结轮次。纳入前缀中的失败、中断状态按原样保留；未结算工具或 hook、未经来源核查的工具、hook 或插件 UNKNOWN 返回 `HISTORY_UNRESOLVED`。核查只记录事实，历史 UNKNOWN 不改写为成功。锚点不存在返回 `ANCHOR_NOT_FOUND`，委派 Worker 或 Side 来源返回 `SOURCE_KIND_UNSUPPORTED`，活动轮次的 `after` 返回 `TURN_NOT_TERMINAL`；错误的 `data.reason` 可用于呈现恢复路径。分支只继承对话历史，项目文件仍是当前共享工作区。完整请求与来源元数据见[桌面 API](desktop.md)。
 
 input 为有序 text/image/audio/file 等内容，UTF-8 文本合计最多 1 MiB，仍受历史预算约束；认证客户端上传媒体 Blob，不传宿主 localImage/localAudio 路径。模态由 adapter/模型能力校验。原有 thread/start 的 model 需匹配服务默认；产品模型选择使用 areal/thread/start/configure。

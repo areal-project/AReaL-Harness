@@ -15,6 +15,7 @@ pub mod workgroup;
 
 fn engine_limits(config: &ResolvedCoreConfig) -> Limits {
     Limits {
+        session_catalog: config.session_catalog,
         inspection_permissions: config.inspection_permissions,
         goals: areal_engine::goals::Policy {
             max_turns: config.goals.max_turns,

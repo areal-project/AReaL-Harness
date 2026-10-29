@@ -236,6 +236,19 @@ impl Engine {
             engine.drain_task_modes().await?;
             let cells: Vec<_> = engine.threads.read().await.values().cloned().collect();
             for cell in &cells {
+                if !cell.state.is_loaded()
+                    && cell
+                        .state
+                        .lock()
+                        .await
+                        .thread
+                        .desktop
+                        .as_ref()
+                        .is_some_and(|d| d.archived)
+                {
+                    continue;
+                }
+                engine.materialize_cell(cell).await?;
                 let mut state = cell.state.lock().await;
                 if state.thread.desktop.as_ref().is_some_and(|d| d.archived) {
                     continue;

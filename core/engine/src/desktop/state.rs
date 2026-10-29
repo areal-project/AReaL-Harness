@@ -590,8 +590,9 @@ impl Engine {
                     )?
                     .is_some()
                 {
-                    let thread = state.thread.clone();
                     drop(state);
+                    engine.materialize_cell(&cell).await?;
+                    let thread = cell.state.lock().await.thread.clone();
                     return if request.admission_guard.is_some() {
                         Ok(thread)
                     } else {

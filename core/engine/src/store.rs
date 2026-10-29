@@ -9,6 +9,8 @@ use std::{
 };
 use tokio::sync::Semaphore;
 mod archive;
+mod lazy;
+pub(crate) use lazy::RestoredSession;
 
 pub(crate) fn fit_history_fragment(
     remaining: &str,
@@ -68,6 +70,7 @@ pub struct Store {
     blob_write: Arc<tokio::sync::Mutex<()>>,
     fork_reads: Arc<Semaphore>,
     own_history_entry: Arc<std::sync::Mutex<Option<Arc<CachedOwnHistoryEntry>>>>,
+    lazy: lazy::LazyState,
     #[cfg(test)]
     fork_fault: std::sync::Mutex<Option<ForkFault>>,
 }
@@ -121,6 +124,7 @@ impl Store {
             // 最多同时解析两份 64 MiB 快照；页请求不占满通用 Store 写入容量。
             fork_reads: Arc::new(Semaphore::new(2)),
             own_history_entry: Arc::new(std::sync::Mutex::new(None)),
+            lazy: lazy::LazyState::default(),
             #[cfg(test)]
             fork_fault: std::sync::Mutex::new(None),
         })
@@ -161,318 +165,334 @@ impl Store {
             if path.extension().and_then(|s| s.to_str()) != Some("json") {
                 continue;
             }
-            if threads.len() >= max_threads {
-                bail!("stored thread count exceeds configured limit");
-            }
-            if max_bytes > 0 && std::fs::metadata(&path)?.len() > max_bytes as u64 {
-                bail!(
-                    "stored thread exceeds configured history limit: {}",
-                    path.display()
-                );
-            }
-            let mut record: Record = serde_json::from_slice(&std::fs::read(&path)?)
-                .with_context(|| format!("invalid session: {}", path.display()))?;
-            if let Some(desktop) = record.thread.desktop.as_mut() {
-                for run in &mut desktop.hook_runs {
-                    if run.outcome == "running" {
-                        run.outcome = "unknown".into();
-                    }
-                }
-            }
-
             anyhow::ensure!(
-                max_bytes == 0
-                    || record
-                        .thread
-                        .history_archive
-                        .as_ref()
-                        .map_or(0, |a| a.bytes)
-                        .saturating_add(match &record.thread.conversation {
-                            Some(areal_protocol::Conversation::Fork { history_seed, .. }) =>
-                                history_seed.logical_bytes as u64,
-                            Some(areal_protocol::Conversation::Side {
-                                reference_snapshot, ..
-                            }) => reference_snapshot.logical_bytes as u64,
-                            _ => 0,
-                        })
-                        .saturating_add(std::fs::metadata(&path)?.len())
-                        <= max_bytes as u64,
-                "stored thread exceeds configured history limit"
+                threads.len() < max_threads,
+                "stored thread count exceeds configured limit"
             );
-            if !matches!(record.version, 1..=STATE_VERSION)
-                || path.file_stem().and_then(|s| s.to_str()) != Some(&record.thread.id)
-                || uuid::Uuid::parse_str(&record.thread.id).is_err()
-            {
-                bail!("unsupported or inconsistent session: {}", path.display());
-            }
-            if let Some(reference) = &record.thread.history_archive {
-                archive::read_segment(&self.root, &reference.head)?;
-            }
-            if let Some(areal_protocol::Conversation::Fork {
-                version,
-                origin,
-                history_seed,
-                ..
-            }) = &record.thread.conversation
-            {
-                anyhow::ensure!(
-                    *version == 1 && record.version >= 14,
-                    "unsupported fork conversation version"
-                );
-                anyhow::ensure!(
-                    origin.snapshot_id == history_seed.snapshot_id,
-                    "fork snapshot reference mismatch"
-                );
-                let segment = archive::read_segment(&self.root, &history_seed.snapshot_id)?;
-                anyhow::ensure!(
-                    segment.previous.is_none(),
-                    "fork snapshot contains archive chain"
-                );
-                anyhow::ensure!(
-                    std::fs::metadata(self.root.join("history").join(&history_seed.snapshot_id))?
-                        .len()
-                        == history_seed.logical_bytes as u64,
-                    "fork snapshot size mismatch"
-                );
-                anyhow::ensure!(
-                    segment.turns.len() == history_seed.turn_count
-                        && segment
-                            .turns
-                            .iter()
-                            .map(|turn| turn.items.len())
-                            .sum::<usize>()
-                            == history_seed.item_count,
-                    "fork snapshot manifest mismatch"
-                );
-                anyhow::ensure!(
-                    segment.source_thread_ids.len() == segment.turns.len()
-                        && segment
-                            .source_thread_ids
-                            .iter()
-                            .all(|id| uuid::Uuid::parse_str(id).is_ok()),
-                    "fork snapshot provenance mismatch"
-                );
-                if origin.boundary == "after" {
-                    anyhow::ensure!(
-                        segment
-                            .turns
-                            .last()
-                            .is_some_and(|turn| turn.id == origin.source_turn_id),
-                        "fork snapshot anchor mismatch"
-                    );
+            threads.push(self.load_record(&path, max_bytes, None, false)?);
+        }
+        Ok(threads)
+    }
+
+    fn load_record(
+        &self,
+        path: &Path,
+        max_bytes: usize,
+        mut checksum: Option<&mut String>,
+        retain_archived: bool,
+    ) -> Result<Thread> {
+        if max_bytes > 0 && std::fs::metadata(path)?.len() > max_bytes as u64 {
+            bail!(
+                "stored thread exceeds configured history limit: {}",
+                path.display()
+            );
+        }
+        let bytes = std::fs::read(path)?;
+        self.count_parse(bytes.len());
+        if let Some(digest) = checksum.as_mut() {
+            **digest = format!("{:x}", Sha256::digest(&bytes));
+        }
+        let mut record: Record = serde_json::from_slice(&bytes)
+            .with_context(|| format!("invalid session: {}", path.display()))?;
+        if let Some(desktop) = record.thread.desktop.as_mut() {
+            for run in &mut desktop.hook_runs {
+                if run.outcome == "running" {
+                    run.outcome = "unknown".into();
                 }
             }
-            if let Some(areal_protocol::Conversation::Side {
-                version,
-                origin,
-                reference_snapshot,
-                policy,
-                ..
-            }) = &record.thread.conversation
-            {
+        }
+
+        anyhow::ensure!(
+            max_bytes == 0
+                || record
+                    .thread
+                    .history_archive
+                    .as_ref()
+                    .map_or(0, |a| a.bytes)
+                    .saturating_add(match &record.thread.conversation {
+                        Some(areal_protocol::Conversation::Fork { history_seed, .. }) =>
+                            history_seed.logical_bytes as u64,
+                        Some(areal_protocol::Conversation::Side {
+                            reference_snapshot, ..
+                        }) => reference_snapshot.logical_bytes as u64,
+                        _ => 0,
+                    })
+                    .saturating_add(std::fs::metadata(path)?.len())
+                    <= max_bytes as u64,
+            "stored thread exceeds configured history limit"
+        );
+        if !matches!(record.version, 1..=STATE_VERSION)
+            || path.file_stem().and_then(|s| s.to_str()) != Some(&record.thread.id)
+            || uuid::Uuid::parse_str(&record.thread.id).is_err()
+        {
+            bail!("unsupported or inconsistent session: {}", path.display());
+        }
+        if let Some(reference) = &record.thread.history_archive {
+            archive::read_segment(&self.root, &reference.head)?;
+        }
+        if let Some(areal_protocol::Conversation::Fork {
+            version,
+            origin,
+            history_seed,
+            ..
+        }) = &record.thread.conversation
+        {
+            anyhow::ensure!(
+                *version == 1 && record.version >= 14,
+                "unsupported fork conversation version"
+            );
+            anyhow::ensure!(
+                origin.snapshot_id == history_seed.snapshot_id,
+                "fork snapshot reference mismatch"
+            );
+            let segment = archive::read_segment(&self.root, &history_seed.snapshot_id)?;
+            anyhow::ensure!(
+                segment.previous.is_none(),
+                "fork snapshot contains archive chain"
+            );
+            anyhow::ensure!(
+                std::fs::metadata(self.root.join("history").join(&history_seed.snapshot_id))?.len()
+                    == history_seed.logical_bytes as u64,
+                "fork snapshot size mismatch"
+            );
+            anyhow::ensure!(
+                segment.turns.len() == history_seed.turn_count
+                    && segment
+                        .turns
+                        .iter()
+                        .map(|turn| turn.items.len())
+                        .sum::<usize>()
+                        == history_seed.item_count,
+                "fork snapshot manifest mismatch"
+            );
+            anyhow::ensure!(
+                segment.source_thread_ids.len() == segment.turns.len()
+                    && segment
+                        .source_thread_ids
+                        .iter()
+                        .all(|id| uuid::Uuid::parse_str(id).is_ok()),
+                "fork snapshot provenance mismatch"
+            );
+            if origin.boundary == "after" {
                 anyhow::ensure!(
-                    record.version >= 14
-                        && matches!(
-                            (version, policy),
-                            (1, areal_protocol::SidePolicy::ReadOnlyV1 { .. })
-                                | (2, areal_protocol::SidePolicy::ExecutableV2)
-                        ),
-                    "unsupported Side policy"
-                );
-                anyhow::ensure!(
-                    record.thread.parent_thread_id.is_none()
-                        && record.thread.session_id == record.thread.id
-                        && record.thread.goal_owner.is_none()
-                        && record.thread.goals.is_empty(),
-                    "Side execution authority mismatch"
-                );
-                if let areal_protocol::SidePolicy::ReadOnlyV1 { workspace_access } = policy {
-                    anyhow::ensure!(
-                        record.thread.dynamic_tools.is_empty(),
-                        "legacy Side dynamic tools mismatch"
-                    );
-                    anyhow::ensure!(
-                        record
-                            .thread
-                            .desktop
-                            .as_ref()
-                            .is_some_and(|d| d.queue.items.is_empty()
-                                && d.processes.is_empty()
-                                && d.configuration.read_only
-                                && d.configuration
-                                    .tool_allowlist
-                                    .as_ref()
-                                    .is_some_and(|tools| {
-                                        tools.iter().any(|name| name == "side_context_read")
-                                            && tools.iter().all(|name| {
-                                                matches!(
-                                                    name.as_str(),
-                                                    "side_context_read" | "gen_ui_publish"
-                                                ) || (*workspace_access
-                                                    == areal_protocol::SideWorkspaceAccess::ReadOnly
-                                                    && crate::tools::side_file_tool(
-                                                        name,
-                                                        &crate::tools::registry::Backend::Builtin,
-                                                    ))
-                                            })
-                                    })),
-                        "Side configuration authority mismatch"
-                    );
-                }
-                anyhow::ensure!(
-                    origin.snapshot_id == reference_snapshot.snapshot_id,
-                    "Side snapshot reference mismatch"
-                );
-                let segment = archive::read_segment(&self.root, &reference_snapshot.snapshot_id)?;
-                anyhow::ensure!(
-                    segment.previous.is_none()
-                        && segment.turns.len() == reference_snapshot.turn_count
-                        && segment.turns.iter().map(|t| t.items.len()).sum::<usize>()
-                            == reference_snapshot.item_count
-                        && segment.source_thread_ids.len() == segment.turns.len(),
-                    "Side snapshot manifest mismatch"
-                );
-                anyhow::ensure!(
-                    std::fs::metadata(
-                        self.root
-                            .join("history")
-                            .join(&reference_snapshot.snapshot_id)
-                    )?
-                    .len()
-                        == reference_snapshot.logical_bytes as u64,
-                    "Side snapshot size mismatch"
+                    segment
+                        .turns
+                        .last()
+                        .is_some_and(|turn| turn.id == origin.source_turn_id),
+                    "fork snapshot anchor mismatch"
                 );
             }
-            let mut repaired = false;
-            if let Some(goal) = &mut record.thread.goals.goal {
-                if goal.status == areal_protocol::goals::GoalStatus::Active {
-                    goal.status = areal_protocol::goals::GoalStatus::Paused;
-                    goal.reason = Some("serverRestarted".into());
-                    goal.usage.accounting_complete = false;
-                    goal.report_turn_id = None;
-                    record.thread.goals.revision += 1;
-                    record.thread.goals.event_sequence += 1;
-                    repaired = true;
-                }
-                goal.active_turn_id = None;
-                goal.settling = false;
-                goal.waiting_for_input = false;
-                goal.waiting_for_agents = false;
-                goal.waiting_for_capacity = false;
+        }
+        if let Some(areal_protocol::Conversation::Side {
+            version,
+            origin,
+            reference_snapshot,
+            policy,
+            ..
+        }) = &record.thread.conversation
+        {
+            anyhow::ensure!(
+                record.version >= 14
+                    && matches!(
+                        (version, policy),
+                        (1, areal_protocol::SidePolicy::ReadOnlyV1 { .. })
+                            | (2, areal_protocol::SidePolicy::ExecutableV2)
+                    ),
+                "unsupported Side policy"
+            );
+            anyhow::ensure!(
+                record.thread.parent_thread_id.is_none()
+                    && record.thread.session_id == record.thread.id
+                    && record.thread.goal_owner.is_none()
+                    && record.thread.goals.is_empty(),
+                "Side execution authority mismatch"
+            );
+            if let areal_protocol::SidePolicy::ReadOnlyV1 { workspace_access } = policy {
+                anyhow::ensure!(
+                    record.thread.dynamic_tools.is_empty(),
+                    "legacy Side dynamic tools mismatch"
+                );
+                anyhow::ensure!(
+                    record
+                        .thread
+                        .desktop
+                        .as_ref()
+                        .is_some_and(|d| d.queue.items.is_empty()
+                            && d.processes.is_empty()
+                            && d.configuration.read_only
+                            && d.configuration
+                                .tool_allowlist
+                                .as_ref()
+                                .is_some_and(|tools| {
+                                    tools.iter().any(|name| name == "side_context_read")
+                                        && tools.iter().all(|name| {
+                                            matches!(
+                                                name.as_str(),
+                                                "side_context_read" | "gen_ui_publish"
+                                            ) || (*workspace_access
+                                                == areal_protocol::SideWorkspaceAccess::ReadOnly
+                                                && crate::tools::side_file_tool(
+                                                    name,
+                                                    &crate::tools::registry::Backend::Builtin,
+                                                ))
+                                        })
+                                })),
+                    "Side configuration authority mismatch"
+                );
             }
-            for turn in &mut record.thread.turns {
-                if turn.status == TurnStatus::InProgress {
-                    turn.status = TurnStatus::Interrupted;
+            anyhow::ensure!(
+                origin.snapshot_id == reference_snapshot.snapshot_id,
+                "Side snapshot reference mismatch"
+            );
+            let segment = archive::read_segment(&self.root, &reference_snapshot.snapshot_id)?;
+            anyhow::ensure!(
+                segment.previous.is_none()
+                    && segment.turns.len() == reference_snapshot.turn_count
+                    && segment.turns.iter().map(|t| t.items.len()).sum::<usize>()
+                        == reference_snapshot.item_count
+                    && segment.source_thread_ids.len() == segment.turns.len(),
+                "Side snapshot manifest mismatch"
+            );
+            anyhow::ensure!(
+                std::fs::metadata(
+                    self.root
+                        .join("history")
+                        .join(&reference_snapshot.snapshot_id)
+                )?
+                .len()
+                    == reference_snapshot.logical_bytes as u64,
+                "Side snapshot size mismatch"
+            );
+        }
+        let mut repaired = false;
+        if let Some(goal) = &mut record.thread.goals.goal {
+            if goal.status == areal_protocol::goals::GoalStatus::Active {
+                goal.status = areal_protocol::goals::GoalStatus::Paused;
+                goal.reason = Some("serverRestarted".into());
+                goal.usage.accounting_complete = false;
+                goal.report_turn_id = None;
+                record.thread.goals.revision += 1;
+                record.thread.goals.event_sequence += 1;
+                repaired = true;
+            }
+            goal.active_turn_id = None;
+            goal.settling = false;
+            goal.waiting_for_input = false;
+            goal.waiting_for_agents = false;
+            goal.waiting_for_capacity = false;
+        }
+        for turn in &mut record.thread.turns {
+            if turn.status == TurnStatus::InProgress {
+                turn.status = TurnStatus::Interrupted;
+                if turn.interruption.is_none() {
+                    turn.interruption = Some(areal_protocol::TurnInterruption::CoreRecovery);
+                }
+                repaired = true;
+            }
+            for item in &mut turn.items {
+                if let Item::DynamicToolCall {
+                    execution,
+                    status,
+                    success,
+                    content_items,
+                    ..
+                } = item
+                {
+                    let mut recovered_plugin = false;
+                    if let Some(plugin) = &mut execution.plugin {
+                        for operation in &mut plugin.operations {
+                            if operation.outcome == ToolOutcome::Running {
+                                operation.outcome = ToolOutcome::Unknown;
+                                recovered_plugin = true;
+                            }
+                        }
+                    }
+                    let mut recovered_hook = false;
+                    for hook in &mut execution.hooks {
+                        if hook.outcome == ToolOutcome::Running {
+                            hook.outcome = ToolOutcome::Unknown;
+                            recovered_hook = true;
+                        }
+                    }
+                    if execution.outcome != ToolOutcome::Running
+                        && !recovered_hook
+                        && !recovered_plugin
+                    {
+                        continue;
+                    }
+                    if execution.outcome == ToolOutcome::Running || recovered_plugin {
+                        execution.outcome = ToolOutcome::Unknown;
+                        *status = ToolStatus::Failed;
+                        *success = Some(false);
+                        *content_items = Some(vec![
+                            serde_json::json!({"type":"inputText","text":"UNKNOWN: Core restarted before the tool result was confirmed; inspect the workspace; do not replay"}),
+                        ]);
+                    }
+                    turn.status = TurnStatus::Failed;
                     if turn.interruption.is_none() {
                         turn.interruption = Some(areal_protocol::TurnInterruption::CoreRecovery);
                     }
-                    repaired = true;
-                }
-                for item in &mut turn.items {
-                    if let Item::DynamicToolCall {
-                        execution,
-                        status,
-                        success,
-                        content_items,
-                        ..
-                    } = item
-                    {
-                        let mut recovered_plugin = false;
-                        if let Some(plugin) = &mut execution.plugin {
-                            for operation in &mut plugin.operations {
-                                if operation.outcome == ToolOutcome::Running {
-                                    operation.outcome = ToolOutcome::Unknown;
-                                    recovered_plugin = true;
-                                }
-                            }
-                        }
-                        let mut recovered_hook = false;
-                        for hook in &mut execution.hooks {
-                            if hook.outcome == ToolOutcome::Running {
-                                hook.outcome = ToolOutcome::Unknown;
-                                recovered_hook = true;
-                            }
-                        }
-                        if execution.outcome != ToolOutcome::Running
-                            && !recovered_hook
-                            && !recovered_plugin
-                        {
-                            continue;
-                        }
-                        if execution.outcome == ToolOutcome::Running || recovered_plugin {
-                            execution.outcome = ToolOutcome::Unknown;
-                            *status = ToolStatus::Failed;
-                            *success = Some(false);
-                            *content_items = Some(vec![
-                                serde_json::json!({"type":"inputText","text":"UNKNOWN: Core restarted before the tool result was confirmed; inspect the workspace; do not replay"}),
-                            ]);
-                        }
-                        turn.status = TurnStatus::Failed;
-                        if turn.interruption.is_none() {
-                            turn.interruption =
-                                Some(areal_protocol::TurnInterruption::CoreRecovery);
-                        }
-                        turn.error = Some(crate::outcome::infrastructure(
-                            "recovered an UNKNOWN tool outcome; inspection is required",
-                            "core_recovery",
-                            "unknown_tool_outcome",
-                        ));
-                        repaired = true;
-                    }
-                }
-            }
-            if let Some(data) = &mut record.thread.desktop {
-                for process in &mut data.processes {
-                    if !process.cleanup_confirmed {
-                        process.state = "unknown".into();
-                        process.error = Some(
-                            "Core restarted; old Runtime resources cannot be recovered".into(),
-                        );
-                        repaired = true;
-                    }
-                    for input in &mut process.inputs {
-                        if input.outcome == "running" {
-                            input.outcome = "unknown".into();
-                            repaired = true;
-                        }
-                    }
-                }
-                for interaction in &mut data.interactions {
-                    if interaction.status == "pending" {
-                        interaction.status = "expired".into();
-                        data.interaction_revision += 1;
-                        repaired = true;
-                    }
-                }
-                if data
-                    .queue
-                    .items
-                    .iter()
-                    .any(|item| matches!(item.status.as_str(), "pending" | "running"))
-                {
-                    data.queue.paused = true;
-                    data.queue.pause_reason =
-                        Some("Core restarted; inspect execution and explicitly resume".into());
-                    data.queue.revision += 1;
-                    for item in &mut data.queue.items {
-                        if item.status == "running" {
-                            item.status = "interrupted".into();
-                        }
-                    }
+                    turn.error = Some(crate::outcome::infrastructure(
+                        "recovered an UNKNOWN tool outcome; inspection is required",
+                        "core_recovery",
+                        "unknown_tool_outcome",
+                    ));
                     repaired = true;
                 }
             }
-            record.thread.status = ThreadStatus::Idle;
-            if repaired {
-                atomic_write(&self.root, &record.thread)?;
-            }
-            if record.thread.desktop.as_ref().is_some_and(|d| d.archived) {
-                record.thread.turns.clear();
-                record.thread.context_checkpoint = None;
-            }
-            threads.push(record.thread);
         }
-        Ok(threads)
+        if let Some(data) = &mut record.thread.desktop {
+            for process in &mut data.processes {
+                if !process.cleanup_confirmed {
+                    process.state = "unknown".into();
+                    process.error =
+                        Some("Core restarted; old Runtime resources cannot be recovered".into());
+                    repaired = true;
+                }
+                for input in &mut process.inputs {
+                    if input.outcome == "running" {
+                        input.outcome = "unknown".into();
+                        repaired = true;
+                    }
+                }
+            }
+            for interaction in &mut data.interactions {
+                if interaction.status == "pending" {
+                    interaction.status = "expired".into();
+                    data.interaction_revision += 1;
+                    repaired = true;
+                }
+            }
+            if data
+                .queue
+                .items
+                .iter()
+                .any(|item| matches!(item.status.as_str(), "pending" | "running"))
+            {
+                data.queue.paused = true;
+                data.queue.pause_reason =
+                    Some("Core restarted; inspect execution and explicitly resume".into());
+                data.queue.revision += 1;
+                for item in &mut data.queue.items {
+                    if item.status == "running" {
+                        item.status = "interrupted".into();
+                    }
+                }
+                repaired = true;
+            }
+        }
+        record.thread.status = ThreadStatus::Idle;
+        if repaired {
+            atomic_write(&self.root, &record.thread)?;
+            if let Some(digest) = checksum.as_mut() {
+                **digest = format!("{:x}", Sha256::digest(encode(&record.thread)?));
+            }
+        }
+        if !retain_archived && record.thread.desktop.as_ref().is_some_and(|d| d.archived) {
+            record.thread.turns.clear();
+            record.thread.context_checkpoint = None;
+        }
+        Ok(record.thread)
     }
 
     pub(crate) fn read_thread_snapshot_sync(
@@ -600,6 +620,10 @@ if keep.contains(&name){retained+=e.metadata()?.len();}else{reclaimed+=e.metadat
     }
 
     pub(crate) async fn save_encoded(&self, id: &str, bytes: Vec<u8>) -> Result<()> {
+        anyhow::ensure!(
+            !self.is_deferred(id),
+            "unmaterialized history cannot be persisted"
+        );
         let queued = std::time::Instant::now();
         #[cfg(test)]
         if self.io.available_permits() == 0 {

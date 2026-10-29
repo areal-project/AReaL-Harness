@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const catalogBackend = process.env.AREAL_CATALOG_TEST_BACKEND ?? "memory";
+assert.ok(["memory", "sqlite", "memory-lazy", "sqlite-lazy"].includes(catalogBackend));
 const require = createRequire(join(gui, "app/package.json"));
 const { CoreBackend } = require("../app/src/core/backend.cjs");
 const { DesktopService, PROTOCOL } = require("../app/src/core/service-protocol.cjs");
@@ -36,7 +38,7 @@ const model = createServer(async (request, response) => {
 await new Promise((resolve) => model.listen(0, "127.0.0.1", resolve));
 await writeFile(
   join(scratch, "user", ".areal", "config.toml"),
-  `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\ncontext_window_tokens=2000000\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\n`,
+  `schema_version=1\n[storage]\nsession_catalog="${catalogBackend}"\n[model]\nprovider="fixture"\nname="fixture"\ncontext_window_tokens=2000000\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\n`,
 );
 const deployment = join(scratch, "desktop.json");
 await writeFile(
@@ -145,6 +147,8 @@ try {
   );
   const modelRequests = workRequests(),
     dataDir = project.service.dataDir;
+  if (catalogBackend === "sqlite")
+    assert.ok((await readFile(join(dataDir, "catalog/index.sqlite3"))).length > 0);
   await backend.shutdown();
   await backend.disconnect();
   const makeTurn = (n) => ({
@@ -204,6 +208,10 @@ try {
   backend = new CoreBackend(options);
   await backend.init();
   await backend.start(projectId);
+  if (catalogBackend.endsWith("-lazy")) {
+    const name = catalogBackend.startsWith("sqlite") ? "metadata.sqlite3" : "metadata.json";
+    assert.ok((await readFile(join(dataDir, "catalog", name))).length > 0);
+  }
   const live = backend.projects.get(projectId);
   capture(live);
   for (const id of [threadId, archivedId]) {

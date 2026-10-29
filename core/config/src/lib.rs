@@ -73,6 +73,38 @@ pub struct ConfigOverrides {
     pub log_filter: Option<String>,
 }
 
+/// 目录与加载策略可重建；SQLite 按需模式只持久化元数据，运行时沿内存排序目录查询。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SessionCatalog {
+    #[default]
+    Memory,
+    Sqlite,
+    #[serde(rename = "memory-lazy")]
+    MemoryLazy,
+    #[serde(rename = "sqlite-lazy")]
+    SqliteLazy,
+}
+
+impl SessionCatalog {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Memory => "memory",
+            Self::Sqlite => "sqlite",
+            Self::MemoryLazy => "memory-lazy",
+            Self::SqliteLazy => "sqlite-lazy",
+        }
+    }
+
+    pub fn is_lazy(self) -> bool {
+        matches!(self, Self::MemoryLazy | Self::SqliteLazy)
+    }
+
+    pub fn is_sqlite(self) -> bool {
+        matches!(self, Self::Sqlite | Self::SqliteLazy)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PermissionMode {
     #[default]
@@ -281,6 +313,7 @@ pub struct GoalConfig {
 }
 
 pub struct ResolvedCoreConfig {
+    pub session_catalog: SessionCatalog,
     pub inspection_permissions: InspectionPermissions,
     pub trajectory: TrajectoryConfig,
     pub model_catalog: Vec<models::ProviderConfig>,
@@ -393,6 +426,7 @@ impl ResolvedCoreConfig {
         result["limits"]["command_stdin_closed"] = serde_json::json!(self.command_stdin_closed);
         result["context"]["observation_tokens"] =
             serde_json::json!(self.context_observation_tokens);
+        result["storage"] = serde_json::json!({"session_catalog":self.session_catalog});
         result["limits"]["context_observation_tokens"] =
             serde_json::json!(self.context_observation_tokens);
         result["limits"]["max_empty_completion_retries"] =

@@ -62,6 +62,11 @@ const ENV: &[(&str, &str, &str)] = &[
     ),
     ("AREAL_HARNESS_MAX_THREADS", "", "limits.max_threads"),
     (
+        "AREAL_HARNESS_SESSION_CATALOG",
+        "",
+        "storage.session_catalog",
+    ),
+    (
         "AREAL_HARNESS_REASONING_SUMMARY",
         "",
         "model.reasoning_summary",
@@ -498,6 +503,14 @@ pub(crate) fn valid(field: &str, entry: &Entry) -> Result<()> {
                 return Err(reject("timeout must be between 1 and 86400 seconds"));
             }
         }
+        "session_catalog" => {
+            if !matches!(
+                value.as_str(),
+                "memory" | "sqlite" | "memory-lazy" | "sqlite-lazy"
+            ) {
+                return Err(reject("unsupported session catalog"));
+            }
+        }
         "model_concurrency"
         | "max_threads"
         | "max_active_turns"
@@ -654,6 +667,7 @@ pub(crate) fn load_mode(
         ("goals.max_unreported_turns", "3"),
         ("goals.turn_model_rounds", "0"),
         ("limits.max_threads", "20000"),
+        ("storage.session_catalog", "memory"),
         ("limits.max_active_turns", "256"),
         ("limits.max_side_turns_per_source", "2"),
         ("limits.max_side_turns_per_deployment", "8"),
@@ -1043,6 +1057,12 @@ pub(crate) fn load_mode(
                 .map(|e| e.value.parse().unwrap()),
             max_request_bytes: values["model.max_request_bytes"].value.parse().unwrap(),
             max_retries: values["model.max_retries"].value.parse().unwrap(),
+        },
+        session_catalog: match values["storage.session_catalog"].value.as_str() {
+            "sqlite" => crate::SessionCatalog::Sqlite,
+            "memory-lazy" => crate::SessionCatalog::MemoryLazy,
+            "sqlite-lazy" => crate::SessionCatalog::SqliteLazy,
+            _ => crate::SessionCatalog::Memory,
         },
         model_concurrency: values["limits.model_concurrency"].value.parse().unwrap(),
         max_threads: values["limits.max_threads"].value.parse().unwrap(),

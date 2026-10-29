@@ -36,6 +36,10 @@ impl Goals {
     pub(super) fn open(root: &Path, threads: &BTreeMap<String, Arc<Cell>>) -> anyhow::Result<Self> {
         let mut budgets = BTreeMap::new();
         for cell in threads.values() {
+            // 仅无 Goal 的已结算根会话允许按需恢复；此处无需展开其元数据。
+            if !cell.state.is_loaded() {
+                continue;
+            }
             let state = cell.state.try_lock()?;
             if let Some(goal) = &state.thread.goals.goal {
                 budgets.insert(goal.id.clone(), Budget::open(root, goal)?);

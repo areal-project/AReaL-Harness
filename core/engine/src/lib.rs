@@ -1,4 +1,7 @@
+pub use areal_config::SessionCatalog;
+pub use catalog::{ConversationFilter, ConversationView};
 mod agents;
+mod catalog;
 pub mod concurrency;
 mod context;
 mod context_usage;
@@ -6,6 +9,7 @@ mod default_model;
 pub mod delegation;
 pub mod desktop;
 pub mod diagnostics;
+mod dormant;
 mod generation;
 pub mod goals;
 mod history;
@@ -58,6 +62,7 @@ use tracing::{Instrument, info_span};
 
 #[derive(Clone, Debug)]
 pub struct Limits {
+    pub session_catalog: areal_config::SessionCatalog,
     pub inspection_permissions: areal_config::InspectionPermissions,
     pub goals: goals::Policy,
     pub max_threads: usize,
@@ -109,6 +114,20 @@ pub struct Limits {
 impl Default for Limits {
     fn default() -> Self {
         Self {
+            session_catalog: {
+                #[cfg(feature = "test-support")]
+                {
+                    match std::env::var("AREAL_TEST_SESSION_CATALOG").as_deref() {
+                        Ok("memory-lazy") => SessionCatalog::MemoryLazy,
+                        Ok("sqlite-lazy") => SessionCatalog::SqliteLazy,
+                        _ => SessionCatalog::Memory,
+                    }
+                }
+                #[cfg(not(feature = "test-support"))]
+                {
+                    SessionCatalog::Memory
+                }
+            },
             inspection_permissions: areal_config::InspectionPermissions::ReadOnly,
             goals: goals::Policy::default(),
             max_threads: 20_000,
@@ -257,14 +276,17 @@ struct Cell {
     depth: usize,
     research: bool,
     id: String,
+    // 创建顺序在会话存活期内不变，目录索引不读取或复制会话正文。
+    created_at: i64,
     scratch_path: std::path::PathBuf,
     agent_requests: AtomicUsize,
     agent_tools: AtomicUsize,
     // 普通接管允许当前请求有界结算；强制取消仍使用短期限。
     cancel_grace_ms: AtomicUsize,
     bindings: RwLock<tools::Bindings>,
-    state: Mutex<State>,
-    events: broadcast::Sender<Value>,
+    state: dormant::StateSlot,
+    pending_registry: std::sync::Mutex<Option<Arc<tools::Registry>>>,
+    events: dormant::Events,
     settled: watch::Sender<bool>,
     interaction_changed: watch::Sender<u64>,
     resource_gate: Mutex<()>,
@@ -272,11 +294,21 @@ struct Cell {
 }
 impl Cell {
     fn new(
-        mut thread: Thread,
+        thread: Thread,
         depth: usize,
         bindings: tools::Bindings,
         parent_scratch: Option<&Path>,
     ) -> Arc<Self> {
+        Self::restored(thread, depth, bindings, parent_scratch, None)
+    }
+    fn restored(
+        mut thread: Thread,
+        depth: usize,
+        bindings: tools::Bindings,
+        parent_scratch: Option<&Path>,
+        pending_registry: Option<Arc<tools::Registry>>,
+    ) -> Arc<Self> {
+        let deferred = pending_registry.is_some();
         if let Some(data) = &mut thread.desktop
             && let Some(areal_protocol::desktop::PromptPrediction::Pending {
                 source_turn_id,
@@ -306,20 +338,14 @@ impl Cell {
             depth,
             research: thread.source == "nativeResearchAgent",
             id: thread.id.clone(),
+            created_at: thread.created_at,
             agent_requests: AtomicUsize::new(0),
             agent_tools: AtomicUsize::new(0),
             cancel_grace_ms: AtomicUsize::new(1000),
             bindings: RwLock::new(bindings),
-            state: Mutex::new(State {
-                prediction_source: None,
-                thread,
-                active: None,
-                poisoned: false,
-                compacting: false,
-                compaction_owner: None,
-                quarantined_admission: None,
-            }),
-            events: broadcast::channel(128).0,
+            state: dormant::StateSlot::new(thread, deferred),
+            pending_registry: std::sync::Mutex::new(pending_registry),
+            events: dormant::Events::new(deferred),
             settled: watch::channel(true).0,
             interaction_changed: watch::channel(0).0,
             resource_gate: Mutex::new(()),
@@ -339,7 +365,7 @@ pub struct Engine {
     configuration_status: std::sync::RwLock<Value>,
     goals: goals::Goals,
     task_modes: task_mode::Tasks,
-    threads: RwLock<BTreeMap<String, Arc<Cell>>>,
+    threads: RwLock<catalog::ThreadCatalog>,
     thread_creation: Mutex<()>,
     #[cfg(feature = "test-support")]
     fork_commit_barrier: std::sync::Mutex<Option<ForkCommitBarrier>>,
@@ -380,7 +406,18 @@ fn restore_cells(
     threads: Vec<Thread>,
     registry: &tools::Registry,
 ) -> anyhow::Result<BTreeMap<String, Arc<Cell>>> {
-    let threads: BTreeMap<_, _> = threads.into_iter().map(|t| (t.id.clone(), t)).collect();
+    restore_sessions(
+        threads.into_iter().map(store::RestoredSession::from),
+        registry,
+    )
+}
+
+fn restore_sessions(
+    sessions: impl IntoIterator<Item = store::RestoredSession>,
+    registry: &tools::Registry,
+) -> anyhow::Result<BTreeMap<String, Arc<Cell>>> {
+    let deferred_registry = Arc::new(registry.clone());
+    let threads: BTreeMap<_, _> = sessions.into_iter().map(|t| (t.id.clone(), t)).collect();
     let mut depths: BTreeMap<String, usize> = BTreeMap::new();
     let mut scratch_paths: BTreeMap<String, std::path::PathBuf> = BTreeMap::new();
     for id in threads.keys() {
@@ -425,8 +462,10 @@ fn restore_cells(
     }
     threads
         .into_iter()
-        .map(|(id, thread)| {
-            let bindings = tools::Bindings {
+        .map(|(id, session)| {
+            let deferred = session.is_deferred();
+            let thread = session.into_thread()?;
+            let mut bindings = tools::Bindings {
                 registry: if thread.is_read_only_side() {
                     registry.clone().side_only(thread.side_workspace_read())
                 } else if thread.source == "nativeResearchAgent" {
@@ -441,7 +480,17 @@ fn restore_cells(
                 .parent_thread_id
                 .as_ref()
                 .map(|parent| scratch_paths[parent].as_path());
-            let cell = Cell::new(thread, depths[&id], bindings, parent_scratch);
+            let pending_registry = deferred.then(|| deferred_registry.clone());
+            if deferred {
+                bindings.registry = tools::Registry::default();
+            }
+            let cell = Cell::restored(
+                thread,
+                depths[&id],
+                bindings,
+                parent_scratch,
+                pending_registry,
+            );
             if root_session {
                 *cell.hooks.pending.try_lock().expect("new hook session") = vec!["resume".into()];
             }
@@ -623,10 +672,21 @@ impl Engine {
                     registry.with_runtime_limits(&serde_json::from_value(limits.clone())?)?;
             }
         }
-        let threads = restore_cells(
-            store.load(limits.max_threads, limits.max_history_bytes)?,
-            &registry,
-        )?;
+        let threads = if limits.session_catalog.is_lazy() {
+            restore_sessions(
+                store.load_catalog(
+                    limits.max_threads,
+                    limits.max_history_bytes,
+                    limits.session_catalog.is_sqlite(),
+                )?,
+                &registry,
+            )?
+        } else {
+            restore_cells(
+                store.load(limits.max_threads, limits.max_history_bytes)?,
+                &registry,
+            )?
+        };
         let desktop = desktop::Desktop::open(root)?;
         let goals = goals::Goals::open(root, &threads)?;
         let permission_file = root.join("desktop/permissions.json");
@@ -661,7 +721,11 @@ impl Engine {
             task_modes,
             desktop,
             plugin_hooks: plugin_hooks::Manager::open(&store)?,
-            threads: RwLock::new(threads),
+            threads: RwLock::new(catalog::ThreadCatalog::new(
+                root,
+                threads,
+                limits.session_catalog,
+            )),
             thread_creation: Mutex::new(()),
             #[cfg(feature = "test-support")]
             fork_commit_barrier: Default::default(),
@@ -782,13 +846,103 @@ impl Engine {
         entered.notify_one();
         release.notified().await;
     }
-    async fn raw_cell(&self, thread_id: &str) -> Result<Arc<Cell>> {
+    async fn lookup_cell(&self, thread_id: &str) -> Result<Arc<Cell>> {
         self.threads
             .read()
             .await
             .get(thread_id)
             .cloned()
             .ok_or(Error::NotFound)
+    }
+    async fn raw_cell(&self, thread_id: &str) -> Result<Arc<Cell>> {
+        let cell = self.lookup_cell(thread_id).await?;
+        self.materialize_cell(&cell).await?;
+        Ok(cell)
+    }
+    async fn materialize_cell(&self, cell: &Arc<Cell>) -> Result<()> {
+        if cell.state.is_loaded() {
+            return Ok(());
+        }
+        let mut state = cell.state.lock().await;
+        if cell.state.is_loaded() {
+            return Ok(());
+        }
+        let mut thread = match self
+            .store
+            .materialize(&cell.id, self.limits.max_history_bytes)
+            .await
+        {
+            Ok(thread) => thread,
+            Err(error) => {
+                self.store
+                    .reject_cached_projection(
+                        &cell.id,
+                        self.limits.session_catalog.is_sqlite(),
+                        self.limits.max_threads,
+                    )
+                    .await;
+                return Err(Error::Storage(error.to_string()));
+            }
+        };
+        thread.status = ThreadStatus::Idle;
+        if let Some(desktop) = &mut thread.desktop {
+            for hook in &mut desktop.hook_runs {
+                if hook.outcome == "running" {
+                    hook.outcome = "unknown".into();
+                }
+            }
+            if let Some(areal_protocol::desktop::PromptPrediction::Pending {
+                source_turn_id,
+                configuration_revision,
+            }) = desktop.prompt_prediction.clone()
+            {
+                desktop.prompt_prediction =
+                    Some(areal_protocol::desktop::PromptPrediction::Unavailable {
+                        source_turn_id,
+                        configuration_revision,
+                    });
+            }
+        }
+        if serde_json::to_value(catalog::metadata(&thread))
+            .map_err(|e| Error::Storage(e.to_string()))?
+            != serde_json::to_value(catalog::metadata(&state.thread))
+                .map_err(|e| Error::Storage(e.to_string()))?
+        {
+            self.store
+                .reject_cached_projection(
+                    &cell.id,
+                    self.limits.session_catalog.is_sqlite(),
+                    self.limits.max_threads,
+                )
+                .await;
+            return Err(Error::Storage(
+                "deferred metadata differs from authoritative facts; restart Core".into(),
+            ));
+        }
+        let base = cell
+            .pending_registry
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| Error::Storage("missing deferred registry".into()))?;
+        let registry = if state.thread.source == "nativeResearchAgent" {
+            base.as_ref().clone().research_only()
+        } else {
+            base.with_dynamic(&state.thread.dynamic_tools)
+                .map_err(|e| Error::Storage(e.to_string()))?
+        };
+        let mut bindings = cell.bindings.write().await;
+        if state.thread.desktop.as_ref().is_some_and(|d| d.archived) {
+            thread.turns.clear();
+            thread.context_checkpoint = None;
+        }
+        // 在所有可取消等待之后一次发布，取消读取不能把半份正文或空历史发布给执行端。
+        state.thread = thread;
+        bindings.registry = registry;
+        state.materialized();
+        self.store.materialized(&cell.id);
+        cell.pending_registry.lock().unwrap().take();
+        Ok(())
     }
     async fn cell(&self, thread_id: &str) -> Result<Arc<Cell>> {
         let cell = self.raw_cell(thread_id).await?;
@@ -888,6 +1042,7 @@ impl Engine {
                 tracing::error!(%error,"thread resource cleanup failed");
             }
         }
+        self.close_catalog().await;
     }
 }
 

@@ -8,6 +8,10 @@ mode = "YOLO"
 # 默认保留强制只读；显式 inherit 继承父权限，不承诺源码不可写。
 inspection_permissions = "read-only"
 
+[storage]
+# 默认 memory；sqlite 查询键索引；memory-lazy / sqlite-lazy 按需加载，后者用 SQLite 元数据缓存。
+session_catalog = "memory"
+
 [server]
 listen = "127.0.0.1:4500"
 # data_dir defaults to <AREAL_HARNESS_HOME>/state.

@@ -11,6 +11,7 @@ test-support = []
 native-tests = ["test-support"]
 
 [dependencies]
+rusqlite = { version = "=0.41.0", features = ["bundled"] }
 chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
 chrono-tz = "=0.10.4"
 url.workspace = true

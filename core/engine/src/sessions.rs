@@ -308,10 +308,18 @@ impl Engine {
     }
 
     pub async fn read(&self, thread_id: &str, include_turns: bool) -> Result<Thread> {
-        let cell = self.raw_cell(thread_id).await?;
+        let cell = if include_turns {
+            self.raw_cell(thread_id).await?
+        } else {
+            self.lookup_cell(thread_id).await?
+        };
         let mut thread = {
             let state = cell.state.lock().await;
-            let mut thread = state.thread.clone();
+            let mut thread = if include_turns {
+                state.thread.clone()
+            } else {
+                crate::catalog::metadata(&state.thread)
+            };
             project_side_capacity(&mut thread, state.active.as_ref());
             thread
         };
@@ -344,34 +352,10 @@ impl Engine {
         limit: usize,
         parent: Option<&str>,
     ) -> Result<(Vec<Thread>, Option<String>)> {
-        if limit == 0 || limit > 100 {
-            return Err(Error::Invalid("limit must be 1..100".into()));
-        }
-        let cells: Vec<_> = self
-            .threads
-            .read()
-            .await
-            .iter()
-            .filter(|(key, _)| after.is_none_or(|a| key.as_str() > a))
-            .map(|(_, cell)| cell.clone())
-            .collect();
-        let mut data = Vec::new();
-        for cell in cells {
-            let state = cell.state.lock().await;
-            if parent.is_some_and(|p| state.thread.parent_thread_id.as_deref() != Some(p)) {
-                continue;
-            }
-            if data.len() == limit {
-                return Ok((data.clone(), data.last().map(|t: &Thread| t.id.clone())));
-            }
-            let mut thread = state.thread.clone();
-            self.refresh_goal_usage(&mut thread);
-            thread.turns.clear();
-            thread.context_checkpoint = None;
-            thread.history_archive = None;
-            data.push(thread);
-        }
-        Ok((data, None))
+        self.list_filtered(after, limit, |thread| {
+            parent.is_none_or(|p| thread.parent_thread_id.as_deref() == Some(p))
+        })
+        .await
     }
 
     pub async fn subscribe(&self, thread_id: &str) -> Result<broadcast::Receiver<Value>> {

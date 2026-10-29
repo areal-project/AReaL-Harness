@@ -6,6 +6,7 @@
 
 | 能力 | 实现与入口 |
 |---|---|
+| 会话目录 | 默认内存索引、正确的授权后分页与 GUI 刷新合并；显式 SQLite 索引可回退内存，两者均可显式启用轻量元数据目录与按需历史加载。文件保持事实，复杂恢复仍全量；无自动历史淘汰或全文检索。[配置](guides/configuration.md#会话目录后端) |
 | 项目规则 | 按工作区根到会话 cwd 加载 `AGENTS.md`，子目录优先、每 Turn 刷新、有界且经 Runtime 读取。[客户端](guides/clients.md) |
 | 会话与模型 | 持久 Thread/Turn、流式正文、Chat Completions 思考与 Responses 思考摘要/文本事件、追加输入、取消、恢复；Chat Completions / Responses，模态取决于 adapter 和模型。[客户端](guides/clients.md) |
 | 会话名称 | 普通根会话首个成功 Turn 后异步总结名称，手动名称优先；失败保留预览，重启不重复请求。可通过 `options.automaticSessionName=false` 或 CLI `--no-session-name` 显式关闭，保留持久历史与恢复。[Core 契约](api/core.md#会话名称) |

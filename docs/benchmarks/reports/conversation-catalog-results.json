@@ -1,0 +1,741 @@
+{
+  "formatVersion": 1,
+  "scope": "Local directory-query and GUI refresh mechanism comparison, not an Agent capability or end-to-end latency evaluation",
+  "source": {
+    "baseCommit": "61ce8ecc296a648f41b353da1b304d902711c48a",
+    "baselineHadUnrelatedWorkingTreeChanges": true,
+    "beforeSha256": {
+      "core/engine/src/lib.rs": "d48e8c2b81e922c5d023773520da2e7622141d5d1ddd326d07986ff9db2726ca",
+      "core/engine/src/sessions.rs": "54242b0d031e043db172eaa00921438442ce0722c5aa7fe0111d0f1d9cecb182",
+      "core/app-server/src/lib.rs": "19f7ff18aa80931eb73e65c33372605253512868ef8c9fb566bb33bd86b94851",
+      "clients/gui/app/src/core/history-observation.cjs": "5cfddaa77944bfb80ee65dd142141b16fbc1bbfd86aed8412cf07b7db78acd31"
+    },
+    "afterSha256": {
+      "core/engine/src/lib.rs": "57a1bfab6804096d9cbd128667a12df48b1bcda0548b18165d113a8edfebff98",
+      "core/engine/src/sessions.rs": "9be424a9b5b4c7f0c5f6981abafca137fb70459984260aeb1b976dd5eb3e3403",
+      "core/engine/src/catalog.rs": "ac008dfa95bf52f8cd320ab93c0a2cba6a13b50afdee45e0f732795bb7e45cd5",
+      "core/app-server/src/lib.rs": "78d7df6253fbb67f8851bd98f712f1f6d602598add05bd62eae77f56d0b2b37c",
+      "core/app-server/src/catalog_tests.rs": "36e08631781aa9851c1e47f0d3eed08f5a2fd5c2caf22c4310ff066c4ef7be8b",
+      "clients/gui/app/src/core/history-observation.cjs": "3be9bdbd29f3616112b8aa9916d2da5ef074ee5242d4c18c79b67662bdf48c45",
+      "clients/gui/scripts/catalog-refresh.test.cjs": "d6971b720b3f0d0c6bf47f1934dfd1e9ea0f4b79e1f8e4159ec3d5b087d72ddd",
+      "clients/gui/scripts/catalog-refresh-benchmark.cjs": "65efa12278a903064fa567390bea6503d6dd3719a2f43a7f35d782abe3a36078"
+    },
+    "beforeTestBinarySha256": "0c47b6fd8906f0bf780f9a97d0d8ff8153deb2d13a2290ab336cc86bd884e0b1",
+    "afterTestBinarySha256": "5a0e169fb1dcac39f42787a0836479abb52b6e14eba26d224c90d6b29c86b999",
+    "afterSourceNote": "Final source hashes include behavioral tests and moving the Engine test module to the end after timing collection; measured production query logic is unchanged."
+  },
+  "environment": {
+    "system": "Darwin 25.6.0 arm64",
+    "cpu": "Apple M5 Pro",
+    "memoryBytes": 25769803776,
+    "rust": "1.94.0",
+    "node": "23.11.0",
+    "profile": "release",
+    "modelCalls": 0,
+    "sqlite": false
+  },
+  "core": {
+    "pageSize": 100,
+    "measurement": "Engine + conversation_list RPC projection + JSON encoding, excludes fixture creation, file recovery, WebSocket, GUI and model execution",
+    "singlePageWarmups": 2,
+    "singlePageSamples": 7,
+    "completeDirectorySamples": 5,
+    "before": [
+      {
+        "case": "small",
+        "count": 100,
+        "historyBytesPerThread": 0,
+        "operation": "first",
+        "phase": "before",
+        "samplesMs": [
+          0.15154099999999998,
+          0.157833,
+          0.12983299999999998,
+          0.151833,
+          0.15175,
+          0.139708,
+          0.150542
+        ]
+      },
+      {
+        "case": "small",
+        "count": 100,
+        "historyBytesPerThread": 0,
+        "operation": "all",
+        "phase": "before",
+        "samplesMs": [
+          0.15075,
+          0.158375,
+          0.15675,
+          0.15770800000000001,
+          0.15437499999999998
+        ]
+      },
+      {
+        "case": "history",
+        "count": 2000,
+        "historyBytesPerThread": 16384,
+        "operation": "first",
+        "phase": "before",
+        "samplesMs": [
+          3.778791,
+          3.674584,
+          3.577458,
+          3.6427080000000003,
+          3.854542,
+          4.061917,
+          3.942834
+        ]
+      },
+      {
+        "case": "history",
+        "count": 2000,
+        "historyBytesPerThread": 16384,
+        "operation": "last",
+        "phase": "before",
+        "samplesMs": [
+          3.8406249999999997,
+          3.951541,
+          4.327458,
+          3.9202079999999997,
+          3.7356659999999997,
+          3.892709,
+          4.189875
+        ]
+      },
+      {
+        "case": "history",
+        "count": 2000,
+        "historyBytesPerThread": 16384,
+        "operation": "all",
+        "phase": "before",
+        "samplesMs": [
+          76.869916,
+          78.125208,
+          75.603916,
+          69.779125,
+          74.6015
+        ]
+      },
+      {
+        "case": "many",
+        "count": 20000,
+        "historyBytesPerThread": 0,
+        "operation": "first",
+        "phase": "before",
+        "samplesMs": [
+          133.108583,
+          125.414209,
+          127.12379100000001,
+          134.495375,
+          133.362625,
+          129.580166,
+          132.106
+        ]
+      },
+      {
+        "case": "many",
+        "count": 20000,
+        "historyBytesPerThread": 0,
+        "operation": "last",
+        "phase": "before",
+        "samplesMs": [
+          128.917417,
+          127.043334,
+          127.73854200000001,
+          130.110666,
+          125.720333,
+          130.417041,
+          133.804166
+        ]
+      }
+    ],
+    "after": [
+      {
+        "case": "small",
+        "count": 100,
+        "historyBytesPerThread": 0,
+        "operation": "first",
+        "phase": "after",
+        "samplesMs": [
+          0.123042,
+          0.144458,
+          0.113459,
+          0.135084,
+          0.133167,
+          0.135292,
+          0.130833
+        ]
+      },
+      {
+        "case": "small",
+        "count": 100,
+        "historyBytesPerThread": 0,
+        "operation": "all",
+        "phase": "after",
+        "samplesMs": [
+          0.141708,
+          0.15725,
+          0.144541,
+          0.13716699999999998,
+          0.136708
+        ]
+      },
+      {
+        "case": "history",
+        "count": 2000,
+        "historyBytesPerThread": 16384,
+        "operation": "first",
+        "phase": "after",
+        "samplesMs": [
+          0.11854100000000001,
+          0.118959,
+          0.119375,
+          0.105708,
+          0.12000000000000001,
+          0.12012500000000001,
+          0.11975
+        ]
+      },
+      {
+        "case": "history",
+        "count": 2000,
+        "historyBytesPerThread": 16384,
+        "operation": "last",
+        "phase": "after",
+        "samplesMs": [
+          0.142417,
+          0.139708,
+          0.138209,
+          0.111,
+          0.12379200000000001,
+          0.150083,
+          0.133292
+        ]
+      },
+      {
+        "case": "history",
+        "count": 2000,
+        "historyBytesPerThread": 16384,
+        "operation": "all",
+        "phase": "after",
+        "samplesMs": [
+          3.5244590000000002,
+          3.565125,
+          3.174917,
+          3.069333,
+          3.1339580000000002
+        ]
+      },
+      {
+        "case": "many",
+        "count": 20000,
+        "historyBytesPerThread": 0,
+        "operation": "first",
+        "phase": "after",
+        "samplesMs": [
+          0.12587500000000001,
+          0.123583,
+          0.117792,
+          0.106042,
+          0.140166,
+          0.135,
+          0.141333
+        ]
+      },
+      {
+        "case": "many",
+        "count": 20000,
+        "historyBytesPerThread": 0,
+        "operation": "last",
+        "phase": "after",
+        "samplesMs": [
+          0.140333,
+          0.133,
+          0.13504200000000002,
+          0.112916,
+          0.137458,
+          0.137417,
+          0.11916600000000001
+        ]
+      }
+    ],
+    "comparison": [
+      {
+        "case": "small",
+        "operation": "first",
+        "beforeMedianMs": 0.15154099999999998,
+        "afterMedianMs": 0.133167,
+        "medianSpeedup": 1.1379771264652652
+      },
+      {
+        "case": "small",
+        "operation": "all",
+        "beforeMedianMs": 0.15675,
+        "afterMedianMs": 0.141708,
+        "medianSpeedup": 1.1061478533322042
+      },
+      {
+        "case": "history",
+        "operation": "first",
+        "beforeMedianMs": 3.778791,
+        "afterMedianMs": 0.119375,
+        "medianSpeedup": 31.65479371727749
+      },
+      {
+        "case": "history",
+        "operation": "last",
+        "beforeMedianMs": 3.9202079999999997,
+        "afterMedianMs": 0.138209,
+        "medianSpeedup": 28.364346750211634
+      },
+      {
+        "case": "history",
+        "operation": "all",
+        "beforeMedianMs": 75.603916,
+        "afterMedianMs": 3.174917,
+        "medianSpeedup": 23.812879517795267
+      },
+      {
+        "case": "many",
+        "operation": "first",
+        "beforeMedianMs": 132.106,
+        "afterMedianMs": 0.12587500000000001,
+        "medianSpeedup": 1049.501489572989
+      },
+      {
+        "case": "many",
+        "operation": "last",
+        "beforeMedianMs": 128.917417,
+        "afterMedianMs": 0.13504200000000002,
+        "medianSpeedup": 954.6468283941291
+      }
+    ],
+    "preliminaryBefore": [
+      {
+        "phase": "preliminaryBefore",
+        "case": "small",
+        "count": 100,
+        "historyBytesPerThread": 0,
+        "operation": "first",
+        "samplesMs": [
+          0.148625,
+          0.141833,
+          0.126709,
+          0.148333,
+          0.150667,
+          0.136167,
+          0.149458
+        ]
+      },
+      {
+        "phase": "preliminaryBefore",
+        "case": "small",
+        "count": 100,
+        "historyBytesPerThread": 0,
+        "operation": "all",
+        "samplesMs": [
+          0.153458,
+          0.171875,
+          0.168125,
+          0.186834,
+          0.18
+        ]
+      },
+      {
+        "phase": "preliminaryBefore",
+        "case": "history",
+        "count": 2000,
+        "historyBytesPerThread": 16384,
+        "operation": "first",
+        "samplesMs": [
+          3.91025,
+          3.932459,
+          4.0525,
+          3.858666,
+          3.726584,
+          3.868042,
+          3.732875
+        ]
+      },
+      {
+        "phase": "preliminaryBefore",
+        "case": "history",
+        "count": 2000,
+        "historyBytesPerThread": 16384,
+        "operation": "last",
+        "samplesMs": [
+          3.666541,
+          3.7485,
+          3.677833,
+          3.524916,
+          3.53475,
+          3.941959,
+          4.023666
+        ]
+      },
+      {
+        "phase": "preliminaryBefore",
+        "case": "history",
+        "count": 2000,
+        "historyBytesPerThread": 16384,
+        "operation": "all",
+        "samplesMs": [
+          82.765458,
+          78.646292,
+          74.556208,
+          75.76325,
+          74.621208
+        ]
+      },
+      {
+        "phase": "preliminaryBefore",
+        "case": "many",
+        "count": 20000,
+        "historyBytesPerThread": 0,
+        "operation": "first",
+        "samplesMs": [
+          121.541333,
+          126.429834,
+          128.190667,
+          125.662416,
+          122.881791,
+          121.610833,
+          121.255375
+        ]
+      },
+      {
+        "phase": "preliminaryBefore",
+        "case": "many",
+        "count": 20000,
+        "historyBytesPerThread": 0,
+        "operation": "last",
+        "samplesMs": [
+          133.887459,
+          127.13975,
+          139.743792,
+          125.361375,
+          127.030125,
+          130.50625,
+          121.725833
+        ]
+      }
+    ]
+  },
+  "gui": {
+    "before": {
+      "phase": "before",
+      "scope": "Production history coordinator; fixture transport and cache, no real network or disk IO",
+      "threads": 2000,
+      "burst": 20,
+      "cases": [
+        {
+          "operation": "full",
+          "samples": [
+            {
+              "requests": 400,
+              "writes": 20,
+              "elapsedMs": 7.154707999999999,
+              "rows": 2000
+            },
+            {
+              "requests": 400,
+              "writes": 20,
+              "elapsedMs": 6.211874999999999,
+              "rows": 2000
+            },
+            {
+              "requests": 400,
+              "writes": 20,
+              "elapsedMs": 5.945375000000002,
+              "rows": 2000
+            },
+            {
+              "requests": 400,
+              "writes": 20,
+              "elapsedMs": 5.852458999999996,
+              "rows": 2000
+            },
+            {
+              "requests": 400,
+              "writes": 20,
+              "elapsedMs": 6.10125,
+              "rows": 2000
+            }
+          ]
+        },
+        {
+          "operation": "notifications",
+          "samples": [
+            {
+              "requests": 400,
+              "writes": 20,
+              "elapsedMs": 6.774833000000001,
+              "rows": 2000
+            },
+            {
+              "requests": 400,
+              "writes": 20,
+              "elapsedMs": 6.700082999999999,
+              "rows": 2000
+            },
+            {
+              "requests": 400,
+              "writes": 20,
+              "elapsedMs": 6.767459000000002,
+              "rows": 2000
+            },
+            {
+              "requests": 400,
+              "writes": 20,
+              "elapsedMs": 7.171333000000004,
+              "rows": 2000
+            },
+            {
+              "requests": 400,
+              "writes": 20,
+              "elapsedMs": 6.628124999999997,
+              "rows": 2000
+            }
+          ]
+        }
+      ]
+    },
+    "after": {
+      "phase": "after",
+      "scope": "Production history coordinator; fixture transport and cache, no real network or disk IO",
+      "threads": 2000,
+      "burst": 20,
+      "cases": [
+        {
+          "operation": "full",
+          "samples": [
+            {
+              "requests": 20,
+              "writes": 1,
+              "elapsedMs": 1.1979999999999986,
+              "rows": 2000
+            },
+            {
+              "requests": 20,
+              "writes": 1,
+              "elapsedMs": 0.3744160000000001,
+              "rows": 2000
+            },
+            {
+              "requests": 20,
+              "writes": 1,
+              "elapsedMs": 0.30216700000000074,
+              "rows": 2000
+            },
+            {
+              "requests": 20,
+              "writes": 1,
+              "elapsedMs": 0.5791670000000018,
+              "rows": 2000
+            },
+            {
+              "requests": 20,
+              "writes": 1,
+              "elapsedMs": 0.3744170000000011,
+              "rows": 2000
+            }
+          ]
+        },
+        {
+          "operation": "notifications",
+          "samples": [
+            {
+              "requests": 1,
+              "writes": 1,
+              "elapsedMs": 0.486459,
+              "rows": 2000
+            },
+            {
+              "requests": 1,
+              "writes": 1,
+              "elapsedMs": 0.1579170000000012,
+              "rows": 2000
+            },
+            {
+              "requests": 1,
+              "writes": 1,
+              "elapsedMs": 0.1892499999999977,
+              "rows": 2000
+            },
+            {
+              "requests": 1,
+              "writes": 1,
+              "elapsedMs": 0.25741700000000023,
+              "rows": 2000
+            },
+            {
+              "requests": 1,
+              "writes": 1,
+              "elapsedMs": 0.12120900000000034,
+              "rows": 2000
+            }
+          ]
+        }
+      ]
+    },
+    "preliminaryBefore": {
+      "phase": "before",
+      "scope": "GUI production coordinator with fixture transport, 20 concurrent complete refreshes, 2000 rows",
+      "samples": [
+        {
+          "requests": 400,
+          "writes": 20,
+          "elapsedMs": 9.504625,
+          "rows": 2000
+        },
+        {
+          "requests": 400,
+          "writes": 20,
+          "elapsedMs": 8.347166999999999,
+          "rows": 2000
+        },
+        {
+          "requests": 400,
+          "writes": 20,
+          "elapsedMs": 8.847375,
+          "rows": 2000
+        },
+        {
+          "requests": 400,
+          "writes": 20,
+          "elapsedMs": 7.022958000000003,
+          "rows": 2000
+        },
+        {
+          "requests": 400,
+          "writes": 20,
+          "elapsedMs": 7.867334,
+          "rows": 2000
+        }
+      ]
+    }
+  },
+  "validationAttempts": [
+    {
+      "check": "initial catalog behavior tests",
+      "status": "failed",
+      "passed": 5,
+      "failed": 1,
+      "ignored": 1,
+      "reason": "Test attempted ordinary-root restoration through Side-only unarchive API; corrected the test to existing archive and new-registration behavior without changing product semantics."
+    },
+    {
+      "check": "app-server complete lib tests",
+      "status": "passed",
+      "passed": 27,
+      "ignored": 1
+    },
+    {
+      "check": "GUI focused regressions, eight files",
+      "status": "passed",
+      "passed": 120
+    },
+    {
+      "check": "GUI catalog tests after final guard and draft filtering",
+      "status": "passed",
+      "passed": 13
+    },
+    {
+      "check": "GUI verify",
+      "status": "passed",
+      "groups": [
+        {
+          "passed": 6
+        },
+        {
+          "passed": 208,
+          "skipped": 3
+        },
+        {
+          "passed": 104
+        }
+      ]
+    },
+    {
+      "check": "initial Engine lib tests with inherited proxy environment",
+      "status": "interrupted",
+      "tests": 284,
+      "completed": 283,
+      "reason": "HTTP audit test stalled; loopback connection was directed to a local proxy. The owned test process was terminated; no passing full-suite claim for this attempt."
+    },
+    {
+      "check": "same HTTP audit test with NO_PROXY=127.0.0.1,localhost",
+      "status": "passed",
+      "passed": 1,
+      "elapsedSeconds": 0.22
+    },
+    {
+      "check": "Engine lib and four integration targets with isolated loopback proxy settings",
+      "status": "passed",
+      "groups": [
+        {
+          "target": "lib",
+          "passed": 280,
+          "failed": 0,
+          "ignored": 4
+        },
+        {
+          "target": "admission_guards",
+          "passed": 11,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "target": "conversation_references",
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "target": "recovery_contract",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "target": "session_name",
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    },
+    {
+      "check": "cargo fmt --all -- --check",
+      "status": "passed"
+    },
+    {
+      "check": "prettier for new GUI tests and benchmark",
+      "status": "passed"
+    },
+    {
+      "check": "python3 scripts/check-docs.py",
+      "status": "passed",
+      "markdownFiles": 374
+    },
+    {
+      "check": "git diff --check",
+      "status": "passed"
+    },
+    {
+      "check": "initial documentation link check before report generation",
+      "status": "failed",
+      "reason": "Two newly added report links had no target yet; reports were then created and the final 374-file check passed."
+    },
+    {
+      "check": "initial clippy --all-targets -D warnings",
+      "status": "failed",
+      "reason": "clippy::items_after_test_module in the new catalog file; test module moved to the end, without changing production logic."
+    },
+    {
+      "check": "final clippy --locked --release -p areal-engine -p areal-app-server --all-targets -- -D warnings",
+      "status": "passed"
+    }
+  ]
+}

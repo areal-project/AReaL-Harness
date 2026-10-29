@@ -42,6 +42,10 @@ Linux `exec-native` 为每次执行启动同 crate 提供的独立 Rust 二进�
 
 Engine 的 `session_name` 模块拥有会话名称的单次异步总结、持久化领取与当前状态合并，复用共享模型容量和关闭生命周期。客户端仅投影 Core 名称与本地手动覆盖，不调度命名推理；字段与失败边界见 [Core 会话名称契约](../api/core.md#会话名称)。
 
+Engine 的 `catalog` 模块维护内存中的 UUID 与创建顺序索引，注册和回滚同时更新两者。索引仅持有会话句柄与不可变排序键，动态元数据仍来自当前会话；查询只投影当前页，授权 ID 集合先与索引求交。桌面视图复用 Core 的类型化过滤；冷目录按轻量字段预过滤，已加载会话检查当前状态。任意 Rust 过滤闭包仍检查候选投影。目录锁在等待会话锁前释放。
+
+默认使用内存目录；`sqlite` 模式仅持久索引不可变 `(id,created_at)`，由一个有界批量写入线程和两个读取线程访问 WAL 数据库。查询在相同代际下接回当前会话，索引落后时回退到内存；故障或写队列溢出则在本次实例中停用 SQLite。内存索引继续保留用于回退，启动核对全部索引键；全量模式完整恢复文件。`store::lazy` 提供基于 JSON 清单或 SQLite 的可重建元数据缓存，验证事实身份后由 `dormant` 保存紧凑目录；完整历史、工具绑定和事件窗口在首次使用时恢复。`memory-lazy` 与 `sqlite-lazy` 均直接使用内存排序目录查询；后者用 SQLite 持久化元数据，减少大 JSON 清单的整体编解码与重写。复杂所有权与未结算执行仍走原完整恢复，缓存不决定执行事实。所有模式仍枚举文件；未提供自动历史淘汰或全文检索。文件记录继续承担事实与恢复，写入顺序、同步落盘和状态版本不变。配置见[会话目录后端](../guides/configuration.md#会话目录后端)，接口边界见 [Core API](../api/core.md#传输与会话)。
+
 Engine 的 `trajectory` 模块记录模型和工具的执行内容，通过 `tracing` 暴露轨迹；server 的 `telemetry` 模块装配标准 OpenTelemetry Traces/Logs SDK 和 OTLP 导出。Engine 不读取遥测环境变量，也不依赖上报后端；配置见[轨迹上报](../guides/configuration.md#opentelemetry-轨迹上报)。
 
 server 在安装遥测时为 Engine 注入共享采集预算；Engine 用借用序列化与有界流式缓冲保存逻辑消息和最终模型请求，容量不足只丢弃遥测副本。持久事件桥接层负责 Turn 序号和终态清单，接收端据此区分执行完成与完整送达；协议见[Core 轨迹契约](../api/core.md#持久轨迹协议)。
@@ -169,6 +173,8 @@ GUI 订阅展示状态由 Desktop 的 `AppProviders` 统一投影，设置分组
 服务崩溃后的自动换代必须经过现有本地服务所有者：原 Host 对意外 Core 退出和 Runtime 清理发布正向证明，在启动锁内复核原代际、同一 GUI owner、存活期、部署配置和二进制，并排除已受理或结算未知的显式停止。恢复预留与原代际到后继代际的回执只允许一个后继，丢失回复也不能启动第二个。缺少证明、Host 丢失、配置变化或明确停止均不自动换代。换代后只恢复观察和原请求核查，Core 的启动恢复负责将未完成执行标为 UNKNOWN，不重放未完成任务的模型请求、工具或外部效果；已授权且尚未开始的定时安排沿用其原有规则。详细保证见 [本地服务契约](../api/local-service.md)。
 
 桌面 Worktree 由 `clients/gui/app/src/core/worktrees.cjs` 持有创建与线程绑定日志，`worktree-admission.cjs` 核对线程身份与定时任务目录的持久作者预约，`task-workspace-owners.cjs` 持久记录任务的实际宿主及可信线程锚点，`schedule-admission.cjs` 从 Core Task、桌面 owner、来源与执行锚点的同一 cwd 派生普通来源安排的共享资格，并保留自动分配项目外目录的旧任务家庭预约、执行准备和精确交互作者映射核查，`packages/workspace-git` 持有受控 Git 创建与事实核查。逻辑项目和物理执行目录分别登记。普通新会话使用当前目录与 Core；只有当前创建明确选择 Worktree 才分配新 checkout，不根据会话数量或旧偏好自动隔离。每个隔离 checkout 通过原服务入口启动独立 Core/Runtime，客户端仅聚合线程投影，不迁移 Core 历史。线程、子线程及请求收据定位原执行宿主，文件、进程和浏览器回调沿同一归属路由。接口和保证范围见[桌面宿主契约](../api/desktop.md#桌面宿主-worktree-契约)及[Worktree 指南](../guides/worktrees.md)。 环境配置归现有 library 的逻辑项目元数据，创建时冻结脚本；`worktree-environment.cjs` 仅适配 Core 受管进程回执。空线程绑定不代表环境就绪，首条 Prompt 需等待 setup 成功。取消和删除保留原创建身份，删除 tombstone 阻止旧 owner 重连或回退来源。
+
+GUI 的 `history-observation` 按项目、连接和代际合并目录读取：最多一批在途与一批待办，初次加载及显式刷新读取完整分页目录，生命周期通知只回读受影响会话的元数据。完整目录才交给 Worktree 所有者判断绑定；旧连接结果不发布，持续通知不延长已经完成批次的等待。导航缓存仍是可重建投影。
 
 ## 仓库目录
 

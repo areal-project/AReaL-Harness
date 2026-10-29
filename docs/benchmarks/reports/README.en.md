@@ -6,6 +6,7 @@ Historical records do not define current capabilities. Use the [run guide](../RE
 
 | Report | Evidence scope |
 |---|---|
+| [Conversation directory, pagination and GUI refreshes](conversation-catalog.en.md), [follow-up validation](conversation-catalog-validation.en.md), [memory and SQLite comparison](conversation-catalog-sqlite.en.md), [compact metadata and lazy history](conversation-catalog-lazy.en.md) | Alternating release Engine/RPC comparisons, real GUI cache IO and compatibility regressions; adverse results retained, no overall Agent speedup claim |
 | [Completion, read refill and Responses routing](completion-cache-routing.en.md) | Fixed100 comparison; cache fractions converge but30.6% wall gap remains; failures, UNKNOWN and rejected promotion retained |
 | [Completion, artifact readiness and policy inheritance](complex-work10-completion-runtime.en.md) | Fixed100 rolling comparison and local GUI installation; corrected protocol relay, two completion timeouts and UNKNOWN usage retained; historical41% is not a causal baseline |
 | [Complex-workflow concurrency, shared writes and network recovery](complex-workflow-concurrency.en.md) | Generic mechanisms and actual GUI installation; contaminated100, interrupted6 and final20 kept separate, including remaining tails and UNKNOWN usage |

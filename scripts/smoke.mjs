@@ -10,6 +10,8 @@ import { once } from "node:events";
 import { connect } from "../examples/desktop-api/client.mjs";
 
 const binDir = resolve(process.env.AREAL_TEST_BIN_DIR ?? "target/debug");
+const catalogBackend = process.env.AREAL_CATALOG_TEST_BACKEND ?? "memory";
+assert.ok(["memory", "sqlite", "memory-lazy", "sqlite-lazy"].includes(catalogBackend));
 const directory = await mkdtemp(join(tmpdir(), "areal-smoke-"));
 const children = new Set();
 const requests = [];
@@ -109,7 +111,7 @@ async function start() {
   const configPath = join(directory, "config.toml");
   await writeFile(
     configPath,
-    `schema_version = 1\n[model]\nname = "test"\n[model.providers.default]\nendpoint = "http://127.0.0.1:${model.address().port}/v1/chat/completions"\napi_key_env = "SMOKE_MODEL_KEY"\n`,
+    `schema_version = 1\n[storage]\nsession_catalog = "${catalogBackend}"\n[model]\nname = "test"\n[model.providers.default]\nendpoint = "http://127.0.0.1:${model.address().port}/v1/chat/completions"\napi_key_env = "SMOKE_MODEL_KEY"\n`,
   );
   const child = launch(
     "areal",
@@ -144,6 +146,9 @@ async function start() {
       reject(Error(`server exited code=${code} signal=${signal}: ${stderr}`));
     });
   });
+  if (catalogBackend === "sqlite") {
+    assert.ok((await readFile(join(directory, "catalog/index.sqlite3"))).length > 0);
+  }
   // File changes during a process lifetime must not replace its model snapshot.
   await writeFile(configPath, "invalid TOML until the next restart");
   return { child, endpoint, stderr: () => stderr };
@@ -283,6 +288,10 @@ try {
   await stopped;
   assert.notEqual((await interrupted.done).code, 0);
   server = await start();
+  if (catalogBackend.endsWith("-lazy")) {
+    const name = catalogBackend.startsWith("sqlite") ? "metadata.sqlite3" : "metadata.json";
+    assert.ok((await readFile(join(directory, "catalog", name))).length > 0);
+  }
   const recovered = JSON.parse(await readFile(join(directory, `${id}.json`), "utf8"));
   assert.equal(recovered.thread.turns.at(-1).status, "interrupted");
   const resumed = await prompt(server.endpoint, "after-restart", id).done;
