@@ -56,6 +56,8 @@ When the selected boundary's fixed instructions, recent complete rounds, latest 
 
 Initially retain the 60%-of-available-input compaction target as internal policy to provide headroom. When that target is unreachable but the hard window can still be met, record why and avoid repeated compaction without progress. Replan after model switches. Manual/disabled modes retain their explicit compaction and overflow boundaries.
 
+The context window limits each request; the Goal token budget limits cumulative consumption across the objective. Compaction reduces history in later requests without reversing previously metered input or output, and summary requests also consume the Goal budget. Cached input is a subset of input tokens and remains part of cumulative token usage; provider cache-price discounts do not reduce this token budget. The 60% value is the post-compaction target, not a trigger at 60% utilization.
+
 ## Compaction commits and failure
 
 Solve assembles the full request without persisting its new controls, then reserves the estimated difference between the request and its history projection for compaction planning. Unsent controls cannot become the tail item, so completed tool rounds remain eligible for whole-round compaction. Rebuild after compaction or steer changes history; under the commit lock, revalidate the original history boundary and pass hard preflight before appending controls. Recovery hints survive until acceptance, and rebuilding consumes no additional solve round. Summary calls retain existing accounting, cancellation and retry limits. Controls and reasoning context from sent requests remain unchanged.

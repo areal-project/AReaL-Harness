@@ -205,7 +205,7 @@ Goal 的共享预算与未知用量约束优先于重试配置。Goal 请求禁�
 
 `limits.max_completion_retries` 默认为 0、范围 0–8，是每 Turn 的有限未完成响应恢复额度，与 HTTP `max_retries` 和网络 watchdog 分开；关闭 watchdog 不关闭已有的有限重试。恢复条件与审计见 [Core API](../api/core.md#recovery)。HTTPS 使用公开根证书和宿主系统信任库；私有 CA 应安装到信任库。工具调用仅来自协议结构化字段，正文中的 XML/JSON 不作为调用执行。
 
-`limits.max_goal_report_rounds=0` 默认关闭，整数 0–8；`AREAL_HARNESS_MAX_GOAL_REPORT_ROUNDS` 可覆盖。显式启用时，活跃根 Goal 的缺失进度报告进入只允许报告工具的有界阶段，额度与通用响应恢复分开，物理请求/token/时间预算保持原值。报告失败或工具不可用返回 `GOAL_PROGRESS_UNREPORTED`，不伪造完成。见 [Core API](../api/core.md#recovery)。
+`limits.max_goal_report_rounds=0` 默认关闭，整数 0–8；`AREAL_HARNESS_MAX_GOAL_REPORT_ROUNDS` 可覆盖。显式启用时，活跃根 Goal 的缺失进度报告进入允许报告工具与只读 `goal_read` 的有界阶段，额度与通用响应恢复分开，物理请求/token/时间预算保持原值。报告失败或工具不可用返回 `GOAL_PROGRESS_UNREPORTED`，不伪造完成。见 [Core API](../api/core.md#recovery)。
 
 `limits.goal_recover_unknown_model_usage=false` 默认保留 Goal 未知用量的人工检查保护。显式启用后，仅当前求解请求已明确观测到的暂时网络失败可使用同一 `max_completion_retries` 额度续跑。要求 Goal 有有限 token 预算、模型声明正数上下文与输出上限，并且没有其他未确认请求；每个失败请求在续跑前持久保留至少“上下文上限 + 输出上限”的占额。未知请求数与 `accountingComplete=false` 保留，已知用量不清零，预算、默认重试和工具权限不增加。上界缺失、占额不足、永久请求错误、取消/重启遗留或其他所有者的未知消费仍停止。工具 UNKNOWN 不由此策略确认或重放。该显式实验不保证上游服务恢复，也不代表完整用量已经找回。
 

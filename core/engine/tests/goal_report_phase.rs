@@ -76,7 +76,7 @@ impl Model for Reporter {
         if limits.require_call {
             let attempt = self.reports.fetch_add(1, Ordering::SeqCst);
             assert_eq!(limits.max_calls, 1);
-            assert_eq!(tools.len(), 1);
+            assert_eq!(tools.len(), 2);
             let view: Value = messages
                 .iter()
                 .rev()
@@ -88,13 +88,20 @@ impl Model for Reporter {
                 })
                 .unwrap();
             let pending = view["goal"]["limitsPending"] == true;
-            assert_eq!(
-                tools[0]["function"]["name"],
-                if pending {
-                    "goal_set_limits"
-                } else {
-                    "goal_update"
-                }
+            let write_tool = if pending {
+                "goal_set_limits"
+            } else {
+                "goal_update"
+            };
+            assert!(
+                tools
+                    .iter()
+                    .any(|tool| tool["function"]["name"] == write_tool)
+            );
+            assert!(
+                tools
+                    .iter()
+                    .any(|tool| tool["function"]["name"] == "goal_read")
             );
             if pending {
                 events.push(Ok(ModelEvent::ToolCall(ToolCall {
@@ -115,6 +122,18 @@ impl Model for Reporter {
                         json!({"path":"workspace://repo/unrequested","content":"must not execute"})
                             .to_string(),
                 }))),
+                Reply::Stale if attempt == 1 => {
+                    assert!(messages.iter().any(|m| {
+                        m.role == "tool"
+                            && m.text_content().contains("GOAL_REVISION_CONFLICT")
+                            && m.text_content().contains("currentRevision")
+                    }));
+                    events.push(Ok(ModelEvent::ToolCall(ToolCall {
+                        id: "read-current-goal".into(),
+                        name: "goal_read".into(),
+                        arguments: "{}".into(),
+                    })));
+                }
                 _ => {
                     let complete = !matches!(self.reply, Reply::Continue)
                         || view["goal"]["usage"]["turnsStarted"].as_u64().unwrap() > 1;
@@ -270,10 +289,23 @@ async fn report_phase_rejects_unadvertised_task_mutations_before_dispatch() {
 
 #[tokio::test]
 async fn stale_report_can_be_corrected_without_replaying_the_task() {
-    let (_dir, engine, model, _id, done) = exercise(Reply::Stale, 3).await;
+    let (_dir, engine, model, id, done) = exercise(Reply::Stale, 3).await;
     assert_eq!(done["goal"]["status"], "completed", "{done}");
-    assert_eq!(model.calls.load(Ordering::SeqCst), 4);
+    assert_eq!(model.calls.load(Ordering::SeqCst), 5);
+    assert_eq!(model.reports.load(Ordering::SeqCst), 3);
+    let history = engine.read(&id, true).await.unwrap();
+    assert!(history.turns.iter().flat_map(|t| &t.items).any(|i| {
+        matches!(i, areal_protocol::Item::DynamicToolCall { tool, success: Some(true), .. } if tool == "goal_read")
+    }));
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn stale_report_readback_cannot_extend_the_report_round_allowance() {
+    let (_dir, engine, model, _id, done) = exercise(Reply::Stale, 2).await;
+    assert_eq!(done["goal"]["status"], "failed", "{done}");
     assert_eq!(model.reports.load(Ordering::SeqCst), 2);
+    assert_eq!(done["goal"]["usage"]["tokensUsed"], 54);
     engine.shutdown().await;
 }
 
@@ -352,8 +384,10 @@ async fn required_http_report_works_after_generic_recovery_is_exhausted_and_keep
             if n==2 {
                 assert_eq!(body["tool_choice"],"required");
                 assert_eq!(body["parallel_tool_calls"],false);
-                assert_eq!(body["tools"].as_array().unwrap().len(),1);
-                assert_eq!(body["tools"][0]["name"],"goal_update");
+                let tools=body["tools"].as_array().unwrap();
+                assert_eq!(tools.len(),2);
+                assert!(tools.iter().any(|tool|tool["name"]=="goal_update"));
+                assert!(tools.iter().any(|tool|tool["name"]=="goal_read"));
                 let view=goal_view(&body).unwrap();
                 output.push(json!({"type":"function_call","id":"report-item","call_id":"report-call","name":"goal_update","arguments":json!({"expectedRevision":view["revision"],"status":"complete","summary":"verified fixture","evidence":["fixture observed"],"remaining":[]}).to_string(),"status":"completed"}));
             }
