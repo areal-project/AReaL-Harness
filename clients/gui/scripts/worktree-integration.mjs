@@ -148,11 +148,16 @@ const until = async (predicate, label) => {
   throw new Error("Timeout " + label);
 };
 const projection = () => backend.snapshot().projects.find((project) => project.id === projectId);
-const complete = async (threadId, label) =>
-  until(
-    () => projection()?.state?.threads?.[threadId]?.turns?.at(-1)?.status === "completed",
+const complete = async (threadId, turnId, label) => {
+  assert.ok(turnId, "send must identify the admitted Turn");
+  // 提交回执可能先于投影更新；只能等待本次 Turn，不能复用上一轮的完成状态。
+  await until(
+    () =>
+      projection()?.state?.threads?.[threadId]?.turns?.find((turn) => turn.id === turnId)
+        ?.status === "completed",
     label,
   );
+};
 let projectId, threads, directories;
 try {
   await backend.init();
@@ -282,16 +287,20 @@ try {
   );
   if (!creationOnly) {
     for (const kind of ["file", "shell"]) {
-      await Promise.all(
+      const submitted = await Promise.all(
         threads.map(({ threadId }, index) =>
           backend.command("send", { projectId, threadId, text: `WT_${index ? "B" : "A"}_${kind}` }),
         ),
       );
       await Promise.all(
-        threads.map(({ threadId }, index) => complete(threadId, `${kind} ${index}`)),
+        threads.map(({ threadId }, index) =>
+          complete(threadId, submitted[index].turn?.id, `${kind} ${index}`),
+        ),
       );
       for (let index = 0; index < threads.length; index++) {
-        const items = projection().state.threads[threads[index].threadId].turns.at(-1).items;
+        const items = projection().state.threads[threads[index].threadId].turns.find(
+          (turn) => turn.id === submitted[index].turn.id,
+        ).items;
         const toolSucceeded = items.some(
           (item) => item.type === "dynamicToolCall" && item.success === true,
         );
@@ -383,12 +392,12 @@ try {
     const restored = projection().state.threads[isolated.threadId];
     assert.equal(restored.worktree.directory, directories[isolatedIndex]);
     assert.equal(restored.worktree.branch, before.worktree.branch);
-    await backend.command("send", {
+    const resumed = await backend.command("send", {
       projectId,
       threadId: isolated.threadId,
       text: `WT_${isolatedIndex ? "B" : "A"}_after`,
     });
-    await complete(isolated.threadId, "post-restart write");
+    await complete(isolated.threadId, resumed.turn?.id, "post-restart write");
     assert.equal(
       await readFile(join(directories[isolatedIndex], "after-restart.txt"), "utf8"),
       isolatedIndex ? "B" : "A",

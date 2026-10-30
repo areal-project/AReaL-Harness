@@ -423,7 +423,9 @@ impl Engine {
                     "goal_update"
                 };
                 // 只收窄已授权工具，不借报告阶段增加目录、权限或预算。
-                tool_definitions.retain(|tool| tool["function"]["name"] == name);
+                tool_definitions.retain(|tool| {
+                    tool["function"]["name"] == name || tool["function"]["name"] == "goal_read"
+                });
             }
             // 使用现有请求上下文提供指引，保持持久工具定义及模型收到的声明不变。
             let browser_instructions = tool_definitions.iter()
@@ -1046,7 +1048,7 @@ impl Engine {
                             )
                             .await?;
                             goal_report_only = true;
-                            recovery_hint = Some("This is a bounded Goal progress-report phase. Use the current authoritative Goal revision provided in context. If limitsPending is true, confirm only the user's explicit limits with goal_set_limits first. Otherwise call goal_update now: continue with concrete remaining work, complete only with verified evidence and no remaining work, or blocked with an actual blocker. Do not perform more task actions in this phase or replay confirmed work. A normal text answer is not a Goal report. After an accepted report, provide the final handoff without repeating task actions. A continue report starts the next Goal Turn after normal settlement, under the same remaining root budget.".to_owned());
+                            recovery_hint = Some("This is a bounded Goal progress-report phase. Use the current authoritative Goal revision provided in context. If limitsPending is true, confirm only the user's explicit limits with goal_set_limits first. Otherwise call goal_update now: continue with concrete remaining work, complete only with verified evidence and no remaining work, or blocked with an actual blocker. On a revision conflict, use goal_read to reconcile with current state within the same report-round allowance. Do not perform more task actions in this phase or replay confirmed work. A normal text answer is not a Goal report. After an accepted report, provide the final handoff without repeating task actions. A continue report starts the next Goal Turn after normal settlement, under the same remaining root budget.".to_owned());
                             continue 'restart;
                         }
                         if calls.is_empty() && !visible_output {
