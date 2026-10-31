@@ -6,7 +6,6 @@ import {
   setComposerUploadState,
 } from "./ComposerUploadState.js";
 
-// 成功回执和准备状态属于同一个 Core 会话，失败重试只补尚未成功的文件。
 export async function uploadComposerFiles(
   action: Action,
   projectId: string,

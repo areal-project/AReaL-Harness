@@ -150,7 +150,6 @@ try {
     "first-turn ordering, UNKNOWN late snapshot, long output, local send from history, user release and cold history in both motion settings",
   );
 
-  // 时间线只展示 Core 事实；没有工具也保留中断分隔行。
   {
     const page = await open("");
     const reading = page.locator("#activity-reading-preview");

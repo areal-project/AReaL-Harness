@@ -91,7 +91,6 @@ export function toFileUrl(path: string): string {
   return encodeUriPathForFileUrl(normalizedPath);
 }
 
-// 仅 Markdown 引用解释位置后缀，文件树与系统路径保留原始文件名。
 export function markdownFileLocation(reference: string): { path: string; line?: number } {
   const match = /^(.*?)(?:#L(\d+)(?:-L?\d+)?|:(\d+)(?::\d+)?)$/.exec(reference);
   const line = match ? Number(match[2] ?? match[3]) : undefined;

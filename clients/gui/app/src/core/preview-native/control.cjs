@@ -77,7 +77,7 @@ class PageControl {
       if (params.type === "keyDown" || params.type === "rawKeyDown")
         page.heldKeys.set(params.key, params);
     }
-    // CDP 鼠标坐标使用原生显示尺寸，计划与 Ref 仍保存网页 CSS 坐标。
+    // 设备缩放下的 CDP 鼠标坐标使用显示尺寸，计划与 Ref 仍保存网页 CSS 坐标。
     const input =
       method === "Input.dispatchMouseEvent" && page.viewportScale !== undefined
         ? {

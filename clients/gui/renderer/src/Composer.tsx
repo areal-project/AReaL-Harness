@@ -1579,7 +1579,6 @@ export async function submitMessage(
       consumeConversationSelections(selectionScope, capturedReferences);
     }
   } finally {
-    // 直接 RPC 没有可继续编辑的草稿，临时图片只属于这次调用。
     if (options.appMessage) forgetComposerUploads(uploadOwner, imageFiles);
   }
 }

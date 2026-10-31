@@ -471,7 +471,6 @@ export function ChatPromptEditor({
           const entries = Array.from(event.dataTransfer.items)
             .filter((item) => item.kind === "file")
             .map((item) => ({ entry: item.webkitGetAsEntry?.(), file: item.getAsFile() }));
-          // 先完整校验类型，避免混合拖放只插入一部分后静默丢失文件。
           if (entries.some(({ entry, file }) => !entry?.isDirectory || !file)) {
             setDropError(intl.formatMessage({ id: "chat.composer.directoryDropSeparate" }));
             return;

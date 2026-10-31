@@ -1,7 +1,6 @@
 import { composerDraftStorage } from "./composerDraftStorage.js";
 // Unsent MCP content belongs to the same durable key as the ordinary composer text.
 const suffix = ":mcpContent";
-// 持久 entry.id 跨 JSON.parse 稳定，上传身份还须绑定实际执行会话。
 const images = new Map();
 export function mcpImageFile(block) {
   if (
