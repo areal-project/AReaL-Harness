@@ -27,7 +27,7 @@ Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后�
 | `read_tool_result` | `resultId,after?=null,maxBytes?=8192`；读取本 Thread 历史调用的原始 JSON，按 nextCursor 续页，不执行原工具 |
 | `task_state` | `{pendingAfter?}`；返回已观察文件/进程/子任务、workspacePath/workspaceUri/commandCwd/scratchPath 与 summaryThroughItemId；超大路径明确省略，不进行实时探测 |
 
-文件最大 8 MiB，单次写/patch 64 KiB，另受每个调用参数 64 KiB 预算限制。显式 fileVersion 和 expectedSha256 互斥；SHA 为 null 表示仅新建。成功编辑返回新版本与规范路径，shell/外部编辑不自动刷新观察，CAS 冲突后需重新读取。行过长或遇到非 UTF-8 二进制内容时使用 fs_read；PNG/JPEG/WebP 图像使用 image_read。read 通过 Python、search 通过内置 Rust 搜索助手在同一 Scope 中执行、最长 15 秒；Linux 从可信宿主 PATH 查找并解析可执行 Python 3，macOS 使用受支持的系统 Python；没有解释器时仅 read_file 不可用，启动服务不受影响。受限 Scope 仍要求解释器位于 Runtime 允许的系统路径中，不自动扩大沙箱权限。搜索库编译进 Runtime 文件助手，使用 Runtime 提供的助手绝对路径，不读取宿主 rg 配置或工作区外 ignore。
+文件最大 8 MiB，单次写/patch 64 KiB，另受每个调用参数 64 KiB 预算限制。显式 fileVersion 和 expectedSha256 互斥；SHA 为 null 表示仅新建。成功编辑返回新版本与规范路径，shell/外部编辑不自动刷新观察，CAS 冲突后需重新读取。行过长或遇到非 UTF-8 二进制内容时使用 fs_read；PNG/JPEG/WebP 图像使用 image_read。read 通过 Python、search 通过内置 Rust 搜索助手执行，最长 15 秒。Runtime 支持受限 Scope 时，原生导航复用当前 Turn 中继承原读取边界、无写权限且禁止网络的子 Scope，不占用后台命令的工作区写队列；取消、输出及进程额度仍归原父 Scope。未提供受限 Scope 能力的部署保留原执行方式，并记录 navigationInherited；创建受限 Scope 后的失败不会回退到更宽权限。文件版本观察与 CAS 不变；Linux 从可信宿主 PATH 查找并解析可执行 Python 3，macOS 使用受支持的系统 Python；没有解释器时仅 read_file 不可用，启动服务不受影响。受限 Scope 仍要求解释器位于 Runtime 允许的系统路径中，不自动扩大沙箱权限。搜索库编译进 Runtime 文件助手，使用 Runtime 提供的助手绝对路径，不读取宿主 rg 配置或工作区外 ignore。
 
 完整响应中的调用依次执行；每响应默认 128 次资源保护与显式 Turn 剩余预算取较小值。两种协议均有 4 MiB 工具缓冲；编号非法或超限时，该响应的所有调用都不执行。文本结果页仍最多 16 KiB。`remainingToolCalls` 在无累计预算时为 null，否则为整数，压缩不重置计数；有限剩余额度 ≤32 时提示收尾。`max_output_bytes` 默认无限，显式有限预算不足以执行下一工具时保留已确认结果并要求未完成交接。独立的 `max_response_bytes` 默认限制单响应 4 MiB，包含推理/provider context/媒体。已知参数与工具失败返回模型处理，UNKNOWN 停止执行。
 

@@ -253,6 +253,10 @@ python3 scripts/native-rust-smoke.py --bin-dir target/debug
 
 ## 恢复与研究 Agent
 
+`python3 scripts/navigation-read-scope-smoke.py --bin-dir target/debug` 使用真实 Runtime 和确定性本地 HTTP 模型，在后台写进程仍运行时读取、搜索文件；检查导航不等待写队列、受限 Scope 复用、原进程终止、文件版本冲突和越界拒绝。可用 `--sandbox-profile full-access` 复核全访问父 Scope 的权限收窄，或用 `--evidence-dir` 保留完整证据。此项随 `make harness-smoke` 执行，不调用外部模型，不代表完整任务性能结论。
+
+macOS 的 creation admission 强杀夹具与本机服务采用相同的受信 Python 父进程入口，检查工作进程实际收到 SIGKILL，并保留强杀点、持久化 binding、恢复与禁止重放断言；其他 Unix 平台保持直接启动。
+
 ```sh
 cargo test --locked -p areal-engine --test truncated_usage --test tool_call_stream --test http_model --test context --test tools --test async_agents --test recovery
 python3 -m unittest discover -s scripts/tests

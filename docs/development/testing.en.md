@@ -253,6 +253,10 @@ python3 scripts/native-rust-smoke.py --bin-dir target/debug
 
 ## Recovery and research agents
 
+`python3 scripts/navigation-read-scope-smoke.py --bin-dir target/debug` uses the real Runtime and a deterministic local HTTP model to read and search files while a background writer is still running. It checks navigation without writer-queue waits, restricted Scope reuse, termination of the original process, file-version conflicts, and out-of-bound path rejection. Use `--sandbox-profile full-access` to verify narrowing a full-access parent Scope, or `--evidence-dir` to retain the complete evidence. This runs with `make harness-smoke`, calls no external model, and does not establish end-to-end task performance.
+
+On macOS, the creation-admission kill fixture uses the same trusted Python parent entry as the local service. It verifies that the worker actually receives SIGKILL and retains the crash-point, persisted-binding, recovery, and no-replay assertions; other Unix platforms launch the worker directly.
+
 ```sh
 cargo test --locked -p areal-engine --test truncated_usage --test tool_call_stream --test http_model --test context --test tools --test async_agents --test recovery
 python3 -m unittest discover -s scripts/tests

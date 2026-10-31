@@ -251,6 +251,7 @@ async fn capacity_preserves_legacy_keys_and_rejects_before_creation() {
 #[cfg(unix)]
 #[tokio::test]
 async fn sigkill_windows_preserve_original_admission_without_replay() {
+    #[cfg(not(target_os = "macos"))]
     use std::os::unix::process::ExitStatusExt;
     for point in [
         "beforeAdmission",
@@ -259,7 +260,23 @@ async fn sigkill_windows_preserve_original_admission_without_replay() {
         "afterCompletion",
     ] {
         let root = tempfile::tempdir().unwrap();
-        let status = std::process::Command::new(std::env::current_exe().unwrap())
+        let executable = std::env::current_exe().unwrap();
+        #[cfg(target_os = "macos")]
+        let mut command = {
+            // 与本机服务启动契约相同，由受信 Python 保持实际父进程身份。
+            // 只接受工作进程真实的 SIGKILL；下面的 binding 检查仍证明已进入夹具。
+            let mut command = std::process::Command::new("/usr/bin/python3");
+            command.args([
+                "-I",
+                "-c",
+                "import signal, subprocess, sys; code = subprocess.call(sys.argv[1:]); sys.exit(0 if code == -signal.SIGKILL else 1)",
+            ]);
+            command.arg(&executable);
+            command
+        };
+        #[cfg(not(target_os = "macos"))]
+        let mut command = std::process::Command::new(executable);
+        let status = command
             .args([
                 "--exact",
                 "desktop::submissions::tests::creation_crash_worker",
@@ -271,6 +288,9 @@ async fn sigkill_windows_preserve_original_admission_without_replay() {
             .stderr(std::process::Stdio::null())
             .status()
             .unwrap();
+        #[cfg(target_os = "macos")]
+        assert!(status.success(), "{point}");
+        #[cfg(not(target_os = "macos"))]
         assert_eq!(status.signal(), Some(libc::SIGKILL), "{point}");
         let binding: CreationAdmission = serde_json::from_slice(
             &std::fs::read(root.path().join("desktop/test-binding.json")).unwrap(),

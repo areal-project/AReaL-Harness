@@ -336,6 +336,7 @@ impl Engine {
             sealed: false,
             scope: None,
             base_scope: None,
+            navigation_scopes: BTreeMap::new(),
             model,
             tools: TaskTracker::new(),
             process_cursors: BTreeMap::new(),

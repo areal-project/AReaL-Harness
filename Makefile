@@ -179,6 +179,7 @@ harness: ## 通过可信独立启动器启动工具 Harness；ARGS 指定工作�
 
 harness-smoke: build sdk-build ## 原生 SDK 与完整读改测试/强杀恢复
 	python3 scripts/native-tools-smoke.py --bin-dir target/debug
+	python3 scripts/navigation-read-scope-smoke.py --bin-dir target/debug
 	python3 scripts/native-python-smoke.py --bin-dir target/debug
 	python3 scripts/native-rust-smoke.py --bin-dir target/debug
 	python3 scripts/runtime-sdk-smoke.py

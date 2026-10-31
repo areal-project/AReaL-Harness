@@ -756,9 +756,14 @@ impl Invocation<'_> {
                     || call.name == "search_files" && !state.thread.is_read_only_side()
                 {
                     drop(state);
+                    // 导航辅助进程只读文件，不能继承普通命令的写租约并排队等待后台作者。
+                    let navigation_scope = self
+                        .engine
+                        .navigation_scope(self.cell, &self.call.id, self.execution_scope())
+                        .await?;
                     return navigation::invoke(
                         runtime,
-                        self.execution_scope(),
+                        &navigation_scope,
                         self.operation,
                         &call.name,
                         &effective,

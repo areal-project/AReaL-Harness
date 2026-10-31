@@ -329,6 +329,77 @@ impl Engine {
         Ok(Some(permissions))
     }
 
+    pub(crate) async fn navigation_scope(
+        &self,
+        cell: &Cell,
+        call_id: &str,
+        parent: &str,
+    ) -> rt::Result<String> {
+        let runtime = self
+            .runtime
+            .as_ref()
+            .ok_or_else(|| unknown("Runtime unavailable"))?;
+        if runtime.client.info().capabilities["restrictedScopeIsolation"] != true {
+            // 未提供受限 scope 的部署保留原执行契约，不把逻辑标签当成 OS 隔离。
+            // 一旦已尝试创建受限 scope，失败必须原样返回，不能回退到更宽权限。
+            self.permission_journal(cell, call_id, |execution| {
+                execution.permission_scopes.push(json!({
+                    "kind":"navigationInherited","scopeId":parent,
+                    "reason":"restrictedScopeIsolationUnavailable"
+                }));
+            })
+            .await?;
+            return Ok(parent.into());
+        }
+        // 只有可信原生导航入口使用这个收窄作用域；同名外部工具不能继承此分类。
+        // 按父作用域复用，避免每次读取消耗一个 Runtime scope 名额。
+        let _guard = cell.resource_gate.lock().await;
+        let existing = cell
+            .state
+            .lock()
+            .await
+            .active
+            .as_ref()
+            .unwrap()
+            .navigation_scopes
+            .get(parent)
+            .cloned();
+        if let Some(scope) = existing {
+            self.permission_journal(cell, call_id, |execution| {
+                execution.scope_id = scope.clone();
+                execution.permission_scopes.push(json!({
+                    "kind":"navigationReadOnly","parentScopeId":parent,"scopeId":scope,"reused":true
+                }));
+            })
+            .await?;
+            return Ok(scope);
+        }
+        let scope = self
+            .permission_scope(
+                cell,
+                Some(call_id),
+                "navigationReadOnly",
+                parent.into(),
+                rt::PermissionRequest {
+                    read_roots: None,
+                    write_roots: Some(Vec::new()),
+                    network: rt::NetworkRequest::Deny,
+                },
+                rt::LimitRequest::default(),
+            )
+            .await?;
+        cell.state
+            .lock()
+            .await
+            .active
+            .as_mut()
+            .unwrap()
+            .navigation_scopes
+            .insert(parent.into(), scope.clone());
+        // 子作用域继承原读取边界和累计预算，由原 Turn 的父作用域统一取消、结算。
+        Ok(scope)
+    }
+
     pub(crate) async fn approved_operation_scope(
         &self,
         cell: &Cell,
