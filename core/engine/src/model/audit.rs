@@ -104,6 +104,21 @@ impl Audit {
         audit.save();
         audit
     }
+    pub fn endpoint(&mut self, endpoint: &str) {
+        if let Ok(url) = reqwest::Url::parse(endpoint) {
+            // 自定义路径可含租户凭据，只公开 origin 与已知协议路由。
+            let route = match url.path() {
+                path @ ("/v1/responses"
+                | "/responses"
+                | "/v1/chat/completions"
+                | "/chat/completions"
+                | "/backend-api/codex/responses") => path,
+                _ => "[redacted]",
+            };
+            self.value["endpoint"] =
+                json!({"origin":url.origin().ascii_serialization(), "route":route});
+        }
+    }
     pub fn mark_first(&mut self, field: &str) {
         if self.value.get(field).is_none() {
             self.value[field] = json!(self.started.elapsed().as_millis() as u64);
@@ -300,5 +315,24 @@ mod tests {
                 .len()
                 <= 16 * 1024
         );
+    }
+}
+
+#[cfg(test)]
+mod endpoint_tests {
+    use super::*;
+    #[test]
+    fn endpoint_projection_excludes_credentials_and_custom_paths() {
+        let mut audit = Audit::new(None, &json!({"input":[]}), RequestPurpose::Solve);
+        audit.endpoint(
+            "https://user:private-key@example.com/v1/responses?token=private-key#private-key",
+        );
+        assert_eq!(
+            audit.value["endpoint"],
+            json!({"origin":"https://example.com","route":"/v1/responses"})
+        );
+        audit.endpoint("https://example.com/private-key/responses");
+        assert_eq!(audit.value["endpoint"]["route"], "[redacted]");
+        assert!(!audit.value.to_string().contains("private-key"));
     }
 }

@@ -453,7 +453,18 @@ function startDesktop() {
         ? showSaveDialog(options)
         : dialog.showSaveDialog(options));
       if (result.canceled || !result.filePath) return { canceled: true };
-      await diagnostics.exportTo(result.filePath, diagnosticsRoots);
+      const selectedService = serviceOptions(app);
+      await diagnostics.exportTo(result.filePath, {
+        ...diagnosticsRoots,
+        coreRoot: selectedService.home,
+        instance: {
+          packaged: app.isPackaged,
+          coreBinary: selectedService.binary,
+          coreHome: selectedService.home,
+          config: selectedService.config || join(selectedService.configHome, "config.toml"),
+          explicitConfig: !!selectedService.config,
+        },
+      });
       return { path: result.filePath };
     } catch {
       throw Object.assign(new Error(nativeText("diagnostics.saveFailed")), {

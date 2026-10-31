@@ -57,6 +57,11 @@ def main():
         .decode()
         .split("\0")
     )
+    tracked = set(
+        subprocess.check_output(["git", "ls-files", "--cached", "-z"], cwd=ROOT)
+        .decode()
+        .split("\0")
+    )
     errors = []
     checked = 0
     for name in sorted(set(files)):
@@ -85,6 +90,13 @@ def main():
             reason = None
             if not target.exists():
                 reason = "文件不存在"
+            elif (
+                name in tracked
+                and target.suffix == ".md"
+                and target.is_relative_to(ROOT)
+                and target.relative_to(ROOT).as_posix() not in tracked
+            ):
+                reason = "链接文档未纳入 Git，干净 checkout 中不可用"
             elif target.suffix == ".md" and parts.fragment:
                 if unquote(parts.fragment) not in anchors(target):
                     reason = "锚点不存在"

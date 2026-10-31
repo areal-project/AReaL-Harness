@@ -7,12 +7,12 @@ import { Input } from "@areal/ui";
 import { useComposerWorkspaceFiles } from "./lib/workspaceFileComposer.js";
 import { imageAnnotationBlocked, useImageAnnotationRevision } from "./imageAnnotations.js";
 import { resolveDraftProfile } from "./ProfileDetails.js";
-import { draftModelSelection, modelValue } from "./lib/draftModelSelection.js";
+import { draftModelSelection, draftModelOptions, modelValue } from "./lib/draftModelSelection.js";
 import {
   setApplicationPreferences,
   useApplicationPreferences,
 } from "./settings/applicationPreferences.js";
-import { ComposerModelMenu, composerModelOption } from "./ComposerModelMenu.js";
+import { ComposerModelMenu } from "./ComposerModelMenu.js";
 import { ComposerPermissionMenu } from "./ComposerPermissionMenu.js";
 import { permissionOptions, planModeOptions, type PermissionPreset } from "./permissions.js";
 import { ComposerPlanMode } from "./ComposerPlanMode.js";
@@ -1053,31 +1053,7 @@ export function DraftComposer({
                   setEfforts(next);
                   localStorage.setItem(`${key}:efforts`, JSON.stringify(next));
                 }}
-                options={[
-                  ...project.models
-                    .filter(
-                      (item: Data) =>
-                        modelValue(item) === effectiveModel ||
-                        item.providerId ||
-                        !project.models.some(
-                          (candidate: Data) => candidate.providerId && candidate.isDefault,
-                        ),
-                    )
-                    .map((item: Parameters<typeof composerModelOption>[0]) => ({
-                      ...composerModelOption(item),
-                      value: modelValue(item),
-                    })),
-                  ...(!currentModel && effectiveModel
-                    ? [
-                        {
-                          value: effectiveModel,
-                          label: effectiveModel.slice(effectiveModel.indexOf("/") + 1),
-                          providerId: effectiveModel.slice(0, effectiveModel.indexOf("/")),
-                          historical: true,
-                        },
-                      ]
-                    : []),
-                ]}
+                options={draftModelOptions(project, effectiveModel, currentModel)}
                 onChange={(value) => {
                   setModel(value);
                   localStorage.setItem(`${key}:model`, value);

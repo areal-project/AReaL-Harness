@@ -706,3 +706,13 @@ export function agentSettlements(item: Data): { threadId: string; label: string 
   }
   return found;
 }
+
+export function commandResourceLabel(tool: Data) {
+  const outcome = tool.execution?.outcome;
+  if (tool.status === "inProgress" || outcome === "running") return "命令资源仍在运行";
+  if (outcome === "unknown" || outcome === "pending") return "命令资源结果待确认";
+  if (outcome === "failed" || outcome === "error" || tool.success === false) return "命令资源失败";
+  if (outcome === "interrupted" || outcome === "cancelled") return "命令资源已停止";
+  if (outcome === "succeeded" || outcome === "success") return "命令资源已结束";
+  return null;
+}

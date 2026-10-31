@@ -12,8 +12,15 @@ const gui = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const binary = process.env.AREAL_CORE_BIN;
+const repository = resolve(
+  execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
+    cwd: gui,
+    encoding: "utf8",
+  }).trim(),
+  "..",
+);
 assert.ok(
-  binary?.startsWith(resolve(gui, "../../.local/dev-bin") + "/"),
+  binary?.startsWith(join(repository, ".local/dev-bin") + "/"),
   "Use a fixed Core test binary",
 );
 const sourceCommit = execFileSync("git", ["rev-parse", "HEAD"], {
@@ -61,7 +68,8 @@ const checks = [],
 let app,
   page,
   passed = false,
-  desktopPid;
+  desktopPid,
+  offlineConnection;
 const corePids = new Set();
 const until = async (read, label, milliseconds = 30000) => {
   const deadline = Date.now() + milliseconds;
@@ -117,6 +125,17 @@ const exported = async (path = join(scratch, "diagnostics.json")) => {
   );
   const report = JSON.parse(raw);
   assert.equal(report.format, "areal-harness-diagnostics-v1");
+  assert.equal(report.instance.mode, "source");
+  assert.equal(report.instance.configSource, "explicit");
+  assert.equal(
+    report.instance.coreBinaryPathSha256,
+    createHash("sha256").update(binary).digest("hex"),
+  );
+  assert.equal(
+    report.instance.configPathSha256,
+    createHash("sha256").update(env.AREAL_CORE_CONFIG).digest("hex"),
+  );
+  assert.ok(Array.isArray(report.modelRequests));
   assert.ok(report.runs.every((run) => run.header.appVersion === productVersion));
   assert.ok(!raw.includes(sentinel), "Raw logs and credentials must be excluded");
   const metadata = await readFile(join(env.AREAL_CORE_HOME, "service.json"), "utf8")
@@ -185,12 +204,10 @@ try {
 
   process.kill(desktopPid, "SIGKILL");
   await until(() => !alive(desktopPid), "Owned Desktop exited");
-  await until(
-    async () =>
-      (await page.evaluate(() => window.arealDesktop.snapshot())).connection?.state ===
-      "unavailable",
-    "Offline projection",
-  );
+  await until(async () => {
+    offlineConnection = (await page.evaluate(() => window.arealDesktop.snapshot())).connection;
+    return ["connecting", "unavailable"].includes(offlineConnection?.state);
+  }, "Offline projection");
   const offlinePath = join(scratch, "offline.json");
   await app.evaluate(({ dialog }, path) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: path });
@@ -275,6 +292,7 @@ try {
         cleanupErrors,
         mainPids: handles.map((handle) => handle.pid),
         desktopPid,
+        offlineConnection,
         corePids: [...corePids],
       },
       null,

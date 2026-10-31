@@ -251,7 +251,9 @@ macOS 桌面适配器通过系统 `/usr/bin/python3` 保留可信 Core 命令的
 
 遇到 `Core disconnected` 时，在设置的“后台服务”页或应用菜单点击“导出诊断包…”，选择保存位置。后台离线或主界面渲染进程退出后，应用菜单仍可导出。界面到 Desktop 的连接和 Desktop 到工作区 Core 的连接分别记录；前者已连接不代表后者可用。
 
-诊断包只包含固定结构的进程身份、连接错误码与关闭码、Electron 进程退出原因、未捕获异常类别、固定枚举的退出阶段与耗时，以及启动时和每 60 秒一次的内存与定时器延迟样本。项目与 Core 代际使用本次运行内的别名。不会包含对话、凭据、环境变量、命令参数、原始日志、异常消息或堆栈。记录分别保存在 GUI profile 的 `diagnostics/main` 和 GUI Core home 的 `diagnostics/desktop`；每个角色保留最多 8 次运行，每次最多 4 个 256 KiB 事件文件。导出最多读取 16 MiB，报告记录器健康、合并重复事件和文件缺失等遗漏。旧运行缺少退出记录只标为 `termination-unconfirmed`，不推断崩溃原因；观察到的 Core PID 也不证明进程仍存活。写入失败不会改变任务执行或未知提交状态。
+诊断包包含固定结构的进程身份、连接错误码与关闭码、Electron 进程退出原因、未捕获异常类别、固定枚举的退出阶段与耗时，以及启动时和每 60 秒一次的内存与定时器延迟样本。项目与 Core 代际使用本次运行内的别名。不会包含对话、凭据、环境变量、命令参数、原始日志、异常消息或堆栈。记录分别保存在 GUI profile 的 `diagnostics/main` 和 GUI Core home 的 `diagnostics/desktop`；每个角色保留最多 8 次运行，每次最多 4 个 256 KiB 事件文件。导出最多读取 16 MiB，报告记录器健康、合并重复事件和文件缺失等遗漏。旧运行缺少退出记录只标为 `termination-unconfirmed`，不推断崩溃原因；观察到的 Core PID 也不证明进程仍存活。写入失败不会改变任务执行或未知提交状态。
+
+同一导出复用 Core 的 `model-requests`，每个项目最多取最近 32 条、合计最多 128 条，并共享 16 MiB 读取上限。记录协议与传输、去敏的 endpoint origin 和已知路由、模型、请求与实际返回的服务等级、HTTP 状态，以及白名单上游错误类别和摘要；未返回的实际等级保持未知。自定义路由、认证信息、查询参数、fragment 和私有 `errors/` 正文均不导出。另记录源码/安装包模式、显式/默认配置选择及所选配置、Core 程序和 Core home 的路径 SHA-256；它们标识启动选择，不证明连接成功或配置版本已应用。上游原始错误保留在本机私有文件中，旧审计缺字段仍可读取。HTTP 200 的 Responses SSE 错误封套缺少顶层 `type` 时保留错误类别，不再误判为流不完整。
 
 Electron Crashpad 在两个主进程中只保存本地转储，禁用上传。默认诊断包仅列转储是否可用和有界计数，不附内存内容；它不捕获 Rust Core 或 Runtime 的原生崩溃。转储目录为各诊断角色目录旁的 `main-crashes` 或 `desktop-crashes`，其磁盘占用不受事件文件上限约束。macOS 源码验收使用仓库 `.local/dev-bin/` 下已部署的固定 Core，运行 `AREAL_CORE_BIN="$PWD/.local/dev-bin/areal" pnpm --dir clients/gui run test:diagnostics` 验证有界存储、隐私筛选、WebSocket 超限以及隔离 Electron 的离线导出与强制退出恢复。
 

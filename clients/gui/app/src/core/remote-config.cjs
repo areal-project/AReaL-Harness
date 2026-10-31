@@ -213,7 +213,46 @@ function enrollmentFailureMessage(error) {
     : "Relay 登记失败，请检查 HTTPS 和登记码";
 }
 
+/** @param {RemoteConfig} config */
+function withCurrentProfile(config) {
+  const { relay, room, capability, relayProtocol } = config;
+  if (!relay || !room || !capability || relayProtocol !== "areal.remote.v2") return config;
+  if ((config.relayProfiles ?? []).some((profile) => profile.origin === relay)) return config;
+  return {
+    ...config,
+    relayProfiles: [
+      ...(config.relayProfiles ?? []),
+      { origin: relay, kind: /** @type {const} */ ("external"), room, capability },
+    ],
+  };
+}
+
+/** @param {RemoteConfig} config @param {{phase:string,address?:string}} local @param {string} origin */
+function selectRelayProfile(config, local, origin) {
+  const profile = (config.relayProfiles ?? []).find((item) => item.origin === origin);
+  if (!profile) throw new Error("此 Relay 尚未登记");
+  if (profile.kind === "local" && (local.phase !== "running" || local.address !== origin))
+    throw new Error("请先启动本机 Relay");
+  if (profile.kind !== "local") require("./remote-network.cjs").validateHttpsOrigin(origin);
+  return {
+    ...withCurrentProfile(config),
+    relay: profile.origin,
+    room: profile.room,
+    capability: profile.capability,
+    enabled: true,
+    relayProtocol: "areal.remote.v2",
+  };
+}
+
+const PRESETS = Object.freeze({
+  Observer: ["observe", "review"],
+  Operator: ["observe", "review", "submit", "interrupt", "answer", "pauseTask"],
+});
+
 module.exports = {
+  PRESETS,
+  selectRelayProfile,
+  withCurrentProfile,
   migrateLegacyDevices,
   strings,
   failureCode,

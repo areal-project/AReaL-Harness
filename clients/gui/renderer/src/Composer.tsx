@@ -1,3 +1,5 @@
+import { submitMessage } from "./ComposerSubmission.js";
+export { submitMessage } from "./ComposerSubmission.js";
 import {
   composerUploadOwner,
   composerUploads,
@@ -16,7 +18,6 @@ import { ConversationSelectionReferences } from "./ConversationSelectionReferenc
 import {
   conversationSelectionScope,
   useConversationSelections,
-  readConversationSelections,
   consumeConversationSelections,
 } from "./conversationSelectionReference.js";
 import { parseSideSlashCommand } from "./sideSlashCommand.js";
@@ -33,13 +34,7 @@ import { ContextMeter } from "./ContextMeter.js";
 import { isOrdinaryConversation, interruptedConversationTurn } from "./ordinaryConversation.js";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { McpComposerAttachments, useMcpDraft } from "./McpComposerAttachments.js";
-import {
-  readMcpDraft,
-  consumeMcpDraft,
-  clearMcpDraft,
-  mcpDraftImageFiles,
-  mcpImageFile,
-} from "./mcp-app-draft.js";
+import { clearMcpDraft } from "./mcp-app-draft.js";
 import {
   setApplicationPreferences,
   useApplicationPreferences,
@@ -81,13 +76,8 @@ import {
   isComposerFile,
   type ComposerDraftAttachment,
 } from "./ComposerAttachments.js";
-import {
-  useComposerPlugins,
-  revalidateComposerPlugins,
-  mergeComposerPluginSkills,
-  composerPluginIntent,
-} from "./ComposerPlugins.js";
-import { useComposerSkills, composerSkillContent, readComposerSkills } from "./ComposerSkills.js";
+import { useComposerPlugins } from "./ComposerPlugins.js";
+import { useComposerSkills } from "./ComposerSkills.js";
 import { ComposerMcpIcon } from "./ComposerIcons.js";
 import { ComposerMcp } from "./ComposerMcp.js";
 import { AttachmentIcon } from "./interfaceIcons.js";
@@ -98,27 +88,17 @@ import {
 } from "./ConversationReferences.js";
 import {
   imageAnnotationBlocked,
-  snapshotImageAnnotations,
-  serializeImageAnnotations,
   useImageAnnotationRevision,
   type ImageAnnotationTarget,
 } from "./imageAnnotations.js";
 import { BrowserAnnotationAttachments } from "./BrowserAnnotationAttachments.js";
-import {
-  browserAnnotation,
-  browserAnnotationText,
-  useBrowserAnnotationEditing,
-} from "./browserAnnotations.js";
+import { browserAnnotation, useBrowserAnnotationEditing } from "./browserAnnotations.js";
 import { ReviewCommentAttachment } from "./ReviewCommentViews.js";
 import {
   attachedReviewComments,
-  consumeReviewComments,
   detachReviewComments,
-  recordUnknownReviewSubmission,
   reconcileReviewSubmission,
-  readReviewComments,
   reviewCommentKey,
-  reviewCommentText,
   useReviewComments,
 } from "./reviewComments.js";
 import type { LexicalChatInputHandle } from "./LexicalChatInput.js";
@@ -1485,121 +1465,6 @@ export function Composer({
   );
 }
 
-// Both the first message and later turns use the same attachment and admission path.
-export async function submitMessage(
-  action: Action,
-  projectId: string,
-  threadId: string,
-  text: string,
-  files: ComposerDraftAttachment[],
-  options: Data = {},
-) {
-  const reviewKey = reviewCommentKey(projectId, threadId);
-  const comments = options.appMessage ? [] : attachedReviewComments(readReviewComments(reviewKey));
-  const key = `areal-gui:draft:${projectId}:${threadId}`;
-  const selectionScope = conversationSelectionScope(projectId, threadId);
-  const capturedReferences = options.appMessage ? [] : readConversationSelections(selectionScope);
-  const capturedMcp = options.appMessage ? [] : readMcpDraft(key);
-  const blocks = options.appMessage
-    ? (options.mcpContent ?? [])
-    : capturedMcp.map((entry: Data) => entry.block);
-  const imageBlocks = blocks.filter((block: Data) => block.type === "image");
-  const uploadOwner = options.uploadOwner ?? JSON.stringify([projectId, threadId]);
-  const imageFiles: File[] = options.appMessage
-    ? imageBlocks.map(mcpImageFile)
-    : mcpDraftImageFiles(key, capturedMcp, uploadOwner, (files: File[]) =>
-        forgetComposerUploads(uploadOwner, files),
-      );
-  try {
-    const input = composerInput(text, files);
-    const imageSnapshot = snapshotImageAnnotations(input.files);
-    const plugins = options.appMessage
-      ? []
-      : await revalidateComposerPlugins(
-          options.skillAction ?? action,
-          options.pluginContext ?? { kind: "mainThread", projectId, threadId },
-          key,
-          input.text,
-          options.pluginMessages?.unavailable ?? "chat.composer.pluginReferenceUnavailable",
-        );
-    const pluginIntent = composerPluginIntent(
-      plugins,
-      options.pluginMessages?.intent ??
-        ((name: string) => `Use the selected plugin ${name} for this request.`),
-    );
-    const skillContent = options.appMessage
-      ? ""
-      : await composerSkillContent(
-          options.skillAction ?? action,
-          projectId,
-          threadId,
-          mergeComposerPluginSkills(readComposerSkills(key), plugins),
-        );
-    const attachments = await uploadComposerFiles(
-      action,
-      projectId,
-      threadId,
-      [...input.files, ...imageFiles],
-      undefined,
-      options.uploadOwner,
-    );
-    imageBlocks.forEach((block: Data, index: number) => {
-      if (block._meta) attachments[input.files.length + index]._meta = block._meta;
-    });
-    const annotationFeedback = input.files
-      .flatMap((file, index) => {
-        const note = browserAnnotation(file);
-        return note ? [browserAnnotationText(note, attachments[index].url)] : [];
-      })
-      .join("\n\n");
-    const feedback = [
-      annotationFeedback,
-      serializeImageAnnotations(imageSnapshot, attachments),
-      comments.map(reviewCommentText).join("\n\n"),
-      pluginIntent,
-      skillContent,
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-    try {
-      options.onSendStart?.();
-      await action(options.steer ? "steer" : "send", {
-        projectId,
-        threadId,
-        text: feedback ? (input.text ? `${input.text}\n\n${feedback}` : feedback) : input.text,
-        attachments,
-        ...(capturedReferences.length
-          ? { conversationQuotes: capturedReferences.map(({ text }) => ({ text })) }
-          : {}),
-        ...(blocks.some((block: Data) => block.type !== "image")
-          ? { mcpContent: blocks.filter((block: Data) => block.type !== "image") }
-          : {}),
-        expectedTurnId: options.expectedTurnId,
-        enqueue: options.enqueue === true,
-      });
-    } catch (cause) {
-      const error = cause as Error & { submissionUnknown?: boolean; requestId?: string };
-      if (error.submissionUnknown && error.requestId && comments.length) {
-        try {
-          recordUnknownReviewSubmission(reviewKey, error.requestId, comments);
-        } catch {
-          error.message += " 评论提交记录无法保存，原评论已保留。";
-        }
-      }
-      throw cause;
-    }
-    // Only explicit acceptance consumes the captured records. Unknown submissions
-    // retain their exact IDs until the existing Core receipt is reconciled.
-    forgetComposerUploads(uploadOwner, [...input.files, ...imageFiles]);
-    consumeReviewComments(reviewKey, comments);
-    if (!options.appMessage) {
-      consumeMcpDraft(key, capturedMcp);
-      consumeConversationSelections(selectionScope, capturedReferences);
-    }
-  } finally {
-    if (options.appMessage) forgetComposerUploads(uploadOwner, imageFiles);
-  }
-}
 export function stageThreadDraft(
   projectId: string,
   threadId: string,

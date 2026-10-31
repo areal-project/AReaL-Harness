@@ -130,6 +130,8 @@ The history-navigation runner calls this entry point automatically and serves on
 
 The task catalog smoke fixture lives in `clients/gui/renderer/test-fixtures/scheduled-workspace.tsx`, is typechecked with Renderer, and is loaded directly by the existing browser runner. It checks new intents routed through `onStartDraft`, project defaults, explicit reconciliation and observed receipts for legacy requests. Only the IPC boundary is replaced by the fixture.
 
+CI smoke execution and the shared source Electron application fixture run this doctor before starting product scenarios, preserving a separate startup report for each attempt. CI transfers the Core build receipt with its binaries. A failed identity/probe check blocks scenario execution; it is not a passing scenario. Review evidence records the revision and relevant file hashes; unrelated HEAD movement alone does not invalidate those hashes.
+
 ## Acceptance case: three images in a folder
 
 Use an isolated desktop instance, a vision-capable model and a native folder outside the workspace. Put three different PNG/JPEG images in the folder, with filenames that do not reveal their contents. Drop or paste the folder reference into the Composer and send “What is in each of the three images in this folder?”.

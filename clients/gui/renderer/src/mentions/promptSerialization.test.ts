@@ -28,11 +28,11 @@ function restore(markdown: string) {
 
 describe("native directory markdown restoration", () => {
   it.each([
-    "/Users/me/中文 design (v2)#1",
-    "/Users/me/ folder>name\\tail ",
-    "/Users/me/@name",
-    "/Users/me/$name",
-    "/Users/me/literal%20%23",
+    "/external/me/中文 design (v2)#1",
+    "/external/me/ folder>name\\tail ",
+    "/external/me/@name",
+    "/external/me/$name",
+    "/external/me/literal%20%23",
     "/",
     "C:\\Users\\me\\design notes (v2)#1",
     "\\\\host\\share\\notes",

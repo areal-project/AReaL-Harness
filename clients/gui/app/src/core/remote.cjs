@@ -1,32 +1,26 @@
 // @ts-check
 "use strict";
+const { enrollRelay, pairingError } = require("./remote-enrollment.cjs");
 const { randomBytes, randomUUID, timingSafeEqual } = require("node:crypto");
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const {
   parseRemoteConfig,
+  PRESETS,
+  selectRelayProfile,
+  withCurrentProfile,
   migrateLegacyDevices,
   strings,
   failureCode,
-  enrollmentFailureMessage,
 } = require("./remote-config.cjs");
 const { RemotePush } = require("./remote-push.cjs");
 const { RelayService } = require("./relay-service.cjs");
 const { RelayTransport } = require("./remote-relay.cjs");
-const { request: httpsRequest } = require("node:https");
-const { desktopTlsOptions } = require("./desktop-network.cjs");
-const { createHash } = require("node:crypto");
 const QRCode = require("qrcode");
 const { SessionAcceptor } = require("./remote-session-acceptor.cjs");
 const { distinctName, forgetRevoked, renameDevice, revokeDevice } = require("./remote-devices.cjs");
 const { startDirect } = require("./remote-direct.cjs");
 const { createRemoteNetworkAdapter, validateHttpsOrigin } = require("./remote-network.cjs");
-const PRESETS = Object.freeze({
-  Observer: ["observe", "review"],
-  Operator: ["observe", "review", "submit", "interrupt", "answer", "pauseTask"],
-});
-/** @param {string} code @param {string} message */
-const pairingError = (code, message) => Object.assign(new Error(message), { code });
 
 const { isRemoteRequest } = require("@areal/workbench/desktop-contract/desktop-control");
 /** @typedef {import('./remote-config.cjs').RemoteConfig} RemoteConfig */
@@ -472,60 +466,7 @@ class RemoteControl {
     if (request.code !== undefined) {
       if (typeof request.code !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(request.code))
         throw pairingError("invalid-code", "请输入管理员生成的一次性登记码");
-      // 使用系统 TLS 验证，不重定向、不发送 Origin；错误不包含登记凭据。
-      registration = await new Promise((resolve, reject) => {
-        const body = JSON.stringify({ code: request.code });
-        const req = httpsRequest(
-          `${relay}/enroll`,
-          {
-            ...desktopTlsOptions(),
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-              "content-length": Buffer.byteLength(body),
-            },
-          },
-          (response) => {
-            /** @type {Buffer[]} */
-            const chunks = [];
-            let size = 0;
-            response.on("data", (chunk) => {
-              if ((size += chunk.length) > 4096) req.destroy();
-              else chunks.push(chunk);
-            });
-            response.on("error", () =>
-              reject(pairingError("enrollment-failed", "Relay 登记失败，请检查 HTTPS 和登记码")),
-            );
-            response.on("end", () => {
-              try {
-                /** @type {unknown} */
-                const value = JSON.parse(Buffer.concat(chunks).toString());
-                if (
-                  response.statusCode !== 201 ||
-                  !value ||
-                  typeof value !== "object" ||
-                  !("capability" in value) ||
-                  typeof value.capability !== "string" ||
-                  !("room" in value) ||
-                  typeof value.room !== "string" ||
-                  !/^[A-Za-z0-9_-]{43}$/.test(value.capability) ||
-                  createHash("sha256").update(value.capability).digest("hex") !== value.room
-                )
-                  throw new Error();
-                resolve({ room: value.room, capability: value.capability });
-              } catch {
-                reject(pairingError("enrollment-failed", "Relay 登记失败，请检查 HTTPS 和登记码"));
-              }
-            });
-          },
-        );
-        const deadline = setTimeout(() => req.destroy(), 15000);
-        req.once("close", () => clearTimeout(deadline));
-        req.once("error", (error) => {
-          reject(pairingError("enrollment-failed", enrollmentFailureMessage(error)));
-        });
-        req.end(body);
-      });
+      registration = await enrollRelay(relay, request.code);
     } else {
       if (
         this.config.relayProtocol !== "areal.remote.v2" ||
@@ -540,9 +481,11 @@ class RemoteControl {
     if (this.closed) throw new Error("Host 已关闭");
     // 长期凭据必须先进入既有加密配置，成功后才建立出站连接。
     await this.save({
-      ...this.withCurrentProfile(),
+      ...withCurrentProfile(this.config),
       relayProfiles: [
-        ...(this.withCurrentProfile().relayProfiles ?? []).filter((item) => item.origin !== relay),
+        ...(withCurrentProfile(this.config).relayProfiles ?? []).filter(
+          (item) => item.origin !== relay,
+        ),
         { origin: relay, kind: "external", ...registration },
       ],
       ...registration,
@@ -555,19 +498,6 @@ class RemoteControl {
     this.disconnect();
     this.connect();
   }
-  withCurrentProfile() {
-    const { relay, room, capability, relayProtocol } = this.config;
-    if (!relay || !room || !capability || relayProtocol !== "areal.remote.v2") return this.config;
-    if ((this.config.relayProfiles ?? []).some((profile) => profile.origin === relay))
-      return this.config;
-    return {
-      ...this.config,
-      relayProfiles: [
-        ...(this.config.relayProfiles ?? []),
-        { origin: relay, kind: /** @type {const} */ ("external"), room, capability },
-      ],
-    };
-  }
   isLocalRelay() {
     return (
       this.config.relay === this.relayService.local.address &&
@@ -576,21 +506,8 @@ class RemoteControl {
   }
   /** @param {string} origin */
   async useRelayProfile(origin) {
-    const profile = (this.config.relayProfiles ?? []).find((item) => item.origin === origin);
-    if (!profile) throw new Error("此 Relay 尚未登记");
-    if (
-      profile.kind === "local" &&
-      (this.relayService.local.phase !== "running" || this.relayService.local.address !== origin)
-    )
-      throw new Error("请先启动本机 Relay");
-    if (profile.kind !== "local") validateHttpsOrigin(origin);
     await this.save({
-      ...this.withCurrentProfile(),
-      relay: profile.origin,
-      room: profile.room,
-      capability: profile.capability,
-      enabled: true,
-      relayProtocol: "areal.remote.v2",
+      ...selectRelayProfile(this.config, this.relayService.local, origin),
       identity: this.config.identity ?? (await this.crypto.createIdentity()),
     });
     this.cancelPair();

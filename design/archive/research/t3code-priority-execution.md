@@ -81,19 +81,20 @@ Diff 的十轮均验证 10000 行正文及完整 token、颜色、词差异和�
 
 ## 可复查证据
 
+以下是本机未纳入版本控制的验收产物，路径相对仓库根。
 
-- [最终独立增量审阅](/Users/sailfish/CodeProject/AReaL-Harness/.scratch/t3-priority/closure-delta-audit.md)。
-- [逐项31项清单](/Users/sailfish/CodeProject/AReaL-Harness/.scratch/t3-priority/requirements.json)。
-- [汇总与覆盖限制](/Users/sailfish/CodeProject/AReaL-Harness/.scratch/t3-priority/RESULT.md)。
-- [功能独立审阅](/Users/sailfish/CodeProject/AReaL-Harness/.scratch/t3-priority/functional-closure/audit.md)。
-- [无按钮交付最终审阅](/Users/sailfish/CodeProject/AReaL-Harness/.scratch/t3-priority/history-no-button/final-audit.md)。
-- [流式输入release对照](/Users/sailfish/CodeProject/AReaL-Harness/.scratch/t3-priority/perf/stream-release/RESULT.md)。
-- [滚动即时与平滑比较](/Users/sailfish/CodeProject/AReaL-Harness/.scratch/t3-priority/perf/scroll-motion/RESULT.md)。
-- [派生函数精确调用计数](/Users/sailfish/CodeProject/AReaL-Harness/.scratch/t3-priority/perf/derivation-counts/RESULT.md)。
-- [隐藏动画因果诊断](/Users/sailfish/CodeProject/AReaL-Harness/.scratch/t3-priority/perf/background-causal-execution/RESULT.md)。
-- [终端最终状态](/Users/sailfish/CodeProject/AReaL-Harness/.scratch/t3-priority/perf/terminal-final-state/RESULT.md)。
-- [大Diff worker对照](/Users/sailfish/CodeProject/AReaL-Harness/.scratch/t3-priority/perf/diff-measured/RESULT.md)。
-- [决策记录](/Users/sailfish/CodeProject/AReaL-Harness/.scratch/t3-priority/decisions.tsv)。
+- 最终独立增量审阅：`.scratch/t3-priority/closure-delta-audit.md`。
+- 逐项31项清单：`.scratch/t3-priority/requirements.json`。
+- 汇总与覆盖限制：`.scratch/t3-priority/RESULT.md`。
+- 功能独立审阅：`.scratch/t3-priority/functional-closure/audit.md`。
+- 无按钮交付最终审阅：`.scratch/t3-priority/history-no-button/final-audit.md`。
+- 流式输入release对照：`.scratch/t3-priority/perf/stream-release/RESULT.md`。
+- 滚动即时与平滑比较：`.scratch/t3-priority/perf/scroll-motion/RESULT.md`。
+- 派生函数精确调用计数：`.scratch/t3-priority/perf/derivation-counts/RESULT.md`。
+- 隐藏动画因果诊断：`.scratch/t3-priority/perf/background-causal-execution/RESULT.md`。
+- 终端最终状态：`.scratch/t3-priority/perf/terminal-final-state/RESULT.md`。
+- 大Diff worker对照：`.scratch/t3-priority/perf/diff-measured/RESULT.md`。
+- 决策记录：`.scratch/t3-priority/decisions.tsv`。
 
 Model the Domain 让输入授权、上传状态和生命周期沿既有所有者表达。Laziness Protocol 促使删除短历史累计限制，并拒绝证据不足的新缓存或调度层。Prove It Works 促使分别核查真实 Core、组件、包内资源与清理。Explain the Number 促使使用交替样本、保留异常，并按预声明门槛决定实验取舍。
 

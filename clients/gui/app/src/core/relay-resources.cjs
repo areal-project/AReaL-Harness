@@ -1,3 +1,4 @@
+// @ts-check
 "use strict";
 const { readFile, realpath, readdir, mkdir, writeFile, rm, rename } = require("node:fs/promises");
 const { existsSync } = require("node:fs");
@@ -6,6 +7,7 @@ const { createHash, randomUUID } = require("node:crypto");
 const { createRequire } = require("node:module");
 const { pathToFileURL } = require("node:url");
 
+/** @param {import("node:crypto").BinaryLike} bytes */
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 function locations() {
   const packaged = process.resourcesPath && join(process.resourcesPath, "areal-relay");
@@ -17,10 +19,11 @@ function locations() {
   };
 }
 
+/** @param {string} source */
 async function remoteAssets(source) {
   const root = await realpath(source);
   const descriptorBytes = await readFile(join(root, "remote-assets.json"));
-  const descriptor = JSON.parse(descriptorBytes);
+  const descriptor = JSON.parse(descriptorBytes.toString());
   if (
     descriptor.schema !== 1 ||
     descriptor.entry !== "remote.html" ||
@@ -28,13 +31,16 @@ async function remoteAssets(source) {
     descriptor.worker?.path !== "remote-sw.js"
   )
     throw new Error("Remote 静态清单无效");
+  /** @type {Map<string,Buffer>} */
   const files = new Map();
   for (const asset of [...descriptor.assets, descriptor.worker]) {
     if (
       !asset ||
       typeof asset.path !== "string" ||
       !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_.-]+)*\.[A-Za-z0-9]+$/.test(asset.path) ||
-      asset.path.split("/").some((part) => part === "." || part === "..") ||
+      String(asset.path)
+        .split("/")
+        .some((part) => part === "." || part === "..") ||
       !/^[a-f0-9]{64}$/.test(asset.sha256) ||
       files.has(asset.path) ||
       ["index.html", "remote-assets.json"].includes(asset.path)
@@ -51,6 +57,7 @@ async function remoteAssets(source) {
   return { files, version: descriptor.version };
 }
 
+/** @param {string} destination @param {Map<string,Buffer>} files */
 async function writeFiles(destination, files) {
   await mkdir(destination, { mode: 0o700 });
   try {
@@ -65,14 +72,18 @@ async function writeFiles(destination, files) {
   }
 }
 
+/** @param {string} source @param {string} destination */
 async function exportRemoteAssets(source, destination) {
   const { files, version } = await remoteAssets(source);
   await writeFiles(destination, files);
   return { files: files.size, version };
 }
 
+/** @param {string} source @param {string} site */
 async function relayFiles(source, site) {
+  /** @type {Map<string,Buffer>} */
   const files = new Map();
+  /** @param {string} root @param {string} prefix @param {(name:string)=>boolean} [filter] */
   async function tree(root, prefix, filter = () => true) {
     for (const entry of (await readdir(root, { withFileTypes: true })).sort((a, b) =>
       a.name.localeCompare(b.name),
@@ -113,12 +124,14 @@ async function relayFiles(source, site) {
   return { files, version };
 }
 
+/** @param {{source:string,site:string,destination:string}} options */
 async function buildRelayResources({ source, site, destination }) {
   const { files, version } = await relayFiles(source, site);
   await writeFiles(destination, files);
   return { bundleDir: destination, version };
 }
 
+/** @param {{home:string}} options */
 async function prepareRelayResources({ home }) {
   const { source, site } = locations();
   const { files, version } = await relayFiles(source, site);
@@ -137,7 +150,14 @@ async function prepareRelayResources({ home }) {
     await rename(temporary, bundleDir);
   } catch (error) {
     await rm(temporary, { recursive: true, force: true });
-    if (error.code !== "EEXIST" && error.code !== "ENOTEMPTY") throw error;
+    if (
+      !(
+        error instanceof Error &&
+        "code" in error &&
+        ["EEXIST", "ENOTEMPTY"].includes(String(error.code))
+      )
+    )
+      throw error;
     for (const [name, bytes] of files)
       if (digest(await readFile(join(bundleDir, name))) !== digest(bytes))
         throw new Error("Relay 资源校验失败");

@@ -143,6 +143,7 @@ impl HttpModel {
         // 先检查实际发送封套；超限时连握手请求也不发出。
         let encoded = self.encode_request(&wire, purpose)?;
         let mut audit = audit::Audit::new(self.audit_directory.as_deref(), &body, purpose);
+        audit.endpoint(&self.endpoint);
         audit.value["transport"] = json!("responses-websocket");
         audit.value["incremental"] = json!(wire.get("previous_response_id").is_some());
         audit.value["wireInputItems"] = json!(wire["input"].as_array().map_or(0, Vec::len));

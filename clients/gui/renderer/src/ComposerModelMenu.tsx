@@ -29,37 +29,7 @@ export interface ComposerModelOption {
   unavailableReason?: string;
   historical?: boolean;
 }
-/** 可用性直接投影 Core 目录，不在 Renderer 重新判断凭据。 */
-export function composerModelOption(model: {
-  providerId?: string | null;
-  providerName?: string;
-  modelId: string;
-  displayName?: string;
-  reasoningEffortOptions?: readonly string[];
-  capabilities?: { reasoning: boolean; reasoningEffortOptions?: readonly string[] };
-  available?: boolean;
-  availability?: "checking" | "available" | "unavailable";
-  credentialState?: string;
-}): ComposerModelOption {
-  return {
-    value: model.providerId ? `${model.providerId}/${model.modelId}` : "",
-    label: model.displayName ?? model.modelId,
-    providerId: model.providerId ?? undefined,
-    providerName: model.providerName,
-    efforts: model.reasoningEffortOptions,
-    reasoning: model.capabilities?.reasoning,
-    effortsKnown:
-      model.capabilities?.reasoningEffortOptions !== undefined ||
-      !!model.reasoningEffortOptions?.length,
-    unavailableReason:
-      model.availability === "unavailable" ||
-      (model.available === false && model.availability !== "checking")
-        ? model.credentialState === "unavailable"
-          ? "缺少 API Key"
-          : "模型不可用"
-        : undefined,
-  };
-}
+export { composerModelOption } from "./lib/draftModelSelection.js";
 export function ComposerModelMenu({
   options,
   value,

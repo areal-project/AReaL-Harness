@@ -1,5 +1,6 @@
 // @ts-check
 "use strict";
+const { withCurrentProfile } = require("./remote-config.cjs");
 const { networkInterfaces } = require("node:os");
 const { isIP } = require("node:net");
 const { mkdir, writeFile } = require("node:fs/promises");
@@ -131,7 +132,7 @@ class RelayService {
       const capability = existing?.capability ?? randomBytes(32).toString("base64url");
       const room = createHash("sha256").update(capability).digest("hex");
       const identity = this.remote.config.identity ?? (await this.remote.crypto.createIdentity());
-      const profiles = (this.remote.withCurrentProfile().relayProfiles ?? []).filter(
+      const profiles = (withCurrentProfile(this.remote.config).relayProfiles ?? []).filter(
         (profile) => profile.kind !== "local",
       );
       const dataDir = join(this.remote.backend.home, "relay-service", "local");
@@ -313,11 +314,11 @@ class RelayService {
       };
       const commit = async () => {
         if (this.closed) return;
-        const profiles = (this.remote.withCurrentProfile().relayProfiles ?? []).filter(
+        const profiles = (withCurrentProfile(this.remote.config).relayProfiles ?? []).filter(
           (item) => !ready || item.origin !== config.address,
         );
         await this.remote.save({
-          ...this.remote.withCurrentProfile(),
+          ...withCurrentProfile(this.remote.config),
           relayDeployment: updated,
           relayProfiles: ready
             ? [

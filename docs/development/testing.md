@@ -128,6 +128,8 @@ pnpm --dir clients/gui test:history-navigation-ui
 
 任务目录 smoke 的页面夹具位于 `clients/gui/renderer/test-fixtures/scheduled-workspace.tsx`，与 Renderer 一起类型检查，并由原浏览器 runner 直接加载。它验证新意图经 `onStartDraft` 打开草稿、项目默认值及旧请求的显式核对与被动回执；夹具仅替换 IPC 边界。
 
+CI smoke 执行器与共享源码 Electron fixture 在产品场景启动前自动运行此 doctor，每次尝试保留独立启动报告；CI 随二进制传递 Core 构建回执。身份或探测失败即阻止场景启动，不计为场景通过。评审证据绑定源码提交与相关文件哈希，无关 HEAD 移动本身不使这些哈希失效。
+
 ## 验收用例：文件夹中的三张图片
 
 在隔离桌面实例中使用支持视觉输入的模型和工作区外的本机文件夹。文件夹包含三张内容不同的 PNG/JPEG 图片，使用不透露内容的文件名。通过 Composer 拖入或粘贴文件夹引用，发送“这个文件夹里的三张图片分别是什么内容？”。
