@@ -1,6 +1,7 @@
 // @ts-check
 import {
   modelRecord,
+  isCoreModelChange,
   isCoreItem,
   isCoreTurn,
   isCoreThread,
@@ -147,6 +148,31 @@ export class CoreTaskModel {
     if (typeof params.threadId !== "string") return;
     const thread = this.state.threads[params.threadId];
     if (!thread) return;
+    if (method === "areal/thread/configured") {
+      if (
+        !modelRecord(params.configuration) ||
+        !Array.isArray(params.modelChanges) ||
+        !params.modelChanges.every(isCoreModelChange)
+      )
+        return;
+      const previous = thread.desktop?.configuration;
+      if (
+        modelRecord(previous) &&
+        typeof previous.revision === "number" &&
+        typeof params.configuration.revision === "number" &&
+        previous.revision > params.configuration.revision
+      )
+        return;
+      this.replace({
+        ...thread,
+        desktop: {
+          ...thread.desktop,
+          configuration: params.configuration,
+          modelChanges: params.modelChanges,
+        },
+      });
+      return;
+    }
     if (method === "areal/thread/predictionChanged") {
       this.replace({
         ...thread,
@@ -237,7 +263,22 @@ export class CoreTaskModel {
       const index = turns.findIndex((turn) => turn.id === params.turnId);
       if (index < 0) return;
       const turn = { ...turns[index], items: [...(turns[index].items ?? [])] };
-      if (method === "areal/model/watchdogRetry") {
+      if (method === "areal/turn/traceActivity") {
+        const activity = params.activity;
+        if (
+          !modelRecord(activity) ||
+          typeof activity.id !== "string" ||
+          typeof activity.logicalId !== "string" ||
+          !["model", "retryWait"].includes(String(activity.kind))
+        )
+          return;
+        const trace = modelRecord(turn.trace) ? turn.trace : {};
+        const activities = Array.isArray(trace.activities) ? [...trace.activities] : [];
+        const at = activities.findIndex((entry) => modelRecord(entry) && entry.id === activity.id);
+        if (at < 0) activities.push(activity);
+        else activities[at] = activity;
+        turn.trace = { ...trace, activities };
+      } else if (method === "areal/model/watchdogRetry") {
         if (
           turn.status !== "inProgress" ||
           (params.purpose !== "solve" && params.purpose !== "summary") ||
@@ -246,7 +287,11 @@ export class CoreTaskModel {
           params.retry < 1
         )
           return;
-        turn.modelRetry = { purpose: params.purpose, retry: params.retry };
+        turn.modelRetry = {
+          purpose: params.purpose,
+          retry: params.retry,
+          ...(typeof params.delayMs === "number" ? { delayMs: params.delayMs } : {}),
+        };
       } else if (
         method === "item/reasoning/textDelta" ||
         method === "item/reasoning/summaryTextDelta"

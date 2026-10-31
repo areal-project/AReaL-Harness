@@ -197,6 +197,7 @@ impl Engine {
             status: TurnStatus::InProgress,
             error: None,
             items: vec![Item::UserMessage {
+                created_at: Some(crate::now()),
                 id: id(),
                 content: input,
             }],
@@ -461,6 +462,7 @@ impl Engine {
             .try_reserve_owned()
             .map_err(|_| Error::Exhausted("steering mailbox is full".into()))?;
         let item = Item::UserMessage {
+            created_at: Some(crate::now()),
             id: id(),
             content: input,
         };

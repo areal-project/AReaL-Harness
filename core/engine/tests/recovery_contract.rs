@@ -213,3 +213,136 @@ async fn task_receipts_preserve_original_request_and_owner_after_reopen() {
     assert_eq!(reopened.task_list().await.len(), 1);
     reopened.shutdown().await;
 }
+
+#[tokio::test]
+async fn model_changes_preserve_zero_turn_choices_and_deduplicate_receipts_after_restart() {
+    use areal_engine::model::HttpModel;
+    use axum::{Json, Router, routing::post};
+    let received = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let captured = received.clone();
+    let app = Router::new().route("/", post(move |Json(request): Json<serde_json::Value>| {
+        captured.lock().unwrap().push(request["model"].as_str().unwrap().to_owned());
+        async { ([("content-type", "text/event-stream")], "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"selected model answered\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n") }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}/", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let data = tempfile::tempdir().unwrap();
+    let model = Arc::new(HttpModel::new(endpoint.clone(), "default".into(), None).unwrap());
+    let engine = Engine::open(data.path(), model.clone(), Limits::default()).unwrap();
+    engine.upsert_provider(serde_json::from_value(json!({"id":"fixture","revision":0,"endpoint":endpoint,"protocol":"chatCompletions","models":["b","c"]})).unwrap(), 0).await.unwrap();
+    let thread = engine.create("/fixture".into()).await.unwrap();
+    let first = json!({"threadId":thread.id,"requestId":"choose-b","expectedRevision":1,"model":{"providerId":"fixture","modelId":"b"}});
+    let second = json!({"threadId":thread.id,"requestId":"choose-c","expectedRevision":2,"model":{"providerId":"fixture","modelId":"c"}});
+    engine
+        .configure_thread(serde_json::from_value(first.clone()).unwrap())
+        .await
+        .unwrap();
+    engine
+        .configure_thread(serde_json::from_value(second.clone()).unwrap())
+        .await
+        .unwrap();
+    engine
+        .configure_thread(
+            serde_json::from_value(
+                json!({"threadId":thread.id,"expectedRevision":3,"parameters":{"reasoningEffort":"high"}}),
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(engine.configure_thread(serde_json::from_value(json!({"threadId":thread.id,"expectedRevision":0,"model":{"providerId":"fixture","modelId":"b"}})).unwrap()).await.is_err());
+    let before = engine.read(&thread.id, true).await.unwrap();
+    assert!(before.turns.is_empty());
+    let changes = &before.desktop.as_ref().unwrap().model_changes;
+    assert_eq!(changes.len(), 2);
+    assert_eq!(changes[0].from.model_id, "default");
+    assert_eq!(changes[0].from.provider_id, None);
+    assert_eq!(changes[0].to.model_id, "b");
+    assert_eq!(changes[1].from, changes[0].to);
+    assert_eq!(changes[1].to.model_id, "c");
+    assert!(
+        changes
+            .iter()
+            .all(|change| change.after_turn_id.is_none() && change.occurred_at > 0)
+    );
+    engine.shutdown().await;
+    drop(engine);
+    let reopened = Engine::open(data.path(), model, Limits::default()).unwrap();
+    reopened
+        .configure_thread(serde_json::from_value(first).unwrap())
+        .await
+        .unwrap();
+    reopened
+        .configure_thread(serde_json::from_value(second).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        json!(
+            reopened
+                .read(&thread.id, true)
+                .await
+                .unwrap()
+                .desktop
+                .unwrap()
+                .model_changes
+        ),
+        json!(changes)
+    );
+    assert!(received.lock().unwrap().is_empty());
+    reopened
+        .start(
+            &thread.id,
+            vec![areal_protocol::Input::text("Use the selected model")],
+        )
+        .await
+        .unwrap();
+    let completed = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        reopened.wait(&thread.id),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        completed.turns[0].status,
+        areal_protocol::TurnStatus::Completed
+    );
+    assert_eq!(
+        completed.turns[0]
+            .configuration
+            .as_ref()
+            .unwrap()
+            .model
+            .as_ref()
+            .unwrap()
+            .model_id,
+        "c"
+    );
+    assert_eq!(*received.lock().unwrap(), vec!["c"]);
+    reopened
+        .configure_thread(
+            serde_json::from_value(
+                json!({"threadId":thread.id,"expectedRevision":4,"resetModel":true}),
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let changed = reopened.read(&thread.id, true).await.unwrap();
+    let last = changed
+        .desktop
+        .as_ref()
+        .unwrap()
+        .model_changes
+        .last()
+        .unwrap();
+    assert_eq!(
+        last.after_turn_id.as_deref(),
+        Some(completed.turns[0].id.as_str())
+    );
+    assert_eq!(last.to.model_id, "default");
+    reopened.shutdown().await;
+    server.abort();
+    let _ = server.await;
+}

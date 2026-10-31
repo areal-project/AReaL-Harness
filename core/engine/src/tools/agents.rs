@@ -438,6 +438,7 @@ mod tests {
                     .unwrap()
                     .items
                     .push(Item::AgentMessage {
+                        created_at: Some(crate::now()),
                         phase: None,
                         id: id(),
                         text: "observed evidence ".repeat(100),

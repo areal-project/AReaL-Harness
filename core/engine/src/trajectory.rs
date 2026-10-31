@@ -1073,6 +1073,7 @@ mod capture_budget_tests {
             .map(super::super::model::content_from_input)
             .collect();
         let items = vec![areal_protocol::Item::UserMessage {
+            created_at: None,
             id: "input".into(),
             content: inputs,
         }];

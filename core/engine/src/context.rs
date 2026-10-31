@@ -1217,6 +1217,7 @@ impl Engine {
                         "network watchdog retrying context summary"
                     );
                     let mut retry_trace = self.trace_begin(cell, "retryWait", "摘要重试等待", None, Some(&summary_logical_id)).await?;
+                    self.trace_retry(cell, &summary_logical_id, Some(delay.as_millis() as u64), None).await?;
                     tokio::select! { biased;
                         _ = cancel.cancelled() => { self.trace_finish(cell, &mut retry_trace, Some("cancelled")).await?; anyhow::bail!("cancelled"); },
                         _ = tokio::time::sleep(delay) => {},
@@ -1225,6 +1226,7 @@ impl Engine {
                     continue;
                 }
                 if watchdog::exhausted(self.limits.network_retry_mode, &error, network_retries) {
+                    self.trace_retry(cell, &summary_logical_id, None, Some("exhausted")).await?;
                     return Err(error.context(CompactionFailure("bounded Core network recovery exhausted after 5 retries")));
                 }
                 if !validation_failed {

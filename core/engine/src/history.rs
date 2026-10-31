@@ -357,7 +357,7 @@ pub(super) fn checkpoint_inputs(
         .collect();
     let mut seen: HashSet<_> = inputs.iter().map(|input| input.item_id.clone()).collect();
     for item in prefix {
-        if let Item::UserMessage { id, content } = item
+        if let Item::UserMessage { id, content, .. } = item
             && !automatic.contains(id.as_str())
             && seen.insert(id.clone())
         {
@@ -592,7 +592,7 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
                 .filter_map(|turn| turn.items.first().map(Item::id))
                 .collect();
             for item in &items[..end] {
-                if let Item::UserMessage { id, content } = item {
+                if let Item::UserMessage { id, content, .. } = item {
                     if automatic.contains(id.as_str()) {
                         continue;
                     }

@@ -917,6 +917,7 @@ mod tests {
     }
     fn message(id: &str, phase: Option<AgentMessagePhase>, text: &str) -> Item {
         Item::AgentMessage {
+            created_at: None,
             id: id.into(),
             text: text.into(),
             phase,
@@ -1100,6 +1101,7 @@ mod tests {
     fn long_history_reaches_tail_without_u16_truncation() {
         let mut t = thread("root", None);
         t.turns[0].items.push(Item::AgentMessage {
+            created_at: None,
             phase: None,
             id: "large".into(),
             text: (0..70_000).map(|i| format!("line {i}\n")).collect(),
@@ -1123,6 +1125,7 @@ mod tests {
     fn browsing_survives_streaming_and_width_changes() {
         let mut t = thread("root", None);
         t.turns[0].items.push(Item::AgentMessage {
+            created_at: None,
             phase: None,
             id: "msg".into(),
             text: "汉字 e\u{301} 👍🏽\t".repeat(100),

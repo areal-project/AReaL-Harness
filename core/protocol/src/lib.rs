@@ -249,10 +249,14 @@ pub enum AgentMessagePhase {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Item {
     UserMessage {
+        #[serde(default, rename = "createdAt", skip_serializing_if = "Option::is_none")]
+        created_at: Option<i64>,
         id: String,
         content: Vec<Input>,
     },
     AgentMessage {
+        #[serde(default, rename = "createdAt", skip_serializing_if = "Option::is_none")]
+        created_at: Option<i64>,
         id: String,
         text: String,
         /// Core 按执行轮次确认正文阶段；旧快照缺失时客户端保留正文。
@@ -285,10 +289,7 @@ pub enum Item {
         media: MediaRef,
     },
     /// Provider-owned opaque context retained for subsequent model requests.
-    ModelContext {
-        id: String,
-        value: Value,
-    },
+    ModelContext { id: String, value: Value },
 }
 
 impl Item {
@@ -455,6 +456,10 @@ pub struct TurnTrace {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TraceActivity {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_delay_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_disposition: Option<String>,
     #[serde(default)]
     pub after_item_id: Option<String>,
     pub id: String,

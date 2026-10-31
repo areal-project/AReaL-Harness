@@ -1499,6 +1499,17 @@ impl Model for HttpModel {
                 } else {
                     None
                 };
+                if let Some(context) = &trace {
+                    context
+                        .engine
+                        .trace_retry(
+                            &context.cell,
+                            &context.logical_id,
+                            Some(delay.as_millis() as u64),
+                            None,
+                        )
+                        .await?;
+                }
                 drop(result);
                 let retried = capacity::retry_after(delay).await.with_context(|| {
                     format!(
@@ -1521,6 +1532,17 @@ impl Model for HttpModel {
                 }
                 retried?;
                 continue;
+            }
+            if transient
+                && attempt >= self.options.max_retries
+                && GOAL_REQUEST.try_with(|_| ()).is_err()
+            {
+                if let Ok(context) = crate::execution_trace::REQUEST_TRACE.try_with(Clone::clone) {
+                    context
+                        .engine
+                        .trace_retry(&context.cell, &context.logical_id, None, Some("exhausted"))
+                        .await?;
+                }
             }
             break result.map_err(|error| {
                 let error = error.without_url();

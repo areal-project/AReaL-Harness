@@ -2823,6 +2823,7 @@ pub(crate) mod tests {
         let mut t = thread("root", None);
         t.turns[0].status = TurnStatus::InProgress;
         t.turns[0].items.push(Item::AgentMessage {
+            created_at: None,
             id: "a".into(),
             text: String::new(),
             phase: Some(areal_protocol::AgentMessagePhase::Commentary),
@@ -3393,6 +3394,7 @@ pub(crate) mod tests {
         app.selected = Some("parent".into());
         let mut old = thread("child", Some("parent"));
         old.turns[0].items.push(Item::AgentMessage {
+            created_at: None,
             phase: None,
             id: "old".into(),
             text: "stale delta".into(),

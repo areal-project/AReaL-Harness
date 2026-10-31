@@ -2204,6 +2204,13 @@
                   },
                   "type": "array"
                 },
+                "createdAt": {
+                  "format": "int64",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "id": {
                   "type": "string"
                 },
@@ -2221,6 +2228,13 @@
             },
             {
               "properties": {
+                "createdAt": {
+                  "format": "int64",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "id": {
                   "type": "string"
                 },
@@ -5497,12 +5511,70 @@
           "title": "EffectiveConfig",
           "type": "object"
         },
+        "modelChanges": {
+          "items": {
+            "$defs": {
+              "ModelIdentity": {
+                "additionalProperties": false,
+                "properties": {
+                  "modelId": {
+                    "type": "string"
+                  },
+                  "providerId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "modelId"
+                ],
+                "type": "object"
+              }
+            },
+            "additionalProperties": false,
+            "properties": {
+              "afterTurnId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "from": {
+                "$ref": "#/properties/modelChanges/items/$defs/ModelIdentity"
+              },
+              "occurredAt": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "to": {
+                "$ref": "#/properties/modelChanges/items/$defs/ModelIdentity"
+              }
+            },
+            "required": [
+              "revision",
+              "occurredAt",
+              "from",
+              "to"
+            ],
+            "title": "ModelChange",
+            "type": "object"
+          },
+          "type": "array"
+        },
         "threadId": {
           "type": "string"
         }
       },
       "required": [
         "configuration",
+        "modelChanges",
         "threadId"
       ],
       "type": "object"
@@ -6098,6 +6170,13 @@
                     "type": "string"
                   },
                   "type": "object"
+                },
+                "modelChanges": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ModelChange"
+                  },
+                  "type": "array"
                 },
                 "permissionGrants": {
                   "default": [],
@@ -7253,6 +7332,13 @@
                       },
                       "type": "array"
                     },
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -7270,6 +7356,13 @@
                 },
                 {
                   "properties": {
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -7568,6 +7661,57 @@
                 "tools",
                 "vision",
                 "reasoning"
+              ],
+              "type": "object"
+            },
+            "ModelChange": {
+              "additionalProperties": false,
+              "properties": {
+                "afterTurnId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "from": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                },
+                "occurredAt": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "revision": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "to": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                }
+              },
+              "required": [
+                "revision",
+                "occurredAt",
+                "from",
+                "to"
+              ],
+              "type": "object"
+            },
+            "ModelIdentity": {
+              "additionalProperties": false,
+              "properties": {
+                "modelId": {
+                  "type": "string"
+                },
+                "providerId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "modelId"
               ],
               "type": "object"
             },
@@ -8650,6 +8794,20 @@
                     "null"
                   ]
                 },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "startedAtMs": {
                   "format": "int64",
                   "type": "integer"
@@ -9253,6 +9411,152 @@
       },
       "required": [
         "requestId"
+      ],
+      "type": "object"
+    },
+    "areal/turn/traceActivity": {
+      "additionalProperties": true,
+      "properties": {
+        "activity": {
+          "$defs": {
+            "ModelUsage": {
+              "additionalProperties": false,
+              "properties": {
+                "cachedInputTokens": {
+                  "default": 0,
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "inputTokens": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "outputTokens": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "inputTokens",
+                "outputTokens"
+              ],
+              "type": "object"
+            }
+          },
+          "properties": {
+            "afterItemId": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "callId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "completedAtMs": {
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "durationMs": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "firstContentMs": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "logicalId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "retryDelayMs": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "retryDisposition": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "startedAtMs": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "status": {
+              "type": "string"
+            },
+            "usage": {
+              "anyOf": [
+                {
+                  "$ref": "#/properties/activity/$defs/ModelUsage"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "label",
+            "startedAtMs",
+            "status"
+          ],
+          "title": "TraceActivity",
+          "type": "object"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "activity",
+        "threadId",
+        "turnId"
       ],
       "type": "object"
     },
@@ -9872,6 +10176,13 @@
                   },
                   "type": "array"
                 },
+                "createdAt": {
+                  "format": "int64",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "id": {
                   "type": "string"
                 },
@@ -9889,6 +10200,13 @@
             },
             {
               "properties": {
+                "createdAt": {
+                  "format": "int64",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "id": {
                   "type": "string"
                 },
@@ -10706,6 +11024,13 @@
                   },
                   "type": "array"
                 },
+                "createdAt": {
+                  "format": "int64",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "id": {
                   "type": "string"
                 },
@@ -10723,6 +11048,13 @@
             },
             {
               "properties": {
+                "createdAt": {
+                  "format": "int64",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "id": {
                   "type": "string"
                 },
@@ -11481,6 +11813,13 @@
                     "type": "string"
                   },
                   "type": "object"
+                },
+                "modelChanges": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ModelChange"
+                  },
+                  "type": "array"
                 },
                 "permissionGrants": {
                   "default": [],
@@ -12636,6 +12975,13 @@
                       },
                       "type": "array"
                     },
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -12653,6 +12999,13 @@
                 },
                 {
                   "properties": {
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -12951,6 +13304,57 @@
                 "tools",
                 "vision",
                 "reasoning"
+              ],
+              "type": "object"
+            },
+            "ModelChange": {
+              "additionalProperties": false,
+              "properties": {
+                "afterTurnId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "from": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                },
+                "occurredAt": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "revision": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "to": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                }
+              },
+              "required": [
+                "revision",
+                "occurredAt",
+                "from",
+                "to"
+              ],
+              "type": "object"
+            },
+            "ModelIdentity": {
+              "additionalProperties": false,
+              "properties": {
+                "modelId": {
+                  "type": "string"
+                },
+                "providerId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "modelId"
               ],
               "type": "object"
             },
@@ -14028,6 +14432,20 @@
                   "type": "string"
                 },
                 "logicalId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
                   "type": [
                     "string",
                     "null"
@@ -15203,6 +15621,13 @@
                       },
                       "type": "array"
                     },
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -15220,6 +15645,13 @@
                 },
                 {
                   "properties": {
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -16016,6 +16448,20 @@
                   "type": "string"
                 },
                 "logicalId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
                   "type": [
                     "string",
                     "null"
@@ -17030,6 +17476,13 @@
                       },
                       "type": "array"
                     },
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -17047,6 +17500,13 @@
                 },
                 {
                   "properties": {
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -17843,6 +18303,20 @@
                   "type": "string"
                 },
                 "logicalId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
                   "type": [
                     "string",
                     "null"
@@ -30819,6 +31293,13 @@
                     },
                     "type": "object"
                   },
+                  "modelChanges": {
+                    "default": [],
+                    "items": {
+                      "$ref": "#/properties/data/items/$defs/ModelChange"
+                    },
+                    "type": "array"
+                  },
                   "permissionGrants": {
                     "default": [],
                     "items": {
@@ -31973,6 +32454,13 @@
                         },
                         "type": "array"
                       },
+                      "createdAt": {
+                        "format": "int64",
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -31990,6 +32478,13 @@
                   },
                   {
                     "properties": {
+                      "createdAt": {
+                        "format": "int64",
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -32288,6 +32783,57 @@
                   "tools",
                   "vision",
                   "reasoning"
+                ],
+                "type": "object"
+              },
+              "ModelChange": {
+                "additionalProperties": false,
+                "properties": {
+                  "afterTurnId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "from": {
+                    "$ref": "#/properties/data/items/$defs/ModelIdentity"
+                  },
+                  "occurredAt": {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "to": {
+                    "$ref": "#/properties/data/items/$defs/ModelIdentity"
+                  }
+                },
+                "required": [
+                  "revision",
+                  "occurredAt",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              "ModelIdentity": {
+                "additionalProperties": false,
+                "properties": {
+                  "modelId": {
+                    "type": "string"
+                  },
+                  "providerId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "modelId"
                 ],
                 "type": "object"
               },
@@ -33370,6 +33916,20 @@
                       "null"
                     ]
                   },
+                  "retryDelayMs": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "retryDisposition": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "startedAtMs": {
                     "format": "int64",
                     "type": "integer"
@@ -34429,6 +34989,13 @@
                         "type": "string"
                       },
                       "type": "object"
+                    },
+                    "modelChanges": {
+                      "default": [],
+                      "items": {
+                        "$ref": "#/oneOf/0/properties/thread/$defs/ModelChange"
+                      },
+                      "type": "array"
                     },
                     "permissionGrants": {
                       "default": [],
@@ -35584,6 +36151,13 @@
                           },
                           "type": "array"
                         },
+                        "createdAt": {
+                          "format": "int64",
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -35601,6 +36175,13 @@
                     },
                     {
                       "properties": {
+                        "createdAt": {
+                          "format": "int64",
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -35899,6 +36480,57 @@
                     "tools",
                     "vision",
                     "reasoning"
+                  ],
+                  "type": "object"
+                },
+                "ModelChange": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "afterTurnId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "from": {
+                      "$ref": "#/oneOf/0/properties/thread/$defs/ModelIdentity"
+                    },
+                    "occurredAt": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "revision": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "to": {
+                      "$ref": "#/oneOf/0/properties/thread/$defs/ModelIdentity"
+                    }
+                  },
+                  "required": [
+                    "revision",
+                    "occurredAt",
+                    "from",
+                    "to"
+                  ],
+                  "type": "object"
+                },
+                "ModelIdentity": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "modelId": {
+                      "type": "string"
+                    },
+                    "providerId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "modelId"
                   ],
                   "type": "object"
                 },
@@ -36976,6 +37608,20 @@
                       "type": "string"
                     },
                     "logicalId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "retryDelayMs": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "retryDisposition": {
                       "type": [
                         "string",
                         "null"
@@ -38142,6 +38788,13 @@
                           },
                           "type": "array"
                         },
+                        "createdAt": {
+                          "format": "int64",
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -38159,6 +38812,13 @@
                     },
                     {
                       "properties": {
+                        "createdAt": {
+                          "format": "int64",
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -38955,6 +39615,20 @@
                       "type": "string"
                     },
                     "logicalId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "retryDelayMs": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "retryDisposition": {
                       "type": [
                         "string",
                         "null"
@@ -41362,6 +42036,13 @@
                                 },
                                 "type": "array"
                               },
+                              "createdAt": {
+                                "format": "int64",
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
                               "id": {
                                 "type": "string"
                               },
@@ -41379,6 +42060,13 @@
                           },
                           {
                             "properties": {
+                              "createdAt": {
+                                "format": "int64",
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
                               "id": {
                                 "type": "string"
                               },
@@ -42285,6 +42973,13 @@
                       "type": "string"
                     },
                     "type": "object"
+                  },
+                  "modelChanges": {
+                    "default": [],
+                    "items": {
+                      "$ref": "#/properties/data/items/$defs/ModelChange"
+                    },
+                    "type": "array"
                   },
                   "permissionGrants": {
                     "default": [],
@@ -43440,6 +44135,13 @@
                         },
                         "type": "array"
                       },
+                      "createdAt": {
+                        "format": "int64",
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -43457,6 +44159,13 @@
                   },
                   {
                     "properties": {
+                      "createdAt": {
+                        "format": "int64",
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -43755,6 +44464,57 @@
                   "tools",
                   "vision",
                   "reasoning"
+                ],
+                "type": "object"
+              },
+              "ModelChange": {
+                "additionalProperties": false,
+                "properties": {
+                  "afterTurnId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "from": {
+                    "$ref": "#/properties/data/items/$defs/ModelIdentity"
+                  },
+                  "occurredAt": {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "to": {
+                    "$ref": "#/properties/data/items/$defs/ModelIdentity"
+                  }
+                },
+                "required": [
+                  "revision",
+                  "occurredAt",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              "ModelIdentity": {
+                "additionalProperties": false,
+                "properties": {
+                  "modelId": {
+                    "type": "string"
+                  },
+                  "providerId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "modelId"
                 ],
                 "type": "object"
               },
@@ -44832,6 +45592,20 @@
                     "type": "string"
                   },
                   "logicalId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "retryDelayMs": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "retryDisposition": {
                     "type": [
                       "string",
                       "null"
@@ -47170,6 +47944,13 @@
                           },
                           "type": "array"
                         },
+                        "createdAt": {
+                          "format": "int64",
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -47187,6 +47968,13 @@
                     },
                     {
                       "properties": {
+                        "createdAt": {
+                          "format": "int64",
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -47983,6 +48771,20 @@
                       "type": "string"
                     },
                     "logicalId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "retryDelayMs": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "retryDisposition": {
                       "type": [
                         "string",
                         "null"
@@ -64213,6 +65015,13 @@
                   },
                   "type": "object"
                 },
+                "modelChanges": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ModelChange"
+                  },
+                  "type": "array"
+                },
                 "permissionGrants": {
                   "default": [],
                   "items": {
@@ -65367,6 +66176,13 @@
                       },
                       "type": "array"
                     },
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -65384,6 +66200,13 @@
                 },
                 {
                   "properties": {
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -65682,6 +66505,57 @@
                 "tools",
                 "vision",
                 "reasoning"
+              ],
+              "type": "object"
+            },
+            "ModelChange": {
+              "additionalProperties": false,
+              "properties": {
+                "afterTurnId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "from": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                },
+                "occurredAt": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "revision": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "to": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                }
+              },
+              "required": [
+                "revision",
+                "occurredAt",
+                "from",
+                "to"
+              ],
+              "type": "object"
+            },
+            "ModelIdentity": {
+              "additionalProperties": false,
+              "properties": {
+                "modelId": {
+                  "type": "string"
+                },
+                "providerId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "modelId"
               ],
               "type": "object"
             },
@@ -66759,6 +67633,20 @@
                   "type": "string"
                 },
                 "logicalId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
                   "type": [
                     "string",
                     "null"
@@ -67922,6 +68810,13 @@
                       },
                       "type": "array"
                     },
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -67939,6 +68834,13 @@
                 },
                 {
                   "properties": {
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -68735,6 +69637,20 @@
                   "type": "string"
                 },
                 "logicalId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
                   "type": [
                     "string",
                     "null"
@@ -79139,6 +80055,13 @@
                   },
                   "type": "object"
                 },
+                "modelChanges": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ModelChange"
+                  },
+                  "type": "array"
+                },
                 "permissionGrants": {
                   "default": [],
                   "items": {
@@ -80293,6 +81216,13 @@
                       },
                       "type": "array"
                     },
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -80310,6 +81240,13 @@
                 },
                 {
                   "properties": {
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -80608,6 +81545,57 @@
                 "tools",
                 "vision",
                 "reasoning"
+              ],
+              "type": "object"
+            },
+            "ModelChange": {
+              "additionalProperties": false,
+              "properties": {
+                "afterTurnId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "from": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                },
+                "occurredAt": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "revision": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "to": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                }
+              },
+              "required": [
+                "revision",
+                "occurredAt",
+                "from",
+                "to"
+              ],
+              "type": "object"
+            },
+            "ModelIdentity": {
+              "additionalProperties": false,
+              "properties": {
+                "modelId": {
+                  "type": "string"
+                },
+                "providerId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "modelId"
               ],
               "type": "object"
             },
@@ -81685,6 +82673,20 @@
                   "type": "string"
                 },
                 "logicalId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
                   "type": [
                     "string",
                     "null"
@@ -82850,6 +83852,13 @@
                           },
                           "type": "array"
                         },
+                        "createdAt": {
+                          "format": "int64",
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -82867,6 +83876,13 @@
                     },
                     {
                       "properties": {
+                        "createdAt": {
+                          "format": "int64",
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -83663,6 +84679,20 @@
                       "type": "string"
                     },
                     "logicalId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "retryDelayMs": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "retryDisposition": {
                       "type": [
                         "string",
                         "null"
@@ -84550,6 +85580,13 @@
                     "type": "string"
                   },
                   "type": "object"
+                },
+                "modelChanges": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ModelChange"
+                  },
+                  "type": "array"
                 },
                 "permissionGrants": {
                   "default": [],
@@ -85705,6 +86742,13 @@
                       },
                       "type": "array"
                     },
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -85722,6 +86766,13 @@
                 },
                 {
                   "properties": {
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -86020,6 +87071,57 @@
                 "tools",
                 "vision",
                 "reasoning"
+              ],
+              "type": "object"
+            },
+            "ModelChange": {
+              "additionalProperties": false,
+              "properties": {
+                "afterTurnId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "from": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                },
+                "occurredAt": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "revision": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "to": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                }
+              },
+              "required": [
+                "revision",
+                "occurredAt",
+                "from",
+                "to"
+              ],
+              "type": "object"
+            },
+            "ModelIdentity": {
+              "additionalProperties": false,
+              "properties": {
+                "modelId": {
+                  "type": "string"
+                },
+                "providerId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "modelId"
               ],
               "type": "object"
             },
@@ -87097,6 +88199,20 @@
                   "type": "string"
                 },
                 "logicalId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
                   "type": [
                     "string",
                     "null"
@@ -88260,6 +89376,13 @@
                       },
                       "type": "array"
                     },
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -88277,6 +89400,13 @@
                 },
                 {
                   "properties": {
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -89073,6 +90203,20 @@
                   "type": "string"
                 },
                 "logicalId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
                   "type": [
                     "string",
                     "null"
@@ -103554,6 +104698,13 @@
                   },
                   "type": "object"
                 },
+                "modelChanges": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ModelChange"
+                  },
+                  "type": "array"
+                },
                 "permissionGrants": {
                   "default": [],
                   "items": {
@@ -104708,6 +105859,13 @@
                       },
                       "type": "array"
                     },
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -104725,6 +105883,13 @@
                 },
                 {
                   "properties": {
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -105023,6 +106188,57 @@
                 "tools",
                 "vision",
                 "reasoning"
+              ],
+              "type": "object"
+            },
+            "ModelChange": {
+              "additionalProperties": false,
+              "properties": {
+                "afterTurnId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "from": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                },
+                "occurredAt": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "revision": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "to": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                }
+              },
+              "required": [
+                "revision",
+                "occurredAt",
+                "from",
+                "to"
+              ],
+              "type": "object"
+            },
+            "ModelIdentity": {
+              "additionalProperties": false,
+              "properties": {
+                "modelId": {
+                  "type": "string"
+                },
+                "providerId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "modelId"
               ],
               "type": "object"
             },
@@ -106100,6 +107316,20 @@
                   "type": "string"
                 },
                 "logicalId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
                   "type": [
                     "string",
                     "null"
@@ -108226,6 +109456,13 @@
                   },
                   "type": "object"
                 },
+                "modelChanges": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ModelChange"
+                  },
+                  "type": "array"
+                },
                 "permissionGrants": {
                   "default": [],
                   "items": {
@@ -109382,6 +110619,13 @@
                           },
                           "type": "array"
                         },
+                        "createdAt": {
+                          "format": "int64",
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -109399,6 +110643,13 @@
                     },
                     {
                       "properties": {
+                        "createdAt": {
+                          "format": "int64",
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -109734,6 +110985,57 @@
                 "tools",
                 "vision",
                 "reasoning"
+              ],
+              "type": "object"
+            },
+            "ModelChange": {
+              "additionalProperties": false,
+              "properties": {
+                "afterTurnId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "from": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                },
+                "occurredAt": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "revision": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "to": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                }
+              },
+              "required": [
+                "revision",
+                "occurredAt",
+                "from",
+                "to"
+              ],
+              "type": "object"
+            },
+            "ModelIdentity": {
+              "additionalProperties": false,
+              "properties": {
+                "modelId": {
+                  "type": "string"
+                },
+                "providerId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "modelId"
               ],
               "type": "object"
             },
@@ -110811,6 +112113,20 @@
                   "type": "string"
                 },
                 "logicalId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
                   "type": [
                     "string",
                     "null"
@@ -111941,6 +113257,13 @@
                     "type": "string"
                   },
                   "type": "object"
+                },
+                "modelChanges": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ModelChange"
+                  },
+                  "type": "array"
                 },
                 "permissionGrants": {
                   "default": [],
@@ -113096,6 +114419,13 @@
                       },
                       "type": "array"
                     },
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -113113,6 +114443,13 @@
                 },
                 {
                   "properties": {
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -113411,6 +114748,57 @@
                 "tools",
                 "vision",
                 "reasoning"
+              ],
+              "type": "object"
+            },
+            "ModelChange": {
+              "additionalProperties": false,
+              "properties": {
+                "afterTurnId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "from": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                },
+                "occurredAt": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "revision": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "to": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                }
+              },
+              "required": [
+                "revision",
+                "occurredAt",
+                "from",
+                "to"
+              ],
+              "type": "object"
+            },
+            "ModelIdentity": {
+              "additionalProperties": false,
+              "properties": {
+                "modelId": {
+                  "type": "string"
+                },
+                "providerId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "modelId"
               ],
               "type": "object"
             },
@@ -114488,6 +115876,20 @@
                   "type": "string"
                 },
                 "logicalId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
                   "type": [
                     "string",
                     "null"
@@ -115709,6 +117111,13 @@
                       },
                       "type": "array"
                     },
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -115726,6 +117135,13 @@
                 },
                 {
                   "properties": {
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -116522,6 +117938,20 @@
                   "type": "string"
                 },
                 "logicalId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
                   "type": [
                     "string",
                     "null"
@@ -117534,6 +118964,13 @@
                           },
                           "type": "array"
                         },
+                        "createdAt": {
+                          "format": "int64",
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -117551,6 +118988,13 @@
                     },
                     {
                       "properties": {
+                        "createdAt": {
+                          "format": "int64",
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -118347,6 +119791,20 @@
                       "type": "string"
                     },
                     "logicalId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "retryDelayMs": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "retryDisposition": {
                       "type": [
                         "string",
                         "null"
@@ -129070,6 +130528,13 @@
                     },
                     "type": "object"
                   },
+                  "modelChanges": {
+                    "default": [],
+                    "items": {
+                      "$ref": "#/properties/data/items/$defs/ModelChange"
+                    },
+                    "type": "array"
+                  },
                   "permissionGrants": {
                     "default": [],
                     "items": {
@@ -130224,6 +131689,13 @@
                         },
                         "type": "array"
                       },
+                      "createdAt": {
+                        "format": "int64",
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -130241,6 +131713,13 @@
                   },
                   {
                     "properties": {
+                      "createdAt": {
+                        "format": "int64",
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -130539,6 +132018,57 @@
                   "tools",
                   "vision",
                   "reasoning"
+                ],
+                "type": "object"
+              },
+              "ModelChange": {
+                "additionalProperties": false,
+                "properties": {
+                  "afterTurnId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "from": {
+                    "$ref": "#/properties/data/items/$defs/ModelIdentity"
+                  },
+                  "occurredAt": {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "to": {
+                    "$ref": "#/properties/data/items/$defs/ModelIdentity"
+                  }
+                },
+                "required": [
+                  "revision",
+                  "occurredAt",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              "ModelIdentity": {
+                "additionalProperties": false,
+                "properties": {
+                  "modelId": {
+                    "type": "string"
+                  },
+                  "providerId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "modelId"
                 ],
                 "type": "object"
               },
@@ -131621,6 +133151,20 @@
                       "null"
                     ]
                   },
+                  "retryDelayMs": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "retryDisposition": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "startedAtMs": {
                     "format": "int64",
                     "type": "integer"
@@ -132668,6 +134212,13 @@
                     "type": "string"
                   },
                   "type": "object"
+                },
+                "modelChanges": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ModelChange"
+                  },
+                  "type": "array"
                 },
                 "permissionGrants": {
                   "default": [],
@@ -133823,6 +135374,13 @@
                       },
                       "type": "array"
                     },
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -133840,6 +135398,13 @@
                 },
                 {
                   "properties": {
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -134138,6 +135703,57 @@
                 "tools",
                 "vision",
                 "reasoning"
+              ],
+              "type": "object"
+            },
+            "ModelChange": {
+              "additionalProperties": false,
+              "properties": {
+                "afterTurnId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "from": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                },
+                "occurredAt": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "revision": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "to": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                }
+              },
+              "required": [
+                "revision",
+                "occurredAt",
+                "from",
+                "to"
+              ],
+              "type": "object"
+            },
+            "ModelIdentity": {
+              "additionalProperties": false,
+              "properties": {
+                "modelId": {
+                  "type": "string"
+                },
+                "providerId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "modelId"
               ],
               "type": "object"
             },
@@ -135215,6 +136831,20 @@
                   "type": "string"
                 },
                 "logicalId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
                   "type": [
                     "string",
                     "null"
@@ -136359,6 +137989,13 @@
                     "type": "string"
                   },
                   "type": "object"
+                },
+                "modelChanges": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ModelChange"
+                  },
+                  "type": "array"
                 },
                 "permissionGrants": {
                   "default": [],
@@ -137516,6 +139153,13 @@
                           },
                           "type": "array"
                         },
+                        "createdAt": {
+                          "format": "int64",
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -137533,6 +139177,13 @@
                     },
                     {
                       "properties": {
+                        "createdAt": {
+                          "format": "int64",
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -137868,6 +139519,57 @@
                 "tools",
                 "vision",
                 "reasoning"
+              ],
+              "type": "object"
+            },
+            "ModelChange": {
+              "additionalProperties": false,
+              "properties": {
+                "afterTurnId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "from": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                },
+                "occurredAt": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "revision": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "to": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                }
+              },
+              "required": [
+                "revision",
+                "occurredAt",
+                "from",
+                "to"
+              ],
+              "type": "object"
+            },
+            "ModelIdentity": {
+              "additionalProperties": false,
+              "properties": {
+                "modelId": {
+                  "type": "string"
+                },
+                "providerId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "modelId"
               ],
               "type": "object"
             },
@@ -138950,6 +140652,20 @@
                     "null"
                   ]
                 },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "startedAtMs": {
                   "format": "int64",
                   "type": "integer"
@@ -140026,6 +141742,13 @@
                     "type": "string"
                   },
                   "type": "object"
+                },
+                "modelChanges": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ModelChange"
+                  },
+                  "type": "array"
                 },
                 "permissionGrants": {
                   "default": [],
@@ -141181,6 +142904,13 @@
                       },
                       "type": "array"
                     },
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -141198,6 +142928,13 @@
                 },
                 {
                   "properties": {
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -141496,6 +143233,57 @@
                 "tools",
                 "vision",
                 "reasoning"
+              ],
+              "type": "object"
+            },
+            "ModelChange": {
+              "additionalProperties": false,
+              "properties": {
+                "afterTurnId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "from": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                },
+                "occurredAt": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "revision": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "to": {
+                  "$ref": "#/properties/thread/$defs/ModelIdentity"
+                }
+              },
+              "required": [
+                "revision",
+                "occurredAt",
+                "from",
+                "to"
+              ],
+              "type": "object"
+            },
+            "ModelIdentity": {
+              "additionalProperties": false,
+              "properties": {
+                "modelId": {
+                  "type": "string"
+                },
+                "providerId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "modelId"
               ],
               "type": "object"
             },
@@ -142573,6 +144361,20 @@
                   "type": "string"
                 },
                 "logicalId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
                   "type": [
                     "string",
                     "null"
@@ -143759,6 +145561,13 @@
                       },
                       "type": "array"
                     },
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -143776,6 +145585,13 @@
                 },
                 {
                   "properties": {
+                    "createdAt": {
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -144572,6 +146388,20 @@
                   "type": "string"
                 },
                 "logicalId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryDelayMs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "retryDisposition": {
                   "type": [
                     "string",
                     "null"
@@ -145763,6 +147593,13 @@
             },
             "type": "object"
           },
+          "modelChanges": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/ModelChange"
+            },
+            "type": "array"
+          },
           "permissionGrants": {
             "default": [],
             "items": {
@@ -146917,6 +148754,13 @@
                 },
                 "type": "array"
               },
+              "createdAt": {
+                "format": "int64",
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "id": {
                 "type": "string"
               },
@@ -146934,6 +148778,13 @@
           },
           {
             "properties": {
+              "createdAt": {
+                "format": "int64",
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "id": {
                 "type": "string"
               },
@@ -147232,6 +149083,57 @@
           "tools",
           "vision",
           "reasoning"
+        ],
+        "type": "object"
+      },
+      "ModelChange": {
+        "additionalProperties": false,
+        "properties": {
+          "afterTurnId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from": {
+            "$ref": "#/$defs/ModelIdentity"
+          },
+          "occurredAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "to": {
+            "$ref": "#/$defs/ModelIdentity"
+          }
+        },
+        "required": [
+          "revision",
+          "occurredAt",
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "ModelIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "modelId": {
+            "type": "string"
+          },
+          "providerId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "modelId"
         ],
         "type": "object"
       },
@@ -148309,6 +150211,20 @@
             "type": "string"
           },
           "logicalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retryDelayMs": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "retryDisposition": {
             "type": [
               "string",
               "null"
@@ -149472,6 +151388,13 @@
                 },
                 "type": "array"
               },
+              "createdAt": {
+                "format": "int64",
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "id": {
                 "type": "string"
               },
@@ -149489,6 +151412,13 @@
           },
           {
             "properties": {
+              "createdAt": {
+                "format": "int64",
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "id": {
                 "type": "string"
               },
@@ -150285,6 +152215,20 @@
             "type": "string"
           },
           "logicalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retryDelayMs": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "retryDisposition": {
             "type": [
               "string",
               "null"

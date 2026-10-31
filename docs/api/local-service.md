@@ -192,3 +192,11 @@ Core 仅在已授权 MCP 连接边界解析秘密引用，敏感值只绑定声�
 `areal/plugin/development/link` 参数为 `requestId`、`id`、`expectedRevision`、`expectedDigest`。`areal/plugin/development/unlink` 省略摘要参数。两者均返回 PluginList 并复用原管理回执。链接只使用已选择的本地来源。服务现有 watcher 每秒检查链接，变化通过 Store 发布不可变新快照。错误保留上一成功版本，组件摘要的 `developmentError` 返回诊断。新摘要不继承 MCP 或 Hook 信任。活动 Turn 持有旧快照，后续准入采用最新快照。
 
 可信 server 装配声明普通 Skill 的 workspace 与 home 来源，watcher 同步刷新元信息。自动发现 Profile 在同会话下一次 Turn 使用最新引用，全部删除会发布空集合。显式 Profile 保留原引用。普通 Skill 正文维持当前文件读取语义，插件 Skill 正文由安装快照固定。
+
+### 对话时间线事实
+
+`userMessage.createdAt` 与 `agentMessage.createdAt` 是可选 Unix 秒。Core 在用户输入受理及助手正文条目首次创建时保存，正文增量不修改它。旧快照缺失时客户端不补造时间。
+
+`DesktopState.modelChanges` 默认为空数组。每个事件包含配置 `revision`、Unix 秒 `occurredAt`、可选 `afterTurnId`、`from` 和 `to`。模型身份包含保存时解析的 `modelId` 与可空 `providerId`，其中 `null` 表示 Core 默认模型。只在实际模型身份变化时追加，与配置和请求回执一起持久化。参数变化、拒绝和同 requestId 重放不追加。无 `afterTurnId` 的事件位于首轮之前，零轮次连续变更也保留。该记录仅表示下轮采用的配置选择，不表示模型交接或执行成功。
+
+`TraceActivity.retryDelayMs` 保存计划等待毫秒数，`retryDisposition: "exhausted"` 只在原重试决策确认额度耗尽时出现。客户端按 `logicalId` 聚合 `model` 和 `retryWait`，根据同一逻辑请求的成功活动判断恢复，不能用其他请求的失败推断重试耗尽。新增 `areal/turn/traceActivity` 通知携带 `threadId`、`turnId` 和已持久化的单条 `activity`；快照仍是重连权威。`areal/thread/configured` 同时携带完整 `modelChanges`。上述字段为向后兼容的可选事实或缺省集合，不改变执行和重试策略。

@@ -1873,6 +1873,7 @@ impl Engine {
             status: TurnStatus::InProgress,
             error: None,
             items: vec![Item::UserMessage {
+                created_at: None,
                 id: id(),
                 content: vec![Input::text(text)],
             }],

@@ -1525,11 +1525,13 @@ mod tests {
         let mut state = cell.state.lock().await;
         let text = format!("{}{}", "中".repeat(1500), "\u{0001}".repeat(2500));
         state.thread.turns[0].items.push(Item::AgentMessage {
+            created_at: None,
             phase: None,
             id: id(),
             text: text.clone(),
         });
         state.thread.turns[0].items.push(Item::AgentMessage {
+            created_at: None,
             phase: None,
             id: id(),
             text: "\n \t".into(),
@@ -1647,6 +1649,7 @@ mod tests {
             {
                 let mut state = cell.state.lock().await;
                 state.thread.turns[0].items.push(Item::AgentMessage {
+                    created_at: None,
                     phase: None,
                     id: id(),
                     text: "\u{0001}".repeat(3000),
@@ -1803,6 +1806,7 @@ mod tests {
             let first = &mut state.thread.turns[0];
             first.status = TurnStatus::Completed;
             first.items.push(Item::AgentMessage {
+                created_at: None,
                 id: "original-reply".into(),
                 text: "原结果猫".into(),
                 phase: None,
@@ -1818,6 +1822,7 @@ mod tests {
             later.status = TurnStatus::InProgress;
             later.items.clear();
             later.items.push(Item::AgentMessage {
+                created_at: None,
                 id: "later-reply".into(),
                 text: "later result".into(),
                 phase: None,

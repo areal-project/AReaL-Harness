@@ -836,6 +836,7 @@ impl Engine {
                         .open_items
                         .insert(item_id.clone());
                     let item = Item::AgentMessage {
+                        created_at: Some(crate::now()),
                         phase: Some(areal_protocol::AgentMessagePhase::Commentary),
                         id: item_id.clone(),
                         text: String::new(),
@@ -1492,6 +1493,13 @@ impl Engine {
                                     )
                                     .await?;
 
+                                self.trace_retry(
+                                    cell,
+                                    &logical_request_id,
+                                    Some(delay.as_millis() as u64),
+                                    None,
+                                )
+                                .await?;
                                 tokio::select! { biased;
                                     _ = cancel.cancelled() => { self.trace_finish(cell, &mut retry_trace, Some("cancelled")).await?; anyhow::bail!("cancelled"); },
                                     _ = steer.recv() => { self.trace_finish(cell, &mut retry_trace, Some("cancelled")).await?; continue 'restart; },
@@ -1505,6 +1513,13 @@ impl Engine {
                                 &error,
                                 network_retries,
                             ) {
+                                self.trace_retry(
+                                    cell,
+                                    &logical_request_id,
+                                    None,
+                                    Some("exhausted"),
+                                )
+                                .await?;
                                 return Err(error.context(
                                     "bounded Core network recovery exhausted after 5 retries",
                                 ));

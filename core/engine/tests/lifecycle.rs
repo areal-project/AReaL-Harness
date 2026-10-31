@@ -893,10 +893,12 @@ async fn legacy_text_sessions_load_and_upgrade_on_next_write() {
                 id: uuid::Uuid::new_v4().to_string(),
                 items: vec![
                     Item::UserMessage {
+                        created_at: None,
                         id: uuid::Uuid::new_v4().to_string(),
                         content: vec![Input::text("old")],
                     },
                     Item::AgentMessage {
+                        created_at: None,
                         phase: None,
                         id: uuid::Uuid::new_v4().to_string(),
                         text: "reply:old".into(),

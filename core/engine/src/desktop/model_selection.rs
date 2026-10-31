@@ -1,6 +1,45 @@
 use super::*;
 
 impl Engine {
+    pub(super) fn configuration_model_identity(
+        &self,
+        configuration: &EffectiveConfig,
+    ) -> ModelIdentity {
+        if let Some(model) = &configuration.model {
+            return ModelIdentity {
+                provider_id: Some(model.provider_id.clone()),
+                model_id: model.model_id.clone(),
+            };
+        }
+        ModelIdentity {
+            provider_id: None,
+            model_id: self
+                .default_model_metadata(configuration.default_model_revision.as_deref())
+                .map(|(name, _)| name)
+                .unwrap_or_else(|| self.model.name().to_owned()),
+        }
+    }
+
+    pub(super) fn record_model_change(&self, thread: &mut Thread, configuration: &EffectiveConfig) {
+        let from = self.configuration_model_identity(&desktop(thread).configuration);
+        let to = self.configuration_model_identity(configuration);
+        if from == to {
+            return;
+        }
+        let after_turn_id = thread.turns.last().map(|turn| turn.id.clone());
+        thread
+            .desktop
+            .get_or_insert_with(Default::default)
+            .model_changes
+            .push(ModelChange {
+                revision: configuration.revision,
+                occurred_at: now(),
+                after_turn_id,
+                from,
+                to,
+            });
+    }
+
     // Called only at explicit user submission admission, never at queue execution.
     pub(super) fn remember_accepted_model(
         &self,
