@@ -50,7 +50,7 @@ export function rememberDisclosure(key: string, open: boolean) {
 type ReadingIdentity = { owner: string; generation: string; revision: number };
 export type ReadingBlock = "missing" | "limited" | "unsupported" | "layout" | "cancelled";
 type ReadingIntent =
-  | { kind: "following" }
+  | { kind: "following"; target?: { kind: "turnStart"; turnId: string } }
   | {
       kind: "holding";
       anchor?: ReadingAnchor;

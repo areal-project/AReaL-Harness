@@ -52,6 +52,56 @@ try {
     return page;
   };
 
+  // 时间线只展示 Core 事实；没有工具也保留中断分隔行。
+  {
+    const page = await open("");
+    const reading = page.locator("#activity-reading-preview");
+    await reading.getByLabel("活动形状", { exact: true }).selectOption("empty");
+    assert.equal(await reading.locator("[data-model-change]").count(), 2);
+    await reading.getByRole("button", { name: "接受新轮次", exact: true }).click();
+    const user = reading.locator(".user-message");
+    await user.waitFor();
+    await page.waitForTimeout(200);
+    const inset = await user.evaluate((element) => {
+      const viewport = element.closest(".messages");
+      return element.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+    });
+    assert.ok(inset >= -1 && inset < 80, `accepted user starts near top: ${inset}`);
+    const time = user.getByRole("button", { name: /消息时间/ });
+    await time.focus();
+    assert.equal(await time.evaluate((element) => getComputedStyle(element).opacity), "1");
+    assert.ok((await time.getAttribute("aria-label")).includes("2026"));
+    for (const [state, expected] of [
+      ["paused", "你暂停了本轮执行"],
+      ["recovery", "Core 恢复时中断了本轮执行"],
+      ["waiting", "正在等待重试"],
+      ["recovered", "连接已恢复"],
+      ["exhausted", "重试额度已耗尽"],
+      ["otherFailure", "重试已停止"],
+    ]) {
+      await reading.getByLabel("活动状态", { exact: true }).selectOption(state);
+      await reading.getByText(expected, { exact: false }).waitFor();
+      if (state !== "exhausted")
+        assert.equal(await reading.locator('[data-retry-state="exhausted"]').count(), 0);
+    }
+    await reading.getByLabel("活动状态", { exact: true }).selectOption("running");
+    const messages = reading.locator(".messages").first();
+    await messages.hover();
+    await page.mouse.wheel(0, -200);
+    await page.waitForTimeout(150);
+    const before = await messages.evaluate((element) => element.scrollTop);
+    await reading.getByRole("button", { name: "延迟追加输出", exact: true }).click();
+    await page.waitForTimeout(400);
+    assert.ok(
+      Math.abs((await messages.evaluate((element) => element.scrollTop)) - before) < 2,
+      "manual reading yields the turn-start target during output",
+    );
+    checks.push(
+      "timeline facts distinguish no-tool interruption, retry outcomes, model changes, keyboard time and accepted-message anchor",
+    );
+    await page.close();
+  }
+
   // 末尾实时状态：12 行运行中命令只显示一行摘要。
   {
     const page = await open("");

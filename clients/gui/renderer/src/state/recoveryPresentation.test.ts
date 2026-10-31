@@ -62,3 +62,28 @@ test("connection generations belong to recovery identity and unknown results nev
   expect(isTechnicalErrorMessage("Error invoking remote method: IPC failed")).toBe(true);
   expect(isTechnicalErrorMessage("请先保存当前文件")).toBe(false);
 });
+
+test("an outcome without the original operation cannot release an unknown submission", () => {
+  expect(
+    recoveredOutcome(
+      { outcomes: { "request-1": { status: "completed", operation } } },
+      "request-1",
+      "thread-1",
+    ),
+  ).toBeUndefined();
+  expect(
+    recoveredOutcome(
+      {
+        outcomes: {
+          "request-1": {
+            status: "completed",
+            operation: { ...operation, method: "areal/thread/configure" },
+          },
+        },
+      },
+      "request-1",
+      "thread-1",
+      operation,
+    ),
+  ).toBeUndefined();
+});

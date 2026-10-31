@@ -279,10 +279,40 @@ function ActivityReadingPreview({ dark }: { dark: boolean }) {
   };
   const turn = {
     id: "reading-turn",
-    status: "inProgress",
+    status: ["paused", "recovery"].includes(state)
+      ? "interrupted"
+      : ["recovered", "exhausted", "otherFailure"].includes(state)
+        ? "failed"
+        : "inProgress",
+    interruption:
+      state === "paused" ? "userPause" : state === "recovery" ? "coreRecovery" : undefined,
+    trace: {
+      activities: [
+        { id: "first", logicalId: "logical", kind: "model", status: "failed" },
+        {
+          id: "wait",
+          logicalId: "logical",
+          kind: "retryWait",
+          status: state === "waiting" ? "running" : "completed",
+          retryDelayMs: 2000,
+        },
+        ...(state === "waiting"
+          ? []
+          : [
+              {
+                id: "second",
+                logicalId: "logical",
+                kind: "model",
+                status: state === "recovered" ? "completed" : "failed",
+                retryDisposition: state === "exhausted" ? "exhausted" : undefined,
+              },
+            ]),
+      ].filter(() => ["waiting", "recovered", "exhausted", "otherFailure"].includes(state)),
+    },
     items: [
       {
         id: "reading-user",
+        createdAt: 1793422800,
         type: "userMessage",
         content: [{ type: "text", text: "展开执行详情并继续阅读。" }],
       },
@@ -313,6 +343,7 @@ function ActivityReadingPreview({ dark }: { dark: boolean }) {
         ? [
             {
               id: "reading-output",
+              createdAt: 1793422801,
               type: "agentMessage",
               phase: "commentary",
               text:
@@ -326,6 +357,22 @@ function ActivityReadingPreview({ dark }: { dark: boolean }) {
   };
   const thread = {
     id: "reading-preview",
+    desktop: {
+      modelChanges: [
+        {
+          revision: 2,
+          occurredAt: 1793422798,
+          from: { providerId: null, modelId: "default" },
+          to: { providerId: "provider", modelId: "model-b" },
+        },
+        {
+          revision: 3,
+          occurredAt: 1793422799,
+          from: { providerId: "provider", modelId: "model-b" },
+          to: { providerId: "provider", modelId: "model-c" },
+        },
+      ],
+    },
     turns: [
       {
         id: "reading-history",
@@ -390,6 +437,12 @@ function ActivityReadingPreview({ dark }: { dark: boolean }) {
             <option value="running">运行中</option>
             <option value="input">等待输入</option>
             <option value="retry">模型重试</option>
+            <option value="waiting">重试等待事实</option>
+            <option value="recovered">重试恢复后其他请求失败</option>
+            <option value="exhausted">重试耗尽</option>
+            <option value="otherFailure">其他原因停止重试</option>
+            <option value="paused">用户暂停</option>
+            <option value="recovery">Core 恢复中断</option>
             <option value="disconnected">连接中断</option>
           </select>
         </label>

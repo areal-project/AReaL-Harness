@@ -1,3 +1,4 @@
+import { retryProgress } from "./conversationEvents.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { ActivityGroup, ThinkingStatus } from "@areal/ui/experimental";
@@ -74,7 +75,10 @@ export function TurnActivity({
     project.state?.interactions?.[threadId]?.data?.some((item: Data) => item.status === "pending")
   )
     return null;
-  const animate = canAnimateTurn(project, threadId, turn);
+  const retry = retryProgress(turn).findLast(
+    (entry) => entry.state === "waiting" || entry.state === "retrying",
+  );
+  const animate = canAnimateTurn(project, threadId, turn) && !retry;
   const items = processItems(turn.items ?? [], turn.status);
   const currentTool =
     animate &&
@@ -90,11 +94,16 @@ export function TurnActivity({
           .filter((part: unknown) => typeof part === "string" && part.trim())
           .at(-1)
       : undefined;
-  const label = activityLabel(project, threadId, turn);
+  const retrying =
+    retry && (project.state?.threads?.[threadId]?.executionConnected ?? project.state?.connected);
+  const label = retrying
+    ? `${t(retry.state === "waiting" ? "chat.timeline.retry.waiting" : "chat.timeline.retry.retrying", { attempts: retry.attempts })}${retry.state === "waiting" && retry.delayMs != null ? ` ${t("chat.timeline.retry.delay", { seconds: retry.delayMs / 1000 })}` : ""}`
+    : activityLabel(project, threadId, turn);
   // 需要你注意的状态只在这一行表达：图标着色、文字加深，不再在过程标题或其他位置重复。
   const tone =
     !(project.state?.threads?.[threadId]?.executionConnected ?? project.state?.connected) ||
     turn.modelRetry ||
+    retry ||
     project.state?.interactions?.[threadId]?.data?.some((item: Data) => item.status === "pending")
       ? "attention"
       : unconfirmed

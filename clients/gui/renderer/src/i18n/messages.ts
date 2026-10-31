@@ -1,5 +1,6 @@
 import { composerPriorityMessages } from "./messages/composerPriority.js";
 import { resourceMessages } from "./messages/resources.js";
+import { timelineMessages } from "./messages/timeline.js";
 import { trajectoryMessages } from "./messages/trajectory.js";
 import { mobileMessages } from "./messages/mobile.js";
 import { automationMessages } from "./messages/automation.js";
@@ -18,6 +19,7 @@ export type MessagePair = Record<AppLocale, string>;
 export const messages = {
   ...composerPriorityMessages,
   ...resourceMessages,
+  ...timelineMessages,
   ...trajectoryMessages,
   ...mobileMessages,
   ...desktopSettingsMessages,

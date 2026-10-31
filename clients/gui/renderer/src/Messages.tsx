@@ -1,3 +1,4 @@
+import { MessageTime, ModelChanges, TurnRetries } from "./ConversationTimeline.js";
 import {
   beginReadingRestore,
   changeReadingIntent,
@@ -44,7 +45,7 @@ import { TurnElapsed } from "./TurnElapsed.js";
 import { ForkIcon } from "./interfaceIcons.js";
 import { UserPromptEdit } from "./UserPromptEdit.js";
 import { UserMessageBody } from "./UserMessageBody.js";
-import { isOrdinaryConversation, interruptionLabel } from "./ordinaryConversation.js";
+import { isOrdinaryConversation } from "./ordinaryConversation.js";
 import { MessageActions } from "./MessageActions.js";
 import { CollapsibleText } from "./CollapsibleText.js";
 import { UserFeedback } from "./UserFeedback.js";
@@ -554,7 +555,7 @@ export function Messages({
       reading.current = changeReadingIntent(
         reading.current,
         reading.current.kind === "following"
-          ? { kind: "following" }
+          ? { kind: "following", target: reading.current.target }
           : {
               kind: "holding",
               anchor,
@@ -622,9 +623,10 @@ export function Messages({
     const following =
       !(reading.current.kind === "holding" && reading.current.disclosure) &&
       !departed &&
-      element.scrollHeight - element.scrollTop - element.clientHeight < 120 &&
-      (reading.current.kind === "following" ||
-        (!!previous && element.scrollTop > previous.top + 1));
+      ((reading.current.kind === "following" && reading.current.target?.kind === "turnStart") ||
+        (element.scrollHeight - element.scrollTop - element.clientHeight < 120 &&
+          (reading.current.kind === "following" ||
+            (!!previous && element.scrollTop > previous.top + 1))));
     if (following && reading.current.kind !== "following")
       reading.current = changeReadingIntent(reading.current, { kind: "following" });
     if (!following && reading.current.kind === "following")
@@ -634,7 +636,7 @@ export function Messages({
       });
     rememberReading();
     setReadingHistory(
-      reading.current.kind !== "following" &&
+      (reading.current.kind !== "following" || reading.current.target?.kind === "turnStart") &&
         element.scrollHeight - element.scrollTop - element.clientHeight >= 120,
     );
   };
@@ -863,6 +865,7 @@ export function Messages({
             )
           }
         />
+        <MessageTime createdAt={entry.createdAt} />
         {!deferActions && entry.phase !== "commentary" && turn.status !== "inProgress" && (
           <MessageActions text={conversationContentToText(blocks)} />
         )}
@@ -936,6 +939,12 @@ export function Messages({
           ? { ...remembered.responseSpace }
           : undefined;
     } else if (previous.id !== latestTurnId) {
+      if (previous.id && user && !goalContinuationLabel(latest)) {
+        reading.current = changeReadingIntent(reading.current, {
+          kind: "following",
+          target: { kind: "turnStart", turnId: latestTurnId },
+        });
+      }
       // Reflow may leave all prior history visible while preserving a former
       // departure. The next accepted message follows from that actual tail;
       // readers still above an overflowing history retain their position.
@@ -982,8 +991,13 @@ export function Messages({
           disclosure.control.getBoundingClientRect().top -
           element.getBoundingClientRect().top -
           disclosure.offset;
-      } else if (state.kind === "following") element.scrollTop = element.scrollHeight;
-      else if (state.kind === "holding" && state.anchor)
+      } else if (state.kind === "following") {
+        if (state.target?.kind === "turnStart" && state.target.turnId === latestTurnId && user) {
+          const inset = parseFloat(getComputedStyle(section!.parentElement!).paddingTop);
+          element.scrollTop +=
+            user.getBoundingClientRect().top - element.getBoundingClientRect().top - inset;
+        } else element.scrollTop = element.scrollHeight;
+      } else if (state.kind === "holding" && state.anchor)
         restoreReadingAnchor(element, state.anchor);
       else if (state.kind === "restoring" && state.phase === "ready") {
         const result = restoreReadingAnchor(element, state.anchor);
@@ -1007,7 +1021,7 @@ export function Messages({
       }
       readingViewport.current = { width: element.clientWidth, height: element.clientHeight };
       setReadingHistory(
-        reading.current.kind !== "following" &&
+        (reading.current.kind !== "following" || reading.current.target?.kind === "turnStart") &&
           element.scrollHeight - element.scrollTop - element.clientHeight >= 120,
       );
       rememberReading();
@@ -1197,6 +1211,7 @@ export function Messages({
               <WorktreeStatus events={localThread.worktreeEvents} current={localThread.worktree} />
             )}
           {beforeTurns}
+          <ModelChanges changes={thread.desktop?.modelChanges} />
           {reading.current.kind === "blocked" && (
             <div data-reading-blocked={reading.current.reason}>
               <p role="status">{t("chat.history.restoreBlocked")}</p>
@@ -1339,11 +1354,6 @@ export function Messages({
             // 带phase与旧快照共用同一过程总组；从运行期起保留挂载，
             // 完成收敛只隐藏内容，不重置工具详情或改变历史顺序。
             const groups = progressGroups(segments, turn.id, legacyReply?.id);
-            // Stop is a Core terminal state, not a completed response. Keep its
-            // process text inspectable and put the state before that content.
-            const stopHeaderIndex = groups.findIndex((group) =>
-              group.entries.some(({ item }) => item.type !== "userMessage"),
-            );
             const firstProgress = groups.findIndex((group) => group.progress);
             const initialUser = segments.find((item) => item.type === "userMessage");
             const queue = project.state?.queues?.[thread.id];
@@ -1360,11 +1370,17 @@ export function Messages({
                 : null;
             const hasInterruption =
               turn.status === "interrupted" || (turn.status === "failed" && !!turn.interruption);
-            const stopHeading = turn.interruption !== "userPause" && (
+            const stopHeading = (
               <div className="turn-stop-heading turn-progress-heading">
                 <div className="turn-progress-label">
                   <span className="turn-status turn-progress-summary" role="status">
-                    {ordinary ? interruptionLabel(turn) : "已停止"}
+                    {t(
+                      turn.interruption === "userPause"
+                        ? "chat.timeline.interruption.userPause"
+                        : turn.interruption === "coreRecovery"
+                          ? "chat.timeline.interruption.coreRecovery"
+                          : "chat.timeline.interruption.other",
+                    )}
                     {turn.error ? `：${turnFailureMessage(turn)}` : ""}
                   </span>
                 </div>
@@ -1542,6 +1558,7 @@ export function Messages({
                                   </CollapsibleText>
                                 </div>
                               ) : null}
+                              <MessageTime createdAt={item.createdAt} />
                               {(text.trim() || item.id === editable) && (
                                 <MessageActions text={text}>
                                   {item.id === editable && (
@@ -1666,7 +1683,6 @@ export function Messages({
                   });
                   return (
                     <Fragment key={group.id}>
-                      {hasInterruption && groupIndex === stopHeaderIndex && stopHeading}
                       {group.progress ? (
                         <TurnProgress
                           readingKey={JSON.stringify([project.id, thread.id, turn.id, group.id])}
@@ -1694,6 +1710,9 @@ export function Messages({
                     </Fragment>
                   );
                 })}
+                {hasInterruption && stopHeading}
+                <TurnRetries turn={turn} />
+                <ModelChanges changes={thread.desktop?.modelChanges} afterTurnId={turn.id} />
                 {!isInherited &&
                   (turn.items ?? [])
                     .filter((item: Data) => item.type === "dynamicToolCall")
@@ -1775,7 +1794,6 @@ export function Messages({
                     {forkError?.message}
                   </p>
                 )}
-                {hasInterruption && stopHeaderIndex < 0 && stopHeading}
                 {showTurnStatus(turn, hasInterruption, hasReadingSummary) && (
                   <div className="turn-status">
                     {({ completed: "已完成", interrupted: "已停止", failed: "执行失败" } as Data)[
