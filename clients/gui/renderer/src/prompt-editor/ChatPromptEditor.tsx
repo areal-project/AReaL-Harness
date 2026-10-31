@@ -440,6 +440,62 @@ export function ChatPromptEditor({
     return () => window.removeEventListener(WORKSPACE_FILE_ADD_TO_CHAT_EVENT, add);
   }, [enableWorkspaceFileDrop, disabled, insertWorkspaceFile]);
 
+  const handleTransferredFiles = useCallback(
+    (dataTransfer: DataTransfer, onFiles: (files: File[]) => void) => {
+      // 原生传输条目只在事件存活期间可读，先快照再进入异步的工作区校验。
+      const files = Array.from(dataTransfer.files);
+      const entries = Array.from(dataTransfer.items)
+        .filter((item) => item.kind === "file")
+        .map((item) => ({ entry: item.webkitGetAsEntry?.(), file: item.getAsFile() }));
+      if (disabled) return true;
+      if (entries.some(({ entry }) => entry?.isDirectory)) {
+        if (!resolveWorkspaceDirectory) {
+          setDropError(intl.formatMessage({ id: "chat.composer.directoryDropUnavailable" }));
+          return true;
+        }
+        if (entries.some(({ entry, file }) => !entry?.isDirectory || !file)) {
+          setDropError(intl.formatMessage({ id: "chat.composer.directoryDropSeparate" }));
+          return true;
+        }
+        try {
+          const payloads = entries.map(({ file }) => resolveWorkspaceDirectory(file!));
+          for (const payload of payloads) void insertWorkspaceFile(payload);
+        } catch (error) {
+          setDropError(
+            error instanceof UiMessageError ? intl.formatMessage(error.descriptor) : String(error),
+          );
+        }
+        return true;
+      }
+      if (!files.length) {
+        setDropError(intl.formatMessage({ id: "chat.composer.externalFolderUnsupported" }));
+        return true;
+      }
+      setDropError("");
+      onFiles(files);
+      return false;
+    },
+    [disabled, insertWorkspaceFile, resolveWorkspaceDirectory, intl],
+  );
+
+  const handlePaste = useCallback(
+    (event: ChatComposerPasteEvent) => {
+      if (
+        enableExternalFileDrop &&
+        event.clipboardData &&
+        Array.from(event.clipboardData.types).includes("Files")
+      ) {
+        if (handleTransferredFiles(event.clipboardData, () => onPaste?.(event))) {
+          event.preventDefault();
+          event.stopPropagation?.();
+        }
+        return;
+      }
+      onPaste?.(event);
+    },
+    [enableExternalFileDrop, handleTransferredFiles, onPaste],
+  );
+
   const handleDrop: DragEventHandler<HTMLDivElement> = useCallback(
     (event) => {
       setInternalDragging(false);
@@ -458,39 +514,7 @@ export function ChatPromptEditor({
       if (enableExternalFileDrop && Array.from(event.dataTransfer.types).includes("Files")) {
         event.preventDefault();
         event.stopPropagation();
-        if (disabled) return;
-        const directory = Array.from(event.dataTransfer.items).some(
-          (item) => item.webkitGetAsEntry?.()?.isDirectory,
-        );
-        const files = Array.from(event.dataTransfer.files);
-        if (directory) {
-          if (!resolveWorkspaceDirectory) {
-            setDropError(intl.formatMessage({ id: "chat.composer.directoryDropUnavailable" }));
-            return;
-          }
-          const entries = Array.from(event.dataTransfer.items)
-            .filter((item) => item.kind === "file")
-            .map((item) => ({ entry: item.webkitGetAsEntry?.(), file: item.getAsFile() }));
-          if (entries.some(({ entry, file }) => !entry?.isDirectory || !file)) {
-            setDropError(intl.formatMessage({ id: "chat.composer.directoryDropSeparate" }));
-            return;
-          }
-          try {
-            const payloads = entries.map(({ file }) => resolveWorkspaceDirectory(file!));
-            for (const payload of payloads) void insertWorkspaceFile(payload);
-          } catch (error) {
-            setDropError(
-              error instanceof UiMessageError
-                ? intl.formatMessage(error.descriptor)
-                : String(error),
-            );
-          }
-        } else if (!files.length) {
-          setDropError(intl.formatMessage({ id: "chat.composer.externalFolderUnsupported" }));
-        } else {
-          setDropError("");
-          onFileDrop?.(files);
-        }
+        handleTransferredFiles(event.dataTransfer, (files) => onFileDrop?.(files));
         return;
       }
       onDrop?.(event);
@@ -500,8 +524,8 @@ export function ChatPromptEditor({
       enableWorkspaceFileDrop,
       enableExternalFileDrop,
       insertWorkspaceFile,
+      handleTransferredFiles,
       onFileDrop,
-      resolveWorkspaceDirectory,
       onDrop,
       intl,
     ],
@@ -598,7 +622,7 @@ export function ChatPromptEditor({
             promptHistory={promptHistory}
             compactPlaceholder={compactPlaceholder}
             onWhiteboardMentionSelected={onWhiteboardMentionSelected}
-            onPaste={onPaste}
+            onPaste={handlePaste}
             excludedSlashCommandNames={excludedSlashCommandNames}
             appSlashCommands={appSlashCommands}
             composerCatalog={composerCatalog}

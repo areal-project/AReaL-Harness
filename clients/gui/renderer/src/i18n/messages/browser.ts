@@ -1,4 +1,8 @@
 export const browserMessages = {
+  "browser.annotation.regionFallback": {
+    "zh-CN": "未识别元素，已选中点击位置附近的截图区域；可调整选区或重新框选",
+    en: "Element not identified. A screenshot region near your click is selected; adjust its coordinates or draw a new region.",
+  },
   "browser.viewport.pending": { "zh-CN": "尺寸尚未应用", en: "Dimensions not yet applied" },
   "browser.loadError.title": { "zh-CN": "无法加载网页", en: "Unable to load page" },
   "browser.loadError.retry": { "zh-CN": "重新加载网页", en: "Reload page" },

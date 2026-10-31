@@ -13,7 +13,11 @@ import {
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";
 import type { PlatformServices, Data } from "./services.js";
-import { BrowserRegionAnnotation, type RegionDraft } from "./BrowserRegionAnnotation.js";
+import {
+  BrowserRegionAnnotation,
+  annotationRegionAroundPoint,
+  type RegionDraft,
+} from "./BrowserRegionAnnotation.js";
 import { attachmentDrafts, sending, stageThreadDraft } from "./Composer.js";
 import { isComposerFile } from "./ComposerAttachments.js";
 import {
@@ -806,12 +810,16 @@ export function Preview({
         ...point,
       });
       if (!mounted.current || current.current !== owner || annotatingRef.current !== draft) return;
+      if (element.available !== true && element.available !== false)
+        throw new Error("无法读取页面元素选择结果");
       updateAnnotation({
         ...draft,
         point,
-        region: element.available ? element.bounds : null,
+        region: element.available
+          ? element.bounds
+          : annotationRegionAroundPoint(draft.capture, point),
         element: element.available ? (element as RegionDraft["element"]) : undefined,
-        mode: element.available ? "element" : "region",
+        mode: "element",
         unavailableReason: element.available ? undefined : element.reason,
       });
     } catch (cause) {
@@ -852,29 +860,27 @@ export function Preview({
         1 /
         (capture.viewport.bitmapScale?.y ??
           capture.viewport.bitmapHeight / capture.viewport.height);
-      const elementCheck =
-        draft.element && draft.mode === "element"
-          ? await services
-              .preview({
-                operation: "checkElement",
-                projectId,
-                threadId,
-                pageId: capture.pageId,
-                captureId: capture.captureId,
-                elementId: draft.element.elementId,
-              })
-              .catch(() => ({ stale: true }))
-          : null;
+      const elementCheck = draft.element
+        ? await services
+            .preview({
+              operation: "checkElement",
+              projectId,
+              threadId,
+              pageId: capture.pageId,
+              captureId: capture.captureId,
+              elementId: draft.element.elementId,
+            })
+            .catch(() => ({ stale: true }))
+        : null;
       if (!mounted.current || current.current !== owner || annotatingRef.current !== draft)
         throw new Error("标注所属聊天已变化");
-      const elementDescription =
-        draft.element && draft.mode === "element"
-          ? `\n选择时元素: role=${JSON.stringify(draft.element.role)}; name=${JSON.stringify(draft.element.name)}; bounds bitmap(px)=${x},${y},${width},${height}; frame=${draft.element.frameId}; historicalRef=${draft.element.evidenceRef}; sourceMapping=${draft.element.sourceMapping}; ${elementCheck?.stale ? "stale: 页面元素已变化，保留原证据。" : "确认时仍命中同一节点；页面之后仍可能变化。"} Agent 必须重新 observe 并取得新 Ref，禁止用 historicalRef 动作。React 源码位置未知。`
-          : "";
+      const elementDescription = draft.element
+        ? `\n选择时元素: role=${JSON.stringify(draft.element.role)}; name=${JSON.stringify(draft.element.name)}; bounds bitmap(px)=${x},${y},${width},${height}; frame=${draft.element.frameId}; historicalRef=${draft.element.evidenceRef}; sourceMapping=${draft.element.sourceMapping}; ${elementCheck?.stale ? "stale: 页面元素已变化，保留原证据。" : "确认时仍命中同一节点；页面之后仍可能变化。"} Agent 必须重新 observe 并取得新 Ref，禁止用 historicalRef 动作。React 源码位置未知。`
+        : "";
       const frameDescription = capture.frameEvidence
         ? `\n嵌入站点截图检查: ${JSON.stringify(capture.frameEvidence)}；仅区域证据，无选择器或 Agent 跨源授权。`
         : "";
-      const description = `页面${draft.element && draft.mode === "element" ? "元素" : "区域"}标注（冻结截图，页面之后可能变化；仅分享选中区域）\nURL: ${capture.url}\n截图时间: ${capture.capturedAt}\nCore: ${capture.coreInstanceId}; Page: ${capture.pageId}; pageGeneration: ${capture.pageGeneration}; documentEpoch: ${capture.documentEpoch}; controlEpoch: ${capture.controlEpoch}; viewportRevision: ${capture.viewportRevision}; captureId: ${capture.captureId}\n原截图 bitmap(px): ${capture.viewport.bitmapWidth}×${capture.viewport.bitmapHeight}; CSS viewport(px): ${capture.viewport.width}×${capture.viewport.height}; scroll(px): ${capture.viewport.scrollX},${capture.viewport.scrollY}; pageZoom: ${capture.viewport.pageZoom}; GUI zoom: ${capture.viewport.guiZoom}; DPR: ${capture.viewport.deviceScaleFactor}; native DIP bounds: ${JSON.stringify(capture.viewport.nativeBounds)}\n选区 bitmap(px): ${x},${y},${width},${height}; viewport CSS(px): ${(x * scaleX).toFixed(1)},${(y * scaleY).toFixed(1)},${(width * scaleX).toFixed(1)},${(height * scaleY).toFixed(1)}${elementDescription}${frameDescription}\n裁图: browser-region-${capture.captureId}.png`;
+      const description = `页面${draft.element ? "元素" : "区域"}标注（冻结截图，页面之后可能变化；仅分享选中区域）\nURL: ${capture.url}\n截图时间: ${capture.capturedAt}\nCore: ${capture.coreInstanceId}; Page: ${capture.pageId}; pageGeneration: ${capture.pageGeneration}; documentEpoch: ${capture.documentEpoch}; controlEpoch: ${capture.controlEpoch}; viewportRevision: ${capture.viewportRevision}; captureId: ${capture.captureId}\n原截图 bitmap(px): ${capture.viewport.bitmapWidth}×${capture.viewport.bitmapHeight}; CSS viewport(px): ${capture.viewport.width}×${capture.viewport.height}; scroll(px): ${capture.viewport.scrollX},${capture.viewport.scrollY}; pageZoom: ${capture.viewport.pageZoom}; GUI zoom: ${capture.viewport.guiZoom}; DPR: ${capture.viewport.deviceScaleFactor}; native DIP bounds: ${JSON.stringify(capture.viewport.nativeBounds)}\n选区 bitmap(px): ${x},${y},${width},${height}; viewport CSS(px): ${(x * scaleX).toFixed(1)},${(y * scaleY).toFixed(1)},${(width * scaleX).toFixed(1)},${(height * scaleY).toFixed(1)}${elementDescription}${frameDescription}\n裁图: browser-region-${capture.captureId}.png`;
       if (composerDraftStorage.getItem(`${draftKey}:queue-edit`))
         throw new Error("请先结束排队消息编辑，再加入标注");
       if (sending.has(draftKey) || composerDraftStorage.getItem(`${draftKey}:pending`))
@@ -888,8 +894,7 @@ export function Preview({
         id,
         comment: draft.comment.trim(),
         label:
-          draft.element?.name ||
-          (draft.mode === "element" ? draft.element?.role || "页面元素" : "区域标注"),
+          draft.element?.name || (draft.element ? draft.element.role || "页面元素" : "区域标注"),
         url: capture.url,
         capturedAt: capture.capturedAt,
         captureId: capture.captureId,
@@ -910,6 +915,7 @@ export function Preview({
         region: null,
         element: undefined,
         point: undefined,
+        unavailableReason: undefined,
       });
     } catch (e) {
       if (mounted.current && current.current === owner) setError(previewFailure(e));
