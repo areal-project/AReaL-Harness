@@ -18,6 +18,7 @@ const {
 } = require("@areal/browser-automation/electron");
 const { invalidateActionObservation } = require("../preview/observation-state.cjs");
 const { browserCommandMutates } = require("./command-policy.cjs");
+const { loadNavigationDocument } = require("../browser-navigation.cjs");
 const DOWNLOAD_INTENT_MS = 30000;
 
 class NativeCommandExecution {
@@ -144,14 +145,14 @@ class NativeCommandExecution {
       }
     };
     /** @param {string} url */
-    const navigate = (url) => {
+    const navigate = async (url) => {
       live();
       const targetUrl = url === "about:blank" ? url : webUrl(url);
       if (targetUrl !== "about:blank" && !page.networkPolicy.allowApprovedNavigation(targetUrl))
         throw new Error("not_sent");
       page.approvedNavigation = targetUrl;
       action.dispatched = true;
-      return race(c.loadURL(targetUrl));
+      await loadNavigationDocument(c, targetUrl, stopped);
     };
     /** @type {import("./model.js").ControlledView} */
     const view = {

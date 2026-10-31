@@ -194,3 +194,6 @@ Core 入口沿用 `automation-core-smoke.mjs` 的隔离 home、真实 Core、审
 比较前冻结脚本、fixture、参数和成功条件，保存源码差量与实际加载产物的散列。每个候选使用独立证据目录。先检查全部计划任务是否完成、错误类别与站点副作用，再比较相同成功任务的中位数和范围。失败、UNKNOWN、未运行和预期拒绝分别保留，不能把快速失败计为提速。冷启动、预热、人工等待与原生执行分别记录。小样本不支持稳定尾延迟或整体 Agent 能力结论。
 
 优化必须同时通过相关导航、表单、Ref 失效、接管与 UNKNOWN 回归。真实模型策略实验另按[评测方法](../benchmarks/methodology.md)冻结任务、来源、模型、预算、权限和完整尝试，不从确定性模型基准推断泛化收益。
+
+
+`pnpm --dir clients/gui run test:browser-navigation-recovery` 单独验证真实 command 导航：永久慢图片和重定向下本次文档可读，后续 locator 输入与点击产生真实 DOM 效果，截图尺寸按实际 DPR 位图及已知背景像素核对。未提交文档的实际接管和默认超时均保留 UNKNOWN，停止加载后控制转为 human，导航请求不重放。该入口直接经过 CorePreview，不经过真实 Core；完整 Core 门另由 `bench:browser-core` 验证。

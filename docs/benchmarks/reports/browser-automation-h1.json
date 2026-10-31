@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "hypothesis": "H1: main-document interactive readiness",
+  "beforeRuns": 5,
+  "afterRuns": 5,
+  "comparisons": [
+    {
+      "id": "ordinary-command",
+      "before": {
+        "count": 5,
+        "median": 132.37995899999987,
+        "min": 128.69029200000023,
+        "max": 135.77779199999986
+      },
+      "after": {
+        "count": 5,
+        "median": 129.62808399999994,
+        "min": 124.9842920000001,
+        "max": 135.05354200000056
+      },
+      "improvementPercent": 2.0787700954038923
+    },
+    {
+      "id": "ordinary-legacy",
+      "before": {
+        "count": 5,
+        "median": 6.1591249999992215,
+        "min": 5.766999999999825,
+        "max": 6.99370799999997
+      },
+      "after": {
+        "count": 5,
+        "median": 6.025666999999885,
+        "min": 5.741834000000381,
+        "max": 6.151458999999704
+      },
+      "improvementPercent": 2.166833762902254
+    },
+    {
+      "id": "slow-image-command",
+      "before": {
+        "count": 5,
+        "median": 2139.2363749999995,
+        "min": 2128.6109159999996,
+        "max": 2141.8737499999997
+      },
+      "after": {
+        "count": 5,
+        "median": 124.35420899999917,
+        "min": 124.30599999999959,
+        "max": 130.41733399999976
+      },
+      "improvementPercent": 94.1869813708642
+    },
+    {
+      "id": "slow-image-legacy",
+      "before": {
+        "count": 5,
+        "median": 5.791917000000467,
+        "min": 5.238583999999719,
+        "max": 7.282750000000306
+      },
+      "after": {
+        "count": 5,
+        "median": 5.7494580000002316,
+        "min": 5.3182919999999285,
+        "max": 5.841666999999688
+      },
+      "improvementPercent": 0.7330733503299824
+    }
+  ],
+  "verdict": "kept",
+  "scope": "Native navigation return time, not image load time or overall Agent task speed",
+  "benchmarkVersion": "browser-navigation-native-v2",
+  "gate": {
+    "target": "slow-image-command",
+    "minimumImprovementPercent": 20,
+    "allScoredCasesPassed": true,
+    "processRepeatsPerArm": 5,
+    "samplesPerScenarioPerProcess": 1,
+    "warmupPerScenarioPerProcess": 1,
+    "totalScoredCases": 40,
+    "totalWarmupCases": 40,
+    "coreTimedCasesPassed": 29,
+    "coreFunctionalChecksPassed": 33,
+    "recoveryCasesPassed": 4,
+    "browserContractsPassed": 69,
+    "guiTypecheck": "passed"
+  },
+  "controlInterpretation": "Ordinary navigation differences are within observed variation; no ordinary-navigation improvement claim.",
+  "evidence": {
+    "paired": ".scratch/browser-hillclimb/h1-confirmed",
+    "core": "/private/var/folders/06/v03n2mms0ks1nrrvkyzjllr40000gr/T/areal-automation-core-sBLUUZ/run-manifest.json",
+    "recovery": ".scratch/browser-hillclimb/h1-confirmed/recovery/RESULT.json",
+    "sensitivity": ".scratch/browser-hillclimb/h1-confirmed/sensitivity/RESULT.json"
+  },
+  "failedAttemptsRetained": [
+    ".scratch/browser-hillclimb/h1-paired/a1/RESULT.json",
+    ".scratch/browser-hillclimb/h1-paired/b3/RESULT.json",
+    ".scratch/browser-hillclimb/h1-v2-recovery/RESULT.json",
+    ".scratch/browser-hillclimb/h1-v3-recovery/RESULT.json"
+  ],
+  "oracleCorrections": [
+    "native-v2 waits for resource request appearance before checking exact counts; both arms rerun.",
+    "Recovery screenshot dimensions derive from CSS viewport times actual DPR; RGB tolerance two levels and exact alpha remain.",
+    "Uncommitted recovery uses public Stop after revocation before requiring human control."
+  ],
+  "provenance": {
+    "a": {
+      "sourceHead": "764e5205c5784ac5a415a5cdf9529e1d3059505a",
+      "scriptSHA256": "7e73b8e4f398ec666427bb26eedb23c44345222861a03772fcee0da734d4cb98",
+      "nativeCommandSHA256": "2b557c14d00790493a5628e9a221ca38a52151cead619c8554da6c6472cff072"
+    },
+    "b": {
+      "sourceHead": "8a56b16c5c2ad989fb42ff6383030e8226105545",
+      "scriptSHA256": "7e73b8e4f398ec666427bb26eedb23c44345222861a03772fcee0da734d4cb98",
+      "nativeCommandSHA256": "9688f1b6770888fcbb09e9ddd383d2e00fe1843fa52bc25a4053fb63fb7d5238"
+    }
+  }
+}
