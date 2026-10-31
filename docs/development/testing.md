@@ -55,6 +55,7 @@ cargo test --locked -p areal-engine --test model_input_budget
 node --test clients/gui/scripts/desktop-projection-transport.test.mjs
 pnpm --dir clients/gui test:navigation-cache
 pnpm --dir clients/gui test:unit renderer/src/readingViews.test.ts
+pnpm --dir clients/gui test:conversation-reading
 ```
 
 `scripts/ci-scope.py` 是本地与 CI 共用的检查计划所有者；`check-changed` 解析一次 merge-base，合并暂存、未暂存与未跟踪路径，重命名两侧均纳入，部分暂存相互抵消也保留选检。计划登记命令、依赖、环境能力、平台和 manifest 子测试全集，并绑定 base/source/head 与输入摘要。共享 Rust、schema、锁文件、构建与 CI 变化扩大范围，未知代码保守扩大；比较基准不可用时不得放行。
@@ -93,6 +94,8 @@ AREAL_CORE_BIN=/absolute/verified/bin/areal pnpm --dir clients/gui test:history-
 该原生测试在 `native-tests`（包含 `test-support`）下编译并使用既有测试构造入口，本改动不改变生产行为；未设置固定路径时应失败，不能当作跳过后通过。Runtime 场景核对写入后的真实持久记录、重开后工具结果及哨兵文件，防止把网络里程碑当作落盘或把恢复当作重放授权。`history-compat` 需要已构建 GUI；`profiles.json` 声明旧格式分页、已结算子会话和三种终态，runner 核对公开历史页、顺序、关系及 Renderer 文本，同时保持来源哈希不变和零模型请求。当前这两条原生路径的最终验收状态见[质量设计](t3code-quality-design.md)。
 
 `model_input_budget` 从默认 Desktop 的真实出站求解请求计量固定指令、环境说明及每工具的 name/description/parameters。首个 profile 明确不含 Runtime 与插件；动态用户正文和随机路径不计入固定基线。基线变化报告分项与工具名，必须人工审阅更新，不自动调整生产输入或额度。
+
+`test:conversation-reading` 使用生产 Messages、Desktop 历史窗口与确定性 Core RPC fixture，组合验证旧页淘汰、离开返回、重观察、后台增量、宽度变化和 Renderer 重载。该短场景登记为常规 ciSmoke；它不启动真实 Core 或 Electron，不证明供应商、安装包或物理输入验收。历史窗口的多视图保护、有限扫描、取消及预算失败由 bounded-history-client 行为检查覆盖。
 
 `test:navigation-cache` 使用生产 React App、真实 Chrome 和 fixture PlatformServices，记录无关 UI 操作的派生计算次数，检查名称、未读、运行、排序和新快照刷新，并保存源码身份及截图。它不启动 Core/Electron，也不验证安装包或感知延迟。`readingViews` 单测覆盖 32 项内存边界、最近访问淘汰、存储不可用和语义锚点重载；真实主题与布局连续性仍需 Renderer 场景。旧 `conversation-flow` 场景在 `.tool-summary-row .tool-failed` 定位器超时；生产折叠失败状态由 `ActivityRowStatus` 的 `data-tone="failed"` 表达。该 markup 与 `readingViews` 容量裁剪属于不同边界，本专项未修改旧 runner，完整对话流未计为通过。
 

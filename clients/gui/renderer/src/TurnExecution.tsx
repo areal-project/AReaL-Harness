@@ -1,11 +1,12 @@
 import { useI18n } from "./i18n/IntlProvider.js";
-import type { ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import { ActivityGroup, ThinkingStatus } from "@areal/ui/experimental";
 import "@areal/ui/conversation.css";
 import { spawnedAgent } from "./AgentIdentity.js";
 import { CircleAlert } from "lucide-react";
 import { ActivityIcon } from "./ActivityIcon.js";
 import { ReasoningGroup } from "./ReasoningGroup.js";
+import { readingDisclosure, rememberDisclosure } from "./conversationReading.js";
 import {
   activityLabel,
   activityRunLabel,
@@ -20,6 +21,25 @@ import {
   toolPresentation,
 } from "./conversationPresentation.js";
 import type { Data } from "./services.js";
+
+function ReadingActivityGroup({
+  readingKey,
+  ...props
+}: ComponentProps<typeof ActivityGroup> & { readingKey?: string }) {
+  const [open, setOpen] = useState(
+    () => (readingKey ? readingDisclosure(readingKey) : undefined) ?? false,
+  );
+  return (
+    <ActivityGroup
+      {...props}
+      open={open}
+      onOpenChange={(next) => {
+        if (readingKey) rememberDisclosure(readingKey, next);
+        setOpen(next);
+      }}
+    />
+  );
+}
 
 function canAnimateTurn(project: Data, threadId: string, turn: Data) {
   return (
@@ -110,20 +130,22 @@ export function TurnExecution({
   project,
   threadId,
   renderItem,
+  readingKey,
 }: {
   items: Data[];
   turn: Data;
   project: Data;
   threadId: string;
   renderItem: (item: Data, disclosure: { animate: boolean }) => ReactNode;
+  readingKey?: string;
 }) {
   const { t } = useI18n();
   const { unfinished } = executionOutcome(items);
   // 失败的步骤留在原位，由所在活动行写明结果（CONV-ACTIVITY-01），过程标题不另作提示。
-  const visibleItems = items;
+  const visibleItems = items.filter((item) => !item.historyOmitted);
   const tools = visibleItems.filter((item) => item.type === "dynamicToolCall");
   const unconfirmed = tools.some((item) => toolPresentation(item).state === "unsettled");
-  const rows = timelineItems(visibleItems);
+  const rows = timelineItems(items);
   const canAnimate = canAnimateTurn(project, threadId, turn);
   if (!rows.length) return null;
   const status =
@@ -137,11 +159,26 @@ export function TurnExecution({
   const runs = activityRuns(
     rows,
     (item) => !!spawnedAgent(item) || agentSettlements(item).length > 0,
-  );
+  )
+    .map((run) => ({
+      ...run,
+      items: run.items.flatMap((item) => {
+        if (item.type === "reasoningGroup") {
+          const resident = item.items.filter((entry: Data) => !entry.historyOmitted);
+          return resident.length ? [{ ...item, items: resident }] : [];
+        }
+        return item.historyOmitted ? [] : [item];
+      }),
+    }))
+    .filter((run) => run.items.length);
   const row = (item: Data) => (
     <div key={item.id} className="execution-row">
       {item.type === "reasoningGroup" ? (
-        <ReasoningGroup items={item.items} />
+        <ReasoningGroup
+          items={item.items}
+          readingKey={readingKey && JSON.stringify([readingKey, item.id])}
+          renderGap={(gap) => renderItem(gap, { animate: canAnimate })}
+        />
       ) : (
         renderItem(item, { animate: canAnimate })
       )}
@@ -151,15 +188,20 @@ export function TurnExecution({
     <div className="turn-execution" data-testid="turn-execution">
       {runs.map((run, index) => {
         const last = index === runs.length - 1;
-        const grouped = run.key !== null && run.items.length > 1;
-        const icon = activityStageIcon(grouped ? activityRunStages(run)[0] : null);
+        const activities = {
+          ...run,
+          items: run.items.filter((item) => item.type !== "historyPageGap"),
+        };
+        const grouped = run.key !== null && activities.items.length > 1;
+        const icon = activityStageIcon(grouped ? activityRunStages(activities)[0] : null);
         return (
-          <ActivityGroup
-            key={run.items[0].id}
+          <ReadingActivityGroup
+            key={run.id}
+            readingKey={readingKey && JSON.stringify([readingKey, run.id, "activity"])}
             presentation={grouped ? "collapsible" : "inline"}
             label={
               run.key !== null
-                ? activityRunLabel(run, t)
+                ? activityRunLabel(activities, t)
                 : run.items[0].type === "reasoningGroup"
                   ? t("common.turn.reasoning")
                   : t("common.turn.activity")
@@ -168,7 +210,7 @@ export function TurnExecution({
             status={last ? status : undefined}
           >
             {run.items.map(row)}
-          </ActivityGroup>
+          </ReadingActivityGroup>
         );
       })}
     </div>

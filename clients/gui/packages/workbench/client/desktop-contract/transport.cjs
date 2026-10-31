@@ -27,7 +27,11 @@ const commandDefinitions = Object.freeze({
   connect: ["service", "project", subscription],
   list: ["service", "project", read],
   open: ["service", "thread", subscription],
-  history: ["service", "thread", operations(read, "acquire loadOlder loadItem release")],
+  history: [
+    "service",
+    "thread",
+    operations(read, "acquire loadOlder loadItem retain ensureAnchor release"),
+  ],
   create: ["service", "project", recoverable],
   prepareCreator: ["service", "project", mutation],
   fork: ["service", "project", recoverable],

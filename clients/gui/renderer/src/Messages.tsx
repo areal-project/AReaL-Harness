@@ -1,3 +1,9 @@
+import {
+  beginReadingRestore,
+  changeReadingIntent,
+  createReadingState,
+  settleReadingRestore,
+} from "./conversationReading.js";
 import { observeResize } from "@areal/ui/observe-resize";
 import { PendingMessageView } from "./UserMessageBody.js";
 import {
@@ -29,6 +35,7 @@ import { TurnNavigation } from "./TurnNavigation.js";
 import {
   executionOutcome,
   executionSegments,
+  progressGroups,
   goalContinuationLabel,
   turnFailureMessage,
 } from "./conversationPresentation.js";
@@ -121,6 +128,7 @@ function restoreReadingAnchor(element: HTMLElement, anchor: ReadingAnchor) {
   const item = [...(turn?.querySelectorAll<HTMLElement>("[data-side-item-id]") ?? [])].find(
     (item) => item.dataset.sideItemId === anchor.itemId,
   );
+  if (item?.querySelector("[data-reading-pending]")) return "pending";
   const block =
     item && (anchor.blockIndex === null ? item : readingBlocks(item)[anchor.blockIndex]);
   if (!block) return false;
@@ -217,15 +225,60 @@ export function Messages({
     ...localThread,
     turns: [
       ...inherited.turns,
-      ...(localThread.turns ?? []).map((turn: Data) => ({
-        ...turn,
-        items: (turn.items ?? []).flatMap((item: Data) => [
-          ...(localThread.displayHistory?.gaps ?? [])
-            .filter((gap: Data) => gap.beforeItemId === item.id)
-            .map((gap: Data) => ({ ...gap, type: "historyPageGap" })),
-          item,
-        ]),
-      })),
+      ...(localThread.turns ?? []).map((turn: Data) => {
+        const items: Data[] = turn.items ?? [];
+        const records: Data[] = [...(localThread.displayHistory?.pageTopology ?? [])]
+          .reverse()
+          .flatMap((page: Data) => page.items.filter((item: Data) => item.turnId === turn.id));
+        const known = new Set(records.map((item) => item.itemId));
+        const shown = new Map(items.map((item) => [item.id, item]));
+        const topology = records.flatMap((record) => {
+          if (shown.has(record.itemId)) return [shown.get(record.itemId)!];
+          const slot = {
+            id: record.itemId,
+            type: record.type,
+            phase: record.phase,
+            historyActivityBreak: record.activityBreak,
+            historyOmitted: true,
+          };
+          return record.answers
+            ? [
+                slot,
+                {
+                  id: `question-answer:${record.itemId}`,
+                  type: "questionAnswer",
+                  historyOmitted: true,
+                },
+              ]
+            : record.visible === false
+              ? []
+              : [slot];
+        });
+        const ordered: Data[] = [];
+        let cursor = 0;
+        for (const item of items) {
+          if (known.has(item.id)) {
+            const index = topology.findIndex((entry) => entry.id === item.id);
+            while (cursor < index) ordered.push(topology[cursor++]);
+            cursor = Math.max(cursor, index + 1);
+          }
+          ordered.push(item);
+        }
+        ordered.push(...topology.slice(cursor).filter((item) => !shown.has(item.id)));
+        return {
+          ...turn,
+          items: ordered.flatMap((item) => [
+            ...(localThread.displayHistory?.gaps ?? [])
+              .filter((gap: Data) => gap.beforeItemId === item.id)
+              .map((gap: Data) => ({
+                ...gap,
+                type: "historyPageGap",
+                topologyKnown: gap.topologyKnown === true,
+              })),
+            item,
+          ]),
+        };
+      }),
     ],
   };
   const inheritedIds = new Set(inherited.turns.map((turn) => turn.id));
@@ -244,19 +297,20 @@ export function Messages({
       : undefined;
   const responseSpace = useRef<HTMLDivElement>(null);
   const container = useRef<HTMLDivElement>(null);
-  const follow = useRef(true);
   const olderSentinel = useRef<HTMLDivElement>(null);
   const autoOlderIntent = useRef(false);
   const shortAutoPages = useRef(0);
   const olderInFlight = useRef<object | undefined>(undefined);
   const scrollbarReading = useRef<number | undefined>(undefined);
-  const pageReading = useRef<{ owner: string; anchor?: ReadingAnchor; turns: Data } | undefined>(
-    undefined,
-  );
-  const pendingReading = useRef<ReadingAnchor | undefined>(undefined);
-  const disclosureReading = useRef<{ control: HTMLElement; offset: number } | undefined>(undefined);
   const readingViewport = useRef<{ width: number; height: number } | undefined>(undefined);
   const owner = JSON.stringify([project.id, thread.id, embedded]);
+  const reading = useRef(createReadingState(owner, history.generation));
+  const [, refreshReading] = useState(0);
+  const readingFrame = useRef<number | undefined>(undefined);
+  const layoutReading = useRef<() => void>(() => {});
+  const historyCurrent = useRef(history);
+  historyCurrent.current = history;
+  const retainedReading = useRef("");
   const latestTurnId = thread.turns?.at(-1)?.id;
   const latestSchedules = useMemo(() => latestScheduleItems(thread.turns ?? []), [thread.turns]);
   const [forking, setForking] = useState(false);
@@ -474,15 +528,42 @@ export function Messages({
   const [readingHistory, setReadingHistory] = useState(false);
   const rememberReading = () => {
     const element = container.current;
-    if (!element || !activeOwner.current || pendingReading.current) return;
+    if (
+      !element ||
+      !activeOwner.current ||
+      reading.current.kind === "restoring" ||
+      reading.current.kind === "blocked"
+    )
+      return;
     readingViews.delete(activeOwner.current);
     readingViews.set(activeOwner.current, {
       top: element.scrollTop,
-      following: follow.current,
+      following: reading.current.kind === "following",
       atTail: element.scrollHeight - element.scrollTop - element.clientHeight <= 1,
       responseSpace: reservation.current && { ...reservation.current },
-      anchor: follow.current ? undefined : readingAnchor(element),
+      anchor: reading.current.kind === "following" ? undefined : readingAnchor(element),
     });
+    const anchor = readingViews.get(activeOwner.current)?.anchor;
+    const identity = JSON.stringify([
+      historyCurrent.current.generation,
+      anchor?.turnId,
+      anchor?.itemId,
+    ]);
+    if (identity !== retainedReading.current) {
+      retainedReading.current = identity;
+      reading.current = changeReadingIntent(
+        reading.current,
+        reading.current.kind === "following"
+          ? { kind: "following" }
+          : {
+              kind: "holding",
+              anchor,
+              disclosure:
+                reading.current.kind === "holding" ? reading.current.disclosure : undefined,
+            },
+      );
+      void historyCurrent.current.retain(reading.current.revision, anchor ?? null).catch(() => {});
+    } else if (reading.current.kind === "holding") reading.current = { ...reading.current, anchor };
     saveReadingViews();
   };
   const releaseResponseSpace = () => {
@@ -490,21 +571,25 @@ export function Messages({
     if (responseSpace.current) responseSpace.current.style.height = "0px";
   };
   const readHere = (control?: HTMLElement) => {
-    pendingReading.current = undefined;
-    disclosureReading.current =
-      control && container.current
-        ? {
-            control,
-            offset:
-              control.getBoundingClientRect().top - container.current.getBoundingClientRect().top,
-          }
-        : undefined;
-    follow.current = false;
+    const element = container.current;
+    const anchor = element ? readingAnchor(element) : undefined;
+    reading.current = changeReadingIntent(reading.current, {
+      kind: "holding",
+      anchor,
+      disclosure:
+        control && element
+          ? {
+              control,
+              offset: control.getBoundingClientRect().top - element.getBoundingClientRect().top,
+            }
+          : undefined,
+    });
+    void historyCurrent.current.retain(reading.current.revision, anchor ?? null).catch(() => {});
     rememberReading();
   };
   const updateReading = () => {
     const element = container.current;
-    if (!element || pendingReading.current || pageReading.current) return;
+    if (!element || reading.current.kind === "restoring") return;
     const space = reservation.current;
     const section = element.querySelector<HTMLElement>("[data-latest-turn=true]");
     const viewport = readingViewport.current;
@@ -534,14 +619,23 @@ export function Messages({
     if (departed) releaseResponseSpace();
     // Releasing space can clamp this same navigation frame to the new tail.
     // Preserve its departure intent instead of immediately resuming following.
-    follow.current =
-      !disclosureReading.current &&
+    const following =
+      !(reading.current.kind === "holding" && reading.current.disclosure) &&
       !departed &&
       element.scrollHeight - element.scrollTop - element.clientHeight < 120 &&
-      (follow.current || (!!previous && element.scrollTop > previous.top + 1));
+      (reading.current.kind === "following" ||
+        (!!previous && element.scrollTop > previous.top + 1));
+    if (following && reading.current.kind !== "following")
+      reading.current = changeReadingIntent(reading.current, { kind: "following" });
+    if (!following && reading.current.kind === "following")
+      reading.current = changeReadingIntent(reading.current, {
+        kind: "holding",
+        anchor: readingAnchor(element),
+      });
     rememberReading();
     setReadingHistory(
-      !follow.current && element.scrollHeight - element.scrollTop - element.clientHeight >= 120,
+      reading.current.kind !== "following" &&
+        element.scrollHeight - element.scrollTop - element.clientHeight >= 120,
     );
   };
   const loadOlder = async (pageId?: string, automatic = false) => {
@@ -549,15 +643,15 @@ export function Messages({
     if (olderInFlight.current || localThread.displayHistory?.loadingOlder) return;
     autoOlderIntent.current = false;
     readHere();
-    const element = container.current;
-    pageReading.current = {
-      owner,
-      anchor: element ? readingAnchor(element) : undefined,
-      turns: localThread.turns,
-    };
     const request = {};
     olderInFlight.current = request;
     try {
+      const state = reading.current;
+      await history.retain(
+        state.revision,
+        state.kind === "holding" ? (state.anchor ?? null) : null,
+      );
+      if (reading.current.owner !== owner) return;
       await history.load(undefined, pageId);
     } finally {
       if (olderInFlight.current === request) olderInFlight.current = undefined;
@@ -569,7 +663,7 @@ export function Messages({
     if (
       !element ||
       !autoOlderIntent.current ||
-      follow.current ||
+      reading.current.kind === "following" ||
       history.failure ||
       !display?.supported ||
       display.complete ||
@@ -592,7 +686,6 @@ export function Messages({
     autoOlderIntent.current = false;
     shortAutoPages.current = 0;
     olderInFlight.current = undefined;
-    pageReading.current = undefined;
     const element = container.current;
     const sentinel = olderSentinel.current;
     if (embedded || !element || !sentinel) return;
@@ -617,22 +710,34 @@ export function Messages({
   ]);
   const requestOlderFromInput = () => {
     autoOlderIntent.current = true;
-    follow.current = false;
+    if (reading.current.kind === "following")
+      reading.current = changeReadingIntent(reading.current, { kind: "holding" });
     requestAnimationFrame(() => autoLoadCurrent.current());
   };
   const returnToBottom = () => {
     autoOlderIntent.current = false;
-    pageReading.current = undefined;
-    pendingReading.current = undefined;
-    disclosureReading.current = undefined;
+    reading.current = changeReadingIntent(reading.current, { kind: "following" });
+    void historyCurrent.current.retain(reading.current.revision, null).catch(() => {});
     releaseResponseSpace();
-    follow.current = true;
     // Instant scrolling avoids interpreting smooth-scroll frames as a reader
     // leaving the tail. Reading navigation never submits or restores execution.
     container.current?.scrollTo({ top: container.current.scrollHeight });
     rememberReading();
     setReadingHistory(false);
     updateReading();
+  };
+  const retryReading = () => {
+    const state = reading.current;
+    if (state.kind !== "blocked") return;
+    const request = beginReadingRestore(state, state.anchor);
+    reading.current = request;
+    refreshReading((value) => value + 1);
+    void history.ensure(request.revision, request.anchor).then((result) => {
+      const next = settleReadingRestore(reading.current, request, result);
+      if (next === reading.current) return;
+      reading.current = next;
+      refreshReading((value) => value + 1);
+    });
   };
   const renderImage = useCallback(
     (uri: string, name: string) =>
@@ -763,6 +868,43 @@ export function Messages({
     );
   };
   useLayoutEffect(() => {
+    if (embedded) return;
+    if (
+      reading.current.owner === owner &&
+      reading.current.generation === history.generation &&
+      activeOwner.current === owner
+    )
+      return;
+    const remembered = readingViews.get(owner);
+    const previous = reading.current;
+    reading.current = {
+      ...createReadingState(owner, history.generation),
+      revision: previous.revision + 1,
+    };
+    if (remembered?.following === false && remembered.anchor) {
+      const request = beginReadingRestore(reading.current, remembered.anchor);
+      reading.current = request;
+      const local = (localThread.turns ?? []).some(
+        (turn: Data) =>
+          turn.id === request.anchor.turnId &&
+          (turn.items ?? []).some(
+            (item: Data) => item.id === request.anchor.itemId && item.type !== "historyDeferred",
+          ),
+      );
+      const stale = localThread.displayHistory?.restoringItems?.includes(request.anchor.itemId);
+      if (local && !stale) {
+        reading.current = settleReadingRestore(reading.current, request, "ready");
+        void history.retain(request.revision, request.anchor).catch(() => {});
+      } else
+        void history.ensure(request.revision, request.anchor).then((result) => {
+          const next = settleReadingRestore(reading.current, request, result);
+          if (next === reading.current) return;
+          reading.current = next;
+          refreshReading((value) => value + 1);
+        });
+    } else void history.retain(reading.current.revision, null).catch(() => {});
+  }, [owner, history.generation, embedded]);
+  useLayoutEffect(() => {
     const element = container.current,
       spacer = responseSpace.current;
     if (embedded || !element || !spacer) return;
@@ -786,10 +928,7 @@ export function Messages({
         element.clientHeight - parseFloat(column.paddingTop) - parseFloat(column.paddingBottom),
       );
     };
-    if (switched || previous.id !== latestTurnId) disclosureReading.current = undefined;
     if (switched) {
-      follow.current = remembered?.following ?? true;
-      pendingReading.current = follow.current ? undefined : remembered?.anchor;
       reservation.current =
         reserveResponseSpace && remembered?.responseSpace
           ? { ...remembered.responseSpace }
@@ -798,7 +937,8 @@ export function Messages({
       // Reflow may leave all prior history visible while preserving a former
       // departure. The next accepted message follows from that actual tail;
       // readers still above an overflowing history retain their position.
-      if (!pendingReading.current) follow.current ||= remembered?.atTail === true;
+      if (reading.current.kind === "holding" && remembered?.atTail)
+        reading.current = changeReadingIntent(reading.current, { kind: "following" });
       // Only a mounted, accepted user follow-up creates space. Cold history,
       // the first turn and Goal continuations retain natural content height.
       // Core may deliver the user and process together or separately. Reserve
@@ -806,7 +946,7 @@ export function Messages({
       reservation.current =
         reserveResponseSpace &&
         previous.id &&
-        follow.current &&
+        reading.current.kind === "following" &&
         section &&
         user &&
         !goalContinuationLabel(latest)
@@ -828,33 +968,71 @@ export function Messages({
         space.contentHeight = contentHeight;
         spacer.style.height = `${space.height}px`;
       } else spacer.style.height = "0px";
-      const disclosure = disclosureReading.current;
+      if (readingFrame.current !== undefined) {
+        cancelAnimationFrame(readingFrame.current);
+        readingFrame.current = undefined;
+        updateReading();
+      }
+      const state = reading.current;
+      const disclosure = state.kind === "holding" ? state.disclosure : undefined;
       if (disclosure && element.contains(disclosure.control)) {
         element.scrollTop +=
           disclosure.control.getBoundingClientRect().top -
           element.getBoundingClientRect().top -
           disclosure.offset;
-      } else if (follow.current) element.scrollTop = element.scrollHeight;
-      else if (pendingReading.current && restoreReadingAnchor(element, pendingReading.current))
-        pendingReading.current = undefined;
+      } else if (state.kind === "following") element.scrollTop = element.scrollHeight;
+      else if (state.kind === "holding" && state.anchor)
+        restoreReadingAnchor(element, state.anchor);
+      else if (state.kind === "restoring" && state.phase === "ready") {
+        const result = restoreReadingAnchor(element, state.anchor);
+        if (result === true) {
+          reading.current = {
+            owner: state.owner,
+            generation: state.generation,
+            revision: state.revision,
+            kind: "holding",
+            anchor: state.anchor,
+          };
+        } else if (result === "pending") {
+          // Markdown 的惰性模块尚未准入正文，尺寸变化后沿原锚点继续恢复。
+        } else if (state.attempts >= 2) {
+          reading.current = settleReadingRestore(state, state, "layout");
+          refreshReading((value) => value + 1);
+        } else {
+          reading.current = { ...state, attempts: state.attempts + 1 };
+          requestAnimationFrame(() => layoutReading.current());
+        }
+      }
       readingViewport.current = { width: element.clientWidth, height: element.clientHeight };
       setReadingHistory(
-        !follow.current && element.scrollHeight - element.scrollTop - element.clientHeight >= 120,
+        reading.current.kind !== "following" &&
+          element.scrollHeight - element.scrollTop - element.clientHeight >= 120,
       );
       rememberReading();
     };
-    if (switched && !follow.current) element.scrollTop = remembered?.top ?? 0;
-    layout();
-    const cancelPendingReading = () => {
-      pageReading.current = undefined;
-      pendingReading.current = undefined;
-      disclosureReading.current = undefined;
-      rememberReading();
+    if (switched && reading.current.kind !== "following") element.scrollTop = remembered?.top ?? 0;
+    layoutReading.current = layout;
+    const cancelPendingReading = (event: Event) => {
+      if (
+        event.type !== "wheel" &&
+        event.target instanceof Element &&
+        event.target.closest("[data-reading-blocked] button")
+      )
+        return;
+      if (
+        event instanceof KeyboardEvent &&
+        (!["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key) ||
+          (event.target instanceof Element &&
+            event.target.closest("input, textarea, [contenteditable=true]")))
+      )
+        return;
+      readHere();
     };
     const wheel = (event: WheelEvent) => {
-      cancelPendingReading();
+      cancelPendingReading(event);
       if (event.deltaY >= 0 || element.scrollHeight <= element.clientHeight) return;
-      follow.current = false;
+      if (reading.current.kind === "following")
+        reading.current = changeReadingIntent(reading.current, { kind: "holding" });
       if (reservation.current) {
         const top = element.scrollTop;
         releaseResponseSpace();
@@ -869,16 +1047,25 @@ export function Messages({
     // 回合完成时过程组自动收起：跟随底部的读者继续跟随；离开底部的读者以该过程标题为锚，
     // 标题已滚出视口时把它放到视口顶部，最终回答紧随其后，而不是被截断落在中间。
     const autoCollapse = (event: Event) => {
-      if (follow.current || !(event.target instanceof HTMLElement)) return;
+      const state = reading.current;
+      if (state.kind !== "holding" || !state.anchor || !(event.target instanceof HTMLElement))
+        return;
+      const item = event.target.querySelector<HTMLElement>(
+        `[data-side-item-id="${CSS.escape(state.anchor.itemId)}"]`,
+      );
+      if (!item) return;
       const control = event.target.querySelector<HTMLElement>(".turn-progress-summary");
       if (!control) return;
-      disclosureReading.current = {
-        control,
-        offset: Math.max(
-          0,
-          control.getBoundingClientRect().top - element.getBoundingClientRect().top,
-        ),
-      };
+      reading.current = changeReadingIntent(reading.current, {
+        kind: "holding",
+        disclosure: {
+          control,
+          offset: Math.max(
+            0,
+            control.getBoundingClientRect().top - element.getBoundingClientRect().top,
+          ),
+        },
+      });
     };
     element.addEventListener(progressAutoCollapse, autoCollapse);
     element.addEventListener("wheel", wheel, { passive: false });
@@ -892,6 +1079,7 @@ export function Messages({
       layout,
     );
     return () => {
+      layoutReading.current = () => {};
       stopObserving();
       element.removeEventListener(progressAutoCollapse, autoCollapse);
       element.removeEventListener("wheel", wheel);
@@ -900,27 +1088,17 @@ export function Messages({
     };
   }, [owner, latestTurnId, reserveResponseSpace]);
   useLayoutEffect(() => {
-    const element = container.current;
-    if (embedded || !element || activeOwner.current !== owner || !pendingReading.current) return;
-    if (restoreReadingAnchor(element, pendingReading.current)) {
-      pendingReading.current = undefined;
-      rememberReading();
-    }
-    setReadingHistory(element.scrollHeight - element.scrollTop - element.clientHeight >= 120);
+    layoutReading.current();
   });
   useLayoutEffect(() => {
-    const reading = pageReading.current;
-    const element = container.current;
-    if (!reading || !element || reading.owner !== owner) return;
-    if (
-      history.failure ||
-      (reading.turns !== localThread.turns && !localThread.displayHistory?.loadingOlder)
-    ) {
-      if (reading.anchor) restoreReadingAnchor(element, reading.anchor);
-      pageReading.current = undefined;
-      rememberReading();
-    }
-  });
+    return () => {
+      if (readingFrame.current !== undefined) cancelAnimationFrame(readingFrame.current);
+      readingFrame.current = undefined;
+      // React 已替换子节点，清理时只保存最近一次已确认的阅读记录。
+      saveReadingViews();
+      reading.current = changeReadingIntent(reading.current, { kind: "holding" });
+    };
+  }, [owner]);
   return (
     <div className={embedded ? "messages-embedded" : "messages-shell"}>
       {!embedded && showTurnNavigation && (
@@ -929,11 +1107,8 @@ export function Messages({
           turns={thread.turns ?? []}
           container={container}
           onNavigate={() => {
-            pendingReading.current = undefined;
-            disclosureReading.current = undefined;
-            follow.current = false;
+            readHere();
             releaseResponseSpace();
-            rememberReading();
           }}
         />
       )}
@@ -949,8 +1124,13 @@ export function Messages({
                   if (element.scrollTop < scrollbarReading.current) requestOlderFromInput();
                   scrollbarReading.current = element.scrollTop;
                 }
-                updateReading();
-                autoLoadOlder();
+                if (readingFrame.current !== undefined) return;
+                readingFrame.current = requestAnimationFrame(() => {
+                  readingFrame.current = undefined;
+                  if (activeOwner.current !== owner) return;
+                  updateReading();
+                  autoLoadOlder();
+                });
               }
         }
         onWheelCapture={
@@ -1015,6 +1195,14 @@ export function Messages({
               <WorktreeStatus events={localThread.worktreeEvents} current={localThread.worktree} />
             )}
           {beforeTurns}
+          {reading.current.kind === "blocked" && (
+            <div data-reading-blocked={reading.current.reason}>
+              <p role="status">{t("chat.history.restoreBlocked")}</p>
+              <Button type="button" variant="ghost" size="sm" onClick={retryReading}>
+                {t("chat.history.restoreRetry")}
+              </Button>
+            </div>
+          )}
           {inherited.loading && <p role="status">正在加载继承历史…</p>}
           {inherited.error && <p role="alert">继承历史读取失败：{inherited.error}</p>}
           {localThread.displayHistory?.supported && (
@@ -1148,33 +1336,7 @@ export function Messages({
             const hasReadingSummary = hasFinal || !!legacyReply;
             // 带phase与旧快照共用同一过程总组；从运行期起保留挂载，
             // 完成收敛只隐藏内容，不重置工具详情或改变历史顺序。
-            const groups: {
-              id: string;
-              progress: boolean;
-              entries: { item: Data; index: number }[];
-            }[] = [];
-            segments.forEach((item: Data, index: number) => {
-              const progress =
-                item.type !== "historyDeferred" &&
-                item.type !== "historyPageGap" &&
-                item.type !== "questionAnswer" &&
-                item.type !== "userMessage" &&
-                item.type !== "agentMedia" &&
-                (item.type !== "agentMessage" ||
-                  item.phase === "commentary" ||
-                  (!!legacyReply && item.id !== legacyReply.id));
-              const previous = groups.at(-1);
-              if (progress && previous?.progress) previous.entries.push({ item, index });
-              // An earlier empty commentary can become visible after the reader
-              // opens tools. Anchor its group to the preceding reading boundary
-              // so that insertion retains both disclosure levels.
-              else
-                groups.push({
-                  id: progress ? `progress:${previous?.id ?? turn.id}` : item.id,
-                  progress,
-                  entries: [{ item, index }],
-                });
-            });
+            const groups = progressGroups(segments, turn.id, legacyReply?.id);
             // Stop is a Core terminal state, not a completed response. Keep its
             // process text inspectable and put the state before that content.
             const stopHeaderIndex = groups.findIndex((group) =>
@@ -1209,7 +1371,7 @@ export function Messages({
             );
             return (
               <section
-                key={turn.id}
+                key={JSON.stringify([owner, turn.id])}
                 data-turn-id={turn.id}
                 data-turn-status={turn.status}
                 data-latest-turn={turn.id === latestTurnId}
@@ -1225,6 +1387,7 @@ export function Messages({
                     group.entries.flatMap(({ item }) => item.items ?? []),
                   );
                   const contents = group.entries.map(({ item }) => {
+                    if (item.historyOmitted) return null;
                     if (item.type === "historyPageGap")
                       return (
                         <div key={item.id} className="notice" data-history-page-id={item.id}>
@@ -1356,7 +1519,10 @@ export function Messages({
                                   <CollapsibleText
                                     key={`${owner}:${item.id}`}
                                     onExpandedChange={() => {
-                                      follow.current = false;
+                                      if (reading.current.kind === "following")
+                                        reading.current = changeReadingIntent(reading.current, {
+                                          kind: "holding",
+                                        });
                                       releaseResponseSpace();
                                       rememberReading();
                                     }}
@@ -1423,11 +1589,24 @@ export function Messages({
                     return (
                       <TurnExecution
                         key={item.id}
+                        readingKey={JSON.stringify([project.id, thread.id, turn.id, item.id])}
                         items={item.items}
                         turn={turn}
                         project={project}
                         threadId={thread.id}
                         renderItem={(entry: Data, disclosure) => {
+                          if (entry.type === "historyPageGap")
+                            return (
+                              <Button
+                                key={entry.id}
+                                data-history-page-id={entry.id}
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => void loadOlder(entry.id)}
+                              >
+                                {t("chat.history.reloadPage")}
+                              </Button>
+                            );
                           if (entry.type === "dynamicToolCall")
                             return (
                               <div data-side-item-id={entry.id} key={entry.id}>
@@ -1488,6 +1667,7 @@ export function Messages({
                       {hasInterruption && groupIndex === stopHeaderIndex && stopHeading}
                       {group.progress ? (
                         <TurnProgress
+                          readingKey={JSON.stringify([project.id, thread.id, turn.id, group.id])}
                           summaryAvailable
                           turn={!thread.cloud && groupIndex === firstProgress ? turn : undefined}
                           connected={!!project.state?.connected}

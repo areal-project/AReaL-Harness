@@ -28,7 +28,7 @@ related: ["activity-row", "disclosure", "image-disclosure", "thinking-status"]
 
 ## 状态
 
-`R-ACTIVITYGROUP-003` 默认收起；手动选择在同一实例中保留，追加输出、完成事件或父组收起都不重置展开。切换项目、会话或轮次时读取该对象自身的状态。收起只是阅读动作，不停止、重试或恢复执行。
+`R-ACTIVITYGROUP-003` 默认收起；手动选择在同一实例中保留，追加输出、完成事件或父组收起都不重置展开。切换项目、会话或轮次时读取该对象自身的状态。收起只是阅读动作，不停止、重试或恢复执行。open 与 onOpenChange 交给宿主管理选择，可在历史页卸载后按同一活动组身份恢复；不传 open 时保留本实例的默认行为。
 
 `R-ACTIVITYGROUP-024` 待审批、失败、UNKNOWN 和未结算的状态与合法入口放在 status 插槽，收起时仍可发现。**为什么：**关键决定不能藏在待展开的日志里。**推广：**任何需要用户处理的结果都放在折叠之外。**检查：**`clients/gui/scripts/design-system-conversation-system.mjs`
 

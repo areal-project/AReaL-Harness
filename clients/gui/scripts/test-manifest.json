@@ -354,6 +354,15 @@
     "notes": "Chrome production Messages and reading checkpoint persistence; counts synchronous encoding work and verifies reload anchors."
   },
   {
+    "script": "test:conversation-reading",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["conversation", "history", "design"],
+    "requires": ["browser", "gui-build", "git"],
+    "ciSmoke": "conversation-reading",
+    "notes": "Production Messages and Desktop history with deterministic Core RPCs check evicted-page restore, reobservation, streaming and reflow. No provider or package coverage."
+  },
+  {
     "script": "test:history-recovery",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],

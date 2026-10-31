@@ -9,6 +9,8 @@ export type ActivityGroupProps = {
   icon?: ReactNode;
   indicator?: ReactNode;
   status?: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 /** A reading group, not an event grouper or execution-state owner. */
@@ -19,11 +21,15 @@ export function ActivityGroup({
   indicator,
   status,
   presentation,
+  open,
+  onOpenChange,
 }: ActivityGroupProps) {
   return (
     <div className="areal-activity-group" data-presentation={presentation}>
       <Disclosure
         presentation={presentation}
+        open={open}
+        onOpenChange={onOpenChange}
         label={label}
         icon={icon}
         indicator={indicator ?? <ActivityIcon kind="chevron" size={14} />}

@@ -25,6 +25,7 @@ const labels =
         agent: "This historical content",
         user: "This message",
         tool: "This tool record",
+        loadFailed: "Could not load history. Please try again.",
       }
     : {
         older: "加载更早的消息",
@@ -33,6 +34,7 @@ const labels =
         agent: "这段历史内容",
         user: "这条消息",
         tool: "这条工具记录",
+        loadFailed: "历史内容加载失败，请重试。",
       };
 const server = createServer(async (request, response) => {
   try {
@@ -274,6 +276,26 @@ try {
               publish();
             }
             if (params.operation === "release") return { ok: true, value: { released: true } };
+            if (params.operation === "retain")
+              return {
+                ok: true,
+                value: {
+                  supported: true,
+                  retained: true,
+                  revision: params.revision,
+                  viewGeneration: "fixture-view",
+                },
+              };
+            if (params.operation === "ensureAnchor")
+              return {
+                ok: true,
+                value: {
+                  supported: true,
+                  kind: "missing",
+                  revision: params.revision,
+                  viewGeneration: "fixture-view",
+                },
+              };
             if (params.operation === "acquire")
               return {
                 ok: true,
@@ -425,7 +447,10 @@ try {
   const activeTurn = {
     id: "active",
     status: "inProgress",
-    items: [{ id: "live-answer", type: "agentMessage", text: "ACTIVE_LIVE_SENTINEL" }],
+    items: [
+      { id: "live-answer", type: "agentMessage", text: "ACTIVE_LIVE_SENTINEL" },
+      { id: "active-tail", type: "agentMessage", text: "Active tail.\n\n".repeat(50) },
+    ],
   };
   const latest = () => ({
     thread: {
@@ -516,6 +541,16 @@ try {
     delta: "_CONTINUED",
   });
   await page.getByText("ACTIVE_LIVE_SENTINEL_CONTINUED", { exact: true }).waitFor();
+  const followLatest = async () => {
+    const bottom = page.getByRole("button", { name: "滚动到底部", exact: true });
+    if (await bottom.isVisible()) await bottom.click();
+    await page.waitForFunction(() =>
+      JSON.parse(sessionStorage.getItem("areal-gui:reading-views:v1") || "{}").views?.some(
+        (view) => view.position.kind === "latest",
+      ),
+    );
+  };
+  await followLatest();
   // 重新观察（打开会话、上下文压缩）期间，已显示的对话不随历史窗口重建而位移，
   // 渲染端只重新登记视图，不先释放再获取。
   const before = await page.evaluate(() => window.calls.length);
@@ -544,13 +579,12 @@ try {
     Math.max(...liveTops) - Math.min(...liveTops) <= 1,
     `re-observation moves displayed messages: ${[...new Set(liveTops)].join(",")}`,
   );
-  assert.deepEqual(
-    (await page.evaluate(() => window.calls))
-      .slice(before)
-      .filter((call) => call.name === "history")
-      .map((call) => call.params.operation),
-    ["acquire"],
-  );
+  const observationCalls = (await page.evaluate(() => window.calls))
+    .slice(before)
+    .filter((call) => call.name === "history")
+    .map((call) => call.params.operation);
+  assert.equal(observationCalls.filter((operation) => operation === "acquire").length, 1);
+  assert.ok(observationCalls.every((operation) => ["acquire", "retain"].includes(operation)));
   await page.getByText("ACTIVE_USER_SENTINEL", { exact: true }).waitFor();
   await page.waitForFunction(
     () => !document.querySelector(".message-column")?.textContent.includes("加载更早的消息"),
@@ -600,6 +634,7 @@ try {
       complete: false,
     };
   };
+  await followLatest();
   backend.installObservation(project, {
     thread: {
       id: "history-thread",
@@ -672,10 +707,7 @@ try {
   await page.screenshot({ path: join(scratch, "04-paging-gap.png"), animations: "disabled" });
   failNext = true;
   await older.click();
-  await page
-    .locator(".messages p[role=alert]")
-    .filter({ hasText: "PAGING_FAILURE_SENTINEL" })
-    .waitFor();
+  await page.locator(".messages p[role=alert]").filter({ hasText: labels.loadFailed }).waitFor();
   const failedReads = pageReads;
   await page.locator(".messages").evaluate((element) => {
     element.scrollTop = 0;
@@ -685,11 +717,11 @@ try {
   assert.equal(pageReads, failedReads, "failed automatic loads wait for an explicit retry");
   await older.click();
   await page.waitForFunction(
-    () =>
-      !document
-        .querySelector('.messages p[role="alert"]')
-        ?.textContent.includes("PAGING_FAILURE_SENTINEL"),
+    (message) =>
+      !document.querySelector('.messages p[role="alert"]')?.textContent.includes(message),
+    labels.loadFailed,
   );
+  await followLatest();
   shortPages = true;
   backend.installObservation(project, {
     thread: {

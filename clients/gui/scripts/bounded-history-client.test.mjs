@@ -99,6 +99,418 @@ function fixture(
   return { backend, project, calls, history };
 }
 
+function anchorFixture(count = 12, intercept = async () => {}) {
+  return fixture(async (method, params) => {
+    if (method === "areal/thread/observe") return baseline();
+    await intercept(params);
+    const n = params.cursor === "older" ? 0 : Number(params.cursor.slice(5));
+    return page([entry("old", item(`anchor-${n}`))], n + 1 < count ? `page:${n + 1}` : null);
+  });
+}
+const target = (n) => ({ turnId: "old", itemId: `anchor-${n}` });
+
+test("late loadOlder deduplicates a cursor committed by ensureAnchor without reversing the frontier", async () => {
+  let finish;
+  let reads = 0;
+  const f = anchorFixture(12, async () => {
+    if (++reads === 1)
+      await new Promise((resolve) => {
+        finish = resolve;
+      });
+  });
+  await f.backend.openThread(f.project, "thread");
+  await f.history("acquire");
+  const pending = f.history("loadOlder");
+  await new Promise((resolve) => setImmediate(resolve));
+  const published = [];
+  f.project.model.subscribe(() => published.push(f.project.model.state.threads.thread));
+  assert.equal((await f.history("ensureAnchor", { revision: 1, anchor: target(2) })).kind, "ready");
+  assert.equal(published.length, 1, "one atomic body, topology and frontier publication");
+  finish();
+  await pending;
+  const window = f.backend.historyWindow(f.project, "thread");
+  assert.deepEqual(
+    window.pageRecords.map((record) => record.cursor),
+    ["older", "page:1", "page:2"],
+  );
+  assert.equal(window.nextCursor, "page:3");
+  assert.deepEqual(ids(f), ["anchor-2", "anchor-1", "anchor-0", "i2"]);
+});
+
+test("loadOlder cache refusal leaves cursor and topology untouched", async () => {
+  const f = anchorFixture();
+  await f.backend.openThread(f.project, "thread");
+  for (let n = 0; n < 4; n++) {
+    const viewId = `pin-${n}`;
+    await f.history("acquire", { viewId });
+    await f.history("ensureAnchor", { viewId, revision: 1, anchor: target(n) });
+  }
+  const window = f.backend.historyWindow(f.project, "thread");
+  const before = JSON.stringify({
+    cursor: window.nextCursor,
+    records: window.pageRecords,
+    ids: ids(f),
+  });
+  await assert.rejects(f.history("loadOlder", { viewId: "pin-0" }), /占用/);
+  assert.equal(
+    JSON.stringify({ cursor: window.nextCursor, records: window.pageRecords, ids: ids(f) }),
+    before,
+  );
+});
+
+test("partial replacement retains stale pinned bodies and counts their cache slots", async () => {
+  let observed = 0;
+  const f = fixture(async (method, params) => {
+    if (method === "areal/thread/observe") {
+      observed++;
+      return baseline();
+    }
+    if (observed === 1)
+      return page([entry("old", item("a", "pinned body")), entry("old", item("b"))], null);
+    return params.cursor === "older"
+      ? page([entry("old", item("b", "fresh b"))], "a-page")
+      : page([entry("old", item("a", "fresh a"))], null);
+  });
+  await f.backend.openThread(f.project, "thread");
+  await f.history("acquire");
+  await f.history("acquire", { viewId: "view-b" });
+  await f.history("ensureAnchor", { revision: 1, anchor: { turnId: "old", itemId: "a" } });
+  await f.backend.openThread(f.project, "thread");
+  await f.history("loadOlder", { viewId: "view-b" });
+  const window = f.backend.historyWindow(f.project, "thread");
+  assert.deepEqual(ids(f), ["a", "b", "i2"]);
+  assert.equal(window.stalePages.length + window.pages.length, 2);
+  assert.equal(window.stalePages[0].data[0].item.text, "pinned body");
+  assert.deepEqual(
+    window.stalePages[0].data.map((entry) => entry.sourceItemId),
+    ["a"],
+  );
+  assert.equal(
+    (await f.history("ensureAnchor", { revision: 2, anchor: { turnId: "old", itemId: "a" } })).kind,
+    "ready",
+  );
+  assert.equal(window.stalePages.length, 0);
+  assert.equal(f.project.model.state.threads.thread.turns[0].items[0].text, "fresh a");
+});
+
+test("reobserve keeps same-turn multi-pin chronological order", async () => {
+  const f = anchorFixture();
+  await f.backend.openThread(f.project, "thread");
+  await f.history("acquire");
+  await f.history("acquire", { viewId: "view-b" });
+  await f.history("ensureAnchor", { revision: 1, anchor: target(0) });
+  await f.history("ensureAnchor", { viewId: "view-b", revision: 1, anchor: target(6) });
+  await f.backend.openThread(f.project, "thread");
+  assert.deepEqual(ids(f), ["anchor-6", "anchor-0", "i2"]);
+});
+
+test("reobserve treats a pinned item in the fresh baseline as authoritative", async () => {
+  for (const complete of [false, true]) {
+    let observations = 0;
+    const f = fixture(async (method) => {
+      if (method === "areal/thread/observe") {
+        if (++observations === 1) return baseline();
+        return {
+          ...baseline(),
+          thread: {
+            ...baseline().thread,
+            turns: [turn("old", [item("a", "fresh baseline")]), turn("t2", [item("i2")])],
+          },
+          history: { snapshotId: "snapshot", nextCursor: complete ? null : "older", complete },
+        };
+      }
+      return page([entry("old", item("a", "old page"))], null);
+    });
+    const anchor = { turnId: "old", itemId: "a" };
+    await f.backend.openThread(f.project, "thread");
+    await f.history("acquire");
+    assert.equal((await f.history("ensureAnchor", { revision: 1, anchor })).kind, "ready");
+    await f.backend.openThread(f.project, "thread");
+    const reads = f.calls.filter((call) => call.method === "areal/conversation/history").length;
+    assert.equal((await f.history("ensureAnchor", { revision: 2, anchor })).kind, "ready");
+    assert.equal(
+      f.calls.filter((call) => call.method === "areal/conversation/history").length,
+      reads,
+    );
+    assert.equal(f.project.model.state.threads.thread.turns[0].items[0].text, "fresh baseline");
+    await f.history("release");
+    assert.deepEqual(ids(f), ["a", "i2"]);
+  }
+});
+
+test("stale ensureAnchor refreshes observation and explicit retry uses the fresh cursor", async () => {
+  let observations = 0;
+  const cursors = [];
+  const f = fixture(async (method, params) => {
+    if (method === "areal/thread/observe") {
+      observations++;
+      return {
+        ...baseline(),
+        history: { ...baseline().history, nextCursor: observations === 1 ? "older" : "fresh" },
+      };
+    }
+    cursors.push(params.cursor);
+    if (params.cursor === "older")
+      throw Object.assign(new Error("edited"), { reason: "HISTORY_CURSOR_STALE" });
+    return page([entry("old", item("anchor-0"))], null);
+  });
+  await f.backend.openThread(f.project, "thread");
+  await f.history("acquire");
+  assert.notEqual(
+    (await f.history("ensureAnchor", { revision: 1, anchor: target(0) })).kind,
+    "ready",
+  );
+  assert.equal(observations, 2);
+  assert.deepEqual(cursors, ["older"]);
+  assert.equal((await f.history("ensureAnchor", { revision: 2, anchor: target(0) })).kind, "ready");
+  assert.deepEqual(cursors, ["older", "fresh"]);
+});
+
+test("page topology stays bounded while pinned bodies and evicted cursors remain readable", async () => {
+  const f = fixture(async (method, params) => {
+    if (method === "areal/thread/observe") return baseline();
+    const n = params.cursor === "older" ? 0 : Number(params.cursor.slice(5));
+    return page(
+      Array.from({ length: 32 }, (_, i) => entry("old", item(`${n}-${i}`))),
+      n < 59 ? `page:${n + 1}` : null,
+    );
+  });
+  await f.backend.openThread(f.project, "thread");
+  await f.history("acquire");
+  await f.history("loadOlder");
+  await f.history("retain", { revision: 1, anchor: { turnId: "old", itemId: "0-0" } });
+  for (let n = 1; n < 60; n++) await f.history("loadOlder");
+  const window = f.backend.historyWindow(f.project, "thread");
+  const history = f.project.model.state.threads.thread.displayHistory;
+  assert.ok(Buffer.byteLength(JSON.stringify(history.pageTopology)) <= 64 * 1024);
+  assert.ok(window.pages.length + window.stalePages.length <= 4);
+  assert.ok(
+    history.pageTopology.some((record) => record.items.some((item) => item.itemId === "0-0")),
+  );
+  const evicted = window.pageRecords.find((record) => record.cursor === "page:10");
+  assert.equal(evicted.items.length, 0);
+  assert.ok(history.gaps.some((gap) => gap.topologyKnown === false));
+  await f.history("loadOlder", { pageId: evicted.id });
+  assert.ok(ids(f).includes("10-0") && ids(f).includes("0-0"));
+  const restored = await f.history("ensureAnchor", {
+    revision: 2,
+    anchor: { turnId: "old", itemId: "11-0" },
+  });
+  assert.equal(restored.kind, "ready");
+  assert.ok(ids(f).includes("11-0"));
+  assert.ok(window.pageRecords.find((record) => record.cursor === "page:11").items.length);
+});
+
+test("missing one stale pin preserves another pin from the same former page", async () => {
+  let observations = 0;
+  const f = fixture(async (method) => {
+    if (method === "areal/thread/observe") {
+      observations++;
+      return baseline();
+    }
+    return page(
+      observations === 1
+        ? [entry("old", item("a")), entry("old", item("b"))]
+        : [entry("old", item("b"))],
+      null,
+    );
+  });
+  await f.backend.openThread(f.project, "thread");
+  await f.history("acquire");
+  await f.history("acquire", { viewId: "view-b" });
+  await f.history("ensureAnchor", { revision: 1, anchor: { turnId: "old", itemId: "a" } });
+  await f.history("retain", {
+    viewId: "view-b",
+    revision: 1,
+    anchor: { turnId: "old", itemId: "b" },
+  });
+  await f.backend.openThread(f.project, "thread");
+  assert.equal(
+    (await f.history("ensureAnchor", { revision: 2, anchor: { turnId: "old", itemId: "a" } })).kind,
+    "missing",
+  );
+  assert.deepEqual(ids(f), ["b", "i2"]);
+  assert.equal(f.backend.historyWindow(f.project, "thread").stalePages.length, 1);
+});
+
+test("concurrent anchor scans merge page identity and keep both targets pinned", async () => {
+  const f = anchorFixture();
+  await f.backend.openThread(f.project, "thread");
+  await f.history("acquire");
+  await f.history("acquire", { viewId: "view-b" });
+  const results = await Promise.all([
+    f.history("ensureAnchor", { revision: 1, anchor: target(3) }),
+    f.history("ensureAnchor", { viewId: "view-b", revision: 1, anchor: target(8) }),
+  ]);
+  assert.ok(results.every((result) => result.kind === "ready"));
+  const window = f.backend.historyWindow(f.project, "thread");
+  assert.equal(
+    new Set(window.pageRecords.map((record) => record.cursor)).size,
+    window.pageRecords.length,
+  );
+  assert.ok(ids(f).includes("anchor-3") && ids(f).includes("anchor-8"));
+  assert.ok(
+    window.pages.every((page) => window.pageRecords.some((record) => record.id === page.pageId)),
+  );
+  for (let index = 0; index < 4; index++) await f.history("loadOlder");
+  assert.ok(ids(f).includes("anchor-3") && ids(f).includes("anchor-8"));
+});
+
+test("ensureAnchor restores beyond four pages atomically and preserves live output", async () => {
+  const f = anchorFixture();
+  await f.backend.openThread(f.project, "thread");
+  await f.history("acquire");
+  const published = [];
+  f.project.model.subscribe(() => published.push(f.project.model.state.threads.thread));
+  const result = await f.history("ensureAnchor", { revision: 1, anchor: target(8) });
+  assert.equal(result.kind, "ready");
+  assert.ok(ids(f).includes("anchor-8"));
+  assert.ok(ids(f).includes("i2"));
+  assert.ok(f.backend.historyWindow(f.project, "thread").pages.length <= 4);
+  assert.ok(
+    published.every(
+      (thread) =>
+        !thread.turns.some((t) => t.items.some((i) => i.id.startsWith("anchor-"))) ||
+        thread.turns.some((t) => t.items.some((i) => i.id === "anchor-8")),
+    ),
+  );
+});
+
+test("two view pins survive paging and releasing one view frees only its pin", async () => {
+  const f = anchorFixture();
+  await f.backend.openThread(f.project, "thread");
+  await f.history("acquire");
+  await f.history("acquire", { viewId: "view-b" });
+  await f.history("ensureAnchor", { revision: 1, anchor: target(0) });
+  await f.history("ensureAnchor", { viewId: "view-b", revision: 1, anchor: target(6) });
+  for (let n = 0; n < 4; n++) await f.history("loadOlder");
+  assert.ok(ids(f).includes("anchor-0"));
+  assert.ok(ids(f).includes("anchor-6"));
+  await f.history("release");
+  assert.ok(ids(f).includes("anchor-6"));
+  await f.history("release", { viewId: "view-b" });
+  assert.deepEqual(ids(f), ["i2"]);
+});
+
+test("full pinned cache returns limited without evicting a reader or exceeding four pages", async () => {
+  const f = anchorFixture();
+  await f.backend.openThread(f.project, "thread");
+  for (let n = 0; n < 5; n++) {
+    const viewId = `view-${n}`;
+    await f.history("acquire", { viewId });
+    const result = await f.history("ensureAnchor", { viewId, revision: 1, anchor: target(n) });
+    assert.equal(result.kind, n === 4 ? "limited" : "ready");
+  }
+  assert.equal(f.backend.historyWindow(f.project, "thread").pages.length, 4);
+  for (let n = 0; n < 4; n++) assert.ok(ids(f).includes(`anchor-${n}`));
+});
+
+test("new intent and generation cancel late anchor reads without publication", async () => {
+  for (const replace of [false, true]) {
+    let finish;
+    const f = anchorFixture(
+      12,
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await f.backend.openThread(f.project, "thread");
+    await f.history("acquire");
+    const pending = f.history("ensureAnchor", { revision: 1, anchor: target(8) });
+    await Promise.race([pending, new Promise((resolve) => setImmediate(resolve))]);
+    assert.equal(typeof finish, "function");
+    if (replace) await f.backend.openThread(f.project, "thread");
+    else await f.history("retain", { revision: 2, anchor: null });
+    finish();
+    assert.equal((await pending).kind, "cancelled");
+    assert.deepEqual(ids(f), ["i2"]);
+  }
+});
+
+test("missing, bounded scan limit and legacy Core are explicit anchor outcomes", async () => {
+  for (const [count, kind] of [
+    [2, "missing"],
+    [40, "limited"],
+  ]) {
+    const f = anchorFixture(count);
+    await f.backend.openThread(f.project, "thread");
+    await f.history("acquire");
+    assert.equal((await f.history("ensureAnchor", { revision: 1, anchor: target(99) })).kind, kind);
+    assert.ok(f.calls.filter((call) => call.method === "areal/conversation/history").length <= 32);
+    assert.deepEqual(ids(f), ["i2"]);
+  }
+  const f = fixture(async () => ({ thread: baseline().thread }), { bounded: false });
+  assert.equal(
+    (await f.history("ensureAnchor", { revision: 1, anchor: target(0) })).supported,
+    false,
+  );
+});
+
+test("reobserve keeps only pinned snapshots until a fresh cursor confirms or misses the target", async () => {
+  let removed = false;
+  const f = fixture(async (method) => {
+    if (method === "areal/thread/observe")
+      return {
+        ...baseline(),
+        history: {
+          snapshotId: removed ? "new" : "snapshot",
+          nextCursor: removed ? "fresh" : "older",
+          complete: false,
+        },
+      };
+    return {
+      ...page(
+        removed ? [entry("old", item("replacement"))] : [entry("old", item("anchor-0"))],
+        null,
+      ),
+      snapshotId: removed ? "new" : "snapshot",
+    };
+  });
+  await f.backend.openThread(f.project, "thread");
+  await f.history("acquire");
+  await f.history("ensureAnchor", { revision: 1, anchor: target(0) });
+  removed = true;
+  await f.backend.openThread(f.project, "thread");
+  assert.ok(ids(f).includes("anchor-0"));
+  const result = await f.history("ensureAnchor", { revision: 2, anchor: target(0) });
+  assert.equal(result.kind, "missing");
+  assert.equal(f.calls.at(-1).params.cursor, "fresh");
+  assert.ok(!ids(f).includes("anchor-0"));
+});
+
+test("deferred anchor and byte budget never report ready without authoritative body", async () => {
+  for (const oversized of [false, true]) {
+    const f = fixture(async (method) =>
+      method === "areal/thread/observe"
+        ? baseline()
+        : page(
+            [
+              entry(
+                "old",
+                oversized
+                  ? item("anchor-0", "x".repeat(8 * 1024 * 1024))
+                  : {
+                      id: "anchor-0",
+                      type: "historyDeferred",
+                      cursor: "body",
+                      version: "v1",
+                      totalBytes: 9000000,
+                    },
+              ),
+            ],
+            null,
+          ),
+    );
+    await f.backend.openThread(f.project, "thread");
+    await f.history("acquire");
+    const result = await f.history("ensureAnchor", { revision: 1, anchor: target(0) });
+    assert.equal(result.kind, "limited");
+    assert.equal(result.reason, oversized ? "scanBudget" : "deferred");
+    assert.deepEqual(ids(f), ["i2"]);
+  }
+});
+
 test("history capability is a validated read with an explicit view owner", () => {
   assert.equal(commandSemantics("history", { operation: "loadOlder" }).effect, "read");
   validateCommand("history", { projectId: "p", threadId: "t", viewId: "v", operation: "acquire" });
@@ -722,6 +1134,33 @@ test("refresh preserves the shown latest prefix until authoritative hydration re
   assert.equal(ids(f).includes("prompt"), false, "a new connection cannot revive the old prefix");
   await f.history("release");
   resolvePage?.(page([], null));
+});
+
+test("explicit anchor recovery refreshes a stale failed latest-turn registration", async () => {
+  let observations = 0;
+  const f = fixture(async (method) => {
+    if (method === "areal/thread/observe") {
+      observations++;
+      if (observations === 1) return partialBaseline();
+      return {
+        ...baseline(),
+        thread: { ...baseline().thread, turns: [turn("t2", [item("edited")])] },
+        history: { snapshotId: "edited", complete: true, nextCursor: null },
+      };
+    }
+    throw Object.assign(new Error("edited"), { reason: "HISTORY_CURSOR_STALE" });
+  });
+  await f.backend.openThread(f.project, "thread");
+  await assert.rejects(f.history("acquire"));
+  await assert.rejects(f.history("acquire"));
+  assert.equal(observations, 1, "registration failure cannot start automatic refresh loops");
+  const restored = await f.history("ensureAnchor", {
+    revision: 1,
+    anchor: { turnId: "t2", itemId: "edited" },
+  });
+  assert.equal(restored.kind, "ready");
+  assert.equal(observations, 2);
+  assert.deepEqual(ids(f), ["edited"]);
 });
 
 test("a stale latest cursor stops until explicit retry and cannot resurrect the old prefix", async () => {

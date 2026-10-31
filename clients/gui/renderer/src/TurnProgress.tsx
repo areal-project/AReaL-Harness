@@ -1,3 +1,4 @@
+import { readingDisclosure, rememberDisclosure } from "./conversationReading.js";
 import { Button } from "@areal/ui";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
@@ -18,6 +19,7 @@ export function TurnProgress({
   label,
   turn,
   connected = false,
+  readingKey,
 }: {
   settled: boolean;
   summaryAvailable: boolean;
@@ -25,10 +27,18 @@ export function TurnProgress({
   label?: string;
   turn?: Data;
   connected?: boolean;
+  readingKey?: string;
 }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(!settled);
-  const manual = useRef(false);
+  const [open, setOpen] = useState(
+    () => (readingKey ? readingDisclosure(readingKey) : undefined) ?? !settled,
+  );
+  const manual = useRef(readingKey ? readingDisclosure(readingKey) !== undefined : false);
+  const toggle = () => {
+    manual.current = true;
+    if (readingKey) rememberDisclosure(readingKey, !open);
+    setOpen(!open);
+  };
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (manual.current) return;
@@ -53,10 +63,7 @@ export function TurnProgress({
             disclosure={{
               expanded,
               controls: id,
-              onToggle: () => {
-                manual.current = true;
-                setOpen(!open);
-              },
+              onToggle: toggle,
             }}
           />
         ) : (
@@ -72,10 +79,7 @@ export function TurnProgress({
                 })}
                 aria-expanded={expanded}
                 aria-controls={id}
-                onClick={() => {
-                  manual.current = true;
-                  setOpen(!open);
-                }}
+                onClick={toggle}
               >
                 <span>{label ?? t("chat.progress.defaultLabel")}</span>
                 <ActivityIcon kind="chevron" size={14} className={expanded ? "open" : ""} />

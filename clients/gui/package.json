@@ -172,7 +172,8 @@
     "test:mobile-android": "node scripts/mobile-android-smoke.mjs",
     "test:mobile-android-storage": "node scripts/mobile-android-storage.mjs",
     "test:relay-service": "node --test scripts/relay-service.test.cjs scripts/relay-deployment.test.cjs scripts/relay-resources.test.cjs scripts/mobile-local-relay.test.mjs && npm --prefix ../../services/remote-relay test",
-    "test:relay-service-ui": "node scripts/relay-service-ui-smoke.mjs"
+    "test:relay-service-ui": "node scripts/relay-service-ui-smoke.mjs",
+    "test:conversation-reading": "node scripts/conversation-reading-ui-smoke.mjs"
   },
   "devDependencies": {
     "@areal/remote-client": "workspace:*",

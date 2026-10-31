@@ -31,7 +31,9 @@ const { modelRef, parameters, strings } = require("./provider.cjs");
 /** @typedef {{kind:'itemRange',turnId:string,itemId:string,startUtf8:number,endUtf8:number,textSha256:string}|{kind:'userQuote',text:string,claimedTurnId?:string|null,claimedItemId?:string|null}} SideSelection */
 /** @typedef {{kind:string,turnId?:string|null,boundary?:string|null}} SideAnchor */
 /** @typedef {ProjectRequest & ({operation:'start',sourceThreadId:string,requestId?:string,text:string,workspaceAccess?:'none'|'readOnly',model?:import('./provider.cjs').ModelRef,resetModel?:boolean,anchor?:SideAnchor,selection?:SideSelection,parameters?:import('./provider.cjs').ModelParameters}|{operation:'create',sourceThreadId:string,requestId:string,firstInput?:{text:string}}|{operation:'close',threadId:string,requestId:string}|{operation:'recover',requestId:string,sourceThreadId?:string,threadId?:string,method?:'areal/side/start'|'areal/side/create'|'areal/side/close'}|{operation:'send',threadId:string,text:string,requestId?:string}|{operation:'context',threadId:string,cursor?:string,evidenceRef?:string,maxBytes?:number}|{operation:'list',sourceThreadId:string,includeArchived?:boolean,cursor?:string})} SideRequest */
-/** @typedef {ThreadRequest & {viewId:string} & ({operation:'acquire'}|{operation:'loadOlder',pageId?:string}|{operation:'release'}|{operation:'loadItem',itemId:string})} HistoryRequest */
+/** @typedef {{turnId:string,itemId:string}} HistoryAnchor */
+/** @typedef {{supported:true,revision:number,viewGeneration:string} & ({kind:'ready'|'missing'|'cancelled'}|{kind:'limited',reason:'scanBudget'|'cacheBudget'|'deferred'|'unavailable'})} AnchorResult */
+/** @typedef {ThreadRequest & {viewId:string} & ({operation:'acquire'}|{operation:'loadOlder',pageId?:string}|{operation:'release'}|{operation:'loadItem',itemId:string}|{operation:'retain',revision:number,anchor:HistoryAnchor|null}|{operation:'ensureAnchor',revision:number,anchor:HistoryAnchor})} HistoryRequest */
 /** @typedef {ThreadRequest & ({requestId?:never,operation?:never}|{requestId:string,operation:'update'|'remove'|'reorder'|'pause'|'resume'|'steer'})} QueueRequest */
 /** @typedef {ThreadRequest & {expectedRevision:number,requestId?:string} & ({operation:'update',queueItemId:string,retainedInput?:Array<Record<string,unknown>>}&Message|{operation:'remove',queueItemId:string}|{operation:'steer',queueItemId:string,expectedTurnId:string}|{operation:'reorder',queueItemIds:string[]}|{operation:'pause'|'resume'})} QueueEditRequest */
 /** @typedef {ThreadRequest & ({requestId:string,decision:'deny'|'allowOnce'|'allowSession'|'allowProject',answers?:never}|{requestId:string,answers:Record<string,string>,decision?:never})} RespondRequest */
@@ -44,7 +46,7 @@ const { modelRef, parameters, strings } = require("./provider.cjs");
 /** @typedef {{confirmed:false,state:string}|{confirmed:true,accepted:true,status:string,operation?:import('../../../runtime-client/core.js').OperationRef,error?:{message:string,code?:string|number,[key:string]:unknown},message?:string,result?:unknown}} SubmissionRead */
 /** @typedef {{queueRevision:number,queueItemId:string,turnId:string,itemId:string}} QueueSteer */
 /** @typedef {{snapshotId:string,evidence:Array<{evidenceRef:string,sourceTurnId:string,sourceItemId:string,sourceTurnStatus:string,text:string,range:{startUtf8:number,endUtf8:number,totalBytes:number}}>,nextCursor:string|null,complete:boolean}} SideContext */
-/** @template P @typedef {P extends {operation:'release'} ? {released:true} : {supported:false,message:string}|(P extends {operation:'acquire'} ? {supported:true,complete:boolean} : P extends {operation:'loadItem'} ? {loaded:true,itemId:string} : import('./conversation-history.cjs').HistoryPage|{data:[],complete:true,nextCursor:null})} HistoryResponse */
+/** @template P @typedef {P extends {operation:'release'} ? {released:true} : {supported:false,message:string}|(P extends {operation:'acquire'} ? {supported:true,complete:boolean} : P extends {operation:'retain'} ? {supported:true,retained:boolean,revision:number,viewGeneration:string} : P extends {operation:'ensureAnchor'} ? AnchorResult : P extends {operation:'loadItem'} ? {loaded:true,itemId:string} : import('./conversation-history.cjs').HistoryPage|{data:[],complete:true,nextCursor:null})} HistoryResponse */
 /** @template P @typedef {P extends {operation:'start'} ? Created & {requestId:string,turnId?:string} : P extends {operation:'create'} ? Created & {requestId:string,turnId?:string} : P extends {operation:'close'} ? {threadId:string,requestId:string,accepted:boolean,cleanupConfirmed:boolean} : P extends {operation:'recover'} ? {confirmed:false}|{confirmed:true,requestId:string,threadId:string,turnId?:string,accepted?:boolean,cleanupConfirmed?:boolean} : P extends {operation:'context'} ? SideContext : P extends {operation:'list'} ? {data:import('./conversation-history.cjs').HistorySummary[],nextCursor?:string|null} : TurnAdmission} SideResponse */
 /** @typedef {{projectId:string,profile:ResourceRef,skill:ResourceRef&{name:string,description:string},provenance:{upstream:string,revision:string,contentDigest:string}}} PrepareCreatorResponse */
 /** @template {Name} N @template [P=Requests[N]] @typedef {N extends 'connect'|'list'|'open'|'configure'|'respond'|'steer'|'dismissRecovery' ? import('./shared.cjs').DesktopSnapshot : N extends 'history' ? HistoryResponse<P> : N extends 'create' ? Created : N extends 'fork' ? Created & {requestId:string} : N extends 'prepareCreator' ? PrepareCreatorResponse : N extends 'side' ? SideResponse<P> : N extends 'prediction' ? Prediction|null : N extends 'send' ? TurnAdmission|{threadId:string,turnId?:string} : N extends 'continue'|'editMessage' ? TurnAdmission : N extends 'stop' ? import('./desktop-control.cjs').LifecycleResult : N extends 'attachBrowser' ? {threadId:string,toolsetRevision:number,bundleId:string} : N extends 'reconcile' ? {outcomes:Record<string,import('./shared.cjs').SubmissionOutcome>} : N extends 'queue' ? P extends {requestId:string} ? SubmissionRead : import('./shared.cjs').Queue : N extends 'queueEdit' ? P extends {operation:'steer'} ? QueueSteer : import('./shared.cjs').Queue : never} Response */
@@ -239,11 +241,18 @@ function isRequest(name, value) {
     case "history":
       return (
         identifier(value.viewId) &&
-        ["acquire", "release", "loadItem", "loadOlder"].some(
+        ["acquire", "release", "loadItem", "loadOlder", "retain", "ensureAnchor"].some(
           (entry) => value.operation === entry,
         ) &&
         (value.operation !== "loadItem" || identifier(value.itemId)) &&
         (value.pageId === undefined || identifier(value.pageId)) &&
+        (!["retain", "ensureAnchor"].includes(String(value.operation)) ||
+          (count(value.revision) &&
+            ((value.operation === "retain" && value.anchor === null) ||
+              (modelRecord(value.anchor) &&
+                identifier(value.anchor.turnId) &&
+                identifier(value.anchor.itemId) &&
+                only(value.anchor, ["turnId", "itemId"]))))) &&
         only(value, [
           "projectId",
           "threadId",
@@ -251,6 +260,9 @@ function isRequest(name, value) {
           "operation",
           ...(value.operation === "loadItem" ? ["itemId"] : []),
           ...(value.operation === "loadOlder" ? ["pageId"] : []),
+          ...(["retain", "ensureAnchor"].includes(String(value.operation))
+            ? ["revision", "anchor"]
+            : []),
         ])
       );
     case "create":
@@ -546,6 +558,20 @@ function response(name, request, value) {
     if (value.supported === false) return typeof value.message === "string";
     if (request.operation === "acquire")
       return value.supported === true && typeof value.complete === "boolean";
+    if (request.operation === "retain" || request.operation === "ensureAnchor") {
+      if (
+        value.supported !== true ||
+        value.revision !== request.revision ||
+        !identifier(value.viewGeneration)
+      )
+        return false;
+      if (request.operation === "retain") return typeof value.retained === "boolean";
+      return (
+        ["ready", "missing", "cancelled"].includes(String(value.kind)) ||
+        (value.kind === "limited" &&
+          ["scanBudget", "cacheBudget", "deferred", "unavailable"].includes(String(value.reason)))
+      );
+    }
     if (request.operation === "loadItem")
       return value.loaded === true && value.itemId === request.itemId;
     return (

@@ -22,7 +22,7 @@ related: ["button", "activity-group", "image-disclosure"]
 
 ## 状态
 
-`R-DISCLOSURE-002` 默认收起；同一实例中的手动展开会保留。keepMounted 用于父组收起后仍要保留的子详情。
+`R-DISCLOSURE-002` 默认收起；同一实例中的手动展开会保留。keepMounted 用于父组收起后仍要保留的子详情。宿主可通过 open 与 onOpenChange 管理阅读选择，以语义对象身份保存并在重新挂载时恢复。未传 open 时仍由组件保存本实例的选择。
 
 ## 行为
 

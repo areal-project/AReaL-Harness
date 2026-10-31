@@ -2695,7 +2695,7 @@
       "title": "默认收起",
       "owner": "clients/gui/packages/ui/src/components/disclosure/disclosure.md#状态",
       "strength": "default",
-      "textSha256": "7e0b2bf361f66591422edde17cad0f0d80b7fd4cf99fb4555a6cdd9607485fec"
+      "textSha256": "f05c24a237a33769308d61bbfd44a56139db8f64c61ed627c4874937dbe1fee0"
     },
     {
       "id": "R-DISCLOSURE-003",
@@ -2919,7 +2919,7 @@
       "title": "默认收起",
       "owner": "clients/gui/packages/ui/src/conversation/activity-group/activity-group.md#状态",
       "strength": "default",
-      "textSha256": "a50a4ebdff5e245b3b32752fe7f72f7ec1d41771d539b48e65fc1e7963abe3ce"
+      "textSha256": "f8833a40ce601b44e78dfb06f59f687f99ab867162bffbbc1e756da0cd977c53"
     },
     {
       "id": "R-ACTIVITYGROUP-004",
@@ -4527,21 +4527,21 @@
       "title": "Messages 继续拥有阅读状态",
       "owner": "clients/gui/renderer/src/Messages.md#同窗口-renderer-恢复阅读",
       "strength": "must",
-      "textSha256": "f69b7ea1bb21ff57ea76f7988f325724cbb4635738c26ca7d98452944bcb3399"
+      "textSha256": "70e01ed977659457d4431f442a1bef7fd09911697cef97ba32aef130a6fd9963"
     },
     {
       "id": "R-MESSAGES-005",
       "title": "权威历史尚未补齐时，未解析的锚点保持待恢复",
       "owner": "clients/gui/renderer/src/Messages.md#同窗口-renderer-恢复阅读",
       "strength": "must",
-      "textSha256": "885bd6fe0f0dda9ca68fdb5da0af8cb32cafeecb2d80c993732a46caa75360a7"
+      "textSha256": "aa55de3b4dd92c2b66da926aa4338aa7fe62504c11b8b4874053d205b7959eef"
     },
     {
       "id": "R-MESSAGES-006",
-      "title": "本合同不承诺同一字符、完整应用退出后的阅读位置、过程展开状态、跨窗口或嵌入阅读区恢复",
+      "title": "本合同不承诺同一字符、完整应用退出后的阅读位置、跨窗口或嵌入阅读区恢复",
       "owner": "clients/gui/renderer/src/Messages.md#同窗口-renderer-恢复阅读",
       "strength": "default",
-      "textSha256": "9412b8ed2aac889b5b4a88f385206963703cd0dfd584232e28c17e7c651d84ba"
+      "textSha256": "62aa7235d17d8e2a04c9aca9869fa857b148189614ca781345fbcc2c5fb0a15f"
     },
     {
       "id": "R-MESSAGES-007",
@@ -4668,7 +4668,7 @@
       "title": "跟随最新时，新内容可推进视口",
       "owner": "clients/gui/renderer/src/Messages.md#对话信息流",
       "strength": "default",
-      "textSha256": "6672abc1fa63a14a5b64ca803d8f2e1be22be823e474553f9a9f45a844083b89"
+      "textSha256": "ce901a44f69717872f434ad366f0d8286afc015a6162406c4323f8297e1149d1"
     },
     {
       "id": "CONV-RESOURCE-01",

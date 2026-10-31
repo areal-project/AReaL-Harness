@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";
 import type { Action, Data } from "./services.js";
 import { useI18n } from "./i18n/IntlProvider.js";
+import type { ReadingAnchor } from "./readingViews.js";
+import type { ReadingBlock } from "./conversationReading.js";
 
 /** 阅读视图只持有显示缓存；关闭或切换不发送停止、继续或任何任务写入。 */
 export function useConversationHistory(projectId: string, thread: Data, action: Action) {
@@ -17,12 +19,31 @@ export function useConversationHistory(projectId: string, thread: Data, action: 
     itemId?: string;
     message: string;
   }>();
+  const registration = useRef<{ generation: string; promise: Promise<unknown> } | undefined>(
+    undefined,
+  );
+  const register = useCallback(() => {
+    if (registration.current?.generation !== generation) {
+      const promise = action("history", {
+        projectId,
+        threadId: thread.id,
+        viewId,
+        operation: "acquire",
+      });
+      registration.current = { generation, promise };
+      void promise.catch(() => {
+        if (registration.current?.promise === promise) registration.current = undefined;
+      });
+    }
+    return registration.current.promise;
+  }, [action, generation, projectId, thread.id, viewId]);
   useEffect(() => {
     if (!supported) return;
     const request = { projectId, threadId: thread.id, viewId };
 
     return () => {
-      current.current = undefined;
+      if (current.current === generation) current.current = undefined;
+      registration.current = undefined;
       void action("history", { ...request, operation: "release" }).catch(() => {});
     };
   }, [action, owner, projectId, supported, thread.id, viewId]);
@@ -32,7 +53,7 @@ export function useConversationHistory(projectId: string, thread: Data, action: 
     if (!supported) return;
     current.current = generation;
     let active = true;
-    void action("history", { projectId, threadId: thread.id, viewId, operation: "acquire" }).then(
+    void register().then(
       () => {
         if (active && current.current === generation) setFailure(undefined);
       },
@@ -44,7 +65,7 @@ export function useConversationHistory(projectId: string, thread: Data, action: 
     return () => {
       active = false;
     };
-  }, [action, generation, projectId, supported, thread.id, viewId, t]);
+  }, [generation, supported, register, t]);
   const load = useCallback(
     async (itemId?: string, pageId?: string) => {
       setFailure(undefined);
@@ -68,7 +89,53 @@ export function useConversationHistory(projectId: string, thread: Data, action: 
     },
     [action, generation, projectId, thread.id, viewId, t],
   );
-  return { load, failure: failure?.generation === generation ? failure : undefined };
+  const retain = useCallback(
+    async (revision: number, anchor: ReadingAnchor | null) => {
+      if (!supported) return;
+      await register();
+      if (current.current !== generation) return;
+      await action("history", {
+        projectId,
+        threadId: thread.id,
+        viewId,
+        operation: "retain",
+        revision,
+        anchor: anchor && { turnId: anchor.turnId, itemId: anchor.itemId },
+      });
+    },
+    [action, generation, projectId, thread.id, viewId, supported, register],
+  );
+  const ensure = useCallback(
+    async (revision: number, anchor: ReadingAnchor): Promise<"ready" | ReadingBlock> => {
+      if (!supported) return "unsupported";
+      try {
+        await register().catch(() => {});
+        if (current.current !== generation) return "cancelled";
+        const result = await action("history", {
+          projectId,
+          threadId: thread.id,
+          viewId,
+          operation: "ensureAnchor",
+          revision,
+          anchor: { turnId: anchor.turnId, itemId: anchor.itemId },
+        });
+        if (current.current !== generation) return "cancelled";
+        if (result.supported && result.viewGeneration !== thread.displayHistory?.viewGeneration)
+          return "cancelled";
+        return result.supported ? result.kind : "unsupported";
+      } catch {
+        return current.current === generation ? "limited" : "cancelled";
+      }
+    },
+    [action, generation, projectId, thread.id, viewId, supported, register],
+  );
+  return {
+    load,
+    retain,
+    ensure,
+    generation,
+    failure: failure?.generation === generation ? failure : undefined,
+  };
 }
 
 export function DeferredHistoryItem({

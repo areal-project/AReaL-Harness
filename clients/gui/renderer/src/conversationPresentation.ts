@@ -140,13 +140,23 @@ export function activityStageIcon(stage: string | null): string {
 export function activityRuns(
   rows: Data[],
   isBreaker: (item: Data) => boolean = () => false,
-): { key: string | null; items: Data[] }[] {
-  const runs: { key: string | null; items: Data[] }[] = [];
+): { id: string; key: string | null; items: Data[] }[] {
+  const runs: { id: string; key: string | null; items: Data[] }[] = [];
+  let boundary = "start";
   for (const item of rows) {
-    const key = item.type === "dynamicToolCall" && !isBreaker(item) ? "工具" : null;
     const last = runs.at(-1);
+    if (item.type === "historyPageGap" && item.topologyKnown) {
+      if (last) last.items.push(item);
+      else runs.push({ id: item.id, key: null, items: [item] });
+      continue;
+    }
+    const key =
+      item.type === "dynamicToolCall" && !item.historyActivityBreak && !isBreaker(item)
+        ? "工具"
+        : null;
     if (key !== null && last?.key === key) last.items.push(item);
-    else runs.push({ key, items: [item] });
+    else runs.push({ id: key === null ? item.id : `tools:${boundary}`, key, items: [item] });
+    if (key === null) boundary = item.id;
   }
   return runs;
 }
@@ -366,10 +376,17 @@ export function timelineItems(items: Data[]): Data[] {
   const result: Data[] = [];
   let reasoningGroup: Data | undefined;
   for (const item of items) {
+    if (item.type === "historyPageGap" && item.topologyKnown && reasoningGroup) {
+      reasoningGroup.items.push(item);
+      continue;
+    }
     if (item.type === "modelContext" || (item.type === "agentMessage" && !item.text?.trim()))
       continue;
     if (item.type === "reasoning") {
-      if (![...(item.summary ?? []), ...(item.content ?? [])].some((text: string) => text.trim()))
+      if (
+        !item.historyOmitted &&
+        ![...(item.summary ?? []), ...(item.content ?? [])].some((text: string) => text.trim())
+      )
         continue;
       if (!reasoningGroup) {
         reasoningGroup = { id: `reasoning:${item.id}`, type: "reasoningGroup", items: [] };
@@ -497,15 +514,24 @@ export function executionSegments(items: Data[], turnStatus: string): Data[] {
   const result: Data[] = [];
   let group: Data | undefined;
   for (const item of processItems(items, turnStatus)) {
+    if (item.type === "historyPageGap" && item.topologyKnown) {
+      if (group) group.items.push(item);
+      else result.push(item);
+      continue;
+    }
     if (item.processOwnerId) continue;
-    if (item.type === "modelContext" || (item.type === "agentMessage" && !item.text?.trim()))
+    if (
+      item.type === "modelContext" ||
+      (item.type === "agentMessage" && !item.text?.trim() && !item.historyOmitted)
+    )
       continue;
     if (
       item.type === "userMessage" ||
       item.type === "agentMessage" ||
       item.type === "agentMedia" ||
       item.type === "historyDeferred" ||
-      item.type === "historyPageGap"
+      item.type === "historyPageGap" ||
+      item.type === "questionAnswer"
     ) {
       result.push(item);
       group = undefined;
@@ -549,6 +575,40 @@ export function executionSegments(items: Data[], turnStatus: string): Data[] {
   }
   return result;
 }
+export function progressGroups(segments: Data[], turnId: string, legacyReplyId?: string) {
+  const groups: { id: string; progress: boolean; entries: { item: Data; index: number }[] }[] = [];
+  let boundary = turnId;
+  let group: (typeof groups)[number] | undefined;
+  segments.forEach((item, index) => {
+    if (item.type === "historyPageGap" && item.topologyKnown) {
+      if (group) group.entries.push({ item, index });
+      else groups.push({ id: item.id, progress: false, entries: [{ item, index }] });
+      return;
+    }
+    const progress =
+      item.type !== "historyDeferred" &&
+      item.type !== "historyPageGap" &&
+      item.type !== "questionAnswer" &&
+      item.type !== "userMessage" &&
+      item.type !== "agentMedia" &&
+      (item.type !== "agentMessage" ||
+        item.phase === "commentary" ||
+        (!!legacyReplyId && item.id !== legacyReplyId));
+    if (progress && group) group.entries.push({ item, index });
+    else {
+      const next = {
+        id: progress ? `progress:${boundary}` : item.id,
+        progress,
+        entries: [{ item, index }],
+      };
+      groups.push(next);
+      group = progress ? next : undefined;
+    }
+    if (!progress) boundary = item.id;
+  });
+  return groups;
+}
+
 /** Only Core's explicit continuation origin identifies scheduler-authored input. */
 export function goalContinuationLabel(turn: {
   goal?: { origin?: string; sequence?: number };
