@@ -18,7 +18,7 @@
 
 `work.list` 必须提供 `context.projectId`，接受 `filter: all|active|attention`（默认 all）、`cursor?` 和 `limit?`，返回 `{projectId,serviceGeneration,data,nextCursor,complete}`。`attention.list` 使用同一项目上下文，接受 cursor/limit，返回有界 AttentionSummary 页并额外标注 `summariesComplete`。两者只使用当前在线且兼容的既有 Core 连接，异步读取后重新核验授权，不启动服务或修复配置。ready 与 host.describe 同时返回实际已实现的方法列表。
 
-原生 `areal/work/overview` 在分页前按 principal/thread 范围收窄，直接读取既有 Thread/Turn、TaskRun、待处理交互、队列和 Task Channel，不展开完整历史或新增持久状态。普通已归档 Thread 不进入概览；已由 Run 表示的协调 Thread 与 worker 不重复列作普通会话，worker 在 Run 下明确归属。运行中或失败工作也可能有可读结果，结果可读不表示成功。更新时间只用来源记录，没有可证更新时间时为 null。
+原生 `areal/work/overview` 在分页前按 principal/thread 范围收窄，直接读取既有 Thread/Turn、TaskRun、待处理交互、队列和 Task Channel，不展开完整历史或新增持久状态。普通已归档 Thread 不进入概览；已由 Run 表示的协调 Thread 与 worker 不重复列作普通会话，worker 在 Run 下明确归属。运行中或失败工作也可能有可读结果，结果可读不表示成功。更新时间 `sourceUpdatedAt` 使用 Unix 秒；普通会话取会话更新时间、创建时间及轮次开始/完成时间的最大值，没有可证更新时间时为 null。查询在分页前按更新时间倒序，同秒以原生身份稳定排序；手机列表展示该更新时间。游标为不透明的 v2 时间键，旧身份游标需重新从首页查询；分页期间记录更新时应刷新首页。
 
 概览默认 30 条、最多 100 条、页面不超过 128 KiB。标题最多 512 UTF-8 字节，待处理摘要最多 256 字节；每张工作卡最多携带 32 个待处理引用和 32 个 worker，另给出实际数量、完整性及 `summaryTruncated`。原生 thread/task/run/interaction/question 身份是桌面详情引用。摘要截断不表示已加载全部待处理或 worker；此时 attention.list 明确返回 `summariesComplete: false`。不包含完整参数或 transcript。概览的 `availableActions` 仍为空；创建/发送入口根据连接能力与当前详情状态启用。
 

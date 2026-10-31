@@ -82,7 +82,8 @@ fn thread_details(row: &mut WorkItem, thread: &Thread, goal: Option<&str>, ordin
     };
     let turn = thread.turns.iter().rev().find(belongs);
     if ordinary {
-        row.source_updated_at = Some(thread.updated_at);
+        row.source_updated_at =
+            Some(crate::catalog::latest_activity_at(thread).max(thread.created_at));
         row.parent_thread_id = thread.parent_thread_id.clone();
         row.execution.state = match turn.map(|t| &t.status) {
             Some(TurnStatus::InProgress) => "running",
@@ -186,6 +187,9 @@ fn consider(
     request: &OverviewRequest,
     capacity: usize,
 ) {
+    // 固定宽度的反向时间键保证分页先选最新记录，同秒再按身份稳定排序。
+    let timestamp = row.source_updated_at.unwrap_or(0).max(0);
+    let key = format!("v2:{:019}:{key}", i64::MAX - timestamp);
     if request.cursor.as_ref().is_some_and(|cursor| key <= *cursor) {
         return;
     }
@@ -215,7 +219,14 @@ impl Engine {
             return Err(invalid("limit must be 1..100"));
         }
         if request.cursor.as_ref().is_some_and(|c| {
-            c.len() > 256 || !(c.starts_with("thread:") || c.starts_with("taskRun:"))
+            c.len() > 256
+                || !c.strip_prefix("v2:").is_some_and(|rest| {
+                    rest.split_once(':').is_some_and(|(time, id)| {
+                        time.len() == 19
+                            && time.parse::<i64>().is_ok()
+                            && (id.starts_with("thread:") || id.starts_with("taskRun:"))
+                    })
+                })
         }) {
             return Err(invalid("invalid overview cursor"));
         }
@@ -450,5 +461,42 @@ impl Engine {
             next_cursor: if more { last } else { None },
             complete: !more,
         })
+    }
+}
+
+#[cfg(test)]
+mod ordering_tests {
+    use super::*;
+
+    #[test]
+    fn overview_pages_by_latest_modification_before_identity() {
+        let request = OverviewRequest {
+            limit: Some(1),
+            ..Default::default()
+        };
+        let mut rows = BTreeMap::new();
+        for (id, at) in [("thread:a", 100), ("thread:z", 300), ("thread:b", 200)] {
+            let mut row = empty_row("thread", id);
+            row.source_updated_at = Some(at);
+            consider(&mut rows, id.into(), row, &request, 2);
+        }
+        let (cursor, newest) = rows.pop_first().unwrap();
+        assert_eq!(newest.source_updated_at, Some(300));
+        let request = OverviewRequest {
+            cursor: Some(cursor),
+            ..request
+        };
+        let mut next = BTreeMap::new();
+        for (id, at) in [("thread:a", 100), ("thread:z", 300), ("thread:b", 200)] {
+            let mut row = empty_row("thread", id);
+            row.source_updated_at = Some(at);
+            consider(&mut next, id.into(), row, &request, 2);
+        }
+        assert_eq!(
+            next.values()
+                .map(|r| r.source_updated_at.unwrap())
+                .collect::<Vec<_>>(),
+            vec![200, 100]
+        );
     }
 }

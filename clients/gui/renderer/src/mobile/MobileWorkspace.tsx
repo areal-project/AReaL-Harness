@@ -221,7 +221,7 @@ export function MobileWorkspaceView({
               const updated = rows
                 .map((row: Data) => row.sourceUpdatedAt)
                 .filter((value: unknown) => value !== null && value !== undefined)
-                .sort()
+                .sort((a: number, b: number) => a - b)
                 .at(-1);
               return (
                 <Button
@@ -234,7 +234,7 @@ export function MobileWorkspaceView({
                   }
                   onClick={() => workspace.navigate({ kind: "work", projectId: project.projectId })}
                 >
-                  <span className="mobile-folder-icon grid place-items-center shrink-0 size-[var(--size-touch-target)] bg-background [border-radius:var(--radius-control)]">
+                  <span className="mobile-folder-icon grid place-items-center shrink-0 size-[var(--size-touch-target)] text-foreground-subtle">
                     <ProjectFolderIcon />
                   </span>
                   <span className="mobile-card-copy gap-[calc(var(--spacing-inline)/2)] [&>span:first-child]:block [&>span:first-child]:w-full [&>span:first-child]:min-w-0 [&>span:first-child]:max-w-full [&>span:first-child]:truncate [&_>_span:first-child]:text-fixed-control [&_>_span:first-child]:font-semibold [&_>_span:first-child]:[line-height:1.4] [&_>_span:not(:first-child)]:text-fixed-caption [&_>_span:not(:first-child)]:[line-height:1.4] [&_>_span:not(:first-child)]:text-foreground-subtle flex flex-1 min-w-0 flex-col items-start">
