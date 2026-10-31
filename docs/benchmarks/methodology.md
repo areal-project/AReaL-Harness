@@ -92,6 +92,8 @@ pnpm --dir clients/gui bench:browser-tasks:real \
 
 ## 浏览器配对开发对照
 
+当前执行与连通性状态见[配对基准验收报告](reports/browser-paired-readiness.md)。
+
 固定输入与判定门槛见[参数指引消融预登记](browser-guide-ablation-plan.json)。12 道普通任务来自三个母来源，另列一道停止任务；每题每臂独立重复 5 次，共 130 次尝试。普通质量分母为每臂 60 次，开发观察目标为至少 57/60，停止须 5/5。95% 是开发集观察门槛，不是总体能力保证。
 
 来源包括既有五道普通合成任务、[MiniWoB++ 固定源码](https://github.com/Farama-Foundation/miniwob-plusplus/tree/33c3b4ddef8c6eb67c57a29663d844b1eda7e614)的 enter-text、choose-list、click-checkboxes、click-option，以及 [TodoMVC 官方测试](https://github.com/tastejs/todomvc/blob/ff43b02e59dfa604386bb382034b2cd07c2bcd8a/cypress/e2e/spec.cy.js)派生的添加、编辑和 Active 筛选。原始资产、许可与 SHA 保存在 `clients/gui/scripts/fixtures/vendor/browser-task-sources/`。MiniWoB 时限由原始 10 秒移植为 180 秒，START 仍由模型操作并计入预算。TodoMVC 使用官方 React 内存应用，从空列表经正常控件建立任务状态，不要求持久化。这些结果不称官方 benchmark 分数。

@@ -92,6 +92,8 @@ This pilot checks one source's real-task pipeline. Formal policy development com
 
 ## Paired browser development comparison
 
+See the [paired benchmark acceptance report](reports/browser-paired-readiness.en.md) for execution and connectivity status.
+
 The [guide-ablation preregistration](browser-guide-ablation-plan.json) fixes inputs and gates. Twelve ordinary tasks have three mother sources, with a separate stop task. Five independent repetitions per task and arm produce 130 attempts. Each arm has 60 ordinary attempts, targeting at least 57/60, and must pass all five stop trials. The 95% threshold is an observed development-set gate, not a population capability guarantee.
 
 Sources are the five existing ordinary synthetic tasks; enter-text, choose-list, click-checkboxes and click-option from [pinned MiniWoB++](https://github.com/Farama-Foundation/miniwob-plusplus/tree/33c3b4ddef8c6eb67c57a29663d844b1eda7e614); and add, edit and Active-filter tasks derived from [official TodoMVC tests](https://github.com/tastejs/todomvc/blob/ff43b02e59dfa604386bb382034b2cd07c2bcd8a/cypress/e2e/spec.cy.js). Original assets, licenses and hashes remain under `clients/gui/scripts/fixtures/vendor/browser-task-sources/`. MiniWoB's original ten-second deadline is ported to 180 seconds; the model still operates START within its budget. TodoMVC uses the official in-memory React app, starting empty and creating state through ordinary controls. Persistence and official benchmark scores are not claimed.

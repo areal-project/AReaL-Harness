@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "status": "blocked-on-arena-tls-connectivity",
+  "harnessSourceHead": "3a868d54b9aea13dae1ea15f56c72ab9965889f9",
+  "productSourceHead": "4b3921947f06c3055fdd80b518283a769cbf7bb9",
+  "pairedExperiment": {
+    "plannedAttempts": 130,
+    "ordinaryAttemptsPerArm": 60,
+    "stopAttemptsPerArm": 5,
+    "startedAttempts": 0,
+    "freezeDigest": "79eb4ba524e648486f539469a18474a731614e9372d69c059fd9448d0a208a5a",
+    "armHashDifferences": ["/mainSources/core/service-protocol.cjs"],
+    "results": "not_run"
+  },
+  "validation": {
+    "nodeTests": 71,
+    "nodeTestsPassed": 71,
+    "guiTypecheck": "passed",
+    "ownedGuiStaticCheck": "passed",
+    "documentationCheck": "passed",
+    "precommitFormatCheck": "passed",
+    "deterministicCurrentProductTasksPassed": 13,
+    "nativeNegativeExamplesRejected": 3,
+    "affectedNativeRechecks": [
+      "todomvc/active",
+      "A-old-guide/miniwob/enter-text",
+      "generated-local-html"
+    ],
+    "nativeGeneratedVisualReview": "passed; deterministic fixture only"
+  },
+  "standaloneGeneratedHtml": {
+    "status": "failed",
+    "accepted": false,
+    "forwardedRequests": 6,
+    "httpResponses": 0,
+    "transportErrors": 6,
+    "originalTransportErrorCode": "not_recorded",
+    "usage": "unknown",
+    "actualServiceTier": "unknown",
+    "providerInFlightAtCleanup": 0,
+    "cleanup": {
+      "electronStopped": true,
+      "applicationStopped": true
+    },
+    "sourceStable": true,
+    "replayed": false,
+    "includedInPairedResults": false
+  },
+  "networkDiagnosis": {
+    "credentialFree": true,
+    "publicControlTls": "TLS 1.3 verified in 68ms",
+    "arenaDirectTcp": "connected",
+    "arenaDirectTls": "default and TLS 1.2 timed out at 8000ms",
+    "systemProxyConnect": "HTTP 200",
+    "arenaTlsThroughSystemProxy": "timed out at 8000ms",
+    "routeInterface": "utun4",
+    "vpnIdentity": "unknown",
+    "conclusion": "Arena endpoint or its current network/tunnel path cannot complete TLS; no model capability or cost improvement conclusion"
+  },
+  "remaining": [
+    "Restore Arena TLS connectivity and verify without credentials.",
+    "Run the sealed paired workload using the existing authorization and per-attempt budgets; retain every failure and UNKNOWN.",
+    "Complete standalone real autonomous HTML acceptance without overwriting the failed attempt or silently replaying it.",
+    "Evaluate quality and source-weighted penalized Solve cost, then test one evidence-backed candidate at a time."
+  ],
+  "limits": [
+    "No new real-model quality score.",
+    "No demonstrated model request or token savings.",
+    "Three development source groups do not establish generalization.",
+    "No package or cross-platform acceptance."
+  ],
+  "localEvidenceRoot": ".scratch/browser-hillclimb-v2/"
+}
