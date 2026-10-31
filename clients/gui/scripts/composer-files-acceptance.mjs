@@ -909,6 +909,41 @@ export async function runComposerFilesAcceptance({
     await page.waitForFunction(
       () => !document.querySelector('[data-testid="chat-input"]')?.textContent,
     );
+    try {
+      await until(async () => {
+        const snapshot = await state();
+        const activeThreadId = await activeId();
+        const restored = project(snapshot).state.threads[uploadThreadId];
+        return (
+          activeThreadId === uploadThreadId &&
+          !project(snapshot).pending.length &&
+          restored?.turns.some((turn) =>
+            turn.items.some(
+              (item) =>
+                item.type === "userMessage" && textOf(item).includes("FILES_UPLOAD_UNKNOWN"),
+            ),
+          )
+        );
+      }, "accepted send restored in the original thread");
+    } catch (error) {
+      const snapshot = await state();
+      const activeThreadId = await activeId();
+      const restored = project(snapshot).state.threads[uploadThreadId];
+      await writeFile(
+        join(scratch, "files-upload-reconcile-timeout.json"),
+        JSON.stringify(
+          {
+            uploadThreadId,
+            activeThreadId,
+            pending: project(snapshot).pending,
+            thread: restored,
+          },
+          null,
+          2,
+        ),
+      );
+      throw error;
+    }
     const unknownSends = await app.evaluate(() => globalThis.composerUploadFixture.sends);
     assert.equal(
       unknownSends.filter((entry) => entry.text.includes("FILES_UPLOAD_UNKNOWN")).length,
