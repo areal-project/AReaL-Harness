@@ -1321,7 +1321,11 @@ function startDesktop() {
             .catch(() => {});
           return value;
         }
-        return activePreview.command(request);
+        try {
+          return await activePreview.command(request);
+        } catch (error) {
+          return { previewFailure: desktopError(error) };
+        }
       });
       handleDesktopIpc("areal-core:notification-target", (event) => {
         trusted(event);

@@ -9,6 +9,7 @@ import {
   readInstallation,
   readProject,
   readProjectionMessage,
+  readPreviewResult,
   readProjectlessDirectory,
   readSnapshot,
   readTaskDirectory,
@@ -93,7 +94,7 @@ export function createDesktopServices(bridge: DesktopBridge): PlatformServices {
   async function preview(request: PreviewRequest): Promise<Data | null> {
     const value = await bridge.preview(request);
     if (value === null && request.operation === "show") return null;
-    return readFields(value);
+    return readPreviewResult(value);
   }
   async function mcpFormResource(
     operation: "pick",
