@@ -75,6 +75,28 @@ export function Preview({
   const [error, setError] = useState<PreviewFailure | null>(null);
   const viewport: PreviewViewport = state.browser?.viewport ?? { mode: "auto" };
   const responsive = viewport.mode === "device";
+  const [viewportEdit, setViewportEdit] = useState<{
+    owner: string;
+    width: string;
+    height: string;
+    phase: "editing" | "applying" | "acknowledged";
+  } | null>(null);
+  const viewportEditRef = useRef(viewportEdit);
+  const viewportFields = viewportEdit?.owner === owner ? viewportEdit : null;
+  useEffect(() => {
+    const edit = viewportEditRef.current;
+    if (
+      edit &&
+      (edit.owner !== owner ||
+        (edit.phase === "acknowledged" &&
+          viewport.mode === "device" &&
+          edit.width === String(viewport.width) &&
+          edit.height === String(viewport.height)))
+    ) {
+      viewportEditRef.current = null;
+      setViewportEdit(null);
+    }
+  }, [owner, viewport, viewportEdit]);
   useEffect(() => setError(null), [owner]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [addressFocused, setAddressFocused] = useState(false);
@@ -175,10 +197,39 @@ export function Preview({
       await requestPage({ ...request, pageId });
       if (!mounted.current || current.current !== owner || seq !== sequence.current) return;
       if (operation !== "state") setError(null);
+      return true;
     } catch (e) {
       if (mounted.current && current.current === owner && seq === sequence.current)
         setError(previewFailure(e));
+      return false;
     }
+  };
+  const applyViewport = async (next: PreviewViewport) => {
+    const edit =
+      next.mode === "device"
+        ? {
+            owner,
+            width: String(next.width),
+            height: String(next.height),
+            phase: "applying" as const,
+          }
+        : null;
+    viewportEditRef.current = edit;
+    setViewportEdit(edit);
+    const applied = await request({ operation: "setViewport", viewport: next });
+    if (current.current !== owner || viewportEditRef.current !== edit) return;
+    const acknowledged = applied && edit ? { ...edit, phase: "acknowledged" as const } : null;
+    viewportEditRef.current = acknowledged;
+    setViewportEdit(acknowledged);
+  };
+  const deviceViewport = () => {
+    const edit = viewportEditRef.current?.owner === owner ? viewportEditRef.current : null;
+    const value = viewport.mode === "device" ? viewport : { width: 390, height: 844 };
+    return {
+      mode: "device" as const,
+      width: deviceDimension(edit?.width, value.width),
+      height: deviceDimension(edit?.height, value.height),
+    };
   };
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -794,8 +845,13 @@ export function Preview({
         ),
       );
       const capture = draft.capture;
-      const scaleX = capture.viewport.width / capture.viewport.bitmapWidth;
-      const scaleY = capture.viewport.height / capture.viewport.bitmapHeight;
+      const scaleX =
+        1 /
+        (capture.viewport.bitmapScale?.x ?? capture.viewport.bitmapWidth / capture.viewport.width);
+      const scaleY =
+        1 /
+        (capture.viewport.bitmapScale?.y ??
+          capture.viewport.bitmapHeight / capture.viewport.height);
       const elementCheck =
         draft.element && draft.mode === "element"
           ? await services
@@ -922,10 +978,9 @@ export function Preview({
         onOpenDevTools={() => void request({ operation: "devtools" })}
         onReload={() => void request({ operation: state.loading ? "stop" : "reload" })}
         onToggleResponsiveMode={() =>
-          void request({
-            operation: "setViewport",
-            viewport: responsive ? { mode: "auto" } : { mode: "device", width: 390, height: 844 },
-          })
+          void applyViewport(
+            responsive ? { mode: "auto" } : { mode: "device", width: 390, height: 844 },
+          )
         }
         isResponsiveMode={responsive}
         annotationControl={annotationControl}
@@ -1247,10 +1302,7 @@ export function Preview({
             onValueChange={(id) => {
               const preset = devicePresets.find((preset) => preset.id === id);
               if (preset)
-                void request({
-                  operation: "setViewport",
-                  viewport: { mode: "device", width: preset.width, height: preset.height },
-                });
+                void applyViewport({ mode: "device", width: preset.width, height: preset.height });
             }}
           >
             <SelectTrigger aria-label={t("browser.viewport.preset")} size="sm">
@@ -1277,22 +1329,25 @@ export function Preview({
                 type="number"
                 min={240}
                 max={2560}
-                key={`${dimension}:${viewport[dimension]}`}
-                defaultValue={viewport[dimension]}
+                value={viewportFields?.[dimension] ?? String(viewport[dimension])}
                 disabled={
                   !!annotating || !!styleTrial || !!keyboardCapture || annotationBusy || styleBusy
                 }
-                onBlur={(event) => {
-                  const value = Math.min(
-                    2560,
-                    Math.max(240, Math.round(Number(event.target.value) || viewport[dimension])),
-                  );
-                  event.target.value = String(value);
-                  if (value !== viewport[dimension])
-                    void request({
-                      operation: "setViewport",
-                      viewport: { ...viewport, [dimension]: value },
-                    });
+                onChange={(event) => {
+                  const previous =
+                    viewportEditRef.current?.owner === owner
+                      ? viewportEditRef.current
+                      : { owner, width: String(viewport.width), height: String(viewport.height) };
+                  const edit = {
+                    ...previous,
+                    [dimension]: event.target.value,
+                    phase: "editing" as const,
+                  };
+                  viewportEditRef.current = edit;
+                  setViewportEdit(edit);
+                }}
+                onBlur={() => {
+                  if (viewportEditRef.current) void applyViewport(deviceViewport());
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") event.currentTarget.blur();
@@ -1307,12 +1362,10 @@ export function Preview({
             disabled={
               !!annotating || !!styleTrial || !!keyboardCapture || annotationBusy || styleBusy
             }
-            onClick={() =>
-              void request({
-                operation: "setViewport",
-                viewport: { mode: "device", width: viewport.height, height: viewport.width },
-              })
-            }
+            onClick={() => {
+              const next = deviceViewport();
+              void applyViewport({ mode: "device", width: next.height, height: next.width });
+            }}
           >
             {t("browser.viewport.rotate")}
           </Button>
@@ -1320,10 +1373,11 @@ export function Preview({
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => void request({ operation: "setViewport", viewport: { mode: "auto" } })}
+            onClick={() => void applyViewport({ mode: "auto" })}
           >
             {t("browser.viewport.auto")}
           </Button>
+          {viewportFields && <span role="status">{t("browser.viewport.pending")}</span>}
         </div>
       )}
       <div className="preview-stage">
@@ -1403,3 +1457,7 @@ const devicePresets = [
   { id: "tablet", label: "browser.viewport.tablet", width: 768, height: 1024 },
   { id: "desktop", label: "browser.viewport.desktop", width: 1440, height: 900 },
 ] as const;
+
+function deviceDimension(value: string | undefined, fallback: number) {
+  return Math.min(2560, Math.max(240, Math.round(Number(value) || fallback)));
+}

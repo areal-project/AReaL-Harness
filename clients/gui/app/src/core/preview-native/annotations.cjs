@@ -1,5 +1,6 @@
 // @ts-check
 "use strict";
+const { bitmapPoint } = require("../preview/geometry.cjs");
 const { hasNativePage } = require("./workspace.cjs");
 const { safeText } = require("../preview/diagnostics.cjs");
 const { captureGuardChangedScript } = require("../preview/capture-guard.cjs");
@@ -178,7 +179,7 @@ class PageAnnotations {
               0,
               Math.min(
                 capture.viewport.bitmapWidth - 1,
-                Math.floor((centerX * capture.viewport.bitmapWidth) / capture.viewport.width),
+                Math.floor(centerX * capture.viewport.bitmapScale.x),
               ),
             )
           : null;
@@ -188,7 +189,7 @@ class PageAnnotations {
               0,
               Math.min(
                 capture.viewport.bitmapHeight - 1,
-                Math.floor((centerY * capture.viewport.bitmapHeight) / capture.viewport.height),
+                Math.floor(centerY * capture.viewport.bitmapScale.y),
               ),
             )
           : null;
@@ -337,8 +338,18 @@ class PageAnnotations {
        * @returns {Promise<import("./model.js").CdpResult<M>>} */
       const command = (method, parameters = {}) =>
         bounded(c.debugger.sendCommand(method, parameters));
-      const cssX = Math.floor((x * frozen.viewport.width) / frozen.bitmapWidth);
-      const cssY = Math.floor((y * frozen.viewport.height) / frozen.bitmapHeight);
+      const point = bitmapPoint(
+        {
+          ...frozen.viewport,
+          bitmapWidth: frozen.bitmapWidth,
+          bitmapHeight: frozen.bitmapHeight,
+          bitmapScale: frozen.bitmapScale,
+        },
+        x,
+        y,
+      );
+      const cssX = Math.floor(point.x);
+      const cssY = Math.floor(point.y);
       const [hit, frames] = await Promise.all([
         command("DOM.getNodeForLocation", { x: cssX, y: cssY, includeUserAgentShadowDOM: false }),
         command("Page.getFrameTree"),
@@ -373,21 +384,12 @@ class PageAnnotations {
         return unavailable("此位置没有可核查的语义元素，请改用区域标注");
       const xs = [quad[0], quad[2], quad[4], quad[6]],
         ys = [quad[1], quad[3], quad[5], quad[7]];
-      const left = Math.max(
-        0,
-        Math.floor((Math.min(...xs) * frozen.bitmapWidth) / frozen.viewport.width),
-      );
-      const top = Math.max(
-        0,
-        Math.floor((Math.min(...ys) * frozen.bitmapHeight) / frozen.viewport.height),
-      );
-      const right = Math.min(
-        frozen.bitmapWidth,
-        Math.ceil((Math.max(...xs) * frozen.bitmapWidth) / frozen.viewport.width),
-      );
+      const left = Math.max(0, Math.floor(Math.min(...xs) * frozen.bitmapScale.x));
+      const top = Math.max(0, Math.floor(Math.min(...ys) * frozen.bitmapScale.y));
+      const right = Math.min(frozen.bitmapWidth, Math.ceil(Math.max(...xs) * frozen.bitmapScale.x));
       const bottom = Math.min(
         frozen.bitmapHeight,
-        Math.ceil((Math.max(...ys) * frozen.bitmapHeight) / frozen.viewport.height),
+        Math.ceil(Math.max(...ys) * frozen.bitmapScale.y),
       );
       if (right <= left || bottom <= top) return unavailable("元素已离开截图视口，请改用区域标注");
       const elementId = randomUUID();
@@ -519,21 +521,15 @@ class PageAnnotations {
       const bounds =
         xs && ys
           ? {
-              x: Math.max(
-                0,
-                Math.floor((Math.min(...xs) * frozen.bitmapWidth) / frozen.viewport.width),
-              ),
-              y: Math.max(
-                0,
-                Math.floor((Math.min(...ys) * frozen.bitmapHeight) / frozen.viewport.height),
-              ),
+              x: Math.max(0, Math.floor(Math.min(...xs) * frozen.bitmapScale.x)),
+              y: Math.max(0, Math.floor(Math.min(...ys) * frozen.bitmapScale.y)),
               right: Math.min(
                 frozen.bitmapWidth,
-                Math.ceil((Math.max(...xs) * frozen.bitmapWidth) / frozen.viewport.width),
+                Math.ceil(Math.max(...xs) * frozen.bitmapScale.x),
               ),
               bottom: Math.min(
                 frozen.bitmapHeight,
-                Math.ceil((Math.max(...ys) * frozen.bitmapHeight) / frozen.viewport.height),
+                Math.ceil(Math.max(...ys) * frozen.bitmapScale.y),
               ),
             }
           : null;

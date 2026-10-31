@@ -1,4 +1,5 @@
 export const browserMessages = {
+  "browser.viewport.pending": { "zh-CN": "尺寸尚未应用", en: "Dimensions not yet applied" },
   "browser.loadError.title": { "zh-CN": "无法加载网页", en: "Unable to load page" },
   "browser.loadError.retry": { "zh-CN": "重新加载网页", en: "Reload page" },
   "browser.loadError.hint": {

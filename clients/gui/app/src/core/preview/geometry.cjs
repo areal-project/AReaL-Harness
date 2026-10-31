@@ -1,6 +1,6 @@
 // @ts-check
 "use strict";
-/** @typedef {{width:number,height:number,bitmapWidth:number,bitmapHeight:number}} CaptureDimensions */
+/** @typedef {{width:number,height:number,bitmapWidth:number,bitmapHeight:number,bitmapScale?:{x:number,y:number}}} CaptureDimensions */
 /** @typedef {{x:number,y:number,width:number,height:number}} PreviewBounds */
 /** @param {CaptureDimensions} capture @param {number} x @param {number} y */
 function bitmapPoint(capture, x, y) {
@@ -17,12 +17,19 @@ function bitmapPoint(capture, x, y) {
     y >= bitmapHeight
   )
     throw new Error("target_unavailable");
-  // CDP Input uses page CSS viewport coordinates; the actual bitmap dimensions
-  // are the only safe conversion source across DPR and page/GUI zoom.
+  const scale = capture.bitmapScale ?? { x: bitmapWidth / width, y: bitmapHeight / height };
+  const point = { x: x / scale.x, y: y / scale.y };
+  if (
+    !Number.isFinite(point.x) ||
+    !Number.isFinite(point.y) ||
+    point.x >= width ||
+    point.y >= height
+  )
+    throw new Error("target_unavailable");
   const cssPixelSubdivisions = 64;
   return {
-    x: Math.round(((x * width) / bitmapWidth) * cssPixelSubdivisions) / cssPixelSubdivisions,
-    y: Math.round(((y * height) / bitmapHeight) * cssPixelSubdivisions) / cssPixelSubdivisions,
+    x: Math.round(point.x * cssPixelSubdivisions) / cssPixelSubdivisions,
+    y: Math.round(point.y * cssPixelSubdivisions) / cssPixelSubdivisions,
   };
 }
 /** @param {CaptureDimensions} capture
@@ -54,4 +61,13 @@ function boundsWithinWindow(value, size) {
     height: Math.max(0, Math.min(Math.round(value.height), size[1] - y)),
   };
 }
-module.exports = { bitmapPoint, coordinateTarget, boundsWithinWindow };
+/** @param {import('../preview-native/model.js').ViewportFacts} viewport @param {{width:number,height:number}} bitmap */
+function captureBitmapScale(viewport, bitmap) {
+  return viewport.displayScale === undefined
+    ? { x: bitmap.width / viewport.width, y: bitmap.height / viewport.height }
+    : {
+        x: (bitmap.width / viewport.nativeBounds.width) * viewport.displayScale,
+        y: (bitmap.height / viewport.nativeBounds.height) * viewport.displayScale,
+      };
+}
+module.exports = { bitmapPoint, captureBitmapScale, coordinateTarget, boundsWithinWindow };

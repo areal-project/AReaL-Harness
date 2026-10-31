@@ -317,3 +317,22 @@ test("trusted navigation policy rejection survives the desktop error boundary", 
     },
   );
 });
+
+test("device bitmap coordinates follow the measured native scale rather than stretching cropped pixels", () => {
+  const { captureBitmapScale } = require("../app/src/core/preview/geometry.cjs");
+  const facts = {
+    width: 240,
+    height: 2560,
+    displayScale: 0.15625,
+    nativeBounds: { width: 37, height: 400 },
+  };
+  const bitmapScale = captureBitmapScale(facts, { width: 74, height: 800 });
+  assert.deepEqual(bitmapScale, { x: 0.3125, y: 0.3125 });
+  const capture = { width: 240, height: 2560, bitmapWidth: 74, bitmapHeight: 800, bitmapScale };
+  assert.deepEqual(bitmapPoint(capture, 72, 790), { x: 230.40625, y: 2528 });
+  const paddedScale = { x: 37 / 120, y: 37 / 120 };
+  assert.throws(
+    () => bitmapPoint({ ...capture, bitmapScale: paddedScale }, 36, 799),
+    /target_unavailable/,
+  );
+});

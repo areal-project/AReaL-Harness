@@ -36,9 +36,7 @@ class PreviewPresentation {
           height: Math.max(1, Math.floor(viewport.height * fit)),
         }
       : available;
-    const scale = viewport
-      ? Math.min(bounds.width / viewport.width, bounds.height / viewport.height)
-      : 1;
+    const scale = fit;
     const key = JSON.stringify([viewport ?? null, scale]);
     if (
       isDeepStrictEqual(bounds, page.view.getBounds()) &&

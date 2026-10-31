@@ -141,8 +141,9 @@ function viewportFacts(window, page, viewport) {
     viewport.deviceScaleFactor,
     guiZoom,
     nativeBounds,
+    page.viewportScale,
   ]);
-  return { ...viewport, pageZoom, guiZoom, nativeBounds, key };
+  return { ...viewport, pageZoom, guiZoom, nativeBounds, displayScale: page.viewportScale, key };
 }
 /** @param {import("./model.js").Bounds} value @param {import("electron").BrowserWindow} window */
 function rendererBoundsWithinWindow(value, window) {

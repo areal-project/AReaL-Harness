@@ -1,5 +1,6 @@
 // @ts-check
 "use strict";
+const { captureBitmapScale } = require("../preview/geometry.cjs");
 const { hasNativePage } = require("./workspace.cjs");
 const { observationUrl } = require("../preview/urls.cjs");
 const {
@@ -145,6 +146,7 @@ class HumanPageCapture {
       )
         throw new Error("页面在截图期间发生变化，请重试");
       const size = image.getSize();
+      const bitmapScale = captureBitmapScale(facts, size);
       if (
         size.width <= 0 ||
         size.height <= 0 ||
@@ -174,6 +176,7 @@ class HumanPageCapture {
         viewportRevision: page.viewportRevision,
         bitmapWidth: size.width,
         bitmapHeight: size.height,
+        bitmapScale,
       };
       page.annotationElement = null;
       return {
@@ -195,6 +198,7 @@ class HumanPageCapture {
           nativeBounds: facts.nativeBounds,
           bitmapWidth: size.width,
           bitmapHeight: size.height,
+          bitmapScale,
         },
         ...(frameEvidence
           ? {

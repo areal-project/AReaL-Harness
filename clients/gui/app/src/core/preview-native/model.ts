@@ -102,6 +102,7 @@ export type Viewport = {
   deviceScaleFactor: number;
 };
 export type ViewportFacts = Viewport & {
+  displayScale?: number;
   pageZoom: number;
   guiZoom: number;
   nativeBounds: Bounds;
@@ -198,6 +199,7 @@ export type Capture = { width: number; height: number } & {
   viewportKey: string;
   bitmapWidth: number;
   bitmapHeight: number;
+  bitmapScale: Point;
   url: string;
 };
 export type AnnotationCapture = {
@@ -216,6 +218,7 @@ export type AnnotationCapture = {
   viewportRevision: number;
   bitmapWidth: number;
   bitmapHeight: number;
+  bitmapScale: Point;
 };
 export type AnnotationEvidence = {
   available: true;

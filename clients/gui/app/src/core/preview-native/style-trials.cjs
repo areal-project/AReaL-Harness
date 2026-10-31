@@ -318,11 +318,11 @@ class PageStyleTrials {
         throw new Error("截图期间试改目标已变化，请刷新页面");
       const x = Math.min(
         capture.viewport.bitmapWidth - 1,
-        Math.floor((cssX * capture.viewport.bitmapWidth) / capture.viewport.width),
+        Math.floor(cssX * capture.viewport.bitmapScale.x),
       );
       const y = Math.min(
         capture.viewport.bitmapHeight - 1,
-        Math.floor((cssY * capture.viewport.bitmapHeight) / capture.viewport.height),
+        Math.floor(cssY * capture.viewport.bitmapScale.y),
       );
       const element = await this.annotations.selectElement(
         projectId,

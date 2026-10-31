@@ -1,3 +1,4 @@
+import { observeResize } from "@areal/ui/observe-resize";
 import { Input } from "@areal/ui";
 import { useLayoutEffect, useRef, useState } from "react";
 import { MousePointer2, Square, X } from "lucide-react";
@@ -32,6 +33,7 @@ export interface RegionDraft {
       nativeBounds: { x: number; y: number; width: number; height: number };
       bitmapWidth: number;
       bitmapHeight: number;
+      bitmapScale?: { x: number; y: number };
     };
   };
   comment: string;
@@ -87,10 +89,9 @@ export function BrowserRegionAnnotation({
       );
       setSize({ width, height: (width * bitmapHeight) / bitmapWidth });
     };
-    const observer = new ResizeObserver(measure);
-    observer.observe(host.current!);
+    const stopResize = observeResize(host.current!, measure);
     measure();
-    return () => observer.disconnect();
+    return stopResize;
   }, [bitmapWidth, bitmapHeight]);
   const point = (clientX: number, clientY: number) => {
     const bounds = image.current?.getBoundingClientRect();
