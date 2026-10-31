@@ -73,6 +73,7 @@ export function ChatPromptEditor({
   enableWorkspaceFileDrop = false,
   enableExternalFileDrop = false,
   validateWorkspaceFile,
+  resolveWorkspaceDirectory,
   onFileDrop,
   onWorkspaceReferencePendingChange,
   isDraggingOver = false,
@@ -136,6 +137,7 @@ export function ChatPromptEditor({
   enableExternalFileDrop?: boolean;
   validateWorkspaceFile?: (payload: WorkspaceFileDragPayload) => Promise<WorkspaceFileDragPayload>;
   onFileDrop?: (files: File[]) => void;
+  resolveWorkspaceDirectory?: (file: File) => WorkspaceFileDragPayload;
   onWorkspaceReferencePendingChange?: (pending: boolean) => void;
   isDraggingOver?: boolean;
   dragAttachmentHint?: string;
@@ -461,9 +463,32 @@ export function ChatPromptEditor({
           (item) => item.webkitGetAsEntry?.()?.isDirectory,
         );
         const files = Array.from(event.dataTransfer.files);
-        if (directory || !files.length)
+        if (directory) {
+          if (!resolveWorkspaceDirectory) {
+            setDropError(intl.formatMessage({ id: "chat.composer.directoryDropUnavailable" }));
+            return;
+          }
+          const entries = Array.from(event.dataTransfer.items)
+            .filter((item) => item.kind === "file")
+            .map((item) => ({ entry: item.webkitGetAsEntry?.(), file: item.getAsFile() }));
+          // 先完整校验类型，避免混合拖放只插入一部分后静默丢失文件。
+          if (entries.some(({ entry, file }) => !entry?.isDirectory || !file)) {
+            setDropError(intl.formatMessage({ id: "chat.composer.directoryDropSeparate" }));
+            return;
+          }
+          try {
+            const payloads = entries.map(({ file }) => resolveWorkspaceDirectory(file!));
+            for (const payload of payloads) void insertWorkspaceFile(payload);
+          } catch (error) {
+            setDropError(
+              error instanceof UiMessageError
+                ? intl.formatMessage(error.descriptor)
+                : String(error),
+            );
+          }
+        } else if (!files.length) {
           setDropError(intl.formatMessage({ id: "chat.composer.externalFolderUnsupported" }));
-        else {
+        } else {
           setDropError("");
           onFileDrop?.(files);
         }
@@ -477,6 +502,7 @@ export function ChatPromptEditor({
       enableExternalFileDrop,
       insertWorkspaceFile,
       onFileDrop,
+      resolveWorkspaceDirectory,
       onDrop,
       intl,
     ],

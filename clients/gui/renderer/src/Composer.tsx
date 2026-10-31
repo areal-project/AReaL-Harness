@@ -1,3 +1,4 @@
+import { composerUploadOwner, forgetComposerUploads } from "./ComposerUploadState.js";
 import { uploadComposerFiles } from "./ComposerUploads.js";
 export { uploadComposerFiles } from "./ComposerUploads.js";
 
@@ -176,6 +177,7 @@ export function Composer({
   );
   const prefs = useApplicationPreferences();
   const key = `areal-gui:draft:${project.id}:${thread.id}`;
+  const uploadOwner = composerUploadOwner(project, thread.id);
   const selectionScope = conversationSelectionScope(project.id, thread.id);
   const references = useConversationSelections(selectionScope);
   const mcpDraft = useMcpDraft(key);
@@ -276,7 +278,8 @@ export function Composer({
     annotationBlocked: annotationEditing || invalidAnnotation,
     inFlight: busy,
     setInFlight: (active) => markSending(key, active),
-    uploadFiles: (selected) => uploadComposerFiles(action, project.id, thread.id, selected),
+    uploadFiles: (selected) =>
+      uploadComposerFiles(action, project.id, thread.id, selected, undefined, uploadOwner),
   });
   // 配置写入仍占用提交锁，但不把草稿编辑和模型浮层切成消息发送态。
   const editorDisabled = baseDisabled || (queueEditor.busy && !configuring) || queueEditor.locked;
@@ -386,6 +389,7 @@ export function Composer({
     api.current?.clear();
     setText("");
     setFiles([]);
+    forgetComposerUploads(uploadOwner, files.filter(isComposerFile));
     skills.clear();
     plugins.clear();
     clearMcpDraft(key);
@@ -537,6 +541,7 @@ export function Composer({
         configurationRequestId = undefined;
       }
       await submitMessage(action, project.id, thread.id, value, files, {
+        uploadOwner,
         steer: !taskManagement && !!running && shouldSteer(prefs.followUp, invert),
         expectedTurnId: running?.id,
         enqueue: !taskManagement && !!running,
@@ -988,6 +993,7 @@ export function Composer({
           enableWorkspaceFileDrop={!!project.root && !editorDisabled}
           enableExternalFileDrop={!editorDisabled}
           validateWorkspaceFile={workspaceFiles?.validate}
+          resolveWorkspaceDirectory={workspaceFiles?.directory}
           onFileDrop={(files) => setFiles((current) => [...current, ...files])}
           onWorkspaceReferencePendingChange={setWorkspaceReferencePending}
           taskId={thread.id}
@@ -1080,7 +1086,7 @@ export function Composer({
             composerPaste(event, (pasted) => setFiles((current) => [...current, ...pasted]))
           }
           topContent={
-            <div hidden={!!outgoing}>
+            <div hidden={!!outgoing && !files.length}>
               {queueEditor.edit && (
                 <div className="composer-queue-edit-banner" aria-label="编辑排队消息">
                   <span>
@@ -1178,6 +1184,18 @@ export function Composer({
                               : `pasted-text-${i}`
                           }
                           file={file}
+                          uploadOwner={uploadOwner}
+                          onRetry={async (file) => {
+                            await uploadComposerFiles(
+                              action,
+                              project.id,
+                              thread.id,
+                              [file],
+                              undefined,
+                              uploadOwner,
+                            );
+                            setAdmissionError("");
+                          }}
                           onAnnotate={
                             onAnnotate
                               ? (file) =>
@@ -1188,9 +1206,10 @@ export function Composer({
                                   })
                               : undefined
                           }
-                          onRemove={() =>
-                            setFiles((current) => current.filter((item) => item !== file))
-                          }
+                          onRemove={() => {
+                            if (isComposerFile(file)) forgetComposerUploads(uploadOwner, [file]);
+                            setFiles((current) => current.filter((item) => item !== file));
+                          }}
                           onExpand={(content) => {
                             api.current?.appendText(`${text.length ? "\n\n" : ""}${content}`);
                             setFiles((current) => current.filter((item) => item !== file));
@@ -1482,10 +1501,14 @@ export async function submitMessage(
         threadId,
         mergeComposerPluginSkills(readComposerSkills(key), plugins),
       );
-  const attachments = await uploadComposerFiles(action, projectId, threadId, [
-    ...input.files,
-    ...imageFiles,
-  ]);
+  const attachments = await uploadComposerFiles(
+    action,
+    projectId,
+    threadId,
+    [...input.files, ...imageFiles],
+    undefined,
+    options.uploadOwner,
+  );
   imageBlocks.forEach((block: Data, index: number) => {
     if (block._meta) attachments[input.files.length + index]._meta = block._meta;
   });

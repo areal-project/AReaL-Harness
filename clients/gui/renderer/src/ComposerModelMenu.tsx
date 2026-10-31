@@ -96,6 +96,7 @@ export function ComposerModelMenu({
   const [query, setQuery] = useState("");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [favorites, setFavorites] = useState(readFavoriteModels);
+  const [preferenceError, setPreferenceError] = useState("");
   const radioName = useId();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [sliderFocused, setSliderFocused] = useState(false);
@@ -208,8 +209,13 @@ export function ComposerModelMenu({
               const next = favorites.includes(option.value)
                 ? favorites.filter((id) => id !== option.value)
                 : [...favorites, option.value];
-              saveFavoriteModels(next);
-              setFavorites(next);
+              try {
+                saveFavoriteModels(next);
+                setFavorites(next);
+                setPreferenceError("");
+              } catch {
+                setPreferenceError(t("chat.composer.favoriteSaveFailed"));
+              }
             }}
           >
             <Star
@@ -242,9 +248,9 @@ export function ComposerModelMenu({
             setEffortOpen(false);
             setQuery("");
             setProvider(
-              providers.has(model?.providerId ?? "")
+              availableOptions.some((option) => option.providerId === model?.providerId)
                 ? (model?.providerId ?? "")
-                : (providers.keys().next().value ?? ""),
+                : (availableOptions[0]?.providerId ?? ""),
             );
           }
         }}
@@ -301,6 +307,7 @@ export function ComposerModelMenu({
           >
             {t("chat.composer.favoriteModels")}
           </Button>
+          {preferenceError && <p role="alert">{preferenceError}</p>}
           {query.trim() || favoritesOnly ? (
             matchingOptions.length ? (
               modelOptions(matchingOptions, true)

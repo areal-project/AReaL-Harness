@@ -1,3 +1,4 @@
+import { droppedFilePath } from "@/desktop-services.js";
 import { UiMessageError } from "@/i18n/IntlProvider.js";
 import type { Action, Data } from "@/services.js";
 import { useMemo, type MutableRefObject } from "react";
@@ -83,6 +84,25 @@ async function validateWorkspaceFileReference(
   return payload;
 }
 
+export function droppedWorkspaceDirectory(
+  path: string | null,
+  workspacePath: string,
+): WorkspaceFileDragPayload {
+  if (!path) throw new UiMessageError({ id: "chat.composer.directoryDropUnavailable" });
+  const root = workspacePath.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!normalized.startsWith(root + "/"))
+    throw new UiMessageError({ id: "chat.composer.workspaceReferenceCurrentOnly" });
+  const relativePath = normalized.slice(root.length + 1);
+  return {
+    type: "directory",
+    workspacePath,
+    path: `${workspacePath}/${relativePath}`,
+    relativePath,
+    name: relativePath.split("/").at(-1)!,
+  };
+}
+
 export interface ComposerWorkspaceFiles {
   owner: string;
   root: string;
@@ -101,6 +121,7 @@ export function useComposerWorkspaceFiles(action: Action, project: Data, scope: 
         ? {
             owner: JSON.stringify([projectId, root, connectionGeneration, scope]),
             root,
+            directory: (file: File) => droppedWorkspaceDirectory(droppedFilePath(file), root),
             validate: (payload: WorkspaceFileDragPayload) =>
               validateWorkspaceFileReference(action, projectId, root, payload),
             search: async (query: string) => {

@@ -1,6 +1,6 @@
 // @ts-check
 "use strict";
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 /** @type {import('@areal/workbench/desktop-contract').DesktopInvoke} */
 const invokeDesktop = (channel, ...args) => ipcRenderer.invoke(channel, ...args);
 /** @type {import('@areal/workbench/desktop-contract').DesktopSend} */
@@ -62,6 +62,8 @@ onDesktopEvent(
 );
 /** @satisfies {import("@areal/workbench/desktop-contract").DesktopBridge} */
 const desktopBridge = {
+  /** @param {File} file */
+  droppedFilePath: (file) => webUtils.getPathForFile(file),
   /** @param {unknown} locale */
   setInterfaceLocale: (locale) => sendDesktop("areal-core:interface-locale", locale),
   /** @returns {Promise<unknown>} */

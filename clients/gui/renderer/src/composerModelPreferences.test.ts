@@ -36,4 +36,13 @@ describe("model discovery preferences", () => {
     expect(readFavoriteModels()).toEqual([]);
     vi.unstubAllGlobals();
   });
+  it("reports storage failures instead of claiming favorites were saved", () => {
+    vi.stubGlobal("localStorage", {
+      setItem() {
+        throw new Error("Quota exceeded");
+      },
+    });
+    expect(() => saveFavoriteModels([options[0].value])).toThrow("Quota exceeded");
+    vi.unstubAllGlobals();
+  });
 });

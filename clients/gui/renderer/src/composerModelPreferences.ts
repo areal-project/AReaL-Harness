@@ -12,9 +12,7 @@ export function readFavoriteModels(): string[] {
   }
 }
 export function saveFavoriteModels(values: string[]) {
-  try {
-    localStorage.setItem(favoriteKey, JSON.stringify(values));
-  } catch {}
+  localStorage.setItem(favoriteKey, JSON.stringify(values));
 }
 export function filterComposerModels(
   options: ComposerModelOption[],

@@ -18,7 +18,10 @@ import {
 import type { McpFormOwner, McpFormResource } from "./mcp-app-services.js";
 export type { DesktopBridge } from "@areal/workbench/desktop-contract";
 
+let nativeDroppedFilePath: DesktopBridge["droppedFilePath"];
+
 export function createDesktopServices(bridge: DesktopBridge): PlatformServices {
+  nativeDroppedFilePath = bridge.droppedFilePath;
   let reader = new ProjectionReader(),
     nextRequest = 0,
     recovering = false;
@@ -167,4 +170,10 @@ export function createDesktopServices(bridge: DesktopBridge): PlatformServices {
       };
     },
   };
+}
+
+// 仅桌面 preload 能从实际拖入的 File 解析原生路径。
+export function droppedFilePath(file: File): string | null {
+  const path: unknown = nativeDroppedFilePath?.(file);
+  return typeof path === "string" && path.length ? path : null;
 }

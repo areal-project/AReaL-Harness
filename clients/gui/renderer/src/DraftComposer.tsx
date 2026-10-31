@@ -1,3 +1,4 @@
+import { composerUploadOwner } from "./ComposerUploadState.js";
 import type { DraftComposerProps } from "./draftComposerTypes.js";
 import { PendingMessageView } from "./UserMessageBody.js";
 import { setPendingMessage, usePendingMessage } from "./pendingMessage.js";
@@ -519,6 +520,7 @@ export function DraftComposer({
         attachmentDrafts.set(targetKey, submittedInput.files);
       } else {
         await submitMessage(action, owner.id, result.threadId, value, files, {
+          uploadOwner: composerUploadOwner(owner, result.threadId),
           skillAction: readAction,
           pluginContext: {
             kind: "mainThread",
@@ -761,6 +763,7 @@ export function DraftComposer({
           enableWorkspaceFileDrop={!!project.root && !editLocked}
           enableExternalFileDrop={!editLocked}
           validateWorkspaceFile={workspaceFiles?.validate}
+          resolveWorkspaceDirectory={workspaceFiles?.directory}
           onFileDrop={(files) => setFiles((current) => [...current, ...files])}
           onWorkspaceReferencePendingChange={setWorkspaceReferencePending}
           taskId={null}
@@ -901,7 +904,7 @@ export function DraftComposer({
               composerPaste(event, (pasted) => setFiles((current) => [...current, ...pasted]));
           }}
           topContent={
-            <div hidden={!!outgoing}>
+            <div hidden={!!outgoing && !files.length}>
               {skills.tags}
               <div className="composer-attachment-row">
                 {files.length ? (
