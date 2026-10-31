@@ -4546,6 +4546,10 @@ button[aria-label="停止"] {
   margin-block: var(--conversation-gap) 0;
 }
 .turn-retry-notice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
   color: var(--color-foreground-subtle);
   font-size: var(--text-conversation);
   line-height: var(--conversation-line);
@@ -4554,9 +4558,8 @@ button[aria-label="停止"] {
 .turn-retry-attention {
   color: var(--color-status-attention);
 }
-.turn-retry-notice p {
-  margin: 0;
-  padding-inline-start: 20px;
+.turn-retry-notice > svg {
+  flex: none;
 }
 .execution-status {
   color: var(--color-status-running);

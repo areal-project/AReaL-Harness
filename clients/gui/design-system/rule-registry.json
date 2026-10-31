@@ -6674,7 +6674,7 @@
       "title": "中断分隔行位于轮次边界，使用持久 interruption 区分用户暂停与 Core 恢复，无工具轮次也显示",
       "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
       "strength": "default",
-      "textSha256": "91b722f5ca0e99021b24eadfc06f04cff83c87957e8f9e7792d330526842e533"
+      "textSha256": "5805c887484a411fc654e093e60c649e14b96e2619bd247c79f6abb81f053761"
     },
     {
       "id": "R-MESSAGES-012",

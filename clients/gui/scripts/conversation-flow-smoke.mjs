@@ -38,6 +38,7 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 const evidence = await mkdtemp(join(tmpdir(), "areal-conversation-flow-"));
 const checks = [];
 const firstTurnSamples = [];
+const retryDimensions = [];
 const errors = [];
 let browser;
 let passed = false;
@@ -185,34 +186,51 @@ try {
       if (["recovered", "exhausted", "otherFailure"].includes(state)) {
         const notice = reading.locator("[data-retry-state]");
         assert.equal(await notice.count(), 1);
-        const trigger = notice.locator("button[aria-expanded]");
-        assert.equal(await trigger.getAttribute("aria-expanded"), "false");
-        const detail = notice.locator("p");
-        assert.equal(await detail.isVisible(), false);
-        if (state === "recovered") {
-          await notice.screenshot({ path: join(evidence, "retry-collapsed.png") });
-          await reading.screenshot({ path: join(evidence, "retry-context.png") });
-        }
-        await trigger.click();
-        assert.equal(await detail.isVisible(), true);
-        assert.match(await detail.textContent(), /共尝试 \d+ 次/);
-        await trigger.focus();
-        await page.keyboard.press("Space");
-        assert.equal(await detail.isVisible(), false);
-        await page.keyboard.press("Enter");
-        assert.equal(await detail.isVisible(), true);
+        assert.equal(await notice.getAttribute("role"), "status");
+        assert.equal(await notice.locator("button, details").count(), 0);
+        assert.match(await notice.textContent(), /共尝试 \d+ 次/);
+        const checkCompact = async () => {
+          const dimensions = await notice.evaluate((el) => {
+            const style = getComputedStyle(el);
+            return {
+              height: el.getBoundingClientRect().height,
+              lineHeight: parseFloat(style.lineHeight),
+              paddingTop: parseFloat(style.paddingTop),
+              paddingBottom: parseFloat(style.paddingBottom),
+              marginTop: parseFloat(style.marginTop),
+              marginBottom: parseFloat(style.marginBottom),
+              scrollWidth: el.scrollWidth,
+              clientWidth: el.clientWidth,
+            };
+          });
+          retryDimensions.push({ state, viewport: page.viewportSize(), ...dimensions });
+          assert.ok(
+            Math.abs(dimensions.height - dimensions.lineHeight) <= 1,
+            JSON.stringify(dimensions),
+          );
+          assert.deepEqual(
+            [
+              dimensions.paddingTop,
+              dimensions.paddingBottom,
+              dimensions.marginTop,
+              dimensions.marginBottom,
+            ],
+            [0, 0, 0, 0],
+          );
+          assert.ok(dimensions.scrollWidth <= dimensions.clientWidth, JSON.stringify(dimensions));
+        };
+        await checkCompact();
         if (state === "recovered") {
           await notice.screenshot({ path: join(evidence, "retry-light.png") });
+          await reading.screenshot({ path: join(evidence, "retry-context.png") });
           await page.getByLabel("主题", { exact: true }).selectOption("dark");
           await notice.screenshot({ path: join(evidence, "retry-dark.png") });
           await page.setViewportSize({ width: 500, height: 900 });
+          await checkCompact();
           await notice.screenshot({ path: join(evidence, "retry-narrow.png") });
-          assert.ok(await notice.evaluate((el) => el.scrollWidth <= el.clientWidth));
           await page.setViewportSize({ width: 1200, height: 900 });
           await page.getByLabel("主题", { exact: true }).selectOption("light");
         }
-        await trigger.click();
-        assert.equal(await trigger.getAttribute("aria-expanded"), "false");
       }
     }
     await reading.getByLabel("活动状态", { exact: true }).selectOption("running");
@@ -353,5 +371,7 @@ try {
 } finally {
   await browser?.close();
   await new Promise((done) => server.close(done));
-  console.log(JSON.stringify({ passed, evidence, checks, firstTurnSamples, errors }));
+  console.log(
+    JSON.stringify({ passed, evidence, checks, firstTurnSamples, retryDimensions, errors }),
+  );
 }

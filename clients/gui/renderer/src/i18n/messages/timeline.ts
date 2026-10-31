@@ -12,6 +12,7 @@ export const timelineMessages = {
     "zh-CN": "正在重试，当前第 {attempts} 次尝试。",
     en: "Retrying, attempt {attempts}.",
   },
+  "chat.timeline.retry.attempts": { "zh-CN": "共尝试 {attempts} 次", en: "{attempts} attempts" },
   "chat.timeline.retry.recovered.label": { "zh-CN": "重试后已恢复", en: "Recovered after retry" },
   "chat.timeline.retry.exhausted.label": { "zh-CN": "回复未完成", en: "Reply incomplete" },
   "chat.timeline.retry.stopped.label": { "zh-CN": "重试已停止", en: "Retry stopped" },
