@@ -1852,7 +1852,7 @@ pub(crate) fn workspace_uri(path: &str, workspace: &std::path::Path) -> anyhow::
         .map(|p| p.replacen("workspace://repo", "workspace://scratch", 1));
     }
     anyhow::ensure!(
-        !path.is_empty() && !path.contains(['\\', '\0']),
+        !path.is_empty() && !path.contains('\0') && !(cfg!(windows) && path.contains('\\')),
         "invalid workspace path"
     );
     let path = if path == "workspace://repo" {
@@ -2158,7 +2158,7 @@ mod request_tests {
             "src/../secret",
             "/etc/passwd",
             "file:///tmp/file",
-            "..\\secret",
+            "bad\0name",
         ] {
             assert!(
                 request(&call(json!({"path":path,"text":"source"}))).is_err(),

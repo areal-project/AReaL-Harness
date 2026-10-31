@@ -315,6 +315,46 @@ fn relative_and_absolute_paths_stay_inside_the_workspace() {
     }
 }
 
+#[tokio::test]
+async fn resource_paths_preserve_literal_native_filenames() {
+    let client = process_fixture(0, None, None, false).await;
+    let runtime = RuntimeConfig {
+        client: client.clone(),
+        workspace: PathBuf::from("/app"),
+        writable: false,
+        command_scope: None,
+        command_scratch: Some(PathBuf::from("/task-scratch")),
+    };
+    for name in ["中文 空格(v2)#1/name?part%done", "%2e%2e/marker"] {
+        for path in [
+            name.to_owned(),
+            format!("/app/{name}"),
+            format!("workspace://repo/{name}"),
+        ] {
+            assert_eq!(
+                resource_uri(&path, &runtime).unwrap(),
+                format!("workspace://repo/{name}")
+            );
+        }
+        assert_eq!(
+            resource_uri(&format!("/task-scratch/{name}"), &runtime).unwrap(),
+            format!("workspace://scratch/{name}")
+        );
+        assert_eq!(
+            resource_uri(&format!("workspace://host/tmp/{name}"), &runtime).unwrap(),
+            format!("workspace://host/tmp/{name}")
+        );
+    }
+    #[cfg(unix)]
+    assert_eq!(
+        resource_uri("a\\b/..\\marker", &runtime).unwrap(),
+        "workspace://repo/a\\b/..\\marker"
+    );
+    #[cfg(windows)]
+    assert!(resource_uri("..\\secret", &runtime).is_err());
+    client.shutdown().await.unwrap();
+}
+
 #[test]
 fn omitted_cursor_resumes_but_null_replays_and_explicit_cursor_is_validated() {
     let process = format!("epoch:process:{}", uuid::Uuid::new_v4());

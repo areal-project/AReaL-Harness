@@ -831,7 +831,10 @@ mod tests {
 
     #[tokio::test]
     async fn unrepresentable_paths_reject_the_entire_delivery_before_writing_earlier_files() {
-        for path in ["zz-name#part", "zz-name?part", "zz-name%part"] {
+        for path in [
+            format!("zz-{}", "a".repeat(4093)),
+            format!("zz/{}/file", "a".repeat(4088)),
+        ] {
             let (_root, mut bundle, files) = fixture();
             bundle.candidate.insert(
                 "old".into(),
@@ -866,6 +869,33 @@ mod tests {
             assert_eq!(tree::snapshot(&bundle.workspace).unwrap(), bundle.base);
             assert_eq!(std::fs::read(bundle.workspace.join("old")).unwrap(), b"old");
         }
+    }
+
+    #[tokio::test]
+    async fn delivery_preserves_literal_special_names() {
+        let (_root, mut bundle, files) = fixture();
+        for path in ["中文 空格(v2)#1", "name?part", "name%part", "%2e%2e/marker"] {
+            bundle.candidate.insert(
+                path.into(),
+                tree::File {
+                    bytes: path.as_bytes().to_vec(),
+                    executable: false,
+                },
+            );
+        }
+        let result = deliver(
+            &files,
+            "scope",
+            &bundle,
+            "parent",
+            "group",
+            None,
+            &NeverVerify,
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["status"], "applied");
+        assert_eq!(tree::snapshot(&bundle.workspace).unwrap(), bundle.candidate);
     }
 
     #[tokio::test]

@@ -330,7 +330,7 @@ list/read/wait/artifact 需要 observe，delegate/cancel/apply 需要 interact�
 
 投影分别返回 status、settled、resourcesReleased、verification 和 delivery。verification.status=notRun 不代表通过；严格模式使用可信部署检查，自动隔离不会伪造验收。delivery=candidate 只表示候选就绪，只有 applied 表示改动已交付当前工作区。交付日志保留原 sourceHead、实际组合 head、基线及逐操作回执；不相交的改动可以组合，严格模式对变化后的组合树重新验收。同文件变化拒绝覆盖，partial/unknown 不视作成功，也不自动重放。验证与应用是历史事实，后续工作区变化不撤销旧回执。
 
-交付在写入源码前预检整组变更路径。Runtime v0 的未编码路径不支持含 `%`、`?`、`#` 或超过 URI 长度限制的文件名；交付也不执行目录删除，因此拒绝把现有目录替换为普通文件，包括空目录。这些情况返回 conflict，整组不启动文件操作；未改动的特殊文件名和文件替换为目录不受此限制。
+交付在写入源码前预检整组变更路径。路径沿用 Runtime v0 的未编码字面规则，支持 `%`、`?`、`#` 文件名，不做 URL 解码；实际 . / .. 段、NUL 或超出长度限制的路径拒绝。交付不执行目录删除，因此拒绝把现有目录替换为普通文件，包括空目录。这些情况返回 conflict，整组不启动文件操作；未改动的特殊文件名和文件替换为目录不受此限制。
 
 执行归属于当前 Turn 或已有 TaskRun，复用原 Thread/Turn、Task/TaskRun 与 Goal 预算，不新增生命周期状态机。TaskRun worker 跨协调 Turn 存活；候选待写回时唤醒同一协调者，未交付或未确认清理不能完成 Goal。普通模型子任务结束前自动 join。兼容保留旧 prompt/threadId 工具调用及 `areal/agent/spawn`、Workgroup 高级 API；旧的手工 spawn 在父 Turn 结束时取消后代。旧记录从原历史入口查看，不伪造统一执行回执。
 

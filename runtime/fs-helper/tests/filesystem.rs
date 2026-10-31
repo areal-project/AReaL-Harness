@@ -34,6 +34,36 @@ impl Fixture {
     }
 }
 #[test]
+fn list_and_read_preserve_literal_native_filenames() {
+    let fixture = Fixture::new();
+    for name in ["中文 空格(v2)#1?%done", "%2e%2e", "a\\b"] {
+        let directory = fixture.0.path().join(name);
+        fs::create_dir(&directory).unwrap();
+        fs::write(directory.join("marker#?%.txt"), name.as_bytes()).unwrap();
+        let suffix = format!("/{name}");
+        let relative = workspace_relative_path(&suffix).unwrap().to_str().unwrap();
+        let list = fixture
+            .run(FileCommand::List {
+                path: relative.into(),
+                after: None,
+                limit: 10,
+            })
+            .unwrap();
+        assert_eq!(
+            list["entries"],
+            serde_json::json!([{"name":"marker#?%.txt", "kind":"file"}])
+        );
+        let read = fixture.read(&format!("{relative}/marker#?%.txt")).unwrap();
+        assert_eq!(
+            STANDARD
+                .decode(read["dataBase64"].as_str().unwrap())
+                .unwrap(),
+            name.as_bytes()
+        );
+    }
+}
+
+#[test]
 fn conditional_binary_create_replace_and_unique_patch_preserve_mode() {
     let f = Fixture::new();
     let first = f.write("code", b"a\0\xff", ExpectedFile::Absent).unwrap();
