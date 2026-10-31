@@ -34,6 +34,22 @@ function reply(markdown: string) {
 }
 
 describe("agent reply workspace media", () => {
+  it("keeps relative file locations when the reply has no media renderer or root hint", () => {
+    const cards: string[] = [];
+    renderToStaticMarkup(
+      createElement(MessageResponse, {
+        children: "[line](src/a%20b.ts#L120)",
+        fileLinks: true,
+        onOpenFileLink: () => {},
+        onRenderFileCard: (path: string) => {
+          cards.push(path);
+          return null;
+        },
+      }),
+    );
+    expect(cards).toEqual(["./src/a b.ts#L120"]);
+  });
+
   it("keeps bare relative image paths instead of blocking them", () => {
     const { markup, images } = reply("![表 1](out/rsi-paper-tables/表1.png)");
     expect(markup).not.toContain("blocked");

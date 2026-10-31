@@ -151,11 +151,11 @@ export const MessageResponse = memo(function MessageResponse({
   // The caller still validates the exact blob URI and reads it through Core.
   const rehypePlugins = useMemo(
     () =>
-      onRenderImage || fileLinkBase || fileReferenceRoot
+      fileLinks || onRenderImage || fileLinkBase || fileReferenceRoot
         ? Object.entries(defaultRehypePlugins).flatMap(
             ([name, plugin]): (typeof defaultRehypePlugins)[string][] => {
               const before =
-                name === "harden" && (fileReferenceRoot || onRenderImage)
+                name === "harden" && (fileLinks || fileReferenceRoot || onRenderImage)
                   ? [preserveWorkspaceFilePaths]
                   : [];
               if (name === "harden" && fileLinkBase && Array.isArray(plugin))
@@ -179,7 +179,7 @@ export const MessageResponse = memo(function MessageResponse({
             },
           )
         : undefined,
-    [Boolean(onRenderImage), fileLinkBase, Boolean(fileReferenceRoot)],
+    [fileLinks, Boolean(onRenderImage), fileLinkBase, Boolean(fileReferenceRoot)],
   );
   const remarkPlugins = useMemo(
     () =>
