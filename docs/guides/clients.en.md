@@ -214,3 +214,5 @@ Without a prompt argument, `exec` reads up to 1 MiB from stdin. It waits up to 9
 Use the raw IDs from the acceptance receipt for queries and downloads. The CLI escapes URL path segments, including colons in Task IDs, for compatibility with the API Space gateway. Do not pre-encode IDs as `%3A`.
 
 GUI file links accept `path:line` and `path#Lline`. Repeated clicks focus the line again. File contents and the file tree belong to the current execution workspace. External navigation temporarily reveals the full tree and offers a return to the previous search. Task resources show the execution directory and current branch; opening the directory uses the current conversation checkout. Diff review preserves reading position and file filters separately for each review range.
+
+CSV and TSV files offer table and source views. Tables preserve quoted newlines, escaped quotes, and empty columns. They show at most 200 rows and 100 columns with an explicit truncation notice; source view retains the loaded contents. `.mmd` and `.mermaid` files offer diagram and source views. Parse failures retain an error state and the source action.

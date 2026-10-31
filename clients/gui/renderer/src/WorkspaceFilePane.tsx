@@ -1,3 +1,5 @@
+import { WorkspaceDelimitedPreview } from "./WorkspaceDelimitedPreview.js";
+import { DiagramPreview } from "./components/ai-elements/message-code-block.js";
 import { Textarea } from "@areal/ui";
 // ZCode PreviewPane breadcrumb/header composition + its CodeViewer.
 // AReaL's optional edit mode uses the existing revision-checked workspace API.
@@ -272,6 +274,9 @@ export function WorkspaceFilePane({
     }
   };
   const isMarkdown = /\.(md|mdx|markdown)$/i.test(path);
+  const isDelimited = /\.(csv|tsv)$/i.test(path);
+  const isDiagram = /\.(mmd|mermaid)$/i.test(path);
+  const hasPreview = isMarkdown || isDelimited || isDiagram;
   return (
     <aside
       className="flex h-full min-h-0 flex-col overflow-hidden bg-background"
@@ -309,7 +314,7 @@ export function WorkspaceFilePane({
           </div>
         </nav>
         <div className="file-preview-actions flex shrink-0 items-center gap-1.5">
-          {isMarkdown && !doc?.editing && (
+          {hasPreview && !doc?.editing && (
             <Button
               size="sm"
               variant="ghost"
@@ -317,7 +322,7 @@ export function WorkspaceFilePane({
               disabled={!doc}
               onClick={() => setMarkdown((value) => !value)}
             >
-              {markdown ? "查看源代码" : "渲染预览"}
+              {t(markdown ? "resources.source" : "resources.preview")}
             </Button>
           )}
           <Button
@@ -472,7 +477,19 @@ export function WorkspaceFilePane({
               onChange={(e) => update({ ...doc, text: e.target.value })}
             />
           ) : doc ? (
-            isMarkdown && markdown ? (
+            markdown && isDelimited ? (
+              <WorkspaceDelimitedPreview
+                text={doc.text}
+                delimiter={/\.tsv$/i.test(path) ? "\t" : ","}
+              />
+            ) : markdown && isDiagram ? (
+              <div className="p-3">
+                <DiagramPreview
+                  code={doc.text}
+                  theme={document.documentElement.classList.contains("dark") ? "dark" : "light"}
+                />
+              </div>
+            ) : isMarkdown && markdown ? (
               <div className="workspace-markdown-reading">
                 <Suspense
                   fallback={
