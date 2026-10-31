@@ -1,0 +1,292 @@
+{
+  "schemaVersion": 1,
+  "scope": "Source Electron and real Core with a deterministic local model; single-source pipeline validation, not model capability or efficiency evidence.",
+  "source": {
+    "head": "8ed7c4bd43d2e135c2b0ac5a7832e90a3c409f5b",
+    "dirtyDiffSHA256": "cdf346df1886be2cd5c963439abc388e2ac1cd50ecdbe03705fffb7de7918e86",
+    "coreSHA256": "3a5293d91b9509faa64a803e273d4a0478125b93459e0419981741f9835abe0d"
+  },
+  "html": {
+    "protocolAssertions": 25,
+    "desktopChecks": 6,
+    "desktopPassed": true,
+    "cleanupPassed": true,
+    "rawManifest": "/private/var/folders/06/v03n2mms0ks1nrrvkyzjllr40000gr/T/areal-html-document-RxnMit/manifest.json"
+  },
+  "existingBrowserRegression": {
+    "checks": 33,
+    "passed": true,
+    "integrity": "verified",
+    "rawManifest": "/private/var/folders/06/v03n2mms0ks1nrrvkyzjllr40000gr/T/areal-automation-core-riwA2r/run-manifest.json"
+  },
+  "pilot": {
+    "benchmarkVersion": "browser-real-task-pilot-v1",
+    "browserStart": "cold-start: no manual page, navigation, or claim; the model's Core-approved describe lazily creates the initial blank page",
+    "measurementKind": "deterministic-task-chain",
+    "runStatus": "completed",
+    "realModel": {
+      "status": "not_run"
+    },
+    "summary": {
+      "ordinaryTasksPlanned": 5,
+      "ordinaryTasksCompleted": 5,
+      "stopSafetyOutcome": "passed"
+    },
+    "integrity": {
+      "sourceStable": true,
+      "artifactsAvailable": true
+    },
+    "budgets": {
+      "timeoutMs": 180000,
+      "maxModelRounds": 20,
+      "maxToolCalls": 64,
+      "maxOutputTokensPerRequest": 4096,
+      "maxHttpRequests": 24,
+      "stopObservationMs": 3000,
+      "childTerminateAfterMs": 420000,
+      "childKillAfterMs": 435000,
+      "maxTaskReruns": 0,
+      "modelTransportMaxRetries": 0,
+      "coreNetworkRecoveryMode": "bounded",
+      "coreNetworkRecoveryMaxRetries": 5,
+      "aggregateOutputTokenUpperBoundPerAttempt": 98304,
+      "upperBoundConditions": "Every forwarded HTTP request carries max_output_tokens <= 4096; at most 24 forwarded HTTP requests, including retries and auxiliary requests. Provider must honor its output limit.",
+      "dollarBound": "unknown; no pricing assertion",
+      "fixtureHasProviderRequestGate": false
+    }
+  },
+  "attemptHistory": [
+    {
+      "evidenceDirectory": ".scratch/browser-delivery/task-pilot-fixture",
+      "runStatus": "interrupted",
+      "interruptedReceipt": ".scratch/browser-delivery/task-pilot-fixture/interrupted-run.json",
+      "attempts": [
+        {
+          "taskId": "local-html",
+          "status": "blocked",
+          "cleanup": {
+            "applicationStopped": true
+          }
+        },
+        {
+          "taskId": "form-submit",
+          "status": "blocked",
+          "cleanup": {
+            "applicationStopped": true
+          }
+        },
+        {
+          "taskId": "dynamic-dom",
+          "status": "blocked",
+          "cleanup": {
+            "applicationStopped": true
+          }
+        },
+        {
+          "taskId": "iframe-info",
+          "status": "not_run"
+        },
+        {
+          "taskId": "information",
+          "status": "not_run"
+        },
+        {
+          "taskId": "stop",
+          "status": "not_run"
+        }
+      ],
+      "originalManifestRetained": true
+    },
+    {
+      "evidenceDirectory": ".scratch/browser-delivery/task-pilot-fixture-rerun",
+      "runStatus": "failed",
+      "interruptedReceipt": null,
+      "attempts": [
+        {
+          "taskId": "local-html",
+          "status": "blocked",
+          "cleanupValid": false
+        },
+        {
+          "taskId": "form-submit",
+          "status": "blocked",
+          "cleanupValid": false
+        },
+        {
+          "taskId": "dynamic-dom",
+          "status": "blocked",
+          "cleanupValid": false
+        },
+        {
+          "taskId": "iframe-info",
+          "status": "blocked",
+          "cleanupValid": false
+        },
+        {
+          "taskId": "information",
+          "status": "blocked",
+          "cleanupValid": false
+        },
+        {
+          "taskId": "stop",
+          "status": "blocked",
+          "cleanupValid": false
+        }
+      ]
+    },
+    {
+      "evidenceDirectory": ".scratch/browser-delivery/task-pilot-fixture-v3",
+      "runStatus": "failed",
+      "interruptedReceipt": null,
+      "attempts": [
+        {
+          "taskId": "local-html",
+          "status": "blocked",
+          "cleanupValid": false
+        },
+        {
+          "taskId": "form-submit",
+          "status": "blocked",
+          "cleanupValid": false
+        },
+        {
+          "taskId": "dynamic-dom",
+          "status": "blocked",
+          "cleanupValid": false
+        },
+        {
+          "taskId": "iframe-info",
+          "status": "blocked",
+          "cleanupValid": false
+        },
+        {
+          "taskId": "information",
+          "status": "blocked",
+          "cleanupValid": false
+        },
+        {
+          "taskId": "stop",
+          "status": "blocked",
+          "cleanupValid": false
+        }
+      ]
+    },
+    {
+      "evidenceDirectory": ".scratch/browser-delivery/task-pilot-fixture-v4",
+      "runStatus": "failed",
+      "interruptedReceipt": null,
+      "attempts": [
+        {
+          "taskId": "local-html",
+          "status": "failed",
+          "cleanupValid": true
+        },
+        {
+          "taskId": "form-submit",
+          "status": "failed",
+          "cleanupValid": true
+        },
+        {
+          "taskId": "dynamic-dom",
+          "status": "failed",
+          "cleanupValid": true
+        },
+        {
+          "taskId": "iframe-info",
+          "status": "failed",
+          "cleanupValid": true
+        },
+        {
+          "taskId": "information",
+          "status": "failed",
+          "cleanupValid": true
+        },
+        {
+          "taskId": "stop",
+          "status": "failed",
+          "cleanupValid": true
+        }
+      ]
+    },
+    {
+      "evidenceDirectory": ".scratch/browser-delivery/task-pilot-fixture-v5",
+      "runStatus": "failed",
+      "interruptedReceipt": null,
+      "attempts": [
+        {
+          "taskId": "local-html",
+          "status": "completed",
+          "cleanupValid": true
+        },
+        {
+          "taskId": "form-submit",
+          "status": "completed",
+          "cleanupValid": true
+        },
+        {
+          "taskId": "dynamic-dom",
+          "status": "completed",
+          "cleanupValid": true
+        },
+        {
+          "taskId": "iframe-info",
+          "status": "completed",
+          "cleanupValid": true
+        },
+        {
+          "taskId": "information",
+          "status": "completed",
+          "cleanupValid": true
+        },
+        {
+          "taskId": "stop",
+          "status": "unknown",
+          "cleanupValid": false
+        }
+      ]
+    },
+    {
+      "evidenceDirectory": ".scratch/browser-delivery/task-pilot-fixture-v6",
+      "runStatus": "completed",
+      "interruptedReceipt": null,
+      "attempts": [
+        {
+          "taskId": "local-html",
+          "status": "completed",
+          "cleanupValid": true
+        },
+        {
+          "taskId": "form-submit",
+          "status": "completed",
+          "cleanupValid": true
+        },
+        {
+          "taskId": "dynamic-dom",
+          "status": "completed",
+          "cleanupValid": true
+        },
+        {
+          "taskId": "iframe-info",
+          "status": "completed",
+          "cleanupValid": true
+        },
+        {
+          "taskId": "information",
+          "status": "completed",
+          "cleanupValid": true
+        },
+        {
+          "taskId": "stop",
+          "status": "interrupted",
+          "cleanupValid": true
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "No real provider request or saved credential use.",
+    "No package or cross-platform acceptance.",
+    "No generalization, ranking, task-efficiency or autonomous HTML generation claim."
+  ],
+  "auditLog": ".scratch/browser-hillclimb/decision.tsv"
+}

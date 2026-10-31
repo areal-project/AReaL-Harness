@@ -45,7 +45,8 @@ function fileWorkspace(backend, request) {
   if (!modelRecord(thread)) throw new Error("会话工作目录尚未确认，请先打开会话");
   if (thread.cloud) {
     if (request.operation === "readPdf") throw new Error("云端 PDF 不能通过本地文件路径读取");
-    if (request.operation === "openHtml") throw new Error("云端 HTML 不能通过本地文件路径打开");
+    if (request.operation === "openHtml" || request.operation === "openDocument")
+      throw new Error("云端 HTML 不能通过本地文件路径打开");
   }
   if (!thread.worktree) return project;
   if (
@@ -61,8 +62,8 @@ function fileWorkspace(backend, request) {
   };
 }
 
-/** @param {{backend:Pick<InstanceType<typeof import("./service-client.cjs").SharedCoreBackend>,"snapshot"|"command">,shell:Pick<typeof import("electron").shell,"showItemInFolder"|"openPath">,home:string,authorize:()=>void,chooseSave:(options:import("electron").SaveDialogOptions)=>Promise<import("electron").SaveDialogReturnValue>}} options @param {unknown} request */
-async function fileOpen({ backend, shell, home, authorize, chooseSave }, request) {
+/** @param {{backend:Pick<InstanceType<typeof import("./service-client.cjs").SharedCoreBackend>,"snapshot"|"command">,shell:Pick<typeof import("electron").shell,"showItemInFolder"|"openPath">,home:string,authorize:()=>void,openHtml:(request:{projectId:string,threadId:string,path:string,workspacePath:string,valid:()=>boolean})=>Promise<{pageId:string,url:string,dispatch:string}>,chooseSave:(options:import("electron").SaveDialogOptions)=>Promise<import("electron").SaveDialogReturnValue>}} options @param {unknown} request */
+async function fileOpen({ backend, shell, home, authorize, chooseSave, openHtml }, request) {
   if (!modelRecord(request)) throw new Error("无效文件打开请求");
   /** @type {Array<{id:string,label:string,application?:string}>} */
   const targets = [{ id: "system", label: "系统默认应用" }];
@@ -128,8 +129,19 @@ async function fileOpen({ backend, shell, home, authorize, chooseSave }, request
     if (current.root !== project.root || current.executionProjectId !== project.executionProjectId)
       throw new Error("会话工作目录已变化，请重新打开");
     authorize();
-    const error = await shell.openPath(path);
-    if (error) throw new Error(error);
+    await openHtml({
+      projectId: /** @type {string} */ (request.projectId),
+      threadId: /** @type {string} */ (request.threadId),
+      path,
+      workspacePath: project.root,
+      valid: () => {
+        authorize();
+        const current = fileWorkspace(backend, request);
+        return (
+          current.root === project.root && current.executionProjectId === project.executionProjectId
+        );
+      },
+    });
     return {};
   }
   if (path !== root && !path.startsWith(root + sep)) throw new Error("文件不在当前工作区内");
@@ -276,4 +288,4 @@ async function fileOpen({ backend, shell, home, authorize, chooseSave }, request
   });
   return {};
 }
-module.exports = { fileOpen };
+module.exports = { fileOpen, fileWorkspace };

@@ -53,3 +53,39 @@ Benchmark 名称、来源组、任务数和重复次数分别计数。一个代�
 取消后立即沿原路径关闭上游，只解析已经接收的字节，不为补统计继续读取、延长生成、重试或查询其他 API。没有收到的服务端回执仍为 UNKNOWN。支持存储响应的供应商可另做授权后的离线对账，当前观察器不自动检索响应，也不将估算 token 当作真实用量。
 
 机制回归：`python3 -m unittest discover -s tests/perf/tests -p 'test_model_observer.py' -v` 与 `python3 -m unittest discover -s tests/perf/tests -p 'test_usage_capture.py' -v`。本地 HTTP fixture 验证转发字节、取消、并发、磁盘故障和快照；不证明真实上游故障的缺失用量能够恢复。
+
+## 浏览器真实任务链路试点
+
+`browser-real-task-pilot-v1` 预登记 6 道题，每题 1 次，统一来源组为 `areal-synthetic-browser-pilot-v1`。题目覆盖本地 HTML 阅读问答、一次性表单提交、动态目录选择、iframe 信息读取、多页面检索，以及首个已确认副作用后的暂停。模型只收到普通任务、公开地址和合法用户输入，自行选择浏览器工具。站点回执、原生 WebContents DOM 和完整 Core 历史独立评分。
+
+从仓库根运行以下命令。plan 不启动 Electron，也不读取模型凭据。fixture 使用固定模型桩，结果标为 `deterministic-task-chain`，`realModel.status` 为 `not_run`。
+
+```sh
+pnpm --dir clients/gui test:browser-tasks
+pnpm --dir clients/gui bench:browser-tasks:plan \
+  --output "$PWD/.scratch/browser-task-plan"
+pnpm --dir clients/gui bench:browser-tasks:fixture \
+  --output "$PWD/.scratch/browser-task-fixture"
+```
+
+执行 fixture 和 real 前，准备 GUI 产物与真实 Core binary，必要时通过绝对路径 `AREAL_CORE_BIN` 指定。电脑与浏览器 UI 操作按仓库规则使用 GPT-6.1 Terra。每题新建 Electron user-data、Core home、用户 home、registry、workspace 和浏览器状态，并走公开 create/send 与权威 `thread/read`。浏览器从冷启动开始，不预开页面、不手工导航或认领；模型的首个 Core 已审批 describe 按产品流程创建并认领空白页。固定模型也从真实 describe 回执取得 pageId，后续导航沿用同一工具链。
+
+真实模型调用须先获得本次 6 题及指定凭据来源的用户授权。授权后，操作者在当前 shell 设置临时凭据环境变量，再提供变量名。以下完整 Responses endpoint 示例须替换为已授权服务。runner 不读取桌面 vault、账户或保存的凭据，也不将 secret 交给 Electron/Core 子进程。
+
+```sh
+pnpm --dir clients/gui bench:browser-tasks:real \
+  --authorized --protocol responses --model gpt-6.1-terra \
+  --upstream https://api.example.invalid/v1/responses \
+  --credential-env AREAL_BROWSER_PILOT_API_KEY \
+  --output "$PWD/.scratch/browser-task-real"
+```
+
+缺少授权、显式配置或指定环境变量时，全部 6 条 attempt 保留为 `blocked`，不调用其他模型。`--authorized` 记录已经获得的授权，不替代用户授权。当前实现尚未运行真实模型，不报告解题成功率或收益。
+
+每题固定 Terra、medium reasoning、default service tier，省略 temperature。Core 上限为 20 个 model rounds、64 次工具调用、每请求 4096 output tokens。任务不补跑，模型 transport 层 `model.max_retries` 为 0；Core 的 `network.retry_mode="bounded"` 仍允许每个符合条件的逻辑请求最多 5 次网络恢复，全部计入 HTTP 总上限。任务终态轮询预算为 180 秒，设置与清理另计；外层子进程分别在 420 秒与 435 秒请求终止和强制结束。真实模式的透明 HTTP gate 对全部底层请求统一设 24 次上限，包含重试和辅助请求，并拒绝超出冻结模型参数或输出上限的请求。供应商遵守输出限制时，每题全部请求的输出上界为 98,304 tokens；这不限制输入 tokens，也不代表美元上限。
+
+审批固定为 Ask。执行器读取 Core 权威 pending interaction，按计划中的来源与目标 origin、任务归属和精确本地文件范围决定允许一次或拒绝，保存全部决定；本地文档的随机 origin 只从本题成功 openDocument 回执纳入。实际 preset、human reviewer、工具范围和轮次配置在提交前核对并保存。公开 create 不提供关闭自动命名的字段，因此保留默认命名行为；命名与输入预测等辅助模型请求也进入同一 HTTP 计数门和 Core audit，不能从消费中排除。fixture 对这些辅助请求单独响应，不推进浏览器任务步骤。停止题在第一个站点副作用回执后按下暂停，随后停止所有审批提交，只读原请求的权威历史等待结算，另观察 3 秒内无新增副作用。停止请求只发一次，超过任务期限仍保留 timeout/unknown 并观察原请求，不重发暂停；站点副作用与停止请求元数据分别保留，缺少结算不等于没有副作用。预期 `interrupted` 单列为 safety outcome，不计入 5 道正常任务的完成数。
+
+`manifest.json` 保留全部计划尝试、实际状态、源码与产物摘要、模型参数、预算、清理结果和评分。每题目录保存完整权威历史、全部工具调用、站点事实、原生页面事实、Core model audit 和 HTTP 请求元数据。超时、阻塞或未知尝试即使在清理结算期间收到 Core completed，也不计为任务完成。actual tier 与 usage 只采用 Core 已收回执，缺失保留 `unknown`，已知用量明确为下界。取消后关闭上游，不继续生成以补统计。
+
+该试点只验证单来源真实任务链路。正式策略开发比较仍须至少 12 道不同任务、3 个独立来源组、每题每方 5 次。六道同源题和固定模型桩结果不能支撑模型排名、策略收益或默认晋级。

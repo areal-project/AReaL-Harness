@@ -676,6 +676,7 @@ class HumanBrowserCommands {
         );
         break;
       case "navigate":
+        page.document?.revoke();
         if (target === null) throw new Error("无效浏览地址");
         page.url = target;
         page.error = "";
@@ -690,9 +691,11 @@ class HumanBrowserCommands {
         });
         break;
       case "back":
+        page.document?.revoke();
         if (c.navigationHistory.canGoBack()) c.navigationHistory.goBack();
         break;
       case "forward":
+        page.document?.revoke();
         if (c.navigationHistory.canGoForward()) c.navigationHistory.goForward();
         break;
       case "reload":
@@ -712,7 +715,8 @@ class HumanBrowserCommands {
         c.stop();
         break;
       case "external":
-        await require("electron").shell.openExternal(webUrl(c.getURL() || page.url));
+        if (page.document) await page.document.openExternal();
+        else await require("electron").shell.openExternal(webUrl(c.getURL() || page.url));
         break;
       case "devtools":
         this.control.revoke(page);

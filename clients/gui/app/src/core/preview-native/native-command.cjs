@@ -150,6 +150,7 @@ class NativeCommandExecution {
       const targetUrl = url === "about:blank" ? url : webUrl(url);
       if (targetUrl !== "about:blank" && !page.networkPolicy.allowApprovedNavigation(targetUrl))
         throw new Error("not_sent");
+      page.document?.revoke();
       page.approvedNavigation = targetUrl;
       action.dispatched = true;
       await loadNavigationDocument(c, targetUrl, stopped);
@@ -170,6 +171,7 @@ class NativeCommandExecution {
         canGoForward: () => c.navigationHistory.canGoForward(),
         goBack: () => {
           live();
+          page.document?.revoke();
           page.approvedNavigation =
             c.navigationHistory.getAllEntries()[c.navigationHistory.getActiveIndex() - 1]?.url;
           action.dispatched = true;
@@ -177,6 +179,7 @@ class NativeCommandExecution {
         },
         goForward: () => {
           live();
+          page.document?.revoke();
           page.approvedNavigation =
             c.navigationHistory.getAllEntries()[c.navigationHistory.getActiveIndex() + 1]?.url;
           action.dispatched = true;

@@ -81,6 +81,7 @@ class NativePageLifecycle {
    * @param {import('./model.js').Page} page
    */
   closeNative(page) {
+    page.document?.revoke();
     this.human_input.cancelHumanGesture(page);
     page.dialogPresentation?.dispose();
     page.dialogPresentation = null;
@@ -268,11 +269,13 @@ class NativePageLifecycle {
       devToolsContents: () =>
         c.isDestroyed() ? null : (c.devToolsWebContents ?? page.openingDevTools),
       download: page.onDownload,
+      documentRequest: (details) => page.document?.request(details) ?? null,
     });
     c.setWindowOpenHandler((details) => {
       // Electron must never create an unowned BrowserWindow. A local human click
       // may create a sibling only after URL and current ownership checks.
       if (
+        page.document ||
         page.control !== "human" ||
         !this.workspace.pageStillOwned(page) ||
         !this.workspace.owns(projectId, threadId) ||
@@ -334,7 +337,15 @@ class NativePageLifecycle {
     const navigate = (event, url) => {
       try {
         webUrl(url);
-        if (page.frameGrant || !page.networkPolicy.permits({ url, resourceType: "mainFrame" }))
+        if (
+          page.frameGrant ||
+          !page.networkPolicy.permits({
+            url,
+            resourceType: "mainFrame",
+            webContentsId: c.id,
+            frame: c.mainFrame,
+          })
+        )
           event.preventDefault();
       } catch {
         event.preventDefault();
@@ -364,6 +375,7 @@ class NativePageLifecycle {
       page.dialogPending = false;
       page.activeSelection?.cancel();
       if (main) {
+        if (page.document && !page.document.matchesEntry(url)) page.document.revoke();
         page.frameDocumentGeneration = (page.frameDocumentGeneration ?? 0) + 1;
         if (page.frameGrant) {
           const grant = page.frameGrant;
@@ -446,6 +458,7 @@ class NativePageLifecycle {
         url === page.frameGrant.parentURL
       )
         page.frameGrant.status = "active";
+      page.document?.committed(url);
       page.committedUrl = url;
       page.url = url;
       if (page.fileHandoff) {
@@ -485,6 +498,7 @@ class NativePageLifecycle {
       // A started download navigation has no committed document. Restoring its
       // provisional URL would repeat an UNKNOWN transfer after a renderer crash.
       page.url = page.committedUrl;
+      page.document?.revoke();
       this.control.revoke(page);
       this.downloads.cancelFileOperations(page, "native_crash_after_dispatch");
       page.crashed = true;

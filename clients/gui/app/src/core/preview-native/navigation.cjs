@@ -129,6 +129,7 @@ class ApprovedNavigation {
     try {
       page.approvedActionNavigation = null;
       if (request.operation === "navigate") {
+        page.document?.revoke();
         page.approvedNavigation = target;
         page.url = target;
         page.error = "";

@@ -208,6 +208,6 @@ Core 仅在已授权 MCP 连接边界解析秘密引用，敏感值只绑定声�
 
 ### 桌面 HTML 文档打开
 
-桌面 `fileOpen` 窄桥提供 `{ operation: "openHtml", projectId, threadId, path }`，成功返回 `{}`。这是本地桌面桥能力，不是 Core RPC。宿主核对项目和会话归属，拒绝云端会话及尚未就绪的工作树。相对路径按该会话执行目录解析，也接受工作区外的绝对路径。请求路径与 realpath 后的路径都须以 `.html` 或 `.htm` 结尾，且目标须为普通文件。异步解析后重新核对执行目录归属，再交给系统默认 HTML 应用；该操作不使用编辑器打开偏好。打开错误显示可见反馈。通用 `open`、读取、定位与另存操作继续限制在工作区根内。
+桌面 `fileOpen` 窄桥提供 `{ operation: "openHtml", projectId, threadId, path }`，成功返回 `{}`，文档打开回执仅供 Main 发送既有 reveal 事件。这是本地桌面桥能力，不是 Core RPC。宿主核对项目和会话归属，拒绝云端会话及尚未就绪的工作树。相对路径按该会话执行目录解析，也接受工作区外的绝对路径。请求路径与 realpath 后的路径都须以 `.html` 或 `.htm` 结尾，且目标须为普通文件。异步解析后重新核对执行目录归属，再通过 Main 的文档 owner 打开当前聊天内置 Browser，成功后发送既有 reveal 事件；该操作不使用编辑器打开偏好。工作区入口授权同目录树静态资产，外部入口只授权确切 HTML。显式外部打开才交给系统默认应用。范围、入口快照、撤销和 Agent 的 `browser_v1.openDocument` 见 [Browser 契约](browser.md#本地-html-文档)。打开错误显示可见反馈。通用 `open`、读取、定位与另存操作继续限制在工作区根内。
 
 回复中的本地 HTML 文件链接使用此操作，兼容历史 `file:///` 和 `file://localhost/` URI。Markdown 链接边界仅为 HTML 链接规范化本地 URI，保留文件名中的空格、非 ASCII 字符、百分号、`#` 和 `?`，不接受远程 authority；图片继续禁用 `file:` 协议。URI 中的查询与片段不参与文件路径解析，仅打开对应文档。

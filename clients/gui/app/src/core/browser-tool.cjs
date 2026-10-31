@@ -79,6 +79,18 @@ function validToolInput(value) {
       return false;
     }
   }
+  if (value.operation === "openDocument")
+    return (
+      keys.every((key) => ["pageId", "path"].includes(key)) &&
+      typeof parameters.pageId === "string" &&
+      /^[0-9a-f-]{36}$/.test(parameters.pageId) &&
+      typeof parameters.path === "string" &&
+      parameters.path.length > 0 &&
+      parameters.path.length <= 4096 &&
+      !parameters.path.includes("\0") &&
+      !/^[\\/]{2}/.test(parameters.path) &&
+      /\.html?$/i.test(parameters.path)
+    );
   if (oneOf(["navigate", "newPage"], value.operation)) {
     if (
       !keys.every((key) => ["pageId", "url"].includes(key)) ||

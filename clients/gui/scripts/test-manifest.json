@@ -821,6 +821,14 @@
     "requires": ["electron", "browser", "core-binary", "gui-build", "git"]
   },
   {
+    "script": "test:browser-tasks",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["browser", "benchmark"],
+    "requires": [],
+    "notes": "Node-only task grader and loopback transport contracts; no Electron or provider calls."
+  },
+  {
     "script": "test:health",
     "layer": "unit",
     "platforms": ["darwin", "linux"],
@@ -935,6 +943,13 @@
     "platforms": ["darwin", "linux", "win32"],
     "areas": ["remote", "mobile"],
     "requires": []
+  },
+  {
+    "script": "test:html-document",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["browser"],
+    "requires": ["electron", "core-binary", "gui-build"]
   },
   {
     "script": "test:browser-benchmark-summary",

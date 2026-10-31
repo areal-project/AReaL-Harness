@@ -523,6 +523,7 @@ class ApprovedActions {
         await Promise.race([
           (async () => {
             live();
+            if (navigationIntent) page.document?.revoke();
             page.approvedActionNavigation = navigationIntent
               ? {
                   ...navigationIntent,

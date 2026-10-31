@@ -213,6 +213,22 @@ export function ApprovalRequest({
                     ))}
                   </ol>
                 )}
+                {browserPlan.operation === "openDocument" && browserPlan.document?.scope && (
+                  <div>
+                    <p>
+                      {t("operations.documentFile")}
+                      {browserPlan.document.scope.canonicalFile}
+                    </p>
+                    <p>
+                      {browserPlan.document.scope.kind === "workspaceDirectory"
+                        ? `${t("operations.documentDirectory")}${browserPlan.document.scope.canonicalRoot}`
+                        : t("operations.documentExactFile")}
+                    </p>
+                    {browserPlan.document.scope.kind === "workspaceDirectory" && (
+                      <p>{t("operations.documentStaticScope")}</p>
+                    )}
+                  </div>
+                )}
                 {browserPlan.targetUrl && (
                   <p>
                     目标地址：{browserPlan.targetUrl}（{browserPlan.targetOrigin}）
@@ -378,7 +394,10 @@ export function ApprovalRequest({
         {isComputer
           ? (computerPlan?.target?.app?.name ?? computerPlan?.target?.name ?? computerPlan?.origin)
           : isBrowser
-            ? (browserPlan?.targetOrigin ?? browserPlan?.origin ?? browserPlan?.url)
+            ? (browserPlan?.document?.scope?.canonicalFile ??
+              browserPlan?.targetOrigin ??
+              browserPlan?.origin ??
+              browserPlan?.url)
             : (item.effectiveArguments?.cwd ?? item.effectiveArguments?.path)}
       </p>
       {command && (

@@ -1,3 +1,4 @@
+import { prepareTaskBenchmark } from "./browser-task-benchmark-driver.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -10,7 +11,7 @@ import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { arch, cpus, loadavg, platform, release } from "node:os";
 import { selectConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
-import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
+import { assertApplicationStopped, closeRecordedSmokeApplication } from "./application-cleanup.mjs";
 import { checkBrowserStartup } from "./browser-startup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 
@@ -21,7 +22,11 @@ for (let index = 2; index < process.argv.length; index++) {
   if (flag === "--native") options.native = true;
   else if (flag === "--benchmark") options.benchmark = true;
   else if (flag === "--ecosystem") options.ecosystem = true;
-  else if (["--suite", "--native-bundle-id", "--native-fixture-app"].includes(flag)) {
+  else if (
+    ["--suite", "--native-bundle-id", "--native-fixture-app", "--task-benchmark-config"].includes(
+      flag,
+    )
+  ) {
     assert.ok(
       process.argv[index + 1] && !process.argv[index + 1].startsWith("--"),
       `${flag} needs a value`,
@@ -29,6 +34,7 @@ for (let index = 2; index < process.argv.length; index++) {
     options[
       {
         "--suite": "suite",
+        "--task-benchmark-config": "taskConfig",
         "--native-bundle-id": "bundleId",
         "--native-fixture-app": "fixtureApp",
       }[flag]
@@ -72,6 +78,10 @@ const scratch = await makeTempDir("areal-automation-core-");
 const workspace = join(scratch, "workspace"),
   userHome = join(scratch, "user");
 await mkdir(workspace);
+const taskBenchmark = options.taskConfig
+  ? await prepareTaskBenchmark(options.taskConfig, workspace)
+  : null;
+if (taskBenchmark) assert.equal(options.suite, "browser");
 const ecosystem = options.ecosystem
   ? {
       pluginId: `${options.suite}-control@areal-adapters`,
@@ -225,6 +235,14 @@ await new Promise((resolve) => site.listen(0, "127.0.0.1", resolve));
 const siteUrl = `http://127.0.0.1:${site.address().port}/`;
 let app, page, projectId, threadId, pageId, nativeId, activeScenario, fixtureProcess;
 const model = createServer(async (request, response) => {
+  if (taskBenchmark)
+    return taskBenchmark.fixtureModel(request, response).catch((error) => {
+      const failure = taskBenchmark.recordFixtureError(error);
+      errors.push(failure);
+      console.error(`Task model fixture failed: ${failure.stack ?? failure.message}`);
+      if (!response.headersSent) response.writeHead(500);
+      response.end();
+    });
   try {
     let raw = "";
     for await (const chunk of request) raw += chunk;
@@ -359,6 +377,11 @@ await writeFile(
   join(userHome, ".areal/config.toml"),
   `schema_version=1\n[limits]\ncontext_window_tokens=1000000\ncontext_mode="manual"\n[model]\nprovider="fixture"\nname="fixture"\ncontext_window_tokens=1000000\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\n`,
 );
+if (taskBenchmark)
+  await writeFile(
+    join(userHome, ".areal/config.toml"),
+    taskBenchmark.configText(`http://127.0.0.1:${model.address().port}/v1/chat/completions`),
+  );
 const deployment = join(scratch, "desktop.json");
 await writeFile(
   deployment,
@@ -368,7 +391,9 @@ await writeFile(
         id: "fixture",
         revision: "v1",
         displayName: "Fixture",
-        instructions: "Use the requested tool and report the result.",
+        instructions: taskBenchmark
+          ? "Complete the user task within its stated scope using the browser. Stop when asked."
+          : "Use the requested tool and report the result.",
         allowPluginSkills: options.ecosystem === true,
       },
     ],
@@ -382,6 +407,14 @@ const env = {
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
   AREAL_CORE_DESKTOP_CONFIG: deployment,
   AREAL_CORE_BIN: binary,
+  ...(taskBenchmark
+    ? {
+        HOME: userHome,
+        USERPROFILE: userHome,
+        XDG_CONFIG_HOME: join(userHome, ".config"),
+        XDG_CACHE_HOME: join(userHome, ".cache"),
+      }
+    : {}),
 };
 for (const key of [
   "AREAL_CORE_WORKSPACE",
@@ -952,7 +985,7 @@ async function installEcosystem() {
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBox = async () => ({ response: 1 });
   });
-  await closeSmokeApplication(app);
+  await closeRecordedSmokeApplication(app);
   app = undefined;
   await assertApplicationStopped(binary, env, metadata);
   await launch();
@@ -1195,6 +1228,20 @@ console.log(`Automation Core evidence ${scratch}`);
 try {
   if (benchmark) benchmark.provenanceBefore = await benchmarkSourceSnapshot();
   await launch();
+  if (taskBenchmark) {
+    events.taskBenchmark = await taskBenchmark.run({
+      app,
+      page,
+      command,
+      readCoreThread,
+      preview,
+      projectId,
+      setThread: (id) => {
+        threadId = id;
+      },
+      scratch,
+    });
+  }
   if (ecosystem) {
     if (options.suite === "computer") await setComputerEnabled(true);
     await installEcosystem();
@@ -1497,7 +1544,7 @@ try {
     assertComputerCatalog("computer-disabled-again", false);
     checks.push("computer-disabled-again");
   }
-  if (options.suite !== "computer") {
+  if (!taskBenchmark && options.suite !== "computer") {
     if (ecosystem) await readiness(true);
     await newThread();
     await page.keyboard.press("Meta+t");
@@ -1835,7 +1882,9 @@ try {
       : "passive-status-no-authorization-request",
   );
   assert.deepEqual(errors, []);
-  passed = true;
+  passed = taskBenchmark
+    ? !["blocked", "timeout", "unknown"].includes(events.taskBenchmark?.status)
+    : true;
 } catch (error) {
   errors.push({ code: error.code ?? "ACCEPTANCE_FAILED", message: error.stack ?? String(error) });
   if (page) await captureSmokeFailure(page, scratch, error);
@@ -1880,7 +1929,7 @@ try {
             : original(...args);
         };
       });
-      await closeSmokeApplication(app);
+      await closeRecordedSmokeApplication(app);
       events.cleanup.electronStopped = true;
     } catch (error) {
       errors.push(`Electron cleanup ${error.message}`);
@@ -2020,6 +2069,7 @@ try {
     delete benchmark.provenanceBefore;
     manifest.benchmark = benchmark;
   }
+  if (taskBenchmark) await taskBenchmark.finish(scratch, events, errors);
   await writeFile(join(scratch, "run-manifest.json"), JSON.stringify(manifest, null, 2));
   console.log(JSON.stringify({ passed, evidence: scratch, checks, errors, gaps }));
 }

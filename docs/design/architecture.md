@@ -154,6 +154,8 @@ Fork 与 Side 复用 Core/Runtime 的会话、历史和执行所有者。`conver
 
 共享 Browser 的普通网络加载使用 Chromium 的系统代理、DNS 与站点策略；Main 只隔离活动控制端口，网页不取得产品 bridge。适配器把用户新发送绑定到确切 Turn 和 GUI 连接，首次经 Core 审批的工具发现才懒绑定当前原生页；不以 `thread/resume` 抢宿主。人工键鼠事件由 Main 在派发前撤销页面读取与动作代次，排空在途输入后交付首个用户事件。Core 的读取和动作许可绑定页面、控制代次及具体计划，UNKNOWN 不重放。产品流程及局限见 [Browser 契约](../api/browser.md)。
 
+本地 HTML 的入口快照、文件范围和原生页授权由 Main 的 `preview-native/documents.cjs` 唯一持有；人工文件打开与 Agent `openDocument` 共用该 owner。它按需启动仅交付文档内容的独立 loopback listener，复用共享 Browser Profile 的请求身份 hook，不暴露产品接口。Core 审批文件范围，Renderer 只接收既有页面状态与 reveal 事件。
+
 客户端设计规则与页面模式归 [`clients/gui/design-system/`](../../clients/gui/design-system/README.md)。首批基础值、纯调色板、基础控件，以及Composer表面/工具栏和设置页面/分区/组/行的纯布局由私有 workspace 包 [`@areal/ui`](../../clients/gui/packages/ui/README.md)承接，原 renderer 保留其余控件、命名主题、偏好与开发预览；规则目录不承载业务执行或第二份可编辑值。迁移边界见 [D-004](../../design/decisions/004-local-ui-package.md)。[设计系统架构](../../clients/gui/design-system/architecture.md)明确架构、Base、独立题目与反馈的阶段准入；包构建和目录生成不代表完整 Base 或视觉验收完成。
 
 有限浏览器动作仍由 Main 的原生预览所有者执行。观察持有独立视口及原生 OPTION 身份，准备和执行复核同一目标；状态等待只读原生事实。scroll/hover 后失效观察保留批量确认前缀与调用去重，固定 select 语义不开放任意脚本入口。

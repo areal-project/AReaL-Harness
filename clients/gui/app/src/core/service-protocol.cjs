@@ -938,6 +938,7 @@ class DesktopService {
               "act",
               "wait",
               "navigate",
+              "openDocument",
               "newPage",
               "diagnostics",
               "runBatch",
@@ -1858,9 +1859,15 @@ class DesktopService {
     } = request ?? {};
     if (!validToolInput(input))
       return browserFailure("invalid_arguments", "Unsupported browser operation or parameters");
-    const action = ["act", "wait", "navigate", "newPage", "runBatch", "command"].includes(
-      input.operation,
-    );
+    const action = [
+      "act",
+      "wait",
+      "navigate",
+      "newPage",
+      "openDocument",
+      "runBatch",
+      "command",
+    ].includes(input.operation);
     const scoped = input.operation !== "describe";
     const key = browserKey(projectId, threadId);
     let claim = this.browserClaims.get(key);
@@ -1952,6 +1959,7 @@ class DesktopService {
           "act",
           "wait",
           "navigate",
+          "openDocument",
           "newPage",
           "diagnostics",
           "runBatch",
@@ -1959,10 +1967,14 @@ class DesktopService {
         ],
         command: describeCommands(input.parameters.topic),
         instructions:
-          "Use navigate with a listed pageId and a URL to open a site, then observe to obtain current refs. Fill the search field and press Enter to submit an approved public search. describe creates or reuses the visible page after Core approval; no development service is needed. Human input revokes access; only a new explicit chat request can authorize re-entry.",
+          "After creating a local HTML deliverable, use openDocument with a listed pageId and its full path to display it in the current chat. Its file scope requires Core approval. Workspace HTML permits static assets in its directory tree; HTML outside the workspace is exact-file only. Use navigate with a listed pageId and a URL to open a site, then observe to obtain current refs. Fill the search field and press Enter to submit an approved public search. describe creates or reuses the visible page after Core approval; no development service is needed. Human input revokes access; only a new explicit chat request can authorize re-entry.",
         parameterGuide:
           "Invoke browser_v1 only when the current user task requires browser interaction. For ordinary chat and tasks that do not need a browser, do not call browser_v1 merely because it is available. Every new browser task starts with describe and empty parameters, then a fresh observe for an existing page; never reuse earlier-turn snapshotId or refs. Replace pageId with an ID from pages, snapshotId with the latest observe.observationId, and ref with a ref from that observation. act takes one nested action object. Observe again after fill before submitting with press Enter.",
         examples: [
+          {
+            operation: "openDocument",
+            parameters: { pageId: "<pageId>", path: "/absolute/path/report.html" },
+          },
           { operation: "observe", parameters: { pageId: "<pageId>" } },
           {
             operation: "act",

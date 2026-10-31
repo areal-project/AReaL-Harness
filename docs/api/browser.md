@@ -48,6 +48,21 @@
 
 主文档 Ref `press` 的原生 keyDown 已确认后，若只有非目标子 Frame 导航使全页观察代次失效，可在主文档、原生 Page、Host/Core 归属、控制和视口均未变化且未取消时完成该按键的唯一 keyUp。该例外只结束已确认的输入，不允许复用旧 Ref、继续其他输入或扩大导航许可；旧读取计划仍失效，后续动作须 fresh observe 并经 Core 权限检查。回执仍为 `inputConfirmed:true / verification:not_checked`；ACK 丢失或其他 fence 失效仍保持 UNKNOWN，不重放。
 
+## 本地 HTML 文档
+
+回复中的本地 HTML 链接默认在当前聊天的内置 Browser 打开。Agent 生成 HTML 后先 `describe` 取得 pageId，再调用 `{"operation":"openDocument","parameters":{"pageId":"<pageId>","path":"/absolute/path/report.html"}}` 自动展示结果。已有页面先取得新观察。普通 `navigate` 仍只接受 HTTP(S)，不能传入 `file:` URI。显式“外部打开”把原始 HTML 文件交给系统应用；地址栏中的临时内容 URL 只供当前原生页使用，复制到其他浏览器不能读取文件。
+
+`openDocument` 经独立的 prepare、Core 审批和 execute 路径。计划包含 canonical 入口、文件范围与入口 SHA-256，并绑定当前 Page、原生代次、文档/控制代次、宿主、Thread/Turn/Call 与期限。执行精确匹配计划；页面的网络许可不批准文件范围，也不因内容 URL 位于 localhost 自动许可。审批展示以下范围。
+
+- 工作区内的入口授权其 canonical 所在目录树中的 CSS、JS、MJS、PNG、JPG/JPEG、GIF、WebP、AVIF、ICO、SVG、WOFF/WOFF2、TTF 和 OTF。此范围包含没有被 HTML 引用的同类文件，不能识别任意 `secret.js` 或图片中的秘密。
+- 工作区外的入口，包括 `/tmp`，只授权确切 HTML 文件。因此外部交付应使用内联脚本、样式和图片。其他 HTML、JSON、source map、隐藏路径和指向范围外的符号链接均不能作为静态资产读取。入口和每份资产上限均为 20 MiB。
+
+Main 的 `NativeDocuments` 唯一持有入口快照、有效 grant 和按需启动的 loopback 内容 listener。每次 grant 使用独立 localhost origin 和随机路径。共享 Browser Profile 的请求 hook 先剥离任意伪造私有 header，只向有效 grant 对应原生 WebContents 的准确入口请求或同 origin 主 Frame 资产请求重新注入授权值。首次 loading 入口请求可在 Frame 身份尚未就绪时，凭精确原生 WebContents 与入口 URL 放行；active 后的 reload 和资产请求要求准确主 Frame 身份。其他原生页、导入器、其余无 Frame 请求、子 Frame、worker 和持有 URL 的外部客户端没有读取权限。监听器校验 GET、Host、令牌、私有 header、路径范围和文件版本；不提供目录列举、磁盘写入或产品控制接口，产品控制端口的封锁继续生效。
+
+文档不具备 Node、preload 或产品 bridge。CSP 允许同 origin 与内联 JavaScript/样式、自身及 data/blob 图片，并阻止外部连接、Frame、worker、对象、base 和表单提交。网页脚本不能把文件能力转移到另一个页面。已批准导航、显式人工导航、替换文档、关闭、驱逐、原生销毁、会话执行目录/宿主/Core 换代和 dispose 撤销 grant；人工答题和接管本身保留文档资产能力。最后一份 grant 释放后关闭 listener。
+
+入口字节在 prepare 时固定；reload 复用同一入口快照并读取范围内当前静态资产，重新 `openDocument` 才刷新入口。资产目录不是不可变快照。成功返回 `dispatch:confirmed`、readiness、页面身份和 URL，随后通过既有 reveal 事件显示当前聊天；后台完成只更新原聊天。派发后的超时或中断保持 UNKNOWN 和实际页面，供 observe 核对，不自动重放。
+
 ## ZCode 命令适配
 
 新增 `{operation:"command",parameters:{pageId,command}}`。`describe` 的 `command` 字段返回实际方法、有效示例和不支持项。通过 `describe` 的 `parameters.topic` 指定 `command.<method>` 或 `command.playwright.<action>` 获取对应的上游严格 schema，避免完整 schema 被结果预算截断。命令 schema 与执行器复用 ZCode `3c5b227649371507ddc4eb46ac5133afe6db1cab`，来源和适配点见[包说明](../../clients/gui/packages/browser-automation/README.md)。
@@ -110,6 +125,7 @@ Electron 在原生页面所有者中维护设备尺寸。手机、平板与桌�
 | listPages | 无或已知 workspaceId | 只列当前 Thread 的授权页；人工页仅元数据 |
 | claimPage | pageId | 用户已选择/授权页；保留同一对象，不跨 Thread |
 | newPage | URL、用户可见目的 | 同一临时上下文；配额；导航审批 |
+| openDocument | pageId、本地 HTML 路径 | Core 文件范围审批；入口快照；工作区目录静态资产或外部 exact-file |
 | navigate | pageId、URL | 不依据活动标签推断目标；HTTP(S)；跨 Origin 重新检查 |
 | observe | pageId、scope、可选 rootRef、budget | DOM/AX 默认；标注 iframe 覆盖和截断 |
 | capture | pageId、viewport/full、可选 clip | 绑定视口；隐私与尺寸检查；返回 Core 授权证据 |

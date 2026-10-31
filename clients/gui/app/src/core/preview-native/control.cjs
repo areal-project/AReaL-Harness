@@ -355,6 +355,7 @@ class PageControl {
           "act",
           "wait",
           "navigate",
+          "openDocument",
           "newPage",
           "diagnostics",
           "runBatch",

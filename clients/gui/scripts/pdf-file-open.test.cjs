@@ -55,7 +55,7 @@ test("PDF bytes follow the selected worktree and reject invalid, oversized, and 
   }
 });
 
-test("HTML documents outside the workspace open with the system handler and a local thread owner", async () => {
+test("HTML documents use the built-in opener with a local thread owner", async () => {
   const home = await realpath(await mkdtemp(join(tmpdir(), "areal-html-files-")));
   try {
     const root = join(home, "source");
@@ -82,22 +82,30 @@ test("HTML documents outside the workspace open with the system handler and a lo
       },
       home,
       shell: {
-        openPath: async (path) => {
-          opened.push(path);
-          return handoffError;
-        },
-        showItemInFolder: () => assert.fail("HTML uses the system document handler"),
+        openPath: () => assert.fail("HTML uses the built-in browser"),
+        showItemInFolder: () => assert.fail("HTML uses the built-in browser"),
       },
       authorize: () => {
         authorized += 1;
       },
       chooseSave: () => assert.fail("opening HTML never saves"),
+      openHtml: async (request) => {
+        opened.push(request.path);
+        assert.equal(request.workspacePath, directory);
+        assert.equal(request.valid(), true);
+        if (handoffError) throw new Error(handoffError);
+        return {
+          pageId: "page",
+          url: "http://document.localhost/entry.html",
+          dispatch: "confirmed",
+        };
+      },
     };
     const request = { operation: "openHtml", projectId: "p", threadId: "t", path: outside };
-    await fileOpen(dependencies, request);
-    await fileOpen(dependencies, { ...request, path: "local.HTM" });
+    assert.deepEqual(await fileOpen(dependencies, request), {});
+    assert.deepEqual(await fileOpen(dependencies, { ...request, path: "local.HTM" }), {});
     assert.deepEqual(opened, [outside, join(directory, "local.HTM")]);
-    assert.equal(authorized, 2);
+    assert.equal(authorized, 4);
     await assert.rejects(fileOpen(dependencies, { ...request, operation: "open" }), /当前工作区/);
     for (const path of ["alias.html", "alias.txt", "directory.html", "missing.html"])
       await assert.rejects(fileOpen(dependencies, { ...request, path }));
@@ -116,8 +124,8 @@ test("HTML documents outside the workspace open with the system handler and a lo
     thread.worktree.state = "binding";
     await assert.rejects(fileOpen(dependencies, request), /绑定尚未确认/);
     thread.worktree.state = "ready";
-    handoffError = "system document handler failed";
-    await assert.rejects(fileOpen(dependencies, request), /system document handler failed/);
+    handoffError = "built-in browser failed";
+    await assert.rejects(fileOpen(dependencies, request), /built-in browser failed/);
     dependencies.authorize = () => {
       throw new Error("sender no longer authorized");
     };

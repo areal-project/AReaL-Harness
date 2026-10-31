@@ -204,6 +204,7 @@ for (const change of ["timeout", "takeover", "deployment"]) {
           "act",
           "wait",
           "navigate",
+          "openDocument",
           "newPage",
           "diagnostics",
           "runBatch",

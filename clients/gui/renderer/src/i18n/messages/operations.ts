@@ -1,4 +1,14 @@
 export const operationMessages = {
+  "operations.documentFile": { "zh-CN": "HTML 文件：", en: "HTML file: " },
+  "operations.documentDirectory": { "zh-CN": "静态资源目录：", en: "Static asset directory: " },
+  "operations.documentExactFile": {
+    "zh-CN": "仅允许读取该 HTML 文件。",
+    en: "Read only this HTML file.",
+  },
+  "operations.documentStaticScope": {
+    "zh-CN": "允许读取该目录树内的 CSS、JavaScript、图片和字体，包括未在 HTML 中引用的同类文件。",
+    en: "Read CSS, JavaScript, images and fonts in this directory tree, including files not referenced by the HTML.",
+  },
   "operations.inspectionDetails": {
     "zh-CN": "查看原操作与诊断",
     en: "View original operation and diagnostics",

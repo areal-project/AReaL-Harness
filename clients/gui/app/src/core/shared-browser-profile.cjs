@@ -5,7 +5,7 @@ const { WorkspaceNetworkPolicy } = require("./browser-network.cjs");
 const PARTITION = "persist:areal-embedded-browser";
 /** @typedef {{controlEndpoints:()=>string[],quiesce:()=>Promise<void>}} ProfileHost */
 /** @typedef {{contents:import('electron').WebContents,current:()=>boolean,devToolsContents?:()=>import('electron').WebContents|null|undefined,id?:number}} RegisteredContents */
-/** @typedef {RegisteredContents & {kind:'page',download:(event:Electron.Event,item:import('electron').DownloadItem,source:import('electron').WebContents)=>void}} RegisteredPage */
+/** @typedef {RegisteredContents & {kind:'page',documentRequest?:(details:import('./browser-network.cjs').NetworkRequest)=>import('./preview-native/documents.cjs').DocumentRequestDecision|null,download:(event:Electron.Event,item:import('electron').DownloadItem,source:import('electron').WebContents)=>void}} RegisteredPage */
 /** @typedef {RegisteredContents & {kind:'importer'}} RegisteredImporter */
 /** @typedef {(options:Omit<import('@areal/browser-data').ChromeBrowserDataImportOptions,'logger'>)=>Promise<import('@areal/browser-data').ChromeBrowserDataImportResult>} ChromeImporter */
 
@@ -28,6 +28,15 @@ class SharedBrowserProfile {
           (record) => record.current() && record.devToolsContents?.()?.id === id,
         ),
       (details) => this.permitsRequest(details),
+      (details) => {
+        const record =
+          details.webContentsId === undefined
+            ? undefined
+            : this.contents.get(details.webContentsId);
+        return record?.kind === "page" && record.current()
+          ? (record.documentRequest?.(details) ?? null)
+          : null;
+      },
     );
   }
   status() {

@@ -1,5 +1,6 @@
 // @ts-check
 "use strict";
+const { DOCUMENT_HEADER } = require("./preview-native/documents.cjs");
 
 /** @typedef {Pick<import('electron').OnBeforeRequestListenerDetails,'url'|'resourceType'|'webContentsId'|'frame'>} NetworkRequest */
 /** @typedef {{contents:Pick<import('electron').WebContents,'id'|'mainFrame'>,origin:string,parentURL:string,status:string,valid:()=>boolean}} FrameGrant */
@@ -46,11 +47,17 @@ function port(url) {
 }
 
 class WorkspaceNetworkPolicy {
-  /** @param {()=>string|string[]|null} [controlEndpoint] @param {(contentsId:number|undefined)=>boolean} [ownsDevTools] @param {(details:NetworkRequest)=>boolean} [ownsRequest] */
-  constructor(controlEndpoint = () => null, ownsDevTools = () => false, ownsRequest = () => true) {
+  /** @param {()=>string|string[]|null} [controlEndpoint] @param {(contentsId:number|undefined)=>boolean} [ownsDevTools] @param {(details:NetworkRequest)=>boolean} [ownsRequest] @param {(details:NetworkRequest)=>import("./preview-native/documents.cjs").DocumentRequestDecision|null} [documentRequest] */
+  constructor(
+    controlEndpoint = () => null,
+    ownsDevTools = () => false,
+    ownsRequest = () => true,
+    documentRequest = () => null,
+  ) {
     this.controlEndpoint = controlEndpoint;
     this.ownsDevTools = ownsDevTools;
     this.ownsRequest = ownsRequest;
+    this.documentRequest = documentRequest;
     /** @type {Map<number,FrameGrant>} */
     this.frameGrants = new Map();
     this.active = true;
@@ -146,6 +153,8 @@ class WorkspaceNetworkPolicy {
     if (this.permitsDevTools(details)) return true;
     const url = networkUrl(details.url, details.resourceType);
     if (!this.active || !url || this.isControl(url)) return false;
+    const document = this.documentRequest(details);
+    if (document && !document.allow) return false;
     if (details.webContentsId === undefined || !this.frameGrants.has(details.webContentsId))
       return true;
     // Chromium 可在回调期间销毁 Frame；无法读取身份时拒绝，不能从权限检查抛出。
@@ -172,6 +181,22 @@ class WorkspaceNetworkPolicy {
         (allowed) => respond({ cancel: !allowed }),
         () => respond({ cancel: true }),
       );
+    });
+    session.webRequest.onBeforeSendHeaders({ urls: ["<all_urls>"] }, (details, respond) => {
+      const requestHeaders = { ...details.requestHeaders };
+      for (const key of Object.keys(requestHeaders))
+        if (key.toLowerCase() === DOCUMENT_HEADER) delete requestHeaders[key];
+      if (!this.ownsRequest(details) || !this.permits(details)) {
+        respond({ cancel: true, requestHeaders });
+        return;
+      }
+      const document = this.documentRequest(details);
+      if (document?.header) {
+        for (const key of Object.keys(requestHeaders))
+          if (["cookie", "authorization"].includes(key.toLowerCase())) delete requestHeaders[key];
+        requestHeaders[DOCUMENT_HEADER] = document.header;
+      }
+      respond({ requestHeaders });
     });
     session.webRequest.onHeadersReceived({ urls: ["<all_urls>"] }, (details, respond) => {
       if (!this.ownsRequest(details)) {

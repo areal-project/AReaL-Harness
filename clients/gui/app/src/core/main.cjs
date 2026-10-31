@@ -27,7 +27,7 @@ const { createOwner } = require("./application-owner.cjs");
 const { setupUpdater } = require("../update/electron.cjs");
 const { showCoreNotification } = require("./notifications.cjs");
 const { MenuBar } = require("./menu-bar.cjs");
-const { fileOpen } = require("./file-open.cjs");
+const { fileOpen, fileWorkspace } = require("./file-open.cjs");
 const { PluginArchives } = require("./plugin-archives.cjs");
 const { McpFormResources } = require("./mcp-form-resources.cjs");
 const { McpAppsHost, parseDeepLink } = require("./mcp-apps.cjs");
@@ -725,6 +725,8 @@ function startDesktop() {
           return response === 1 && current();
         },
         (projectId, threadId) => backend.retainsThreadResources(projectId, threadId),
+        (projectId, threadId) =>
+          fileWorkspace(backend, { projectId, threadId, operation: "openDocument" }),
       );
       preview.onRevoke = (identity) => {
         void backend.browserRevoke(identity).catch(() => {});
@@ -1125,6 +1127,18 @@ function startDesktop() {
                 ),
               ];
           }
+          if (
+            browserRequest.operation === "openDocument" &&
+            browserRequest.phase === "execute" &&
+            result.dispatch === "confirmed" &&
+            !window.isDestroyed()
+          )
+            sendDesktopEvent(window.webContents, "areal-core:preview-event", {
+              kind: "reveal",
+              projectId: browserRequest.projectId,
+              threadId: browserRequest.threadId,
+              pageId: browserRequest.pageId,
+            });
           return result;
         } catch (error) {
           return browserHostFailure(request, error);
@@ -1134,6 +1148,20 @@ function startDesktop() {
         mcpApps?.dispose();
         void closeComputer().catch(() => {});
       });
+      /** @param {Parameters<InstanceType<typeof CorePreview>["openDocument"]>[0]} request */
+      const openHtml = async (request) => {
+        if (!preview || !window || window.isDestroyed())
+          throw new Error("Browser host unavailable");
+        const result = await preview.openDocument(request);
+        if (result.dispatch === "confirmed" && !window.isDestroyed())
+          sendDesktopEvent(window.webContents, "areal-core:preview-event", {
+            kind: "reveal",
+            projectId: request.projectId,
+            threadId: request.threadId,
+            pageId: result.pageId,
+          });
+        return result;
+      };
       const mcpHost = (mcpApps = new McpAppsHost({
         backend: serviceBackend,
         ownerId: () =>
@@ -1150,6 +1178,7 @@ function startDesktop() {
               backend: serviceBackend,
               shell,
               home: app.getPath("home"),
+              openHtml,
               authorize: current,
               chooseSave: (options) => showSaveDialog(options),
             },
@@ -1449,6 +1478,7 @@ function startDesktop() {
             backend: serviceBackend,
             shell,
             home: app.getPath("home"),
+            openHtml,
             authorize: () => trusted(event),
             chooseSave: (options) => showSaveDialog(options),
           },

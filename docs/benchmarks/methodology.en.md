@@ -53,3 +53,39 @@ Received usage immediately updates the in-memory checkpoint and submits metadata
 Cancellation closes upstream through the existing path. Only already received bytes are parsed: the observer never drains canceled generation, extends generation, retries, or calls other APIs to obtain usage. Missing provider receipts remain UNKNOWN. Providers with stored-response support may permit separately authorized offline reconciliation; this observer does not retrieve responses automatically or present token estimates as actual usage.
 
 Mechanism regressions: `python3 -m unittest discover -s tests/perf/tests -p 'test_model_observer.py' -v` and `python3 -m unittest discover -s tests/perf/tests -p 'test_usage_capture.py' -v`. Local HTTP fixtures cover byte transparency, cancellation, concurrency, disk failure, and closing snapshots; they do not establish that usage missing during real upstream failures can be recovered.
+
+## Real-model browser task pilot
+
+`browser-real-task-pilot-v1` preregisters six tasks with one attempt each, all in `areal-synthetic-browser-pilot-v1`. Tasks cover local HTML reading and questions, one form submission, dynamic directory selection, iframe information, multi-page lookup, and interruption after the first confirmed side effect. The model receives ordinary goals, public addresses, and legitimate user inputs, then chooses browser tools. Independent site receipts, native WebContents DOM, and complete Core history establish outcomes.
+
+Run these commands from the repository root. Plan mode neither launches Electron nor reads model credentials. Fixture mode uses a fixed model stub and labels results `deterministic-task-chain`, with `realModel.status` set to `not_run`.
+
+```sh
+pnpm --dir clients/gui test:browser-tasks
+pnpm --dir clients/gui bench:browser-tasks:plan \
+  --output "$PWD/.scratch/browser-task-plan"
+pnpm --dir clients/gui bench:browser-tasks:fixture \
+  --output "$PWD/.scratch/browser-task-fixture"
+```
+
+Before fixture or real execution, prepare GUI artifacts and a real Core binary. Set an absolute `AREAL_CORE_BIN` if needed. Repository rules route computer and browser UI operations to GPT-6.1 Terra. Each task gets fresh Electron user-data, Core home, user home, registry, workspace, and browser state. Execution uses public create/send and authoritative `thread/read`. Browsers start cold, with no preopened page, manual navigation, or manual claim. The model's first Core-approved describe creates and claims the blank page through the product flow. The fixed model also obtains its pageId from the actual describe receipt before navigating through the same tool path.
+
+Obtain user authorization for these six real-model tasks and the specific credential source first. After authorization, the operator populates a temporary credential environment variable in the current shell and supplies its name. Replace the example full Responses endpoint below with the authorized service. The runner does not read desktop vaults, accounts, or saved credentials. Secrets stay in the parent HTTP gate and do not reach Electron/Core children.
+
+```sh
+pnpm --dir clients/gui bench:browser-tasks:real \
+  --authorized --protocol responses --model gpt-6.1-terra \
+  --upstream https://api.example.invalid/v1/responses \
+  --credential-env AREAL_BROWSER_PILOT_API_KEY \
+  --output "$PWD/.scratch/browser-task-real"
+```
+
+Missing authorization, explicit configuration, or the named environment variable leaves all six attempts `blocked`, with no fallback model. `--authorized` records authorization already obtained from the user. It does not grant authorization itself. No real-model run has been performed for this implementation, so no task success rate or benefit is reported.
+
+Each task fixes Terra, medium reasoning, default service tier, and omitted temperature. Core limits are 20 model rounds, 64 tool calls, 4096 output tokens per request, and zero task reruns. Model transport uses `model.max_retries=0`; Core `network.retry_mode="bounded"` still permits up to five network recovery retries per eligible logical request. Every such request counts toward the HTTP cap. Terminal polling has a 180-second budget, excluding setup and cleanup. The outer controller requests child termination at 420 seconds and forces termination at 435 seconds. In real mode, a transparent HTTP gate caps all underlying requests at 24, including retries and auxiliary requests, and rejects requests outside the frozen model parameters or output limit. If the provider honors that limit, aggregate output is bounded by 98,304 tokens per task. This does not bound input tokens or establish a dollar cap.
+
+Approval uses Ask. The executor reads authoritative pending Core interactions, then allows once or denies according to source and destination origins, task ownership, and the exact local file scope. Every decision is retained. Random local-document origins enter the scope only through a successful openDocument receipt for that task. The effective preset, human reviewer, tool scope, and round limit are checked and recorded before submission. Public create does not expose an automatic-naming disable field, so naming keeps its default behavior. Naming, prompt prediction, and other auxiliary model requests pass through the same HTTP gate and Core audit and remain part of consumption. Fixture replies to auxiliary requests do not advance browser task steps. The stop task pauses after the first site side-effect receipt, stops all approval submissions, and reads authoritative history until the original request settles. It checks for no new effects over three seconds. Stop is submitted once. Crossing the task deadline preserves timeout/unknown and observes the original request without resubmitting. Site effects and stop-request metadata remain separate, so missing settlement does not imply that no effect occurred. Its expected `interrupted` state has a separate safety outcome and is excluded from the five ordinary tasks' completion count.
+
+`manifest.json` retains every planned attempt, actual status, source and artifact hashes, model parameters, budgets, cleanup, and grading. Per-task directories retain complete authoritative history, every tool call, site facts, native page facts, Core model audits, and HTTP request metadata. A timed-out, blocked, or unknown attempt does not count as task completion even if Core reports completed during cleanup settlement. Actual tier and usage come only from receipts observed by Core. Missing values remain `unknown`, and known partial usage is a lower bound. Cancellation closes upstream instead of continuing generation to recover statistics.
+
+This pilot checks one source's real-task pipeline. Formal policy development comparisons still require at least 12 distinct tasks, three independent source groups, and five repetitions per task per arm. Six same-source tasks and fixed-model fixture results do not establish model rankings, policy benefits, or default promotion.
