@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { Composer, attachmentDrafts, sending } from "./Composer.js";
 import type { ConversationComposer } from "./ConversationComposer.js";
 import { readingViews, cancelTurnStart } from "./readingViews.js";
+import { usePendingMessage } from "./pendingMessage.js";
+import { setApplicationPreferences } from "./settings/applicationPreferences.js";
 import { planModeOptions } from "./permissions.js";
 import type { Action } from "./services.js";
 
@@ -18,6 +20,7 @@ const observed = vi.hoisted(() => {
   });
   return {
     submit: undefined as ((value: string) => unknown) | undefined,
+    modifiedSubmit: undefined as ((value: string) => unknown) | undefined,
     approve: undefined as (() => void) | undefined,
   };
 });
@@ -28,6 +31,7 @@ vi.mock("react", async (importOriginal) => ({
 vi.mock("./ConversationComposer.js", () => ({
   ConversationComposer: (props: ComponentProps<typeof ConversationComposer>) => {
     observed.submit = props.onSubmit;
+    observed.modifiedSubmit = props.onModifiedSubmit;
     return null;
   },
 }));
@@ -39,7 +43,7 @@ vi.mock("./components/ui/button.js", () => ({
 }));
 vi.mock("./i18n/IntlProvider.js", () => ({ useI18n: () => ({ t: (id: string) => id }) }));
 
-function fixture(plan = false, file = false) {
+function fixture(plan = false, file = false, running = false) {
   const projectId = crypto.randomUUID();
   const key = `areal-gui:draft:${projectId}:thread`;
   const owner = JSON.stringify([projectId, "thread", false]);
@@ -50,7 +54,7 @@ function fixture(plan = false, file = false) {
     turns: [
       {
         id: "old",
-        status: "completed",
+        status: running ? "inProgress" : "completed",
         configuration: config,
         items: [{ id: "answer", type: "agentMessage", text: "Ready" }],
       },
@@ -129,4 +133,46 @@ describe("Composer reading intent across unknown boundaries", () => {
     readingViews.delete(f.owner);
     attachmentDrafts.delete(f.key);
   });
+});
+
+describe("Composer follow-up destination before acceptance", () => {
+  it.each([
+    { mode: "queue", invert: false, queued: true },
+    { mode: "steer", invert: false, queued: false },
+    { mode: "queue", invert: true, queued: false },
+    { mode: "steer", invert: true, queued: true },
+  ] as const)(
+    "routes $mode (invert=$invert) without a transient conversation message",
+    async ({ mode, invert, queued }) => {
+      setApplicationPreferences({ followUp: mode });
+      const f = fixture(false, false, true);
+      let accept!: (value: Awaited<ReturnType<Action>>) => void;
+      f.action.mockReset().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            accept = resolve;
+          }),
+      );
+      let pendingMessage: unknown;
+      function Probe() {
+        pendingMessage = usePendingMessage(f.key);
+        return null;
+      }
+      (invert ? observed.modifiedSubmit : observed.submit)!("follow-up message");
+      await vi.waitFor(() => expect(f.action).toHaveBeenCalledOnce());
+      renderToStaticMarkup(createElement(Probe));
+      const intent = readingViews.get(f.owner)?.pendingTurnStart;
+      accept({ threadId: "thread" });
+      await vi.waitFor(() => expect(sending.has(f.key)).toBe(false));
+      expect(f.action.mock.calls[0][0]).toBe(queued ? "send" : "steer");
+      expect(f.action.mock.calls[0][1]).toMatchObject({ expectedTurnId: "old", enqueue: queued });
+      if (queued) expect(pendingMessage).toBeUndefined();
+      else expect(pendingMessage).toMatchObject({ text: "follow-up message" });
+      expect(intent).toBeUndefined();
+      renderToStaticMarkup(createElement(Probe));
+      expect(pendingMessage).toBeUndefined();
+      readingViews.delete(f.owner);
+      setApplicationPreferences({ followUp: "queue" });
+    },
+  );
 });

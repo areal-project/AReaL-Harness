@@ -513,11 +513,12 @@ export function Composer({
       appEntries.map((entry) => entry.value),
     );
     const steer = !taskManagement && !!running && shouldSteer(prefs.followUp, invert);
+    const enqueue = !taskManagement && !!running && !steer;
     const turnStart =
-      !sideCommand && !creatingGoal && !steer
+      !sideCommand && !creatingGoal && !steer && !enqueue
         ? requestTurnStart(project.id, thread.id, thread.turns?.at(-1)?.id)
         : undefined;
-    if (!sideCommand && !creatingGoal)
+    if (!sideCommand && !creatingGoal && !enqueue)
       setPendingMessage(key, {
         text: submittedInput.text,
         files: submittedInput.files,
@@ -564,7 +565,7 @@ export function Composer({
         uploadOwner,
         steer,
         expectedTurnId: running?.id,
-        enqueue: !taskManagement && !!running,
+        enqueue,
         skillAction: readAction,
         pluginContext,
         pluginMessages: {
