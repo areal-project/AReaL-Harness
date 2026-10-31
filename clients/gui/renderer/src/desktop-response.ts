@@ -160,7 +160,7 @@ export function readFileOpenResult(
   return z
     .union([
       z.object({
-        mimeType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+        mimeType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"]),
         bytes: z.instanceof(Uint8Array),
       }),
       z.object({
