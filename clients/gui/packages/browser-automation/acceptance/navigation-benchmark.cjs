@@ -19,7 +19,7 @@ const started = performance.now();
 const now = () => performance.now() - started;
 const result = {
   schemaVersion: 1,
-  benchmarkVersion: "browser-navigation-native-v1",
+  benchmarkVersion: "browser-navigation-native-v2",
   measurementKind: "native-command",
   runStatus: "running",
   startedAt: new Date().toISOString(),
@@ -169,6 +169,7 @@ async function trial(sample) {
     const deadline = now() + result.settings.siteDelayMs + 5000;
     if (sample.commandsStarted > 0) {
       while (
+        !requests.some((item) => item.trialId === actualTrialId && item.kind === "image") ||
         requests.some(
           (item) => item.trialId === actualTrialId && item.finishedAtMs === null && !item.aborted,
         )

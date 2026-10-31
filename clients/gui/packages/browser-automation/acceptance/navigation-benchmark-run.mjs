@@ -18,7 +18,7 @@ writeFileSync(
   JSON.stringify(
     {
       schemaVersion: 1,
-      benchmarkVersion: "browser-navigation-native-v1",
+      benchmarkVersion: "browser-navigation-native-v2",
       measurementKind: "native-command",
       runStatus: "blocked",
       cases: [],
