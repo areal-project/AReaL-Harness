@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "hypothesis": "H2: navigate does not lease a rendering window",
+  "beforeRuns": 5,
+  "afterRuns": 5,
+  "comparisons": [
+    {
+      "id": "ordinary-command",
+      "before": {
+        "count": 5,
+        "median": 130.85979099999986,
+        "min": 128.20208300000013,
+        "max": 131.69779199999994
+      },
+      "after": {
+        "count": 5,
+        "median": 8.7754589999995,
+        "min": 7.565832999999657,
+        "max": 15.019874999999956
+      },
+      "improvementPercent": 93.29399891827772
+    },
+    {
+      "id": "ordinary-legacy",
+      "before": {
+        "count": 5,
+        "median": 6.0092500000000655,
+        "min": 5.819500000000517,
+        "max": 6.182999999999993
+      },
+      "after": {
+        "count": 5,
+        "median": 6.27966699999979,
+        "min": 5.2653330000002825,
+        "max": 6.899749999999585
+      },
+      "improvementPercent": -4.500012480754201
+    },
+    {
+      "id": "slow-image-command",
+      "before": {
+        "count": 5,
+        "median": 127.51958299999933,
+        "min": 125.37929199999962,
+        "max": 192.5305840000001
+      },
+      "after": {
+        "count": 5,
+        "median": 8.098084000000199,
+        "min": 6.867916999999579,
+        "max": 10.312917000000198
+      },
+      "improvementPercent": 93.6495369499442
+    },
+    {
+      "id": "slow-image-legacy",
+      "before": {
+        "count": 5,
+        "median": 5.599291999999878,
+        "min": 5.054583999999522,
+        "max": 5.663582999999562
+      },
+      "after": {
+        "count": 5,
+        "median": 5.802708000000166,
+        "min": 5.563333000000057,
+        "max": 8.42200000000048
+      },
+      "improvementPercent": -3.632887872257662
+    }
+  ],
+  "verdict": "kept",
+  "scope": "Native navigation return time only; H2 compared against accepted H1, not the original product.",
+  "benchmarkVersion": "browser-navigation-native-v2",
+  "beforeCommit": "bcd5caa1",
+  "gate": {
+    "target": "ordinary-command",
+    "minimumImprovementPercent": 20,
+    "processRepeatsPerArm": 5,
+    "samplesPerScenarioPerProcess": 1,
+    "warmupPerScenarioPerProcess": 1,
+    "totalScoredCases": 40,
+    "totalWarmupCases": 40,
+    "coreTimedCasesPassed": 29,
+    "coreFunctionalChecksPassed": 33,
+    "recoveryCasesPassed": 4,
+    "browserContractsPassed": 69,
+    "guiTypecheck": "passed"
+  },
+  "controlInterpretation": "Legacy medians differ by less than one millisecond, within observed variation; negative control deltas remain in this report.",
+  "evidence": {
+    "paired": ".scratch/browser-hillclimb/h2-confirmed",
+    "core": "/private/var/folders/06/v03n2mms0ks1nrrvkyzjllr40000gr/T/areal-automation-core-qoncsX/run-manifest.json",
+    "recovery": ".scratch/browser-hillclimb/h2-confirmed/recovery/RESULT.json",
+    "sensitivity": ".scratch/browser-hillclimb/h2-confirmed/sensitivity/RESULT.json",
+    "nonScoringProfile": ".scratch/browser-hillclimb/h2-profile/PROFILE.json"
+  },
+  "limits": [
+    "Five independent process samples per scenario and arm; no stable tail-latency claim.",
+    "Real-model task strategy, providers, installation packages, physical input, and other OSes were not evaluated.",
+    "Host Node 24.2.0 is below the GUI package declaration; measured Electron uses Node 24.22.0."
+  ],
+  "provenance": {
+    "a": {
+      "sourceHead": "bcd5caa1f4e536f30922752205712c4674b387f5",
+      "scriptSHA256": "7e73b8e4f398ec666427bb26eedb23c44345222861a03772fcee0da734d4cb98",
+      "nativeCommandSHA256": "9688f1b6770888fcbb09e9ddd383d2e00fe1843fa52bc25a4053fb63fb7d5238"
+    },
+    "b": {
+      "sourceHead": "bcd5caa1f4e536f30922752205712c4674b387f5",
+      "scriptSHA256": "7e73b8e4f398ec666427bb26eedb23c44345222861a03772fcee0da734d4cb98",
+      "nativeCommandSHA256": "436ab3a919853c08787ea78611e3b80912a1b8e048dcb1e65e14f8f01c7b0ab3"
+    }
+  }
+}

@@ -56,7 +56,7 @@
 
 命令 `navigate` 接受本次主文档提交后的 `dom-ready` 作为可交互完成证据，无需等待图片等全部资源。成功回执只确认导航完成，业务结果仍须单独验证。
 
-准备记录绑定原始命令和涉及的每个真实 Page。执行不因审批等待而换目标；取消、页面接管、关闭、原生代次变化撤销后续输入。隐藏页面临时借用不可聚焦透明窗口取得 compositor surface，然后交还同一个 WebContentsView。截图经 Core Blob 返回，交付前后复核来源页控制代次。未知副作用保留 UNKNOWN，不重发。
+准备记录绑定原始命令和涉及的每个真实 Page。执行不因审批等待而换目标；取消、页面接管、关闭、原生代次变化撤销后续输入。命令 `navigate` 不租借渲染窗口，仍执行页面隐私检查。隐藏页面的截图和输入等路径继续临时借用不可聚焦透明窗口取得 compositor surface，然后交还同一个 WebContentsView。截图经 Core Blob 返回，交付前后复核来源页控制代次。未知副作用保留 UNKNOWN，不重发。
 
 上游声明并非全部可执行。普通 `fill`/`waitFor` 应改用 locator；上传、file chooser 和 `networkidle` 明确不支持。locator `downloadMedia` 复用上游下载锚点实现，并绑定修改操作审批与下载回执。Electron WebContentsView 的 `prompt()` 不可用。该适配不提供完整 Playwright/ZCode JavaScript SDK、外部 CDP、扩展或 CLI 无头后端。全部项目和聊天共用 Main 持有的 `persist:areal-embedded-browser` Session。关闭 Workspace 或聊天只销毁 Page 和控制引用，保留 Cookie、localStorage、IndexedDB 及登录状态。Profile 存放在当前 GUI userData 中，隔离测试 home 和不同安装配置不共享。旧临时 Session 不自动迁移。共享登录不授予其他聊天的页面控制权。
 

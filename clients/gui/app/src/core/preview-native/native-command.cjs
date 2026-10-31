@@ -260,7 +260,7 @@ class NativeCommandExecution {
           ["downloadPath", "waitForEvent", "fileChooserSetFiles"].includes(command.action.name)
         );
       if (pageMethod) {
-        await acquireSurface();
+        if (command.method !== "navigate") await acquireSurface();
         await race(this.assertCommandPrivacy(page, send));
       }
       if (command.method === "browserViewportSet" || command.method === "browserViewportReset") {
