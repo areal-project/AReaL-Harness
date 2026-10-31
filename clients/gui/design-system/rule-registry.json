@@ -4513,7 +4513,7 @@
       "title": "Messages.tsx 由 App.tsx 挂载，在主阅读区或嵌入上下文中展示传入的任务投影",
       "owner": "clients/gui/renderer/src/Messages.md#messages",
       "strength": "default",
-      "textSha256": "4abc7a6e29e04ddcbae7f87f11a9ecd85f814f6f1980f657f5336265f9887c20"
+      "textSha256": "73fcd3ca917d8d27e43e295f227eff622899471bbbb52665ed0dd2de01d714d1"
     },
     {
       "id": "R-MESSAGES-003",
@@ -4668,7 +4668,7 @@
       "title": "跟随最新时，新内容可推进视口",
       "owner": "clients/gui/renderer/src/Messages.md#对话信息流",
       "strength": "default",
-      "textSha256": "ce901a44f69717872f434ad366f0d8286afc015a6162406c4323f8297e1149d1"
+      "textSha256": "62a5903587098565d30c916355d98f4e3e2c4c832b674f0df5a5cac12997baa5"
     },
     {
       "id": "CONV-RESOURCE-01",

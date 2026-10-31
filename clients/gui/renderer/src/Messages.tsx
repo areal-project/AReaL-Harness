@@ -301,9 +301,9 @@ export function Messages({
   const container = useRef<HTMLDivElement>(null);
   const olderSentinel = useRef<HTMLDivElement>(null);
   const autoOlderIntent = useRef(false);
-  const shortAutoPages = useRef(0);
   const olderInFlight = useRef<object | undefined>(undefined);
   const scrollbarReading = useRef<number | undefined>(undefined);
+  const touchReading = useRef<{ y: number; requested: boolean } | undefined>(undefined);
   const readingViewport = useRef<{ width: number; height: number } | undefined>(undefined);
   const owner = JSON.stringify([project.id, thread.id, embedded]);
   const reading = useRef(createReadingState(owner, history.generation));
@@ -648,8 +648,7 @@ export function Messages({
         element.scrollHeight - element.scrollTop - element.clientHeight >= 120,
     );
   };
-  const loadOlder = async (pageId?: string, automatic = false) => {
-    if (!automatic) shortAutoPages.current = 0;
+  const loadOlder = async (pageId?: string) => {
     if (olderInFlight.current || localThread.displayHistory?.loadingOlder) return;
     autoOlderIntent.current = false;
     readHere();
@@ -684,18 +683,14 @@ export function Messages({
       element.scrollTop > element.clientHeight
     )
       return;
-    if (element.scrollHeight <= element.clientHeight) {
-      if (shortAutoPages.current >= 2) return;
-      shortAutoPages.current++;
-    } else shortAutoPages.current = 0;
-    void loadOlder(undefined, true);
+    void loadOlder();
   };
   const autoLoadCurrent = useRef(autoLoadOlder);
   autoLoadCurrent.current = autoLoadOlder;
   useEffect(() => {
     autoOlderIntent.current = false;
-    shortAutoPages.current = 0;
     olderInFlight.current = undefined;
+    touchReading.current = undefined;
     const element = container.current;
     const sentinel = olderSentinel.current;
     if (embedded || !element || !sentinel) return;
@@ -708,9 +703,11 @@ export function Messages({
       scrollbarReading.current = undefined;
     };
     window.addEventListener("pointerup", releaseScrollbar);
+    window.addEventListener("pointercancel", releaseScrollbar);
     return () => {
       observer.disconnect();
       window.removeEventListener("pointerup", releaseScrollbar);
+      window.removeEventListener("pointercancel", releaseScrollbar);
     };
   }, [
     owner,
@@ -718,11 +715,27 @@ export function Messages({
     localThread.displayHistory?.supported,
     localThread.displayHistory?.viewGeneration,
   ]);
+  const scheduleReading = () => {
+    if (readingFrame.current !== undefined) return;
+    readingFrame.current = requestAnimationFrame(() => {
+      readingFrame.current = undefined;
+      if (activeOwner.current !== owner) return;
+      updateReading();
+      autoLoadCurrent.current();
+    });
+  };
   const requestOlderFromInput = () => {
+    if (
+      olderInFlight.current ||
+      localThread.displayHistory?.loadingOlder ||
+      localThread.displayHistory?.loadingLatest ||
+      history.failure
+    )
+      return;
     autoOlderIntent.current = true;
     if (reading.current.kind === "following")
       reading.current = changeReadingIntent(reading.current, { kind: "holding" });
-    requestAnimationFrame(() => autoLoadCurrent.current());
+    scheduleReading();
   };
   const returnToBottom = () => {
     autoOlderIntent.current = false;
@@ -1144,6 +1157,7 @@ export function Messages({
       <div
         className={embedded ? "messages-embedded-content" : "messages"}
         ref={container}
+        tabIndex={embedded ? undefined : 0}
         onScroll={
           embedded
             ? undefined
@@ -1151,15 +1165,11 @@ export function Messages({
                 const element = container.current;
                 if (element && scrollbarReading.current !== undefined) {
                   if (element.scrollTop < scrollbarReading.current) requestOlderFromInput();
+                  else if (element.scrollTop > scrollbarReading.current)
+                    autoOlderIntent.current = false;
                   scrollbarReading.current = element.scrollTop;
                 }
-                if (readingFrame.current !== undefined) return;
-                readingFrame.current = requestAnimationFrame(() => {
-                  readingFrame.current = undefined;
-                  if (activeOwner.current !== owner) return;
-                  updateReading();
-                  autoLoadOlder();
-                });
+                scheduleReading();
               }
         }
         onWheelCapture={
@@ -1184,7 +1194,8 @@ export function Messages({
                   )
                     return;
                   requestOlderFromInput();
-                }
+                } else if (["ArrowDown", "PageDown", "End", " "].includes(event.key))
+                  autoOlderIntent.current = false;
               }
         }
         onPointerDownCapture={
@@ -1192,12 +1203,43 @@ export function Messages({
             ? undefined
             : (event) => {
                 if (
-                  event.pointerType === "touch" ||
+                  event.pointerType !== "touch" &&
                   event.clientX >= event.currentTarget.getBoundingClientRect().right - 16
                 )
                   scrollbarReading.current = event.currentTarget.scrollTop;
               }
         }
+        onTouchStartCapture={
+          embedded
+            ? undefined
+            : (event) => {
+                const touch = event.touches[0];
+                touchReading.current = touch ? { y: touch.clientY, requested: false } : undefined;
+              }
+        }
+        onTouchMoveCapture={
+          embedded
+            ? undefined
+            : (event) => {
+                const gesture = touchReading.current;
+                const touch = event.touches[0];
+                if (!gesture || !touch) return;
+                const delta = touch.clientY - gesture.y;
+                if (delta < 0) autoOlderIntent.current = false;
+                if (delta > 0 && !gesture.requested) {
+                  gesture.requested = true;
+                  requestOlderFromInput();
+                }
+                gesture.y = touch.clientY;
+              }
+        }
+        onTouchEndCapture={() => {
+          touchReading.current = undefined;
+        }}
+        onTouchCancelCapture={() => {
+          touchReading.current = undefined;
+          autoOlderIntent.current = false;
+        }}
         onMouseUp={captureSideSelection}
         onKeyUp={(event) => {
           if (event.key !== "Escape" && event.key !== "Tab" && event.key !== "Enter")
@@ -1239,21 +1281,8 @@ export function Messages({
             <div ref={olderSentinel} className="message-history-controls" aria-live="polite">
               {localThread.displayHistory.loadingLatest ? (
                 <span role="status">{t("chat.history.loadingLatest")}</span>
-              ) : localThread.displayHistory.latestTurnComplete !== false &&
-                !localThread.displayHistory.complete ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={localThread.displayHistory.loadingOlder}
-                  onClick={() => {
-                    void loadOlder();
-                  }}
-                >
-                  {localThread.displayHistory.loadingOlder
-                    ? t("chat.history.loadingOlder")
-                    : t("chat.history.loadOlder")}
-                </Button>
+              ) : localThread.displayHistory.loadingOlder ? (
+                <span role="status">{t("chat.history.loadingOlder")}</span>
               ) : null}
             </div>
           )}
@@ -1264,8 +1293,11 @@ export function Messages({
                 type="button"
                 variant="ghost"
                 size="sm"
-                disabled={localThread.displayHistory.loadingLatest}
-                onClick={() => void history.load()}
+                disabled={
+                  localThread.displayHistory.loadingLatest ||
+                  localThread.displayHistory.loadingOlder
+                }
+                onClick={() => void loadOlder()}
               >
                 {t("recovery.retryView")}
               </Button>

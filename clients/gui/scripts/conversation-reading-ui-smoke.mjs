@@ -68,10 +68,14 @@ try {
       await document.fonts.ready;
       for (let n = 0; n < 6; n++) await new Promise(requestAnimationFrame);
     });
-  const older = page.getByRole("button", { name: "加载更早的消息", exact: true });
+  const messages = page.locator(".messages");
+  assert.equal(await page.getByRole("button", { name: "加载更早的消息", exact: true }).count(), 0);
   for (let n = 0; n < 6; n++) {
-    await older.focus();
-    await page.keyboard.press("Enter");
+    await messages.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await messages.focus();
+    await page.keyboard.press("PageUp");
     await page.locator(`[data-side-item-id="answer-${n}"]`).waitFor({ state: "attached" });
     await frames();
   }

@@ -20,6 +20,9 @@ const labels =
   locale === "en"
     ? {
         older: "Load older messages",
+        olderLoading: "Loading older messages…",
+        latestLoading: "Restoring current turn…",
+        retry: "Retry loading conversation",
         full: "Load full content",
         loading: "Loading full content…",
         agent: "This historical content",
@@ -29,6 +32,9 @@ const labels =
       }
     : {
         older: "加载更早的消息",
+        olderLoading: "正在加载更早的消息…",
+        latestLoading: "正在恢复本轮消息…",
+        retry: "重试加载对话",
         full: "加载完整内容",
         loading: "正在加载完整内容…",
         agent: "这段历史内容",
@@ -354,7 +360,7 @@ try {
   await editor.fill("");
   checks.push("model discovery does not block submission or move composer");
   const older = page.getByRole("button", { name: labels.older, exact: true });
-  await older.waitFor({ timeout: 3000 });
+  assert.equal(await older.count(), 0, "ordinary history pagination has no button");
   // 固定消息内容，只切换恢复/分页状态，避免把正文增长误判为控件引起的跳动。
   const historyPosition = () =>
     page.locator('[data-turn-id="latest"]').evaluate((element) => ({
@@ -378,6 +384,14 @@ try {
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     );
     positions.push(await historyPosition());
+    assert.equal(await older.count(), 0, "history states never expose an ordinary page button");
+    const status = page.locator(".message-history-controls [role=status]");
+    if (displayHistory.loadingLatest || displayHistory.loadingOlder) {
+      assert.equal(
+        await status.textContent(),
+        displayHistory.loadingLatest ? labels.latestLoading : labels.olderLoading,
+      );
+    } else assert.equal(await status.count(), 0, "idle history has no loading status");
   }
   await page.screenshot({ path: join(scratch, "00-history-controls.png"), animations: "disabled" });
   await writeFile(join(scratch, "history-positions.json"), JSON.stringify(positions, null, 2));
@@ -401,7 +415,7 @@ try {
       displayHistory: { supported: true, complete: false, latestTurnComplete: true },
     }),
   );
-  await older.waitFor();
+  assert.equal(await older.count(), 0);
   assert.equal(
     (await page.evaluate(() => window.calls)).filter(
       (call) => call.name === "history" && call.params.operation === "loadItem",
@@ -420,7 +434,11 @@ try {
   await page.screenshot({ path: join(scratch, "01-explicit-loading.png"), animations: "disabled" });
   await page.evaluate(() => window.completeItem());
   await page.getByText("COMPLETE_UNICODE_雪🙂_SENTINEL", { exact: true }).waitFor();
-  await older.click();
+  await page.locator(".messages").evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await page.locator(".messages").focus();
+  await page.keyboard.press("PageUp");
   await page.getByText("OLDER_PAGE_SENTINEL", { exact: true }).waitFor();
   const texts = await page.locator("[data-turn-id]").allTextContents();
   assert.ok(
@@ -596,19 +614,44 @@ try {
   );
   await projection;
   assert.deepEqual(errors, []);
-  // Real Renderer + Desktop owner: auto pagination must require fresh input,
-  // preserve the visible paragraph and stop retrying after a failed read.
+  const touch = async (direction, end = "touchend") =>
+    page.locator(".messages").evaluate(
+      (element, { direction, end }) => {
+        const point = (clientY) =>
+          new Touch({ identifier: 1, target: element, clientX: 100, clientY });
+        for (const [type, y] of [
+          ["touchstart", 100],
+          ["touchmove", 100 + direction * 30],
+          ["touchmove", 100 + direction * 60],
+          [end, 100 + direction * 60],
+        ]) {
+          const contact = point(y);
+          element.dispatchEvent(
+            new TouchEvent(type, {
+              bubbles: true,
+              touches: type === end ? [] : [contact],
+              changedTouches: [contact],
+            }),
+          );
+        }
+      },
+      { direction, end },
+    );
   let pageReads = 0;
+  const pageCursors = [];
   let failNext = false;
   let shortPages = false;
+  let pageGate;
   project.client.request = async (method, params) => {
     assert.equal(method, "areal/conversation/history");
     pageReads++;
+    pageCursors.push(params.cursor);
     if (failNext) {
       failNext = false;
       throw new Error("PAGING_FAILURE_SENTINEL");
     }
     const n = params.cursor === "paging:0" ? 0 : Number(params.cursor.split(":")[1]);
+    if (pageGate) await pageGate;
     await new Promise((resolve) => setTimeout(resolve, 40));
     return {
       snapshotId: "paging-snapshot",
@@ -682,6 +725,18 @@ try {
       .locator('[data-side-item-id="head-item"]')
       .evaluate((node) => node.getBoundingClientRect().top);
   const anchorBefore = await anchorTop();
+  const composerBefore = (await page.locator(".composer-dock").boundingBox()).y;
+  const selected = await page
+    .locator('[data-side-item-id="head-item"] p')
+    .first()
+    .evaluate((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return selection.toString();
+    });
   await page.locator(".messages").hover();
   await page.mouse.wheel(0, -1);
   await page.getByText("OLDER_0_PARAGRAPH_0", { exact: true }).waitFor();
@@ -691,6 +746,17 @@ try {
     "prepend preserves reading anchor",
   );
   assert.equal(pageReads, 1, "one gesture cannot cascade through pages");
+  assert.equal(
+    await page.evaluate(() => window.getSelection()?.toString()),
+    selected,
+    "prepend preserves selected text",
+  );
+  assert.equal(
+    (await page.locator(".composer-dock").boundingBox()).y,
+    composerBefore,
+    "prepend preserves composer position",
+  );
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
   for (let n = 1; n < 6; n++) {
     await page.locator(".messages").evaluate((element) => {
       element.scrollTop = 40;
@@ -705,22 +771,47 @@ try {
   assert.ok(backend.historyWindow(project, "history-thread").pages.length <= 4);
   assert.equal(await page.getByText("TAIL_SENTINEL", { exact: true }).count(), 1);
   await page.screenshot({ path: join(scratch, "04-paging-gap.png"), animations: "disabled" });
+  const beforeCancelledTouch = pageReads;
+  await page.locator(".messages").evaluate((element) => {
+    element.scrollTop = element.clientHeight * 2;
+  });
+  await touch(1, "touchcancel");
+  await page.waitForTimeout(100);
+  assert.equal(pageReads, beforeCancelledTouch, "touch outside the older boundary does not fetch");
+  await page.locator(".messages").evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await page.waitForTimeout(200);
+  assert.equal(pageReads, beforeCancelledTouch, "cancelled touch cannot authorize a later layout");
   failNext = true;
-  await older.click();
+  await page.locator(".messages").evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await page.locator(".messages").hover();
+  await page.mouse.wheel(0, -1);
   await page.locator(".messages p[role=alert]").filter({ hasText: labels.loadFailed }).waitFor();
   const failedReads = pageReads;
+  const failedCursor = pageCursors.at(-1);
+  assert.match(failedCursor, /^paging:\d+$/);
   await page.locator(".messages").evaluate((element) => {
     element.scrollTop = 0;
   });
   await page.mouse.wheel(0, -10);
   await page.waitForTimeout(200);
   assert.equal(pageReads, failedReads, "failed automatic loads wait for an explicit retry");
-  await older.click();
+  await page.getByRole("button", { name: labels.retry, exact: true }).click();
   await page.waitForFunction(
     (message) =>
       !document.querySelector('.messages p[role="alert"]')?.textContent.includes(message),
     labels.loadFailed,
   );
+  await page
+    .getByText(`OLDER_${failedCursor.split(":")[1]}_PARAGRAPH_0`, { exact: true })
+    .waitFor();
+  assert.equal(pageCursors.at(-1), failedCursor, "retry reads the original failed cursor");
+  const afterRetry = pageReads;
+  await page.waitForTimeout(150);
+  assert.equal(pageReads, afterRetry, "retry does not reuse input received during failure");
   await followLatest();
   shortPages = true;
   backend.installObservation(project, {
@@ -768,18 +859,73 @@ try {
     shortBefore + 1,
     "underfilled viewport auto-loads at most one page per input",
   );
-  for (let n = 0; n < 4; n++) {
-    await page.mouse.wheel(0, -1);
-    await page.waitForTimeout(100);
-  }
+  assert.ok(
+    await page
+      .locator(".messages")
+      .evaluate((element) => element.scrollHeight <= element.clientHeight),
+    "fixture remains shorter than the viewport",
+  );
+  await page.locator(".messages").focus();
+  await page.keyboard.press("PageUp");
+  await page.getByText("OLDER_1_PARAGRAPH_0", { exact: true }).waitFor();
+  await page.waitForTimeout(150);
+  assert.equal(pageReads, shortBefore + 2, "keyboard input reads one short page");
+  await touch(-1);
+  await page.waitForTimeout(100);
+  assert.equal(pageReads, shortBefore + 2, "downward reading touch does not request older history");
+  await touch(1);
+  await page.getByText("OLDER_2_PARAGRAPH_0", { exact: true }).waitFor();
+  await page.waitForTimeout(150);
   assert.equal(
     pageReads,
-    shortBefore + 2,
-    "underfilled viewport stops after two auto pages across repeated input",
+    shortBefore + 3,
+    "third short page is reachable through one touch gesture",
+  );
+  await page.locator(".messages").hover();
+  await page.mouse.wheel(0, -1);
+  await page.getByText("OLDER_3_PARAGRAPH_0", { exact: true }).waitFor();
+  await page.waitForTimeout(150);
+  assert.equal(pageReads, shortBefore + 4, "fourth short page requires a fresh input");
+  let releasePage;
+  pageGate = new Promise((resolve) => {
+    releasePage = resolve;
+  });
+  await page.mouse.wheel(0, -1);
+  await page
+    .locator(".message-history-controls [role=status]")
+    .filter({ hasText: labels.olderLoading })
+    .waitFor();
+  for (let n = 0; n < 3; n++) await page.mouse.wheel(0, -1);
+  await page.locator(".messages").focus();
+  await page.keyboard.press("PageUp");
+  await touch(1, "touchcancel");
+  assert.equal(pageReads, shortBefore + 5, "busy input does not start concurrent reads");
+  releasePage();
+  pageGate = undefined;
+  await page.getByText("OLDER_4_PARAGRAPH_0", { exact: true }).waitFor();
+  await page.waitForTimeout(350);
+  assert.equal(
+    pageReads,
+    shortBefore + 5,
+    "busy wheel, keyboard and touch inputs do not queue another page",
+  );
+  assert.equal(await page.locator(".message-history-controls [role=status]").count(), 0);
+  await touch(1);
+  await page.getByText("OLDER_5_PARAGRAPH_0", { exact: true }).waitFor();
+  await page.waitForTimeout(150);
+  assert.equal(pageReads, shortBefore + 6, "a new touch after cancellation can read again");
+  assert.equal(await older.count(), 0);
+  assert.ok(backend.historyWindow(project, "history-thread").pages.length <= 4);
+  assert.equal(
+    (await page.evaluate(() => window.calls)).some((call) =>
+      ["send", "continue", "steer"].includes(call.name),
+    ),
+    false,
+    "history input never submits or replays execution",
   );
   await page.screenshot({ path: join(scratch, "05-short-history.png"), animations: "disabled" });
   checks.push(
-    "fresh upward input auto-loads exactly one page, programmatic scrolling and follow do not fetch, prepend keeps the paragraph, evicted pages reload via gap, failure requires manual retry, underfilled viewport stops at two automatic pages even across repeated input",
+    "fresh wheel, keyboard and touch input reads one page without a normal pagination button; short history continues beyond two pages; idle and busy inputs do not cascade; explicit Retry, paragraph and selection anchors, composer position, gap reload and four-page budget remain covered",
   );
   await projection;
   assert.deepEqual(errors, []);
