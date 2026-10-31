@@ -6,13 +6,14 @@ import { SidebarToggleIcon } from "../homeChromeIcons.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { NavigationBackIcon } from "../interfaceIcons.js";
 import { Messages } from "../Messages.js";
-import type { Action, Snapshot } from "../services.js";
+import type { Action, Snapshot, PlatformServices } from "../services.js";
 import { projectExecutionBlocked } from "../state/projectExecution.js";
 import type { createTaskWorkspace } from "../state/taskWorkspace.js";
 import { TaskCenter } from "../TaskCenter.js";
 import { TaskResourcesPopover } from "./TaskResourcesPopover.js";
 
 type Props = {
+  fileOpen?: PlatformServices["fileOpen"];
   workspace: ReturnType<typeof createTaskWorkspace>;
   snapshot: Snapshot;
   action: Action;
@@ -29,6 +30,7 @@ type Props = {
 
 export function TaskWorkspace({
   workspace,
+  fileOpen,
   snapshot,
   action,
   dark,
@@ -121,6 +123,7 @@ export function TaskWorkspace({
       )}
       renderResources={(owner, managementThread, scheduledTask, revealKey?: string) => (
         <TaskResourcesPopover
+          fileOpen={fileOpen}
           revealKey={workspace.pendingReveal(revealKey)}
           onReveal={workspace.consumeReveal}
           project={owner}

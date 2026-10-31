@@ -26,7 +26,7 @@ import { createMathPlugin } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import { cn } from "../lib/utils.js";
 import { ControlHintTooltip } from "../../ControlHintTooltip.js";
-import { decodeFilePathUriEscapes, joinFilePath } from "../../lib/path.js";
+import { decodeFilePathUriEscapes, joinFilePath, markdownFileLocation } from "../../lib/path.js";
 import { Button } from "../ui/button.js";
 import { MessageCodeBlock } from "./message-code-block.js";
 import { useCodePreferences } from "../../settings/preferences.js";
@@ -120,7 +120,7 @@ export type MessageResponseProps = {
   streaming?: boolean;
   theme?: "light" | "dark";
   onOpenExternalUrl?: (url: string) => void;
-  onOpenFileLink?: (path: string) => void;
+  onOpenFileLink?: (path: string, line?: number) => void;
   onRenderImage?: (uri: string, alt: string) => ReactNode;
   /** A paragraph holding only one file link may become a file card; null keeps the link. */
   onRenderFileCard?: (path: string, label: string) => ReactNode;
@@ -228,8 +228,10 @@ export const MessageResponse = memo(function MessageResponse({
             title={fileReference ? undefined : href}
             onClick={() => {
               if (/^https?:\/\//i.test(href ?? "")) callbacks.current.onOpenExternalUrl?.(href!);
-              else if (href && !/^[\w+.-]+:/.test(href))
-                callbacks.current.onOpenFileLink?.(originalPath ?? href);
+              else if (href && !/^[\w+.-]+:/.test(href)) {
+                const location = markdownFileLocation(originalPath ?? href);
+                callbacks.current.onOpenFileLink?.(location.path, location.line);
+              }
             }}
           >
             {fileReference && (

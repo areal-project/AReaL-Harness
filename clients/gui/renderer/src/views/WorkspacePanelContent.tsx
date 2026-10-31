@@ -166,6 +166,7 @@ export function WorkspacePanelContent({
           projectId={project.id}
           root={project.root}
           path={panel.slice(5)}
+          location={workspacePanels.view.fileLocation}
           action={action}
           onDirty={(path, dirty) => {
             documents.markDirty(project.id, project.root, path, dirty);
@@ -212,7 +213,7 @@ export function WorkspacePanelContent({
         }
         filesOpen={filesOpen}
         onToggleFiles={workspacePanels.toggleFiles}
-        onReveal={workspacePanels.revealFile}
+        onReveal={documents.revealFile}
       />
     );
   }

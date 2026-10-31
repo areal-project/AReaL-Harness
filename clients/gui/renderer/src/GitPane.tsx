@@ -82,9 +82,18 @@ type ReviewScope =
   | "last-turn"
   | "turn";
 type TurnReviewRequest = { turnId: string; scope?: never } | { scope: "unstaged"; turnId?: never };
+type ReviewReading = {
+  activePath: string | null;
+  treeQuery: string;
+  treeCollapsed: string[];
+  fileExpansion: Map<string, boolean>;
+  expandedAll: boolean;
+  scrollTop: number;
+};
 const views = new Map<
   string,
   {
+    readings: Map<string, ReviewReading>;
     selectedTurnId?: string;
     request?: TurnReviewRequest;
     scope: ReviewScope;
@@ -219,7 +228,7 @@ export function GitPane({
     setOpeningFile(true);
     setFileError("");
     try {
-      await fileOpen({ operation, projectId, path: file.workspaceRelativePath });
+      await fileOpen({ operation, projectId, threadId, path: file.workspaceRelativePath });
     } catch (cause) {
       setFileError((cause as Error).message);
     } finally {
@@ -246,7 +255,7 @@ export function GitPane({
       return false;
     }
   };
-  const viewKey = JSON.stringify([projectId, threadId]);
+  const viewKey = JSON.stringify([projectId, threadId, root]);
   const remembered = views.get(viewKey);
   const [selectedTurnId, setSelectedTurnId] = useState(remembered?.selectedTurnId);
   const handledRequest = useRef(remembered?.request);
@@ -362,6 +371,47 @@ export function GitPane({
   }, [turnId, scope, selectedTurnId]);
   const reviewTurnId = scope === "turn" ? selectedTurnId : turnId;
   const reviewRef = scope === "turn" ? (selectedTurnId ?? "") : applied;
+  const rangeKey = JSON.stringify([
+    scope,
+    reviewRef,
+    scope === "turn" || scope === "last-turn" ? reviewTurnId : undefined,
+  ]);
+  const readings = useRef(remembered?.readings ?? new Map<string, ReviewReading>());
+  const previousRange = useRef(rangeKey);
+  const previousReading = useRef<ReviewReading>({
+    activePath: activePath ?? null,
+    treeQuery,
+    treeCollapsed,
+    fileExpansion,
+    expandedAll,
+    scrollTop: readingTop.current,
+  });
+  useLayoutEffect(() => {
+    if (previousRange.current === rangeKey) return;
+    readings.current.set(previousRange.current, {
+      ...previousReading.current,
+      scrollTop: readingTop.current,
+    });
+    previousRange.current = rangeKey;
+    const saved = readings.current.get(rangeKey);
+    setActivePath(saved?.activePath ?? null);
+    setTreeQuery(saved?.treeQuery ?? "");
+    setTreeCollapsed(saved?.treeCollapsed ?? []);
+    setFileExpansion(saved?.fileExpansion ?? new Map());
+    setExpandedAll(saved?.expandedAll ?? false);
+    readingTop.current = saved?.scrollTop ?? 0;
+    restoringTop.current = readingTop.current;
+  }, [rangeKey]);
+  useEffect(() => {
+    previousReading.current = {
+      activePath: activePath ?? null,
+      treeQuery,
+      treeCollapsed,
+      fileExpansion,
+      expandedAll,
+      scrollTop: readingTop.current,
+    };
+  });
   const [files, setFiles] = useState<FileChange[]>([]);
   const [unavailableFiles, setUnavailableFiles] = useState<Array<{ path: string; reason: string }>>(
     [],
@@ -395,6 +445,7 @@ export function GitPane({
   useEffect(() => {
     if (activePath !== undefined)
       views.set(viewKey, {
+        readings: readings.current,
         selectedTurnId,
         request: handledRequest.current,
         scope,

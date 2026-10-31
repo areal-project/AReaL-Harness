@@ -202,7 +202,7 @@ export function Messages({
   action: Action;
   dark: boolean;
   onLink: (url: string) => void;
-  onFile: (path: string) => void;
+  onFile: (path: string, line?: number) => void;
   /** Desktop file host for workspace images and file cards; absent for cloud and previews. */
   fileOpen?: PlatformServices["fileOpen"];
   onReview: (turnId: string) => void;
@@ -764,10 +764,12 @@ export function Messages({
   );
   // Binary files cannot be shown in the file pane; hand them to the desktop instead.
   const openReplyFile = useCallback(
-    (path: string) => {
+    (path: string, line?: number) => {
       if (fileOpen && opensOutside(path))
-        void fileOpen({ operation: "open", projectId: project.id, path }).catch(() => onFile(path));
-      else onFile(path);
+        void fileOpen({ operation: "open", projectId: project.id, path }).catch(() =>
+          onFile(path, line),
+        );
+      else onFile(path, line);
     },
     [fileOpen, onFile, project.id],
   );

@@ -49,12 +49,6 @@
   },
   {
     "file": "renderer/src/ConversationStatusCard.tsx",
-    "symbol": "Disclosure",
-    "owner": "renderer/src/ConversationStatusCard.tsx",
-    "exitCondition": "Evaluate Disclosure against its component contract and Base admission before graduation, or remove this consumer."
-  },
-  {
-    "file": "renderer/src/ConversationStatusCard.tsx",
     "symbol": "TaskContext",
     "owner": "renderer/src/ConversationStatusCard.tsx",
     "exitCondition": "Evaluate TaskContext against its component contract and Base admission before graduation, or remove this consumer."

@@ -2,6 +2,7 @@ import { Textarea } from "@areal/ui";
 // ZCode PreviewPane breadcrumb/header composition + its CodeViewer.
 // AReaL's optional edit mode uses the existing revision-checked workspace API.
 import { Fragment, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import type { FileLocation } from "./state/useWorkspacePanels.js";
 import type { EditorState } from "@codemirror/state";
 import {
   MessageCopy as Copy,
@@ -56,6 +57,7 @@ export function WorkspaceFilePane({
   projectId,
   root,
   path,
+  location,
   action,
   onDirty,
   onLink,
@@ -68,6 +70,7 @@ export function WorkspaceFilePane({
   projectId: string;
   root: string;
   path: string;
+  location?: FileLocation;
   action: Action;
   onDirty: (path: string, dirty: boolean) => void;
   onLink: (url: string) => void;
@@ -85,6 +88,14 @@ export function WorkspaceFilePane({
   const preferences = useCodePreferences();
   const [wrap, setWrap] = useState<boolean | undefined>();
   const [markdown, setMarkdown] = useState(true);
+  const focus =
+    location?.owner === workspaceDocumentOwner(projectId, root) && location.path === path
+      ? location
+      : undefined;
+  const scrollContainer = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focus?.line) setMarkdown(false);
+  }, [focus?.requestId]);
   const mounted = useRef(true);
   const opening = useRef(false);
   const [openTargets, setOpenTargets] = useState<FileOpenTargets>();
@@ -448,7 +459,7 @@ export function WorkspaceFilePane({
         </p>
       )}
       <div className="workspace-file-layout min-h-0 min-w-0 flex flex-1">
-        <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+        <div ref={scrollContainer} className="min-h-0 min-w-0 flex-1 overflow-auto">
           {doc?.editing ? (
             <Textarea
               unstyled
@@ -501,6 +512,11 @@ export function WorkspaceFilePane({
               </div>
             ) : (
               <CodeViewer
+                focusedRange={
+                  focus?.line ? { startLine: focus.line, endLine: focus.line } : undefined
+                }
+                focusRequestId={focus ? String(focus.requestId) : undefined}
+                scrollContainerRef={scrollContainer}
                 code={doc.text}
                 language={getFiletypeFromFileName(path)}
                 wrapLongLines={wrap ?? preferences.wrapLongLines}

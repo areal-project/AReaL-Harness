@@ -3,6 +3,8 @@ import { browserTabId, isBrowserTab } from "../app-shell/useBrowserWorkspace.js"
 import { isTerminalTab } from "../terminal/terminalWorkspace.js";
 import { parseSideResourceTab, sideResourceTab, type SideChatTab } from "../useSideChatTabs.js";
 
+export type FileLocation = { owner: string; path: string; requestId: number; line?: number };
+
 type WorkspaceLayout = "split" | "panel" | "conversation";
 type PanelView = {
   panel: string;
@@ -11,6 +13,7 @@ type PanelView = {
   previewFileTab?: string;
   filesOpen: boolean;
   revealedFile: string;
+  fileLocation?: FileLocation;
 };
 
 export function useWorkspacePanels() {
@@ -20,6 +23,7 @@ export function useWorkspacePanels() {
   const [workspaceView, setWorkspaceView] = useState<WorkspaceLayout>("split");
   const [filesOpen, setFilesOpen] = useState(false);
   const [revealedFile, setRevealedFile] = useState("");
+  const [fileLocation, setFileLocation] = useState<FileLocation>();
   const panelViews = useRef(new Map<string, PanelView>());
   const activePanelOwner = useRef("");
   const mcpPendingReveal = useRef<{ tab: string; owner: string } | null>(null);
@@ -119,8 +123,9 @@ export function useWorkspacePanels() {
         setPanel((current) => (current === "文件" ? "功能" : current));
       },
       toggleFiles: () => setFilesOpen((current) => !current),
-      revealFile(path: string) {
-        setRevealedFile(path);
+      revealFile(location: FileLocation) {
+        setFileLocation(location);
+        setRevealedFile(location.path);
         setFilesOpen(true);
       },
       selectFileTab(name: string) {
@@ -206,7 +211,15 @@ export function useWorkspacePanels() {
     };
   }, []);
   return {
-    view: { panel, panelTabs, previewFileTab, workspaceView, filesOpen, revealedFile },
+    view: {
+      panel,
+      panelTabs,
+      previewFileTab,
+      workspaceView,
+      filesOpen,
+      revealedFile,
+      fileLocation,
+    },
     ...commands,
     commitOwner(panelOwner: string, ids: string[]) {
       if (activePanelOwner.current !== panelOwner) {
@@ -234,6 +247,7 @@ export function useWorkspacePanels() {
         );
         setFilesOpen(remembered?.filesOpen ?? false);
         setRevealedFile(remembered?.revealedFile ?? "");
+        setFileLocation(remembered?.fileLocation);
         setPreviewFileTab(remembered?.previewFileTab);
         return;
       }
@@ -244,9 +258,12 @@ export function useWorkspacePanels() {
         previewFileTab,
         filesOpen,
         revealedFile,
+        fileLocation,
       });
     },
-    openFile(path: string, canReplacePreview: (path: string) => boolean) {
+    openFile(location: FileLocation, canReplacePreview: (path: string) => boolean) {
+      const { path } = location;
+      setFileLocation(location);
       commands.exposePanel();
       const next = `file:${path}`;
       if (!panelTabs.includes(next)) {

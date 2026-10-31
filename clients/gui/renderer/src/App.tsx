@@ -101,7 +101,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     [],
   );
   const workspacePanels = useWorkspacePanels();
-  const { panel, panelTabs, previewFileTab, workspaceView, filesOpen, revealedFile } =
+  const { panel, panelTabs, previewFileTab, workspaceView, filesOpen, revealedFile, fileLocation } =
     workspacePanels.view;
   const annotation = useWorkspaceAnnotation(`${project?.id ?? ""}:${threadId}`, workspacePanels);
   const { annotationTarget, annotationVisible } = annotation;
@@ -186,7 +186,16 @@ function AppContent({ services }: { services: PlatformServices }) {
   useEffect(annotation.subscribeDraft, [annotationTarget, panelOwner]);
   React.useLayoutEffect(() => {
     workspacePanels.commitOwner(panelOwner, terminalState.ids);
-  }, [panelOwner, panel, panelTabs, previewFileTab, filesOpen, revealedFile, terminalState.ids]);
+  }, [
+    panelOwner,
+    panel,
+    panelTabs,
+    previewFileTab,
+    filesOpen,
+    revealedFile,
+    fileLocation,
+    terminalState.ids,
+  ]);
   useEffect(() => {
     workspacePanels.reconcileBrowser(panelOwner, browserWorkspace);
   }, [browserWorkspace.workspace, panelOwner]);
@@ -387,12 +396,13 @@ function AppContent({ services }: { services: PlatformServices }) {
   const workspaceFileTree =
     filesOpen && project ? (
       <WorkspaceFileTree
-        key={project.id}
+        key={`${project.id}:${project.root}`}
         projectId={project.id}
         root={project.root}
         action={action}
         onClose={workspacePanels.closeFiles}
         onOpen={openFile}
+        location={fileLocation}
         activePath={panel.startsWith("file:") ? panel.slice(5) : revealedFile}
       />
     ) : undefined;
@@ -676,6 +686,7 @@ function AppContent({ services }: { services: PlatformServices }) {
                   />
                 ) : taskCenterOpen ? (
                   <TaskWorkspace
+                    fileOpen={services.fileOpen}
                     workspace={tasks}
                     snapshot={snapshot}
                     action={resourceAction}
