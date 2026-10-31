@@ -56,12 +56,14 @@ export async function performanceServers() {
           /PERFORMANCE_(STREAM|BROWSER|HEAVY)/.test(JSON.stringify(message.content)),
       );
     const prompt = typeof user?.content === "string" ? user.content : JSON.stringify(user?.content);
-    const naming = body.messages.some(
+    const auxiliary = body.messages.some(
       (message) =>
         message.role === "system" &&
-        JSON.stringify(message.content).includes("Generate a concise semantic session title"),
+        /Generate a concise semantic session title|Predict the next user prompt/.test(
+          JSON.stringify(message.content),
+        ),
     );
-    const kind = naming
+    const kind = auxiliary
       ? "auxiliary"
       : prompt?.includes("PERFORMANCE_STREAM")
         ? "stream"

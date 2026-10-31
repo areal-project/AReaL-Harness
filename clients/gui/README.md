@@ -277,6 +277,8 @@ Composer 保留所选及最后受理模型，目录确认中不显示不可用�
 
 `AREAL_CORE_BIN=/absolute/path/to/areal pnpm --dir clients/gui run test:startup` 使用隔离的真实 Electron、Core 和 Runtime，默认执行五次保留合成历史的进程冷启动，验证模型可用性、历史恢复、无重复提交和退出清理。设置 `AREAL_STARTUP_BASELINE_BIN` 可交替比较两个独立构建；`AREAL_STARTUP_ROUNDS` 控制轮数。脚本保留逐轮日志、截图和 manifest，不清除系统缓存，不使用真实供应商或用户凭据。
 
+运行测量前，用 `node --test clients/gui/scripts/support/performance-fixture.test.mjs` 核对夹具请求分类。标题和下一条提示预测都属于辅助请求，即使上下文含有流式负载标记，也不得计为另一条主流。此检查通过真实 HTTP SSE 校验主流的 200 段增量和完整正文。
+
 `AREAL_CORE_BIN=/absolute/path/to/areal AREAL_PERFORMANCE_BASELINE_GUI=/absolute/path/to/baseline/clients/gui pnpm --dir clients/gui measure:gui` 为固定基线与当前源码各构建隔离测量产物，交替执行五轮。报告包含真实 React Profiler 的 200 段流式 Turn、浏览器大型 DOM/多 iframe 并发读取、Main 事件循环延迟、Renderer 键盘事件到下一帧、首次重内容和清理证据。正式 `dist` 保持原样。执行前停止其他构建和桌面验证，按 manifest 的通过、清理和源/二进制哈希解释数据；有界本地夹具不能证明真实供应商、物理输入或安装包表现。启动的十轮前后对比另设 `AREAL_STARTUP_BASELINE_GUI` 与 `AREAL_STARTUP_ROUNDS=10`，报告进程冷启动的 p50/p90、Main RSS/heap 和 Renderer heap，不清除系统页缓存。
 
 
