@@ -60,6 +60,12 @@
     "exitCondition": "Evaluate TaskContext against its component contract and Base admission before graduation, or remove this consumer."
   },
   {
+    "file": "renderer/src/ConversationTimeline.tsx",
+    "symbol": "Disclosure",
+    "owner": "renderer/src/ConversationTimeline.tsx",
+    "exitCondition": "Evaluate retry status details against the Disclosure contract and Base admission before graduation, or remove this consumer."
+  },
+  {
     "file": "renderer/src/FeedbackNotice.tsx",
     "symbol": "FeedbackNotice",
     "owner": "renderer/src/FeedbackNotice.tsx",

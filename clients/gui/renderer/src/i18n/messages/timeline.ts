@@ -12,13 +12,16 @@ export const timelineMessages = {
     "zh-CN": "正在重试，当前第 {attempts} 次尝试。",
     en: "Retrying, attempt {attempts}.",
   },
+  "chat.timeline.retry.recovered.label": { "zh-CN": "重试后已恢复", en: "Recovered after retry" },
+  "chat.timeline.retry.exhausted.label": { "zh-CN": "回复未完成", en: "Reply incomplete" },
+  "chat.timeline.retry.stopped.label": { "zh-CN": "重试已停止", en: "Retry stopped" },
   "chat.timeline.retry.recovered": {
-    "zh-CN": "连接已恢复，共尝试 {attempts} 次。",
-    en: "Connection recovered after {attempts} attempts.",
+    "zh-CN": "模型请求已恢复，共尝试 {attempts} 次。",
+    en: "Model request recovered after {attempts} attempts.",
   },
   "chat.timeline.retry.exhausted": {
-    "zh-CN": "重试额度已耗尽，共尝试 {attempts} 次。",
-    en: "Retry budget exhausted after {attempts} attempts.",
+    "zh-CN": "自动重试未成功，共尝试 {attempts} 次。",
+    en: "Automatic retry failed after {attempts} attempts.",
   },
   "chat.timeline.retry.stopped": {
     "zh-CN": "重试已停止，共尝试 {attempts} 次。",

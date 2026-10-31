@@ -3,7 +3,8 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -34,6 +35,7 @@ const server = createServer(async (request, response) => {
 });
 await new Promise((done) => server.listen(0, "127.0.0.1", done));
 const origin = `http://127.0.0.1:${server.address().port}`;
+const evidence = await mkdtemp(join(tmpdir(), "areal-conversation-flow-"));
 const checks = [];
 const firstTurnSamples = [];
 const errors = [];
@@ -172,14 +174,46 @@ try {
       ["paused", "你暂停了本轮执行"],
       ["recovery", "Core 恢复时中断了本轮执行"],
       ["waiting", "正在等待重试"],
-      ["recovered", "连接已恢复"],
-      ["exhausted", "重试额度已耗尽"],
+      ["recovered", "重试后已恢复"],
+      ["exhausted", "回复未完成"],
       ["otherFailure", "重试已停止"],
     ]) {
       await reading.getByLabel("活动状态", { exact: true }).selectOption(state);
       await reading.getByText(expected, { exact: false }).waitFor();
       if (state !== "exhausted")
         assert.equal(await reading.locator('[data-retry-state="exhausted"]').count(), 0);
+      if (["recovered", "exhausted", "otherFailure"].includes(state)) {
+        const notice = reading.locator("[data-retry-state]");
+        assert.equal(await notice.count(), 1);
+        const trigger = notice.locator("button[aria-expanded]");
+        assert.equal(await trigger.getAttribute("aria-expanded"), "false");
+        const detail = notice.locator("p");
+        assert.equal(await detail.isVisible(), false);
+        if (state === "recovered") {
+          await notice.screenshot({ path: join(evidence, "retry-collapsed.png") });
+          await reading.screenshot({ path: join(evidence, "retry-context.png") });
+        }
+        await trigger.click();
+        assert.equal(await detail.isVisible(), true);
+        assert.match(await detail.textContent(), /共尝试 \d+ 次/);
+        await trigger.focus();
+        await page.keyboard.press("Space");
+        assert.equal(await detail.isVisible(), false);
+        await page.keyboard.press("Enter");
+        assert.equal(await detail.isVisible(), true);
+        if (state === "recovered") {
+          await notice.screenshot({ path: join(evidence, "retry-light.png") });
+          await page.getByLabel("主题", { exact: true }).selectOption("dark");
+          await notice.screenshot({ path: join(evidence, "retry-dark.png") });
+          await page.setViewportSize({ width: 500, height: 900 });
+          await notice.screenshot({ path: join(evidence, "retry-narrow.png") });
+          assert.ok(await notice.evaluate((el) => el.scrollWidth <= el.clientWidth));
+          await page.setViewportSize({ width: 1200, height: 900 });
+          await page.getByLabel("主题", { exact: true }).selectOption("light");
+        }
+        await trigger.click();
+        assert.equal(await trigger.getAttribute("aria-expanded"), "false");
+      }
     }
     await reading.getByLabel("活动状态", { exact: true }).selectOption("running");
     const messages = reading.locator(".messages").first();
@@ -319,5 +353,5 @@ try {
 } finally {
   await browser?.close();
   await new Promise((done) => server.close(done));
-  console.log(JSON.stringify({ passed, checks, firstTurnSamples, errors }));
+  console.log(JSON.stringify({ passed, evidence, checks, firstTurnSamples, errors }));
 }

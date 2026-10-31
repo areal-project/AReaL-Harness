@@ -4534,7 +4534,7 @@
       "title": "权威历史尚未补齐时，未解析的锚点保持待恢复",
       "owner": "clients/gui/renderer/src/Messages.md#同窗口-renderer-恢复阅读",
       "strength": "must",
-      "textSha256": "aa55de3b4dd92c2b66da926aa4338aa7fe62504c11b8b4874053d205b7959eef"
+      "textSha256": "0bd4f8a1af577641b2ee61a64257dd157e4b58e21d5c673a79992faae2a61f55"
     },
     {
       "id": "R-MESSAGES-006",
@@ -6674,7 +6674,7 @@
       "title": "中断分隔行位于轮次边界，使用持久 interruption 区分用户暂停与 Core 恢复，无工具轮次也显示",
       "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
       "strength": "default",
-      "textSha256": "f420ecf1ace9b8f8490d4b97e312534e77a2e6889f36b238ba37791acc7fd6b9"
+      "textSha256": "91b722f5ca0e99021b24eadfc06f04cff83c87957e8f9e7792d330526842e533"
     },
     {
       "id": "R-MESSAGES-012",

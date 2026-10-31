@@ -1,4 +1,6 @@
 import { Button } from "@areal/ui";
+import { Check, CircleAlert, CircleMinus } from "lucide-react";
+import { Disclosure } from "@areal/ui/experimental";
 import { ControlHintTooltip } from "./ControlHintTooltip.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import type { Data } from "./services.js";
@@ -44,11 +46,25 @@ export function ModelChanges({ changes, afterTurnId }: { changes?: Data[]; after
 
 export function TurnRetries({ turn }: { turn: Data }) {
   const { t } = useI18n();
-  return retryProgress(turn)
-    .filter((retry) => retry.state !== "waiting" && retry.state !== "retrying")
-    .map((retry) => (
-      <p className="execution-status" data-retry-state={retry.state} key={retry.id} role="status">
-        {t(`chat.timeline.retry.${retry.state}`, { attempts: retry.attempts })}
-      </p>
-    ));
+  return retryProgress(turn).flatMap((retry) => {
+    if (retry.state === "waiting" || retry.state === "retrying") return [];
+    return (
+      <div className="turn-retry-notice" data-retry-state={retry.state} key={retry.id}>
+        <Disclosure
+          label={t(`chat.timeline.retry.${retry.state}.label`)}
+          icon={
+            retry.state === "recovered" ? (
+              <Check size={14} aria-hidden="true" />
+            ) : retry.state === "exhausted" ? (
+              <CircleAlert className="turn-retry-attention" size={14} aria-hidden="true" />
+            ) : (
+              <CircleMinus size={14} aria-hidden="true" />
+            )
+          }
+        >
+          <p>{t(`chat.timeline.retry.${retry.state}`, { attempts: retry.attempts })}</p>
+        </Disclosure>
+      </div>
+    );
+  });
 }

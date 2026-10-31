@@ -515,19 +515,6 @@ export function Messages({
     setReadingHistory(false);
     updateReading();
   };
-  const retryReading = () => {
-    const state = reading.current;
-    if (state.kind !== "blocked") return;
-    const request = beginReadingRestore(state, state.anchor);
-    reading.current = request;
-    refreshReading((value) => value + 1);
-    void history.ensure(request.revision, request.anchor).then((result) => {
-      const next = settleReadingRestore(reading.current, request, result);
-      if (next === reading.current) return;
-      reading.current = next;
-      refreshReading((value) => value + 1);
-    });
-  };
   const renderImage = useCallback(
     (uri: string, name: string) =>
       /^areal:\/\/blob\/[A-Za-z0-9_-]+$/.test(uri) ? (
@@ -822,12 +809,6 @@ export function Messages({
     layoutReading.current = layout;
     const cancelPendingReading = (event: Event) => {
       if (
-        event.type !== "wheel" &&
-        event.target instanceof Element &&
-        event.target.closest("[data-reading-blocked] button")
-      )
-        return;
-      if (
         event instanceof KeyboardEvent &&
         (!["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key) ||
           (event.target instanceof Element &&
@@ -1033,14 +1014,6 @@ export function Messages({
             )}
           {beforeTurns}
           <ModelChanges changes={thread.desktop?.modelChanges} />
-          {reading.current.kind === "blocked" && (
-            <div data-reading-blocked={reading.current.reason}>
-              <p role="status">{t("chat.history.restoreBlocked")}</p>
-              <Button type="button" variant="ghost" size="sm" onClick={retryReading}>
-                {t("chat.history.restoreRetry")}
-              </Button>
-            </div>
-          )}
           {inherited.loading && <p role="status">正在加载继承历史…</p>}
           {inherited.error && <p role="alert">继承历史读取失败：{inherited.error}</p>}
           {localThread.displayHistory?.supported && (

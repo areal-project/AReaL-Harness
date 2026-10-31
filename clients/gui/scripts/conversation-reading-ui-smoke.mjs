@@ -172,7 +172,7 @@ try {
   await page.getByRole("button", { name: "Toggle theme", exact: true }).click();
   await page.screenshot({ path: join(evidence, "light-reading.png") });
   await page.getByRole("button", { name: "Reobserve", exact: true }).click();
-  await checkAnchor("old page is present before retry scenario");
+  await checkAnchor("old page is present before unavailable history scenario");
   await page.evaluate(() =>
     fetch("/__reading/control", {
       method: "POST",
@@ -181,24 +181,25 @@ try {
     }),
   );
   await page.getByRole("button", { name: "Leave conversation", exact: true }).click();
-  await page.getByRole("button", { name: "Return to conversation", exact: true }).click();
-  await page.locator('[data-reading-blocked="limited"]').waitFor();
-  await page.locator("[data-reading-blocked] button").click();
-  await checkAnchor("mouse retry recovers a temporarily unavailable old page");
-  await page.getByRole("button", { name: "Reobserve", exact: true }).click();
-  await checkAnchor("old page is present before keyboard retry");
-  await page.evaluate(() =>
-    fetch("/__reading/control", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operation: "failNext" }),
-    }),
+  const failedHistory = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/__reading/history") &&
+      response.request().postDataJSON().operation === "ensureAnchor",
   );
+  await page.getByRole("button", { name: "Return to conversation", exact: true }).click();
+  const failedHistoryResponse = await failedHistory;
+  const failedHistoryResult = await failedHistoryResponse.json();
+  assert.equal(failedHistoryResult.kind, "limited");
+  assert.equal(failedHistoryResult.reason, "unavailable");
+  await frames();
+  assert.equal(await page.getByText("暂时无法恢复阅读位置", { exact: false }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "重试恢复位置", exact: true }).count(), 0);
+  assert.equal(await page.locator("[data-reading-blocked]").count(), 0);
+  await page.screenshot({ path: join(evidence, "unavailable-history.png") });
+  report.checks.push("unavailable history shows no reading restoration error or retry control");
   await page.getByRole("button", { name: "Leave conversation", exact: true }).click();
   await page.getByRole("button", { name: "Return to conversation", exact: true }).click();
-  await page.locator('[data-reading-blocked="limited"] button').focus();
-  await page.keyboard.press("Space");
-  await checkAnchor("keyboard retry recovers a temporarily unavailable old page");
+  await checkAnchor("return after unavailable history restores the retained anchor");
   await page.reload();
   await checkAnchor("renderer reload restores its persisted old-page anchor");
   await checkDisclosures();
