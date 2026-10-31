@@ -61,6 +61,15 @@
 `pnpm --dir clients/gui run test:automation --suite browser` 通过真实 Core、隔离 Electron 和确定性本地模型验证命令效果、审批拒绝、截图媒体和录屏产物。包内直接执行器验收与这一模型调用链分别保留证据，不能代替真实供应商或安装包验收。
 
 
+### 桌面设备视口与错误恢复
+
+可信 GUI 的 `setViewport {projectId, threadId, pageId, viewport}` 使用判别状态。`viewport` 为 `{mode:"auto"}` 或 `{mode:"device", width, height}`。设备宽高是 240 至 2560 的整数 CSS 像素。`state.browser.viewport` 返回当前页状态。省略新操作的旧客户端仍使用自适应视口。设备选择只改变布局视口，不模拟移动设备的 UA、触摸或硬件能力。
+
+Electron 在原生页面所有者中维护设备尺寸。手机、平板与桌面预设分别为 390×844、768×1024 与 1440×900，旋转交换宽高。原生显示区域按面板可用空间等比缩小，页面仍以目标 CSS 宽高排版。GUI 缩放先转换原生 DIP bounds，随后计算显示比例。Agent CDP 鼠标输入在最终派发处转换显示坐标。尺寸、旋转与显示比例变化均失效旧截图、计划与 viewportRevision。页面批注、试改或浏览器命令期间拒绝 GUI 视口变更。浏览器命令与 GUI 共用已有页级视口状态。
+
+页面加载错误提供重新加载当前页面。可信导航被网络政策拒绝时返回 `BROWSER_PERMISSION_DENIED`，GUI 保留页面内容并提示核对网址与权限。其他操作错误保留具体说明。UNKNOWN 工具动作仍绑定原 Core Item，只提供原动作核对入口。读取页面状态与重新加载页面都不重放原动作，也不替代 Core 的结果核对。
+
+
 ## 原生控件与状态等待
 
 `act` 另接受 `{kind:"scroll",target:"viewport",deltaX,deltaY}`、`{kind:"hover",ref}`、`{kind:"selectOption",ref,value}` 和 `{kind:"setChecked",ref,checked}`。滚动量必须是 `[-4096,4096]` 内的安全整数，不能同时为零。选择操作只接受原生单选 SELECT 中唯一、启用选项的 exact value，最多 256 字符。checkbox 状态为布尔值。自定义控件、多选 SELECT 和 radio 不受支持。这些变体沿用 Core 准备、批准链和公网 Origin 政策。审批显示具体滚动量、选项值或选中状态。

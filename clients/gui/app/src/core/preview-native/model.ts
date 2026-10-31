@@ -433,6 +433,9 @@ export interface Page {
   frameDocumentGeneration?: number;
   frameGrant?: FrameGrant | null;
   guiZoom?: number;
+  presentationBounds?: Bounds;
+  viewportScale?: number;
+  emulationKey?: string;
   humanInputPending?: Promise<unknown> | null;
   humanRevision?: number;
   lastCapture?: Capture | null;

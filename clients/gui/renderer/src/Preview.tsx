@@ -1,4 +1,7 @@
-import { Input } from "@areal/ui";
+import { observeResize } from "@areal/ui/observe-resize";
+import { Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@areal/ui";
+import { browserMessages } from "./i18n/messages/browser.js";
+import { previewFailure, type PreviewFailure } from "./browserPreview.js";
 import { composerDraftStorage } from "./composerDraftStorage.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import {
@@ -24,7 +27,7 @@ import "./BrowserFileHandoff.layout.css";
 import { BrowserStyleTrial, type StyleTrialDraft } from "./BrowserStyleTrial.js";
 import { BrowserKeyboardElementPicker } from "./BrowserKeyboardElementPicker.js";
 import type { Action } from "./services.js";
-import type { PreviewRequest } from "@areal/workbench/desktop-contract";
+import type { PreviewViewport, PreviewRequest } from "@areal/workbench/desktop-contract";
 import type { BrowserWorkspaceRequest } from "./app-shell/useBrowserWorkspace.js";
 type WithoutPage<Request> = Request extends unknown ? Omit<Request, "pageId"> : never;
 type PagePreviewRequest = WithoutPage<BrowserWorkspaceRequest>;
@@ -58,6 +61,8 @@ export function Preview({
   onError: (s: string) => void;
 }) {
   const { t } = useI18n();
+  const label = ({ id }: { id: string }) =>
+    id in browserMessages ? t(id as keyof typeof browserMessages) : browserLabel({ id });
   const owner = `${projectId}:${threadId}:${pageId}`;
   const draftKey = `areal-gui:draft:${projectId}:${threadId}`;
   const stagedAnnotations = (attachmentDrafts.get(draftKey) ?? [])
@@ -67,10 +72,11 @@ export function Preview({
       return note ? [note] : [];
     });
   const [url, setUrl] = useState(locations.get(owner)?.url ?? state.url ?? "");
-  const [error, setError] = useState("");
-  const [responsive, setResponsive] = useState(false);
+  const [error, setError] = useState<PreviewFailure | null>(null);
+  const viewport: PreviewViewport = state.browser?.viewport ?? { mode: "auto" };
+  const responsive = viewport.mode === "device";
+  useEffect(() => setError(null), [owner]);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [width, setWidth] = useState(390);
   const [addressFocused, setAddressFocused] = useState(false);
   const [annotationState, setAnnotationState] = useState<{
     owner: string;
@@ -168,16 +174,14 @@ export function Preview({
     try {
       await requestPage({ ...request, pageId });
       if (!mounted.current || current.current !== owner || seq !== sequence.current) return;
-      if (operation !== "state") setError("");
+      if (operation !== "state") setError(null);
     } catch (e) {
-      if (mounted.current && current.current === owner)
-        setError(e instanceof Error ? e.message : String(e));
+      if (mounted.current && current.current === owner && seq === sequence.current)
+        setError(previewFailure(e));
     }
   };
   const stateRef = useRef(state);
   stateRef.current = state;
-  const errorRef = useRef(error);
-  errorRef.current = error;
   useEffect(() => {
     mounted.current = true;
     let active = true;
@@ -213,7 +217,6 @@ export function Preview({
         visible:
           !!value.url &&
           !value.error &&
-          !errorRef.current &&
           !overlay &&
           !annotatingRef.current &&
           !styleTrialRef.current?.after &&
@@ -226,15 +229,13 @@ export function Preview({
       lastDisplay = signature;
       void services.preview(display).catch((e) => {
         lastDisplay = "";
-        if (active) setError(e.message);
+        if (active) setError(previewFailure(e));
       });
     };
-    const resize = new ResizeObserver(update);
-    resize.observe(box.current!);
     const composer = box.current
       ?.closest(".work-area")
       ?.querySelector(".active-composer, .draft-composer");
-    if (composer) resize.observe(composer);
+    const stopResize = observeResize(composer ? [box.current!, composer] : box.current!, update);
     const mutation = new MutationObserver(update);
     mutation.observe(document.body, {
       childList: true,
@@ -253,7 +254,7 @@ export function Preview({
       setBrowserAnnotationEditing(draftKey, false);
       sequence.current++;
       clearInterval(timer);
-      resize.disconnect();
+      stopResize();
       mutation.disconnect();
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
@@ -281,7 +282,7 @@ export function Preview({
     if (styleBusy || styleTrial || annotating || annotationBusy || keyboardCaptureRef.current)
       return;
     setStyleBusyOwner(owner);
-    setError("");
+    setError(null);
     let capture: RegionDraft["capture"] | null = null;
     try {
       const pageId = stateRef.current.browser?.pageId;
@@ -359,8 +360,7 @@ export function Preview({
             captureId: capture.captureId,
           })
           .catch(() => {});
-      if (mounted.current && current.current === owner)
-        setError(e instanceof Error ? e.message : String(e));
+      if (mounted.current && current.current === owner) setError(previewFailure(e));
     } finally {
       setStyleBusyOwner((value) => (value === owner ? null : value));
     }
@@ -369,7 +369,7 @@ export function Preview({
     const capture = keyboardCaptureRef.current;
     if (!capture || styleBusy) return;
     setStyleBusyOwner(owner);
-    setError("");
+    setError(null);
     try {
       if (point) {
         const element = await services.preview({
@@ -432,8 +432,7 @@ export function Preview({
         window.dispatchEvent(new Event("resize"));
       }
     } catch (e) {
-      if (mounted.current && current.current === owner)
-        setError(e instanceof Error ? e.message : String(e));
+      if (mounted.current && current.current === owner) setError(previewFailure(e));
     } finally {
       setStyleBusyOwner((value) => (value === owner ? null : value));
     }
@@ -446,7 +445,7 @@ export function Preview({
     const draft = styleTrialRef.current;
     if (!draft || styleBusy) return;
     setStyleBusyOwner(owner);
-    setError("");
+    setError(null);
     try {
       const next = await services.preview({
         ...change,
@@ -465,7 +464,7 @@ export function Preview({
         });
     } catch (e) {
       if (mounted.current && current.current === owner) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(previewFailure(e));
         const latest = styleTrialRef.current;
         if (latest?.trialId === draft.trialId && /失效|已修改|已替换/.test(String(e)))
           updateStyleTrial({ ...latest, stale: true });
@@ -478,7 +477,7 @@ export function Preview({
     const draft = styleTrialRef.current;
     if (!draft || styleBusy) return;
     setStyleBusyOwner(owner);
-    setError("");
+    setError(null);
     try {
       if (!draft.cleared) {
         try {
@@ -514,8 +513,7 @@ export function Preview({
         styleFocusOwner.current = owner;
       }
     } catch (e) {
-      if (mounted.current && current.current === owner)
-        setError(e instanceof Error ? e.message : String(e));
+      if (mounted.current && current.current === owner) setError(previewFailure(e));
     } finally {
       setStyleBusyOwner((value) => (value === owner ? null : value));
     }
@@ -561,7 +559,7 @@ export function Preview({
     )
       return;
     setStyleBusyOwner(owner);
-    setError("");
+    setError(null);
     try {
       let draft = original;
       if (!draft.after) {
@@ -636,8 +634,7 @@ export function Preview({
         captureId: draft.after!.capture.captureId,
       });
     } catch (e) {
-      if (mounted.current && current.current === owner)
-        setError(e instanceof Error ? e.message : String(e));
+      if (mounted.current && current.current === owner) setError(previewFailure(e));
     } finally {
       setStyleBusyOwner((value) => (value === owner ? null : value));
     }
@@ -645,7 +642,7 @@ export function Preview({
   const cancelAnnotation = async () => {
     if (!annotating || annotationBusy) return;
     setAnnotationBusyOwner(owner);
-    setError("");
+    setError(null);
     try {
       await services.preview({
         operation: "endRegion",
@@ -657,8 +654,7 @@ export function Preview({
       updateAnnotation(null);
       if (mounted.current && current.current === owner) annotationFocusOwner.current = owner;
     } catch (e) {
-      if (mounted.current && current.current === owner)
-        setError(e instanceof Error ? e.message : String(e));
+      if (mounted.current && current.current === owner) setError(previewFailure(e));
     } finally {
       setAnnotationBusyOwner((value) => (value === owner ? null : value));
     }
@@ -748,7 +744,7 @@ export function Preview({
     if (!draft || annotationBusy) return;
     setAnnotationBusyOwner(owner);
     setBrowserAnnotationEditing(draftKey, true);
-    setError("");
+    setError(null);
     try {
       const element = await services.preview({
         operation: "selectElement",
@@ -768,7 +764,7 @@ export function Preview({
         unavailableReason: element.available ? undefined : element.reason,
       });
     } catch (cause) {
-      if (mounted.current && current.current === owner) setError((cause as Error).message);
+      if (mounted.current && current.current === owner) setError(previewFailure(cause));
     } finally {
       if (current.current === owner)
         setBrowserAnnotationEditing(draftKey, !!annotatingRef.current?.region);
@@ -779,7 +775,7 @@ export function Preview({
     if (annotationBusy || !draft.region?.width || !draft.region.height || !draft.comment.trim())
       return;
     setAnnotationBusyOwner(owner);
-    setError("");
+    setError(null);
     try {
       const image = new Image();
       image.src = `data:image/png;base64,${draft.capture.imageBase64}`;
@@ -860,8 +856,7 @@ export function Preview({
         point: undefined,
       });
     } catch (e) {
-      if (mounted.current && current.current === owner)
-        setError(e instanceof Error ? e.message : String(e));
+      if (mounted.current && current.current === owner) setError(previewFailure(e));
     } finally {
       setAnnotationBusyOwner((value) => (value === owner ? null : value));
     }
@@ -872,8 +867,8 @@ export function Preview({
       locations.set(owner, { url: state.url ?? "" });
     }
   }, [state.url, state.browser?.pageId, owner, pageId]);
-  const failure = error || state.error;
-  const uninspectedUnknown = uninspectedToolCalls(thread ?? {}).some(
+  const failure = state.error;
+  const uninspectedUnknown = uninspectedToolCalls(thread ?? {}).filter(
     (item) => item.tool === "browser_v1",
   );
   const batch = state.workspace?.pages?.find(
@@ -903,7 +898,7 @@ export function Preview({
           isLoading: !!state.loading,
           currentUrl: state.url ?? "",
         }}
-        formatMessage={browserLabel}
+        formatMessage={label}
         onToggleDetails={() => setDetailsOpen((value) => !value)}
         onAddressChange={(value) => {
           editing.current = true;
@@ -926,7 +921,12 @@ export function Preview({
         onOpenExternal={() => void request({ operation: "external" })}
         onOpenDevTools={() => void request({ operation: "devtools" })}
         onReload={() => void request({ operation: state.loading ? "stop" : "reload" })}
-        onToggleResponsiveMode={() => setResponsive(!responsive)}
+        onToggleResponsiveMode={() =>
+          void request({
+            operation: "setViewport",
+            viewport: responsive ? { mode: "auto" } : { mode: "device", width: 390, height: 844 },
+          })
+        }
         isResponsiveMode={responsive}
         annotationControl={annotationControl}
         annotationDisabled={
@@ -974,9 +974,60 @@ export function Preview({
           </Button>
         </div>
       )}
-      {uninspectedUnknown && (
+      {error && (
+        <div
+          className="preview-viewport-toolbar browser-request-error"
+          role="alert"
+          data-testid="browser-request-error"
+          data-error-kind={error.kind}
+        >
+          <span>
+            <strong>
+              {t(
+                error.kind === "permission"
+                  ? "browser.failure.permission"
+                  : error.kind === "unknown"
+                    ? "browser.failure.unknown"
+                    : "browser.failure.operation",
+              )}
+            </strong>{" "}
+            {error.message}
+          </span>
+          <span>
+            {t(
+              error.kind === "permission"
+                ? "browser.failure.permissionHint"
+                : error.kind === "unknown"
+                  ? "browser.failure.unknownHint"
+                  : "browser.failure.operationHint",
+            )}
+          </span>
+          {error.kind === "unknown" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => void request({ operation: "state" })}
+            >
+              {t("browser.failure.checkState")}
+            </Button>
+          )}
+          <Button type="button" size="sm" variant="ghost" onClick={() => setError(null)}>
+            {t("common.close")}
+          </Button>
+        </div>
+      )}
+      {uninspectedUnknown.length > 0 && (
         <div className="preview-viewport-toolbar" role="status">
           {t("operations.browserRecovery")}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => onTool(uninspectedUnknown[0].id)}
+          >
+            {t("browser.failure.inspectAction")}
+          </Button>
         </div>
       )}
       {annotationBusy && !annotating && (
@@ -1178,35 +1229,105 @@ export function Preview({
           onCancel={() => void cancelStyleTrial()}
         />
       )}
-      {responsive && (
-        <div className="preview-viewport-toolbar">
-          <label>
-            宽度{" "}
-            <Input
-              unstyled
-              data-slot={undefined}
-              aria-label="预览宽度"
-              type="number"
-              min={240}
-              max={2560}
-              value={width}
-              onChange={(e) =>
-                setWidth(Math.min(2560, Math.max(240, Number(e.target.value) || 240)))
-              }
-            />{" "}
-            px
-          </label>
-          <Button variant="ghost" size="sm" onClick={() => setResponsive(false)}>
-            自适应
+      {viewport.mode === "device" && (
+        <div
+          className="preview-viewport-toolbar preview-device-controls"
+          role="group"
+          aria-label={t("browser.viewport.preset")}
+        >
+          <Select
+            value={
+              devicePresets.find(
+                (preset) => preset.width === viewport.width && preset.height === viewport.height,
+              )?.id ?? "custom"
+            }
+            disabled={
+              !!annotating || !!styleTrial || !!keyboardCapture || annotationBusy || styleBusy
+            }
+            onValueChange={(id) => {
+              const preset = devicePresets.find((preset) => preset.id === id);
+              if (preset)
+                void request({
+                  operation: "setViewport",
+                  viewport: { mode: "device", width: preset.width, height: preset.height },
+                });
+            }}
+          >
+            <SelectTrigger aria-label={t("browser.viewport.preset")} size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {devicePresets.map((preset) => (
+                <SelectItem key={preset.id} value={preset.id}>
+                  {t(preset.label)} {preset.width} × {preset.height}
+                </SelectItem>
+              ))}
+              <SelectItem value="custom" disabled>
+                {t("browser.viewport.custom")}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          {(["width", "height"] as const).map((dimension) => (
+            <label key={dimension}>
+              {t(dimension === "width" ? "browser.viewport.width" : "browser.viewport.height")}
+              <Input
+                aria-label={t(
+                  dimension === "width" ? "browser.viewport.width" : "browser.viewport.height",
+                )}
+                type="number"
+                min={240}
+                max={2560}
+                key={`${dimension}:${viewport[dimension]}`}
+                defaultValue={viewport[dimension]}
+                disabled={
+                  !!annotating || !!styleTrial || !!keyboardCapture || annotationBusy || styleBusy
+                }
+                onBlur={(event) => {
+                  const value = Math.min(
+                    2560,
+                    Math.max(240, Math.round(Number(event.target.value) || viewport[dimension])),
+                  );
+                  event.target.value = String(value);
+                  if (value !== viewport[dimension])
+                    void request({
+                      operation: "setViewport",
+                      viewport: { ...viewport, [dimension]: value },
+                    });
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
+                }}
+              />
+            </label>
+          ))}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={
+              !!annotating || !!styleTrial || !!keyboardCapture || annotationBusy || styleBusy
+            }
+            onClick={() =>
+              void request({
+                operation: "setViewport",
+                viewport: { mode: "device", width: viewport.height, height: viewport.width },
+              })
+            }
+          >
+            {t("browser.viewport.rotate")}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => void request({ operation: "setViewport", viewport: { mode: "auto" } })}
+          >
+            {t("browser.viewport.auto")}
           </Button>
         </div>
       )}
       <div className="preview-stage">
-        <div
-          ref={box}
-          className="preview-webview"
-          style={responsive ? { width: `min(100%, ${width}px)`, flex: "none" } : undefined}
-        />
+        <div ref={box} className="preview-webview" />
         {keyboardCapture?.projectId === projectId && keyboardCapture.threadId === threadId && (
           <BrowserKeyboardElementPicker
             key={keyboardCapture.captureId}
@@ -1232,8 +1353,8 @@ export function Preview({
           <BrowserLoadErrorState
             errorMessage={failure}
             isCertificateError={false}
-            formatMessage={browserLabel}
-            onRetry={() => void request({ operation: "navigate", url })}
+            formatMessage={label}
+            onRetry={() => void request({ operation: "reload" })}
           />
         ) : !state.url ? (
           <BrowserEmptyState
@@ -1245,7 +1366,7 @@ export function Preview({
               currentUrl: "",
             }}
             isGuestStarting={false}
-            formatMessage={browserLabel}
+            formatMessage={label}
           />
         ) : null}
       </div>
@@ -1271,8 +1392,14 @@ function browserLabel({ id }: { id: string }): string {
         "browser.title": "浏览器",
         "browser.empty": "粘贴或输入网址，按 Enter 打开页面。",
         "browser.loadError.title": "无法打开网页",
-        "browser.loadError.retry": "重试",
+        "browser.loadError.retry": "重新加载网页",
       } as Record<string, string>
     )[id] ?? id
   );
 }
+
+const devicePresets = [
+  { id: "phone", label: "browser.viewport.phone", width: 390, height: 844 },
+  { id: "tablet", label: "browser.viewport.tablet", width: 768, height: 1024 },
+  { id: "desktop", label: "browser.viewport.desktop", width: 1440, height: 900 },
+] as const;

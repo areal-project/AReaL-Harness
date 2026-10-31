@@ -63,6 +63,15 @@ Upstream declarations do not all have implementations. Use locator operations in
 `pnpm --dir clients/gui run test:automation --suite browser` uses real Core, isolated Electron and a deterministic local model to verify effects, approval denial, screenshot media and recording artifacts. Direct executor acceptance and the model-driven path retain separate evidence. Neither establishes real-provider or installed-package acceptance.
 
 
+### Desktop device viewport and error recovery
+
+The trusted GUI command `setViewport {projectId, threadId, pageId, viewport}` accepts `{mode:"auto"}` or `{mode:"device", width, height}`. Device dimensions are integer CSS pixels from 240 through 2560. `state.browser.viewport` returns the page state. Older clients that do not use the new command retain automatic sizing. Device selection changes the layout viewport. It does not emulate a mobile user agent, touch input, or hardware.
+
+Electron owns the device dimensions on the native page. Phone, tablet, and desktop presets use 390×844, 768×1024, and 1440×900. Rotation exchanges width and height. The native display fits within the panel while the page retains its requested CSS dimensions. GUI zoom converts renderer bounds to native DIP bounds before fitting. Agent CDP mouse input converts to display coordinates at dispatch. Dimension, rotation, and display-scale changes invalidate old captures and plans and advance viewportRevision. GUI viewport changes are rejected during annotations, style trials, or browser commands. Browser commands and the GUI share the existing page viewport state.
+
+Page load failures offer a reload of the current page. Trusted navigation rejected by network policy returns `BROWSER_PERMISSION_DENIED`. The GUI retains page content and asks the user to check the address and permissions. Other operation errors retain their details. UNKNOWN tool actions stay attached to the original Core Item and expose an inspection link. Reading page state and reloading a page do not replay the original action or replace Core outcome inspection.
+
+
 ## Native controls and state waits
 
 `act` also accepts `{kind:"scroll",target:"viewport",deltaX,deltaY}`, `{kind:"hover",ref}`, `{kind:"selectOption",ref,value}`, and `{kind:"setChecked",ref,checked}`. Scroll deltas are safe integers in `[-4096,4096]` and cannot both be zero. Selection accepts an exact value of at most 256 characters from one enabled option in a native single SELECT. Checkbox state is a boolean. Custom widgets, multiple SELECTs and radio controls are unsupported. These variants keep the existing Core preparation and approval chain and public Origin policy. Approval displays the concrete deltas, value or checked state.
