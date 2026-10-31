@@ -95,6 +95,7 @@
     "test:html-document": "node scripts/html-document-smoke.mjs",
     "test:browser-navigation": "node scripts/browser-human-smoke.mjs navigation",
     "test:browser-navigation-recovery": "node packages/browser-automation/acceptance/navigation-recovery.cjs",
+    "test:browser-wrapped-inline": "node packages/browser-automation/acceptance/wrapped-inline.cjs",
     "test:remote-command": "node scripts/remote-command-contract.mjs",
     "test:remote-command-e2e": "node scripts/remote-session-commands-e2e.mjs",
     "test:remote-session": "node scripts/remote-session-contract.mjs",

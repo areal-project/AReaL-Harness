@@ -959,6 +959,13 @@
     "requires": []
   },
   {
+    "script": "test:browser-wrapped-inline",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["browser"],
+    "requires": ["electron", "gui-build"]
+  },
+  {
     "script": "test:browser-navigation-recovery",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],

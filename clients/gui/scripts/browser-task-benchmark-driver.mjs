@@ -74,7 +74,15 @@ export async function prepareTaskBenchmark(path, workspace) {
         snapshot(),
       ],
       "iframe-info": [navigate("/iframe"), snapshot()],
-      information: [navigate("/information"), snapshot(), navigate("/detail/willow"), snapshot()],
+      information: [
+        navigate("/information"),
+        snapshot(),
+        locator(
+          `internal:role=link[name=${JSON.stringify(`Details for ${fixture.expected.name}`)}s]`,
+          "click",
+        ),
+        snapshot(),
+      ],
       stop: [
         navigate("/stop"),
         ...Array.from({ length: 40 }, (_, n) => locator(`button:nth-of-type(${n + 1})`, "click")),

@@ -26,3 +26,9 @@ The information task selected the correct link. A real Electron probe without a 
 The first fix should stay in the two existing point-selection owners, choosing candidates inside real fragments while retaining hit-target and obstruction checks. A second narrow experiment clarifies the `checked` field for `act.setChecked` and the `command.*` topic guidance for `describe`, following observed form-task argument errors. That guidance change has no real-model A/B benefit evidence yet.
 
 These six tasks have one synthetic source and one real attempt each. They support specific defect diagnosis, not overall rankings, default-policy promotion or an architecture rewrite. Combined action/observation interfaces still require a separately fixed intervention and comparison budget. Autonomous HTML generation followed by opening, packages and other platforms remain unverified.
+
+## Local fix validation
+
+Both point-selection paths now use actual fragments while retaining hit and obstruction checks. The same path's existing missing-coordinate issue for explicit forced pointer requests was also fixed. The registered native test passed five cases: ordinary block, explicit force, wrapped inline, partial obstruction and full obstruction. Ordinary fully covered requests still dispatch no input. All six deterministic Core tasks passed; the information task used a real locator click and requested the detail page exactly once. The existing Browser Core regression passed 33 checks. All instances cleaned up, and the original real baseline and UNKNOWN remain available. The [fix summary](browser-wrapped-inline-fix.json) records scope and evidence.
+
+Separate guidance adds valid `checked:true` and topic examples checked against the production input validator. The real model was not rerun after these fixes. There is no A/B evidence of success-rate, token or elapsed-time gains.

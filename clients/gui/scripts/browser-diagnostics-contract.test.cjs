@@ -34,6 +34,60 @@ const { PageControl } = require("../app/src/core/preview-native/control.cjs");
 const { NativePageTargets } = require("../app/src/core/preview-native/native-targets.cjs");
 const { EventEmitter } = require("node:events");
 
+test("native targets use hit-tested fragments of wrapped inline elements", async () => {
+  const identity = JSON.stringify([1, 2, 3, "main", 22]);
+  const page = {
+    pageGeneration: 1,
+    documentGeneration: 2,
+    controlEpoch: 3,
+    refs: new Map([[identity, "r2"]]),
+  };
+  const first = [324, 98, 443, 98, 443, 117, 324, 117];
+  const second = [48, 117, 108, 117, 108, 136, 48, 136];
+  const block = [10, 10, 110, 10, 110, 40, 10, 40];
+  const viewport = { width: 501, height: 872, scrollX: 0, scrollY: 0, deviceScaleFactor: 2 };
+  for (const scenario of [
+    { quads: [first, second], hit: () => 22, expected: [383.5, 107.5] },
+    { quads: [first, second], hit: ({ x }) => (x < 100 ? 22 : 21), expected: [78, 126.5] },
+    { quads: [block], hit: () => 22, expected: [60, 25] },
+    { quads: [first, second], hit: () => 21, expected: null },
+    { quads: [], hit: () => assert.fail("missing fragments cannot be hit-tested"), expected: null },
+  ]) {
+    const debuggerApi = Object.assign(new EventEmitter(), {
+      isAttached: () => true,
+      sendCommand: async (method, parameters) => {
+        if (method === "Accessibility.getPartialAXTree")
+          return {
+            nodes: [{ backendDOMNodeId: 22, role: { value: "link" }, name: { value: "Details" } }],
+          };
+        if (method === "DOM.describeNode") return { node: { nodeName: "A" } };
+        if (method === "DOM.getContentQuads") return { quads: scenario.quads };
+        if (method === "DOM.getNodeForLocation") {
+          assert.equal(parameters.includeUserAgentShadowDOM, false);
+          return { backendNodeId: scenario.hit(parameters) };
+        }
+        if (method === "Page.getFrameTree") return { frameTree: { frame: { id: "main" } } };
+        if (method === "Page.createIsolatedWorld") return { executionContextId: 7 };
+        if (method === "Runtime.evaluate") return { result: { value: viewport } };
+        assert.fail(`Unexpected CDP method ${method}`);
+      },
+    });
+    const c = Object.assign(new EventEmitter(), {
+      debugger: debuggerApi,
+      isDestroyed: () => false,
+    });
+    const resolve = () => new NativePageTargets().actionTarget(page, c, "r2");
+    if (!scenario.expected) {
+      await assert.rejects(resolve, /target_unavailable/);
+      continue;
+    }
+    const target = await resolve();
+    assert.deepEqual([target.x, target.y], scenario.expected);
+    assert.equal(target.backendNodeId, 22);
+    assert.deepEqual(target.viewport, viewport);
+  }
+});
+
 function inputFixture(options = {}) {
   const workspace = {
     page: options.page,

@@ -7,41 +7,31 @@
       "source": "packages/desktop/src/main/browserView/browserCommandExecutor.ts",
       "target": "src/upstream/browser/browserCommandExecutor.ts",
       "sha256": "fb5d0206e73083b427dc07c19beedd85643ab8ff2757faa0be5408d8d3f207e2",
-      "changes": [
-        "Use package-local shared schema exports."
-      ]
+      "changes": ["Use package-local shared schema exports."]
     },
     {
       "source": "packages/desktop/src/main/browserView/browserCommandInput.ts",
       "target": "src/upstream/browser/browserCommandInput.ts",
       "sha256": "a4c6460e3cfd974989f444049dcf57d5db3e2a891e6fac513cd80ddf9eda00c6",
-      "changes": [
-        "Use package-local shared schema exports."
-      ]
+      "changes": ["Use package-local shared schema exports."]
     },
     {
       "source": "packages/desktop/src/main/browserView/browserCommandInteractionHandlers.ts",
       "target": "src/upstream/browser/browserCommandInteractionHandlers.ts",
       "sha256": "cf611590ce3f9260b42bcff6f158dc70e15582e8e24c4df780d81774df6e32b4",
-      "changes": [
-        "Use package-local shared schema exports."
-      ]
+      "changes": ["Use package-local shared schema exports."]
     },
     {
       "source": "packages/desktop/src/main/browserView/browserCommandPageHandlers.ts",
       "target": "src/upstream/browser/browserCommandPageHandlers.ts",
       "sha256": "7d644223452509136f80f780cfe54094465212e2bf24a24b44274ae19a7d2c72",
-      "changes": [
-        "Use package-local shared schema exports."
-      ]
+      "changes": ["Use package-local shared schema exports."]
     },
     {
       "source": "packages/desktop/src/main/browserView/browserCommandResult.ts",
       "target": "src/upstream/browser/browserCommandResult.ts",
       "sha256": "18900db590dd49ee08635f53f9e42311488bfb22fbe25b7616e1f15ee4e95ce3",
-      "changes": [
-        "Use package-local shared schema exports."
-      ]
+      "changes": ["Use package-local shared schema exports."]
     },
     {
       "source": "packages/desktop/src/main/browserView/browserCommandScripts.ts",
@@ -53,9 +43,7 @@
       "source": "packages/desktop/src/main/browserView/browserCommandState.ts",
       "target": "src/upstream/browser/browserCommandState.ts",
       "sha256": "27c4c94ffe254a2fab350def3b3336e0a2c280c1f9306ca36dd6bdf47835608d",
-      "changes": [
-        "Use package-local shared schema exports."
-      ]
+      "changes": ["Use package-local shared schema exports."]
     },
     {
       "source": "packages/desktop/src/main/browserView/browserCommandTypes.ts",
@@ -73,9 +61,7 @@
       "source": "packages/desktop/src/main/browserView/browserPlaywrightExecutor.ts",
       "target": "src/upstream/browser/browserPlaywrightExecutor.ts",
       "sha256": "837b92d2f4f4630f5fc8b7623a09a53bd242fa171ef52b3e5a9fbb0d5dcf0102",
-      "changes": [
-        "Use package-local shared schema exports."
-      ]
+      "changes": ["Use package-local shared schema exports."]
     },
     {
       "source": "packages/desktop/src/main/browserView/browserPlaywrightLocatorExecutor.ts",
@@ -83,7 +69,9 @@
       "sha256": "c430211d09e946fa57c0fa25419af039b9749c6a358d382195d7bb10ec6583e2",
       "changes": [
         "Use package-local shared schema exports.",
-        "Use package-local debug logger."
+        "Use package-local debug logger.",
+        "Choose client-rect fragment centers, retaining hit-target checks for ordinary pointer actions.",
+        "Return pointer coordinates for explicit force actions."
       ]
     },
     {
@@ -114,25 +102,19 @@
       "source": "packages/desktop/src/main/browserView/playwrightInjectedScriptSource.ts",
       "target": "src/upstream/browser/playwrightInjectedScriptSource.ts",
       "sha256": "1f80508de134caa00a0c6b4cd583e894f329109bd1c0879ad46611e77a28c835",
-      "changes": [
-        "Resolve runtime dependencies from CommonJS output."
-      ]
+      "changes": ["Resolve runtime dependencies from CommonJS output."]
     },
     {
       "source": "packages/desktop/src/main/browserView/browserVideoRecorder.ts",
       "target": "src/upstream/browser/browserVideoRecorder.ts",
       "sha256": "8674cd75313850c63b77a6458ca8784848bde87c6044e6ecbe9d23f31ead2d54",
-      "changes": [
-        "Use package-local shared schema exports."
-      ]
+      "changes": ["Use package-local shared schema exports."]
     },
     {
       "source": "packages/desktop/src/main/browserView/electronBrowserWebmRecorder.ts",
       "target": "src/upstream/browser/electronBrowserWebmRecorder.ts",
       "sha256": "41915fb75a487bfa98dbcf62e19e2e15226f24821b19876adde054ac9c62db98",
-      "changes": [
-        "Resolve copied recorder preload alongside CommonJS bundle."
-      ]
+      "changes": ["Resolve copied recorder preload alongside CommonJS bundle."]
     },
     {
       "source": "packages/shared/src/browser-use/command-metadata.ts",

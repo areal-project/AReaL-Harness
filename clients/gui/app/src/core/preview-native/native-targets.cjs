@@ -213,36 +213,39 @@ class NativePageTargets {
       )
     )
       throw new Error("target_unavailable");
-    const box = await c.debugger.sendCommand("DOM.getBoxModel", { backendNodeId });
-    const quad = box.model?.content;
-    if (!Array.isArray(quad) || quad.length !== 8) throw new Error("target_unavailable");
-    const x = (quad[0] + quad[2] + quad[4] + quad[6]) / 4;
-    const y = (quad[1] + quad[3] + quad[5] + quad[7]) / 4;
+    /** @type {import("./model.js").CdpResult<"DOM.getContentQuads">} */
+    const { quads = [] } = await c.debugger.sendCommand("DOM.getContentQuads", { backendNodeId });
     const viewport = await readViewport(c);
-    if (
-      !Number.isFinite(x) ||
-      !Number.isFinite(y) ||
-      x < 0 ||
-      y < 0 ||
-      x >= viewport.width ||
-      y >= viewport.height
-    )
-      throw new Error("target_unavailable");
-    const hit = await c.debugger.sendCommand("DOM.getNodeForLocation", {
-      x: Math.round(x),
-      y: Math.round(y),
-      includeUserAgentShadowDOM: false,
-    });
-    if (hit.backendNodeId !== backendNodeId) throw new Error("target_unavailable");
-    return {
-      identity,
-      backendNodeId,
-      x,
-      y,
-      viewport,
-      role: safeText(node.role?.value, 80),
-      name: safeText(node.name?.value, 256),
-    };
+    for (const quad of quads) {
+      if (quad.length !== 8) continue;
+      const x = (quad[0] + quad[2] + quad[4] + quad[6]) / 4;
+      const y = (quad[1] + quad[3] + quad[5] + quad[7]) / 4;
+      if (
+        !Number.isFinite(x) ||
+        !Number.isFinite(y) ||
+        x < 0 ||
+        y < 0 ||
+        x >= viewport.width ||
+        y >= viewport.height
+      )
+        continue;
+      const hit = await c.debugger.sendCommand("DOM.getNodeForLocation", {
+        x: Math.round(x),
+        y: Math.round(y),
+        includeUserAgentShadowDOM: false,
+      });
+      if (hit.backendNodeId !== backendNodeId) continue;
+      return {
+        identity,
+        backendNodeId,
+        x,
+        y,
+        viewport,
+        role: safeText(node.role?.value, 80),
+        name: safeText(node.name?.value, 256),
+      };
+    }
+    throw new Error("target_unavailable");
   }
 
   /**

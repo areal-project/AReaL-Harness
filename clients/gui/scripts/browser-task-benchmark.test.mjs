@@ -640,9 +640,11 @@ test("every scripted task operation passes actual browser and strict command val
       return JSON.parse(event.slice(6)).choices[0].delta.tool_calls?.[0];
     };
     try {
+      const taskInputs = [];
       let call = await ask([{ role: "user", content: "Run the fixture task" }]);
       for (let index = 0; call && index < 100; index++) {
         const input = JSON.parse(call.function.arguments);
+        taskInputs.push(input);
         assert.equal(
           validToolInput(input),
           true,
@@ -661,6 +663,23 @@ test("every scripted task operation passes actual browser and strict command val
         );
       }
       assert.equal(call, undefined, `${taskId} script terminates without an unbounded stage loop`);
+      if (taskId === "information") {
+        assert.deepEqual(
+          taskInputs
+            .filter((input) => input.operation === "navigate")
+            .map((input) => new URL(input.parameters.url).pathname),
+          ["/information"],
+        );
+        const linkClicks = taskInputs.filter(
+          (input) =>
+            input.operation === "command" && input.parameters.command.action?.operation === "click",
+        );
+        assert.equal(linkClicks.length, 1);
+        assert.equal(
+          linkClicks[0].parameters.command.action.selector,
+          `internal:role=link[name=${JSON.stringify(`Details for ${driver.fixture.expected.name}`)}s]`,
+        );
+      }
     } finally {
       await driver.fixture.close();
       await rm(directory, { recursive: true });

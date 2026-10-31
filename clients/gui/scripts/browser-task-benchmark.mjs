@@ -287,6 +287,15 @@ export async function main(argv = process.argv.slice(2)) {
     scope:
       "Single-source six-task pipeline pilot. No comparison, ranking, or generalization claim.",
     realModel: { status: "not_run" },
+    ...(options.mode === "fixture"
+      ? {
+          fixtureFlow: {
+            revision: "browser-task-script-v2",
+            information:
+              "Directory snapshot, exact accessible-name link locator click, then detail snapshot. Replaces the fixture-only direct detail navigation; real-task prompts and grading are unchanged.",
+          },
+        }
+      : {}),
     model: {
       name: "gpt-6.1-terra",
       protocol: "responses",
