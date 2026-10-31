@@ -137,22 +137,25 @@ try {
     const summary = turn.locator(".turn-progress-summary").first();
     await summary.waitFor();
     if ((await summary.getAttribute("aria-expanded")) !== "true") await summary.click();
+    const failedGroup = turn.getByRole("button", {
+      name: "已修改 7 个文件，已运行命令 · 1 个失败",
+      exact: true,
+    });
+    await failedGroup.click();
     await turn.locator('[data-tool-id="timeline-command-failed"]').waitFor();
     const labels = await turn
       .locator(".turn-execution .areal-activity-group > .areal-disclosure > button")
       .allInnerTexts();
     assert.ok(
-      labels.some((label) => label.includes("已探索 · 13 个文件")),
-      `exploration title counts files: ${labels}`,
+      labels.some((label) => label.includes("已探索") && !/已探索[^，]*\d+ 个文件/.test(label)),
+      `exploration title omits file counts: ${labels}`,
     );
     assert.ok(
       labels.some((label) => label.includes("已修改 7 个文件")),
       `change title counts files: ${labels}`,
     );
-    const failed = turn.locator(
-      '[data-tool-id="timeline-command-failed"] .tool-summary-row .tool-failed',
-    );
-    assert.equal((await failed.innerText()).trim(), "失败 · exit 1");
+    const failed = turn.locator('[data-tool-id="timeline-command-failed"]');
+    await failed.getByRole("button", { name: /失败 · exit 1/ }).waitFor();
     assert.equal(await summary.locator("svg.lucide-circle-alert").count(), 0);
     checks.push(
       "activity groups count completed steps by stage; a failed step stays in place with its exit code",
