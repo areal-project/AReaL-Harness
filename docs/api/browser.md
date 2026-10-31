@@ -198,7 +198,7 @@ Page shell 可恢复 URL 与标题，但不恢复原生对象身份或表单/JS 
 
 Ref 私有映射键至少含 Page generation、Frame identity、Frame document identity、backend node identity。引用公开 ID 单调不复用；只在同一节点确实仍存在时复用。查不到或已导航时返回 `stale_ref`，不按名称/XPath fallback 去点击另一个节点。重新观察后由 Agent 决定新动作。
 
-Ref 动作准备与派发都验证目标仍连接、可见、可交互且 hit test 命中。换行内联目标从实际 content quads 中逐一选择命中点；兼容 locator 从 client rect fragments 中选点并保留遮挡检查。全部片段被挡时仍拒绝，不以整体边界中心代表目标可点击区域。布局可变时等待有界稳定，再检查；不使用页面脚本的 `.click()` 冒充真实输入。滚动/刷新可能改变有效条件，不能只比较一个全页 DOM revision。Canvas 坐标以**截图 bitmap → 页面 CSS viewport**的明确变换转换；不直接乘 DPR 猜测。缩放、视口或文档变化必须重新截图。
+Ref 动作准备与派发都验证目标仍连接、可见、可交互且 hit test 命中。换行内联目标从实际 content quads 中逐一选择命中点；兼容 locator 从 client rect fragments 中选点并保留遮挡检查。普通点击在全部片段被挡时仍拒绝，不以整体边界中心代表目标可点击区域。布局可变时等待有界稳定，再检查；不使用页面脚本的 `.click()` 冒充真实输入。滚动/刷新可能改变有效条件，不能只比较一个全页 DOM revision。Canvas 坐标以**截图 bitmap → 页面 CSS viewport**的明确变换转换；不直接乘 DPR 猜测。缩放、视口或文档变化必须重新截图。
 
 当前仅本地开发页支持截图坐标动作，公网页拒绝；坐标动作使用最新可见视口 `capture` 的 `observationId` 作为 `snapshotId`：`clickAt(x,y)`、`drag(fromX,fromY,toX,toY,steps)` 与 `pressAt(x,y,key)` 的坐标是截图 bitmap 整数像素，必须落在实际位图内；拖拽 `steps` 为 1–20。`describe` 公布当前支持的动作。Main 以实际 bitmap 和页面 CSS 尺寸转换为 CDP 输入坐标，将转换后的目标绑定到 Core 审批计划。转换统一使用可精确表示的 1/64 CSS 像素精度，避免 JSON 往返的浮点末位变化。本地 Canvas 无 Ref 时只能使用此截图路径；公网 Canvas 交给人工，不编造 DOM selector。每次动作后都需重新截图才能继续按坐标输入。截图同时记录 CSS viewport、scroll、DPR、page zoom、GUI zoom、原生 DIP bounds 和 bitmap 尺寸；GUI Renderer 的 CSS bounds 按 GUI zoom 转为原生 DIP bounds。隐藏、最小化或零尺寸页面不提供自动截图。视口、缩放、scroll 或文档变化使旧截图和准备计划失效；稳定 Ref 仍重新检查 actionability。
 
