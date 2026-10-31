@@ -7,6 +7,22 @@ const { randomUUID } = require("node:crypto");
 const { join, resolve, sep, basename, dirname } = require("node:path");
 const childProcess = require("node:child_process");
 const { modelRecord } = require("@areal/workbench/core-model-contract");
+// 对话里内联显示工作区图片：只按文件头识别常见位图，SVG 等可执行格式只给文件卡。
+const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024;
+/** @param {Buffer} bytes */
+function imageMimeType(bytes) {
+  if (bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])))
+    return "image/png";
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  const head = bytes.subarray(0, 6).toString("latin1");
+  if (head === "GIF87a" || head === "GIF89a") return "image/gif";
+  if (
+    bytes.subarray(0, 4).toString("latin1") === "RIFF" &&
+    bytes.subarray(8, 12).toString("latin1") === "WEBP"
+  )
+    return "image/webp";
+  return undefined;
+}
 const editors = [
   { id: "zed", label: "Zed", bundle: "Zed.app" },
   { id: "vscode", label: "Visual Studio Code", bundle: "Visual Studio Code.app" },
@@ -85,7 +101,7 @@ async function fileOpen({ backend, shell, home, authorize, chooseSave }, request
   }
   if (
     typeof request.operation !== "string" ||
-    !["open", "reveal", "saveAs"].includes(request.operation) ||
+    !["open", "reveal", "saveAs", "readImage"].includes(request.operation) ||
     typeof request.projectId !== "string" ||
     typeof request.path !== "string" ||
     !request.path ||
@@ -99,6 +115,21 @@ async function fileOpen({ backend, shell, home, authorize, chooseSave }, request
   if (path !== root && !path.startsWith(root + sep)) throw new Error("文件不在当前工作区内");
   const info = await stat(path);
   if (!info.isFile() && !info.isDirectory()) throw new Error("仅支持文件或目录");
+  if (request.operation === "readImage") {
+    if (!info.isFile()) throw new Error("仅支持图片文件");
+    if (info.size > MAX_INLINE_IMAGE_BYTES) throw new Error("图片超过 20 MB，请在外部应用中打开");
+    const source = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const bytes = await source.readFile();
+      if (bytes.byteLength > MAX_INLINE_IMAGE_BYTES)
+        throw new Error("图片超过 20 MB，请在外部应用中打开");
+      const mimeType = imageMimeType(bytes);
+      if (!mimeType) throw new Error("不是可直接显示的图片");
+      return { mimeType, bytes: new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength) };
+    } finally {
+      await source.close();
+    }
+  }
   if (request.operation === "saveAs") {
     if (!info.isFile()) throw new Error("仅支持另存普通文件");
     authorize();

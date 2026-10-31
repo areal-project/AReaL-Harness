@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  discoveredModels,
   subscriptionProjection,
   connectionBilling,
 } from "../renderer/src/settings/provider-ui-state.js";
@@ -115,4 +116,29 @@ test("new provider models retain declared capabilities and provider/model effort
     "An inherited supplier default must not become a forced per-model override",
   );
   assert.equal(definition.models[2].capabilities, undefined);
+});
+
+test("discovered model limits remain reported facts, not user parameter overrides", () => {
+  const provider = {
+    models: [{ id: "saved", parameters: { contextWindowTokens: 100 } }],
+    parameters: { contextWindowTokens: 200, reasoningEffort: "high" },
+  };
+  const facts = { saved: { contextWindowTokens: 300 }, reported: { contextWindowTokens: 400 } };
+  const before = structuredClone(provider);
+  const added = discoveredModels(provider, ["saved", "reported", "unknown"], facts);
+  assert.deepEqual(
+    added.map(({ id }) => id),
+    ["reported", "unknown"],
+  );
+  assert.equal(added[0].reportedContextWindowTokens, 400);
+  assert.equal(Object.hasOwn(added[1], "reportedContextWindowTokens"), false);
+  for (const model of added) {
+    assert.deepEqual(model.parameters, {});
+    assert.equal(model.enabled, true);
+    assert.deepEqual(model.capabilities, { tools: true, vision: false, reasoning: true });
+  }
+  assert.deepEqual(provider, before);
+  assert.equal(facts.reported.contextWindowTokens, 400);
+  assert.deepEqual(discoveredModels(provider, ["unknown"])[0].parameters, {});
+  assert.deepEqual(discoveredModels(provider, ["unknown"], null)[0].parameters, {});
 });

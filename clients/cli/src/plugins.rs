@@ -14,11 +14,20 @@ pub struct Options {
     data_dir: Option<PathBuf>,
     #[arg(long, global = true)]
     json: bool,
+    #[arg(long, global = true)]
+    config_home: Option<PathBuf>,
     #[command(subcommand)]
     command: Command,
 }
 #[derive(Subcommand)]
 enum Command {
+    /// 直接读取插件文件，不启动或连接 Core 服务。
+    Snapshot {
+        #[arg(long)]
+        id: Option<String>,
+    },
+    /// 报告插件静态信息，不推断实时连接状态。
+    Doctor,
     List,
     Read {
         id: String,
@@ -46,6 +55,23 @@ enum Command {
         id: String,
         #[arg(long, default_value = "user", value_parser = ["user", "project"])]
         scope: String,
+    },
+    /// 保存普通配置值或可信凭据引用，不接受秘密明文。
+    Configure {
+        id: String,
+        #[arg(long)]
+        values_file: PathBuf,
+        #[arg(long = "clear")]
+        clear_keys: Vec<String>,
+    },
+    /// 链接已安装包的本地目录，后续变化发布为新快照。
+    DevLink {
+        id: String,
+        #[arg(long)]
+        expected_digest: String,
+    },
+    DevUnlink {
+        id: String,
     },
     Enable {
         id: String,
@@ -130,6 +156,39 @@ fn installed_digest<'a>(list: &'a Value, id: &str) -> Result<&'a str> {
         .context("plugin is not installed")
 }
 pub async fn run(options: Options) -> Result<()> {
+    if matches!(options.command, Command::Snapshot { .. } | Command::Doctor) {
+        ensure!(
+            options.config.is_none() && options.data_dir.is_none(),
+            "snapshot and doctor use --config-home, not --config or --data-dir"
+        );
+        let user_home = std::env::var_os("HOME").map(PathBuf::from);
+        let config_home = options
+            .config_home
+            .or_else(|| std::env::var_os("AREAL_HARNESS_HOME").map(PathBuf::from))
+            .or_else(|| user_home.as_ref().map(|home| home.join(".areal")))
+            .context("cannot locate config home; set --config-home")?;
+        let selected = match &options.command {
+            Command::Snapshot { id } => id.as_deref(),
+            _ => None,
+        };
+        let snapshot = areal_plugins::Store::read_snapshot(
+            config_home.join("plugins"),
+            options.workspace,
+            user_home,
+            selected,
+        )?;
+        let value = if matches!(options.command, Command::Doctor) {
+            serde_json::to_value(snapshot.doctor())?
+        } else {
+            serde_json::to_value(snapshot)?
+        };
+        println!("{}", serde_json::to_string_pretty(&value)?);
+        return Ok(());
+    }
+    ensure!(
+        options.config_home.is_none(),
+        "--config-home is available only for snapshot and doctor"
+    );
     let root = areal_local_service::home()?;
     let service_id = areal_local_service::select(
         &root,
@@ -150,6 +209,7 @@ pub async fn run(options: Options) -> Result<()> {
         .context("invalid plugin directory revision")?;
     let request_id = uuid::Uuid::new_v4().to_string();
     let (method, mut params, mutation) = match options.command {
+        Command::Snapshot { .. } | Command::Doctor => unreachable!(),
         Command::List => {
             println!("{}", serde_json::to_string_pretty(&list)?);
             return Ok(());
@@ -200,6 +260,38 @@ pub async fn run(options: Options) -> Result<()> {
                 true,
             )
         }
+        Command::Configure {
+            id,
+            values_file,
+            clear_keys,
+        } => {
+            let bytes = std::fs::read(values_file)?;
+            ensure!(
+                bytes.len() <= 256 * 1024,
+                "plugin configuration exceeds 256 KiB"
+            );
+            let values: std::collections::BTreeMap<String, areal_plugins::PluginConfigValue> =
+                serde_json::from_slice(&bytes)
+                    .map_err(|_| anyhow::anyhow!("invalid plugin configuration value document"))?;
+            (
+                "areal/plugin/userConfig/set",
+                json!({"id":id,"expectedRevision":revision,"expectedDigest":installed_digest(&list,&id)?,"values":values,"clearKeys":clear_keys}),
+                true,
+            )
+        }
+        Command::DevLink {
+            id,
+            expected_digest,
+        } => (
+            "areal/plugin/development/link",
+            json!({"id":id,"expectedRevision":revision,"expectedDigest":expected_digest}),
+            true,
+        ),
+        Command::DevUnlink { id } => (
+            "areal/plugin/development/unlink",
+            json!({"id":id,"expectedRevision":revision}),
+            true,
+        ),
         Command::Enable { id, scope } => (
             "areal/plugin/configure",
             json!({"id":id,"scope":scope,"enabled":true,"expectedRevision":revision}),

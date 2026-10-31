@@ -1,4 +1,8 @@
 export const mobileMessages = {
+  "mobile.unsupportedWebView": {
+    "zh-CN": "请更新 Android System WebView 或操作系统后重试。当前网页环境缺少安全连接所需的能力。",
+    en: "Update Android System WebView or your operating system and try again. This web environment lacks capabilities required for a secure connection.",
+  },
   "mobile.computerPermissions": { "zh-CN": "电脑权限", en: "Computer permissions" },
   "mobile.modelAdvanced": { "zh-CN": "高级设置", en: "Advanced" },
   "mobile.permissionQuestion": {
@@ -66,8 +70,8 @@ export const mobileMessages = {
     en: "Compare the complete fingerprint on your phone and computer.",
   },
   "mobile.access": {
-    "zh-CN": "这台手机可以看到所选项目内的会话内容，并可以通过 Agent 使用当前执行权限。",
-    en: "This phone can view conversations in the selected projects and use the current execution permissions through the agent.",
+    "zh-CN": "这台手机可以查看所选项目的会话，并以当前权限让 Agent 执行操作。",
+    en: "This phone can view conversations in the selected projects and have the agent act with current permissions.",
   },
   "mobile.connecting": {
     "zh-CN": "正在连接…",

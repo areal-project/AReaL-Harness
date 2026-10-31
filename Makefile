@@ -130,6 +130,7 @@ ci-gui-health: ## 无依赖安装的 GUI 健康合同与基线检查
 	unset AREAL_DESIGN_BASE; \
 	mkdir -p target/ci/gui; \
 	node --test clients/gui/scripts/gui-health.test.mjs clients/gui/scripts/design-system-maturity.test.mjs; \
+	node clients/gui/scripts/copy-budget.mjs; \
 	if git cat-file -e "$$base:clients/gui/health-baseline.json" 2>/dev/null; then \
 		node clients/gui/scripts/gui-health.mjs --check --base="$$base"; \
 	else \
@@ -167,6 +168,7 @@ script-test: integration-boundaries ## 无需产品二进制的脚本、Web 投�
 	python3 scripts/check-docs.py
 	node --test scripts/web-progress.test.mjs
 	node --test scripts/local-service-wait.test.mjs
+	node --test scripts/persisted-state-fixture.test.mjs
 	node --test clients/gui/scripts/smoke-deadline.test.mjs
 	node --test clients/gui/scripts/update.test.cjs
 	python3 -m unittest discover -s scripts/tests
@@ -178,6 +180,7 @@ harness: ## 通过可信独立启动器启动工具 Harness；ARGS 指定工作�
 harness-smoke: build sdk-build ## 原生 SDK 与完整读改测试/强杀恢复
 	python3 scripts/native-tools-smoke.py --bin-dir target/debug
 	python3 scripts/native-python-smoke.py --bin-dir target/debug
+	python3 scripts/native-rust-smoke.py --bin-dir target/debug
 	python3 scripts/runtime-sdk-smoke.py
 	node scripts/harness-smoke.mjs
 	node scripts/workgroup-smoke.mjs

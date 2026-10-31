@@ -160,6 +160,14 @@ fn row(kind: ComponentKind, source_field: String, supported: bool) -> ComponentS
                 "mcpConnection",
             ],
         ),
+        ComponentKind::Commands => (
+            Some("areal-markdown-command-v1"),
+            &["installed", "enabled", "normalTurnAdmission"],
+        ),
+        ComponentKind::Agents => (
+            Some("areal-agent-profile-template-v1"),
+            &["installed", "enabled", "profileAdmission"],
+        ),
         _ => (None, &[]),
     };
     ComponentSupport {
@@ -407,14 +415,6 @@ fn document(
     }
     Ok(())
 }
-fn references_user_config(value: &Value) -> bool {
-    match value {
-        Value::String(s) => s.contains("${user_config.") || s.contains("${userConfig."),
-        Value::Array(values) => values.iter().any(references_user_config),
-        Value::Object(values) => values.values().any(references_user_config),
-        _ => false,
-    }
-}
 pub(crate) fn parse(
     files: &package::Files,
     selection: ManifestSelection<'_>,
@@ -500,6 +500,27 @@ pub(crate) fn parse(
         selection.portable,
         &mut components,
     )?;
+    for key in ["commands", "agents"] {
+        if let Some(value) = overlay.get(key) {
+            let values = match value {
+                Value::Array(values) => values.iter().collect::<Vec<_>>(),
+                Value::Object(values) => values.values().collect(),
+                _ => vec![value],
+            };
+            for value in values {
+                if let Some(path) = value.as_str() {
+                    package::relative(path)?;
+                }
+            }
+        }
+    }
+    let templates = crate::templates::discover(
+        files,
+        overlay,
+        selection.claude_defaults,
+        "support",
+        "support",
+    );
     let mut declarations = vec![(selection.manifest, selection.manifest_path)];
     if selection.portable {
         declarations.push((overlay, selection.overlay_path.as_str()));
@@ -508,9 +529,51 @@ pub(crate) fn parse(
     {
         declarations.push((&catalog.entry, catalog.origin.as_str()));
     }
+    for (kind, path, reason) in templates.reports {
+        reserve(&components, 1)?;
+        let mut origin = path.clone();
+        let key = if kind == ComponentKind::Commands {
+            "commands"
+        } else {
+            "agents"
+        };
+        for (manifest, declaration_path) in &declarations {
+            if let Some(value) = manifest.get(key) {
+                let field = field(declaration_path, key);
+                let entries: Vec<(String, &Value)> = match value {
+                    Value::Array(values) => values
+                        .iter()
+                        .enumerate()
+                        .map(|(index, value)| (format!("{field}/{index}"), value))
+                        .collect(),
+                    Value::Object(values) => values
+                        .iter()
+                        .map(|(key, value)| (format!("{field}/{key}"), value))
+                        .collect(),
+                    _ => vec![(field, value)],
+                };
+                for (field, value) in entries {
+                    if value
+                        .as_str()
+                        .and_then(|value| package::relative(value).ok())
+                        .as_deref()
+                        == Some(path.as_str())
+                        || path
+                            .strip_prefix(&format!("{key}#/"))
+                            .is_some_and(|suffix| field.ends_with(&format!("/{suffix}")))
+                    {
+                        origin = field;
+                    }
+                }
+            }
+        }
+        let mut report = row(kind, origin, reason.is_none());
+        if let Some(reason) = reason {
+            report.reason_codes = vec![reason.into()];
+        }
+        components.push(report);
+    }
     for (kind, key) in [
-        (ComponentKind::Commands, "commands"),
-        (ComponentKind::Agents, "agents"),
         (ComponentKind::OutputStyles, "outputStyles"),
         (ComponentKind::Themes, "themes"),
         (ComponentKind::Lsp, "lspServers"),
@@ -633,13 +696,76 @@ pub(crate) fn parse(
     {
         reasons.push("packageDependenciesUnsupported".into());
     }
-    if [selection.manifest, overlay]
-        .iter()
-        .any(|v| v.get("userConfig").is_some_and(nonempty) || references_user_config(v))
-        || mcp_documents
+    fn references(value: &Value) -> bool {
+        match value {
+            Value::String(value) => {
+                value.contains("${user_config.") || value.contains("${userConfig.")
+            }
+            Value::Array(values) => values.iter().any(references),
+            Value::Object(values) => values.values().any(references),
+            _ => false,
+        }
+    }
+    let mut unsupported_positions = [selection.manifest, overlay].iter().any(|manifest| {
+        manifest.as_object().is_some_and(|fields| {
+            fields.iter().any(|(key, value)| {
+                !matches!(key.as_str(), "userConfig" | "mcpServers" | "extensions")
+                    && references(value)
+            })
+        })
+    }) || selection
+        .manifest
+        .pointer("/extensions/com.openai")
+        .is_some_and(|extension| {
+            extension.as_object().is_some_and(|fields| {
+                fields.iter().any(|(key, value)| {
+                    !matches!(key.as_str(), "userConfig" | "mcpServers") && references(value)
+                })
+            })
+        });
+    unsupported_positions |=
+        crate::hooks::discover(overlay.get("hooks"), files, selection.portable, &mut vec![])
             .documents
             .iter()
-            .any(|(_, document)| document.declaration.references_user_config())
+            .any(|(_, document)| references(&document.value));
+    unsupported_positions |= crate::components::documents(
+        overlay.get("apps"),
+        ".app.json",
+        files,
+        selection.portable,
+        &mut vec![],
+    )
+    .documents
+    .iter()
+    .any(|(_, document)| references(&document.value));
+    unsupported_positions |= selection
+        .manifest
+        .get("extensions")
+        .and_then(Value::as_object)
+        .is_some_and(|extensions| {
+            extensions
+                .iter()
+                .any(|(key, value)| key != "com.openai" && references(value))
+        });
+    if unsupported_positions {
+        reasons.push("userConfigPositionUnsupported".into());
+    }
+    let user_schema = crate::configuration::schema(overlay.get("userConfig"));
+    let unsupported_config = match &user_schema {
+        Err(_) => true,
+        Ok(schema) => {
+            let fields = schema
+                .iter()
+                .map(|(key, field)| (key.clone(), field.sensitive))
+                .collect();
+            mcp_documents
+                .documents
+                .iter()
+                .any(|(_, document)| document.declaration.validate_user_config(&fields).is_err())
+        }
+    };
+    if unsupported_config
+        || (selection.manifest.get("userConfig").is_some() && overlay.get("userConfig").is_none())
     {
         reasons.push("userConfigUnsupported".into());
     }

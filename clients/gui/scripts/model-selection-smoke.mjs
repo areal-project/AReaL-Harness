@@ -11,6 +11,8 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   captureSmokeFailure,
   createProjectConversation,
+  openSideChat,
+  resizeConversation,
   selectConversation,
 } from "./smoke-navigation.mjs";
 
@@ -26,6 +28,7 @@ await mkdir(join(userHome, ".areal"), { recursive: true });
 execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
 const requests = [];
 const modelRequests = [];
+const wireTiers = [];
 const probeRequests = [];
 let releaseHeldReply;
 const server = createServer(async (request, response) => {
@@ -65,10 +68,19 @@ const server = createServer(async (request, response) => {
       effort: payload.reasoning_effort ?? null,
       hasEffort: Object.hasOwn(payload, "reasoning_effort"),
     });
+    wireTiers.push({
+      value: payload.service_tier ?? null,
+      present: Object.hasOwn(payload, "service_tier"),
+    });
     const lastMessage = JSON.stringify(payload.messages?.at(-1));
     if (lastMessage?.includes("LAST_MODEL_ACCEPTED_FAILURE")) {
       response.writeHead(400, { "Content-Type": "application/json" });
       response.end(JSON.stringify({ error: { message: "Deterministic failure after admission" } }));
+      return;
+    }
+    if (lastMessage?.includes("FAST_UNSUPPORTED_TIER")) {
+      response.writeHead(400, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "Unsupported service tier" } }));
       return;
     }
     if (lastMessage?.includes("LAST_MODEL_HOLD_REPLY"))
@@ -83,6 +95,8 @@ const server = createServer(async (request, response) => {
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const config = join(userHome, ".areal", "config.toml");
+const composerPicker = process.argv.includes("--composer-picker");
+const composerFast = process.argv.includes("--composer-fast");
 await writeFile(
   config,
   `schema_version=1\n[model]\ncatalog_version=1\nprovider="theta"\nname="theta-model"\n` +
@@ -98,6 +112,18 @@ await writeFile(
   (await readFile(config, "utf8")) +
     `\n[model.providers.env]\nname="env"\nenabled=false\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nprotocol="chat-completions"\napi_key_env="AREAL_CREDENTIAL_fixture_env"\nmodels=[{id="env-model",enabled=true}]\n`,
 );
+if (composerPicker || composerFast) {
+  await writeFile(
+    config,
+    `schema_version=1\n[model]\ncatalog_version=1\nprovider="alpha"\nname="alpha-model"\n` +
+      ["alpha", "beta"]
+        .map(
+          (id) =>
+            `\n[model.providers.${id}]\nname="${composerPicker ? `Configured ${id}` : id}"\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nprotocol="chat-completions"\nmodels=[{id="${id}-model",enabled=true${composerFast && id === "alpha" ? ',parameters={service_tier="fast"}' : ""},capabilities={tools=true,vision=true,reasoning=true,reasoning_effort_options=["low","high"]}}]\n`,
+        )
+        .join(""),
+  );
+}
 const env = {
   ...process.env,
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
@@ -162,21 +188,21 @@ async function captureModelThemes(name, menu = false) {
     );
     if (menu) {
       await button("返回应用").click();
-      await button("模型").click();
+      await button("选择思考强度").click();
       await assertComposerActions();
       await assertCompactEffort();
       await page.waitForFunction(() => {
-        const menu = document.querySelector('[aria-label="模型与思考强度"]');
+        const menu = document.querySelector('[role="dialog"][aria-label="选择思考强度"]');
         return menu && getComputedStyle(menu).opacity === "1";
       });
       await page.screenshot({
         path: join(scratch, `${name}-effort-${theme}.png`),
         animations: "disabled",
       });
-      const slider = page.getByRole("slider", { name: "思考强度", exact: true });
+      const slider = page.getByRole("slider", { name: "选择思考强度", exact: true });
       const selected = await slider.getAttribute("aria-valuetext");
       await slider.hover({ position: { x: 14, y: 14 } });
-      await page.getByRole("tooltip").filter({ hasText: /^低$/ }).waitFor();
+      await page.getByRole("tooltip").filter({ hasText: /^无$/ }).waitFor();
       await page.waitForFunction(() => {
         const tooltip = document.querySelector('[role="tooltip"]');
         return tooltip && getComputedStyle(tooltip).opacity === "1";
@@ -201,8 +227,7 @@ async function captureModelThemes(name, menu = false) {
         path: join(scratch, `${name}-focus-${theme}.png`),
         animations: "disabled",
       });
-      await button("选择模型").focus();
-      await page.getByRole("tooltip").waitFor({ state: "hidden" });
+      await page.keyboard.press("Escape");
       await button("选择模型").click();
       await assertComposerActions();
       await page.screenshot({
@@ -270,7 +295,9 @@ async function assertEmptyModelIndicator() {
   );
 }
 async function assertCompactEffort() {
-  const menu = page.getByRole("dialog", { name: "模型与思考强度", exact: true });
+  const menu = page.getByRole("dialog", { name: "选择思考强度", exact: true });
+  await menu.getByRole("button", { name: "服务默认", exact: true }).focus();
+  await page.getByRole("tooltip").waitFor({ state: "hidden" });
   assert.equal(
     await menu
       .getByRole("button", { name: /^(无|最少|低|中|高|极高|最高)$/ })
@@ -286,11 +313,11 @@ async function assertCompactEffort() {
   );
 }
 async function chooseEffort(name, key) {
-  const slider = page.getByRole("slider", { name: "思考强度", exact: true });
+  const slider = page.getByRole("slider", { name: "选择思考强度", exact: true });
   const hasSlider = await slider.count();
   if (hasSlider) {
     await page.evaluate(() => {
-      const input = document.querySelector('[aria-label="思考强度"]');
+      const input = document.querySelector('input[type=range][aria-label="选择思考强度"]');
       const editor = document.querySelector('[data-testid="chat-input"]');
       const violations = [];
       const observer = new MutationObserver((records) => {
@@ -313,14 +340,12 @@ async function chooseEffort(name, key) {
     const choice = page
       .getByRole("group", { name: "选择思考强度", exact: true })
       .getByRole("button", { name, exact: true });
-    await button("选择模型").focus();
-    await page.keyboard.press("Tab");
+    await choice.focus();
     assert.equal(
       await choice.evaluate((element) => element === document.activeElement),
       true,
       "the first unselected strength is keyboard reachable",
     );
-    await page.getByRole("tooltip").filter({ hasText: name }).waitFor();
     await choice.press("Enter");
   }
   await waitForSavedEffort(name);
@@ -348,7 +373,9 @@ async function waitForSavedEffort(name) {
   // The range previews pointerIndex while Core saves; the label reflects confirmed configuration.
   await page.waitForFunction(
     (name) =>
-      document.querySelector('[aria-label="思考强度"]')?.getAttribute("aria-valuetext") === name &&
+      document
+        .querySelector('input[type=range][aria-label="选择思考强度"]')
+        ?.getAttribute("aria-valuetext") === name &&
       document.querySelector(".composer-effort-center strong")?.textContent === name &&
       !document.querySelector(".composer-model-trigger")?.hasAttribute("aria-busy"),
     name,
@@ -372,6 +399,15 @@ async function saveProvider() {
 const state = () => page.evaluate(() => window.arealDesktop.snapshot());
 const fixtureProject = (snapshot) =>
   snapshot.projects.find((project) => project.root === workspace);
+async function showModel(name) {
+  const model = fixtureProject(await state()).models.find(
+    (item) => item.providerId && (item.displayName === name || item.modelId === name),
+  );
+  assert.ok(model, `catalog contains ${name}`);
+  const provider = model.providerName || model.providerId || "服务默认";
+  await page.getByRole("tab", { name: provider, exact: true }).click();
+  return page.getByRole("radio", { name, exact: true });
+}
 async function call(name, params) {
   const result = await page.evaluate(
     ({ name, params }) => window.arealDesktop.command(name, params),
@@ -440,13 +476,14 @@ async function launch() {
   page.on("pageerror", (error) => errors.push(error.message));
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
   // 本专项统计执行请求；提示预测由独立专项验收，避免辅助请求混入不重放断言。
-  const preferencesChanged = await page.evaluate(() => {
+  const preferencesChanged = await page.evaluate((picker) => {
     const key = "areal-gui:application-preferences";
     const preferences = JSON.parse(localStorage.getItem(key) ?? "{}");
-    if (preferences.nextPromptSuggestions === false) return false;
+    if (picker) localStorage.setItem("areal-gui:font-size", "18");
+    if (preferences.nextPromptSuggestions === false && !picker) return false;
     localStorage.setItem(key, JSON.stringify({ ...preferences, nextPromptSuggestions: false }));
     return true;
-  });
+  }, composerPicker || composerFast);
   if (preferencesChanged) {
     await page.reload();
     await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
@@ -612,12 +649,12 @@ async function verifyModelCapabilities() {
   ]);
   await button("返回应用").click();
   await createProjectConversation(page, "workspace");
-  await button("模型").click();
-  await page.getByRole("radio", { name: "Capability model", exact: true }).click();
+  await button("选择模型").click();
+  await (await showModel("Capability model")).click();
   await page.keyboard.press("Escape");
-  await button("模型").click();
+  await button("选择思考强度").click();
   assert.equal(
-    await page.getByRole("slider", { name: "思考强度", exact: true }).count(),
+    await page.getByRole("slider", { name: "选择思考强度", exact: true }).count(),
     0,
     "a newly selected custom model keeps effort unspecified until explicit selection",
   );
@@ -644,15 +681,15 @@ async function verifyModelCapabilities() {
     );
     assert.deepEqual(modelRequests.at(-1), expected);
   };
-  await button("模型").click();
+  await button("选择思考强度").click();
   assert.equal(
-    await page.getByRole("slider", { name: "思考强度", exact: true }).getAttribute("max"),
-    "3",
+    await page.getByRole("slider", { name: "选择思考强度", exact: true }).getAttribute("max"),
+    "6",
   );
   await assertComposerActions();
   assert.equal(
     await page
-      .getByRole("slider", { name: "思考强度", exact: true })
+      .getByRole("slider", { name: "选择思考强度", exact: true })
       .getAttribute("aria-valuetext"),
     "中",
   );
@@ -662,27 +699,30 @@ async function verifyModelCapabilities() {
     effort: "medium",
     hasEffort: true,
   });
-  await button("模型").click();
-  await chooseEffort("极高", "End");
-  await button("选择模型").focus();
-  await page.getByRole("tooltip").waitFor({ state: "hidden" });
-  const dragSlider = page.getByRole("slider", { name: "思考强度", exact: true });
+  await button("选择思考强度").click();
+  await chooseEffort("高", "ArrowRight");
+  await chooseEffort("极高", "ArrowRight");
+  await page.mouse.move(0, 0);
+  const dragSlider = page.getByRole("slider", { name: "选择思考强度", exact: true });
   await page.waitForFunction(
-    () => document.querySelector('[aria-label="思考强度"]')?.disabled === false,
+    () =>
+      document.querySelector('input[type=range][aria-label="选择思考强度"]')?.disabled === false,
   );
   const dragBounds = await dragSlider.boundingBox();
   assert.ok(dragBounds);
-  await page.mouse.move(dragBounds.x + dragBounds.width - 14, dragBounds.y + 14);
+  const dragX = (index) => dragBounds.x + 14 + ((dragBounds.width - 28) * index) / 6;
+  await page.mouse.move(dragX(5), dragBounds.y + 14);
   await page.mouse.down();
-  await page.mouse.move(dragBounds.x + 14, dragBounds.y + 14, { steps: 8 });
+  await page.mouse.move(dragX(2), dragBounds.y + 14, { steps: 8 });
   await page.mouse.up();
   await waitForSavedEffort("低");
   await page.waitForFunction(
-    () => document.querySelector('[aria-label="思考强度"]')?.disabled === false,
+    () =>
+      document.querySelector('input[type=range][aria-label="选择思考强度"]')?.disabled === false,
   );
-  await page.mouse.move(dragBounds.x + 14, dragBounds.y + 14);
+  await page.mouse.move(dragX(2), dragBounds.y + 14);
   await page.mouse.down();
-  await page.mouse.move(dragBounds.x + dragBounds.width - 14, dragBounds.y + 14, { steps: 8 });
+  await page.mouse.move(dragX(5), dragBounds.y + 14, { steps: 8 });
   await page.mouse.up();
   await waitForSavedEffort("极高");
   await page.keyboard.press("Escape");
@@ -699,19 +739,10 @@ async function verifyModelCapabilities() {
     editor = page.getByRole("dialog", { name: "编辑模型", exact: true });
     await editor.waitFor();
   };
+  const unsupportedHistory = await page
+    .getByTestId("areal-workbench")
+    .getAttribute("data-thread-id");
   await editCapabilities();
-  await editor.getByRole("switch", { name: "推理能力", exact: true }).click();
-  await editor.getByRole("button", { name: "保存模型", exact: true }).click();
-  await saveProvider();
-  assert.equal((await configuredModel()).capabilities.reasoning, false);
-  await button("返回应用").click();
-  await send("Explicitly disabled reasoning omits the selected effort", {
-    model: "capability-model",
-    effort: null,
-    hasEffort: false,
-  });
-  await editCapabilities();
-  await editor.getByRole("switch", { name: "推理能力", exact: true }).click();
   const effortGroup = editor.getByRole("group", { name: "允许的推理强度", exact: true });
   for (const checkbox of await effortGroup.getByRole("checkbox").all())
     if (await checkbox.isChecked()) await checkbox.click();
@@ -736,27 +767,30 @@ async function verifyModelCapabilities() {
     "configured effort subset reaches Composer catalog",
   );
   await button("返回应用").click();
-  const unsupportedHistory = await page
-    .getByTestId("areal-workbench")
-    .getAttribute("data-thread-id");
   await createProjectConversation(page, "workspace");
-  assert.match(await button("模型").innerText(), /Capability model 低/);
-  await send("Unsupported remembered strength falls back to first offered option", {
+  assert.match(await button("选择思考强度").innerText(), /低/);
+  await send("Unsupported remembered effort falls back to the first supported value", {
     model: "capability-model",
     effort: "low",
     hasEffort: true,
   });
   await selectConversation(page, unsupportedHistory);
-  assert.match(await button("模型").innerText(), /未指定/);
-  await button("模型").click();
-  let slider = page.getByRole("slider", { name: "思考强度", exact: true });
-  assert.equal(await slider.count(), 0, "unsupported historical strength has no selected slider");
-  await chooseEffort("低", "Home");
-  await slider.waitFor();
-  assert.equal(await slider.getAttribute("max"), "1");
-  await slider.press("End");
-  await waitForSavedEffort("高");
-  await slider.press("Home");
+  assert.match(await button("选择思考强度").innerText(), /极高/);
+  const rejectedDraft = "UNSUPPORTED_HISTORY_DRAFT";
+  const beforeRejected = modelRequests.length;
+  await page.getByTestId("chat-input").fill(rejectedDraft);
+  await button("发送").click();
+  await page
+    .getByRole("alert")
+    .filter({ hasText: /reasoning|强度|推理/i })
+    .waitFor();
+  assert.match(await page.getByTestId("chat-input").innerText(), /UNSUPPORTED_HISTORY_DRAFT/);
+  assert.equal(modelRequests.length, beforeRejected);
+  await page.getByTestId("chat-input").fill("");
+  await button("选择思考强度").click();
+  const slider = page.getByRole("slider", { name: "选择思考强度", exact: true });
+  assert.equal(await slider.getAttribute("max"), "6");
+  await slider.fill("2");
   await waitForSavedEffort("低");
   await page.keyboard.press("Escape");
   await send("Configured lower effort reaches provider", {
@@ -764,8 +798,8 @@ async function verifyModelCapabilities() {
     effort: "low",
     hasEffort: true,
   });
-  await button("模型").click();
-  await slider.press("End");
+  await button("选择思考强度").click();
+  await slider.fill("4");
   await waitForSavedEffort("高");
   await page.keyboard.press("Escape");
   await send("Configured upper effort reaches provider", {
@@ -783,7 +817,10 @@ async function verifyModelCapabilities() {
     reasoning: false,
   });
   await button("返回应用").click();
-  await send("Disabling reasoning with a saved subset clears its options", {
+  await button("选择思考强度").click();
+  await button("服务默认").click();
+  await page.keyboard.press("Escape");
+  await send("Service default omits effort for a model with reasoning disabled", {
     model: "capability-model",
     effort: null,
     hasEffort: false,
@@ -801,16 +838,16 @@ async function verifyModelCapabilities() {
     "empty configured subset does not invent supported effort options",
   );
   await button("返回应用").click();
-  await button("模型").click();
-  assert.equal(await page.getByRole("slider", { name: "思考强度", exact: true }).count(), 0);
-  assert.equal(await page.getByRole("group", { name: "选择思考强度", exact: true }).count(), 0);
+  await button("选择思考强度").click();
+  assert.equal(await page.getByRole("slider", { name: "选择思考强度", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("group", { name: "选择思考强度", exact: true }).count(), 1);
   await page.screenshot({
     path: join(scratch, "custom-model-effort-empty.png"),
     animations: "disabled",
   });
   await button("服务默认").click();
   await page.waitForFunction(() =>
-    document.querySelector('[aria-label="模型"]')?.textContent.includes("服务默认"),
+    document.querySelector('button[aria-label="选择思考强度"]')?.textContent.includes("服务默认"),
   );
   await page.keyboard.press("Escape");
   await send(
@@ -826,16 +863,16 @@ async function verifyModelCapabilities() {
   await editor.getByRole("button", { name: "保存模型", exact: true }).click();
   await saveProvider();
   await button("返回应用").click();
-  await button("模型").click();
-  assert.equal(await page.getByRole("slider", { name: "思考强度", exact: true }).count(), 0);
+  await button("选择思考强度").click();
+  assert.equal(await page.getByRole("slider", { name: "选择思考强度", exact: true }).count(), 0);
   await page.keyboard.press("Escape");
-  await send("Disabling reasoning removes a prior selected effort", {
+  await send("Service default remains omitted after reasoning is disabled", {
     model: "capability-model",
     effort: null,
     hasEffort: false,
   });
   checks.push(
-    "custom model defaults, paired budget fields, persisted capabilities, configured effort subset, empty-list omission, and reasoning disablement govern actual Core requests",
+    "custom model defaults, paired budget fields, persisted capabilities, historical rejection, configured effort subset, and service default reach Core",
   );
   await openModelSettings();
   await page.locator(".provider-catalog-row").filter({ hasText: "Capabilities" }).waitFor();
@@ -909,8 +946,10 @@ async function verifyModelDefaults(projectId) {
   const expectModel = async (name, effort) => {
     await page.waitForFunction(
       ({ name, effort }) => {
-        const label = document.querySelector('button[aria-label="模型"]')?.textContent ?? "";
-        return label.includes(name) && label.includes(effort);
+        const label = document.querySelector('button[aria-label="选择模型"]')?.textContent ?? "";
+        const strength =
+          document.querySelector('button[aria-label="选择思考强度"]')?.textContent ?? "";
+        return label.includes(name) && strength.includes(effort);
       },
       { name, effort },
     );
@@ -981,13 +1020,12 @@ async function verifyModelDefaults(projectId) {
       );
   };
   const chooseModel = async (name) => {
-    await button("模型").click();
     await button("选择模型").click();
-    await page.getByRole("radio", { name, exact: true }).click();
+    await (await showModel(name)).click();
     await page.keyboard.press("Escape");
   };
   const chooseNone = async () => {
-    await button("模型").click();
+    await button("选择思考强度").click();
     const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
     await assertComposerActions();
     await chooseEffort("无", "Home");
@@ -998,7 +1036,7 @@ async function verifyModelDefaults(projectId) {
       "keyboard selects the first explicit none option",
     );
     await page.waitForFunction(
-      () => !document.querySelector('button[aria-label="模型"]')?.disabled,
+      () => !document.querySelector('button[aria-label="选择模型"]')?.disabled,
     );
     await page.keyboard.press("Escape");
   };
@@ -1045,7 +1083,7 @@ async function verifyModelDefaults(projectId) {
   );
   await chooseModel("Beta");
   await expectModel("Beta", "未指定");
-  await button("模型").click();
+  await button("选择思考强度").click();
   await page.getByRole("button", { name: "中", exact: true }).click();
   await page.keyboard.press("Escape");
   await expectModel("Beta", "中");
@@ -1080,7 +1118,7 @@ async function verifyModelDefaults(projectId) {
   await expectModel("Alpha", "高");
   await chooseModel("Beta");
   await expectModel("Beta", "未指定");
-  await button("模型").click();
+  await button("选择思考强度").click();
   await page.getByRole("button", { name: "中", exact: true }).click();
   await page.keyboard.press("Escape");
   await expectModel("Beta", "中");
@@ -1108,16 +1146,16 @@ async function verifyModelDefaults(projectId) {
   await call("configure", { projectId, threadId: beta, parameters: { reasoningEffort: null } });
   await expectModel("Beta", "未指定");
   const historicalConfig = snapshotProject(await state()).configurations[beta];
-  await button("模型").click();
+  await button("选择思考强度").click();
   await assertComposerActions();
-  assert.equal(await page.getByRole("slider", { name: "思考强度", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("slider", { name: "选择思考强度", exact: true }).count(), 0);
   await page.keyboard.press("Escape");
   assert.deepEqual(
     snapshotProject(await state()).configurations[beta],
     historicalConfig,
     "opening historical unspecified strength does not write configuration",
   );
-  await button("模型").click();
+  await button("选择思考强度").click();
   await chooseEffort("无", "Home");
   await expectModel("Beta", "无");
   await page.keyboard.press("Escape");
@@ -1356,7 +1394,7 @@ async function verifyModelDefaults(projectId) {
   await selectConversation(page, alpha);
   await expectModel("alpha-default", "高");
   const missingHistoricalConfig = snapshotProject(await state()).configurations[alpha];
-  await button("模型").click();
+  await button("选择模型").click();
   assert.equal(
     await page.getByRole("radio", { name: "alpha-default", exact: true }).count(),
     0,
@@ -1401,10 +1439,13 @@ async function verifyModelDefaults(projectId) {
     effort: "none",
     hasEffort: true,
   });
-  await button("模型").click();
+  await button("选择思考强度").click();
   await assertComposerActions();
-  await chooseEffort("极高", "End");
-  await page.waitForFunction(() => !document.querySelector('button[aria-label="模型"]')?.disabled);
+  await page.getByRole("slider", { name: "选择思考强度", exact: true }).fill("5");
+  await waitForSavedEffort("极高");
+  await page.waitForFunction(
+    () => !document.querySelector('button[aria-label="选择模型"]')?.disabled,
+  );
   await chooseEffort("高", "ArrowLeft");
   await page.keyboard.press("Escape");
   await expectModel("legacy-alpha", "高");
@@ -1447,10 +1488,315 @@ async function verifyModelDefaults(projectId) {
     "implicit desktop defaults pin model revision and effective effort across global default changes, effort reconfiguration and cold reopen; missing catalog entries retain historical identity",
   );
 }
-try {
-  await launch();
-  await button("打开项目").click();
+async function verifyComposerPicker() {
+  await until(
+    (s) =>
+      fixtureProject(s)?.state?.connected &&
+      fixtureProject(s).models.some((m) => m.providerId === "beta" && m.available),
+    "picker fixture catalog ready",
+  );
+  await button("选择模型").click();
+  const menu = page.getByRole("dialog", { name: "选择模型", exact: true });
+  await menu.waitFor();
+  assert.equal(await menu.getByRole("textbox").count(), 0);
+  assert.equal(await menu.getByRole("tab", { name: /agent/i }).count(), 0);
+  const alpha = menu.getByRole("tab", { name: "Configured alpha", exact: true });
+  const beta = menu.getByRole("tab", { name: "Configured beta", exact: true });
+  await alpha.waitFor();
+  await beta.click();
+  const betaModel = menu.getByRole("radio", { name: "beta-model", exact: true });
+  await betaModel.waitFor();
+  const left = await beta.boundingBox();
+  const right = await betaModel.boundingBox();
+  assert.ok(
+    left && right && left.x + left.width <= right.x,
+    "providers precede models horizontally",
+  );
+  await page.screenshot({ path: join(scratch, "picker-dark.png"), animations: "disabled" });
+  await betaModel.click();
+  await button("选择思考强度").click();
+  const effortMenu = page.getByRole("dialog", { name: "选择思考强度", exact: true });
+  await effortMenu.waitFor();
+  await button("选择模型").click();
+  await menu.waitFor();
+  await effortMenu.waitFor({ state: "hidden" });
+  await button("选择思考强度").click();
+  await effortMenu.waitFor();
+  await menu.waitFor({ state: "hidden" });
+  assert.equal(
+    await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--ui-font-size").trim(),
+    ),
+    "18px",
+  );
+  await page.screenshot({ path: join(scratch, "effort-wide.png"), animations: "disabled" });
+  for (const name of ["无", "最少", "低", "中", "高", "极高", "最高"])
+    assert.equal(await effortMenu.getByRole("button", { name, exact: true }).count(), 1);
+  await effortMenu.getByRole("button", { name: "最高", exact: true }).click();
+  await page.keyboard.press("Escape");
+  const draft = "UNSUPPORTED_EFFORT_DRAFT";
+  await page.getByTestId("chat-input").fill(draft);
+  const before = modelRequests.length;
+  await button("发送").click();
+  await page.waitForFunction(
+    (text) => document.querySelector('[data-testid="chat-input"]')?.textContent?.includes(text),
+    draft,
+  );
+  await page
+    .getByRole("alert")
+    .filter({ hasText: /reasoning|强度|推理/i })
+    .waitFor();
+  assert.equal(
+    modelRequests.length,
+    before,
+    "Core rejects unsupported effort before provider request",
+  );
+  await button("选择思考强度").click();
+  const slider = page.getByRole("slider", { name: "选择思考强度", exact: true });
+  await slider.waitFor();
+  await slider.fill("4");
+  await page.keyboard.press("Escape");
+  await button("发送").click();
+  await until(
+    (s) =>
+      modelRequests.length === before + 1 &&
+      Object.values(fixtureProject(s).state.threads).some(
+        (thread) => thread.turns?.at(-1)?.status === "completed",
+      ),
+    "valid effort reaches provider",
+  );
+  assert.deepEqual(modelRequests.at(-1), { model: "beta-model", effort: "high", hasEffort: true });
+  for (const theme of ["dark", "light"]) {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 960));
+    await button("设置").click();
+    await button("外观").click();
+    await page.getByRole("combobox", { name: "界面主题", exact: true }).click();
+    await page
+      .getByRole("option", { name: theme === "dark" ? "深色" : "浅色", exact: true })
+      .click();
+    await button("返回应用").click();
+    await resizeConversation(app, page, 640, 800);
+    await button("选择模型").click();
+    await page.getByRole("dialog", { name: "选择模型", exact: true }).waitFor();
+    await page.screenshot({
+      path: join(scratch, `picker-640-18-${theme}.png`),
+      animations: "disabled",
+    });
+    await page.keyboard.press("Escape");
+    await button("选择思考强度").click();
+    await page.getByRole("dialog", { name: "选择思考强度", exact: true }).waitFor();
+    await page.screenshot({
+      path: join(scratch, `effort-640-18-${theme}.png`),
+      animations: "disabled",
+    });
+    await page.keyboard.press("Escape");
+  }
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 960));
+  await openSideChat(page);
+  const side = page.getByTestId("side-chat-pane").filter({ visible: true });
+  await side.getByRole("button", { name: "选择模型", exact: true }).click();
+  await page.getByRole("dialog", { name: "选择模型", exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  await side.getByRole("button", { name: "选择思考强度", exact: true }).click();
+  await page.getByRole("dialog", { name: "选择思考强度", exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  checks.push(
+    "provider navigation and independent effort selection; unsupported effort rejected with draft retained; supported effort reaches local provider",
+  );
+}
+async function verifyComposerFast() {
+  await until(
+    (s) =>
+      fixtureProject(s)?.state?.connected &&
+      fixtureProject(s).models.some((m) => m.providerId === "beta" && m.available),
+    "fast fixture catalog ready",
+  );
+  const chooseModel = async (provider) => {
+    await button("选择模型").click();
+    const menu = page.getByRole("dialog", { name: "选择模型", exact: true });
+    await menu.getByRole("tab", { name: provider, exact: true }).click();
+    await menu.getByRole("radio", { name: `${provider}-model`, exact: true }).click();
+  };
+  const openEffort = async () => {
+    await button("选择思考强度").click();
+    const menu = page.getByRole("dialog", { name: "选择思考强度", exact: true });
+    await menu.waitFor();
+    return menu;
+  };
+  const send = async (text, model, effort, tier, present = true) => {
+    const before = modelRequests.length;
+    await page.getByTestId("chat-input").fill(text);
+    await button("发送").click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
+    );
+    const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+    await until(
+      (s) =>
+        fixtureProject(s)?.state?.threads?.[threadId]?.turns?.at(-1)?.status === "completed" &&
+        modelRequests.length === before + 1,
+      text,
+    );
+    assert.deepEqual(modelRequests.at(-1), { model, effort, hasEffort: effort !== null });
+    assert.deepEqual(wireTiers.at(-1), { value: tier, present });
+    return threadId;
+  };
+  assert.equal(await button("选择模型").locator(".composer-model-name").innerText(), "alpha-model");
+  await send("Unspecified tier inherits provider fast", "alpha-model", null, "fast");
+  await chooseModel("beta");
+  await send("Inherited fast survives existing thread model change", "beta-model", null, "fast");
   await createProjectConversation(page, "workspace");
+  await chooseModel("beta");
+  await send("Unspecified tier remains omitted", "beta-model", null, null, false);
+  await createProjectConversation(page, "workspace");
+  await chooseModel("beta");
+  let menu = await openEffort();
+  const fast = menu.locator(".composer-fast-toggle");
+  await fast.click();
+  await assertFastPressed(fast, true);
+  await menu.getByRole("button", { name: "高", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await button("选择思考强度").getByText(/Fast/).waitFor();
+  const thread = await send("Fast high draft", "beta-model", "high", "fast");
+  menu = await openEffort();
+  await menu.getByRole("slider", { name: "选择思考强度", exact: true }).fill("2");
+  await page.keyboard.press("Escape");
+  await send("Fast low existing thread", "beta-model", "low", "fast");
+  await chooseModel("alpha");
+  await send("Fast survives model change", "alpha-model", null, "fast");
+  menu = await openEffort();
+  await menu.getByRole("button", { name: "低", exact: true }).click();
+  await page.waitForFunction(
+    () => document.querySelector(".composer-fast-toggle")?.getAttribute("aria-disabled") !== "true",
+  );
+  await menu.locator(".composer-fast-toggle").click();
+  await assertFastPressed(menu.locator(".composer-fast-toggle"), false);
+  await page.keyboard.press("Escape");
+  await send("Explicit default overrides provider fast", "alpha-model", "low", "default");
+  menu = await openEffort();
+  await menu.locator(".composer-fast-toggle").click();
+  await assertFastPressed(menu.locator(".composer-fast-toggle"), true);
+  await page.keyboard.press("Escape");
+  await send("Persist fast", "alpha-model", "low", "fast");
+  const beforeRestart = modelRequests.length;
+  await closeGui();
+  app = undefined;
+  await stopService();
+  await launch();
+  await until((s) => fixtureProject(s)?.state?.connected, "fast cold reopen");
+  await selectConversation(page, thread);
+  await button("选择思考强度").getByText(/Fast/).waitFor();
+  assert.equal(modelRequests.length, beforeRestart, "reopening does not replay requests");
+  await send("Persisted fast after restart", "alpha-model", "low", "fast");
+  const computedFonts = {};
+  for (const theme of ["dark", "light"]) {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 960));
+    await button("设置").click();
+    await button("外观").click();
+    await page.getByRole("combobox", { name: "界面主题", exact: true }).click();
+    await page
+      .getByRole("option", { name: theme === "dark" ? "深色" : "浅色", exact: true })
+      .click();
+    await button("返回应用").click();
+    await resizeConversation(app, page, 640, 800);
+    assert.equal(
+      await page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue("--ui-font-size").trim(),
+      ),
+      "18px",
+    );
+    menu = await openEffort();
+    await assertFastPressed(menu.locator(".composer-fast-toggle"), true);
+    await menu.locator(".composer-fast-toggle").click();
+    await assertFastPressed(menu.locator(".composer-fast-toggle"), false);
+    await page.mouse.move(0, 0);
+    await menu.locator(".composer-fast-toggle").hover();
+    await page
+      .getByRole("tooltip")
+      .filter({ hasText: /更多额度或费用/ })
+      .waitFor();
+    computedFonts[theme] = await menu.locator(".composer-fast-toggle").evaluate((element) => ({
+      toggle: getComputedStyle(element).fontSize,
+      popover: getComputedStyle(element.closest('[role="dialog"]')).fontSize,
+    }));
+    assert.ok(parseFloat(computedFonts[theme].toggle) > 0);
+    assert.ok(parseFloat(computedFonts[theme].popover) > 0);
+    await page.screenshot({
+      path: join(scratch, `fast-tooltip-640-18-${theme}.png`),
+      animations: "disabled",
+    });
+    await menu.locator(".composer-fast-toggle").click();
+    await assertFastPressed(menu.locator(".composer-fast-toggle"), true);
+    await page.screenshot({
+      path: join(scratch, `fast-on-640-18-${theme}.png`),
+      animations: "disabled",
+    });
+    await page.keyboard.press("Escape");
+  }
+  await writeFile(
+    join(scratch, "fast-computed-fonts.json"),
+    JSON.stringify(computedFonts, null, 2),
+  );
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 960));
+  menu = await openEffort();
+  await page.waitForFunction(() => {
+    const element = document.querySelector('.composer-effort-menu[role="dialog"]');
+    if (!element) return false;
+    const style = getComputedStyle(element);
+    const bounds = element.getBoundingClientRect();
+    return (
+      style.opacity === "1" &&
+      style.visibility === "visible" &&
+      bounds.width > 0 &&
+      bounds.height > 0
+    );
+  });
+  await page.screenshot({ path: join(scratch, "fast-wide.png"), animations: "disabled" });
+  await page.keyboard.press("Escape");
+  await openSideChat(page);
+  const side = page.getByTestId("side-chat-pane").filter({ visible: true });
+  await side.getByRole("button", { name: "选择思考强度", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "选择思考强度", exact: true })
+    .locator(".composer-fast-toggle")
+    .waitFor();
+  const sideFast = page
+    .getByRole("dialog", { name: "选择思考强度", exact: true })
+    .locator(".composer-fast-toggle");
+  await page.waitForFunction(
+    () => document.querySelector(".composer-fast-toggle")?.getAttribute("aria-disabled") !== "true",
+  );
+  const sideWasFast = (await sideFast.getAttribute("aria-pressed")) === "true";
+  await sideFast.click();
+  await assertFastPressed(sideFast, !sideWasFast);
+  await page.keyboard.press("Escape");
+  await page
+    .getByTestId("chat-view")
+    .getByRole("button", { name: "选择思考强度", exact: true })
+    .filter({ hasText: /Fast/ })
+    .waitFor();
+  const beforeFailure = modelRequests.length;
+  await page.getByTestId("chat-input").first().fill("FAST_UNSUPPORTED_TIER");
+  await page.getByRole("button", { name: "发送", exact: true }).first().click();
+  await until(
+    (s) => fixtureProject(s)?.state?.threads?.[thread]?.turns?.at(-1)?.status === "failed",
+    "unsupported tier reaches failed state",
+  );
+  assert.equal(modelRequests.length, beforeFailure + 1, "unsupported tier is not retried");
+  assert.deepEqual(wireTiers.at(-1), { value: "fast", present: true });
+  checks.push(
+    "Fast tier is independent of effort and model, reaches local provider, overrides provider default, and persists across cold restart; main and Side controls are available",
+  );
+}
+async function assertFastPressed(toggle, pressed) {
+  await toggle.waitFor();
+  await page.waitForFunction(
+    ([expected]) =>
+      document.querySelector(".composer-fast-toggle")?.getAttribute("aria-pressed") === expected,
+    [String(pressed)],
+  );
+}
+async function runFullModelSelection() {
   const ready = await until(
     (s) => fixtureProject(s)?.state?.connected && fixtureProject(s).models.length === 3,
     "unavailable Core catalog",
@@ -1467,7 +1813,7 @@ try {
   );
   assert.equal(await button("发送").isDisabled(), true, "an empty draft cannot enable sending");
   assert.equal(
-    await button("模型").count(),
+    await button("选择模型").count(),
     1,
     "the selected model remains visible when credentials are missing",
   );
@@ -1489,7 +1835,10 @@ try {
     "missing-credential and disabled models stay out of the picker",
   );
   assert.equal(requests.length, 0, "unavailable entries cannot send a model request");
-  await page.screenshot({ path: join(scratch, "unavailable-models.png"), animations: "disabled" });
+  await page.screenshot({
+    path: join(scratch, "unavailable-models.png"),
+    animations: "disabled",
+  });
   await page.keyboard.press("Escape");
   await button("定时任务").click();
   const taskDraftKey = "areal-gui:ordinary-schedule-creation";
@@ -1621,7 +1970,10 @@ try {
   assert.equal(await editor.getByRole("spinbutton", { name: "模型温度", exact: true }).count(), 0);
   await editor.getByRole("spinbutton", { name: "模型上下文 Token", exact: true }).fill("500000");
   await editor.getByRole("spinbutton", { name: "模型最大输出 Token", exact: true }).fill("12000");
-  await page.screenshot({ path: join(scratch, "model-editor-dialog.png"), animations: "disabled" });
+  await page.screenshot({
+    path: join(scratch, "model-editor-dialog.png"),
+    animations: "disabled",
+  });
   await editor.getByRole("button", { name: "保存模型", exact: true }).click();
   assert.equal(
     await page.getByTestId("provider-base-url").isVisible(),
@@ -1707,7 +2059,10 @@ try {
     "opening an existing project does not duplicate it",
   );
   await page.getByTestId("chat-input").fill("");
-  await page.screenshot({ path: join(scratch, "open-project-entry.png"), animations: "disabled" });
+  await page.screenshot({
+    path: join(scratch, "open-project-entry.png"),
+    animations: "disabled",
+  });
   checks.push(
     "Projects + opens the existing picker directly; cancel preserves the project and draft; reopening a directory keeps one registration",
   );
@@ -1752,11 +2107,10 @@ try {
   );
   await button("首页").click();
   await createProjectConversation(page, "workspace");
-  await button("模型").click();
   await button("选择模型").click();
-  await page.getByRole("radio", { name: "theta-model", exact: true }).click();
+  await (await showModel("theta-model")).click();
   await page.keyboard.press("Escape");
-  assert.match(await button("模型").innerText(), /theta-model/);
+  assert.match(await button("选择模型").innerText(), /theta-model/);
   assert.equal(requests.length, 0, "model selection does not create or send a task");
   await page.getByTestId("chat-input").fill("Use the configured model");
   await button("发送").click();
@@ -1823,7 +2177,6 @@ try {
     (s) => fixtureProject(s).models.length === 2,
     "explicit default cleared for catalog enablement checks",
   );
-  await button("模型").click();
   await button("选择模型").click();
   assert.equal(
     await page.getByRole("radio", { name: /arena-model/ }).count(),
@@ -1905,9 +2258,8 @@ try {
   checks.push(
     "settings navigation stays disabled while a real save receipt is pending and returns to the conversation after settlement",
   );
-  await button("模型").click();
   await button("选择模型").click();
-  const arena = page.getByRole("radio", { name: "arena-model", exact: true });
+  const arena = await showModel("arena-model");
   assert.equal(await arena.isEnabled(), true);
   await arena.click();
   await page.keyboard.press("Escape");
@@ -1974,9 +2326,8 @@ try {
   await page.screenshot({ path: join(scratch, "no-auth-pending.png"), animations: "disabled" });
 
   await button("返回应用").click();
-  await button("模型").click();
   await button("选择模型").click();
-  await page.getByRole("radio", { name: "theta-model", exact: true }).click();
+  await (await showModel("theta-model")).click();
   await page.keyboard.press("Escape");
   await until(
     (s) =>
@@ -1984,9 +2335,8 @@ try {
         ?.providerId === "theta",
     "Core accepts temporary model reselection",
   );
-  await button("模型").click();
   await button("选择模型").click();
-  await page.getByRole("radio", { name: "arena-model", exact: true }).click();
+  await (await showModel("arena-model")).click();
   await page.keyboard.press("Escape");
   await until(
     (s) =>
@@ -2032,9 +2382,8 @@ try {
     animations: "disabled",
   });
   await button("返回应用").click();
-  await button("模型").click();
   await button("选择模型").click();
-  await page.getByRole("radio", { name: "env-model", exact: true }).click();
+  await (await showModel("env-model")).click();
   await page.keyboard.press("Escape");
   await until(
     (s) =>
@@ -2081,7 +2430,7 @@ try {
   await page.screenshot({ path: join(scratch, "disabled-provider.png"), animations: "disabled" });
   await button("返回应用").click();
   const disabledHistory = fixtureProject(await state()).configurations;
-  await button("模型").click();
+  await button("选择模型").click();
   assert.equal(
     await page.getByRole("radio", { name: /arena-model|env-model/ }).count(),
     0,
@@ -2097,7 +2446,7 @@ try {
     disabledHistory,
     "browsing available models preserves the disabled historical selection",
   );
-  assert.match(await button("模型").innerText(), /env-model/);
+  assert.match(await button("选择模型").innerText(), /env-model/);
   await openModelSettings();
   await page.locator(".provider-catalog-row").filter({ hasText: "theta" }).click();
   await page.getByRole("switch", { name: "启用模型 theta-model", exact: true }).click();
@@ -2112,10 +2461,10 @@ try {
     "disabled model absent from executable Core catalog",
   );
   await button("返回应用").click();
-  assert.equal(await button("模型").count(), 1, "disabled historical identity remains visible");
-  assert.match(await button("模型").innerText(), /env-model/);
+  assert.equal(await button("选择模型").count(), 1, "disabled historical identity remains visible");
+  assert.match(await button("选择模型").innerText(), /env-model/);
   assert.equal(
-    await button("模型").locator('[aria-label="模型不可用"]').count(),
+    await button("选择模型").locator('[aria-label="模型不可用"]').count(),
     1,
     "confirmed invalidity is marked inside the model label",
   );
@@ -2198,7 +2547,7 @@ try {
     "Empty model guidance stays on one line within the toolbar in dark/light themes at 1440, 980 and 640 pixels; the project bar stays attached to the composer",
   );
   assert.equal(
-    await button("模型").count(),
+    await button("选择模型").count(),
     0,
     "empty catalog has no clickable model configuration control",
   );
@@ -2208,6 +2557,18 @@ try {
   checks.push("empty catalog provides neutral guidance and Settings > Models remains accessible");
   await verifyModelCapabilities();
   await verifyModelDefaults(projectId);
+}
+try {
+  await launch();
+  await button("打开项目").click();
+  await createProjectConversation(page, "workspace");
+  if (composerFast) {
+    await verifyComposerFast();
+  } else if (composerPicker) {
+    await verifyComposerPicker();
+  } else {
+    await runFullModelSelection();
+  }
   assert.deepEqual(errors, []);
   passed = true;
 } catch (error) {
@@ -2302,6 +2663,7 @@ try {
       .update(await readFile(coreBinary))
       .digest("hex") === coreSha256;
   await writeFile(join(scratch, "model-requests.json"), JSON.stringify(modelRequests, null, 2));
+  await writeFile(join(scratch, "wire-tiers.json"), JSON.stringify(wireTiers, null, 2));
   await writeFile(join(scratch, "probe-requests.json"), JSON.stringify(probeRequests, null, 2));
   if (!coreUnchanged) {
     errors.push("Core binary changed during acceptance");

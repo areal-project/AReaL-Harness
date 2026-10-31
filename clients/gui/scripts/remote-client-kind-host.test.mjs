@@ -51,7 +51,7 @@ async function invitation(remote) {
   ).get("invite");
 }
 
-for (const clientKind of [undefined, "web", "ios"]) {
+for (const clientKind of [undefined, "web", "ios", "android"]) {
   test(`approved ${clientKind ?? "legacy"} metadata survives persistence and scope changes`, async (t) => {
     const f = await hostFixture(t);
     const { remote } = f;
@@ -117,7 +117,7 @@ test("unknown hello client kinds fail before invitation consumption or persisten
   await f.remote.control({ operation: "enableDirect" });
   const inviteSecret = await invitation(f.remote);
   const writes = f.savedWrites.length;
-  for (const clientKind of ["android", "", null, 1, {}]) {
+  for (const clientKind of ["desktop", "", null, 1, {}]) {
     const client = await connect(t, f.remote, { inviteSecret, clientKind });
     assert.equal(client.first.error.code, "INVALID_PARAMS");
     assert.equal(f.remote.state().pending.length, 0);
@@ -138,11 +138,11 @@ test("stored grants reject invalid client kinds and accept legacy absence", () =
     status: "active",
   };
   assert.equal(parseRemoteConfig({ deviceGrants: [grant] }).deviceGrants[0], grant);
-  for (const clientKind of ["web", "ios"])
+  for (const clientKind of ["web", "ios", "android"])
     assert.equal(
       parseRemoteConfig({ deviceGrants: [{ ...grant, clientKind }] }).deviceGrants[0].clientKind,
       clientKind,
     );
-  for (const clientKind of ["android", "", null, 1, {}])
+  for (const clientKind of ["desktop", "", null, 1, {}])
     assert.throws(() => parseRemoteConfig({ deviceGrants: [{ ...grant, clientKind }] }));
 });

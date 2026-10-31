@@ -26,7 +26,30 @@ changed_paths = ci_scope.changed_paths
 input_key = ci_scope.input_key
 
 
-def failure_checks(plan, root, extra_reports=()):
+def unfinished_checks(report, path, plan, platform):
+    # 未选择项不是欠账；只恢复本机中断尝试实际选中的检查，不复用旧通过证据。
+    if report.get("status") not in {"running", "cancelled"} or report["platform"] != platform:
+        return []
+    selected = report.get("selectedRequired")
+    if selected is None:
+        saved_path = path.with_name("plan.json")
+        if not saved_path.is_file():
+            return []
+        saved = json.loads(saved_path.read_text())
+        identity = report["identity"]
+        if saved["planHash"] != identity.get("planHash") or any(
+            identity.get(key) != value for key, value in saved["source"].items()
+        ):
+            raise ValueError(f"Interrupted report plan identity differs: {path}")
+        selected = {item["id"] for item in saved["items"]} - set(report["pendingRequired"])
+    completed = {result["id"] for result in report["results"]}
+    remote = set(report.get("remoteRequired", []))
+    local = {item["id"] for item in plan["items"] if platform in item["platforms"]}
+    return sorted(set(selected) & local - completed - remote)
+
+
+def failure_checks(plan, root, extra_reports=(), platform=None):
+    platform = platform or sys.platform
     # 历史报告只提供重验线索；旧命令和通过结果都不参与本轮执行。
     paths = {
         path
@@ -54,7 +77,11 @@ def failure_checks(plan, root, extra_reports=()):
             if path in extra_reports:
                 raise ValueError(f"Failure report is outside the current branch: {path}")
             continue
-        for result in report["results"]:
+        results = report["results"] + [
+            {"id": name, "status": "pending"}
+            for name in unfinished_checks(report, path, plan, platform)
+        ]
+        for result in results:
             key = (result["id"], report["platform"])
             timestamp = (
                 result.get("completedAt") or report.get("completedAt") or report["startedAt"]

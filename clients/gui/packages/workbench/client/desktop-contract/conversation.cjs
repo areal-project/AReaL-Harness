@@ -22,7 +22,8 @@ const { modelRef, parameters, strings } = require("./provider.cjs");
 /** @typedef {import("./shared.cjs").ClientOptions} ClientOptions */
 /** @typedef {{type:'image'|'audio'|'file',url:string,name?:string,mimeType?:string,_meta?:Record<string,unknown>}} Attachment */
 /** @typedef {{type:'text',text:string,_meta?:Record<string,unknown>}|{type:'resource_link',uri:string,name:string,mimeType?:string,_meta?:Record<string,unknown>}|{type:'resource',resource:{uri:string,text?:string,blob?:string,mimeType?:string},_meta?:Record<string,unknown>}} MessageContent */
-/** @typedef {{text?:string,attachments?:Attachment[],mcpContent?:MessageContent[],conversationQuotes?:Array<{text:string}>}} Message */
+/** @typedef {{pluginId:string,componentId:string,installedDigest:string,arguments:string}} PluginCommandRef */
+/** @typedef {{command?:PluginCommandRef,text?:string,attachments?:Attachment[],mcpContent?:MessageContent[],conversationQuotes?:Array<{text:string}>}} Message */
 /** @typedef {{sourceRoot?:string,ref?:string,worktreeRoot?:string,branch?:string,branchPrefix?:string,environmentId?:string,environmentRevision?:number,mode?:'source'|'worktree'}} WorktreeSpec */
 /** @typedef {ProjectRequest & {requestId?:string,browserEnabled?:boolean,options?:ClientOptions,model?:import('./provider.cjs').ModelRef|null,parameters?:import('./provider.cjs').ModelParameters,profile?:ResourceRef,worktree?:WorktreeSpec}} CreateRequest */
 /** @typedef {ThreadRequest & {requestId?:string,expectedRevision?:number,model?:import('./provider.cjs').ModelRef|null,profile?:ResourceRef,options?:ClientOptions,parameters?:import('./provider.cjs').ModelParameters,selectedSkills?:ResourceRef[]}} ConfigureRequest */
@@ -84,6 +85,7 @@ function message(value) {
   return (
     modelRecord(value) &&
     (value.text === undefined || typeof value.text === "string") &&
+    (value.command === undefined || pluginCommand(value.command)) &&
     (value.attachments === undefined ||
       (Array.isArray(value.attachments) &&
         value.attachments.length <= 16 &&
@@ -209,6 +211,7 @@ function isRequest(name, value) {
   )
     return false;
   if (["send", "editMessage", "steer", "queueEdit"].includes(name) && !message(value)) return false;
+  if (value.command !== undefined && !["send", "editMessage"].includes(name)) return false;
   switch (name) {
     case "connect":
       return (
@@ -295,7 +298,7 @@ function isRequest(name, value) {
         identifier(value.expectedTurnId) &&
         identifier(value.itemId) &&
         typeof value.text === "string" &&
-        !!value.text.trim() &&
+        (!!value.text.trim() || value.command !== undefined) &&
         count(value.expectedConfigRevision) &&
         uuid(value.requestId) &&
         only(value, [
@@ -309,6 +312,7 @@ function isRequest(name, value) {
           "attachments",
           "mcpContent",
           "conversationQuotes",
+          "command",
         ])
       );
     case "continue":
@@ -624,3 +628,16 @@ module.exports = {
   sideContext,
   submissionRead,
 };
+
+/** @param {unknown} value @returns {value is PluginCommandRef} */
+function pluginCommand(value) {
+  return (
+    modelRecord(value) &&
+    ["pluginId", "componentId", "installedDigest"].every(
+      (key) => typeof value[key] === "string" && value[key].length > 0,
+    ) &&
+    typeof value.arguments === "string" &&
+    new TextEncoder().encode(value.arguments).length <= 65536 &&
+    only(value, ["pluginId", "componentId", "installedDigest", "arguments"])
+  );
+}

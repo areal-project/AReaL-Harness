@@ -161,6 +161,47 @@ test("OpenAI direct relay scopes routing state and records presence without repl
   assert.equal(sent.length, 3);
 });
 
+test("SIWC HTTP relay requests priority for Fast and preserves the actual default tier", async (t) => {
+  const sent = [];
+  const terminal =
+    'data: {"type":"response.completed","response":{"status":"completed","service_tier":"default","output":[]}}\n\n';
+  const f = await relay(
+    t,
+    async (url, options) => {
+      assert.equal(url, "https://api.openai.com/v1/responses");
+      sent.push(JSON.parse(options.body));
+      return new Response(terminal, { headers: { "Content-Type": "text/event-stream" } });
+    },
+    "openai",
+  );
+  for (const tier of ["fast", "default", undefined]) {
+    const result = await fetch(f.service.endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer fixture-loopback",
+        "Content-Type": "application/json",
+        ...owner(),
+      },
+      body: JSON.stringify({
+        model: "fixture",
+        input: [{ role: "user", content: "unchanged" }],
+        stream: true,
+        service_tier: tier,
+        reasoning: { effort: "high" },
+      }),
+    });
+    assert.equal(result.status, 200);
+    assert.equal(await result.text(), terminal);
+  }
+  assert.deepEqual(
+    sent.map((body) => body.service_tier),
+    ["priority", "default", undefined],
+  );
+  assert.equal(Object.hasOwn(sent[2], "service_tier"), false);
+  assert(sent.every((body) => body.reasoning.effort === "high"));
+  assert.equal(sent.length, 3);
+});
+
 test("production relay preserves body, routes continuations and clears state on account change", async (t) => {
   const sent = [];
   const f = await relay(t, async (_url, options) => {

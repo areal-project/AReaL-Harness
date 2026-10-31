@@ -666,7 +666,7 @@ fn dependencies_and_user_configuration_never_reach_execution_documents() {
         manifest[requirement] = if requirement == "dependencies" {
             json!({"private-host-sdk":"1.0"})
         } else {
-            json!({"token":{"type":"string","required":true,"default":"PRIVATE_DEFAULT"}})
+            json!({"token":{"type":"string","sensitive":true,"required":true,"default":"PRIVATE_DEFAULT"}})
         };
         write(
             f.corpus.path(),
@@ -871,7 +871,7 @@ fn claude_manifest_retains_its_requirements_when_entry_clears_them() {
     let reasons = report["componentSupport"]["compatibility"]["reasonCodes"]
         .as_array()
         .unwrap();
-    assert!(reasons.contains(&json!("userConfigUnsupported")));
+    assert!(report["userConfiguration"]["fields"].get("token").is_some());
     assert!(reasons.contains(&json!("packageDependenciesUnsupported")));
     install(&store, &detail);
     assert!(mcp_names(&store, &detail.id).is_empty());

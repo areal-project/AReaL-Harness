@@ -758,9 +758,8 @@ async function toolAndPermission() {
     "denied operation settled",
   );
   assert.equal(await exists(join(workspace, "denied.txt")), false);
-  const modelButton = sidePane().getByRole("button", { name: "模型", exact: true });
+  const modelButton = sidePane().getByTestId("composer-model-trigger");
   await modelButton.click();
-  await page.getByRole("button", { name: "选择模型", exact: true }).click();
   await page.getByRole("radio", { name: /fixture-alternate/ }).click();
   await page.keyboard.press("Escape");
   await until(

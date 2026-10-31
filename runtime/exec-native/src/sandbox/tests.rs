@@ -218,6 +218,98 @@ fn resolved_system_python_reads_workspace_without_expanding_file_permissions() {
 }
 
 #[test]
+fn system_compiler_builds_and_links_with_private_scratch() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.allowed.join("hello.c"),
+        "#include <stdio.h>\nint main(void) { puts(\"compiler-fixture\"); return 0; }\n",
+    )
+    .unwrap();
+    let mut execution = fixture.shell("cc \"$1/hello.c\" -o \"$1/hello\"", &[&fixture.allowed]);
+    execution.env.insert(
+        "TMPDIR".into(),
+        fixture.allowed.to_string_lossy().into_owned(),
+    );
+    crate::prepare_system_compiler(&mut execution);
+    let output = run(&prepared(&execution), &execution);
+    assert!(output.status.success(), "{output:?}");
+    assert!(fixture.allowed.join("hello").is_file());
+    assert!(output.stderr.is_empty(), "{output:?}");
+    let outside = fixture.shell("cat \"$1/fixture\"", &[&fixture.outside]);
+    denied(&run(&prepared(&outside), &outside));
+}
+
+#[test]
+fn system_git_config_metadata_does_not_grant_contents_or_neighbor_access() {
+    let fixture = Fixture::new();
+    let etc = fixture.root.join("system/etc");
+    fs::create_dir_all(&etc).unwrap();
+    let config = etc.join("gitconfig");
+    let neighbor = etc.join("gitconfig-private");
+    for path in [&config, &neighbor] {
+        fs::write(path, "outside-fixture").unwrap();
+    }
+    for (code, path, success) in [
+        ("stat -f %HT \"$1\"", &config, true),
+        ("cat \"$1\"", &config, false),
+        ("stat -f %HT \"$1\"", &neighbor, false),
+        ("printf forbidden > \"$1\"", &config, false),
+    ] {
+        let execution = fixture.shell(code, &[path]);
+        let mut argv = prepared(&execution);
+        let policy = argv.iter().position(|arg| arg == "-p").unwrap() + 1;
+        argv[policy] = argv[policy].replace(
+            "(literal \"/private",
+            &format!(
+                "(literal \"{}",
+                escape(fixture.root.join("system").to_str().unwrap())
+            ),
+        );
+        let output = run(&argv, &execution);
+        assert_eq!(output.status.success(), success, "{output:?}");
+        if !success {
+            denied(&output);
+        }
+    }
+    assert_eq!(fs::read_to_string(config).unwrap(), "outside-fixture");
+}
+
+#[test]
+fn compiler_policy_denies_toolchain_writes_and_sdk_neighbor_reads() {
+    let fixture = Fixture::new();
+    let developer = fixture.root.join("Xcode_26.0.1.app/Contents/Developer");
+    let toolchain = developer.join("Toolchains/XcodeDefault.xctoolchain/usr/lib");
+    let sdk = developer.join("Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk");
+    let neighbor = developer.join("Platforms/MacOSX.platform/Developer/SDKs-private");
+    for path in [&toolchain, &sdk, &neighbor] {
+        fs::create_dir_all(path).unwrap();
+        fs::write(path.join("fixture"), "outside-fixture").unwrap();
+    }
+    for (code, path, success) in [
+        ("cat \"$1/fixture\"", &toolchain, true),
+        ("cat \"$1/fixture\"", &sdk, true),
+        ("cat \"$1/fixture\"", &neighbor, false),
+        ("printf forbidden > \"$1/new-file\"", &toolchain, false),
+        ("printf forbidden > \"$1/new-file\"", &sdk, false),
+    ] {
+        let execution = fixture.shell(code, &[path]);
+        let mut argv = prepared(&execution);
+        let policy = argv.iter().position(|arg| arg == "-p").unwrap() + 1;
+        argv[policy] = argv[policy].replace(
+            "Applications",
+            escape(fixture.root.to_str().unwrap()).trim_start_matches('/'),
+        );
+        let output = run(&argv, &execution);
+        assert_eq!(output.status.success(), success, "{output:?}");
+        if !success {
+            denied(&output);
+        }
+    }
+    assert!(!toolchain.join("new-file").exists());
+    assert!(!sdk.join("new-file").exists());
+}
+
+#[test]
 fn versioned_xcode_python_policy_preserves_framework_boundary() {
     let fixture = Fixture::new();
     for (app, allowed) in [

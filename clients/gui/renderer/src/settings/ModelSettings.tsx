@@ -22,7 +22,11 @@ import { Switch } from "../components/ui/switch.js";
 import { SettingsSearchInput } from "./SettingsSearchInput.js";
 import { DialogFooter } from "../components/ui/dialog.js";
 import { EmptySettings, Feedback, SettingsDialog, useResource } from "./common.js";
-import { newConnectionDraft, subscriptionProjection } from "./provider-ui-state.js";
+import {
+  discoveredModels,
+  newConnectionDraft,
+  subscriptionProjection,
+} from "./provider-ui-state.js";
 import { ProviderTemplatePicker } from "./ProviderTemplatePicker.js";
 import {
   ProviderApiKeySection,
@@ -781,22 +785,7 @@ export function ModelSettings({
                             edit({
                               models: [
                                 ...provider.models,
-                                ...checked
-                                  .filter(
-                                    (id) => !provider.models.some((model: Data) => model.id === id),
-                                  )
-                                  .map((id) =>
-                                    withDefaultModelCapabilities(
-                                      {
-                                        id,
-                                        enabled: true,
-                                        parameters: !provider.parameters?.contextWindowTokens
-                                          ? (result.modelParameters?.[id] ?? {})
-                                          : {},
-                                      },
-                                      provider.parameters,
-                                    ),
-                                  ),
+                                ...discoveredModels(provider, checked, result.modelParameters),
                               ],
                             });
                             setChecked([]);

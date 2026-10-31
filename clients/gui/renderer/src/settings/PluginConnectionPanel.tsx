@@ -1,5 +1,4 @@
-import type { PluginCommand, PluginMutate } from "./PluginCenter.js";
-import { Input } from "@areal/ui";
+import type { PluginCommand, PluginMutate } from "./pluginTypes.js";
 import { useI18n, type UiMessage } from "../i18n/IntlProvider.js";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "../components/ui/button.js";
@@ -9,11 +8,14 @@ import { PluginAuthConfiguration } from "./PluginAuthConfiguration.js";
 import { supportBlocked } from "./PluginComponentSupport.js";
 import { Switch } from "../components/ui/switch.js";
 import { pluginMcpStateLabel } from "./pluginResources.js";
-import type { PluginDetail } from "./PluginCenter.js";
+import type { PluginDetail } from "./pluginTypes.js";
+import type { PluginConnectionFacts } from "./pluginPresentation.js";
 import type { Data } from "../services.js";
 
 type AuthState = "notStarted" | "pending" | "ready" | "failed" | "cancelled" | "unknown";
 type Props = {
+  summaryPlacement?: "standalone" | "components";
+  onFacts?: (facts: PluginConnectionFacts) => void;
   projectId: string;
   detail: PluginDetail;
   snapshot?: Data;
@@ -31,6 +33,8 @@ type Props = {
 /** Projects the installed package's authoritative connection snapshot; consent is only a local draft. */
 export function PluginConnectionPanel({
   projectId,
+  summaryPlacement = "standalone",
+  onFacts,
   detail,
   snapshot,
   loading,
@@ -48,7 +52,6 @@ export function PluginConnectionPanel({
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState<UiMessage | string>("");
   const [consentOpen, setConsentOpen] = useState(false);
-  const [consent, setConsent] = useState(false);
   const [acting, setActing] = useState("");
   const [fullDigest, setFullDigest] = useState(false);
   const generation = useRef(0);
@@ -172,6 +175,35 @@ export function PluginConnectionPanel({
     loading ||
     authLoading ||
     !!acting;
+  useEffect(() => {
+    if (!snapshot?.installedDigest) return;
+    onFacts?.({
+      pluginId: detail.id,
+      installedDigest: snapshot.installedDigest,
+      authRequired,
+      authPending,
+      authUnknown,
+      connected,
+      partial,
+      cleanupUnknown,
+      uncertain,
+      configurationBlocked: !!configurationBlocked,
+      mappingRequired,
+    });
+  }, [
+    onFacts,
+    detail.id,
+    snapshot?.installedDigest,
+    authRequired,
+    authPending,
+    authUnknown,
+    connected,
+    partial,
+    cleanupUnknown,
+    uncertain,
+    configurationBlocked,
+    mappingRequired,
+  ]);
   const title =
     loading || !snapshot
       ? t("settings.pluginConnectionPanel.loadingConnectionStatus")
@@ -235,11 +267,18 @@ export function PluginConnectionPanel({
 
   return (
     <section
+      data-plugin-connections
       className="plugin-status-panel"
       aria-label={t("settings.pluginConnectionPanel.pluginConnectionStatus")}
     >
-      <h2>{title}</h2>
-      <p className="plugin-status-description">{description}</p>
+      {summaryPlacement === "standalone" ? (
+        <>
+          <h2>{title}</h2>
+          <p className="plugin-status-description">{description}</p>
+        </>
+      ) : (
+        <h3>MCP</h3>
+      )}
       {servers.length > 0 && (
         <p className="plugin-status-note">
           {t("settings.pluginConnectionPanel.componentReconnectRequired")}
@@ -342,7 +381,6 @@ export function PluginConnectionPanel({
                 disabled={blocked}
                 onClick={() => {
                   if (!detail.installedDigest) return;
-                  setConsent(false);
                   setConsentOpen(false);
                   void mutate({
                     operation: "pluginConnection",
@@ -391,27 +429,11 @@ export function PluginConnectionPanel({
                           : t("settings.pluginConnectionPanel.viewFullDigest")}
                       </Button>
                     </p>
-                    <label className="plugin-consent">
-                      <Input
-                        unstyled
-                        data-slot={undefined}
-                        type="checkbox"
-                        checked={consent}
-                        disabled={blocked}
-                        onChange={(event) => setConsent(event.target.checked)}
-                      />
-                      <span>
-                        {t(
-                          "settings.pluginConnectionPanel.iTrustTheCurrentInstallationSnapshotAnd",
-                        )}
-                      </span>
-                    </label>
                     <div className="plugin-service-actions">
                       <Button
-                        disabled={blocked || !consent}
+                        disabled={blocked}
                         onClick={() => {
-                          if (!consent || !detail.installedDigest) return;
-                          setConsent(false);
+                          if (!detail.installedDigest) return;
                           void mutate({
                             operation: "pluginConnection",
                             id: detail.id,
@@ -426,20 +448,12 @@ export function PluginConnectionPanel({
                         variant="outline"
                         disabled={blocked}
                         onClick={() => {
-                          setConsent(false);
                           setConsentOpen(false);
                         }}
                       >
                         {t("settings.pluginConnectionPanel.connectLater")}
                       </Button>
                     </div>
-                    {!consent && (
-                      <p className="plugin-status-note">
-                        {t(
-                          "settings.pluginConnectionPanel.confirmThatYouTrustTheCurrentInstallation2",
-                        )}
-                      </p>
-                    )}
                   </div>
                 )}
               </>

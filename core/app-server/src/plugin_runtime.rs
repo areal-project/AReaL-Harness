@@ -2,6 +2,10 @@
 use super::*;
 areal_protocol::method_catalog! {
     "areal/plugin/mcp/list" => Read;
+    "areal/plugin/components" => Read;
+    "areal/plugin/userConfig/set" => Mutation, Management;
+    "areal/plugin/development/link" => Mutation, Management;
+    "areal/plugin/development/unlink" => Mutation, Management;
     "areal/plugin/hooks/list" => Read;
     "areal/plugin/hooks/configure" => Mutation, Management;
     "areal/hook/acknowledge" => Mutation, Management;
@@ -38,7 +42,10 @@ pub(crate) async fn dispatch(
 ) -> Result<Value, RpcError> {
     if matches!(
         method,
-        "areal/plugin/hooks/configure"
+        "areal/plugin/userConfig/set"
+            | "areal/plugin/development/link"
+            | "areal/plugin/development/unlink"
+            | "areal/plugin/hooks/configure"
             | "areal/hook/acknowledge"
             | "areal/plugin/connection"
             | "areal/plugin/connector/configure"
@@ -101,6 +108,13 @@ async fn dispatch_inner(
         ));
     }
     let result = match method {
+        "areal/plugin/userConfig/set" => engine.plugin_user_configure(parse(params)?).await,
+        "areal/plugin/development/link" => engine.plugin_development_link(parse(params)?).await,
+        "areal/plugin/development/unlink" => engine.plugin_development_unlink(parse(params)?).await,
+        "areal/plugin/components" => {
+            let p: ComponentRead = parse(params)?;
+            engine.plugin_component_summary(p.id).await
+        }
         "areal/mcp/app/tools/register" => {
             engine.mcp_page_tools_register(host, parse(params)?).await
         }

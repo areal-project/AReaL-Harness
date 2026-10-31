@@ -19,6 +19,10 @@ export const remoteMessages = {
     "zh-CN": "允许这个 iOS App 访问吗？",
     en: "Allow this iOS app to connect?",
   },
+  "settings.mobileSettings.clientKindAndroid": {
+    "zh-CN": "Android",
+    en: "Android",
+  },
   "settings.mobileSettings.clientKindIOS": {
     "zh-CN": "iPhone",
     en: "iPhone",
@@ -332,9 +336,8 @@ export const remoteMessages = {
     en: "Connection details and diagnostics",
   },
   "settings.mobileSettings.phonesUsingServeMustJoinTheSame": {
-    "zh-CN":
-      "手机使用 Serve 时必须加入同一 tailnet。组织策略、手机 tailnet 成员资格及实际可达性尚未验证，本机检测成功不表示手机可连接。",
-    en: "Phones using Serve must join the same tailnet. Organization policies, phone tailnet membership, and actual reachability have not been verified. A successful local check does not prove that a phone can connect.",
+    "zh-CN": "手机须加入同一 tailnet。本机检测成功不代表手机能连接。",
+    en: "Phones must join the same tailnet. A successful local check does not mean a phone can connect.",
   },
   "settings.mobileSettings.ifTheHostIsOfflineCheckThe": {
     "zh-CN": "Host 离线时请回到电脑检查后台；配对链接过期时请重新生成邀请。",
@@ -401,9 +404,8 @@ export const remoteMessages = {
     en: "About public access",
   },
   "settings.mobileSettings.theEntryStaysPrivateByDefaultFunnel": {
-    "zh-CN":
-      "默认保持私人入口。Funnel 会让互联网访问 Remote 入口；仍需 Host 指纹、 短期邀请、桌面确认与逐操作授权。公网能力未认证，策略、手机与实际可达性未知。 访问范围变化会使当前邀请和连接失效；请重新连接，配对时生成新邀请。",
-    en: "The entry stays private by default. Funnel makes the Remote entry accessible from the internet. Host fingerprint verification, short-lived invitations, desktop confirmation, and per-operation authorization still apply. Public access is not certified. Policies, phone access, and actual reachability are unknown. Changing access scope invalidates current invitations and connections. Reconnect and generate a new pairing invitation.",
+    "zh-CN": "Funnel 会让入口可从互联网访问，配对仍需指纹和桌面确认。更改后需重新配对。",
+    en: "Funnel makes the entry reachable from the internet; pairing still needs the fingerprint and desktop approval. Pair again after changing this.",
   },
   "settings.mobileSettings.private": {
     "zh-CN": "私人",
@@ -490,9 +492,8 @@ export const remoteMessages = {
     en: "Organization entry requirements",
   },
   "settings.mobileSettings.thisSavesOnlyTheExactHTTPSOrigin": {
-    "zh-CN":
-      "这里只保存应用接受的精确 HTTPS 来源和配对链接。组织须自行配置指向 Remote 的代理、证书、WebSocket 和 ACL；代理必须保留该来源的 Host，不能依赖转发身份头。",
-    en: "This saves only the exact HTTPS origin accepted by the app and its pairing link. Your organization must configure the proxy, certificates, WebSocket support, and ACL for Remote. The proxy must preserve the origin Host and must not rely on forwarded identity headers.",
+    "zh-CN": "只保存 HTTPS 来源和配对链接。代理、证书和访问控制由组织配置。",
+    en: "Only the HTTPS origin and pairing link are saved. Your organization configures the proxy, certificates, and access control.",
   },
   "settings.mobileSettings.iConfirmTheOrganizationEntryIsReady": {
     "zh-CN": "我确认组织入口已安排妥当，并同意保存此来源；应用不会配置或验证代理、证书和 ACL。",
@@ -539,9 +540,8 @@ export const remoteMessages = {
     en: "Restore or remove this app's network configuration",
   },
   "settings.mobileSettings.restoreChecksTheActualScopeOfThe": {
-    "zh-CN":
-      "恢复只读核对已记录映射的实际范围，不重放发布命令；移除只撤销精确匹配的本应用 Serve/Funnel 映射，组织模式仅清除应用来源。外部更改的映射不会被覆盖。",
-    en: "Restore checks the actual scope of the saved mapping without replaying publish commands. Removal only revokes this app's exactly matching Serve/Funnel mapping. Organization mode clears only the app origin. Externally changed mappings will not be overwritten.",
+    "zh-CN": "恢复只核对已有映射；移除只撤销本应用创建的映射。",
+    en: "Restore only checks the existing mapping. Remove only revokes mappings this app created.",
   },
   "settings.mobileSettings.iConfirmOnlyThisAppSRecords": {
     "zh-CN": "我确认仅处理本应用记录，并选择下方恢复或移除操作。",
@@ -560,9 +560,8 @@ export const remoteMessages = {
     en: "Connect through a relay service",
   },
   "settings.mobileSettings.yourOrganizationProvidesASameOriginHTTPS": {
-    "zh-CN":
-      "由你的组织提供 HTTPS 同源 Remote 页面。Host 仅向此来源建立出站 WSS；手机仍须核对指纹并经桌面批准。",
-    en: "Your organization provides a same-origin HTTPS Remote page. The host opens outbound WSS connections only to that origin. Phones still require fingerprint verification and desktop approval.",
+    "zh-CN": "由组织提供 HTTPS Remote 页面。手机仍须核对指纹并经桌面批准。",
+    en: "Your organization provides the HTTPS Remote page. Phones still need fingerprint checks and desktop approval.",
   },
   "settings.mobileSettings.enrollOrReconnectRelay": {
     "zh-CN": "登记或重新连接 Relay",
@@ -577,14 +576,12 @@ export const remoteMessages = {
     en: "Administrator one-time enrollment code",
   },
   "settings.mobileSettings.initialEnrollmentChangingTheOriginOrRe": {
-    "zh-CN":
-      "首次登记、更换来源或重新登记需要管理员生成的十分钟一次性码。已登记来源可留空以重新启用；长期凭据只保存于 Host 加密设置，不进入手机链接。",
-    en: "Initial enrollment, changing the origin, or re-enrollment requires an administrator-generated one-time code valid for ten minutes. Leave it blank to re-enable an enrolled origin. Long-term credentials are stored only in encrypted host settings and never included in phone links.",
+    "zh-CN": "首次登记或更换来源需要管理员生成的一次性码，已登记的来源可留空。",
+    en: "First enrollment or a new origin needs a one-time code from an administrator. Leave blank for an enrolled origin.",
   },
   "settings.mobileSettings.iTrustTheRemotePageProvidedBy": {
-    "zh-CN":
-      "我信任此 HTTPS 来源提供的 Remote 页面，并确认向此 Relay 登记或重新连接。重新登记会断开旧 Relay 通道。",
-    en: "I trust the Remote page provided by this HTTPS origin and confirm enrollment or reconnection to this Relay. Re-enrollment disconnects the old Relay channel.",
+    "zh-CN": "我信任此 HTTPS 来源的 Remote 页面，并确认登记到此 Relay。",
+    en: "I trust the Remote page from this HTTPS origin and confirm enrolling with this Relay.",
   },
   "settings.mobileSettings.enrollOrEnableRelay": {
     "zh-CN": "登记或启用 Relay",
@@ -699,13 +696,12 @@ export const remoteMessages = {
     en: "Configure the destination and authentication in user settings or a standalone setup script first.",
   },
   "settings.trajectorySettings.thisCoreDoesNotProvideAControl": {
-    "zh-CN":
-      "当前 Core 未提供开关控制版本，请升级 Core；接收地址需先通过用户配置或独立接入脚本配置。",
-    en: "This Core does not provide a control revision. Upgrade Core and configure the destination in user settings or a standalone setup script first.",
+    "zh-CN": "当前 Core 不支持此开关，请升级 Core。",
+    en: "This Core does not support this switch. Upgrade Core.",
   },
   "settings.trajectorySettings.manageTheDestinationAuthenticationAndCapacityIn": {
-    "zh-CN": "上传地址、认证和容量通过用户配置或独立接入脚本维护，开关只改变启停。",
-    en: "Manage the destination, authentication, and capacity in user settings or a standalone setup script. This switch only enables or disables uploads.",
+    "zh-CN": "上传地址和认证在配置文件中设置，这里只控制开关。",
+    en: "Set the destination and authentication in the configuration file. This switch only turns uploads on or off.",
   },
   "settings.trajectorySettings.uploadProcess": {
     "zh-CN": "上传进程",
@@ -1145,8 +1141,8 @@ export const remoteMessages = {
     en: "Diagnostics archive",
   },
   "settings.serviceStatusSettings.saveLocalConnectionAndProcessFailureRecords": {
-    "zh-CN": "保存本机连接与进程故障记录，后台离线时也可导出。不包含对话、凭据或崩溃转储内容。",
-    en: "Save local connection and process failure records, even while the background service is offline. Conversations, credentials, and crash dumps are excluded.",
+    "zh-CN": "保存本机连接和进程故障记录，后台离线时也能导出，不含对话和凭据。",
+    en: "Save local connection and process failure records, exportable even when offline. Excludes conversations and credentials.",
   },
   "settings.serviceStatusSettings.exportDiagnostics": {
     "zh-CN": "导出诊断包…",
@@ -1542,8 +1538,8 @@ export const remoteMessages = {
   },
   "settings.trajectorySettings.configurationInstructions": {
     "zh-CN":
-      "编辑本页显示的配置文件中的 [trajectory]，设置开关、endpoint 和凭据引用。修改后执行 areal trajectory sync-config --config 配置文件路径应用上传控制；本页开关会在 Core 空闲后自动安全应用启停设置。手工修改其它采集参数时仍需安全重启 Core。凭据由配置与环境管理，本页不显示凭据内容。",
-    en: "Edit [trajectory] in the configuration file shown here to set the switch, endpoint, and credential reference. Then run areal trajectory sync-config --config CONFIG_FILE_PATH to apply upload controls. This page's switch safely applies enable/disable settings when Core is idle. Manually changing other capture parameters still requires a safe Core restart. Credentials are managed through configuration and the environment and are not shown here.",
+      "编辑配置文件的 [trajectory] 后运行 areal trajectory sync-config --config 配置文件路径。",
+    en: "Edit [trajectory] in the configuration file, then run areal trajectory sync-config --config CONFIG_FILE_PATH.",
   },
   "settings.serviceStatusSettings.starting": {
     "zh-CN": "{count, number} 个工作区正在启动。",
@@ -1600,19 +1596,18 @@ export const remoteMessages = {
     en: "{count, plural, one {# call} other {# calls}}",
   },
   "settings.usageDashboard.timeMethod": {
-    "zh-CN":
-      "使用时间从 {since} 开始记录，仅累计应用在前台且系统空闲不超过 5 分钟的时间；锁屏、睡眠及后台运行不计入。每 5 秒采样，按记录时的本机日期归档。连续使用允许今天尚未开始，延续至昨天的连续活跃日。",
-    en: "Usage recording began on {since}. Only foreground app time with no more than 5 minutes of system inactivity is counted. Locking, sleep, and background time are excluded. Samples are taken every 5 seconds and grouped by the local date at recording time. A streak may continue through yesterday even if you have not used the app today.",
+    "zh-CN": "从 {since} 起记录应用在前台且有操作的时间，锁屏、睡眠和后台不计。",
+    en: "Since {since}, counts time the app is in the foreground and in use. Locked, sleeping, and background time is excluded.",
   },
   "settings.usageDashboard.tokenMethod": {
     "zh-CN":
-      "Token 为 Core 报告的输入与输出之和，缓存输入已包含在输入中，不重复相加。同步历史只读取已连接工作区，不自动启动其他工作区。新轮次按观测到的开始日期归档。旧轮次没有日期的 {count, number} Token 仅计入累计，不计入每日。",
-    en: "Tokens are the sum of input and output reported by Core. Cached input is already included and is not added again. Sync history reads only connected workspaces and does not start other workspaces. New turns use their observed start date. The {count, plural, one {# token} other {# tokens}} from older turns with unknown dates count only toward totals, not daily statistics.",
+      "Token 为输入与输出之和，缓存输入已包含在输入中。{count, number} Token 日期未知，只计入累计。",
+    en: "Tokens are input plus output; cached input is already counted in input. {count, plural, one {# token} other {# tokens}} with unknown dates count only toward totals.",
   },
   "settings.usageDashboard.skillMethod": {
     "zh-CN":
-      "Skills 调用指 Agent 成功读取 SKILL.md 入口（offset 为 0）的次数，按调用 ID 去重；不包含目录浏览、设置页预览、分页续读或失败调用，不代表技能工作流已完成。历史有 {count, number} 次调用日期未知。数据仅保存在本机，不上传统计服务。",
-    en: "A skill call is a successful read of the SKILL.md entry at offset 0, deduplicated by call ID. Directory browsing, settings previews, subsequent pages, and failed calls are excluded. A call does not mean the skill workflow completed. {count, plural, one {# historical call has an unknown date.} other {# historical calls have unknown dates.}} Data stays on this computer and is not uploaded to an analytics service.",
+      "Skills 调用指成功读取 SKILL.md 入口的次数。{count, number} 次日期未知。数据只存在本机。",
+    en: "A skill call is a successful read of a SKILL.md entry. {count, plural, one {# call has an unknown date.} other {# calls have unknown dates.}} Data stays on this computer.",
   },
   "settings.mobileSettings.networkDiagnostic.funnelCapabilityUnknown": {
     "zh-CN": "无法明确确认本机 Funnel 端口能力，未进行公网配置。请联系管理员核对。",
@@ -1896,9 +1891,8 @@ export const remoteMessages = {
     en: "Enrolled with {host}. Your enrollment code has been used; you do not need to enter it again.",
   },
   "settings.mobileConnect.localInvitationDescription": {
-    "zh-CN":
-      "此二维码和链接仅供这台电脑的浏览器使用。连接手机前，请先完成中继登记，或在高级网络设置中配置 HTTPS。",
-    en: "This code and link work only in a browser on this computer. To connect a phone, first enroll with a relay or configure HTTPS in advanced network settings.",
+    "zh-CN": "此二维码仅供这台电脑的浏览器使用。连接手机需先登记中继或配置 HTTPS。",
+    en: "This code works only in a browser on this computer. To connect a phone, enroll a relay or configure HTTPS first.",
   },
   "settings.mobileConnect.waitingLocal": {
     "zh-CN": "正在等待本机浏览器 · {time} 后失效",
@@ -1989,8 +1983,8 @@ export const remoteMessages = {
     en: "Revoke access for {device}?",
   },
   "settings.mobileConnect.revokeDescription": {
-    "zh-CN": "这台设备会立即断开，需要重新配对才能再连接。它已经下载的内容无法追回。",
-    en: "The device disconnects now and must pair again to reconnect. Content it already downloaded cannot be recalled.",
+    "zh-CN": "这台设备会立即断开，需重新配对。已下载的内容无法追回。",
+    en: "The device disconnects now and must pair again. Content it already downloaded can't be recalled.",
   },
   "settings.mobileConnect.revokedDevices": {
     "zh-CN": "已撤销的设备（{count, number}）",
@@ -2017,9 +2011,8 @@ export const remoteMessages = {
     en: "Local entry",
   },
   "settings.mobileConnect.directEntryDescription": {
-    "zh-CN":
-      "不用中继，直接从这台电脑提供连接。配合上方的 Tailscale 或组织 HTTPS 才能在手机上打开。",
-    en: "Serve connections directly from this computer without a relay. Phones need Tailscale or organization HTTPS above.",
+    "zh-CN": "不经中继，由这台电脑直接提供连接，需配合 Tailscale 或 HTTPS。",
+    en: "Serve connections directly from this computer without a relay. Requires Tailscale or HTTPS.",
   },
   "settings.mobileConnect.stepScan": {
     "zh-CN": "扫码",

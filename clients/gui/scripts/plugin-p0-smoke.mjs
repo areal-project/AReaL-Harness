@@ -47,6 +47,17 @@ await writeFile(
   join(source, "skills", "setup", "SKILL.md"),
   "---\nname: setup\ndescription: Configure the hello fixture.\n---\nGUI_PLUGIN_SETUP_BODY_MARKER\n",
 );
+const templateSource = join(workspace, "packages", "templates");
+await mkdir(join(templateSource, ".claude-plugin"), { recursive: true });
+await mkdir(join(templateSource, "commands"), { recursive: true });
+await writeFile(
+  join(templateSource, ".claude-plugin", "plugin.json"),
+  JSON.stringify({ name: "templates" }),
+);
+await writeFile(
+  join(templateSource, "commands", "review.md"),
+  "---\ndescription: Review a literal argument\n---\nGUI_PLUGIN_COMMAND $ARGUMENTS",
+);
 await writeFile(
   join(workspace, ".agents", "plugins", "marketplace.json"),
   JSON.stringify({
@@ -58,6 +69,7 @@ await writeFile(
         policy: { installation: "AVAILABLE", authentication: "ON_USE" },
         category: "Productivity",
       },
+      { name: "templates", source: { source: "local", path: "./packages/templates" } },
     ],
   }),
 );
@@ -105,7 +117,16 @@ const namingRequest = (body) =>
       message.role === "system" &&
       String(message.content).startsWith("Generate a concise semantic session title"),
   );
-const setupRequests = () => requests.filter((body) => !namingRequest(body));
+const setupRequests = () =>
+  requests.filter(
+    (body) =>
+      !namingRequest(body) &&
+      !body.messages?.some(
+        (message) =>
+          message.role === "system" &&
+          String(message.content).startsWith("Predict the next user prompt"),
+      ),
+  );
 const model = createServer(async (req, res) => {
   let body = "";
   for await (const p of req) body += p;
@@ -256,7 +277,32 @@ try {
     dialog.showMessageBox = async () => ({ response: 1 });
     BrowserWindow.getAllWindows()[0].setSize(1440, 960);
   }, workspace);
+  await call("projectless", { operation: "catalog" });
+  const beforeOfflineProjects = (await state()).projects.map((project) => project.id).sort();
+  assert.equal(await page.getByTestId("areal-workbench").getAttribute("data-project-id"), "");
+  await page
+    .getByRole("navigation", { name: "应用导航", exact: true })
+    .getByRole("button", { name: "插件", exact: true })
+    .click();
+  const offline = await call("manage", { operation: "pluginStoreSnapshot" });
+  assert.deepEqual(offline.scope, { kind: "user" });
+  assert.equal(offline.runtimeObserved, false);
+  assert.deepEqual(
+    (await state()).projects.map((project) => project.id).sort(),
+    beforeOfflineProjects,
+    "offline browse must not create a project Core",
+  );
+  await page.screenshot({ path: join(scratch, "offline-plugin-page.png"), animations: "disabled" });
+  checks.push(
+    "projectless plugin page reads the actual Main/CLI user Store without creating a project Core",
+  );
   await page.evaluate(() => window.arealDesktop.chooseProject());
+  await page
+    .getByRole("navigation", { name: "应用导航", exact: true })
+    .getByRole("button", { name: "首页", exact: true })
+    .click();
+  const expandSidebar = button("展开侧栏");
+  if (await expandSidebar.isVisible()) await expandSidebar.click();
   await createProjectConversation(page, "workspace");
   const ready = await until(
       (s) => s.projects.find((p) => p.root === workspace)?.state?.connected,
@@ -273,18 +319,25 @@ try {
   assert.equal(await button("查看详情").evaluate((el) => el === document.activeElement), true);
   await page.screenshot({ path: join(scratch, "uninstalled-plugin.png"), animations: "disabled" });
   await button("安装").click();
-  await page
-    .getByRole("checkbox", { name: "我已核对以上来源、版本和内容摘要", exact: true })
-    .check();
+  assert.equal(
+    await page
+      .getByRole("checkbox", { name: "我已核对以上来源、版本和内容摘要", exact: true })
+      .count(),
+    0,
+  );
+  assert.equal(await button("安装到用户").isEnabled(), true);
   await button("安装到用户").click();
-  await button("管理").waitFor();
+  await button("卸载插件").waitFor();
   assert.equal(requests.length, 0, "installation cannot run setup/model");
   const supportDetail = await call("manage", {
     projectId,
     operation: "plugin",
     id: "hello@gui-p0",
   });
-  assert.equal(supportDetail.componentSupport.digest, supportDetail.sourceDigest);
+  assert.equal(
+    supportDetail.componentSupport.digest,
+    supportDetail.admissionDigest ?? supportDetail.sourceDigest,
+  );
   assert.equal(supportDetail.installedComponentSupport.digest, supportDetail.installedDigest);
   assert.deepEqual(
     supportDetail.installedComponentSupport.components.map((row) => [row.kind, row.status]),
@@ -437,7 +490,6 @@ try {
       manualCloseListeners = null;
     }
   } else {
-    await button("管理").click();
     // Lose a completed response only at the Main-to-renderer boundary. Core executes unchanged.
     await app.evaluate(({ ipcMain }) => {
       const channel = "areal-core:command",
@@ -485,7 +537,6 @@ try {
     );
     await page.screenshot({ path: join(scratch, "setup-chat.png"), animations: "disabled" });
     await settings();
-    await button("管理").click();
     const setupSkill = supportDetail.installedSkills.find((skill) => skill.name === "setup");
     assert(setupSkill);
     const skillSwitch = () =>
@@ -511,8 +562,14 @@ try {
       threadId: setupThread,
     });
     assert(!available.data.some((skill) => skill.id === setupSkill.id));
-    await button("查看插件详情").click();
-    await button("管理").click();
+    await button("查看详情").click();
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll('[role="switch"]')].some(
+        (element) =>
+          element.getAttribute("aria-label") === "在当前项目启用 Skill setup" &&
+          element.getAttribute("aria-checked") === "false",
+      ),
+    );
     assert.equal(await skillSwitch().getAttribute("aria-checked"), "false");
     const stale = await page.evaluate(
       ({ projectId, id, skill, revision, digest }) =>
@@ -559,6 +616,55 @@ try {
       false,
     );
     checks.push("GUI enable/uninstall completes through management receipts");
+    const template = await call("manage", {
+      projectId,
+      operation: "plugin",
+      id: "templates@gui-p0",
+    });
+    await call("manage", {
+      projectId,
+      operation: "pluginInstall",
+      id: template.id,
+      source: template.source,
+      expectedDigest: template.admissionDigest ?? template.sourceDigest,
+      expectedRevision: template.revision,
+      scope: "user",
+      requestId: crypto.randomUUID(),
+    });
+    const components = await call("manage", {
+      projectId,
+      operation: "pluginComponents",
+      id: template.id,
+    });
+    assert.equal(components.commands.length, 1);
+    const command = components.commands[0];
+    const argumentsText = "$(do-not-execute) literal";
+    await call("send", {
+      projectId,
+      threadId: setupThread,
+      text: "",
+      requestId: crypto.randomUUID(),
+      command: {
+        pluginId: template.id,
+        componentId: command.componentId,
+        installedDigest: command.installedDigest,
+        arguments: argumentsText,
+      },
+    });
+    await until(
+      () =>
+        requests.some((request) =>
+          request.messages?.some(
+            (message) =>
+              message.role === "user" &&
+              String(message.content) === "GUI_PLUGIN_COMMAND " + argumentsText,
+          ),
+        ),
+      "ordinary Main/Core command expansion reaches model with literal arguments",
+    );
+    checks.push(
+      "structured Command crosses actual Main/Core ordinary turn submission and expands the immutable template with literal arguments",
+    );
   }
   assert.deepEqual(errors, []);
   automaticAcceptancePassed = true;
@@ -723,7 +829,7 @@ try {
           .digest("hex") === coreSha256,
     },
     modelRequests: requests.length,
-    setupModelRequests: setupRequests().length,
+    turnModelRequests: setupRequests().length,
     mode: resourceSlice ? "resource-slice" : "p0",
     scope:
       "source Electron/Core P0 plugins; deterministic external model; no packaged/provider acceptance",

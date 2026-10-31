@@ -16,8 +16,6 @@ const render = (props: Partial<ComponentProps<typeof TaskCatalogNotice>> = {}) =
   renderToStaticMarkup(
     createElement(TaskCatalogNotice, {
       projectName: "Owning project",
-      published: true,
-      taskCount: 1,
       disabled: false,
       onUpdate: () => {
         throw new Error("Rendering must not open a project");
@@ -27,28 +25,26 @@ const render = (props: Partial<ComponentProps<typeof TaskCatalogNotice>> = {}) =
   );
 
 describe("TaskCenter catalog diagnosis", () => {
-  it("treats a published snapshot as a normal saved record without read-time freshness", () => {
-    const markup = render();
-    expect(markup).toContain("Owning project");
-    expect(markup).toContain("Last saved record");
-    expect(markup).toContain("Open project to update");
-    expect(markup).not.toContain("task-catalog-error");
-    expect(markup).not.toMatch(/unconfirmed|Read at|Invalid Date/);
+  it("leaves published snapshots to the row marker instead of a list banner", () => {
+    // 缓存行在各自的行尾标“上次记录”，列表顶部不随读取状态出现或消失。
+    expect(render()).toBe("");
   });
 
   it("does not hint about snapshots for projects with no tasks", () => {
-    expect(render({ taskCount: 0 })).toBe("");
+    expect(render()).toBe("");
   });
 
   it("keeps real errors visible even when the owning project has no tasks", () => {
-    const failed = render({ taskCount: 0, error: "Catalog read failed: denied" });
+    const failed = render({ error: "Catalog read failed: denied" });
     expect(failed).toContain("Owning project");
     expect(failed).toContain("Catalog read failed: denied");
     expect(failed).toContain("task-catalog-error");
-    expect(render({ projectName: "Other project", published: false })).toBe("");
+    expect(render({ projectName: "Other project" })).toBe("");
   });
 
   it("keeps update disabled during reads or disconnection", () => {
-    expect(render({ disabled: true })).toContain('disabled=""');
+    expect(render({ disabled: true, error: "Catalog read failed: denied" })).toContain(
+      'disabled=""',
+    );
   });
 });

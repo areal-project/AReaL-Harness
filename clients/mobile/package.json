@@ -6,13 +6,19 @@
   "scripts": {
     "sync": "cap sync ios",
     "open": "cap open ios",
-    "run": "cap run ios"
+    "run": "cap run ios",
+    "sync:android": "cap sync android",
+    "open:android": "cap open android",
+    "run:android": "cap run android",
+    "build:android": "cd android && ./gradlew :app:assembleDebug",
+    "test:android:storage": "cd android && ./gradlew :app:connectedDebugAndroidTest"
   },
   "dependencies": {
-    "@capacitor/core": "8.5.3",
-    "@capacitor/ios": "8.5.3",
+    "@capacitor/android": "8.5.3",
     "@capacitor/app": "8.1.2",
-    "@capacitor/barcode-scanner": "3.1.3"
+    "@capacitor/barcode-scanner": "3.1.3",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/ios": "8.5.3"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.3"

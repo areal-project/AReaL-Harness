@@ -18,6 +18,19 @@ export default defineConfig({
         excludeFiles: ["packages/ui/src/lib/observe-resize.ts"],
         rules: { "areal/no-raw-resize-observer": "error" },
       },
+      {
+        // R-CHECK-019：折叠只由共享组件拥有；对话过程行（ToolEvent、TurnProgress）的右侧箭头仍直接组合 Base UI，迁入 ActivityRow 前单独列出。
+        files: ["renderer/src/**/*.{jsx,tsx}", "packages/ui/src/**/*.{jsx,tsx}"],
+        excludeFiles: [
+          "renderer/src/design-system/**",
+          "renderer/src/ToolEvent.tsx",
+          "renderer/src/TurnProgress.tsx",
+          "packages/ui/src/components/disclosure/**",
+          "packages/ui/src/components/settings-disclosure/**",
+          "packages/ui/src/conversation/task-context/**",
+        ],
+        rules: { "areal/no-raw-disclosure": "error" },
+      },
     ],
     settings: {
       "jsx-a11y": {

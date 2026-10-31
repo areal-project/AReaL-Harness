@@ -368,7 +368,7 @@ try {
   assert.equal(await page.locator(".composer-queue textarea").count(), 0);
   assert.equal(await page.getByTestId("composer-queued-attachment").count(), 1);
   await page.getByTestId("composer-queued-attachment").locator("img").waitFor();
-  assert.ok(await button("模型").isDisabled());
+  assert.ok(await page.getByTestId("composer-model-trigger").isDisabled());
   await shot("03-editing");
   await input().fill("切换后保留的编辑");
   await createProjectConversation(page, "workspace");

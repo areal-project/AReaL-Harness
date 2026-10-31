@@ -14,7 +14,10 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::Duration,
 };
 use tokio::{
@@ -382,6 +385,7 @@ async fn known_scope_rejection_is_a_failed_tool_and_current_workspace_remains_ob
         assert_eq!(finished.turns[0].status, TurnStatus::Completed);
         let instructions = finished.turns[0].instruction_snapshot.as_ref().unwrap();
         assert!(instructions.contains("Execution environment facts: "));
+        assert!(!instructions.contains("Project AGENTS.md instructions"));
         assert_eq!(
             finished.turns[0]
                 .instruction_attribution
@@ -416,6 +420,86 @@ async fn known_scope_rejection_is_a_failed_tool_and_current_workspace_remains_ob
         fixture.task.await.unwrap();
     }
 }
+struct InstructionScopeModel(Arc<AtomicUsize>);
+#[async_trait]
+impl Model for InstructionScopeModel {
+    fn name(&self) -> &str {
+        "instruction-scope-fixture"
+    }
+    async fn stream(&self, _: Vec<Message>) -> anyhow::Result<ModelStream> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Ok(Box::pin(futures_util::stream::iter([Ok(
+            ModelEvent::text("done"),
+        )])))
+    }
+}
+
+#[tokio::test]
+async fn project_instruction_scope_is_lazy_but_real_reads_remain_fail_closed() {
+    for filename in [None, Some("AGENTS.md"), Some("AGENTS.override.md")] {
+        let root = tempfile::tempdir().unwrap();
+        let workspace = root.path().join("workspace");
+        std::fs::create_dir(&workspace).unwrap();
+        if let Some(filename) = filename {
+            std::fs::write(workspace.join(filename), "Project rule").unwrap();
+        }
+        let data = root.path().join("data");
+        let fixture = runtime_with_scope_error(
+            data.clone(),
+            false,
+            Duration::ZERO,
+            Some("PERMISSION_DENIED"),
+        )
+        .await;
+        let calls = Arc::new(AtomicUsize::new(0));
+        let engine = Engine::open_with_runtime(
+            &data,
+            Arc::new(InstructionScopeModel(calls.clone())),
+            Limits::default(),
+            RuntimeConfig {
+                client: fixture.client.clone(),
+                workspace: workspace.clone(),
+                writable: true,
+                command_scope: None,
+                command_scratch: None,
+            },
+        )
+        .unwrap();
+        let thread = engine
+            .create(workspace.to_string_lossy().into_owned())
+            .await
+            .unwrap();
+        engine
+            .start(&thread.id, vec![Input::text("hello")])
+            .await
+            .unwrap();
+        let finished = bounded(engine.wait(&thread.id)).await.unwrap();
+        assert_eq!(
+            finished.turns[0].status,
+            if filename.is_some() {
+                TurnStatus::Failed
+            } else {
+                TurnStatus::Completed
+            }
+        );
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            usize::from(filename.is_none())
+        );
+        {
+            let methods = fixture.methods.lock().unwrap();
+            assert_eq!(
+                methods.iter().any(|method| method == "scope.create"),
+                filename.is_some()
+            );
+            assert!(!methods.iter().any(|method| method == "fs.execute"));
+        }
+        engine.shutdown().await;
+        fixture.client.shutdown().await.unwrap();
+        fixture.task.await.unwrap();
+    }
+}
+
 async fn bounded<T>(future: impl std::future::Future<Output = T>) -> T {
     tokio::time::timeout(Duration::from_secs(5), future)
         .await

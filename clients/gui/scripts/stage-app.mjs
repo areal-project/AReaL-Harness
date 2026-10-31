@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { cp, mkdir, readFile, writeFile, realpath, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -120,7 +121,7 @@ export async function stageCoreApp({ root, destination }) {
     delete staged.optionalDependencies;
     delete staged.scripts;
     staged.dependencies = {};
-    for (const dep of [...new Set([...deps, ...optional])])
+    for (const dep of new Set([...deps, ...optional]))
       staged.dependencies[dep] = await install(dep, source, target);
     await json(join(target, "package.json"), staged);
     report.push({
@@ -187,5 +188,22 @@ export async function verifyCoreApp(appRoot) {
     }
   }
   await inspectModules(join(appRoot, "node_modules"));
+  // 用暂存目录解析运行时依赖，避免源码目录掩盖安装包内缺失的导入。
+  execFileSync(
+    process.execPath,
+    [
+      "--input-type=commonjs",
+      "-e",
+      `const { createRequire } = require("node:module");
+const stagedRequire = createRequire(process.argv[1]);
+stagedRequire("./src/core/cloud-settings.cjs");
+const { CloudConversations } = stagedRequire("./src/core/cloud-conversations.cjs");
+const cloud = new CloudConversations({ library: { command: async (request) => request } });
+cloud.route("library", { operation: "readThread", projectId: "project", threadId: "thread", read: true })
+  .catch((error) => { console.error(error); process.exitCode = 1; });`,
+      join(appRoot, "package.json"),
+    ],
+    { stdio: "inherit", timeout: 30000 },
+  );
   return visited.size;
 }

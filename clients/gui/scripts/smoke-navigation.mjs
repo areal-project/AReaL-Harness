@@ -11,9 +11,9 @@ export async function createProjectConversation(page, projectName) {
     name: `在项目 ${projectName} 中新建对话`,
     exact: true,
   });
-  // Keep the hover-only action exposed while restored sidebar rows settle.
+  // 用键盘激活同一按钮，避免恢复布局或真实鼠标移动收起悬浮操作区。
   await create.focus();
-  await create.click();
+  await create.press("Enter");
   await page.getByTestId("chat-input").waitFor();
 }
 

@@ -190,7 +190,12 @@ class OwnerTasks {
     this.observations = new Map();
     /** @type {Map<string,Preview & {root:string,logicalProjectId?:string}>} */
     this.published = new Map();
-    this.revision = 0;
+    /** @type {Map<string,number>} */
+    this.revisions = new Map();
+  }
+  /** 目录版本按项目分开，只在该项目的任务行变化时前进。 @param {string} projectId */
+  revision(projectId) {
+    return this.revisions.get(projectId) ?? 0;
   }
   /** @param {SavedProject} saved @param {boolean} [refresh] */
   async preview(saved, refresh = false) {
@@ -229,8 +234,9 @@ class OwnerTasks {
     this.observations.set(project.id, observation);
     return observation;
   }
-  changed() {
-    this.revision++;
+  /** @param {string} [projectId] 省略时只通知界面，不前进目录版本。 */
+  changed(projectId) {
+    if (projectId) this.revisions.set(projectId, this.revision(projectId) + 1);
     this.backend.onChange();
   }
   stop() {
@@ -413,7 +419,7 @@ class OwnerObservation {
     this.ready = true;
     this.readAt = Date.now();
     this.error = null;
-    this.owner.changed();
+    this.owner.changed(this.project.id);
     await this.owner.backend.taskWorkspaceOwners.observeTasks(this.project, [
       ...stagedRows.values(),
     ]);
@@ -459,7 +465,12 @@ class OwnerObservation {
       if (publish) {
         this.readAt = Date.now();
         this.error = null;
-        this.owner.changed();
+        // 只有会话变化时不前进目录版本，任务目录不必为运行中的对话重读。
+        this.owner.changed(
+          directory && (directory.data.length || directory.removed?.length)
+            ? this.project.id
+            : undefined,
+        );
         await this.owner.backend.taskWorkspaceOwners.observeTasks(
           this.project,
           directory?.data ?? [],
@@ -504,7 +515,7 @@ class OwnerObservation {
     this.resetNeeded = true;
     if (changed) {
       this.report(error);
-      this.owner.changed();
+      this.owner.changed(this.project.id);
     }
     if (!this.retryTimer)
       this.retryTimer = setTimeout(

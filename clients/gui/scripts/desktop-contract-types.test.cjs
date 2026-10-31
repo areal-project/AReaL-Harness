@@ -226,3 +226,24 @@ bridge.onProjection(value => { const unchecked: {frame:unknown} = value; });
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("execution trace reads cross the real desktop request validator as read operations", () => {
+  const {
+    readCommandInvocation,
+    commandSemantics,
+  } = require("../packages/workbench/client/desktop-contract.cjs");
+  for (const request of [
+    { operation: "executionTrace", projectId: "project", threadId: "parent" },
+    {
+      operation: "executionTraceResult",
+      projectId: "project",
+      threadId: "parent",
+      executionId: "execution",
+      workerThreadId: "child",
+      uri: "areal://blob/" + "a".repeat(64),
+    },
+  ]) {
+    assert.doesNotThrow(() => readCommandInvocation("manage", request));
+    assert.equal(commandSemantics("manage", request).effect, "read");
+  }
+});

@@ -2,7 +2,9 @@ import { useI18n } from "./i18n/IntlProvider.js";
 import type { ManagementResponseMap } from "@areal/workbench/desktop-contract/management";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";
+import { CollapsibleText } from "./CollapsibleText.js";
 import type { Action, Data } from "./services.js";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 
 type Context = ManagementResponseMap["context"];
 const roles: Record<string, string> = {
@@ -158,21 +160,25 @@ export function ContextPane({
         )}
         {notice && <p role="status">{notice}</p>}
         {context?.checkpoint && (
-          <details open className="rounded-control border border-border p-2">
-            <summary>已压缩 {context.checkpoint.compactions} 次</summary>
-            <p className="my-2 whitespace-pre-wrap break-words">{context.checkpoint.summary}</p>
+          <section
+            className="rounded-control border border-border p-2"
+            aria-label={t("common.context.compactionSummary")}
+          >
+            <h4 className="font-medium">已压缩 {context.checkpoint.compactions} 次</h4>
+            <CollapsibleText>
+              <p className="my-2 whitespace-pre-wrap break-words">{context.checkpoint.summary}</p>
+            </CollapsibleText>
             <p className="text-foreground-subtle">
               累计 {(context.checkpoint.totalDurationMs / 1000).toFixed(1)} 秒 · 输入{" "}
               {context.checkpoint.usage.inputTokens.toLocaleString()} / 输出{" "}
               {context.checkpoint.usage.outputTokens.toLocaleString()} Token
             </p>
-          </details>
+          </section>
         )}
         {context?.instructionSnapshot && (
-          <details>
-            <summary>最近一轮的指令快照</summary>
+          <SettingsDisclosure title="最近一轮的指令快照">
             <p className="mt-2 whitespace-pre-wrap break-words">{context.instructionSnapshot}</p>
-          </details>
+          </SettingsDisclosure>
         )}
         {context?.data.map((message, index) => (
           <article key={`${context.offset}:${index}`} className="border-t border-border pt-2">
@@ -181,10 +187,9 @@ export function ContextPane({
             </h4>
             {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
             {message.toolCalls?.map((call) => (
-              <details key={call.id}>
-                <summary>工具调用：{call.function.name}</summary>
+              <SettingsDisclosure key={call.id} title={<>工具调用：{call.function.name}</>}>
                 <pre className="whitespace-pre-wrap break-words">{call.function.arguments}</pre>
-              </details>
+              </SettingsDisclosure>
             ))}
             {message.toolCallId && (
               <p className="break-all text-foreground-subtle">调用 ID：{message.toolCallId}</p>

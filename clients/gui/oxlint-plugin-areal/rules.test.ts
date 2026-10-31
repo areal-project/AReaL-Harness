@@ -79,3 +79,23 @@ describe("no-raw-resize-observer", () => {
     },
   );
 });
+
+describe("no-raw-disclosure", () => {
+  test.each([
+    "const a = <details><summary>Runs</summary></details>;",
+    "const a = <summary>Runs</summary>;",
+    'import { Collapsible } from "@base-ui/react/collapsible";',
+  ])("rejects %s", (source) => {
+    const result = lint("no-raw-disclosure", source);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("areal(no-raw-disclosure)");
+    expect(result.output).toContain("R-CHECK-019");
+  });
+  test.each([
+    'const a = <SettingsDisclosure title="Advanced">x</SettingsDisclosure>;',
+    'const a = <Disclosure label="Worked">x</Disclosure>;',
+    'import { Disclosure } from "@areal/ui";',
+  ])("accepts %s", (source) => {
+    expect(lint("no-raw-disclosure", source).status).toBe(0);
+  });
+});

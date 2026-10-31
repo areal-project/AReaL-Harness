@@ -7,6 +7,7 @@ export function draftModelSelection(
   chosenProfile: Data | undefined,
   model: string | null,
   efforts: Record<string, string>,
+  requestedServiceTier?: "fast" | "default",
 ) {
   const initialSelection = resolveNewConversationModel(
     project.models,
@@ -32,12 +33,13 @@ export function draftModelSelection(
     (initialModel && modelValue(initialModel) === effectiveModel ? initialModel : undefined);
   const rememberedEffort =
     !chosenProfile?.model && model === null ? initialSelection.rememberedEffort : undefined;
-  const effort = resolveModelEffort(currentModel, efforts[effectiveModel] ?? rememberedEffort);
+  const effort = efforts[effectiveModel] ?? resolveModelEffort(currentModel, rememberedEffort);
   const notice =
     model === null && !chosenProfile?.model
       ? initialSelection.notice === "effort-unsupported"
         ? "effort-unsupported"
         : ""
       : "";
-  return { effectiveModel, currentModel, effort, notice };
+  const serviceTier = requestedServiceTier ?? currentModel?.parameters?.serviceTier;
+  return { effectiveModel, currentModel, effort, serviceTier, notice };
 }

@@ -1189,6 +1189,78 @@ test("an explicit reconnect can reopen observation after a persisted user stop",
   assert.equal(starts, 1);
 });
 
+for (const automatic of [false, true]) {
+  test(`completed update resumes after GUI reopen (automatic=${automatic})`, async (t) => {
+    const f = await fixture(t);
+    await f.publish();
+    await f.backend.attach();
+    const stopped = await f.backend.stopService(true);
+    assert.equal(stopped.operation.phase, "completed");
+    const journal = join(f.home, "lifecycle-operations", `${stopped.operation.requestId}.json`);
+    const before = await readFile(journal);
+    await f.backend.shutdown();
+    const reopened = new SharedCoreBackend({ app: { getPath: () => f.home }, home: f.home });
+    t.after(() => reopened.shutdown());
+    let starts = 0;
+    reopened.initialize = async () => {
+      starts++;
+    };
+    await reopened.init({ automatic });
+    assert.equal(starts, 1, "an already authorized update resumes the new Desktop");
+    assert.equal(reopened.lifecycleReferences.size, 0);
+    await assert.rejects(readFile(reopened.controlPath), { code: "ENOENT" });
+    assert.deepEqual(await readFile(journal), before, "recovery retains the original receipt");
+    assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
+  });
+}
+
+for (const scenario of [
+  "stopped",
+  "missing receipt",
+  "unfinished target",
+  "live Desktop",
+  "mixed unknown",
+]) {
+  test(`GUI reopen retains ${scenario} lifecycle intent without starting a replacement`, async (t) => {
+    const f = await fixture(t, {
+      service:
+        scenario === "unfinished target"
+          ? { targets: [{ projectId: "p", serviceId: "s", generation: "g" }] }
+          : {},
+    });
+    if (scenario === "live Desktop") {
+      f.metadata.pid = process.pid;
+      f.setStop("crashed");
+    }
+    if (scenario === "unfinished target") f.setStop("pending");
+    await f.publish();
+    await f.backend.attach();
+    const stopped = await f.backend.stopService(scenario !== "stopped");
+    if (scenario === "missing receipt")
+      await rm(join(f.home, "lifecycle-operations", `${stopped.operation.requestId}.json`));
+    if (scenario === "mixed unknown") {
+      const control = JSON.parse(await readFile(f.backend.controlPath, "utf8"));
+      control.references.push({
+        ...control.references[0],
+        requestId: "7af130a1-5a89-4c9b-9001-7592bc2166c5",
+      });
+      await writeFile(f.backend.controlPath, JSON.stringify(control));
+    }
+    await f.backend.shutdown();
+    const reopened = new SharedCoreBackend({ app: { getPath: () => f.home }, home: f.home });
+    t.after(() => reopened.shutdown());
+    let starts = 0;
+    reopened.initialize = async () => {
+      starts++;
+    };
+    await reopened.init({ automatic: true });
+    assert.equal(starts, 0);
+    assert.ok(reopened.lifecycleReferences.size > 0);
+    assert.ok(JSON.parse(await readFile(reopened.controlPath, "utf8")).references.length > 0);
+    assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
+  });
+}
+
 async function startupFixture(t, options = {}) {
   let replacementIdentity, controlAtStop;
   const f = await fixture(t, {
@@ -1476,6 +1548,7 @@ test("lost update response reads the original receipt and never replays on start
 test("confirmed update exit followed by launch failure retains the update reference", async (t) => {
   const f = await startupFixture(t);
   await f.backend.init({ automatic: true });
+  const appPath = f.backend.app.getAppPath;
   f.backend.app.getAppPath = () => {
     throw Error("replacement launch unavailable");
   };
@@ -1485,6 +1558,11 @@ test("confirmed update exit followed by launch failure retains the update refere
   await f.backend.init({ automatic: true });
   assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
   assert.equal(await f.launches(), 0);
+  assert.equal(JSON.parse(await readFile(f.backend.controlPath, "utf8")).references.length, 1);
+  f.backend.app.getAppPath = appPath;
+  await f.backend.init();
+  assert.equal(await f.launches(), 1);
+  assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
 });
 
 test("legacy lifecycle stays readable but unsupported stop never probes or persists intent", async (t) => {

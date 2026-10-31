@@ -1,3 +1,4 @@
+import { useI18n } from "./i18n/IntlProvider.js";
 import "./UserPromptEdit.css";
 import { stripGenUiModelContext } from "@areal/gen-ui/contract";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -20,6 +21,7 @@ export function UserPromptEdit({
   item: Data;
   action: Action;
 }) {
+  const { t } = useI18n();
   const key = `areal-gui:edit:${project.id}:${thread.id}:${item.id}`;
   const composerKey = `areal-gui:draft:${project.id}:${thread.id}`;
   const original = stripGenUiModelContext(
@@ -178,9 +180,7 @@ export function UserPromptEdit({
             }}
             onCancel={unknown || busy ? undefined : close}
           />
-          <p className="user-prompt-edit-note">
-            替换此消息及之后的回复并重新执行。已发生的文件和外部操作不会撤回。
-          </p>
+          <p className="user-prompt-edit-note">{t("common.promptEdit.note")}</p>
           {error && <p role="alert">{error}</p>}
           {unknown && (
             <Button

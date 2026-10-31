@@ -258,26 +258,6 @@
   }
 }
 
-.scheduled-task-description {
-  margin: 4px 8px 10px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.scheduled-task-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.scheduled-task-status[data-enabled="true"]::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--color-success);
-}
-
 .agent-spawn-link:focus-visible {
   outline: var(--focus-width) solid var(--color-ring);
   outline-offset: var(--focus-width);
@@ -305,46 +285,21 @@
   flex-shrink: 0;
 }
 
-.scheduled-task-summary {
-  display: grid;
-  gap: 4px;
-  margin: 4px 8px 8px;
-  font-size: var(--text-ui-sm);
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-.scheduled-task-resource + .scheduled-task-resource {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--color-border);
-}
-.scheduled-task-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 0 4px;
-}
-.scheduled-task-actions > p {
+.scheduled-task-error {
   flex-basis: 100%;
+  padding-inline: calc(var(--spacing-inline) / 2);
   font-size: var(--text-ui-sm);
+  color: var(--color-status-attention);
 }
+/* 会话里的定时任务卡片由 @areal/ui 的 ScheduledWorkspace.TaskRow 绘制，这里只负责与消息流的间距。 */
 .scheduled-task-message-card {
-  display: grid;
-  gap: 6px;
-  margin: 12px 0;
-  padding: 14px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  font-size: var(--text-ui-caption);
-  line-height: 1.5;
+  margin-block: var(--spacing-inline);
 }
-.scheduled-task-message-card h3 {
-  font-size: var(--text-ui-base);
-  font-weight: 500;
+.scheduled-task-record {
+  margin-block: calc(var(--spacing-inline) / 2);
+  font-size: var(--text-ui-sm);
+  color: var(--color-foreground-subtle);
   overflow-wrap: anywhere;
-}
-.scheduled-task-message-card .scheduled-task-summary {
-  margin: 0;
 }
 
 /* Production hosts compose the same package card and history reader as the catalog. */

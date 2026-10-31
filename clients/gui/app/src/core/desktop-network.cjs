@@ -1,6 +1,6 @@
 // @ts-check
 "use strict";
-const { openSync, fstatSync, readSync, closeSync, constants } = require("node:fs");
+const { openSync, fstatSync, readSync, closeSync, constants, existsSync } = require("node:fs");
 const { mkdir, mkdtemp, writeFile } = require("node:fs/promises");
 const { isAbsolute, join } = require("node:path");
 const { tmpdir } = require("node:os");
@@ -22,9 +22,17 @@ const CA_FILE_ENV = [
 const PEM_CERTIFICATE = /-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g;
 
 function desktopTlsOptions() {
+  const bundledCa = join(__dirname, "../../assets/relay-ca.pem");
+  const roots = existsSync(bundledCa) ? readCaBundle(bundledCa).map((cert) => cert.toString()) : [];
   // 显式 ca 会替换 Node 默认根；同时保留公共根、启动时额外 CA 和系统信任根。
   return {
-    ca: [...new Set([...tls.getCACertificates("default"), ...tls.getCACertificates("system")])],
+    ca: [
+      ...new Set([
+        ...tls.getCACertificates("default"),
+        ...tls.getCACertificates("system"),
+        ...roots,
+      ]),
+    ],
     rejectUnauthorized: true,
   };
 }

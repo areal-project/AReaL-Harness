@@ -1,3 +1,4 @@
+import { trajectoryMessages } from "./messages/trajectory.js";
 import { mobileMessages } from "./messages/mobile.js";
 import { automationMessages } from "./messages/automation.js";
 import { desktopSettingsMessages } from "./messages/desktopSettings.js";
@@ -13,6 +14,7 @@ import { worktreeMessages } from "./messages/worktrees.js";
 export type AppLocale = "zh-CN" | "en";
 export type MessagePair = Record<AppLocale, string>;
 export const messages = {
+  ...trajectoryMessages,
   ...mobileMessages,
   ...desktopSettingsMessages,
   ...automationMessages,

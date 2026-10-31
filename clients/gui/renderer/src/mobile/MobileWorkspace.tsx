@@ -77,10 +77,12 @@ export function MobileWorkspaceView({
   workspace,
   client,
   commands,
+  dismissComposerSheet,
 }: {
   workspace: MobileWorkspace;
   client: MobileClient;
   commands: MobileCommands;
+  dismissComposerSheet: React.RefObject<(() => void) | null>;
 }) {
   const { t } = useI18n();
   const view = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
@@ -159,13 +161,7 @@ export function MobileWorkspaceView({
                 variant="ghost"
                 data-action="workspace-back"
                 aria-label={t("mobile.back")}
-                onClick={() =>
-                  workspace.navigate(
-                    page.kind === "work"
-                      ? { kind: "projects" }
-                      : { kind: "work", projectId: page.projectId },
-                  )
-                }
+                onClick={() => workspace.back()}
               >
                 <ChevronLeft />
                 {page.kind === "work" && <span>{t("mobile.projects")}</span>}
@@ -383,7 +379,12 @@ export function MobileWorkspaceView({
           </div>
         )}
         {["new", "session"].includes(page.kind) && (
-          <MobileComposer client={client} workspace={workspace} commands={commands} />
+          <MobileComposer
+            client={client}
+            workspace={workspace}
+            commands={commands}
+            dismissComposerSheet={dismissComposerSheet}
+          />
         )}
         {page.kind === "projects" && (
           <p className="mobile-projects-footnote mt-auto! pt-section px-inline text-center text-fixed-caption leading-normal text-foreground-subtle">

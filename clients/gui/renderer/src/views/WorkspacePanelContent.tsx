@@ -302,6 +302,8 @@ export function WorkspacePanelContent({
         key={`${project.id}:${threadId}`}
         thread={thread}
         title={currentTitle}
+        projectId={project.id}
+        action={resourceAction}
         refresh={() => resourceAction("open", { projectId: project.id, threadId })}
         onClose={() => workspacePanels.selectPanel("")}
       />

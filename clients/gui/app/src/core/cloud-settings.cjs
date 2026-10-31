@@ -4,9 +4,8 @@
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const { modelRecord } = require("@areal/workbench/core-model-contract");
-const {
-  validateRequest,
-} = require("../../../packages/workbench/client/desktop-contract/cloud.cjs");
+/** @type {typeof import("@areal/workbench/desktop-contract").validateCommand} */
+const validateCommand = require("@areal/workbench/desktop-contract").validateCommand;
 /** @typedef {{home:string,save:(name:string,value:unknown)=>Promise<unknown>}} SettingsHost */
 /** @typedef {{isEncryptionAvailable:()=>boolean,getSelectedStorageBackend?:()=>string,encryptString:(value:string)=>Buffer,decryptString:(value:Buffer)=>string}} Encryption */
 const { cloudServiceURL, CloudClient } = require("./cloud-client.cjs");
@@ -64,11 +63,9 @@ class CloudSettings {
   }
   /** @param {unknown} value */
   command(value) {
-    validateRequest("cloud", value);
+    validateCommand("cloud", value);
     const request =
-      /** @type {import('../../../packages/workbench/client/desktop-contract/cloud.cjs').SettingsRequest} */ (
-        value
-      );
+      /** @type {import('@areal/workbench/desktop-contract').CommandParams<'cloud'>} */ (value);
     if (request?.operation === "status") return this.status();
     if (request?.operation !== "save") throw new Error("不支持的 Cloud 配置操作");
     const operation = this.chain.then(async () => {

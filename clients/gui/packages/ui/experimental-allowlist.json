@@ -78,10 +78,10 @@
     "exitCondition": "Evaluate ActivityRowChevron against the ActivityRow contract and Base admission before graduation, or remove this consumer."
   },
   {
-    "file": "renderer/src/TaskCenter.tsx",
+    "file": "renderer/src/ScheduledTasks.tsx",
     "symbol": "ScheduledWorkspace",
-    "owner": "renderer/src/TaskCenter.tsx",
-    "exitCondition": "Evaluate ScheduledWorkspace against its component contract and Base admission before graduation, or remove this consumer."
+    "owner": "renderer/src/ScheduledTasks.tsx",
+    "exitCondition": "Evaluate ScheduledWorkspace (shared by ScheduledTasks and TaskCenter) against its component contract and Base admission before graduation, or remove this consumer."
   },
   {
     "file": "renderer/src/TaskListItem.tsx",

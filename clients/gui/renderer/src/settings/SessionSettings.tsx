@@ -57,13 +57,14 @@ const wireOptions = (options: Data, readOnly: boolean) => ({
   approvalTools: options.approvalTools ?? [],
   preapprovedTools: options.preapprovedTools ?? [],
 });
-const wireParameters = (parameters: Data, clear: boolean) =>
+export const wireParameters = (parameters: Data, clear: boolean) =>
   clear
     ? {}
     : {
         temperature: parameters?.temperature ?? null,
         maxOutputTokens: parameters?.maxOutputTokens ?? null,
         reasoningEffort: parameters?.reasoningEffort ?? null,
+        ...(parameters?.serviceTier != null ? { serviceTier: parameters.serviceTier } : {}),
         ...(parameters?.reasoningSummary != null
           ? { reasoningSummary: parameters.reasoningSummary }
           : {}),

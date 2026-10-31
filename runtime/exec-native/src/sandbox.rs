@@ -57,7 +57,6 @@ pub fn effective_profile(
 // Data volume. Shared temporary directories must not become writable either.
 // Neither is an appropriate read/write boundary for an ExecutionScope.
 // Core 在可信宿主侧解析系统 Python，避免在任务沙箱中启动 xcode-select/xcrun。
-// 这里只允许默认及带数字版本号的 Xcode / Command Line Tools Python，不开放整个工具链。
 const BASE: &str = r#"
 (version 1)
 (deny default)
@@ -69,6 +68,7 @@ const BASE: &str = r#"
   (regex #"^/(System/(Library|iOSSupport/System/Library)|bin|sbin|usr/(bin|sbin|lib|libexec|share))(/|$)"))
 (allow file-read* file-test-existence (literal "/"))
 (allow file-read-metadata (literal "/var") (literal "/tmp") (literal "/etc"))
+(allow file-read-metadata (literal "/private") (literal "/private/etc") (literal "/private/etc/gitconfig"))
 (allow file-read-metadata
   (literal "/Applications")
   (regex #"^/Applications/Xcode(_[0-9]+([.][0-9]+)*)?[.]app(/Contents(/Developer(/Library(/Frameworks)?)?)?)?$"))
@@ -85,6 +85,14 @@ const BASE: &str = r#"
   (regex #"^/(Applications/Xcode(_[0-9]+([.][0-9]+)*)?[.]app/Contents/Developer|Library/Developer/CommandLineTools)/usr/(bin/git$|libexec/git-core(/|$))"))
 (allow file-read*
   (regex #"^/(Applications/Xcode(_[0-9]+([.][0-9]+)*)?[.]app/Contents/Developer|Library/Developer/CommandLineTools)/usr/share/git-core/templates(/|$)"))
+(allow file-read-metadata
+  (regex #"^/Applications/Xcode(_[0-9]+([.][0-9]+)*)?[.]app/Contents/Developer/(Toolchains|Platforms)(/MacOSX[.]platform(/Developer)?)?$"))
+(allow process-exec file-read* file-map-executable
+  (regex #"^/Applications/Xcode(_[0-9]+([.][0-9]+)*)?[.]app/Contents/Developer/Toolchains/XcodeDefault[.]xctoolchain(/|$)")
+  (regex #"^/Library/Developer/CommandLineTools/usr/(bin|lib|libexec)(/|$)"))
+(allow file-read*
+  (regex #"^/Applications/Xcode(_[0-9]+([.][0-9]+)*)?[.]app/Contents/Developer/Platforms/MacOSX[.]platform/Developer/SDKs(/|$)")
+  (regex #"^/Library/Developer/CommandLineTools/SDKs(/|$)"))
 (allow file-read*
   (regex #"^/private/(etc/(passwd|group|localtime)|var/select/sh)$")
   (regex #"^/private/var/db/timezone(/|$)")

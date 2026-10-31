@@ -324,13 +324,12 @@ const currentId = () => page.getByTestId("areal-workbench").getAttribute("data-t
 const context = (id) =>
   call("manage", { projectId, threadId: id, operation: "context", offset: 0, limit: 1 });
 async function choose(label) {
-  await page.getByRole("button", { name: "模型", exact: true }).click();
-  const picker = page.getByRole("button", { name: "选择模型", exact: true });
-  if (await picker.isVisible()) await picker.click();
+  await page.getByTestId("composer-model-trigger").click();
+  await page.getByRole("tab", { name: "Fixture", exact: true }).click();
   await page.getByRole("radio", { name: label, exact: true }).click();
   await dismissPopovers();
   await page.waitForFunction((label) => {
-    const model = document.querySelector('button[aria-label="模型"]');
+    const model = document.querySelector('[data-testid="composer-model-trigger"]');
     return model && !model.disabled && model.textContent.includes(label);
   }, label);
 }
@@ -814,7 +813,7 @@ try {
     "selected model/provider capacities before send, neutral changed instruction basis, matched generation, fork anchor and own-turn subtotal",
   );
   await createProjectConversation(page, "workspace");
-  assert.match(await page.getByRole("button", { name: "模型", exact: true }).innerText(), /Beta/);
+  assert.match(await page.getByTestId("composer-model-trigger").innerText(), /Beta/);
   await send("USAGE_NEW_ACCEPTED");
   assert.equal(requests.at(-1).model, "beta");
   await selectConversation(page, source);
@@ -837,8 +836,8 @@ try {
   assert.ok(definitions.some((p) => p.name === "内置 · run_command"));
   const collapsedFrame = await page.getByTestId("context-popover").boundingBox();
   await page.screenshot({ path: join(scratch, "08-context-collapsed.png") });
-  for (const category of await page.locator(".context-category").all())
-    await category.locator("summary").click();
+  // 分类直接列出占用最多的几项（R-CHECK-019），不再逐个展开。
+  assert.equal(await page.locator(".context-category summary").count(), 0);
   const expandedFrame = await page.getByTestId("context-popover").boundingBox();
   await page.screenshot({ path: join(scratch, "03-context-categories.png") });
   await writeFile(
@@ -855,19 +854,18 @@ try {
     content: element.scrollHeight,
     overflow: getComputedStyle(element).overflowY,
   }));
-  assert.ok(
-    scroller.content > scroller.height && scroller.overflow === "auto",
-    "expanded categories scroll inside the fixed frame",
-  );
-  await page.locator(".context-categories").hover();
-  await page.mouse.wheel(0, 500);
-  await page.waitForFunction(() => document.querySelector(".context-categories")?.scrollTop > 0);
-  const scrolledFrame = await page.getByTestId("context-popover").boundingBox();
-  for (const axis of ["x", "y", "width", "height"])
-    assert.ok(
-      Math.abs(expandedFrame[axis] - scrolledFrame[axis]) <= 1,
-      `context frame ${axis} stays fixed while scrolling`,
-    );
+  assert.equal(scroller.overflow, "auto", "categories scroll inside the fixed frame");
+  if (scroller.content > scroller.height) {
+    await page.locator(".context-categories").hover();
+    await page.mouse.wheel(0, 500);
+    await page.waitForFunction(() => document.querySelector(".context-categories")?.scrollTop > 0);
+    const scrolledFrame = await page.getByTestId("context-popover").boundingBox();
+    for (const axis of ["x", "y", "width", "height"])
+      assert.ok(
+        Math.abs(expandedFrame[axis] - scrolledFrame[axis]) <= 1,
+        `context frame ${axis} stays fixed while scrolling`,
+      );
+  }
   await page.screenshot({ path: join(scratch, "09-context-scrolled.png") });
   await dismissPopovers();
   for (const mode of ["SINGLE", "UNKNOWN", "ZERO", "ERROR"]) {

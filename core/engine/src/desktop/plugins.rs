@@ -8,6 +8,8 @@ pub(super) struct Manager {
     pub(super) enabled: Vec<areal_plugins::InstalledSkill>,
     pub(super) enabled_plugin_ids: BTreeSet<String>,
     pub(super) eligible_skill_refs: BTreeSet<(String, String)>,
+    profile_diagnostics: BTreeMap<String, Vec<String>>,
+    pub(super) development_errors: BTreeMap<String, String>,
 }
 fn store_error(e: anyhow::Error) -> Error {
     match e.downcast_ref::<areal_plugins::StoreError>() {
@@ -20,6 +22,7 @@ fn store_error(e: anyhow::Error) -> Error {
     }
 }
 struct Snapshot {
+    agents: Vec<areal_plugins::InstalledAgent>,
     skills: Vec<Skill>,
     enabled: Vec<areal_plugins::InstalledSkill>,
     enabled_plugin_ids: BTreeSet<String>,
@@ -69,7 +72,13 @@ fn snapshot(
         }
         hooks.extend(crate::plugin_hooks::bind_source(source));
     }
+    let agents = components
+        .iter()
+        .filter(|c| enabled_plugin_ids.contains(&c.id))
+        .flat_map(|c| c.agents.clone())
+        .collect();
     Ok(Snapshot {
+        agents,
         hooks,
         hook_enabled,
         hook_sources,
@@ -81,35 +90,254 @@ fn snapshot(
 }
 
 impl Engine {
+    pub(super) fn plugin_profile_ref(
+        identity: &areal_plugins::ComponentIdentity,
+    ) -> Result<VersionRef> {
+        Ok(VersionRef {
+            id: format!(
+                "plugin-agent-{}",
+                &digest(&(&identity.plugin_id, &identity.component_id))?[..32]
+            ),
+            revision: identity.installed_digest.clone(),
+        })
+    }
+    fn register_plugin_profile(
+        &self,
+        catalog: &mut catalog::Catalog,
+        agent: &areal_plugins::InstalledAgent,
+    ) -> Result<()> {
+        let reference = Self::plugin_profile_ref(&agent.identity)?;
+        let model = if let Some(model) = &agent.model {
+            let matches: Vec<_> = catalog
+                .providers
+                .values()
+                .flat_map(|provider| {
+                    provider
+                        .models
+                        .iter()
+                        .filter(move |name| {
+                            **name == *model || format!("{}/{}", provider.id, name) == *model
+                        })
+                        .map(|name| ModelRef {
+                            provider_id: provider.id.clone(),
+                            model_id: name.clone(),
+                        })
+                })
+                .collect();
+            if matches.len() != 1 {
+                return Err(invalid(
+                    "plugin Agent model must resolve to one exact configured model",
+                ));
+            }
+            matches.into_iter().next()
+        } else {
+            None
+        };
+        if agent.instructions.len() > 32 * 1024 {
+            return Err(invalid("plugin Agent instructions exceed 32 KiB"));
+        }
+        if let Some(names) = &agent.tool_allowlist {
+            for name in names {
+                self.registry
+                    .get(name)
+                    .map_err(|_| invalid(format!("plugin Agent tool is unavailable: {name}")))?;
+            }
+        }
+        let profile = AgentProfile {
+            allow_plugin_skills: false,
+            id: reference.id,
+            revision: reference.revision,
+            display_name: agent.name.clone(),
+            instructions: agent.instructions.clone(),
+            skills: vec![],
+            tool_allowlist: agent.tool_allowlist.clone(),
+            model,
+            required_modalities: vec![],
+            read_only: agent.read_only,
+            approval_tools: agent.approval_tools.clone(),
+            allow_thread_processes: false,
+            workflow: None,
+        };
+        let key = format!("{}/{}", profile.id, profile.revision);
+        if catalog
+            .profiles
+            .get(&key)
+            .is_some_and(|old| old != &profile)
+        {
+            return Err(invalid("plugin Agent profile revision is immutable"));
+        }
+        if !catalog.profiles.contains_key(&key) && catalog.profiles.len() >= 64 {
+            return Err(Error::Exhausted(
+                "profile catalog exceeds 64 entries".into(),
+            ));
+        }
+        let mut candidate = catalog.clone();
+        candidate.profiles.insert(key.clone(), profile);
+        candidate.plugin_origins.insert(key, agent.identity.clone());
+        if serde_json::to_vec(&candidate).map_err(invalid)?.len() > 2 * 1024 * 1024 {
+            return Err(Error::Exhausted("profile catalog exceeds 2 MiB".into()));
+        }
+        *catalog = candidate;
+        Ok(())
+    }
+    pub(super) fn check_plugin_profile(&self, reference: &VersionRef) -> Result<()> {
+        let origin = self
+            .desktop
+            .catalog
+            .read()
+            .unwrap()
+            .plugin_origins
+            .get(&format!("{}/{}", reference.id, reference.revision))
+            .cloned();
+        let Some(origin) = origin else {
+            if reference.id.starts_with("plugin-agent-") {
+                return Err(invalid(
+                    "PLUGIN_AGENT_REVOKED: plugin Agent revision is no longer admitted",
+                ));
+            }
+            return Ok(());
+        };
+        let component = self
+            .plugin_store()?
+            .enabled_component(&origin.plugin_id)
+            .map_err(store_error)?;
+        if component.digest != origin.installed_digest
+            || !component
+                .agents
+                .iter()
+                .any(|agent| agent.identity.component_id == origin.component_id)
+        {
+            return Err(invalid(
+                "PLUGIN_AGENT_REVOKED: plugin Agent source is no longer current",
+            ));
+        }
+        Ok(())
+    }
+    pub(crate) fn check_configuration_plugin_profile(
+        &self,
+        configuration: &EffectiveConfig,
+    ) -> Result<()> {
+        if let Some(profile) = &configuration.profile {
+            self.check_plugin_profile(&VersionRef {
+                id: profile.id.clone(),
+                revision: profile.revision.clone(),
+            })?;
+        }
+        Ok(())
+    }
+    pub(super) fn plugin_agent_views(
+        &self,
+        component: &areal_plugins::InstalledComponents,
+    ) -> Value {
+        let catalog = self.desktop.catalog.read().unwrap();
+        let agents: Vec<_> = component.agents.iter().filter_map(|agent| {
+            let reference = Self::plugin_profile_ref(&agent.identity).ok()?;
+            catalog.profiles.contains_key(&format!("{}/{}", reference.id, reference.revision)).then(|| json!({"componentId":agent.identity.component_id,"name":agent.name,"description":agent.description,"profile":reference}))
+        }).collect();
+        json!({"agents":agents,"diagnostics":self.desktop.plugins.read().unwrap().profile_diagnostics.get(&component.id).cloned().unwrap_or_default()})
+    }
+
+    pub(super) async fn expand_plugin_command(
+        &self,
+        mut input: Vec<Input>,
+        command: Option<&PluginCommandRef>,
+    ) -> Result<Vec<Input>> {
+        let Some(command) = command.cloned() else {
+            return Ok(input);
+        };
+        if command.arguments.len() > 32 * 1024 {
+            return Err(invalid("command arguments exceed 32 KiB"));
+        }
+        let store = self.plugin_store()?;
+        let body = tokio::task::spawn_blocking(move || {
+            let component = store.enabled_component(&command.plugin_id)?;
+            anyhow::ensure!(
+                component.digest == command.installed_digest,
+                "PLUGIN_COMMAND_STALE: installed digest changed"
+            );
+            let template = component
+                .commands
+                .iter()
+                .find(|template| template.identity.component_id == command.component_id)
+                .ok_or_else(|| anyhow::anyhow!("plugin command is unavailable or unsupported"))?;
+            template.expand(&command.arguments)
+        })
+        .await
+        .map_err(invalid)?
+        .map_err(store_error)?;
+        input.insert(0, Input::text(body));
+        Ok(input)
+    }
+
     /// Trusted synchronous startup only. Runtime filesystem work uses spawn_blocking.
     pub fn install_plugin_store(
         self: &Arc<Self>,
         store: Arc<areal_plugins::Store>,
     ) -> anyhow::Result<()> {
         self.initialize_plugin_wire(&store)?;
-        self.register_plugin_snapshot(snapshot(
-            &store,
-            self.plugin_hooks.source_config.get().cloned(),
-        )?);
+        let snapshot = snapshot(&store, self.plugin_hooks.source_config.get().cloned())?;
+        let (catalog, diagnostics, changed) = self.plugin_snapshot_catalog(&snapshot)?;
+        if changed {
+            self.store.save_metadata_sync("catalog", &catalog)?;
+        }
+        self.publish_plugin_snapshot(snapshot, catalog, diagnostics);
         self.desktop.plugins.write().unwrap().store = Some(store);
         self.watch_plugin_state();
         Ok(())
     }
-    fn register_plugin_snapshot(&self, snapshot: Snapshot) {
-        *self.plugin_hooks.sources.write().unwrap() = snapshot.hook_sources;
-        self.plugin_hooks
-            .publish(snapshot.hooks, snapshot.hook_enabled);
-        let mut catalog = self.desktop.catalog.write().unwrap();
-        for skill in snapshot.skills {
+    fn plugin_snapshot_catalog(
+        &self,
+        snapshot: &Snapshot,
+    ) -> Result<(catalog::Catalog, BTreeMap<String, Vec<String>>, bool)> {
+        let mut catalog = self.desktop.catalog.read().unwrap().clone();
+        let before = serde_json::to_vec(&catalog).map_err(invalid)?;
+        let current: BTreeSet<_> = snapshot
+            .agents
+            .iter()
+            .map(|agent| {
+                let reference = Self::plugin_profile_ref(&agent.identity)?;
+                Ok(format!("{}/{}", reference.id, reference.revision))
+            })
+            .collect::<Result<_>>()?;
+        catalog.profiles.retain(|key, profile| {
+            !profile.id.starts_with("plugin-agent-") || current.contains(key)
+        });
+        catalog
+            .plugin_origins
+            .retain(|key, _| current.contains(key));
+        let mut diagnostics: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for agent in &snapshot.agents {
+            if let Err(error) = self.register_plugin_profile(&mut catalog, agent) {
+                diagnostics
+                    .entry(agent.identity.plugin_id.clone())
+                    .or_default()
+                    .push(format!("{}: {error}", agent.identity.component_id));
+            }
+        }
+        for skill in &snapshot.skills {
             catalog
                 .skills
                 .entry(format!("{}/{}", skill.location.id, skill.location.revision))
-                .or_insert(skill);
+                .or_insert_with(|| skill.clone());
         }
+        let changed = before != serde_json::to_vec(&catalog).map_err(invalid)?;
+        Ok((catalog, diagnostics, changed))
+    }
+    fn publish_plugin_snapshot(
+        &self,
+        snapshot: Snapshot,
+        catalog: catalog::Catalog,
+        diagnostics: BTreeMap<String, Vec<String>>,
+    ) {
+        *self.plugin_hooks.sources.write().unwrap() = snapshot.hook_sources;
+        self.plugin_hooks
+            .publish(snapshot.hooks, snapshot.hook_enabled);
+        *self.desktop.catalog.write().unwrap() = catalog;
         let mut manager = self.desktop.plugins.write().unwrap();
         manager.enabled = snapshot.enabled;
         manager.enabled_plugin_ids = snapshot.enabled_plugin_ids;
         manager.eligible_skill_refs = snapshot.eligible_skill_refs;
+        manager.profile_diagnostics = diagnostics;
     }
     pub(crate) fn plugin_store(&self) -> Result<Arc<areal_plugins::Store>> {
         self.desktop
@@ -130,7 +358,17 @@ impl Engine {
             .await
             .map_err(invalid)?
             .map_err(store_error)?;
-        self.register_plugin_snapshot(snapshot);
+        {
+            let _catalog = self.desktop.catalog_write.lock().await;
+            let (catalog, diagnostics, changed) = self.plugin_snapshot_catalog(&snapshot)?;
+            if changed {
+                self.store
+                    .save_metadata("catalog", &catalog)
+                    .await
+                    .map_err(invalid)?;
+            }
+            self.publish_plugin_snapshot(snapshot, catalog, diagnostics);
+        }
         drop(_refresh);
         self.reconcile_plugin_connections().await?;
         Ok(())
@@ -357,6 +595,99 @@ impl Engine {
             Ok(serde_json::to_value(s.update_selected_marketplaces(
                 name.as_deref(),
                 expected,
+            )?)?)
+        })
+        .await
+    }
+    pub async fn plugin_user_configure(
+        self: &Arc<Self>,
+        request: areal_protocol::plugin_runtime::UserConfigSet,
+    ) -> Result<Value> {
+        use areal_protocol::plugin_runtime::UserConfigValue;
+        let values: BTreeMap<String, areal_plugins::PluginConfigValue> = request
+            .values
+            .into_iter()
+            .map(|(key, value)| {
+                (
+                    key,
+                    match value {
+                        UserConfigValue::String(v) => areal_plugins::PluginConfigValue::String(v),
+                        UserConfigValue::Boolean(v) => areal_plugins::PluginConfigValue::Boolean(v),
+                        UserConfigValue::Number(v) => areal_plugins::PluginConfigValue::Number(v),
+                        UserConfigValue::SecretRef(v) => {
+                            areal_plugins::PluginConfigValue::SecretRef(v)
+                        }
+                    },
+                )
+            })
+            .collect();
+        self.plugin_change(move |store| {
+            let component = store
+                .installed_components()?
+                .into_iter()
+                .find(|component| component.id == request.id)
+                .ok_or_else(|| anyhow::anyhow!("plugin not installed"))?;
+            anyhow::ensure!(
+                component.digest == request.expected_digest,
+                "plugin configuration digest changed"
+            );
+            let mut merged = component.user_configuration.values;
+            for key in request.clear_keys {
+                anyhow::ensure!(
+                    !values.contains_key(&key),
+                    "configuration field cannot be set and cleared together"
+                );
+                anyhow::ensure!(
+                    component.user_config_schema.contains_key(&key),
+                    "unknown plugin configuration field"
+                );
+                merged.remove(&key);
+            }
+            merged.extend(values);
+            Ok(serde_json::to_value(store.configure_user_values(
+                &request.id,
+                request.expected_revision,
+                &request.expected_digest,
+                merged,
+            )?)?)
+        })
+        .await
+    }
+    pub(super) async fn refresh_development_sources(self: &Arc<Self>) -> Result<()> {
+        let Some(store) = self.desktop.plugins.read().unwrap().store.clone() else {
+            return Ok(());
+        };
+        let report = tokio::task::spawn_blocking(move || store.refresh_development_links())
+            .await
+            .map_err(invalid)?
+            .map_err(store_error)?;
+        self.desktop.plugins.write().unwrap().development_errors = report.errors;
+        if report.changed {
+            self.refresh_plugins().await?;
+        }
+        Ok(())
+    }
+    pub async fn plugin_development_link(
+        self: &Arc<Self>,
+        request: areal_protocol::plugin_runtime::DevelopmentLink,
+    ) -> Result<Value> {
+        self.plugin_change(move |store| {
+            Ok(serde_json::to_value(store.development_link(
+                &request.id,
+                request.expected_revision,
+                &request.expected_digest,
+            )?)?)
+        })
+        .await
+    }
+    pub async fn plugin_development_unlink(
+        self: &Arc<Self>,
+        request: areal_protocol::plugin_runtime::DevelopmentUnlink,
+    ) -> Result<Value> {
+        self.plugin_change(move |store| {
+            Ok(serde_json::to_value(store.development_unlink(
+                &request.id,
+                request.expected_revision,
             )?)?)
         })
         .await

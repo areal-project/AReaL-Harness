@@ -67,6 +67,8 @@ fn prepare_system_git(execution: &mut Execution) {
             ("GIT_CONFIG_NOSYSTEM", "1"),
             ("GIT_CONFIG_GLOBAL", "/dev/null"),
             ("GIT_ATTR_NOSYSTEM", "1"),
+            // libgit2 的默认配置搜索忽略上述 Git 环境变量，Cargo 取依赖时改用同一受限 Git。
+            ("CARGO_NET_GIT_FETCH_WITH_CLI", "true"),
         ] {
             execution
                 .env
@@ -94,6 +96,48 @@ fn prepare_system_git(execution: &mut Execution) {
                 .collect::<Vec<_>>()
                 .join(":");
         }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn prepare_system_compiler(execution: &mut Execution) {
+    let Ok(compiler) = areal_runtime_host_tools::system_compiler() else {
+        return;
+    };
+    // cc/clang 在系统目录中只是 xcrun shim；链接时所需的 SDK 也由可信宿主解析。
+    if let Some(program) = execution.argv.first_mut() {
+        match program.as_str() {
+            "/usr/bin/cc" | "/usr/bin/clang" => {
+                *program = compiler.executable.to_string_lossy().into_owned()
+            }
+            "/usr/bin/c++" | "/usr/bin/clang++" => {
+                *program = compiler
+                    .executable
+                    .with_file_name("clang++")
+                    .to_string_lossy()
+                    .into_owned()
+            }
+            _ => {}
+        }
+    }
+    execution
+        .env
+        .entry("SDKROOT".into())
+        .or_insert_with(|| compiler.sdk.to_string_lossy().into_owned());
+    if let (Some(parent), Some(path)) =
+        (compiler.executable.parent(), execution.env.get_mut("PATH"))
+    {
+        *path = path
+            .split(':')
+            .map(|entry| {
+                if entry == "/usr/bin" {
+                    format!("{}:/usr/bin", parent.display())
+                } else {
+                    entry.to_owned()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(":");
     }
 }
 
@@ -271,6 +315,7 @@ impl Backend for NativeBackend {
         #[cfg(target_os = "macos")]
         if effective != SandboxProfile::FullAccess {
             prepare_system_git(&mut execution);
+            prepare_system_compiler(&mut execution);
             prepare_runtime_shell(&mut execution)?;
         }
         let mut argv = sandbox::command(&execution, effective)?;

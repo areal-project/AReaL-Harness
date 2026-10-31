@@ -413,9 +413,10 @@ impl Engine {
                 }
             }
             // 工具声明参与缓存前缀；收尾轮仅禁用调用，不移除 schema。
-            let mut tool_definitions = self
+            let tool_definitions = self
                 .visible_tools(cell, &configuration, thread.desktop.is_some(), &thread)
                 .await;
+            let mut tool_definitions = self.project_mcp_tools(cell, tool_definitions).await;
             if goal_report_only {
                 let name = if thread.goals.goal.as_ref().is_some_and(|g| g.limits_pending) {
                     "goal_set_limits"
@@ -739,6 +740,7 @@ impl Engine {
             )
             .await?;
             let mut network_retries: usize = 0;
+            let logical_request_id = id();
             'request: loop {
                 self.prediction_preemption.send_replace(());
                 let permit = match self.permits.clone().try_acquire_owned() {
@@ -753,10 +755,7 @@ impl Engine {
                                 json!({"threadId":thread_id,"status":"waiting"}),
                             );
                         }
-                        tokio::select! {
-                            _ = cancel.cancelled() => anyhow::bail!("cancelled"),
-                            permit = self.permits.clone().acquire_owned() => permit?,
-                        }
+                        self.trace_model_permit(cell, cancel).await?
                     }
                 };
                 if let Some(thread_id) = &side_thread_id {
@@ -823,6 +822,9 @@ impl Engine {
                 let model_span = operation.span.clone();
                 let output_before = (text_output_bytes, media_output_bytes);
                 let mut response_bytes = 0usize;
+                let mut request_trace = self
+                    .trace_begin(cell, "model", model.name(), None, Some(&logical_request_id))
+                    .await?;
                 let item_id = id();
                 let mut reasoning_items = BTreeMap::new();
                 {
@@ -861,6 +863,12 @@ impl Engine {
                     self.limits.model_request_timeout,
                     self.limits.stream_idle_timeout,
                 );
+                let trace_context = crate::execution_trace::RequestTrace {
+                    engine: self.clone(),
+                    cell: cell.clone(),
+                    timer: request_trace.clone(),
+                    logical_id: logical_request_id.clone(),
+                };
                 let response = {
                     let pending_response = tokio::time::timeout_at(
                         response_deadline.deadline(),
@@ -869,12 +877,15 @@ impl Engine {
                                 anyhow::ensure!(!cancel.is_cancelled(), "cancelled");
                                 let meter = crate::request_meter::RequestMeter::new(generation);
                                 permit
-                                    .scope(model.chat_with_limits(
-                                        messages.clone(),
-                                        tool_definitions.clone(),
-                                        model::RequestPurpose::Solve,
-                                        tool_limits,
-                                        None,
+                                    .scope(crate::execution_trace::REQUEST_TRACE.scope(
+                                        trace_context.clone(),
+                                        model.chat_with_limits(
+                                            messages.clone(),
+                                            tool_definitions.clone(),
+                                            model::RequestPurpose::Solve,
+                                            tool_limits,
+                                            None,
+                                        ),
                                     ))
                                     .await
                                     .map(|stream| meter.wrap(stream))
@@ -888,6 +899,7 @@ impl Engine {
                             if let Ok(Ok(mut stream)) = (&mut pending_response).await {
                                 self.settle_cancelled_model(cell, &mut stream, &mut operation).await;
                             }
+                            self.trace_finish(cell, &mut request_trace, Some("cancelled")).await?;
                             anyhow::bail!("cancelled");
                         },
                         settle = steer.recv(), if interrupt_for_steer => {
@@ -898,7 +910,8 @@ impl Engine {
                                         if let Ok(Ok(mut stream)) = (&mut pending_response).await {
                                             self.settle_cancelled_model(cell, &mut stream, &mut operation).await;
                                         }
-                                        anyhow::bail!("cancelled");
+                                        self.trace_finish(cell, &mut request_trace, Some("cancelled")).await?;
+                            anyhow::bail!("cancelled");
                                     },
                                     result = &mut pending_response => result,
                                 };
@@ -906,6 +919,7 @@ impl Engine {
                                     self.settle_child_steering(cell, cancel, &mut stream, &mut operation).await;
                                 }
                             }
+                            self.trace_finish(cell, &mut request_trace, Some("cancelled")).await?;
                             complete_reasoning(cell, &thread_id, &turn_id, &reasoning_items).await;
                             complete_item(cell, &thread_id, &turn_id, &item_id).await;
                             continue 'restart;
@@ -923,13 +937,14 @@ impl Engine {
                 loop {
                     let next = tokio::select! {
                         biased;
-                        _ = cancel.cancelled() => { self.settle_cancelled_model(cell, &mut stream, &mut operation).await; anyhow::bail!("cancelled"); },
+                        _ = cancel.cancelled() => { self.settle_cancelled_model(cell, &mut stream, &mut operation).await; self.trace_finish(cell, &mut request_trace, Some("cancelled")).await?; anyhow::bail!("cancelled"); },
                         settle = steer.recv(), if interrupt_for_steer => {
                             if settle == Some(true) {
                                 self.settle_child_steering(cell, cancel, &mut stream, &mut operation).await;
                             } else {
                                 self.settle_cancelled_model(cell, &mut stream, &mut operation).await;
                             }
+                            self.trace_finish(cell, &mut request_trace, Some("cancelled")).await?;
                             complete_reasoning(cell, &thread_id, &turn_id, &reasoning_items).await;
                             complete_item(cell, &thread_id, &turn_id, &item_id).await;
                             continue 'restart;
@@ -940,6 +955,7 @@ impl Engine {
                         ) => match next { Ok(next) => next, Err(_) => Some(Err(response_deadline.idle_error("model"))) },
                     };
                     let Some(delta) = next else {
+                        self.trace_finish(cell, &mut request_trace, None).await?;
                         // 等待整个成功流结算 usage 后再拒绝非法报告工具，绝不执行其参数。
                         if goal_report_only
                             && calls.iter().any(|call| {
@@ -1343,6 +1359,8 @@ impl Engine {
                     let delta = match delta {
                         Ok(delta) => delta,
                         Err(error) => {
+                            self.trace_finish(cell, &mut request_trace, Some(&error.to_string()))
+                                .await?;
                             operation.span.record(
                                 "error.message",
                                 tracing::field::display(format_args!("{error:#}")),
@@ -1376,11 +1394,22 @@ impl Engine {
                                     media_output_bytes = output_before.1;
                                     let delay =
                                         Duration::from_millis(250u64 << completion_retries.min(4));
+                                    let mut retry_trace = self
+                                        .trace_begin(
+                                            cell,
+                                            "retryWait",
+                                            "模型重试等待",
+                                            None,
+                                            Some(&logical_request_id),
+                                        )
+                                        .await?;
+
                                     tokio::select! { biased;
-                                        _ = cancel.cancelled() => anyhow::bail!("cancelled"),
-                                        _ = steer.recv() => continue 'restart,
+                                        _ = cancel.cancelled() => { self.trace_finish(cell, &mut retry_trace, Some("cancelled")).await?; anyhow::bail!("cancelled"); },
+                                        _ = steer.recv() => { self.trace_finish(cell, &mut retry_trace, Some("cancelled")).await?; continue 'restart; },
                                         _ = tokio::time::sleep(delay) => {},
                                     }
+                                    self.trace_finish(cell, &mut retry_trace, None).await?;
                                     continue 'request;
                                 }
                                 let diagnostic = format!("{blocker}: {error}");
@@ -1453,11 +1482,22 @@ impl Engine {
                                     delay_ms = delay.as_millis() as u64,
                                     "network watchdog retrying model completion"
                                 );
+                                let mut retry_trace = self
+                                    .trace_begin(
+                                        cell,
+                                        "retryWait",
+                                        "模型重试等待",
+                                        None,
+                                        Some(&logical_request_id),
+                                    )
+                                    .await?;
+
                                 tokio::select! { biased;
-                                    _ = cancel.cancelled() => anyhow::bail!("cancelled"),
-                                    _ = steer.recv() => continue 'restart,
+                                    _ = cancel.cancelled() => { self.trace_finish(cell, &mut retry_trace, Some("cancelled")).await?; anyhow::bail!("cancelled"); },
+                                    _ = steer.recv() => { self.trace_finish(cell, &mut retry_trace, Some("cancelled")).await?; continue 'restart; },
                                     _ = tokio::time::sleep(delay) => {},
                                 }
+                                self.trace_finish(cell, &mut retry_trace, None).await?;
                                 continue 'request;
                             }
                             if watchdog::exhausted(
@@ -1486,6 +1526,7 @@ impl Engine {
                             return Err(error);
                         }
                     };
+                    self.trace_content(cell, &mut request_trace, &delta).await?;
                     // 单次响应异常膨胀必须在追加到历史之前拒绝，不限制正常长任务的累计产出。
                     let added = match &delta {
                         ModelEvent::TextDelta(text)

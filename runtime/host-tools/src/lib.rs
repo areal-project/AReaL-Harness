@@ -159,6 +159,126 @@ fn discover_macos_git(
     Ok(git)
 }
 
+/// 已校验的 Apple C/C++ 工具链入口与 macOS SDK；不包含宿主用户配置。
+#[cfg(any(target_os = "macos", test))]
+#[derive(Clone)]
+pub struct SystemCompiler {
+    pub executable: PathBuf,
+    pub sdk: PathBuf,
+}
+
+#[cfg(target_os = "macos")]
+pub fn system_compiler() -> io::Result<SystemCompiler> {
+    static COMPILER: std::sync::OnceLock<SystemCompiler> = std::sync::OnceLock::new();
+    if let Some(compiler) = COMPILER.get() {
+        return Ok(compiler.clone());
+    }
+    let compiler = discover_macos_compiler(
+        |args| {
+            let output = std::process::Command::new("/usr/bin/xcrun")
+                .args(args)
+                .env_clear()
+                .env("PATH", "/usr/bin:/bin")
+                .stdin(std::process::Stdio::null())
+                .output()?;
+            if !output.status.success() {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "xcrun could not locate the system compiler or macOS SDK",
+                ));
+            }
+            String::from_utf8(output.stdout).map_err(|_| {
+                io::Error::new(io::ErrorKind::InvalidData, "non-UTF-8 compiler or SDK path")
+            })
+        },
+        |path| std::fs::canonicalize(path),
+    )?;
+    use std::os::unix::fs::PermissionsExt;
+    let metadata = std::fs::metadata(&compiler.executable)?;
+    if !metadata.is_file() || metadata.permissions().mode() & 0o111 == 0 || !compiler.sdk.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "system compiler or SDK is unavailable",
+        ));
+    }
+    let _ = COMPILER.set(compiler.clone());
+    Ok(compiler)
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn discover_macos_compiler(
+    mut run: impl FnMut(&[&str]) -> io::Result<String>,
+    mut canonicalize: impl FnMut(&Path) -> io::Result<PathBuf>,
+) -> io::Result<SystemCompiler> {
+    let selected = run(&["--find", "clang"])?;
+    let selected_sdk = run(&["--sdk", "macosx", "--show-sdk-path"])?;
+    let compiler = Path::new(selected.trim());
+    let sdk = Path::new(selected_sdk.trim());
+    if !compiler.is_absolute() || !sdk.is_absolute() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "non-absolute compiler or SDK path",
+        ));
+    }
+    let executable = canonicalize(compiler)?;
+    let sdk = canonicalize(sdk)?;
+    let sdk_directory =
+        if executable == Path::new("/Library/Developer/CommandLineTools/usr/bin/clang") {
+            Some(PathBuf::from("/Library/Developer/CommandLineTools/SDKs"))
+        } else {
+            executable
+            .strip_prefix("/Applications")
+            .ok()
+            .and_then(|relative| {
+                let mut components = relative.components();
+                let app = components.next()?.as_os_str().to_str()?;
+                let valid = app == "Xcode.app"
+                    || app
+                        .strip_prefix("Xcode_")
+                        .and_then(|name| name.strip_suffix(".app"))
+                        .is_some_and(|version| {
+                            version.split('.').all(|part| {
+                                !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit())
+                            })
+                        });
+                if !valid
+                    || components.as_path()
+                        != Path::new(
+                            "Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+                        )
+                {
+                    return None;
+                }
+                Some(
+                    Path::new("/Applications")
+                        .join(app)
+                        .join("Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs"),
+                )
+            })
+        };
+    let valid_sdk = sdk_directory
+        .as_ref()
+        .is_some_and(|directory| sdk.parent() == Some(directory.as_path()))
+        && sdk
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_prefix("MacOSX"))
+            .and_then(|name| name.strip_suffix(".sdk"))
+            .is_some_and(|version| {
+                version.is_empty()
+                    || version
+                        .split('.')
+                        .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+            });
+    if !valid_sdk {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "selected compiler or SDK is outside supported system toolchains",
+        ));
+    }
+    Ok(SystemCompiler { executable, sdk })
+}
+
 /// 完整 Runtime 附带的非交互 shell；不寻找或安装用户的 Homebrew 程序。
 #[cfg(target_os = "macos")]
 pub fn runtime_shell_directory() -> io::Result<PathBuf> {
@@ -276,6 +396,43 @@ pub fn is_macos_system_python(python: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compiler_discovery_rejects_redirected_tools_and_sdk_neighbors() {
+        let xcode = "/Applications/Xcode_26.0.1.app/Contents/Developer";
+        for (compiler, sdk, expected) in [
+            (format!("{xcode}/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"), format!("{xcode}/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk"), true),
+            ("/Library/Developer/CommandLineTools/usr/bin/clang".into(), "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk".into(), true),
+            ("/opt/homebrew/bin/clang".into(), "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk".into(), false),
+            (format!("{xcode}/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"), "/private/tmp/SDKs/MacOSX.sdk".into(), false),
+            (format!("{xcode}/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"), format!("{xcode}/Platforms/MacOSX.platform/Developer/SDKs-neighbor/MacOSX.sdk"), false),
+            ("/Applications/Xcode_evil.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang".into(), "/Applications/Xcode_evil.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk".into(), false),
+        ] {
+            let result = discover_macos_compiler(
+                |args| Ok(if args == ["--find", "clang"] { compiler.clone() } else { sdk.clone() }),
+                |path| Ok(path.to_path_buf()),
+            );
+            assert_eq!(result.is_ok(), expected, "{compiler} {sdk}");
+        }
+        assert!(
+            discover_macos_compiler(
+                |_| Ok("relative".into()),
+                |_| panic!("must reject relative paths before resolving")
+            )
+            .is_err()
+        );
+        assert!(
+            discover_macos_compiler(
+                |args| Ok(if args == ["--find", "clang"] {
+                    "/Library/Developer/CommandLineTools/usr/bin/clang".into()
+                } else {
+                    "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk".into()
+                }),
+                |_| Ok(PathBuf::from("/private/tmp/redirected"))
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn git_discovery_rejects_shims_other_programs_and_resolved_escape_paths() {

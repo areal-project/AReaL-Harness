@@ -12,7 +12,7 @@ Core 负责完整请求预算、压缩与持久历史。[Core 契约](../api/cor
 
 | 配置 | 行为 |
 |---|---|
-| `model.context_window_tokens` | 设置用户工作预算；有服务报告时取两者较小值 |
+| `model.context_window_tokens` | 设置用户工作预算；显式值优先于服务报告及内置默认值 |
 | `model.max_output_tokens` | 常用配置；单次 HTTP 请求默认 16384，可按模型覆盖，必须为正数 |
 | `context.mode` | 保留 auto / manual / disabled |
 | `context.target_tokens`、`context.recent_tokens` | 目标与近期默认均为 0（自动）；显式正数保留为兼容边界偏好并报告来源 |
@@ -25,19 +25,11 @@ Core 负责完整请求预算、压缩与持久历史。[Core 契约](../api/cor
 
 ## 已知模型窗口
 
-服务报告窗口与用户工作预算分别保留。账号目录的 `context_window` 是当前报告窗口，不拿可选的 `max_context_window` 替代。工作窗口取报告值与显式用户预算的较小值；界面同时显示报告来源、报告容量和用户预算。账号未报告容量时使用全局兜底，不套用公开 API 的按名称默认值。自定义端点没有报告或用户预算时，才查完整模型 ID 默认表，未知 ID 使用全局兜底。
+服务报告窗口与用户工作预算分别保留。账号目录的 `context_window` 是当前报告默认值，不拿可选的 `max_context_window` 替代。工作窗口按显式用户值、当前账号/渠道报告默认、渠道与完整型号的内置默认、全局兜底依次解析；界面同时显示报告来源、报告容量和用户预算。订阅缺少报告时使用订阅专用默认表，API 使用 API 表；未知 ID 使用全局兜底。用户显式值也可高于报告默认，但不能改变服务端限制。自动发现的模型默认值单独保存为 `reportedContextWindowTokens`（TOML：`reported_context_window_tokens`），清空用户参数后恢复默认解析。
 
 空闲会话的上下文查询投影下一次新请求的容量。新请求受理时，仅在供应商身份、端点、协议和凭据引用一致时更新报告容量及模型能力；已有历史、活动轮次和已受理队列保持冻结快照。不会为更新容量而切换账号或重绑定端点。独立 TOML 的用户预算仍使用 `model.context_window_tokens`，桌面参数使用 `contextWindowTokens`。 旧快照无法区分自动填充的窗口与同值的人工预算，因此保守保留已经保存的窗口参数作为预算，不因报告容量增加而放大。新快照将预算和报告分别保存。
 
-以下默认值于 2026-10-20 核对官方文档。实际支持的精确 ID 以 `core/engine/src/model/context_windows.rs` 为准。
-
-| 文档中的模型 ID | 窗口 | 来源 |
-|---|---:|---|
-| `gpt-6.1-sol`、`gpt-6-sol`、`gpt-6-astra`、`gpt-6-luna` | 1,050,000 | [OpenAI 模型目录](https://developers.openai.com/api/docs/models)、[Sol 对比](https://developers.openai.com/api/docs/models/compare?model=gpt-6-sol&model=gpt-6.1-sol) |
-| `gpt-5.6-sol`、`gpt-5.6` | 1,050,000 | [GPT-5.6 Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol) |
-| Core 表中列出的当前 Claude Opus、Sonnet、Haiku ID | 1,000,000 | [Claude 上下文窗口](https://platform.claude.com/docs/en/build-with-claude/context-windows) |
-| `deepseek-flash`、`deepseek-v4-pro` 与文档明确的 V4 Flash 别名 | 1,000,000 | [DeepSeek 模型](https://api-docs.deepseek.com/quick_start/pricing/) |
-| `glm-5` | 200,000 | [GLM-5](https://docs.z.ai/guides/llm/glm-5) |
+具体型号的 API 与订阅默认值及官方来源见[配置指南](../guides/configuration.md)。实际支持的精确 ID 和数值由 `core/engine/src/model/context_windows.rs` 拥有；采用静态内置表，不在请求路径拉取第三方目录。
 
 本次调研 Gemini，但未在表中设置其默认值。Gemini 3 与 2.5 的输入、输出预算独立，Gemini 4 才共享一个窗口。把前者的输入上限直接视为共享窗口会改变语义，见 [Gemini Token 限制](https://ai.google.dev/gemini-api/docs/tokens)。
 

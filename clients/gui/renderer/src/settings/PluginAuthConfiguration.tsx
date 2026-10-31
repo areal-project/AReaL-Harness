@@ -1,4 +1,4 @@
-import type { PluginCommand } from "./PluginCenter.js";
+import type { PluginCommand } from "./pluginTypes.js";
 import { Textarea } from "@areal/ui";
 import { useI18n, type UiMessage } from "../i18n/IntlProvider.js";
 import { SettingsDisclosure } from "./SettingsDisclosure.js";

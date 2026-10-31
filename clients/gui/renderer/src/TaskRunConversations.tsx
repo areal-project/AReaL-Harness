@@ -1,3 +1,4 @@
+import { describeMoment } from "./scheduleText.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useEffect, useRef, useState } from "react";
 import { ApprovalRequest } from "./ApprovalRequest.js";
@@ -26,6 +27,14 @@ const statuses: Record<string, string> = {
   failed: "失败",
   cancelled: "已取消",
   skipped: "已跳过",
+};
+// Core 的结算原因码换成用户能读懂的说明；未知原因原样显示。
+const runReasons: Record<string, string> = {
+  serverRestarted: "后台重启时中断，已记为失败，下次按计划继续",
+  hostUnavailable: "桌面端离线时中断，已记为失败，下次按计划继续",
+  supersededBySchedule: "到下一次计划时仍未继续，已记为失败",
+  goalMissingOrReplaced: "执行目标已丢失，已记为失败",
+  stopRequested: "已请求停止",
 };
 type ReadState = { status: "loading" | "ready" | "error"; error?: string };
 
@@ -149,19 +158,24 @@ export function TaskRunConversations({
             data-task-run-id={run.id}
             className="grid min-w-0 gap-2 border-t border-border pt-4"
           >
-            <header className="flex flex-wrap justify-between gap-2">
-              <h4>运行 {run.id}</h4>
+            <header className="flex flex-wrap justify-between gap-2" title={run.id}>
+              <h4>
+                {run.scheduledAt == null
+                  ? "—"
+                  : describeMoment(run.scheduledAt, t, runZone(run, task))}
+              </h4>
               <span role="status">{statuses[run.status] ?? run.status}</span>
             </header>
-            <p className="text-foreground-subtle">
-              {run.trigger === "manual" ? t("operations.manual") : t("operations.scheduled")}：
-              {run.scheduledAt == null
-                ? "—"
-                : new Date(run.scheduledAt * 1000).toLocaleString(undefined, {
-                    timeZone: runZone(run, task),
-                  })}
+            <p className="text-foreground-subtle" data-run-trigger={run.trigger ?? "scheduled"}>
+              {run.trigger === "manual"
+                ? t("operations.manual")
+                : t("operations.schedules.sentBySchedule")}
             </p>
-            {run.reason && <p className="whitespace-pre-wrap">运行原因：{run.reason}</p>}
+            {run.reason && (
+              <p className="whitespace-pre-wrap">
+                运行原因：{runReasons[run.reason] ?? run.reason}
+              </p>
+            )}
             {!run.threadId ? (
               <p>本次运行没有执行会话。</p>
             ) : (

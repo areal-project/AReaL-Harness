@@ -20,6 +20,8 @@ listen = "127.0.0.1:4500"
 # 仅 Responses 且服务支持 WebSocket 时显式开启；默认 false。
 # responses_websocket = true
 # reasoning_effort = "xhigh"
+# 独立于推理强度；fast 请求优先服务，default 显式关闭，省略继承上游默认。
+# service_tier = "fast"
 # 仅选择 responses 且模型支持摘要时启用。
 # reasoning_summary = "auto"
 # 默认 16k；可按模型显式调大或调小。

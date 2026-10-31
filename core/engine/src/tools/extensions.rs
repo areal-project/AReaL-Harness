@@ -53,6 +53,16 @@ impl Invocation<'_> {
         self.validate(&arguments)?;
         {
             let state = self.cell.state.lock().await;
+            if matches!(self.entry.backend, Backend::Mcp(_))
+                && state.active.as_ref().is_some_and(|active| {
+                    active.direct_tool.is_none() && !active.tool_exposure.admits(&self.call.name)
+                })
+            {
+                return Err(rt::Error::new(
+                    rt::ErrorCode::PermissionDenied,
+                    "MCP_SCHEMA_NOT_OFFERED: search for the tool and call it on the next model request",
+                ));
+            }
             if state.thread.is_read_only_side()
                 && !(matches!(
                     self.call.name.as_str(),

@@ -700,8 +700,7 @@ function SideChatEditor({
             )}
           </p>
         )}
-        <details className="side-chat-context" open>
-          <summary>会话上下文与文件访问</summary>
+        <section className="side-chat-context" aria-label="会话上下文与文件访问">
           <p className="text-foreground-subtle">
             来源：{source.preview || source.id}。
             {validSide
@@ -822,7 +821,7 @@ function SideChatEditor({
           {validSide && side.desktop?.archived && (
             <p role="status">这段讨论已归档；请在相关讨论中显式恢复后继续。</p>
           )}
-        </details>
+        </section>
       </div>
       <div className="side-chat-transcript">
         {!sideId && (

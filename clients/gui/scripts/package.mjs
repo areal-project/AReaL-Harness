@@ -101,6 +101,12 @@ const staged = await makeTempDir("areal-stage-");
 // stageCoreApp 要求新目录；使用临时目录的子目录隔离包管理器发现。
 const appStage = join(staged, "app");
 const dependencies = await stageCoreApp({ root: gui, destination: appStage });
+if (process.env.AREAL_GUI_RELAY_CA_CERT) {
+  const caPath = resolve(process.env.AREAL_GUI_RELAY_CA_CERT);
+  const { normalizeNetworkSetting } = require(join(gui, "app/src/core/desktop-network.cjs"));
+  normalizeNetworkSetting("httpProxyCaCertPath", caPath);
+  await cp(caPath, join(appStage, "assets/relay-ca.pem"));
+}
 const { githubFeedUrl } = require(join(gui, "app/src/update/config.cjs"));
 const updateConfig = join(staged, "areal-update.json");
 const nativeUpdateConfig = join(staged, "app-update.yml");

@@ -68,36 +68,6 @@ export function verifiedWrittenFiles(items: Data[]): Map<string, { path: string;
   );
 }
 
-/**
- * 运行中的本轮改动在时间线底部浮出一枚小条（CONV-PROCESS-01）：只数已核实的写入回执，
- * 不推测行数；回合结束后由最终回答里的文件变更卡片接手，小条消失。
- */
-export function TurnChangesPill({
-  turn,
-  onReview,
-}: {
-  turn: Data | undefined;
-  onReview: (turnId: string) => void;
-}) {
-  const { t } = useI18n();
-  if (turn?.status !== "inProgress") return null;
-  const count = verifiedWrittenFiles(turn.items ?? []).size;
-  if (!count) return null;
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      className="turn-changes-pill gap-(--activity-icon-gap) rounded-pill bg-background whitespace-nowrap text-foreground"
-      aria-label={t("chat.files.reviewLive", { count })}
-      onClick={() => onReview(turn.id)}
-    >
-      <FileChanges />
-      <span>{t("chat.files.changedLive", { count })}</span>
-    </Button>
-  );
-}
-
 export function TurnFileSummary({
   turn,
   readTurnReview,

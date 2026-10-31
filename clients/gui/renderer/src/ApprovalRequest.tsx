@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "./components/ui/dropdown-menu.js";
 import type { Action, Data } from "./services.js";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 
 /** Acknowledgement locks this request; only a Core projection removes it or advances execution. */
 export function ApprovalRequest({
@@ -110,6 +111,8 @@ export function ApprovalRequest({
       }}
       message={submitted ? "已提交，等待执行状态更新。" : undefined}
       detailsLabel={t("decision.requestDetails")}
+      detailsExpandLabel={t("settings.settingsDisclosure.expand")}
+      detailsCollapseLabel={t("settings.settingsDisclosure.collapse")}
       details={
         <>
           <dl className="approval-request-context">
@@ -246,12 +249,11 @@ export function ApprovalRequest({
                 {browserPlan.target?.semantics?.kind === "public_search" && (
                   <div>
                     <p>搜索内容：{browserPlan.target.semantics.query}</p>
-                    <details>
-                      <summary>本次提交的表单字段</summary>
+                    <SettingsDisclosure title="本次提交的表单字段">
                       <pre>
                         {JSON.stringify(browserPlan.target.semantics.submittedFields, null, 2)}
                       </pre>
-                    </details>
+                    </SettingsDisclosure>
                   </div>
                 )}
                 <p>目标页面或控件变化后，本次批准会失效。</p>
@@ -262,16 +264,15 @@ export function ApprovalRequest({
               </pre>
             ))}
           {canRemember && (
-            <details className="approval-scope-details">
-              <summary>授权范围说明</summary>
+            <SettingsDisclosure className="approval-scope-details" title="授权范围说明">
               <p>
                 {browserPlan
                   ? browserPlan.targetOrigin
-                    ? "记住的授权绑定当前页面、控制代次、目标和具体内容；人工接管或内容变化后重新审批。"
+                    ? t("common.approval.rememberPage")
                     : "记住的授权绑定当前页面、控制代次和具体操作；人工接管后重新审批。"
-                  : "记住的授权只适用于相同参数及权限条件，可在任务菜单的“已保存授权”中撤销。"}
+                  : t("common.approval.rememberArgs")}
               </p>
-            </details>
+            </SettingsDisclosure>
           )}
         </>
       }

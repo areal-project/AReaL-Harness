@@ -1169,7 +1169,8 @@ impl Engine {
             {
                 return false;
             }
-            (!name.starts_with("scheduled_task_") || schedules_available)
+            (name != "mcp_tool_search" || self.extensions.policy.lazy_mcp_schemas)
+                && (!name.starts_with("scheduled_task_") || schedules_available)
                 && (!matches!(name, "task_spawn" | "task_wait" | "task_channel_read") || goal_enabled)
                 && (!matches!(name, "task_spawn" | "task_wait")
                     || cell.goal_role.load(Ordering::Acquire) == 1)

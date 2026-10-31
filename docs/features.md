@@ -7,8 +7,8 @@
 | 能力 | 实现与入口 |
 |---|---|
 | 会话目录 | 默认内存索引、正确的授权后分页与 GUI 刷新合并；显式 SQLite 索引可回退内存，两者均可显式启用轻量元数据目录与按需历史加载。文件保持事实，复杂恢复仍全量；无自动历史淘汰或全文检索。[配置](guides/configuration.md#会话目录后端) |
-| 项目规则 | 按工作区根到会话 cwd 加载 `AGENTS.md`，子目录优先、每 Turn 刷新、有界且经 Runtime 读取。[客户端](guides/clients.md) |
-| 会话与模型 | 持久 Thread/Turn、流式正文、Chat Completions 思考与 Responses 思考摘要/文本事件、追加输入、取消、恢复；Chat Completions / Responses，模态取决于 adapter 和模型。[客户端](guides/clients.md) |
+| 项目规则 | 按工作区根到会话 cwd 加载规则，同层 `AGENTS.override.md` 优先于 `AGENTS.md`，空白回退、子目录优先、每 Turn 刷新、有界且经 Runtime 读取。[客户端](guides/clients.md) |
+| 会话与模型 | 持久 Thread/Turn、流式正文、Chat Completions 思考与 Responses 思考摘要/文本事件、追加输入、取消、恢复；Chat Completions / Responses，模态取决于 adapter 和模型。桌面可独立切换 Fast 服务档位，配置与供应商请求沿现有模型参数链路保存；请求不保证实际加速。[客户端](guides/clients.md) |
 | 会话名称 | 普通根会话首个成功 Turn 后异步总结名称，手动名称优先；失败保留预览，重启不重复请求。可通过 `options.automaticSessionName=false` 或 CLI `--no-session-name` 显式关闭，保留持久历史与恢复。[Core 契约](api/core.md#会话名称) |
 | 文件与进程 | 条件文件写入、命令、stdin、PTY、有界输出、Scope 权限收窄及清理。[Runtime](api/runtime.md) |
 | 工具结果 | 内置固定版本 rg、历史结果原文分页回取；可配置的搜索分组与精确重复行视图，默认 observe。[工具](guides/tools.md) |
@@ -19,21 +19,23 @@
 | Workgroup | DAG、隔离写工作区、制品检查与集成，fixed/auto/adaptive 准入；CLI 和服务接口。[使用指南](guides/workgroups.md) |
 | 权限模式 | 本地默认 YOLO，可配置 ASK_PERMISSIONS；TUI/Web 审批、会话/项目精确授权与自动 Thread scratch。[配置](guides/configuration.md#permissions) |
 | 桌面接口 | 认证、Profile/Skill/Plan、`--agent id@revision` 选择、Profile 绑定 Workflow 自动启动、审批/追问、提交去重与队列、共享终端、配置 CAS、模型切换、媒体 Blob、归档与 GC。[桌面 API](api/desktop.md) |
-| 桌面 GUI | `clients/gui` 提供 React/Electron、原生文件/差异/终端/浏览器面板、模型与资源设置、手机配对和定时任务界面；普通会话支持暂停后在原会话手动继续，最后一条用户消息可编辑后作为新消息发送并保留原记录。启用 Browser 的聊天可在用户授权后让 Core 读取该聊天当前原生网页的可访问性文本。人工批注支持冻结原生截图、元素/区域选择、多条 Composer 附件与含裁图和说明的消息，不要求启用模型 Browser 工具包。公共服务连接使 GUI 退出不终止 Core 任务；启动恢复支持二次确认后取消活动轮次并重启后台。支持独立公开依赖构建与 macOS arm64 本地包。[GUI](../clients/gui/README.md) |
+| 桌面 GUI | `clients/gui` 提供 React/Electron、原生文件/差异/终端/浏览器面板、模型与资源设置、手机配对和定时任务界面；聊天模型选项同时展示模型名与供应商 ID，当前模型入口和思考强度页保留来源，区分不同供应商的同名模型。普通会话支持暂停后在原会话手动继续，最后一条用户消息可编辑后作为新消息发送并保留原记录。启用 Browser 的聊天可在用户授权后让 Core 读取该聊天当前原生网页的可访问性文本。人工批注支持冻结原生截图、元素/区域选择、多条 Composer 附件与含裁图和说明的消息，不要求启用模型 Browser 工具包。公共服务连接使 GUI 退出不终止 Core 任务；启动恢复支持二次确认后取消活动轮次并重启后台。支持独立公开依赖构建与 macOS arm64 本地包。[GUI](../clients/gui/README.md) |
 | iOS Remote | `clients/mobile` 使用 Capacitor 与共享 Remote 协议，提供钥匙串身份、扫码/粘贴配对、前后台重连、授权项目、会话历史、实时消息，以及普通会话创建、模型/权限选择、发送、排队和停止。未知命令通过原 ID 核对。Task 详情只读，审批问答和 App 推送尚未接入。原生下限为 iOS 17.4，开发门禁在 iOS 17.5 模拟器运行；真机验收尚未完成。[iOS 开发指南](development/ios-development.md) |
+| Android Remote | 复用当前 iOS 移动 UI、配对、重连、浏览与命令恢复，原生存储使用 Android Keystore。最低安装 API 26，WebView、真机与 Release 分别验收。[Android 开发指南](development/android-development.md) |
 | 生成式交互回答 | 主会话和 Side 显示 Core 发布的不可变 HTML 制品，复用 MCP Apps 沙箱。状态在同一 Desktop 配置中有界保存，后续输入只附加模型可见参数，私有状态不进入模型请求。页面后续问题经宿主确认发送。[桌面 API](api/desktop.md#生成式交互回答) |
 | 桌面 Worktree | 普通新会话使用当前目录、分支与 Core，多个会话可共享目录；只有本次创建明确选择 Worktree 才创建独立 checkout 与 Core/Runtime，线程仍归原逻辑项目。创建和绑定可恢复，保留已有目录、未提交改动和旧请求身份。任务按实际宿主路由，定时任务家庭继续预约自动分配的项目外目录并核对执行锚点；共享目录与无预约的旧安排不能启用。直接 Core/CLI、原生自主任务及 full-access 外部写入的边界见[指南](guides/worktrees.md)。 |
 | 会话选区与轮次导航 | 主会话划词可添加到主 Composer 或当前辅助对话，保留正文与附件。引用可逐条移除、按来源去重，最多 8 条、单条 8,000 字符、合计 16,000 字符。辅助对话使用独立临时标签和完整 Composer，继承稳定来源历史，支持工具、附件与权限交互。`/side`、`/btw` 可创建空对话或发送文字首问。主、辅会话共用独立滚动的轮次导航；Esc 按焦点所属面板停止。旧版只读 Side 保留原权限。[GUI](../clients/gui/README.md) |
 | 客户端 | 统一 `areal` 命令（默认 TUI、exec、version、upgrade、app-server、config、workgroup、service、web）与本地 Web；TUI 支持 Unicode 光标编辑与常用输入快捷键、持久错误提示、默认分组折叠、鼠标/键盘展开及过程/最终正文分级；CLI 实现选定 Claude Code 非交互参数与消息。[CLI 契约](api/claude-cli.md) |
 | Skills | 自动发现与显式 Profile 共用元信息登记、正文/附件按需读取；单个无效全局 Skill 告警隔离，不创建内容快照。[Skill 指南](guides/skills.md) |
 | Task Mode 与独立频道 | foreground/scheduled/background、持久 TaskRun、独立 Inbox 回复、headless 无人工等待；统一委派的 TaskRun worker 跨协调 Turn 存活并共享预算。Web 提供任务控制、定时创建和独立收件箱。[接口](api/tasks.md) 计划支持显式“立即运行”，创建独立 manual Run，保留暂停和下次计划时间，使用原总预算；响应丢失时只读核对原收据。 |
-| 插件组件支持 | 插件包报告按候选和已安装摘要分别列出组件解析支持、必需静态兼容及使用前提；MCP 连接、认证和 Hook 信任仍独立显示。[插件](guides/plugins.md) |
+| 插件组件支持 | 无项目或 Core 未连接时可读取安装快照与静态诊断；组件报告区分候选和安装摘要。支持受限 Markdown Commands、Agent Profile、用户配置与本地开发链接。MCP 连接、认证和 Hook 信任独立。[插件](guides/plugins.md) |
 | 浏览器自动化 | 复用 ZCode 已实现命令，包括定位器、iframe、CUA、截图、alert/confirm、下载和 WebM。全部项目共享持久登录态，设置提供显式 Chrome 导入及数据清理；页面控制和审批仍绑定聊天，UNKNOWN 不重放。[Browser](api/browser.md) |
 | 电脑控制 | 默认关闭的本机 macOS 原生 Helper，通过设置由用户授予辅助功能、屏幕录制及输入监控；支持应用/窗口观察、AX 与键鼠输入、停止和接管。Core 保留单次计划审批与历史。可显式选择外部 LCU，由原运行时处理 JS 与应用授权，仅用于新建普通聊天；内置浏览器保持可用。[电脑控制](api/computer.md) |
 | Goal 持久目标 | 通过 `/goal` 等入口显式创建，无需配置开关；跨 Turn 自动推进、暂停/恢复/编辑/清除，用户输入优先；主/子 Agent、Workgroup、摘要共享预算。[客户端指南](guides/clients.md#goals) · [接口](api/core.md#goals) |
 | 共享本地服务 | 多 TUI 窗口与 Web 复用 Core/Runtime；本地 Web 启动通过一次性登录码自动认证；公共 JSON 发现/控制供 Desktop Main 使用，按工作区隔离、模型配置热更新、热更新未应用时的空闲安全重启（支持继承新凭据）、显式停止与故障清理。[契约](api/local-service.md) |
 | SDK | 仓库内私有 `@areal/runtime` 和 `@areal/plugins`，Node.js 22.19.0+。[SDK 契约](api/typescript-sdk.md) |
 | 观测与验证           | 标准 OpenTelemetry Traces 与 Events/Logs，通过标准 OTEL 配置导出模型和工具轨迹（OTLP HTTP/protobuf）；确定性模型回归、原生 smoke、Docker lite/pro 评测。[配置](guides/configuration.md) · [测试](development/testing.md)                                                                        |
+| 执行轨迹排查 | 每轮耗时、模型尝试与重试、工具及等待记录，沿委派关系读取共享、嵌套与隔离子代理；完整已保存历史搜索、异常和耗时筛选、定位、原文按需读取及 JSON 复制。[使用指南](guides/execution-trace.md) |
 | 持久轨迹导出 | 可选 `[trajectory]` 配置、跨本地 run 的有界磁盘队列、独立 OTLP Logs 上传进程、退避与手动重试；CLI 状态、会话内一次异常提示和 GUI 数据飞轮启停开关与实时状态；区分模型调用、Agent 执行与上传时间。上传不改变 Turn 结果；平台分析登记由接收端完成。[配置](guides/configuration.md#持久轨迹导出) |
 
 Remote 的 Direct 与 Relay 已接入共同 Host 授权和 PWA 协议，Direct 提供 Serve/组织 HTTPS 配置及可选 Funnel 范围切换。源码能力不等于路线或平台已认证；本机严格 TLS 夹具不代表 Native/Core、浏览器 TLS、真实手机或公网部署验收。配置、迁移与路线矩阵见 [Remote 指南](guides/remote-control.md)，独立验证要求见[测试与发布门槛](development/remote-control-testing.md)。

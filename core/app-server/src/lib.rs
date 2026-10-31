@@ -650,6 +650,8 @@ async fn connection(
                 method,
                 "areal/execution/cancel"
                     | "areal/execution/read"
+                    | "areal/execution/trace"
+                    | "areal/execution/traceResult"
                     | "areal/execution/list"
                     | "areal/workgroup/cancel"
                     | "areal/workgroup/read"

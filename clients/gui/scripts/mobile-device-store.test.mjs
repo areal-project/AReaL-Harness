@@ -85,6 +85,7 @@ test("foreground restoration cannot invalidate a newer pairing identity", async 
   const creating = Promise.withResolvers();
   let loads = 0;
   const client = new MobileClient({
+    clientKind: "ios",
     keychain: { load: () => (++loads === 1 ? loading.promise : Promise.resolve({ value: null })) },
   });
   client.identities.createIdentity = () => creating.promise;
@@ -110,6 +111,7 @@ test("a failed Keychain clear keeps the device disconnected and rejects without 
   let closed = false;
   let rejected = false;
   const client = new MobileClient({
+    clientKind: "ios",
     keychain: {
       clear: async () => {
         throw failure;

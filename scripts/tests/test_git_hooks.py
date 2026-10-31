@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -41,7 +42,9 @@ class GitHooks(unittest.TestCase):
             ".githooks/pre-push",
         ):
             self.put(name, (ROOT / name).read_text()).chmod((ROOT / name).stat().st_mode)
-        self.put(".gitignore", "node_modules/\n.local/\ntarget/\npreflight-ran\nnested.git/\n")
+        self.put(
+            ".gitignore", "node_modules/\n.local/\n.venv/\ntarget/\npreflight-ran\nnested.git/\n"
+        )
         self.put("package.json", "{}\n")
         self.put(
             "clients/gui/package.json",
@@ -286,6 +289,27 @@ class GitHooks(unittest.TestCase):
         )
         self.assertEqual(
             self.git("-C", "nested.git", "config", "user.name").stdout.strip(), "Nested"
+        )
+
+    def test_git_hooks_prefer_repository_tools_over_caller_path(self):
+        self.assertEqual(self.install().returncode, 0)
+        python = self.root / ".venv/bin/python3"
+        python.parent.mkdir(parents=True)
+        python.symlink_to(sys.executable)
+        node = self.root / ".local/tools/node/bin/node"
+        node.parent.mkdir(parents=True)
+        node.symlink_to(shutil.which("node"))
+        for name in ("python3", "node"):
+            self.put(f".local/caller-bin/{name}", "#!/bin/sh\nexit 97\n").chmod(0o755)
+        self.env["PATH"] = f"{self.root / '.local/caller-bin'}{os.pathsep}{self.env['PATH']}"
+        self.put("format-input.txt", "formatted\n\n")
+        self.git("add", "format-input.txt")
+        self.git("commit", "-qm", "repository tools")
+        self.git("push", "-q", "upstream", "HEAD:refs/heads/topic")
+        self.assertEqual((self.root / "preflight-ran").read_text(), self.initial)
+        self.assertEqual(
+            self.git("ls-remote", "upstream", "refs/heads/topic").stdout.split()[0],
+            self.git("rev-parse", "HEAD").stdout.strip(),
         )
 
     def test_git_commit_invokes_hook_and_retains_failed_index(self):

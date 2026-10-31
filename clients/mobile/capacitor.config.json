@@ -4,7 +4,8 @@
   "webDir": "../gui/dist/mobile",
   "server": {
     "iosScheme": "capacitor",
-    "hostname": "localhost"
+    "hostname": "localhost",
+    "androidScheme": "https"
   },
   "ios": {
     "minVersion": "17.4",

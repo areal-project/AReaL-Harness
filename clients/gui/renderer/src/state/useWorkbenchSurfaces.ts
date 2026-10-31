@@ -77,8 +77,8 @@ export function useWorkbenchSurfaces(
     });
     return () => cancelAnimationFrame(frame);
   };
-  const returnToPluginTask = () => {
-    const origin = pluginTaskOrigin;
+  const returnToPluginTask = (target?: PluginTaskOrigin) => {
+    const origin = target ?? pluginTaskOrigin;
     if (!origin) return;
     void requestNavigation(() => {
       pluginTaskFocus.current = origin;

@@ -408,7 +408,10 @@ test("same-project writes serialize while another project's subscription becomes
 
 test("checking catalog retains the remembered subscription model and reuses its projection", () => {
   const f = fixture();
-  f.providers.config.value = { data: [], revision: "fixture" };
+  f.providers.config.value = {
+    data: [{ id: "fixture", name: "Configured provider", models: [] }],
+    revision: "fixture",
+  };
   f.providers.subscription = {
     ...f.providers.subscription,
     authenticated: true,
@@ -422,6 +425,11 @@ test("checking catalog retains the remembered subscription model and reuses its 
   };
   const source = [{ providerId: "fixture", modelId: "local", providerRevision: 1 }];
   const result = f.providers.catalog(source, f.first);
+  assert.equal(
+    result.find((model) => model.modelId === "local").providerName,
+    "Configured provider",
+  );
+  assert.equal(result.find((model) => model.modelId === "remembered").providerName, "ChatGPT");
   assert.equal(result.find((model) => model.modelId === "remembered").availability, "checking");
   assert.equal(result.find((model) => model.modelId === "remembered").available, undefined);
   assert.equal(result.find((model) => model.modelId === "remembered").capabilities, undefined);

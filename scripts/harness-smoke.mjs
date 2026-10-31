@@ -1,3 +1,4 @@
+import { assertCurrentStateVersion } from "./persisted-state-fixture.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import WebSocket from "ws";
 // Real binaries and native sandbox, with a deterministic model HTTP fixture.
@@ -628,6 +629,45 @@ try {
     "completed",
     nested,
   );
+  await writeFile(join(workspace, "AGENTS.override.md"), "Root override rule.");
+  await writeFile(join(workspace, "packages/app/AGENTS.override.md"), "Nested override rule.");
+  await instructions(
+    join(workspace, "packages/app"),
+    ["Root override rule", "Package rule", "Nested override rule"],
+    [projectRule, "Updated app rule"],
+    "completed",
+    nested,
+  );
+  // 同层普通文件被替换，不应因其无效内容阻止 override 生效。
+  await writeFile(join(workspace, "AGENTS.md"), Buffer.from([0xff]));
+  await instructions(workspace, ["Root override rule"], [projectRule]);
+  await writeFile(join(workspace, "AGENTS.md"), projectRule);
+  for (const empty of ["", " \n\t"]) {
+    await writeFile(join(workspace, "AGENTS.override.md"), empty);
+    await instructions(workspace, [projectRule], ["Root override rule"]);
+  }
+  await writeFile(join(workspace, "AGENTS.override.md"), "x".repeat(32768));
+  await instructions(workspace, ["x".repeat(32768)], [projectRule]);
+  await instructions(join(workspace, "packages/app"), [], [], "failed");
+  await writeFile(join(workspace, "AGENTS.override.md"), "x".repeat(32769));
+  await instructions(workspace, [], [], "failed");
+  await writeFile(join(workspace, "AGENTS.override.md"), Buffer.from([0xff]));
+  await instructions(workspace, [], [], "failed");
+  await rm(join(workspace, "AGENTS.override.md"));
+  await symlink("check.sh", join(workspace, "AGENTS.override.md"));
+  await instructions(workspace, [], [], "failed");
+  await rm(join(workspace, "AGENTS.override.md"));
+  await mkdir(join(workspace, "AGENTS.override.md"));
+  await instructions(workspace, [], [], "failed");
+  await rm(join(workspace, "AGENTS.override.md"), { recursive: true });
+  await rm(join(workspace, "packages/app/AGENTS.override.md"));
+  await instructions(
+    join(workspace, "packages/app"),
+    [projectRule, "Package rule", "Updated app rule"],
+    ["Root override rule", "Nested override rule"],
+    "completed",
+    nested,
+  );
   await instructions(
     workspace,
     [projectRule],
@@ -663,7 +703,7 @@ try {
   await instructions(join(workspace, "packages/app"), [], [], "failed");
   await rm(join(workspace, "packages/app/AGENTS.md"), { recursive: true });
   console.log(
-    "PASS scoped AGENTS.md precedence, refresh, absence, byte limits, UTF-8 and symlink rejection",
+    "PASS scoped AGENTS.md/AGENTS.override.md precedence, refresh, absence, byte limits, UTF-8 and symlink rejection",
   );
   const first = await server.call("thread/start", {});
   const id = first.thread.id;
@@ -690,7 +730,7 @@ try {
     3,
   );
   const stored = JSON.parse(await readFile(join(data, `${id}.json`), "utf8"));
-  assert.equal(stored.version, 15);
+  await assertCurrentStateVersion(stored, () => server.call("areal/server/status", {}));
   console.log("PASS model → read → patch → command → durable result");
   const created = (await server.call("thread/start", {})).thread.id;
   await server.call("turn/start", {

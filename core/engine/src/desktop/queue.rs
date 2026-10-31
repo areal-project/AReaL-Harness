@@ -45,11 +45,15 @@ impl Engine {
             if state.thread.is_side() && !matches!(&request.intent, TurnSubmitIntent::Message { .. }) {
                 return Err(invalid("SIDE_POLICY_VIOLATION"));
             }
+            let command = match &request.intent {
+                TurnSubmitIntent::Message { command, .. } | TurnSubmitIntent::Edit { command, .. } => command.clone(),
+                TurnSubmitIntent::Continue { .. } => None,
+            };
             let pending = data.queue.items.iter().any(|item| item.status == "pending");
             let mut edit_source = None;
             let (input, continued_from) = match request.intent {
-                TurnSubmitIntent::Message { input } => (input, None),
-                TurnSubmitIntent::Edit { expected_turn_id, item_id, input } => {
+                TurnSubmitIntent::Message { input, command } => (engine.expand_plugin_command(input, command.as_ref()).await?, None),
+                TurnSubmitIntent::Edit { expected_turn_id, item_id, input, command } => {
                     if state.active.is_some()
                         || data.queue.items.iter().any(|item| matches!(item.status.as_str(), "pending" | "running"))
                         || state.thread.turns.last().is_none_or(|turn| turn.id != expected_turn_id)
@@ -71,7 +75,7 @@ impl Engine {
                     source.context_checkpoint = None;
                     if source.turns.is_empty() { source.preview.clear(); }
                     edit_source = Some(source);
-                    (input, None)
+                    (engine.expand_plugin_command(input, command.as_ref()).await?, None)
                 }
                 TurnSubmitIntent::Continue { expected_turn_id } => {
                     if state.active.is_some() { return Err(Error::Conflict); }
@@ -94,11 +98,12 @@ impl Engine {
                 let queue_item = if continued_from.is_none() {
                     if data.queue.items.len() >= 128 { return Err(Error::Exhausted("queue history capacity reached".into())); }
                     let mut configuration = engine.next_request_configuration(data.configuration.clone());
+            engine.check_configuration_plugin_profile(&configuration)?;
                     engine.select_plugin_attachments(&mut configuration, &input, true)?;
                     let configuration = engine.freeze_configuration(configuration);
                     engine.validate_thread_input(&state.thread, &input, &engine.configured_model(&configuration)?.capabilities())?;
                     accepted_configuration = Some(configuration.clone());
-                    let item = QueueItem { id: id(), input, configuration, submitted_by: identity.clone(), status: "pending".into(), turn_id: None };
+                    let item = QueueItem {queued_at_ms:Some(crate::execution_trace::now_ms()), id: id(), input, configuration, submitted_by: identity.clone(), status: "pending".into(), turn_id: None };
                     let item_id = item.id.clone();
                     data.queue.items.push(item);
                     Some(item_id)
@@ -130,6 +135,7 @@ impl Engine {
                 engine.remember_accepted_model(&mut candidate, &configuration)?;
                 result["lastAcceptedModel"] = json!(candidate.desktop.as_ref().unwrap().last_accepted_model);
             }
+            if let Some(command) = command { result["command"] = json!(command); }
             remember(candidate.desktop.as_mut().unwrap(), &identity, &request.request_id, method, hash, result.clone());
             engine.persist(&candidate).await?;
             state.thread = candidate;
@@ -215,6 +221,7 @@ impl Engine {
                 data.configuration.selected_skills = Some(vec![skill.clone()]);
             }
             let mut configuration = engine.next_request_configuration(data.configuration.clone());
+            engine.check_configuration_plugin_profile(&configuration)?;
             if skill.is_none() {
                 engine.select_plugin_attachments(&mut configuration, &request.input, !state.thread.is_read_only_side() && state.thread.parent_thread_id.is_none() && state.thread.source != "nativeTaskAgent")?;
             }
@@ -224,7 +231,7 @@ impl Engine {
             let accepted_configuration = configuration.clone();
             if enqueue {
                 if data.queue.items.len()>=128 { return Err(Error::Exhausted("queue history capacity reached".into())); }
-                let item = QueueItem {id:id(),input:request.input,configuration,submitted_by:identity.clone(),status:"pending".into(),turn_id:None};
+                let item = QueueItem {queued_at_ms:Some(crate::execution_trace::now_ms()),id:id(),input:request.input,configuration,submitted_by:identity.clone(),status:"pending".into(),turn_id:None};
                 data.queue.revision+=1;
                 let mut result = json!({"queueItemId":item.id,"queueRevision":data.queue.revision,"configRevision":item.configuration.revision});
                 data.queue.items.push(item);
@@ -501,6 +508,8 @@ impl Engine {
             } else { self.prepare_turn(&source, input)? };
             if automatic { if let Some(goal) = &mut turn.goal { goal.origin = "continuation".into(); } *candidate.turns.last_mut().unwrap() = turn.clone(); }
             if let Some(index) = index {
+                turn.trace.queued_at_ms = data.queue.items[index].queued_at_ms;
+                turn.trace.queue_duration_ms = turn.trace.queued_at_ms.map(|start| crate::execution_trace::now_ms().saturating_sub(start).max(0) as u64);
                 turn.configuration.get_or_insert_with(Default::default).options.interaction_mode = data.queue.items[index].configuration.options.interaction_mode;
                 *candidate.turns.last_mut().unwrap() = turn.clone();
                 let next = candidate.desktop.as_mut().unwrap(); next.configuration = data.configuration.clone(); next.queue.items[index].status = "running".into(); next.queue.items[index].turn_id = Some(turn.id.clone()); next.queue.revision += 1;

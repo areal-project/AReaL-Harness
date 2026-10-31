@@ -50,6 +50,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -59,15 +60,23 @@ import { Button } from "./components/ui/button.js";
 import { Popover, PopoverContent } from "./components/ui/popover.js";
 import { MessageResponse } from "./components/ai-elements/message.js";
 import { SentAttachment } from "./MessageAttachment.js";
+import {
+  WorkspaceFileCard,
+  WorkspaceImage,
+  isWorkspaceImagePath,
+  opensOutside,
+  workspaceFileCardType,
+} from "./WorkspaceMedia.js";
 import { sentReviewFeedback } from "./reviewComments.js";
 import { SentBrowserAnnotations } from "./BrowserAnnotationAttachments.js";
 import { sentImageAnnotations } from "./imageAnnotations.js";
 import { ImageAnnotationList } from "./ImageAnnotationViews.js";
 import { sentBrowserAnnotations } from "./browserAnnotations.js";
 import { SentReviewComments } from "./ReviewCommentViews.js";
-import { ScheduledTaskCards } from "./ScheduledTasks.js";
-import { TurnChangesPill, TurnFileSummary } from "./TurnFileSummary.js";
-import type { Data, Action } from "./services.js";
+import { latestScheduleItems, ScheduledTaskCards } from "./ScheduledTasks.js";
+import { TurnFileSummary } from "./TurnFileSummary.js";
+import type { Data, Action, PlatformServices } from "./services.js";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 type TranscriptSelectionSnapshot = {
   owner: string;
   text: string;
@@ -140,6 +149,7 @@ export function Messages({
   dark,
   onLink,
   onFile,
+  fileOpen,
   onReview,
   readTurnReview,
   beforeTurns,
@@ -185,6 +195,8 @@ export function Messages({
   dark: boolean;
   onLink: (url: string) => void;
   onFile: (path: string) => void;
+  /** Desktop file host for workspace images and file cards; absent for cloud and previews. */
+  fileOpen?: PlatformServices["fileOpen"];
   onReview: (turnId: string) => void;
   readTurnReview: (turnId: string, itemId?: string) => Promise<Data>;
 }) {
@@ -246,6 +258,7 @@ export function Messages({
   const readingViewport = useRef<{ width: number; height: number } | undefined>(undefined);
   const owner = JSON.stringify([project.id, thread.id, embedded]);
   const latestTurnId = thread.turns?.at(-1)?.id;
+  const latestSchedules = useMemo(() => latestScheduleItems(thread.turns ?? []), [thread.turns]);
   const [forking, setForking] = useState(false);
   const [forkError, setForkError] = useState<{ turnId: string; message: string } | null>(null);
   const selectionOwner = JSON.stringify([
@@ -630,8 +643,28 @@ export function Messages({
           threadId={thread.id}
           action={action}
         />
+      ) : fileOpen && isWorkspaceImagePath(uri) ? (
+        <WorkspaceImage path={uri} alt={name} projectId={project.id} fileOpen={fileOpen} />
+      ) : fileOpen && workspaceFileCardType(uri) ? (
+        <WorkspaceFileCard path={uri} label={name} projectId={project.id} fileOpen={fileOpen} />
       ) : null,
-    [project.id, thread.id, action],
+    [project.id, thread.id, action, fileOpen],
+  );
+  const renderFileCard = useCallback(
+    (path: string, label: string) =>
+      fileOpen && workspaceFileCardType(path) ? (
+        <WorkspaceFileCard path={path} label={label} projectId={project.id} fileOpen={fileOpen} />
+      ) : null,
+    [project.id, fileOpen],
+  );
+  // Binary files cannot be shown in the file pane; hand them to the desktop instead.
+  const openReplyFile = useCallback(
+    (path: string) => {
+      if (fileOpen && opensOutside(path))
+        void fileOpen({ operation: "open", projectId: project.id, path }).catch(() => onFile(path));
+      else onFile(path);
+    },
+    [fileOpen, onFile, project.id],
   );
   const sendGenUi = async (prompt: string) => {
     if (readOnly || !project.state?.connected || localThread.desktop?.archived)
@@ -690,8 +723,10 @@ export function Messages({
               }
               theme={dark ? "dark" : "light"}
               onOpenExternalUrl={onLink}
-              onOpenFileLink={onFile}
+              onOpenFileLink={openReplyFile}
               onRenderImage={renderImage}
+              onRenderFileCard={renderFileCard}
+              fileLinks
               webPreviews
             >
               {text}
@@ -1156,10 +1191,12 @@ export function Messages({
               (item: Data) => item.type === "dynamicToolCall" && item.tool === "run_command",
             );
             const resourceLabel =
-              command && queue?.pauseReason === "stopped" ? commandResourceLabel(command) : null;
+              command && queue?.pauseReason === "stopped" && turn.interruption !== "userPause"
+                ? commandResourceLabel(command)
+                : null;
             const hasInterruption =
               turn.status === "interrupted" || (turn.status === "failed" && !!turn.interruption);
-            const stopHeading = (
+            const stopHeading = turn.interruption !== "userPause" && (
               <div className="turn-stop-heading turn-progress-heading">
                 <div className="turn-progress-label">
                   <span className="turn-status turn-progress-summary" role="status">
@@ -1433,14 +1470,14 @@ export function Messages({
                             );
                           if (entry.type === "modelContext") return null;
                           return (
-                            <details
+                            <SettingsDisclosure
                               className="tool-call"
                               data-side-item-id={entry.id}
                               key={entry.id}
+                              title={entry.type}
                             >
-                              <summary>{entry.type}</summary>
                               <pre>{JSON.stringify(entry, null, 2)}</pre>
-                            </details>
+                            </SettingsDisclosure>
                           );
                         }}
                       />
@@ -1491,7 +1528,12 @@ export function Messages({
                         action={action}
                       />
                     ))}
-                <ScheduledTaskCards items={turn.items ?? []} project={project} action={action} />
+                <ScheduledTaskCards
+                  items={turn.items ?? []}
+                  project={project}
+                  action={action}
+                  latest={latestSchedules}
+                />
                 <TurnFileSummary
                   turn={turn}
                   readTurnReview={readTurnReview}
@@ -1645,9 +1687,8 @@ export function Messages({
             aria-hidden="true"
             className="pointer-events-none absolute inset-x-0 bottom-0 z-1 h-(--conversation-fade) bg-linear-to-b from-transparent to-background"
           />
-          {/* 运行中的改动小条与“滚动到底部”并排居中；空时不占位也不拦截指针。 */}
+          {/* 回看历史时显示“滚动到底部”入口。 */}
           <div className="timeline-float pointer-events-none absolute bottom-3 left-1/2 z-3 flex -translate-x-1/2 items-center gap-(--spacing-inline) *:pointer-events-auto">
-            <TurnChangesPill turn={thread.turns?.at(-1)} onReview={onReview} />
             {readingHistory && <TimelineBottomButton onClick={returnToBottom} />}
           </div>
         </>

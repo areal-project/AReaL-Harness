@@ -49,9 +49,6 @@
   font-size: var(--text-ui-xs);
   color: var(--color-foreground-subtle);
 }
-.side-chat-context summary {
-  cursor: pointer;
-}
 .side-chat-context > p,
 .side-chat-context > label {
   display: block;

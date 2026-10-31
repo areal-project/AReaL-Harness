@@ -24,7 +24,13 @@ export type FileOpenTargets = {
 export type FileOpenRequest =
   | { operation: "targets" }
   | { operation: "setDefault"; target: string }
-  | { operation: "open" | "reveal" | "saveAs"; projectId: string; threadId?: string; path: string };
+  | {
+      operation: "open" | "reveal" | "saveAs" | "readImage";
+      projectId: string;
+      threadId?: string;
+      path: string;
+    };
+export type WorkspaceImage = { mimeType: string; bytes: Uint8Array };
 export type HostPrerequisite = {
   kind: "macos-command-line-tools";
   reason: "developer-tools-unavailable" | "python-unavailable";
@@ -110,7 +116,7 @@ export interface PlatformServices {
   chooseProjectlessDirectory?(): Promise<{ directory: string } | null>;
   fileOpen?(
     request: FileOpenRequest,
-  ): Promise<FileOpenTargets | { saved: boolean } | Record<string, never>>;
+  ): Promise<FileOpenTargets | { saved: boolean } | WorkspaceImage | Record<string, never>>;
   command<N extends CommandName>(
     name: N,
     params: CommandParams<N>,

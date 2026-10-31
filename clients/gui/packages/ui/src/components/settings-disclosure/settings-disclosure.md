@@ -1,7 +1,7 @@
 ---
 id: settings-disclosure
 title: SettingsDisclosure
-summary: 明确展开和收起的详情。
+summary: 高级与详情分组的原地展开，默认收起，右侧文字按钮。
 status: experimental
 entry: compositions
 layer: core
@@ -15,7 +15,7 @@ exports: ["SettingsDisclosure"]
 
 ## 何时使用
 
-`R-SETTINGSDISCLOSURE-001` 明确展开和收起的详情。沿现有生产用途，不新增业务入口。
+`R-SETTINGSDISCLOSURE-001` 高级功能、诊断与原始数据的原地展开（依据 P6），默认收起；标题在左，“展开/收起”文字按钮在右，不显示三角。设置页以外的面板与对话框同样使用它，长正文改用 CollapsibleText。
 
 ## 组成
 

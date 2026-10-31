@@ -190,3 +190,60 @@ async fn accepted_apply_survives_caller_cancellation() {
     );
     fixture.control.engine.shutdown().await;
 }
+
+#[tokio::test]
+async fn context_defaults_and_user_overrides_survive_configuration_hot_apply() {
+    let fixture = Fixture::open().await;
+    for (index, report, user, expected, source) in [
+        (0, Some(500000), None, 500000, "provider"),
+        (1, Some(500000), Some(900000), 900000, "user"),
+        (2, Some(600000), None, 600000, "provider"),
+        (3, None, None, 131072, "fallback"),
+    ] {
+        let previous = areal_config::models::read(&fixture.inputs, &[]).unwrap();
+        let mut model = json!({"id":"opaque","enabled":true,"parameters":{}});
+        if let Some(window) = report {
+            model["reportedContextWindowTokens"] = json!(window);
+        }
+        if let Some(window) = user {
+            model["parameters"]["contextWindowTokens"] = json!(window);
+        }
+        let update = serde_json::from_value(json!({
+            "expectedRevision":previous.revision,
+            "data":[{"id":"fixture","name":"Fixture","endpoint":"http://127.0.0.1:1/v1/chat/completions",
+                "protocol":"chat-completions","enabled":true,"models":[model],"parameters":{}}],
+            "defaultModel":{"providerId":"fixture","modelId":"opaque"}
+        })).unwrap();
+        let saved = areal_config::models::write(&fixture.inputs, update, &[]).unwrap();
+        let mut intent = fixture.intent(&format!("context-{index}"), saved.revision);
+        intent.credentials.clear();
+        fixture.control.clone().apply(intent).await.unwrap();
+        let catalog = fixture.control.engine.model_catalog().await;
+        let model = catalog["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|model| model["providerId"] == "fixture")
+            .unwrap();
+        assert_eq!(model["effectiveContextWindowTokens"], expected);
+        assert_eq!(model["windowSource"], source);
+        assert_eq!(model["userBudgetTokens"], json!(user));
+        assert_eq!(model["reportedWindowTokens"], json!(report));
+        let thread = fixture
+            .control
+            .engine
+            .create(fixture.inputs.cwd.to_string_lossy().into())
+            .await
+            .unwrap();
+        let context = fixture
+            .control
+            .engine
+            .context_read(&thread.id, 0, 16)
+            .await
+            .unwrap();
+        assert_eq!(context["budget"]["windowTokens"], expected);
+        assert_eq!(context["budget"]["windowSource"], source);
+        assert_eq!(context["budget"]["inputLimitTokens"], expected - 16384);
+    }
+    fixture.control.engine.shutdown().await;
+}

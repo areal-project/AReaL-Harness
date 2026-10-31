@@ -1,3 +1,4 @@
+import { observeResize } from "@areal/ui/observe-resize";
 import { composerDraftStorage } from "./composerDraftStorage.js";
 import { useI18n, formatUiMessage, UiMessageError, type UiMessage } from "./i18n/IntlProvider.js";
 import { Button } from "./components/ui/button.js";
@@ -31,6 +32,7 @@ import {
 } from "./settings/McpAppsSettings.js";
 import type { Action, Data, PlatformServices } from "./services.js";
 import type { ManagementResponseMap } from "@areal/workbench/desktop-contract/management";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 export type McpWorkspaceServer = McpAppServer;
 type AppThreadIntent = "reuse-or-create" | "require-current" | "new";
 type FormRequest = ManagementResponseMap["mcpForms"]["data"][number];
@@ -825,13 +827,13 @@ export function useMcpAppsWorkspace({
       );
     };
     measure();
-    const observer = new ResizeObserver(measure);
-    for (let element: HTMLElement | null = slot; element; element = element.parentElement)
-      observer.observe(element);
+    const ancestors = [];
+    for (let at: HTMLElement | null = slot; at; at = at.parentElement) ancestors.push(at);
+    const stopObserving = observeResize(ancestors, measure);
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, true);
     return () => {
-      observer.disconnect();
+      stopObserving();
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
     };
@@ -902,17 +904,13 @@ export function useMcpAppsWorkspace({
           )
           .map((app) => (
             <div key={app.token}>
-              <details>
-                <summary>
-                  {app.toolMetadata?.title ??
-                    app.toolMetadata?.name ??
-                    t("settings.mcpAppsWorkspace.appContext")}{" "}
-                  {t("settings.apps.contextItems", { count: contentFor(app).length })}
-                </summary>
+              <SettingsDisclosure
+                title={`${app.toolMetadata?.title ?? app.toolMetadata?.name ?? t("settings.mcpAppsWorkspace.appContext")} ${t("settings.apps.contextItems", { count: contentFor(app).length })}`}
+              >
                 {contentFor(app).map((block, index) => (
                   <McpContentLabel key={index} block={block} />
                 ))}
-              </details>
+              </SettingsDisclosure>
               <Button
                 unstyled
                 data-slot={undefined}

@@ -118,6 +118,8 @@ target/debug/areal service bind --workspace /absolute/workspace \
 
 模型目录 `reasoningEffortOptions` 只列已声明或已核实的档位；未知时返回空列表。`capabilities.reasoningEffortOptions` 省略表示未知，显式空列表表示无可选强度。Core 在最终参数合并后阻止已知非法值，供应商目录仍可用于修正。配置 `reasoningEffort: "default"` 明确覆盖继承默认，HTTP 请求省略强度；null／省略仍继承。识别出的参数拒绝使用 `MODEL_PARAMETER_UNSUPPORTED`，只公开白名单参数和关联 `requestId`；原始供应商错误保存在私有本机诊断，不自动改参重发。
 
+`parameters.serviceTier` 独立于推理强度，可设为 `"fast"` 或 `"default"`。`"fast"` 请求供应商 Fast 优先服务；`"default"` 显式覆盖继承的 Fast 设置并请求标准服务。null／省略仍继承模型、供应商或上游项目默认。Core 在 Chat Completions、Responses HTTP 与 Responses WebSocket 请求中按原值发送 `service_tier`，仅配置时发送。使用 ChatGPT 授权访问 OpenAI API 的适配器将 `fast` 编码为该通道接受的 `priority`；显式 `default` 与省略语义不变。该转换不应用于 API Key 供应商或 Codex 订阅传输。Responses 终态返回已识别的实际档位时，请求审计在 `usageDetails.serviceTier` 中记录该值；缺失或未知时省略，不从请求推断。请求 Fast 而实际返回 `default` 表示本次按标准档位处理，不能将请求被接受视为已获得加速。不预判模型或供应商支持情况，供应商拒绝按现有失败路径上报；可识别的 `service_tier` 参数拒绝使用 `MODEL_PARAMETER_UNSUPPORTED`，不改参重发。请求 Fast 不保证实际加速。会话配置和快照保留该值，旧快照缺失此字段时仍可读取。旧客户端省略该字段时沿用原行为；包含该字段的新请求和快照需要支持 `serviceTier` 的 Core。
+
 ### 派生会话与数据兼容性
 
 `areal/capabilities.features.conversationDerivationV1` 默认返回 `preview:false`、实际方法集合、Fork 边界、`sharedCurrent`、可用的 Side `workspaceAccess` 和有效限额，无需开发环境开关。客户端按当前连接的公开能力启用创建入口。
@@ -126,7 +128,7 @@ target/debug/areal service bind --workspace /absolute/workspace \
 
 实验插件构建写入的 `hookRuns`、`allowPluginSkills` 和 `pluginSkills` 仅作为不执行的历史字段保留。读取空闲会话不会为兼容处理改写文件；后续正常保存保留这些字段的值，不恢复 Hook、加载插件 Skill 或授予插件权限。其他未知字段继续严格校验。
 
-Store 当前写入版本、`areal/server/status.stateVersion` 与发行 `manifest.json.stateVersion` 均为 15；API 仍为 `areal.core.v1`，服务发现协议仍为 1。版本 15 增加主会话最后受理的模型偏好，继续读取版本 1–14 的旧记录；旧 Core 不保证读取新记录，回退应恢复升级前备份。无派生元数据的旧记录可读取并在下一次写入升级；Fork/Side 记录必须具有受支持的会话版本和版本 14 的权限语义，不能仅降低记录版本来交给旧二进制。服务重启不重放创建或首问，结果不确定时先查 `areal/request/read`。能力声明不替代各平台原生权限验证、安装包或真实供应商的独立验收。
+Store 当前写入版本、`areal/server/status.stateVersion` 与发行 `manifest.json.stateVersion` 均为 16；API 仍为 `areal.core.v1`，服务发现协议仍为 1。版本 16 增加持久执行计时与排队时间戳，保留版本 15 的主会话最后受理模型偏好，继续读取版本 1–15 的旧记录；旧 Core 不保证读取新记录，回退应恢复升级前备份。无派生元数据的旧记录可读取并在下一次写入升级；Fork/Side 记录必须具有受支持的会话版本和版本 14 的权限语义，不能仅降低记录版本来交给旧二进制。服务重启不重放创建或首问，结果不确定时先查 `areal/request/read`。能力声明不替代各平台原生权限验证、安装包或真实供应商的独立验收。
 
 macOS 的 owned TUI 与 Core/Runtime 一样通过可信系统父进程启动，交接真实 PID、退出状态和清理回执。交互启动在 TUI 读取前将控制终端交给其独立进程组，结算后恢复原前台组与终端属性；无终端输入不执行交接，Linux 保留原生直启。该适配只处理可信客户端生命周期，不执行模型命令、不改变 Runtime 权限或沙箱。
 
@@ -174,3 +176,19 @@ LocalArgs 新增 permissions（YOLO/ASK_PERMISSIONS）与 scratch。生效权限
 launcher 握手临时目录放入 `data_dir/launcher-state/`，正常退出自动删除，下次启动按租约回收崩溃残留。宿主取得实例锁并确认 Store 没有旧所有者后，清理旧 UUID generation 目录与登记原子写临时文件；不会删除其他实例、用户 scratch 或权威状态。旧版本在系统临时目录中留下的无归属目录无法安全识别，不做全局扫描。模型/Core 诊断保留策略见 [Core API](core.md#recovery)。
 
 新建会话的受理覆盖、Engine 代际绑定、日志格式迁移及明确未受理的判定遵循[桌面提交契约](desktop.md#submissions)。服务发现 generation 与该 Engine 代际绑定不是同一身份，不得互相替代。
+
+### 插件命令与 Agent 模板
+
+`areal/turn/submit` 的 `message` 和 `edit` intent 接受可选 `command` 对象，字段为 `pluginId`、`componentId`、`installedDigest` 和原样 `arguments`。`input` 可以为空。Core 在普通提交准入中检查当前插件启用和摘要，并展开安装快照内的模板。引用和参数参与原 `requestId` 的幂等身份，响应回执保留 `command`。队列保存已展开的输入，后续源文件更新不重写已受理内容。重复受理查询返回原回执，改变同一请求参数会冲突。未知模板、过时摘要、停用或卸载会拒绝新提交。Edit 使用同一展开边界。
+
+插件 Agent 注册到既有 Profile 目录。`areal/plugin/components` 的组件摘要提供 `agents[].profile` 版本引用与 `agentDiagnostics`。调用方使用现有 AgentSpawn 的 `agentProfile`。模型标识必须唯一匹配已配置模型，工具名称必须匹配宿主已注册工具。导入的 Profile 继承父任务的工具、只读和强制审批限制。新准入会核对来源仍启用且摘要一致。已受理配置保留完整 Profile，用于活动执行及历史恢复。可发现目录回收过时的插件与自动发现 Profile revision，开发更新不会无限累计占用 64 项预算。来源记录回收后，旧插件引用仍拒绝新准入。运行期插件、Skill 与 provider 的目录发布共用既有写事务。
+
+### 插件配置与开发来源
+
+`areal/plugin/userConfig/set` 使用既有管理受理日志，参数为 `requestId`、`id`、`expectedRevision`、`expectedDigest`、`values` 和可选 `clearKeys`。`values` 是键到 `{kind,value}` 的映射，kind 支持 `string`、`boolean`、`number`、`secretRef`。提交仅替换列出的键，未列出的私有值保留。`clearKeys` 显式移除配置，不能同时设置和移除同一键。Main 是秘密输入和 credential reference 的所有者，公开列表与详情只返回 configured 和非敏感值。包内容与安装摘要不受配置修改影响。
+
+Core 仅在已授权 MCP 连接边界解析秘密引用，敏感值只绑定声明的 env 或 header。配置 revision 参与连接代身份，并在换包及卸载重装后保持单调；配置值不跨包摘要继承。新配置移除旧代与其 App handle 的新调用资格，后续换包不能恢复已撤代连接。已进入执行的调用仍由原 owner 结算。缺少配置或凭据时拒绝连接，查询组件与 MCP 列表不解析秘密，也不启动连接。
+
+`areal/plugin/development/link` 参数为 `requestId`、`id`、`expectedRevision`、`expectedDigest`。`areal/plugin/development/unlink` 省略摘要参数。两者均返回 PluginList 并复用原管理回执。链接只使用已选择的本地来源。服务现有 watcher 每秒检查链接，变化通过 Store 发布不可变新快照。错误保留上一成功版本，组件摘要的 `developmentError` 返回诊断。新摘要不继承 MCP 或 Hook 信任。活动 Turn 持有旧快照，后续准入采用最新快照。
+
+可信 server 装配声明普通 Skill 的 workspace 与 home 来源，watcher 同步刷新元信息。自动发现 Profile 在同会话下一次 Turn 使用最新引用，全部删除会发布空集合。显式 Profile 保留原引用。普通 Skill 正文维持当前文件读取语义，插件 Skill 正文由安装快照固定。

@@ -179,29 +179,6 @@
 .decision-card-details > div {
   padding-top: 4px;
 }
-/* CONV-STATUS-01: disclosure labels inside a decision are text buttons, not disclosure triangles. */
-.decision-card details > summary {
-  width: fit-content;
-  list-style: none;
-  cursor: var(--interactive-cursor, pointer);
-  color: var(--color-foreground-subtle);
-  font-size: var(--text-ui-sm);
-  line-height: var(--line-height-ui-sm);
-  padding-block: 2px;
-  border-radius: var(--radius-control);
-}
-.decision-card details > summary::-webkit-details-marker {
-  display: none;
-}
-.decision-card details > summary:hover {
-  color: var(--color-foreground);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-.decision-card details > summary:focus-visible {
-  outline: var(--focus-width) solid var(--color-ring);
-  outline-offset: var(--focus-offset);
-}
 .approval-target {
   margin: 0 0 var(--spacing-inline);
   color: var(--color-foreground-subtle);

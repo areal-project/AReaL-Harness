@@ -388,6 +388,7 @@ impl Store {
                             items: Vec::new(),
                             status: turn.status.clone(),
                             error: turn.error.clone(),
+                            trace: Default::default(),
                             interruption: turn.interruption.clone(),
                             continued_from_turn_id: turn.continued_from_turn_id.clone(),
                             started_at: turn.started_at,

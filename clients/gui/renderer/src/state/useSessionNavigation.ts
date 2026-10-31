@@ -28,6 +28,7 @@ export function useSessionNavigation(
   services: PlatformServices,
   onError: (message: string) => void,
 ) {
+  const resourceBrowsing = useRef(false);
   const [snapshot, updateSnapshot] = useState<Snapshot>({
     projects: [],
     connection: { state: "connecting" },
@@ -142,6 +143,7 @@ export function useSessionNavigation(
   );
   useEffect(() => {
     if (
+      resourceBrowsing.current ||
       !project?.id ||
       threadId ||
       !environmentReady ||
@@ -300,7 +302,13 @@ export function useSessionNavigation(
     setThreadId(remembered ?? "");
   };
   const synchronizeRestoration = () => {
-    if (!selectionReady || !project?.id || snapshot.connection?.state !== "ready") return;
+    if (
+      resourceBrowsing.current ||
+      !selectionReady ||
+      !project?.id ||
+      snapshot.connection?.state !== "ready"
+    )
+      return;
     const previous = restorationAttempt.current;
     const owner = {
       projectId: project.id,
@@ -341,6 +349,7 @@ export function useSessionNavigation(
     if (!pid) localStorage.setItem("areal-gui:project", "");
   };
   return {
+    resourceBrowsing,
     snapshot,
     library,
     projects,

@@ -17,6 +17,7 @@ const browser =
   import.meta.env.DEV && !Capacitor.isNativePlatform()
     ? await import("./platform.browser.js")
     : null;
+export const clientKind = Capacitor.getPlatform() === "android" ? "android" : "ios";
 export const keychain = browser?.keychain ?? nativeKeychain;
 
 export async function scanPairingLink() {
@@ -39,3 +40,11 @@ export async function observeLifecycle(onState: (active: boolean) => void) {
   onState(state.isActive);
   return () => listener.remove();
 }
+
+export async function observeBack(onBack: () => void) {
+  if (Capacitor.getPlatform() !== "android") return () => {};
+  const listener = await App.addListener("backButton", onBack);
+  return () => listener.remove();
+}
+
+export const minimizeApp = () => App.minimizeApp();

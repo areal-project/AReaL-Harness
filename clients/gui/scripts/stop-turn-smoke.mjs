@@ -187,7 +187,11 @@ try {
     async () => (await readFile(commandLog, "utf8")).includes("receiptHeld"),
     "Completed receipt held",
   );
-  await page.getByText("执行已暂停", { exact: true }).waitFor();
+  await page.locator('section[data-turn-status="interrupted"]').waitFor();
+  assert.equal(await page.getByText("执行已暂停", { exact: true }).count(), 0);
+  assert.equal(await page.locator(".turn-stop-heading").count(), 0);
+  assert.equal(await page.locator(".turn-execution [role='status']").count(), 0);
+  assert.equal(await page.getByText(/^命令资源/).count(), 0);
   await page.evaluate(
     () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
   );

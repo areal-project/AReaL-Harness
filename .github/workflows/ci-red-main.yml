@@ -1,0 +1,68 @@
+name: Track red main
+
+# main 上的推送检查失败时开一个指派给仓库所有者的 issue；同一工作流再次失败只追加评论，恢复后自动关闭。
+on:
+  workflow_run:
+    workflows: [Verify, GUI checks]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-red-main-${{ github.event.workflow_run.name }}
+  cancel-in-progress: false
+
+jobs:
+  track:
+    name: Open or close the red main issue
+    if: github.event.workflow_run.event == 'push' && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - name: Reconcile the issue with the latest main result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WORKFLOW_ID: ${{ github.event.workflow_run.workflow_id }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # 完成通知可能乱序，旧提交或旧 attempt 不能修改当前 main 的告警。
+          main_sha="$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq '.object.sha')"
+          if [ "$SHA" != "$main_sha" ]; then
+            echo "Ignoring a result for an older main commit."
+            exit 0
+          fi
+          latest="$(gh api "repos/$GH_REPO/actions/workflows/$WORKFLOW_ID/runs?branch=main&event=push&per_page=1" \
+            --jq '.workflow_runs[0] | [.id, .run_attempt, .status, .conclusion] | @tsv')"
+          expected="$(printf '%s\t%s\tcompleted\t%s' "$RUN_ID" "$RUN_ATTEMPT" "$CONCLUSION")"
+          if [ "$latest" != "$expected" ]; then
+            echo "Ignoring a superseded or unfinished workflow result."
+            exit 0
+          fi
+          export TITLE="main 上的 ${WORKFLOW} 失败"
+          number="$(gh issue list --state open --label ci-red-main --limit 50 --json number,title \
+            --jq '[.[] | select(.title == env.TITLE)][0].number // empty')"
+          if [ "$CONCLUSION" = failure ]; then
+            body="$(printf '%s 在 main 的 %s 上失败：%s\n\n修好之前，基于 main 的 PR 都会继承这项失败。修复后这个 issue 会自动关闭。' "$WORKFLOW" "${SHA:0:12}" "$RUN_URL")"
+            if [ -n "$number" ]; then
+              gh issue comment "$number" --body "$body"
+            else
+              gh label create ci-red-main --color B60205 --description "main 上的检查失败" --force
+              gh issue create --title "$TITLE" --label ci-red-main --assignee "$OWNER" --body "$body"
+            fi
+          elif [ -n "$number" ]; then
+            gh issue close "$number" --comment "$(printf '%s 已在 main 的 %s 上恢复：%s' "$WORKFLOW" "${SHA:0:12}" "$RUN_URL")"
+          fi

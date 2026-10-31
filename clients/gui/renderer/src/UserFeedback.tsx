@@ -1,3 +1,4 @@
+import { observeResize } from "@areal/ui/observe-resize";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { Textarea } from "@areal/ui";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -9,6 +10,7 @@ import { ControlHintTooltip } from "./ControlHintTooltip.js";
 import { useFeedbackAvailability } from "./user-feedback-status.js";
 import type { Action, Data } from "./services.js";
 import "./user-feedback.css";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 
 export function UserFeedback({
   project,
@@ -163,13 +165,14 @@ export function UserFeedback({
     place();
     window.addEventListener("scroll", place, true);
     window.addEventListener("resize", place);
-    const resize = new ResizeObserver(place);
-    if (panel.current) resize.observe(panel.current);
-    if (composer) resize.observe(composer);
+    const stopResize = observeResize(
+      [panel.current, composer].filter((element): element is Element => !!element),
+      place,
+    );
     reasonInput.current?.focus();
     return () => {
       observer.disconnect();
-      resize.disconnect();
+      stopResize();
       window.removeEventListener("scroll", place, true);
       window.removeEventListener("resize", place);
     };
@@ -387,8 +390,7 @@ export function UserFeedback({
                     )}
                   </div>
                   {side?.turns?.length > 0 && (
-                    <details className="feedback-discussion">
-                      <summary>查看润色讨论</summary>
+                    <SettingsDisclosure className="feedback-discussion" title="查看润色讨论">
                       {side.turns.flatMap((value: Data, turnIndex: number) =>
                         (value.items ?? [])
                           .filter(
@@ -413,7 +415,7 @@ export function UserFeedback({
                             </div>
                           )),
                       )}
-                    </details>
+                    </SettingsDisclosure>
                   )}
                   {active && (
                     <div className="feedback-progress" role="status">

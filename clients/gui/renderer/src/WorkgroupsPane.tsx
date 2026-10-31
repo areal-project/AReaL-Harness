@@ -12,7 +12,9 @@ import {
 } from "./components/ui/select.js";
 import type { Action, Data } from "./services.js";
 import { WorkgroupPlanEditor, type WorkgroupPlan } from "./WorkgroupPlanEditor.js";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 
+const result = (check: Data) => (check.passed ? "通过" : "未通过");
 const status: Record<string, string> = {
   running: "执行中",
   completed: "已完成",
@@ -632,8 +634,7 @@ export function WorkgroupsPane({ project, action }: { project: Data; action: Act
             <p className="text-foreground-subtle">
               在隔离工作区执行并验证产物。完成后审查结果，原项目不会自动被覆盖。
             </p>
-            <details>
-              <summary>部署允许的范围</summary>
+            <SettingsDisclosure title="部署允许的范围">
               <p>文件：{policy?.allowedWrites?.join("、") || "无"}</p>
               <p>目录：{policy?.allowedDirectories?.join("、") || "无"}</p>
               <p>
@@ -646,7 +647,7 @@ export function WorkgroupsPane({ project, action }: { project: Data; action: Act
                   </li>
                 ))}
               </ul>
-            </details>
+            </SettingsDisclosure>
             <div className="flex flex-col gap-3 rounded-control border border-border p-3">
               <h3 className="font-medium">从工作流启动</h3>
               <Select
@@ -854,21 +855,17 @@ export function WorkgroupsPane({ project, action }: { project: Data; action: Act
                     )}
                   </article>
                 ))}
-                {record.finalChecks?.map((check: Data, index: number) => (
-                  <details key={index}>
-                    <summary>
-                      检查 {index + 1}：{check.passed ? "通过" : "未通过"}
-                    </summary>
+                {record.finalChecks?.map((check: Data, i: number) => (
+                  <SettingsDisclosure key={i} title={<>检查 {`${i + 1}：${result(check)}`}</>}>
                     <pre className="whitespace-pre-wrap break-words">{check.output}</pre>
-                  </details>
+                  </SettingsDisclosure>
                 ))}
                 {record.finalCheck && (
-                  <details>
-                    <summary>最终检查：{record.finalCheck.passed ? "通过" : "未通过"}</summary>
+                  <SettingsDisclosure title={<>最终检查：{result(record.finalCheck)}</>}>
                     <pre className="whitespace-pre-wrap break-words">
                       {record.finalCheck.output}
                     </pre>
-                  </details>
+                  </SettingsDisclosure>
                 )}
                 {record.status === "running" &&
                   !record.tasks.every((task: Data) => task.status === "integrated") && (
@@ -978,11 +975,10 @@ export function WorkgroupsPane({ project, action }: { project: Data; action: Act
                     <p>
                       {file.path} · {file.bytes}字节{file.exists ? "" : " · 已删除"}
                     </p>
-                    <details>
-                      <summary>文件校验值</summary>
+                    <SettingsDisclosure title="文件校验值">
                       <p className="break-all">原文件：{file.baseSha256 ?? "不存在"}</p>
                       <p className="break-all">产物：{file.sha256 ?? "不存在"}</p>
-                    </details>
+                    </SettingsDisclosure>
                     {file.preview === null ? (
                       <p>二进制内容不支持文本预览。</p>
                     ) : (

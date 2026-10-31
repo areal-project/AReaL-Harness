@@ -2,10 +2,40 @@
 
 # Changelog
 
-## Unreleased
+## GUI 0.1.15
 
-- GUI update-check errors are visible. Native validation timeouts keep the backend running; unknown backend-stop results cannot trigger repeated installation.
-- Back up configuration and history before upgrading. GUI previews require manual installation; older versions may not read newer data formats.
+### Fixes
+
+- Recognize crash reporters belonging to the current application session during update checks, while retaining blockers for other profiles, independent CLI processes, and unknown users of the installation.
+- Complete safe shutdown and package-use checks before preparing Squirrel installation, so a rejected install does not arm replacement on normal exit.
+- If native preparation fails after shutdown, explain that the backend has stopped and the installation result needs checking. Reopen the app to check its version rather than automatically retrying installation.
+
+### Upgrade
+
+The previous installation checks in 0.1.13 and 0.1.14 can block automatic upgrades. Use the DMG once to migrate to this version. Later formal releases use the product update channel.
+
+## GUI 0.1.14
+
+### Fixes
+
+- Resume backend startup after a completed automatic update and confirmed exit of the previous backend, avoiding a loading failure on reopen.
+- Preserve recovery safeguards for unknown and unfinished operations. An explicit backend stop still requires manual reconnection.
+
+## GUI 0.1.13
+
+### Changes
+
+- Use model-specific context defaults for GPT subscriptions and API connections, including Claude, DeepSeek, Qwen, Kimi and GLM. Explicit user settings take precedence; clearing a setting restores its default.
+- Show configured provider names in the model picker and correct Fast request encoding for OpenAI-authorized connections.
+- Inspect execution timing and delegated activity, and use workspace file references and media previews in conversations.
+- Restore saved API credentials and subscription model choices after reconnecting. Keep paused tool records visible while removing redundant pause headings.
+- Show update-check errors and preserve the backend when native update validation times out; an unknown stop result prevents repeated installation.
+
+### Installation and known limitations
+
+This macOS Apple Silicon release is distributed as a Developer ID-signed, Apple-notarized DMG for manual installation. Back up configuration and history before upgrading; older apps may not read data saved by this version. Finish running tasks and safely stop their backend before quitting and replacing the application. After launching the replacement, verify 0.1.13 in About AReaL Harness. The existing automatic-update channel is managed separately.
+
+In very narrow Side panels, model controls can extend beyond the panel. Widen the panel if this occurs.
 
 ## CLI / TUI 0.1.7
 

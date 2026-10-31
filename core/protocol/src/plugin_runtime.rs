@@ -560,3 +560,49 @@ pub struct PageCancelled {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claim_id: Option<String>,
 }
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ComponentRead {
+    pub id: String,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(
+    tag = "kind",
+    content = "value",
+    rename_all = "camelCase",
+    deny_unknown_fields
+)]
+pub enum UserConfigValue {
+    String(String),
+    Boolean(bool),
+    Number(serde_json::Number),
+    SecretRef(String),
+}
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UserConfigSet {
+    pub request_id: String,
+    pub id: String,
+    pub expected_revision: u64,
+    pub expected_digest: String,
+    pub values: std::collections::BTreeMap<String, UserConfigValue>,
+    #[serde(default)]
+    pub clear_keys: Vec<String>,
+}
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DevelopmentLink {
+    pub request_id: String,
+    pub id: String,
+    pub expected_revision: u64,
+    pub expected_digest: String,
+}
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DevelopmentUnlink {
+    pub request_id: String,
+    pub id: String,
+    pub expected_revision: u64,
+}

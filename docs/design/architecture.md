@@ -18,7 +18,7 @@ GUI Renderer 只在 `main.tsx` 读取 preload 对象，由 `createDesktopService
 |---|---|
 | `clients/cli`, `clients/tui`, `clients/web` | CLI、终端和本地 Web；初始化连接、显示投影与提交请求 |
 | `clients/gui` | React/Electron 桌面客户端；窄 IPC、原生资源、公开服务发现与可重建投影 |
-| `clients/mobile` | Capacitor iOS Remote 客户端；复用 GUI mobile 入口、共享 Remote 协议与会话组件，原生适配负责钥匙串、扫码与生命周期；能力与验收边界见 [iOS 开发指南](../development/ios-development.md) |
+| `clients/mobile` | Capacitor iOS/Android Remote 客户端；复用 GUI mobile 入口、共享 Remote 协议与会话组件，原生适配负责钥匙串、Android Keystore、扫码与生命周期；能力与验收边界见 [iOS 开发指南](../development/ios-development.md) |
 | `core/config` | 解析用户配置、来源、凭据引用和 Skill 目录，定义工具宿主的代理环境白名单；不依赖 Engine 或 Runtime |
 | `core/protocol` | 客户端协议投影和共享类型 |
 | `core/engine` | 模型、工具、历史、持久化、父子任务和 Workgroup |
@@ -46,6 +46,8 @@ Engine 的 `catalog` 模块维护内存中的 UUID 与创建顺序索引，注�
 
 默认使用内存目录；`sqlite` 模式仅持久索引不可变 `(id,created_at)`，由一个有界批量写入线程和两个读取线程访问 WAL 数据库。查询在相同代际下接回当前会话，索引落后时回退到内存；故障或写队列溢出则在本次实例中停用 SQLite。内存索引继续保留用于回退，启动核对全部索引键；全量模式完整恢复文件。`store::lazy` 提供基于 JSON 清单或 SQLite 的可重建元数据缓存，验证事实身份后由 `dormant` 保存紧凑目录；完整历史、工具绑定和事件窗口在首次使用时恢复。`memory-lazy` 与 `sqlite-lazy` 均直接使用内存排序目录查询；后者用 SQLite 持久化元数据，减少大 JSON 清单的整体编解码与重写。复杂所有权与未结算执行仍走原完整恢复，缓存不决定执行事实。所有模式仍枚举文件；未提供自动历史淘汰或全文检索。文件记录继续承担事实与恢复，写入顺序、同步落盘和状态版本不变。配置见[会话目录后端](../guides/configuration.md#会话目录后端)，接口边界见 [Core API](../api/core.md#传输与会话)。
 
+Engine 的 `execution_trace` 模块将实测活动计时保存到现有 Turn 历史；只读查询复用历史分页和委派归属，通过 Workgroup 的可信工厂读取绑定的隔离 worker 历史，不取得第二个 Store 写入所有权。GUI 只组织查询、展示与复制；本地排查独立于采集上传设置。字段、兼容性和原文读取边界见[Core API](../api/core.md#本地执行轨迹查看)。
+
 Engine 的 `trajectory` 模块记录模型和工具的执行内容，通过 `tracing` 暴露轨迹；server 的 `telemetry` 模块装配标准 OpenTelemetry Traces/Logs SDK 和 OTLP 导出。Engine 不读取遥测环境变量，也不依赖上报后端；配置见[轨迹上报](../guides/configuration.md#opentelemetry-轨迹上报)。
 
 server 在安装遥测时为 Engine 注入共享采集预算；Engine 用借用序列化与有界流式缓冲保存逻辑消息和最终模型请求，容量不足只丢弃遥测副本。持久事件桥接层负责 Turn 序号和终态清单，接收端据此区分执行完成与完整送达；协议见[Core 轨迹契约](../api/core.md#持久轨迹协议)。
@@ -57,6 +59,8 @@ Skill 发现由 `core/config` 根据可信启动参数执行，只返回元信�
 Codex 兼容包由 `core/plugins` 持有本地安装与范围选择；Engine 登记不可变插件 Skill 根，并在 Turn 提交时固定引用、读取时检查当前撤权。普通会话可以发现新安装，显式 Profile、旧版只读 Side 和隔离 worker 不自动扩权。onboarding 使用已有普通 Turn 入口；客户端通过现有管理收据恢复 UNKNOWN。独立 Skills 保持动态描述符读取契约。当前支持及限制见[插件指南](../guides/plugins.md)，后续完整兼容任务见[实施计划](../development/codex-plugins-plan.md)。
 
 组件支持报告归同一包解析器，候选报告绑定 `admissionDigest ?? sourceDigest`，安装报告绑定 `installedDigest`。Store 将当前启用意图与准确包摘要的静态兼容组合为有效选择；历史 Skill 以自身不可变包检查，Engine 按精确 id/revision 投影准入。Hook 声明和 Apps 文档复用原解析所有者，报告读取不执行包代码，认证、连接与信任仍归现有运行所有者。
+
+插件离线读取复用 `core/plugins::Store::read_snapshot`。Main 在项目启动前调用同产物的短命 CLI，使用可信配置 home 与已登记工作区，Renderer 只接收带作用域、revision 和读取时间的静态投影；运行状态仍由对应 Core 提供。Commands 携带安装摘要引用进入普通提交，Agents 转为带来源的不可变 Profile。配置 Store 保存普通值与秘密引用，连接时由 Engine 解析秘密；共享配置不会向其它已运行 Core 自动注入新秘密。开发来源变化生成新安装快照，旧 Turn 保留原内容，新的 MCP/Hook 信任按新摘要重新判断。普通 Skill 元信息由可信发现源刷新，下一轮更新自动发现的 Profile，显式 Profile 保留原选择。
 
 ### 多格式插件导入决策
 
@@ -178,7 +182,7 @@ GUI 的 `history-observation` 委托 `catalog-observation` 按项目、连接和
 
 ## 仓库目录
 
-桌面客户端归属见[迁移决策](../adr/0001-desktop-client-module.md)。`clients/gui` 的独立 Electron 适配器保留系统凭据与订阅转发，通过共享服务公共入口连接 Core；退出 GUI 不终止 Core 任务。macOS 安装包中，前台与后台适配器使用不同的应用身份，后台共享主包资源与原有数据目录，避免 Finder 将重开前台的请求交给无窗口后台。GUI 构建、数据隔离与本地包见 [GUI 指南](../../clients/gui/README.md)。iOS Remote 客户端位于 `clients/mobile`，Web 与 iOS 通过 `@areal/remote-client` 共享协议、命令核对与会话状态；平台分别提供 IndexedDB 与 Keychain 持久化适配。执行和历史权威仍在电脑端 Core/Runtime。
+桌面客户端归属见[迁移决策](../adr/0001-desktop-client-module.md)。`clients/gui` 的独立 Electron 适配器保留系统凭据与订阅转发，通过共享服务公共入口连接 Core；退出 GUI 不终止 Core 任务。macOS 安装包中，前台与后台适配器使用不同的应用身份，后台共享主包资源与原有数据目录，避免 Finder 将重开前台的请求交给无窗口后台。GUI 构建、数据隔离与本地包见 [GUI 指南](../../clients/gui/README.md)。iOS/Android Remote 客户端位于 `clients/mobile`，Web、iOS 与 Android 通过 `@areal/remote-client` 共享协议、命令核对与会话状态；平台分别提供 IndexedDB、Keychain 与 Android Keystore 持久化适配。执行和历史权威仍在电脑端 Core/Runtime。Android 使用共享移动入口和原生 Keystore 适配，构建、Origin、兼容性和验收边界见 [Android 开发指南](../development/android-development.md)。
 
 GUI的混合消息采用可重建展示投影：Markdown沿Streamdown，严格版本化`areal-ui`数据由共享UI目录校验并以只读React组件展示，Gen UI/MCP仍由原隔离宿主处理。Core保留原始消息和制品权威，复制可使用同一文字投影；这不是持久历史迁移或可执行组件协议。审批和Ask User共享展示外壳，合法动作、草稿、提交锁与UNKNOWN核对仍归原请求控制器。
 

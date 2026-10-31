@@ -31,6 +31,7 @@ pub use task_mode::TaskRunNowAdmission;
 pub use task_mode::{
     PublishedTaskCatalog, PublishedTaskCatalogFallback, read_published_task_catalog,
 };
+mod execution_trace;
 pub mod tools;
 mod trajectory;
 pub use trajectory::{configure_trajectory_capture_budget, record_json as record_trajectory_json};
@@ -223,6 +224,7 @@ struct TrustedPlugin {
 }
 
 struct Active {
+    tool_exposure: desktop::mcp_tools::ToolExposure,
     context_usage: Option<areal_protocol::context::ContextUsage>,
     context_sequence: u64,
     generation: request_meter::Generation,

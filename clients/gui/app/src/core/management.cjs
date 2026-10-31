@@ -5,6 +5,7 @@ const {
   validateManagementResponse,
   readPluginReadiness,
 } = require("@areal/workbench/desktop-contract/management");
+const { readPluginSubmission } = require("./plugin-submission.cjs");
 const { commandResponseError } = require("@areal/workbench/desktop-contract");
 const { configurePluginAuthentication } = require("./plugin-authentication.cjs");
 const { manageTask, taskOperations } = require("./tasks.cjs");
@@ -70,7 +71,7 @@ function shellFromManagedArgv(argv) {
   return argv[0];
 }
 
-/** @type {Record<string,string>} */
+/** @type {Record<string,string> & Record<import("@areal/workbench/desktop-contract/management").PluginMutation,string>} */
 const mutations = {
   pluginArchiveImport: "areal/plugin/importArchive",
   mcpFormResourceStage: "areal/mcp/form/resource/stage",
@@ -89,6 +90,9 @@ const mutations = {
   pluginComponentConfigure: "areal/plugin/component/configure",
   pluginUninstall: "areal/plugin/uninstall",
   pluginSetup: "areal/plugin/setup",
+  pluginUserConfigSave: "areal/plugin/userConfig/set",
+  pluginDevelopmentLink: "areal/plugin/development/link",
+  pluginDevelopmentUnlink: "areal/plugin/development/unlink",
   providerSave: "areal/provider/upsert",
   providerRemove: "areal/provider/remove",
   mcpSave: "areal/mcp/configure",
@@ -145,6 +149,9 @@ const fields = {
   pluginComponentConfigure: ["id", "component", "enabled", "expectedRevision", "expectedDigest"],
   pluginUninstall: ["id", "expectedRevision"],
   pluginSetup: ["id", "threadId"],
+  pluginUserConfigSave: ["id", "expectedRevision", "expectedDigest", "values", "clearKeys"],
+  pluginDevelopmentLink: ["id", "expectedRevision", "expectedDigest"],
+  pluginDevelopmentUnlink: ["id", "expectedRevision"],
   providerSave: ["provider", "expectedRevision"],
   providerRemove: ["id", "expectedRevision"],
   mcpSave: ["id", "expectedRevision", "config"],
@@ -198,6 +205,7 @@ const reads = {
   mcpToolResult: ["areal/mcp/tool/result", ["threadId", "callId"]],
   plugins: ["areal/plugin/list", []],
   plugin: ["areal/plugin/read", ["id"]],
+  pluginComponents: ["areal/plugin/components", ["id"]],
   providers: ["areal/provider/list", []],
   mcp: ["areal/mcp/list", []],
   profile: ["areal/profile/read", ["id", "revision"]],
@@ -217,6 +225,14 @@ const reads = {
   permissions: ["areal/permissions/read", ["threadId"]],
   interactions: ["areal/interaction/list", ["threadId"]],
   processOutput: ["areal/process/read", ["threadId", "id", "after", "maxBytes", "waitMs"]],
+  executionTraceResult: [
+    "areal/execution/traceResult",
+    ["threadId", "executionId", "workerThreadId", "uri"],
+  ],
+  executionTrace: [
+    "areal/execution/trace",
+    ["threadId", "executionId", "workerThreadId", "cursor"],
+  ],
   executions: ["areal/execution/list", ["parentThreadId", "offset", "limit"]],
   execution: ["areal/execution/read", ["parentThreadId", "executionId", "offset"]],
   executionArtifact: [
@@ -240,7 +256,7 @@ const pick = (value, keys) =>
   Object.fromEntries(
     keys.filter((key) => value[key] !== undefined).map((key) => [key, value[key]]),
   );
-/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {Record<string,unknown>} rawRequest @param {{onMcpAppOpened?:(project:Project,client:import("@areal/runtime-client/core").CoreClient,request:Record<string,unknown>,result:unknown)=>void}} [context] @returns {Promise<unknown>} */
+/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {import("@areal/workbench/desktop-contract/management").ManagementRequest} rawRequest @param {{onMcpAppOpened?:(project:Project,client:import("@areal/runtime-client/core").CoreClient,request:Record<string,unknown>,result:unknown)=>void}} [context] @returns {Promise<unknown>} */
 async function executeManagement(backend, project, rawRequest, context = {}) {
   if (typeof rawRequest.operation === "string" && taskOperations.has(rawRequest.operation))
     return manageTask(backend, project, rawRequest);
@@ -254,58 +270,21 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
       throw new Error("Missing upload submission ID");
     return backend.readSubmission(project, method, { requestId: request.requestId });
   }
-  if (operation === "pluginSubmission") {
-    const method = request.mutation ? mutations[request.mutation] : undefined;
-    if (
-      !request.mutation ||
-      !method ||
-      ![
-        "pluginArchiveImport",
-        "marketplaceAdd",
-        "marketplaceAddGit",
-        "marketplaceRemove",
-        "marketplaceUpdate",
-        "pluginResolve",
-        "pluginConnection",
-        "pluginHooksConfigure",
-        "hookAcknowledge",
-        "pluginAuthConfigure",
-        "connectorConfigure",
-        "pluginInstall",
-        "pluginConfigure",
-        "pluginComponentConfigure",
-        "pluginUninstall",
-        "pluginSetup",
-      ].includes(request.mutation) ||
-      typeof request.requestId !== "string" ||
-      !request.requestId.trim()
-    )
-      throw new Error("缺少原插件提交标识");
-    const receipt = await backend.readSubmission(project, method, {
-      requestId: request.requestId,
-      ...(request.threadId ? { threadId: request.threadId } : {}),
-    });
-    if (!receipt.confirmed) return receipt;
-    const result = "result" in receipt ? receipt.result : undefined;
-    const error = "error" in receipt ? receipt.error : undefined;
-    let warning;
-    if (
-      !error &&
-      request.mutation === "pluginSetup" &&
-      modelRecord(result) &&
-      modelRecord(result.thread) &&
-      typeof result.thread.id === "string"
-    ) {
-      try {
-        await backend.openThread(project, result.thread.id);
-        await backend.listThreads(project);
-      } catch (cause) {
-        warning = `设置已受理，刷新对话失败：${cause instanceof Error ? cause.message : String(cause)}`;
-      }
-    }
-    backend.onChange();
-    return { ...receipt, ...(warning ? { warning } : {}) };
-  }
+  if (operation === "pluginSubmission")
+    return readPluginSubmission(
+      backend,
+      project,
+      request,
+      request.mutation ? mutations[request.mutation] : undefined,
+    );
+  if (operation === "pluginCredentialsReload")
+    return require("./plugin-configuration.cjs").reloadPluginCredentials(backend, project);
+  if (rawRequest.operation === "pluginUserConfigSave")
+    return require("./plugin-configuration.cjs").configurePluginValues(
+      backend,
+      project,
+      rawRequest,
+    );
   if (operation === "pluginAuthCredential")
     return configurePluginAuthentication(backend, project, request);
   if (operation === "connectorCredential") {
@@ -809,6 +788,7 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
     ...(await resolveTerminalPresentation(backend.library?.value.settings, backend.userHome)),
   };
 }
+
 /** @param {Record<string,unknown>} value @returns {Request} */
 function readSubmissionRequest(value) {
   const { isSubmissionParams } = require("./project-state.cjs");
@@ -838,7 +818,7 @@ function readPlan(value) {
 /** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {Record<string,unknown>} rawRequest @param {{onMcpAppOpened?:(project:Project,client:import("@areal/runtime-client/core").CoreClient,request:Record<string,unknown>,result:unknown)=>void}} [context] */
 async function manage(backend, project, rawRequest, context = {}) {
   const request = readManagementRequest(rawRequest);
-  const result = await executeManagement(backend, project, rawRequest, context);
+  const result = await executeManagement(backend, project, request, context);
   try {
     validateManagementResponse(request, result);
   } catch (cause) {

@@ -828,6 +828,29 @@ async fn rejected_child_input_does_not_consume_a_thread_slot_or_leave_history() 
 }
 
 #[tokio::test]
+async fn unsupported_future_session_format_fails_closed_without_rewriting() {
+    let (dir, engine, model, _entered) = setup(Limits::default());
+    let thread = engine.create("/workspace".into()).await.unwrap();
+    engine.shutdown().await;
+    drop(engine);
+    let path = dir.path().join(format!("{}.json", thread.id));
+    let mut record: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    record["version"] = serde_json::json!(areal_engine::state_version() + 1);
+    let future = serde_json::to_vec(&record).unwrap();
+    std::fs::write(&path, &future).unwrap();
+    let error = Engine::open(dir.path(), model, Limits::default())
+        .err()
+        .expect("future session format must not be interpreted as current");
+    assert!(
+        error
+            .to_string()
+            .contains("unsupported or inconsistent session")
+    );
+    assert_eq!(std::fs::read(path).unwrap(), future);
+}
+
+#[tokio::test]
 async fn legacy_text_sessions_load_and_upgrade_on_next_write() {
     for version in [1, 7, 14] {
         let dir = tempfile::tempdir().unwrap();
@@ -856,6 +879,7 @@ async fn legacy_text_sessions_load_and_upgrade_on_next_write() {
             dynamic_tools: Vec::new(),
             toolset_revision: 0,
             turns: vec![Turn {
+                trace: Default::default(),
                 interruption: None,
                 continued_from_turn_id: None,
                 started_at: None,
@@ -906,7 +930,7 @@ async fn legacy_text_sessions_load_and_upgrade_on_next_write() {
             &std::fs::read(dir.path().join(format!("{thread_id}.json"))).unwrap(),
         )
         .unwrap();
-        assert_eq!(record["version"], 15);
+        assert_eq!(record["version"], areal_engine::state_version());
     }
 }
 

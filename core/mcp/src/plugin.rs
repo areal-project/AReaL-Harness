@@ -217,6 +217,82 @@ fn expand(s: &str, root: &Path, data: &Path) -> String {
     result.push_str(rest);
     result
 }
+#[derive(Clone)]
+pub struct UserConfigBinding {
+    pub value: String,
+    pub sensitive: bool,
+}
+impl std::fmt::Debug for UserConfigBinding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("UserConfigBinding([REDACTED])")
+    }
+}
+fn user_config_text(text: &str, mut replace: impl FnMut(&str) -> Result<String>) -> Result<String> {
+    ensure!(
+        !text.contains("${userConfig."),
+        "unsupported userConfig reference syntax"
+    );
+    let mut result = String::new();
+    let mut rest = text;
+    while let Some(index) = rest.find("${user_config.") {
+        result.push_str(&rest[..index]);
+        let tail = &rest[index + "${user_config.".len()..];
+        let end = tail
+            .find('}')
+            .ok_or_else(|| anyhow::anyhow!("unterminated userConfig reference"))?;
+        let key = &tail[..end];
+        ensure!(
+            !key.is_empty() && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'),
+            "invalid userConfig reference"
+        );
+        result.push_str(&replace(key)?);
+        rest = &tail[end + 1..];
+    }
+    result.push_str(rest);
+    Ok(result)
+}
+fn map_user_config(
+    value: &mut Value,
+    path: &mut Vec<String>,
+    portable: bool,
+    binding: &mut impl FnMut(&str, bool) -> Result<String>,
+) -> Result<()> {
+    match value {
+        Value::String(text) => {
+            *text = user_config_text(text, |key| {
+                let field = path.first().map(String::as_str).unwrap_or_default();
+                let sensitive_allowed = matches!(field, "env" | "headers" | "http_headers");
+                ensure!(
+                    !(portable
+                        && field == "headers"
+                        && path.get(1).is_some_and(
+                            |header| OWNED.contains(&header.to_ascii_lowercase().as_str())
+                        )),
+                    "reserved portable header cannot consume userConfig"
+                );
+                ensure!(
+                    sensitive_allowed || matches!(field, "args" | "url"),
+                    "userConfig reference is unsupported at this MCP field"
+                );
+                binding(key, sensitive_allowed)
+            })?;
+        }
+        Value::Array(values) => {
+            for value in values {
+                map_user_config(value, path, portable, binding)?;
+            }
+        }
+        Value::Object(values) => {
+            for (key, value) in values {
+                path.push(key.clone());
+                map_user_config(value, path, portable, binding)?;
+                path.pop();
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
 /// Sensitive declaration input. Only envelope identities and normalized configurations leave it.
 #[derive(Clone)]
 pub struct PluginDeclaration {
@@ -224,6 +300,7 @@ pub struct PluginDeclaration {
     nested: bool,
     value: Value,
     document_error: Option<&'static str>,
+    user_config_bound: bool,
 }
 
 pub enum PluginEnvelopeEntry<'a> {
@@ -276,6 +353,7 @@ impl PluginDeclaration {
             nested,
             value,
             document_error,
+            user_config_bound: false,
         }
     }
 
@@ -334,7 +412,78 @@ impl PluginDeclaration {
         references(&self.value)
     }
 
+    pub fn validate_user_config(&self, fields: &BTreeMap<String, bool>) -> Result<()> {
+        let mut copy = self.clone();
+        let servers = if copy.nested {
+            &mut copy.value["mcpServers"]
+        } else {
+            &mut copy.value
+        };
+        if let Some(servers) = servers.as_object_mut() {
+            for server in servers.values_mut() {
+                map_user_config(
+                    server,
+                    &mut vec![],
+                    self.portable,
+                    &mut |key, sensitive_allowed| {
+                        let sensitive = fields
+                            .get(key)
+                            .ok_or_else(|| anyhow::anyhow!("unknown userConfig reference"))?;
+                        ensure!(
+                            !sensitive || sensitive_allowed,
+                            "sensitive userConfig is restricted to MCP env or headers"
+                        );
+                        Ok(String::new())
+                    },
+                )?;
+            }
+        }
+        ensure!(
+            !copy.references_user_config(),
+            "userConfig reference is unsupported outside MCP server values"
+        );
+        Ok(())
+    }
+    pub fn bind_user_config(&self, values: &BTreeMap<String, UserConfigBinding>) -> Result<Self> {
+        self.validate_user_config(
+            &values
+                .iter()
+                .map(|(key, binding)| (key.clone(), binding.sensitive))
+                .collect(),
+        )?;
+        let mut copy = self.clone();
+        let servers = if copy.nested {
+            &mut copy.value["mcpServers"]
+        } else {
+            &mut copy.value
+        };
+        if let Some(servers) = servers.as_object_mut() {
+            for server in servers.values_mut() {
+                map_user_config(
+                    server,
+                    &mut vec![],
+                    self.portable,
+                    &mut |key, sensitive_allowed| {
+                        let binding = values.get(key).ok_or_else(|| {
+                            anyhow::anyhow!("required userConfig value is missing")
+                        })?;
+                        ensure!(
+                            !binding.sensitive || sensitive_allowed,
+                            "sensitive userConfig is restricted to MCP env or headers"
+                        );
+                        Ok(binding.value.clone())
+                    },
+                )?;
+            }
+        }
+        copy.user_config_bound = true;
+        Ok(copy)
+    }
     pub fn normalize(&self, package_root: &Path, data_root: &Path) -> Result<PluginConfigOutcome> {
+        ensure!(
+            self.user_config_bound || !self.references_user_config(),
+            "userConfig values must be bound before normalization"
+        );
         if let Some(error) = self.document_error {
             bail!(error);
         }
@@ -862,4 +1011,92 @@ fn portable_auth(v: &Value) -> Result<Option<AuthPolicy>> {
         }
     }
     Ok(Some(policy))
+}
+
+#[cfg(test)]
+mod user_configuration_tests {
+    use super::*;
+
+    #[test]
+    fn configuration_values_are_bound_once_only_at_supported_fields() {
+        let temp = tempfile::tempdir().unwrap();
+        let declaration = PluginDeclaration::parse(
+            false,
+            json!({"fixture":{"command":"node","args":["${user_config.device}"],"env":{"TOKEN":"prefix-${user_config.token}"}}}),
+        );
+        let bindings = BTreeMap::from([
+            (
+                "device".into(),
+                UserConfigBinding {
+                    value: "iPhone 16".into(),
+                    sensitive: false,
+                },
+            ),
+            (
+                "token".into(),
+                UserConfigBinding {
+                    value: "canary-${user_config.device}".into(),
+                    sensitive: true,
+                },
+            ),
+        ]);
+        let outcome = declaration
+            .bind_user_config(&bindings)
+            .unwrap()
+            .normalize(temp.path(), temp.path())
+            .unwrap();
+        assert_eq!(
+            outcome.servers["fixture"].env["TOKEN"],
+            "prefix-canary-${user_config.device}"
+        );
+        assert!(
+            !outcome.servers["fixture"]
+                .redacted_view()
+                .to_string()
+                .contains("canary")
+        );
+        let disallowed = PluginDeclaration::parse(
+            false,
+            json!({"fixture":{"url":"https://example.test/${user_config.token}"}}),
+        );
+        assert!(disallowed.bind_user_config(&bindings).is_err());
+        let command = PluginDeclaration::parse(
+            false,
+            json!({"fixture":{"command":"${user_config.device}"}}),
+        );
+        assert!(command.bind_user_config(&bindings).is_err());
+        let alternate = PluginDeclaration::parse(
+            false,
+            json!({"fixture":{"command":"node","args":["${userConfig.device}"]}}),
+        );
+        assert!(alternate.bind_user_config(&bindings).is_err());
+    }
+}
+
+#[cfg(test)]
+mod retained_configuration_tests {
+    use super::*;
+
+    #[test]
+    fn retained_document_configuration_scan_preserves_override_semantics() {
+        let fields = BTreeMap::new();
+        let metadata = PluginDeclaration::parse(
+            false,
+            json!({"mcpServers":{"fixture":{"command":"node"}},"metadata":"${user_config.secret}"}),
+        );
+        assert!(metadata.validate_user_config(&fields).is_err());
+        assert!(metadata.bind_user_config(&BTreeMap::new()).is_err());
+        let invalid_servers =
+            PluginDeclaration::parse(false, json!({"mcpServers":"${userConfig.secret}"}));
+        assert!(invalid_servers.validate_user_config(&fields).is_err());
+        for (metadata, blocked) in [(None, false), (Some("${user_config.secret}"), true)] {
+            let mut value = json!({"mcpServers":{"fixture":{"command":"node"},"shared":{"command":"${user_config.secret}"}}});
+            if let Some(metadata) = metadata {
+                value["metadata"] = json!(metadata);
+            }
+            let mut declaration = PluginDeclaration::parse(false, value);
+            assert!(!declaration.retain_servers(|name| name != "shared"));
+            assert_eq!(declaration.validate_user_config(&fields).is_err(), blocked);
+        }
+    }
 }

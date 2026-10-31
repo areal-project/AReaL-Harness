@@ -450,8 +450,12 @@ impl Engine {
                 };
                 let window =
                     self.provider_context_window(p, name, parameters.context_window_tokens);
-                let mut parameter_capabilities =
-                    vec!["temperature", "maxOutputTokens", "contextWindowTokens"];
+                let mut parameter_capabilities = vec![
+                    "temperature",
+                    "maxOutputTokens",
+                    "contextWindowTokens",
+                    "serviceTier",
+                ];
                 if reasoning {
                     parameter_capabilities.push("reasoningEffort");
                     if p.protocol == "responses" {

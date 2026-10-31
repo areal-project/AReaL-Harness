@@ -325,3 +325,55 @@ test("successful authorization publishes one session change inside activation ad
     await f.account.close();
   }
 });
+
+for (const operation of ["logout", "selectAccount"]) {
+  for (const restartSafe of [true, false]) {
+    test(`${operation} uses authoritative Core idle state despite stale desktop work`, async () => {
+      const f = await fixture({ failures: 0 });
+      const pending = [{ method: "areal/thread/start", params: { requestId: "unknown" } }];
+      const backend = {
+        hasWork: () => true,
+        activeCommands: 0,
+        starting: new Set(),
+        onChange() {},
+        projects: new Map([
+          [
+            "project",
+            {
+              id: "project",
+              pending,
+              service: { serviceId: "core", generation: "generation" },
+              client: {
+                ready: true,
+                async request(method) {
+                  assert.equal(method, "areal/server/status");
+                  assert.equal(backend.providerUpdating, true);
+                  return { restartSafe };
+                },
+              },
+            },
+          ],
+        ]),
+      };
+      const providers = new AppProviders(backend, {});
+      providers.openai = async () => ({ account: f.account, openaiAccount: f.account });
+      providers.readSubscription = async () => {};
+      providers.refreshSubscriptionStatus = async () => {};
+      try {
+        const result = providers.chatgpt({ operation, accountId: f.second });
+        if (restartSafe) {
+          await result;
+          if (operation === "logout") assert.equal(await f.account.read(), null);
+          else assert.equal((await f.account.directory.public()).activeAccountId, f.second);
+        } else {
+          await assert.rejects(result, /停止正在运行/);
+          assert.equal((await f.account.directory.public()).activeAccountId, "primary");
+        }
+        assert.equal(backend.providerUpdating, false);
+        assert.equal(backend.projects.get("project").pending, pending);
+      } finally {
+        await f.account.close();
+      }
+    });
+  }
+}

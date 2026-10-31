@@ -43,10 +43,12 @@ export function MobileComposer({
   client,
   workspace,
   commands,
+  dismissComposerSheet,
 }: {
   client: MobileClient;
   workspace: MobileWorkspace;
   commands: MobileCommands;
+  dismissComposerSheet: React.RefObject<(() => void) | null>;
 }) {
   const { t } = useI18n();
   const view = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
@@ -56,6 +58,12 @@ export function MobileComposer({
   const [sheet, setSheet] = useState<Data | null>(null);
   const [panel, setPanel] = useState<"model" | "permissions">("model");
   const [modelView, setModelView] = useState<"quick" | "advanced" | "models" | "effort">("quick");
+  useEffect(() => {
+    dismissComposerSheet.current = sheet ? () => setSheet(null) : null;
+    return () => {
+      dismissComposerSheet.current = null;
+    };
+  }, [sheet, dismissComposerSheet]);
   const page = view.page;
   const projectId = page.kind === "projects" ? "" : page.projectId;
   const threadId = page.kind === "session" ? page.threadId : "";

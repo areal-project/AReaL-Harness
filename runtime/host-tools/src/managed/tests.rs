@@ -30,6 +30,11 @@ fn nvm_resolves_default_alias_chains_and_numeric_versions_without_latest_guessin
     let found = discover(&[], &env);
     assert_eq!(found.bins, [wanted.join("bin")]);
     assert_eq!(found.roots, [wanted]);
+    write(&home.join(".nvm/alias/default"), "stable\n");
+    assert_eq!(
+        discover(&[], &env).bins,
+        [home.join(".nvm/versions/node/v24.1.0/bin")]
+    );
     write(&home.join(".nvm/alias/default"), "system\n");
     assert!(discover(&[], &env).bins.is_empty());
     fs::remove_file(home.join(".nvm/alias/default")).unwrap();
@@ -124,6 +129,85 @@ fn pyenv_rbenv_and_rustup_use_real_binaries_without_host_home() {
             .roots
             .iter()
             .all(|p| !home.join(".cargo/credentials.toml").starts_with(p))
+    );
+}
+
+#[test]
+fn rustup_user_default_precedes_homebrew_fallback_and_explicit_version_wins() {
+    let (_temp, home, mut env) = fixture();
+    let user = home.join(".rustup/settings.toml");
+    let fallback = home.join("brew/etc/rustup/settings.toml");
+    let pinned = installation(&home, ".rustup/toolchains/1.94.0-test-target");
+    let stable = installation(&home, ".rustup/toolchains/stable-test-target");
+    write(&fallback, "default_toolchain = 'stable-test-target'\n");
+    write(&user, "version = '12'\n[overrides]\n");
+    assert_eq!(
+        rustup_default(&user, Some(&fallback)).as_deref(),
+        Some("stable-test-target")
+    );
+    write(&user, "default_toolchain = '1.94.0-test-target'\n");
+    assert_eq!(
+        rustup_default(&user, Some(&fallback)).as_deref(),
+        Some("1.94.0-test-target")
+    );
+    assert_eq!(discover(&[], &env).bins, [pinned.join("bin")]);
+    env.insert("RUSTUP_TOOLCHAIN".into(), "stable-test-target".into());
+    assert_eq!(discover(&[], &env).bins, [stable.join("bin")]);
+    fs::remove_file(&user).unwrap();
+    fs::remove_file(&fallback).unwrap();
+    assert!(rustup_default(&user, Some(&fallback)).is_none());
+    env.remove("RUSTUP_TOOLCHAIN");
+    fs::remove_dir_all(stable).unwrap();
+    installation(&home, ".rustup/toolchains/1.99.1-test-target");
+    assert!(discover(&[], &env).bins.is_empty());
+}
+
+#[test]
+fn rustup_bare_stable_default_resolves_only_an_unambiguous_installed_channel() {
+    let (_temp, home, mut env) = fixture();
+    let user = home.join(".rustup/settings.toml");
+    let fallback = home.join("brew/etc/rustup/settings.toml");
+    let stable = installation(&home, ".rustup/toolchains/stable-aarch64-apple-darwin");
+    let pinned = installation(&home, ".rustup/toolchains/1.94.0-aarch64-apple-darwin");
+    installation(&home, ".rustup/toolchains/1.99.1-aarch64-apple-darwin");
+    write(&fallback, "default_toolchain = 'stable'\n");
+    let default = rustup_default(&user, Some(&fallback)).unwrap();
+    write(&user, &format!("default_toolchain = '{default}'\n"));
+    assert_eq!(discover(&[], &env).bins, [stable.join("bin")]);
+
+    installation(&home, ".rustup/toolchains/stable-x86_64-apple-darwin");
+    let found = discover(&[], &env);
+    assert!(found.bins.is_empty());
+    assert_eq!(found.notices.len(), 1);
+
+    write(&user, "default_toolchain = 'stable-aarch64-apple-darwin'\n");
+    assert_eq!(discover(&[], &env).bins, [stable.join("bin")]);
+    env.insert("RUSTUP_TOOLCHAIN".into(), "1.94.0".into());
+    assert_eq!(discover(&[], &env).bins, [pinned.join("bin")]);
+}
+
+#[test]
+fn rustup_invalid_present_settings_do_not_select_the_fallback() {
+    let (_temp, home, env) = fixture();
+    let user = home.join(".rustup/settings.toml");
+    let fallback = home.join("brew/etc/rustup/settings.toml");
+    installation(&home, ".rustup/toolchains/stable-aarch64-apple-darwin");
+    write(&fallback, "default_toolchain = 'stable'\n");
+    for invalid in ["malformed = [", "default_toolchain = 7"] {
+        write(&user, invalid);
+        assert_eq!(
+            rustup_default(&user, Some(&fallback)).as_deref(),
+            Some("/unsupported/")
+        );
+        let found = discover(&[], &env);
+        assert!(found.bins.is_empty());
+        assert_eq!(found.notices.len(), 1);
+    }
+    fs::remove_file(&user).unwrap();
+    fs::create_dir(&user).unwrap();
+    assert_eq!(
+        rustup_default(&user, Some(&fallback)).as_deref(),
+        Some("/unsupported/")
     );
 }
 

@@ -15,6 +15,7 @@ function fixture({
   running = false,
   unsupported = false,
   unacceptedError,
+  credentials = {},
 } = {}) {
   const calls = [];
   const original = {
@@ -71,7 +72,7 @@ function fixture({
         assert.equal(method, applyMethod);
         assert.equal(params.expectedGeneration, "generation-p");
         assert.deepEqual(params.expectedApplied, proof.applied);
-        assert.deepEqual(params.credentials, {});
+        assert.deepEqual(params.credentials, credentials);
         if (unacceptedError && applyAttempts++ === 0)
           throw Object.assign(new Error("fixture request rejected before admission"), {
             name: "CoreRpcError",
@@ -496,7 +497,8 @@ test("new connection discovers models before persistence and leaves default choi
     result.data.at(-1).models.map((m) => m.id),
     ["remote-first", "remote-second"],
   );
-  assert.deepEqual(result.data.at(-1).models[0].parameters, { contextWindowTokens: 500000 });
+  assert.deepEqual(result.data.at(-1).models[0].parameters, {});
+  assert.equal(result.data.at(-1).models[0].reportedContextWindowTokens, 500000);
   assert.deepEqual(result.data.at(-1).models[1].parameters, {});
   for (const model of result.data.at(-1).models)
     assert.deepEqual(model.capabilities, {
@@ -516,6 +518,7 @@ test("new connection discovers models before persistence and leaves default choi
   const configured = await explicit.service.command(explicit.request);
   assert.equal(configured.data.at(-1).parameters.contextWindowTokens, 64000);
   assert.deepEqual(configured.data.at(-1).models[0].parameters, {});
+  assert.equal(configured.data.at(-1).models[0].reportedContextWindowTokens, 500000);
 });
 
 test("discovery failure does not persist a new provider", async () => {
@@ -941,7 +944,7 @@ test("deferred reconciliation settles applied and changed-generation receipts wh
 });
 
 test("deferred refresh retains credential confirmation and original non-admission settlement", async (t) => {
-  const missing = fixture();
+  const missing = fixture({ credentials: { AREAL_CREDENTIAL_fixture: "synthetic-key" } });
   t.after(() => missing.service.close());
   missing.service.config.value.data[0].apiKeyEnv = "AREAL_CREDENTIAL_fixture";
   missing.service.config.vault.keys.AREAL_CREDENTIAL_fixture = "fixture";
@@ -980,4 +983,80 @@ test("a stale default-refresh response cannot overwrite a replacement owner's ca
   };
   await f.service.reconcileProject(f.project);
   assert.deepEqual(f.project.models, [{ id: "replacement-model" }]);
+});
+
+test("Fast defaults survive provider save at provider and model scopes", async () => {
+  const f = fixture();
+  f.request.provider.parameters = { serviceTier: "fast", reasoningEffort: "high" };
+  f.request.provider.models[0].parameters = { serviceTier: "default", reasoningEffort: "low" };
+  const result = await f.service.command(f.request);
+  assert.deepEqual(result.data[0].parameters, { serviceTier: "fast", reasoningEffort: "high" });
+  assert.deepEqual(result.data[0].models[0].parameters, {
+    serviceTier: "default",
+    reasoningEffort: "low",
+  });
+});
+
+for (const restartSafe of [true, false]) {
+  test(`same-revision reconnect restores missing saved credentials only when Core idle=${restartSafe}`, async () => {
+    const f = fixture({ busy: true, credentials: { AREAL_CREDENTIAL_fixture: "fixture-secret" } });
+    const snapshot = f.service.config.value;
+    snapshot.data[0].apiKeyEnv = "AREAL_CREDENTIAL_fixture";
+    f.service.config.vault.keys.AREAL_CREDENTIAL_fixture = "fixture-encrypted";
+    f.service.config.key = () => "fixture-secret";
+    let restored = false;
+    const native = f.project.client.request;
+    f.project.client.request = async (method, params) => {
+      if (method === "areal/server/status") return { restartSafe };
+      if (method === applyMethod) {
+        assert.deepEqual(params.credentials, { AREAL_CREDENTIAL_fixture: "fixture-secret" });
+        restored = true;
+      }
+      const result = await native(method, params);
+      if ([readMethod, applyMethod].includes(method)) {
+        result.credentialStates.demo = restored ? "available" : "unavailable";
+        if (result.operation?.result)
+          result.operation.result.credentialStates = result.credentialStates;
+      }
+      return result;
+    };
+    await f.service.reconcileProject(f.project);
+    assert.equal(restored, restartSafe);
+    assert.equal(
+      f.calls.some(([method]) => method === "write"),
+      false,
+    );
+    assert.equal(f.backend.providerUpdating, false);
+    if (restartSafe) {
+      assert.equal(f.service.applicationState(f.project).kind, "applied");
+      assert.equal(f.project.providerProof.credentialStates.demo, "available");
+      assert.ok(f.calls.some(([method]) => method === "areal/model/list"));
+    } else assert.equal(f.service.applicationState(f.project).kind, "deferred");
+    await f.service.close();
+  });
+}
+
+test("reported context stays separate when users override or clear the model budget", async () => {
+  for (const contextWindowTokens of [900000, 64000, undefined]) {
+    const f = fixture();
+    f.request.provider.models[0].reportedContextWindowTokens = 500000;
+    f.request.provider.models[0].parameters =
+      contextWindowTokens === undefined ? {} : { contextWindowTokens };
+    const saved = await f.service.command(f.request);
+    const model = saved.data.find((p) => p.id === f.request.provider.id).models[0];
+    assert.equal(model.reportedContextWindowTokens, 500000);
+    assert.equal(model.parameters.contextWindowTokens, contextWindowTokens);
+  }
+});
+
+test("invalid reported context is rejected before saving", async () => {
+  for (const reportedContextWindowTokens of [0, -1, 2000001, "500000"]) {
+    const f = fixture();
+    f.request.provider.models[0].reportedContextWindowTokens = reportedContextWindowTokens;
+    await assert.rejects(f.service.command(f.request), /模型配置无效/);
+    assert.equal(
+      f.calls.some(([method]) => method === "write"),
+      false,
+    );
+  }
 });

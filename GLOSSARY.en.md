@@ -14,6 +14,10 @@ _Avoid_: foreground or background execution mode; an execution that has already 
 One execution of work initiated by a Schedule, together with its result. Each execution of the same Schedule can be inspected separately.
 _Avoid_: the Schedule itself; one model call
 
+**Reuse Conversation**:
+A mode in which a Schedule initiates subsequent work in the same conversation bound when the Schedule was created, continuing with the latest conversation context at execution time.
+_Avoid_: following the conversation currently open in the interface; a history snapshot from Schedule creation; creating a new conversation for each execution
+
 **AReaL client (Client)**:
 A user entry point to AReaL Harness sessions and execution capabilities; desktop, mobile, TUI and CLI are peers.
 _Avoid_: Equating a client with the execution engine, or treating mobile as a subordinate desktop product
@@ -109,6 +113,18 @@ _Avoid_: Every chat panel, an active task only
 **Turn**:
 An accepted user input and the resulting processing episode, including replies, tool interactions and its terminal outcome. A turn may contain multiple messages.
 _Avoid_: Message, single model request, display index
+
+**Execution Trace**:
+A retained record of processing across turns, including model calls, tool operations and associated delegated agent tasks, used to inspect the work performed and its execution state.
+_Avoid_: Assistant replies alone; treating Side Chat or Fork as delegated agent tasks
+
+**Turn Elapsed Time**:
+The time that passes from the actual start of turn execution to its terminal outcome, or from execution start to the present while it is still running. Queue waiting before execution starts is measured separately.
+_Avoid_: The sum of parallel tool or subagent durations; model generation time alone
+
+**Subagent Lifetime Duration**:
+The time that actually passes from the start of a delegated agent task's execution to its terminal outcome, which may span multiple parent turns.
+_Avoid_: Parent turn elapsed time; the duration of one operation waiting for the subagent
 
 **Pause Execution**:
 A temporary stop in advancing unfinished work in a main conversation, retaining its objective, existing progress and intent to continue later.

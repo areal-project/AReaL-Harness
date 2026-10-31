@@ -39,7 +39,9 @@ AREAL_TEST_BIN_DIR=/absolute/same-build/bin node scripts/plugin-cli-p1-smoke.mjs
 AREAL_TEST_BIN_DIR=/absolute/same-build/bin node scripts/plugin-wire-smoke.mjs
 ```
 
-Additional compatibility work in I2 through I5 is not implemented. This slice does not close signed distribution, real OAuth, cross-platform, or full ecosystem compatibility.
+I2 supports bounded Markdown Commands from fixed installation snapshots. Namespaces and arguments use ordinary Message/Edit submission and its receipts. I3 supports string, number, and boolean configuration. Sensitive strings retain private references and may be consumed only in MCP env/headers. The I5 Agent subset reuses real Profiles and parent restrictions. Unsupported model, tool, or permission semantics produce explicit diagnostics. I4 dependencies and other I5 semantics remain open. See the [plugin guide](../guides/plugins.en.md).
+
+Offline snapshot/doctor, GUI status projections and confirmations, development snapshots, and standalone Skill metadata refresh use the existing owners. `ToolPolicy.lazyMcpSchemas` is an opt-in schema-projection experiment that retains discovery, connection, and execution budgets. Source and deterministic contract checks, desktop acceptance, real-model effects, and distribution evidence remain separate. Implementation does not establish every performance target or full ecosystem compatibility.
 
 ## P0 · Local packages and Skills
 

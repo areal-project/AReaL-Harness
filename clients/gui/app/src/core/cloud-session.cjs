@@ -1,9 +1,7 @@
 // @ts-check
 "use strict";
 
-const {
-  turnAdmission,
-} = require("../../../packages/workbench/client/desktop-contract/conversation.cjs");
+const { turnAdmission } = require("@areal/workbench/desktop-contract/conversation");
 const { readObservationResult } = require("./history-contract.cjs");
 /** @typedef {{baseURL?:string,createId?:string,threadRequestId?:string,threadId?:string,sessionId?:string,workspace?:string}} Binding */
 /** @typedef {import('@areal/runtime-client/core').CoreClient} CoreClient */

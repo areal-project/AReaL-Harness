@@ -7,6 +7,8 @@ pub const MAX_ARGUMENT_BYTES: usize = crate::model::MAX_TOOL_ARGUMENT_BYTES;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields, default)]
 pub struct ToolPolicy {
+    /// 显式实验，只延迟模型 schema 投影，保留宿主发现与执行预算。
+    pub lazy_mcp_schemas: bool,
     /// 已知内置只读调用的并发上限；1 保留串行执行。
     pub parallel_read_calls: usize,
     /// 显式实验：按交付契约收敛验证与协作；不替模型判定任务已完成。
@@ -28,6 +30,7 @@ pub struct ToolPolicy {
 impl Default for ToolPolicy {
     fn default() -> Self {
         Self {
+            lazy_mcp_schemas: false,
             parallel_read_calls: 1,
             completion_focus: false,
             execution_focus: false,

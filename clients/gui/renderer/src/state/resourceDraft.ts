@@ -1,3 +1,4 @@
+import { UiMessageError } from "../i18n/IntlProvider.js";
 import { readComposerSkills, type ComposerSkill } from "../ComposerSkills.js";
 import { profileKey, resolveDraftProfile } from "../ProfileDetails.js";
 import { type Data, type PlatformServices, type PreparedCreator } from "../services.js";
@@ -20,7 +21,7 @@ export async function prepareResourceDraft(
   const key = owner ? `areal-gui:draft:${owner.id}:new` : "areal-gui:draft:projectless:new";
   let text: string;
   let skill: ComposerSkill | undefined;
-  let creatorProfile: PreparedCreator["profile"] | undefined;
+  let resourceProfile: PreparedCreator["profile"] | undefined;
   if (seed.kind === "creator") {
     if (!owner) throw new Error("请先选择要创建 Skill 的项目。");
     const selection = localStorage.getItem(`${key}:profile`);
@@ -44,12 +45,24 @@ export async function prepareResourceDraft(
     )
       throw new Error("准备后的任务配置尚不可用，现有草稿已保留。");
     setSnapshot(refreshed);
-    creatorProfile = prepared.profile;
+    resourceProfile = prepared.profile;
     skill = { ...prepared.skill, source: "官方 · OpenAI" };
     const destination = `${owner.root.replace(/[\\/]+$/, "")}/.agents/skills/<name>`;
     text = `请使用 Skill Creator 帮我在当前所选项目中创建一个可复用的 Skill。目标目录是 ${destination}。请按 Skill Creator 的指导初始化并验证 Skill，不要写入个人或全局 Skill 目录。请先了解我希望复用的工作和具体需求。`;
   } else {
     ({ text, skill } = seed);
+    const importedProfile = seed.profile;
+    if (importedProfile) {
+      if (
+        !owner?.state?.connected ||
+        !owner.profiles.some(
+          (profile: Data) =>
+            profile.id === importedProfile.id && profile.revision === importedProfile.revision,
+        )
+      )
+        throw new UiMessageError({ id: "settings.pluginCenter.agentProfileUnavailable" });
+      resourceProfile = importedProfile;
+    }
   }
   if (owner && seed.kind !== "creator") {
     if (!owner.state?.connected) throw new Error("连接当前项目后再使用 Skill，现有输入已保留。");
@@ -79,7 +92,7 @@ export async function prepareResourceDraft(
     !existingSkills.some((item) => item.id === skill.id && item.revision === skill.revision)
   )
     localStorage.setItem(`${key}:skills`, JSON.stringify([...existingSkills, skill]));
-  if (creatorProfile) localStorage.setItem(`${key}:profile`, profileKey(creatorProfile));
+  if (resourceProfile) localStorage.setItem(`${key}:profile`, profileKey(resourceProfile));
 
   return { owner, key };
 }

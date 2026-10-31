@@ -531,17 +531,9 @@ async fn serve(
         let reload = if args.service_info.is_some() { Some(reload::Reload::open(inputs.clone(), &config, &engine)?) } else { None };
         if let Some(path) = &args.desktop_config { engine.install_deployment(path)?; }
         let workspace = PathBuf::from(engine.default_cwd());
-        let skills = areal_config::skills::discover(Some(&workspace), homedir.as_deref())?;
-        for warning in &skills.warnings { eprintln!("Warning: {warning}"); }
-        engine.install_default_skills(skills.skills.into_iter().map(|s| areal_engine::desktop::SkillLocation {
-            id: s.id, revision: s.revision, root: s.root,
-            metadata: Some(s.metadata),
-        }).collect())?;
+        engine.install_discovered_skill_sources(workspace.clone(), homedir.clone())?;
         // Trusted launcher paths determine plugin discovery and shared installation state.
         engine.install_hook_configuration(config.home.clone(), config.config_file.clone())?;
-        engine.install_plugin_store(Arc::new(areal_plugins::Store::open(
-            config.home.join("plugins"), args.workspace.clone().unwrap_or(workspace.clone()).canonicalize()?, homedir.clone(),
-        )?))?;
         for name in mcp_env.keys() {
             if let Some(name) = name.to_str()
                 && let Some(reference) = name.strip_prefix("AREAL_CREDENTIAL_")
@@ -553,6 +545,9 @@ async fn serve(
         let (configured, credentials) = configured_models(&config, &mcp_env)?;
         for (reference, value) in credentials { engine.register_credential(reference, value)?; }
         engine.install_configured_models(configured)?;
+        engine.install_plugin_store(Arc::new(areal_plugins::Store::open(
+            config.home.join("plugins"), args.workspace.clone().unwrap_or(workspace.clone()).canonicalize()?, homedir.clone(),
+        )?))?;
         engine.recover_desktop_default_models().await?;
         if let Some(policy_path) = &args.workgroup_policy {
             use areal_engine::workgroup::service::{NativeFactory, Policy, Service};
@@ -736,6 +731,7 @@ fn configured_models(
         temperature: value.temperature,
         max_output_tokens: value.max_output_tokens,
         reasoning_effort: value.reasoning_effort.clone(),
+        service_tier: value.service_tier.clone(),
         reasoning_summary: None,
     };
     let mut result = areal_engine::desktop::ConfiguredModels {
@@ -800,7 +796,22 @@ fn configured_models(
             .into(),
             credential_ref: reference,
             models,
-            model_parameters: std::collections::BTreeMap::new(),
+            model_parameters: item
+                .models
+                .iter()
+                .filter(|model| model.enabled)
+                .filter_map(|model| {
+                    model.reported_context_window_tokens.map(|window| {
+                        (
+                            model.id.clone(),
+                            ModelParameters {
+                                context_window_tokens: Some(window),
+                                ..ModelParameters::default()
+                            },
+                        )
+                    })
+                })
+                .collect(),
             model_capabilities: item
                 .models
                 .iter()
@@ -832,6 +843,7 @@ fn configured_models(
                     temperature: config.model.temperature,
                     max_output_tokens: config.model.max_output_tokens,
                     reasoning_effort: config.model.reasoning_effort.clone(),
+                    service_tier: config.model.service_tier.clone(),
                     reasoning_summary: config.model.reasoning_summary.clone(),
                 },
             );
@@ -863,6 +875,24 @@ fn model_capabilities(
         reasoning: value.reasoning,
         reasoning_effort_options: value.reasoning_effort_options.clone(),
     }
+}
+
+fn model_context_window(
+    config: &areal_config::SelectedModelConfig,
+) -> Option<areal_protocol::context::ContextWindow> {
+    use areal_protocol::context::{ContextWindow, ContextWindowSource as Source};
+    let reported = config.reported_context_window_tokens?;
+    Some(ContextWindow {
+        window_tokens: config.context_window_tokens.unwrap_or(reported),
+        source: if config.context_window_tokens.is_some() {
+            Source::User
+        } else {
+            Source::Provider
+        },
+        reported_window_tokens: Some(reported),
+        reported_window_source: Some(Source::Provider),
+        user_budget_tokens: config.context_window_tokens,
+    })
 }
 
 #[cfg(test)]

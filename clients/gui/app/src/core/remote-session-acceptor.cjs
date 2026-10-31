@@ -294,7 +294,10 @@ async function observe(remote, socket, owner) {
       "clientKind",
     ]) ||
     hello.method !== "hello" ||
-    (hello.clientKind !== undefined && hello.clientKind !== "web" && hello.clientKind !== "ios") ||
+    (hello.clientKind !== undefined &&
+      hello.clientKind !== "web" &&
+      hello.clientKind !== "ios" &&
+      hello.clientKind !== "android") ||
     typeof hello.clientVersion !== "string" ||
     hello.clientVersion.length > 80 ||
     typeof hello.displayName !== "string" ||

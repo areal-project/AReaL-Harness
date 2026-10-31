@@ -1,3 +1,4 @@
+import { useI18n } from "./i18n/IntlProvider.js";
 import { Input } from "@areal/ui";
 import { useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";
@@ -20,6 +21,7 @@ export function AttachmentResources({
   archived: boolean;
   pending: boolean;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false),
     [uploads, setUploads] = useState<Upload[]>([]);
   const [busy, setBusy] = useState(false),
@@ -62,9 +64,7 @@ export function AttachmentResources({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-xl">
           <DialogTitle>已上传附件</DialogTitle>
-          <DialogDescription>
-            此会话的上传记录。释放仅放弃上传所有权；普通与归档历史仍保留，空间由 Core 安全回收。
-          </DialogDescription>
+          <DialogDescription>{t("common.attachments.description")}</DialogDescription>
           <Button
             size="sm"
             variant="outline"

@@ -1483,6 +1483,67 @@ fn model_capabilities_preserve_explicit_false_and_reasoning_options() {
 }
 
 #[test]
+fn service_tier_catalog_overrides_and_round_trip_preserve_independent_effort() {
+    let root = tempfile::tempdir().unwrap();
+    let mut i = inputs(root.path());
+    i.overrides = ConfigOverrides::default();
+    let text = "schema_version=2\n[model]\nprovider='custom'\nname='opaque'\n[model.providers.custom]\nendpoint='http://127.0.0.1:9/v1/responses'\nprotocol='responses'\nparameters={service_tier='fast',reasoning_effort='low'}\nmodels=[{id='opaque',parameters={service_tier='default',reasoning_effort='high'}}]\n";
+    write(&mut i, text);
+    let config = load_config(&i).unwrap();
+    assert_eq!(config.model.service_tier.as_deref(), Some("default"));
+    assert_eq!(config.model.reasoning_effort.as_deref(), Some("high"));
+    let mut document = models::read(&i, &[]).unwrap();
+    document.data[0].models[0].parameters.service_tier = Some("fast".into());
+    let saved = models::write(
+        &i,
+        models::ModelConfigurationUpdate {
+            expected_revision: document.revision,
+            data: document.data,
+            default_model: document.default_model,
+        },
+        &[],
+    )
+    .unwrap();
+    assert_eq!(
+        saved.data[0].models[0].parameters.service_tier.as_deref(),
+        Some("fast")
+    );
+    let config = load_config(&i).unwrap();
+    assert_eq!(config.model.service_tier.as_deref(), Some("fast"));
+    assert_eq!(config.model.reasoning_effort.as_deref(), Some("high"));
+    let saved_text = fs::read_to_string(i.config_file.as_ref().unwrap()).unwrap();
+    assert!(saved_text.contains("service_tier"));
+    for invalid in ["priority", "auto", "flex", "unknown"] {
+        write(
+            &mut i,
+            &text.replace(
+                "service_tier='default'",
+                &format!("service_tier='{invalid}'"),
+            ),
+        );
+        assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+    }
+    write(
+        &mut i,
+        &text.replace(
+            "provider='custom'",
+            "provider='custom'\nservice_tier='fast'",
+        ),
+    );
+    assert_eq!(
+        load_config(&i).unwrap().model.service_tier.as_deref(),
+        Some("fast")
+    );
+    write(
+        &mut i,
+        &text
+            .replace("service_tier='fast',", "")
+            .replace("service_tier='default',", ""),
+    );
+    assert!(load_config(&i).unwrap().model.service_tier.is_none());
+}
+
+#[test]
 fn goal_unknown_model_usage_recovery_is_an_explicit_boolean() {
     let root = tempfile::tempdir().unwrap();
     let mut input = inputs(root.path());
@@ -1501,4 +1562,41 @@ fn goal_unknown_model_usage_recovery_is_an_explicit_boolean() {
         "schema_version=2\n[limits]\ngoal_recover_unknown_model_usage=1\n",
     );
     assert!(load_config(&input).is_err());
+}
+
+#[test]
+fn reported_context_defaults_round_trip_separately_from_user_overrides() {
+    let root = tempfile::tempdir().unwrap();
+    let mut i = inputs(root.path());
+    i.overrides = ConfigOverrides::default();
+    let text = "schema_version=2\n[model]\nprovider='custom'\nname='opaque'\n[model.providers.custom]\nendpoint='http://127.0.0.1:9/v1/responses'\nprotocol='responses'\nmodels=[{id='opaque',reported_context_window_tokens=500000,parameters={}}]\n";
+    write(&mut i, text);
+    let initial = load_config(&i).unwrap();
+    assert_eq!(initial.model.context_window_tokens, None);
+    assert_eq!(initial.model.reported_context_window_tokens, Some(500000));
+    for user in [Some(900000), Some(64000), None] {
+        let mut document = models::read(&i, &[]).unwrap();
+        document.data[0].models[0].parameters.context_window_tokens = user;
+        let saved = models::write(
+            &i,
+            models::ModelConfigurationUpdate {
+                expected_revision: document.revision,
+                data: document.data,
+                default_model: document.default_model,
+            },
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            saved.data[0].models[0].reported_context_window_tokens,
+            Some(500000)
+        );
+        let restored = load_config(&i).unwrap();
+        assert_eq!(restored.model.context_window_tokens, user);
+        assert_eq!(restored.model.reported_context_window_tokens, Some(500000));
+    }
+    for window in [0, 2000001] {
+        write(&mut i, &text.replace("500000", &window.to_string()));
+        assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+    }
 }

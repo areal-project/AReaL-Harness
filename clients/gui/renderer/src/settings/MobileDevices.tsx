@@ -22,7 +22,7 @@ type Run = (request: CommandParams<"remoteControl">) => Promise<Data | undefined
 const deviceName = (device: Data) => device.displayName ?? device.name ?? "";
 
 function DeviceIcon({ device }: { device: Data }) {
-  return device.clientKind === "ios" ? (
+  return ["ios", "android"].includes(device.clientKind) ? (
     <Smartphone size={18} aria-hidden />
   ) : (
     <Monitor size={18} aria-hidden />
@@ -92,7 +92,9 @@ export function MobileDevices({
       t(
         device.clientKind === "ios"
           ? "settings.mobileSettings.clientKindIOS"
-          : "settings.mobileSettings.clientKindWeb",
+          : device.clientKind === "android"
+            ? "settings.mobileSettings.clientKindAndroid"
+            : "settings.mobileSettings.clientKindWeb",
       ),
       t("settings.mobileConnect.projectCount", { count: device.projectIds?.length ?? 0 }),
       device.online
@@ -201,7 +203,9 @@ export function MobileDevices({
                     t(
                       device.clientKind === "ios"
                         ? "settings.mobileSettings.clientKindIOS"
-                        : "settings.mobileSettings.clientKindWeb",
+                        : device.clientKind === "android"
+                          ? "settings.mobileSettings.clientKindAndroid"
+                          : "settings.mobileSettings.clientKindWeb",
                     ),
                     device.revokedAt
                       ? t("settings.mobileConnect.revokedAt", { time: when(device.revokedAt) })

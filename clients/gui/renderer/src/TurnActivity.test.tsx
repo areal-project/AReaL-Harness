@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { TurnActivity } from "./TurnExecution.js";
+import { TurnActivity, TurnExecution } from "./TurnExecution.js";
 
 vi.mock("./i18n/IntlProvider.js", () => ({ useI18n: () => ({ t: (id: string) => id }) }));
 
@@ -27,6 +27,38 @@ const turn = {
     },
   ],
 };
+
+describe("TurnExecution paused presentation", () => {
+  const items = [
+    {
+      id: "cmd",
+      type: "dynamicToolCall",
+      tool: "run_command",
+      status: "completed",
+      execution: { outcome: "unknown" },
+      arguments: { command: "ls" },
+      contentItems: [],
+    },
+  ];
+  const render = (interruption: string) =>
+    renderToStaticMarkup(
+      createElement(TurnExecution, {
+        items,
+        turn: { status: "interrupted", interruption },
+        project,
+        threadId: "thread",
+        renderItem: () => createElement("span", null, "原始工具记录"),
+      }),
+    );
+  it("hides the extra group status after a user pause while retaining tool records", () => {
+    const markup = render("userPause");
+    expect(markup).not.toContain('role="status"');
+    expect(markup).toContain("原始工具记录");
+  });
+  it("retains the unknown-result status after an unexpected interruption", () => {
+    expect(render("coreRecovery")).toContain('role="status"');
+  });
+});
 
 describe("TurnActivity", () => {
   it("states a running long command in one line with only its summary", () => {

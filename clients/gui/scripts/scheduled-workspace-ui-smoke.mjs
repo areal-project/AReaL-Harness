@@ -49,7 +49,7 @@ try {
   page.on("pageerror", (e) => errors.push(e.message));
   const url = `http://127.0.0.1:${vite.httpServer.address().port}/__scheduled.html`;
   await page.goto(url + "?legacy");
-  await page.getByText("当前后台不支持此版本的任务目录。", { exact: false }).waitFor();
+  await page.getByText("后台版本过旧，无法读取任务目录。", { exact: false }).waitFor();
   assert.equal(
     (await page.evaluate(() => window.calls)).filter((call) => call.name === "tasks").length,
     0,
@@ -60,7 +60,7 @@ try {
   await page.evaluate(() => window.publishContract(true));
   await page.getByRole("button", { name: "打开自动化 每日进展", exact: true }).waitFor();
   await page.evaluate(() => window.publishContract(false));
-  await page.getByText("当前后台不支持此版本的任务目录。", { exact: false }).waitFor();
+  await page.getByText("后台版本过旧，无法读取任务目录。", { exact: false }).waitFor();
   const readsBeforeFocus = (await page.evaluate(() => window.calls)).filter(
     (call) => call.name === "tasks",
   ).length;

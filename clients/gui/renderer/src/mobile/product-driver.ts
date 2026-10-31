@@ -161,6 +161,7 @@ export async function runProduct(
             );
             effort.click();
             await click("model-done");
+            await wait(() => !document.querySelector('[role="dialog"]'), "ModelConfigureFailed");
           }
         }
       } else {
@@ -181,6 +182,7 @@ export async function runProduct(
         await wait(
           () =>
             document.querySelector<HTMLButtonElement>('[data-action="send"]')?.disabled === false,
+          "ComposerInputNotReady",
         );
       };
       const idle = () => document.querySelector('[data-field="composer"][data-active-turn=""]');

@@ -4,6 +4,8 @@ pub(crate) const METHODS: &[&str] = &[
     "areal/agent/delegate",
     "areal/execution/list",
     "areal/execution/read",
+    "areal/execution/trace",
+    "areal/execution/traceResult",
     "areal/execution/wait",
     "areal/execution/cancel",
     "areal/execution/apply",
@@ -15,6 +17,42 @@ pub(crate) async fn dispatch(
     params: Value,
 ) -> Result<Value, RpcError> {
     match method {
+        "areal/execution/traceResult" => {
+            #[derive(serde::Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct Read {
+                thread_id: String,
+                execution_id: String,
+                worker_thread_id: String,
+                uri: String,
+            }
+            let p: Read = parse(params)?;
+            engine
+                .execution_trace_result(&p.thread_id, &p.execution_id, &p.worker_thread_id, &p.uri)
+                .await
+                .map(|bytes| json!({"bytes":bytes}))
+                .map_err(map_error)
+        }
+        "areal/execution/trace" => {
+            #[derive(serde::Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct Trace {
+                thread_id: String,
+                execution_id: Option<String>,
+                worker_thread_id: Option<String>,
+                cursor: Option<String>,
+            }
+            let p: Trace = parse(params)?;
+            engine
+                .execution_trace(
+                    &p.thread_id,
+                    p.execution_id.as_deref(),
+                    p.worker_thread_id.as_deref(),
+                    p.cursor,
+                )
+                .await
+                .map_err(map_error)
+        }
         "areal/agent/delegate" => {
             let request: areal_protocol::delegation::DelegationRequest = parse(params)?;
             engine.delegate(request).await.map_err(map_error)

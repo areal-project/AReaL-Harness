@@ -148,6 +148,7 @@ dependencies = [
  "areal-config",
  "areal-engine",
  "areal-local-service",
+ "areal-plugins",
  "areal-protocol",
  "areal-server",
  "areal-service-host",

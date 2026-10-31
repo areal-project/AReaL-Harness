@@ -5,8 +5,7 @@ const { autoUpdater } = require("electron-updater");
 const { readUpdateConfig } = require("./config.cjs");
 const { createUpdater } = require("./controller.cjs");
 const { prepareNativeInstall } = require("./native-ready.cjs");
-// electron-updater serves the verified ZIP on its local proxy. With automatic
-// install disabled, explicitly await Squirrel's validation before stopping Core.
+// Squirrel 原生准备会安排退出安装，必须在安全停止和占用检查通过后调用。
 /** @param {import('./controller.cjs').UpdateLifecycle} options */
 function setupUpdater({ hasWork, prepareInstall, recoverInstall, onState }) {
   let config;
@@ -27,7 +26,7 @@ function setupUpdater({ hasWork, prepareInstall, recoverInstall, onState }) {
     prepareInstall,
     recoverInstall,
     onState,
-    // 显式准备通过后才能停止后台并安装。
+    // 由控制器在安全停止之后触发原生准备，避免拒绝安装后仍在退出时替换。
     prepareNativeInstall: onState ? () => prepareNativeInstall(nativeUpdater) : undefined,
     notify: (options) => dialog.showMessageBox(options),
   });

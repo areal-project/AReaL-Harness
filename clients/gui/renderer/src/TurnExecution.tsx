@@ -126,13 +126,14 @@ export function TurnExecution({
   const rows = timelineItems(visibleItems);
   const canAnimate = canAnimateTurn(project, threadId, turn);
   if (!rows.length) return null;
-  const status = unconfirmed ? (
-    <p role="status">{t("chat.activity.status", { state: "unsettled" })}</p>
-  ) : unfinished && turn.status !== "inProgress" ? (
-    <p role="status">{t("chat.activity.stillRunning")}</p>
-  ) : turn.status === "failed" ? (
-    <p role="status">{t("common.turn.failed")}</p>
-  ) : null;
+  const status =
+    turn.interruption === "userPause" ? null : unconfirmed ? (
+      <p role="status">{t("chat.activity.status", { state: "unsettled" })}</p>
+    ) : unfinished && turn.status !== "inProgress" ? (
+      <p role="status">{t("chat.activity.stillRunning")}</p>
+    ) : turn.status === "failed" ? (
+      <p role="status">{t("common.turn.failed")}</p>
+    ) : null;
   const runs = activityRuns(
     rows,
     (item) => !!spawnedAgent(item) || agentSettlements(item).length > 0,

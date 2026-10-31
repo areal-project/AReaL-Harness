@@ -42,12 +42,17 @@ import {
 } from "./markdown-table.js";
 import { STREAMDOWN_CONTROLS } from "./streamdown-controls.js";
 import { parsePluginStableId } from "../../mentions/mentionMarkdown.js";
-// Markdown file resources often contain bare relative links; make their URL kind explicit
-// before Streamdown's URL hardening. Only resource readers opt in.
+// Markdown file resources and agent replies often contain bare relative links and
+// images; make their URL kind explicit before Streamdown's URL hardening, which
+// otherwise renders them as "[blocked]". Resource readers and replies opt in.
 function relativeFileLinks() {
   return (tree: { type?: string; url?: string; children?: any[] }) => {
     const visit = (node: typeof tree) => {
-      if (node.type === "link" && node.url && !/^(?:[a-z][a-z\d+.-]*:|[/.#])/i.test(node.url))
+      if (
+        (node.type === "link" || node.type === "image") &&
+        node.url &&
+        !/^(?:[a-z][a-z\d+.-]*:|[/.#])/i.test(node.url)
+      )
         node.url = `./${node.url}`;
       node.children?.forEach(visit);
     };
@@ -75,17 +80,20 @@ type WorkspaceLinkTree = {
   data?: Record<string, unknown>;
   children?: WorkspaceLinkTree[];
 };
+// Harden rewrites path-relative URLs to their pathname (`./a/b` becomes `/a/b`).
+// Keep the authored path for file links and workspace images.
+const workspacePathPattern = /^(?:\.\.?\/|\/(?!\/))/;
 function preserveWorkspaceFilePaths() {
   return (tree: WorkspaceLinkTree) => {
     const visit = (node: WorkspaceLinkTree) => {
-      const href = node.properties?.href;
-      if (
-        node.type === "element" &&
-        node.tagName === "a" &&
-        typeof href === "string" &&
-        href.startsWith("./")
-      )
-        node.data = { ...node.data, workspaceFilePath: href };
+      const url =
+        node.tagName === "a"
+          ? node.properties?.href
+          : node.tagName === "img"
+            ? node.properties?.src
+            : undefined;
+      if (node.type === "element" && typeof url === "string" && workspacePathPattern.test(url))
+        node.data = { ...node.data, workspaceFilePath: url };
       node.children?.forEach(visit);
     };
     visit(tree);
@@ -114,6 +122,8 @@ export type MessageResponseProps = {
   onOpenExternalUrl?: (url: string) => void;
   onOpenFileLink?: (path: string) => void;
   onRenderImage?: (uri: string, alt: string) => ReactNode;
+  /** A paragraph holding only one file link may become a file card; null keeps the link. */
+  onRenderFileCard?: (path: string, label: string) => ReactNode;
   webPreviews?: boolean;
   className?: string;
 };
@@ -124,6 +134,7 @@ export const MessageResponse = memo(function MessageResponse({
   onOpenExternalUrl,
   onOpenFileLink,
   onRenderImage,
+  onRenderFileCard,
   webPreviews = false,
   className,
   fileLinks = false,
@@ -134,8 +145,8 @@ export const MessageResponse = memo(function MessageResponse({
   const { fontSizePx } = useCodePreferences();
   // Snapshot refreshes can replace navigation callbacks. Keep Markdown component
   // types stable so a media read does not remount its own attachment on refresh.
-  const callbacks = useRef({ onOpenExternalUrl, onOpenFileLink, onRenderImage });
-  callbacks.current = { onOpenExternalUrl, onOpenFileLink, onRenderImage };
+  const callbacks = useRef({ onOpenExternalUrl, onOpenFileLink, onRenderImage, onRenderFileCard });
+  callbacks.current = { onOpenExternalUrl, onOpenFileLink, onRenderImage, onRenderFileCard };
   // Preserve the host's authorized media references through sanitization.
   // The caller still validates the exact blob URI and reads it through Core.
   const rehypePlugins = useMemo(
@@ -144,7 +155,9 @@ export const MessageResponse = memo(function MessageResponse({
         ? Object.entries(defaultRehypePlugins).flatMap(
             ([name, plugin]): (typeof defaultRehypePlugins)[string][] => {
               const before =
-                name === "harden" && fileReferenceRoot ? [preserveWorkspaceFilePaths] : [];
+                name === "harden" && (fileReferenceRoot || onRenderImage)
+                  ? [preserveWorkspaceFilePaths]
+                  : [];
               if (name === "harden" && fileLinkBase && Array.isArray(plugin))
                 return [...before, [plugin[0], { ...plugin[1], defaultOrigin: fileLinkBase }]];
               if (name !== "sanitize" || !onRenderImage || !Array.isArray(plugin))
@@ -228,7 +241,9 @@ export const MessageResponse = memo(function MessageResponse({
           </Button>
         );
         if (!fileReference) return link;
-        const path = decodeFilePathUriEscapes(originalPath ? originalPath.slice(2) : href!);
+        const path = decodeFilePathUriEscapes(
+          originalPath ? originalPath.replace(/^\.\//, "") : href!,
+        );
         return (
           <ControlHintTooltip
             title={fileReferenceRoot ? joinFilePath(fileReferenceRoot, path) : path}
@@ -237,10 +252,22 @@ export const MessageResponse = memo(function MessageResponse({
           </ControlHintTooltip>
         );
       },
-      img: function MarkdownImage({ src, alt }: ComponentProps<"img">) {
+      img: function MarkdownImage({ src, alt, node }: ComponentProps<"img"> & ExtraProps) {
         const { t } = useI18n();
+        const data = node?.data;
+        const workspacePath =
+          data && "workspaceFilePath" in data && typeof data.workspaceFilePath === "string"
+            ? data.workspaceFilePath
+            : undefined;
         return (
-          callbacks.current.onRenderImage?.(typeof src === "string" ? src : "", alt ?? "") ?? (
+          callbacks.current.onRenderImage?.(
+            workspacePath
+              ? decodeFilePathUriEscapes(workspacePath)
+              : typeof src === "string"
+                ? src
+                : "",
+            alt ?? "",
+          ) ?? (
             <span className="text-foreground-subtle">
               {t("content.imageFallback", { description: alt || t("content.imageInAttachments") })}
             </span>
@@ -270,6 +297,23 @@ export const MessageResponse = memo(function MessageResponse({
           )
             localUrl = url;
         } catch {}
+        const linkData = link?.data;
+        const linkPath =
+          linkData &&
+          "workspaceFilePath" in linkData &&
+          typeof linkData.workspaceFilePath === "string"
+            ? linkData.workspaceFilePath
+            : undefined;
+        const fileCard =
+          linkPath && callbacks.current.onRenderFileCard
+            ? callbacks.current.onRenderFileCard(
+                decodeFilePathUriEscapes(linkPath),
+                link?.children
+                  ?.map((child) => (child.type === "text" ? child.value : ""))
+                  .join("") ?? "",
+              )
+            : null;
+        if (fileCard) return <div className="my-2">{fileCard}</div>;
         if (webPreviews && localUrl && callbacks.current.onOpenExternalUrl) {
           const url = localUrl.href;
           const title =
@@ -379,6 +423,7 @@ export const MessageResponse = memo(function MessageResponse({
       Boolean(onOpenExternalUrl),
       Boolean(onOpenFileLink),
       Boolean(onRenderImage),
+      Boolean(onRenderFileCard),
       webPreviews,
       fontSizePx,
       fileReferenceRoot,

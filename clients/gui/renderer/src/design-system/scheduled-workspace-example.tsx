@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ScheduledWorkspace } from "@areal/ui/experimental";
 import { Button } from "@areal/ui";
-import { CalendarClock, BookOpen } from "lucide-react";
+import { CalendarClock, BookOpen, Clock, MoreHorizontal } from "lucide-react";
 export function ScheduledWorkspaceExample() {
   const [empty, setEmpty] = useState(false),
     [selected, setSelected] = useState("");
@@ -48,6 +48,59 @@ export function ScheduledWorkspaceExample() {
           />
         </ScheduledWorkspace.Welcome>
       </ScheduledWorkspace>
+      <div
+        aria-label="定时任务行样例"
+        style={{ display: "grid", gap: "0.5rem", marginTop: "1rem" }}
+      >
+        {(
+          [
+            ["enabled", "已开启", "每 10 分钟问好", "每 10 分钟 · 下次 今天 16:17"],
+            ["running", "运行中", "临时工作树 Rust 缓存回收", "每 30 分钟 · 下次 今天 16:39"],
+            ["attention", "需要处理", "每周长篇剧集精选", "上次运行被中断"],
+            ["paused", "已暂停", "每天早上 10:10 问好", "每天 10:10"],
+          ] as const
+        ).map(([state, label, title, summary]) => (
+          <ScheduledWorkspace.TaskRow
+            key={state}
+            variant="card"
+            icon={<Clock size={16} />}
+            title={title}
+            summary={summary}
+            state={state}
+            stateLabel={label}
+            actions={
+              <Button size="icon-sm" variant="ghost" aria-label="更多操作">
+                <MoreHorizontal />
+              </Button>
+            }
+          />
+        ))}
+        <div style={{ width: "18rem" }}>
+          {(
+            [
+              ["enabled", "已开启", "每 10 分钟问好", "每 10 分钟"],
+              ["attention", "需要处理", "每天早上 10:10 问好", "上次运行失败"],
+            ] as const
+          ).map(([state, label, title, summary]) => (
+            <ScheduledWorkspace.TaskRow
+              key={state}
+              variant="compact"
+              icon={<Clock size={16} />}
+              title={title}
+              summary={summary}
+              state={state}
+              stateLabel={label}
+              onOpen={() => setSelected(state)}
+              openLabel={`打开自动化 ${title}`}
+              actions={
+                <Button size="icon-sm" variant="ghost" aria-label="更多操作">
+                  <MoreHorizontal />
+                </Button>
+              }
+            />
+          ))}
+        </div>
+      </div>
     </section>
   );
 }

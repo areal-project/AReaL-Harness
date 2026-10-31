@@ -99,11 +99,228 @@ async fn desktop_schedule_requires_host_skips_busy_and_pauses_only_future_runs()
         .await
         .unwrap();
     engine.advance_task(id).await.unwrap();
-    assert!(
-        !engine.task_read(id).await.unwrap().runs[0]
-            .status
-            .terminal()
+    let run = &engine.task_read(id).await.unwrap().runs[0];
+    assert_eq!(run.status, RunStatus::Paused);
+    assert_eq!(run.reason.as_deref(), Some("hostUnavailable"));
+    assert!(run.completed_at.is_none());
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn interrupted_schedule_run_remains_resumable_until_the_next_trigger() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    let anchor = engine.create("/workspace".into()).await.unwrap();
+    let value = engine.task_create("fixture".into(), serde_json::from_value(json!({"requestId":"restart", "mode":"scheduled", "objective":"inspect", "threadId":anchor.id,"schedule":{"at":now()-100,"intervalSeconds":3600}})).unwrap()).await.unwrap();
+    let id = value["id"].as_str().unwrap().to_string();
+    let host = Arc::new(Host {
+        closed: AtomicBool::new(false),
+    });
+    engine.register_schedule_host(host.clone()).await.unwrap();
+    engine.advance_task(&id).await.unwrap();
+    assert_eq!(engine.task_read(&id).await.unwrap().runs.len(), 1);
+    engine.shutdown().await;
+    drop(engine);
+
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    let run = engine.task_read(&id).await.unwrap().runs[0].clone();
+    assert_eq!(run.status, RunStatus::Paused);
+    assert_eq!(run.reason.as_deref(), Some("serverRestarted"));
+    engine.advance_task(&id).await.unwrap();
+    engine.wait(run.thread_id.as_ref().unwrap()).await.unwrap();
+    engine.advance_task(&id).await.unwrap();
+    let run = engine.task_read(&id).await.unwrap().runs[0].clone();
+    assert_eq!(run.status, RunStatus::Paused);
+    assert_eq!(run.reason.as_deref(), Some("serverRestarted"));
+    assert!(run.completed_at.is_none());
+
+    let host = Arc::new(Host {
+        closed: AtomicBool::new(false),
+    });
+    engine.register_schedule_host(host).await.unwrap();
+    let before = engine
+        .read(run.thread_id.as_ref().unwrap(), true)
+        .await
+        .unwrap();
+    engine.advance_task(&id).await.unwrap();
+    assert_eq!(
+        engine.task_read(&id).await.unwrap().runs[0].status,
+        RunStatus::Paused
     );
+    assert_eq!(
+        engine
+            .read(run.thread_id.as_ref().unwrap(), true)
+            .await
+            .unwrap()
+            .turns
+            .len(),
+        before.turns.len()
+    );
+    engine
+        .edit_task(&id, |t| t.next_run_at = Some(now() - 1))
+        .await
+        .unwrap();
+    engine.advance_task(&id).await.unwrap();
+    let task = engine.task_read(&id).await.unwrap();
+    assert_eq!(task.runs.len(), 2);
+    assert_eq!(task.skipped_runs, 0);
+    assert_eq!(task.runs[0].status, RunStatus::Failed);
+    assert!(task.runs[0].completed_at.is_some());
+    assert_ne!(task.runs[1].id, run.id);
+    assert_ne!(task.runs[1].thread_id, run.thread_id);
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn interrupted_schedule_explicit_resume_keeps_run_and_thread_with_a_fresh_turn() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    let anchor = engine.create("/workspace".into()).await.unwrap();
+    let value = engine.task_create("fixture".into(), serde_json::from_value(json!({"requestId":"manual-restart", "mode":"scheduled", "objective":"inspect", "threadId":anchor.id,"schedule":{"at":now()-1,"intervalSeconds":3600}})).unwrap()).await.unwrap();
+    let id = value["id"].as_str().unwrap().to_string();
+    engine
+        .register_schedule_host(Arc::new(Host {
+            closed: AtomicBool::new(false),
+        }))
+        .await
+        .unwrap();
+    engine.advance_task(&id).await.unwrap();
+    let original = engine.task_read(&id).await.unwrap().runs[0].clone();
+    let thread_id = original.thread_id.as_ref().unwrap().clone();
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while engine
+            .read(&thread_id, true)
+            .await
+            .unwrap()
+            .turns
+            .is_empty()
+        {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    engine.shutdown().await;
+    drop(engine);
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    let before = engine.read(&thread_id, true).await.unwrap();
+    engine
+        .register_schedule_host(Arc::new(Host {
+            closed: AtomicBool::new(false),
+        }))
+        .await
+        .unwrap();
+    engine.advance_task(&id).await.unwrap();
+    let task = engine.task_read(&id).await.unwrap();
+    assert_eq!(task.runs[0].status, RunStatus::Paused);
+    assert!(task.runs[0].completed_at.is_none());
+    assert_eq!(
+        engine.read(&thread_id, true).await.unwrap().turns.len(),
+        before.turns.len()
+    );
+    engine
+        .task_control(
+            "fixture".into(),
+            "resumeRun".into(),
+            TaskControl {
+                request_id: "manual-resume".into(),
+                task_id: id.clone(),
+                expected_revision: task.revision,
+                expected_run_id: Some(original.id.clone()),
+            },
+        )
+        .await
+        .unwrap();
+    engine.advance_task(&id).await.unwrap();
+    let resumed = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let thread = engine.read(&thread_id, true).await.unwrap();
+            if thread.turns.len() > before.turns.len() {
+                break thread;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let task = engine.task_read(&id).await.unwrap();
+    assert_eq!(task.runs.len(), 1);
+    assert_eq!(task.runs[0].id, original.id);
+    assert_eq!(task.runs[0].thread_id, original.thread_id);
+    assert_ne!(
+        resumed.turns.last().unwrap().id,
+        before.turns.last().unwrap().id
+    );
+    assert_eq!(task.runs[0].status, RunStatus::Running);
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn next_trigger_cannot_supersede_resume_intent_active_runs_or_unsettled_workers() {
+    for (status, reason, unsettled) in [
+        (RunStatus::Paused, "resumeRequested", false),
+        (RunStatus::Paused, "hostUnavailable", true),
+        (RunStatus::Running, "", false),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+        engine.task_modes.started.store(true, Ordering::Release);
+        let anchor = engine.create("/workspace".into()).await.unwrap();
+        let value = engine.task_create("fixture".into(), serde_json::from_value(json!({"requestId":"busy", "mode":"scheduled", "objective":"inspect", "threadId":anchor.id,"schedule":{"at":now()+3600,"intervalSeconds":3600}})).unwrap()).await.unwrap();
+        let id = value["id"].as_str().unwrap().to_string();
+        engine.edit_task(&id, |task| {
+            let mut run = new_run(None, now()-3600);
+            run.status = status;
+            run.reason = Some(reason.into());
+            if unsettled { run.workers.push(serde_json::from_value(json!({"threadId":"worker", "turnId":"turn", "status":"running", "settled":false})).unwrap()); }
+            task.runs.push(run);
+            task.next_run_at = Some(now()-1);
+        }).await.unwrap();
+        engine.admit_schedule_due(&id, true, now()).await.unwrap();
+        let task = engine.task_read(&id).await.unwrap();
+        assert_eq!(task.runs.len(), 1);
+        assert_eq!(task.runs[0].status, status);
+        assert!(task.runs[0].completed_at.is_none());
+        assert_eq!(task.skipped_runs, 1);
+        engine
+            .edit_task(&id, |task| task.runs[0].workers.clear())
+            .await
+            .unwrap();
+        engine.shutdown().await;
+    }
+}
+
+#[tokio::test]
+async fn stalled_schedule_run_is_settled_when_the_next_trigger_is_due() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    let anchor = engine.create("/workspace".into()).await.unwrap();
+    let value = engine.task_create("fixture".into(), serde_json::from_value(json!({"requestId":"stalled", "mode":"scheduled", "objective":"inspect", "threadId":anchor.id,"schedule":{"at":now()+3600,"intervalSeconds":3600}})).unwrap()).await.unwrap();
+    let id = value["id"].as_str().unwrap().to_string();
+    engine
+        .edit_task(&id, |t| {
+            let mut run = new_run(None, now() - 7200);
+            run.status = RunStatus::Paused;
+            run.reason = Some("goalPaused".into());
+            t.runs.push(run);
+            t.next_run_at = Some(now() - 1);
+        })
+        .await
+        .unwrap();
+    engine.admit_schedule_due(&id, false, now()).await.unwrap();
+    assert_eq!(engine.task_read(&id).await.unwrap().runs.len(), 1);
+    engine.admit_schedule_due(&id, true, now()).await.unwrap();
+    let task = engine.task_read(&id).await.unwrap();
+    assert_eq!(task.runs.len(), 2);
+    assert_eq!(task.runs[0].status, RunStatus::Failed);
+    assert_eq!(task.runs[0].reason.as_deref(), Some("goalPaused"));
+    assert_eq!(task.runs[1].status, RunStatus::Queued);
+    assert_eq!(task.skipped_runs, 0);
     engine.shutdown().await;
 }
 

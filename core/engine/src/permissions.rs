@@ -319,6 +319,8 @@ impl Engine {
                     tool,
                     "ask_user_question"
                         | "development_service_inspect"
+                        | "skill_list"
+                        | "skill_read"
                         | "read_tool_result"
                         | "read_history"
                         | "read_conversation_context"
@@ -530,7 +532,137 @@ fn browser_safe_plan(plan: &Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use areal_protocol::desktop::EffectiveConfig;
+    use areal_protocol::desktop::{EffectiveConfig, PermissionPreset};
+
+    struct Pending;
+    #[async_trait::async_trait]
+    impl Model for Pending {
+        fn name(&self) -> &str {
+            "skill-approval-fixture"
+        }
+        async fn stream(&self, _: Vec<model::Message>) -> anyhow::Result<model::ModelStream> {
+            Ok(Box::pin(futures_util::stream::pending()))
+        }
+    }
+
+    #[tokio::test]
+    async fn skill_approval_presets_preserve_explicit_rules() {
+        for preset in [
+            None,
+            Some(PermissionPreset::Ask),
+            Some(PermissionPreset::AutoReview),
+            Some(PermissionPreset::FullAccess),
+        ] {
+            for rule in ["default", "deny", "ask", "client", "profile"] {
+                let dir = tempfile::tempdir().unwrap();
+                let engine =
+                    Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+                let mut policy = PermissionConfig {
+                    mode: PermissionMode::AskPermissions,
+                    ..Default::default()
+                };
+                if rule == "deny" {
+                    policy.deny.push("skill_*".into());
+                    policy.allow.push("skill_*".into());
+                } else if rule == "ask" {
+                    policy.ask.push("skill_*".into());
+                    policy.allow.push("skill_*".into());
+                }
+                engine.set_permissions(policy, None).unwrap();
+                let thread = engine.create("/workspace".into()).await.unwrap();
+                engine
+                    .start(&thread.id, vec![Input::text("Read the registered skill")])
+                    .await
+                    .unwrap();
+                let cell = engine.cell(&thread.id).await.unwrap();
+                let mut config = EffectiveConfig::default();
+                // 此测试固定 Turn 的权限输入；不验证 Runtime 的 preset 准入与隔离。
+                config.options.permission_preset = preset;
+                if rule == "client" {
+                    config.options.approval_tools = vec!["*".into()];
+                } else if rule == "profile" {
+                    config.profile = Some(serde_json::from_value(json!({"id":"test","revision":"1","displayName":"test","instructions":"","approvalTools":["skill_list","skill_read"]})).unwrap());
+                    config.options.preapproved_tools = vec!["*".into()];
+                }
+                cell.state.lock().await.thread.turns[0].configuration = Some(config);
+                for tool in ["skill_list", "skill_read"] {
+                    let args = if tool == "skill_read" {
+                        json!({"skill":{"id":"fixture","revision":"v1"}})
+                    } else {
+                        json!({})
+                    };
+                    let expected = match rule {
+                        "deny" => "deny",
+                        "ask" => "ask",
+                        _ => "allow",
+                    };
+                    assert_eq!(
+                        engine.permission_action(&cell, tool, &args).await,
+                        expected,
+                        "{preset:?}/{rule}/{tool}"
+                    );
+                    let cancel = CancellationToken::new();
+                    let approval = engine.approval(&cell, tool, tool, &args, &cancel);
+                    if matches!(rule, "ask" | "client" | "profile") {
+                        let observe = async {
+                            loop {
+                                let interactions = engine.interactions(&thread.id).await.unwrap();
+                                if interactions["data"]
+                                    .as_array()
+                                    .unwrap()
+                                    .iter()
+                                    .any(|i| i["status"] == "pending" && i["callId"] == tool)
+                                {
+                                    cancel.cancel();
+                                    break;
+                                }
+                                tokio::task::yield_now().await;
+                            }
+                        };
+                        let (result, ()) = tokio::time::timeout(Duration::from_secs(5), async {
+                            tokio::join!(approval, observe)
+                        })
+                        .await
+                        .expect("forced approval must reach the human without model review");
+                        assert!(result.is_err());
+                    } else {
+                        let result = tokio::time::timeout(Duration::from_secs(1), approval)
+                            .await
+                            .expect("skill defaults must not wait for human or model review");
+                        if rule == "deny" {
+                            assert_eq!(
+                                result.unwrap_err().code,
+                                areal_runtime_protocol::ErrorCode::PermissionDenied
+                            );
+                        } else {
+                            result.unwrap();
+                        }
+                    }
+                }
+                if rule == "default" {
+                    assert!(
+                        engine.interactions(&thread.id).await.unwrap()["data"]
+                            .as_array()
+                            .unwrap()
+                            .is_empty()
+                    );
+                    assert_eq!(
+                        engine
+                            .permission_action(
+                                &cell,
+                                "development_service_start",
+                                &json!({"argv":["server"]})
+                            )
+                            .await,
+                        "ask",
+                        "other Core tools must not be implicitly approved"
+                    );
+                }
+                engine.shutdown().await;
+            }
+        }
+    }
+
     #[test]
     fn network_projection_matches_readonly_side_and_permission_preset_boundaries() {
         use areal_protocol::desktop::PermissionPreset;

@@ -12,7 +12,7 @@ One allocator plans complete requests, retaining the latest real user request an
 
 | Setting | Behavior |
 |---|---|
-| `model.context_window_tokens` | Sets the user working budget, capped by a service-reported window when available |
+| `model.context_window_tokens` | Sets the user working budget; explicit values override reports and built-in defaults |
 | `model.max_output_tokens` | Common setting; overridable per-model HTTP request default of 16384, strictly positive |
 | `context.mode` | Keep auto / manual / disabled |
 | `context.target_tokens`, `context.recent_tokens` | Automatic target/recent defaults are 0; positive legacy values remain compatibility boundary preferences with source diagnostics |
@@ -25,19 +25,11 @@ Do not add a retained-input quota setting. Common settings are window, output an
 
 ## Known model windows
 
-The service-reported window and the user's working budget are retained separately. Account `context_window` is the currently reported window; optional `max_context_window` does not replace it. The working window is the smaller of the reported window and an explicit user budget. The UI shows the report source, reported capacity, and user budget separately. Accounts without a reported window use the global fallback, never the public API's model-name defaults. Custom endpoints use exact-ID defaults only when neither a report nor a user budget is available. Unknown IDs use the global fallback.
+The service-reported window and the user's working budget remain separate. Account `context_window` is the currently reported default; optional `max_context_window` does not replace it. The working window resolves from the explicit user value, current account/channel report, channel-specific exact-model default, then global fallback. The UI shows the report source, reported capacity, and user budget separately. Subscriptions without reports use subscription defaults; API connections use API defaults; unknown IDs use the global fallback. User values can exceed reported defaults but cannot change server-side limits. Automatically discovered model defaults are persisted as `reportedContextWindowTokens` (TOML: `reported_context_window_tokens`) separately from user parameters. Clearing a user parameter restores default resolution.
 
 An idle conversation's context query projects the next new request. At admission, reported capacity and model capabilities refresh only when provider identity, endpoint, protocol, and credential reference match. Historical Turns, active Turns, and already accepted queue items retain their frozen snapshots. Capacity updates do not switch accounts or rebind endpoints. User budgets still use `model.context_window_tokens` in standalone TOML and `contextWindowTokens` in desktop parameters. Legacy snapshots cannot distinguish an automatically filled window from an equal explicit budget. Saved window parameters are conservatively retained as budgets, so a larger report cannot silently increase them. New snapshots retain budgets and reports separately.
 
-The defaults were checked on 2026-10-20. Exact supported IDs are owned by `core/engine/src/model/context_windows.rs`.
-
-| Model IDs | Window | Official source |
-|---|---:|---|
-| `gpt-6.1-sol`, `gpt-6-sol`, `gpt-6-astra`, `gpt-6-luna` | 1,050,000 | [OpenAI models](https://developers.openai.com/api/docs/models), [Sol comparison](https://developers.openai.com/api/docs/models/compare?model=gpt-6-sol&model=gpt-6.1-sol) |
-| `gpt-5.6-sol`, `gpt-5.6` | 1,050,000 | [GPT-5.6 Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol) |
-| Claude IDs listed in the Core table | 1,000,000 | [Claude context windows](https://platform.claude.com/docs/en/build-with-claude/context-windows) |
-| `deepseek-flash`, `deepseek-v4-pro` and documented V4 Flash aliases | 1,000,000 | [DeepSeek models](https://api-docs.deepseek.com/quick_start/pricing/) |
-| `glm-5` | 200,000 | [GLM-5](https://docs.z.ai/guides/llm/glm-5) |
+See the [configuration guide](../guides/configuration.en.md) for model-specific API/subscription defaults and official sources. Exact supported IDs and values are owned by `core/engine/src/model/context_windows.rs`. Defaults are bundled statically; no third-party catalog is fetched on the request path.
 
 Gemini was reviewed but is not assigned a default. Gemini 3 and 2.5 have separate input and output budgets. Gemini 4 shares one window. Treating an input-only limit as a shared window would change its meaning. See [Gemini token limits](https://ai.google.dev/gemini-api/docs/tokens).
 

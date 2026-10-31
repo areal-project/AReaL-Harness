@@ -698,6 +698,8 @@ pub(crate) fn parse_context(
         admission_digest: None,
         definition: None,
         installed_skills: vec![],
+        user_configuration: Default::default(),
+        development_link: None,
         component_choices: Default::default(),
         installed_metadata: None,
         component_support: None,
@@ -947,19 +949,8 @@ pub(crate) fn parse_context(
                 .push("Connector IDs require explicit mapping and account authentication".into());
         }
     }
-    if let Some(commands) = overlay.get("commands") {
-        for path in match commands {
-            Value::String(path) => vec![path.as_str()],
-            Value::Array(values) => values.iter().filter_map(Value::as_str).collect(),
-            _ => vec![],
-        } {
-            relative(path)?;
-        }
-        d.diagnostics
-            .push("explicit legacy commands declaration: migration not yet supported".into());
-    } else if files.keys().any(|p| p.starts_with("commands/")) {
-        d.diagnostics
-            .push("legacy commands migration not yet supported".into());
+    if let Ok(schema) = crate::configuration::schema(overlay.get("userConfig")) {
+        d.user_configuration = crate::PluginUserConfiguration::default().public_view(&schema);
     }
     d.component_support = Some(crate::support::parse(
         files,

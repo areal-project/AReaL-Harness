@@ -920,20 +920,38 @@ fn known_context_capacities_preserve_explicit_overrides_and_unknown_models() {
     use areal_engine::model::{Model, ModelOptions};
     for (name, expected) in [
         ("gpt-6.1-sol", Some(1_050_000)),
+        ("gpt-6.1-terra", Some(1_050_000)),
         ("gpt-6-sol", Some(1_050_000)),
         ("gpt-6-astra", Some(1_050_000)),
         ("gpt-6-luna", Some(1_050_000)),
         ("gpt-5.6-sol", Some(1_050_000)),
         ("gpt-5.6", Some(1_050_000)),
+        ("gpt-5.6-terra", Some(1_050_000)),
+        ("gpt-5.6-luna", Some(1_050_000)),
+        ("gpt-5.4", Some(1_050_000)),
+        ("gpt-5.4-mini", Some(400_000)),
+        ("gpt-5.4-nano", Some(400_000)),
+        ("gpt-5.3-codex", Some(400_000)),
         ("deepseek-flash", Some(1_000_000)),
         ("deepseek-v4-pro", Some(1_000_000)),
         ("glm-5", Some(200_000)),
+        ("glm-5.1", Some(200_000)),
+        ("qwen3.8-max", Some(1_000_000)),
+        ("qwen3.8-flash", Some(1_000_000)),
+        ("qwen3.7-plus", Some(1_000_000)),
+        ("qwen-plus", Some(1_000_000)),
+        ("qwen3.6-plus", Some(1_000_000)),
+        ("qwen3.6-plus-2026-04-02", Some(1_000_000)),
+        ("kimi-k3.1-pro", Some(1_048_576)),
+        ("kimi-k2.5", Some(262_144)),
         ("claude-opus-5-5", Some(1_000_000)),
         ("claude-sonnet-5-5", Some(1_000_000)),
         ("claude-haiku-5-5", Some(1_000_000)),
         ("claude-sonnet-4-6", Some(1_000_000)),
         ("custom-gpt-6.1-sol", None),
         ("gpt-6.1-sol-unverified", None),
+        ("kimi-k3-future", None),
+        ("qwen-unverified", None),
         ("fixture", None),
     ] {
         for protocol in [ModelProtocol::ChatCompletions, ModelProtocol::Responses] {
@@ -1066,6 +1084,7 @@ async fn model_catalog_preserves_per_model_validation_without_upstream_requests(
                     "temperature",
                     "maxOutputTokens",
                     "contextWindowTokens",
+                    "serviceTier",
                     "reasoningEffort",
                     "reasoningSummary"
                 ])
@@ -1074,6 +1093,7 @@ async fn model_catalog_preserves_per_model_validation_without_upstream_requests(
                     "temperature",
                     "maxOutputTokens",
                     "contextWindowTokens",
+                    "serviceTier",
                     "reasoningEffort"
                 ])
             }
@@ -1448,6 +1468,7 @@ async fn explicit_model_capabilities_control_catalog_admission_and_wire() {
         ("contextWindowTokens", json!(0)),
         ("temperature", json!(3.0)),
         ("reasoningEffort", json!("invalid")),
+        ("serviceTier", json!("priority")),
     ] {
         for model_override in [false, true] {
             let mut invalid_provider = provider.clone();
@@ -1627,6 +1648,169 @@ async fn service_default_is_omitted_for_every_http_protocol_and_request_purpose(
     }
     server.abort();
     let _ = server.await;
+}
+
+#[tokio::test]
+async fn service_tier_reaches_both_http_protocols_and_configure_overrides_inheritance() {
+    use areal_engine::model::{Message, Model, ModelOptions, RequestPurpose};
+    use areal_protocol::desktop::ModelParameters;
+    use futures_util::StreamExt;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let app = Router::new().route("/", post(move |Json(body): Json<Value>| {
+        let tx = tx.clone();
+        async move {
+            let responses = body.get("input").is_some();
+            tx.send(body).unwrap();
+            ([("content-type", "text/event-stream")], if responses {
+                "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n"
+            } else { "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n" })
+        }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}/", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    for protocol in [ModelProtocol::ChatCompletions, ModelProtocol::Responses] {
+        for (base, selected, expected) in [
+            (None, None, None),
+            (Some("fast"), None, Some("fast")),
+            (Some("fast"), Some("default"), Some("default")),
+            (Some("default"), Some("fast"), Some("fast")),
+        ] {
+            let model = HttpModel::with_protocol(endpoint.clone(), "custom".into(), None, protocol)
+                .unwrap()
+                .with_options(ModelOptions {
+                    service_tier: base.map(String::from),
+                    reasoning_effort: Some("low".into()),
+                    ..Default::default()
+                })
+                .unwrap()
+                .configure(&ModelParameters {
+                    service_tier: selected.map(String::from),
+                    ..Default::default()
+                })
+                .unwrap();
+            for purpose in [RequestPurpose::Solve, RequestPurpose::Summary] {
+                let events = model
+                    .chat_for(vec![Message::text("user", "hello")], vec![], purpose)
+                    .await
+                    .unwrap()
+                    .collect::<Vec<_>>()
+                    .await;
+                assert!(events.iter().all(Result::is_ok));
+                let body = rx.recv().await.unwrap();
+                assert_eq!(
+                    body.get("service_tier"),
+                    expected.map(|tier| json!(tier)).as_ref()
+                );
+                let effort = match protocol {
+                    ModelProtocol::ChatCompletions => &body["reasoning_effort"],
+                    ModelProtocol::Responses => &body["reasoning"]["effort"],
+                };
+                assert_eq!(effort, "low");
+            }
+        }
+    }
+    server.abort();
+    let _ = server.await;
+}
+
+#[tokio::test]
+async fn service_tier_audit_keeps_fast_request_separate_from_actual_default() {
+    use areal_engine::model::{Message, Model, ModelOptions};
+    use futures_util::StreamExt;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let app = Router::new().route("/", post(move |Json(request): Json<Value>| {
+        let tx = tx.clone();
+        async move {
+            tx.send(request).unwrap();
+            ([("content-type", "text/event-stream")], "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"service_tier\":\"default\",\"usage\":{\"input_tokens\":3,\"output_tokens\":1}}}\n\n")
+        }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}/", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let audit_dir = tempfile::tempdir().unwrap();
+    let model = HttpModel::with_protocol(
+        endpoint,
+        "gpt-6.1-terra".into(),
+        None,
+        ModelProtocol::Responses,
+    )
+    .unwrap()
+    .with_options(ModelOptions {
+        service_tier: Some("fast".into()),
+        ..Default::default()
+    })
+    .unwrap()
+    .with_audit_directory(audit_dir.path().into());
+    let events = model
+        .stream(vec![Message::text("user", "hello")])
+        .await
+        .unwrap()
+        .collect::<Vec<_>>()
+        .await;
+    assert!(events.iter().all(Result::is_ok));
+    let request = rx.recv().await.unwrap();
+    server.abort();
+    let _ = server.await;
+    let audit_text = std::fs::read_to_string(audit_dir.path().join("requests.jsonl")).unwrap();
+    let audit: Value = serde_json::from_str(audit_text.trim()).unwrap();
+    assert_eq!(audit["usageDetails"]["serviceTier"], "default");
+    assert_eq!(request["service_tier"], "fast");
+    assert_eq!(audit["parameters"]["service_tier"], request["service_tier"]);
+    assert_eq!(audit["outcome"], "completed");
+}
+
+#[tokio::test]
+async fn service_tier_thread_configuration_merges_and_survives_reopen() {
+    use areal_protocol::desktop::ModelParameters;
+    let legacy: ModelParameters =
+        serde_json::from_value(json!({"reasoningEffort":"high"})).unwrap();
+    assert!(legacy.service_tier.is_none());
+    assert!(
+        serde_json::to_value(&legacy)
+            .unwrap()
+            .get("serviceTier")
+            .is_none()
+    );
+    let data = tempfile::tempdir().unwrap();
+    let default =
+        Arc::new(HttpModel::new("http://127.0.0.1:9/".into(), "default".into(), None).unwrap());
+    let engine = Engine::open(data.path(), default.clone(), Limits::default()).unwrap();
+    let provider = json!({"id":"custom","revision":0,"endpoint":"http://127.0.0.1:9/","protocol":"chatCompletions","models":["opaque"],"parameters":{"serviceTier":"fast","reasoningEffort":"low"},"modelParameters":{"opaque":{"serviceTier":"default"}}});
+    engine
+        .upsert_provider(serde_json::from_value(provider).unwrap(), 0)
+        .await
+        .unwrap();
+    let thread = engine.create("/workspace".into()).await.unwrap();
+    let inherited = engine.configure_thread(serde_json::from_value(json!({"threadId":thread.id,"expectedRevision":1,"model":{"providerId":"custom","modelId":"opaque"},"parameters":{}})).unwrap()).await.unwrap();
+    assert_eq!(
+        inherited.parameters.service_tier.as_deref(),
+        Some("default")
+    );
+    assert_eq!(
+        inherited.parameters.reasoning_effort.as_deref(),
+        Some("low")
+    );
+    let selected = engine.configure_thread(serde_json::from_value(json!({"threadId":thread.id,"expectedRevision":inherited.revision,"parameters":{"serviceTier":"fast","reasoningEffort":"high"}})).unwrap()).await.unwrap();
+    assert_eq!(selected.parameters.service_tier.as_deref(), Some("fast"));
+    assert_eq!(
+        selected.parameters.reasoning_effort.as_deref(),
+        Some("high")
+    );
+    engine.shutdown().await;
+    drop(engine);
+    let engine = Engine::open(data.path(), default, Limits::default()).unwrap();
+    let saved = engine
+        .read(&thread.id, false)
+        .await
+        .unwrap()
+        .desktop
+        .unwrap()
+        .configuration;
+    assert_eq!(saved.parameters.service_tier.as_deref(), Some("fast"));
+    assert_eq!(saved.parameters.reasoning_effort.as_deref(), Some("high"));
+    engine.shutdown().await;
 }
 
 #[tokio::test]

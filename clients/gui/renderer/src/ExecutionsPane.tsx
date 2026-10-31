@@ -4,6 +4,7 @@ import { Button } from "./components/ui/button.js";
 import { AgentsPane } from "./AgentsPane.js";
 import { WorkgroupsPane } from "./WorkgroupsPane.js";
 import type { Action, Data } from "./services.js";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 
 type Execution = {
   executionId: string;
@@ -533,25 +534,25 @@ export function ExecutionsPane({
             加载更多子任务
           </Button>
         )}
-        <details onToggle={(event) => setAdvanced(event.currentTarget.open)}>
-          <summary>高级：兼容委派与工作组历史</summary>
+        <SettingsDisclosure
+          onToggle={(event) => setAdvanced(event.currentTarget.open)}
+          title="高级：兼容委派与工作组历史"
+        >
           {advanced && (
             <div className="mt-3 flex flex-col gap-3">
-              <details>
-                <summary>手工只读委派</summary>
+              <SettingsDisclosure title="手工只读委派">
                 <div className="h-[36rem]">
                   <AgentsPane project={project} thread={thread} action={action} onOpen={onOpen} />
                 </div>
-              </details>
-              <details>
-                <summary>兼容工作组计划与历史</summary>
+              </SettingsDisclosure>
+              <SettingsDisclosure title="兼容工作组计划与历史">
                 <div className="h-[36rem]">
                   <WorkgroupsPane project={project} action={action} />
                 </div>
-              </details>
+              </SettingsDisclosure>
             </div>
           )}
-        </details>
+        </SettingsDisclosure>
       </div>
     </section>
   );

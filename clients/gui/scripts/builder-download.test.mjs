@@ -191,6 +191,9 @@ test("official downloader preserves HTTPS CONNECT, custom CA, NO_PROXY and proxy
           ...process.env,
           // 本夹具逐场景设置大写代理；宿主的小写排除项不能绕过失败代理的负控制。
           HTTP_PROXY: "",
+          HTTPS_PROXY: "",
+          // 仅让下载器读取本夹具的逐场景代理，避免 Node 启动代理抢占 NO_PROXY 的本地直连。
+          NODE_USE_ENV_PROXY: "0",
           http_proxy: "",
           https_proxy: "",
           ALL_PROXY: "",

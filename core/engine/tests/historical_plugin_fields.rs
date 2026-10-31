@@ -90,7 +90,12 @@ async fn historical_plugin_data_survives_open_and_ordinary_writes_without_execut
         saved["thread"]["desktop"]["configuration"]["pluginSkills"],
         configuration["pluginSkills"]
     );
-    assert_eq!(saved["thread"]["turns"][0], record["thread"]["turns"][0]);
+    let mut expected_turn = record["thread"]["turns"][0].clone();
+    // 旧历史只补默认空 trace，不补造时间或活动，其余字段保持原样。
+    expected_turn["trace"] = json!({
+        "startedAtMs": null, "queuedAtMs": null, "queueDurationMs": null, "activities": []
+    });
+    assert_eq!(saved["thread"]["turns"][0], expected_turn);
     assert_eq!(
         saved["thread"]["desktop"]["receipts"],
         record["thread"]["desktop"]["receipts"]

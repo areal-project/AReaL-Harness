@@ -789,3 +789,16 @@ test("completion metadata retry backs off and keeps each retry delay within thir
   );
   owner.monitor.stop();
 });
+
+test("task directory revision advances per project, and conversation-only changes do not advance it", () => {
+  let notified = 0;
+  const owner = new OwnerTasks({ onChange: () => notified++ });
+  owner.changed("a");
+  owner.changed("a");
+  owner.changed("b");
+  owner.changed();
+  assert.equal(owner.revision("a"), 2);
+  assert.equal(owner.revision("b"), 1);
+  assert.equal(owner.revision("c"), 0);
+  assert.equal(notified, 4);
+});

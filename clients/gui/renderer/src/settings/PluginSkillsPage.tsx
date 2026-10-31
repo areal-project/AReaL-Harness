@@ -18,7 +18,13 @@ import type { Action, Data } from "../services.js";
 
 export type ResourceDraftSeed =
   | { kind: "creator"; projectId: string }
-  | { kind?: "resource"; text: string; skill?: ComposerSkill; plugin?: { id: string } };
+  | {
+      kind?: "resource";
+      text: string;
+      skill?: ComposerSkill;
+      plugin?: { id: string };
+      profile?: { id: string; revision: string };
+    };
 export type CenterSkill = {
   key: string;
   id: string;

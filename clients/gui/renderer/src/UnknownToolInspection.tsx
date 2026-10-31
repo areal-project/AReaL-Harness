@@ -13,6 +13,7 @@ import type { Action, Data } from "./services.js";
 import { hasUnknownToolOutcome, uninspectedToolCalls } from "./toolInspection.js";
 import { FeedbackNotice } from "./FeedbackNotice.js";
 import { useI18n } from "./i18n/IntlProvider.js";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 
 /** Core owns both the UNKNOWN journal and the operator's inspection. Acknowledging
  * records facts only: it never retries the operation or changes its outcome. */
@@ -127,12 +128,12 @@ export function UnknownToolInspection({
             {browser ? t("operations.browserInspect") : "核查工具结果 UNKNOWN"}
           </DialogTitle>
           <DialogDescription>
-            {browser
-              ? t("operations.browserInspectionHelp")
-              : "请先核对工作区的实际文件或进程。确认只记录核查事实，不重放原操作，也不将历史改写为成功。证据不足时取消核查。"}
+            {browser ? t("operations.browserInspectionHelp") : t("common.inspection.help")}
           </DialogDescription>
-          <details open={browser ? undefined : true}>
-            <summary>{t("operations.inspectionDetails")}</summary>
+          <SettingsDisclosure
+            open={browser ? undefined : true}
+            title={t("operations.inspectionDetails")}
+          >
             <dl className="grid gap-1 text-compact-body break-all">
               <dt>原工具</dt>
               <dd>{item.tool}</dd>
@@ -162,16 +163,15 @@ export function UnknownToolInspection({
                 {JSON.stringify(item.arguments, null, 2)}
               </pre>
             </div>
-            <details>
-              <summary>Core 原始结果与核查事实</summary>
+            <SettingsDisclosure title="Core 原始结果与核查事实">
               <pre
                 className="whitespace-pre-wrap break-all text-compact-caption"
                 aria-label="Core 原始结果"
               >
                 {JSON.stringify({ output: item.contentItems, execution: item.execution }, null, 2)}
               </pre>
-            </details>
-          </details>
+            </SettingsDisclosure>
+          </SettingsDisclosure>
           {confirmed ? (
             <div role="status">
               <h3>已保存的核查说明</h3>

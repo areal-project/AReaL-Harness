@@ -119,14 +119,13 @@ export function TaskWorkspace({
           )}
         </>
       )}
-      renderResources={(owner, managementThread, scheduledTask, runHistory, revealKey?: string) => (
+      renderResources={(owner, managementThread, scheduledTask, revealKey?: string) => (
         <TaskResourcesPopover
           revealKey={workspace.pendingReveal(revealKey)}
           onReveal={workspace.consumeReveal}
           project={owner}
           thread={managementThread}
           scheduledTask={scheduledTask}
-          runHistory={runHistory}
           action={action}
           onPanel={(name) => {
             void onOpenThread(owner.id, managementThread.id).then(() => onPanel(name));

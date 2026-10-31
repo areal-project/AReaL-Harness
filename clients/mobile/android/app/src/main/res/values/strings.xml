@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AReaL Harness</string>
+    <string name="title_activity_main">AReaL Harness</string>
+    <string name="package_name">com.example.arealharness</string>
+    <string name="custom_url_scheme">com.example.arealharness</string>
+</resources>

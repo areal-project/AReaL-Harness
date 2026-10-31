@@ -248,6 +248,8 @@ pub struct SelectedModelConfig {
     pub api_key_env: Option<String>,
     pub reasoning_effort: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_tier: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub summary_reasoning_effort: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub summary_max_output_tokens: Option<u64>,
@@ -265,6 +267,8 @@ pub struct SelectedModelConfig {
     pub max_output_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window_tokens: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reported_context_window_tokens: Option<usize>,
     #[serde(default = "default_request_bytes")]
     pub max_request_bytes: usize,
     pub max_retries: usize,
@@ -395,7 +399,7 @@ impl ResolvedCoreConfig {
             "tools": { "extensions_file": self.tool_extensions_file },
             "model": { "provider": self.model.provider, "name": self.model.name,
                 "endpoint": endpoint.as_str(), "protocol": self.model.protocol,
-                "api_key_env": self.model.api_key_env, "reasoning_effort": self.model.reasoning_effort, "summary_reasoning_effort":self.model.summary_reasoning_effort,"summary_max_output_tokens":self.model.summary_max_output_tokens,
+                "api_key_env": self.model.api_key_env, "reasoning_effort": self.model.reasoning_effort, "service_tier": self.model.service_tier, "summary_reasoning_effort":self.model.summary_reasoning_effort,"summary_max_output_tokens":self.model.summary_max_output_tokens,
                 "reasoning_summary": self.model.reasoning_summary,
                 "responses_websocket": self.model.responses_websocket,
                 "responses_prompt_cache": self.model.responses_prompt_cache,
@@ -405,7 +409,7 @@ impl ResolvedCoreConfig {
                 "min_p": self.model.min_p,
                 "presence_penalty": self.model.presence_penalty,
                 "repetition_penalty": self.model.repetition_penalty,
-                "max_output_tokens": self.model.max_output_tokens, "context_window_tokens": self.model.context_window_tokens, "max_request_bytes": self.model.max_request_bytes, "max_retries": self.model.max_retries },
+                "max_output_tokens": self.model.max_output_tokens, "context_window_tokens": self.model.context_window_tokens, "reported_context_window_tokens": self.model.reported_context_window_tokens, "max_request_bytes": self.model.max_request_bytes, "max_retries": self.model.max_retries },
             "budget": {"max_history_bytes":self.max_history_bytes,"max_output_bytes":self.max_output_bytes,"max_tool_calls":self.max_tool_calls},
             "resources": {"model_concurrency":self.model_concurrency,"max_threads":self.max_threads,"max_active_turns":self.max_active_turns,"max_children_per_turn":self.max_children_per_turn,"max_agent_depth":self.max_agent_depth,"max_response_tool_calls":self.max_response_tool_calls,"max_response_bytes":self.max_response_bytes,"max_tool_buffer_bytes":self.max_tool_buffer_bytes},
             "network": {"stream_idle_timeout_seconds":self.stream_idle_timeout_seconds,"retry_mode":self.network_retry_mode.as_str()},

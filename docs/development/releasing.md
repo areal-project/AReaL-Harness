@@ -4,6 +4,8 @@
 
 当前可验收的独立渠道为 macOS arm64 与 Linux x86_64 glibc 完整包 + Python 安装器；两平台共用 Homebrew formula。与 [Codex CLI 官方安装矩阵](https://learn.chatgpt.com/docs/codex/cli#getting-started)相比，npm、Windows 在本项目尚无完整 Runtime 包或原生支持，不能列为可用渠道。`cargo install areal-cli` 同样不提供完整布局。安装范围见[安装指南](../guides/installation.md)。
 
+打包暂存阶段会独立加载 Cloud 后台模块，并执行本地阅读标记路由，校验公开包入口在安装包目录内可解析；此检查在签名与公证前运行。
+
 ## 渠道与来源门禁
 
 CLI 正式与预览均交付完整 bundle；macOS 保留并严格验证输入 ad-hoc 签名，不做 Developer ID 分发签名或 Apple 公证。GUI 正式版继续使用 Developer ID + 公证、DMG 与更新 ZIP；GUI 预览保留默认 ad-hoc，仅手动安装，不带正式更新配置、不推进正式 feed，也不承诺自动转正式。预览标记 prerelease、非 Latest；仅 CLI 正式版可成为 Latest。
@@ -74,7 +76,9 @@ GUI 版本由 `clients/gui/package.json` 和 `clients/gui/app/package.json` 共�
 
 正式 GUI 包内写入 `areal-update.json`，更新源固定为 `https://github.com/areal-project/AReaL-Harness/releases/download/gui-update-channel/`。`gui-update-channel` 是仅承载当前 `latest-mac.yml` 的预发布频道；清单指向不可变 `gui-v<版本>` Release 中的 ZIP，并包含大小及 SHA-512。仅接受同仓库、同版本的附件地址。本地 ad-hoc 包没有更新配置。
 
-macOS `dir` 目标不会自动生成原生更新配置。正式打包在签名前写入 `app-update.yml`，沿用同一产品更新源和固定下载缓存名，并校验包内配置；仍禁止 builder 自动上传。仅能发现新版本不证明能下载。侧栏更新按钮显示下载进度，失败时直接显示原因并允许重试。
+macOS `dir` 目标不会自动生成原生更新配置。正式打包在签名前写入 `app-update.yml`，沿用同一产品更新源和固定下载缓存名，并校验包内配置；仍禁止 builder 自动上传。仅能发现新版本不证明能下载。侧栏更新按钮显示下载进度，失败时直接显示原因并允许重试。更新重开时先核对原操作回执和旧后台进程退出；已完成的更新继续初始化新后台，未确认或未完成操作仍保留恢复引用。明确停止后台的操作仍需用户主动重连。
+
+安装先完成空闲检查、安全停止和当前安装占用检查，再触发 Squirrel 原生准备。只有 UID、真实可执行路径、进程身份和对应数据库均属于本会话的崩溃报告进程可被排除；其他会话、独立 CLI 和未知占用仍阻断安装。下载或摘要失败保留后台；原生准备失败发生在安全停止之后，需退出重开核对版本，不能自动重复安装。
 
 在干净、已合并的提交上执行：
 

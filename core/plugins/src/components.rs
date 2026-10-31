@@ -21,6 +21,10 @@ pub struct InstalledComponents {
     pub root: PathBuf,
     pub data_root: PathBuf,
     pub digest: String,
+    pub user_config_schema: std::collections::BTreeMap<String, crate::UserConfigField>,
+    pub user_configuration: crate::PluginUserConfiguration,
+    pub commands: Vec<crate::InstalledCommand>,
+    pub agents: Vec<crate::InstalledAgent>,
     pub mcp_documents: Vec<McpComponentDocument>,
     pub hook_documents: Vec<ComponentDocument>,
     pub app_documents: Vec<ComponentDocument>,
@@ -91,7 +95,7 @@ impl Store {
         let detail = state.installed.get(id).context("plugin not installed")?;
         self.installed_component(&state, detail)
     }
-    fn installed_component(
+    pub(super) fn installed_component(
         &self,
         state: &crate::State,
         detail: &crate::PluginDetail,
@@ -115,6 +119,13 @@ impl Store {
         component.disabled_mcp_servers = self
             .component_choices(state, &detail.id)
             .disabled_mcp_servers;
+        if let Some(configuration) = state.user_configuration.get(&detail.id) {
+            component.user_configuration.revision = configuration.revision;
+            if configuration.installed_digest == detail.review_digest() {
+                configuration.validate(&component.user_config_schema)?;
+                component.user_configuration = configuration.clone();
+            }
+        }
         Ok(component)
     }
     fn components(&self, enabled_only: bool) -> Result<Vec<InstalledComponents>> {
@@ -207,6 +218,14 @@ impl Store {
             root,
             data_root: self.root.join("data").join(id),
             digest: digest.to_owned(),
+            user_config_schema: crate::configuration::schema(overlay.get("userConfig"))
+                .unwrap_or_default(),
+            user_configuration: crate::PluginUserConfiguration {
+                installed_digest: digest.into(),
+                ..Default::default()
+            },
+            commands: vec![],
+            agents: vec![],
             mcp_documents: vec![],
             hook_documents: vec![],
             app_documents: vec![],
@@ -217,6 +236,10 @@ impl Store {
                 .component_support
                 .context("validated package support report missing")?,
         };
+        let templates =
+            crate::templates::discover(&files, overlay, selection.claude_defaults, id, digest);
+        result.commands = templates.commands;
+        result.agents = templates.agents;
         result.mcp_documents = mcp_documents(
             overlay.get("mcpServers"),
             &files,
@@ -264,10 +287,14 @@ impl Store {
             .any(|reason| {
                 matches!(
                     reason.as_str(),
-                    "packageDependenciesUnsupported" | "userConfigUnsupported"
+                    "packageDependenciesUnsupported"
+                        | "userConfigUnsupported"
+                        | "userConfigPositionUnsupported"
                 )
             })
         {
+            result.commands.clear();
+            result.agents.clear();
             result.mcp_documents.clear();
             result.hook_documents.clear();
             result.app_documents.clear();

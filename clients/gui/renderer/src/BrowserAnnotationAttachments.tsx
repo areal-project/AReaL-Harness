@@ -12,6 +12,7 @@ import {
 } from "./browserAnnotations.js";
 import type { Action, Data } from "./services.js";
 import "./BrowserRegionAnnotation.css";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 
 export function BrowserAnnotationAttachments({
   files,
@@ -126,11 +127,10 @@ export function SentBrowserAnnotations({
                 </strong>
                 <p>{note.comment}</p>
                 <small title={note.url}>{note.url}</small>
-                <details>
-                  <summary>截图来源</summary>
+                <SettingsDisclosure title="截图来源">
                   <p>{note.capturedAt}</p>
                   <pre>{note.evidence}</pre>
-                </details>
+                </SettingsDisclosure>
               </div>
             </section>
           ))}

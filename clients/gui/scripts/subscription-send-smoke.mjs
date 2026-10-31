@@ -481,10 +481,9 @@ async function startup() {
 
   const subscriptionDraft = "Startup subscription draft survives until account model readiness.";
   const subscriptionReply = "STARTUP_SUBSCRIPTION_SEND_COMPLETE";
-  await page.getByRole("button", { name: "模型", exact: true }).click();
-  const picker = page.getByRole("button", { name: "选择模型", exact: true });
-  if (await picker.isVisible()) await picker.click();
-  await page.locator('[role="radio"][data-model-value="areal_openai/gpt-6.1-sol"]').click();
+  await page.getByTestId("composer-model-trigger").click();
+  await page.getByRole("tab", { name: "ChatGPT", exact: true }).click();
+  await page.locator('[data-model-value="areal_openai/gpt-6.1-sol"]').getByRole("radio").click();
   await page.keyboard.press("Escape");
   await until(
     async () =>
@@ -529,17 +528,16 @@ async function startup() {
           (await page.getByTestId("chat-input").innerText()) === subscriptionDraft &&
           (await page.getByTestId("chat-input").isEditable()) &&
           (await page.getByTestId("chat-send-button").isEnabled()) &&
-          (await page.getByRole("button", { name: "模型", exact: true }).isEnabled())
+          (await page.getByTestId("composer-model-trigger").isEnabled())
         );
       },
       "Subscription-selected restart restores history, draft and Send before account catalog readiness",
       15000,
     );
-    await page.getByRole("button", { name: "模型", exact: true }).click();
-    const heldPicker = page.getByRole("button", { name: "选择模型", exact: true });
-    if (await heldPicker.isVisible()) await heldPicker.click();
+    await page.getByTestId("composer-model-trigger").click();
+    await page.getByRole("tab", { name: "fixture", exact: true }).click();
     assert.equal(
-      await page.locator('[role="radio"][data-model-value="fixture/fixture"]').isEnabled(),
+      await page.locator('[data-model-value="fixture/fixture"]').getByRole("radio").isEnabled(),
       true,
       "Held subscription discovery leaves the normal-provider model choice available",
     );
@@ -691,13 +689,15 @@ async function worktree() {
     const text = `First prompt in ${sample}.`;
     const reply = `${sample.toUpperCase()}_COMPLETE`;
     await createProjectConversation(page, "workspace");
-    await page.getByRole("button", { name: "模型", exact: true }).click();
-    const picker = page.getByRole("button", { name: "选择模型", exact: true });
-    if (await picker.isVisible()) await picker.click();
+    await page.getByTestId("composer-model-trigger").click();
+    await page
+      .getByRole("tab", { name: subscription ? "ChatGPT" : "fixture", exact: true })
+      .click();
     await page
       .locator(
-        `[role="radio"][data-model-value="${subscription ? "areal_openai/gpt-6.1-sol" : "fixture/fixture"}"]`,
+        `[data-model-value="${subscription ? "areal_openai/gpt-6.1-sol" : "fixture/fixture"}"]`,
       )
+      .getByRole("radio")
       .click();
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "新会话工作区", exact: true }).click();
@@ -1076,10 +1076,9 @@ try {
   if (startupMode) await startup();
   else if (worktreeMode) await worktree();
   else {
-    await page.getByRole("button", { name: "模型", exact: true }).click();
-    const picker = page.getByRole("button", { name: "选择模型", exact: true });
-    if (await picker.isVisible()) await picker.click();
-    await page.locator('[role="radio"][data-model-value="areal_openai/gpt-6.1-sol"]').click();
+    await page.getByTestId("composer-model-trigger").click();
+    await page.getByRole("tab", { name: "ChatGPT", exact: true }).click();
+    await page.locator('[data-model-value="areal_openai/gpt-6.1-sol"]').getByRole("radio").click();
     await page.keyboard.press("Escape");
     await writeFile(catalogGate, "held");
     const heldHistory = await send("held", "new", []);

@@ -62,6 +62,10 @@ function catalog(providers, models, project) {
   const result = [...models, ...cached].map(
     /** @returns {import('./provider-contract.cjs').ModelCatalogEntry} */ (m) => ({
       ...m,
+      providerName:
+        m.providerId === "areal_openai"
+          ? "ChatGPT"
+          : configuration?.data.find((provider) => provider.id === m.providerId)?.name,
       ...(m.providerId === "areal_openai"
         ? {
             availability: m.invalidReason

@@ -11,6 +11,13 @@ class ScheduledOwnerActivation {
     this.pending = null;
     /** @type {Map<string,string>} */
     this.errors = new Map();
+    this.attempt = 0;
+    /** @type {ReturnType<typeof setTimeout>|undefined} */
+    this.retryTimer = undefined;
+  }
+  /** @param {string} projectId */
+  error(projectId) {
+    return this.errors.get(projectId) ?? null;
   }
   /** @param {import('./project-index.cjs').SavedProject} owner */
   guard(owner) {
@@ -29,6 +36,9 @@ class ScheduledOwnerActivation {
   }
   start() {
     if (this.pending) return this.pending;
+    clearTimeout(this.retryTimer);
+    this.retryTimer = undefined;
+    const before = JSON.stringify([...this.errors]);
     const queue = [...this.backend.saved];
     this.pending = Promise.all(
       Array.from({ length: Math.min(2, queue.length) }, async () => {
@@ -58,11 +68,27 @@ class ScheduledOwnerActivation {
       .then(() => {})
       .finally(() => {
         this.pending = null;
+        if (JSON.stringify([...this.errors]) !== before) this.backend.onChange();
+        this.retry();
       });
     return this.pending;
   }
+  // 启动失败的安排执行工作区按退避重试，不能只在应用启动时尝试一次。
+  retry() {
+    if (this.stopped || this.backend.closing || !this.errors.size) {
+      this.attempt = 0;
+      return;
+    }
+    const delay = Math.min(5000 * 2 ** Math.min(this.attempt++, 6), 300000);
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = undefined;
+      void this.start();
+    }, delay);
+    this.retryTimer.unref?.();
+  }
   stop() {
     this.stopped = true;
+    clearTimeout(this.retryTimer);
   }
 }
 module.exports = { ScheduledOwnerActivation };

@@ -43,6 +43,8 @@ Linux profile 在派生 Bubblewrap 时建立会话，namespace init 保留在受
 
 native macOS profile 的默认 Xcode、`/Applications/Xcode_<数字版本>.app`（例如 `Xcode_16.4.app`）及 Command Line Tools Python 由 Core 与 Runtime 共用 `runtime/host-tools`，在可信宿主侧调用 `/usr/bin/xcrun --find python3` 并解析、校验真实文件后进入原有沙箱；不依赖 `/var/select/developer_dir` 链接；直接 `/usr/bin/python3` 和默认 PATH 中的 `python3` 使用实际解释器，避免 xcode-select shim。仅开放系统 Python framework 的读取和执行，工作区外文件和共享 `/tmp` 写入仍被拒绝。自定义 Xcode 位置、Homebrew Node/Python 不会自动获得权限，需要显式准备工具链。
 
+受限 macOS 命令的系统 C/C++ 编译器和 macOS SDK 也由可信宿主通过 `xcrun` 解析。Runtime 在系统 PATH 位置加入真实编译器目录，设置默认 `SDKROOT`，并映射顶层 `/usr/bin/cc`、`clang`、`c++`、`clang++`。仅允许默认或数字版本 Xcode 的 XcodeDefault 工具链与 macOS SDK，以及 CLT 的对应资源读取和执行；这些安装目录仍不可写。shell 内显式调用绝对 `/usr/bin/cc` 或 `xcrun` 仍经过 Apple shim，不属于此映射。
+
 产品 launcher 自动提供 scratch 和 `verify_command`；直接嵌入 Core 时若未配置 command scratch，仍不向模型提供此工具，需显式配置 Runtime scratch 授权。
 
 ## 生命周期

@@ -421,6 +421,23 @@
     "requires": ["core-binary"]
   },
   {
+    "script": "test:execution-trace-ui",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["trajectory", "history"],
+    "requires": ["browser", "gui-build"],
+    "notes": "Real React trace pane with synthetic action responses; does not prove Core or Electron."
+  },
+  {
+    "script": "test:execution-trace-desktop",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "The fixed native Runtime and Electron acceptance runner is currently validated on macOS.",
+    "areas": ["trajectory", "history"],
+    "requires": ["electron", "core-binary", "native-runtime", "gui-build"],
+    "notes": "Isolated Electron/Core with a loopback model, single shared delegation, copying and GUI reopen; nested legacy reads have Core and browser coverage."
+  },
+  {
     "script": "test:trajectory-ui",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
@@ -715,6 +732,7 @@
   },
   {
     "script": "test:plugins",
+    "notes": "Runs plugin presentation, offline read, configuration-secret, and ordinary command contracts before real Electron acceptance.",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["plugins"],
@@ -816,6 +834,13 @@
   },
   {
     "script": "test:design-rules",
+    "layer": "contract",
+    "platforms": ["darwin", "linux", "win32"],
+    "areas": ["design"],
+    "requires": []
+  },
+  {
+    "script": "test:copy-budget",
     "layer": "contract",
     "platforms": ["darwin", "linux", "win32"],
     "areas": ["design"],
@@ -937,5 +962,19 @@
       "playwright-webkit"
     ],
     "notes": "Production mobile UI, encrypted pairing and reload in Chromium/WebKit; browser memory and fixture Host only."
+  },
+  {
+    "script": "test:mobile-android",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["remote", "mobile"],
+    "requires": ["android-sdk", "android-emulator", "node-24.22.1", "relay-node-24.2.0", "openssl"]
+  },
+  {
+    "script": "test:mobile-android-storage",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["remote", "mobile"],
+    "requires": ["android-sdk", "android-emulator"]
   }
 ]

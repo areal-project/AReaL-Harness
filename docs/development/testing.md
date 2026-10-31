@@ -65,6 +65,14 @@ pnpm --dir clients/gui test:unit renderer/src/readingViews.test.ts
 
 进度直接读取结构化报告：`python3 scripts/ci-preflight.py --report target/ci/changed/<run-id>/report.json`。相邻 `plan.json` 必须与报告身份匹配。执行器在开始、执行中和每项完成时更新 `progress`：分别列出 `passed`、`failed`、`blocked`、`pending`、`running`、`invalidated`、`cancelled` 的数量和检查 ID。未选完整项和远端项都属于待执行，另列 `pendingFull`、`remoteRequired`；失败后独立检查继续通过也不清除失败。顶层 `status=passed` 仅表示所选本机项通过，`progress.status=pending` 表示完整计划仍有待验收项。读取进度命令的退出码只表示报告可读，不能作为验收通过的证据。
 
+设计文档也是健康预算的输入：仅修改 `design/` 或 `clients/gui/design-system/` 下的 Markdown 会选择廉价的 `gui-health`，不因此启动 GUI 构建或 smoke。普通 `docs/` 文档仍只选择文档相关检查。
+
+报告用 `selectedRequired` 记录本次实际选择。中断的本机尝试会把已选择但尚未产生结果的本机检查带入下一次快检；从未选择的 `pendingRequired` 与其他平台的 `remoteRequired` 不会因此变成本机全量任务。旧报告仅在相邻 `plan.json` 身份一致时恢复该集合。历史记录只提示重验，不能证明新 source/base/plan 已通过；`passed` 仍只表示本次所选检查，完整性以进度和远端待验条件为准。子 runner 缺项或重复项报告覆盖错误，完整集合内的失败报告具体 `failedScripts`；身份不一致仍直接失败。
+
+定时任务编辑器只在显式编辑时加载；列表读取不导入编辑器，也不提交任务操作。动态 chunk 仍属于 Remote 离线资源闭包，新增 chunk 必须登记有界预算，不因此提高入口或总量预算。纯状态测试验证加载、重试和旧代次失效；SSR 检查只证明未提前导入；首次编辑、加载失败、切换任务和卸载后的过期回包仍需交互验收。
+
+健康基线的人工审阅仍由代码评审承担，脚本不能验证人的授权。当前显式迁移记录仅认可 `activeDesignDocBytes` 从 262924 到 269714、owner 与方向不变的转换，理由是双语插件资源规范和折叠/文案规则，未留额外余量。它只解除与旧 base 比较的基线转换错误，实测超限、其他指标和源码上限照常失败。base 采用新值后记录不再匹配，可移除；下一次增长仍需新的审阅，不使用常驻 `--allow-regression`。
+
 `make ci-preflight` 将工具版本、锁文件和输入摘要写入 `target/ci/preflight/<run-id>/metadata.json`，同目录 `plan.json` 冻结计划，`report.json` 保存每项命令、开始/结束时间、耗时、退出码与状态。格式、manifest/门禁契约、环境探针和生产包预算尽早执行；独立检查继续收集失败，只有真实依赖失败的消费者记录 `blocked`。每轮使用新目录保留失败，不缓存通过结果。
 
 故障注入验收：`python3 scripts/desktop-schemas.py --counterexample` 使用真实 Rust schema 生成器验证漂移必被拒绝；`pnpm --dir clients/gui test:ci-budget-counterexample` 在隔离输出目录构建故意超限的生产入口，要求实际预算检查拒绝。`python3 -m unittest scripts.tests.test_ci_contracts scripts.tests.test_check_changed scripts.tests.test_git_hooks` 验证缺少 native 能力时阻塞、漏掉必跑项/子测试时 gate 拒绝，以及暂存规则与工作区隔离。首跑失败保留，不以自动重试达成全绿。
@@ -235,6 +243,14 @@ python3 scripts/native-python-smoke.py --bin-dir target/debug
 
 `make workgroup-smoke` 同时验证 Worker 命令的 `TMPDIR` 位于私有工作区下的 `.scratch/agent-<threadId>`，该目录可写且 Python 字节码写入被禁用。
 
+Rust 工具链回归通过真实 Runtime 在最小桌面 PATH 下离线构建并运行无依赖 Cargo 程序，再通过工作区内的本地 Git 仓库依赖验证 Cargo 获取与离线缓存复用。它覆盖普通作用域及仅 scratch 可写的只读仓库子作用域，同时验证仓库外文件读取被拒绝。此测试需要已安装且可确定默认版本的 Rust 和系统链接工具，不下载工具链或依赖。`--version` 检查不能替代编译和链接验收。
+
+```sh
+python3 scripts/native-rust-smoke.py --bin-dir target/debug
+```
+
+`make harness-smoke` 包含此回归。它使用隔离 Cargo home 和本地 Git fixture，不证明宿主 Cargo 缓存、私有依赖、真实模型或安装包中的工具调用可用。
+
 ## 恢复与研究 Agent
 
 ```sh
@@ -288,7 +304,7 @@ done
 
 macOS 与 Linux 宿主检查使用同一矩阵定义，`fail-fast: false` 保证任一平台失败不取消另一平台的覆盖。macOS 使用 `make setup-node`，仅安装原生 smoke 和 SDK 所需的 Node 依赖；Linux `make setup` 继续安装全部锁定格式工具。原生验收在同一次子 Make 调用中运行 Runtime、Harness、桌面 API 和 Workgroup smoke，共用一次 workspace build。Docker 只复制所需 CLI/TUI/Web 客户端，GUI 不进入构建上下文。原生 Runtime 和 Harness 覆盖保持不变。
 
-`harness-smoke.mjs` 通过真实 Core/Runtime 和模型请求检查根/嵌套 `AGENTS.md` 的顺序、无关目录隔离、缺失文件、跨 Turn 刷新、32 KiB 边界、UTF-8 和符号链接拒绝。
+`harness-smoke.mjs` 通过真实 Core/Runtime 和模型请求检查根/嵌套 `AGENTS.md` 与 `AGENTS.override.md` 的单层替换、空白回退、顺序、无关目录隔离、缺失文件、跨 Turn 刷新、32 KiB 边界、UTF-8 和符号链接拒绝。
 
 [CI](../../.github/workflows/ci.yml) 在 macOS 执行原生 Harness，在 Linux 执行常规回归和 Docker sandbox/文件所有权检查，独立检查 Rust/npm 依赖公告。工作流固定 action commit、使用只读权限并保留失败日志；是否通过以对应提交的运行结果为准。
 
@@ -381,9 +397,13 @@ PR #111 在初始 G0 快照后整合历史恢复与定时任务所有权。以�
 
 `test:composer-files` 是文件引用的独立必需 smoke，保留普通 `test:composer` 的输入与 IME 检查。移动浏览器与文件专项都由同轮 `GUI gate` 校验，缺失结果、错误平台或旧 attempt 均失败。推送钩子固定执行参数，继承的 `ARGS=--plan` 不得跳过快检。
 
-本机预检使用项目 Python 环境：`export PATH="$PWD/.venv/bin:$PATH"`。能力探针要求 Python 至少 3.11，且具备 `tomllib` 和 tar 解包过滤；缺失时提前 blocked。Cargo 自身管理 verify/native 的可变构建目录与重建，产物哈希冻结限于发布给其他 job 的 GUI bundle；该 bundle 的消费者仍逐文件复核哈希。
+本机预检使用项目工具链：`export PATH="$PWD/.venv/bin:$PWD/.local/tools/node/bin:$PATH"`。Git 提交与推送 hook 自动按此顺序优先使用仓库内工具，无需先激活终端环境。Python 放在 `.venv`，Node 24.22.1 的官方发行包解压到 `.local/tools/node`（可执行文件为 `.local/tools/node/bin/node`）；这两个目录均被 Git 忽略。缺少仓库内工具时使用调用者的 PATH，版本不足仍由能力探针明确阻塞。能力探针要求 Python 至少 3.11，且具备 `tomllib` 和 tar 解包过滤；缺失时提前 blocked。Cargo 自身管理 verify/native 的可变构建目录与重建，产物哈希冻结限于发布给其他 job 的 GUI bundle；该 bundle 的消费者仍逐文件复核哈希。
 
 本地与 CI 通过 `scripts/ci-preflight.py --groups <组名>` 执行同一计划，`--plan` 只展示。`make ci-gui-static CI_BASE=<ref>` 运行 Portable 的提交阶段，`make ci-gui-portable CI_BASE=<ref>` 运行完整 Portable 组，`make ci-core-contracts CI_BASE=<ref>` 连同产物依赖运行 Core 契约。`make ci-gui-health` 保留轻量健康入口。显式 `AREAL_CORE_BIN` 必须与刚构建的 Core 哈希一致；macOS 原生执行按固定产物路径流程准备。CI 只有同一 run/attempt 的产物依赖报告可跨 job 使用，消费者重新核对产物哈希。最终 gate 独立重算计划，严格核对结果全集、子测试全集和源码/计划/run/attempt 身份，缺项或意外 skip 拒绝放行。
+
+`gui-health.mjs --check --base=<ref>` 会标记基线源码已存在的超限，仍以已审核的 `health-baseline.json` 判定失败。继承分类用于归因，不是自动豁免；显式例外与基准变更继续经过既有审查。模型菜单 smoke 通过稳定的 `composer-model-trigger` 打开入口，在对应服务商标签内选择原生 radio，并以选中模型和后续行为验证结果。
+
+`Track red main` 工作流跟踪 main 上 `Verify` 和 `GUI checks` 的 push 结果。写 issue 前核对当前 main 提交、该 workflow 最新 run/attempt 及终态；过期通知与未完成的新 attempt 不修改告警。当前失败创建或更新对应 issue，当前成功关闭；仓库保护规则拥有必需检查设置。`python3 -m unittest scripts.tests.test_ci_contracts` 在 GitHub CLI 边界使用离线响应，覆盖乱序完成、旧 attempt、新运行未完成和 API 读取失败，测试不会写入真实 issue。
 
 运行 `make hooks-install CI_BASE=upstream-readonly/main` 激活本地 hooks。安装器保存实际远程目标，不覆盖其他 hooks。提交钩子在暂存快照验证 manifest、生成 `target/ci/staged-plan.json`，再检查格式和 workflow；计划展示不等于执行验收。推送钩子要求推送 SHA 等于当前 HEAD、受控文件及非忽略未跟踪输入干净，抓取目标后运行受影响快检加失败专项和依赖。并发工作使用独立干净 worktree。`make workflow-lint` 使用校验 SHA-256 的 actionlint 1.7.12。远端独立执行适用检查；真实供应商、设备和签名安装包仍需专项验收。
 

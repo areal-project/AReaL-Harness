@@ -17,6 +17,10 @@ export function SharedWorkspacePreview({ dark }: { dark: boolean }) {
   const [tabs, setTabs] = useState(["旁路讨论", "文件"]);
   const [draft, setDraft] = useState("主会话未发送草稿");
   const [settings, setSettings] = useState(false);
+  const [modelConfig, setModelConfig] = useState<Data>({
+    model: { providerId: "preview", modelId: "shared" },
+    parameters: { reasoningEffort: "low" },
+  });
   const [value, setValue] = useState("normal");
   const trigger = useRef<HTMLButtonElement>(null);
   const project: Data = {
@@ -27,6 +31,12 @@ export function SharedWorkspacePreview({ dark }: { dark: boolean }) {
     models: [
       {
         providerId: "preview",
+        modelId: "shared",
+        displayName: "用于检查窄面板的较长模型名称 Shared example model",
+        reasoningEffortOptions: ["low", "high"],
+      },
+      {
+        providerId: "preview-alternate",
         modelId: "shared",
         displayName: "用于检查窄面板的较长模型名称 Shared example model",
         reasoningEffortOptions: ["low", "high"],
@@ -107,8 +117,10 @@ export function SharedWorkspacePreview({ dark }: { dark: boolean }) {
                     <div className="composer-dock">
                       <ConversationComposer
                         project={project}
-                        modelConfig={project.configurations.shared}
-                        onConfigureModel={() => {}}
+                        modelConfig={modelConfig}
+                        onConfigureModel={(next) =>
+                          setModelConfig((current) => ({ ...current, ...next }))
+                        }
                         surfaceLayout={mode === "panel" ? "compact" : "default"}
                         workspacePath="/preview"
                         taskId="shared"

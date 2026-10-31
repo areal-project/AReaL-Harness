@@ -134,6 +134,139 @@ class ChangedChecks(unittest.TestCase):
             self.plan(["unmapped/new-driver.ts"])["fallbackPaths"], ["unmapped/new-driver.ts"]
         )
 
+    def test_design_markdown_selects_health_without_expensive_gui_lanes(self):
+        for path in ("design/README.md", "clients/gui/design-system/automation.md"):
+            names = {item["id"] for item in self.plan([path])["items"]}
+            self.assertIn("gui-health", names)
+            self.assertFalse(
+                any(name.startswith(("smoke:", "portable:", "macos:")) for name in names)
+            )
+            self.assertNotIn("relay-contracts", names)
+        self.assertNotIn(
+            "gui-health", {item["id"] for item in self.plan(["docs/guide.md"])["items"]}
+        )
+
+    def test_interrupted_selection_preserves_local_obligations_not_unselected_or_remote(self):
+        plan = self.plan([])
+        plan["items"] = [self.item(name) for name in ("done", "unfinished", "unselected", "remote")]
+        plan["items"][-1]["platforms"] = ["darwin"]
+        report = {
+            "kind": "verification-report",
+            "identity": {"headRevision": self.base},
+            "platform": "linux",
+            "status": "running",
+            "startedAt": "2026-01-01T00:00:00Z",
+            "selectedRequired": ["done", "unfinished", "remote"],
+            "pendingRequired": ["unselected"],
+            "remoteRequired": ["remote"],
+            "results": [{"id": "done", "status": "passed"}],
+        }
+        path = self.root / "target/ci/preflight/interrupted/report.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(report))
+        self.assertEqual(
+            checks.failure_checks(plan, self.root, platform="linux"), {"unfinished": [str(path)]}
+        )
+        self.assertEqual(checks.failure_checks(plan, self.root, platform="darwin"), {})
+        report["status"] = "passed"
+        path.write_text(json.dumps(report))
+        self.assertEqual(checks.failure_checks(plan, self.root, platform="linux"), {})
+        report["status"] = "running"
+        report["results"].append({"id": "unfinished", "status": "passed"})
+        path.write_text(json.dumps(report))
+        self.assertEqual(checks.failure_checks(plan, self.root, platform="linux"), {})
+
+    def test_real_interruption_persists_selection_before_first_command(self):
+        plan = self.plan([])
+        plan["items"] = [self.item("first"), self.item("remaining"), self.item("unselected")]
+        output = self.root / "target/ci/preflight/interrupted"
+
+        def interrupt(*args, **kwargs):
+            raise KeyboardInterrupt()
+
+        with self.assertRaises(KeyboardInterrupt):
+            checks.preflight.run_plan(
+                plan,
+                self.root,
+                plan["items"][:2],
+                output,
+                runner=interrupt,
+                platform="linux",
+            )
+        saved = json.loads((output / "report.json").read_text())
+        self.assertEqual(saved["selectedRequired"], ["first", "remaining"])
+        self.assertEqual(saved["status"], "running")
+        self.assertEqual(
+            set(checks.failure_checks(plan, self.root, platform="linux")), {"first", "remaining"}
+        )
+
+    def test_legacy_interrupted_report_requires_matching_saved_plan(self):
+        plan = self.plan([])
+        plan["items"] = [self.item("remaining"), self.item("unselected")]
+        report = {
+            "identity": {"planHash": plan["planHash"], **plan["source"]},
+            "platform": "linux",
+            "status": "running",
+            "pendingRequired": ["unselected"],
+            "results": [],
+            "remoteRequired": [],
+        }
+        path = self.root / "report.json"
+        self.assertEqual(checks.unfinished_checks(report, path, plan, "linux"), [])
+        (self.root / "plan.json").write_text(json.dumps(plan))
+        self.assertEqual(checks.unfinished_checks(report, path, plan, "linux"), ["remaining"])
+        report["identity"]["baseRevision"] = "other"
+        with self.assertRaisesRegex(ValueError, "identity differs"):
+            checks.unfinished_checks(report, path, plan, "linux")
+
+    def test_child_failure_is_not_misreported_as_missing_coverage(self):
+        for mode in ("failure", "missing", "duplicate", "identity"):
+            with self.subTest(mode=mode):
+                item = self.item("children")
+                item["expectedTests"] = {sys.platform: ["a", "b"]}
+
+                def runner(command, cwd, env):
+                    if "AREAL_PORTABLE_TEST_REPORT" not in env:
+                        return subprocess.CompletedProcess(command, 0)
+                    output = Path(env["AREAL_PORTABLE_TEST_REPORT"])
+                    plan = json.loads((output.parent.parent / "plan.json").read_text())
+                    detail = {
+                        "planHash": plan["planHash"],
+                        "itemId": item["id"],
+                        "sourceRevision": plan["source"]["sourceRevision"],
+                        "ciRunId": os.environ.get("GITHUB_RUN_ID"),
+                        "ciAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+                        "status": "failed",
+                        "passed": False,
+                        "results": [
+                            {"script": "a", "status": "passed", "passed": True},
+                            {"script": "b", "status": "failed", "passed": False},
+                        ],
+                    }
+                    if mode == "missing":
+                        detail["results"].pop()
+                    elif mode == "duplicate":
+                        detail["results"][1]["script"] = "a"
+                    elif mode == "identity":
+                        detail["sourceRevision"] = "stale"
+                    output.write_text(json.dumps(detail))
+                    return subprocess.CompletedProcess(command, 1)
+
+                report = self.execute(
+                    [item, self.item("consumer", ("children",)), self.item("independent")],
+                    runner=runner,
+                )
+                result = report["results"][0]
+                if mode == "failure":
+                    self.assertEqual(result["reason"], "runner child tests failed")
+                    self.assertEqual(result["failedScripts"], ["b"])
+                elif mode == "identity":
+                    self.assertIn("identity differs", result["reason"])
+                else:
+                    self.assertIn("required test set", result["reason"])
+                self.assertEqual(report["results"][1]["status"], "blocked")
+                self.assertEqual(report["results"][2]["status"], "passed")
+
     def test_staged_change_cancelled_in_worktree_remains_selected(self):
         original = checks.input_key(self.root, self.base)
         (self.root / "source.rs").write_text("staged-only\n")

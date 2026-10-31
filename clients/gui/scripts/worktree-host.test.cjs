@@ -50,6 +50,9 @@ async function setup(t, { gitRepo = true } = {}) {
       blocking() {
         return false;
       },
+      schedulingSuppressed() {
+        return false;
+      },
       activeTargets: new Set(),
       generation: "fixture",
     };
@@ -166,7 +169,12 @@ test("ordinary desktop creates share the selected checkout until Worktree is exp
   );
   assert.equal(b.saved.length, 1);
   assert.equal(git(f.root, "branch", "--show-current"), "main");
+  b.ownerTasks.changed(f.id);
+  b.ownerTasks.changed(f.id);
+  b.ownerTasks.changed("other-project");
   const snapshot = b.snapshot().projects[0];
+  assert.equal(snapshot.core.taskDirectoryRevision, 2);
+  assert.deepEqual(snapshot.scheduling, { suppressed: false, activationError: null });
   assert.equal(Object.keys(snapshot.state.threads).length, 2);
   assert.ok(Object.values(snapshot.state.threads).every((thread) => !thread.worktree));
   const explicit = await b.command("create", {

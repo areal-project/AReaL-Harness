@@ -48,9 +48,13 @@ Runtime 在可信宿主解析 Apple Git shim，受限任务只读取/执行选�
 
 显式激活的具体安装路径优先于全局默认。没有默认时，仅在安装集合唯一时补齐；有多个版本、配置无效或版本缺失时不随意切换到最新版。发现只读取有界文件和固定层级目录，不执行 shell 配置、manager hooks，不安装或下载工具。受限路径将已识别 shim 替换为具体安装目录，避免独立 HOME 破坏工具启动；完整授权且继承网络时保留原始 shim 顺序与宿主项目选择语义。受限执行使用启动时的版本快照，不自动解释工作区版本文件、复杂 manager 配置或安装未存在的项目版本；需要其他版本时使用已获授权的显式工具路径，或在可信启动环境激活后重启 Runtime。
 
+Rust 默认版本依次采用显式启动版本、用户 rustup 默认值和 Homebrew rustup 默认值。Homebrew 的默认配置仅在可信标准安装前缀下读取，不因此向任务开放配置文件。受限 PATH 同时识别 Homebrew rustup 的 opt 与 Cellar shim，替换为已安装工具链。
+
 桌面服务、Rust Client、独立 worker 和开发 launcher 透传同一组发现提示：HOME、XDG_DATA_HOME/XDG_CONFIG_HOME、NVM_DIR、FNM_DIR、VOLTA_HOME、MISE_DATA_DIR/MISE_CONFIG_DIR/MISE_INSTALLS_DIR、ASDF_DATA_DIR、PYENV_ROOT、RBENV_ROOT、RUSTUP_HOME、CARGO_HOME、PNPM_HOME、BUN_INSTALL、DENO_INSTALL，以及 RUSTUP_TOOLCHAIN/PYENV_VERSION/RBENV_VERSION。这些值用于可信启动发现，不直接注入受限任务。配置内容、宿主 home、凭据和 manager 状态目录不因此获得读取权限。具体安装根须解析到已识别安装树内，执行前再次拒绝被重定向或移除的根。模型进程自行设置 PATH 或 manager 变量不能增加授权根；源码写入、网络、只读输入和清理仍受原 Scope 约束。
 
 握手的 `commandEnvironment` 给出受限 `path`、完整授权 `unrestrictedPath`、`readOnlyToolchains` 和未能确定默认版本等 `notices`。发现按 Runtime 生命周期执行，不在每次工具调用时启动 shell 或重新扫描用户目录；更换工具安装或默认版本后重启服务。
+
+受限 macOS 命令默认设置 `CARGO_NET_GIT_FETCH_WITH_CLI=true`，让 Cargo 的 Git 获取复用系统 Git 的隔离配置。命令显式设置的值优先。系统 Git 配置文件只允许必要的元数据检查，不开放正文读取；宿主 Cargo 缓存仍需要显式目录授权。
 
 受限命令不会继承宿主 HOME。Runtime 在既有读取权限内选择 HOME：优先采用有效的 TMPDIR（Core 的每线程 scratch），未提供时尝试 Scope 可读的部署 scratch 或其已授权子目录，均不可用时退回当前工作目录；缺失的 TMPDIR 同步使用该目录。目录必须是已存在的绝对目录，解析符号链接后仍在 Scope 读取范围内；不增加读写根或网络权限。没有可写 scratch 的只读调用仍不能写缓存，应由可信调用方提供 scratch。完整授权且继承网络的宿主模式保留原有 HOME/TMPDIR 继承规则。
 

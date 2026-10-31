@@ -791,16 +791,13 @@ try {
   await until((s) => project(s)?.state?.connected, "project connection");
   projectId = project(await state()).id;
   const sourceModelTrigger = page
-    .getByRole("button", { name: "模型", exact: true })
+    .getByTestId("composer-model-trigger")
     .filter({ hasText: "fixture" });
   await sourceModelTrigger.waitFor();
   // 新草稿需显式选择目录中的模型，再开始本专项的来源对话。
   await sourceModelTrigger.click();
-  await page.getByRole("button", { name: "选择模型", exact: true }).click();
-  await page
-    .getByRole("radio", { name: "fixture", exact: true })
-    .and(page.locator('[data-model-value="fixture/fixture"]'))
-    .click();
+  await page.getByRole("tab", { name: "fixture", exact: true }).click();
+  await page.locator('[data-model-value="fixture/fixture"]').getByRole("radio").click();
   await page.keyboard.press("Escape");
   // 共享后台独立运行；在真实连接的返回边界记录 Core 已确认的创建键。
   await app.evaluate(

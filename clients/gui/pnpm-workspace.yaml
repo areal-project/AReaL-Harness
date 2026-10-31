@@ -29,6 +29,7 @@ patchedDependencies:
   fetch-blob@3.2.0: patches/fetch-blob@3.2.0.patch
   electron-updater@6.8.9: patches/electron-updater@6.8.9.patch
   "@electron/asar@3.4.1": patches/@electron__asar@3.4.1.patch
+  dir-compare@4.2.0: patches/dir-compare@4.2.0.patch
 overrides:
   "@libp2p/crypto": 5.1.23
   "@libp2p/peer-id": 6.0.15
@@ -50,7 +51,9 @@ overrides:
   "app-builder-lib>@electron/get": 5.1.0
   "fetch-blob@3.2.0>node-domexception": "-"
   "electron-updater@6.8.9>lodash.isequal": "-"
-  "@electron/asar@3.4.1>glob": 13.0.6
+  "@electron/asar@3.4.1>glob": 14.0.2
+  "glob@>=9.0.0 <=14.0.1": 14.0.2
+  minimatch@<11.0.1: 11.0.1
   "app-builder-lib@26.15.3>electron-builder-squirrel-windows": "-"
 
 packageExtensions:

@@ -62,9 +62,10 @@ pub fn projections() -> (Value, Value) {
             .unwrap()
             .retain(|v| v != name);
     }
-    let group = object(
+    let mut group = object(
         json!({"id":string,"record":record,"historyCount":number,"verificationCount":number,"recordPath":string,"candidatePath":string}),
     );
+    group["properties"]["elapsedMs"] = nullable(number.clone());
     let mcp = object(
         json!({"id":string,"revision":number,"directoryRevision":number,"config":schema::<areal_mcp::ServerConfig>(),"state":{"enum":["disconnected","connecting","connected","failed","stale","cleanupFailed"]},"error":nullable(string.clone()),"tools":nullable(array(schema::<ToolDefinition>()))}),
     );
@@ -433,6 +434,10 @@ pub fn projections() -> (Value, Value) {
         ("offset", number.clone()),
         ("nextOffset", nullable(number.clone())),
         ("textBytes", number.clone()),
+        ("durationMs", nullable(number.clone())),
+        ("startedAtMs", nullable(number.clone())),
+        ("elapsedMs", nullable(number.clone())),
+        ("requestId", string.clone()),
         ("source", string.clone()),
         ("sourceItemId", string.clone()),
         ("stopRequested", boolean.clone()),
@@ -459,6 +464,20 @@ pub fn projections() -> (Value, Value) {
     insert(
         &["execution/list"],
         object(json!({"data":array(execution.clone()),"nextOffset":nullable(number.clone())})),
+    );
+    insert(
+        &["execution/traceResult"],
+        object(json!({"bytes":array(number.clone())})),
+    );
+    insert(
+        &["execution/trace"],
+        object(json!({
+            "threadId":string,"parentThreadId":nullable(string.clone()),"title":string,
+            "page":object(json!({"snapshotId":nullable(string.clone()),"data":array(any_object.clone()),"nextCursor":nullable(string.clone()),"complete":boolean})),
+            "activeTurn":nullable(turn.clone()),"sources":array(object(json!({"threadId":string,"title":string}))),"legacySources":array(object(json!({"threadId":string,"title":string}))),
+            "executions":object(json!({"data":array(execution.clone()),"nextOffset":nullable(number.clone())})),
+            "queue":nullable(queue.clone()),"readAtMs":number,"stateConfirmed":boolean
+        })),
     );
     let mut execution_wait = execution;
     execution_wait["properties"]["timedOut"] = boolean.clone();

@@ -1,0 +1,43 @@
+ts	phase	decision	why	evidence	result
+2026-10-29T09:42:57Z	frame	以 Astra 修正后的 P0/P1 为交付范围	保留所有者、不可变快照、摘要信任和未知结果恢复保证	/private/tmp/areal-plugin-plan/todo.md	open
+2026-10-29T09:43:01Z	workspace	从24f19e27创建独立worktree	隔离用户和并发任务的源码修改	/private/tmp/areal-plugin-p0-p1	open
+2026-10-29T09:54:18Z	design	采用A的one-shot只读Store接口并修正秘密输入边界	避免无收益证据的常驻进程，复用现有凭据所有者	/private/tmp/areal-plugin-plan/design-judge.md	open
+2026-10-29T09:56:14Z	baseline	插件Store/生态/组件支持基线通过	先固定当前行为，再判断新增兼容与读取路径	/private/tmp/areal-plugin-plan/baseline-plugins.log	tests green
+2026-10-29T09:56:14Z	build	APFS克隆target后独立构建	复用现有依赖而不覆盖主仓产物，默认沙箱mbx失败已在授权环境重跑	/private/tmp/areal-plugin-target	tests green
+2026-10-29T10:06:17Z	unit1	离线snapshot与不可变模板通过4项定向测试及CLI类型检查	真实Store边界证明无初始化副作用并固定模板参数	/private/tmp/areal-plugin-plan/unit12-plugins.log	tests green
+2026-10-29T10:06:17Z	lazy	修正stdio测试fixture对未知协商方法的响应	首次未进入目标断言，生产初始化保护正确保留	/private/tmp/areal-plugin-plan/unit1-search.log	retry pending
+2026-10-29T10:12:10Z	unit1	正常提交钩子通过并保存离线与模板单元	补齐锁定开发工具后保留原提交检查	ddb5102a	tests green
+2026-10-29T10:12:10Z	lazy	真实stdio搜索与下轮schema投影通过并本地提交	保留默认eager反例、同批拒绝及Turn隔离，实验默认关闭	039c0ba8	tests green
+2026-10-29T10:12:10Z	unit3	配置与开发刷新通过，新增snapshot场景失败待修	macOS临时路径别名在fixture边界需规范化，保留原失败	/private/tmp/areal-plugin-plan/unit3-plugins.log	INCONCLUSIVE
+2026-10-29T10:42:20Z	review	接受双模型确认的配置撤代复活和历史Profile配额问题	原测试缺少包更新后的撤代路径与重复开发生命周期	/private/tmp/areal-plugin-plan/rust-review-astra.md	fix pending
+2026-10-29T10:42:20Z	review	补命令展开总量、运行目录写事务及空Skill启动路径	分别存在可达内存放大、丢更新和下一轮不刷新路径	/private/tmp/areal-plugin-plan/rust-review-sol.md	fix pending
+2026-10-29T10:42:20Z	schema	原schema生成器两次137，保留旧公开文件	签名检查正常且未获可识别授权弹窗证据，不改父进程绕过	/private/tmp/areal-plugin-plan/schema-generate-retry1.log	INCONCLUSIVE
+2026-10-29T11:20:56Z	declaration	以整个保留MCP文档替代只看server字段的前提	旧导入四案例直接推翻局部扫描，修复集中在同一声明解释所有者	/private/tmp/areal-plugin-plan/engine-final-regression.log	fixed in core-unit9
+2026-10-29T11:20:56Z	authorization	用户手动同意本机提示后按原路径复测	外部状态已明确变化，未改变父进程或防护设置	/private/tmp/areal-plugin-plan/schema-service-retry.log	schemas generated
+2026-10-29T11:20:56Z	review	配置代和目录事务等10项Engine回归通过	真实旧代、持久元数据并发、70次更新与初次Skill发现均有证据	/private/tmp/areal-plugin-plan/review-engine-tests.log	tests green
+2026-10-29T11:20:56Z	ui	新操作原回执恢复接入typed registry并通过32项Node检查	双模型都证明旧白名单会让UNKNOWN永久阻塞	/private/tmp/areal-plugin-plan/p1-receipt-node.log	tests green
+2026-10-29T11:33:00.966836+00:00	schema-final	正式三份schema生成及检查通过	用户放行后原路径复验成功，保留之前137失败	schema-final-check.log	passed
+2026-10-29T11:33:00.967241+00:00	renderer-final	十项Renderer交互及截图审查通过	只证明生产Renderer与确定性management fixture	renderer-final.md	passed bounded
+2026-10-29T11:33:00.967248+00:00	verify-final	正式GUI verify发现两处未本地化标题，已使用消息字典修复	保留首轮失败，重新跑完整verify	gui-verify.log	retry running
+2026-10-29T11:33:00.967251+00:00	build-final	正式schema绑定Core和GUI均已构建	首次doctor缺Renderer产物，构建后重做，不当作产品失败	doctor-schema-bound.log	acceptance running
+2026-10-29T11:33:00.967254+00:00	corpus-final	固定ZCode真实语料对最终Core复验通过	HOME无写入与显式支持诊断，不能推出完整生态兼容	real-corpus-final.log	passed bounded
+2026-10-29T11:39:05.587949+00:00	audit-correction	更正早期target目录的tests green标记	目录只证明隔离缓存，真正构建成功见日志	/private/tmp/areal-plugin-plan/build.log	build passed, not test proof
+2026-10-29T11:39:05.588113+00:00	review-close	配置撤代、Profile历史、展开总量、空Skill与写事务发现已闭环	补第十项确定性catalog并发测试指针	/private/tmp/areal-plugin-plan/review-catalog-race.log	1 passed; review-engine-tests.log 9 passed
+2026-10-29T11:39:05.588116+00:00	review-close	UI新mutation的UNKNOWN查询闭环并删除冗余注释	实际manage三操作三态九路径证明查询原回执且不重放	/private/tmp/areal-plugin-plan/gui-final-node.log	32 passed
+2026-10-29T11:39:05.588118+00:00	verify-final	正式GUI verify复验全部17组通过	已修复新增本地化漏项，首轮失败保留	/private/tmp/areal-plugin-plan/gui-verify-retry1.log	17/17 successful
+2026-10-29T11:39:05.588119+00:00	electron-failure	实际Electron首轮两个driver命中陈旧断言	目录候选摘要是admissionDigest；认证现在是组件行而非heading	/private/tmp/areal-plugin-plan/electron-final.md	driver fix in progress
+2026-10-29T11:39:05.588120+00:00	scope-limits	原附件的性能点击数语料率和模型效果未验收	当前证据只支持功能边界，不以fixture数量代替指标	/private/tmp/areal-plugin-plan/trail-review-astra.md	P95/clicks/corpus rate/tokens/5s unverified
+2026-10-29T11:45:55.075235+00:00	review-close	早期stdio握手与snapshot临时路径问题复验通过	fixture未知协商方法回-32601；临时路径canonicalize	/private/tmp/areal-plugin-plan/unit1-search-retry1.log; /private/tmp/areal-plugin-plan/review-core-tests.log	passed
+2026-10-29T11:45:55.076021+00:00	electron-p1	真实Electron认证链路八项通过	实际Main平台加密、Core重启和本地HTTP MCP消费	/private/tmp/areal-plugin-plan/electron-p1-retry2.log	8 passed
+2026-10-29T11:45:55.076047+00:00	electron-count	更正setup请求计数以排除明确的自动下一条建议	原始三请求为setup、命名、建议；未发生第二次setup	/private/var/folders/06/v03n2mms0ks1nrrvkyzjllr40000gr/T/areal-plugin-gui-Ge7FIM/model-requests.json	P0 rerun pending
+2026-10-29T11:45:55.076052+00:00	electron-offline	在实际Electron选项目前补Main离线读验收	既有P0从连接项目开始，只能fixture证明离线界面	/private/tmp/areal-plugin-p0-p1/clients/gui/scripts/plugin-p0-smoke.mjs	P0 rerun pending
+2026-10-29T11:45:55.076066+00:00	audit	抽查本会话原请求/授权/实现/失败和回归记录，逐行检查轨迹证据路径	Astra独立抽查transcript补出旧待修标记和指标边界，已追加更正	/private/tmp/areal-plugin-plan/trail-review-astra.md	final Electron/commit pending
+2026-10-29T11:49:23.283569+00:00	electron-offline-correction	更正新离线验收的零project前提	桌面项目未选择但已有内部projectless投影，改验前后project集合不变而非假定全桌面零服务	/private/tmp/areal-plugin-plan/electron-p0-retry3.log	retry4 pending; original failure retained
+2026-10-29T12:57:13.618618+00:00	electron-init	等待projectless catalog权威初始化后再取离线基线	新增Core计数不得把桌面已有异步初始化归到离线读取	/private/tmp/areal-plugin-plan/electron-p0-retry5.log	initialization race corrected
+2026-10-29T12:57:13.618898+00:00	electron-timeout	安装超时后核对原请求已completed而未重放	Main outcomes和Core submissions都确认同一request且pending为空	/private/var/folders/06/v03n2mms0ks1nrrvkyzjllr40000gr/T/areal-plugin-gui-4FR0I1/core/6325bd19805f74e41d543b4e/state/desktop/submissions.json	completed; latency root cause unknown
+2026-10-29T12:57:13.618901+00:00	electron-ui-wait	等待Skill开关显示已确认的禁用状态再严格断言	Core拒绝读取和目录移除已通过，截图时GUI仍正在刷新	/private/tmp/areal-plugin-plan/electron-p0-retry7.log	retry8 pending
+2026-10-29T12:57:13.618904+00:00	electron-command	补实际Main到Core普通Command提交验收	分别通过的Renderer和Rust不能替代完整客户端组合边界	/private/tmp/areal-plugin-p0-p1/clients/gui/scripts/plugin-p0-smoke.mjs	pending final run
+2026-10-29T13:00:45.885947+00:00	electron-final	真实Electron P0九项和P1八项均通过并清理隔离服务	最后driver修正经实际Main/Core执行，未放宽产品契约或超时	/private/tmp/areal-plugin-plan/electron-final.md	9 + 8 passed; prior failures retained
+2026-10-29T13:00:45.886233+00:00	commit	通过正常提交钩子保存P1实现和全部同步契约文档	只暂存owned diff，未提交AGENTS或.agents，未push	5b44a10c52a768006ecc080b74412a834446d8a0	local commit; hooks passed
+2026-10-29T13:00:45.886237+00:00	identity	最终干净源码与已验收固定Core和GUI构建一致	提交只保存相同文件内容，doctor比对输入hash和固定二进制hash	/private/tmp/areal-plugin-plan/doctor-committed.json	passed
+2026-10-29T13:00:45.886239+00:00	handoff	Astra轨迹标记已逐项补记录与证据，指标缺口保留	未把模型效果、首屏性能或语料完全可用率混为功能回归通过	/private/tmp/areal-plugin-plan/RESULT.md	functional scope verified; metric limits explicit

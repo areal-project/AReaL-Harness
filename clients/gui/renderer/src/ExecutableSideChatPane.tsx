@@ -409,6 +409,7 @@ export function ExecutableSideChatPane({
               dark={dark}
               onLink={onLink}
               onFile={onFile}
+              fileOpen={fileOpen}
               onReview={onReview}
               readTurnReview={readTurnReview}
               onAgent={(id) => setResource(`agent:${id}`)}

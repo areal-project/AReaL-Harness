@@ -8,7 +8,14 @@ fn invalid(error: impl std::fmt::Display) -> Error {
 }
 fn receipt_version(value: &mut Value) -> Result<()> {
     let mut version = value.clone();
-    for key in ["activity", "text", "offset", "nextOffset", "receiptVersion"] {
+    for key in [
+        "activity",
+        "elapsedMs",
+        "text",
+        "offset",
+        "nextOffset",
+        "receiptVersion",
+    ] {
         version.as_object_mut().unwrap().remove(key);
     }
     value["receiptVersion"] = json!(format!(
@@ -17,7 +24,7 @@ fn receipt_version(value: &mut Value) -> Result<()> {
     ));
     Ok(())
 }
-fn owner_key(owner: &ExecutionOwner) -> String {
+pub(crate) fn owner_key(owner: &ExecutionOwner) -> String {
     match owner {
         ExecutionOwner::Turn { thread_id, turn_id } => format!("{thread_id}/{turn_id}"),
         ExecutionOwner::TaskRun {
@@ -717,7 +724,7 @@ impl Engine {
         record: &ExecutionRecord,
         offset: usize,
     ) -> Result<Value> {
-        let mut value = json!({"executionId":record.execution_id,"parentThreadId":parent_id(&record.owner),"owner":record.owner,
+        let mut value = json!({"executionId":record.execution_id,"requestId":record.request_id,"parentThreadId":parent_id(&record.owner),"owner":record.owner,
             "title":record.title,"strategy":record.strategy,"reason":record.reason,"status":"unknown","settled":false,"resourcesReleased":false,
             "text":"","error":record.error,"stopRequested":record.cancel_requested,"verification":{"status":"notRun","kind":"none"},"delivery":{"status":"notRequired"}});
         value["capabilities"] = json!({
@@ -764,6 +771,8 @@ impl Engine {
                 value["capabilities"]["sendInput"] = raw["capabilities"]["sendInput"].clone();
                 value["threadId"] = json!(thread_id);
                 value["turnId"] = json!(turn_id);
+                value["durationMs"] = json!(turn.duration_ms);
+                value["startedAtMs"] = json!(turn.trace.started_at_ms);
                 value["status"] = json!(match turn.status {
                     TurnStatus::InProgress => "running",
                     TurnStatus::Completed => "completed",
@@ -813,6 +822,7 @@ impl Engine {
                         return Ok(value);
                     }
                 };
+                value["elapsedMs"] = group["elapsedMs"].clone();
                 let state = &group["record"];
                 let finished = matches!(
                     state["status"].as_str(),
@@ -1287,6 +1297,16 @@ impl Engine {
                     .await?;
             }
             if matches!(record.execution, Some(ExecutionRef::Workgroup { .. })) {
+                let mut wait_trace = self
+                    .trace_begin(
+                        cell,
+                        "subagentWait",
+                        &record.title,
+                        None,
+                        Some(&record.execution_id),
+                    )
+                    .await
+                    .map_err(invalid)?;
                 loop {
                     if !cancel
                         && let Err(error) = self
@@ -1312,6 +1332,9 @@ impl Engine {
                         return Err(Error::Closed);
                     }
                 }
+                self.trace_finish(cell, &mut wait_trace, None)
+                    .await
+                    .map_err(invalid)?;
             }
         }
         Ok(values)

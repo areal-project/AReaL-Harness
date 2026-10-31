@@ -6,7 +6,7 @@
 
 [产品术语](../GLOSSARY.md) · [桌面端迁移决策（待实施）](adr/0001-desktop-client-module.md)
 
-[普通会话暂停与继续](adr/0014-conversation-pause-and-continue.md)
+[普通会话暂停与继续](adr/0014-conversation-pause-and-continue.md) · [定时消息的会话目标（设计中）](adr/0015-scheduled-conversation-target.md)
 
 | 分类 | 文档 |
 |---|---|

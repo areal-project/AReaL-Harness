@@ -43,15 +43,15 @@ function fixture(options = {}) {
   return { updater, controller, calls, states };
 }
 
-test("adjacent formal version stages before stopping Core, then hands off once", async () => {
+test("adjacent formal version passes safety checks before native staging and handoff", async () => {
   const { controller, calls, states } = fixture();
   assert.equal((await controller.check()).status, "available");
   assert.equal((await controller.download()).status, "installing");
-  assert.deepEqual(calls.slice(1), ["download", "native-ready", "stop-core", "install"]);
+  assert.deepEqual(calls.slice(1), ["download", "stop-core", "native-ready", "install"]);
   assert.equal(states.find((state) => state.percent === 42).status, "downloading");
   await controller.install();
   await controller.download();
-  assert.deepEqual(calls.slice(1), ["download", "native-ready", "stop-core", "install"]);
+  assert.deepEqual(calls.slice(1), ["download", "stop-core", "native-ready", "install"]);
 });
 
 test("busy work defers install and idle retry uses the same verified download", async () => {
@@ -59,10 +59,10 @@ test("busy work defers install and idle retry uses the same verified download", 
   const { controller, calls } = fixture({ hasWork: async () => busy });
   await controller.check();
   assert.equal((await controller.download()).status, "deferred");
-  assert.deepEqual(calls.slice(1), ["download", "native-ready"]);
+  assert.deepEqual(calls.slice(1), ["download"]);
   busy = false;
   assert.equal((await controller.install()).status, "installing");
-  assert.deepEqual(calls.slice(1), ["download", "native-ready", "stop-core", "install"]);
+  assert.deepEqual(calls.slice(1), ["download", "stop-core", "native-ready", "install"]);
 });
 
 test("activity appearing at admission is deferred without native replacement", async () => {
@@ -75,10 +75,10 @@ test("activity appearing at admission is deferred without native replacement", a
   });
   await controller.check();
   assert.equal((await controller.download()).status, "deferred");
-  assert.deepEqual(calls.slice(1), ["download", "native-ready"]);
+  assert.deepEqual(calls.slice(1), ["download"]);
   busy = false;
   await controller.install();
-  assert.deepEqual(calls.slice(1), ["download", "native-ready", "stop-core", "install"]);
+  assert.deepEqual(calls.slice(1), ["download", "stop-core", "native-ready", "install"]);
 });
 
 test("download interruption or checksum error preserves Core and supports retry", async () => {
@@ -92,30 +92,64 @@ test("download interruption or checksum error preserves Core and supports retry"
     assert.deepEqual(calls.slice(1), []);
     updater.downloadUpdate = async () => calls.push("download");
     await controller.download();
-    assert.deepEqual(calls.slice(1), ["download", "native-ready", "stop-core", "install"]);
+    assert.deepEqual(calls.slice(1), ["download", "stop-core", "native-ready", "install"]);
   }
 });
 
-test("failed native validation keeps Core running and permits a fresh staging attempt", async () => {
-  let valid = false;
+test("failed native staging after safe shutdown requires manual reconciliation", async () => {
+  const notices = [];
   const { controller, calls } = fixture({
+    notify: async (options) => {
+      notices.push(options);
+      return { response: 0 };
+    },
     prepareNativeInstall: async () => {
-      if (!valid) throw new Error("native signature rejected");
-      calls.push("native-ready");
+      throw new Error("native signature rejected");
     },
   });
   await controller.check();
-  assert.equal((await controller.download()).detail, "native signature rejected");
-  assert.deepEqual(calls.slice(1), ["download"]);
-  valid = true;
+  assert.equal((await controller.download()).status, "error");
+  assert.match(controller.state().detail, /后台已安全停止.*native signature rejected/);
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0].message, "更新安装尚未完成");
+  assert.match(notices[0].detail, /后台已安全停止.*退出并重新打开/);
+  assert.deepEqual(calls.slice(1), ["download", "stop-core"]);
+  await controller.install();
   await controller.download();
-  assert.deepEqual(calls.slice(1), [
-    "download",
-    "download",
-    "native-ready",
-    "stop-core",
-    "install",
-  ]);
+  await controller.check(true);
+  assert.deepEqual(calls.slice(1), ["download", "stop-core"]);
+});
+
+test("a rejected package user check cannot arm native installation on normal exit", async () => {
+  let armed = false;
+  const { controller, calls } = fixture({
+    prepareInstall: async () => {
+      throw Object.assign(new Error("another profile is using this package"), {
+        code: "LIFECYCLE_BLOCKED",
+      });
+    },
+    prepareNativeInstall: async () => {
+      armed = true;
+    },
+  });
+  await controller.check();
+  assert.equal((await controller.download()).status, "deferred");
+  assert.equal(armed, false);
+  assert.deepEqual(calls.slice(1), ["download"]);
+});
+
+test("handoff failure after staging cannot be repeated by automatic actions", async () => {
+  const { controller, updater, calls } = fixture();
+  updater.quitAndInstall = () => {
+    calls.push("install");
+    throw new Error("handoff failed");
+  };
+  await controller.check();
+  assert.equal((await controller.download()).status, "error");
+  await controller.install();
+  await controller.download();
+  await controller.check(true);
+  assert.deepEqual(calls.slice(1), ["download", "stop-core", "native-ready", "install"]);
 });
 
 test("unknown stop result cannot be replayed by idle, check, or download actions", async () => {
@@ -133,7 +167,7 @@ test("unknown stop result cannot be replayed by idle, check, or download actions
   await controller.download();
   assert.equal(requests, 1);
   assert.equal(controller.state().status, "error");
-  assert.deepEqual(calls.slice(1), ["download", "native-ready"]);
+  assert.deepEqual(calls.slice(1), ["download"]);
 });
 
 test("check errors are visible and a successful retry clears them", async () => {
@@ -168,7 +202,7 @@ test("the download action retries a failed check without downloading the newly f
   assert.equal(controller.state().detail, "");
   assert.deepEqual(calls.slice(1), []);
   await controller.download();
-  assert.deepEqual(calls.slice(1), ["download", "native-ready", "stop-core", "install"]);
+  assert.deepEqual(calls.slice(1), ["download", "stop-core", "native-ready", "install"]);
 });
 
 test("retry clears the check error when the feed has no newer version", async () => {

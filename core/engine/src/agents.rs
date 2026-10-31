@@ -833,6 +833,7 @@ impl Engine {
         for id in &ids {
             children.push(self.cell(id).await?);
         }
+        let mut wait_trace = None;
         loop {
             let mut pending = Vec::new();
             let mut unseen = false;
@@ -847,8 +848,20 @@ impl Engine {
                 break;
             }
             // 不按派发顺序等待：较快子任务结束后即可让父任务消费其成果。
+            if wait_trace.is_none() {
+                wait_trace = self
+                    .trace_begin(
+                        parent,
+                        "subagentWait",
+                        "Waiting for child agents",
+                        None,
+                        None,
+                    )
+                    .await?;
+            }
             wait_any(&pending).await?;
         }
+        self.trace_finish(parent, &mut wait_trace, None).await?;
         let (result, settled) = summaries(&children).await?;
         // 只确认本次快照中的终态，避免漏掉快照完成后才结束的子任务。
         observed.extend(settled);

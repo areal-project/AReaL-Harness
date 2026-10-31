@@ -123,6 +123,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     tasks,
     (pid, tid) => open(pid, tid),
   );
+  session.resourceBrowsing.current = surfaces.pluginCenterActive;
   const {
     settingsTab,
     settingsOpen,
@@ -336,6 +337,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     snapshot.connection?.state,
   ]);
   useEffect(session.synchronizeRestoration, [
+    surfaces.pluginCenterActive,
     selectionReady,
     project?.id,
     threadId,

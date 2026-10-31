@@ -43,6 +43,8 @@ The Linux profile establishes a session when spawning Bubblewrap and keeps names
 
 In the native macOS profile, Python from the default Xcode, `/Applications/Xcode_<numeric version>.app` (for example `Xcode_16.4.app`), or Command Line Tools installation is discovered through shared `runtime/host-tools` by Core and Runtime: the trusted host runs `/usr/bin/xcrun --find python3`, resolves and validates the actual file before entering the existing sandbox; no `/var/select/developer_dir` link is required. Direct `/usr/bin/python3` and `python3` on the default PATH use the real interpreter, avoiding the xcode-select shim. Only the system Python framework gains read/execute access; out-of-workspace files and shared `/tmp` writes remain denied. Custom Xcode locations and Homebrew Node/Python do not gain permissions automatically and require explicit toolchain preparation.
 
+For restricted macOS commands, the trusted host also resolves the system C/C++ compiler and macOS SDK through `xcrun`. Runtime inserts the actual compiler directory at the system PATH position, sets a default `SDKROOT`, and maps top-level `/usr/bin/cc`, `clang`, `c++`, and `clang++` invocations. Read and execute access covers XcodeDefault toolchains and macOS SDKs in default or numerically versioned Xcode installations and corresponding CLT resources. These installation directories remain unwritable. Explicit absolute `/usr/bin/cc` or `xcrun` calls inside shell code still use Apple shims and are outside this mapping.
+
 The product launcher supplies scratch automatically and advertises `verify_command`. Direct embedded Core deployments without command scratch do not advertise it; they must explicitly configure Runtime scratch grants.
 
 ## Lifecycle

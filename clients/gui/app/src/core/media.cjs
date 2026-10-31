@@ -270,7 +270,7 @@ function messageInput(backend, request) {
     else throw new Error("不支持的 MCP 消息内容");
     input.push({ type: "text", text, text_elements: [], mcpContent: block });
   }
-  if (!input.length) throw new Error("消息不能为空");
+  if (!input.length && request.command === undefined) throw new Error("消息不能为空");
   return input;
 }
 /** @param {Project} project @param {Record<string,unknown>} input @param {MediaHost} backend */

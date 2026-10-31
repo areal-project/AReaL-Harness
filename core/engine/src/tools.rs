@@ -1171,6 +1171,7 @@ impl Engine {
             content_items: None,
             call_id: call.id.clone(),
             execution: Box::new(ToolExecution {
+                started_at_ms: Some(crate::execution_trace::now_ms()),
                 permission_review: None,
                 permission_scopes: Vec::new(),
                 page: entry.as_ref().ok().and_then(|t| match &t.backend {

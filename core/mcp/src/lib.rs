@@ -44,7 +44,8 @@ use areal_protocol::{DynamicToolResponse, ToolContent, ToolDefinition};
 pub use config::{ServerConfig, TransportConfig, validate};
 pub use plugin::{
     ApprovalMode, AuthPolicy, PluginConfigOutcome, PluginDeclaration, PluginDiagnostic,
-    PluginEnvelopeEntry, PluginPolicy, PluginServerConfig, ToolPolicy, normalize_plugin_document,
+    PluginEnvelopeEntry, PluginPolicy, PluginServerConfig, ToolPolicy, UserConfigBinding,
+    normalize_plugin_document,
 };
 use rmcp::{
     ClientHandler, RoleClient,

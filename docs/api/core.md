@@ -504,6 +504,8 @@ checkpoint 恢复最多保留 8 组接口导向文件片段，序列化内容总
 
 CLI 保持 `--input-file` 的 2 MiB 上限，以有界读取在 JSON 解析前校验；可用 `--input-error-file` 写入不含正文的结构化拒绝 `INPUT_ENVELOPE_TOO_LARGE`。Arena Runner 将该原因及公开输入准备失败 `PUBLIC_INPUT_NOT_ACCESSIBLE` 投影到既有 outcome，不再统一报告缺少 Core Turn。媒体工具失败仍是可恢复工具结果，解码失败 details.reason 为 `MEDIA_PREPROCESS_FAILED`，不伪造一次终止 Turn。
 
+不存在规则文件时，项目规则加载不申请 Runtime Scope，也不插入空规则说明；发现规则文件后才创建受限 Scope，权限拒绝仍在模型请求前使 Turn 失败。
+
 项目指令由 Engine 在每个 Turn 首次模型请求前加载，并保存为 `instructionSnapshot`。按工作区根到 Thread `cwd` 的目录链读取 `AGENTS.md`，来源路径随正文写入快照；不新增 API 字段，已有仅根文件项目保持兼容。正文合计超过 32 KiB、无效 UTF-8、符号链接或超过 64 层的目录链使 Turn 在请求模型前失败，不截断规则。作用域、优先级与 cwd 路径别名见[客户端指南](../guides/clients.md#历史恢复与观测)。
 
 Shared Browser 的旧 Thread 固定工具包追加已实现，方法为 `areal/thread/tools/attach`；请求、回执、存储版本与回退限制见[Browser 契约](browser.md#10-旧-thread-与多客户端新增-core-接口)。工具准备仍是设计契约；只读观察使用 `areal/thread/observe`。`thread/resume` 保留 Host 绑定语义，并可协商上述有界显示响应。
@@ -534,3 +536,16 @@ Rust `ToolPolicy` 的穷举结构体字面量调用方需要补上 `parallel_rea
 原生 Runtime 工具结果提供 `turnElapsedSeconds`，表示当前 Turn 的真实已用秒数，便于模型遵守用户显式时限。该事实不构成新任务、自动完成或验收结论；不额外插入用户消息，也不装饰协调回执，以保持已消费回执的版本判断。 Workgroup 重复成功检查点不把该时钟元数据计入结果身份；真实工具输出或已观察源码字节变化仍会阻止检查点。
 
 共享模型池的 `requests` 和 `ModelLoad.startedRequests` 统计本地请求准入，包括 HTTP 内部重试；`inFlight` 与 `occupiedSlotSeconds` 不包含退避，重新排队计入 `waiting`。取消可发生在准入与上游观察之间，这类预留仍保留 UNKNOWN。字段类型保持不变；统计不等于服务端实际推理或计费。
+
+
+## 本地执行轨迹查看
+
+`areal/execution/trace` 是只读操作，接收 `threadId`、可选的 `executionId`、`workerThreadId` 和既有历史 `cursor`，返回有界历史 `page`、当前 `activeTurn`、来源身份、委派 `executions`、只有父会话关系的旧子代理来源、队列、`readAtMs` 和 `stateConfirmed`。继续跟随 `page.nextCursor` 和 `executions.nextOffset`；延迟读取的大条目沿用既有历史分片合同。来源不可读取表示读取失败，不表示执行未发生。
+
+未指定 `executionId` 时读取给定会话；指定时由 Core 核对该会话的委派归属，通过既有共享子会话或可信工厂读取隔离 worker。`workerThreadId` 只能选择该隔离执行已绑定的尝试历史。读取不创建第二个 Store owner，也不重放执行。
+
+`areal/execution/traceResult` 接收 `threadId`、`executionId`、`workerThreadId` 和 `uri`，返回原始工具结果 `bytes`。Core 核对委派归属、该 worker 持久历史中的结果引用以及 blob 身份和完整性；原始结果读取上限为 32 MiB。
+
+Turn 的 `trace` 增加 `startedAtMs`、`queuedAtMs`、`queueDurationMs` 和 `activities`。活动记录用 `afterItemId` 保留稳定显示锚点，并包含种类、逻辑调用、实际尝试、可选工具 `callId`、起止时间、实测 `durationMs`、`firstContentMs`、可选用量、状态和错误。流建立前的 HTTP 内部重试分别保留尝试及等待。原有 `generation.durationMs` 保留用于生成速率的较窄含义。工具执行增加 `startedAtMs`，队列条目增加 `queuedAtMs`。执行投影提供可用的 `durationMs`、`startedAtMs` 或实时 `elapsedMs`；交付回执版本排除会变化的经过时间。
+
+读取旧历史时新增字段缺省。恢复时将未完成活动标记未知，不补造结束时间。隔离 worker 的旧活动快照不证明其仍在运行；`stateConfirmed: false` 保留最后已知记录并停止延长计时。本地记录属于权威会话历史，独立于 OTLP 导出设置。使用方式见[轨迹排查](../guides/execution-trace.md)。

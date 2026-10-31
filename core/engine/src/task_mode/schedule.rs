@@ -528,7 +528,16 @@ impl Engine {
         let Some(at) = current.next_run_at.filter(|at| *at <= captured_now) else {
             return Ok(());
         };
-        let busy = current.runs.iter().any(|r| !r.status.terminal());
+        // 已停住（暂停或受阻且没有待处理工作）的上一次运行不再占用后续触发。
+        let stalled = |r: &TaskRun| {
+            matches!(r.status, RunStatus::Paused | RunStatus::Blocked)
+                && r.reason.as_deref() != Some("resumeRequested")
+                && r.workers.iter().all(|w| w.settled)
+        };
+        let busy = current
+            .runs
+            .iter()
+            .any(|r| !r.status.terminal() && !stalled(r));
         if !busy && !host_ready {
             return Ok(());
         }
@@ -537,6 +546,28 @@ impl Engine {
         let missed = matches!(plan.misfire,Misfire::Skip{max_lateness_seconds} if captured_now-at>i64::from(max_lateness_seconds));
         let mut candidate = state.clone();
         let task = candidate.tasks.get_mut(id).unwrap();
+        if !busy {
+            let mut settled = Vec::new();
+            for r in task.runs.iter_mut().filter(|r| !r.status.terminal()) {
+                r.status = if r.reason.as_deref() == Some("stopRequested") {
+                    RunStatus::Cancelled
+                } else {
+                    RunStatus::Failed
+                };
+                r.completed_at = Some(captured_now);
+                if r.reason.is_none() {
+                    r.reason = Some("supersededBySchedule".into());
+                }
+                settled.push(r.id.clone());
+            }
+            for m in &mut task.messages {
+                if m.status == "pending" && settled.contains(&m.run_id) {
+                    m.status = "cancelled".into();
+                    task.channel_sequence += 1;
+                    m.sequence = task.channel_sequence;
+                }
+            }
+        }
         let mut admitted = (!busy && !missed).then(|| new_run(None, range.first));
         let decision = TriggerDecision {
             sequence: task

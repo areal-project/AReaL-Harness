@@ -354,7 +354,6 @@ async function saveProvider(label) {
   return saved;
 }
 async function chooseModel(model = "fixture-model") {
-  await button("模型").click();
   await button("选择模型").click();
   await page.getByRole("radio", { name: model, exact: true }).click();
   await page.keyboard.press("Escape");
@@ -535,6 +534,13 @@ async function scanSecrets(directory) {
 console.log("Provider hot apply evidence:", scratch);
 providerHotApplyChecks: try {
   await launch();
+  await page.evaluate(() => {
+    const key = "areal-gui:application-preferences";
+    const preferences = JSON.parse(localStorage.getItem(key) || "{}");
+    localStorage.setItem(key, JSON.stringify({ ...preferences, nextPromptSuggestions: false }));
+  });
+  await page.reload();
+  await page.getByTestId("areal-workbench").waitFor();
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
   }, workspace);

@@ -165,7 +165,7 @@ const model = createServer(async (request, response) => {
       }
       for (const result of results.slice(0, 2)) {
         assert(result.executionId, JSON.stringify(result));
-        assert.equal(result.strategy, "isolated");
+        assert.equal(result.strategy, "isolated", JSON.stringify(result));
       }
       if (results.length < 4) {
         return reply(response, "agent_wait", {
@@ -235,7 +235,19 @@ const model = createServer(async (request, response) => {
           parentThreadId: activeParent,
           executionId,
         });
-        if (snapshot.text.includes("checkpoint before cancellation")) break;
+        if (snapshot.text.includes("checkpoint before cancellation")) {
+          const trace = await server.rpc.call("areal/execution/trace", {
+            threadId: activeParent,
+            executionId,
+          });
+          assert.equal(trace.stateConfirmed, true);
+          assert(trace.activeTurn?.trace.activities.some((activity) => activity.kind === "model"));
+          await writeFile(
+            join(evidence, "running-worker-trace.json"),
+            JSON.stringify(trace, null, 2),
+          );
+          break;
+        }
         assert(Date.now() < end, "running isolated checkpoint was not exposed");
         await delay(10);
       }
@@ -376,6 +388,40 @@ try {
     assert.equal(execution.verification.status, "notRun");
     assert.equal(execution.verification.head, execution.delivery.head);
     assert.equal(execution.delivery.status, "applied");
+    const trace = await server.rpc.call("areal/execution/trace", {
+      threadId: parentThreadId,
+      executionId: execution.executionId,
+    });
+    assert.equal(trace.page.complete, true);
+    assert.equal(trace.stateConfirmed, true);
+    assert(trace.sources.length >= 1, "isolated execution has no trace source");
+    assert(
+      trace.page.data.some((entry) => entry.item?.type === "dynamicToolCall"),
+      "isolated tools missing from durable trace",
+    );
+    assert(
+      trace.page.data.some((entry) =>
+        entry.turn?.trace?.activities?.some(
+          (activity) => activity.kind === "model" && activity.durationMs != null,
+        ),
+      ),
+      "isolated model timing missing",
+    );
+    assert(execution.elapsedMs > 0, "isolated lifecycle timing missing");
+    await writeFile(
+      join(evidence, `worker-trace-${execution.executionId}.json`),
+      JSON.stringify(trace, null, 2),
+    );
+    const original = trace.page.data.find((entry) => entry.item?.execution?.resultSnapshot?.uri);
+    if (original) {
+      const result = await server.rpc.call("areal/execution/traceResult", {
+        threadId: parentThreadId,
+        executionId: execution.executionId,
+        workerThreadId: trace.threadId,
+        uri: original.item.execution.resultSnapshot.uri,
+      });
+      assert(result.bytes.length > 0, "saved worker original result is empty");
+    }
     const artifact = await server.rpc.call("areal/execution/artifact", {
       parentThreadId,
       executionId: execution.executionId,
@@ -402,6 +448,20 @@ try {
         executionId: executions[0].executionId,
       }),
     );
+  await assert.rejects(
+    server.rpc.call("areal/execution/trace", {
+      threadId: outsider,
+      executionId: executions[0].executionId,
+    }),
+  );
+  await assert.rejects(
+    server.rpc.call("areal/execution/traceResult", {
+      threadId: outsider,
+      executionId: executions[0].executionId,
+      workerThreadId: "foreign",
+      uri: "areal://blob/foreign",
+    }),
+  );
   const callsBeforeRetry = modelRequests;
   await server.rpc.call("areal/execution/apply", {
     parentThreadId,
@@ -442,6 +502,17 @@ try {
     const original = executions.find((before) => before.executionId === execution.executionId);
     assert.equal(execution.sourceItemId, original.sourceItemId);
     assert.equal(execution.text, original.text);
+    const trace = await server.rpc.call("areal/execution/trace", {
+      threadId: parentThreadId,
+      executionId: execution.executionId,
+    });
+    assert.equal(trace.stateConfirmed, true);
+    assert.equal(trace.activeTurn, null);
+    assert(
+      trace.page.data.some((entry) =>
+        entry.turn?.trace?.activities?.some((activity) => activity.status === "completed"),
+      ),
+    );
   }
   await server.rpc.call("areal/execution/apply", {
     parentThreadId,

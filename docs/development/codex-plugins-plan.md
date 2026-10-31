@@ -39,7 +39,9 @@ AREAL_TEST_BIN_DIR=/absolute/same-build/bin node scripts/plugin-cli-p1-smoke.mjs
 AREAL_TEST_BIN_DIR=/absolute/same-build/bin node scripts/plugin-wire-smoke.mjs
 ```
 
-I2 至 I5 的新增兼容工作尚未实施。签名发行包、真实 OAuth、跨平台与完整生态兼容不由本切片关闭。
+I2 支持固定安装快照内的受限 Markdown Commands，命名空间与参数沿普通 Message/Edit 提交和原回执处理。I3 支持 string、number、boolean 配置，敏感 string 只保存私有引用，并限定在 MCP env/header 消费。I5 的 Agents 子集复用真实 Profile 与父任务约束；未支持的模型、工具或权限语义明确诊断。I4 依赖与其它 I5 语义仍开放。详见[插件指南](../guides/plugins.md)。
+
+离线 snapshot/doctor、GUI 状态投影和确认交互、开发链接新快照及独立 Skill 元信息刷新沿现有所有者实现。`ToolPolicy.lazyMcpSchemas` 是默认关闭的按需 schema 投影实验，保留发现、连接和执行预算。源码与确定性契约检查、桌面验收、真实模型效果和安装包证据分别记录；实现不代表所有性能目标或全生态兼容已经通过。
 
 ## P0 · 本地插件包与 Skills
 

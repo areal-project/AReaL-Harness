@@ -163,17 +163,24 @@ export function DraftComposer({
       ? JSON.parse(localStorage.getItem(`${key}:efforts`) ?? "{}")
       : {},
   );
+  const [requestedServiceTier, setRequestedServiceTier] = useState<"fast" | "default" | undefined>(
+    () => {
+      const saved = localStorage.getItem(`${key}:service-tier`);
+      return saved === "fast" || saved === "default" ? saved : undefined;
+    },
+  );
   const unavailableProfile = !!(profileSelection || project.defaultProfile) && !chosenProfile;
   const setPlanMode = (enabled: boolean) => {
     setPlan(enabled);
     localStorage.setItem(`${key}:plan`, String(enabled));
   };
   const [model, setModel] = useState<string | null>(() => localStorage.getItem(`${key}:model`));
-  const { effectiveModel, currentModel, effort, notice } = draftModelSelection(
+  const { effectiveModel, currentModel, effort, serviceTier, notice } = draftModelSelection(
     project,
     chosenProfile,
     model,
     efforts,
+    requestedServiceTier,
   );
   const preferenceNotice = notice ? t("chat.composer.previousEffortUnsupported") : "";
   const [unknown, setUnknown] = useState(() => localStorage.getItem(`${key}:pending-create`));
@@ -334,9 +341,11 @@ export function DraftComposer({
     localStorage.removeItem(`${key}:plan`);
     localStorage.removeItem(`${key}:model`);
     localStorage.removeItem(`${key}:efforts`);
+    localStorage.removeItem(`${key}:service-tier`);
     localStorage.removeItem(`${key}:profile`);
     setModel(null);
     setEfforts({});
+    setRequestedServiceTier(undefined);
     setPermission(defaultPermissionPreset.current);
     setPlan(false);
     setProfileSelection("");
@@ -448,22 +457,11 @@ export function DraftComposer({
         )
           throw new Error("当前任务配置未提供所选 Skill 的确切版本，草稿已保留。");
       }
-      if (
-        effort &&
-        effort !== "default" &&
-        (chosenModel.capabilities?.reasoningEffortOptions !== undefined ||
-          chosenModel.reasoningEffortOptions?.length) &&
-        !chosenModel.reasoningEffortOptions.includes(effort)
-      )
-        throw new Error("所选推理强度已不可用，输入与选择已保留，请重新选择强度。");
       const parameters = { ...chosenModel.parameters };
-      if (chosenModel.capabilities?.reasoning === false) {
-        delete parameters.reasoningEffort;
-        delete parameters.reasoningSummary;
-      } else {
-        delete parameters.reasoningEffort;
-        if (effort) parameters.reasoningEffort = effort;
-      }
+      delete parameters.reasoningEffort;
+      if (effort) parameters.reasoningEffort = effort;
+      if (requestedServiceTier) parameters.serviceTier = requestedServiceTier;
+      if (chosenModel.capabilities?.reasoning === false) delete parameters.reasoningSummary;
       creationAttempted = true;
       const creationRequest = {
         projectId: owner.id,
@@ -1027,6 +1025,11 @@ export function DraftComposer({
                 value={effectiveModel}
                 disabled={modelSelectionDisabled}
                 effort={effort}
+                serviceTier={serviceTier}
+                onServiceTierChange={(value) => {
+                  setRequestedServiceTier(value);
+                  localStorage.setItem(`${key}:service-tier`, value);
+                }}
                 onEffortChange={(value) => {
                   setModel(effectiveModel);
                   localStorage.setItem(`${key}:model`, effectiveModel);
@@ -1053,6 +1056,7 @@ export function DraftComposer({
                         {
                           value: effectiveModel,
                           label: effectiveModel.slice(effectiveModel.indexOf("/") + 1),
+                          providerId: effectiveModel.slice(0, effectiveModel.indexOf("/")),
                           historical: true,
                         },
                       ]

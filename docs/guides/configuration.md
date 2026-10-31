@@ -12,7 +12,9 @@ GUI 默认使用同一配置文件和 Core 读写接口；服务登记与运行�
 
 通过“设置 > 模型设置”配置模型。供应商导航只显示名称，已启用与未启用分组以间距和分隔线区分，凭据及可用状态显示在右侧详情。GUI 的模型设置可以在任务运行时保存供应商、API Key 和模型列表，也允许先保存没有模型的连接。连接字段填写完整后，页面使用未保存的地址和密钥自动获取模型；获取失败时可手动添加。文件保存使用版本检查，运行中的任务保留原模型与凭据，空闲 Core 随后自动应用。页面分别显示“已保存”和生效状态，应用失败不会回滚这次保存，结果未知时只核查原请求。普通模型配置与 API Key 保存不重启 Core 或 Runtime。“备用默认模型”可选择已保存且启用的供应商模型，以及当前账号目录中的 ChatGPT 模型。更改备用默认和删除供应商仍要求空闲并确认应用，已确认失败时尝试按版本回滚。ChatGPT 默认选择使用既有 `areal_openai` 模型引用，账号授权仍由桌面管理。显式 Profile 模型优先于最近使用偏好和备用默认。
 
-新草稿在发送前显示具体模型和将要提交的思考强度。无显式强度时使用服务默认；已知非法的历史或配置值提示后回退到受支持的配置默认、medium、首个可选值或服务默认。`none`、`minimal` 与省略参数各有独立含义。已有会话保留原值；尝试发送已知不支持的强度时，以既有弹出错误提示引导重新选择，并在提交前拦截，不占用输入框布局。菜单的“服务默认”保存显式 `default`，覆盖供应商或模型默认并省略出站强度；省略或 null 仍表示继承。切换模型使用目标模型的有效默认或服务默认。没有可选模型时显示单行“暂无可用模型”，完整引导保留在提示中。新会话沿用用户主会话最后一次受理的供应商、模型和实际思考强度，跨项目及桌面/Core 重启保留。Core 在用户消息或继续请求受理时记录，排队消息在入队时记录；模型执行失败不会撤销已经受理的选择。未发送的选模/强度修改、打开历史、Side、子代理及后台调度不更新这项偏好。显式选过模型或强度的草稿保留本次选择。没有记录时使用备用默认；上次模型不可用时提示并显示备用默认，不支持的强度提示后按上述顺序选择支持的值。偏好只保存模型身份和强度，不修改供应商配置或服务默认，也不复制凭据。修改备用默认不会改写已有会话；会话中切换模型或强度会立即保存，重开及重启后沿用该选择，过去的 Turn 快照保持不变。
+GUI 新增模型时，“视觉输入”默认开启，可按模型实际能力关闭；编辑已有模型时沿用其已保存的设置。
+
+新草稿在发送前显示具体模型和将要提交的思考强度。桌面 Composer 的主界面模型入口只显示模型名，完整提示保留供应商身份。展开的模型菜单按供应商分组，左侧按设置中的配置名称显示供应商，右侧选择模型；供应商名称也用于模型入口的完整提示，ChatGPT 订阅显示为“ChatGPT”。浏览供应商不保存配置，点选模型后关闭菜单。相邻的思考强度入口独立提供 `none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max` 七档和服务默认，所有模型均可选择。桌面保留并提交用户显式选择，包括目录未声明或不支持的值，由 Core 校验；自定义或未知强度按原值显示。无显式选择时使用服务默认；从历史或配置继承的已知非法值提示后回退到受支持的配置默认、medium、首个可选值或服务默认。`none`、`minimal` 与省略参数各有独立含义。已有会话保留原值。菜单的“服务默认”保存显式 `default`，覆盖供应商或模型默认并省略出站强度；省略或 null 仍表示继承。切换模型使用目标模型的有效默认或服务默认。没有可选模型时显示单行“暂无可用模型”，完整引导保留在提示中。新会话沿用用户主会话最后一次受理的供应商、模型和实际思考强度，跨项目及桌面/Core 重启保留。Core 在用户消息或继续请求受理时记录，排队消息在入队时记录；模型执行失败不会撤销已经受理的选择。未发送的选模/强度修改、打开历史、Side、子代理及后台调度不更新这项偏好。显式选过模型或强度的草稿保留本次选择。没有记录时使用备用默认；上次模型不可用时提示并显示备用默认，不支持的强度提示后按上述顺序选择支持的值。偏好只保存模型身份和强度，不修改供应商配置或服务默认，也不复制凭据。修改备用默认不会改写已有会话；会话中切换模型或强度会立即保存，重开及重启后沿用该选择，过去的 Turn 快照保持不变。
 
 共享 TUI/Web 入口使用按工作区隔离的默认数据目录；显式 dataDir 仍遵循上述优先级。历史迁移与配置兼容性见[本地服务契约](../api/local-service.md)。
 
@@ -182,7 +184,26 @@ endpoint 是完整 HTTP(S) 请求 URL；Core 只支持 `chat-completions` / `res
 
 可选采样参数不配置时省略，显式 0 保留。`temperature` 为有限数 [0,2]，`top_p` / `min_p` 为 [0,1]，`top_k` 为正整数或 -1，`presence_penalty` 为 [-2,2]，`repetition_penalty` 大于 0。Chat 与 Responses 均接受 temperature/top_p；其余四项只支持 Chat，Responses 配置时拒绝。参数发送不证明供应商实际采纳。摘要默认继承求解采样/推理配置并禁用工具。可单独设置 `model.summary_reasoning_effort` 和 `model.summary_max_output_tokens`（环境变量 `AREAL_HARNESS_SUMMARY_REASONING_EFFORT` / `AREAL_HARNESS_SUMMARY_MAX_OUTPUT_TOKENS`），不会修改后续求解参数。摘要输出上限为全局输出上限、摘要专用上限、Goal 剩余额度与 16384 中的最小值；专用上限需大于零。未配置时兼容原行为；例如可在求解 high 时显式选择摘要 low/4096，需验证供应商支持和任务保留效果。
 
-`model.context_window_tokens` 设置当前模型的用户工作预算（1–2000000），Provider/模型默认参数及 `parameters.contextWindowTokens` 同样支持。服务报告窗口与用户预算分开解析，工作窗口取两者较小值。订阅账号缺少报告时使用全局 131072-token 兜底；其他端点缺少报告与预算时查完整型号默认表，再使用全局兜底。诊断分别显示报告来源、用户预算与实际窗口。输出预留取 `context.output_reserve_tokens`（默认 8192）与当前模型输出上限的较大值；默认 HTTP 模型因此预留 16384 token，完整输入最多为 114688 token（其中还需容纳动态指令与工具 schema）。显式输出配置优先，用户工作预算受服务报告窗口约束；省略字段采用默认值；不会按供应商名称推测实际能力，小窗口模型应同时调低输出上限和必要的预留。每次求解请求在发送前检查完整消息、动态指令和工具 schema 是否落在窗口减预留以内。估算按 ASCII 约 3 字节/token、非 ASCII 约 2 token/字符及媒体代理成本计算；已结算完整输入用量（含缓存）加 10% 余量校准追加历史，压缩后重置。估计不等于供应商 tokenizer 精确计数。
+`model.context_window_tokens` 设置当前模型的用户工作预算（1–2000000），Provider/模型参数及 `parameters.contextWindowTokens` 同样支持。工作窗口依次取用户显式配置、当前账号/渠道报告的默认值、渠道与完整型号对应的内置默认值、全局 `limits.context_window_tokens`（默认 131072）。用户值无论大于或小于报告值都优先；清空用户参数后恢复默认解析。报告值和用户值分别保留，目录更新不改写用户参数。它们控制本地预检，不能改变供应商服务端上限。
+
+模型目录中的可选 `reportedContextWindowTokens`（TOML 为每个模型上的 `reported_context_window_tokens`，1–2000000）保存自动发现的上游默认值，独立于 `parameters.contextWindowTokens`。旧配置中的参数继续视为用户显式设置；自动发现的新模型把报告值写入独立字段。新版本可读取省略该字段的旧配置；旧 Core 不支持包含该字段的新配置。诊断分别显示报告来源、用户预算与实际窗口。GPT 订阅使用账号报告与订阅专用默认表，API 使用 API 表；不会把 `max_context_window` 等可选最大容量当作默认值，也不按供应商显示名或模糊型号前缀匹配。
+
+| 具体型号 | API 内置窗口（token） | GPT 订阅缺少报告时 |
+| --- | ---: | ---: |
+| `gpt-6.1-sol`、`gpt-6.1-terra` | 1050000 | 500000 |
+| `gpt-5.4-mini` / `gpt-5.4-nano` / `gpt-5.3-codex` | 400000 | — |
+| `gpt-6-sol`、`gpt-6-astra`、`gpt-6-luna` | 1050000 | 272000 |
+| `claude-fable-5-1`、`claude-opus-5-5`、`claude-sonnet-5-5`、`claude-haiku-5-5` | 1000000 | — |
+| `deepseek-flash`、`deepseek-v4-pro` | 1000000 | — |
+| `qwen3.8-max` / `qwen3.8-flash` / `qwen3.7-max` / `qwen3.7-plus` / `qwen3.7-flash` / `qwen-plus` | 1000000 | — |
+| `qwen3.6-plus`、`qwen3.6-plus-2026-04-02` | 1000000 | — |
+| `kimi-k3`、`kimi-k3.1-pro`、`kimi-k3.1-pro-highspeed` | 1048576 | — |
+| `kimi-k2.5`、`kimi-k2.6`、`kimi-k2-0905-preview`、`kimi-k2-turbo-preview` | 262144 | — |
+| `glm-5`、`glm-5.1` | 200000 | — |
+
+内置值依据 [OpenAI API](https://developers.openai.com/api/docs/models/gpt-6.1-terra)、[Codex 产品默认](https://learn.chatgpt.com/docs/models)、[Codex 目录](https://github.com/openai/codex/blob/main/codex-rs/models-manager/models.json)、[Claude](https://platform.claude.com/docs/en/models/overview)、[DeepSeek](https://api-docs.deepseek.com/quick_start/pricing/)、[Qwen 3.6](https://help.aliyun.com/en/model-studio/qwen3-6-plus)、[Qwen 3.8 Max](https://help.aliyun.com/en/model-studio/qwen3-8-max)、[Flash](https://help.aliyun.com/en/model-studio/qwen3-8-flash)、[3.7 Max](https://help.aliyun.com/en/model-studio/qwen3-7-max)、[Plus](https://help.aliyun.com/en/model-studio/qwen3-7-plus)、[Flash](https://help.aliyun.com/en/model-studio/qwen3-7-flash)、[Qwen Plus](https://help.aliyun.com/en/model-studio/qwen-plus)、[Kimi](https://platform.kimi.ai/docs/pricing/chat) 与 [GLM](https://docs.z.ai/guides/llm/glm-5)。GLM 文档仅写 200K，内置值沿用保守的 200000；渠道报告或用户设置可覆盖。Sol 订阅产品文档与客户端内置目录数值不同，缺少账号报告时采用产品默认 500000。完整匹配表由 `core/engine/src/model/context_windows.rs` 维护，第三方目录不参与运行时拉取。
+
+输出预留取 `context.output_reserve_tokens`（默认 8192）与当前模型输出上限的较大值；默认 HTTP 模型因此预留 16384 token，使用 131072 兜底窗口时完整输入最多为 114688 token（其中还需容纳动态指令与工具 schema）。小窗口模型应同时调低输出上限和必要的预留。每次求解请求在发送前检查完整消息、动态指令和工具 schema 是否落在窗口减预留以内。估算按 ASCII 约 3 字节/token、非 ASCII 约 2 token/字符及媒体代理成本计算；已结算完整输入用量（含缓存）加 10% 余量校准追加历史，压缩后重置。估计不等于供应商 tokenizer 精确计数。
 
 常规使用只需设置模型窗口、输出上限和 `context.mode`。`context.target_tokens=0` 自动选择可用输入窗口的 60%；正数必须小于输入上限。`context.recent_tokens` 默认改为 0（自动），正数和旧 `context_recent_bytes` 仍作为兼容边界偏好，诊断保留配置来源；常用示例不再固定近期额度。Core 使用同一完整请求预算分配近期完整轮次、用户原文、摘要和历史证据，删除用户原文/证据各自的固定 8192 软配额，也不再永久优先首问。最新真实用户请求及附件必须完整保留；其他原文从近到远分配，旧附件超额时可保留其文字并明确标记附件省略。未完成或 UNKNOWN 工具操作不得纳入压缩前缀。旧原文与完整附件仍在磁盘，可通过 `read_history` 查回。
 
@@ -354,16 +375,22 @@ models = [
 ]
 ```
 
-JSON 使用 camelCase（`apiKeyEnv`、`displayName`、`maxOutputTokens`、`reasoningEffort`），协议仍为 `chat-completions` / `responses`。最多 32 个供应商，每个最多 64 个模型。供应商与模型都支持启停、名称和参数；参数按显式会话、模型、供应商默认值叠加。全局 TOML／环境／CLI 参数仍遵循原优先级。文件默认引用必须指向启用的供应商与模型。旧单模型 TOML 无需立即改写，选中的名称作为目录项；首次共享保存会添加 `catalog_version = 1`。仅含原有字段的旧供应商表可以省略 endpoint，由环境变量或 CLI 补齐，仍遵循 CLI > 环境变量 > 文件的优先级。共享目录读写要求供应商在文件中提供完整 endpoint；未补齐时读取明确失败，不丢弃供应商，也不将临时覆盖写回文件。
+JSON 使用 camelCase（`apiKeyEnv`、`displayName`、`maxOutputTokens`、`reasoningEffort`、`serviceTier`），协议仍为 `chat-completions` / `responses`。最多 32 个供应商，每个最多 64 个模型。供应商与模型都支持启停、名称和参数；参数按显式会话、模型、供应商默认值叠加。全局 TOML／环境／CLI 参数仍遵循原优先级。文件默认引用必须指向启用的供应商与模型。旧单模型 TOML 无需立即改写，选中的名称作为目录项；首次共享保存会添加 `catalog_version = 1`。仅含原有字段的旧供应商表可以省略 endpoint，由环境变量或 CLI 补齐，仍遵循 CLI > 环境变量 > 文件的优先级。共享目录读写要求供应商在文件中提供完整 endpoint；未补齐时读取明确失败，不丢弃供应商，也不将临时覆盖写回文件。
+
+供应商与模型的 `parameters.service_tier` 接受 `fast` 或 `default`，JSON 字段为 `serviceTier`。`fast` 请求 Fast，`default` 明确选择标准服务并覆盖继承的 Fast。省略或空值继承模型及供应商默认值。Core 将该值原样作为 `service_tier` 发给 Chat Completions 和 Responses。使用 ChatGPT 授权访问 OpenAI API 的适配器把 `fast` 编码为 `priority`；显式 `default`、省略、API Key 供应商和 Codex 订阅传输仍沿用各自原有语义。供应商决定支持情况与实际处理档位，错误沿原路径返回。Responses 终态返回已识别的实际档位时，请求审计在 `usageDetails.serviceTier` 中保留该值；缺失或未知时省略，不按请求补值。即使 Fast 请求成功，实际档位仍可能是 `default`，不能据此认定已获得加速。
+
+桌面 Composer 的思考强度菜单左上角提供 Fast 闪电开关。开启请求 `fast`，关闭请求 `default`。Fast 和思考强度独立保存。会话切换模型保留当前生效的服务档位，包括从模型或供应商继承的 `fast` 或 `default`；当前档位未设置时使用目标模型的默认值。新草稿没有本地覆盖时使用所选模型及供应商默认值。草稿选择随原草稿保存和清理，会话选择沿原配置保存及恢复。入口中的 Fast 标记只表示当前请求选择，Fast 可能消耗更多额度或费用。
 
 普通配置只保存密钥环境变量名。共享接口拒绝带查询参数的 endpoint，避免把 URL 中的认证信息送入 GUI；旧配置诊断仍脱敏查询参数。桌面安全存储不向独立 CLI 暴露，CLI 自行提供引用变量。`areal_openai` 为桌面动态账号目录保留，允许作为默认引用，禁止写为静态供应商；独立 CLI 缺少账号传输端点时明确失败。
 
 写入先校验、检查整个文件 revision，再使用同目录临时文件、fsync 和原子替换；合作写入者通过锁串行，过期请求失败。默认缺失文件可以首次创建，显式缺失文件和写入符号链接拒绝。非合作编辑器不参与锁，多次摘要校验不等于文件系统原子 CAS。
 
 
-自定义模型可设置 `capabilities = { tools = true, vision = false, reasoning = true, reasoning_effort_options = ["low", "high"] }`。省略能力或强度列表表示支持情况未知，目录不再提供通用六档，显式配置的自定义强度仍可透传。显式空列表表示没有可选强度，已有不兼容值保留供用户修正；这是对旧空列表回退六档行为的兼容性变化。关闭推理沿用清除遗留推理参数的行为。新模型不再预选或从已配置值伪造能力，编辑器保留空列表。订阅模型使用当前账号目录公布的 `supported_reasoning_levels`；缺失时不补造选项。官方 HTTPS `api.openai.com:443` 连接的 `gpt-6.1-sol` 按[官方模型说明](https://developers.openai.com/api/docs/models/gpt-6.1-sol)提供 low/medium/high/xhigh/max，工具调用要求 Responses；同名自定义网关不套用此规则。Core 在供应商、模型及会话参数合并后校验，覆盖 GUI、CLI、后台与无项目聊天；非法历史值不会移除整个供应商目录。已识别的思考强度参数拒绝返回安全操作提示和供应商关联 ID，原始错误仅保存于受限本机诊断，不改参数自动重发。
+自定义模型可设置 `capabilities = { tools = true, vision = false, reasoning = true, reasoning_effort_options = ["low", "high"] }`。省略能力或强度列表表示支持情况未知，目录不再提供通用六档，显式配置的自定义强度仍可透传。显式空列表表示目录未提供可选强度，已有不兼容值保留供用户修正；桌面 Composer 的七档入口独立于目录能力声明。模型配置中关闭推理沿用清除遗留推理参数的行为，桌面 Composer 显式选择的强度仍提交给 Core。新模型不再预选或从已配置值伪造能力，编辑器保留空列表。订阅模型使用当前账号目录公布的 `supported_reasoning_levels`；缺失时不补造选项。官方 HTTPS `api.openai.com:443` 连接的 `gpt-6.1-sol` 按[官方模型说明](https://developers.openai.com/api/docs/models/gpt-6.1-sol)提供 low/medium/high/xhigh/max，工具调用要求 Responses；同名自定义网关不套用此规则。Core 在供应商、模型及会话参数合并后校验，覆盖 GUI、CLI、后台与无项目聊天；非法历史值不会移除整个供应商目录。已识别的思考强度参数拒绝返回安全操作提示和供应商关联 ID，原始错误仅保存于受限本机诊断，不改参数自动重发。
 
 共享目录采用保存／应用分离。仅写入 `catalog_version = 1` 文件不会改变运行实例；GUI 保存后通过[模型配置热应用接口](../api/desktop.md#模型配置热应用)把精确文件版本应用到已连接 Core，并由其重新读取和校验权威文件。新增的安全存储凭据通过受保护的本机请求注入，只追加不可变引用，不改变进程环境；Core、Runtime 和现有连接保持原代际。未启动实例下次加载。已有历史、活动请求和已受理队列保留原快照。旧会话的新请求可在端点、协议与凭据引用一致时刷新容量报告和模型能力；其他参数继续遵守会话覆盖规则；轮换后不得删除旧任务所需的凭据。旧 Core 不支持热应用时，GUI 在写入前提示更新后台。非模型部署变化仍要求显式安全重启。
+
+重新连接时，GUI 同时核对配置版本和 Core 的凭据就绪状态。版本相同但缺少本实例已保存的凭据时，等待该 Core 空闲后通过同一热应用接口恢复凭据，再刷新可选模型目录。ChatGPT 退出登录和切换账号同样核查 Core 的实时空闲状态；桌面缓存中的旧轮次状态不单独阻止操作。仍在提交的桌面命令、配置更新和未连接的 Core 会阻止账号变更。
 
 多个项目各自原子应用，不构成跨进程事务。只有全部确认目标版本且文件版本仍匹配时才完成保存。已确认的部分失败先对文件做 CAS 补偿，再应用实际产生的恢复版本；外部写入、活动任务或未知请求阻止恢复时保留“待应用”和草稿，不宣称全部恢复，不自动取消任务或重启。
 

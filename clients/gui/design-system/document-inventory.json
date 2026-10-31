@@ -981,6 +981,12 @@
     "status": "active"
   },
   {
+    "path": "design/patterns/plugin-resources.en.md",
+    "role": "cross-product",
+    "status": "active",
+    "translationOf": "design/patterns/plugin-resources.md"
+  },
+  {
     "path": "design/patterns/plugin-resources.md",
     "role": "cross-product",
     "status": "active"

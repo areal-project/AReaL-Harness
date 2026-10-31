@@ -226,7 +226,7 @@ try {
     false,
   );
   const readOnlyConsent = hooks.getByRole("checkbox", {
-    name: /单独允许以上命令钩子在普通只读子任务运行/,
+    name: /也允许以上命令钩子在只读子任务中运行/,
   });
   assert.equal(await readOnlyConsent.isChecked(), false);
   assert(await readOnlyConsent.isDisabled());
@@ -256,7 +256,7 @@ try {
   });
   await page
     .getByRole("checkbox", {
-      name: "我已审阅以上安装包摘要、全部钩子定义及其执行内容，允许当前定义运行。",
+      name: "我已审阅以上安装包摘要和全部钩子，允许当前定义运行。",
     })
     .check();
   await button("信任并启用当前钩子").click();
@@ -275,7 +275,7 @@ try {
   checks.push("normal GUI trust and lost-reply recovery never imply read-only command consent");
   await hooks
     .getByRole("checkbox", {
-      name: "我已审阅以上安装包摘要、全部钩子定义及其执行内容，允许当前定义运行。",
+      name: "我已审阅以上安装包摘要和全部钩子，允许当前定义运行。",
     })
     .check();
   await readOnlyConsent.check();

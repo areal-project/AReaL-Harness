@@ -1249,6 +1249,30 @@ if (process.argv[2] === "--host-worker") {
             "actual Host process crash after native create acceptance, original receipt association, exact native send recovery, one Runtime file append, changed semantics, second device scope, pending/outcome write failures",
         });
       }
+      await pause(1050);
+      const fastThread = (await a.rpc("session.create")).result.threadId;
+      const fastBaseline = await native("areal/thread/observe", { threadId: fastThread });
+      await native("areal/thread/configure", {
+        threadId: fastThread,
+        expectedRevision: fastBaseline.thread.desktop.configuration.revision,
+        parameters: { serviceTier: "fast", reasoningEffort: "low" },
+      });
+      const fastConfigured = await native("areal/thread/observe", { threadId: fastThread });
+      const effortSaved = await a.rpc("session.control", {
+        threadId: fastThread,
+        operation: "configure",
+        expectedRevision: fastConfigured.thread.desktop.configuration.revision,
+        values: { parameters: { reasoningEffort: "high" } },
+      });
+      assert.equal(effortSaved.result?.admissionState, "accepted", JSON.stringify(effortSaved));
+      const fastRetained = await native("areal/thread/observe", { threadId: fastThread });
+      assert.equal(fastRetained.thread.desktop.configuration.parameters.serviceTier, "fast");
+      assert.equal(fastRetained.thread.desktop.configuration.parameters.reasoningEffort, "high");
+      checks.push({
+        case: "Fast preservation",
+        detail:
+          "remote effort changes preserve the desktop Fast setting in authoritative Core configuration",
+      });
       // 最后一轮恢复仍复用当前连接；先补足尾段预算，再创建 T21 的目标。
       await pause(1050);
       const created = (await a.rpc("session.create")).result;

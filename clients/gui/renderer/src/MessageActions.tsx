@@ -10,7 +10,7 @@ export function CopyTextAction({
   className = "",
   iconSize = 16,
 }: {
-  text: string;
+  text: string | (() => string);
   noun?: string;
   className?: string;
   iconSize?: number;
@@ -32,7 +32,7 @@ export function CopyTextAction({
     clearTimeout(timer.current);
     setResult(null);
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(typeof text === "function" ? text() : text);
       if (attempt !== request.current) return;
       setResult("copied");
       timer.current = setTimeout(() => {

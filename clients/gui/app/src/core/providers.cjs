@@ -556,7 +556,6 @@ class AppProviders {
     if (op === "forget") await service.openaiAccount.forget();
     else if (op === "logout" || op === "selectAccount") {
       if (
-        this.backend.hasWork() ||
         this.backend.activeCommands ||
         this.backend.providerUpdating ||
         this.backend.resourcesUpdating ||
@@ -568,10 +567,12 @@ class AppProviders {
         for (const project of this.backend.projects.values()) {
           if (project.service && !project.client?.ready)
             throw new Error("请先重新连接项目，再切换 ChatGPT 账号");
+          // 桌面投影可能保留旧轮次；账号变更以原 Core 的实时空闲状态为准。
+          const target = project.client?.ready ? this.target(project) : null;
           if (
-            project.client?.ready &&
+            target &&
             !(
-              await project.client.request(
+              await target.client.request(
                 "areal/server/status",
                 {},
                 { decode: providerContract.serverStatus },
@@ -579,6 +580,7 @@ class AppProviders {
             ).restartSafe
           )
             throw new Error("请先停止正在运行的任务或终端，再切换 ChatGPT 账号");
+          if (target) this.requireTarget(target);
         }
         if (op === "selectAccount") {
           if (!request.accountId) throw new Error("请选择 ChatGPT 账号");
@@ -907,7 +909,9 @@ class AppProviders {
       failure.generation === project.service.generation
     )
       return { kind: "failed", revision, message: failure.message };
-    return project.providerRevision === revision && !project.providerError
+    return project.providerRevision === revision &&
+      !project.providerError &&
+      (!project.providerProof || this.credentialsReady(project.providerProof, this.snapshot()))
       ? { kind: "applied", revision }
       : { kind: "deferred", revision, reason: "busy" };
   }
@@ -1140,7 +1144,9 @@ class AppProviders {
           if (
             !providerContract.record(m) ||
             typeof m.id !== "string" ||
-            (m.displayName !== undefined && typeof m.displayName !== "string")
+            (m.displayName !== undefined && typeof m.displayName !== "string") ||
+            (m.reportedContextWindowTokens !== undefined &&
+              !providerContract.validContextWindow(m.reportedContextWindowTokens))
           )
             throw new Error("模型配置无效");
           return {
@@ -1148,6 +1154,9 @@ class AppProviders {
             enabled: m.enabled !== false,
             ...(m.displayName?.trim() ? { displayName: m.displayName.trim() } : {}),
             parameters: modelParameters(m.parameters),
+            ...(m.reportedContextWindowTokens === undefined
+              ? {}
+              : { reportedContextWindowTokens: m.reportedContextWindowTokens }),
             ...(m.capabilities === undefined
               ? {}
               : { capabilities: modelCapabilities(m.capabilities) }),
@@ -1180,11 +1189,12 @@ class AppProviders {
               {
                 id,
                 enabled: true,
-                parameters:
-                  !item.parameters.contextWindowTokens &&
-                  Object.hasOwn(catalog.modelParameters ?? {}, id)
-                    ? (catalog.modelParameters ?? {})[id]
-                    : {},
+                parameters: {},
+                ...(catalog.modelParameters?.[id]?.contextWindowTokens === undefined
+                  ? {}
+                  : {
+                      reportedContextWindowTokens: catalog.modelParameters[id].contextWindowTokens,
+                    }),
               },
               item.parameters,
             ),
@@ -1275,15 +1285,7 @@ class AppProviders {
     if (proof.applied.revision !== snapshot.revision)
       throw new Error("Core 尚未确认目标模型配置，请刷新核对。");
     this.rememberProof(target, proof, snapshot);
-    if (
-      snapshot.data.some(
-        (item) =>
-          item.enabled !== false &&
-          item.apiKeyEnv !== undefined &&
-          Object.hasOwn(this.config.vault.keys, item.apiKeyEnv) &&
-          proof.credentialStates[item.id] !== "available",
-      )
-    )
+    if (!this.credentialsReady(proof, snapshot))
       throw Object.assign(new Error("Core 尚未确认模型凭据可用，请检查凭据后重试。"), {
         configurationSettled: true,
       });
@@ -1299,6 +1301,16 @@ class AppProviders {
     }
     target.project.providerError = null;
     delete target.project.providerFailure;
+  }
+  /** @param {ConfigurationProof} proof @param {ModelSnapshot} snapshot */
+  credentialsReady(proof, snapshot) {
+    return !snapshot.data.some(
+      (item) =>
+        item.enabled !== false &&
+        item.apiKeyEnv !== undefined &&
+        Object.hasOwn(this.config.vault.keys, item.apiKeyEnv) &&
+        proof.credentialStates[item.id] !== "available",
+    );
   }
   /** @param {ProviderTarget} target */
   reconcilePending(target) {
@@ -1411,7 +1423,10 @@ class AppProviders {
     try {
       this.requireTarget(target);
       if (!target.proof) throw new Error("缺少 Core 模型配置应用证明");
-      if (target.proof.applied.revision === snapshot.revision) {
+      if (
+        target.proof.applied.revision === snapshot.revision &&
+        this.credentialsReady(target.proof, snapshot)
+      ) {
         await this.confirmProof(target, target.proof, snapshot, { refreshModels });
         return { target, applied: true };
       }
@@ -1507,7 +1522,10 @@ class AppProviders {
         if (this.applicationState(project, snapshot.revision).kind === "failed") return;
         target.proof = await this.readProof(target);
         this.rememberProof(target, target.proof, snapshot);
-        if (target.proof.applied.revision === snapshot.revision) {
+        if (
+          target.proof.applied.revision === snapshot.revision &&
+          this.credentialsReady(target.proof, snapshot)
+        ) {
           await this.confirmProof(target, target.proof, snapshot, { refreshModels });
           return;
         }
@@ -1516,8 +1534,7 @@ class AppProviders {
           this.backend.providerUpdating ||
           this.backend.resourcesUpdating ||
           this.backend.activeCommands ||
-          this.backend.starting.size ||
-          this.backend.hasWork()
+          this.backend.starting.size
         ) {
           project.providerError = null;
           return;
@@ -1534,8 +1551,7 @@ class AppProviders {
           this.backend.providerUpdating ||
           this.backend.resourcesUpdating ||
           this.backend.activeCommands ||
-          this.backend.starting.size ||
-          this.backend.hasWork()
+          this.backend.starting.size
         ) {
           project.providerError = null;
           return;

@@ -89,3 +89,11 @@ Use the [PR template](../../.github/PULL_REQUEST_TEMPLATE.md) to give a concise,
 4. Benefits, regressions, costs and limits across all attempts, and whether default promotion is supported.
 
 Do not merge as a general improvement when transfer cannot be explained or the change depends on task identity, hidden answers, weakened grading or a unilateral budget advantage. Behavioral candidates without transfer evidence may remain isolated research; do not describe them as established overall capabilities.
+
+## MCP schema projection experiment
+
+`ToolPolicy.lazyMcpSchemas` defaults to false. When enabled and a Turn can access more than 16 MCP tools, the model first receives a bounded summary directory and `mcp_tool_search`. Searches return at most 8 entries, queries are limited to 512 bytes, and the directory is limited to 16 KiB. Matching schemas appear on the next model request. A call in the same batch cannot use a schema that was not offered. Each Turn starts with an empty loaded set. Search and directory entries use the same frozen registry and Profile permission filter.
+
+The host still performs full MCP `tools/list`, schema compilation and invocation validation. Existing discovery, connection and execution budgets remain in force. This experiment changes model context only. The deterministic stdio fixture checks search, same-batch rejection and Turn isolation. It does not establish real-model success rates or lower total consumption. Promotion requires the controlled comparisons and source-isolated confirmation described in this document.
+
+If the Profile does not allow the search tool, Core retains eager schema projection without expanding permissions.

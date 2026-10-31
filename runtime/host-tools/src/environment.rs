@@ -287,4 +287,75 @@ mod tests {
         );
         assert_eq!(value.read_only_toolchains, [install]);
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn homebrew_rustup_projection_selects_real_cargo_and_preserves_custom_priority() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().canonicalize().unwrap();
+        let rust = home.join(".rustup/toolchains/stable-test-target");
+        std::fs::create_dir_all(rust.join("bin")).unwrap();
+        std::fs::write(
+            home.join(".rustup/settings.toml"),
+            "default_toolchain = 'stable-test-target'\n",
+        )
+        .unwrap();
+        let custom = home.join("custom/bin");
+        std::fs::create_dir_all(&custom).unwrap();
+        for (bin, output) in [(&rust.join("bin"), "selected"), (&custom, "custom")] {
+            std::fs::write(bin.join("cargo"), format!("#!/bin/sh\nprintf '{output}'\n")).unwrap();
+            std::fs::set_permissions(bin.join("cargo"), std::fs::Permissions::from_mode(0o755))
+                .unwrap();
+        }
+        let env = BTreeMap::from([("HOME".into(), home.clone().into_os_string())]);
+        for prefix in ["/opt/homebrew", "/usr/local"] {
+            for relative in [
+                "opt/rustup/bin",
+                "opt/rustup/libexec/bin",
+                "Cellar/rustup/1.29.0_2/bin",
+                "Cellar/rustup/1.29.0_2/libexec/bin",
+            ] {
+                let shim = Path::new(prefix).join(relative);
+                for explicit in [false, true] {
+                    let mut startup = Vec::new();
+                    if explicit {
+                        startup.push(custom.clone());
+                    }
+                    startup.extend([shim.clone(), PathBuf::from("/usr/bin")]);
+                    let input = std::env::join_paths(&startup).unwrap();
+                    let value = project_environment(&input, &[], &env);
+                    let restricted: Vec<_> = std::env::split_paths(&value.path).collect();
+                    assert_eq!(restricted[usize::from(explicit)], rust.join("bin"));
+                    let host: Vec<_> = std::env::split_paths(&value.unrestricted_path).collect();
+                    assert_eq!(&host[..startup.len()], startup);
+                    let output = std::process::Command::new("/bin/sh")
+                        .args(["-c", "cargo"])
+                        .env_clear()
+                        .env("HOME", home.join("scratch"))
+                        .env("PATH", &value.path)
+                        .output()
+                        .unwrap();
+                    assert!(output.status.success());
+                    assert_eq!(
+                        output.stdout,
+                        if explicit { "custom" } else { "selected" }.as_bytes()
+                    );
+                    for private in [
+                        ".cargo/credentials.toml",
+                        ".rustup/settings.toml",
+                        ".ssh/key",
+                    ] {
+                        assert!(
+                            !value
+                                .read_only_toolchains
+                                .iter()
+                                .any(|p| home.join(private).starts_with(p))
+                        );
+                    }
+                }
+            }
+        }
+    }
 }

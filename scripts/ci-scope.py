@@ -145,7 +145,18 @@ def impact(paths):
     gui = shared or any(
         fnmatch.fnmatchcase(path, pattern) for path in code for pattern in SCOPES["gui"]
     )
-    return {"shared": shared, "gui": gui, "relay": gui, "unknown": unknown, "code": code}
+    health = gui or any(
+        path.endswith(".md") and path.startswith(("design/", "clients/gui/design-system/"))
+        for path in paths
+    )
+    return {
+        "shared": shared,
+        "gui": gui,
+        "health": health,
+        "relay": gui,
+        "unknown": unknown,
+        "code": code,
+    }
 
 
 def applicable(scope, paths):
@@ -321,13 +332,14 @@ def build_plan(paths, source, manifest):
             "verify",
             ("schema",),
         )
-    if affected["gui"]:
+    if affected["health"]:
         add(
             "gui-health",
             ["make", "ci-gui-health", "CI_BASE=" + source["baseRevision"]],
             "gui-health",
             phase="commit",
         )
+    if affected["gui"]:
         add(
             "manifest",
             ["node", "--test", "clients/gui/scripts/test-manifest.test.mjs"],

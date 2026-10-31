@@ -90,7 +90,7 @@ fn entry(thread: &Thread, turn: &Turn, item: &Item) -> Value {
     let presentation = json!({"id":turn.id,"status":turn.status,"error":turn.error,
         "interruption":turn.interruption,"continuedFromTurnId":turn.continued_from_turn_id,
         "startedAt":turn.started_at,"completedAt":turn.completed_at,"durationMs":turn.duration_ms,
-        "goal":turn.goal,"usage":turn.usage,"generation":turn.generation});
+        "goal":turn.goal,"usage":turn.usage,"generation":turn.generation,"trace":turn.trace,"configuration":turn.configuration});
     json!({"sourceThreadId":thread.id,"sourceTurnId":turn.id,"sourceItemId":item.id(),
         "sourceTurnStatus":turn.status,"turn":presentation,"item":item})
 }

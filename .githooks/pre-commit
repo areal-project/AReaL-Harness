@@ -1,2 +1,4 @@
 #!/bin/sh
-exec python3 "$(git rev-parse --show-toplevel)/scripts/git-hooks.py" pre-commit "$@"
+root=$(git rev-parse --show-toplevel) || exit
+export PATH="$root/.venv/bin:$root/.local/tools/node/bin:$PATH"
+exec python3 "$root/scripts/git-hooks.py" pre-commit "$@"

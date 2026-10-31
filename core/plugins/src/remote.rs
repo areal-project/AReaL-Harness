@@ -75,6 +75,8 @@ pub(crate) fn preview(
         admission_digest: None,
         definition: None,
         installed_skills: vec![],
+        user_configuration: Default::default(),
+        development_link: None,
         component_choices: Default::default(),
         installed_metadata: None,
         component_support: None,

@@ -1,5 +1,6 @@
 import { useI18n, type Translate } from "../i18n/IntlProvider.js";
 import type { ManagementResponseMap } from "@areal/workbench/desktop-contract/management";
+import { SettingsDisclosure } from "./SettingsDisclosure.js";
 export type PackageComponentSupport = NonNullable<
   ManagementResponseMap["plugin"]["componentSupport"]
 >;
@@ -101,8 +102,7 @@ export function PluginComponentSupport({
       )}
       <p>{t("operations.profileAdmission")}</p>
       <p>{t("operations.separateTrust")}</p>
-      <details>
-        <summary>{t("operations.viewRequirements")}</summary>
+      <SettingsDisclosure title={t("operations.viewRequirements")}>
         <p>
           {t("operations.snapshot")} <code>{report.digest}</code>
         </p>
@@ -137,7 +137,7 @@ export function PluginComponentSupport({
             </li>
           ))}
         </ul>
-      </details>
+      </SettingsDisclosure>
     </section>
   );
 }

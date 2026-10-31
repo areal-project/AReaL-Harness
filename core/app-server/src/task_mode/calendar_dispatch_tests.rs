@@ -373,7 +373,7 @@ async fn calendar_original_civil_intent_receipt_and_accepted_rule_survive_edit()
     e.shutdown().await;
 }
 #[tokio::test]
-async fn calendar_periodic_miss_and_blocked_overlap_advance_past_now() {
+async fn calendar_periodic_miss_and_blocked_run_fails_without_overlap() {
     let dir = tempfile::tempdir().unwrap();
     let seen = Arc::new(Observed::default());
     let e = open_calendar(dir.path(), seen.clone(), 2000000000);
@@ -422,7 +422,7 @@ async fn calendar_periodic_miss_and_blocked_overlap_advance_past_now() {
     let t = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             let t = rpc(&e, "areal/task/read", json!({"taskId":task["id"]})).await;
-            if t["lastTriggerDecision"]["outcome"]["kind"] == "skippedOverlap" {
+            if t["lastTriggerDecision"]["outcome"]["kind"] == "missedWindow" {
                 break t;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -430,9 +430,10 @@ async fn calendar_periodic_miss_and_blocked_overlap_advance_past_now() {
     })
     .await
     .unwrap();
+    // 受阻的运行在下一次触发时结算为失败，不再把后续触发记为重叠。
     assert_eq!(t["runs"].as_array().unwrap().len(), 1);
-    assert_eq!(t["runs"][0]["status"], "blocked");
-    assert_eq!(t["skippedRuns"], 5);
+    assert_eq!(t["runs"][0]["status"], "failed");
+    assert_eq!(t["skippedRuns"], 0);
     assert_eq!(t["nextRunAt"], 2000000360);
     assert_eq!(seen.prepares.lock().unwrap().len(), 1);
     e.shutdown().await;

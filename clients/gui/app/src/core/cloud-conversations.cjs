@@ -2,15 +2,14 @@
 "use strict";
 
 const { modelRecord } = require("@areal/workbench/core-model-contract");
-const {
-  validateRequest,
-} = require("../../../packages/workbench/client/desktop-contract/cloud.cjs");
+/** @type {typeof import("@areal/workbench/desktop-contract").validateCommand} */
+const validateCommand = require("@areal/workbench/desktop-contract").validateCommand;
 const { createProjectState } = require("./project-state.cjs");
 /** @typedef {import('./cloud-session.cjs').Binding} Binding */
 /** @typedef {{id:string,projectId:string,title:string,createdAt:number,updatedAt?:number,binding:Binding}} CloudRecord */
 /** @typedef {{model:import('@areal/workbench/core-model').CoreTaskModel,session:InstanceType<typeof CloudSession>,error:string|null,submitting:boolean}} LiveCloud */
-/** @typedef {import('../../../packages/workbench/client/desktop-contract/cloud.cjs').SessionRequest} SessionRequest */
-/** @typedef {{home:string,saved:import('./project-index.cjs').SavedProject[],cloud:InstanceType<typeof import('./cloud-settings.cjs').CloudSettings>,save:(name:string,value:unknown)=>Promise<unknown>,onChange:()=>void,snapshot:()=>{projects:unknown[]},library:{command:(request:import("../../../packages/workbench/client/desktop-contract/library-media.cjs").LibraryRequest)=>Promise<unknown>},textInput:(text:string)=>Array<{type:string,text:string}>}} CloudHost */
+/** @typedef {import('@areal/workbench/desktop-contract').CommandParams<'cloudSession'>} SessionRequest */
+/** @typedef {{home:string,saved:import('./project-index.cjs').SavedProject[],cloud:InstanceType<typeof import('./cloud-settings.cjs').CloudSettings>,save:(name:string,value:unknown)=>Promise<unknown>,onChange:()=>void,snapshot:()=>{projects:unknown[]},library:{command:(request:import("@areal/workbench/desktop-contract/library-media").LibraryRequest)=>Promise<unknown>},textInput:(text:string)=>Array<{type:string,text:string}>}} CloudHost */
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const { mediaCommand, messageInput } = require("./media.cjs");
@@ -67,9 +66,7 @@ class CloudConversations {
     // 阅读标记是本地导航元数据，不向云端执行环境发送命令。
     if (name === "library" && request.operation === "readThread")
       return this.backend.library.command(
-        require("../../../packages/workbench/client/desktop-contract/library-media.cjs").readLibraryRequest(
-          request,
-        ),
+        require("@areal/workbench/desktop-contract/library-media").readLibraryRequest(request),
       );
     throw new Error("此操作尚不支持 Cloud 会话");
   }
@@ -264,7 +261,7 @@ class CloudConversations {
   }
   /** @param {unknown} value */
   async command(value) {
-    validateRequest("cloudSession", value);
+    validateCommand("cloudSession", value);
     const request = /** @type {SessionRequest} */ (value);
     if (request.operation === "create") return this.create(request);
     const record = this.records.find(

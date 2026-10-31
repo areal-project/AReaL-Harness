@@ -140,6 +140,7 @@ impl Engine {
         {
             return Err(invalid("invalid questions"));
         }
+        let is_approval = approval.is_some();
         let mut changed = cell.interaction_changed.subscribe();
         let request_id = id();
         {
@@ -206,6 +207,20 @@ impl Engine {
                 json!({"revision":revision,"interaction":interaction}),
             );
         }
+        let mut interaction_trace = self
+            .trace_begin(
+                cell,
+                if is_approval {
+                    "approvalWait"
+                } else {
+                    "questionWait"
+                },
+                "等待用户响应",
+                Some(call_id),
+                None,
+            )
+            .await
+            .map_err(invalid)?;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(timeout_seconds);
         loop {
             {
@@ -220,7 +235,12 @@ impl Engine {
                     .find(|r| r.request_id == request_id)
                     .unwrap();
                 if interaction.status == "answered" && !cancel.is_cancelled() {
-                    return Ok(interaction.response.clone().unwrap());
+                    let response = interaction.response.clone().unwrap();
+                    drop(state);
+                    self.trace_finish(cell, &mut interaction_trace, None)
+                        .await
+                        .map_err(invalid)?;
+                    return Ok(response);
                 }
             }
             let status = tokio::select! { biased;
@@ -269,6 +289,10 @@ impl Engine {
                     }
                     self.wake_tasks();
                 }
+                drop(state);
+                self.trace_finish(cell, &mut interaction_trace, Some(status))
+                    .await
+                    .map_err(invalid)?;
                 return Err(invalid(format!("interaction {status}")));
             }
         }

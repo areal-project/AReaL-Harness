@@ -74,6 +74,7 @@ fn tool_journal_projection_preserves_pinned_upstream_item_schemas() {
             content_items: Some(vec![json!({"type":"inputText","text":"tool result"})]),
             call_id: "call".into(),
             execution: Box::new(ToolExecution {
+                started_at_ms: None,
                 permission_review: None,
                 permission_scopes: Vec::new(),
                 page: None,

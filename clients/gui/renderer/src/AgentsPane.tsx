@@ -15,6 +15,7 @@ import {
 } from "./components/ui/select.js";
 import { AgentAvatar, agentName, agentStatus, agentAssignment } from "./AgentIdentity.js";
 import type { Action, Data } from "./services.js";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 
 type Result = Extract<ManagementResponseMap["agentWait"]["data"][number], { threadId: string }>;
 type Child = ManagementResponseMap["agents"]["data"][number];
@@ -492,9 +493,7 @@ export function AgentsPane({
         )}
         <div className="flex flex-col gap-2 rounded-control border border-border p-3">
           <h3 className="font-medium">创建子任务</h3>
-          <p className="text-foreground-subtle">
-            共享当前工作区，只读分析。默认沿用父任务配置，始终遵守父轮次的权限上限。
-          </p>
+          <p className="text-foreground-subtle">{t("common.agents.createHelp")}</p>
           <Textarea
             aria-label="子任务指令"
             value={prompt}
@@ -505,8 +504,7 @@ export function AgentsPane({
             }}
             placeholder="描述子任务需要完成的分析…"
           />
-          <details>
-            <summary>子任务配置</summary>
+          <SettingsDisclosure title="子任务配置">
             <fieldset disabled={creating || unknown} className="mt-3 flex min-w-0 flex-col gap-3">
               <label className="flex flex-col gap-1">
                 预设
@@ -656,7 +654,7 @@ export function AgentsPane({
                 </label>
               )}
             </fieldset>
-          </details>
+          </SettingsDisclosure>
           {!active && <p role="status">父任务正在执行时才能创建子任务。</p>}
           {unknown && !creating && (
             <div className="flex flex-col gap-2">

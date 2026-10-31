@@ -51,11 +51,12 @@ pub fn model(
         .with_audit_directory(data.join("model-requests"))
         .with_options(ModelOptions {
             capabilities: config.capabilities.as_ref().map(super::model_capabilities),
-            context_window: None,
+            context_window: super::model_context_window(config),
             context_window_tokens: config.context_window_tokens,
             responses_websocket: config.responses_websocket,
             responses_prompt_cache: config.responses_prompt_cache,
             reasoning_effort: config.reasoning_effort.clone(),
+            service_tier: config.service_tier.clone(),
             summary_reasoning_effort: config.summary_reasoning_effort.clone(),
             summary_max_output_tokens: config.summary_max_output_tokens,
             reasoning_summary: config.reasoning_summary.clone(),
@@ -78,6 +79,7 @@ pub(super) fn parameters(config: &SelectedModelConfig) -> areal_protocol::deskto
         temperature: config.temperature,
         max_output_tokens: config.max_output_tokens,
         reasoning_effort: config.reasoning_effort.clone(),
+        service_tier: config.service_tier.clone(),
         reasoning_summary: config.reasoning_summary.clone(),
     }
 }

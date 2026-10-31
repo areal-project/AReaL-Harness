@@ -1,5 +1,6 @@
 @import "@areal/ui/workbench.css";
-.task-center {
+.task-center,
+.task-chat-pane {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -80,7 +81,8 @@
   min-height: 0;
   flex: 1;
 }
-.task-list-scroll > p {
+.task-list-scroll > p,
+.task-catalog-error {
   padding: 8px;
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-sm);
@@ -112,13 +114,6 @@
   flex: 1;
   min-height: 0;
   min-width: 0;
-}
-.task-chat-pane {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
 }
 .task-chat-pane .messages-shell {
   flex: 1;
@@ -205,14 +200,8 @@
 .task-draft-error {
   color: var(--color-destructive);
 }
-.task-resource-history summary {
-  cursor: pointer;
-  color: var(--color-foreground-subtle);
-  padding: 0 8px;
-  font-size: var(--text-ui-caption);
-}
 .task-resource-history > div {
-  padding: 12px 8px 0;
+  padding: 8px 8px 0;
 }
 .task-resource-history article {
   font-size: var(--text-ui-sm);
@@ -229,12 +218,6 @@
 }
 .task-center.is-narrow .task-work-directory {
   flex-basis: calc(100% - 76px);
-}
-
-.task-catalog-error {
-  padding: 8px;
-  color: var(--color-foreground-subtle);
-  font-size: var(--text-ui-sm);
 }
 
 .task-create-welcome h2 {
@@ -275,4 +258,26 @@
 }
 .task-center.is-narrow .task-examples {
   grid-template-columns: 1fr;
+}
+
+/* 定时任务详情顶部一行：名称、状态、规则与下次时间、操作。 */
+.scheduled-task-header {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-inline);
+}
+.scheduled-task-header > h2,
+.scheduled-task-header-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scheduled-task-header > h2 {
+  flex: 0 1 auto;
+}
+.scheduled-task-header-summary {
+  flex: 1;
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-ui-sm);
 }

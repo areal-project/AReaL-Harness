@@ -975,13 +975,13 @@ try {
     checks.push(
       "image thumbnail; UTF-8 file and long-paste cards expand without losing existing body or other attachments",
     );
-    // 真实目录与配置：选择模型后回到强度面板，提交到本地供应商。
-    await button("模型").click();
-    await page.getByRole("button", { name: "选择模型", exact: true }).click();
+    await button("选择模型").click();
+    await page.getByRole("tab", { name: "fixture-provider", exact: true }).click();
     await page.getByRole("radio", { name: "fixture-alt", exact: true }).click();
-    assert.match(await button("模型").innerText(), /未指定/);
+    assert.match(await button("选择思考强度").innerText(), /未指定/);
+    await button("选择思考强度").click();
     await page.getByRole("button", { name: "中", exact: true }).click();
-    const slider = page.getByRole("slider", { name: "思考强度" });
+    const slider = page.getByRole("slider", { name: "选择思考强度" });
     await slider.waitFor();
     await slider.fill("4");
     assert.equal(await page.getByRole("button", { name: /快速|重置强度/ }).count(), 0);
@@ -1002,7 +1002,7 @@ try {
     await until((s) => !project(s).pending.length, "submission settled");
     assert.equal(await tags().count(), 0);
     checks.push(
-      "real paged Core Skill read (multibyte >8192 bytes) reaches model request; two-tier real model/effort selection reaches provider",
+      "real paged Core Skill read (multibyte >8192 bytes) reaches model request; independent model/effort selection reaches provider",
     );
     const sentUser = page.locator(".user-message").last();
     const sentBubble = sentUser.locator(".user-bubble");
@@ -1753,7 +1753,7 @@ try {
     assert.equal(await input().textContent(), "已有聊天 ");
     assert.equal(await page.getByRole("dialog", { name: /目标/ }).count(), 0);
     await button("退出目标模式").click();
-    await button("模型").click();
+    await button("选择思考强度").click();
     await slider.fill("2");
     await slider.press("Escape");
     await until(

@@ -1,12 +1,19 @@
 import { createRoot } from "react-dom/client";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button, Input } from "@areal/ui";
 import { Monitor, Settings } from "lucide-react";
 import { FeedbackNotice } from "@areal/ui/experimental";
 import { SettingsGroupCard, SettingsRow } from "@areal/ui/compositions";
 import { ApplicationIntlProvider, useI18n, type MessageId } from "../i18n/IntlProvider.js";
 import { MobileClient } from "./mobile-client.mjs";
-import { keychain, observeLifecycle, scanPairingLink } from "./platform.js";
+import {
+  clientKind,
+  keychain,
+  observeBack,
+  observeLifecycle,
+  scanPairingLink,
+  minimizeApp,
+} from "./platform.js";
 import { MobileCommands } from "./mobile-commands.mjs";
 import { MobileWorkspace } from "./mobile-workspace.mjs";
 import { MobileWorkspaceView } from "./MobileWorkspace.js";
@@ -14,7 +21,7 @@ import "../styles.css";
 import "../workbench.css";
 import "./mobile.layout.css";
 
-const client = new MobileClient({ keychain });
+const client = new MobileClient({ keychain, clientKind });
 const workspace = new MobileWorkspace(client);
 const commands = new MobileCommands(client, workspace);
 
@@ -22,6 +29,7 @@ function MobileApp() {
   const { t } = useI18n();
   const state = useSyncExternalStore(client.subscribe, client.snapshot);
   const view = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
+  const dismissComposerSheet = useRef<(() => void) | null>(null);
   const [name, setName] = useState(t("mobile.deviceFallback"));
   const [link, setLink] = useState("");
   const [paste, setPaste] = useState(false);
@@ -55,6 +63,19 @@ function MobileApp() {
       void client.setActive(false);
     };
   }, []);
+  useEffect(() => {
+    const listener = observeBack(() => {
+      if (dismissComposerSheet.current) dismissComposerSheet.current();
+      else if (clearConfirm) setClearConfirm(false);
+      else if (settings) setSettings(false);
+      else if (paste) setPaste(false);
+      else if (state.kind === "connected" && view.page.kind !== "projects") workspace.back();
+      else void minimizeApp();
+    });
+    return () => {
+      void listener.then((remove) => remove());
+    };
+  }, [clearConfirm, settings, paste, state.kind, view.page]);
   const pair = (value: string) => {
     setError(null);
     setLink("");
@@ -292,7 +313,12 @@ function MobileApp() {
             <FeedbackNotice tone="warning" message={t("mobile.storageFailed")} />
           )}
           {state.kind === "connected" && (
-            <MobileWorkspaceView workspace={workspace} client={client} commands={commands} />
+            <MobileWorkspaceView
+              workspace={workspace}
+              client={client}
+              commands={commands}
+              dismissComposerSheet={dismissComposerSheet}
+            />
           )}
           {["offline", "blocked"].includes(state.kind) && (
             <Button

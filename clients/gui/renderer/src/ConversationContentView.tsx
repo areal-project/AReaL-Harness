@@ -2,6 +2,7 @@ import { useI18n } from "./i18n/IntlProvider.js";
 import type { ReactNode } from "react";
 import { NativeContent } from "@areal/ui/experimental";
 import type { ConversationContentBlock } from "./conversationContent.js";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 
 export function ConversationContentView({
   blocks,
@@ -38,10 +39,12 @@ export function ConversationContentView({
               {t("content.preparing")}
             </p>
           ) : (
-            <details className="conversation-content-fallback">
-              <summary>{t("content.fallback")}</summary>
+            <SettingsDisclosure
+              className="conversation-content-fallback"
+              title={t("content.fallback")}
+            >
               <pre>{block.raw}</pre>
-            </details>
+            </SettingsDisclosure>
           )}
         </div>
       ))}

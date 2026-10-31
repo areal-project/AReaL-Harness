@@ -326,6 +326,8 @@ pub enum ToolOutcome {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolExecution {
+    #[serde(default)]
+    pub started_at_ms: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_review: Option<Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -439,9 +441,41 @@ pub struct HookExecution {
     pub result: Option<Value>,
 }
 
+/// 本地排查记录与上传副本独立；旧历史的缺失字段不补造时间。
+#[derive(Clone, Debug, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnTrace {
+    pub started_at_ms: Option<i64>,
+    pub queued_at_ms: Option<i64>,
+    pub queue_duration_ms: Option<u64>,
+    #[serde(default)]
+    pub activities: Vec<TraceActivity>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceActivity {
+    #[serde(default)]
+    pub after_item_id: Option<String>,
+    pub id: String,
+    pub kind: String,
+    pub label: String,
+    pub call_id: Option<String>,
+    pub logical_id: Option<String>,
+    pub started_at_ms: i64,
+    pub completed_at_ms: Option<i64>,
+    pub duration_ms: Option<u64>,
+    pub first_content_ms: Option<u64>,
+    pub usage: Option<ModelUsage>,
+    pub status: String,
+    pub error: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Turn {
+    #[serde(default)]
+    pub trace: TurnTrace,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interruption: Option<TurnInterruption>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -44,7 +44,7 @@ class ProjectlessWorkspaces {
       const providers = this.backend.providers;
       const config = await providers.config.current();
       const selected = readEffectiveModel(config.effective);
-      /** @type {Array<{providerId:string|null,modelId:string,displayName:string,available:boolean,credentialState?:string,isDefault:boolean,parameters:import("./provider-contract.cjs").ModelParameters,capabilities?:import("./provider-contract.cjs").ModelCapabilities,reasoningEffortOptions:string[]}>} */
+      /** @type {Array<{providerId:string|null,providerName?:string,modelId:string,displayName:string,available:boolean,credentialState?:string,isDefault:boolean,parameters:import("./provider-contract.cjs").ModelParameters,capabilities?:import("./provider-contract.cjs").ModelCapabilities,reasoningEffortOptions:string[]}>} */
       const data = config.data
         .filter((provider) => provider.enabled)
         .flatMap((provider) => {
@@ -59,6 +59,7 @@ class ProjectlessWorkspaces {
             const capabilities = resolvedModelCapabilities(provider, model);
             return {
               providerId: provider.id,
+              providerName: provider.name,
               modelId: model.id,
               displayName: model.displayName ?? model.id,
               available: config.credentialStates[provider.id] !== "unavailable",
@@ -71,6 +72,11 @@ class ProjectlessWorkspaces {
                 model.id === selected.name &&
                 selected.reasoning_effort
                   ? { reasoningEffort: selected.reasoning_effort }
+                  : {}),
+                ...(provider.id === selected.provider &&
+                model.id === selected.name &&
+                selected.service_tier
+                  ? { serviceTier: selected.service_tier }
                   : {}),
               },
               capabilities,
@@ -101,6 +107,7 @@ class ProjectlessWorkspaces {
             contextWindowTokens: selected.context_window_tokens,
             reasoningEffort: selected.reasoning_effort,
             reasoningSummary: selected.reasoning_summary,
+            serviceTier: selected.service_tier,
           },
           capabilities: configured?.capabilities,
           reasoningEffortOptions:
@@ -115,6 +122,7 @@ class ProjectlessWorkspaces {
         data.push(
           ...service.models.map((model) => ({
             providerId: "areal_openai",
+            providerName: "ChatGPT",
             modelId: model.id,
             displayName: model.id,
             available: true,
@@ -226,7 +234,7 @@ function readEffectiveModel(value) {
   if (!modelRecord(value) || !effectiveModel(value.model)) throw new Error("有效模型配置结构无效");
   return value.model;
 }
-/** @param {unknown} value @returns {value is {provider?:string,name?:string,endpoint?:string,api_key_env?:string|null,temperature?:number|null,max_output_tokens?:number|null,context_window_tokens?:number|null,reasoning_effort?:string|null,reasoning_summary?:string|null}} */
+/** @param {unknown} value @returns {value is {provider?:string,name?:string,endpoint?:string,api_key_env?:string|null,temperature?:number|null,max_output_tokens?:number|null,context_window_tokens?:number|null,reasoning_effort?:string|null,reasoning_summary?:string|null,service_tier?:'fast'|'default'|null}} */
 function effectiveModel(value) {
   return (
     modelRecord(value) &&
@@ -236,6 +244,9 @@ function effectiveModel(value) {
     ["api_key_env", "reasoning_effort", "reasoning_summary"].every(
       (key) => value[key] == null || typeof value[key] === "string",
     ) &&
+    (value.service_tier == null ||
+      value.service_tier === "fast" ||
+      value.service_tier === "default") &&
     ["temperature", "max_output_tokens", "context_window_tokens"].every(
       (key) => value[key] == null || typeof value[key] === "number",
     )

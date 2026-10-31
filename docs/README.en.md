@@ -6,7 +6,7 @@ Start with the [quickstart](guides/quickstart.en.md). [Capabilities and limitati
 
 [Product vocabulary](../GLOSSARY.en.md) · [Desktop client migration decision (planned)](adr/0001-desktop-client-module.en.md)
 
-[Pause and continue regular conversations](adr/0014-conversation-pause-and-continue.en.md)
+[Pause and continue regular conversations](adr/0014-conversation-pause-and-continue.en.md) · [Scheduled conversation targets (in design)](adr/0015-scheduled-conversation-target.en.md)
 
 | Category | Documents |
 |---|---|

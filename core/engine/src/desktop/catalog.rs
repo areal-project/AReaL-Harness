@@ -23,7 +23,9 @@ pub(super) struct Catalog {
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     configured_provider_ids: BTreeSet<String>,
     #[serde(default)]
-    profiles: BTreeMap<String, AgentProfile>,
+    pub(super) profiles: BTreeMap<String, AgentProfile>,
+    #[serde(default)]
+    pub(super) plugin_origins: BTreeMap<String, areal_plugins::ComponentIdentity>,
     // 接受旧目录格式并丢弃内容哈希；资源不再由启动快照固定。
     #[serde(default, rename = "skillHashes", skip_serializing)]
     _legacy_skill_hashes: serde::de::IgnoredAny,
@@ -116,9 +118,6 @@ impl Engine {
 
     /// 可信启动器已解析目录和版本引用；默认配置只用于未显式指定 Profile 的新会话。
     pub fn install_default_skills(&self, skills: Vec<SkillLocation>) -> anyhow::Result<()> {
-        if skills.is_empty() {
-            return Ok(());
-        }
         anyhow::ensure!(
             skills.iter().all(|s| s.root.is_absolute()),
             "discovered skill roots must be absolute"
@@ -160,6 +159,15 @@ impl Engine {
         );
         let mut guard = self.desktop.catalog.write().unwrap();
         let mut catalog = guard.clone();
+        if deployment
+            .profiles
+            .iter()
+            .any(|profile| profile.id == "areal-discovered-skills")
+        {
+            catalog
+                .profiles
+                .retain(|_, profile| profile.id != "areal-discovered-skills");
+        }
         for location in deployment.skills {
             let skill = Skill::load(location, base)?;
             let location = &skill.location;
@@ -168,6 +176,10 @@ impl Engine {
                 .insert(key(&location.id, &location.revision), skill);
         }
         for profile in deployment.profiles {
+            anyhow::ensure!(
+                !profile.id.starts_with("plugin-agent-"),
+                "plugin profile identities are reserved"
+            );
             anyhow::ensure!(
                 valid_id(&profile.id)
                     && valid_id(&profile.revision)
@@ -265,6 +277,7 @@ impl Engine {
         json!({"data":self.desktop.catalog.read().unwrap().profiles.values().collect::<Vec<_>>()})
     }
     pub fn profile(&self, reference: &VersionRef) -> Result<AgentProfile> {
+        self.check_plugin_profile(reference)?;
         self.desktop
             .catalog
             .read()
@@ -520,6 +533,7 @@ impl Engine {
                 })),
                 context_window_tokens: parameters.context_window_tokens,
                 reasoning_effort: parameters.reasoning_effort.clone(),
+                service_tier: parameters.service_tier.clone(),
                 reasoning_summary: parameters.reasoning_summary.clone(),
                 max_output_tokens: parameters.max_output_tokens,
                 max_retries: 0,
@@ -707,13 +721,15 @@ impl Engine {
             .and_then(|parameters| parameters.context_window_tokens);
         let reported_source = provider.context_source.unwrap_or(Source::Provider);
         let (window_tokens, source) = match (reported_window_tokens, user_budget_tokens) {
-            (Some(reported), Some(user)) if user < reported => (user, Source::User),
-            (Some(reported), _) => (reported, reported_source),
-            (None, Some(user)) => (user, Source::User),
+            (_, Some(user)) => (user, Source::User),
+            (Some(reported), None) => (reported, reported_source),
             (None, None) => {
-                if reported_source != Source::Account
-                    && let Some(window) = model::known_context_window(name)
-                {
+                let default = if reported_source == Source::Account {
+                    model::subscription_context_window(name)
+                } else {
+                    model::known_context_window(name)
+                };
+                if let Some(window) = default {
                     (window, Source::ModelDefault)
                 } else {
                     (self.limits.context_window_tokens, Source::Fallback)
@@ -733,6 +749,22 @@ impl Engine {
         &self,
         mut configuration: EffectiveConfig,
     ) -> EffectiveConfig {
+        if configuration
+            .profile
+            .as_ref()
+            .is_some_and(|profile| profile.id == "areal-discovered-skills")
+            && let Some(reference) = self.desktop.default_profile.read().unwrap().clone()
+            && let Some(profile) = self
+                .desktop
+                .catalog
+                .read()
+                .unwrap()
+                .profiles
+                .get(&key(&reference.id, &reference.revision))
+                .cloned()
+        {
+            configuration.profile = Some(profile);
+        }
         let (Some(model), Some(provider)) = (&configuration.model, &mut configuration.provider)
         else {
             return configuration;
@@ -1274,6 +1306,7 @@ pub(crate) fn merge_model_parameters(
         temperature: parameters.temperature.or(defaults.temperature),
         max_output_tokens: parameters.max_output_tokens.or(defaults.max_output_tokens),
         reasoning_effort: parameters.reasoning_effort.or(defaults.reasoning_effort),
+        service_tier: parameters.service_tier.or(defaults.service_tier),
         reasoning_summary: parameters.reasoning_summary.or(defaults.reasoning_summary),
     }
 }
@@ -1372,5 +1405,120 @@ mod request_audit_tests {
         engine.shutdown().await;
         server.abort();
         let _ = server.await;
+    }
+}
+
+#[cfg(test)]
+mod refresh_transaction_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn provider_save_and_runtime_catalog_refresh_preserve_both_updates() {
+        let root = tempfile::tempdir().unwrap();
+        for dir in [
+            ".agents/plugins",
+            "pkg/.claude-plugin",
+            "pkg/agents",
+            ".agents/skills/review",
+        ] {
+            std::fs::create_dir_all(root.path().join(dir)).unwrap();
+        }
+        std::fs::write(
+            root.path().join(".agents/plugins/marketplace.json"),
+            r#"{"name":"local","plugins":[{"name":"sample","source":"./pkg"}]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.path().join("pkg/.claude-plugin/plugin.json"),
+            r#"{"name":"sample"}"#,
+        )
+        .unwrap();
+        let store = Arc::new(
+            areal_plugins::Store::open(root.path().join("plugins"), root.path().into(), None)
+                .unwrap(),
+        );
+        let model = Arc::new(
+            model::HttpModel::with_protocol(
+                "http://127.0.0.1:1/".into(),
+                "fixture".into(),
+                None,
+                model::ModelProtocol::Responses,
+            )
+            .unwrap(),
+        );
+        let engine = Engine::open(&root.path().join("engine"), model, Limits::default()).unwrap();
+        engine.install_plugin_store(store.clone()).unwrap();
+        engine
+            .install_discovered_skill_sources(root.path().into(), None)
+            .unwrap();
+        let (ready, release) = engine.store.pause_next_catalog_write();
+        let provider = {
+            let engine = engine.clone();
+            tokio::spawn(async move {
+                engine.upsert_provider(serde_json::from_value(json!({"id":"concurrent","revision":0,"endpoint":"http://127.0.0.1:1/","protocol":"responses","models":["fixture"]})).unwrap(), 0).await
+            })
+        };
+        ready.await.unwrap();
+        std::fs::write(
+            root.path().join("pkg/agents/reviewer.md"),
+            "Review concurrently.",
+        )
+        .unwrap();
+        let detail = store.read("sample@local").unwrap();
+        store
+            .install(
+                &detail.id,
+                "user",
+                detail.revision,
+                &detail.source,
+                detail.review_digest(),
+            )
+            .unwrap();
+        std::fs::write(
+            root.path().join(".agents/skills/review/SKILL.md"),
+            "---\nname: review\ndescription: Concurrent skill\n---\nbody",
+        )
+        .unwrap();
+        let refresh = {
+            let engine = engine.clone();
+            tokio::spawn(async move {
+                tokio::join!(engine.refresh_plugins(), engine.refresh_discovered_skills())
+            })
+        };
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(25), async {
+                while !refresh.is_finished() {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .is_err(),
+            "runtime publication bypassed the pending provider transaction"
+        );
+        release.send(()).unwrap();
+        provider.await.unwrap().unwrap();
+        let (plugins, skills) = refresh.await.unwrap();
+        plugins.unwrap();
+        skills.unwrap();
+        for catalog in [
+            engine.desktop.catalog.read().unwrap().clone(),
+            Catalog::load(&root.path().join("engine")).unwrap(),
+        ] {
+            assert!(catalog.providers.contains_key("concurrent"));
+            assert!(
+                catalog
+                    .profiles
+                    .values()
+                    .any(|p| p.id.starts_with("plugin-agent-"))
+            );
+            assert!(
+                catalog
+                    .profiles
+                    .values()
+                    .any(|p| p.id == "areal-discovered-skills" && p.skills.len() == 1)
+            );
+            assert_eq!(catalog.plugin_origins.len(), 1);
+        }
+        engine.shutdown().await;
     }
 }

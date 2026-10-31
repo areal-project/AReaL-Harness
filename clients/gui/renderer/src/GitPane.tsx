@@ -1,3 +1,4 @@
+import { observeResize } from "@areal/ui/observe-resize";
 // Toolbar, empty state and change-card layout adapted from ZCode GitPane.
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";
@@ -53,6 +54,7 @@ import {
   type ReviewCommentDraft,
   type ReviewVersion,
 } from "./reviewComments.js";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 // File lookup glyph from the saved Codex 26.928 readonly CDP geometry.
 function JumpToFileIcon() {
   return (
@@ -169,15 +171,12 @@ export function GitPane({
     const layout = reviewLayout.current;
     const scroll = reviewScroll.current;
     if (!layout || !scroll) return;
-    const observer = new ResizeObserver((entries) => {
+    return observeResize([layout, scroll], (entries) => {
       for (const entry of entries) {
         if (entry.target === layout) setLayoutWidth(entry.contentRect.width);
         else setDiffWidth(entry.contentRect.width);
       }
     });
-    observer.observe(layout);
-    observer.observe(scroll);
-    return () => observer.disconnect();
   }, []);
   useEffect(() => {
     localStorage.setItem("areal-gui:review-tree-width", String(treeWidth));
@@ -520,11 +519,9 @@ export function GitPane({
       scroll.scrollTop = top;
       if (scroll.scrollTop === top) restoringTop.current = undefined;
     };
-    const observer = new ResizeObserver(restore);
-    observer.observe(scroll);
-    for (const child of scroll.children) observer.observe(child);
+    const stopObserving = observeResize([scroll, ...scroll.children], restore);
     restore();
-    return () => observer.disconnect();
+    return stopObserving;
   }, [busy]);
   const visibleFiles = files.filter((file) =>
     file.workspaceRelativePath.toLocaleLowerCase().includes(treeQuery.trim().toLocaleLowerCase()),
@@ -1182,12 +1179,14 @@ export function GitPane({
         </form>
       )}
       {!busy && !error && unavailableFiles.length > 0 && (
-        <details className="shrink-0 px-3 py-2 text-ui-sm text-foreground-subtle">
-          <summary>
+        <SettingsDisclosure
+          className="shrink-0 px-3 py-2 text-ui-sm text-foreground-subtle"
+          title={
             <span role="status">
               {t("chat.files.excluded", { count: unavailableFiles.length })}
             </span>
-          </summary>
+          }
+        >
           <ul className="max-h-32 overflow-auto">
             {unavailableFiles.map((file) => (
               <li key={file.path} className="break-words">
@@ -1195,7 +1194,7 @@ export function GitPane({
               </li>
             ))}
           </ul>
-        </details>
+        </SettingsDisclosure>
       )}
       {(storageError || commentError) && (
         <p role="alert" className="px-3 py-2 text-ui-sm text-destructive">

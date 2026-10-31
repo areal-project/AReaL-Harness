@@ -1,4 +1,4 @@
-import { Activity, useEffect, useRef, useState, type ReactNode } from "react";
+import { Activity, useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { ConversationStatusCard } from "../ConversationStatusCard.js";
 import { Button } from "../components/ui/button.js";
@@ -14,7 +14,6 @@ export function TaskResourcesPopover({
   onAgent,
   onFile,
   scheduledTask,
-  runHistory,
   revealKey,
   onReveal,
   onAddSchedule,
@@ -30,7 +29,6 @@ export function TaskResourcesPopover({
   thread: Data;
   action: Action;
   scheduledTask?: Data;
-  runHistory?: ReactNode;
   revealKey?: string;
   onReveal?: (key: string) => void;
   onPanel: (name: string) => void;
@@ -105,7 +103,6 @@ export function TaskResourcesPopover({
             thread={thread}
             action={action}
             scheduledTask={scheduledTask}
-            runHistory={runHistory}
             onAddSchedule={
               onAddSchedule
                 ? () => {

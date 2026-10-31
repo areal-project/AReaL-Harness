@@ -13,6 +13,7 @@ import {
 } from "./components/ui/dialog.js";
 import type { Action, Data } from "./services.js";
 import { observedServiceUrls } from "./developmentService.js";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 
 type Process = ManagementResponseMap["processes"]["data"][number];
 type Runtime = ManagementResponseMap["process"]["runtime"];
@@ -549,8 +550,7 @@ export function ProcessesPane({
                 {detailError}
               </p>
             )}
-            <details>
-              <summary className="text-foreground-subtle">进程信息</summary>
+            <SettingsDisclosure title="进程信息">
               <dl className="break-all">
                 <dt>进程 ID</dt>
                 <dd>{current.id}</dd>
@@ -563,7 +563,7 @@ export function ProcessesPane({
                   </>
                 )}
               </dl>
-            </details>
+            </SettingsDisclosure>
             <div className="flex flex-col gap-2">
               <Textarea
                 aria-label="标准输入"
@@ -609,9 +609,7 @@ export function ProcessesPane({
                 aria-label="从受管进程输出发现的服务地址"
                 className="flex flex-col gap-1"
               >
-                <p className="text-foreground-subtle">
-                  以下地址来自此任务正在运行的受管进程输出。选择后在当前任务的浏览器打开；页面加载结果仍需核查。
-                </p>
+                <p className="text-foreground-subtle">{t("common.processes.urlsHelp")}</p>
                 {serviceUrls.map((url) => (
                   <Button
                     key={url}
@@ -646,9 +644,7 @@ export function ProcessesPane({
         <DialogContent className="max-w-md" showCloseButton={!busy}>
           <DialogHeader>
             <DialogTitle>关闭会话资源？</DialogTitle>
-            <DialogDescription>
-              将中断此会话的所有受管命令并请求清理资源，可能影响正在进行的任务。执行历史会保留。
-            </DialogDescription>
+            <DialogDescription>{t("common.processes.closeSessionConfirm")}</DialogDescription>
           </DialogHeader>
           {cleanupError && (
             <p role="alert" className="text-destructive">
@@ -743,9 +739,7 @@ export function ProcessesPane({
         <DialogContent className="max-w-md" showCloseButton={!busy}>
           <DialogHeader>
             <DialogTitle>停止此进程？</DialogTitle>
-            <DialogDescription>
-              这会中断所选命令并请求清理其资源，可能影响依赖它的任务。其他进程继续运行。
-            </DialogDescription>
+            <DialogDescription>{t("common.processes.stopConfirm")}</DialogDescription>
           </DialogHeader>
           <p className="break-all font-mono text-compact-body">{confirm?.argv.join(" ")}</p>
           {stopError && (

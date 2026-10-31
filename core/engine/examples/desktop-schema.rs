@@ -78,6 +78,22 @@ fn desktop_schema() -> Value {
         "areal/plugin/connection",
         areal_protocol::plugin_runtime::Connection
     );
+    add!(
+        "areal/plugin/components",
+        areal_protocol::plugin_runtime::ComponentRead
+    );
+    add!(
+        "areal/plugin/userConfig/set",
+        areal_protocol::plugin_runtime::UserConfigSet
+    );
+    add!(
+        "areal/plugin/development/link",
+        areal_protocol::plugin_runtime::DevelopmentLink
+    );
+    add!(
+        "areal/plugin/development/unlink",
+        areal_protocol::plugin_runtime::DevelopmentUnlink
+    );
     add!("areal/plugin/auth", areal_protocol::plugin_runtime::Auth);
     add!(
         "areal/mcp/form/resource/prepare",
@@ -394,6 +410,20 @@ fn desktop_schema() -> Value {
         ),
     );
     methods.insert("areal/skill/read".into(),object(json!({"threadId":string,"skill":schemars::schema_for!(VersionRef),"resource":string,"offset":integer,"maxBytes":{"type":"integer","minimum":1,"maximum":8192}}),vec!["threadId","skill"]));
+    methods.insert(
+        "areal/execution/traceResult".into(),
+        object(
+            json!({"threadId":string,"executionId":string,"workerThreadId":string,"uri":string}),
+            vec!["threadId", "executionId", "workerThreadId", "uri"],
+        ),
+    );
+    methods.insert(
+        "areal/execution/trace".into(),
+        object(
+            json!({"threadId":string,"executionId":string,"workerThreadId":string,"cursor":string}),
+            vec!["threadId"],
+        ),
+    );
     methods.insert("areal/execution/list".into(), object(json!({"parentThreadId":string,"offset":integer,"limit":{"type":"integer","minimum":1,"maximum":100}}), vec!["parentThreadId"]));
     methods.insert(
         "areal/execution/read".into(),

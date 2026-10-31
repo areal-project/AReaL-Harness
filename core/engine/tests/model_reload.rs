@@ -63,6 +63,9 @@ async fn reload_preserves_active_children_and_queued_requests_but_new_submission
         .unwrap();
     assert_eq!(call(&mut rx).await, "a:hold");
     engine.start_durable("owner".into(), serde_json::from_value(json!({"requestId":"queued","threadId":thread.id,"input":[{"type":"text","text":"queued"}]})).unwrap(), true).await.unwrap();
+    let queued_at = engine.queue(&thread.id).await.unwrap().items[0]
+        .queued_at_ms
+        .unwrap();
     engine.register_default_model("b".into(), b, true);
     let child = engine
         .spawn_child(&thread.id, vec![Input::text("child")])
@@ -74,6 +77,29 @@ async fn reload_preserves_active_children_and_queued_requests_but_new_submission
     assert_eq!(engine.server_status().await["acceptingWork"], true);
     release.notify_one();
     assert_eq!(call(&mut rx).await, "a:queued");
+    let queued = engine
+        .read(&thread.id, true)
+        .await
+        .unwrap()
+        .turns
+        .last()
+        .unwrap()
+        .trace
+        .clone();
+    assert_eq!(queued.queued_at_ms, Some(queued_at));
+    assert!(queued.started_at_ms.unwrap() >= queued_at);
+    assert!(queued.queue_duration_ms.is_some());
+    let trace = engine
+        .execution_trace(&thread.id, None, None, None)
+        .await
+        .unwrap();
+    assert!(
+        trace["legacySources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|source| source["threadId"] == child.0.id)
+    );
     engine.wait(&thread.id).await.unwrap();
     engine
         .start(&thread.id, vec![Input::text("new")])

@@ -18,6 +18,7 @@ areal-local-service.workspace = true
 areal-engine.workspace = true
 areal-config.workspace = true
 areal-protocol.workspace = true
+areal-plugins.workspace = true
 anyhow.workspace = true
 reqwest.workspace = true
 clap.workspace = true

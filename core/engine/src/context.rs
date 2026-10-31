@@ -625,20 +625,13 @@ impl Engine {
                 metadata.is_dir(),
                 "AGENTS.md directory must not be a symlink or special file"
             );
-            let path = if directory.is_empty() {
-                "AGENTS.md".to_owned()
-            } else {
-                format!("{directory}/AGENTS.md")
-            };
-            match tokio::fs::symlink_metadata(runtime.workspace.join(&path)).await {
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(error) => return Err(error).context("cannot inspect project instructions"),
-                Ok(metadata) => anyhow::ensure!(
-                    metadata.is_file() && metadata.len() <= PROJECT_INSTRUCTION_LIMIT as u64,
-                    "{path} must be a regular file no larger than 32 KiB"
-                ),
-            }
-            paths.push(path);
+            paths.push(["AGENTS.override.md", "AGENTS.md"].map(|name| {
+                if directory.is_empty() {
+                    name.to_owned()
+                } else {
+                    format!("{directory}/{name}")
+                }
+            }));
         }
         if paths.is_empty() {
             return Ok(Some(instructions));
@@ -655,7 +648,10 @@ impl Engine {
             });
         }
         let content = received.await??;
-        instructions.push(Kind::Rules, "AGENTS.md", "\n\nProject AGENTS.md instructions (subordinate to the user's request and deployment permissions). Each file applies only to its directory and descendants; closer files take precedence for files in their subtree. Before working in other directories, read their applicable AGENTS.md files. Only the workspace-root-to-session-cwd chain is loaded here:\n");
+        if content.is_empty() {
+            return Ok(Some(instructions));
+        }
+        instructions.push(Kind::Rules, "AGENTS.md", "\n\nProject AGENTS.md instructions (subordinate to the user's request and deployment permissions). In each directory, the first non-empty file wins: AGENTS.override.md, then AGENTS.md; only one file per directory is included. Each file applies only to its directory and descendants; closer files take precedence for files in their subtree. Before working in other directories, read their applicable instruction files using the same selection order. Only the workspace-root-to-session-cwd chain is loaded here:\n");
         instructions.push(Kind::Rules, "AGENTS.md", &content);
         Ok(Some(instructions))
     }
@@ -663,14 +659,14 @@ impl Engine {
     async fn read_project_instructions(
         &self,
         cell: &Cell,
-        paths: Vec<String>,
+        paths: Vec<[String; 2]>,
     ) -> anyhow::Result<String> {
         use areal_runtime_protocol as rt;
         use base64::Engine as _;
         let client = &self.runtime.as_ref().unwrap().client;
         // 规则文件也使用本轮受限 base；不能把它误作追加权限审批的 authority。
         // Scope 的创建、取消和清理与后续工具共用同一个生命周期。
-        let scope = self.ensure_turn_scope(cell, None).await?;
+        let mut scope = None;
         let cancel = cell
             .state
             .lock()
@@ -682,35 +678,59 @@ impl Engine {
             .clone();
         let mut content = String::new();
         let mut remaining = PROJECT_INSTRUCTION_LIMIT;
-        for path in paths {
-            let value = tokio::select! {
-                biased;
-                _ = cancel.cancelled() => {
-                    client.close_scope(&scope).await?;
-                    anyhow::bail!("project instruction read cancelled");
+        for candidates in paths {
+            for path in candidates {
+                match tokio::fs::symlink_metadata(
+                    self.runtime.as_ref().unwrap().workspace.join(&path),
+                )
+                .await
+                {
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(error) => return Err(error).context("cannot inspect project instructions"),
+                    Ok(metadata) => anyhow::ensure!(
+                        metadata.is_file() && metadata.len() <= PROJECT_INSTRUCTION_LIMIT as u64,
+                        "{path} must be a regular file no larger than 32 KiB"
+                    ),
                 }
-                result = client.filesystem(rt::FileRequest {
-                    operation_id: client.operation_id(),
-                    scope_id: scope.clone(),
-                    command: rt::FileCommand::Read {
-                        path: format!("workspace://repo/{path}"),
-                        offset: 0,
-                        max_bytes: remaining + 1,
-                    },
-                }) => result?,
-            };
-            let bytes = base64::engine::general_purpose::STANDARD.decode(
-                value["dataBase64"]
-                    .as_str()
-                    .context("invalid project instruction result")?,
-            )?;
-            anyhow::ensure!(
-                value["eof"] == true && bytes.len() <= remaining,
-                "AGENTS.md files exceed the combined 32 KiB instruction budget"
-            );
-            remaining -= bytes.len();
-            let text = String::from_utf8(bytes).with_context(|| format!("{path} must be UTF-8"))?;
-            content.push_str(&format!("\n--- {path} ---\n{text}\n"));
+                // 空目录无需 Runtime 权限；真正读取时仍先取得受限 Scope，拒绝必须传播。
+                let scope = match &scope {
+                    Some(scope) => scope,
+                    None => scope.insert(self.ensure_turn_scope(cell, None).await?),
+                };
+                let value = tokio::select! {
+                    biased;
+                    _ = cancel.cancelled() => {
+                        client.close_scope(scope).await?;
+                        anyhow::bail!("project instruction read cancelled");
+                    }
+                    result = client.filesystem(rt::FileRequest {
+                        operation_id: client.operation_id(),
+                        scope_id: scope.clone(),
+                        command: rt::FileCommand::Read {
+                            path: format!("workspace://repo/{path}"),
+                            offset: 0,
+                            max_bytes: remaining + 1,
+                        },
+                    }) => result?,
+                };
+                let bytes = base64::engine::general_purpose::STANDARD.decode(
+                    value["dataBase64"]
+                        .as_str()
+                        .context("invalid project instruction result")?,
+                )?;
+                anyhow::ensure!(
+                    value["eof"] == true && bytes.len() <= remaining,
+                    "AGENTS.md files exceed the combined 32 KiB instruction budget"
+                );
+                let text =
+                    String::from_utf8(bytes).with_context(|| format!("{path} must be UTF-8"))?;
+                if text.trim().is_empty() {
+                    continue;
+                }
+                remaining -= text.len();
+                content.push_str(&format!("\n--- {path} ---\n{text}\n"));
+                break;
+            }
         }
         Ok(content)
     }
@@ -1009,6 +1029,9 @@ impl Engine {
         if pre.stop.is_some() {
             anyhow::bail!("PreCompact hook stopped compaction");
         }
+        let mut compaction_trace = self
+            .trace_begin(cell, "compaction", "上下文压缩", None, None)
+            .await?;
         let result: anyhow::Result<()> = async {
             let boundary = items[cut - 1].id().to_owned();
             let mut prefix = logical_snapshot.clone();
@@ -1030,6 +1053,7 @@ impl Engine {
             let storage_only = storage_trigger && !token_trigger && !byte_trigger && !force;
             let mut attempt = 0;
             let mut network_retries: usize = 0;
+            let summary_logical_id = id();
             // 只有存储压力时使用已记录证据，不为不可回放的推理再次付费摘要。
             while attempt < 2 && !storage_only {
                 let mut summary = String::new();
@@ -1083,12 +1107,11 @@ impl Engine {
                     })
                 };
                 let request_span = request.span.clone();
+                let mut summary_trace = self.trace_begin(cell, "model", model.name(), None, Some(&summary_logical_id)).await?;
+                let trace_context = crate::execution_trace::RequestTrace { engine: self.clone(), cell: cell.clone(), timer: summary_trace.clone(), logical_id: summary_logical_id.clone() };
                 let response: anyhow::Result<()> = async {
                     // 摘要也使用同一容量；失败后先归还名额再退避。
-                    let permit = tokio::select! {
-                        _ = cancel.cancelled() => anyhow::bail!("cancelled before summary admission"),
-                        permit = self.permits.clone().acquire_owned() => permit?,
-                    };
+                    let permit = self.trace_model_permit(cell, cancel).await?;
                     if budget.window > 0 {
                         let output = model.capabilities().summary_output_tokens.unwrap_or(budget.reserve);
                         anyhow::ensure!(output < budget.window, "summary output reserve exceeds model context window");
@@ -1108,7 +1131,7 @@ impl Engine {
                     let mut response_deadline = watchdog::ResponseDeadline::new(self.limits.model_request_timeout, self.limits.stream_idle_timeout);
                     let pending = tokio::time::timeout_at(response_deadline.deadline(), model::REQUEST_OWNER.scope((snapshot.id.clone(), snapshot.turns.last().map_or_else(String::new, |t| t.id.clone())), permit.scope(async {
                         let meter = crate::request_meter::RequestMeter::new(generation.clone());
-                        model.chat_with_limits(input.clone(), Vec::new(), model::RequestPurpose::Summary, model::ToolCallLimits { require_call: false, max_calls: 0, max_buffer_bytes: self.limits.max_tool_buffer_bytes }, None).await.map(|stream| meter.wrap(stream))
+                        crate::execution_trace::REQUEST_TRACE.scope(trace_context.clone(), model.chat_with_limits(input.clone(), Vec::new(), model::RequestPurpose::Summary, model::ToolCallLimits { require_call: false, max_calls: 0, max_buffer_bytes: self.limits.max_tool_buffer_bytes }, None)).await.map(|stream| meter.wrap(stream))
                     })));
                     tokio::pin!(pending);
                     let mut stream = tokio::select! {
@@ -1130,6 +1153,7 @@ impl Engine {
                         };
                         let Some(event) = event else { break; };
                         let event = event?;
+                        self.trace_content(cell, &mut summary_trace, &event).await?;
                         response_deadline.observe_event();
                         request.observe(&event);
                         match event {
@@ -1158,6 +1182,7 @@ impl Engine {
                     anyhow::ensure!(valid_summary(&summary), "model returned an empty or tool-shaped context summary");
                     Ok(())
                 }.instrument(request_span).await;
+                self.trace_finish(cell, &mut summary_trace, response.as_ref().err().map(|e| e.to_string()).as_deref()).await?;
                 let measured = generation.lock().unwrap().clone();
                 if let Some(turn) = cell.state.lock().await.thread.turns.last_mut() { turn.generation = Some(measured); }
                 if let Err(error) = &response {
@@ -1191,10 +1216,12 @@ impl Engine {
                         delay_ms = delay.as_millis() as u64,
                         "network watchdog retrying context summary"
                     );
+                    let mut retry_trace = self.trace_begin(cell, "retryWait", "摘要重试等待", None, Some(&summary_logical_id)).await?;
                     tokio::select! { biased;
-                        _ = cancel.cancelled() => anyhow::bail!("cancelled"),
+                        _ = cancel.cancelled() => { self.trace_finish(cell, &mut retry_trace, Some("cancelled")).await?; anyhow::bail!("cancelled"); },
                         _ = tokio::time::sleep(delay) => {},
                     }
+                    self.trace_finish(cell, &mut retry_trace, None).await?;
                     continue;
                 }
                 if watchdog::exhausted(self.limits.network_retry_mode, &error, network_retries) {
@@ -1276,6 +1303,12 @@ impl Engine {
             );
             Ok(())
         }.instrument(span).await;
+        self.trace_finish(
+            cell,
+            &mut compaction_trace,
+            result.as_ref().err().map(|e| e.to_string()).as_deref(),
+        )
+        .await?;
         if result.is_ok() {
             let post = self
                 .plugin_hook_event(

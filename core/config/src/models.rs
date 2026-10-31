@@ -29,6 +29,8 @@ pub struct Parameters {
     pub context_window_tokens: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_tier: Option<String>,
 }
 impl Parameters {
     pub fn overlay(&self, base: &Self) -> Self {
@@ -40,6 +42,10 @@ impl Parameters {
                 .reasoning_effort
                 .clone()
                 .or_else(|| base.reasoning_effort.clone()),
+            service_tier: self
+                .service_tier
+                .clone()
+                .or_else(|| base.service_tier.clone()),
         }
     }
     pub(crate) fn values(&self) -> Vec<(&'static str, String)> {
@@ -55,6 +61,9 @@ impl Parameters {
         }
         if let Some(value) = &self.reasoning_effort {
             values.push(("reasoning_effort", value.clone()));
+        }
+        if let Some(value) = &self.service_tier {
+            values.push(("service_tier", value.clone()));
         }
         values
     }
@@ -94,6 +103,8 @@ pub struct ModelConfig {
     pub parameters: Parameters,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<ModelCapabilities>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reported_context_window_tokens: Option<usize>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -208,6 +219,13 @@ fn validate(data: &[ProviderConfig], default: Option<&ModelRef>, at: &ConfigSour
                 return Err(invalid(at, "invalid or duplicate model ID or display name"));
             }
             model.parameters.validate(at)?;
+            if let Some(window) = model.reported_context_window_tokens {
+                Parameters {
+                    context_window_tokens: Some(window),
+                    ..Parameters::default()
+                }
+                .validate(at)?;
+            }
             if let Some(capabilities) = &model.capabilities
                 && let Some(options) = &capabilities.reasoning_effort_options
                 && (options.len() > 7
@@ -255,7 +273,9 @@ fn json_value(item: &Item, at: &ConfigSource) -> Result<Value> {
                 "api_key_env" => "apiKeyEnv",
                 "max_output_tokens" => "maxOutputTokens",
                 "context_window_tokens" => "contextWindowTokens",
+                "reported_context_window_tokens" => "reportedContextWindowTokens",
                 "reasoning_effort" => "reasoningEffort",
+                "service_tier" => "serviceTier",
                 "reasoning_effort_options" => "reasoningEffortOptions",
                 value => value,
             };
@@ -498,7 +518,9 @@ fn toml_value(value: Value) -> toml_edit::Value {
                     "displayName" => "display_name",
                     "maxOutputTokens" => "max_output_tokens",
                     "contextWindowTokens" => "context_window_tokens",
+                    "reportedContextWindowTokens" => "reported_context_window_tokens",
                     "reasoningEffort" => "reasoning_effort",
+                    "serviceTier" => "service_tier",
                     "reasoningEffortOptions" => "reasoning_effort_options",
                     key => key,
                 };

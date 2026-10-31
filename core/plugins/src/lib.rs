@@ -1,16 +1,27 @@
 //! Local-only Codex plugin packages. No package code, hooks or MCP is executed.
 mod archive;
 mod components;
+mod configuration;
+mod development;
+pub use development::{DevelopmentLink, DevelopmentRefresh};
 pub mod hook_sources;
 pub mod hooks;
 mod metadata;
 mod package;
 mod remote;
+mod snapshot;
+mod templates;
+pub use configuration::{
+    PluginConfigPublicField, PluginConfigValue, PluginConfigurationView, PluginUserConfiguration,
+    PublicConfigValue, UserConfigField, UserConfigType,
+};
+pub use templates::{ComponentIdentity, InstalledAgent, InstalledCommand};
 mod support;
 pub use components::{
     AppDeclaration, ComponentDocument, InstalledComponents, InstalledSnapshot,
     McpComponentDocument, app_declarations,
 };
+pub use snapshot::{PluginDoctorEntry, PluginDoctorReport, PluginReadScope, PluginStoreSnapshot};
 pub use support::{
     CompatibilityState, ComponentCompatibility, ComponentKind, ComponentSupport, ManifestFormat,
     PackageComponentSupport, SupportStatus, SupportValidation,
@@ -115,6 +126,10 @@ pub struct PluginDetail {
     #[serde(default)]
     pub installed_skills: Vec<InstalledSkill>,
     #[serde(default)]
+    pub user_configuration: PluginConfigurationView,
+    #[serde(default)]
+    pub development_link: Option<DevelopmentLink>,
+    #[serde(default)]
     pub component_choices: ComponentChoices,
     #[serde(default)]
     pub installed_metadata: Option<InstalledMetadata>,
@@ -198,6 +213,10 @@ impl std::error::Error for StoreError {}
 #[derive(Default, Serialize, Deserialize)]
 struct State {
     revision: u64,
+    #[serde(default)]
+    user_configuration: BTreeMap<String, PluginUserConfiguration>,
+    #[serde(default)]
+    development_links: BTreeMap<String, DevelopmentLink>,
     #[serde(default)]
     marketplaces: Vec<PathBuf>,
     #[serde(default)]
@@ -549,6 +568,10 @@ impl Store {
                 fallback.component_support = None;
                 fallback
             });
+            let components = self.installed_component(&s, installed)?;
+            detail.user_configuration = components
+                .user_configuration
+                .public_view(&components.user_config_schema);
             detail.installed_component_support = Some(report);
             detail.installed_version = installed.version.clone();
             detail.installed_digest = Some(installed.review_digest().into());
@@ -571,6 +594,7 @@ impl Store {
                 d.installed = s.installed.contains_key(&d.id);
                 d.enabled = self.enabled(&s, &d.id);
                 d.component_choices = self.component_choices(&s, &d.id);
+                d.development_link = s.development_links.get(&d.id).cloned();
                 d
             })
             .collect();
@@ -636,7 +660,26 @@ impl Store {
         expected_source: &Path,
         expected_digest: &str,
     ) -> Result<PluginDetail> {
-        ensure!(matches!(scope, "user" | "project"), "invalid plugin scope");
+        self.install_in_scope(
+            id,
+            Some(scope),
+            expected_revision,
+            expected_source,
+            expected_digest,
+        )
+    }
+    fn install_in_scope(
+        &self,
+        id: &str,
+        scope: Option<&str>,
+        expected_revision: u64,
+        expected_source: &Path,
+        expected_digest: &str,
+    ) -> Result<PluginDetail> {
+        ensure!(
+            scope.is_none_or(|scope| matches!(scope, "user" | "project")),
+            "invalid plugin scope"
+        );
         let state = self.state()?;
         let (_, discovered, errors) = self.catalogs(&state);
         let candidate = discovered.into_iter().find(|d| d.id == id).ok_or_else(|| {
@@ -745,7 +788,9 @@ impl Store {
             }
             s.installed.insert(id.into(), detail.clone());
             s.installed_policies.insert(id.into(), policy);
-            self.choice(s, id, scope, true)?;
+            if let Some(scope) = scope {
+                self.choice(s, id, scope, true)?;
+            }
             Ok(())
         })?;
         self.read(id)
@@ -771,6 +816,11 @@ impl Store {
                 return Err(StoreError::NotFound(id.into()).into());
             }
             s.installed_policies.remove(id);
+            if let Some(configuration) = s.user_configuration.get_mut(id) {
+                configuration.values.clear();
+                configuration.installed_digest.clear();
+            }
+            s.development_links.remove(id);
             s.user.remove(id);
             for p in s.projects.values_mut() {
                 p.remove(id);

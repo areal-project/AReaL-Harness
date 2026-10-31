@@ -124,6 +124,7 @@ impl Engine {
                 .map(|d| d.configuration.clone())
                 .unwrap_or_default(),
         );
+        self.check_configuration_plugin_profile(&configuration)?;
         self.prepare_turn_from_configuration(thread, input, skill, configuration)
     }
 
@@ -153,6 +154,14 @@ impl Engine {
         let mut candidate = thread.clone();
         if let Some(data) = &mut candidate.desktop {
             data.prompt_prediction = None;
+            if data
+                .configuration
+                .profile
+                .as_ref()
+                .is_some_and(|profile| profile.id == "areal-discovered-skills")
+            {
+                data.configuration.profile = configuration.profile.clone();
+            }
         }
         let text = input
             .iter()
@@ -168,6 +177,10 @@ impl Engine {
             candidate.preview = text.chars().take(120).collect();
         }
         let mut turn = Turn {
+            trace: areal_protocol::TurnTrace {
+                started_at_ms: Some(crate::execution_trace::now_ms()),
+                ..Default::default()
+            },
             interruption: None,
             continued_from_turn_id: None,
             started_at: Some(now()),
@@ -277,7 +290,15 @@ impl Engine {
             cell.goal_role.store(0, Ordering::Release);
         }
         cell.cancel_grace_ms.store(1000, Ordering::Release);
+        let execution_started = std::time::Instant::now();
+        let started_at_ms = crate::execution_trace::now_ms();
+        let trace = &mut state.thread.turns.last_mut().unwrap().trace;
+        trace.started_at_ms = Some(started_at_ms);
+        trace.queue_duration_ms = Some(trace.queued_at_ms.map_or(0, |queued| {
+            started_at_ms.saturating_sub(queued).max(0) as u64
+        }));
         state.active = Some(Active {
+            tool_exposure: Default::default(),
             context_usage: None,
             context_sequence: 0,
             generation: Default::default(),
@@ -298,7 +319,7 @@ impl Engine {
             tool_calls: 0,
             cua_used: false,
             waiting_for_model_capacity: false,
-            started: std::time::Instant::now(),
+            started: execution_started,
             isolated_children: 0,
             workspace_exclusive: false,
             deferred_workspace_guard: None,
@@ -959,6 +980,11 @@ impl Engine {
         let turn = state.thread.turns.last_mut().unwrap();
         if generation.measured_requests + generation.unmeasured_requests > 0 {
             turn.generation = Some(generation);
+        }
+        for activity in &mut turn.trace.activities {
+            if activity.status == "running" {
+                activity.status = "unknown".into();
+            }
         }
         turn.completed_at = Some(now());
         turn.duration_ms = Some(elapsed_ms);

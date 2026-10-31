@@ -3,7 +3,7 @@
 const { isRemoteControl } = require("./submission-recovery.cjs");
 const { projectCoreCapabilities } = require("./core-capabilities.cjs");
 const { isTaskDraftConfiguration, displayTaskDraftThread } = require("./task-draft.cjs");
-/** @param {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'projects'|'cloudConversations'|'binary'|'ownerTasks'|'awaitingResponses'|'providers'|'defaultProfile'>} backend @param {import('./project-index.cjs').SavedProject} project @param {Set<string>} taskHistoryOwners */
+/** @param {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'projects'|'cloudConversations'|'binary'|'ownerTasks'|'awaitingResponses'|'providers'|'defaultProfile'|'lifecycleOperations'|'scheduleOwners'>} backend @param {import('./project-index.cjs').SavedProject} project @param {Set<string>} taskHistoryOwners */
 function snapshotProject(backend, project, taskHistoryOwners) {
   const live = backend.projects.get(project.id);
   const snapshot = live?.model.getSnapshot() ?? null;
@@ -31,7 +31,11 @@ function snapshotProject(backend, project, taskHistoryOwners) {
       ...projectCoreCapabilities(backend.binary, live?.client?.capabilities),
       instanceId: live?.service?.serviceId ?? null,
       connectionGeneration: live?.connectionGeneration ?? 0,
-      taskDirectoryRevision: backend.ownerTasks.revision,
+      taskDirectoryRevision: backend.ownerTasks.revision(project.id),
+    },
+    scheduling: {
+      suppressed: backend.lifecycleOperations.schedulingSuppressed(project.id),
+      activationError: backend.scheduleOwners?.error(project.id) ?? null,
     },
     state: backend.cloudConversations.mergeSnapshot(
       project.id,
@@ -41,6 +45,16 @@ function snapshotProject(backend, project, taskHistoryOwners) {
       .filter((entry) => !isRemoteControl(entry))
       .map((entry) => ({
         ...entry,
+        ...(entry.method === "areal/plugin/userConfig/set"
+          ? {
+              params: {
+                id: entry.params.id,
+                expectedRevision: entry.params.expectedRevision,
+                expectedDigest: entry.params.expectedDigest,
+                requestId: entry.params.requestId,
+              },
+            }
+          : {}),
         awaitingResponse: backend.awaitingResponses.has(entry),
       })),
     outcomes: live?.outcomes ?? {},

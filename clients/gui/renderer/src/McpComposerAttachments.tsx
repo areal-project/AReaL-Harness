@@ -4,6 +4,7 @@ import type { ContentBlock } from "@modelcontextprotocol/client";
 import { FileText } from "lucide-react";
 import { CloseIcon } from "./interfaceIcons.js";
 import { readMcpDraft, removeMcpDraft } from "./mcp-app-draft.js";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 export type McpDraftEntry = { id: string; block: ContentBlock };
 export function useMcpDraft(key: string) {
   const [entries, setEntries] = useState<McpDraftEntry[]>(() => readMcpDraft(key));
@@ -32,10 +33,9 @@ export function McpContentLabel({ block }: { block: ContentBlock }) {
     );
   if (block.type === "text")
     return (
-      <details>
-        <summary>{typeof title === "string" ? title : "应用文本"}</summary>
+      <SettingsDisclosure title={typeof title === "string" ? title : "应用文本"}>
         <p style={{ whiteSpace: "pre-wrap" }}>{block.text}</p>
-      </details>
+      </SettingsDisclosure>
     );
   if (block.type === "resource_link") return <span>{block.title ?? block.name}</span>;
   if (block.type === "resource")

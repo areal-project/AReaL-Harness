@@ -261,9 +261,8 @@ export const generalMessages = {
     en: "Predict next prompt",
   },
   "settings.displaySettings.predictNextPromptDescription": {
-    "zh-CN":
-      "回复完成后，使用当前对话模型预测下一条提示词。会额外请求模型并产生用量费用；按 Tab 接受后可编辑。",
-    en: "After a reply, use the conversation model to suggest your next prompt. This makes an extra model request and may incur usage costs. Press Tab to accept and edit.",
+    "zh-CN": "回复完成后预测下一条提示词，按 Tab 接受。会额外产生模型用量。",
+    en: "Suggest your next prompt after each reply; press Tab to accept. Uses extra model requests.",
   },
   "settings.displaySettings.sendShortcut": {
     "zh-CN": "发送快捷键",
@@ -286,9 +285,8 @@ export const generalMessages = {
     en: "Interaction behavior",
   },
   "settings.displaySettings.howNewMessagesAreSentWhileRunning": {
-    "zh-CN":
-      "加入队列会等当前运行结束再发送。调整方向会请求中断当前输出，在同一轮继续。⌘/Ctrl+点击可临时反转。",
-    en: "Queue waits until the current run ends. Steer requests an interruption of the current output and continues in the same turn. ⌘/Ctrl+click temporarily reverses this choice.",
+    "zh-CN": "加入队列：等本轮结束再发送；调整方向：中断当前输出并继续。",
+    en: "Queue waits for the current run to finish. Steer interrupts the current output and continues.",
   },
   "settings.displaySettings.queue": {
     "zh-CN": "加入队列",
@@ -395,9 +393,8 @@ export const generalMessages = {
     en: "Reading",
   },
   "settings.displaySettings.readingPreview": {
-    "zh-CN":
-      "阅读样例。调整内容字号后，对话正文会立即采用新的大小。返回任务后，可以继续阅读并保留未发送的草稿。",
-    en: "Reading sample. Content size changes apply to conversation text immediately. Return to your task to keep reading with your unsent draft preserved.",
+    "zh-CN": "阅读样例。调整内容字号后，对话正文会立即变化。",
+    en: "Reading sample. Content size changes apply to conversation text immediately.",
   },
   "settings.displaySettings.readingAndCode": {
     "zh-CN": "阅读与代码",
@@ -536,9 +533,8 @@ export const generalMessages = {
     en: "{value0} translucent sidebar",
   },
   "settings.displaySettings.lowContrast": {
-    "zh-CN":
-      "当前文字与背景对比度为 {ratio}:1，低于正文建议的 4.5:1。请调整前景色或背景色；颜色设置仍由你控制。",
-    en: "Text against the chosen background has a contrast ratio of {ratio}:1, below the 4.5:1 reading target. Adjust the foreground or background color. Your chosen colors remain unchanged.",
+    "zh-CN": "当前对比度 {ratio}:1，低于建议的 4.5:1，请调整前景色或背景色。",
+    en: "Contrast is {ratio}:1, below the recommended 4.5:1. Adjust the foreground or background color.",
   },
   "settings.displaySettings.contrast": {
     "zh-CN": "对比度",
@@ -657,8 +653,8 @@ export const generalMessages = {
     en: "Allowed reasoning efforts",
   },
   "settings.modelEditor.leaveUnselectedToKeepTheAvailableReasoning": {
-    "zh-CN": "未勾选表示不提供可选强度；省略能力声明表示未知。已配置的不兼容强度需要重新选择。",
-    en: "Leave all unchecked to offer no effort choices. Omitted capabilities are unknown. Reselect any incompatible configured effort.",
+    "zh-CN": "都不勾选表示不提供可选强度。不兼容的已配置强度需要重选。",
+    en: "Leave all unchecked to offer no effort choices. Reselect any incompatible configured effort.",
   },
   "settings.modelEditor.savedToTheProviderDraftTakesEffect": {
     "zh-CN": "保存到供应商草稿，保存供应商后生效。",
@@ -1009,9 +1005,8 @@ export const generalMessages = {
     en: "New sessions",
   },
   "settings.newSessionModelSetting.newSessionsUseTheModelAndReasoning": {
-    "zh-CN":
-      "新会话沿用主会话最后一次受理的模型与思考强度；已有会话保持不变。没有使用记录或目录已确认原模型不存在时使用备用默认模型。",
-    en: "New sessions use the model and reasoning effort last accepted in the main session. Existing sessions stay unchanged. The fallback default is used when there is no history or the catalog confirms that the previous model no longer exists.",
+    "zh-CN": "新会话沿用上次使用的模型和思考强度；没有记录时用备用默认模型。",
+    en: "New sessions use the last model and reasoning effort you used, or the fallback default if there is none.",
   },
   "settings.newSessionModelSetting.commandLineOrEnvironmentSettingsOverrideFile": {
     "zh-CN": "命令行或环境配置覆盖了文件值；保存不会修改这些覆盖。",
@@ -1530,8 +1525,8 @@ export const generalMessages = {
     en: "Show thumbs-up and thumbs-down",
   },
   "settings.userFeedbackPreference.shownBelowResponsesWhenDataFeedbackIs": {
-    "zh-CN": "启用数据飞轮并连接支持评价的接收端后，在回复下方显示。点击图标不会自动提交。",
-    en: "Shown below responses when data feedback is enabled and a compatible receiver is connected. Clicking an icon does not submit automatically.",
+    "zh-CN": "开启数据飞轮并连接接收端后，在回复下方显示。点击不会自动提交。",
+    en: "Shown below replies when data feedback is on and a receiver is connected. Clicking does not submit automatically.",
   },
   "settings.userFeedbackPreference.feedbackStatusIsUnavailableFromTheBackend": {
     "zh-CN": "当前后台未提供可用的评价状态，暂时无法更改。",
@@ -1646,9 +1641,8 @@ export const generalMessages = {
     en: "The theme contains an unsupported code theme.",
   },
   "settings.themeSharing.importDescription": {
-    "zh-CN":
-      "粘贴 AReaL {mode}主题字符串。应用该模式的配色、代码主题和字体设置，其他偏好保持不变。",
-    en: "Paste an AReaL {mode} theme string. Applies this mode's colors, code theme, and fonts. Other preferences stay unchanged.",
+    "zh-CN": "粘贴 AReaL {mode}主题字符串，只替换配色、代码主题和字体。",
+    en: "Paste an AReaL {mode} theme string. Only colors, code theme, and fonts are replaced.",
   },
   "settings.chatGPTSubscription.refreshing": {
     "zh-CN": "正在刷新",

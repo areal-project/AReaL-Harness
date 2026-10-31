@@ -1,3 +1,4 @@
+import { useI18n } from "./i18n/IntlProvider.js";
 import { Input } from "@areal/ui";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";
@@ -10,6 +11,7 @@ import {
   SelectValue,
 } from "./components/ui/select.js";
 import type { Data } from "./services.js";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 
 type Task = {
   id: string;
@@ -156,6 +158,7 @@ export function WorkgroupPlanEditor({
   onSubmit: (plan: WorkgroupPlan, revision: number) => Promise<Data | undefined>;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState(() => load(storageKey, record, initial));
   const [error, setError] = useState(""),
     [saving, setSaving] = useState(false);
@@ -330,11 +333,8 @@ export function WorkgroupPlanEditor({
                 }
               />
             </label>
-            <p className="text-foreground-subtle">
-              执行依赖完成集成后才启动；集成依赖允许提前执行，但在接纳产物前等待。
-            </p>
-            <details>
-              <summary>阶段配置与检查</summary>
+            <p className="text-foreground-subtle">{t("common.workgroups.dependencyHelp")}</p>
+            <SettingsDisclosure title="阶段配置与检查">
               <div className="mt-2 flex flex-col gap-2">
                 <Select
                   value={config.agentProfile ? versionKey(config.agentProfile) : "inherit"}
@@ -498,7 +498,7 @@ export function WorkgroupPlanEditor({
                   添加阶段检查
                 </Button>
               </div>
-            </details>
+            </SettingsDisclosure>
             {!old && (
               <Button
                 size="sm"

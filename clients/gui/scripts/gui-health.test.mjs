@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { reviewedBaselineTransition } from "./gui-health.mjs";
 
 const cli = fileURLToPath(new URL("./gui-health.mjs", import.meta.url));
 async function fixture(t) {
@@ -72,6 +73,16 @@ async function fixture(t) {
     baseline: async () => JSON.parse(await readFile(join(root, "health-baseline.json"), "utf8")),
   };
 }
+
+test("temporary path source audit still counts hardcoded paths", async (t) => {
+  const f = await fixture(t);
+  await f.put("scripts/fixture.mjs", 'export const path = "/private/tmp/case";\n');
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).metrics.privateTmpHardcodes.value, 1);
+  await f.put("scripts/fixture.mjs", 'export const path = "portable";\n');
+  assert.equal(JSON.parse(f.run().stdout).metrics.privateTmpHardcodes.value, 0);
+});
 
 test("JSON report counts production code and keeps report-only counts separate", async (t) => {
   const f = await fixture(t);
@@ -144,6 +155,61 @@ test("per-path caps reject growth, rename, and debt restored after deletion", as
   assert.notEqual(f.run("--check").status, 0);
 });
 
+test("reviewed document transition matches only its exact values and unchanged ownership", () => {
+  const before = { value: 262924, direction: "down", owner: "design/ clients/gui/design-system" };
+  const current = { ...before, value: 269714 };
+  assert.ok(reviewedBaselineTransition("activeDesignDocBytes", before, current));
+  for (const [name, old, next] of [
+    ["appLines", before, current],
+    ["activeDesignDocBytes", { ...before, value: 262923 }, current],
+    ["activeDesignDocBytes", before, { ...current, value: 269715 }],
+    ["activeDesignDocBytes", before, { ...current, direction: "up" }],
+    ["activeDesignDocBytes", before, { ...current, owner: "other" }],
+    ["activeDesignDocBytes", current, { ...current, value: 269715 }],
+    ["activeDesignDocBytes", current, current],
+  ])
+    assert.equal(reviewedBaselineTransition(name, old, next), null);
+});
+
+test("reviewed document transition never waives actual growth or other caps", async (t) => {
+  const f = await fixture(t);
+  const git = (...args) => spawnSync("git", args, { cwd: join(f.root, "../.."), encoding: "utf8" });
+  assert.equal(f.run("--write").status, 0);
+  const baseline = await f.baseline();
+  baseline.activeDesignDocBytes.value = 262924;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  assert.equal(git("init", "-q").status, 0);
+  assert.equal(git("add", ".").status, 0);
+  assert.equal(
+    git(
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.test",
+      "commit",
+      "-qm",
+      "baseline",
+    ).status,
+    0,
+  );
+  baseline.activeDesignDocBytes.value = 269714;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  await f.put("../../design/principles.md", "x".repeat(269714));
+  const accepted = f.run("--check", "--base=HEAD");
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.equal(JSON.parse(accepted.stdout).reviewedTransitions.length, 1);
+  await f.put("../../design/principles.md", "x".repeat(269715));
+  assert.notEqual(f.run("--check", "--base=HEAD").status, 0);
+  await f.put("../../design/principles.md", "x".repeat(269714));
+  baseline.appLines.value++;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  assert.notEqual(f.run("--check", "--base=HEAD").status, 0);
+  baseline.appLines.value--;
+  baseline.$sourceCaps["app/src/main.cjs"] = 801;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  assert.notEqual(f.run("--check", "--base=HEAD").status, 0);
+});
+
 test("an explicit base detects baseline relaxation in the same change", async (t) => {
   const f = await fixture(t);
   const git = (...args) => spawnSync("git", args, { cwd: f.root, encoding: "utf8" });
@@ -169,6 +235,41 @@ test("an explicit base detects baseline relaxation in the same change", async (t
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /appLines/);
   assert.match(result.stderr, /baseline/i);
+});
+
+test("an explicit base classifies inherited regressions without waiving the reviewed baseline", async (t) => {
+  const f = await fixture(t);
+  const git = (...args) => spawnSync("git", args, { cwd: join(f.root, "../.."), encoding: "utf8" });
+  assert.equal(f.run("--write").status, 0);
+  await f.put("renderer/src/App.tsx", 'import { useState } from "react";\nuseState(1);\n\n');
+  assert.equal(git("init", "-q").status, 0);
+  assert.equal(git("add", ".").status, 0);
+  assert.equal(
+    git(
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.test",
+      "commit",
+      "-qm",
+      "base over budget",
+    ).status,
+    0,
+  );
+  const inherited = f.run("--check", "--base=HEAD");
+  assert.notEqual(inherited.status, 0);
+  assert.match(inherited.stderr, /appLines.*inherited/);
+  const allowed = f.run("--check", "--base=HEAD", "--allow-regression=appLines");
+  assert.equal(allowed.status, 0, allowed.stderr);
+  assert.deepEqual(
+    JSON.parse(allowed.stdout).inheritedRegressions.map((failure) => failure.metric),
+    ["appLines"],
+  );
+  await f.put("renderer/src/App.tsx", 'import { useState } from "react";\nuseState(1);\n\n\n');
+  const grown = f.run("--check", "--base=HEAD");
+  assert.notEqual(grown.status, 0);
+  assert.match(grown.stderr, /appLines/);
+  assert.doesNotMatch(grown.stderr, /inherited/);
 });
 
 test("type suppression and experimental debt are counted by their existing owners", async (t) => {

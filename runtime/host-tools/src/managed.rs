@@ -269,6 +269,49 @@ fn toml_tools(path: &Path) -> Option<BTreeMap<String, String>> {
     )
 }
 
+fn homebrew_rustup_prefix(path: &Path) -> Option<&'static Path> {
+    [Path::new("/opt/homebrew"), Path::new("/usr/local")]
+        .into_iter()
+        .find(|prefix| {
+            let Ok(relative) = path.strip_prefix(prefix) else {
+                return false;
+            };
+            if relative == Path::new("opt/rustup/bin")
+                || relative == Path::new("opt/rustup/libexec/bin")
+            {
+                return true;
+            }
+            let Ok(install) = relative.strip_prefix("Cellar/rustup") else {
+                return false;
+            };
+            install.to_str().is_some_and(|install| {
+                install
+                    .strip_suffix("/libexec/bin")
+                    .or_else(|| install.strip_suffix("/bin"))
+                    .is_some_and(component)
+            })
+        })
+}
+
+fn rustup_default(settings: &Path, fallback: Option<&Path>) -> Option<String> {
+    for path in std::iter::once(settings).chain(fallback) {
+        if fs::symlink_metadata(path)
+            .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+        {
+            continue;
+        }
+        let Some(document) =
+            small_file(path).and_then(|value| value.parse::<toml_edit::DocumentMut>().ok())
+        else {
+            return Some("/unsupported/".into());
+        };
+        if let Some(default) = document.get("default_toolchain") {
+            return Some(default.as_str().unwrap_or("/unsupported/").to_owned());
+        }
+    }
+    None
+}
+
 impl Managed {
     fn add(&mut self, root: &Path, bin: &Path) -> Option<PathBuf> {
         if !stable_directory(root) {
@@ -502,17 +545,64 @@ pub(super) fn discover(startup: &[PathBuf], env: &BTreeMap<String, OsString>) ->
     let rustup = setting("RUSTUP_HOME", home.join(".rustup"));
     let cargo = setting("CARGO_HOME", home.join(".cargo"));
     if stable_directory(&rustup) {
-        let default = small_file(&rustup.join("settings.toml"))
-            .and_then(|s| s.parse::<toml_edit::DocumentMut>().ok())
-            .and_then(|d| d.get("default_toolchain")?.as_str().map(str::to_owned));
-        let mut bins = found.collection(
-            &rustup.join("toolchains"),
-            text("RUSTUP_TOOLCHAIN").or(default.as_deref()),
-            "bin",
-            startup,
-        );
+        let shims: Vec<_> = startup
+            .iter()
+            .filter_map(|entry| {
+                let prefix = homebrew_rustup_prefix(entry).or_else(|| {
+                    entry
+                        .canonicalize()
+                        .ok()
+                        .as_deref()
+                        .and_then(homebrew_rustup_prefix)
+                })?;
+                Some((entry, prefix))
+            })
+            .collect();
+        let prefix = shims
+            .first()
+            .map(|(_, prefix)| *prefix)
+            .filter(|prefix| stable_directory(prefix))
+            .or_else(|| {
+                [Path::new("/opt/homebrew"), Path::new("/usr/local")]
+                    .into_iter()
+                    .find(|prefix| {
+                        stable_directory(prefix)
+                            && prefix
+                                .join("opt/rustup/bin")
+                                .canonicalize()
+                                .is_ok_and(|bin| bin.starts_with(prefix) && bin.is_dir())
+                    })
+            });
+        let fallback = prefix.map(|prefix| prefix.join("etc/rustup/settings.toml"));
+        let default = rustup_default(&rustup.join("settings.toml"), fallback.as_deref());
+        let toolchains = rustup.join("toolchains");
+        let preferred = text("RUSTUP_TOOLCHAIN")
+            .or(default.as_deref())
+            .map(|request| {
+                if !component(request) || fs::symlink_metadata(toolchains.join(request)).is_ok() {
+                    return request.to_owned();
+                }
+                let matches: Vec<_> = children(&toolchains)
+                    .into_iter()
+                    .filter_map(|path| {
+                        let name = path.file_name()?.to_str()?;
+                        name.strip_prefix(request)
+                            .filter(|tail| tail.starts_with('-'))?;
+                        bin_directory(&inside(&path, &toolchains)?, "bin")?;
+                        Some(name.to_owned())
+                    })
+                    .collect();
+                match matches.as_slice() {
+                    [selected] => selected.clone(),
+                    _ => "/unsupported/".into(),
+                }
+            });
+        let mut bins = found.collection(&toolchains, preferred.as_deref(), "bin", startup);
         if let Some(bin) = found.add(&cargo.join("bin"), &cargo.join("bin")) {
             bins.push(bin);
+        }
+        for (shim, _) in shims {
+            found.shim(shim.clone(), bins.clone());
         }
         found.shim(cargo.join("bin"), bins);
     }

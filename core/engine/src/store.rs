@@ -46,7 +46,7 @@ pub(crate) fn fit_history_fragment(
 }
 
 // 持久化版本与服务状态必须一致，避免客户端误判可恢复的数据格式。
-pub(crate) const STATE_VERSION: u32 = 15;
+pub(crate) const STATE_VERSION: u32 = 16;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Record {
@@ -67,6 +67,13 @@ pub struct Store {
     io: Arc<Semaphore>,
     #[cfg(test)]
     paused_write: tokio::sync::Notify,
+    #[cfg(test)]
+    catalog_pause: std::sync::Mutex<
+        Option<(
+            tokio::sync::oneshot::Sender<()>,
+            tokio::sync::oneshot::Receiver<()>,
+        )>,
+    >,
     blob_write: Arc<tokio::sync::Mutex<()>>,
     fork_reads: Arc<Semaphore>,
     own_history_entry: Arc<std::sync::Mutex<Option<Arc<CachedOwnHistoryEntry>>>>,
@@ -120,6 +127,8 @@ impl Store {
             io: Arc::new(Semaphore::new(8)),
             #[cfg(test)]
             paused_write: tokio::sync::Notify::new(),
+            #[cfg(test)]
+            catalog_pause: Default::default(),
             blob_write: Arc::new(tokio::sync::Mutex::new(())),
             // 最多同时解析两份 64 MiB 快照；页请求不占满通用 Store 写入容量。
             fork_reads: Arc::new(Semaphore::new(2)),
@@ -384,6 +393,11 @@ impl Store {
         for turn in &mut record.thread.turns {
             if turn.status == TurnStatus::InProgress {
                 turn.status = TurnStatus::Interrupted;
+                for activity in &mut turn.trace.activities {
+                    if activity.status == "running" {
+                        activity.status = "unknown".into();
+                    }
+                }
                 if turn.interruption.is_none() {
                     turn.interruption = Some(areal_protocol::TurnInterruption::CoreRecovery);
                 }
@@ -501,8 +515,17 @@ impl Store {
         maximum_bytes: usize,
         include_history: bool,
     ) -> Result<Thread> {
+        Self::read_snapshot_at(&self.root, id, maximum_bytes, include_history)
+    }
+
+    pub(crate) fn read_snapshot_at(
+        root: &Path,
+        id: &str,
+        maximum_bytes: usize,
+        include_history: bool,
+    ) -> Result<Thread> {
         anyhow::ensure!(uuid::Uuid::parse_str(id).is_ok(), "invalid thread ID");
-        let path = self.root.join(format!("{id}.json"));
+        let path = root.join(format!("{id}.json"));
         anyhow::ensure!(
             std::fs::metadata(&path)?.len() <= maximum_bytes as u64,
             "Thread exceeds snapshot read bound"
@@ -514,7 +537,7 @@ impl Store {
             "Thread requires archived history inspection"
         );
         if include_history {
-            archive::hydrate(&self.root, &mut thread)?;
+            archive::hydrate(root, &mut thread)?;
         }
         Ok(thread)
     }
@@ -605,8 +628,28 @@ if keep.contains(&name){retained+=e.metadata()?.len();}else{reclaimed+=e.metadat
         .await?
     }
 
+    #[cfg(test)]
+    pub(crate) fn pause_next_catalog_write(
+        &self,
+    ) -> (
+        tokio::sync::oneshot::Receiver<()>,
+        tokio::sync::oneshot::Sender<()>,
+    ) {
+        let (entered, ready) = tokio::sync::oneshot::channel();
+        let (release, resume) = tokio::sync::oneshot::channel();
+        *self.catalog_pause.lock().unwrap() = Some((entered, resume));
+        (ready, release)
+    }
     pub(crate) async fn save_metadata(&self, name: &str, value: &impl Serialize) -> Result<()> {
         let bytes = serde_json::to_vec(value)?;
+        #[cfg(test)]
+        if name == "catalog" {
+            let pause = self.catalog_pause.lock().unwrap().take();
+            if let Some((entered, resume)) = pause {
+                let _ = entered.send(());
+                let _ = resume.await;
+            }
+        }
         let root = self.root.join("desktop");
         let name = name.to_owned();
         tokio::task::spawn_blocking(move || write_metadata(&root, &name, &bytes)).await?

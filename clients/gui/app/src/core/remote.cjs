@@ -32,7 +32,7 @@ const { isRemoteRequest } = require("@areal/workbench/desktop-contract/desktop-c
 /** @typedef {import('./remote-config.cjs').DeviceGrant} DeviceGrant */
 /** @typedef {import('./remote-network.cjs').NetworkMapping} NetworkMapping */
 /** @typedef {Awaited<ReturnType<typeof startDirect>>} DirectServer */
-/** @typedef {{name:string,clientKind?:'web'|'ios',expiresAt:number,connected:()=>boolean,accept:(grant:DeviceGrant)=>void,reject:(error:Error)=>void,arm:()=>void,timer?:NodeJS.Timeout,approving?:boolean}} PendingPair */
+/** @typedef {{name:string,clientKind?:'web'|'ios'|'android',expiresAt:number,connected:()=>boolean,accept:(grant:DeviceGrant)=>void,reject:(error:Error)=>void,arm:()=>void,timer?:NodeJS.Timeout,approving?:boolean}} PendingPair */
 /** @typedef {{backend:InstanceType<typeof import('./backend.cjs').CoreBackend>,schedule:()=>void}} RemoteService */
 /** @typedef {Pick<typeof import('electron').safeStorage,'isEncryptionAvailable'|'encryptString'|'decryptString'> & {getSelectedStorageBackend?:()=>string}} RemoteEncryption */
 class RemoteControl {
@@ -861,7 +861,7 @@ class RemoteControl {
     for (const entry of Array.from(this.pending.values()))
       entry.reject(pairingError("PAIRING_CANCELLED", "配对已取消"));
   }
-  /** @param {string} peer @param {{displayName:string,clientKind?:'web'|'ios',inviteSecret?:unknown}} hello @param {{readyState:number,once:(event:"close",listener:()=>void)=>unknown,removeListener:(event:"close",listener:()=>void)=>unknown}} socket @returns {Promise<DeviceGrant>} */
+  /** @param {string} peer @param {{displayName:string,clientKind?:'web'|'ios'|'android',inviteSecret?:unknown}} hello @param {{readyState:number,once:(event:"close",listener:()=>void)=>unknown,removeListener:(event:"close",listener:()=>void)=>unknown}} socket @returns {Promise<DeviceGrant>} */
   claim(peer, hello, socket) {
     const invite = this.invite;
     if (!invite) throw pairingError("PAIRING_USED", "邀请已使用或取消");

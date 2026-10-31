@@ -23,7 +23,6 @@ pub struct SkillLocation {
 pub(super) struct Skill {
     pub location: SkillLocation,
     pub metadata: SkillMetadata,
-    directory: Arc<File>,
     pub plugin: Option<areal_plugins::InstalledSkill>,
     package_directory: Option<Arc<File>>,
     package_prefix: PathBuf,
@@ -62,13 +61,12 @@ impl Skill {
                     && metadata.description.len() <= 4096,
                 "invalid skill metadata"
             );
-            Ok((metadata, Arc::new(directory)))
+            Ok(metadata)
         })()
         .with_context(|| format!("load skill {} ({})", location.id, location.root.display()))?;
         Ok(Self {
             location,
-            metadata: result.0,
-            directory: result.1,
+            metadata: result,
             plugin: None,
             package_directory: None,
             package_prefix: PathBuf::new(),
@@ -104,7 +102,7 @@ impl Skill {
         offset: usize,
         max_bytes: usize,
     ) -> anyhow::Result<SkillPage> {
-        let (directory, resource) = if let Some(package) = &self.package_directory {
+        let resource = if self.package_directory.is_some() {
             let mut path = self.package_prefix.clone();
             for part in Path::new(resource).components() {
                 match part {
@@ -114,13 +112,40 @@ impl Skill {
                     _ => anyhow::bail!("plugin resource must be relative"),
                 }
             }
-            (package.clone(), path.to_string_lossy().into_owned())
+            path.to_string_lossy().into_owned()
         } else {
-            (self.directory.clone(), resource.to_owned())
+            resource.to_owned()
         };
+        let package_directory = self.package_directory.clone();
+        let root = self.location.root.clone();
         // 不在 Tokio 执行线程上做磁盘读取，也不跨 I/O 持有全局目录锁。
-        tokio::task::spawn_blocking(move || read_resource(directory, &resource, offset, max_bytes))
-            .await?
+        tokio::task::spawn_blocking(move || {
+            let directory = match package_directory {
+                Some(directory) => directory,
+                None => {
+                    #[cfg(target_os = "macos")]
+                    let access = OFlags::from_bits_retain(libc::O_SEARCH as u32);
+                    #[cfg(target_os = "linux")]
+                    let access = OFlags::PATH;
+                    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+                    let access = READ_FLAGS;
+                    let flags = access | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+                    let mut directory = File::from(open("/", flags, Mode::empty())?);
+                    // 规范根的祖先也可能被更新替换，逐段重开同时拒绝新增的目录链接。
+                    for component in root.components().skip(1) {
+                        directory = File::from(openat(
+                            &directory,
+                            component.as_os_str(),
+                            flags,
+                            Mode::empty(),
+                        )?);
+                    }
+                    Arc::new(directory)
+                }
+            };
+            read_resource(directory, &resource, offset, max_bytes)
+        })
+        .await?
     }
 }
 
@@ -163,4 +188,74 @@ fn read_resource(
         Ok(SkillPage { bytes, size })
     })();
     result.with_context(|| format!("read skill resource {resource}"))
+}
+
+#[derive(Clone)]
+pub(super) struct Discovery {
+    workspace: PathBuf,
+    home: Option<PathBuf>,
+    signature: String,
+}
+impl Engine {
+    pub fn install_discovered_skill_sources(
+        self: &Arc<Self>,
+        workspace: PathBuf,
+        home: Option<PathBuf>,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            workspace.is_absolute() && home.as_ref().is_none_or(|p| p.is_absolute()),
+            "skill discovery requires trusted absolute paths"
+        );
+        let locations = Self::discover_skill_locations(&workspace, home.as_deref())?;
+        let signature = digest(&locations)?;
+        self.install_default_skills(locations)?;
+        *self.desktop.discovered_skills.lock().unwrap() = Some(Discovery {
+            workspace,
+            home,
+            signature,
+        });
+        self.watch_plugin_state();
+        Ok(())
+    }
+    fn discover_skill_locations(
+        workspace: &Path,
+        home: Option<&Path>,
+    ) -> anyhow::Result<Vec<SkillLocation>> {
+        let discovered = areal_config::skills::discover(Some(workspace), home)?;
+        for warning in discovered.warnings {
+            tracing::warn!(%warning, "skill discovery warning");
+        }
+        Ok(discovered
+            .skills
+            .into_iter()
+            .map(|skill| SkillLocation {
+                id: skill.id,
+                revision: skill.revision,
+                root: skill.root,
+                metadata: Some(skill.metadata),
+            })
+            .collect())
+    }
+    pub(super) async fn refresh_discovered_skills(self: &Arc<Self>) -> Result<()> {
+        let Some(source) = self.desktop.discovered_skills.lock().unwrap().clone() else {
+            return Ok(());
+        };
+        let _catalog = self.desktop.catalog_write.lock().await;
+        let engine = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let locations =
+                Self::discover_skill_locations(&source.workspace, source.home.as_deref())?;
+            let signature = digest(&locations)?;
+            if signature != source.signature {
+                engine.install_default_skills(locations)?;
+                if let Some(current) = engine.desktop.discovered_skills.lock().unwrap().as_mut() {
+                    current.signature = signature;
+                }
+            }
+            Ok::<_, anyhow::Error>(())
+        })
+        .await
+        .map_err(invalid)?
+        .map_err(invalid)
+    }
 }

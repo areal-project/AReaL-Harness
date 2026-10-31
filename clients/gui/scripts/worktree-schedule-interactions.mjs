@@ -500,6 +500,7 @@ try {
     () => interaction(restart.projectId, restart.threadId, "question"),
     "question before host disconnect",
   );
+  const beforeRestart = await readThread(restart.projectId, restart.threadId);
   await backend.disconnect();
   backend = new CoreBackend(options);
   await backend.init();
@@ -513,7 +514,21 @@ try {
     }),
     rejectedSchedule,
   );
-  const paused = await task(restart.projectId, restart.taskId);
+  const paused = await until(async () => {
+    const value = await task(restart.projectId, restart.taskId);
+    const run = value.runs.find((run) => run.id === restart.runId);
+    return (
+      run?.status === "paused" && (run.workers ?? []).every((worker) => worker.settled) && value
+    );
+  }, "interrupted Run settles to explicit manual recovery");
+  assert.equal(paused.runs.at(-1).id, restart.runId);
+  assert.equal(paused.runs.at(-1).completedAt == null, true);
+  assert.ok(["hostUnavailable", "serverRestarted"].includes(paused.runs.at(-1).reason));
+  assert.equal(
+    (await readThread(restart.projectId, restart.threadId)).turns.length,
+    beforeRestart.turns.length,
+    "reconnect does not automatically start a Turn",
+  );
   stages.push({
     kind: "RESTART",
     stage: "staleQuestionRejectedAfterDisconnect",

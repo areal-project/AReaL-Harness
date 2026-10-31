@@ -69,12 +69,13 @@ impl Engine {
                 if view["goal"]["id"].as_str() != Some(goal_id) {
                     self.edit_task(task_id, |t| {
                         let r = t.runs.last_mut().unwrap();
+                        // 定时运行没有可恢复的 Goal 时直接结算，否则后续触发会永久视为重叠。
                         r.status = if t.cancelled || r.reason.as_deref() == Some("stopRequested") {
-                            r.completed_at = Some(now());
                             RunStatus::Cancelled
                         } else {
-                            RunStatus::Blocked
+                            RunStatus::Failed
                         };
+                        r.completed_at = Some(now());
                         r.reason = Some("goalMissingOrReplaced".into());
                     })
                     .await?;
@@ -192,10 +193,16 @@ impl Engine {
                     };
                     if !matches!(
                         r.reason.as_deref(),
-                        Some("resumeRequested" | "stopRequested" | "hostUnavailable")
+                        Some(
+                            "resumeRequested"
+                                | "stopRequested"
+                                | "hostUnavailable"
+                                | "serverRestarted"
+                        )
                     ) {
                         r.reason = goal.reason.clone();
                     }
+                    // 中断保留原 Run 的显式恢复机会；后续到期触发才结算已停住的旧 Run。
                     if r.status.terminal() && r.completed_at.is_none() {
                         r.completed_at = Some(now());
                         for m in &mut t.messages {

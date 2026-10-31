@@ -2832,10 +2832,10 @@
     },
     {
       "id": "R-SETTINGSDISCLOSURE-001",
-      "title": "明确展开和收起的详情",
+      "title": "高级功能、诊断与原始数据的原地展开（依据 P6），默认收起",
       "owner": "clients/gui/packages/ui/src/components/settings-disclosure/settings-disclosure.md#何时使用",
       "strength": "default",
-      "textSha256": "ee186ba63bac1c52be0c941f8c0dea486a08675fbf1fe99110663e925ee17b9c"
+      "textSha256": "73a99f2208068063da47a09105851310939107da2b9e38d5072f7ca3b1a5d8ff"
     },
     {
       "id": "R-SPINNER-001",
@@ -3096,10 +3096,10 @@
     },
     {
       "id": "R-LAYOUT-012",
-      "title": "主 Composer 的模型配置保存与消息发送反馈分开：保存期间仍可编辑草稿，不播放发送中的 Spinner，也不通过禁用滑块打",
+      "title": "桌面 Composer 的模型和思考强度使用相邻的独立 Popover",
       "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#输入区与面板组合",
       "strength": "default",
-      "textSha256": "6c8ad10a1529b2b3c2aa9fcb15321b0b695e65e3cb2b6242c4fbc67b150ea725"
+      "textSha256": "1ecf0c9e8063f255d683805166bc700fefb0c5c11a6c781f1ef627b6edb8c961"
     },
     {
       "id": "R-LAYOUT-013",
@@ -3921,6 +3921,13 @@
       "textSha256": "f55f5411e6264678fe44ccfe8d5234bc05522f813688fc7a345ed1ad1a4681ba"
     },
     {
+      "id": "R-SCHEDULEDWORKSPACE-006",
+      "title": "TaskRow 只显示名称、规则与下次时间、状态三类信息",
+      "owner": "clients/gui/packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.md#内容",
+      "strength": "default",
+      "textSha256": "efc272883ca154d34310236465b5129e1193fc35e369d8d194f333cfdb2aa2a2"
+    },
+    {
       "id": "R-TASKLISTITEM-001",
       "title": "任务运行/未读/置顶/Worktree事实来自宿主",
       "owner": "clients/gui/packages/ui/src/workbench/task-list-item/task-list-item.md#规则",
@@ -4548,7 +4555,7 @@
       "title": "TurnExecution.tsx 由 Messages 使用，按顺序组织过程项",
       "owner": "clients/gui/renderer/src/Messages.md#turnexecution",
       "strength": "default",
-      "textSha256": "a9b1a4a39e8281829633e851ce0d52540c634d2aa73b8062bf496dfa906fd1fd"
+      "textSha256": "0c9268d4f313dded67014e2e2f151ff2b8af0195fec3ec7687119dd5328b6fff"
     },
     {
       "id": "R-MESSAGES-009",
@@ -4633,7 +4640,7 @@
       "title": "对话时间线以 Core 的 commentary / final_answer 为边界，不按文字内容猜测思考或工具事件",
       "owner": "clients/gui/renderer/src/Messages.md#对话信息流",
       "strength": "default",
-      "textSha256": "4202b98eabf795e281fe40df66f860c4dbfed8edd71856b34552fbaa065fd41d"
+      "textSha256": "02fa9d45075018b7bcc08ad766658a130dbce1346b92bdf74d6e812352a9b758"
     },
     {
       "id": "CONV-STATUS-01",
@@ -5963,7 +5970,7 @@
       "title": "安装、启用范围和连接是独立事实",
       "owner": "design/patterns/plugin-resources.md#管理与结果",
       "strength": "must",
-      "textSha256": "3a6f9114d7f0367fc8dd134051ad1cf8c7c86149af17e824d41199d23bcc8659"
+      "textSha256": "a33d297ef39e47b8d35172fedd390b288fc12f6d32a3c0e5e4a21cc26f9597cd"
     },
     {
       "id": "R-PLUGINRESOURCES-004",
@@ -6414,6 +6421,13 @@
       "textSha256": "f17a8fc7ca522cdd03b8adcf55de2f98a929dc2a812b4c95fbd3ad322f4fc569"
     },
     {
+      "id": "R-PRINCIPLE-008",
+      "title": "AReaL 面向普通用户",
+      "owner": "design/principles/README.md#p6-为普通用户减少心智负担",
+      "strength": "default",
+      "textSha256": "cf37fa3a19b907c4715e3bdeeb0c585169bad8c57a1f5769d2c39f23bb07b46a"
+    },
+    {
       "id": "R-ENTRY-044",
       "title": "先完成桌面 GUI 的设计与生产迁移",
       "owner": "design/products/README.md#产品与工作台",
@@ -6597,12 +6611,56 @@
       "check": "clients/gui/oxlint-plugin-areal/rules/require-suppression-reason.ts"
     },
     {
+      "id": "R-CHECK-019",
+      "title": "折叠只由共享组件拥有（依据 P6）：高级与详情分组用 SettingsDisclosure，默认收起",
+      "owner": "clients/gui/design-system/automation.md#仓库内-lint-规则",
+      "strength": "must",
+      "textSha256": "6bfb3a376ae33f21be7d5195e31277281dd98cb9b4cfad93ccfc39a470360c4e",
+      "check": "clients/gui/oxlint-plugin-areal/rules/no-raw-disclosure.ts"
+    },
+    {
+      "id": "R-CHECK-020",
+      "title": "界面文案每条至多 30 个汉字，确认类（键名含 confirm）至多 50 个",
+      "owner": "clients/gui/design-system/automation.md#仓库内-lint-规则",
+      "strength": "must",
+      "textSha256": "023d5bdeaed557def6c4ce821d252589380e594cd8652338318f44efd9965066",
+      "check": "clients/gui/scripts/copy-budget.mjs"
+    },
+    {
       "id": "R-COMPOSERSURFACE-007",
       "title": "裸 @ 或清空关键词时隐藏文件候选及搜索状态",
       "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#工作区文件引用",
       "strength": "must",
       "textSha256": "82a90147c08c174be6ca5bccd97e524cd969ff6e8da61092930e9e46df13acc5",
       "check": "clients/gui/scripts/composer-files-acceptance.mjs"
+    },
+    {
+      "id": "R-PLUGINRESOURCES-008",
+      "title": "插件中心在启动项目Core之前，通过同产物CLI读取Rust Store",
+      "owner": "design/patterns/plugin-resources.md#快照与组件状态",
+      "strength": "default",
+      "textSha256": "19c261b93f2235577b73638d4d3f423b347cbcddee6fe84c5fbceb91d276caa6"
+    },
+    {
+      "id": "R-PLUGINRESOURCES-009",
+      "title": "读取hook拥有目录与详情代次",
+      "owner": "design/patterns/plugin-resources.md#快照与组件状态",
+      "strength": "default",
+      "textSha256": "6b9073e830779814928fa96acc755ea2abee5a89b7150df25e7fb9f2887d7a32"
+    },
+    {
+      "id": "R-PLUGINRESOURCES-010",
+      "title": "Commands沿普通消息提交保留插件命名空间、固定组件身份与原始参数",
+      "owner": "design/patterns/plugin-resources.md#模板配置与开发",
+      "strength": "default",
+      "textSha256": "5bd18d0eb02be6c32a9ba3259b160c40ffdbe8d5ed826b464e93315a401f3f22"
+    },
+    {
+      "id": "R-PLUGINRESOURCES-011",
+      "title": "显式开发链接为后续轮次发布不可变快照，活动轮次保留受理时版本",
+      "owner": "design/patterns/plugin-resources.md#模板配置与开发",
+      "strength": "default",
+      "textSha256": "3734c78b0ced5174384097bfd84a306aa103effdb3e99e3f5587bba569899af3"
     }
   ]
 }

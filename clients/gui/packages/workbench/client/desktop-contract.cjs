@@ -189,6 +189,10 @@ function validateCommand(name, params, { serviceOnly = false } = {}) {
   if (
     scope !== "app" &&
     !(
+      name === "manage" &&
+      ["pluginStoreSnapshot", "pluginStoreDoctor"].includes(String(params.operation))
+    ) &&
+    !(
       name === "workspace" &&
       ["worktreeList", "worktreeSettings"].includes(String(params.operation))
     ) &&

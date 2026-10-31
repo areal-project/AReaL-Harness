@@ -6,11 +6,11 @@ AReaL 的插件包由共享 Core 管理；GUI 与 CLI 读取同一安装与启�
 
 ## 查看组件支持
 
-打开插件详情可查看安装组件报告。目录快照变化时，候选报告单独显示。安装更新前核对两个完整摘要。报告可以同时显示受支持的 Skills 和不支持的 commands、agents 或 UI 声明，这表示包只部分兼容，不能据此认定全部能力可用。
+打开插件详情可查看安装组件报告。目录快照变化时，候选报告单独显示。安装自动比较来源与摘要，用户审阅来源、组件和执行行为。报告可以同时显示受支持的 Skills、纯 Markdown Commands、Agent 模板与不支持的执行语义或 UI 声明，这表示包只部分兼容，不能据此认定全部能力可用。
 
 展开逐项声明可查看解析契约、原因与使用前提。当前 MCP 连接、认证以及 Hook 定义信任仍由原有面板显示。目标会话的 Profile 决定实际准入。查看报告不会启动 setup、包代码、连接、认证或模型请求。
 
-CLI 使用 `areal plugins --workspace /path/to/project read <plugin-id>` 读取同一 Core 报告。同一命令与工作区下的 `mcp-list`、`hooks-list` 提供当前连接和信任事实。核对 `pluginId` 与 `installedDigest`，不能把候选摘要当作安装版本。静态报告中的真实供应商、平台和签名发行包验收保持未核实。
+CLI 使用 `areal plugin --workspace /path/to/project read <plugin-id>` 读取同一 Core 报告。同一命令与工作区下的 `mcp-list`、`hooks-list` 提供当前连接和信任事实。核对 `pluginId` 与 `installedDigest`，不能把候选摘要当作安装版本。静态报告中的真实供应商、平台和签名发行包验收保持未核实。
 
 Portable 作者可通过 `extensions.org.areal.componentRequirements` 声明静态必需 kind，例如 `{"version":1,"requiredKinds":["skills"]}`。每个必需 kind 的全部声明记录必须受支持。不兼容的必需 kind 会让包保留安装以供检查，但排除有效激活。可选 unsupported 声明不会禁用有效 Skill。该语义只适用于已识别的 portable 1.0.0 manifest。严格字段及限制见 [API 契约](../api/desktop.md#组件支持报告)。支持 `.zcode-plugin` 的有限组件导入；完整宿主 SDK 与其他差异见下文。
 
@@ -20,7 +20,7 @@ Portable 作者可通过 `extensions.org.areal.componentRequirements` 声明静�
 
 Core 继续使用同一个 Store、不可变原包缓存和管理回执。原包不会被改写为 AReaL manifest。可移植 Agent Plugins 1.0.0 优先，其后依次选择 Codex、Claude、Cursor、ZCode manifest。未知可移植 schema 不降级到其他格式。OpenAI inline extension 仍整体替代兼容 overlay。
 
-Claude 市场允许由条目定义没有独立 manifest 的插件。例如 `source: "./"` 与 `skills: ["./skills/review"]` 只选择该条目的 Skill，不把同根其他条目的技能混入。`strict` 默认 true，存在 manifest 时追加条目的组件路径；`strict:false` 与 manifest、条目组件同时存在时拒绝冲突。Claude 有独立 manifest 时，只有条目的 commands、agents、skills、hooks、outputStyles、themes 参与合并和 strict 冲突。条目中的 MCP、LSP、userConfig、channels、apps、UI 不覆盖 manifest。显式 Claude skills 路径与默认目录相加。Claude MCP 按默认文件、显式文档的顺序合并，同名服务保留最后定义。manifestless 显式列表仍按条目限定。ZCode 的默认 skills 目录与显式路径相加。新导入格式首批只执行 Skills 与已支持的 MCP；commands、agents、UI、宿主专用 SDK 和未支持的 hook 语义仍明确诊断，不因安装而执行。
+Claude 市场允许由条目定义没有独立 manifest 的插件。例如 `source: "./"` 与 `skills: ["./skills/review"]` 只选择该条目的 Skill，不把同根其他条目的技能混入。`strict` 默认 true，存在 manifest 时追加条目的组件路径；`strict:false` 与 manifest、条目组件同时存在时拒绝冲突。Claude 有独立 manifest 时，只有条目的 commands、agents、skills、hooks、outputStyles、themes 参与合并和 strict 冲突。条目中的 MCP、LSP、userConfig、channels、apps、UI 不覆盖 manifest。显式 Claude skills 路径与默认目录相加。Claude MCP 按默认文件、显式文档的顺序合并，同名服务保留最后定义。manifestless 显式列表仍按条目限定。ZCode 的默认 skills 目录与显式路径相加。纯 Markdown Commands 通过普通消息提交展开，Agent 模板导入现有 Profile。未支持的 frontmatter、UI、宿主专用 SDK 和 hook 语义仍逐组件诊断。
 
 目录 source 的相对路径和 `directory` 类型均受市场根边界约束。`github` 来源归一到固定 Git 来源，再沿原有显式解析和审阅步骤安装。HTTP JSON 市场、marketplace archive source、command source 与 pip 不在本批范围。手工 ZIP 导入是独立入口，不能用它证明对应市场 source 已支持。相同字段名按所属格式解释，不把 Git URL 自动当成 JSON catalog。
 
@@ -93,7 +93,7 @@ areal plugin --workspace /absolute/workspace disconnect review-helper@team-tools
 areal plugin --workspace /absolute/workspace disable review-helper@team-tools --scope project
 ```
 
-用户选择作为默认值，项目的明确选择覆盖用户默认；它们不代表更高权限的强制要求。产品生成的普通标准 Profile 明确启用 `allowPluginSkills`，因此可选择已启用插件的 Skills。其他显式 Profile 未声明该权限时，不会自动获得插件 Skills。MCP 必须明确核对已安装摘要后连接；Connector 必须映射原始 ID 并配置账户。未支持的 hook handler、认证机制、旧命令或依赖显示诊断。“已安装”不代表服务器已经连接。
+用户选择作为默认值，项目的明确选择覆盖用户默认；它们不代表更高权限的强制要求。产品生成的普通标准 Profile 明确启用 `allowPluginSkills`，因此可选择已启用插件的 Skills。其他显式 Profile 未声明该权限时，不会自动获得插件 Skills。MCP 必须明确核对已安装摘要后连接；Connector 必须映射原始 ID 并配置账户。未支持的 hook handler、认证机制、命令执行语义或依赖显示诊断。“已安装”不代表服务器已经连接。
 
 ## Skills 与设置流程
 
@@ -189,3 +189,31 @@ Core 保存每次受理的 `desktop.hookRuns`。UNKNOWN 保留并阻止继续执
 已信任的 command hook 使用有界 Runtime 任务写入组：固定窗口内同任务 hook/工具允许重叠，ordinary/ordinary 与跨任务冲突仍独占。窗口不能延长，封口后的操作可能排在外组任务之后。P2 尚未完整验收：Side/研究及限制 Profile 继续排除；普通只读子任务采用独立 command 许可。Windows shell、完整配置栈与固定 Codex 二进制对照仍开放。详见 [P2 验收矩阵](../development/codex-plugins-p2-acceptance.md)。
 
 普通只读子任务的 command hooks 需要审阅当前定义后另行勾选同意；CLI 在 `hooks-trust` 添加 `--allow-read-only-commands`，省略该选项会移除此项同意。工作区/安装包只读，仅私有子任务 scratch 和本插件 data 可写，禁止网络和 provider 秘密继承，data 目录被重定向时拒绝执行。Side、研究任务、nativeTaskAgent、受限 Profile 和只读根会话继续排除，此项同意不包含 MCP handler。
+
+## 离线快照与诊断
+
+`areal plugin snapshot --json` 和 `areal plugin doctor --json` 直接读取配置 home 下的插件 Store，支持尚未初始化的 home。读取不会启动 Core 或联系插件服务。通过 `--config-home /absolute/home` 选择配置 home，通过 `--workspace /absolute/project` 读取项目覆盖；省略 workspace 时仅显示用户作用域。快照保留候选与已安装摘要，并提供读取时间和 revision。doctor 仅报告静态事实，`runtimeObserved: false` 表示没有观察实时连接状态。
+
+
+## Commands、Agents 与用户配置
+
+Commands 从选定 overlay 的 `commands` 路径与对应格式默认目录读取 Markdown。命令保留插件命名空间和固定安装摘要，正文只支持 `$ARGUMENTS`。没有占位符时原始参数追加到正文末尾。参数替换一次，参数中的 shell 表达式保持文字。展开前检查总长度，超过普通输入的 1 MiB 文本预算时拒绝。支持的 frontmatter 为 `description` 和 `argument-hint`；位置参数、shell substitution、模型或工具权限覆盖及未知字段标为组件不支持。
+
+Agents 从选定 `agents` 路径读取固定模板，支持 `name`、`description`、`model` 和逗号分隔的 `tools`。模型与工具必须能精确映射到当前 Core 目录。`permissionMode`、memory、hooks、未知字段或其他宿主专用语义不静默降级。模板通过既有 Profile 和子任务路径执行，父任务的工具、只读和审批限制继续生效。
+
+`userConfig` 支持显式 `string`、`boolean`、`number` 类型以及 `title`、`description`、`required`、`sensitive` 和非敏感 `default`。敏感字段限 string，保存凭据引用，禁止敏感默认值。公开读取只返回字段定义、非敏感值、是否已配置与缺失必填项。秘密和私有引用不进入公开详情或模型输入。
+
+仅 MCP 的 `${user_config.KEY}` 引用受支持。普通值可以进入 env、header、args 和 URL，敏感值仅进入 env/header。其他语法或消费位置明确拒绝。配置通过现有 CAS 与回执保存，参与连接身份；配置变化要求新连接使用新值。包更新与卸载保留最后配置版本号；旧值不跨包摘要继承，已撤销的连接代不能因包更新重新获得资格。
+
+```sh
+areal plugin --workspace /absolute/workspace configure sample@local --values-file /absolute/values.json
+areal plugin --workspace /absolute/workspace configure sample@local --values-file /absolute/values.json --clear optional_key
+```
+
+值文件为字段到 typed value 的映射，例如 `{"device":{"kind":"string","value":"iPhone 16"}}`。可信 CLI 可提供 `secretRef`，敏感明文不接受。命令只更新提交的字段，`--clear` 显式删除指定字段。
+
+## 本地开发快照
+
+`areal plugin dev-link ID --expected-digest INSTALLED_DIGEST` 将已安装本地包链接到原目录，`dev-unlink ID` 停止自动更新。两者要求选定工作区 Core。链接会持久化。来源变化沿原安装链发布新的不可变快照；活动 Turn 保留旧版本，后续 Turn 使用新版本。刷新保留用户与项目启用选择，一个坏来源不阻断其他来源，失败保留上个成功快照。新摘要不继承旧 MCP 或 Hook 执行信任。
+
+离线 doctor 的 `state` 和 `nextAction` 指向静态可观察的下一步。`staticReady` 表示已有受支持的静态组件，实际会话仍需 Profile 准入。必填配置缺失显示 `configurationRequired`，开发来源异常或待刷新单独显示。`candidateAvailable: false` 表示候选已不可读，此时回退摘要仅供历史展示，不能据此安装。

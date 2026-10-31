@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 import subprocess
 import tempfile
+import textwrap
 import shutil
 import sys
 import tomllib
@@ -31,6 +32,85 @@ preflight = load("ci-preflight")
 
 
 class CiContracts(unittest.TestCase):
+    def test_red_main_issue_changes_only_for_the_current_completed_attempt(self):
+        workflow = (ROOT / ".github/workflows/ci-red-main.yml").read_text()
+        script = textwrap.dedent(workflow.split("        run: |\n", 1)[1])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            log = root / "commands.jsonl"
+            gh = root / "gh"
+            gh.write_text(
+                f"#!{sys.executable}\n"
+                + textwrap.dedent("""\
+                    import json, os, sys
+                    args = sys.argv[1:]
+                    if args[0] == "api":
+                        if os.environ.get("API_FAIL"):
+                            sys.exit(1)
+                        if "/git/ref/" in args[1]:
+                            print(os.environ["MAIN_SHA"])
+                        else:
+                            print(os.environ["LATEST_RUN"])
+                    elif args[:2] == ["issue", "list"]:
+                        print(os.environ.get("ISSUE_NUMBER", "42"))
+                    else:
+                        with open(os.environ["COMMAND_LOG"], "a") as output:
+                            output.write(json.dumps(args) + chr(10))
+                    """)
+            )
+            gh.chmod(0o755)
+            environment = {
+                **os.environ,
+                "PATH": str(root) + os.pathsep + os.environ["PATH"],
+                "COMMAND_LOG": str(log),
+                "GH_REPO": "fixture/repo",
+                "OWNER": "fixture",
+                "WORKFLOW": "GUI checks",
+                "WORKFLOW_ID": "200",
+                "RUN_ID": "100",
+                "RUN_ATTEMPT": "1",
+                "RUN_URL": "https://example.invalid/runs/100",
+                "SHA": "current",
+                "MAIN_SHA": "current",
+                "CONCLUSION": "success",
+                "LATEST_RUN": "100\t1\tcompleted\tsuccess",
+            }
+            for changes, expected in [
+                ({"MAIN_SHA": "newer"}, None),
+                ({"LATEST_RUN": "101\t1\tcompleted\tfailure"}, None),
+                ({"LATEST_RUN": "100\t2\tcompleted\tfailure"}, None),
+                ({"LATEST_RUN": "100\t1\tin_progress\t"}, None),
+                ({}, ["issue", "close"]),
+                (
+                    {"CONCLUSION": "failure", "LATEST_RUN": "100\t1\tcompleted\tfailure"},
+                    ["issue", "comment"],
+                ),
+            ]:
+                with self.subTest(changes=changes):
+                    log.unlink(missing_ok=True)
+                    result = subprocess.run(
+                        ["bash", "-c", script],
+                        env={**environment, **changes},
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    mutations = (
+                        [json.loads(line) for line in log.read_text().splitlines()]
+                        if log.exists()
+                        else []
+                    )
+                    self.assertEqual([row[:2] for row in mutations], [expected] if expected else [])
+            log.unlink(missing_ok=True)
+            failed = subprocess.run(
+                ["bash", "-c", script],
+                env={**environment, "API_FAIL": "1"},
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertFalse(log.exists())
+
     def test_dispatch_null_or_missing_inputs_preserves_the_full_release_plan(self):
         from unittest.mock import patch
 

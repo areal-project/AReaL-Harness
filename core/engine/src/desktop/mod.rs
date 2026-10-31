@@ -6,6 +6,7 @@ pub(crate) mod gen_ui;
 mod interactions;
 mod mcp;
 pub(crate) mod mcp_apps;
+pub(crate) mod mcp_tools;
 pub(crate) mod media;
 mod model_configuration;
 mod model_selection;
@@ -34,6 +35,7 @@ pub use workflows::Workflow;
 pub(crate) struct Desktop {
     plugins: std::sync::RwLock<plugins::Manager>,
     plugin_refresh: Mutex<()>,
+    discovered_skills: std::sync::Mutex<Option<skills::Discovery>>,
     configured_models: std::sync::RwLock<ConfiguredModels>,
     model_configuration: std::sync::RwLock<()>,
     pub(crate) default_profile: std::sync::RwLock<Option<VersionRef>>,
@@ -53,6 +55,7 @@ impl Desktop {
         Ok(Self {
             plugins: Default::default(),
             plugin_refresh: Mutex::new(()),
+            discovered_skills: Default::default(),
             configured_models: Default::default(),
             model_configuration: Default::default(),
             default_profile: Default::default(),

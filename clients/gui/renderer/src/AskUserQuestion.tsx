@@ -81,7 +81,7 @@ export function AskUserQuestion({
       if (failure.submissionUnknown) setUnknown(true);
       setError(
         failure.submissionUnknown
-          ? "回答结果未确认，已填写内容保留。请先核对原问题状态，不会自动重复提交。"
+          ? "回答结果未确认，已填内容已保留。请先核对问题状态。"
           : "回答提交失败，请重试。已填写的内容已保留。",
       );
     } finally {

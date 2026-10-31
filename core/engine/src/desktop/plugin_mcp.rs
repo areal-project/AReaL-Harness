@@ -7,6 +7,7 @@ use std::{collections::BTreeSet, ffi::OsString, path::PathBuf};
 pub(super) struct Generation {
     pub plugin: String,
     pub digest: String,
+    pub configuration_revision: u64,
     pub tools: Vec<McpTool>,
     pub servers: Vec<areal_mcp::McpServer>,
     pub configs: BTreeMap<String, PluginServerConfig>,
@@ -281,6 +282,7 @@ impl Engine {
             .ok_or_else(|| anyhow::anyhow!("hook MCP target unavailable; no reconnect"))
     }
     pub async fn plugin_component_summary(&self, id: String) -> Result<Value> {
+        self.refresh_plugins().await?;
         let store = self.plugin_store()?;
         let component = tokio::task::spawn_blocking(move || {
             match store
@@ -296,9 +298,12 @@ impl Engine {
         .map_err(invalid)?
         .map_err(invalid)?;
         let mut names = vec![];
+        let bindings = self.plugin_configuration_bindings(&component, false)?;
         for document in &component.mcp_documents {
             let normalized = document
                 .declaration
+                .bind_user_config(&bindings)
+                .map_err(|_| invalid("invalid plugin user configuration"))?
                 .normalize(&component.root, &component.data_root)
                 .map_err(|_| invalid("invalid MCP document"))?;
             names.extend(normalized.servers.into_keys());
@@ -316,23 +321,83 @@ impl Engine {
             })
             .cloned()
             .collect();
-        Ok(json!({"mcpServers":names,"apps":apps,"appsNeedingAuth":apps_needing_auth}))
+        let agents = self.plugin_agent_views(&component);
+        let commands: Vec<_> = component.commands.iter().map(|command| json!({"componentId":command.identity.component_id,"name":command.name,"description":command.description,"argumentHint":command.argument_hint,"installedDigest":command.identity.installed_digest})).collect();
+        Ok(
+            json!({"pluginId":component.id,"installedDigest":component.digest,"mcpServers":names,"apps":apps,"appsNeedingAuth":apps_needing_auth,"commands":commands,"agents":agents["agents"],"agentDiagnostics":agents["diagnostics"],"developmentError":self.desktop.plugins.read().unwrap().development_errors.get(&component.id).cloned()}),
+        )
+    }
+    fn plugin_configuration_bindings(
+        &self,
+        component: &areal_plugins::InstalledComponents,
+        resolve_secrets: bool,
+    ) -> Result<BTreeMap<String, areal_mcp::UserConfigBinding>> {
+        if resolve_secrets {
+            return component
+                .user_configuration
+                .mcp_bindings(&component.user_config_schema, |reference| {
+                    self.desktop
+                        .credentials
+                        .read()
+                        .unwrap()
+                        .get(reference)
+                        .cloned()
+                        .ok_or_else(|| anyhow::anyhow!("plugin credential unavailable"))
+                })
+                .map_err(|_| {
+                    invalid("plugin configuration is missing or its credential is unavailable")
+                });
+        }
+        let public = component
+            .user_configuration
+            .public_view(&component.user_config_schema);
+        Ok(public
+            .fields
+            .into_iter()
+            .map(|(key, field)| {
+                let value = match field.value {
+                    Some(areal_plugins::PublicConfigValue::String(value)) => value,
+                    Some(areal_plugins::PublicConfigValue::Boolean(value)) => value.to_string(),
+                    Some(areal_plugins::PublicConfigValue::Number(value)) => value.to_string(),
+                    None => "not-configured".into(),
+                };
+                (
+                    key,
+                    areal_mcp::UserConfigBinding {
+                        value,
+                        sensitive: field.definition.sensitive,
+                    },
+                )
+            })
+            .collect())
     }
     fn component_configs(
         &self,
         c: &areal_plugins::InstalledComponents,
     ) -> Result<BTreeMap<String, PluginServerConfig>> {
-        self.component_configuration(c).map(|(configs, _)| configs)
+        self.component_configuration(c, false)
+            .map(|(configs, _)| configs)
     }
     fn component_configuration(
         &self,
         c: &areal_plugins::InstalledComponents,
+        resolve_secrets: bool,
     ) -> Result<(BTreeMap<String, PluginServerConfig>, Vec<Value>)> {
         let mut result = BTreeMap::new();
         let mut diagnostics = vec![];
+        let bindings = self.plugin_configuration_bindings(c, resolve_secrets)?;
+        let missing = c
+            .user_configuration
+            .public_view(&c.user_config_schema)
+            .missing_required;
+        if !missing.is_empty() {
+            diagnostics.push(json!({"class":"configurationRequired","fields":missing}));
+        }
         for document in &c.mcp_documents {
             let normalized = document
                 .declaration
+                .bind_user_config(&bindings)
+                .map_err(|_| invalid("invalid plugin user configuration"))?
                 .normalize(&c.root, &c.data_root)
                 .map_err(|_| invalid("invalid plugin MCP document"))?;
             diagnostics.extend(normalized.diagnostics.iter().map(|d| json!({"serverId":server_id(&c.id,&d.server),"server":d.server,"class":if normalized.servers.contains_key(&d.server){"policy"}else{"configuration"},"message":"MCP declaration has a host policy restriction or invalid configuration; inspect the trusted package"})));
@@ -428,6 +493,25 @@ impl Engine {
             self.revoke_plugin_mcp(&plugin).await?;
             anyhow::bail!("plugin MCP server disabled, unavailable or uninstalled");
         }
+        let revision = self
+            .desktop
+            .plugin_mcp
+            .owners
+            .lock()
+            .await
+            .iter()
+            .find(|o| {
+                o.view
+                    .tools
+                    .iter()
+                    .any(|t| t.generation() == tool.generation())
+            })
+            .map(|o| o.view.configuration_revision);
+        let current = self.plugin_component(&plugin).await?;
+        anyhow::ensure!(
+            revision == Some(current.user_configuration.revision),
+            "plugin configuration generation retired"
+        );
         anyhow::ensure!(!tool.is_stale(), "plugin generation is revoked or stale");
         Ok(())
     }
@@ -558,12 +642,47 @@ impl Engine {
             revoked.insert(owner.plugin);
         }
         self.retire_changed_page_tools().await?;
+        let configuration_retired: Vec<_> = self
+            .desktop
+            .plugin_mcp
+            .live
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|(id, generation)| {
+                current.get(*id).is_some_and(|component| {
+                    component.digest == generation.digest
+                        && component.user_configuration.revision
+                            != generation.configuration_revision
+                })
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in configuration_retired {
+            self.desktop
+                .plugin_mcp
+                .server_states
+                .write()
+                .unwrap()
+                .remove(&id);
+            self.desktop
+                .plugin_mcp
+                .states
+                .write()
+                .unwrap()
+                .insert(id, "disconnected".into());
+        }
         self.desktop
             .plugin_mcp
             .live
             .write()
             .unwrap()
-            .retain(|id, g| revisions.get(id) == Some(&g.digest));
+            .retain(|id, g| {
+                current.get(id).is_some_and(|c| {
+                    c.digest == g.digest
+                        && c.user_configuration.revision == g.configuration_revision
+                })
+            });
         self.desktop
             .plugin_mcp
             .auth_challenges
@@ -628,7 +747,7 @@ impl Engine {
             .map_err(invalid)?;
         let mut rows = vec![];
         for c in components {
-            let (configs, mut diagnostics) = self.component_configuration(&c)?;
+            let (configs, mut diagnostics) = self.component_configuration(&c, false)?;
             let mut installation_auth = BTreeSet::new();
             if c.policy["authentication"] == "ON_INSTALL" {
                 for (name, config) in &configs {
@@ -752,13 +871,18 @@ impl Engine {
                 .read()
                 .unwrap()
                 .get(&id)
-                .is_some_and(|generation| generation.digest == expected_digest)
+                .is_some_and(|generation| {
+                    generation.digest == expected_digest
+                        && generation.configuration_revision
+                            == component.user_configuration.revision
+                })
         {
             return Ok(());
         }
         // Explicit Connect is also retry/reauth: new handles replace discovery,
         // while admitted Turns and Apps retain the previous generation until drain.
-        let (configs, configuration_diagnostics) = self.component_configuration(&component)?;
+        let (configs, configuration_diagnostics) =
+            self.component_configuration(&component, true)?;
         if configs.keys().any(|name| {
             self.extensions.mcp_servers.contains_key(name)
                 || self.desktop.mcp.contains_definition(name)
@@ -996,7 +1120,9 @@ impl Engine {
         // 握手不持锁，禁用仍可推进；发布前在同一边界重读当前授权。
         let _publication = self.desktop.plugin_refresh.lock().await;
         if self.plugin_component(&id).await.map_or(true, |c| {
-            c.digest != expected_digest || c.disabled_mcp_servers != component.disabled_mcp_servers
+            c.digest != expected_digest
+                || c.user_configuration.revision != component.user_configuration.revision
+                || c.disabled_mcp_servers != component.disabled_mcp_servers
         }) {
             if connection.shutdown().await.is_err() {
                 self.desktop
@@ -1036,6 +1162,7 @@ impl Engine {
         let generation = Generation {
             plugin: id.clone(),
             digest: expected_digest.clone(),
+            configuration_revision: component.user_configuration.revision,
             tools,
             servers: connection.servers(),
             configs,
@@ -1410,6 +1537,10 @@ impl Engine {
         .ok_or(Error::NotFound)?;
         self.require_enabled_plugin_server(&found.0.plugin, id)
             .await?;
+        let current = self.plugin_component(&found.0.plugin).await?;
+        if current.user_configuration.revision != found.0.configuration_revision {
+            return Err(invalid("plugin configuration generation retired"));
+        }
         if found.1.is_revoked() {
             return Err(invalid("server generation revoked"));
         }
@@ -1431,12 +1562,25 @@ impl Engine {
         }
         let weak = Arc::downgrade(self);
         let cancel = self.shutdown.clone();
-        self.tasks.spawn(async move{loop{
-            tokio::select!{_=cancel.cancelled()=>break,_=tokio::time::sleep(Duration::from_millis(250))=>{}}
-            let Some(engine)=weak.upgrade()else{break;};if let Err(error)=engine.reconcile_plugin_connections().await{
-                tracing::warn!(%error,"plugin authority reconciliation failed closed");
+        self.tasks.spawn(async move {
+            let mut ticks = 0;
+            loop {
+                tokio::select! { _ = cancel.cancelled() => break, _ = tokio::time::sleep(Duration::from_millis(250)) => {} }
+                let Some(engine) = weak.upgrade() else { break };
+                if let Err(error) = engine.reconcile_plugin_connections().await {
+                    tracing::warn!(%error, "plugin authority reconciliation failed closed");
+                }
+                ticks += 1;
+                if ticks < 4 { continue; }
+                ticks = 0;
+                if let Err(error) = engine.refresh_development_sources().await {
+                    tracing::warn!(%error, "plugin development refresh retained the last snapshot");
+                }
+                if let Err(error) = engine.refresh_discovered_skills().await {
+                    tracing::warn!(%error, "skill metadata refresh retained the last catalog");
+                }
             }
-        }});
+        });
     }
     pub(crate) async fn mcp_output_limit(&self, tool: &McpTool) -> Option<usize> {
         let owners = self.desktop.plugin_mcp.owners.lock().await;

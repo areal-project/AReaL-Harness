@@ -241,7 +241,7 @@ try {
     "native permission change",
   );
   checks.push("GUI permission change reaches actual Core configuration");
-  await page.getByRole("button", { name: "模型", exact: true }).click();
+  await page.getByTestId("composer-model-trigger").click();
   await page.getByRole("dialog", { name: /模型/ }).waitFor();
   await page.keyboard.press("Escape");
   // Drive the real Lexical editor, rather than mutating contenteditable DOM.

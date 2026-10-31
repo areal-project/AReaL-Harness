@@ -103,6 +103,12 @@ pub trait Factory: Send + Sync + 'static {
     ) -> Result<Option<Value>> {
         Ok(None)
     }
+    async fn trace(&self, _root: &Path) -> Result<Vec<areal_protocol::Thread>> {
+        anyhow::bail!("executor does not expose internal traces")
+    }
+    async fn trace_result(&self, _root: &Path, _thread: &str, _uri: &str) -> Result<Vec<u8>> {
+        anyhow::bail!("executor does not expose original results")
+    }
     /// 自定义执行器保留原准入；原生工厂必须覆盖并核验实际隔离环境。
     async fn probe_availability(&self, _root: &Path) -> std::result::Result<(), AvailabilityError> {
         Ok(())
@@ -146,6 +152,59 @@ impl Factory for NativeFactory {
         let task = task.to_owned();
         tokio::task::spawn_blocking(move || super::handoff::read(&root, &task, generation, offset))
             .await?
+    }
+    async fn trace(&self, root: &Path) -> Result<Vec<areal_protocol::Thread>> {
+        let root = root.join("bindings");
+        let maximum = self.worker_limits.max_history_bytes.max(1024 * 1024);
+        tokio::task::spawn_blocking(move || -> Result<_> {
+            let mut threads = Vec::new();
+            for entry in std::fs::read_dir(root)? {
+                let entry = entry?;
+                let binding = entry.path().join("binding.json");
+                if !binding.is_file() {
+                    continue;
+                }
+                let binding: Value = serde_json::from_slice(&std::fs::read(binding)?)?;
+                let id = binding["threadId"]
+                    .as_str()
+                    .context("worker binding has no thread ID")?;
+                let thread = crate::store::Store::read_snapshot_at(
+                    &entry.path().join("history"),
+                    id,
+                    maximum,
+                    true,
+                )?;
+                threads.push(thread);
+            }
+            threads.sort_by_key(|t| (t.created_at, t.id.clone()));
+            Ok(threads)
+        })
+        .await?
+    }
+    async fn trace_result(&self, root: &Path, thread: &str, uri: &str) -> Result<Vec<u8>> {
+        use sha2::{Digest, Sha256};
+        let root = root.join("bindings");
+        let thread = thread.to_owned();
+        let uri = uri.to_owned();
+        let maximum = self.worker_limits.max_history_bytes.max(1024 * 1024);
+        tokio::task::spawn_blocking(move || -> Result<_> {
+            let blob = uri.strip_prefix("areal://blob/").context("invalid result URI")?;
+            ensure!(blob.len() == 64 && blob.bytes().all(|c| c.is_ascii_hexdigit()), "invalid result blob");
+            for entry in std::fs::read_dir(root)? {
+                let path = entry?.path();
+                if !path.join("binding.json").is_file() { continue; }
+                let binding: Value = serde_json::from_slice(&std::fs::read(path.join("binding.json"))?)?;
+                if binding["threadId"] != thread { continue; }
+                let snapshot = crate::store::Store::read_snapshot_at(&path.join("history"), &thread, maximum, true)?;
+                ensure!(snapshot.turns.iter().flat_map(|t| &t.items).any(|i| matches!(i, areal_protocol::Item::DynamicToolCall { execution, .. } if execution.result_snapshot.as_ref().is_some_and(|m| m.uri == uri))), "result does not belong to worker history");
+                let path = path.join("history/blobs").join(blob);
+                ensure!(std::fs::metadata(&path)?.len() <= 32 * 1024 * 1024, "original result exceeds read bound");
+                let bytes = std::fs::read(path)?;
+                ensure!(format!("{:x}", Sha256::digest(&bytes)) == blob, "result integrity mismatch");
+                return Ok(bytes);
+            }
+            anyhow::bail!("worker result unavailable")
+        }).await?
     }
     async fn probe_availability(&self, root: &Path) -> std::result::Result<(), AvailabilityError> {
         native::probe_availability(&self.runtime, &self.file_helper, root).await
@@ -272,6 +331,7 @@ struct Intent {
     request: Start,
 }
 struct Entry {
+    trace_started: Option<std::time::Instant>,
     intent: Intent,
     control: Control,
     cancel: CancellationToken,
@@ -380,6 +440,7 @@ impl Service {
             entries.insert(
                 id,
                 Entry {
+                    trace_started: None,
                     intent,
                     control,
                     cancel: CancellationToken::new(),
@@ -597,6 +658,7 @@ impl Service {
                     service.entries.lock().await.insert(
                         id.clone(),
                         Entry {
+                            trace_started: None,
                             intent,
                             control: control.clone(),
                             cancel,
@@ -622,6 +684,7 @@ impl Service {
             service.entries.lock().await.insert(
                 id.clone(),
                 Entry {
+                    trace_started: Some(std::time::Instant::now()),
                     intent,
                     control: control.clone(),
                     cancel: cancel.clone(),
@@ -673,6 +736,15 @@ impl Service {
         let record = self.get(id, owner).await?.0.read();
         let mut value = self.view(id, &record);
         value["artifactAvailable"] = json!(self.artifact_available(&record));
+        let elapsed = if record.status == "running" {
+            self.entries.lock().await.get(id).and_then(|e| {
+                e.trace_started
+                    .map(|s| s.elapsed().as_millis().min(u64::MAX as u128) as u64)
+            })
+        } else {
+            (record.wall_seconds > 0.0).then_some((record.wall_seconds * 1000.0) as u64)
+        };
+        value["elapsedMs"] = json!(elapsed);
         Ok(value)
     }
 
@@ -699,6 +771,30 @@ impl Service {
         );
         self.factory
             .handoff(&self.root.join(id), &task.spec.id, task.generation, offset)
+            .await
+    }
+    pub(crate) async fn trace_live(&self, id: &str, owner: &str) -> Result<bool> {
+        let (control, _) = self.get(id, Some(owner)).await?;
+        let entries = self.entries.lock().await;
+        Ok(control.read().status == "running"
+            && entries
+                .get(id)
+                .is_some_and(|entry| entry.trace_started.is_some()))
+    }
+    pub(crate) async fn trace(&self, id: &str, owner: &str) -> Result<Vec<areal_protocol::Thread>> {
+        self.get(id, Some(owner)).await?;
+        self.factory.trace(&self.root.join(id)).await
+    }
+    pub(crate) async fn trace_result(
+        &self,
+        id: &str,
+        owner: &str,
+        thread: &str,
+        uri: &str,
+    ) -> Result<Vec<u8>> {
+        self.get(id, Some(owner)).await?;
+        self.factory
+            .trace_result(&self.root.join(id), thread, uri)
             .await
     }
     pub(super) async fn delivery_journal(&self, id: &str) -> Result<PathBuf> {

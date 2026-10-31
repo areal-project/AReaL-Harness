@@ -4,6 +4,7 @@ import { CopyTextAction } from "./MessageActions.js";
 import { commandResult, toolPresentation } from "./conversationPresentation.js";
 import type { Data } from "./services.js";
 import { ToolCallDuration } from "./ToolCallDuration.js";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 
 /** Input / collected output / Core outcome, with original member records one
  * disclosure deeper. This view never requests more output or executes commands.
@@ -77,10 +78,9 @@ export function CommandDetails({ item }: { item: Data }) {
         </>
       }
       raw={
-        <details className="command-raw">
-          <summary>原始记录</summary>
+        <SettingsDisclosure className="command-raw" title="原始记录">
           <pre>{JSON.stringify(item.processRecords ?? [item], null, 2)}</pre>
-        </details>
+        </SettingsDisclosure>
       }
     />
   );

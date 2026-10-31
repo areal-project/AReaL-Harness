@@ -1,13 +1,80 @@
 export const commonMessages = {
+  "common.agents.createHelp": {
+    "zh-CN": "在当前工作区只读分析，权限不超过父任务。",
+    en: "Read-only analysis in the current workspace, within the parent task's permissions.",
+  },
+  "common.approval.rememberPage": {
+    "zh-CN": "记住的授权只对当前页面和相同内容有效。",
+    en: "A remembered approval applies only to this page and the same content.",
+  },
+  "common.approval.rememberArgs": {
+    "zh-CN": "记住的授权只适用于相同参数，可在“已保存授权”中撤销。",
+    en: "A remembered approval applies only to the same arguments. Revoke it in Saved approvals.",
+  },
+  "common.attachments.description": {
+    "zh-CN": "此会话的上传记录。释放后空间会被安全回收。",
+    en: "Uploads in this conversation. Released space is reclaimed safely.",
+  },
+  "common.browserVerification.source": {
+    "zh-CN": "以下记录来自此任务的工具历史，不证明页面已更新。",
+    en: "These records come from this task's tool history and do not prove the page was updated.",
+  },
+  "common.browserVerification.trialActive": {
+    "zh-CN": "页面试改仍在生效，请清除后重新观察再验证。",
+    en: "A trial page edit is still active. Clear it and observe again before verifying.",
+  },
+  "common.context.otherItems": {
+    "zh-CN": "其余 {count, number} 项",
+    en: "{count, plural, one {# other item} other {# other items}}",
+  },
+  "common.context.compactionSummary": { "zh-CN": "压缩摘要", en: "Compaction summary" },
+  "common.goal.progress": { "zh-CN": "目标进展", en: "Goal progress" },
+  "common.processes.urlsHelp": {
+    "zh-CN": "以下地址来自正在运行的进程输出，选择后在任务浏览器中打开。",
+    en: "These addresses come from running process output. Choose one to open it in the task browser.",
+  },
+  "common.processes.closeSessionConfirm": {
+    "zh-CN": "将中断此会话的所有命令，可能影响进行中的任务。执行历史会保留。",
+    en: "This interrupts every command in this conversation and may affect running work. Execution history is kept.",
+  },
+  "common.processes.stopConfirm": {
+    "zh-CN": "将中断所选命令，可能影响依赖它的任务。其他进程继续运行。",
+    en: "This interrupts the selected command and may affect tasks that depend on it. Other processes keep running.",
+  },
+  "common.permissions.help": {
+    "zh-CN": "这里是你在审批时记住的具体操作，只对相同参数生效。",
+    en: "Operations you chose to remember during approval. Each applies only to the same arguments.",
+  },
+  "common.permissions.revokeProjectConfirm": {
+    "zh-CN": "将清除当前工作区共享的全部已保存授权，之后会重新询问。",
+    en: "This clears every saved approval shared by this workspace; you'll be asked again.",
+  },
+  "common.permissions.revokeSessionConfirm": {
+    "zh-CN": "将清除此任务的全部已保存授权，之后会重新询问。",
+    en: "This clears every saved approval for this task; you'll be asked again.",
+  },
+  "common.schedules.usageDetails": { "zh-CN": "用量明细", en: "Usage details" },
+  "common.hooks.result": { "zh-CN": "钩子结果", en: "Hook result" },
+  "common.inspection.help": {
+    "zh-CN": "请先核对实际文件或进程。确认只记录事实，不会重放原操作。",
+    en: "Check the actual files or processes first. Confirming records facts only and never replays the operation.",
+  },
+  "common.promptEdit.note": {
+    "zh-CN": "替换此消息及之后的回复并重新执行，已发生的操作不会撤回。",
+    en: "Replaces this message and later replies and runs again. Completed actions are not undone.",
+  },
+  "common.workgroups.dependencyHelp": {
+    "zh-CN": "执行依赖等集成完成后启动；集成依赖可提前执行。",
+    en: "Execution dependencies start after integration; integration dependencies may run early.",
+  },
   "common.update.retryCheck": { "zh-CN": "重新检查更新", en: "Check for updates again" },
   "common.update.networkChanged": {
     "zh-CN": "网络发生变化，更新请求中断。请待网络稳定后点击重试。",
     en: "The update request was interrupted by a network change. Retry once your connection is stable.",
   },
   "common.contextProjection": {
-    "zh-CN":
-      "这里展示 Core 当前保留的消息与压缩摘要。工具定义、供应商私有上下文及下次请求配置不完整呈现在此。",
-    en: "This shows the messages and compacted summaries currently retained by Core. Tool definitions, provider-private context, and the next request configuration are not shown in full.",
+    "zh-CN": "这里显示当前保留的消息和压缩摘要，不含全部工具定义。",
+    en: "Shows the retained messages and compacted summaries. Not every tool definition is listed.",
   },
   "common.review.uncommitted": { "zh-CN": "未提交的更改", en: "Uncommitted changes" },
   "common.review.unstaged": { "zh-CN": "未暂存的更改", en: "Unstaged changes" },
@@ -26,28 +93,24 @@ export const commonMessages = {
     en: "Run a non-interactive script with /bin/sh in the current project, without a terminal. The maximum duration is 24 hours. Core determines permissions.",
   },
   "common.processes.lifetimeHelp": {
-    "zh-CN":
-      "随本轮执行需要活动轮次，轮次结束由 Core 清理；随会话保留需要预设授权，直到明确清理会话资源。进程退出不代表资源已清理。",
-    en: "Turn-scoped execution requires an active turn and is cleaned up by Core when the turn ends. Session-scoped execution requires preset authorization and remains until session resources are explicitly cleaned up. Process exit does not establish resource cleanup.",
+    "zh-CN": "随本轮执行的进程在轮次结束时清理；随会话保留的进程需手动清理。",
+    en: "Turn processes are cleaned up when the turn ends. Session processes stay until you clean them up.",
   },
   "common.schedules.credentialsHelp": {
-    "zh-CN":
-      "模型凭据不可用。请在模型设置中补充 API Key 并保存，或选择可用的新会话默认模型。完成后重试，或从“定时任务”重新打开“新建任务”。",
-    en: "Model credentials are unavailable. Add and save an API key in model settings, or choose an available default model for new conversations. Then retry, or reopen New task from Scheduled tasks.",
+    "zh-CN": "模型凭据不可用。请在模型设置中补充 API Key 后重试。",
+    en: "Model credentials are unavailable. Add an API key in model settings, then retry.",
   },
   "common.tools.rawRecord": { "zh-CN": "查看工具原始记录", en: "View raw tool record" },
   "common.turn.failed": { "zh-CN": "回合失败", en: "Turn failed" },
   "common.turn.reasoning": { "zh-CN": "思考过程", en: "Reasoning" },
   "common.turn.activity": { "zh-CN": "执行活动", en: "Execution activity" },
   "common.feedback.contextHelp": {
-    "zh-CN":
-      "评价提交时会附上截至这条回复的上下文，理由选填。使用 Agent 润色时，讨论也会按数据飞轮设置采集。",
-    en: "Submitting feedback includes the context up to this reply. The reason is optional. When you use an agent to refine the feedback, the discussion is also collected according to your data flywheel settings.",
+    "zh-CN": "提交评价会附上截至这条回复的上下文；用 Agent 润色时也会采集讨论。",
+    en: "Feedback includes the conversation up to this reply. Refining with an agent also collects that discussion.",
   },
   "common.workgroups.compatibilityHelp": {
-    "zh-CN":
-      "兼容产物只提供查看和基线核对。新的修改任务在普通输入区提交，由 Core 验证并交付整组改动。",
-    en: "Compatibility artifacts support viewing and baseline checks only. Submit new changes through the ordinary composer; Core validates and delivers the complete change set.",
+    "zh-CN": "兼容产物只能查看和核对。新的修改请在输入框提交。",
+    en: "Compatibility artifacts are view-only. Submit new changes in the composer.",
   },
   "common.navigation.markRead": { "zh-CN": "标为已读", en: "Mark as read" },
   "common.navigation.markUnread": { "zh-CN": "标为未读", en: "Mark as unread" },
@@ -118,14 +181,6 @@ export const commonMessages = {
     en: "Line counts unavailable for some files",
   },
   "chat.files.unavailable": { "zh-CN": "行数不可用", en: "Line counts unavailable" },
-  "chat.files.changedLive": {
-    "zh-CN": "{count} 个文件已更改",
-    en: "{count, plural, one {# file changed} other {# files changed}}",
-  },
-  "chat.files.reviewLive": {
-    "zh-CN": "查看本轮已更改的 {count} 个文件",
-    en: "Review {count, plural, one {# changed file} other {# changed files}} in this turn",
-  },
   "chat.files.partialTotals": {
     "zh-CN": "已统计文件新增 {additions} 行，删除 {deletions} 行",
     en: "Counted files: {additions} added, {deletions} deleted",
@@ -137,6 +192,17 @@ export const commonMessages = {
   "decision.deny": { "zh-CN": "拒绝", en: "Deny" },
   "decision.denyShortcut": { "zh-CN": "{label} Esc", en: "{label} Esc" },
   "content.imageFallback": { "zh-CN": "[图片：{description}]", en: "[Image: {description}]" },
+  "content.workspaceImage.loading": { "zh-CN": "读取图片…", en: "Loading image…" },
+  "content.workspaceImage.preview": { "zh-CN": "预览图片 {name}", en: "Preview image {name}" },
+  "content.fileCard.label": { "zh-CN": "文件 {name}", en: "File {name}" },
+  "content.fileCard.openWith": { "zh-CN": "打开方式", en: "Open with" },
+  "content.fileCard.chooseApp": { "zh-CN": "选择打开方式 {name}", en: "Choose how to open {name}" },
+  "content.fileCard.saveAs": { "zh-CN": "另存为…", en: "Save as…" },
+  "content.fileCard.saved": { "zh-CN": "文件已另存", en: "File saved" },
+  "content.fileCard.targetsFailed": {
+    "zh-CN": "打开方式读取失败：{error}",
+    en: "Could not load applications: {error}",
+  },
   "content.imageInAttachments": { "zh-CN": "请在附件中查看", en: "View in attachments" },
   "content.webPreview": { "zh-CN": "网页预览", en: "Web preview" },
   "content.openWebPage": { "zh-CN": "打开网页 {title}", en: "Open web page {title}" },
@@ -353,9 +419,8 @@ export const commonMessages = {
     en: "Unconfirmed conversation creation",
   },
   "recovery.creationRecordDescription": {
-    "zh-CN":
-      "原请求已保留。核对只查询受理结果；查不到回执时仍保留为未知，不会重新创建会话。核对可能需要连接项目。",
-    en: "The original request is retained. Checking only queries its outcome; a missing receipt remains unknown and does not create another conversation. Checking may connect to the project.",
+    "zh-CN": "原请求已保留。核对只查询结果，不会重新创建会话。",
+    en: "The original request is kept. Checking only looks up the result and never creates another conversation.",
   },
   "startup.loadingConversation": { "zh-CN": "正在加载对话…", en: "Loading conversation…" },
   "recovery.loadingView": {
@@ -418,15 +483,32 @@ export const commonMessages = {
   },
   "chat.composer.serviceDefault": { "zh-CN": "服务默认", en: "Service default" },
   "chat.composer.unsupportedEffort": {
-    "zh-CN":
-      "{model} 不支持思考强度 {effort}。请在模型菜单重新选择强度或服务默认；也可在模型设置修改供应商默认。",
-    en: "{model} does not support reasoning effort {effort}. Choose another effort or Service default in the model menu, or edit the provider default in model settings.",
+    "zh-CN": "{model} 不支持思考强度 {effort}，请在模型菜单重新选择。",
+    en: "{model} does not support reasoning effort {effort}. Choose another in the model menu.",
   },
   "chat.composer.effortUnspecified": { "zh-CN": "未指定", en: "Unspecified" },
   "chat.composer.noModels": { "zh-CN": "暂无可用模型", en: "No models available" },
   "chat.composer.noModelsGuidance": {
     "zh-CN": "暂无可用模型，请前往设置 > 模型设置",
     en: "No models available. Go to Settings > Model settings.",
+  },
+  "chat.composer.chooseModel": { "zh-CN": "选择模型", en: "Choose model" },
+  "chat.composer.providers": { "zh-CN": "供应商", en: "Providers" },
+  "chat.composer.models": { "zh-CN": "模型列表", en: "Models" },
+  "chat.composer.effort.none": { "zh-CN": "无", en: "None" },
+  "chat.composer.effort.minimal": { "zh-CN": "最少", en: "Minimal" },
+  "chat.composer.effort.low": { "zh-CN": "低", en: "Low" },
+  "chat.composer.effort.medium": { "zh-CN": "中", en: "Medium" },
+  "chat.composer.effort.high": { "zh-CN": "高", en: "High" },
+  "chat.composer.effort.xhigh": { "zh-CN": "极高", en: "Extra high" },
+  "chat.composer.effort.max": { "zh-CN": "最高", en: "Maximum" },
+  "chat.composer.enableFast": {
+    "zh-CN": "开启 Fast，可能消耗更多额度或费用",
+    en: "Enable Fast. May use more quota or cost more",
+  },
+  "chat.composer.disableFast": {
+    "zh-CN": "关闭 Fast，使用标准额度和费用",
+    en: "Disable Fast. Use standard quota and pricing",
   },
   "chat.composer.chooseEffort": { "zh-CN": "选择思考强度", en: "Choose reasoning effort" },
   "chat.composer.workspaceFiles": {

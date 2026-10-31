@@ -13,9 +13,8 @@ export const operationMessages = {
   },
   "operations.browserInspect": { "zh-CN": "核对浏览器结果", en: "Check browser result" },
   "operations.browserInspectionHelp": {
-    "zh-CN":
-      "请核对浏览器当前页面。如果刚完成登录，记录当前已打开的页面；如果涉及提交，先确认是否已提交。核对后可发送保留的草稿继续任务，原操作不会重放。",
-    en: "Check the current browser page. If you just signed in, describe the page now open. If a submission was involved, check whether it went through. Then send your saved draft to continue; the original operation will not be replayed.",
+    "zh-CN": "请核对浏览器当前页面（是否已登录、是否已提交），再发送保留的草稿继续。",
+    en: "Check the current browser page (signed in? submitted?), then send your saved draft to continue.",
   },
   "operations.browserInspectionPlaceholder": {
     "zh-CN": "例如：已完成登录，当前显示任务列表；没有再次点击提交。",
@@ -26,8 +25,8 @@ export const operationMessages = {
     en: "I checked the current page and operation result",
   },
   "operations.browserRecovery": {
-    "zh-CN": "请核对当前页面；如需登录，请先完成登录。点击聊天中的“核对后继续”，再发送保留的草稿。",
-    en: "Check the current page and finish signing in if needed. Choose “Check to continue” in the chat, then send your saved draft.",
+    "zh-CN": "请核对当前页面，需要时先登录，再点“核对后继续”。",
+    en: "Check the current page, sign in if needed, then choose “Check to continue”.",
   },
   "operations.toolRecovery": {
     "zh-CN": "上次操作的结果待核对。请核查实际状态后继续发送，草稿已保留。",
@@ -107,21 +106,17 @@ export const operationMessages = {
     "zh-CN": "当前 Core 尚不支持立即运行。",
     en: "This Core does not support Run now.",
   },
-  "operations.recentWindow": {
-    "zh-CN": "最近窗口",
-    en: "Recent window",
+  "operations.runHistory": {
+    "zh-CN": "运行记录",
+    en: "Run history",
   },
-  "operations.runsOf": {
-    "zh-CN": "次 · 共",
-    en: "runs · total",
+  "operations.runHistoryCount": {
+    "zh-CN": "运行记录 · 共 {count} 次",
+    en: "Run history · {count, plural, one {# run} other {# runs}}",
   },
-  "operations.runsLoaded": {
-    "zh-CN": "次 · 已加载",
-    en: "runs · loaded",
-  },
-  "operations.runs": {
-    "zh-CN": "次",
-    en: "runs",
+  "operations.showAllRuns": {
+    "zh-CN": "查看全部 {count} 次",
+    en: "Show all {count, plural, one {# run} other {# runs}}",
   },
   "operations.recentOnly": {
     "zh-CN": "当前 Core 仅提供最近运行窗口。更新 Core 后可读取更早记录。",
@@ -459,8 +454,8 @@ export const operationMessages = {
   },
   "operations.schedules.retainCreationConfirm": {
     "zh-CN":
-      "原创建结果仍未确认，目录或会话可能已经存在。将保留原记录和资源，返回任务列表，不重发原请求或发送草稿。之后再次新建会创建另一份资源。继续吗？",
-    en: "The original creation result is still unconfirmed; its directory or conversation may already exist. Keep its records and resources and return to tasks without replaying the request or sending the draft. Creating again afterward will create a separate resource. Continue?",
+      "原创建结果尚未确认，任务可能已经存在。返回列表后不会重发请求；再次新建会创建另一份。继续吗？",
+    en: "The original creation is still unconfirmed and the task may already exist. Returning won't resend it; creating again makes a separate one. Continue?",
   },
   "operations.schedules.conversation": {
     "zh-CN": "定时任务会话",
@@ -471,9 +466,8 @@ export const operationMessages = {
     en: "Let AReaL handle ongoing tasks on a schedule.",
   },
   "operations.schedules.backendUpdateRequired": {
-    "zh-CN":
-      "当前后台不支持此版本的任务目录。已加载的任务会保留，现有任务继续运行。请在设置的“后台服务”中安全更新后台后重试。",
-    en: "This backend does not support the current task catalog. Loaded tasks are kept and existing work continues. Safely update the backend in Settings > Background service, then retry.",
+    "zh-CN": "后台版本过旧，无法读取任务目录。请在设置的“后台服务”中更新后重试。",
+    en: "The background service is too old to read the task catalog. Update it in Settings > Background service, then retry.",
   },
   "operations.schedules.partialLoad": {
     "zh-CN": "部分任务未能加载",
@@ -563,6 +557,90 @@ export const operationMessages = {
   "operations.schedules.statusScheduled": {
     "zh-CN": "等待计划时间",
     en: "Waiting for scheduled time",
+  },
+  "operations.schedules.everyMinutes": { "zh-CN": "每 {count} 分钟", en: "Every {count} min" },
+  "operations.schedules.everyHours": { "zh-CN": "每 {count} 小时", en: "Every {count} h" },
+  "operations.schedules.everyDays": { "zh-CN": "每 {count} 天", en: "Every {count} days" },
+  "operations.schedules.everyMinute": { "zh-CN": "每分钟", en: "Every minute" },
+  "operations.schedules.everyHour": { "zh-CN": "每小时", en: "Every hour" },
+  "operations.schedules.dailyAt": { "zh-CN": "每天 {time}", en: "Daily {time}" },
+  "operations.schedules.everyNDaysAt": {
+    "zh-CN": "每 {interval} 天 {time}",
+    en: "Every {interval} days {time}",
+  },
+  "operations.schedules.weeklyAt": { "zh-CN": "每{days} {time}", en: "{days} {time}" },
+  "operations.schedules.everyNWeeksAt": {
+    "zh-CN": "每 {interval} 周的{days} {time}",
+    en: "Every {interval} weeks {days} {time}",
+  },
+  "operations.schedules.monthlyAt": { "zh-CN": "每月 {days} {time}", en: "Monthly {days} {time}" },
+  "operations.schedules.onceAt": { "zh-CN": "仅一次", en: "Once" },
+  "operations.schedules.today": { "zh-CN": "今天 {time}", en: "Today {time}" },
+  "operations.schedules.tomorrow": { "zh-CN": "明天 {time}", en: "Tomorrow {time}" },
+  "operations.schedules.nextShort": { "zh-CN": "下次 {time}", en: "Next {time}" },
+  "operations.schedules.daySeparator": { "zh-CN": "、", en: ", " },
+  "operations.schedules.running": { "zh-CN": "运行中", en: "Running" },
+  "operations.schedules.attention": { "zh-CN": "需要处理", en: "Needs attention" },
+  "operations.schedules.reasonFailed": { "zh-CN": "上次运行失败", en: "Last run failed" },
+  "operations.schedules.reasonInterrupted": {
+    "zh-CN": "上次运行被中断",
+    en: "Last run was interrupted",
+  },
+  "operations.schedules.reasonBlocked": {
+    "zh-CN": "上次运行受阻，可重试本次",
+    en: "Last run is blocked; retry it",
+  },
+  "operations.schedules.reasonWaiting": {
+    "zh-CN": "运行在等你回答",
+    en: "A run is waiting for your answer",
+  },
+  "operations.schedules.reasonSuppressed": {
+    "zh-CN": "这个项目的后台已停止，任务不会执行",
+    en: "This project's backend is stopped; the task will not run",
+  },
+  "operations.schedules.reasonActivation": {
+    "zh-CN": "后台没能启动：{error}",
+    en: "The backend could not start: {error}",
+  },
+  "operations.schedules.reasonOffline": {
+    "zh-CN": "后台未连接，到点不会执行",
+    en: "The backend is not connected; due runs will wait",
+  },
+  "operations.schedules.retryRun": { "zh-CN": "重试本次", en: "Retry this run" },
+  "operations.schedules.edit": { "zh-CN": "编辑…", en: "Edit…" },
+  "operations.schedules.openInCenter": { "zh-CN": "在定时任务中打开", en: "Open in Scheduled" },
+  "operations.schedules.more": { "zh-CN": "更多操作", en: "More actions" },
+  "operations.schedules.deleteAsk": { "zh-CN": "删除…", en: "Delete…" },
+  "operations.schedules.deleteConfirm": { "zh-CN": "确认删除", en: "Confirm delete" },
+  "operations.schedules.copyObjective": { "zh-CN": "复制指令", en: "Copy instructions" },
+  "operations.schedules.history": { "zh-CN": "已{action}：{summary}", en: "{action}: {summary}" },
+  "operations.schedules.sentBySchedule": {
+    "zh-CN": "由定时任务发送",
+    en: "Sent by scheduled task",
+  },
+  "operations.schedules.editTitle": { "zh-CN": "编辑任务", en: "Edit task" },
+  "operations.schedules.objective": { "zh-CN": "指令", en: "Instructions" },
+  "operations.schedules.repeat": { "zh-CN": "重复", en: "Repeat" },
+  "operations.schedules.repeatInterval": { "zh-CN": "间隔", en: "Interval" },
+  "operations.schedules.repeatDaily": { "zh-CN": "每天", en: "Daily" },
+  "operations.schedules.repeatWeekly": { "zh-CN": "每周", en: "Weekly" },
+  "operations.schedules.repeatOnce": { "zh-CN": "一次", en: "Once" },
+  "operations.schedules.every": { "zh-CN": "每", en: "Every" },
+  "operations.schedules.minutesUnit": { "zh-CN": "分钟", en: "minutes" },
+  "operations.schedules.hoursUnit": { "zh-CN": "小时", en: "hours" },
+  "operations.schedules.at": { "zh-CN": "时间", en: "Time" },
+  "operations.schedules.onDays": { "zh-CN": "星期", en: "Days" },
+  "operations.schedules.date": { "zh-CN": "日期", en: "Date" },
+  "operations.schedules.save": { "zh-CN": "保存", en: "Save" },
+  "operations.schedules.saving": { "zh-CN": "正在保存…", en: "Saving…" },
+  "operations.schedules.cancelEdit": { "zh-CN": "取消", en: "Cancel" },
+  "operations.schedules.conflict": {
+    "zh-CN": "任务已在别处修改，已载入最新版本，请确认后再保存。",
+    en: "The task changed elsewhere. The latest version is loaded; review it and save again.",
+  },
+  "operations.schedules.invalidEdit": {
+    "zh-CN": "请填写指令，并选择有效的时间。",
+    en: "Enter instructions and choose a valid time.",
   },
   "operations.schedules.creationIntent": {
     "zh-CN": "帮我创建一个定时任务：",

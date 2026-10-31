@@ -274,6 +274,7 @@ function ActiveConversation() {
           dark={dark}
           onLink={onLink}
           onFile={thread.cloud ? () => setError(t("cloud.remoteFile")) : openFile}
+          fileOpen={thread.cloud ? undefined : session.contextualFileOpen}
           onReview={(turnId) => {
             rememberPanelTrigger();
             setReviewRequest({ owner: panelOwner, turnId });

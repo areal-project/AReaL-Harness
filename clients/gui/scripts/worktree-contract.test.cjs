@@ -1,7 +1,7 @@
 "use strict";
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { mkdtemp, mkdir, writeFile, rm, realpath } = require("node:fs/promises");
+const { mkdtemp, mkdir, writeFile, rm, realpath, symlink } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 const {
@@ -114,6 +114,45 @@ test("native file handoff follows selected thread checkout and rejects source/fo
       /绑定尚未确认/,
     );
     assert.equal(opened.length, 1);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("conversation images are read from the selected thread checkout by content type", async () => {
+  const home = await realpath(await mkdtemp(join(tmpdir(), "areal-file-image-")));
+  try {
+    const root = join(home, "source"),
+      directory = join(home, "tree");
+    await mkdir(root);
+    await mkdir(join(directory, "out"), { recursive: true });
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    await writeFile(join(directory, "out", "表1.png"), png);
+    await writeFile(join(directory, "out", "fake.png"), "<svg onload=alert(1)>");
+    await writeFile(join(home, "outside.png"), png);
+    await symlink(join(home, "outside.png"), join(directory, "out", "link.png"));
+    const project = {
+      id: "p",
+      root,
+      state: { threads: { t: { id: "t", worktree: { state: "ready", directory } } } },
+    };
+    const dependencies = {
+      backend: { snapshot: () => ({ library: { settings: {} }, projects: [project] }) },
+      home,
+      shell: { openPath: async () => assert.fail("not opening") },
+      authorize: () => {},
+      chooseSave: () => assert.fail("not saving"),
+    };
+    const read = (path) =>
+      fileOpen(dependencies, { operation: "readImage", projectId: "p", threadId: "t", path });
+    const image = await read("./out/表1.png");
+    assert.equal(image.mimeType, "image/png");
+    assert.deepEqual(Buffer.from(image.bytes), png);
+    assert.equal((await read(join(directory, "out", "表1.png"))).mimeType, "image/png");
+    await assert.rejects(read("out/fake.png"), /不是可直接显示的图片/);
+    await assert.rejects(read("../outside.png"), /当前工作区/);
+    await assert.rejects(read("out/link.png"), /当前工作区/);
+    await assert.rejects(read("out"), /仅支持图片文件/);
   } finally {
     await rm(home, { recursive: true, force: true });
   }

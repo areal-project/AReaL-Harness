@@ -393,15 +393,21 @@ try {
     "plugin legal URL copies through desktop clipboard without navigation or new windows",
   );
   await button("安装").click();
-  await page
-    .getByRole("checkbox", { name: "我已核对以上来源、版本和内容摘要", exact: true })
-    .waitFor();
-  assert.equal(await button("安装到用户").isEnabled(), false);
-  await page.getByText("我已核对以上来源、版本和内容摘要", { exact: true }).click();
+  assert.equal(
+    await page
+      .getByRole("checkbox", { name: "我已核对以上来源、版本和内容摘要", exact: true })
+      .count(),
+    0,
+  );
+  assert.equal(await button("安装到用户").isEnabled(), true);
   await button("安装到用户").click();
-  await button("管理").click();
-  await button("查看插件详情").waitFor();
-  await page.getByRole("heading", { name: "需要认证", exact: true }).waitFor();
+  await button("卸载插件").waitFor();
+  const connections = page.getByRole("region", { name: "插件连接状态", exact: true });
+  const authService = connections
+    .locator(".plugin-service-row")
+    .filter({ hasText: "API-key acceptance MCP" });
+  await authService.getByText("需要认证", { exact: true }).waitFor();
+  await authService.getByRole("button", { name: "启用认证", exact: true }).waitFor();
   const detail = await call("plugin", { id: pluginId });
   // The management read returns the plugin itself, unlike list responses' data array.
   const digest = detail.installedDigest;
@@ -594,8 +600,8 @@ try {
   );
   assert.equal(wire.length, 0, "API-key enable does not start MCP");
   await button("审阅并连接").click();
-  assert.equal(await button("信任并连接").isEnabled(), false);
-  await page.getByText("我信任当前安装快照，并允许启动其 MCP 服务。", { exact: true }).click();
+  assert.equal(await page.locator(".plugin-trust-review").getByRole("checkbox").count(), 0);
+  assert.equal(await button("信任并连接").isEnabled(), true);
   await button("信任并连接").click();
   await poll(
     () => call("mcpApps"),

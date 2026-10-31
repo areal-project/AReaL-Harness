@@ -2,8 +2,7 @@
 "use strict";
 const { newer, validateUpdate } = require("./config.cjs");
 
-// Electron owns transport, SHA-512 verification and native signature validation.
-// Main owns consent and safe shutdown; native staging precedes Core shutdown.
+// 下载和摘要校验可保持后台运行；Squirrel 原生准备只在安全停止和占用检查后触发。
 /** @typedef {'idle'|'available'|'downloading'|'validating'|'deferred'|'installing'|'error'} UpdateStatus */
 /** @typedef {{enabled:boolean,checking:boolean,downloading:boolean,installing:boolean,downloaded?:string,status:UpdateStatus,version?:string,percent:number|null,detail:string}} UpdateState */
 /** @typedef {{hasWork:()=>boolean|Promise<boolean>,prepareInstall:()=>Promise<unknown>,recoverInstall?:()=>Promise<unknown>,onState?:(state:UpdateState)=>void}} UpdateLifecycle */
@@ -74,8 +73,7 @@ function createUpdater({
   });
   updater.on("error", (error) => {
     log.warn("[areal-update]", error.message);
-    if (installing)
-      set("error", `安装程序已接管重启；若应用没有重新打开，请手动退出并打开。${error.message}`);
+    if (installing) set("error", `更新安装出错，请核对后台状态和版本。${error.message}`);
     else if (downloading) set("error", error.message);
   });
   async function install() {
@@ -107,11 +105,21 @@ function createUpdater({
       // prepareInstall atomically closes command admission and checks activity again.
       await prepareInstall();
       prepared = true;
+      set("validating");
+      await prepareNativeInstall?.();
+      set("installing");
       updater.quitAndInstall();
     } catch (cause) {
       const error = cause instanceof Error ? cause : new Error(String(cause));
       if (prepared) {
-        set("error", `安装程序已接管重启；若应用没有重新打开，请手动退出并打开。${error.message}`);
+        installing = false;
+        installUnconfirmed = true;
+        set(
+          "error",
+          `后台已安全停止，安装准备结果待核对。请退出并重新打开应用后检查版本。${error.message}`,
+        );
+        // 安全退出进度仍覆盖主窗口，原生提示确保用户能看到重开说明。
+        await message("更新安装尚未完成", detail);
         return state();
       }
       installing = false;
@@ -166,9 +174,6 @@ function createUpdater({
     try {
       await updater.downloadUpdate();
       percent = 100;
-      set("validating");
-      // ZIP download is not Squirrel readiness: validate/stage while Core is alive.
-      await prepareNativeInstall?.();
       downloaded = available;
       downloading = false;
       percent = 100;

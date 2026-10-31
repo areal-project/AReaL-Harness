@@ -22,6 +22,7 @@ impl Audit {
             "presence_penalty",
             "repetition_penalty",
             "reasoning_effort",
+            "service_tier",
             "reasoning",
             "max_completion_tokens",
             "max_output_tokens",

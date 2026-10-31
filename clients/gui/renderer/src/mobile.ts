@@ -1,3 +1,5 @@
+import { mobileMessages } from "./i18n/messages/mobile.js";
+
 type ProbeConfig = {
   relay: string;
   host: string;
@@ -22,9 +24,18 @@ const capabilities: ProbeCapabilities = {
   secureContext: window.isSecureContext,
   random: typeof globalThis.crypto?.getRandomValues === "function",
   subtle: typeof globalThis.crypto?.subtle === "object",
-  abortSignalTimeout: typeof AbortSignal.timeout === "function",
+  abortSignalTimeout: typeof globalThis.AbortSignal?.timeout === "function",
   promiseWithResolvers: typeof Reflect.get(Promise, "withResolvers") === "function",
 };
+const compatible = Object.values(capabilities).every(Boolean);
+if (!compatible) {
+  const status = document.getElementById("status");
+  if (status)
+    status.textContent =
+      mobileMessages["mobile.unsupportedWebView"][
+        navigator.language.startsWith("zh") ? "zh-CN" : "en"
+      ];
+}
 const config = window.__AREAL_MOBILE_PROBE__;
 delete window.__AREAL_MOBILE_PROBE__;
 const bridge = window.webkit?.messageHandlers?.arealProbe;
@@ -45,7 +56,7 @@ if (config && bridge) {
         },
       }),
     );
-} else {
+} else if (compatible) {
   void import("./mobile/MobileApp").then(async ({ mountMobileApp }) => {
     mountMobileApp();
     const product = window.__AREAL_MOBILE_PRODUCT__;

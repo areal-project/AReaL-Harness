@@ -37,7 +37,7 @@ export function ModelEditor({
   const [context, setContext] = useState(String(model.parameters?.contextWindowTokens ?? ""));
   const [maximum, setMaximum] = useState(String(model.parameters?.maxOutputTokens ?? ""));
   const initialTools = model.capabilities?.tools ?? true;
-  const initialVision = model.capabilities?.vision ?? editing;
+  const initialVision = model.capabilities?.vision ?? true;
   const initialReasoning = model.capabilities?.reasoning ?? true;
   const initialEfforts: string[] = model.capabilities?.reasoningEffortOptions ?? [];
   const [tools, setTools] = useState(initialTools);
@@ -129,6 +129,7 @@ export function ModelEditor({
           onSave({
             ...model,
             id: id.trim(),
+            ...(id.trim() === model.id ? {} : { reportedContextWindowTokens: undefined }),
             displayName: name.trim(),
             ...(!editing || capabilitiesChanged
               ? {

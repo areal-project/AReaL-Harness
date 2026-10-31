@@ -499,7 +499,7 @@ fn optional_unsupported_declarations_diagnose_without_hiding_skills() {
     );
     let d = install(&open(&t), "sample@local", "user", 0).unwrap();
     assert_eq!(d.skills.len(), 2);
-    for component in ["hooks", "mcp", "commands", "interface"] {
+    for component in ["hooks", "mcp", "interface"] {
         assert!(
             d.diagnostics
                 .iter()
@@ -507,6 +507,20 @@ fn optional_unsupported_declarations_diagnose_without_hiding_skills() {
             "missing {component} diagnostic"
         );
     }
+    let support = d.installed_component_support.as_ref().unwrap();
+    let command = support
+        .components
+        .iter()
+        .find(|component| component.kind == areal_plugins::ComponentKind::Commands)
+        .unwrap();
+    assert_eq!(command.source_field, ".codex-plugin/plugin.json#/commands");
+    assert_eq!(command.status, areal_plugins::SupportStatus::Unsupported);
+    assert_eq!(command.reason_codes, ["templateDeclarationUnsupported"]);
+    assert!(!command.required);
+    assert_eq!(
+        support.compatibility.state,
+        areal_plugins::CompatibilityState::Allowed
+    );
 }
 
 #[test]

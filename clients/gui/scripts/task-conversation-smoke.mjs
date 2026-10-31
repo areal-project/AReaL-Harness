@@ -2713,7 +2713,6 @@ async function checkManualRegression() {
   );
   assert.equal((await snapshot()).library.threads[`${pid}:${first.runs[0].threadId}`].unread, true);
   await showResources();
-  await page.locator(".task-resource-history > summary").click();
   await page
     .getByLabel("任务资源面板")
     .getByText("MANUAL_FIXTURE_REPORT", { exact: false })

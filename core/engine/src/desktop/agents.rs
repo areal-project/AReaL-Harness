@@ -18,6 +18,9 @@ impl Engine {
                 self.freeze_plugin_skills(config);
                 config.selected_skills = Some(self.effective_skill_refs(config, true));
             }
+            if let Some(configuration) = &config {
+                self.check_configuration_plugin_profile(configuration)?;
+            }
             return Ok(config);
         };
         if request
@@ -125,6 +128,7 @@ impl Engine {
                     .collect(),
             );
         }
+        self.check_configuration_plugin_profile(&config)?;
         self.apply_client_permissions(&mut config)?;
         Ok(Some(config))
     }
@@ -357,6 +361,7 @@ impl Engine {
         request: AgentSpawn,
         model_parent_turn: Option<String>,
     ) -> Result<Value> {
+        self.refresh_plugins().await?;
         let cell = self.cell(&request.parent_thread_id).await?;
         if cell.exclusive_writer {
             return Err(invalid(

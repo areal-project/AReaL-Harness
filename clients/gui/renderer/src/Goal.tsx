@@ -1,3 +1,4 @@
+import { useI18n } from "./i18n/IntlProvider.js";
 import { Textarea } from "@areal/ui";
 import { useEffect, useRef, useState } from "react";
 import { Maximize2, PauseCircle, PlayCircle, RotateCcw, Target, Trash2 } from "lucide-react";
@@ -9,9 +10,9 @@ import { GoalUsageSummary } from "./GoalUsage.js";
 export const goalControlError = (cause: unknown) => {
   const message = (cause as Error).message;
   if (message.includes("unknown field `inferLimits`"))
-    return "当前 Core 版本不支持从目标描述读取停止条件。请更新 Core 并重启后台后重试，目标草稿已保留。";
+    return "当前 Core 不支持读取停止条件，请更新后重试。草稿已保留。";
   if (message.includes("prompt limits cannot replace a recurring Task budget"))
-    return "周期任务总 Token 预算由任务保留，不能通过修改目标文本解除。目标草稿已保留。";
+    return "周期任务的总 Token 预算不能通过修改目标解除。草稿已保留。";
   return message.includes("TASK_TOKEN_BUDGET")
     ? "当前运行的 Token 预算不能超过周期任务的剩余额度。"
     : message;
@@ -190,6 +191,7 @@ function loadDraft(key: string, goal: Goal | null): { base: Draft; draft: Draft 
   return { base: current, draft: current };
 }
 export function GoalEditor({ project, thread, action }: Props) {
+  const { t } = useI18n();
   const { goal, revision } = stateOf(thread);
   const draftKey = `areal-gui:goal-draft:${project.id}:${thread.id}:${goal?.id ?? "new"}`;
   const [initial] = useState(() => loadDraft(draftKey, goal));
@@ -273,8 +275,8 @@ export function GoalEditor({ project, thread, action }: Props) {
               : `当前停止条件：Token ${goal.tokenBudget ?? "未设置"} · 轮次 ${goal.maxTurns ?? "未设置"} · 活动时间 ${goal.maxActiveSeconds == null ? "未设置" : `${goal.maxActiveSeconds} 秒`}`}
           </p>
           {goal.report && (
-            <details className="goal-editor-report" open>
-              <summary>目标进展</summary>
+            <section className="goal-editor-report" aria-label={t("common.goal.progress")}>
+              <h4>{t("common.goal.progress")}</h4>
               <p>{goal.report.summary}</p>
               {goal.report.blocker && <p role="status">受阻原因：{goal.report.blocker}</p>}
               {goal.report.evidence.length > 0 && (
@@ -297,7 +299,7 @@ export function GoalEditor({ project, thread, action }: Props) {
                   </ul>
                 </>
               )}
-            </details>
+            </section>
           )}
         </>
       )}

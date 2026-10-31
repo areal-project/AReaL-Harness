@@ -76,3 +76,7 @@ pnpm --dir clients/gui verify:design
 `R-CHECK-017` 尺寸观察的静态约束与替代写法由 `areal/no-raw-resize-observer` 规则拥有；适用路径和共享实现例外由 `vite.config.mts` 指定。真实尺寸通知与卸载验证见 `test:resize-observer`。**检查：** `clients/gui/oxlint-plugin-areal/rules/no-raw-resize-observer.ts`
 
 `R-CHECK-018` lint 与类型检查豁免的原因要求由 `areal/require-suppression-reason` 规则拥有；新增规则及正反例的维护流程见[测试指南](../../../docs/development/testing.md#仓库内-lint-规则)。**检查：** `clients/gui/oxlint-plugin-areal/rules/require-suppression-reason.ts`
+
+`R-CHECK-019` 折叠只由共享组件拥有（依据 P6）：高级与详情分组用 SettingsDisclosure，默认收起；长正文用 CollapsibleText；对话过程行用 Disclosure 的右侧箭头；同类记录直接列出。renderer 与 UI 包不写原生 details/summary，不直接引入 Base UI Collapsible；例外路径由 `vite.config.mts` 列出。**检查：** `clients/gui/oxlint-plugin-areal/rules/no-raw-disclosure.ts`
+
+`R-CHECK-020` 界面文案每条至多 30 个汉字，确认类（键名含 confirm）至多 50 个；i18n 中文与 renderer 里的中文字面量都计入，交给模型的多行证据文本除外。超出时先删实现机制，确有必要再链接帮助文档。**检查：** `clients/gui/scripts/copy-budget.mjs`

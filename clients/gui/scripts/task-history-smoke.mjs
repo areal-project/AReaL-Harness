@@ -653,8 +653,7 @@ try {
   await page.getByRole("button", { name: "任务资源", exact: true }).click();
   const history = page.locator(".task-resource-history");
   await history.waitFor();
-  if ((await history.getAttribute("open")) === null) await history.locator("summary").click();
-  await history.getByText(/最近窗口.*共\s*160\s*次/).waitFor();
+  await history.getByText(/运行记录 · 共\s*160\s*次/).waitFor();
   assert.equal(
     await history.locator('[data-run-id="history-run-000"]').count(),
     0,
@@ -698,7 +697,8 @@ try {
     async () => (await readTask()).runCount === 161,
     "a real newly admitted run extends migrated history",
   );
-  await history.getByText(/共\s*161\s*次 · 已加载\s*161\s*次/).waitFor();
+  await history.getByText(/运行记录 · 共\s*161\s*次/).waitFor();
+  assert.equal(await history.locator("[data-run-id]").count(), 161, "all loaded runs stay listed");
   assert.equal(
     await history.getByRole("button", { name: "加载更早运行", exact: true }).count(),
     0,
@@ -970,8 +970,6 @@ try {
   await page.getByRole("button", { name: "任务资源", exact: true }).click();
   const capacityHistory = page.locator(".task-resource-history");
   await capacityHistory.waitFor();
-  if ((await capacityHistory.getAttribute("open")) === null)
-    await capacityHistory.locator("summary").click();
   const active = capacityHistory.locator(`[data-run-id="${originalRun.id}"]`);
   await active.getByRole("button", { name: "停止本次运行", exact: true }).click();
   await until(async () => {

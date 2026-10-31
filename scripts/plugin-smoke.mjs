@@ -1,3 +1,4 @@
+import { assertCurrentStateVersion } from "./persisted-state-fixture.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import WebSocket from "ws";
 // Real DSH package -> SDK -> Core -> Runtime -> native file sandbox.
@@ -261,7 +262,7 @@ try {
   }
   assert.equal(items[1].execution.plugin.operations.at(-1).kind, "write");
   const stored = JSON.parse(await readFile(join(data, `${edit.threadId}.json`), "utf8"));
-  assert.equal(stored.version, 15);
+  await assertCurrentStateVersion(stored, () => rpc("areal/server/status", {}));
   assert(
     stored.thread.turns[0].items.some((i) =>
       i.execution?.plugin?.operations.some((o) => o.kind === "write" && o.outcome === "succeeded"),

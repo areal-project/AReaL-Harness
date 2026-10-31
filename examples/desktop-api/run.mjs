@@ -1082,6 +1082,10 @@ try {
       assert.match(output, /"status":"completed"/);
       assert.match(output, /"turnsStarted":2/);
       // CLI 与 TUI 都应允许多 Profile endpoint 不带 --agent，保留服务端默认配置。
+      const defaultConfiguration = (await c.call("areal/thread/inspect", { threadId }))
+        .configuration;
+      assert.equal(defaultConfiguration.profile.id, "areal-discovered-skills");
+      assert.deepEqual(defaultConfiguration.profile.skills, []);
       const cli = spawnNative(
         join(repo, "target/debug/areal"),
         [
@@ -1106,10 +1110,10 @@ try {
       assert.equal(cliCode, 0, cliError + cliOutput);
       const receipt = JSON.parse(cliOutput);
       assert.equal(receipt.is_error, false);
-      assert.equal(
+      assert.deepEqual(
         (await c.call("areal/thread/inspect", { threadId: receipt.session_id })).configuration
           .profile,
-        null,
+        defaultConfiguration.profile,
       );
     } else if (name === "agent-inspector") {
       const target = await startThread(c, "hello");

@@ -618,7 +618,18 @@ class SharedCoreBackend {
               reference.kind === "stopDesktop" &&
               this.lifecycleReceipts.get(reference.requestId)?.phase === "completed",
           );
-        if (!automatic && completedStop) {
+        const completedUpdate =
+          this.lifecycleReferences.size > 0 &&
+          [...this.lifecycleReferences.values()].every(
+            (reference) =>
+              reference.kind === "updateDesktop" &&
+              this.lifecycleReceipts.get(reference.requestId)?.phase === "completed",
+          );
+        // 更新意图包含新界面重开；本次启动失败和明确停止仍须用户主动重试。
+        if (
+          (completedUpdate && (!automatic || this.backendUpdate?.state !== "failed")) ||
+          (!automatic && completedStop)
+        ) {
           this.lifecycleReferences.clear();
           this.lifecycleReceipts.clear();
           await this.persistReferences();

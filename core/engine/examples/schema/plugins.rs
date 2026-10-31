@@ -33,7 +33,25 @@ pub fn projections(responses: &mut Map<String, Value>, notifications: &mut Map<S
         })),
     );
     let catalog = schema::<areal_plugins::PluginList>();
-    insert(&["plugin/list"], catalog.clone());
+    insert(
+        &[
+            "plugin/list",
+            "plugin/userConfig/set",
+            "plugin/development/link",
+            "plugin/development/unlink",
+        ],
+        catalog.clone(),
+    );
+    insert(
+        &["plugin/components"],
+        object(json!({
+            "pluginId":string,"installedDigest":string,"mcpServers":array(string.clone()),
+            "apps":array(any_object.clone()),"appsNeedingAuth":array(any_object.clone()),
+            "commands":array(object(json!({"componentId":string,"name":string,"description":string,"argumentHint":nullable(string.clone()),"installedDigest":string}))),
+            "agents":array(object(json!({"componentId":string,"name":string,"description":string,"profile":schema::<VersionRef>()}))),
+            "agentDiagnostics":array(string.clone()),"developmentError":nullable(string.clone())
+        })),
+    );
     insert(
         &[
             "marketplace/add",

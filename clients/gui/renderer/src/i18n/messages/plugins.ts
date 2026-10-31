@@ -1,4 +1,163 @@
 export const pluginMessages = {
+  "settings.pluginCenter.commandsTitle": { "zh-CN": "命令", en: "Commands" },
+  "settings.pluginCenter.agentsTitle": { "zh-CN": "智能体", en: "Agents" },
+  "settings.pluginCenter.connectProjectBackend": {
+    "zh-CN": "连接项目后台",
+    en: "Connect project Core",
+  },
+  "settings.pluginCenter.chooseProjectToInstall": {
+    "zh-CN": "选择项目以继续安装",
+    en: "Choose a project to continue installation",
+  },
+  "settings.pluginCenter.agentProfileUnavailable": {
+    "zh-CN": "插件 Agent 配置已不可用，请刷新后选择。原草稿已保留。",
+    en: "The plugin Agent profile is unavailable. Refresh and select it again. Your draft is preserved.",
+  },
+  "settings.pluginCenter.sharedCredentialReloadRequired": {
+    "zh-CN": "新凭据需要各项目重新载入，当前项目可在空闲时载入。",
+    en: "Each project must reload the new credentials. Reload this project while it is idle.",
+  },
+  "settings.pluginCenter.reloadProjectCredentials": {
+    "zh-CN": "重新载入当前项目凭据",
+    en: "Reload credentials for this project",
+  },
+  "settings.pluginCenter.credentialsReloaded": {
+    "zh-CN": "当前项目已重新载入凭据，请检查组件连接。",
+    en: "This project reloaded its credentials. Check component connections.",
+  },
+  "settings.pluginCenter.userConfiguration": { "zh-CN": "插件配置", en: "Plugin configuration" },
+  "settings.pluginCenter.secretConfigurationBoundary": {
+    "zh-CN": "敏感值保存在系统受保护凭据中，留空会保留已保存的值。",
+    en: "Sensitive values are stored in protected credentials. Leave blank to keep the saved value.",
+  },
+  "settings.pluginCenter.missingConfiguration": {
+    "zh-CN": "需要配置 {fields}",
+    en: "Configure {fields}",
+  },
+  "settings.pluginCenter.secretAlreadyConfigured": {
+    "zh-CN": "已配置，输入新值可替换",
+    en: "Configured. Enter a new value to replace it",
+  },
+  "settings.pluginCenter.clearSavedConfiguration": {
+    "zh-CN": "清除已保存值",
+    en: "Clear saved value",
+  },
+  "settings.pluginCenter.undoClearConfiguration": {
+    "zh-CN": "保留已保存值",
+    en: "Keep saved value",
+  },
+  "settings.pluginCenter.saveConfiguration": {
+    "zh-CN": "保存插件配置",
+    en: "Save plugin configuration",
+  },
+  "settings.pluginCenter.developmentSource": {
+    "zh-CN": "本地开发来源",
+    en: "Local development source",
+  },
+  "settings.pluginCenter.developmentLinkActive": {
+    "zh-CN": "已链接本地来源，下一轮使用新内容。需要重新确认执行信任。",
+    en: "Local source linked. The next turn uses the new content. Execution trust needs to be confirmed again.",
+  },
+  "settings.pluginCenter.developmentLinkExplanation": {
+    "zh-CN": "显式链接当前本地来源后，后台会检查内容变化并发布不可变快照。",
+    en: "Link this local source to let Core check changes and publish immutable snapshots.",
+  },
+  "settings.pluginCenter.stopDevelopmentLink": {
+    "zh-CN": "停止跟踪本地来源",
+    en: "Stop tracking local source",
+  },
+  "settings.pluginCenter.linkDevelopmentSource": {
+    "zh-CN": "链接当前本地来源",
+    en: "Link current local source",
+  },
+  "settings.pluginCenter.commandSubmissionBoundary": {
+    "zh-CN": "命令会作为一条普通消息提交到当前任务。",
+    en: "Commands are submitted to the current task as an ordinary message.",
+  },
+  "settings.pluginCenter.selectTaskForCommand": {
+    "zh-CN": "打开一个普通任务后再提交命令。",
+    en: "Open an ordinary task to submit a command.",
+  },
+  "settings.pluginCenter.commandArguments": { "zh-CN": "命令参数", en: "Command arguments" },
+  "settings.pluginCenter.submitCommandToTask": {
+    "zh-CN": "提交到当前任务",
+    en: "Submit to current task",
+  },
+  "settings.pluginCenter.agentProfileBoundary": {
+    "zh-CN": "Agent 使用已导入的任务配置，权限限制照常生效。",
+    en: "Agents use imported task profiles. Permission limits still apply.",
+  },
+  "settings.pluginCenter.agentDraftPrompt": {
+    "zh-CN": "请使用 {name} 的任务配置协助处理当前需求。",
+    en: "Use the {name} task profile to help with this request.",
+  },
+  "settings.pluginCenter.useAgentProfile": {
+    "zh-CN": "使用此配置创建草稿",
+    en: "Create a draft with this profile",
+  },
+  "settings.pluginCenter.pluginDoctor": { "zh-CN": "插件诊断", en: "Plugin diagnostics" },
+  "settings.pluginCenter.doctorStaticBoundary": {
+    "zh-CN": "诊断只检查安装和支持情况，不包括项目运行状态。",
+    en: "Diagnostics cover installation and support only, not project runtime state.",
+  },
+  "settings.pluginCenter.readDoctorReport": {
+    "zh-CN": "读取诊断报告",
+    en: "Read diagnostic report",
+  },
+  "settings.pluginCenter.componentSnapshotChanged": {
+    "zh-CN": "组件摘要已变化，请刷新插件详情后再操作。",
+    en: "The component snapshot changed. Refresh plugin details before continuing.",
+  },
+  "settings.pluginCenter.installTrustBoundary": {
+    "zh-CN": "安装会自动核对来源与快照。MCP 执行和 Hook 信任需分别授权。",
+    en: "Installation verifies the source and snapshot automatically. Authorize MCP execution and Hook trust separately.",
+  },
+  "settings.pluginCenter.pluginNotInSnapshot": {
+    "zh-CN": "当前快照中没有此插件，请返回列表刷新。",
+    en: "This plugin is absent from the current snapshot. Return to the list and refresh.",
+  },
+  "settings.pluginCenter.snapshotScope": {
+    "zh-CN": "读取范围 {scope} · revision {revision} · {time}",
+    en: "Read scope {scope} \u00b7 revision {revision} \u00b7 {time}",
+  },
+  "settings.pluginCenter.runtimeNotObserved": {
+    "zh-CN": "尚未观察当前项目的运行状态。目录与支持信息来自本地 Store 快照。",
+    en: "Runtime state for this project has not been observed. Catalog and support information come from the local Store snapshot.",
+  },
+  "settings.pluginCenter.runtimeNotObservedTitle": {
+    "zh-CN": "已读取安装快照，运行状态未观察",
+    en: "Installation snapshot read. Runtime not observed",
+  },
+  "settings.pluginCenter.partiallyAvailable": {
+    "zh-CN": "部分组件可用，其他组件需要处理",
+    en: "Some components are available. Others need attention",
+  },
+  "settings.pluginCenter.declaredComponentsAvailable": {
+    "zh-CN": "已声明组件已就绪",
+    en: "Declared components are ready",
+  },
+  "settings.pluginCenter.reviewInstallation": {
+    "zh-CN": "检查安装内容",
+    en: "Review installation",
+  },
+  "settings.pluginCenter.enablePlugin": { "zh-CN": "在当前项目启用", en: "Enable in this project" },
+  "settings.pluginCenter.refreshSnapshot": { "zh-CN": "刷新快照", en: "Refresh snapshot" },
+  "settings.pluginCenter.pluginOverview": {
+    "zh-CN": "插件状态与下一步",
+    en: "Plugin status and next step",
+  },
+  "settings.pluginCenter.componentFactsRemainIndependent": {
+    "zh-CN": "各组件的配置、认证与信任状态见下方详情。执行受当前任务权限约束。",
+    en: "See configuration, authentication, and trust for each component below. Execution remains subject to current task permissions.",
+  },
+  "settings.pluginCenter.skillsInstalledAndEnabled": {
+    "zh-CN": "Skills 已安装并在当前范围启用。",
+    en: "Skills are installed and enabled in this scope.",
+  },
+  "settings.pluginCenter.hooksRequireSeparateReview": {
+    "zh-CN": "Hook 定义需要独立审阅与信任。",
+    en: "Hook definitions require separate review and trust.",
+  },
   "settings.pluginCenter.previousCreationRecords": {
     "zh-CN": "历史会话创建记录（待核对）",
     en: "Previous conversation creation records (awaiting review)",
@@ -149,8 +308,8 @@ export const pluginMessages = {
     en: "The source resolution result is unconfirmed and will not be resent automatically.",
   },
   "settings.pluginCenter.sourceResolvedReviewTheDigestBeforeInstalling": {
-    "zh-CN": "来源已解析，请核对摘要后安装。",
-    en: "Source resolved. Review the digest before installing.",
+    "zh-CN": "来源已解析，可确认安装内容。",
+    en: "Source resolved. Confirm the installation contents.",
   },
   "settings.pluginCenter.savingCredentialsDidNotReturnAProtected": {
     "zh-CN": "凭据保存未返回受保护引用。",
@@ -1021,9 +1180,8 @@ export const pluginMessages = {
     en: "Refresh hooks",
   },
   "settings.pluginHookSettings.hooksCanRunShellCommandsOrCall": {
-    "zh-CN":
-      "钩子可运行 shell 命令或调用已连接的 MCP 工具。安装、启用插件或连接 MCP 均不会授予钩子信任。",
-    en: "Hooks can run shell commands or call connected MCP tools. Installing or enabling a plugin, or connecting MCP, does not grant trust to hooks.",
+    "zh-CN": "钩子可以运行命令或调用 MCP 工具。安装插件不会自动信任钩子。",
+    en: "Hooks can run commands or call MCP tools. Installing a plugin does not trust its hooks.",
   },
   "settings.pluginHookSettings.loadingHooksFromTheInstalledPackage": {
     "zh-CN": "正在读取当前安装包的钩子…",
@@ -1070,13 +1228,12 @@ export const pluginMessages = {
     en: "Full definition",
   },
   "settings.pluginHookSettings.iHaveReviewedThePackageDigestAll": {
-    "zh-CN": "我已审阅以上安装包摘要、全部钩子定义及其执行内容，允许当前定义运行。",
-    en: "I have reviewed the package digest, all hook definitions, and their execution contents above, and allow the current definitions to run.",
+    "zh-CN": "我已审阅以上安装包摘要和全部钩子，允许当前定义运行。",
+    en: "I have reviewed the package digest and all hooks above, and allow the current definitions to run.",
   },
   "settings.pluginHookSettings.separatelyAllowTheCommandHooksAboveTo": {
-    "zh-CN":
-      "单独允许以上命令钩子在普通只读子任务运行：工作区只读；私有临时目录及插件数据可写；无网络访问；不提供供应商凭据。此许可仅适用于命令钩子；Side、研究模式及受限 Profile 除外。",
-    en: "Separately allow the command hooks above to run in regular read-only subtasks. The workspace is read-only; private temporary directories and plugin data are writable; network access and provider credentials are unavailable. This permission applies only to command hooks, excluding Side, research mode, and restricted profiles.",
+    "zh-CN": "也允许以上命令钩子在只读子任务中运行（无网络、无供应商凭据）。",
+    en: "Also allow the command hooks above in read-only subtasks (no network, no provider credentials).",
   },
   "settings.pluginHookSettings.trustAndEnableCurrentHooks": {
     "zh-CN": "信任并启用当前钩子",
@@ -1255,8 +1412,8 @@ export const pluginMessages = {
     en: "Authentication configuration",
   },
   "settings.pluginAuthConfiguration.disconnectThePluginFirstCredentialsAreSaved": {
-    "zh-CN": "先断开插件。凭据通过系统安全存储保存，插件只收到认证所需的请求凭据。",
-    en: "Disconnect the plugin first. Credentials are saved in system secure storage. The plugin receives only the request credentials needed for authentication.",
+    "zh-CN": "请先断开插件。凭据保存在系统安全存储中。",
+    en: "Disconnect the plugin first. Credentials are stored in system secure storage.",
   },
   "settings.pluginAuthConfiguration.oauthClientSecret": {
     "zh-CN": "OAuth 客户端秘密",
@@ -1903,8 +2060,8 @@ export const pluginMessages = {
     en: "Loading configuration source…",
   },
   "settings.hooksSettings.manageCoreExtensionHooksOtherFormatsFrom": {
-    "zh-CN": "管理 Core 扩展钩子，不自动导入项目或插件中的其他格式。命令直接执行，不经过 shell。",
-    en: "Manage Core extension hooks. Other formats from projects or plugins are not imported automatically. Commands run directly without a shell.",
+    "zh-CN": "管理 Core 扩展钩子。命令直接执行，不经过 shell。",
+    en: "Manage Core extension hooks. Commands run directly, without a shell.",
   },
   "settings.hooksSettings.restartingDisconnectsAllWindowsRunningTasksTerminals": {
     "zh-CN": "重启会断开所有窗口；运行中的任务、终端或待确认操作可能阻止停止。",
@@ -2318,9 +2475,8 @@ export const pluginMessages = {
     en: "Connected MCP services are subject to the current conversation Profile. Check other components for their status.",
   },
   "settings.pluginConnectionPanel.componentReconnectRequired": {
-    "zh-CN":
-      "更改服务开关会断开此插件的全部 MCP 连接。已开启的服务需要重新确认并连接；清理结果待核对时请先核对状态。",
-    en: "Changing a service switch disconnects all MCP connections for this plugin. Enabled services require explicit reconnection. Check status first if cleanup is unconfirmed.",
+    "zh-CN": "更改服务开关会断开此插件的全部 MCP 连接，之后需要重新连接。",
+    en: "Changing a service switch disconnects all MCP connections for this plugin; reconnect afterward.",
   },
   "chat.composer.pluginReferences": {
     "zh-CN": "插件",

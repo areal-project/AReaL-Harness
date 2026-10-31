@@ -417,6 +417,177 @@ fn local_skill(root: &std::path::Path) -> SkillLocation {
 }
 
 #[tokio::test]
+async fn old_thread_and_profile_read_current_files_after_skill_root_replacement() {
+    let state = tempfile::tempdir().unwrap();
+    let resources = tempfile::tempdir().unwrap();
+    let root = resources.path().join("skill");
+    fs::create_dir(&root).unwrap();
+    fs::write(root.join("SKILL.md"), "original body").unwrap();
+    fs::write(root.join("check.md"), "original attachment").unwrap();
+    let engine =
+        Engine::open(state.path(), Arc::new(UnconfiguredModel), Limits::default()).unwrap();
+    let location = local_skill(&root);
+    let reference = VersionRef {
+        id: location.id.clone(),
+        revision: location.revision.clone(),
+    };
+    engine
+        .install_default_skills(vec![location.clone()])
+        .unwrap();
+    let thread = engine.create("/workspace".into()).await.unwrap();
+    let profile = thread
+        .desktop
+        .as_ref()
+        .unwrap()
+        .configuration
+        .profile
+        .as_ref()
+        .unwrap();
+    let profile = VersionRef {
+        id: profile.id.clone(),
+        revision: profile.revision.clone(),
+    };
+    let old_root = resources.path().join("old-skill");
+    fs::rename(&root, &old_root).unwrap();
+    fs::create_dir(&root).unwrap();
+    fs::write(root.join("SKILL.md"), "replacement body").unwrap();
+    fs::write(root.join("check.md"), "replacement attachment").unwrap();
+    for (resource, expected) in [
+        ("SKILL.md", "replacement body"),
+        ("check.md", "replacement attachment"),
+    ] {
+        assert_eq!(
+            engine
+                .read_skill(&thread.id, reference.clone(), resource, 0, 8192)
+                .await
+                .unwrap()["text"],
+            expected
+        );
+        assert_eq!(
+            engine
+                .read_profile_skill(profile.clone(), reference.clone(), resource, 0, 8192)
+                .await
+                .unwrap()["text"],
+            expected
+        );
+    }
+    assert_eq!(
+        fs::read_to_string(old_root.join("SKILL.md")).unwrap(),
+        "original body"
+    );
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn old_thread_reads_current_files_after_skill_ancestor_replacement() {
+    let state = tempfile::tempdir().unwrap();
+    let resources = tempfile::tempdir().unwrap();
+    let parent = resources.path().join("skills");
+    let root = parent.join("skill");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("SKILL.md"), "original body").unwrap();
+    let engine =
+        Engine::open(state.path(), Arc::new(UnconfiguredModel), Limits::default()).unwrap();
+    let location = local_skill(&root);
+    let reference = VersionRef {
+        id: location.id.clone(),
+        revision: location.revision.clone(),
+    };
+    engine.install_default_skills(vec![location]).unwrap();
+    let thread = engine.create("/workspace".into()).await.unwrap();
+    fs::rename(&parent, resources.path().join("old-skills")).unwrap();
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("SKILL.md"), "replacement body").unwrap();
+    assert_eq!(
+        engine
+            .read_skill(&thread.id, reference, "SKILL.md", 0, 8192)
+            .await
+            .unwrap()["text"],
+        "replacement body"
+    );
+    engine.shutdown().await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn skill_reads_allow_search_only_ancestors_after_directory_replacement() {
+    use std::os::unix::fs::PermissionsExt;
+    let state = tempfile::tempdir().unwrap();
+    let resources = tempfile::tempdir().unwrap();
+    let parent = resources.path().join("skills");
+    let root = parent.join("skill");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("SKILL.md"), "original body").unwrap();
+    let engine =
+        Engine::open(state.path(), Arc::new(UnconfiguredModel), Limits::default()).unwrap();
+    let location = local_skill(&root);
+    let reference = VersionRef {
+        id: location.id.clone(),
+        revision: location.revision.clone(),
+    };
+    engine.install_default_skills(vec![location]).unwrap();
+    let thread = engine.create("/workspace".into()).await.unwrap();
+    fs::rename(&parent, resources.path().join("old-skills")).unwrap();
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("SKILL.md"), "replacement body").unwrap();
+    fs::set_permissions(&parent, fs::Permissions::from_mode(0o111)).unwrap();
+    let page = engine
+        .read_skill(&thread.id, reference, "SKILL.md", 0, 8192)
+        .await;
+    fs::set_permissions(&parent, fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(page.unwrap()["text"], "replacement body");
+    engine.shutdown().await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn skill_reads_reject_replacement_root_and_ancestor_symlinks_and_recover() {
+    use std::os::unix::fs::symlink;
+    let state = tempfile::tempdir().unwrap();
+    let resources = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let parent = resources.path().join("skills");
+    let root = parent.join("skill");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("SKILL.md"), "registered body").unwrap();
+    fs::write(outside.path().join("SKILL.md"), "outside body").unwrap();
+    fs::create_dir(outside.path().join("skill")).unwrap();
+    fs::write(outside.path().join("skill/SKILL.md"), "outside body").unwrap();
+    let engine =
+        Engine::open(state.path(), Arc::new(UnconfiguredModel), Limits::default()).unwrap();
+    let location = local_skill(&root);
+    let reference = VersionRef {
+        id: location.id.clone(),
+        revision: location.revision.clone(),
+    };
+    engine.install_default_skills(vec![location]).unwrap();
+    let thread = engine.create("/workspace".into()).await.unwrap();
+    for replaced in [&root, &parent] {
+        let retained = resources.path().join("retained");
+        fs::rename(replaced, &retained).unwrap();
+        symlink(outside.path(), replaced).unwrap();
+        assert!(
+            engine
+                .read_skill(&thread.id, reference.clone(), "SKILL.md", 0, 8192)
+                .await
+                .is_err(),
+            "accepted replacement symlink {}",
+            replaced.display()
+        );
+        fs::remove_file(replaced).unwrap();
+        fs::rename(&retained, replaced).unwrap();
+        assert_eq!(
+            engine
+                .read_skill(&thread.id, reference.clone(), "SKILL.md", 0, 8192)
+                .await
+                .unwrap()["text"],
+            "registered body"
+        );
+    }
+    engine.shutdown().await;
+}
+
+#[tokio::test]
 async fn local_skills_read_current_files_in_pages_without_loading_attachments_at_startup() {
     use std::io::{Seek, SeekFrom, Write};
     let state = tempfile::tempdir().unwrap();
@@ -688,9 +859,11 @@ impl areal_engine::model::Model for ReadSkillPages {
         let events = if results.is_empty() {
             ["SKILL.md","binary.bin"].into_iter().map(|resource|ModelEvent::ToolCall(ToolCall {
                 id:resource.into(),name:"skill_read".into(),arguments:json!({"skill":{"id":"fireworks-tech-graph","revision":"local-v1"},"resource":resource}).to_string()
-            })).collect::<Vec<_>>()
+            })).chain(std::iter::once(ModelEvent::ToolCall(ToolCall {
+                id: "list".into(), name: "skill_list".into(), arguments: "{}".into(),
+            }))).collect::<Vec<_>>()
         } else {
-            assert_eq!(results.len(), 2);
+            assert_eq!(results.len(), 3);
             let pages: Vec<serde_json::Value> = results
                 .iter()
                 .map(|m| serde_json::from_str(&m.text_content()).unwrap())
@@ -702,6 +875,7 @@ impl areal_engine::model::Model for ReadSkillPages {
             assert_eq!(pages[1]["text"], serde_json::Value::Null);
             assert_eq!(pages[1]["dataBase64"], "/wA=");
             assert_eq!(pages[1]["nextOffset"], 2);
+            assert_eq!(pages[2]["data"][0]["id"], "fireworks-tech-graph");
             vec![ModelEvent::text("verified exact text and binary pages")]
         };
         Ok(Box::pin(futures_util::stream::iter(
@@ -716,6 +890,15 @@ async fn model_skill_reads_avoid_duplicate_text_bytes_while_public_api_retains_b
     fs::write(root.path().join("SKILL.md"), "完整技能页").unwrap();
     fs::write(root.path().join("binary.bin"), [0xff, 0]).unwrap();
     let engine = Engine::open(state.path(), Arc::new(ReadSkillPages), Limits::default()).unwrap();
+    engine
+        .set_permissions(
+            areal_config::PermissionConfig {
+                mode: areal_config::PermissionMode::AskPermissions,
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
     engine
         .install_default_skills(vec![local_skill(root.path())])
         .unwrap();

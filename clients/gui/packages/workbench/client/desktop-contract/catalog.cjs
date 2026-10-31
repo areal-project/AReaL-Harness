@@ -12,7 +12,7 @@ const tasks = require("./management-tasks.cjs");
 /** @typedef {import('./provider.cjs').ModelParameters} ModelParameters */
 /** @typedef {import('./provider.cjs').ModelCapabilities} ModelCapabilities */
 /** @typedef {import('./provider.cjs').AcceptedModel} AcceptedModel */
-/** @typedef {{providerId:string|null,modelId:string,displayName:string,available:boolean,credentialState?:string,isDefault:boolean,parameters:ModelParameters,capabilities?:ModelCapabilities,reasoningEffortOptions:string[]}} ProjectlessModel */
+/** @typedef {{providerId:string|null,providerName?:string,modelId:string,displayName:string,available:boolean,credentialState?:string,isDefault:boolean,parameters:ModelParameters,capabilities?:ModelCapabilities,reasoningEffortOptions:string[]}} ProjectlessModel */
 /** @typedef {{models:ProjectlessModel[],lastAcceptedModel:AcceptedModel|null}} ProjectlessCatalog */
 /** @typedef {{operation:'catalog'}|{operation:'directory',path:string}|{operation:'prepare',requestId:string,directory?:string}} ProjectlessRequest */
 /** @typedef {{limit?:number,requestId?:string,viewEpoch?:number} & ({operation:'inbox',projectId?:string,sourceThreadId?:never}|({operation:'list'|'preview'|'observe'} & ({projectId?:string,sourceThreadId?:never}|{projectId:string,sourceThreadId:string})))} TasksRequest */
@@ -75,6 +75,7 @@ function projectlessModel(value) {
     (value.providerId === null || text(value.providerId)) &&
     identifier(value.modelId) &&
     text(value.displayName) &&
+    (value.providerName === undefined || typeof value.providerName === "string") &&
     typeof value.available === "boolean" &&
     typeof value.isDefault === "boolean" &&
     (value.credentialState === undefined || text(value.credentialState)) &&

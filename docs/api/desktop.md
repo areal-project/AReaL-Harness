@@ -119,7 +119,10 @@ Core 返回可选 `EffectiveConfig.permissions: {resources:"workspace"|"deployme
 
 受管命令权限不等于 Core、插件、MCP 或浏览器宿主的整体隔离。浏览器继续使用独立的页面取控与精确计划校验。详见[权限架构](../design/permissions.md)。
 
+桌面模型目录投影与项目外 `projectless` 目录可附带 `providerName`，取自生效配置的供应商名称；ChatGPT 订阅为 `ChatGPT`。Composer 使用该字段显示分组与提示，缺失时回退到 `providerId`；分组和提交身份仍使用 `providerId`，Core `areal/model/list` 协议不变。
+
 <a id="submissions"></a>
+
 ## 提交、配置与恢复
 
 Desktop 的 `reconcile` 接受 `{projectId, requestId?}`。携带原 `requestId` 时，现有请求归属路由选择实际执行宿主，再核对该宿主的收据；省略时保留项目级核对。核查不会重新提交创建或发送草稿。旧 Worktree 的独立创建保留在“设置 → 后台服务”的待核对记录中，不作为新草稿的操作提示；当前草稿独占本次创建的未知结果提示。缺少收据时保留原请求及资源，不推断成功或失败。
@@ -200,6 +203,8 @@ thread/configure 使用 expectedRevision，仅空闲且不压缩时生效。rese
 `areal/model/list` 还返回本实例的 `lastAcceptedModel`（无记录时为 null）：`{acceptedAt,model,modelId,reasoningEffort}`。`acceptedAt` 为 Core 受理时间（Unix 微秒），`model` 为供应商模型引用或隐式服务默认的 null，`modelId` 为实际模型名；`reasoningEffort=null` 与显式 `"none"` 不同。用户主会话的 `areal/turn/submit` 及显式 `areal/turn/start|enqueue` 将记录与受理收据写入同一 Thread 快照，并在响应/原收据中返回该字段。重复查询不刷新时间，后台执行不更新。桌面服务按时间汇总各项目的记录，持久保存新会话偏好；它不是已有会话配置的所有者。
 
 可选 `parameters.reasoningSummary` 接受 `auto` / `concise` / `detailed`，仅用于 Responses，按 Provider 默认 → Thread 参数合并；Provider/服务默认与 Thread 都未配置时不启用摘要请求。`areal/model/list.parameterCapabilities` 只在 Responses Provider 下包含 `reasoningSummary`，表示适配器支持传参，不保证供应商的每个模型都支持所选模式。`areal/model/list.reasoningEffortOptions` 返回自定义能力声明的允许值，未声明时返回现有 HTTP 适配器允许的 `none/minimal/low/medium/high/xhigh`（其他适配器为空），同样不保证远端每个模型都支持。Composer 从目录读取这些选项，通过原会话配置提交参数。事件与分段规则见 [Core 思考进度](core.md#思考进度)。
+
+可选 `parameters.serviceTier` 接受 `fast` / `default`，独立于推理强度。`fast` 请求优先服务，`default` 显式关闭并覆盖继承值；null／省略仍继承默认。`areal/model/list.parameterCapabilities` 包含 `serviceTier`，表示适配器可传参。Core 在 Chat Completions、Responses HTTP 和 WebSocket 中发送对应的 `service_tier`，供应商自行决定是否支持，不保证实际加速。该值沿会话配置和快照持久化；拒绝与继承规则见[本地服务模型配置](local-service.md)。
 
 options.readOnly 收窄 Scope 写根和网络；toolAllowlist 收窄 Profile；preapprovedTools 不能取消部署强制审批，且只匹配当前工具名；预批准读取工具不会豁免它触发的 hook。maxModelRounds 为 1–1024，最后一轮仅交接，不等于团队请求预算。Profile/Workflow 定义使用不可变 id/revision；Skill 引用不冻结资源内容，见下文。
 
@@ -319,7 +324,7 @@ GUI 的 `tasks` 只读命令支持 `operation: list | inbox`、可选 `projectId
 
 `task/create/list/read/pause/resume/cancel/subscribe/unsubscribe`、`channel/read/reply`、`inbox/list` 构成独立于 Thread 的任务控制与通信 API，详见 [Task 契约](tasks.md)。task/updated 通知携带 Task 投影和 channelSequence；客户端通过分页频道读取维护消息。server/status 与 drain 的 activeTasks 统计需要结算的任务工作：定时任务只在 Run 排队、执行、等待输入或子任务时计入，不计仅等待下一次触发的安排；暂停后仍在运行的定时 Run 继续计入。空闲定时安排可安全重启，保留时间、启用状态和历史。GUI/TUI/WebUI 可共享同一 Inbox；现有会话交互面板仍处理同步问题和审批。
 
-可选 `parameters.contextWindowTokens`（1–2000000）设置用户工作预算。Provider 模型元数据保留服务报告窗口，实际工作窗口取两者较小值。上下文 budget 返回 `windowTokens`、`outputReserveTokens`、`inputLimitTokens`、`windowSource`，以及可选的 `reportedWindowTokens`、`reportedWindowSource`、`userBudgetTokens`。实际来源为 `account/provider/user/modelDefault/fallback`；报告来源仅为 `account/provider`。用户预算较小时仍保留原报告来源。订阅缺少报告时使用系统兜底，不采用公开 API 型号默认值。旧记录缺少新增字段时仍可读取。模型配置或凭据不可用时仍可查看上下文，budget 返回 null。这些值控制本地预检，不扩大供应商能力。
+可选 `parameters.contextWindowTokens`（1–2000000）设置用户工作预算。实际工作窗口按用户显式值、Provider/账号报告默认值、渠道与完整型号内置默认值、系统兜底依次解析；用户值大于报告时也优先，不再取较小值。省略或清空用户参数恢复默认。持久模型目录的可选 `reportedContextWindowTokens`（TOML：`reported_context_window_tokens`，1–2000000）保存自动发现的默认值，与用户参数分离；旧记录中的参数仍按显式值保留，新版本读取旧配置兼容，旧 Core 不支持带新增字段的配置。上下文 budget 返回 `windowTokens`、`outputReserveTokens`、`inputLimitTokens`、`windowSource`，以及可选的 `reportedWindowTokens`、`reportedWindowSource`、`userBudgetTokens`。实际来源为 `account/provider/user/modelDefault/fallback`；报告来源仅为 `account/provider`。用户覆盖时仍保留报告及来源。订阅缺少报告时查订阅专用表，API 查 API 表，未知型号使用系统兜底；具体值见[模型窗口配置](../guides/configuration.md)。旧记录缺少新增诊断字段时仍可读取。模型配置或凭据不可用时仍可查看上下文，budget 返回 null。这些值控制本地预检，不扩大供应商能力。
 
 <a id="turn-fork-开发预览"></a>
 

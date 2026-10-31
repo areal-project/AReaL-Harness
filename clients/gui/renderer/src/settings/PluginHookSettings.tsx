@@ -1,4 +1,4 @@
-import type { PluginCommand, PluginMutationRequest } from "./PluginCenter.js";
+import type { PluginCommand, PluginMutationRequest } from "./pluginTypes.js";
 import { Input } from "@areal/ui";
 import { useI18n, UiMessageError, type UiMessage } from "../i18n/IntlProvider.js";
 import { SettingsDisclosure } from "./SettingsDisclosure.js";

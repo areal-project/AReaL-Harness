@@ -4,6 +4,8 @@
 
 Validated standalone channels are complete macOS arm64 and Linux x86_64 glibc bundles with the Python installer; both platforms share a Homebrew formula. Unlike the [official Codex CLI installation matrix](https://learn.chatgpt.com/docs/codex/cli#getting-started), this project has no complete npm or native Windows distribution yet. `cargo install areal-cli` also lacks the Runtime and bundled tools. See [installation](../guides/installation.en.md) for platform scope.
 
+Package staging loads the Cloud backend modules in a separate process and exercises the local read-state route to verify that public package entrypoints resolve inside the distribution. This check runs before signing and notarization.
+
 ## Channels and source gate
 
 Formal and preview CLI releases both ship complete bundles. macOS retains and strictly verifies input ad-hoc signatures without Developer ID distribution signing or Apple notarization. Formal GUI releases retain Developer ID signing, notarization, DMG installation and ZIP updates. GUI previews retain default ad-hoc signing, are installed manually, contain no formal update configuration, and do not advance the formal feed or promise automatic migration to formal releases. Previews are prereleases and never Latest; only a formal CLI release may become Latest.
@@ -74,7 +76,9 @@ GUI versions are declared by `clients/gui/package.json` and `clients/gui/app/pac
 
 Production GUI packages contain `areal-update.json` with the fixed feed `https://github.com/areal-project/AReaL-Harness/releases/download/gui-update-channel/`. The `gui-update-channel` prerelease carries only the current `latest-mac.yml`; that manifest points to the immutable ZIP in `gui-v<version>` and includes size and SHA-512. Only same-repository, same-version assets are accepted. Local ad-hoc packages have no update configuration.
 
-The macOS `dir` target does not automatically generate native update configuration. Production packaging writes `app-update.yml` before signing, using the same product feed and a fixed download cache name, and verifies the packaged configuration. Automatic builder uploads remain disabled. Discovering an update does not prove download works. The sidebar update button shows download progress, displays failures directly, and allows retries.
+The macOS `dir` target does not automatically generate native update configuration. Production packaging writes `app-update.yml` before signing, using the same product feed and a fixed download cache name, and verifies the packaged configuration. Automatic builder uploads remain disabled. Discovering an update does not prove download works. The sidebar update button shows download progress, displays failures directly, and allows retries. On update reopen, reconcile the original receipt and confirm the previous backend has exited before resuming initialization. Unknown or unfinished operations retain their recovery references. An explicit backend stop still requires manual reconnection.
+
+Installation checks idle state, safely stops the backend, and checks package users before native Squirrel preparation. Only crash reporters matched to the current session by UID, real executable path, stable process identity, and the corresponding database are excluded. Other profiles, independent CLI processes, and unknown package users still block installation. Download or digest failures preserve the backend. Native preparation failures occur after safe shutdown and require reopening to check the installed version rather than automatic installation retries.
 
 Run from a clean, merged commit:
 

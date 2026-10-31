@@ -117,6 +117,21 @@ test("registered tests reject macOS temporary literals in source and imported he
   assert.equal(run().status, 0);
 });
 
+test("source audit patterns do not exempt actual temporary path literals", async (t) => {
+  const run = await fixture(t, [one, two]);
+  const pattern = String.raw`export const audit = (source) => /\/private\/tmp/.test(source);`;
+  await writeFile(join(run.root, "scripts/one.mjs"), 'import "./helper.mjs";\n');
+  await writeFile(join(run.root, "scripts/helper.mjs"), pattern);
+  assert.equal(run().status, 0);
+  await writeFile(
+    join(run.root, "scripts/helper.mjs"),
+    `${pattern}\nexport const location = "/private/tmp/case";\n`,
+  );
+  const actualPath = run();
+  assert.notEqual(actualPath.status, 0);
+  assert.match(actualPath.stderr, /helper\.mjs.*platform-specific temporary path/);
+});
+
 test("runner reports preserve failed attempts and separate Core from portable evidence", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "areal-runner-report-"));
   t.after(() => rm(root, { recursive: true, force: true }));

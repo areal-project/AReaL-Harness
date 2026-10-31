@@ -80,6 +80,13 @@ export class MobileWorkspace {
         })
         .catch(() => {});
   }
+  back() {
+    const page = this.state.page;
+    if (page.kind === "projects") return;
+    this.navigate(
+      page.kind === "work" ? { kind: "projects" } : { kind: "work", projectId: page.projectId },
+    );
+  }
   navigate(page) {
     this.release();
     this.epoch++;

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "plugin-resources",
-  "intent": "从原任务查找插件，查看详情并调整当前项目启用状态，观察真实结果后返回原任务",
+  "intent": "无需启动项目即可浏览本地插件目录，查看组件状态并分别授权执行，保留原操作回执与任务返回",
   "pattern": "P-RESOURCES",
   "target": "renderer/src/settings/PluginCenter.tsx",
   "runtime": "desktop",
@@ -11,20 +11,9 @@
     "visualTarget": "既有生产插件中心及Base语义角色，非外部产品像素对齐"
   },
   "slots": {
-    "toolbar": [
-      "SettingsSearchInput",
-      "Button",
-      "SettingsSegmentedTabs"
-    ],
-    "list": [
-      "Button",
-      "Switch"
-    ],
-    "detail": [
-      "SettingsDisclosure",
-      "Feedback",
-      "Button"
-    ]
+    "toolbar": ["SettingsSearchInput", "Button", "SettingsSegmentedTabs"],
+    "list": ["Button", "Switch"],
+    "detail": ["SettingsDisclosure", "Feedback", "Button"]
   },
   "states": [
     {
@@ -61,32 +50,67 @@
       "id": "return",
       "condition": "用户从详情返回列表，再返回原任务",
       "expected": "草稿、当前阅读和project/thread保留，焦点合理恢复，不发送新消息"
+    },
+    {
+      "id": "offline",
+      "condition": "没有项目或当前项目Core未连接",
+      "expected": "读取同产物CLI的本地Store快照，显示作用域、revision和读取时间，运行状态明确未观察；浏览不启动项目Core，继续安装时给出显式选择项目或连接后台动作"
+    },
+    {
+      "id": "mixed-components",
+      "condition": "Skills已启用、MCP等待登录、可选Hook未信任",
+      "expected": "一个主状态和下一步，Skills/MCP/Auth/Hook各自事实可读；可选Hook不阻塞Skills"
+    },
+    {
+      "id": "install-trust",
+      "condition": "来源解析完成且source/revision/digest匹配",
+      "expected": "一次明确确认安装，无人工比哈希勾选；MCP执行与Hook定义仍需独立精确快照授权"
+    },
+    {
+      "id": "unknown-reading",
+      "condition": "当前插件写入回执未确认，切换查看其他插件或项目",
+      "expected": "原requestId及归属保留，阅读切换可用，只能查询原操作，不自动重放"
+    },
+    {
+      "id": "configuration",
+      "condition": "插件声明普通字段、必填敏感字段或已保存配置",
+      "expected": "主下一步指向缺失配置；密码保存后清空，空输入保留已保存秘密，显式清除沿原回执处理；公开快照不返回私有引用"
+    },
+    {
+      "id": "command-profile",
+      "condition": "已安装Commands或Agents并已连接普通任务",
+      "expected": "保留命名空间、固定组件引用及原始参数，沿普通Message提交；Agent草稿选用真实Profile并接受Core准入"
+    },
+    {
+      "id": "development",
+      "condition": "用户链接现有本地来源并修改包内容",
+      "expected": "显示显式链接状态与运行诊断，活动轮次保持固定版本，后续轮次取新快照，执行信任独立重审"
+    },
+    {
+      "id": "credentials-reload",
+      "condition": "其他已运行项目尚未载入共享配置中的新秘密引用",
+      "expected": "说明该Core需要重载；当前项目提供空闲drain与重新载入入口，不自动重启其他项目"
+    },
+    {
+      "id": "doctor",
+      "condition": "用户主动读取插件诊断",
+      "expected": "仅展示静态Store事实、作用域与读取时间，运行状态未观察，与连接观察分别展示"
     }
   ],
   "conditions": {
-    "themes": [
-      "light",
-      "dark"
-    ],
-    "fontSizes": [
-      14,
-      18
-    ],
-    "widthModes": [
-      "wide",
-      "narrow"
-    ],
-    "reducedMotion": [
-      false,
-      true
-    ]
+    "themes": ["light", "dark"],
+    "fontSizes": [14, 18],
+    "widthModes": ["wide", "narrow"],
+    "reducedMotion": [false, true]
   },
   "invariants": [
     "安装、启用范围与连接是独立事实，不由文案互相推断",
     "管理动作沿实际Electron/Main/Core，fixture只提供隔离本地包和外部模型事件",
     "目录/详情迟到结果不能写入其他项目或插件；隐藏页不能抢焦点",
     "不复制Token或列表框架，域布局仍归PluginCenter，公共控件沿原所有者",
-    "模型媒体分析不可用且未授权外发，使用本地动作、帧和日志核查动态行为"
+    "模型媒体分析不可用且未授权外发，使用本地动作、帧和日志核查动态行为",
+    "两个入口共享资源路由与详情，外层宿主不改变执行授权",
+    "展示投影不改写Core、认证或Hook领域状态"
   ],
   "evidence": {
     "status": "pending",

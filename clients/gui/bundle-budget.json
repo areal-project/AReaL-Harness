@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "description": "Production build byte budgets with 5% headroom. HTML entries include static imports and modulepreloads. Review every budget change.",
-  "totalJsBytes": 19707307,
+  "totalJsBytes": 20741945,
   "entries": {
-    "index.html": 4050093,
+    "index.html": 4292557,
     "remote.html": 3420541
   },
   "lazyChunks": {
@@ -357,6 +357,7 @@
     "tasl": 3446,
     "tcl": 4644,
     "templ": 25270,
+    "ScheduledTaskEditDialog": 5216,
     "TerminalPane": 334880,
     "terraform": 11952,
     "tex": 10221,

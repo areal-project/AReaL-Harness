@@ -59,7 +59,21 @@ export function WorkbenchPlugins({
       onSelectProject={(id) => {
         session.selectProject(id);
       }}
-      onReturnToTask={pluginTaskOrigin ? returnToPluginTask : undefined}
+      onReturnToTask={pluginTaskOrigin ? () => returnToPluginTask() : undefined}
+      onRunCommand={
+        thread?.id && project
+          ? async (command) => {
+              await resourceAction("send", {
+                projectId: project.id,
+                threadId,
+                text: "",
+                command,
+                requestId: crypto.randomUUID(),
+              });
+              returnToPluginTask({ projectId: project.id, threadId });
+            }
+          : undefined
+      }
       onStartDraft={startResourceDraft}
     />
   );

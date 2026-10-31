@@ -4,7 +4,9 @@ import { DeviceStore, parsePairingLink } from "./device-store.mjs";
 
 /** @typedef {{kind:"loading"|"connecting"|"offline"|"background"|"revoked"|"blocked"}|{kind:"unpaired",cleared?:boolean,error?:"invalidLink"|"pairFailed"}|{kind:"pairing",fingerprint:string}|{kind:"connected",ready:{capabilities:string[],grantRevision:number,hostId:string,gatewayGeneration:string},remembered:boolean,fingerprint:string}} MobileConnectionState */
 export class MobileClient {
-  constructor({ keychain, socket = (url) => new WebSocket(url) }) {
+  /** @param {{keychain: import("./device-store.mjs").DeviceStore["keychain"], clientKind:"ios"|"android", socket?:(url:string)=>WebSocket}} options */
+  constructor({ keychain, clientKind, socket = (url) => new WebSocket(url) }) {
+    this.clientKind = clientKind;
     this.store = new DeviceStore(keychain);
     this.identities = new ClientState({ createIdentity, identityId, store: this.store });
     this.socket = socket;
@@ -98,7 +100,7 @@ export class MobileClient {
       host: target.host,
       room: target.room,
       hello: {
-        clientKind: "ios",
+        clientKind: this.clientKind,
         displayName: deviceName,
         ...(target.invite ? { inviteSecret: target.invite } : {}),
       },

@@ -16,7 +16,7 @@ export async function runAccessibilityKeyboard(page, checks) {
     await page.goto(`${origin}/design-system.html?content-system`);
     const region = page.getByRole("region", { name: "内容与决策系统", exact: true });
     const approval = region.getByRole("region", { name: "审批预览", exact: true });
-    await approval.getByText("查看完整请求", { exact: true }).focus();
+    await approval.locator("summary").filter({ hasText: "查看完整请求" }).focus();
     const button = approval.getByRole("button", { name: decision, exact: true });
     await tabTo(page, button);
     await page.keyboard.press("Enter");

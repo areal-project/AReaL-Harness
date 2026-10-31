@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { desktopError } from "@areal/workbench/desktop-contract/transport";
 import type { DesktopResult } from "@areal/workbench/desktop-contract";
-import type { FileOpenTargets, Snapshot, UpdateState } from "./services.js";
+import type { FileOpenTargets, Snapshot, UpdateState, WorkspaceImage } from "./services.js";
 
 const fields = z.record(z.string(), z.unknown());
 const target = z.object({
@@ -149,9 +149,13 @@ export const readProjectionMessage = (value: unknown) =>
     .parse(value);
 export function readFileOpenResult(
   value: unknown,
-): FileOpenTargets | { saved: boolean } | Record<string, never> {
+): FileOpenTargets | { saved: boolean } | WorkspaceImage | Record<string, never> {
   return z
     .union([
+      z.object({
+        mimeType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+        bytes: z.instanceof(Uint8Array),
+      }),
       z.object({
         targets: z.array(z.object({ id: z.string(), label: z.string() })),
         preferred: z.string(),

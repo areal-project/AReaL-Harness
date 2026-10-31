@@ -374,7 +374,7 @@ async fn existing_session_uses_current_report_without_rewriting_accepted_context
 }
 
 #[tokio::test]
-async fn account_report_caps_user_budget_and_missing_report_uses_fallback() {
+async fn account_defaults_allow_user_overrides_and_missing_reports_use_subscription_defaults() {
     let data = tempfile::tempdir().unwrap();
     let engine = Engine::open(
         data.path(),
@@ -385,7 +385,7 @@ async fn account_report_caps_user_budget_and_missing_report_uses_fallback() {
         },
     )
     .unwrap();
-    let provider = json!({"id":"account","revision":0,"endpoint":"http://127.0.0.1:9/v1","protocol":"responses","models":["gpt-6.1-sol","gpt-6-sol"],"contextSource":"account","parameters":{},"modelParameters":{"gpt-6.1-sol":{"contextWindowTokens":500000}}});
+    let provider = json!({"id":"account","revision":0,"endpoint":"http://127.0.0.1:9/v1","protocol":"responses","models":["gpt-6.1-sol","gpt-6-sol","gpt-6.1-terra","unlisted"],"contextSource":"account","parameters":{},"modelParameters":{"gpt-6.1-sol":{"contextWindowTokens":500000}}});
     engine
         .upsert_provider(serde_json::from_value(provider).unwrap(), 0)
         .await
@@ -393,8 +393,11 @@ async fn account_report_caps_user_budget_and_missing_report_uses_fallback() {
     let thread = engine.create("/workspace".into()).await.unwrap();
     for (revision, model, budget, expected, source) in [
         (1, "gpt-6.1-sol", 64000, 64000, "user"),
-        (2, "gpt-6.1-sol", 900000, 500000, "account"),
-        (3, "gpt-6-sol", 0, 131072, "fallback"),
+        (2, "gpt-6.1-sol", 900000, 900000, "user"),
+        (3, "gpt-6.1-sol", 0, 500000, "account"),
+        (4, "gpt-6-sol", 0, 272000, "modelDefault"),
+        (5, "gpt-6.1-terra", 0, 500000, "modelDefault"),
+        (6, "unlisted", 0, 131072, "fallback"),
     ] {
         let parameters = if budget == 0 {
             json!({})
@@ -415,15 +418,15 @@ async fn account_report_caps_user_budget_and_missing_report_uses_fallback() {
         );
         assert_eq!(
             context["budget"]["reportedWindowSource"],
-            if budget == 0 {
-                Value::Null
-            } else {
+            if model == "gpt-6.1-sol" {
                 json!("account")
+            } else {
+                Value::Null
             }
         );
     }
     let legacy = engine.create("/workspace".into()).await.unwrap();
-    engine.configure_thread(serde_json::from_value(json!({"threadId":legacy.id,"expectedRevision":1,"model":{"providerId":"account","modelId":"gpt-6.1-sol"},"parameters":{"contextWindowTokens":500000}})).unwrap()).await.unwrap();
+    engine.configure_thread(serde_json::from_value(json!({"threadId":legacy.id,"expectedRevision":1,"model":{"providerId":"account","modelId":"gpt-6.1-sol"},"parameters":{"contextWindowTokens":900000}})).unwrap()).await.unwrap();
     engine.shutdown().await;
     drop(engine);
     let path = data.path().join(format!("{}.json", legacy.id));
@@ -443,15 +446,15 @@ async fn account_report_caps_user_budget_and_missing_report_uses_fallback() {
     )
     .unwrap();
     let mut provider = record["thread"]["desktop"]["configuration"]["provider"].clone();
-    provider["modelParameters"]["gpt-6.1-sol"]["contextWindowTokens"] = json!(1000000);
+    provider["modelParameters"]["gpt-6.1-sol"]["contextWindowTokens"] = json!(400000);
     engine
         .upsert_provider(serde_json::from_value(provider).unwrap(), 1)
         .await
         .unwrap();
     let context = engine.context_read(&legacy.id, 0, 16).await.unwrap();
-    assert_eq!(context["budget"]["windowTokens"], 500000);
-    assert_eq!(context["budget"]["reportedWindowTokens"], 1000000);
-    assert_eq!(context["budget"]["userBudgetTokens"], 500000);
+    assert_eq!(context["budget"]["windowTokens"], 900000);
+    assert_eq!(context["budget"]["reportedWindowTokens"], 400000);
+    assert_eq!(context["budget"]["userBudgetTokens"], 900000);
     assert_eq!(context["budget"]["windowSource"], "user");
     let next = engine
         .start(&legacy.id, vec![Input::text("preserve saved budget")])
@@ -459,7 +462,7 @@ async fn account_report_caps_user_budget_and_missing_report_uses_fallback() {
         .unwrap();
     assert_eq!(
         next.configuration.unwrap().parameters.context_window_tokens,
-        Some(500000)
+        Some(900000)
     );
     engine.wait(&legacy.id).await.unwrap();
     engine.shutdown().await;

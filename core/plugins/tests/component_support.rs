@@ -113,12 +113,29 @@ fn unsupported_declarations_stay_individual_opaque_and_optional() {
     for kind in ["commands", "agents", "uiSurfaces"] {
         let selected: Vec<_> = report.iter().filter(|row| row["kind"] == kind).collect();
         assert_eq!(selected.len(), 2, "lost {kind} declaration");
-        assert!(selected.iter().all(|row| row["status"] == "unsupported"));
-        assert!(
-            selected
-                .iter()
-                .all(|row| !row["reasonCodes"].as_array().unwrap().is_empty())
-        );
+        if kind == "agents" {
+            assert_eq!(
+                selected
+                    .iter()
+                    .filter(|row| row["status"] == "supported")
+                    .count(),
+                1
+            );
+            assert_eq!(
+                selected
+                    .iter()
+                    .filter(|row| row["status"] == "unsupported")
+                    .count(),
+                1
+            );
+        } else {
+            assert!(selected.iter().all(|row| row["status"] == "unsupported"));
+            assert!(
+                selected
+                    .iter()
+                    .all(|row| !row["reasonCodes"].as_array().unwrap().is_empty())
+            );
+        }
     }
     let serialized = serde_json::to_string(&detail["installedComponentSupport"]).unwrap();
     for secret in ["SECRET_COMMAND", "SECRET_AGENT", "SECRET_UI"] {
