@@ -61,6 +61,26 @@ describe("agent reply workspace media", () => {
     expect(images).toEqual(["./out/a.png", "../b.png", "/home/me/repo/c.png"]);
   });
 
+  it("restores local HTML file URI links with filename escapes decoded exactly once", () => {
+    const { markup, cards } = reply(
+      "[页面](file:///tmp/%E4%B8%AD%E6%96%87%20%2520%23L12%3F.html)\n\n[HTM](file://localhost/tmp/page.HTM)",
+    );
+    expect(cards).toEqual([
+      ["/tmp/中文 %20#L12?.html", "页面"],
+      ["/tmp/page.HTM", "HTM"],
+    ]);
+    expect(markup).not.toContain("blocked");
+    expect(markup).toContain("markdown-file-reference");
+  });
+
+  it("keeps nonlocal, malformed, and non-HTML file URI links blocked", () => {
+    const { cards, images } = reply(
+      "[remote](file://server/tmp/page.html)\n\n[bad](file:///tmp/%ZZ.html)\n\n[text](file:///tmp/a.txt)\n\n![HTML](file:///tmp/page.html)",
+    );
+    expect(cards).toEqual([]);
+    expect(images).toEqual([]);
+  });
+
   it("keeps Core media URIs and rejects file URLs", () => {
     const { markup, images } = reply("![a](areal://blob/abc)\n\n![b](file:///etc/passwd)");
     expect(images).toEqual(["areal://blob/abc"]);

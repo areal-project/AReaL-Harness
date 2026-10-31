@@ -54,3 +54,69 @@ test("PDF bytes follow the selected worktree and reject invalid, oversized, and 
     await rm(home, { recursive: true, force: true });
   }
 });
+
+test("HTML documents outside the workspace open with the system handler and a local thread owner", async () => {
+  const home = await realpath(await mkdtemp(join(tmpdir(), "areal-html-files-")));
+  try {
+    const root = join(home, "source");
+    const directory = join(home, "tree");
+    await mkdir(root);
+    await mkdir(directory);
+    const outside = join(home, "中文 %20#L12?.html");
+    await writeFile(outside, "<!doctype html><title>interactive document</title>");
+    await writeFile(join(directory, "local.HTM"), "<!doctype html>");
+    await writeFile(join(home, "script.command"), "echo unsafe");
+    await symlink(join(home, "script.command"), join(directory, "alias.html"));
+    await symlink(outside, join(directory, "alias.txt"));
+    await mkdir(join(directory, "directory.html"));
+    const thread = { id: "t", worktree: { state: "ready", directory } };
+    const opened = [];
+    let authorized = 0;
+    let handoffError = "";
+    const dependencies = {
+      backend: {
+        snapshot: () => ({
+          library: { settings: { fileOpenTarget: "finder" } },
+          projects: [{ id: "p", root, state: { threads: { t: thread } } }],
+        }),
+      },
+      home,
+      shell: {
+        openPath: async (path) => {
+          opened.push(path);
+          return handoffError;
+        },
+        showItemInFolder: () => assert.fail("HTML uses the system document handler"),
+      },
+      authorize: () => {
+        authorized += 1;
+      },
+      chooseSave: () => assert.fail("opening HTML never saves"),
+    };
+    const request = { operation: "openHtml", projectId: "p", threadId: "t", path: outside };
+    await fileOpen(dependencies, request);
+    await fileOpen(dependencies, { ...request, path: "local.HTM" });
+    assert.deepEqual(opened, [outside, join(directory, "local.HTM")]);
+    assert.equal(authorized, 2);
+    await assert.rejects(fileOpen(dependencies, { ...request, operation: "open" }), /当前工作区/);
+    for (const path of ["alias.html", "alias.txt", "directory.html", "missing.html"])
+      await assert.rejects(fileOpen(dependencies, { ...request, path }));
+    await assert.rejects(fileOpen(dependencies, { ...request, threadId: undefined }));
+    await assert.rejects(fileOpen(dependencies, { ...request, threadId: "unknown" }));
+    thread.cloud = { workspace: "remote" };
+    await assert.rejects(fileOpen(dependencies, request), /云端|本地/);
+    delete thread.cloud;
+    thread.worktree.state = "binding";
+    await assert.rejects(fileOpen(dependencies, request), /绑定尚未确认/);
+    thread.worktree.state = "ready";
+    handoffError = "system document handler failed";
+    await assert.rejects(fileOpen(dependencies, request), /system document handler failed/);
+    dependencies.authorize = () => {
+      throw new Error("sender no longer authorized");
+    };
+    await assert.rejects(fileOpen(dependencies, request), /sender no longer authorized/);
+    assert.equal(opened.length, 3);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
