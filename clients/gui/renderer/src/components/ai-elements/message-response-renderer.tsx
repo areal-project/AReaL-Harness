@@ -48,6 +48,20 @@ import { parsePluginStableId } from "../../mentions/mentionMarkdown.js";
 function relativeFileLinks() {
   return (tree: { type?: string; url?: string; children?: any[] }) => {
     const visit = (node: typeof tree) => {
+      if (node.type === "link" && node.url && /^file:/i.test(node.url)) {
+        try {
+          const uri = new URL(node.url);
+          const path = decodeURIComponent(uri.pathname);
+          if (
+            uri.protocol === "file:" &&
+            (!uri.hostname || uri.hostname === "localhost") &&
+            !/%(?:2f|5c)/i.test(uri.pathname) &&
+            !path.includes("\0") &&
+            /\.html?$/i.test(path)
+          )
+            node.url = uri.pathname;
+        } catch {}
+      }
       if (
         (node.type === "link" || node.type === "image") &&
         node.url &&

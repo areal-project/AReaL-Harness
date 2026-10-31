@@ -65,6 +65,7 @@ import {
 } from "react";
 import { TimelineBottomButton } from "./TimelineBottomButton.js";
 import { Button } from "./components/ui/button.js";
+import { toast } from "./components/ui/toast.js";
 import { Popover, PopoverContent } from "./components/ui/popover.js";
 import { MessageResponse } from "./components/ai-elements/message.js";
 import { SentAttachment } from "./MessageAttachment.js";
@@ -550,16 +551,26 @@ export function Messages({
       ) : null,
     [project.id, fileOpen, onFile],
   );
-  // Binary files cannot be shown in the file pane; hand them to the desktop instead.
   const openReplyFile = useCallback(
     (path: string, line?: number) => {
+      if (fileOpen && /\.html?$/i.test(path)) {
+        void fileOpen({
+          operation: "openHtml",
+          projectId: project.id,
+          threadId: thread.id,
+          path,
+        }).catch((error: unknown) =>
+          toast(error instanceof Error ? error.message : String(error), "error"),
+        );
+        return;
+      }
       if (fileOpen && opensOutside(path))
         void fileOpen({ operation: "open", projectId: project.id, path }).catch(() =>
           onFile(path, line),
         );
       else onFile(path, line);
     },
-    [fileOpen, onFile, project.id],
+    [fileOpen, onFile, project.id, thread.id],
   );
   const sendGenUi = async (prompt: string) => {
     if (readOnly || !project.state?.connected || localThread.desktop?.archived)

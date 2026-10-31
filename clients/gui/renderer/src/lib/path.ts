@@ -45,6 +45,8 @@ export function decodeFilePathUriEscapes(path: string): string {
     // markdown/tool 输出里的本地文件路径可能已经按 URI 编码，
     // 例如 workspace 名里的空格会变成 %20。这里用 decodeURI 只还原路径文本，
     // 保留 %2F 这类分隔符转义，避免把文件名内容误拆成新的路径层级。
+    const decoded = decodeURIComponent(path);
+    if (/\.html?$/i.test(decoded)) return /%(?:2f|5c)/i.test(path) ? path : decoded;
     return decodeURI(path);
   } catch {
     return path;

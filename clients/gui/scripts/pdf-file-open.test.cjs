@@ -101,6 +101,13 @@ test("HTML documents outside the workspace open with the system handler and a lo
     await assert.rejects(fileOpen(dependencies, { ...request, operation: "open" }), /当前工作区/);
     for (const path of ["alias.html", "alias.txt", "directory.html", "missing.html"])
       await assert.rejects(fileOpen(dependencies, { ...request, path }));
+    for (const path of [
+      "//server/page.html",
+      "\\\\server/page.html",
+      "/\\server/page.html",
+      "\\/server/page.html",
+    ])
+      await assert.rejects(fileOpen(dependencies, { ...request, path }), /无效文件打开请求/);
     await assert.rejects(fileOpen(dependencies, { ...request, threadId: undefined }));
     await assert.rejects(fileOpen(dependencies, { ...request, threadId: "unknown" }));
     thread.cloud = { workspace: "remote" };

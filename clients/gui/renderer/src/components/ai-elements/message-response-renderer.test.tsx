@@ -63,11 +63,12 @@ describe("agent reply workspace media", () => {
 
   it("restores local HTML file URI links with filename escapes decoded exactly once", () => {
     const { markup, cards } = reply(
-      "[页面](file:///tmp/%E4%B8%AD%E6%96%87%20%2520%23L12%3F.html)\n\n[HTM](file://localhost/tmp/page.HTM)",
+      "[页面](file:///tmp/%E4%B8%AD%E6%96%87%20%2520%23L12%3F.html)\n\n[HTM](file://localhost/tmp/page.HTM)\n\n[Windows](file:///C:/output/a%20b.html)",
     );
     expect(cards).toEqual([
       ["/tmp/中文 %20#L12?.html", "页面"],
       ["/tmp/page.HTM", "HTM"],
+      ["/C:/output/a b.html", "Windows"],
     ]);
     expect(markup).not.toContain("blocked");
     expect(markup).toContain("markdown-file-reference");
@@ -75,10 +76,22 @@ describe("agent reply workspace media", () => {
 
   it("keeps nonlocal, malformed, and non-HTML file URI links blocked", () => {
     const { cards, images } = reply(
-      "[remote](file://server/tmp/page.html)\n\n[bad](file:///tmp/%ZZ.html)\n\n[text](file:///tmp/a.txt)\n\n![HTML](file:///tmp/page.html)",
+      "[remote](file://server/tmp/page.html)\n\n[bad](file:///tmp/%ZZ.html)\n\n[text](file:///tmp/a.txt)\n\n[slash](file:///%2fserver/page.html)\n\n[backslash](file:///%5c%5cserver/page.html)\n\n![HTML](file:///tmp/page.html)",
     );
     expect(cards).toEqual([]);
     expect(images).toEqual([]);
+  });
+
+  it("opens the document from historical URI fragments, queries, and escaped extensions", () => {
+    const { markup, cards } = reply(
+      "[section](file:///tmp/page.html#quiz)\n\n[query](file:///tmp/page.html?v=1)\n\n[escaped](file:///tmp/a%23b.%68tml)",
+    );
+    expect(cards).toEqual([
+      ["/tmp/page.html", "section"],
+      ["/tmp/page.html", "query"],
+      ["/tmp/a#b.html", "escaped"],
+    ]);
+    expect(markup).not.toContain("blocked");
   });
 
   it("keeps Core media URIs and rejects file URLs", () => {

@@ -25,6 +25,12 @@ export type FileOpenRequest =
   | { operation: "targets" }
   | { operation: "setDefault"; target: string }
   | {
+      operation: "openHtml";
+      projectId: string;
+      threadId: string;
+      path: string;
+    }
+  | {
       operation: "open" | "reveal" | "saveAs" | "readImage" | "readPdf";
       projectId: string;
       threadId?: string;

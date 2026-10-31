@@ -204,4 +204,10 @@ Core 仅在已授权 MCP 连接边界解析秘密引用，敏感值只绑定声�
 `TraceActivity.retryDelayMs` 保存计划等待毫秒数，`retryDisposition: "exhausted"` 只在原重试决策确认额度耗尽时出现。客户端按 `logicalId` 聚合 `model` 和 `retryWait`，根据同一逻辑请求的成功活动判断恢复，不能用其他请求的失败推断重试耗尽。新增 `areal/turn/traceActivity` 通知携带 `threadId`、`turnId` 和已持久化的单条 `activity`；快照仍是重连权威。`areal/thread/configured` 同时携带完整 `modelChanges`。上述字段为向后兼容的可选事实或缺省集合，不改变执行和重试策略。
 ### 桌面 PDF 文件读取
 
-桌面 `fileOpen` 窄桥增加 `readPdf` 操作，参数为 `{ operation: "readPdf", projectId, threadId?, path }`，成功返回 `{ mimeType: "application/pdf", bytes: Uint8Array }`。这是本地桌面桥能力，不是 Core RPC；现有操作和请求保持兼容。带 `threadId` 时由宿主核对已就绪的执行工作区，路径经 realpath 限制在该根内。只读取普通文件，预算为 20 MiB，读取中版本或归属改变会失败。文件头检查后仍由独立 PDF.js worker 负责格式解析，失败不触发外部打开。Renderer 不接受任意 URL、file URL 或脚本动作，外部打开仍是用户显式的 `open` 操作。
+桌面 `fileOpen` 窄桥增加 `readPdf` 操作，参数为 `{ operation: "readPdf", projectId, threadId?, path }`，成功返回 `{ mimeType: "application/pdf", bytes: Uint8Array }`。这是本地桌面桥能力，不是 Core RPC；现有操作和请求保持兼容。带 `threadId` 时由宿主核对已就绪的执行工作区，路径经 realpath 限制在该根内。只读取普通文件，预算为 20 MiB，读取中版本或归属改变会失败。文件头检查后仍由独立 PDF.js worker 负责格式解析，失败不触发外部打开。Renderer 不接受任意 URL、file URL 或脚本动作，外部打开仍由用户显式触发。
+
+### 桌面 HTML 文档打开
+
+桌面 `fileOpen` 窄桥提供 `{ operation: "openHtml", projectId, threadId, path }`，成功返回 `{}`。这是本地桌面桥能力，不是 Core RPC。宿主核对项目和会话归属，拒绝云端会话及尚未就绪的工作树。相对路径按该会话执行目录解析，也接受工作区外的绝对路径。请求路径与 realpath 后的路径都须以 `.html` 或 `.htm` 结尾，且目标须为普通文件。异步解析后重新核对执行目录归属，再交给系统默认 HTML 应用；该操作不使用编辑器打开偏好。打开错误显示可见反馈。通用 `open`、读取、定位与另存操作继续限制在工作区根内。
+
+回复中的本地 HTML 文件链接使用此操作，兼容历史 `file:///` 和 `file://localhost/` URI。Markdown 链接边界仅为 HTML 链接规范化本地 URI，保留文件名中的空格、非 ASCII 字符、百分号、`#` 和 `?`，不接受远程 authority；图片继续禁用 `file:` 协议。URI 中的查询与片段不参与文件路径解析，仅打开对应文档。
