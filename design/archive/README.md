@@ -12,6 +12,7 @@
 | [content/native-content-reference-review.md](content/native-content-reference-review.md) | 原生内容参考评审 | 同上 |
 | [content/interactive-content-research.md](content/interactive-content-research.md) | 交互内容调研 | 同上 |
 | [research/t3code-workbench-review.md](research/t3code-workbench-review.md) | T3 输入、对话流与 Thread 面板的源码清单、AReaL 对照及待评审指标 | 固定源码快照的研究证据，采纳范围待评审，不作为现行规则 |
+| [research/t3code-comprehensive-comparison.md](research/t3code-comprehensive-comparison.md) | T3 对话状态、输入、资源面板、PR 与设备的功能对比及源码证据 | 扩大范围的研究快照，含前轮判断修正，不作为现行规则 |
 
 归档文件不再随实现更新。需要恢复其中的规则时，把规则写回所属主题，不在这里修改。
 
