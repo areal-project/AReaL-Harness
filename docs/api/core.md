@@ -177,7 +177,7 @@ Responses 的函数参数在成功终态结算最终用量后才进行 JSON 校�
 
 Chat 工具 index 缺失、null、非整数类型、负数、超出 u64 范围或片段非对象时，使用明确的内部协议错误，只进入上述有限恢复，不进入网络 watchdog，也不作为 Workgroup 推理检查点。Core 不猜测编号或片段归属；数量、参数和缓冲预算错误不自动恢复。失败响应的模型视图被丢弃，已有确认工具、steer 和已观测 usage 保留。解析错误在已排队事件交付后立即传播；同事件或前序事件的已解析 usage 只累计一次，直接 EOF 保留原始错误类型。
 
-`limits.max_goal_report_rounds` 默认为 0，范围 0–8，显式启用独立的有界 Goal 报告阶段。活跃根 Goal 在无工具结束且本 Turn 缺少报告时（含纯推理或空白回复），Core 仅保留已授权的 `goal_update`；若 `limitsPending` 则先仅保留 `goal_set_limits`。内置 HTTP 使用 `tool_choice="required"`、禁止并行且最多一次调用；自定义 Model 通过 `ToolCallLimits.require_call` 获得此要求。成功流完整结算后，Core 在执行前拒绝目录外调用。当前 Goal revision 随请求提供，报告仍须满足既有计划、验证和输入检查；有效报告后恢复正常结算、Stop hook 与最终交接。额度耗尽明确返回 `GOAL_PROGRESS_UNREPORTED`，不把缺少报告的回合记为正常完成。报告检测不依赖通用响应恢复额度，所有请求仍计入原根预算，不代写报告、增加权限或重放已确认操作；默认 0 保留旧行为。
+`limits.max_goal_report_rounds` 默认为 0，范围 0–8，显式启用独立的有界 Goal 报告阶段。活跃根 Goal 在无工具结束且本 Turn 缺少报告时（含纯推理或空白回复），Core 保留已授权的 `goal_update` 与只读 `goal_read`；若 `limitsPending` 则将写工具换为 `goal_set_limits`。内置 HTTP 使用 `tool_choice="required"`、禁止并行且最多一次调用；自定义 Model 通过 `ToolCallLimits.require_call` 获得此要求。成功流完整结算后，Core 在执行前拒绝目录外调用。当前 Goal revision 随请求提供。revision 冲突返回 `GOAL_REVISION_CONFLICT`，包含提交值与当前值，并要求模型读取最新状态后协调报告；读取同样消耗报告轮数，不放宽 CAS 或总额度。报告仍须满足既有计划、验证和输入检查；有效报告后恢复正常结算、Stop hook 与最终交接。额度耗尽明确返回 `GOAL_PROGRESS_UNREPORTED`，不把缺少报告的回合记为正常完成。报告检测不依赖通用响应恢复额度，所有请求仍计入原根预算，不代写报告、增加权限或重放已确认操作；默认 0 保留旧行为。
 
 Rust `Model::chat_with_limits(messages, tools, purpose, ToolCallLimits, cap)` 显式传递请求预算，内置 HTTP、共享池和 Worker 包装器均转发。可选的输出 token 上限与工具预算一起经过 Goal 计量传递。默认实现委托 `chat_limited`，保持已有自定义 Model 实现可编译，并拒绝不受支持的非空 token 上限；自定义模型自行约束内部缓冲，Engine 仍在工具执行前检查其输出。摘要使用零调用预算。`Limits` 新增 `max_tool_buffer_bytes`，`NativeFactory`/`NativeExecutor` 新增 `tool_call_limits`，显式结构体初始化需补充字段；构造器提供默认值。Rust Limits 同时区分可选累计预算与单响应资源保护。
 
@@ -384,6 +384,8 @@ resume 保留计量，不能使已经达到的限额失效；completed 不可恢
 Token 准入不足的 Turn 终态为 `GOAL_TOKEN_BUDGET`，source 为 `core_goal_token_budget`；活动时间截止使用 `AGENT_RUN_TIMEOUT` 和 `details.goalDeadlineReached=true`。客户端以此显示目标停止原因，不将预算停止展示为内部错误。
 
 goal.usage 包含 `inputTokens`、`cachedInputTokens`、`outputTokens`、`tokensUsed`、`reservedTokens`、`unknownRequests`、`timeUsedSeconds`、`turnsStarted` 和 `accountingComplete`。tokensUsed 仅包含已确认输入与输出，reservedTokens 单独展示且参与准入；未知统计不补零。timeUsedSeconds 包含根 Turn 内的执行和等待，不叠加子任务时长；崩溃窗口或缺失 usage 时 accountingComplete=false。该口径不保证 provider 计费绝对不超过 tokenBudget。
+
+有限 token 预算按当前模型的输出上限预留；摘要和提示预测使用摘要专用上限（未配置时回退到模型输出上限），并取祖先输出限制与剩余 Goal 预算的较小值。未声明模型输出能力时才回退到 16384，不对显式较大上限再固定截断。缺失最终 usage 时保留本次实际准入的输入与输出预留，不因请求失败而补零。
 
 创建 Goal 示例：
 

@@ -1,5 +1,13 @@
 use super::*;
 
+fn revision_conflict(expected: u64, current: u64) -> Error {
+    invalid(format!(
+        "GOAL_REVISION_CONFLICT: {}",
+        json!({"expectedRevision":expected,"currentRevision":current,
+            "guidance":"Read the current goal with goal_read, reconcile the report with its current objective and state, then retry with that revision. Do not guess revision increments."})
+    ))
+}
+
 pub(crate) fn definitions() -> Vec<areal_protocol::ToolDefinition> {
     [
         ("goal_read", "Read the current durable goal and budget. This does not resume or change the goal.", json!({"type":"object","properties":{},"additionalProperties":false})),
@@ -49,10 +57,14 @@ impl Engine {
             self.goal_completion_ready(cell).await?;
         }
         let mut state = cell.state.lock().await;
-        if state.thread.parent_thread_id.is_some()
-            || state.thread.goals.revision != report.expected_revision
-        {
+        if state.thread.parent_thread_id.is_some() {
             return Err(Error::Conflict);
+        }
+        if state.thread.goals.revision != report.expected_revision {
+            return Err(revision_conflict(
+                report.expected_revision,
+                state.thread.goals.revision,
+            ));
         }
         if state
             .thread
@@ -146,10 +158,14 @@ impl Engine {
         }
         let limits: Limits = serde_json::from_value(args.clone()).map_err(invalid)?;
         let mut state = cell.state.lock().await;
-        if state.thread.parent_thread_id.is_some()
-            || state.thread.goals.revision != limits.expected_revision
-        {
+        if state.thread.parent_thread_id.is_some() {
             return Err(Error::Conflict);
+        }
+        if state.thread.goals.revision != limits.expected_revision {
+            return Err(revision_conflict(
+                limits.expected_revision,
+                state.thread.goals.revision,
+            ));
         }
         let active = state.active.as_ref().ok_or(Error::Conflict)?;
         if active.cancel.is_cancelled() || active.sealed {

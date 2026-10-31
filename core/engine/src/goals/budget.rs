@@ -384,6 +384,7 @@ impl Budget {
         self: &Arc<Self>,
         estimate: u64,
         purpose: RequestPurpose,
+        output_limit: u64,
     ) -> anyhow::Result<(Guard, Option<u64>)> {
         let gate = self.io.clone().lock_owned().await;
         self.guard()?;
@@ -398,7 +399,7 @@ impl Budget {
                 if available <= estimate {
                     return Err(token_budget_exhausted());
                 }
-                Some((available - estimate).min(16384))
+                Some((available - estimate).min(output_limit))
             } else {
                 None
             };
@@ -407,7 +408,7 @@ impl Budget {
                 Request {
                     owner: model::REQUEST_OWNER.try_with(Clone::clone).ok(),
                     purpose: format!("{purpose:?}"),
-                    reserved: estimate.saturating_add(cap.unwrap_or(16384)),
+                    reserved: estimate.saturating_add(cap.unwrap_or(output_limit)),
                     usage: None,
                     settled: false,
                     unknown: false,
@@ -601,7 +602,21 @@ impl Model for MeteredModel {
     ) -> anyhow::Result<ModelStream> {
         let estimate = (context::estimate_tokens(&messages)
             + context::text_tokens(&serde_json::to_string(&tools)?)) as u64;
-        let (guard, cap) = self.budget.reserve(estimate, purpose).await?;
+        let capabilities = self.inner.capabilities();
+        // Goal 只收窄当前请求的实际输出上限；摘要与祖先额度也必须参与同一次预留。
+        let output_limit = if matches!(
+            purpose,
+            RequestPurpose::Summary | RequestPurpose::PromptPrediction
+        ) {
+            capabilities
+                .summary_output_tokens
+                .or(capabilities.max_output_tokens)
+        } else {
+            capabilities.max_output_tokens
+        }
+        .unwrap_or(16384) as u64;
+        let output_limit = outer_cap.map_or(output_limit, |cap| cap.min(output_limit));
+        let (guard, cap) = self.budget.reserve(estimate, purpose, output_limit).await?;
         let cap = match (cap, outer_cap) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
@@ -643,6 +658,65 @@ mod tests {
         budget
     }
     struct Known;
+    struct OutputCapProbe {
+        expected_cap: u64,
+    }
+    #[async_trait::async_trait]
+    impl Model for OutputCapProbe {
+        fn name(&self) -> &str {
+            "configured-output-cap-probe"
+        }
+        fn capabilities(&self) -> ModelCapabilities {
+            let mut capabilities = Known.capabilities();
+            capabilities.max_output_tokens = Some(32000);
+            capabilities.summary_output_tokens = Some(4096);
+            capabilities
+        }
+        async fn stream(&self, _: Vec<Message>) -> anyhow::Result<ModelStream> {
+            anyhow::bail!("probe must receive the shared output cap")
+        }
+        async fn chat_with_limits(
+            &self,
+            _: Vec<Message>,
+            _: Vec<Value>,
+            _: RequestPurpose,
+            _: ToolCallLimits,
+            cap: Option<u64>,
+        ) -> anyhow::Result<ModelStream> {
+            assert_eq!(cap, Some(self.expected_cap));
+            Ok(Box::pin(futures_util::stream::pending()))
+        }
+    }
+
+    #[tokio::test]
+    async fn configured_output_cap_survives_goal_budget_and_unknown_reservation() {
+        for (purpose, outer_cap, remaining_output, expected_cap) in [
+            (RequestPurpose::Solve, None, 100000, 32000),
+            (RequestPurpose::Summary, None, 100000, 4096),
+            (RequestPurpose::PromptPrediction, None, 100000, 4096),
+            (RequestPurpose::Solve, Some(2048), 100000, 2048),
+            (RequestPurpose::Summary, Some(2048), 100000, 2048),
+            (RequestPurpose::Solve, None, 1200, 1200),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let messages = vec![Message::text("user", "work")];
+            let estimate =
+                (context::estimate_tokens(&messages) + context::text_tokens("[]")) as u64;
+            let budget = fixture(dir.path(), estimate + remaining_output);
+            let model = budget.wrap(Arc::new(OutputCapProbe { expected_cap }));
+            let stream = model
+                .chat_limited(messages, vec![], purpose, outer_cap)
+                .await
+                .unwrap();
+            assert_eq!(budget.usage().reserved_tokens, estimate + expected_cap);
+            // 已派发但未收到用量时，必须保留实际输出上限对应的预留。
+            drop(stream);
+            assert!(budget.unknown_pending());
+            assert_eq!(budget.usage().reserved_tokens, estimate + expected_cap);
+            assert_eq!(budget.usage().tokens_used, 0);
+        }
+    }
+
     #[tokio::test]
     async fn child_failure_survives_shared_guard_and_journal_reload() {
         let dir = tempfile::tempdir().unwrap();
@@ -650,7 +724,7 @@ mod tests {
         let (guard, _) = model::REQUEST_OWNER
             .scope(
                 ("child".into(), "child-turn".into()),
-                budget.reserve(100, RequestPurpose::Solve),
+                budget.reserve(100, RequestPurpose::Solve, 16384),
             )
             .await
             .unwrap();
@@ -719,7 +793,10 @@ mod tests {
         let budget = fixture(dir.path(), 1);
         budget.configure(None, true);
         for _ in 0..4100 {
-            let (mut guard, cap) = budget.reserve(100, RequestPurpose::Solve).await.unwrap();
+            let (mut guard, cap) = budget
+                .reserve(100, RequestPurpose::Solve, 16384)
+                .await
+                .unwrap();
             assert_eq!(cap, None);
             budget
                 .data
@@ -753,12 +830,25 @@ mod tests {
         let restored = Budget::open(dir.path(), &goal).unwrap();
         assert_eq!(restored.usage().tokens_used, 123000);
         restored.configure(Some(123000), true);
-        assert!(restored.reserve(1, RequestPurpose::Solve).await.is_err());
+        assert!(
+            restored
+                .reserve(1, RequestPurpose::Solve, 16384)
+                .await
+                .is_err()
+        );
         restored.configure(None, true);
-        let (unknown, _) = restored.reserve(1, RequestPurpose::Solve).await.unwrap();
+        let (unknown, _) = restored
+            .reserve(1, RequestPurpose::Solve, 16384)
+            .await
+            .unwrap();
         drop(unknown);
         assert!(restored.unknown_pending());
-        assert!(restored.reserve(1, RequestPurpose::Solve).await.is_err());
+        assert!(
+            restored
+                .reserve(1, RequestPurpose::Solve, 16384)
+                .await
+                .is_err()
+        );
     }
     #[async_trait::async_trait]
     impl Model for Known {
@@ -796,7 +886,10 @@ mod tests {
         for finalized in [false, true] {
             let dir = tempfile::tempdir().unwrap();
             let budget = fixture(dir.path(), 100000);
-            let (guard, _) = budget.reserve(100, RequestPurpose::Summary).await.unwrap();
+            let (guard, _) = budget
+                .reserve(100, RequestPurpose::Summary, 16384)
+                .await
+                .unwrap();
             let error = anyhow::Error::new(model::ModelFailure::Truncated);
             let error = if finalized {
                 error.context(model::FinalUsageError)
@@ -828,10 +921,11 @@ mod tests {
     async fn parallel_reservations_cannot_spend_the_same_remaining_budget() {
         let dir = tempfile::tempdir().unwrap();
         let budget = fixture(dir.path(), 1000);
-        let (first, second) = tokio::join!(budget.reserve(100, RequestPurpose::Solve), async {
-            tokio::task::yield_now().await;
-            budget.reserve(100, RequestPurpose::Summary).await
-        });
+        let (first, second) =
+            tokio::join!(budget.reserve(100, RequestPurpose::Solve, 16384), async {
+                tokio::task::yield_now().await;
+                budget.reserve(100, RequestPurpose::Summary, 16384).await
+            });
         let (mut first, cap) = first.unwrap();
         // 一次预留保留剩余输出额度；并发请求必须等已知用量归还后再获准。
         assert_eq!(cap, Some(900));
@@ -852,7 +946,10 @@ mod tests {
         first.complete = true;
         drop(first);
         assert_eq!(budget.usage().tokens_used, 30);
-        let (_, cap) = budget.reserve(100, RequestPurpose::Summary).await.unwrap();
+        let (_, cap) = budget
+            .reserve(100, RequestPurpose::Summary, 16384)
+            .await
+            .unwrap();
         assert_eq!(cap, Some(870));
     }
     #[tokio::test]
@@ -906,7 +1003,10 @@ mod tests {
         assert_eq!(budget.usage().tokens_used, 30);
         assert_eq!(budget.usage().reserved_tokens, 0);
         assert!(!budget.unknown_pending());
-        let (guard, _) = budget.reserve(100, RequestPurpose::Summary).await.unwrap();
+        let (guard, _) = budget
+            .reserve(100, RequestPurpose::Summary, 16384)
+            .await
+            .unwrap();
         let mut missing: ModelStream = Box::pin(MeteredStream {
             inner: Box::pin(futures_util::stream::pending()),
             guard: Some(guard),
