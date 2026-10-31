@@ -1523,7 +1523,6 @@ export function Messages({
                 })}
                 {hasInterruption && stopHeading}
                 <TurnRetries turn={turn} />
-                <ModelChanges changes={thread.desktop?.modelChanges} afterTurnId={turn.id} />
                 {!isInherited &&
                   (turn.items ?? [])
                     .filter((item: Data) => item.type === "dynamicToolCall")
@@ -1595,6 +1594,7 @@ export function Messages({
                     {forkControls}
                   </div>
                 )}
+                <ModelChanges changes={thread.desktop?.modelChanges} afterTurnId={turn.id} />
                 {canFork && forkReason && turn.status !== "inProgress" && (
                   <p id={`fork-reason-${turn.id}`} className="notice">
                     {forkReason}

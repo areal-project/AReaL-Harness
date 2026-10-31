@@ -33,19 +33,12 @@ export function ModelChanges({ changes, afterTurnId }: { changes?: Data[]; after
   return (changes ?? [])
     .filter((change) => (change.afterTurnId ?? undefined) === afterTurnId)
     .map((change) => (
-      <div
-        className="turn-progress-heading"
-        data-model-change={change.revision}
-        key={change.revision}
-      >
-        <span className="turn-progress-summary">
-          {t("chat.timeline.modelChange", {
-            from: [change.from.providerId, change.from.modelId].filter(Boolean).join(" / "),
-            to: [change.to.providerId, change.to.modelId].filter(Boolean).join(" / "),
-          })}
-        </span>
-        <div className="turn-progress-divider" />
-      </div>
+      <p className="model-change-notice" data-model-change={change.revision} key={change.revision}>
+        {t("chat.timeline.modelChange", {
+          from: [change.from.providerId, change.from.modelId].filter(Boolean).join(" / "),
+          to: [change.to.providerId, change.to.modelId].filter(Boolean).join(" / "),
+        })}
+      </p>
     ));
 }
 

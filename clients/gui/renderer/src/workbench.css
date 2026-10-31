@@ -2328,6 +2328,12 @@ button[aria-label="停止"] {
   font: inherit;
   text-align: left;
 }
+.model-change-notice {
+  margin: var(--spacing-inline) 0;
+  color: var(--color-status-settled);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
 .turn-progress-divider {
   margin-top: 4px;
   border-bottom: 1px solid var(--color-menu-border, var(--color-border));
