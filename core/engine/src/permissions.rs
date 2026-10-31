@@ -5,7 +5,7 @@ mod scopes;
 use crate::*;
 use areal_config::{ConfigSource, PermissionConfig, PermissionMode};
 use areal_protocol::desktop::PermissionGrant;
-pub(crate) use scopes::additional_schema;
+pub(crate) use scopes::{additional_schema, read_permission_tool};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 

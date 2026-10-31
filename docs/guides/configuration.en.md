@@ -59,7 +59,7 @@ New desktop and Remote chats default to Ask for approval. The Composer also offe
 
 Full access uses the complete resource range allowed by the deployment and skips routine approvals. The menu cannot widen a restricted deployment. Plan mode adds an independent read-only restriction. A selection affects new submissions in the current chat; queued messages retain their admitted permission snapshot. Existing chats without an explicit preset retain their previous semantics and never silently gain Full access. Clients must check `features.permissionPresets` before submitting a new preset.
 
-Project `AGENTS.md` reads use the same restricted base Scope as tools and do not replace the Turn authority ceiling. Additional access still requires `run_command.permissionRequest` and the applicable approval, and applies only to that operation. The presence of project rules neither blocks requests nor grants access outside the workspace.
+Project `AGENTS.md` reads use the same restricted base Scope as tools and do not replace the Turn authority ceiling. Additional access still requires the tool’s `permissionRequest` and the applicable approval, and applies only to that operation. `run_command` can request read, write and network access; native read-only file tools can request only bounded read roots. The presence of project rules neither blocks requests nor grants access outside the workspace.
 
 Resource restrictions cover Runtime-managed execution. They do not imply that Core, MCP, plugin hosts or the browser share the command sandbox. Browser access has separate page control and per-action target validation. See [permission architecture](../design/permissions.en.md).
 

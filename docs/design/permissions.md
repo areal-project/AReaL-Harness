@@ -30,6 +30,8 @@ Core 为 Turn 保留不直接交给工具的权限父 Scope。基础 Scope 与�
 
 `run_command.permissionRequest` 显式请求一次操作的额外读取目录、写入目录或网络能力。Core 校验最终参数和部署、父任务上限，绑定摘要后审批。批准只建立本次操作 Scope，不放宽基础 Scope。后台进程的读取、输入和终止仍绑定原 Scope。
 
+`read_file`、`search_files`、`image_read`、`fs_read`、`fs_list` 和 `fs_stat` 复用相同的逐操作审批入口。其 `permissionRequest` 只接受 `readRoots` 和 `justification`，拒绝写入、网络及未知字段；获批读取 Scope 的 `writeRoots=[]`、`network=deny`，不影响原基础 Scope。目录引用仍是任务输入，不从普通 Markdown 自动推导授权；图片可通过获批读取直接进入 Core 媒体链路。
+
 权限不足的复合命令可能已经产生部分副作用，Core 不自动重跑。取消后不得派发新操作；回执丢失或清理失败保留 UNKNOWN，不宣称回滚，重启不重放未知操作。
 
 ## 独立审核

@@ -13,12 +13,33 @@ pub(crate) struct AdditionalPermissions {
     justification: String,
 }
 
-pub(crate) fn additional_schema() -> Value {
-    json!({"type":"object","properties":{
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AdditionalReadPermissions {
+    #[serde(default)]
+    read_roots: Vec<String>,
+    justification: String,
+}
+
+pub(crate) fn read_permission_tool(tool: &str) -> bool {
+    matches!(
+        tool,
+        "read_file" | "search_files" | "image_read" | "fs_read" | "fs_stat" | "fs_list"
+    )
+}
+
+pub(crate) fn additional_schema(tool: &str) -> Value {
+    let mut schema = json!({"type":"object","properties":{
         "readRoots":{"type":"array","maxItems":16,"items":{"type":"string","minLength":1,"maxLength":4096}},
         "writeRoots":{"type":"array","maxItems":16,"items":{"type":"string","minLength":1,"maxLength":4096}},
         "network":{"type":"boolean"},"justification":{"type":"string","minLength":1,"maxLength":2048}},
-        "required":["justification"],"additionalProperties":false})
+        "required":["justification"],"additionalProperties":false});
+    if read_permission_tool(tool) {
+        let properties = schema["properties"].as_object_mut().unwrap();
+        properties.remove("writeRoots");
+        properties.remove("network");
+    }
+    schema
 }
 
 fn invalid(error: impl std::fmt::Display) -> rt::Error {
@@ -220,13 +241,21 @@ impl Engine {
         let Some(value) = arguments.get("permissionRequest") else {
             return Ok(None);
         };
-        if tool != "run_command" {
-            return Err(invalid(
-                "permissionRequest is only supported by run_command",
-            ));
-        }
-        let mut requested: AdditionalPermissions =
-            serde_json::from_value(value.clone()).map_err(invalid)?;
+        let read_only = read_permission_tool(tool);
+        let mut requested = if read_only {
+            let read: AdditionalReadPermissions =
+                serde_json::from_value(value.clone()).map_err(invalid)?;
+            AdditionalPermissions {
+                read_roots: read.read_roots,
+                write_roots: Vec::new(),
+                network: false,
+                justification: read.justification,
+            }
+        } else if tool == "run_command" {
+            serde_json::from_value(value.clone()).map_err(invalid)?
+        } else {
+            return Err(invalid("permissionRequest is unsupported by this tool"));
+        };
         if requested.read_roots.len() > 16
             || requested.write_roots.len() > 16
             || requested.justification.trim().is_empty()
@@ -294,7 +323,10 @@ impl Engine {
             reads.sort();
             reads.dedup();
         }
-        if let Some(writes) = permissions.write_roots.as_mut() {
+        if read_only {
+            permissions.write_roots = Some(Vec::new());
+            permissions.network = rt::NetworkRequest::Deny;
+        } else if let Some(writes) = permissions.write_roots.as_mut() {
             writes.extend(requested.write_roots.iter().cloned());
             writes.sort();
             writes.dedup();
@@ -325,7 +357,15 @@ impl Engine {
                 "requested restricted scope is unavailable",
             ));
         }
-        arguments["permissionRequest"] = serde_json::to_value(requested).map_err(invalid)?;
+        arguments["permissionRequest"] = if read_only {
+            serde_json::to_value(AdditionalReadPermissions {
+                read_roots: requested.read_roots,
+                justification: requested.justification,
+            })
+            .map_err(invalid)?
+        } else {
+            serde_json::to_value(requested).map_err(invalid)?
+        };
         Ok(Some(permissions))
     }
 
@@ -352,5 +392,32 @@ impl Engine {
             Default::default(),
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_permission_admission_rejects_write_and_network_fields() {
+        let input =
+            json!({"readRoots":["/external/images"],"justification":"Read selected images"});
+        let read: AdditionalReadPermissions = serde_json::from_value(input.clone()).unwrap();
+        assert_eq!(serde_json::to_value(read).unwrap(), input);
+        for (field, value) in [
+            ("writeRoots", json!([])),
+            ("writeRoots", json!(["/external"])),
+            ("network", json!(false)),
+            ("network", json!(true)),
+            ("extra", json!(true)),
+        ] {
+            let mut invalid = input.clone();
+            invalid[field] = value;
+            assert!(
+                serde_json::from_value::<AdditionalReadPermissions>(invalid).is_err(),
+                "{field}"
+            );
+        }
     }
 }

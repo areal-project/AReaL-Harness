@@ -8,6 +8,10 @@ Core's registry binds names and JSON Schemas to built-in, command, client, MCP o
 
 The Local launch defaults to YOLO. File tools and command cwd accept outside-workspace absolute paths normalized to `workspace://host`, requiring Runtime full-access. Relative paths remain workspace-relative; argv uses ordinary filesystem paths. ASK_PERMISSIONS gates effective arguments before execution; see [permissions](configuration.en.md#permissions). The launcher supplies per-Thread scratch; isolated Workgroups use private `.scratch/agent-<threadId>` within their workspace and retain their Scope boundaries.
 
+`read_file`, `search_files`, `image_read`, `fs_read`, `fs_list` and `fs_stat` accept an optional `permissionRequest:{readRoots,justification}`. With an explicit permission preset, a read operation can request bounded roots outside the workspace. Read-only requests do not accept `writeRoots` or `network`. Approval remains subject to deployment and parent ceilings, applies only to that operation, does not change the chat’s base Scope and does not automatically replay a failed call. A directory link grants no permission. Images can be read directly from the approved source directory and projected by Core into visual model input, without a temporary copy.
+
+The execution context’s `temporaryDirectory` is the current Agent’s actual private path, and `temporaryDirectoryUri` identifies the same directory. `task_state` also provides `scratchUri`. Use the complete returned path; `workspace://scratch/filename` does not identify the current Agent’s private directory.
+
 The built-in `run_command` advertises a plain object schema with a description requiring exactly one of `command` or `argv`, because some model endpoints reject top-level `oneOf`. Core retains the full `oneOf` execution contract and rejects both entry points or neither. Both the model projection and execution validation include the Runtime deadline ceiling. This projection applies only to the built-in command tool and does not modify external tool schemas.
 
 | Tool | Key parameters and boundaries |

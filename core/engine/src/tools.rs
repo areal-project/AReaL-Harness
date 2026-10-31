@@ -467,9 +467,19 @@ fn definitions_with_policy(policy: &ToolPolicy) -> Vec<Value> {
     ];
     for definition in &mut definitions {
         let f = &mut definition["function"];
+        let name = f["name"].as_str().unwrap();
+        if crate::permissions::read_permission_tool(name) {
+            f["parameters"]["properties"]["permissionRequest"] =
+                crate::permissions::additional_schema(name);
+            if let Some(description) = f["description"].as_str() {
+                f["description"] = json!(format!(
+                    "{description} For files outside the current scope, request only the needed readRoots through permissionRequest with a concrete justification. Approval applies to this read operation; it grants no write or network access."
+                ));
+            }
+        }
         if f["name"] == "run_command" {
             f["parameters"]["properties"]["permissionRequest"] =
-                crate::permissions::additional_schema();
+                crate::permissions::additional_schema("run_command");
             if let Some(description) = f["description"].as_str() {
                 f["description"] = json!(format!(
                     "{description} With an explicit permission preset, permissionRequest asks for only the additional readRoots, writeRoots or network needed by this operation, with a justification. It never retries a previously failed command automatically."
@@ -587,6 +597,9 @@ fn request_with_policy(
         args.is_object() && call.arguments.len() <= model::MAX_TOOL_ARGUMENT_BYTES,
         "tool arguments must be an object of at most 64 KiB"
     );
+    if crate::permissions::read_permission_tool(&call.name) {
+        args.as_object_mut().unwrap().remove("permissionRequest");
+    }
     for field in ["path", "cwd"] {
         if let Some(path) = args.get(field).and_then(Value::as_str) {
             args[field] = json!(workspace_uri(path, workspace)?);

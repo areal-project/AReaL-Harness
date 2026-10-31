@@ -59,7 +59,7 @@ SQLite 使用私有目录中的 WAL/SHM，采用 `synchronous=NORMAL`；事实�
 
 “完全访问”使用部署允许的完整资源范围并省略常规审批。受限部署不会因切换菜单而扩权。计划模式独立叠加只读限制。设置仅影响当前聊天的新提交；已入队消息保留入队时的权限快照。旧聊天未设置新预设时保留原语义，不自动升级为完全访问。客户端必须确认 Core 公布 `features.permissionPresets` 后才能提交新预设。
 
-读取项目 `AGENTS.md` 使用与工具相同的受限 base Scope，不改变本轮可信 authority 上限。追加权限仍必须通过 `run_command.permissionRequest` 及相应审批，只作用于该次操作；规则文件的存在不应阻止申请，也不会授予工作区外权限。
+读取项目 `AGENTS.md` 使用与工具相同的受限 base Scope，不改变本轮可信 authority 上限。追加权限仍必须通过工具的 `permissionRequest` 及相应审批，只作用于该次操作；`run_command` 可请求读、写及网络权限，原生只读文件工具仅可请求具体目录的读取权限；规则文件的存在不应阻止申请，也不会授予工作区外权限。
 
 这些资源限制覆盖 Runtime 受管执行，不表示 Core、MCP、插件 Host 或浏览器共享命令沙箱。浏览器使用独立页面控制与逐次目标校验；详见[权限架构](../design/permissions.md)。
 

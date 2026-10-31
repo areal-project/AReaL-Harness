@@ -128,6 +128,14 @@ pnpm --dir clients/gui test:history-navigation-ui
 
 任务目录 smoke 的页面夹具位于 `clients/gui/renderer/test-fixtures/scheduled-workspace.tsx`，与 Renderer 一起类型检查，并由原浏览器 runner 直接加载。它验证新意图经 `onStartDraft` 打开草稿、项目默认值及旧请求的显式核对与被动回执；夹具仅替换 IPC 边界。
 
+## 验收用例：文件夹中的三张图片
+
+在隔离桌面实例中使用支持视觉输入的模型和工作区外的本机文件夹。文件夹包含三张内容不同的 PNG/JPEG 图片，使用不透露内容的文件名。通过 Composer 拖入或粘贴文件夹引用，发送“这个文件夹里的三张图片分别是什么内容？”。
+
+成功条件是目录接收、列举和三个原图读取成功；只读操作经过当前权限模式的审批，Scope 不增加写入或网络权限；模型请求实际包含三个对应图片载荷，最终回答逐张描述并与图片内容一致。仅返回文件名、复制成功、OCR 文本或本地脚本模型的固定回答均不足以证明视觉识别。另在后续轮次不带追加权限读取同一外部目录，验证本次操作授权没有改变基础 Scope。
+
+工具契约回归为 `cargo test -p areal-engine --lib read_tools_request_only_additional_read_roots` 和 `cargo test -p areal-engine --lib read_permission_admission_rejects_write_and_network_fields`。零写/禁网下真实文本读取和搜索回归为 `AREAL_TEST_BIN_DIR=/absolute/verified/bundle cargo test -p areal-engine --features native-tests --lib read_helpers_work_without_write_or_network_permissions`。这些回归不替代真实桌面媒体链和真实视觉模型验收；保存源码与产物身份、审批 Scope、工具媒体摘要、模型图片摘要及最终回答，凭据不进入证据。
+
 ## GUI 测试清单与平台资格
 
 `clients/gui/scripts/test-manifest.json` 是根 `package.json` 中全部 `test:*` 命令的登记表。`layer` 区分纯逻辑单元、无 GUI 的契约和浏览器/Electron 端到端边界；`platforms` 声明脚本可运行的平台，`areas` 声明领域，`requires` 声明环境条件。仅支持一个平台的条目必须填写 `platformReason`。平台声明不等于该平台已经验收通过。需要 Core 的无界面测试仍属契约层。

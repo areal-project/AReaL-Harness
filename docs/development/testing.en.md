@@ -130,6 +130,14 @@ The history-navigation runner calls this entry point automatically and serves on
 
 The task catalog smoke fixture lives in `clients/gui/renderer/test-fixtures/scheduled-workspace.tsx`, is typechecked with Renderer, and is loaded directly by the existing browser runner. It checks new intents routed through `onStartDraft`, project defaults, explicit reconciliation and observed receipts for legacy requests. Only the IPC boundary is replaced by the fixture.
 
+## Acceptance case: three images in a folder
+
+Use an isolated desktop instance, a vision-capable model and a native folder outside the workspace. Put three different PNG/JPEG images in the folder, with filenames that do not reveal their contents. Drop or paste the folder reference into the Composer and send “What is in each of the three images in this folder?”.
+
+Success requires accepting and listing the directory and reading all three source images. Read operations follow the current approval mode, with no added write or network access. Actual model requests must contain the three corresponding image payloads, and the final answer must describe each image correctly. Filenames, a successful copy, OCR text or a scripted local model’s fixed answer do not establish visual recognition. In a later Turn, read the same external directory without additional permissions to verify that the operation grant did not widen the base Scope.
+
+Tool-contract regressions are `cargo test -p areal-engine --lib read_tools_request_only_additional_read_roots` and `cargo test -p areal-engine --lib read_permission_admission_rejects_write_and_network_fields`. Real text reading and search with zero writes and denied networking use `AREAL_TEST_BIN_DIR=/absolute/verified/bundle cargo test -p areal-engine --features native-tests --lib read_helpers_work_without_write_or_network_permissions`. These checks do not replace the real desktop media path or real visual-model acceptance. Preserve source and binary identity, approval Scopes, tool-media and model-image digests, and the final answer. Keep credentials out of evidence.
+
 ## GUI test registry and platform qualification
 
 `clients/gui/scripts/test-manifest.json` registers every `test:*` command in the root GUI `package.json`. `layer` distinguishes pure unit tests, contracts without a GUI, and browser/Electron end-to-end boundaries. `platforms`, `areas`, and `requires` declare runnable platforms, covered areas, and prerequisites. Entries limited to one platform require `platformReason`. A platform declaration is not acceptance evidence. Headless tests that need Core remain contract tests.

@@ -261,6 +261,10 @@ success/contentItems 必填；结构化成功结果按 outputSchema 校验，产
 
 恢复的定义没有宿主绑定；旧宿主断开且 Thread 空闲时，由实现回调的客户端 resume 接管。执行宿主断连停止对应 Turn；TUI/Web 对任意回调返回 method-not-found。注册/预算见[工具指南](../guides/tools.md)。
 
+## 原生文件工具权限
+
+原生只读工具 `read_file`、`search_files`、`image_read`、`fs_read`、`fs_list`、`fs_stat` 的动态参数合同增加可选 `permissionRequest:{readRoots,justification}`，仅接受具体读取根。`writeRoots`、`network` 及未知字段拒绝。已有不带该字段的调用兼容；`run_command` 的追加权限合同不变。申请需要显式权限预设并经过现有审批及 Runtime Scope 校验；只读授权仅归本次操作，不写入会话 base Scope。图片成功结果沿既有媒体合同进入模型请求，见[工具指南](../guides/tools.md)。
+
 <a id="agent-tools"></a>
 ## Agent 工具
 

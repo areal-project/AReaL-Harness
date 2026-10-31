@@ -8,6 +8,10 @@ Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后�
 
 模型请求同时带有实际 workspacePath、workspaceUri、commandCwd、scratchPath 和已探测的 restrictedScopes。`workspace://repo` 映射到实际工作区根，不是状态目录下的 repo 子目录；临时 scratch 不是交付目录。生成文件应从用户要求的最终位置重新打开，业务计算应使用独立预期或小样本核对；schema、退出码和内部加总一致各自只证明对应的局部约束。Scope 创建前的明确 UNSUPPORTED/权限拒绝作为未派发的工具失败返回，UNKNOWN 仍停止执行。
 
+`read_file`、`search_files`、`image_read`、`fs_read`、`fs_list` 和 `fs_stat` 支持可选 `permissionRequest:{readRoots,justification}`。配置显式权限预设后，可为当前读取操作申请工作区外的具体读取根；只读请求不接受 `writeRoots` 或 `network`。审批通过后仍受部署和父权限上限约束，只作用于当前操作，不改变会话 base Scope，不自动重试失败调用。目录链接本身不授予权限。图片可直接从获批的原目录读取，经 Core 媒体投影进入视觉模型，无需先复制到临时目录。
+
+运行上下文的 `temporaryDirectory` 是当前 Agent 的实际私有路径，`temporaryDirectoryUri` 是相同目录的规范 URI；`task_state` 也提供 `scratchUri`。使用返回的完整路径；`workspace://scratch/文件名` 不代表当前 Agent 的私有目录。
+
 内置 `run_command` 向模型提供普通 object schema，描述中要求 `command` 或 `argv` 二选一，避免部分模型端点拒绝顶层 `oneOf`。Core 的执行校验仍保留完整 `oneOf` 契约，拒绝同时提供或同时省略两个入口；模型投影和执行校验均包含 Runtime 的期限上限。该投影只适用于内置命令工具，不修改外部工具的 schema。
 
 | 工具 | 关键参数与边界 |

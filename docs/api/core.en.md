@@ -261,6 +261,10 @@ success/contentItems are required. Successful structured output is checked again
 
 Restored definitions have no host binding. A callback-capable client may take over through resume when the old host is disconnected and Thread idle. Execution-host disconnection stops the affected Turn. TUI/Web return method-not-found for arbitrary callbacks. See [tools](../guides/tools.en.md) for registration limits.
 
+## Native file tool permissions
+
+The dynamic argument contract for native read-only tools `read_file`, `search_files`, `image_read`, `fs_read`, `fs_list` and `fs_stat` adds optional `permissionRequest:{readRoots,justification}` for bounded read roots. `writeRoots`, `network` and unknown fields are rejected. Existing calls without the field remain compatible, and `run_command` keeps its additional-permission contract. Requests require an explicit permission preset and the existing approval and Runtime Scope checks. Read access belongs only to the operation and does not change the chat’s base Scope. Successful images reach model requests through the existing media contract. See the [tool guide](../guides/tools.en.md).
+
 <a id="agent-tools"></a>
 ## Agent tools
 
