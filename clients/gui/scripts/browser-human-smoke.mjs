@@ -1908,7 +1908,7 @@ try {
             ),
           )
           .digest("hex"),
-        ...(!packaged
+        ...(!packaged && process.platform === "linux"
           ? {
               reaperBinary: join(dirname(coreBinary), "areal-runtime-reaper"),
               reaperBinarySHA256: createHash("sha256")
