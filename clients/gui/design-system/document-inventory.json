@@ -870,6 +870,11 @@
     "status": "archived"
   },
   {
+    "path": "design/archive/research/t3code-priority-execution.md",
+    "role": "process-evidence",
+    "status": "archived"
+  },
+  {
     "path": "design/archive/research/t3code-workbench-review.md",
     "role": "process-evidence",
     "status": "archived"
