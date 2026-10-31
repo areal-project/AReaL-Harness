@@ -4555,7 +4555,7 @@
       "title": "TurnExecution.tsx 由 Messages 使用，按顺序组织过程项",
       "owner": "clients/gui/renderer/src/Messages.md#turnexecution",
       "strength": "default",
-      "textSha256": "0c9268d4f313dded67014e2e2f151ff2b8af0195fec3ec7687119dd5328b6fff"
+      "textSha256": "69a32f00098a5706e4a43de1bac93bb1e69c6e0c7cf106cb493e7c58450d3148"
     },
     {
       "id": "R-MESSAGES-009",
@@ -6661,6 +6661,27 @@
       "owner": "design/patterns/plugin-resources.md#模板配置与开发",
       "strength": "default",
       "textSha256": "3734c78b0ced5174384097bfd84a306aa103effdb3e99e3f5587bba569899af3"
+    },
+    {
+      "id": "R-MESSAGES-010",
+      "title": "Core 消息的可选 createdAt 通过消息内时间控件显示",
+      "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
+      "strength": "default",
+      "textSha256": "75cb31589683c4a4cfd70310cf3e7b4087fa9ecfcffe92191607f4781abb0afe"
+    },
+    {
+      "id": "R-MESSAGES-011",
+      "title": "中断分隔行位于轮次边界，使用持久 interruption 区分用户暂停与 Core 恢复，无工具轮次也显示",
+      "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
+      "strength": "default",
+      "textSha256": "7c39c81aeb6ecae6984bc6ec21ea27f3a0ffe02d96ca8b622e042e00fd2ed38d"
+    },
+    {
+      "id": "R-MESSAGES-012",
+      "title": "受理新的用户轮次后，conversationReading.following.target 定位该轮用户消息到阅读区域",
+      "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
+      "strength": "default",
+      "textSha256": "32410d80a1e04aed39c96a3b44f06b829828bb8b4ee3533ab2fc1327e90898a0"
     }
   ]
 }

@@ -2399,6 +2399,17 @@ button[aria-label="停止"] {
 .turn-progress-body > :last-child {
   margin-bottom: 0;
 }
+.message-time {
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-ui-xs);
+  opacity: 0;
+}
+.user-message:hover .message-time,
+.user-message:focus-within .message-time,
+.assistant-message:hover .message-time,
+.assistant-message:focus-within .message-time {
+  opacity: 1;
+}
 .message-actions:empty {
   display: none;
 }

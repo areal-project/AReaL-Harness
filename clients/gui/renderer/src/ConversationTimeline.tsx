@@ -3,7 +3,6 @@ import { ControlHintTooltip } from "./ControlHintTooltip.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import type { Data } from "./services.js";
 import { retryProgress } from "./conversationEvents.js";
-import "./ConversationEvents.css";
 
 export function MessageTime({ createdAt }: { createdAt?: number }) {
   const { locale, t } = useI18n();
