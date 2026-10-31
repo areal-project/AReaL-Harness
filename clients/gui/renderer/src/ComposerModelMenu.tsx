@@ -1,5 +1,5 @@
 import { Input } from "@areal/ui";
-import { Zap } from "lucide-react";
+import { Star, Zap } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { MenuChevronIcon, MenuSelectedIcon } from "./interfaceIcons.js";
@@ -7,6 +7,11 @@ import { Button } from "./components/ui/button.js";
 import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover.js";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./components/ui/tooltip.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs.js";
+import {
+  filterComposerModels,
+  readFavoriteModels,
+  saveFavoriteModels,
+} from "./composerModelPreferences.js";
 
 const effortMessages = {
   none: "chat.composer.effort.none",
@@ -88,6 +93,9 @@ export function ComposerModelMenu({
   const [modelOpen, setModelOpen] = useState(false);
   const [effortOpen, setEffortOpen] = useState(false);
   const [provider, setProvider] = useState("");
+  const [query, setQuery] = useState("");
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [favorites, setFavorites] = useState(readFavoriteModels);
   const radioName = useId();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [sliderFocused, setSliderFocused] = useState(false);
@@ -96,8 +104,13 @@ export function ComposerModelMenu({
   const availableOptions = options.filter(
     (option) => !option.unavailableReason && !option.historical,
   );
+  const matchingOptions = filterComposerModels(
+    availableOptions,
+    query,
+    favoritesOnly ? favorites : undefined,
+  );
   const providers = new Map<string, ComposerModelOption[]>();
-  for (const option of availableOptions) {
+  for (const option of matchingOptions) {
     const providerId = option.providerId ?? "";
     const group = providers.get(providerId) ?? [];
     group.push(option);
@@ -145,6 +158,70 @@ export function ComposerModelMenu({
     const fraction = Math.max(0, step) / Math.max(1, efforts.length - 1);
     return `calc(${fraction * 100}% + ${14 - fraction * 28}px)`;
   };
+  const modelOptions = (models: ComposerModelOption[], showProvider = false) => (
+    <div role="radiogroup" aria-label={t("chat.composer.models")}>
+      {models.map((option) => (
+        <div className="flex items-center" key={option.value} data-model-value={option.value}>
+          <label className="composer-model-option">
+            <Input
+              unstyled
+              data-slot={undefined}
+              type="radio"
+              name={radioName}
+              value={option.value}
+              checked={value === option.value}
+              disabled={disabled || pending}
+              onClick={() => {
+                if (option.value === value) {
+                  onChange(option.value);
+                  setModelOpen(false);
+                }
+              }}
+              onChange={() => {
+                onChange(option.value);
+                setModelOpen(false);
+              }}
+            />
+            <span className="composer-model-option-text">
+              {option.label}
+              {showProvider && (
+                <span className="composer-model-source block">
+                  {option.providerName || option.providerId}
+                </span>
+              )}
+            </span>
+            {value === option.value && <MenuSelectedIcon size={16} aria-hidden="true" />}
+          </label>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            disabled={disabled || pending}
+            aria-label={t(
+              favorites.includes(option.value)
+                ? "chat.composer.unfavoriteModel"
+                : "chat.composer.favoriteModel",
+              { model: option.label, provider: option.providerName || option.providerId || "" },
+            )}
+            aria-pressed={favorites.includes(option.value)}
+            onClick={() => {
+              const next = favorites.includes(option.value)
+                ? favorites.filter((id) => id !== option.value)
+                : [...favorites, option.value];
+              saveFavoriteModels(next);
+              setFavorites(next);
+            }}
+          >
+            <Star
+              size={14}
+              fill={favorites.includes(option.value) ? "currentColor" : "none"}
+              aria-hidden="true"
+            />
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
   if (!availableOptions.length && !model)
     return (
       <span
@@ -163,6 +240,7 @@ export function ComposerModelMenu({
           setModelOpen(next);
           if (next) {
             setEffortOpen(false);
+            setQuery("");
             setProvider(
               providers.has(model?.providerId ?? "")
                 ? (model?.providerId ?? "")
@@ -208,7 +286,28 @@ export function ComposerModelMenu({
             return false;
           }}
         >
-          {providers.size ? (
+          <Input
+            aria-label={t("chat.composer.searchModels")}
+            placeholder={t("chat.composer.searchModels")}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-pressed={favoritesOnly}
+            onClick={() => setFavoritesOnly(!favoritesOnly)}
+          >
+            {t("chat.composer.favoriteModels")}
+          </Button>
+          {query.trim() || favoritesOnly ? (
+            matchingOptions.length ? (
+              modelOptions(matchingOptions, true)
+            ) : (
+              <p role="status">{t("chat.composer.noMatchingModels")}</p>
+            )
+          ) : providers.size ? (
             <Tabs
               orientation="vertical"
               value={activeProvider}
@@ -232,39 +331,7 @@ export function ComposerModelMenu({
               </TabsList>
               {[...providers].map(([providerId, models]) => (
                 <TabsContent key={providerId} value={providerId} className="composer-model-list">
-                  <div role="radiogroup" aria-label={t("chat.composer.models")}>
-                    {models.map((option) => (
-                      <label
-                        className="composer-model-option"
-                        key={option.value}
-                        data-model-value={option.value}
-                      >
-                        <Input
-                          unstyled
-                          data-slot={undefined}
-                          type="radio"
-                          name={radioName}
-                          value={option.value}
-                          checked={value === option.value}
-                          disabled={disabled || pending}
-                          onClick={() => {
-                            if (option.value === value) {
-                              onChange(option.value);
-                              setModelOpen(false);
-                            }
-                          }}
-                          onChange={() => {
-                            onChange(option.value);
-                            setModelOpen(false);
-                          }}
-                        />
-                        <span className="composer-model-option-text">{option.label}</span>
-                        {value === option.value && (
-                          <MenuSelectedIcon size={16} aria-hidden="true" />
-                        )}
-                      </label>
-                    ))}
-                  </div>
+                  {modelOptions(models)}
                 </TabsContent>
               ))}
             </Tabs>
