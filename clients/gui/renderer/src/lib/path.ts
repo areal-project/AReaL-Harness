@@ -96,7 +96,7 @@ export function markdownFileLocation(reference: string): { path: string; line?: 
   const match = /^(.*?)(?:#L(\d+)(?:-L?\d+)?|:(\d+)(?::\d+)?)$/.exec(reference);
   const line = match ? Number(match[2] ?? match[3]) : undefined;
   return {
-    path: decodeFilePathUriEscapes(match?.[1] ?? reference),
+    path: decodeFilePathUriEscapes(match?.[1] ?? reference).replace(/^(?:\.\/)+/, ""),
     line: line && Number.isSafeInteger(line) && line > 0 ? line : undefined,
   };
 }
