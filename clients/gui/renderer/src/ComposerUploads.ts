@@ -1,6 +1,10 @@
 import type { Attachment } from "@areal/workbench/desktop-contract/conversation";
 import type { Action } from "./services.js";
-import { composerUploads, setComposerUploadState } from "./ComposerUploadState.js";
+import {
+  composerUploads,
+  forgetComposerUploads,
+  setComposerUploadState,
+} from "./ComposerUploadState.js";
 
 // 成功回执和准备状态属于同一个 Core 会话，失败重试只补尚未成功的文件。
 export async function uploadComposerFiles(
@@ -24,6 +28,8 @@ export async function uploadComposerFiles(
       attachments.push(existing);
       continue;
     }
+    const state = preparation.states.get(file);
+    if (state?.state === "unknown") throw state.error;
     const inFlight = preparation.inFlight.get(file);
     if (inFlight) {
       attachments.push(await inFlight);
@@ -33,7 +39,8 @@ export async function uploadComposerFiles(
       try {
         setComposerUploadState(owner, file, { state: "reading" });
         const bytes = new Uint8Array(await file.arrayBuffer());
-        setComposerUploadState(owner, file, { state: "uploading" });
+        if (preparation.states.has(file))
+          setComposerUploadState(owner, file, { state: "uploading" });
         const media = await action("media", {
           projectId,
           threadId,
@@ -51,15 +58,25 @@ export async function uploadComposerFiles(
           name: file.name,
           mimeType: media.mimeType,
         };
-        receipts.set(file, attachment);
-        preparation.accepted.set(file, attachment);
-        setComposerUploadState(owner, file, { state: "ready", receipt: attachment });
+        if (preparation.states.has(file)) {
+          receipts.set(file, attachment);
+          preparation.accepted.set(file, attachment);
+          setComposerUploadState(owner, file, { state: "ready", receipt: attachment });
+        }
         return attachment;
       } catch (cause) {
         const reason = cause instanceof Error ? cause.message : String(cause);
         const message = `${file.name}: ${reason}`;
-        setComposerUploadState(owner, file, { state: "failed", message });
-        throw new Error(message);
+        const error = Object.assign(new Error(message), cause, { message });
+        if (preparation.states.has(file))
+          setComposerUploadState(
+            owner,
+            file,
+            (cause as { submissionUnknown?: boolean })?.submissionUnknown === true
+              ? { state: "unknown", message, error }
+              : { state: "failed", message },
+          );
+        throw error;
       }
     };
     const pending = upload();
@@ -68,6 +85,7 @@ export async function uploadComposerFiles(
       attachments.push(await pending);
     } finally {
       preparation.inFlight.delete(file);
+      forgetComposerUploads(owner, []);
     }
   }
   return attachments;

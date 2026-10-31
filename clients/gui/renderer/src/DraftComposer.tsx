@@ -519,8 +519,14 @@ export function DraftComposer({
         localStorage.removeItem(`${targetKey}:goal`);
         attachmentDrafts.set(targetKey, submittedInput.files);
       } else {
+        const attachmentOwner = submittedInput.files.length
+          ? (
+              await readAction("open", { projectId: owner.id, threadId: result.threadId })
+            ).projects.find((project) => project.id === owner.id)
+          : owner;
+        if (!attachmentOwner) throw new Error("无法确认附件所属的执行会话，草稿已保留。");
         await submitMessage(action, owner.id, result.threadId, value, files, {
-          uploadOwner: composerUploadOwner(owner, result.threadId),
+          uploadOwner: composerUploadOwner(attachmentOwner, result.threadId),
           skillAction: readAction,
           pluginContext: {
             kind: "mainThread",

@@ -5,7 +5,8 @@ import type { Data } from "./services.js";
 export type ComposerUploadState =
   | { state: "pending" | "reading" | "uploading" }
   | { state: "ready"; receipt: Attachment }
-  | { state: "failed"; message: string };
+  | { state: "failed"; message: string }
+  | { state: "unknown"; message: string; error: Error };
 type Preparation = {
   accepted: Map<File, Attachment>;
   states: Map<File, ComposerUploadState>;
@@ -14,7 +15,8 @@ type Preparation = {
 const preparations = new Map<string, Preparation>();
 const listeners = new Set<() => void>();
 export function composerUploadOwner(project: Data, threadId: string) {
-  return JSON.stringify([project.id, threadId, project.core?.instanceId ?? null]);
+  const core = project.state?.threads?.[threadId]?.executionCore ?? project.core;
+  return JSON.stringify([project.id, threadId, core?.instanceId ?? null]);
 }
 export function composerUploads(owner: string) {
   const current = preparations.get(owner);

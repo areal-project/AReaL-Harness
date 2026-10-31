@@ -40,6 +40,23 @@ describe("composer attachment preparation", () => {
     forgetComposerUploads(owner, files);
   });
 
+  it("preserves UNKNOWN upload facts and never uploads that file again on another Send", async () => {
+    const owner = crypto.randomUUID();
+    const files = [new File(["first"], "first.txt"), new File(["second"], "second.txt")];
+    const unknown = Object.assign(new Error("upload response lost"), { submissionUnknown: true });
+    const action = vi.fn<Action>();
+    action.mockResolvedValueOnce(receipt("first")).mockRejectedValueOnce(unknown);
+    const prepare = () =>
+      uploadComposerFiles(action as Action, "project", "thread", files, undefined, owner);
+    await expect(prepare()).rejects.toMatchObject({ submissionUnknown: true });
+    expect(composerUploads(owner).states.get(files[0])?.state).toBe("ready");
+    expect(composerUploads(owner).states.get(files[1])?.state).toBe("unknown");
+    await expect(prepare()).rejects.toMatchObject({ submissionUnknown: true });
+    expect(action).toHaveBeenCalledTimes(2);
+    expect(composerUploads(owner).accepted.get(files[0])?.url).toBe("core-media:first");
+    forgetComposerUploads(owner, files);
+  });
+
   it("shares in-flight preparation and waits for the upload receipt", async () => {
     const owner = crypto.randomUUID();
     const file = new File(["content"], "document.txt");
@@ -58,6 +75,75 @@ describe("composer attachment preparation", () => {
     finish(receipt("document"));
     expect(await first).toEqual(await second);
     forgetComposerUploads(owner, [file]);
+  });
+
+  it("reuses a worktree receipt after the draft becomes the opened thread", async () => {
+    const file = new File(["content"], "document.txt");
+    const createdProject = {
+      id: "logical-project",
+      root: "/source",
+      core: { instanceId: "source-core" },
+      state: { threads: { thread: { executionCore: { instanceId: "worktree-core" } } } },
+    };
+    const openedProject = {
+      ...createdProject,
+      root: "/new-worktree",
+      core: { instanceId: "worktree-core" },
+    };
+    const action = vi.fn<Action>();
+    action.mockResolvedValueOnce(receipt("worktree"));
+    const initialOwner = composerUploadOwner(createdProject, "thread");
+    const openedOwner = composerUploadOwner(openedProject, "thread");
+    await uploadComposerFiles(
+      action as Action,
+      "logical-project",
+      "thread",
+      [file],
+      undefined,
+      initialOwner,
+    );
+    const result = await uploadComposerFiles(
+      action as Action,
+      "logical-project",
+      "thread",
+      [file],
+      undefined,
+      openedOwner,
+    );
+    expect(result[0].url).toBe("core-media:worktree");
+    expect(action).toHaveBeenCalledTimes(1);
+    forgetComposerUploads(initialOwner, [file]);
+    forgetComposerUploads(openedOwner, [file]);
+  });
+
+  it("does not retain a file removed while its individual retry is uploading", async () => {
+    const owner = crypto.randomUUID();
+    const file = new File(["content"], "document.txt");
+    const preparation = composerUploads(owner);
+    let finish!: (value: ReturnType<typeof receipt>) => void;
+    const action = vi.fn<Action>();
+    action.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const upload = uploadComposerFiles(
+      action as Action,
+      "project",
+      "thread",
+      [file],
+      undefined,
+      owner,
+    );
+    await vi.waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+    forgetComposerUploads(owner, [file]);
+    finish(receipt("removed"));
+    await upload;
+    expect(preparation.accepted.size).toBe(0);
+    expect(preparation.states.size).toBe(0);
+    expect(preparation.inFlight.size).toBe(0);
+    expect(composerUploads(owner)).not.toBe(preparation);
+    forgetComposerUploads(owner, []);
   });
 
   it("does not reuse an old Core instance's media receipt", async () => {

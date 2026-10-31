@@ -19,6 +19,10 @@ export const composerPriorityMessages = {
     "zh-CN": "附件准备失败",
     en: "Attachment preparation failed",
   },
+  "chat.composer.attachmentUnknown": {
+    "zh-CN": "上传结果待核对，不会再次上传",
+    en: "Upload result unknown. This file will not be uploaded again.",
+  },
   "chat.composer.retryAttachment": { "zh-CN": "重试此附件", en: "Retry attachment" },
   "chat.composer.pastedTextBody": {
     "zh-CN": "折叠的文本，发送时进入消息正文",

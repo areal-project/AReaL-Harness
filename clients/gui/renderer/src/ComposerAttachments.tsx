@@ -211,7 +211,9 @@ export function ComposerAttachment({
       {actualFile ? (
         <div
           className="max-w-56 text-ui-xs text-foreground-subtle"
-          role={preparation?.state === "failed" ? "alert" : "status"}
+          role={
+            preparation?.state === "failed" || preparation?.state === "unknown" ? "alert" : "status"
+          }
         >
           {t(
             preparation?.state === "ready"
@@ -222,7 +224,12 @@ export function ComposerAttachment({
                   ? "chat.composer.attachmentUploading"
                   : preparation?.state === "failed"
                     ? "chat.composer.attachmentFailed"
-                    : "chat.composer.attachmentPending",
+                    : preparation?.state === "unknown"
+                      ? "chat.composer.attachmentUnknown"
+                      : "chat.composer.attachmentPending",
+          )}
+          {preparation?.state === "unknown" && (
+            <span className="block break-words">{preparation.message}</span>
           )}
           {preparation?.state === "failed" && (
             <>

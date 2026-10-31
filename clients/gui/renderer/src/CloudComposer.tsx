@@ -1,6 +1,7 @@
 import type { Attachment } from "@areal/workbench/desktop-contract/conversation";
 import { DraftAttachment } from "./MessageAttachment.js";
 import { AttachmentIcon } from "./interfaceIcons.js";
+import { forgetComposerUploads } from "./ComposerUploadState.js";
 import { uploadComposerFiles } from "./ComposerUploads.js";
 
 import { useRef, useState } from "react";
@@ -105,6 +106,7 @@ export function CloudComposer({
         text,
         attachments,
       });
+      forgetComposerUploads(JSON.stringify([project.id, target]), files);
       uploadReceipts.delete(receiptKey);
       fileDrafts.delete(key);
       setFiles([]);

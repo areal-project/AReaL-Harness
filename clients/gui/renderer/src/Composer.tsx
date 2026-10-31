@@ -1211,6 +1211,7 @@ export function Composer({
                             setFiles((current) => current.filter((item) => item !== file));
                           }}
                           onExpand={(content) => {
+                            if (isComposerFile(file)) forgetComposerUploads(uploadOwner, [file]);
                             api.current?.appendText(`${text.length ? "\n\n" : ""}${content}`);
                             setFiles((current) => current.filter((item) => item !== file));
                           }}
@@ -1555,6 +1556,10 @@ export async function submitMessage(
   }
   // Only explicit acceptance consumes the captured records. Unknown submissions
   // retain their exact IDs until the existing Core receipt is reconciled.
+  forgetComposerUploads(options.uploadOwner ?? JSON.stringify([projectId, threadId]), [
+    ...input.files,
+    ...imageFiles,
+  ]);
   consumeReviewComments(reviewKey, comments);
   if (!options.appMessage) {
     consumeMcpDraft(key, capturedMcp);
