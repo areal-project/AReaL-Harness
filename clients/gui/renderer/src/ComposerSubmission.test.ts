@@ -40,6 +40,7 @@ describe("composer submission upload lifetime", () => {
   });
 
   it("does not attempt message admission when an upload result is UNKNOWN", async () => {
+    const onSendStart = vi.fn();
     const owner = crypto.randomUUID();
     const file = new File(["content"], "document.txt");
     const action = vi.fn<Action>();
@@ -50,17 +51,20 @@ describe("composer submission upload lifetime", () => {
     );
     const send = () =>
       submitMessage(action as Action, "project", "thread", "message", [file], {
+        onSendStart,
         appMessage: true,
         uploadOwner: owner,
       });
     await expect(send()).rejects.toMatchObject({ submissionUnknown: true });
     await expect(send()).rejects.toMatchObject({ submissionUnknown: true });
     expect(action.mock.calls.map(([name]) => name)).toEqual(["media"]);
+    expect(onSendStart).not.toHaveBeenCalled();
     expect(composerUploads(owner).states.get(file)?.state).toBe("unknown");
     forgetComposerUploads(owner, [file]);
   });
 
   it("retains upload facts when message acceptance is UNKNOWN", async () => {
+    const onSendStart = vi.fn();
     const owner = crypto.randomUUID();
     const file = new File(["content"], "document.txt");
     const preparation = composerUploads(owner);
@@ -72,10 +76,12 @@ describe("composer submission upload lifetime", () => {
     action.mockResolvedValueOnce(media).mockRejectedValueOnce(unknown);
     const send = () =>
       submitMessage(action as Action, "project", "thread", "message", [file], {
+        onSendStart,
         appMessage: true,
         uploadOwner: owner,
       });
     await expect(send()).rejects.toBe(unknown);
+    expect(onSendStart).toHaveBeenCalledOnce();
     expect(preparation.states.get(file)?.state).toBe("ready");
     expect(preparation.accepted.get(file)?.url).toBe(media.uri);
     expect(action.mock.calls.filter(([name]) => name === "media")).toHaveLength(1);

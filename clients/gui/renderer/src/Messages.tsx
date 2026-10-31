@@ -9,6 +9,7 @@ import { observeResize } from "@areal/ui/observe-resize";
 import { PendingMessageView } from "./UserMessageBody.js";
 import {
   readingViews,
+  cancelTurnStart,
   hydrateReadingViews,
   saveReadingViews,
   type ResponseSpace,
@@ -313,6 +314,10 @@ export function Messages({
   historyCurrent.current = history;
   const retainedReading = useRef("");
   const latestTurnId = thread.turns?.at(-1)?.id;
+  const latestUserId = thread.turns
+    ?.at(-1)
+    ?.items?.find((item: Data) => item.type === "userMessage")?.id;
+  const turnStartRequest = readingViews.get(owner)?.pendingTurnStart;
   const latestSchedules = useMemo(() => latestScheduleItems(thread.turns ?? []), [thread.turns]);
   const [forking, setForking] = useState(false);
   const [forkError, setForkError] = useState<{ turnId: string; message: string } | null>(null);
@@ -536,8 +541,10 @@ export function Messages({
       reading.current.kind === "blocked"
     )
       return;
+    const pendingTurnStart = readingViews.get(activeOwner.current)?.pendingTurnStart;
     readingViews.delete(activeOwner.current);
     readingViews.set(activeOwner.current, {
+      pendingTurnStart,
       top: element.scrollTop,
       following: reading.current.kind === "following",
       atTail: element.scrollHeight - element.scrollTop - element.clientHeight <= 1,
@@ -572,6 +579,7 @@ export function Messages({
     if (responseSpace.current) responseSpace.current.style.height = "0px";
   };
   const readHere = (control?: HTMLElement) => {
+    cancelTurnStart(readingViews.get(owner)?.pendingTurnStart);
     const element = container.current;
     const anchor = element ? readingAnchor(element) : undefined;
     reading.current = changeReadingIntent(reading.current, {
@@ -950,32 +958,25 @@ export function Messages({
         reserveResponseSpace && remembered?.responseSpace
           ? { ...remembered.responseSpace }
           : undefined;
-    } else if (previous.id !== latestTurnId) {
-      if (previous.id && user && !goalContinuationLabel(latest)) {
-        reading.current = changeReadingIntent(reading.current, {
-          kind: "following",
-          target: { kind: "turnStart", turnId: latestTurnId },
-        });
-      }
-      // Reflow may leave all prior history visible while preserving a former
-      // departure. The next accepted message follows from that actual tail;
-      // readers still above an overflowing history retain their position.
-      if (reading.current.kind === "holding" && remembered?.atTail)
-        reading.current = changeReadingIntent(reading.current, { kind: "following" });
-      // Only a mounted, accepted user follow-up creates space. Cold history,
-      // the first turn and Goal continuations retain natural content height.
-      // Core may deliver the user and process together or separately. Reserve
-      // from the accepted user boundary, never the first transient process size.
+    }
+    const requested = readingViews.get(owner)?.pendingTurnStart;
+    const firstMountedTurn =
+      !switched && !previous.id && latestTurnId && reading.current.kind === "following";
+    const accepted =
+      user &&
+      !goalContinuationLabel(latest) &&
+      ((requested && requested.afterTurnId !== latestTurnId) || firstMountedTurn);
+    if (accepted) {
+      cancelTurnStart(requested);
+      reading.current = changeReadingIntent(reading.current, {
+        kind: "following",
+        target: { kind: "turnStart", turnId: latestTurnId },
+      });
       reservation.current =
-        reserveResponseSpace &&
-        previous.id &&
-        reading.current.kind === "following" &&
-        section &&
-        user &&
-        !goalContinuationLabel(latest)
+        reserveResponseSpace && section
           ? { turnId: latestTurnId, height: 0, contentHeight: 0 }
           : undefined;
-    }
+    } else if (!switched && previous.id !== latestTurnId) reservation.current = undefined;
     // 自然流布局由父容器滚动；自身高度包含占位，
     // 用它计算预留空间会在下一次尺寸变化时形成反馈增长。
     if (!reserveResponseSpace) reservation.current = undefined;
@@ -1114,7 +1115,7 @@ export function Messages({
       element.removeEventListener("pointerdown", cancelPendingReading);
       element.removeEventListener("keydown", cancelPendingReading);
     };
-  }, [owner, latestTurnId, reserveResponseSpace]);
+  }, [owner, latestTurnId, latestUserId, turnStartRequest, reserveResponseSpace]);
   useLayoutEffect(() => {
     layoutReading.current();
   });

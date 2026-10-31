@@ -35,6 +35,7 @@ const server = createServer(async (request, response) => {
 await new Promise((done) => server.listen(0, "127.0.0.1", done));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const checks = [];
+const firstTurnSamples = [];
 const errors = [];
 let browser;
 let passed = false;
@@ -51,6 +52,103 @@ try {
     await page.goto(`${origin}/design-system.html${query}`, { waitUntil: "networkidle" });
     return page;
   };
+
+  for (const reducedMotion of [false, true]) {
+    const page = await open("");
+    await page
+      .getByRole("checkbox", { name: "减少动态效果", exact: true })
+      .setChecked(reducedMotion);
+    const reading = page.locator("#first-turn-reading-preview");
+    const messages = reading.locator(".messages");
+    const geometry = () =>
+      messages.evaluate((element) => {
+        const user = element.querySelector('[data-side-item-id="accepted-user"]');
+        return {
+          top: element.scrollTop,
+          remaining: element.scrollHeight - element.scrollTop - element.clientHeight,
+          inset: user
+            ? user.getBoundingClientRect().top - element.getBoundingClientRect().top
+            : null,
+        };
+      });
+    const nearTop = async (scenario) => {
+      await page.waitForFunction(() => {
+        const messages = document.querySelector("#first-turn-reading-preview .messages");
+        const user = messages?.querySelector('[data-side-item-id="accepted-user"]');
+        if (!messages || !user) return false;
+        const inset = user.getBoundingClientRect().top - messages.getBoundingClientRect().top;
+        return inset >= -1 && inset < 80;
+      });
+      const samples = await messages.evaluate(async (element) => {
+        const samples = [];
+        for (let frame = 0; frame < 8; frame++) {
+          await new Promise(requestAnimationFrame);
+          const user = element.querySelector('[data-side-item-id="accepted-user"]');
+          samples.push(user.getBoundingClientRect().top - element.getBoundingClientRect().top);
+        }
+        return samples;
+      });
+      assert.ok(
+        samples.every((value) => value >= -1 && value < 80),
+        `${scenario} near top: ${samples}`,
+      );
+      firstTurnSamples.push({ reducedMotion, scenario, samples });
+    };
+    const grow = async () => {
+      await reading.getByRole("button", { name: "追加长输出", exact: true }).click();
+      await page.waitForTimeout(400);
+    };
+    for (const scenario of ["mounted", "before-mount", "unknown", "history"]) {
+      await reading.getByLabel("发送顺序", { exact: true }).selectOption(scenario);
+      if (scenario === "history") {
+        await messages.hover();
+        await page.mouse.wheel(0, -500);
+        await page.waitForTimeout(120);
+      }
+      if (scenario === "unknown" || scenario === "history")
+        await reading.getByRole("button", { name: "开始发送", exact: true }).click();
+      if (scenario === "unknown")
+        await reading.getByRole("button", { name: "响应丢失", exact: true }).click();
+      await reading.getByRole("button", { name: "收到用户消息", exact: true }).click();
+      await nearTop(`${scenario}-accepted`);
+      await grow();
+      await grow();
+      await nearTop(`${scenario}-long-output`);
+      await messages.hover();
+      await page.mouse.wheel(0, 220);
+      await page.waitForTimeout(150);
+      const held = await geometry();
+      await grow();
+      const after = await geometry();
+      assert.ok(
+        Math.abs(after.top - held.top) < 2,
+        `${scenario} user release: ${JSON.stringify({ held, after })}`,
+      );
+    }
+    await reading.getByLabel("发送顺序", { exact: true }).selectOption("history");
+    await reading.getByRole("button", { name: "开始发送", exact: true }).click();
+    await messages.hover();
+    await page.mouse.wheel(0, -500);
+    await page.waitForTimeout(150);
+    const held = await geometry();
+    await reading.getByRole("button", { name: "收到用户消息", exact: true }).click();
+    await grow();
+    assert.ok(
+      Math.abs((await geometry()).top - held.top) < 2,
+      "scroll after send cancels the late accepted anchor",
+    );
+    await reading.getByLabel("发送顺序", { exact: true }).selectOption("cold");
+    await page.waitForTimeout(300);
+    assert.ok((await geometry()).remaining < 2, "cold history opens at natural tail");
+    assert.equal(
+      await messages.locator(".message-response-space").evaluate((el) => el.clientHeight),
+      0,
+    );
+    await page.close();
+  }
+  checks.push(
+    "first-turn ordering, UNKNOWN late snapshot, long output, local send from history, user release and cold history in both motion settings",
+  );
 
   // 时间线只展示 Core 事实；没有工具也保留中断分隔行。
   {
@@ -222,5 +320,5 @@ try {
 } finally {
   await browser?.close();
   await new Promise((done) => server.close(done));
-  console.log(JSON.stringify({ passed, checks, errors }));
+  console.log(JSON.stringify({ passed, checks, firstTurnSamples, errors }));
 }

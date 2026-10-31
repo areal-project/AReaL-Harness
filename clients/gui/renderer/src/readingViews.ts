@@ -5,7 +5,9 @@ export type ReadingAnchor = {
   blockIndex: number | null;
   offset: number;
 };
+export type TurnStartRequest = { owner: string; afterTurnId?: string; requestId?: string };
 export type ReadingView = {
+  pendingTurnStart?: TurnStartRequest;
   top: number;
   following: boolean;
   atTail: boolean;
@@ -20,6 +22,24 @@ const readingCheckpointKey = "areal-gui:reading-views:v1";
 const readingCheckpointLimit = 64 * 1024;
 const readingViewLimit = 32;
 export const readingViews = new Map<string, ReadingView>();
+export function requestTurnStart(projectId: string, threadId: string, afterTurnId?: string) {
+  const owner = JSON.stringify([projectId, threadId, false]);
+  const request: TurnStartRequest = { owner, afterTurnId };
+  readingViews.set(owner, {
+    top: 0,
+    following: true,
+    atTail: true,
+    ...readingViews.get(owner),
+    pendingTurnStart: request,
+  });
+  return request;
+}
+export function cancelTurnStart(request: TurnStartRequest | undefined) {
+  if (!request) return;
+  const view = readingViews.get(request.owner);
+  if (view?.pendingTurnStart === request) delete view.pendingTurnStart;
+}
+
 let readingViewsHydrated = false;
 let savedReadingCheckpoint: string | null = null;
 function checkpointRecord(value: unknown): value is Record<string, unknown> {

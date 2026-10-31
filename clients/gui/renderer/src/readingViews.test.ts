@@ -163,3 +163,39 @@ test("a failed storage write is retried for an unchanged checkpoint", async () =
     views: [{ owner, position: { kind: "latest" } }],
   });
 });
+
+test("local send replaces prior holding intent only when a new user turn arrives", async () => {
+  const f = await fixture();
+  const owner = JSON.stringify(["project", "thread", false]);
+  const anchor = { turnId: "old", itemId: "message", blockIndex: null, offset: 12 };
+  f.readingViews.set(owner, { top: 80, following: false, atTail: false, anchor });
+  const first = f.requestTurnStart("project", "thread", "old");
+  expect(f.readingViews.get(owner)).toMatchObject({
+    following: false,
+    anchor,
+    pendingTurnStart: first,
+  });
+  const next = f.requestTurnStart("project", "thread", "old");
+  f.cancelTurnStart(first);
+  expect(f.readingViews.get(owner)?.pendingTurnStart).toBe(next);
+  f.cancelTurnStart(next);
+  expect(f.readingViews.get(owner)?.pendingTurnStart).toBeUndefined();
+  expect(f.readingViews.get(owner)?.anchor).toEqual(anchor);
+});
+
+test("a local send intent does not survive a cold history reload", async () => {
+  const f = await fixture();
+  f.requestTurnStart("project", "thread");
+  f.saveReadingViews();
+  expect(f.raw()).not.toContain("pendingTurnStart");
+  const raw = f.raw();
+  vi.resetModules();
+  vi.stubGlobal("window", { sessionStorage: { getItem: () => raw } });
+  const reloaded = await import("./readingViews.js");
+  reloaded.hydrateReadingViews();
+  expect(reloaded.readingViews.get(JSON.stringify(["project", "thread", false]))).toEqual({
+    top: 0,
+    following: true,
+    atTail: true,
+  });
+});

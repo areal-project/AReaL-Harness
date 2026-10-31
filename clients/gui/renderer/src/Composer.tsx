@@ -2,6 +2,7 @@ import { composerUploadOwner, forgetComposerUploads } from "./ComposerUploadStat
 import { uploadComposerFiles } from "./ComposerUploads.js";
 export { uploadComposerFiles } from "./ComposerUploads.js";
 
+import { requestTurnStart, cancelTurnStart, readingViews } from "./readingViews.js";
 import { setPendingMessage, usePendingMessage } from "./pendingMessage.js";
 import { Input } from "@areal/ui";
 import { ComposerActionButton } from "@areal/ui/experimental";
@@ -445,6 +446,10 @@ export function Composer({
     } catch {}
     const outcome = recoveredOutcome(project, unknown, thread.id, operation);
     if (!outcome) return;
+    const turnStart = readingViews.get(
+      JSON.stringify([project.id, thread.id, false]),
+    )?.pendingTurnStart;
+    if (outcome.accepted === false && turnStart?.requestId === unknown) cancelTurnStart(turnStart);
     composerDraftStorage.removeItem(`${key}:pending`);
     composerDraftStorage.removeItem(`${key}:pending-operation`);
     setUnknown(null);
@@ -495,6 +500,7 @@ export function Composer({
     setGoalError("");
     setDeliveryError("");
     let configurationRequestId: string | undefined;
+    let sendStarted = false;
     const sideCommand = parseSideSlashCommand(
       submittedInput.text,
       submittedInput.files,
@@ -506,6 +512,11 @@ export function Composer({
         !matchMedia("(max-width: 640px)").matches,
       appEntries.map((entry) => entry.value),
     );
+    const steer = !taskManagement && !!running && shouldSteer(prefs.followUp, invert);
+    const turnStart =
+      !sideCommand && !creatingGoal && !steer
+        ? requestTurnStart(project.id, thread.id, thread.turns?.at(-1)?.id)
+        : undefined;
     if (!sideCommand && !creatingGoal)
       setPendingMessage(key, {
         text: submittedInput.text,
@@ -547,8 +558,11 @@ export function Composer({
         configurationRequestId = undefined;
       }
       await submitMessage(action, project.id, thread.id, value, files, {
+        onSendStart: () => {
+          sendStarted = true;
+        },
         uploadOwner,
-        steer: !taskManagement && !!running && shouldSteer(prefs.followUp, invert),
+        steer,
         expectedTurnId: running?.id,
         enqueue: !taskManagement && !!running,
         skillAction: readAction,
@@ -564,6 +578,8 @@ export function Composer({
         submissionUnknown?: boolean;
         requestId?: string;
       };
+      if (!sendStarted || !error.submissionUnknown) cancelTurnStart(turnStart);
+      else if (turnStart) turnStart.requestId = error.requestId;
       if (creatingGoal) setGoalError(goalControlError(error));
       else if (!(error.submissionUnknown && error.requestId)) {
         // 附件失败留在所属 Composer，切换任务后仍能看到；没有附件的未受理发送/steer 单独显示投递原因。
@@ -1528,6 +1544,7 @@ export async function submitMessage(
       .filter(Boolean)
       .join("\n\n");
     try {
+      options.onSendStart?.();
       await action(options.steer ? "steer" : "send", {
         projectId,
         threadId,

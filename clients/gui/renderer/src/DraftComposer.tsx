@@ -1,3 +1,4 @@
+import { requestTurnStart, cancelTurnStart, type TurnStartRequest } from "./readingViews.js";
 import { composerUploadOwner } from "./ComposerUploadState.js";
 import type { DraftComposerProps } from "./draftComposerTypes.js";
 import { PendingMessageView } from "./UserMessageBody.js";
@@ -410,6 +411,8 @@ export function DraftComposer({
         starting: true,
       });
     setDraftError("");
+    let turnStart: TurnStartRequest | undefined;
+    let sendStarted = false;
     let targetKey: string | undefined;
     let creationAttempted = false;
     const creationRequestId = crypto.randomUUID();
@@ -493,12 +496,14 @@ export function DraftComposer({
       transferComposerPlugins(key, targetKey);
       if (goalMode) localStorage.setItem(`${targetKey}:goal`, "true");
       markSending(targetKey, true);
-      if (!goalMode)
+      if (!goalMode) {
+        turnStart = requestTurnStart(owner.id, result.threadId);
         setPendingMessage(targetKey, {
           text: submittedInput.text,
           files: submittedInput.files,
           previousUserIds: [],
         });
+      }
       clear();
       // Show the accepted task immediately, including while the first model request waits.
       if (mounted.current) void onOpen(owner.id, result.threadId);
@@ -526,6 +531,9 @@ export function DraftComposer({
           : owner;
         if (!attachmentOwner) throw new Error("无法确认附件所属的执行会话，草稿已保留。");
         await submitMessage(action, owner.id, result.threadId, value, files, {
+          onSendStart: () => {
+            sendStarted = true;
+          },
           uploadOwner: composerUploadOwner(attachmentOwner, result.threadId),
           skillAction: readAction,
           pluginContext: {
@@ -549,12 +557,14 @@ export function DraftComposer({
     } catch (e) {
       const failure = e as RecoveryFailure;
       if (stoppedCreation.current.has(creationRequestId)) return;
+      if (!sendStarted || !failure.submissionUnknown) cancelTurnStart(turnStart);
       if (!failure.submissionUnknown) {
         localStorage.removeItem(`${key}:pending-create-request`);
         setDraftError(recoveryMessage(failure));
         if (targetKey) attachmentErrors.set(targetKey, recoveryMessage(failure));
       }
       const requestId = failure.requestId ?? (!targetKey ? creationRequestId : undefined);
+      if (turnStart && sendStarted && failure.submissionUnknown) turnStart.requestId = requestId;
       if (creationAttempted && failure.submissionUnknown && requestId) {
         if (targetKey) {
           localStorage.setItem(`${targetKey}:pending`, requestId);

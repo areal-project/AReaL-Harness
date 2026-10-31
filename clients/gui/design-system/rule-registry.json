@@ -6678,10 +6678,10 @@
     },
     {
       "id": "R-MESSAGES-012",
-      "title": "受理新的用户轮次后，conversationReading.following.target 定位该轮用户消息到阅读区域",
+      "title": "本地点击发送在现有 ReadingView 登记临时阅读意图",
       "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
       "strength": "default",
-      "textSha256": "32410d80a1e04aed39c96a3b44f06b829828bb8b4ee3533ab2fc1327e90898a0"
+      "textSha256": "8031a268b55291f53f3c83ce0557cf1a3da0ea3d91ff9b9e87e190c1f6f1893a"
     }
   ]
 }
