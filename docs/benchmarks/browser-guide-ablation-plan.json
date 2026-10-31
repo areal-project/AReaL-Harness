@@ -1,0 +1,1160 @@
+{
+  "schemaVersion": 1,
+  "status": "preregistered-inputs-runtime-artifact-seal-required",
+  "experimentId": "browser-hillclimb-v2-guide-ablation-01",
+  "purpose": "Historical guide ablation; B is current product. Not the 15-percent current-product improvement comparison.",
+  "baseSourceHead": "4b3921947f06c3055fdd80b518283a769cbf7bb9",
+  "minimumAttempts": 130,
+  "ordinaryAttemptsPerArm": 60,
+  "safetyAttemptsPerArm": 5,
+  "model": {
+    "provider": "authorized-existing-Arena",
+    "protocol": "responses",
+    "model": "gpt-6.1-terra",
+    "reasoningEffort": "medium",
+    "serviceTierRequested": "default",
+    "temperature": "omitted"
+  },
+  "budgetPerAttempt": {
+    "timeoutMs": 180000,
+    "maxModelRounds": 20,
+    "maxToolCalls": 64,
+    "maxOutputTokensPerRequest": 4096,
+    "maxForwardedHttpRequests": 24,
+    "maxTaskReruns": 0,
+    "modelTransportMaxRetries": 0,
+    "coreNetworkRecoveryMode": "bounded",
+    "coreNetworkRecoveryMaxRetries": 5,
+    "stopObservationMs": 3000,
+    "childTerminateAfterMs": 420000,
+    "childKillAfterMs": 435000
+  },
+  "arms": [
+    {
+      "id": "A",
+      "label": "historical-old-guide-ablation",
+      "sourceChange": "Reverse only service-protocol.cjs from 6fcff569 in the fixed product checkout; retain current geometry. Tests and experiment harness remain shared."
+    },
+    {
+      "id": "B",
+      "label": "current-checked-topic-guide",
+      "sourceChange": "Current fixed product with 6fcff569 and 771777c7."
+    }
+  ],
+  "sources": [
+    {
+      "id": "areal-synthetic-browser-pilot-v1",
+      "revision": "4b3921947f06c3055fdd80b518283a769cbf7bb9",
+      "type": "local-synthetic"
+    },
+    {
+      "id": "miniwob-plusplus-original",
+      "repository": "https://github.com/Farama-Foundation/miniwob-plusplus",
+      "revision": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "license": "MIT",
+      "type": "original-benchmark-html-local-time-budget-port"
+    },
+    {
+      "id": "todomvc-official-react",
+      "repository": "https://github.com/tastejs/todomvc",
+      "revision": "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+      "license": "MIT",
+      "type": "official-application-e2e-derived-tasks"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "synthetic/local-html",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "synthetic/form-submit",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "synthetic/dynamic-dom",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "synthetic/iframe-info",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "synthetic/information",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "synthetic/stop",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "safety",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "miniwob/enter-text",
+      "sourceGroup": "miniwob-plusplus-original",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "miniwob/choose-list",
+      "sourceGroup": "miniwob-plusplus-original",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "miniwob/click-checkboxes",
+      "sourceGroup": "miniwob-plusplus-original",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "miniwob/click-option",
+      "sourceGroup": "miniwob-plusplus-original",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "todomvc/add",
+      "sourceGroup": "todomvc-official-react",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "todomvc/edit",
+      "sourceGroup": "todomvc-official-react",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "todomvc/active",
+      "sourceGroup": "todomvc-official-react",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    }
+  ],
+  "fixtureSeedsByRepeat": [104729, 130363, 155921, 181081, 206369],
+  "scheduleSeed": "browser-hillclimb-v2-guide-20261031",
+  "scheduleAlgorithm": "SHA256 pair-key lexical ordering; first byte parity of separate arm-key selects AB or BA; serial adjacent pairs",
+  "schedule": [
+    {
+      "sequence": 1,
+      "taskId": "todomvc/edit",
+      "repeat": 3,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 2,
+      "taskId": "todomvc/edit",
+      "repeat": 3,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 3,
+      "taskId": "todomvc/active",
+      "repeat": 4,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 4,
+      "taskId": "todomvc/active",
+      "repeat": 4,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 5,
+      "taskId": "synthetic/local-html",
+      "repeat": 1,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 6,
+      "taskId": "synthetic/local-html",
+      "repeat": 1,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 7,
+      "taskId": "synthetic/dynamic-dom",
+      "repeat": 4,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 8,
+      "taskId": "synthetic/dynamic-dom",
+      "repeat": 4,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 9,
+      "taskId": "todomvc/active",
+      "repeat": 5,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 10,
+      "taskId": "todomvc/active",
+      "repeat": 5,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 11,
+      "taskId": "todomvc/edit",
+      "repeat": 5,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 12,
+      "taskId": "todomvc/edit",
+      "repeat": 5,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 13,
+      "taskId": "synthetic/information",
+      "repeat": 3,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 14,
+      "taskId": "synthetic/information",
+      "repeat": 3,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 15,
+      "taskId": "synthetic/iframe-info",
+      "repeat": 5,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 16,
+      "taskId": "synthetic/iframe-info",
+      "repeat": 5,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 17,
+      "taskId": "miniwob/enter-text",
+      "repeat": 5,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 18,
+      "taskId": "miniwob/enter-text",
+      "repeat": 5,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 19,
+      "taskId": "synthetic/stop",
+      "repeat": 1,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 20,
+      "taskId": "synthetic/stop",
+      "repeat": 1,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 21,
+      "taskId": "miniwob/enter-text",
+      "repeat": 4,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 22,
+      "taskId": "miniwob/enter-text",
+      "repeat": 4,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 23,
+      "taskId": "synthetic/dynamic-dom",
+      "repeat": 1,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 24,
+      "taskId": "synthetic/dynamic-dom",
+      "repeat": 1,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 25,
+      "taskId": "miniwob/choose-list",
+      "repeat": 4,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 26,
+      "taskId": "miniwob/choose-list",
+      "repeat": 4,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 27,
+      "taskId": "todomvc/add",
+      "repeat": 3,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 28,
+      "taskId": "todomvc/add",
+      "repeat": 3,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 29,
+      "taskId": "miniwob/enter-text",
+      "repeat": 2,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 30,
+      "taskId": "miniwob/enter-text",
+      "repeat": 2,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 31,
+      "taskId": "miniwob/click-option",
+      "repeat": 5,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 32,
+      "taskId": "miniwob/click-option",
+      "repeat": 5,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 33,
+      "taskId": "synthetic/stop",
+      "repeat": 2,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 34,
+      "taskId": "synthetic/stop",
+      "repeat": 2,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 35,
+      "taskId": "synthetic/stop",
+      "repeat": 3,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 36,
+      "taskId": "synthetic/stop",
+      "repeat": 3,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 37,
+      "taskId": "synthetic/local-html",
+      "repeat": 5,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 38,
+      "taskId": "synthetic/local-html",
+      "repeat": 5,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 39,
+      "taskId": "synthetic/local-html",
+      "repeat": 4,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 40,
+      "taskId": "synthetic/local-html",
+      "repeat": 4,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 41,
+      "taskId": "todomvc/active",
+      "repeat": 3,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 42,
+      "taskId": "todomvc/active",
+      "repeat": 3,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 43,
+      "taskId": "miniwob/choose-list",
+      "repeat": 2,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 44,
+      "taskId": "miniwob/choose-list",
+      "repeat": 2,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 45,
+      "taskId": "miniwob/click-checkboxes",
+      "repeat": 4,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 46,
+      "taskId": "miniwob/click-checkboxes",
+      "repeat": 4,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 47,
+      "taskId": "synthetic/information",
+      "repeat": 5,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 48,
+      "taskId": "synthetic/information",
+      "repeat": 5,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 49,
+      "taskId": "synthetic/form-submit",
+      "repeat": 1,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 50,
+      "taskId": "synthetic/form-submit",
+      "repeat": 1,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 51,
+      "taskId": "todomvc/edit",
+      "repeat": 4,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 52,
+      "taskId": "todomvc/edit",
+      "repeat": 4,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 53,
+      "taskId": "todomvc/active",
+      "repeat": 2,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 54,
+      "taskId": "todomvc/active",
+      "repeat": 2,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 55,
+      "taskId": "miniwob/enter-text",
+      "repeat": 3,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 56,
+      "taskId": "miniwob/enter-text",
+      "repeat": 3,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 57,
+      "taskId": "miniwob/click-checkboxes",
+      "repeat": 1,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 58,
+      "taskId": "miniwob/click-checkboxes",
+      "repeat": 1,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 59,
+      "taskId": "miniwob/click-option",
+      "repeat": 1,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 60,
+      "taskId": "miniwob/click-option",
+      "repeat": 1,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 61,
+      "taskId": "synthetic/local-html",
+      "repeat": 2,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 62,
+      "taskId": "synthetic/local-html",
+      "repeat": 2,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 63,
+      "taskId": "synthetic/dynamic-dom",
+      "repeat": 5,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 64,
+      "taskId": "synthetic/dynamic-dom",
+      "repeat": 5,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 65,
+      "taskId": "miniwob/choose-list",
+      "repeat": 1,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 66,
+      "taskId": "miniwob/choose-list",
+      "repeat": 1,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 67,
+      "taskId": "miniwob/click-checkboxes",
+      "repeat": 5,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 68,
+      "taskId": "miniwob/click-checkboxes",
+      "repeat": 5,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 69,
+      "taskId": "synthetic/form-submit",
+      "repeat": 2,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 70,
+      "taskId": "synthetic/form-submit",
+      "repeat": 2,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 71,
+      "taskId": "synthetic/stop",
+      "repeat": 5,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 72,
+      "taskId": "synthetic/stop",
+      "repeat": 5,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 73,
+      "taskId": "synthetic/information",
+      "repeat": 1,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 74,
+      "taskId": "synthetic/information",
+      "repeat": 1,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 75,
+      "taskId": "synthetic/form-submit",
+      "repeat": 3,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 76,
+      "taskId": "synthetic/form-submit",
+      "repeat": 3,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 77,
+      "taskId": "synthetic/dynamic-dom",
+      "repeat": 2,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 78,
+      "taskId": "synthetic/dynamic-dom",
+      "repeat": 2,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 79,
+      "taskId": "todomvc/edit",
+      "repeat": 1,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 80,
+      "taskId": "todomvc/edit",
+      "repeat": 1,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 81,
+      "taskId": "miniwob/choose-list",
+      "repeat": 5,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 82,
+      "taskId": "miniwob/choose-list",
+      "repeat": 5,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 83,
+      "taskId": "synthetic/stop",
+      "repeat": 4,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 84,
+      "taskId": "synthetic/stop",
+      "repeat": 4,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 85,
+      "taskId": "todomvc/add",
+      "repeat": 4,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 86,
+      "taskId": "todomvc/add",
+      "repeat": 4,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 87,
+      "taskId": "todomvc/add",
+      "repeat": 2,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 88,
+      "taskId": "todomvc/add",
+      "repeat": 2,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 89,
+      "taskId": "miniwob/click-option",
+      "repeat": 2,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 90,
+      "taskId": "miniwob/click-option",
+      "repeat": 2,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 91,
+      "taskId": "synthetic/iframe-info",
+      "repeat": 2,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 92,
+      "taskId": "synthetic/iframe-info",
+      "repeat": 2,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 93,
+      "taskId": "todomvc/add",
+      "repeat": 1,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 94,
+      "taskId": "todomvc/add",
+      "repeat": 1,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 95,
+      "taskId": "miniwob/choose-list",
+      "repeat": 3,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 96,
+      "taskId": "miniwob/choose-list",
+      "repeat": 3,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 97,
+      "taskId": "miniwob/click-checkboxes",
+      "repeat": 2,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 98,
+      "taskId": "miniwob/click-checkboxes",
+      "repeat": 2,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 99,
+      "taskId": "synthetic/iframe-info",
+      "repeat": 4,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 100,
+      "taskId": "synthetic/iframe-info",
+      "repeat": 4,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 101,
+      "taskId": "synthetic/information",
+      "repeat": 2,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 102,
+      "taskId": "synthetic/information",
+      "repeat": 2,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 103,
+      "taskId": "synthetic/iframe-info",
+      "repeat": 3,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 104,
+      "taskId": "synthetic/iframe-info",
+      "repeat": 3,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 105,
+      "taskId": "synthetic/information",
+      "repeat": 4,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 106,
+      "taskId": "synthetic/information",
+      "repeat": 4,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 107,
+      "taskId": "todomvc/active",
+      "repeat": 1,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 108,
+      "taskId": "todomvc/active",
+      "repeat": 1,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 109,
+      "taskId": "synthetic/iframe-info",
+      "repeat": 1,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 110,
+      "taskId": "synthetic/iframe-info",
+      "repeat": 1,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 111,
+      "taskId": "todomvc/edit",
+      "repeat": 2,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 112,
+      "taskId": "todomvc/edit",
+      "repeat": 2,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 113,
+      "taskId": "miniwob/click-option",
+      "repeat": 4,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 114,
+      "taskId": "miniwob/click-option",
+      "repeat": 4,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 115,
+      "taskId": "synthetic/form-submit",
+      "repeat": 5,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 116,
+      "taskId": "synthetic/form-submit",
+      "repeat": 5,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 117,
+      "taskId": "synthetic/form-submit",
+      "repeat": 4,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 118,
+      "taskId": "synthetic/form-submit",
+      "repeat": 4,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 119,
+      "taskId": "synthetic/local-html",
+      "repeat": 3,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 120,
+      "taskId": "synthetic/local-html",
+      "repeat": 3,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 121,
+      "taskId": "synthetic/dynamic-dom",
+      "repeat": 3,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 122,
+      "taskId": "synthetic/dynamic-dom",
+      "repeat": 3,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 123,
+      "taskId": "miniwob/click-option",
+      "repeat": 3,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 124,
+      "taskId": "miniwob/click-option",
+      "repeat": 3,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 125,
+      "taskId": "todomvc/add",
+      "repeat": 5,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 126,
+      "taskId": "todomvc/add",
+      "repeat": 5,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 127,
+      "taskId": "miniwob/click-checkboxes",
+      "repeat": 3,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 128,
+      "taskId": "miniwob/click-checkboxes",
+      "repeat": 3,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 129,
+      "taskId": "miniwob/enter-text",
+      "repeat": 1,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 130,
+      "taskId": "miniwob/enter-text",
+      "repeat": 1,
+      "arm": "A",
+      "status": "planned"
+    }
+  ],
+  "statistics": {
+    "primary": "source-equal-weight mean penalized Solve HTTP cost",
+    "failurePenalty": 24,
+    "failurePenaltyIsActualCalls": false,
+    "successfulAttemptWithMissingSolveCount": "comparison-inconclusive",
+    "allPlannedOrdinaryAttemptsInQualityDenominator": true,
+    "sourceClusterBootstrapReplicates": 10000,
+    "statisticsSeed": "browser-hillclimb-v2-stats-20261031",
+    "confidenceInterval": 0.95,
+    "bootstrapPreservesAllWithinSourceTaskRepeatPairs": true,
+    "independentSourceGroups": 3,
+    "generalizationEvidence": "insufficient; development-only"
+  },
+  "developmentTargets": {
+    "ordinarySuccessesAtLeast": 57,
+    "ordinaryPlanned": 60,
+    "safetySuccessesRequired": 5,
+    "safetyPlanned": 5,
+    "minimumRelativeCostReductionAgainstCurrentProduct": 0.15,
+    "noObservedQualityRegressionAt": "overall,source,task",
+    "qualityDifferenceLower95BoundAtLeast": -0.05,
+    "relativeCostReductionLower95BoundGreaterThan": 0,
+    "guideAblationCannotClaimCurrentProductImprovement": true
+  },
+  "exclusions": "none after observing results; all failures, UNKNOWN, blocked, timeouts and unstarted planned rows retained",
+  "reruns": "none; reconcile receipt before resume; only not-started planned rows continue",
+  "confirmation": {
+    "status": "not-selected",
+    "minimumNewOrdinaryTasks": 12,
+    "minimumNewIndependentSourceGroups": 3,
+    "repeatsPerArm": 5,
+    "developmentSourcesCannotBeReused": true,
+    "defaultPromotionAllowed": false
+  },
+  "freezePending": [
+    "Commit common harness and this input plan",
+    "Seal actual artifact and endpoint hashes in fresh output manifest before any provider request"
+  ],
+  "policy": {
+    "normalControlsOnly": true,
+    "arbitraryPlaywrightEvaluation": "denied-for-both-arms",
+    "graderOrResetCalls": "not-permitted",
+    "scope": "Control-interaction development tasks, not unrestricted browser capability."
+  },
+  "artifactPolicy": {
+    "productCheckouts": "separate fixed 4b392194 checkouts; only model-facing service-protocol guide differs",
+    "commonHarness": "one committed launcher/catalog/driver/scorer snapshot",
+    "coreBinary": "existing authorized fixed slot, identical SHA256 for both arms, checked before and after each attempt; no rebuild/deploy during experiment",
+    "profile": "same debug Core for both arms; no release-package absolute-latency claim",
+    "provider": "Arena Responses endpoint SHA256 must match frozen local configuration; no secrets in plan",
+    "finalSeal": "actual source, dependency, renderer, browser bundle, Core and Electron hashes in runtime manifest before first request"
+  },
+  "preflight": {
+    "externalNative": "seven positive and negative native control flows plus partial reward rejection; local assets only",
+    "coreFixture": "B 13/13, A one external task passed; all cleanup true",
+    "guideIdentity": "actual describe stable differences confined to parameterGuide and examples",
+    "modelRequests": 0
+  },
+  "maximumPlannedClientHttpRequests": 3120,
+  "conditionalOutputTokenUpperBound": 12779520,
+  "conditionalOutputTokenUpperBoundRequiresProviderHonor": true
+}

@@ -89,3 +89,43 @@ pnpm --dir clients/gui bench:browser-tasks:real \
 `manifest.json` 保留全部计划尝试、实际状态、源码与产物摘要、模型参数、预算、清理结果和评分。每题目录保存完整权威历史、全部工具调用、站点事实、原生页面事实、Core model audit 和 HTTP 请求元数据。超时、阻塞或未知尝试即使在清理结算期间收到 Core completed，也不计为任务完成。actual tier 与 usage 只采用 Core 已收回执，缺失保留 `unknown`，已知用量明确为下界。取消后关闭上游，不继续生成以补统计。
 
 该试点只验证单来源真实任务链路。正式策略开发比较仍须至少 12 道不同任务、3 个独立来源组、每题每方 5 次。六道同源题和固定模型桩结果不能支撑模型排名、策略收益或默认晋级。
+
+## 浏览器配对开发对照
+
+固定输入与判定门槛见[参数指引消融预登记](browser-guide-ablation-plan.json)。12 道普通任务来自三个母来源，另列一道停止任务；每题每臂独立重复 5 次，共 130 次尝试。普通质量分母为每臂 60 次，开发观察目标为至少 57/60，停止须 5/5。95% 是开发集观察门槛，不是总体能力保证。
+
+来源包括既有五道普通合成任务、[MiniWoB++ 固定源码](https://github.com/Farama-Foundation/miniwob-plusplus/tree/33c3b4ddef8c6eb67c57a29663d844b1eda7e614)的 enter-text、choose-list、click-checkboxes、click-option，以及 [TodoMVC 官方测试](https://github.com/tastejs/todomvc/blob/ff43b02e59dfa604386bb382034b2cd07c2bcd8a/cypress/e2e/spec.cy.js)派生的添加、编辑和 Active 筛选。原始资产、许可与 SHA 保存在 `clients/gui/scripts/fixtures/vendor/browser-task-sources/`。MiniWoB 时限由原始 10 秒移植为 180 秒，START 仍由模型操作并计入预算。TodoMVC 使用官方 React 内存应用，从空列表经正常控件建立任务状态，不要求持久化。这些结果不称官方 benchmark 分数。
+
+两臂均通过正常应用控件完成任务，不调用应用的评分或重置接口。审批统一拒绝任意 Playwright evaluate，产品工具本身不改动。MiniWoB 在 START 后、答题前保存公开目标与原生控件初态，最终同时检查原始 raw reward=1、episode 终态及控件状态；缺初态保持 UNKNOWN。TodoMVC 采用官方测试的可见 DOM 判据。这两个客户端 oracle 的可信边界低于独立服务端提交回执，单独披露。
+
+第一轮是历史指引消融。A 从当前修复版只撤回 checked/topic 运行时指引，B 为当前产品；两者保留相同几何修复、Core、Electron、renderer 和 browser bundles，共用同一冻结测试执行器。实际加载的 Main 路径与 guide 摘要分别核验，仅改 cwd 或 binary 路径不能充当 arm 隔离。Core 沿用已授权的固定路径及相同 debug profile，逐次校验三个组件 SHA，不在运行期间重编译或部署；本轮不宣称发布安装包的绝对时延。
+
+本地配置须给出 `experimentId`、`comparisonKind`、调度 seed、Arena Responses 完整 endpoint 的 SHA256，以及每臂的 `appRoot`、`launcherPath`、`coreBinary`、`electronExecutable` 绝对路径。完整 endpoint 由授权执行器提供，校验摘要后才能发请求；凭据不进入配置、子进程或证据。运行命令为：
+
+```sh
+pnpm --dir clients/gui test:browser-tasks
+pnpm --dir clients/gui bench:browser-tasks:plan \
+  --paired-config /absolute/paired-config.json --output /absolute/experiment
+pnpm --dir clients/gui bench:browser-tasks:real \
+  --paired-config /absolute/paired-config.json --output /absolute/experiment \
+  --resume --authorized --protocol responses --model gpt-6.1-terra \
+  --upstream https://api.example.invalid/v1/responses \
+  --credential-env AREAL_BROWSER_PILOT_API_KEY
+pnpm --dir clients/gui bench:browser-tasks:summary /absolute/experiment/manifest.json
+```
+
+计划预列全部 source/task/repeat/arm/sequence 身份。每对相邻且随机 AB/BA，使用同一实例 seed；每次新建 Electron/Core/home/workspace/gate。结果目录不覆盖。恢复只接纳身份、工件和结果摘要严格匹配的完成回执；已开始但缺回执的 UNKNOWN 不重跑，清理未证实则阻止下一次。原始六题 pilot 命令仍保留。
+
+单题限制与原试点相同。130 次计划最多 3,120 个客户端 HTTP；供应商兑现输出限制时，条件输出上界为 12,779,520 tokens，不限制输入或费用。输入计划先提交，完整产物与 endpoint 摘要在首次请求前封存在本地 manifest。运行期间不改代码、题目、oracle、预算或调度，失败与不利结果全部保留。
+
+先验主效率指标为按来源等权的 penalized Solve cost。普通成功尝试使用完整对账的实际 Solve HTTP 次数，失败/UNKNOWN 赋予预登记代价 24；代价不是实际调用数。成功但计数不完整时判为 INCONCLUSIVE。全部实际请求和已知消费另报，缺 usage 不补零，缓存不重复相加，不凭下界推断 token 降低。提交到终态采用 `timings.sendToTerminalMs`；设置、验证、停止观察和清理分开记录。
+
+开发保留要求候选普通质量达到 57/60、停止 5/5、总体/每来源/每题无观察退化，配对质量差的 95% 区间下界不低于 −5 个百分点；成本改善点估计至少 15% 且区间下界大于 0。按三个来源配对聚类 bootstrap 10,000 次，保留全部组内任务与重复，另报删一来源敏感性。只有三个来源，区间不能充当泛化证明。
+
+历史消融用于测量现有指引的作用，不算相对当前产品达到 15% 目标。后续一次只测一个有成本证据的候选，当前机械正确的指引不会因没有效率收益被撤回。最终累计效果须与原始当前产品同批重新配对，不能把多轮收益相乘。默认效率晋级还需要另行冻结的未参与调优来源确认。
+
+### 自主 HTML 单次验收
+
+`--task generated-local-html` 单独选择自主生成与打开的验收，不进入 130 次配对调度。执行器只准备一个尚不存在的工作区 HTML 路径；模型根据公开标题、Results 内容及本次 reference 要求自行创建文件，并在当前聊天打开。该任务仅开放 `fs_create` 和 `browser_v1`，沿用 Ask 审批、隔离实例及同一单题预算，不预写 HTML，也不向模型提供工具调用序列。
+
+成功须同时有正常 Core 终态、先创建后打开同一文件的成功工具回执、磁盘内容与摘要、最终原生页面内容及完整清理证据。真实模式保留全部请求和用量缺失；一次通过只证明该链路，不计入配对完成率，不证明自主生成的泛化能力或效率收益。确定性模式仅验证执行与评分链路。

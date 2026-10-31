@@ -826,7 +826,7 @@
     "platforms": ["darwin", "linux"],
     "areas": ["browser", "benchmark"],
     "requires": [],
-    "notes": "Node-only task grader and loopback transport contracts; no Electron or provider calls."
+    "notes": "Node-only task oracles, paired schedules, receipts, summaries and loopback transport contracts; no Electron or provider calls."
   },
   {
     "script": "test:health",

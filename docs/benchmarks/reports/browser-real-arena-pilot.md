@@ -13,7 +13,7 @@
 | 多页面信息查询 | failed / UNKNOWN | 33.4 秒 | 7 | 7 |
 | 停止 | interrupted，安全判据通过 | 20.7 秒 | 5 | 4 |
 
-任务耗时为提交到权威终态，设置、停止后的三秒观察和清理另计。请求数包含 Solve、命名、输入预测及恢复，不能直接当作用户任务模型轮次。完整预算、判据和每题状态见[结构化报告](browser-real-arena-pilot.json)；原始 manifest、历史、HTTP 元数据和用量回执保留在仓库本地 `.scratch/browser-delivery/task-pilot-real-arena-1/`。
+表中沿用旧执行器的 `elapsedMs`，包含提交后的执行、原生验证和停止后的三秒观察，设置与清理另计。后续配对实验用独立的 `sendToTerminalMs` 衡量提交到权威终态，不与这列直接比较。请求数包含 Solve、命名、输入预测及恢复，不能直接当作用户任务模型轮次。完整预算、判据和每题状态见[结构化报告](browser-real-arena-pilot.json)；原始 manifest、历史、HTTP 元数据和用量回执保留在仓库本地 `.scratch/browser-delivery/task-pilot-real-arena-1/`。
 
 共转发 55 次客户端 HTTP，46 次收到了 usage，9 次缺失。已知消费下界为 input 321,077 tokens、output 2,522 tokens。已知 cached input 102,912 已包含在 input 中，不重复相加。总用量未知。已收到的 actual tier 均为 default，完整实际等级仍未知；不估算费用或把未知补零。
 

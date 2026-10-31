@@ -13,7 +13,7 @@ The overall run failed. The authorized Arena Responses configuration used `gpt-6
 | Multi-page information | failed / UNKNOWN | 33.4 s | 7 | 7 |
 | Stop | interrupted, safety passed | 20.7 s | 5 | 4 |
 
-Task elapsed runs from submission to the authoritative terminal state. Setup, the three-second stop observation and cleanup are separate. Request counts include Solve, naming, prompt prediction and recovery, and are not user-task model-round counts. The [structured report](browser-real-arena-pilot.json) contains budgets, oracles and per-task outcomes. Raw manifests, history, HTTP metadata and usage receipts remain locally under `.scratch/browser-delivery/task-pilot-real-arena-1/`.
+The table retains the old runner's `elapsedMs`, including execution after submission, native verification and the three-second stop observation. Setup and cleanup are separate. Later paired experiments use a distinct `sendToTerminalMs` and must not compare it directly with this column. Request counts include Solve, naming, prompt prediction and recovery, and are not user-task model-round counts. The [structured report](browser-real-arena-pilot.json) contains budgets, oracles and per-task outcomes. Raw manifests, history, HTTP metadata and usage receipts remain locally under `.scratch/browser-delivery/task-pilot-real-arena-1/`.
 
 There were 55 forwarded client HTTP requests, 46 with usage receipts and nine without. The known consumption lower bound is 321,077 input tokens and 2,522 output tokens. The known 102,912 cached input tokens are already included in input. Total usage remains unknown. Observed actual tiers were default, but complete actual-tier coverage remains unknown. No cost is estimated and missing fields are not replaced with zero.
 

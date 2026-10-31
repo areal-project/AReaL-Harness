@@ -89,3 +89,43 @@ Approval uses Ask. The executor reads authoritative pending Core interactions, t
 `manifest.json` retains every planned attempt, actual status, source and artifact hashes, model parameters, budgets, cleanup, and grading. Per-task directories retain complete authoritative history, every tool call, site facts, native page facts, Core model audits, and HTTP request metadata. A timed-out, blocked, or unknown attempt does not count as task completion even if Core reports completed during cleanup settlement. Actual tier and usage come only from receipts observed by Core. Missing values remain `unknown`, and known partial usage is a lower bound. Cancellation closes upstream instead of continuing generation to recover statistics.
 
 This pilot checks one source's real-task pipeline. Formal policy development comparisons still require at least 12 distinct tasks, three independent source groups, and five repetitions per task per arm. Six same-source tasks and fixed-model fixture results do not establish model rankings, policy benefits, or default promotion.
+
+## Paired browser development comparison
+
+The [guide-ablation preregistration](browser-guide-ablation-plan.json) fixes inputs and gates. Twelve ordinary tasks have three mother sources, with a separate stop task. Five independent repetitions per task and arm produce 130 attempts. Each arm has 60 ordinary attempts, targeting at least 57/60, and must pass all five stop trials. The 95% threshold is an observed development-set gate, not a population capability guarantee.
+
+Sources are the five existing ordinary synthetic tasks; enter-text, choose-list, click-checkboxes and click-option from [pinned MiniWoB++](https://github.com/Farama-Foundation/miniwob-plusplus/tree/33c3b4ddef8c6eb67c57a29663d844b1eda7e614); and add, edit and Active-filter tasks derived from [official TodoMVC tests](https://github.com/tastejs/todomvc/blob/ff43b02e59dfa604386bb382034b2cd07c2bcd8a/cypress/e2e/spec.cy.js). Original assets, licenses and hashes remain under `clients/gui/scripts/fixtures/vendor/browser-task-sources/`. MiniWoB's original ten-second deadline is ported to 180 seconds; the model still operates START within its budget. TodoMVC uses the official in-memory React app, starting empty and creating state through ordinary controls. Persistence and official benchmark scores are not claimed.
+
+Both arms use normal application controls and avoid grader/reset APIs. Approval uniformly denies arbitrary Playwright evaluation without changing product tools. MiniWoB saves the public goal and native controls after START and before the answer, then cross-checks raw reward=1, episode state and final controls. Missing initial evidence remains UNKNOWN. TodoMVC follows the official visible-DOM assertions. These client-side oracles have a weaker trust boundary than an independent server submission receipt.
+
+The first experiment is a historical guide ablation. A removes only the current fixed product's checked/topic runtime guidance; B is the current product. Geometry, Core, Electron, renderer and browser bundles match, with one frozen harness. Actual loaded Main paths and guide digests are checked separately; changing cwd or binary alone does not isolate an arm. Core keeps its authorized fixed path and the same debug profile, checking all three component hashes per attempt without rebuild/deployment during execution. This establishes no absolute release-package latency.
+
+Local configuration supplies `experimentId`, `comparisonKind`, schedule seed, the full Arena Responses endpoint's SHA256, and each arm's absolute `appRoot`, `launcherPath`, `coreBinary` and `electronExecutable`. The authorized executor supplies the full endpoint, whose digest must match before requests. Secrets enter neither configuration, children nor evidence. Commands are:
+
+```sh
+pnpm --dir clients/gui test:browser-tasks
+pnpm --dir clients/gui bench:browser-tasks:plan \
+  --paired-config /absolute/paired-config.json --output /absolute/experiment
+pnpm --dir clients/gui bench:browser-tasks:real \
+  --paired-config /absolute/paired-config.json --output /absolute/experiment \
+  --resume --authorized --protocol responses --model gpt-6.1-terra \
+  --upstream https://api.example.invalid/v1/responses \
+  --credential-env AREAL_BROWSER_PILOT_API_KEY
+pnpm --dir clients/gui bench:browser-tasks:summary /absolute/experiment/manifest.json
+```
+
+The plan enumerates all source/task/repeat/arm/sequence identities. Paired attempts are adjacent with randomized AB/BA order and matching instance seeds. Every attempt creates fresh Electron/Core/home/workspace/gate state. Output directories never overwrite attempts. Resume accepts only completed receipts with matching identity, artifact and result hashes. Started attempts without receipts remain UNKNOWN without replay; unproven cleanup blocks the next attempt. Original six-task pilot commands remain available.
+
+Per-attempt limits are unchanged. The 130-attempt plan permits at most 3,120 client HTTP requests. Conditional on provider enforcement, the output bound is 12,779,520 tokens; this bounds neither input nor money. Input rules are committed first, with complete artifact and endpoint identities sealed in the local manifest before the first request. Code, tasks, oracles, budgets and schedule remain fixed during execution. All failures and unfavorable results remain available.
+
+The preregistered primary efficiency metric is source-equal-weight penalized Solve cost. Successful ordinary attempts use fully reconciled actual Solve HTTP counts. Failure/UNKNOWN receives a predefined cost of 24, which is not an actual request count. Missing successful-attempt counts make the comparison INCONCLUSIVE. All actual requests and known consumption are reported separately; missing usage is not zero, caches are not double counted, and lower bounds cannot establish token savings. `timings.sendToTerminalMs` measures submission to terminal; setup, verification, stop observation and cleanup are separate.
+
+Development retention requires candidate ordinary quality of at least 57/60, stop safety 5/5, no observed quality decrease overall/by source/by task, and a paired-quality 95% interval lower bound of at least −5 percentage points. Cost improvement must have a point estimate of at least 15% and an interval lower bound above zero. A 10,000-sample paired source-cluster bootstrap retains all within-source tasks/repeats, with leave-one-source-out sensitivity. Three source groups do not establish generalization.
+
+Historical ablation measures existing guidance, not a 15% improvement over the current product. Later experiments test one evidence-backed candidate at a time. Mechanically correct guidance is not reverted merely for lacking efficiency gains. Final cumulative effects require a fresh same-batch comparison against the original current product; effects from separate rounds are not multiplied. Default efficiency promotion additionally requires frozen sources unused during tuning.
+
+### One-attempt autonomous HTML acceptance
+
+`--task generated-local-html` separately selects autonomous creation and opening, outside the 130-attempt paired schedule. The executor prepares only an absent workspace HTML path. The model creates the document from the public title, Results content and per-attempt reference requirements, then opens it in the current chat. Only `fs_create` and `browser_v1` are allowed, using Ask approval, isolated instances and the same per-attempt budget. The executor neither prewrites HTML nor supplies a tool-call sequence.
+
+Success requires normal Core termination, successful receipts creating then opening the same file, disk content and digest, final native page content, and complete cleanup evidence. Real mode retains every request and missing usage. One pass establishes only this flow, contributes no paired quality samples, and establishes neither generalization nor efficiency gains. Deterministic mode checks only execution and grading.

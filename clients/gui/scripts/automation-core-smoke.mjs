@@ -23,9 +23,13 @@ for (let index = 2; index < process.argv.length; index++) {
   else if (flag === "--benchmark") options.benchmark = true;
   else if (flag === "--ecosystem") options.ecosystem = true;
   else if (
-    ["--suite", "--native-bundle-id", "--native-fixture-app", "--task-benchmark-config"].includes(
-      flag,
-    )
+    [
+      "--suite",
+      "--native-bundle-id",
+      "--native-fixture-app",
+      "--task-benchmark-config",
+      "--app-root",
+    ].includes(flag)
   ) {
     assert.ok(
       process.argv[index + 1] && !process.argv[index + 1].startsWith("--"),
@@ -34,6 +38,7 @@ for (let index = 2; index < process.argv.length; index++) {
     options[
       {
         "--suite": "suite",
+        "--app-root": "appRoot",
         "--task-benchmark-config": "taskConfig",
         "--native-bundle-id": "bundleId",
         "--native-fixture-app": "fixtureApp",
@@ -68,6 +73,9 @@ if (options.native) {
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
+assert.ok(!options.appRoot || isAbsolute(options.appRoot), "--app-root must be absolute");
+assert.ok(!options.appRoot || options.taskConfig, "--app-root requires a task configuration");
+const productGUI = options.appRoot ? dirname(options.appRoot) : gui;
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const { CoreClient } = await import("../packages/runtime-client/core.js");
@@ -441,6 +449,9 @@ async function benchmarkSourceSnapshot() {
       [
         "app/src/main.cjs",
         "app/src/core/browser-tool.cjs",
+        "app/src/core/service-protocol.cjs",
+        "app/src/core/preview-native/native-targets.cjs",
+        "packages/browser-automation/src/upstream/browser/browserPlaywrightLocatorExecutor.ts",
         "app/src/core/preview.cjs",
         "app/src/core/browser-navigation.cjs",
         "app/src/core/preview-native/navigation.cjs",
@@ -1018,10 +1029,34 @@ async function installEcosystem() {
 async function launch() {
   app = await electron.launch({
     executablePath: process.env.AREAL_ELECTRON_EXECUTABLE || require("electron"),
-    args: [join(gui, "app")],
+    args: [join(productGUI, "app")],
     env,
     timeout: 120000,
   });
+  if (taskBenchmark) {
+    await writeFile(
+      join(scratch, "task-launch.json"),
+      JSON.stringify(
+        {
+          scratch,
+          workspace,
+          userHome,
+          launcherPID: process.pid,
+          electronPID: app.process().pid,
+          appRoot: options.appRoot ?? join(gui, "app"),
+          appPath: join(productGUI, "app"),
+          binary,
+          electronExecutable: process.env.AREAL_ELECTRON_EXECUTABLE || require("electron"),
+        },
+        null,
+        2,
+      ),
+    );
+    await writeFile(
+      join(dirname(taskBenchmark.configuration.resultPath), "launch.json"),
+      await readFile(join(scratch, "task-launch.json")),
+    );
+  }
   app
     .process()
     .stderr.on(
@@ -1043,7 +1078,10 @@ async function launch() {
   await until(async () => (await state()).connection?.state === "ready", "desktop service ready");
   events.startup = await checkBrowserStartup(app, { binary, userHome, scratch });
   events.runtime = await app.evaluate(
-    ({ app, BrowserWindow, dialog, shell, webContents }, { workspace, computerModule }) => {
+    (
+      { app, BrowserWindow, dialog, shell, webContents },
+      { workspace, computerModule, taskLifecycle },
+    ) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [workspace] });
       globalThis.__automationPermissionRequests = [];
       globalThis.__automationDialogs = [];
@@ -1065,6 +1103,7 @@ async function launch() {
         const webContentsId = contents.id;
         trace({
           kind: "contents-created",
+          type: contents.getType(),
           webContentsId,
           parentWindowId: parentWindowId(contents),
         });
@@ -1107,6 +1146,21 @@ async function launch() {
             });
         });
         contents.on("destroyed", () => trace({ kind: "contents-destroyed", webContentsId }));
+        if (taskLifecycle) {
+          contents.on("render-process-gone", (_event, details) =>
+            trace({ kind: "render-process-gone", webContentsId, details }),
+          );
+          contents.on("did-fail-load", (_event, errorCode, errorDescription, url, isMainFrame) =>
+            trace({
+              kind: "did-fail-load",
+              webContentsId,
+              errorCode,
+              errorDescription,
+              url,
+              isMainFrame,
+            }),
+          );
+        }
       };
       const traceWindow = (window, kind) => {
         const windowId = window.id;
@@ -1198,6 +1252,7 @@ async function launch() {
     },
     {
       workspace,
+      taskLifecycle: Boolean(taskBenchmark),
       computerModule:
         options.suite === "browser" ? null : join(gui, "app/src/core/computer-control.cjs"),
     },
@@ -1942,7 +1997,7 @@ try {
     } catch (error) {
       errors.push(`Application cleanup ${error.message}`);
       const { ServiceConnection, waitForServiceProcessExit } = require(
-        join(gui, "app/src/core/service-client.cjs"),
+        join(productGUI, "app/src/core/service-client.cjs"),
       );
       const connection = new ServiceConnection();
       try {
