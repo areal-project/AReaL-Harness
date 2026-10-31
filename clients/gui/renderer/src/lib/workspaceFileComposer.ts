@@ -1,4 +1,5 @@
 import { droppedFilePath } from "@/desktop-services.js";
+import { buildFileMentionMarkdown } from "@/mentions/mentionMarkdown.js";
 import { UiMessageError } from "@/i18n/IntlProvider.js";
 import type { Action, Data } from "@/services.js";
 import { useMemo, type MutableRefObject } from "react";
@@ -7,28 +8,27 @@ import type { LexicalChatInputHandle } from "@/LexicalChatInput.js";
 import {
   createWorkspaceFileComposerMention,
   type WorkspaceFileDragPayload,
+  type ComposerFileMention,
 } from "@/lib/workspaceFileDrag.js";
+
+export type ComposerFileReferenceInput =
+  | { source: "workspace"; payload: WorkspaceFileDragPayload }
+  | { source: "native-local-directory"; path: string | null };
 
 export function appendWorkspaceFileMentionToComposer(params: {
   inputApiRef: MutableRefObject<LexicalChatInputHandle | null>;
   currentMarkdown: string;
-  payload: WorkspaceFileDragPayload;
-  workspacePath: string;
-  workspaceIdentity?: string;
+  mention: ComposerFileMention;
   onTextChange: (text: string) => void;
 }) {
-  const mention = createWorkspaceFileComposerMention(
-    params.payload,
-    params.workspacePath,
-    params.workspaceIdentity,
-  );
+  const { mention } = params;
   const separator =
     params.currentMarkdown.length > 0 && !/\s$/.test(params.currentMarkdown) ? " " : "";
   const nextText = `${params.currentMarkdown}${separator}${mention.markdown} `;
 
   params.onTextChange(nextText);
   params.inputApiRef.current?.appendFileMention(
-    params.payload.name,
+    mention.name,
     mention.value,
     mention.markdown,
     mention.data,
@@ -84,22 +84,32 @@ async function validateWorkspaceFileReference(
   return payload;
 }
 
-export function droppedWorkspaceDirectory(
-  path: string | null,
+export async function validateComposerFileReference(
+  action: Action,
+  projectId: string,
   workspacePath: string,
-): WorkspaceFileDragPayload {
-  if (!path) throw new UiMessageError({ id: "chat.composer.directoryDropUnavailable" });
-  const root = workspacePath.replace(/\\/g, "/").replace(/\/+$/, "");
-  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
-  if (!normalized.startsWith(root + "/"))
-    throw new UiMessageError({ id: "chat.composer.workspaceReferenceCurrentOnly" });
-  const relativePath = normalized.slice(root.length + 1);
+  input: ComposerFileReferenceInput,
+): Promise<ComposerFileMention> {
+  if (input.source === "workspace") {
+    const payload = await validateWorkspaceFileReference(
+      action,
+      projectId,
+      workspacePath,
+      input.payload,
+    );
+    return createWorkspaceFileComposerMention(payload, workspacePath);
+  }
+  if (!input.path) throw new UiMessageError({ id: "chat.composer.directoryDropUnavailable" });
+  const directory = await action("workspace", {
+    projectId,
+    operation: "localDirectoryReference",
+    path: input.path,
+  });
   return {
-    type: "directory",
-    workspacePath,
-    path: `${workspacePath}/${relativePath}`,
-    relativePath,
-    name: relativePath.split("/").at(-1)!,
+    name: directory.name,
+    value: directory.path,
+    markdown: buildFileMentionMarkdown(directory.path, directory.name, "directory"),
+    data: { kind: "directory", path: directory.path },
   };
 }
 
@@ -121,9 +131,12 @@ export function useComposerWorkspaceFiles(action: Action, project: Data, scope: 
         ? {
             owner: JSON.stringify([projectId, root, connectionGeneration, scope]),
             root,
-            directory: (file: File) => droppedWorkspaceDirectory(droppedFilePath(file), root),
-            validate: (payload: WorkspaceFileDragPayload) =>
-              validateWorkspaceFileReference(action, projectId, root, payload),
+            directory: (file: File | null): ComposerFileReferenceInput => ({
+              source: "native-local-directory",
+              path: file ? droppedFilePath(file) : null,
+            }),
+            validate: (input: ComposerFileReferenceInput) =>
+              validateComposerFileReference(action, projectId, root, input),
             search: async (query: string) => {
               if (query.length > 256)
                 throw new UiMessageError({ id: "chat.composer.fileQueryTooLong" });

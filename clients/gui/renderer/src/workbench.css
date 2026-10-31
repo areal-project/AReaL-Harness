@@ -3984,7 +3984,7 @@ button[aria-label="停止"] {
   background: var(--color-hover);
 }
 .composer-attachments {
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 12px;
   margin-bottom: 12px;
   max-height: 270px;
@@ -3996,7 +3996,7 @@ button[aria-label="停止"] {
   min-width: 0;
   max-width: 100%;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 8px;
   margin-bottom: 10px;
   max-height: 270px;

@@ -1,4 +1,8 @@
-import type { ComposerWorkspaceFiles } from "../lib/workspaceFileComposer.js";
+import type {
+  ComposerWorkspaceFiles,
+  ComposerFileReferenceInput,
+} from "../lib/workspaceFileComposer.js";
+import { FeedbackNotice } from "../FeedbackNotice.js";
 import { ComposerActionButton } from "@areal/ui/experimental";
 import { ComputerControlEntry } from "../ComputerControlEntry.js";
 /* oxlint-disable eslint(max-lines) -- 输入壳同时收口 Lexical 同步、拖拽和工具栏插槽，暂不拆组件。 */
@@ -32,7 +36,7 @@ import {
   readWorkspaceFileDragPayload,
   WORKSPACE_FILE_ADD_TO_CHAT_EVENT,
   isWorkspaceFileAddToChatEvent,
-  type WorkspaceFileDragPayload,
+  type ComposerFileMention,
 } from "@/lib/workspaceFileDrag.js";
 import { appendWorkspaceFileMentionToComposer } from "@/lib/workspaceFileComposer.js";
 import { usePromptEditorDragState } from "@/prompt-editor/usePromptEditorDragState.js";
@@ -135,9 +139,9 @@ export function ChatPromptEditor({
   showSlashButton?: boolean;
   enableWorkspaceFileDrop?: boolean;
   enableExternalFileDrop?: boolean;
-  validateWorkspaceFile?: (payload: WorkspaceFileDragPayload) => Promise<WorkspaceFileDragPayload>;
+  validateWorkspaceFile?: (input: ComposerFileReferenceInput) => Promise<ComposerFileMention>;
   onFileDrop?: (files: File[]) => void;
-  resolveWorkspaceDirectory?: (file: File) => WorkspaceFileDragPayload;
+  resolveWorkspaceDirectory?: (file: File | null) => ComposerFileReferenceInput;
   onWorkspaceReferencePendingChange?: (pending: boolean) => void;
   isDraggingOver?: boolean;
   dragAttachmentHint?: string;
@@ -203,7 +207,7 @@ export function ChatPromptEditor({
   const [dropError, setDropError] = useState("");
   const [pendingReferences, setPendingReferences] = useState(0);
   const pendingReferencesRef = useRef(0);
-  const inputScope = `${workspacePath}\n${workspaceIdentity ?? ""}\n${taskId ?? ""}\n${referenceScope}`;
+  const inputScope = `${workspaceFiles?.owner ?? ""}\n${workspacePath}\n${workspaceIdentity ?? ""}\n${taskId ?? ""}\n${referenceScope}`;
   const scopeRef = useRef({ key: inputScope });
   if (scopeRef.current.key !== inputScope) {
     pendingReferencesRef.current = 0;
@@ -365,7 +369,7 @@ export function ChatPromptEditor({
   );
 
   const insertWorkspaceFile = useCallback(
-    async (payload: WorkspaceFileDragPayload) => {
+    async (inputs: readonly ComposerFileReferenceInput[]) => {
       if (
         !enableWorkspaceFileDrop ||
         !validateWorkspaceFile ||
@@ -379,30 +383,33 @@ export function ChatPromptEditor({
       setPendingReferences(pendingReferencesRef.current);
       onWorkspaceReferencePendingChange?.(true);
       try {
-        const validated = await validateWorkspaceFile(payload);
-        if (
-          scope !== scopeRef.current ||
-          !acceptsInputRef.current ||
-          !formRef.current?.getClientRects().length
-        )
-          return;
-        appendWorkspaceFileMentionToComposer({
-          inputApiRef: resolvedInputApiRef,
-          currentMarkdown: resolvedInputApiRef.current?.getMarkdown() ?? latestTextRef.current,
-          payload: validated,
-          workspacePath,
-          workspaceIdentity,
-          onTextChange: handleTextChange,
-        });
-      } catch (error) {
-        if (scope === scopeRef.current)
-          setDropError(
-            error instanceof UiMessageError
-              ? intl.formatMessage(error.descriptor)
-              : error instanceof Error
-                ? error.message
-                : String(error),
-          );
+        for (const input of inputs) {
+          if (scope !== scopeRef.current || !acceptsInputRef.current) return;
+          try {
+            const validated = await validateWorkspaceFile(input);
+            if (
+              scope !== scopeRef.current ||
+              !acceptsInputRef.current ||
+              !formRef.current?.getClientRects().length
+            )
+              return;
+            appendWorkspaceFileMentionToComposer({
+              inputApiRef: resolvedInputApiRef,
+              currentMarkdown: resolvedInputApiRef.current?.getMarkdown() ?? latestTextRef.current,
+              mention: validated,
+              onTextChange: handleTextChange,
+            });
+          } catch (error) {
+            if (scope === scopeRef.current)
+              setDropError(
+                error instanceof UiMessageError
+                  ? intl.formatMessage(error.descriptor)
+                  : error instanceof Error
+                    ? error.message
+                    : String(error),
+              );
+          }
+        }
       } finally {
         if (scope === scopeRef.current) {
           pendingReferencesRef.current -= 1;
@@ -416,8 +423,6 @@ export function ChatPromptEditor({
       validateWorkspaceFile,
       disabled,
       resolvedInputApiRef,
-      workspacePath,
-      workspaceIdentity,
       handleTextChange,
       onWorkspaceReferencePendingChange,
       intl,
@@ -434,7 +439,7 @@ export function ChatPromptEditor({
       )
         return;
       event.preventDefault();
-      void insertWorkspaceFile(event.detail);
+      void insertWorkspaceFile([{ source: "workspace", payload: event.detail }]);
     };
     window.addEventListener(WORKSPACE_FILE_ADD_TO_CHAT_EVENT, add);
     return () => window.removeEventListener(WORKSPACE_FILE_ADD_TO_CHAT_EVENT, add);
@@ -449,22 +454,18 @@ export function ChatPromptEditor({
         .map((item) => ({ entry: item.webkitGetAsEntry?.(), file: item.getAsFile() }));
       if (disabled) return true;
       if (entries.some(({ entry }) => entry?.isDirectory)) {
+        const ordinaryFiles = entries.flatMap(({ entry, file }) =>
+          !entry?.isDirectory && file ? [file] : [],
+        );
+        if (ordinaryFiles.length) onFileDrop?.(ordinaryFiles);
         if (!resolveWorkspaceDirectory) {
           setDropError(intl.formatMessage({ id: "chat.composer.directoryDropUnavailable" }));
           return true;
         }
-        if (entries.some(({ entry, file }) => !entry?.isDirectory || !file)) {
-          setDropError(intl.formatMessage({ id: "chat.composer.directoryDropSeparate" }));
-          return true;
-        }
-        try {
-          const payloads = entries.map(({ file }) => resolveWorkspaceDirectory(file!));
-          for (const payload of payloads) void insertWorkspaceFile(payload);
-        } catch (error) {
-          setDropError(
-            error instanceof UiMessageError ? intl.formatMessage(error.descriptor) : String(error),
-          );
-        }
+        const inputs = entries
+          .filter(({ entry }) => entry?.isDirectory)
+          .map(({ file }) => resolveWorkspaceDirectory(file));
+        void insertWorkspaceFile(inputs);
         return true;
       }
       if (!files.length) {
@@ -475,7 +476,7 @@ export function ChatPromptEditor({
       onFiles(files);
       return false;
     },
-    [disabled, insertWorkspaceFile, resolveWorkspaceDirectory, intl],
+    [disabled, insertWorkspaceFile, resolveWorkspaceDirectory, onFileDrop, intl],
   );
 
   const handlePaste = useCallback(
@@ -508,7 +509,7 @@ export function ChatPromptEditor({
         const payload = readWorkspaceFileDragPayload(event.dataTransfer);
         if (!payload)
           setDropError(intl.formatMessage({ id: "chat.composer.workspaceReferenceInvalid" }));
-        else void insertWorkspaceFile(payload);
+        else void insertWorkspaceFile([{ source: "workspace", payload }]);
         return;
       }
       if (enableExternalFileDrop && Array.from(event.dataTransfer.types).includes("Files")) {
@@ -583,15 +584,8 @@ export function ChatPromptEditor({
                 {submitBlockedReason}
               </p>
             )}
-            {pendingReferences > 0 && (
-              <p role="status" className="notice">
-                {intl.formatMessage({ id: "chat.composer.workspaceReferencePending" })}
-              </p>
-            )}
             {dropError && (
-              <p role="alert" className="notice text-destructive">
-                {dropError}
-              </p>
+              <FeedbackNotice tone="error" message={dropError} onDismiss={() => setDropError("")} />
             )}
           </>
         }

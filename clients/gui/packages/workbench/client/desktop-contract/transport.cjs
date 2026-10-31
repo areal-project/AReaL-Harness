@@ -88,7 +88,7 @@ const commandDefinitions = Object.freeze({
     {
       ...operations(
         read,
-        "worktreeList worktreeOptions worktreeRead list search read review reviewCommits reviewBranches turnReview status info gitState",
+        "worktreeList worktreeOptions worktreeRead list search localDirectoryReference read review reviewCommits reviewBranches turnReview status info gitState",
       ),
       ...operations(recoverable, "worktreeCreate worktreeAction worktreeDelete"),
       ...operations(

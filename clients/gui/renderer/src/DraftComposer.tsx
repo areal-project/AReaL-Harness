@@ -560,8 +560,9 @@ export function DraftComposer({
       if (!sendStarted || !failure.submissionUnknown) cancelTurnStart(turnStart);
       if (!failure.submissionUnknown) {
         localStorage.removeItem(`${key}:pending-create-request`);
-        setDraftError(recoveryMessage(failure));
-        if (targetKey) attachmentErrors.set(targetKey, recoveryMessage(failure));
+        if (targetKey) {
+          attachmentErrors.set(targetKey, failure.message);
+        } else setDraftError(recoveryMessage(failure));
       }
       const requestId = failure.requestId ?? (!targetKey ? creationRequestId : undefined);
       if (turnStart && sendStarted && failure.submissionUnknown) turnStart.requestId = requestId;
@@ -763,11 +764,7 @@ export function DraftComposer({
           detail={isTechnicalErrorMessage(draftError) ? draftError : undefined}
         />
       )}
-      {reviewDraft.error && (
-        <p role="alert" className="px-3 py-2 text-ui-sm text-destructive">
-          {reviewDraft.error}
-        </p>
-      )}
+      {reviewDraft.error && <FeedbackNotice tone="error" message={reviewDraft.error} />}
       <div className="composer-input-stack">
         <div ref={setMenuAnchor} className="composer-menu-anchor" />
         <ChatPromptEditor

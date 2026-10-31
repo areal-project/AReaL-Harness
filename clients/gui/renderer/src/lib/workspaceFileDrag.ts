@@ -14,13 +14,14 @@ export interface WorkspaceFileDragPayload {
   name: string;
 }
 
-interface WorkspaceFileComposerMention {
+export interface ComposerFileMention {
+  name: string;
   markdown: string;
   value: string;
   data: {
     kind: WorkspaceFileDragPayload["type"];
     path: string;
-    relativePath: string;
+    relativePath?: string;
   };
 }
 
@@ -146,16 +147,18 @@ export function createWorkspaceFileComposerMention(
   payload: WorkspaceFileDragPayload,
   workspacePath: string,
   workspaceIdentity?: string,
-): WorkspaceFileComposerMention {
+): ComposerFileMention {
   const sameWorkspace = isWorkspaceFilePayloadForWorkspace(
     payload,
     workspacePath,
     workspaceIdentity,
   );
-  if (!sameWorkspace) throw new UiMessageError({ id: "chat.composer.workspaceReferenceCurrentOnly" });
+  if (!sameWorkspace)
+    throw new UiMessageError({ id: "chat.composer.workspaceReferenceCurrentOnly" });
   const mentionTarget = payload.relativePath;
 
   return {
+    name: payload.name,
     markdown: buildFileMentionMarkdown(mentionTarget, payload.name, payload.type),
     value: mentionTarget,
     data: {

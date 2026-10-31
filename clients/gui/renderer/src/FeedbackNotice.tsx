@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, type ComponentProps } from "react";
 import { FeedbackNotice as View } from "@areal/ui/experimental";
 import { useI18n } from "./i18n/IntlProvider.js";
+import { Button, Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@areal/ui";
 import { dismissToast, toast } from "./components/ui/toast.js";
 
 export function FeedbackNotice({
@@ -19,10 +20,27 @@ export function FeedbackNotice({
     toast(props.message, props.tone, {
       key,
       requestId: props.requestId,
-      actions: props.actions,
+      actions: props.detail ? (
+        <>
+          {props.actions}
+          <Popover>
+            <PopoverTrigger render={<Button type="button" variant="ghost" size="sm" />}>
+              {t("recovery.details")}
+            </PopoverTrigger>
+            <PopoverContent align="end">
+              <PopoverTitle>{t("recovery.details")}</PopoverTitle>
+              <div className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words">
+                {props.detail}
+              </div>
+            </PopoverContent>
+          </Popover>
+        </>
+      ) : (
+        props.actions
+      ),
       onDismiss: () => dismiss.current?.(),
     });
-  }, [transient, key, props.message, props.tone, props.actions]);
+  }, [transient, key, props.message, props.tone, props.actions, props.detail, t]);
   useEffect(
     () => () => {
       if (transient) dismissToast(key);

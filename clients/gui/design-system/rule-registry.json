@@ -2994,7 +2994,7 @@
       "title": "仅拥有Root/Open/Remove/Icon/Text/Error/WithNote/Note的外观和语义",
       "owner": "clients/gui/packages/ui/src/conversation/attachment-card/attachment-card.md#规则",
       "strength": "default",
-      "textSha256": "67a9031ff622287fb1abd2ddd49e8bdae1b3bf27b411210698338a385534c653"
+      "textSha256": "2caf94278cfedd3b5238aad666df4d756402d6b1925a93ff3921737164e5e6e1"
     },
     {
       "id": "R-COLLAPSIBLETEXT-001",
@@ -3064,7 +3064,7 @@
       "title": "占位说明输入目标",
       "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#内容",
       "strength": "must",
-      "textSha256": "633356a5b1109b30bc9cafd3f62c5fd03dd632e2b34ee1a7a61fa51eaf3fbe6a"
+      "textSha256": "7aee40cf26c03126b1e201720a3d3edd47f1317ce58ed546112626d27337606b"
     },
     {
       "id": "R-COMPOSERSURFACE-005",
@@ -3092,7 +3092,7 @@
       "title": "默认布局的 Composer 是对话的一部分",
       "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#输入区与面板组合",
       "strength": "default",
-      "textSha256": "8c5e61a8d9aea130be4b15bef9f7589ba9fd6143cc5435ba83151f24776f3050"
+      "textSha256": "92103205656ace08657f0535972f2a1e96e20de2d5a24465b37300e3778630d9"
     },
     {
       "id": "R-LAYOUT-012",
@@ -6631,7 +6631,7 @@
       "title": "裸 @ 或清空关键词时隐藏文件候选及搜索状态",
       "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#工作区文件引用",
       "strength": "must",
-      "textSha256": "82a90147c08c174be6ca5bccd97e524cd969ff6e8da61092930e9e46df13acc5",
+      "textSha256": "0cc8eaf8ec4b366ea9e712788f44b00dc3b1ab84c9c39b31654ac789d826e806",
       "check": "clients/gui/scripts/composer-files-acceptance.mjs"
     },
     {

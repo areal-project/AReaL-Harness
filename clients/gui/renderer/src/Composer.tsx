@@ -1,4 +1,8 @@
-import { composerUploadOwner, forgetComposerUploads } from "./ComposerUploadState.js";
+import {
+  composerUploadOwner,
+  composerUploads,
+  forgetComposerUploads,
+} from "./ComposerUploadState.js";
 import { uploadComposerFiles } from "./ComposerUploads.js";
 export { uploadComposerFiles } from "./ComposerUploads.js";
 
@@ -122,6 +126,7 @@ import type { Data, Action } from "./services.js";
 import {
   recoveredOutcome,
   recoveryMessage,
+  isTechnicalErrorMessage,
   type RecoveryFailure,
   type RecoveryOperation,
 } from "./recoveryPresentation.js";
@@ -232,6 +237,7 @@ export function Composer({
     (file) => browserAnnotation(file)?.comment.trim() === "",
   );
   const [admissionError, setAdmissionError] = useState(() => attachmentErrors.get(key) ?? "");
+  const [admissionAttempt, setAdmissionAttempt] = useState(0);
   useEffect(() => {
     attachmentDrafts.set(key, files);
     window.dispatchEvent(new CustomEvent("areal-attachments-change", { detail: key }));
@@ -583,9 +589,10 @@ export function Composer({
       else if (turnStart) turnStart.requestId = error.requestId;
       if (creatingGoal) setGoalError(goalControlError(error));
       else if (!(error.submissionUnknown && error.requestId)) {
-        // 附件失败留在所属 Composer，切换任务后仍能看到；没有附件的未受理发送/steer 单独显示投递原因。
-        if (files.length > 0) setAdmissionError(error.message);
-        else if (!error.submissionUnknown) setDeliveryError(recoveryMessage(error));
+        if (files.length > 0) {
+          setAdmissionAttempt((attempt) => attempt + 1);
+          setAdmissionError(error.message);
+        } else if (!error.submissionUnknown) setDeliveryError(recoveryMessage(error));
         else setAdmissionError(error.message);
       }
       if (error.submissionUnknown && error.requestId) {
@@ -820,9 +827,7 @@ export function Composer({
           此 worker 由原 TaskRun 管理。打开历史不会重新执行已结束的工作。
         </p>
         {returnError && (
-          <p role="alert" className="px-3 text-ui-sm">
-            {returnError}
-          </p>
+          <FeedbackNotice tone="error" message={returnError} onDismiss={() => setReturnError("")} />
         )}
         <div className="px-3 py-3">
           <Button
@@ -836,6 +841,11 @@ export function Composer({
         </div>
       </div>
     );
+  const failedAttachment = input.files.find((file) => admissionError.startsWith(`${file.name}:`));
+  const unknownAttachment =
+    failedAttachment &&
+    composerUploads(uploadOwner).states.get(failedAttachment)?.state === "unknown";
+  const technicalAdmissionError = isTechnicalErrorMessage(admissionError);
   return (
     <div className="composer-dock" data-v4-composer-dock="true">
       {desktopUnsupported && (
@@ -944,20 +954,24 @@ export function Composer({
           />
         ))}
         {goalError && (
-          <p role="alert" className="notice text-destructive">
-            {goalError}
-          </p>
+          <FeedbackNotice tone="error" message={goalError} onDismiss={() => setGoalError("")} />
         )}
         {admissionError && (
-          <p role="alert" className="notice text-destructive">
-            {admissionError}
-          </p>
+          <FeedbackNotice
+            id={`composer-admission:${key}:${admissionAttempt}`}
+            tone="error"
+            message={
+              unknownAttachment
+                ? `${failedAttachment.name}: ${t("chat.composer.attachmentUnknown")}`
+                : technicalAdmissionError
+                  ? `${failedAttachment ? `${failedAttachment.name}: ` : ""}${t("recovery.operationFailed")}`
+                  : admissionError
+            }
+            detail={technicalAdmissionError || unknownAttachment ? admissionError : undefined}
+            onDismiss={() => setAdmissionError("")}
+          />
         )}
-        {reviewDraft.error && (
-          <p role="alert" className="notice">
-            {reviewDraft.error}
-          </p>
-        )}
+        {reviewDraft.error && <FeedbackNotice tone="error" message={reviewDraft.error} />}
         {thread.desktop?.workflowRun && (
           <div className="flex flex-wrap items-center gap-2 px-3 py-1 text-ui-sm text-foreground-subtle">
             <Button
@@ -1146,9 +1160,7 @@ export function Composer({
                 </div>
               )}
               {queueEditor.feedback && (
-                <p role="alert" className="composer-queue-feedback">
-                  {queueEditor.feedback}
-                </p>
+                <FeedbackNotice tone="error" message={queueEditor.feedback} />
               )}
               {queueEditor.edit?.unknown && (
                 <Button
@@ -1209,15 +1221,20 @@ export function Composer({
                           file={file}
                           uploadOwner={uploadOwner}
                           onRetry={async (file) => {
-                            await uploadComposerFiles(
-                              action,
-                              project.id,
-                              thread.id,
-                              [file],
-                              undefined,
-                              uploadOwner,
-                            );
                             setAdmissionError("");
+                            try {
+                              await uploadComposerFiles(
+                                action,
+                                project.id,
+                                thread.id,
+                                [file],
+                                undefined,
+                                uploadOwner,
+                              );
+                            } catch (cause) {
+                              setAdmissionAttempt((attempt) => attempt + 1);
+                              setAdmissionError((cause as Error).message);
+                            }
                           }}
                           onAnnotate={
                             onAnnotate

@@ -1,4 +1,5 @@
-import { Button } from "@areal/ui";
+import { Popover, PopoverContent, PopoverTrigger } from "@areal/ui";
+import { AttachmentCard } from "@areal/ui/experimental";
 import { useEffect, useState } from "react";
 import type { ContentBlock } from "@modelcontextprotocol/client";
 import { FileText } from "lucide-react";
@@ -53,28 +54,74 @@ export function McpComposerAttachments({
 }) {
   return entries.length ? (
     <div className="composer-attachments" aria-label="应用附件">
-      {entries.map((entry) => (
-        <div className="composer-text-card composer-mcp-card" key={entry.id}>
-          <span className="composer-text-icon">
-            <FileText size={22} />
-          </span>
-          <div className="composer-text-copy">
-            <McpContentLabel block={entry.block} />
-            <small>MCP 应用附件</small>
-          </div>
-          <Button
-            unstyled
-            data-slot={undefined}
-            type="button"
-            className="composer-remove-attachment"
-            disabled={disabled}
-            aria-label="移除应用附件"
-            onClick={() => removeMcpDraft(draftKey, entry.id)}
+      {entries.map((entry) => {
+        const { block } = entry;
+        const title = block._meta?.["openai/title"];
+        const name =
+          typeof title === "string"
+            ? title
+            : block.type === "resource_link"
+              ? (block.title ?? block.name)
+              : block.type === "resource"
+                ? block.resource.uri
+                : block.type === "text"
+                  ? block.text
+                      .split(/\r?\n/)
+                      .find((line) => line.trim())
+                      ?.trim() || "应用文本"
+                  : block.type === "image"
+                    ? "应用图片"
+                    : "MCP 应用附件";
+        return (
+          <AttachmentCard
+            image={block.type === "image"}
+            className="composer-mcp-card"
+            key={entry.id}
           >
-            <CloseIcon size={12} />
-          </Button>
-        </div>
-      ))}
+            <Popover>
+              {block.type === "image" ? (
+                <PopoverTrigger
+                  render={<AttachmentCard.Open />}
+                  disabled={disabled}
+                  aria-label={`预览图片 ${name}`}
+                >
+                  <img alt={name} src={`data:${block.mimeType};base64,${block.data}`} />
+                </PopoverTrigger>
+              ) : (
+                <>
+                  <AttachmentCard.Icon>
+                    <FileText size={22} />
+                  </AttachmentCard.Icon>
+                  <AttachmentCard.Text>
+                    <span title={name}>{name}</span>
+                    <PopoverTrigger disabled={disabled} aria-label={`查看应用附件 ${name}`}>
+                      查看附件 ›
+                    </PopoverTrigger>
+                  </AttachmentCard.Text>
+                </>
+              )}
+              <PopoverContent side="top" aria-label={`应用附件 ${name}`}>
+                {block.type === "image" ? (
+                  <img
+                    alt={name}
+                    src={`data:${block.mimeType};base64,${block.data}`}
+                    className="w-full object-contain"
+                  />
+                ) : (
+                  <McpContentLabel block={block} />
+                )}
+              </PopoverContent>
+            </Popover>
+            <AttachmentCard.Remove
+              disabled={disabled}
+              aria-label={`移除应用附件 ${name}`}
+              onClick={() => removeMcpDraft(draftKey, entry.id)}
+            >
+              <CloseIcon size={12} />
+            </AttachmentCard.Remove>
+          </AttachmentCard>
+        );
+      })}
     </div>
   ) : null;
 }

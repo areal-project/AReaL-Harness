@@ -28,6 +28,7 @@ This section describes the authenticated desktop host `command` contract in `cli
 
 | operation | Additional request fields | Result and behavior |
 |---|---|---|
+| `localDirectoryReference` | `path`, an absolute native directory path | Returns `{path,name,type:"directory"}` after a host stat confirms an existing directory. Paths outside the workspace are accepted. This does not enumerate, upload, switch workspaces or grant Agent access. Existing `list/read/save` workspace boundaries remain unchanged. |
 | `worktreeOptions` | `sourceRoot?` | Returns same-repository sources, branches, settings, defaultRoot, project environments, and environmentRevision. |
 | `worktreeSettings` | `worktreeRoot,branchPrefix,fetchBeforeCreate?,autoCleanup?,keepCount?,expectedRevision?` | Saves global future-creation policy without moving existing directories. An empty root uses `.areal/worktrees` under user home, grouped by project. |
 | `worktreeList` | None | Returns `{settings,defaultRoot,revision,projects,worktrees}` from host registrations without starting every Core. |

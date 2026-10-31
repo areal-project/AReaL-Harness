@@ -7,6 +7,8 @@ import { ScanText } from "lucide-react";
 import { ImagePreview } from "./MessageAttachment.js";
 import { imageAnnotation, useImageAnnotationRevision } from "./imageAnnotations.js";
 import { useComposerUploadState } from "./ComposerUploadState.js";
+import { isTechnicalErrorMessage } from "./recoveryPresentation.js";
+import { FeedbackNotice } from "./FeedbackNotice.js";
 import { CloseIcon, ReviewCommentGlyph } from "./interfaceIcons.js";
 
 export type ComposerDraftAttachment =
@@ -179,7 +181,6 @@ export function ComposerAttachment({
       >
         <CloseIcon size={12} />
       </AttachmentCard.Remove>
-      {error && <AttachmentCard.Error role="alert">{error}</AttachmentCard.Error>}
     </AttachmentCard>
   );
   const attachment = image ? (
@@ -204,56 +205,32 @@ export function ComposerAttachment({
   );
   return (
     <div
-      className="flex shrink-0 flex-col gap-1"
+      className="composer-attachment-item"
       data-upload-state={actualFile ? (preparation?.state ?? "pending") : undefined}
     >
       {attachment}
-      {actualFile ? (
-        <div
-          className="max-w-56 text-ui-xs text-foreground-subtle"
-          role={
-            preparation?.state === "failed" || preparation?.state === "unknown" ? "alert" : "status"
+      {error && (
+        <FeedbackNotice
+          tone="error"
+          message={
+            isTechnicalErrorMessage(error) ? `${name}: ${t("recovery.operationFailed")}` : error
           }
+          detail={isTechnicalErrorMessage(error) ? error : undefined}
+          onDismiss={() => setError("")}
+        />
+      )}
+      {actualFile && preparation?.state === "failed" && onRetry && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={disabled}
+          onClick={() => {
+            void onRetry(actualFile).catch(() => {});
+          }}
         >
-          {t(
-            preparation?.state === "ready"
-              ? "chat.composer.attachmentReady"
-              : preparation?.state === "reading"
-                ? "chat.composer.attachmentReading"
-                : preparation?.state === "uploading"
-                  ? "chat.composer.attachmentUploading"
-                  : preparation?.state === "failed"
-                    ? "chat.composer.attachmentFailed"
-                    : preparation?.state === "unknown"
-                      ? "chat.composer.attachmentUnknown"
-                      : "chat.composer.attachmentPending",
-          )}
-          {preparation?.state === "unknown" && (
-            <span className="block break-words">{preparation.message}</span>
-          )}
-          {preparation?.state === "failed" && (
-            <>
-              <span className="block break-words">{preparation.message}</span>
-              {onRetry && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={disabled}
-                  onClick={() => {
-                    void onRetry(actualFile).catch(() => {});
-                  }}
-                >
-                  {t("chat.composer.retryAttachment")}
-                </Button>
-              )}
-            </>
-          )}
-        </div>
-      ) : (
-        <span className="max-w-56 text-ui-xs text-foreground-subtle">
-          {t("chat.composer.pastedTextBody")}
-        </span>
+          {t("chat.composer.retryAttachment")}
+        </Button>
       )}
     </div>
   );

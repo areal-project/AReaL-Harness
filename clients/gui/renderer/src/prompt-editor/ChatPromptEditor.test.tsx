@@ -2,7 +2,7 @@ import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { LexicalChatInput } from "../LexicalChatInput.js";
-import { droppedWorkspaceDirectory } from "../lib/workspaceFileComposer.js";
+import type { ComposerFileReferenceInput } from "../lib/workspaceFileComposer.js";
 import { ChatPromptEditor } from "./ChatPromptEditor.js";
 
 type EditorProps = ComponentProps<typeof ChatPromptEditor>;
@@ -55,9 +55,10 @@ function clipboard(entries: { file: File; directory: boolean }[]) {
 function render(overrides: Partial<EditorProps> = {}) {
   const onPaste = vi.fn();
   const onFileDrop = vi.fn();
-  const resolveWorkspaceDirectory = vi.fn((file: File) =>
-    droppedWorkspaceDirectory(`/workspace/${file.name}`, "/workspace"),
-  );
+  const resolveWorkspaceDirectory = vi.fn((file: File | null): ComposerFileReferenceInput => ({
+    source: "native-local-directory",
+    path: file ? `/external/${file.name}` : null,
+  }));
   renderToStaticMarkup(
     createElement(ChatPromptEditor, {
       workspacePath: "/workspace",
@@ -65,7 +66,7 @@ function render(overrides: Partial<EditorProps> = {}) {
       submitLabel: "Send",
       enableExternalFileDrop: true,
       enableWorkspaceFileDrop: true,
-      validateWorkspaceFile: vi.fn(async (payload) => payload),
+      validateWorkspaceFile: vi.fn(),
       resolveWorkspaceDirectory,
       onSubmit: vi.fn(),
       onPaste,
@@ -111,7 +112,7 @@ describe("composer native file paste intake", () => {
     expect(transfer.event.preventDefault).not.toHaveBeenCalled();
   });
 
-  it("rejects a folder mixed with ordinary files before either is attached", () => {
+  it("routes a mixed transfer to directory references and ordinary file intake", () => {
     const fixture = render();
     const transfer = clipboard([
       { file: new File([], "folder"), directory: true },
@@ -119,15 +120,18 @@ describe("composer native file paste intake", () => {
     ]);
     fixture.paste(transfer.event);
     expect(transfer.event.preventDefault).toHaveBeenCalled();
-    expect(fixture.resolveWorkspaceDirectory).not.toHaveBeenCalled();
+    expect(fixture.resolveWorkspaceDirectory).toHaveBeenCalledWith(
+      transfer.event.clipboardData.files[0],
+    );
     expect(fixture.onPaste).not.toHaveBeenCalled();
-    expect(fixture.onFileDrop).not.toHaveBeenCalled();
+    expect(fixture.onFileDrop).toHaveBeenCalledWith([transfer.event.clipboardData.files[1]]);
   });
 
-  it("rejects an external directory without falling through to attachments", () => {
-    const resolveWorkspaceDirectory = vi.fn(() =>
-      droppedWorkspaceDirectory("/other-workspace/folder", "/workspace"),
-    );
+  it("accepts external directory intake without treating it as an attachment", () => {
+    const resolveWorkspaceDirectory = vi.fn((): ComposerFileReferenceInput => ({
+      source: "native-local-directory",
+      path: "/other-workspace/folder",
+    }));
     const fixture = render({ resolveWorkspaceDirectory });
     const transfer = clipboard([{ file: new File([], "folder"), directory: true }]);
     fixture.paste(transfer.event);
@@ -141,6 +145,19 @@ describe("composer native file paste intake", () => {
     const transfer = clipboard([{ file: new File([], "folder"), directory: true }]);
     fixture.paste(transfer.event);
     expect(transfer.event.preventDefault).toHaveBeenCalled();
+    expect(fixture.onPaste).not.toHaveBeenCalled();
+  });
+
+  it("keeps ordinary files when native directory resolution is unavailable", () => {
+    const fixture = render({ resolveWorkspaceDirectory: undefined });
+    const file = new File(["file"], "notes.txt");
+    const transfer = clipboard([
+      { file: new File([], "folder"), directory: true },
+      { file, directory: false },
+    ]);
+    fixture.paste(transfer.event);
+    expect(transfer.event.preventDefault).toHaveBeenCalled();
+    expect(fixture.onFileDrop).toHaveBeenCalledWith([file]);
     expect(fixture.onPaste).not.toHaveBeenCalled();
   });
 

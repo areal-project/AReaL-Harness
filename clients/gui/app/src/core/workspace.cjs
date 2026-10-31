@@ -91,6 +91,18 @@ async function executeWorkspaceCommand(backend, request) {
       return backend.worktrees.read(project, request.requestId);
     case "worktreeOpen":
       return backend.worktrees.open(project, request.requestId);
+    case "localDirectoryReference": {
+      const path = require("node:path");
+      if (typeof request.path !== "string" || !path.isAbsolute(request.path))
+        throw new Error("无效本机目录路径");
+      const stat = await require("node:fs/promises").stat(request.path);
+      if (!stat.isDirectory()) throw new Error("引用路径不是目录");
+      return {
+        path: request.path,
+        name: path.basename(request.path) || request.path,
+        type: "directory",
+      };
+    }
     case "list": {
       if (typeof request.path !== "string") throw new Error("无效目录");
       const { listDirectory } = await import("../../bridge/filetree.js");

@@ -28,6 +28,7 @@ Thread 快照和 Item 通知支持可选 `agentMessage.phase`，生命周期、�
 
 | operation | 请求补充字段 | 返回与作用 |
 |---|---|---|
+| `localDirectoryReference` | `path`，本机绝对目录路径 | 返回 `{path,name,type:"directory"}`。宿主仅 stat 确认存在的目录，允许工作区外路径；不枚举、上传、切换工作区或授予 Agent 权限。原 `list/read/save` 的工作区边界不变。 |
 | `worktreeOptions` | `sourceRoot?` | 返回同仓库来源、分支、settings、defaultRoot、项目 environments 和 environmentRevision。 |
 | `worktreeSettings` | `worktreeRoot,branchPrefix,fetchBeforeCreate?,autoCleanup?,keepCount?,expectedRevision?` | 保存全局未来创建策略，已有目录不移动。空根使用用户 home 下 `.areal/worktrees`，其下按项目分组。 |
 | `worktreeList` | 无 | 返回 `{settings,defaultRoot,revision,projects,worktrees}`。全局列表来自宿主登记，不为列举启动每个 Core。 |
