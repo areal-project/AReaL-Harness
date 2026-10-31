@@ -67,6 +67,7 @@ export function attachRelay(server, config, store, log, push) {
         if (!peer.role) {
           if (!fields(message, ['protocol', 'role', 'room', 'capability']) || message.protocol !== 'areal.relay.v1' || !roomShape(message.room)) return drop(peer, 'UNAVAILABLE');
           if (message.role === 'host') {
+            if (config.local && !['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)) return drop(peer, 'UNAVAILABLE');
             if (peer.origin !== undefined || typeof message.capability !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(message.capability) || hash(message.capability) !== message.room || !store.room(message.room)) return drop(peer, 'UNAVAILABLE');
             const previous = hosts.get(message.room);
             if (!previous && hosts.size >= config.maxHosts) return drop(peer, 'CAPACITY_EXCEEDED');

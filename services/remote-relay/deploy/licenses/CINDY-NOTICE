@@ -1,0 +1,14 @@
+Cindy
+Copyright 2026 XD Inc.
+
+This product includes software developed by XD Inc.
+
+Third-party components distributed with this product retain their own
+copyright and license terms. Their attribution notices and SPDX SBOMs are
+collected under docs/legal/notices/, not in this file.
+
+AReaL Relay Service includes modified versions of Cindy packages/device-link-relay/src/acme.ts, csr.ts and certificates.ts.
+Modifications: native JavaScript modules, cancellable lifecycle, certificate identity validation, AReaL service integration.
+Source: https://github.com/makecindy/cindy
+
+Source revision: 7d7473c62d17b0a893fa503d8a42e35c34ae02d1

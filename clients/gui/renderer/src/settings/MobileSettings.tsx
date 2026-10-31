@@ -3,12 +3,9 @@ import { Smartphone } from "lucide-react";
 import { Button } from "@areal/ui";
 import { SettingsGroupCard } from "@areal/ui/compositions";
 import { useI18n, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.js";
-import {
-  MobileAdvancedNetwork,
-  RelayEnrollForm,
-  networkDiagnostics,
-} from "./MobileAdvancedNetwork.js";
+import { MobileAdvancedNetwork, networkDiagnostics } from "./MobileAdvancedNetwork.js";
 import { MobileAddDevice, type AddDeviceStep } from "./MobileAddDevice.js";
+import { RelayServicePanel } from "./RelayServicePanel.js";
 import { MobileDevices } from "./MobileDevices.js";
 import "./MobileSettings.css";
 
@@ -122,7 +119,12 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
       ? {
           tone: "good",
           title: t("settings.mobileConnect.ready"),
-          description: t("settings.mobileConnect.readyViaRelay", { host: relayHost }),
+          description: t(
+            state.relay?.startsWith("http:")
+              ? "settings.relayService.readyLocal"
+              : "settings.mobileConnect.readyViaRelay",
+            { host: relayHost },
+          ),
         }
       : {
           tone: "warning",
@@ -214,10 +216,17 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
         </div>
         {state.enabled ? (
           <p className="remote-muted" role="status">
-            {t("settings.mobileConnect.enrolled", { host: relayHost })}
+            {t(
+              state.relay?.startsWith("http:")
+                ? "settings.relayService.localSelected"
+                : "settings.mobileConnect.enrolled",
+              { host: relayHost },
+            )}
           </p>
         ) : (
-          <RelayEnrollForm state={state} busy={busy} run={run} />
+          <Button disabled={busy} onClick={() => void run({ operation: "relayServiceStartLocal" })}>
+            {t("settings.relayService.startLocal")}
+          </Button>
         )}
       </SettingsGroupCard>
       {!adding && (error || state.directError || state.migrationError) && (
@@ -225,6 +234,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
           {formatUiMessage(t, error) || state.directError || state.migrationError}
         </p>
       )}
+      <RelayServicePanel state={state} busy={busy} run={run} />
       <MobileDevices
         devices={state.deviceGrants ?? []}
         projects={projects}

@@ -5,6 +5,7 @@
 | 组件 | 固定来源 | 许可证与保留声明 |
 |---|---|---|
 | AReaL Relay | 构建使用的源码 commit，随镜像 ID 记录 | Apache-2.0，`licenses/AREAL-LICENSE` |
+| Cindy ACME、CSR 与证书管理 | [Cindy](https://github.com/makecindy/cindy/tree/7d7473c62d17b0a893fa503d8a42e35c34ae02d1)，修改为原生 JavaScript 与可取消生命周期 | Apache-2.0，`licenses/CINDY-LICENSE` 与 `licenses/CINDY-NOTICE` |
 | Node.js | 24.2.0，[上游](https://github.com/nodejs/node/tree/v24.2.0) | MIT 及所含组件声明，上游完整 `licenses/NODE-LICENSE` |
 | ws | 8.21.3，npm tarball 与 integrity 位于 `../package-lock.json` | MIT，`licenses/WS-LICENSE`；npm 同时保留 `node_modules/ws/LICENSE` |
 | NGINX | 1.30.5，[上游](https://github.com/nginx/nginx/tree/release-1.30.5) | BSD-2-Clause，`licenses/NGINX-LICENSE` |

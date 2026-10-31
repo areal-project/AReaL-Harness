@@ -336,6 +336,14 @@ HTTP 仅接受当前 loopback 或已配置 HTTPS 来源的精确 Host；WebSocke
 
 ## C12. Relay 的最低服务契约
 
+可信桌面 `remoteControl` 增加 `relayServiceStartLocal`、`relayServiceStopLocal`、`relayServiceDeploy {target,port,address}`、`relayServiceUpgrade`、`relayServiceInspect`、`relayServiceRemove {removeData}` 和 `relayUse {origin}`。SSH target 为 `user@host`，port 为 SSH 端口，address 为精确 HTTPS origin。状态中的 `relayService` 投影本机运行状态、脱敏部署记录、异步任务和已保存服务。部署操作先保存意图再异步执行，状态查询不等待 SSH 完成。中断的写操作保留待核对状态，检查不会自动重放写入。
+
+首次部署先异步检查 SSH 与既有实例；只读检查失败不创建待受理记录，用户可纠正输入。`deployment.canReconfigure` 只在独立检查确认程序、unit 和数据均不存在后为 true，允许更改 SSH 目标；保留数据的实例仍绑定原目标和 owner。已核对的失败或移除实例可纠正 HTTPS 地址并重新部署。
+
+本机模式以 `local:true` 独立于生产 HTTPS 模式，只接受 RFC1918 IPv4 或 ULA IPv6 的 HTTP origin。本机 Host 使用 loopback WS 和精确 Host 头；网卡来源不能注册 Host，HTTP `/enroll` 被拒绝。服务数据库通过 `provision --room <sha256>` 幂等登记公开 room，不接收 capability，也不恢复已撤销 room。主人 capability 先保存在加密 `remote.json`。手机配对链接额外携带 `local=1`，原生 socket 只接受私有数字 IP 和 `/remote/socket`，固定 App Origin；网页和外部服务的 HTTPS/WSS 校验不放宽。
+
+托管 Linux 入口 `managed-serve --config <path>` 共享独占服务锁，启动 loopback 后端与自动证书 TLS 代理。证书与私钥原子存储为 `tls/material.json`，权限 0600。证书最后三分之一寿命内续期，每小时检查并热更新。SSH 安装核对实例 owner，升级保留数据，移除需显式指定是否删除数据。客户端仍验证 HTTPS 链、域名与有效期；服务端提供证书不会自动建立客户端信任。
+
 可信本地 `remoteControl` 的 `enable` 接受 `{relay, code?, confirmed: true}`：`relay` 必须为精确 HTTPS origin；首次登记和更换 origin 必须提供管理员 code，同一已登记 origin 可以不提供 code 重新启用。Host 使用系统 TLS 校验、无 Origin 的 `POST /enroll`，拒绝重定向，取得 capability/room 后先持久化到既有加密 `remote.json`，再出站连接 WSS。`disable` 关闭 Relay，保留加密登记供显式重新启用；旧版 Relay 配置不自动升级登记。可信状态只投影公开 origin/room/pin、连接状态与脱敏错误，不返回 capability。
 
 `pair` 可选 `transport: "direct" | "relay"`（默认 Direct）；Relay 需要已连接。链接只包含公开 origin、Host pin、room 和 120 秒邀请。生产 PWA 先通过统一 wire 工厂完成 Relay client 注册与 ready-channel，再进入相同 Noise、hello、授权和业务路径。Host 只拥有一个 session acceptor、观察器和设备/握手预算；撤销与缩小范围同时关闭两种传输。共享上限为 16 个连接、8 个未完成握手、每设备 2 个连接，以及各 8 MiB 的 Host 收发积压；Relay 每通道发送积压 1 MiB、每块原始字节最多 49152，含 base64 的外层 JSON 不超过 512 KiB。通道公平排出，慢设备只关闭自身通道。

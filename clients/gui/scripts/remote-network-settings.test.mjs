@@ -53,8 +53,11 @@ test("Phone connection settings keep the main path short and the network consent
     const html = render(
       React.createElement(MobileSettings, { action: async () => ({}), projects: [] }),
     );
-    // 主路径：未开启时只有状态卡和中继两项输入，没有步骤条和连接方式选择。
+    // 默认路径自动发现内网入口；已有外部服务的登记收进渐进展开区域。
     assert.match(html, /还没有开启手机连接/);
+    assert.match(html, /开启内网连接/);
+    assert.match(html, /部署到 Linux 服务器/);
+    assert.match(html, /使用已有外部服务/);
     assert.match(html, /aria-label="Relay HTTPS 来源"/);
     assert.match(html, /管理员一次性登记码/);
     assert.match(html, /type="password"/);
@@ -162,6 +165,9 @@ test("relay enrollment retains failed input and invitations render QR images in 
   const { chromium } = appRequire("playwright-core");
   const relayQr = await appRequire("qrcode").toDataURL("https://relay.example.org/#invite=test");
   const localQr = await appRequire("qrcode").toDataURL("http://127.0.0.1:43123/#invite=test");
+  const nativePayload =
+    "http://192.168.50.20:47820/#host=test&room=" + "a".repeat(64) + "&invite=test&local=1";
+  const nativeQr = await appRequire("qrcode").toDataURL(nativePayload);
   const vite = await createServer({
     root: fileURLToPath(new URL("../renderer/", import.meta.url)),
     configFile: fileURLToPath(new URL("../renderer/vite.config.ts", import.meta.url)),
@@ -203,9 +209,10 @@ test("relay enrollment retains failed input and invitations render QR images in 
               if (!window.enrollmentSucceeds) throw new Error('Enrollment rejected');
               state = { ...state, enabled: true, connected: true, relay: request.relay };
             }
+            if (request.operation === 'relayServiceStartLocal') state = { ...state, enabled: true, connected: true, relay: 'http://192.168.50.20:47820', relayService: { local: { phase: 'running', address: 'http://192.168.50.20:47820' }, profiles: [] } };
             if (request.operation === 'pair') return {
-              payload: state.enabled ? 'https://relay.example.org/#invite=test' : 'http://127.0.0.1:43123/#invite=test',
-              qr: state.enabled ? ${JSON.stringify(relayQr)} : ${JSON.stringify(localQr)}, expiresAt: Date.now() + 120000
+              payload: state.relay?.startsWith('http:') ? ${JSON.stringify(nativePayload)} : state.enabled ? 'https://relay.example.org/#invite=test' : 'http://127.0.0.1:43123/#invite=test',
+              qr: state.relay?.startsWith('http:') ? ${JSON.stringify(nativeQr)} : state.enabled ? ${JSON.stringify(relayQr)} : ${JSON.stringify(localQr)}, expiresAt: Date.now() + 120000
             };
             return structuredClone(state);
           };
@@ -234,6 +241,7 @@ test("relay enrollment retains failed input and invitations render QR images in 
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(`${vite.resolvedUrls.local[0]}remote-settings-test`);
+    await page.locator("summary").filter({ hasText: "使用已有外部服务" }).click();
     const origin = page.getByRole("textbox", { name: "Relay HTTPS 来源" });
     const code = page.getByLabel("管理员一次性登记码", { exact: true });
     const consent = page.locator(".remote-relay-consent input").first();
@@ -280,6 +288,14 @@ test("relay enrollment retains failed input and invitations render QR images in 
       await page.getByLabel("配对链接", { exact: true }).inputValue(),
       "https://relay.example.org/#invite=test",
     );
+    await page.getByRole("button", { name: "关闭弹窗" }).click();
+    await page.getByRole("button", { name: "开启内网连接", exact: true }).click();
+    await page.getByRole("status").filter({ hasText: "本机服务运行中" }).waitFor();
+    await page.getByRole("button", { name: "添加设备", exact: true }).click();
+    await image.waitFor();
+    assert.match(await page.getByRole("dialog").innerText(), /AReaL Remote App/);
+    assert.match(await page.getByRole("dialog").innerText(), /内网或 VPN/);
+    assert.equal(await page.getByLabel("配对链接", { exact: true }).inputValue(), nativePayload);
     if (process.env.AREAL_REMOTE_SETTINGS_SCREENSHOT)
       await page.screenshot({ path: process.env.AREAL_REMOTE_SETTINGS_SCREENSHOT, fullPage: true });
     assert.deepEqual(errors, []);

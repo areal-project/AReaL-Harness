@@ -38,3 +38,7 @@ Renderer 的来源修订为 ZCode `872ad960de7ec172591f7e1952f7849229f94521`，A
 终端外观检测 `app/src/core/terminal-profile.cjs` 适配自 ZCode 修订 `3c5b227649371507ddc4eb46ac5133afe6db1cab` 的 `packages/services/src/terminal/terminalProfile.ts` 与 `terminalProfileMacOs.ts`，复用字体回退顺序、iTerm2 和 macOS Terminal profile 字段及 Kitty 字体检测。Copyright 2026 Z.AI Co., Ltd，Apache-2.0 许可保留于 `renderer/ZCODE-LICENSE`。AReaL 改为从指定 home 异步限量读取，适配 Terminal 实际的 `Window Settings` 容器，且只传递外观 metadata。
 
 - Repository oxlint suppression-reason and ResizeObserver rules adapt T3 Code `f41518f3bc2672c419871c02a3c6728d0f627142`, Copyright (c) 2026 T3 Tools Inc., MIT. The retained license is `oxlint-plugin-areal/LICENSE`. The local test harness uses the existing Vite Plus runner.
+
+Relay certificate management adapts Cindy ACME, CSR, and certificate storage at revision `7d7473c62d17b0a893fa503d8a42e35c34ae02d1`, Apache-2.0. The Relay resource bundle retains `deploy/licenses/CINDY-LICENSE` and `CINDY-NOTICE`. Android native local sockets use Java-WebSocket 1.6.0 and SLF4J API 2.0.13, both MIT. Their notices are packaged in Android assets under `legal/Java-WebSocket-LICENSE.txt` and `legal/SLF4J-LICENSE.txt`.
+
+Relay 证书管理适配 Cindy 修订 `7d7473c62d17b0a893fa503d8a42e35c34ae02d1` 的 ACME、CSR 与证书存储，采用 Apache-2.0；Relay 资源包保留 `deploy/licenses/CINDY-LICENSE` 与 `CINDY-NOTICE`。Android 原生内网连接使用 Java-WebSocket 1.6.0 与 SLF4J API 2.0.13，均为 MIT；许可证随 Android assets 的 `legal/Java-WebSocket-LICENSE.txt` 与 `legal/SLF4J-LICENSE.txt` 分发。

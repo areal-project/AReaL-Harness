@@ -11,6 +11,7 @@ const {
   enrollmentFailureMessage,
 } = require("./remote-config.cjs");
 const { RemotePush } = require("./remote-push.cjs");
+const { RelayService } = require("./relay-service.cjs");
 const { RelayTransport } = require("./remote-relay.cjs");
 const { request: httpsRequest } = require("node:https");
 const { desktopTlsOptions } = require("./desktop-network.cjs");
@@ -80,6 +81,7 @@ class RemoteControl {
     this.connected = false;
     this.sessions = new SessionAcceptor(this);
     this.push = new RemotePush(this);
+    this.relayService = new RelayService(this);
   }
   async init() {
     this.transportModule = await import("@areal/remote");
@@ -124,7 +126,16 @@ class RemoteControl {
       await this.save({ ...this.config, enabled: false });
       this.relayError = "旧 Relay 登记需使用管理员登记码重新确认";
     }
-    if (this.config.enabled) this.connect();
+    if (this.config.relayLocal?.enabled) {
+      try {
+        await this.relayService.startLocal(
+          this.config.enabled === true && this.config.relay === this.config.relayLocal.origin,
+        );
+      } catch {
+        this.relayError = this.relayService.local.error;
+      }
+      if (this.config.enabled && !this.isLocalRelay()) this.connect();
+    } else if (this.config.enabled) this.connect();
     if (
       !this.config.directEnabled &&
       this.config.network?.mapping &&
@@ -167,6 +178,7 @@ class RemoteControl {
   }
   state() {
     return {
+      relayService: this.relayService.state(),
       enabled: this.config?.enabled === true,
       connected: this.connected,
       relay: this.config?.relay ?? "",
@@ -176,7 +188,7 @@ class RemoteControl {
         this.config?.relayProtocol === "areal.remote.v2" &&
         this.config?.identity &&
         this.config.room
-          ? `${this.config.relay}/#${new URLSearchParams({ host: this.crypto.identityId(this.config.identity), room: this.config.room })}`
+          ? `${this.config.relay}/#${new URLSearchParams({ host: this.crypto.identityId(this.config.identity), room: this.config.room, ...(this.isLocalRelay() ? { local: "1" } : {}) })}`
           : "",
       directEnabled: this.config?.directEnabled === true,
       directUrl: this.direct ? this.networkOrigin || this.direct.origin : "",
@@ -221,6 +233,7 @@ class RemoteControl {
   /** @param {unknown} request */
   control(request) {
     if (!isRemoteRequest(request)) throw new Error("无效手机设置参数");
+    if (request.operation === "status") return Promise.resolve(this.state());
     // Pairing and revocation are serialized with durable configuration writes.
     const task = (this.writes ?? Promise.resolve())
       .catch(() => {})
@@ -257,6 +270,29 @@ class RemoteControl {
       case "networkRemove":
         this.validateNetworkRequest(request, ["confirmed"], true);
         await this.removeNetwork();
+        break;
+      case "relayServiceStartLocal":
+        await this.relayService.startLocal();
+        break;
+      case "relayServiceStopLocal":
+        await this.relayService.stopLocal();
+        break;
+      case "relayUse":
+        if (request.origin === this.config.relayLocal?.origin && !this.relayService.server)
+          await this.relayService.startLocal();
+        else await this.useRelayProfile(request.origin);
+        break;
+      case "relayServiceDeploy":
+        await this.relayService.startDeployment("deploy", request);
+        break;
+      case "relayServiceUpgrade":
+        await this.relayService.startDeployment("upgrade", {});
+        break;
+      case "relayServiceInspect":
+        await this.relayService.startDeployment("inspect", {});
+        break;
+      case "relayServiceRemove":
+        await this.relayService.startDeployment("remove", request);
         break;
       case "enable":
         await this.enableRelay(request);
@@ -322,6 +358,7 @@ class RemoteControl {
         if (transport === "relay") {
           if (!this.config.room) throw new Error("Relay 房间不可用");
           fragment.set("room", this.config.room);
+          if (this.isLocalRelay()) fragment.set("local", "1");
         }
         const origin =
           transport === "relay" ? this.config.relay : this.networkOrigin || this.direct?.origin;
@@ -503,12 +540,58 @@ class RemoteControl {
     if (this.closed) throw new Error("Host 已关闭");
     // 长期凭据必须先进入既有加密配置，成功后才建立出站连接。
     await this.save({
-      ...this.config,
+      ...this.withCurrentProfile(),
+      relayProfiles: [
+        ...(this.withCurrentProfile().relayProfiles ?? []).filter((item) => item.origin !== relay),
+        { origin: relay, kind: "external", ...registration },
+      ],
       ...registration,
       relay,
       identity,
       enabled: true,
       relayProtocol: "areal.remote.v2",
+    });
+    this.cancelPair();
+    this.disconnect();
+    this.connect();
+  }
+  withCurrentProfile() {
+    const { relay, room, capability, relayProtocol } = this.config;
+    if (!relay || !room || !capability || relayProtocol !== "areal.remote.v2") return this.config;
+    if ((this.config.relayProfiles ?? []).some((profile) => profile.origin === relay))
+      return this.config;
+    return {
+      ...this.config,
+      relayProfiles: [
+        ...(this.config.relayProfiles ?? []),
+        { origin: relay, kind: /** @type {const} */ ("external"), room, capability },
+      ],
+    };
+  }
+  isLocalRelay() {
+    return (
+      this.config.relay === this.relayService.local.address &&
+      this.relayService.local.phase === "running"
+    );
+  }
+  /** @param {string} origin */
+  async useRelayProfile(origin) {
+    const profile = (this.config.relayProfiles ?? []).find((item) => item.origin === origin);
+    if (!profile) throw new Error("此 Relay 尚未登记");
+    if (
+      profile.kind === "local" &&
+      (this.relayService.local.phase !== "running" || this.relayService.local.address !== origin)
+    )
+      throw new Error("请先启动本机 Relay");
+    if (profile.kind !== "local") validateHttpsOrigin(origin);
+    await this.save({
+      ...this.withCurrentProfile(),
+      relay: profile.origin,
+      room: profile.room,
+      capability: profile.capability,
+      enabled: true,
+      relayProtocol: "areal.remote.v2",
+      identity: this.config.identity ?? (await this.crypto.createIdentity()),
     });
     this.cancelPair();
     this.disconnect();
@@ -916,7 +999,7 @@ class RemoteControl {
     if (!this.config.enabled || this.closed || this.config.relayProtocol !== "areal.remote.v2")
       return;
     try {
-      validateHttpsOrigin(this.config.relay);
+      if (!this.isLocalRelay()) validateHttpsOrigin(this.config.relay);
     } catch {
       this.relayError = "Relay 来源无效，请重新登记";
       return;
@@ -952,6 +1035,7 @@ class RemoteControl {
     this.push.close();
     this.direct?.close();
     this.direct = null;
+    this.relayService.close();
   }
 }
 /** @typedef {Record<string,unknown>} RemoteSettingsFields */

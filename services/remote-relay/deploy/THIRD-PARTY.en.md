@@ -5,6 +5,7 @@
 | Component | Pinned source | License and retained notice |
 |---|---|---|
 | AReaL Relay | Source commit used to build; record it with image ID | Apache-2.0, `licenses/AREAL-LICENSE` |
+| Cindy ACME, CSR, and certificate management | [Cindy](https://github.com/makecindy/cindy/tree/7d7473c62d17b0a893fa503d8a42e35c34ae02d1), adapted to native JavaScript and cancellable lifecycle | Apache-2.0, `licenses/CINDY-LICENSE` and `licenses/CINDY-NOTICE` |
 | Node.js | 24.2.0, [upstream](https://github.com/nodejs/node/tree/v24.2.0) | MIT plus bundled component notices, full upstream `licenses/NODE-LICENSE` |
 | ws | 8.21.3, npm tarball and integrity in `../package-lock.json` | MIT, `licenses/WS-LICENSE`; npm also retains `node_modules/ws/LICENSE` |
 | NGINX | 1.30.5, [upstream](https://github.com/nginx/nginx/tree/release-1.30.5) | BSD-2-Clause, `licenses/NGINX-LICENSE` |

@@ -55,7 +55,7 @@ export function RelayEnrollForm({ state, busy, run }: { state: Data; busy: boole
   const [relayConfirmed, setRelayConfirmed] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
   useEffect(() => {
-    setRelayOrigin(state.relay ?? "");
+    setRelayOrigin(state.relay?.startsWith("https://") ? state.relay : "");
   }, [state.relay]);
   const enable = async () => {
     setEnrolling(true);
@@ -650,14 +650,6 @@ export function MobileAdvancedNetwork({
             )}
           </SettingsGroupCard>
         </SettingsSection>
-        {state.enabled && (
-          <SettingsDisclosure
-            className="remote-relay-settings"
-            title={<> {t("settings.mobileSettings.connectThroughARelayService")}</>}
-          >
-            <RelayEnrollForm state={state} busy={busy} run={runCommand} />
-          </SettingsDisclosure>
-        )}
         <SettingsSection
           title={t("settings.mobileConnect.directEntry")}
           description={t("settings.mobileConnect.directEntryDescription")}

@@ -10,6 +10,7 @@ import { stageCoreApp } from "./stage-app.mjs";
 import { stageMacOSService } from "./stage-macos-service.mjs";
 import { buildMacOSDmg } from "./macos-dmg.mjs";
 import { parseArgs } from "node:util";
+import relayResources from "../app/src/core/relay-resources.cjs";
 import { signLocalMacOSApp } from "./macos-signing-paths.mjs";
 const gui = fileURLToPath(new URL("..", import.meta.url));
 const root = resolve(gui, "../..");
@@ -179,6 +180,11 @@ for (const size of [16, 32, 128, 256, 512]) {
 const icon = join(staged, "app.icns");
 execFileSync("/usr/bin/iconutil", ["-c", "icns", iconset, "-o", icon]);
 const { build, Platform, Arch } = require("electron-builder");
+const relayBundle = await relayResources.buildRelayResources({
+  source: join(root, "services/remote-relay"),
+  site: join(gui, "renderer/dist"),
+  destination: join(output, "areal-relay"),
+});
 await build({
   publish: "never",
   targets: Platform.MAC.createTarget(["dir"], Arch.arm64),
@@ -195,6 +201,7 @@ await build({
     files: ["**/*"],
     extraResources: [
       { from: bundle, to: "areal-core" },
+      { from: relayBundle.bundleDir, to: "areal-relay" },
       { from: join(gui, "renderer/dist"), to: "areal-gui" },
       {
         from: join(gui, "native/computer-helper/build/AReaL Computer Helper.app"),

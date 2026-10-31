@@ -1,4 +1,94 @@
 export const remoteMessages = {
+  "settings.relayService.reconfigure": {
+    "zh-CN": "已确认原服务器的程序、服务和数据均已移除，可修改服务器信息重新部署。",
+    en: "The previous server's program, service and data are confirmed removed. You can change the server details and deploy again.",
+  },
+  "settings.relayService.correctAddress": {
+    "zh-CN":
+      "可修正此服务器的 HTTPS 地址后重新部署。更换 SSH 目标前，请先移除服务及数据并检查服务器状态。",
+    en: "Correct this server's HTTPS origin and deploy again. To change the SSH target, first remove the service and data, then check the server status.",
+  },
+  "settings.relayService.targetPlaceholder": {
+    "zh-CN": "root@relay.example.com",
+    en: "root@relay.example.com",
+  },
+  "settings.relayService.localSelected": {
+    "zh-CN": "本机 Relay 已连接 · {host}",
+    en: "Connected to local relay · {host}",
+  },
+  "settings.relayService.title": { "zh-CN": "Relay 服务", en: "Relay service" },
+  "settings.relayService.description": {
+    "zh-CN": "默认在本机启动，手机可通过互通的内网或 VPN 直接扫码连接。",
+    en: "Start on this computer and scan from a phone on a reachable private network or VPN.",
+  },
+  "settings.relayService.local": { "zh-CN": "本机 Relay", en: "Local relay" },
+  "settings.relayService.localDescription": {
+    "zh-CN":
+      "自动选择内网地址。跨网络连接取决于网络可达性。内网 HTTP 链接请在 AReaL Remote App 中扫描。",
+    en: "Chooses a private address automatically. Access across networks depends on reachability. Scan private HTTP links in the AReaL Remote app.",
+  },
+  "settings.relayService.startLocal": {
+    "zh-CN": "开启内网连接",
+    en: "Enable private network connection",
+  },
+  "settings.relayService.stopLocal": { "zh-CN": "停止本机 Relay", en: "Stop local relay" },
+  "settings.relayService.localRunning": {
+    "zh-CN": "本机服务运行中 · {address}",
+    en: "Local service running \u00b7 {address}",
+  },
+  "settings.relayService.readyLocal": {
+    "zh-CN": "内网入口已就绪 · {host}。手机需能通过内网或 VPN 访问此地址。",
+    en: "Private network entry ready \u00b7 {host}. Your phone must be able to reach this address through a private network or VPN.",
+  },
+  "settings.relayService.scanLocal": {
+    "zh-CN": "在 AReaL Remote App 中扫描。手机需能通过内网或 VPN 访问这台电脑。",
+    en: "Scan in the AReaL Remote app. Your phone must be able to reach this computer through a private network or VPN.",
+  },
+  "settings.relayService.ssh": { "zh-CN": "部署到 Linux 服务器", en: "Deploy to a Linux server" },
+  "settings.relayService.sshDescription": {
+    "zh-CN":
+      "使用本机已有 SSH 配置与已信任的主机密钥。服务器需要 root 或免密 sudo，以及指向服务器的域名和可达的 80/443 端口。服务会自动续期 HTTPS 证书。",
+    en: "Uses your existing SSH configuration and trusted host keys. The server needs root or passwordless sudo, a domain pointing to it, and reachable ports 80 and 443. HTTPS certificates renew automatically.",
+  },
+  "settings.relayService.target": { "zh-CN": "SSH 目标", en: "SSH target" },
+  "settings.relayService.port": { "zh-CN": "SSH 端口", en: "SSH port" },
+  "settings.relayService.address": { "zh-CN": "服务器 HTTPS 地址", en: "Server HTTPS origin" },
+  "settings.relayService.deploy": { "zh-CN": "部署并连接", en: "Deploy and connect" },
+  "settings.relayService.inspect": { "zh-CN": "检查服务器状态", en: "Check server status" },
+  "settings.relayService.upgrade": { "zh-CN": "升级服务", en: "Upgrade service" },
+  "settings.relayService.remove": { "zh-CN": "移除服务器服务", en: "Remove server service" },
+  "settings.relayService.removeData": {
+    "zh-CN": "同时永久删除服务器数据和证书",
+    en: "Also permanently delete server data and certificates",
+  },
+  "settings.relayService.pending": {
+    "zh-CN": "上次操作结果待核对。请先检查服务器状态，再决定后续操作。",
+    en: "The previous operation needs reconciliation. Check server status before another operation.",
+  },
+  "settings.relayService.serverRunning": {
+    "zh-CN": "服务器进程运行中。HTTPS 与手机连接状态需分别确认。证书会自动续期。",
+    en: "Server process running. Verify HTTPS and phone connectivity separately. Certificates renew automatically.",
+  },
+  "settings.relayService.serverStopped": {
+    "zh-CN": "服务器服务未运行",
+    en: "Server service is stopped",
+  },
+  "settings.relayService.working": {
+    "zh-CN": "正在处理服务器任务，可继续查看连接状态。",
+    en: "Working on the server. Connection status remains available.",
+  },
+  "settings.relayService.finished": { "zh-CN": "服务器任务已完成", en: "Server task complete" },
+  "settings.relayService.external": {
+    "zh-CN": "使用已有外部服务",
+    en: "Use an existing external service",
+  },
+  "settings.relayService.externalDescription": {
+    "zh-CN": "明确输入你信任的 HTTPS 地址和管理员一次性登记码。",
+    en: "Enter a trusted HTTPS origin and an administrator-issued one-time enrollment code.",
+  },
+  "settings.relayService.saved": { "zh-CN": "已登记的服务", en: "Registered services" },
+  "settings.relayService.selected": { "zh-CN": "使用中", en: "Selected" },
+  "settings.relayService.use": { "zh-CN": "切换到此服务", en: "Use this service" },
   "settings.mobileSettings.pushRegistered": {
     "zh-CN": "推送已开",
     en: "Push on",
@@ -1839,8 +1929,8 @@ export const remoteMessages = {
     en: "Phone connection is off",
   },
   "settings.mobileConnect.notSetUpDescription": {
-    "zh-CN": "填入团队的中继地址后，就能扫码添加手机。",
-    en: "Enter your team's relay address, then scan a code to add your phone.",
+    "zh-CN": "开启内网连接后，在 AReaL Remote App 中扫码添加手机。",
+    en: "Enable a private network connection, then scan in the AReaL Remote app to add your phone.",
   },
   "settings.mobileConnect.ready": {
     "zh-CN": "手机可以连接",

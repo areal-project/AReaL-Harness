@@ -4,6 +4,14 @@
 
 此部署使用非 root Relay/TLS 容器和独立导出的 Remote 静态客户端。源码配置不等于公网或真实设备验收；部署者仍须验证自己的 TLS、网络、设备配对与权限边界。禁止把整个桌面 renderer dist 当成公开资产。尚未测量生产容量，配置数值仅为资源上限。
 
+## 从桌面管理服务器
+
+桌面「设置 → 手机连接 → Relay Service」可通过系统 SSH 安装、升级、检查和移除 Relay。自动部署使用 Node 和 systemd，要求 Linux x64 或 arm64、root 或免密 sudo、已信任的 SSH 主机密钥，以及可从外网访问的 HTTPS 地址和 80/443 端口。无需 Docker。已有 Compose/nginx 手工部署仍使用下文步骤。
+
+`managed-install.sh` 管理 `/opt/areal-relay`、`/var/lib/areal-relay` 和 `areal-relay.service`，只接管相同 owner 的实例。它从 Node 官方源下载固定版本并核对 SHA-256；公信证书由 ACME HTTP-01 自动签发并续期。自动部署不改现有防火墙或代理。端口已占用或签发失败时需核对原服务状态。
+
+部署只向服务提交公开 room hash。capability 保留在桌面的加密配置中。SSH 中断后先检查再决定是否重试；移除默认保留数据。应用不预设官方地址，也不提供默认公网穿透。详见[Remote 指南](../../../docs/guides/remote-control.md)。
+
 ## 从公开源码构建 Remote 产物
 
 在选定版本的干净 checkout 根目录执行，使用 Node.js 24.2.0 和 `clients/gui/package.json` 固定的 pnpm 11.7.0。`--ignore-scripts` 禁止依赖安装脚本；此静态构建不调用 Electron 安装器、Core 或原生打包入口。依赖来自公开 registry，由 `clients/gui/pnpm-lock.yaml` 固定。`REMOTE_RELEASE` 是 checkout 外的新目录，其父目录须已存在：

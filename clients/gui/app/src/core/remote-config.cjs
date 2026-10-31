@@ -7,7 +7,9 @@ const { checkedRecord } = require("./remote-network.cjs");
 /** @typedef {{push?:PushRegistration,devicePeerId:string,displayName:string,clientKind?:'web'|'ios'|'android',projectIds:string[],capabilities:string[],revision:number,status:'active'|'revoked'|'reviewRequired',pairedAt?:number,revokedAt?:number}} DeviceGrant */
 /** @typedef {{id:string,name:string,projects?:string[]}} LegacyDevice */
 /** @typedef {{kind:'tailscale',mapping?:import('./remote-network.cjs').NetworkMapping,visibility?:undefined,publicOrigin?:undefined}|{kind:'organization',publicOrigin:string,visibility:'private'|'public',mapping?:undefined}} RemoteNetwork */
-/** @typedef {{schemaVersion?:number,enabled?:boolean,directEnabled?:boolean,directPort?:number,identity?:string,relay?:string,relayProtocol?:string,room?:string,capability?:string,devices?:LegacyDevice[],deviceGrants?:DeviceGrant[],pushCommands?:PushCommand[],network?:RemoteNetwork|null,[key:string]:unknown}} RemoteConfig */
+/** @typedef {{origin:string,kind:'local'|'ssh'|'external',room:string,capability:string}} RelayProfile */
+/** @typedef {{target:string,port:number,address:string,ownerId:string,room:string,capability:string,phase:'pending'|'ready'|'failed'|'removed',version?:string,active?:boolean,canReconfigure?:boolean}} RelayDeploymentConfig */
+/** @typedef {{schemaVersion?:number,enabled?:boolean,directEnabled?:boolean,directPort?:number,relayLocal?:{enabled:boolean,port:number,origin:string},relayDeployment?:RelayDeploymentConfig,relayProfiles?:RelayProfile[],identity?:string,relay?:string,relayProtocol?:string,room?:string,capability?:string,devices?:LegacyDevice[],deviceGrants?:DeviceGrant[],pushCommands?:PushCommand[],network?:RemoteNetwork|null,[key:string]:unknown}} RemoteConfig */
 
 /** @param {unknown} value @returns {RemoteConfig} */
 function parseRemoteConfig(value) {
@@ -42,6 +44,43 @@ function assertRemoteConfig(value) {
       (!Array.isArray(value.deviceGrants) || !value.deviceGrants.every(deviceGrant)))
   )
     throw new Error("远程配置格式无效");
+  if (
+    value.relayProfiles !== undefined &&
+    (!Array.isArray(value.relayProfiles) ||
+      !value.relayProfiles.every(
+        (profile) =>
+          record(profile) &&
+          typeof profile.origin === "string" &&
+          ["local", "ssh", "external"].includes(String(profile.kind)) &&
+          typeof profile.room === "string" &&
+          /^[a-f0-9]{64}$/.test(profile.room) &&
+          typeof profile.capability === "string" &&
+          /^[A-Za-z0-9_-]{43}$/.test(profile.capability),
+      ))
+  )
+    throw new Error("Relay 配置格式无效");
+  if (
+    value.relayLocal !== undefined &&
+    (!record(value.relayLocal) ||
+      typeof value.relayLocal.enabled !== "boolean" ||
+      typeof value.relayLocal.origin !== "string" ||
+      !Number.isInteger(value.relayLocal.port) ||
+      Number(value.relayLocal.port) < 1024 ||
+      Number(value.relayLocal.port) > 65535)
+  )
+    throw new Error("本机 Relay 配置无效");
+  if (
+    value.relayDeployment !== undefined &&
+    (!record(value.relayDeployment) ||
+      !["target", "address", "ownerId", "room", "capability"].every(
+        (key) => record(value.relayDeployment) && typeof value.relayDeployment[key] === "string",
+      ) ||
+      !Number.isInteger(value.relayDeployment.port) ||
+      (value.relayDeployment.canReconfigure !== undefined &&
+        typeof value.relayDeployment.canReconfigure !== "boolean") ||
+      !["pending", "ready", "failed", "removed"].includes(String(value.relayDeployment.phase)))
+  )
+    throw new Error("SSH Relay 配置无效");
   if (value.network != null) {
     if (!record(value.network)) throw new Error("远程网络配置无效");
     if (value.network.kind === "tailscale") {

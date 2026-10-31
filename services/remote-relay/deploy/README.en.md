@@ -4,6 +4,14 @@
 
 This deployment uses nonroot Relay/TLS containers and a separately exported Remote static client. Source configuration does not certify public-network or physical-device acceptance; operators must verify their own TLS, network, device pairing and access boundaries. Never deploy the entire desktop renderer dist as public assets. No production capacity has been measured; configured limits are resource ceilings.
 
+## Manage a server from Desktop
+
+**Settings → Phone connection → Relay Service** can install, upgrade, inspect, and remove a relay over system SSH. Automatic deployment uses Node and systemd. It requires Linux x64 or arm64, root or passwordless sudo, an already trusted SSH host key, and an externally reachable HTTPS address with ports 80 and 443. Docker is not required. Existing manual Compose/nginx deployments use the steps below.
+
+`managed-install.sh` manages `/opt/areal-relay`, `/var/lib/areal-relay`, and `areal-relay.service`. It only manages an instance with the matching owner. It downloads a fixed Node version from the official source and verifies SHA-256. ACME HTTP-01 obtains and renews trusted certificates. The installer does not edit existing firewalls or reverse proxies. If ports are occupied or issuance fails, inspect the existing service state.
+
+Deployment submits only the public room hash. Capability stays in the encrypted Desktop configuration. Inspect after an SSH interruption before deciding whether to retry. Removal retains data by default. The app includes neither a default official address nor public NAT traversal. See the [Remote guide](../../../docs/guides/remote-control.en.md).
+
 ## Build the Remote artifact from public source
 
 Run from the root of a clean checkout at the selected revision, using Node.js 24.2.0 and pnpm 11.7.0 pinned by `clients/gui/package.json`. `--ignore-scripts` disables dependency installation scripts; this static build does not invoke the Electron installer, Core or native packaging. Dependencies come from the public registry and are fixed by `clients/gui/pnpm-lock.yaml`. `REMOTE_RELEASE` must be a new directory outside the checkout with an existing parent:
