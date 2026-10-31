@@ -11,6 +11,7 @@
 | [content/markdown-reuse-review.md](content/markdown-reuse-review.md) | Markdown 渲染复用评估 | 结论已写入[对话内容呈现系统](../content/conversation-content-system.md) |
 | [content/native-content-reference-review.md](content/native-content-reference-review.md) | 原生内容参考评审 | 同上 |
 | [content/interactive-content-research.md](content/interactive-content-research.md) | 交互内容调研 | 同上 |
+| [research/t3code-workbench-review.md](research/t3code-workbench-review.md) | T3 输入、对话流与 Thread 面板的源码清单、AReaL 对照及待评审指标 | 固定源码快照的研究证据，采纳范围待评审，不作为现行规则 |
 
 归档文件不再随实现更新。需要恢复其中的规则时，把规则写回所属主题，不在这里修改。
 
