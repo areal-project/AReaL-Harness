@@ -80,7 +80,7 @@ pnpm --dir clients/gui bench:browser-tasks:real \
   --output "$PWD/.scratch/browser-task-real"
 ```
 
-缺少授权、显式配置或指定环境变量时，全部 6 条 attempt 保留为 `blocked`，不调用其他模型。`--authorized` 记录已经获得的授权，不替代用户授权。当前实现尚未运行真实模型，不报告解题成功率或收益。
+缺少授权、显式配置或指定环境变量时，全部 6 条 attempt 保留为 `blocked`，不调用其他模型。`--authorized` 记录已经获得的授权，不替代用户授权。已完成一轮 [Arena 真实任务试点](reports/browser-real-arena-pilot.md)，只报告该单来源单次观察，不据此推断通用能力或收益。
 
 每题固定 Terra、medium reasoning、default service tier，省略 temperature。Core 上限为 20 个 model rounds、64 次工具调用、每请求 4096 output tokens。任务不补跑，模型 transport 层 `model.max_retries` 为 0；Core 的 `network.retry_mode="bounded"` 仍允许每个符合条件的逻辑请求最多 5 次网络恢复，全部计入 HTTP 总上限。任务终态轮询预算为 180 秒，设置与清理另计；外层子进程分别在 420 秒与 435 秒请求终止和强制结束。真实模式的透明 HTTP gate 对全部底层请求统一设 24 次上限，包含重试和辅助请求，并拒绝超出冻结模型参数或输出上限的请求。供应商遵守输出限制时，每题全部请求的输出上界为 98,304 tokens；这不限制输入 tokens，也不代表美元上限。
 
