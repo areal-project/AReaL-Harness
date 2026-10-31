@@ -175,3 +175,22 @@ The command prints a temporary evidence directory containing `run-manifest.json`
 `node clients/gui/scripts/browser-frame-origin-smoke.mjs oopif boundaries` uses real Core, the independent adapter, the same Native Page, a deterministic model, and two local Origins. The `same-process` argument covers same-process cross-origin Frames; actual process identity and FrameTree distinguish OOPIFs, not port differences alone. It covers explicit reload, Main prompt cancellation and stale replies, parent misuse refusal, stricter site policies, full-image sensitivity/transient mutation/unavailable-context refusal, Agent capture refusal, original-Thread crop Blob/model SHA equality, revocation destruction, same-Native retention during annotation hide, grant destruction when Preview closes and the user switches Thread without opening a new preview, refusal to retain with an invalid capture token, and cross-Thread isolation. The fixture answers Main dialogs only for exact Origins; this is not operator confirmation. Point `AREAL_CORE_BIN` to the frozen Core and retain fixture/source hashes, call identity, images, and stop receipts.
 
 Shared Profile and Chrome import packages also use synthetic-data real Electron acceptance. Record two independent processes, the same isolated userData, distinct projects/conversations and separation from defaultSession/another partition. Import acceptance must not read personal Chrome data or the real Keychain; use controlled source data, databases and injected secrets to verify bytes, counts, refusal and temporary-window cleanup.
+
+
+## Browser automation benchmark
+
+The benchmark reuses acceptance paths and separates the deterministic Core chain from native execution. Build the GUI and verify source identity, the frozen Core binary, and the browser executor artifacts before running. Run commands from the repository root.
+
+```sh
+AREAL_CORE_BIN=/absolute/frozen/areal pnpm --dir clients/gui run bench:browser-core
+pnpm --dir clients/gui run bench:browser-navigation -- --samples 5 --warmup 1 --site-delay-ms 2000 --output /absolute/evidence/native-baseline
+pnpm --dir clients/gui run bench:browser-summary -- --json /absolute/evidence/native-baseline/RESULT.json
+```
+
+The Core entry retains the isolated home, real Core, approvals, native page, independent site assertions, and cleanup from `automation-core-smoke.mjs`. Its manifest records individual scenarios. The model fixture emits fixed tool calls. Request counts show work performed, not real-model tool-selection efficiency. Scenario latency includes synthetic approval and polling, so it is not pure browser execution time.
+
+The native entry reuses `CorePreview.prepare/execute` and alternates top-level `navigate` with `command.navigate`. An ordinary document is the control. A document with a fixed delayed image separates main-document interactivity from full-resource completion. Independent server requests and native DOM assertions verify arrival. Records include preparation, execution, verification, errors, and work counts. This path omits the real Core permission and model loop and must be interpreted separately.
+
+Freeze scripts, fixtures, parameters, and success conditions before comparing candidates. Record source diffs and hashes of artifacts actually loaded. Use separate evidence directories. Check planned work, error categories, and site effects before comparing medians and ranges for matching successful tasks. Retain failures, UNKNOWN, unrun cases, and expected denials separately. Fast failures are not speedups. Record cold starts, warmup, human waiting, and native execution separately. Small samples do not establish stable tail latency or overall Agent capability.
+
+Changes must also pass relevant navigation, form, stale-reference, takeover, and UNKNOWN regression gates. Real-model strategy experiments separately freeze tasks, sources, model, budget, permissions, and all attempts under the [evaluation methodology](../benchmarks/methodology.en.md). Deterministic-model benchmarks do not establish generalization.

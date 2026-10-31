@@ -175,3 +175,22 @@ pnpm --dir clients/gui run test:browser-feasibility
 `node clients/gui/scripts/browser-frame-origin-smoke.mjs oopif boundaries` 使用真实 Core、独立 adapter、同一 Native 页面、确定性模型和两个本地 Origin。`same-process` 参数覆盖同进程跨源；实际进程身份与 FrameTree 区分 OOPIF，不能只看端口。覆盖显式重载、Main 确认取消与迟到失效、父页面借权拒绝、站点严格策略、全图敏感/瞬时变化/隔离上下文失败拒绝、Agent 截图拒绝、原 Thread 裁图 Blob 与模型 SHA、撤销销毁、标注隐藏保留同一 Native、普通关闭预览及随后切 Thread（不打开新预览）销毁旧授权、无效截图凭据拒绝保留，以及跨 Thread 隔离。Main 对话框由夹具对精确 Origin 回答，不算真人确认。以 `AREAL_CORE_BIN` 指定已冻结 Core；保存 fixture/源码散列、调用身份、图片与停止回执。
 
 共享 Profile 和 Chrome 导入包另外使用合成数据的真实 Electron 验收。记录两个独立进程、相同隔离 userData、不同项目/聊天以及 defaultSession/另一分区的隔离事实。导入验收不得读取个人 Chrome 或真实钥匙串；用受控源资料、数据库和密钥注入验证字节、计数、取消及临时窗口释放。
+
+
+## 浏览器自动化基准
+
+基准复用现有验收路径，区分确定性 Core 链路和原生执行层。运行前完成 GUI 构建，核对当前源码、Core 固定产物和浏览器执行器产物。所有命令从仓库根执行。
+
+```sh
+AREAL_CORE_BIN=/absolute/frozen/areal pnpm --dir clients/gui run bench:browser-core
+pnpm --dir clients/gui run bench:browser-navigation -- --samples 5 --warmup 1 --site-delay-ms 2000 --output /absolute/evidence/native-baseline
+pnpm --dir clients/gui run bench:browser-summary -- --json /absolute/evidence/native-baseline/RESULT.json
+```
+
+Core 入口沿用 `automation-core-smoke.mjs` 的隔离 home、真实 Core、审批、原生网页、站点副作用断言与清理，并在 manifest 中记录逐场景测量。模型按夹具发出固定工具调用。模型请求数属于已执行工作量，不证明真实模型的工具选择效率。场景耗时包含合成审批和轮询，不能解释为纯浏览器执行时间。
+
+原生入口复用 `CorePreview.prepare/execute`，交替测试顶层 `navigate` 和 `command.navigate`。普通文档作为控制，固定延迟图片的文档用于区分主文档可交互与全部资源完成。独立站点请求与原生 DOM 验证页面确实到达，记录准备、执行、验证、错误及工作量。它不经过真实 Core 权限和模型循环，结果单独解释。
+
+比较前冻结脚本、fixture、参数和成功条件，保存源码差量与实际加载产物的散列。每个候选使用独立证据目录。先检查全部计划任务是否完成、错误类别与站点副作用，再比较相同成功任务的中位数和范围。失败、UNKNOWN、未运行和预期拒绝分别保留，不能把快速失败计为提速。冷启动、预热、人工等待与原生执行分别记录。小样本不支持稳定尾延迟或整体 Agent 能力结论。
+
+优化必须同时通过相关导航、表单、Ref 失效、接管与 UNKNOWN 回归。真实模型策略实验另按[评测方法](../benchmarks/methodology.md)冻结任务、来源、模型、预算、权限和完整尝试，不从确定性模型基准推断泛化收益。

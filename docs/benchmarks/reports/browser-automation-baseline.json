@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "scope": "Deterministic Core chain and native navigation. No real-model strategy comparison.",
+  "sourceHead": "ac9a3f21ef51613d5b42afe7a3e904f7700d5635",
+  "native": {
+    "benchmarkVersion": "browser-navigation-native-v1",
+    "measurementKind": "native-command",
+    "settings": {
+      "samples": 5,
+      "warmup": 1,
+      "siteDelayMs": 2000,
+      "seed": 73921,
+      "sensitivity": false,
+      "viewport": {
+        "width": 640,
+        "height": 480
+      }
+    },
+    "groups": {
+      "ordinary-command": {
+        "planned": 5,
+        "passed": 5,
+        "medianMs": 129.8635409999988,
+        "minMs": 123.80108400000063,
+        "maxMs": 142.58904099999927,
+        "documentRequests": 5,
+        "resourceRequests": 5
+      },
+      "ordinary-legacy": {
+        "planned": 5,
+        "passed": 5,
+        "medianMs": 6.385791000000609,
+        "minMs": 6.332040999999663,
+        "maxMs": 6.622916000000259,
+        "documentRequests": 5,
+        "resourceRequests": 5
+      },
+      "slow-image-command": {
+        "planned": 5,
+        "passed": 5,
+        "medianMs": 2130.918458999997,
+        "minMs": 2127.271541,
+        "maxMs": 2137.292125,
+        "documentRequests": 5,
+        "resourceRequests": 5
+      },
+      "slow-image-legacy": {
+        "planned": 5,
+        "passed": 5,
+        "medianMs": 6.458708000001934,
+        "minMs": 5.674957999999606,
+        "maxMs": 9.29254199999923,
+        "documentRequests": 5,
+        "resourceRequests": 5
+      }
+    },
+    "warmupCount": 4,
+    "frozenInputs": {
+      "unchanged": true,
+      "changed": []
+    },
+    "runnerSHA256": "a6f6d8cf905b9c1434d76c2570b0f924afb1a213bb851eeb908ce9a5142df8be",
+    "fixtureSHA256": "a6f6d8cf905b9c1434d76c2570b0f924afb1a213bb851eeb908ce9a5142df8be",
+    "resultSHA256": "074faaa4fd057eba5b58a354bad745430ac464ce7f88a050e116d08b0fb1bf59",
+    "evidence": ".scratch/browser-hillclimb/baseline-native/RESULT.json"
+  },
+  "core": {
+    "benchmarkVersion": "browser-core-v1",
+    "measurementKind": "deterministic-core-chain",
+    "cases": 29,
+    "passed": 29,
+    "functionalChecks": 33,
+    "integrity": {
+      "status": "verified",
+      "changedFiles": [],
+      "unavailableFiles": []
+    },
+    "runnerSHA256": "c15cdef41483d018a6366822b707e96ca1ba021de7b4c292b1ac345290c4fece",
+    "coreBinarySHA256": "74a446c141bdea68efaf04e9fceff1d9a98a03e5e8c395acae60857e664f28d1",
+    "resultSHA256": "eb1eb6996f936648bf03c2691b08deafbab7ad2564ce0b30298f9d889d3e1680",
+    "evidence": "/private/var/folders/06/v03n2mms0ks1nrrvkyzjllr40000gr/T/areal-automation-core-T4TnDY/run-manifest.json"
+  },
+  "failedAttempts": [
+    ".scratch/browser-hillclimb/sensitivity-native/RESULT.json",
+    ".scratch/browser-hillclimb/sensitivity-native-v2/RESULT.json",
+    ".scratch/browser-hillclimb/baseline-core/stdout.log"
+  ],
+  "limits": [
+    "Core model emits fixed tool calls; no real-model efficiency or token-cost claim.",
+    "Core single run is diagnostic; native groups contain five measured samples each.",
+    "Raw evidence is local; operating-system permission-dialog observation remains unknown.",
+    "Host Node 24.2.0 is below the GUI package declared Node 24 range; Electron runtime versions are recorded separately."
+  ]
+}

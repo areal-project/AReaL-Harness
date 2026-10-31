@@ -937,6 +937,13 @@
     "requires": []
   },
   {
+    "script": "test:browser-benchmark-summary",
+    "layer": "contract",
+    "platforms": ["darwin", "linux", "win32"],
+    "areas": ["browser"],
+    "requires": []
+  },
+  {
     "script": "test:browser-navigation",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
