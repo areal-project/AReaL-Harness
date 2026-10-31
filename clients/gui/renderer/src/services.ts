@@ -25,7 +25,7 @@ export type FileOpenRequest =
   | { operation: "targets" }
   | { operation: "setDefault"; target: string }
   | {
-      operation: "open" | "reveal" | "saveAs" | "readImage";
+      operation: "open" | "reveal" | "saveAs" | "readImage" | "readPdf";
       projectId: string;
       threadId?: string;
       path: string;

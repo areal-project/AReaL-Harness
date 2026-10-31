@@ -200,3 +200,6 @@ Core 仅在已授权 MCP 连接边界解析秘密引用，敏感值只绑定声�
 `DesktopState.modelChanges` 默认为空数组。每个事件包含配置 `revision`、Unix 秒 `occurredAt`、可选 `afterTurnId`、`from` 和 `to`。模型身份包含保存时解析的 `modelId` 与可空 `providerId`，其中 `null` 表示 Core 默认模型。只在实际模型身份变化时追加，与配置和请求回执一起持久化。参数变化、拒绝和同 requestId 重放不追加。无 `afterTurnId` 的事件位于首轮之前，零轮次连续变更也保留。该记录仅表示下轮采用的配置选择，不表示模型交接或执行成功。
 
 `TraceActivity.retryDelayMs` 保存计划等待毫秒数，`retryDisposition: "exhausted"` 只在原重试决策确认额度耗尽时出现。客户端按 `logicalId` 聚合 `model` 和 `retryWait`，根据同一逻辑请求的成功活动判断恢复，不能用其他请求的失败推断重试耗尽。新增 `areal/turn/traceActivity` 通知携带 `threadId`、`turnId` 和已持久化的单条 `activity`；快照仍是重连权威。`areal/thread/configured` 同时携带完整 `modelChanges`。上述字段为向后兼容的可选事实或缺省集合，不改变执行和重试策略。
+### 桌面 PDF 文件读取
+
+桌面 `fileOpen` 窄桥增加 `readPdf` 操作，参数为 `{ operation: "readPdf", projectId, threadId?, path }`，成功返回 `{ mimeType: "application/pdf", bytes: Uint8Array }`。这是本地桌面桥能力，不是 Core RPC；现有操作和请求保持兼容。带 `threadId` 时由宿主核对已就绪的执行工作区，路径经 realpath 限制在该根内。只读取普通文件，预算为 20 MiB，读取中版本或归属改变会失败。文件头检查后仍由独立 PDF.js worker 负责格式解析，失败不触发外部打开。Renderer 不接受任意 URL、file URL 或脚本动作，外部打开仍是用户显式的 `open` 操作。

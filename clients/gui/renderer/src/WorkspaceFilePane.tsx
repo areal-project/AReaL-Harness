@@ -28,6 +28,10 @@ import { CodeViewer } from "./components/ui/code-viewer.js";
 import type { Action, PlatformServices, FileOpenTargets } from "./services.js";
 import { useCodePreferences } from "./settings/preferences.js";
 import { useI18n } from "./i18n/IntlProvider.js";
+const WorkspacePdfPreview = lazy(async () => {
+  const { WorkspacePdfPreview } = await import("./WorkspacePdfPreview.js");
+  return { default: WorkspacePdfPreview };
+});
 const WorkspaceMarkdownView = lazy(async () => {
   const { WorkspaceMarkdownView } = await import("./WorkspaceMarkdownView.js");
   return { default: WorkspaceMarkdownView };
@@ -83,6 +87,8 @@ export function WorkspaceFilePane({
   tree?: ReactNode;
 }) {
   const { t } = useI18n();
+  const isPdf = /\.pdf$/i.test(path);
+  const [pdfRevision, refreshPdf] = useState(0);
   const key = `${workspaceDocumentOwner(projectId, root)}:${path}`;
   const [doc, setDoc] = useState<Document | undefined>(documents.get(key));
   const [message, setMessage] = useState(doc?.saveError ?? "");
@@ -128,6 +134,10 @@ export function WorkspaceFilePane({
   };
   useEffect(() => {
     mounted.current = true;
+    if (isPdf)
+      return () => {
+        mounted.current = false;
+      };
     let cancelled = false;
     const cached = documents.get(key);
     if (cached) onDirty(path, cached.text !== cached.original);
@@ -227,6 +237,10 @@ export function WorkspaceFilePane({
     }
   };
   const reload = async () => {
+    if (isPdf) {
+      refreshPdf((value) => value + 1);
+      return;
+    }
     if (doc && doc.text !== doc.original && !window.confirm("丢弃当前草稿，重新读取磁盘版本？"))
       return;
     setBusy(true);
@@ -465,7 +479,22 @@ export function WorkspaceFilePane({
       )}
       <div className="workspace-file-layout min-h-0 min-w-0 flex flex-1">
         <div ref={scrollContainer} className="min-h-0 min-w-0 flex-1 overflow-auto">
-          {doc?.editing ? (
+          {isPdf ? (
+            <Suspense
+              fallback={
+                <p role="status" className="p-3 text-ui-sm text-foreground-subtle">
+                  {t("common.loading")}
+                </p>
+              }
+            >
+              <WorkspacePdfPreview
+                key={`${key}:${pdfRevision}`}
+                projectId={projectId}
+                path={path}
+                fileOpen={fileOpen}
+              />
+            </Suspense>
+          ) : doc?.editing ? (
             <Textarea
               unstyled
               data-slot={undefined}

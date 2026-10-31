@@ -172,7 +172,7 @@ export function WorkspacePanelContent({
             documents.markDirty(project.id, project.root, path, dirty);
           }}
           onLink={onLink}
-          fileOpen={contextualFileOpen}
+          fileOpen={thread?.cloud ? undefined : contextualFileOpen}
           preferredFileOpenTarget={library.settings?.fileOpenTarget}
           filesOpen={filesOpen}
           onToggleFiles={workspacePanels.toggleFiles}

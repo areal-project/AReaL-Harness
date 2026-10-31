@@ -753,16 +753,28 @@ export function Messages({
       ) : fileOpen && isWorkspaceImagePath(uri) ? (
         <WorkspaceImage path={uri} alt={name} projectId={project.id} fileOpen={fileOpen} />
       ) : fileOpen && workspaceFileCardType(uri) ? (
-        <WorkspaceFileCard path={uri} label={name} projectId={project.id} fileOpen={fileOpen} />
+        <WorkspaceFileCard
+          path={uri}
+          label={name}
+          projectId={project.id}
+          fileOpen={fileOpen}
+          onOpen={onFile}
+        />
       ) : null,
-    [project.id, thread.id, action, fileOpen],
+    [project.id, thread.id, action, fileOpen, onFile],
   );
   const renderFileCard = useCallback(
     (path: string, label: string) =>
       fileOpen && workspaceFileCardType(path) ? (
-        <WorkspaceFileCard path={path} label={label} projectId={project.id} fileOpen={fileOpen} />
+        <WorkspaceFileCard
+          path={path}
+          label={label}
+          projectId={project.id}
+          fileOpen={fileOpen}
+          onOpen={onFile}
+        />
       ) : null,
-    [project.id, fileOpen],
+    [project.id, fileOpen, onFile],
   );
   // Binary files cannot be shown in the file pane; hand them to the desktop instead.
   const openReplyFile = useCallback(

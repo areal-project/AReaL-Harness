@@ -8,6 +8,7 @@ const { join, resolve, sep, basename, dirname } = require("node:path");
 const childProcess = require("node:child_process");
 const { modelRecord } = require("@areal/workbench/core-model-contract");
 // 对话里内联显示工作区图片：只按文件头识别常见位图，SVG 等可执行格式只给文件卡。
+const MAX_PDF_BYTES = 20 * 1024 * 1024;
 const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024;
 /** @param {Buffer} bytes */
 function imageMimeType(bytes) {
@@ -42,6 +43,8 @@ function fileWorkspace(backend, request) {
       ? project.summaries.filter(modelRecord).find((value) => value.id === request.threadId)
       : undefined);
   if (!modelRecord(thread)) throw new Error("会话工作目录尚未确认，请先打开会话");
+  if (request.operation === "readPdf" && thread.cloud)
+    throw new Error("云端 PDF 不能通过本地文件路径读取");
   if (!thread.worktree) return project;
   if (
     !modelRecord(thread.worktree) ||
@@ -101,7 +104,7 @@ async function fileOpen({ backend, shell, home, authorize, chooseSave }, request
   }
   if (
     typeof request.operation !== "string" ||
-    !["open", "reveal", "saveAs", "readImage"].includes(request.operation) ||
+    !["open", "reveal", "saveAs", "readImage", "readPdf"].includes(request.operation) ||
     typeof request.projectId !== "string" ||
     typeof request.path !== "string" ||
     !request.path ||
@@ -115,6 +118,41 @@ async function fileOpen({ backend, shell, home, authorize, chooseSave }, request
   if (path !== root && !path.startsWith(root + sep)) throw new Error("文件不在当前工作区内");
   const info = await stat(path);
   if (!info.isFile() && !info.isDirectory()) throw new Error("仅支持文件或目录");
+  if (request.operation === "readPdf") {
+    if (!info.isFile()) throw new Error("仅支持 PDF 文件");
+    if (info.size > MAX_PDF_BYTES) throw new Error("PDF 超过 20 MB，请在外部应用中打开");
+    const source = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const opened = await source.stat();
+      if (!opened.isFile() || opened.dev !== info.dev || opened.ino !== info.ino)
+        throw new Error("PDF 文件已变化，请重新打开");
+      const bytes = Buffer.alloc(Math.min(opened.size, MAX_PDF_BYTES) + 1);
+      let length = 0;
+      while (length < bytes.length) {
+        const { bytesRead } = await source.read(bytes, length, bytes.length - length, length);
+        if (!bytesRead) break;
+        length += bytesRead;
+      }
+      if (length > MAX_PDF_BYTES) throw new Error("PDF 超过 20 MB，请在外部应用中打开");
+      const current = fileWorkspace(backend, request);
+      const after = await source.stat();
+      if (
+        current.root !== project.root ||
+        current.executionProjectId !== project.executionProjectId ||
+        (await realpath(resolve(root, request.path))) !== path ||
+        after.size !== opened.size ||
+        after.mtimeMs !== opened.mtimeMs ||
+        after.ctimeMs !== opened.ctimeMs ||
+        length !== opened.size
+      )
+        throw new Error("PDF 文件已变化，请重新打开");
+      if (!bytes.subarray(0, length).subarray(0, 1024).includes(Buffer.from("%PDF-")))
+        throw new Error("不是有效的 PDF 文件");
+      return { mimeType: "application/pdf", bytes: new Uint8Array(bytes.subarray(0, length)) };
+    } finally {
+      await source.close();
+    }
+  }
   if (request.operation === "readImage") {
     if (!info.isFile()) throw new Error("仅支持图片文件");
     if (info.size > MAX_INLINE_IMAGE_BYTES) throw new Error("图片超过 20 MB，请在外部应用中打开");

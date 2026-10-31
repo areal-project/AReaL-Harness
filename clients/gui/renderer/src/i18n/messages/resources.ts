@@ -1,4 +1,18 @@
 export const resourceMessages = {
+  "resources.pdfDesktop": {
+    "zh-CN": "PDF 预览需要本地桌面文件访问。",
+    en: "PDF preview requires local desktop file access.",
+  },
+  "resources.pdfFailed": {
+    "zh-CN": "PDF 无法预览，请在外部应用中打开。{error}",
+    en: "Unable to preview PDF. Open it in an external application. {error}",
+  },
+  "resources.pdfPreview": { "zh-CN": "PDF 预览", en: "PDF preview" },
+  "resources.pdfPage": { "zh-CN": "第 {page} / {total} 页", en: "Page {page} / {total}" },
+  "resources.previousPage": { "zh-CN": "上一页", en: "Previous page" },
+  "resources.nextPage": { "zh-CN": "下一页", en: "Next page" },
+  "resources.zoomOut": { "zh-CN": "缩小 PDF", en: "Zoom out PDF" },
+  "resources.zoomIn": { "zh-CN": "放大 PDF", en: "Zoom in PDF" },
   "resources.source": { "zh-CN": "查看源代码", en: "View source" },
   "resources.preview": { "zh-CN": "渲染预览", en: "Preview" },
   "resources.table": { "zh-CN": "文件表格", en: "File table" },
