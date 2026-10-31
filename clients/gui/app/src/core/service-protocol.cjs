@@ -1969,8 +1969,9 @@ class DesktopService {
         instructions:
           "After creating a local HTML deliverable, use openDocument with a listed pageId and its full path to display it in the current chat. Its file scope requires Core approval. Workspace HTML permits static assets in its directory tree; HTML outside the workspace is exact-file only. Use navigate with a listed pageId and a URL to open a site, then observe to obtain current refs. Fill the search field and press Enter to submit an approved public search. describe creates or reuses the visible page after Core approval; no development service is needed. Human input revokes access; only a new explicit chat request can authorize re-entry.",
         parameterGuide:
-          "Invoke browser_v1 only when the current user task requires browser interaction. For ordinary chat and tasks that do not need a browser, do not call browser_v1 merely because it is available. Every new browser task starts with describe and empty parameters, then a fresh observe for an existing page; never reuse earlier-turn snapshotId or refs. Replace pageId with an ID from pages, snapshotId with the latest observe.observationId, and ref with a ref from that observation. act takes one nested action object. Observe again after fill before submitting with press Enter.",
+          "Invoke browser_v1 only when the current user task requires browser interaction. For ordinary chat and tasks that do not need a browser, do not call browser_v1 merely because it is available. Every new browser task starts with describe and empty parameters, then a fresh observe for an existing page; never reuse earlier-turn snapshotId or refs. Replace pageId with an ID from pages, snapshotId with the latest observe.observationId, and ref with a ref from that observation. act takes one nested action object. For setChecked, action.checked must be a boolean. describe topic accepts only command.<method> or command.playwright.<action>, such as command.playwright.locator; use empty describe parameters for top-level browser operations. Observe again after fill before submitting with press Enter.",
         examples: [
+          { operation: "describe", parameters: { topic: "command.playwright.locator" } },
           {
             operation: "openDocument",
             parameters: { pageId: "<pageId>", path: "/absolute/path/report.html" },
@@ -1982,6 +1983,14 @@ class DesktopService {
               pageId: "<pageId>",
               snapshotId: "<observe.observationId>",
               action: { kind: "fill", ref: "<ref>", value: "<search query>" },
+            },
+          },
+          {
+            operation: "act",
+            parameters: {
+              pageId: "<pageId>",
+              snapshotId: "<observe.observationId>",
+              action: { kind: "setChecked", ref: "<ref>", checked: true },
             },
           },
           {

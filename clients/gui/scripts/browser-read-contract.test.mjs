@@ -587,3 +587,66 @@ test("queued continuation binds to its persisted queue turn and loses entry on r
     service.close();
   }
 });
+
+test("browser describe examples expose valid checkbox and command-topic parameters", async () => {
+  const pageId = "00000000-0000-4000-8000-000000000001";
+  const service = new DesktopService(
+    { projects: new Map(), starting: new Set(), snapshot: () => ({}), hasWork: () => false },
+    "guidance-fixture",
+  );
+  service.browserClaims.set(JSON.stringify(["project-1", "thread-1"]), {
+    socket: { readyState: 1 },
+    coreInstanceId: "core-1",
+    coreGeneration: "generation-1",
+    browserHostId: "host-1",
+    hostGeneration: 1,
+    pages: new Map([[pageId, { pageId, pageGeneration: 1, controlEpoch: 1 }]]),
+  });
+  try {
+    const result = await service.browserRead({
+      projectId: "project-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      callId: "call-1",
+      coreInstanceId: "core-1",
+      coreGeneration: "generation-1",
+      arguments: { operation: "describe", parameters: {} },
+    });
+    assert.equal(result.success, true);
+    const description = JSON.parse(result.contentItems[0].text);
+    const checkbox = description.examples.find(
+      (example) => example.operation === "act" && example.parameters.action?.kind === "setChecked",
+    );
+    const topic = description.examples.find(
+      (example) =>
+        example.operation === "describe" &&
+        example.parameters.topic === "command.playwright.locator",
+    );
+    assert.ok(checkbox, "the model receives an explicit checked:boolean action example");
+    assert.ok(topic, "the model receives a supported describe topic example");
+    for (const example of [checkbox, topic]) {
+      const input = structuredClone(example);
+      if (input.parameters.pageId) input.parameters.pageId = pageId;
+      if (input.parameters.snapshotId) input.parameters.snapshotId = pageId;
+      if (input.parameters.action?.ref) input.parameters.action.ref = "r1";
+      assert.equal(validToolInput(input), true, JSON.stringify(input));
+    }
+    assert.equal(checkbox.parameters.action.checked, true);
+    assert.match(description.parameterGuide, /checked.*boolean/);
+    assert.match(description.parameterGuide, /command\.<method>/);
+    assert.equal(
+      validToolInput({
+        operation: "act",
+        parameters: {
+          pageId,
+          snapshotId: pageId,
+          action: { kind: "setChecked", ref: "r1", value: true },
+        },
+      }),
+      false,
+    );
+    assert.equal(validToolInput({ operation: "describe", parameters: { topic: "act" } }), false);
+  } finally {
+    clearTimeout(service.timer);
+  }
+});
