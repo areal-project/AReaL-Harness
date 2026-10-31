@@ -648,6 +648,9 @@ impl Engine {
             });
         }
         let content = received.await??;
+        if content.is_empty() {
+            return Ok(Some(instructions));
+        }
         instructions.push(Kind::Rules, "AGENTS.md", "\n\nProject AGENTS.md instructions (subordinate to the user's request and deployment permissions). In each directory, the first non-empty file wins: AGENTS.override.md, then AGENTS.md; only one file per directory is included. Each file applies only to its directory and descendants; closer files take precedence for files in their subtree. Before working in other directories, read their applicable instruction files using the same selection order. Only the workspace-root-to-session-cwd chain is loaded here:\n");
         instructions.push(Kind::Rules, "AGENTS.md", &content);
         Ok(Some(instructions))
@@ -663,7 +666,7 @@ impl Engine {
         let client = &self.runtime.as_ref().unwrap().client;
         // 规则文件也使用本轮受限 base；不能把它误作追加权限审批的 authority。
         // Scope 的创建、取消和清理与后续工具共用同一个生命周期。
-        let scope = self.ensure_turn_scope(cell, None).await?;
+        let mut scope = None;
         let cancel = cell
             .state
             .lock()
@@ -689,10 +692,15 @@ impl Engine {
                         "{path} must be a regular file no larger than 32 KiB"
                     ),
                 }
+                // 空目录无需 Runtime 权限；真正读取时仍先取得受限 Scope，拒绝必须传播。
+                let scope = match &scope {
+                    Some(scope) => scope,
+                    None => scope.insert(self.ensure_turn_scope(cell, None).await?),
+                };
                 let value = tokio::select! {
                     biased;
                     _ = cancel.cancelled() => {
-                        client.close_scope(&scope).await?;
+                        client.close_scope(scope).await?;
                         anyhow::bail!("project instruction read cancelled");
                     }
                     result = client.filesystem(rt::FileRequest {

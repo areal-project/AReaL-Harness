@@ -648,7 +648,9 @@ mod tests {
                 .with_simple_exporter(logs.clone())
                 .build();
             let traces = InMemorySpanExporter::default();
-            let mut builder = SdkTracerProvider::builder();
+            // 导出断言使用确定采样，不继承宿主 OTEL_TRACES_SAMPLER 环境配置。
+            let mut builder = SdkTracerProvider::builder()
+                .with_sampler(opentelemetry_sdk::trace::Sampler::AlwaysOn);
             if export_traces {
                 builder = builder.with_simple_exporter(traces.clone());
             }

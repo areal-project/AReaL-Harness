@@ -65,6 +65,14 @@ pnpm --dir clients/gui test:unit renderer/src/readingViews.test.ts
 
 进度直接读取结构化报告：`python3 scripts/ci-preflight.py --report target/ci/changed/<run-id>/report.json`。相邻 `plan.json` 必须与报告身份匹配。执行器在开始、执行中和每项完成时更新 `progress`：分别列出 `passed`、`failed`、`blocked`、`pending`、`running`、`invalidated`、`cancelled` 的数量和检查 ID。未选完整项和远端项都属于待执行，另列 `pendingFull`、`remoteRequired`；失败后独立检查继续通过也不清除失败。顶层 `status=passed` 仅表示所选本机项通过，`progress.status=pending` 表示完整计划仍有待验收项。读取进度命令的退出码只表示报告可读，不能作为验收通过的证据。
 
+设计文档也是健康预算的输入：仅修改 `design/` 或 `clients/gui/design-system/` 下的 Markdown 会选择廉价的 `gui-health`，不因此启动 GUI 构建或 smoke。普通 `docs/` 文档仍只选择文档相关检查。
+
+报告用 `selectedRequired` 记录本次实际选择。中断的本机尝试会把已选择但尚未产生结果的本机检查带入下一次快检；从未选择的 `pendingRequired` 与其他平台的 `remoteRequired` 不会因此变成本机全量任务。旧报告仅在相邻 `plan.json` 身份一致时恢复该集合。历史记录只提示重验，不能证明新 source/base/plan 已通过；`passed` 仍只表示本次所选检查，完整性以进度和远端待验条件为准。子 runner 缺项或重复项报告覆盖错误，完整集合内的失败报告具体 `failedScripts`；身份不一致仍直接失败。
+
+定时任务编辑器只在显式编辑时加载；列表读取不导入编辑器，也不提交任务操作。动态 chunk 仍属于 Remote 离线资源闭包，新增 chunk 必须登记有界预算，不因此提高入口或总量预算。纯状态测试验证加载、重试和旧代次失效；SSR 检查只证明未提前导入；首次编辑、加载失败、切换任务和卸载后的过期回包仍需交互验收。
+
+健康基线的人工审阅仍由代码评审承担，脚本不能验证人的授权。当前显式迁移记录仅认可 `activeDesignDocBytes` 从 262924 到 269714、owner 与方向不变的转换，理由是双语插件资源规范和折叠/文案规则，未留额外余量。它只解除与旧 base 比较的基线转换错误，实测超限、其他指标和源码上限照常失败。base 采用新值后记录不再匹配，可移除；下一次增长仍需新的审阅，不使用常驻 `--allow-regression`。
+
 `make ci-preflight` 将工具版本、锁文件和输入摘要写入 `target/ci/preflight/<run-id>/metadata.json`，同目录 `plan.json` 冻结计划，`report.json` 保存每项命令、开始/结束时间、耗时、退出码与状态。格式、manifest/门禁契约、环境探针和生产包预算尽早执行；独立检查继续收集失败，只有真实依赖失败的消费者记录 `blocked`。每轮使用新目录保留失败，不缓存通过结果。
 
 故障注入验收：`python3 scripts/desktop-schemas.py --counterexample` 使用真实 Rust schema 生成器验证漂移必被拒绝；`pnpm --dir clients/gui test:ci-budget-counterexample` 在隔离输出目录构建故意超限的生产入口，要求实际预算检查拒绝。`python3 -m unittest scripts.tests.test_ci_contracts scripts.tests.test_check_changed scripts.tests.test_git_hooks` 验证缺少 native 能力时阻塞、漏掉必跑项/子测试时 gate 拒绝，以及暂存规则与工作区隔离。首跑失败保留，不以自动重试达成全绿。

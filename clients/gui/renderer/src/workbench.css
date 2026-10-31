@@ -1992,7 +1992,8 @@ button[aria-label="停止"] {
   padding: 10px 12px;
   border-bottom: 1px solid var(--color-border);
 }
-.trajectory-toolbar {
+.trajectory-toolbar,
+.trajectory-search {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -2006,7 +2007,8 @@ button[aria-label="停止"] {
 }
 .trajectory-header small,
 .trajectory-notice,
-.trajectory-meta {
+.trajectory-meta,
+.trajectory-turn span {
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-sm);
 }
@@ -2014,9 +2016,6 @@ button[aria-label="停止"] {
   margin: 6px 0 0;
 }
 .trajectory-search {
-  display: flex;
-  align-items: center;
-  gap: 4px;
   margin-top: 8px;
 }
 .trajectory-search input {
@@ -2045,10 +2044,6 @@ button[aria-label="停止"] {
   display: flex;
   gap: 12px;
   justify-content: space-between;
-}
-.trajectory-turn span {
-  color: var(--color-foreground-subtle);
-  font-size: var(--text-ui-sm);
 }
 .trajectory-meta {
   display: flex;
@@ -4691,9 +4686,6 @@ button[aria-label="停止"] {
   white-space: normal;
   overflow-wrap: anywhere;
   text-align: left;
-}
-.trajectory-meta {
-  flex-wrap: wrap;
 }
 .trajectory-results,
 .trajectory-raw {

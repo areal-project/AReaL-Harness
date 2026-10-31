@@ -174,11 +174,6 @@ impl Engine {
                         }
                         return;
                     }
-                    let interrupted = matches!(
-                        r.reason.as_deref(),
-                        Some("serverRestarted" | "hostUnavailable")
-                    );
-                    let previous_reason = r.reason.clone();
                     r.status = if stop {
                         RunStatus::Cancelled
                     } else {
@@ -198,15 +193,16 @@ impl Engine {
                     };
                     if !matches!(
                         r.reason.as_deref(),
-                        Some("resumeRequested" | "stopRequested" | "hostUnavailable")
+                        Some(
+                            "resumeRequested"
+                                | "stopRequested"
+                                | "hostUnavailable"
+                                | "serverRestarted"
+                        )
                     ) {
                         r.reason = goal.reason.clone();
                     }
-                    // 被重启或 Host 离线打断的定时运行记为失败；受阻运行仍可重试，到下一次触发时再结算。
-                    if r.status == RunStatus::Paused && interrupted {
-                        r.status = RunStatus::Failed;
-                        r.reason = previous_reason;
-                    }
+                    // 中断保留原 Run 的显式恢复机会；后续到期触发才结算已停住的旧 Run。
                     if r.status.terminal() && r.completed_at.is_none() {
                         r.completed_at = Some(now());
                         for m in &mut t.messages {

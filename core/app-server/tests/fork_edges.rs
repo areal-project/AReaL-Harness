@@ -372,7 +372,7 @@ async fn unknown_persisted_conversation_kind_fails_closed_at_open() {
     fixture.close().await;
     let path = record_path(dir.path(), &id);
     let mut record: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    assert_eq!(record["version"], 15);
+    assert_eq!(record["version"], areal_engine::state_version());
     record["thread"]["conversation"] = json!({"kind":"futureRestrictedRole","version":1});
     std::fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
     assert!(Engine::open(dir.path(), Arc::new(FixedModel), Limits::default()).is_err());

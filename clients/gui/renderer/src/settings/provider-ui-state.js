@@ -35,7 +35,28 @@ export function newConnectionDraft(definition, authentication, revision) {
     authentication,
     enabled: true,
     parameters: structuredClone(definition.parameters ?? {}),
-    models: structuredClone(definition.models ?? []).map(model => withDefaultModelCapabilities(model, definition.parameters)),
+    models: structuredClone(definition.models ?? []).map((model) =>
+      withDefaultModelCapabilities(model, definition.parameters),
+    ),
     basedOnRevision: revision,
   };
+}
+
+/** 发现结果只记录服务商事实，不把报告上限变成用户覆盖值。 */
+export function discoveredModels(provider, ids, modelParameters = {}) {
+  return ids
+    .filter((id) => !provider.models.some((model) => model.id === id))
+    .map((id) =>
+      withDefaultModelCapabilities(
+        {
+          id,
+          enabled: true,
+          parameters: {},
+          ...(modelParameters?.[id]?.contextWindowTokens === undefined
+            ? {}
+            : { reportedContextWindowTokens: modelParameters[id].contextWindowTokens }),
+        },
+        provider.parameters,
+      ),
+    );
 }

@@ -437,7 +437,7 @@ async fn authenticated_side_access_and_legacy_routes_preserve_policy() {
     drop(valid);
     let path = dir.path().join(format!("{side_id}.json"));
     let mut record: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    assert_eq!(record["version"], 15);
+    assert_eq!(record["version"], areal_engine::state_version());
     assert_eq!(record["thread"]["conversation"]["kind"], "side");
     record["version"] = json!(13);
     std::fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();

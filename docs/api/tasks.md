@@ -165,13 +165,13 @@ rule 支持以下形状。
 
 context 和 preview 为 observe 操作。from 包含边界，省略时使用同一次捕获的 Core now。预览最多返回 count 个 `{at,localTime}`，同时返回 canonical schedule、时区与缺日期/DST 提示。预览仅用于展示；保存对原意图重新捕获 Core 时间，先按原意图摘要查询收据，再解析 relative/next，所以重试不会改变已受理计划。新 once/interval 创建保留给定时点或锚点，允许已到期；calendar 创建从 Core now 起选择首点。更新后的游标必须严格在未来。读取及重启不重新选择游标。
 
-忙碌 Run，包括 blocked，优先记为 skippedOverlap；空闲且 Host 不在时不推进。coalesce 受理最早待执行点的一次 Run。skip 延迟不超过窗口时受理最早点；超过窗口则跳过截至 now 的全部到期点，后续游标严格晚于 now。窗口 300 时，300 秒受理，301 秒跳过。错过一次性计划不伪造 Run。
+活动 Run、已受理的显式恢复意图和未结算 worker 优先记为 skippedOverlap。已停住的 paused/blocked Run 在下一次到期触发前可手动恢复；Host 就绪后的下一次触发会结束旧 Run，再按漏执行策略决定新 Run，不再永久跳过。正在恢复或未结算的工作不会被替换。空闲且 Host 不在时不推进。coalesce 受理最早待执行点的一次 Run。skip 延迟不超过窗口时受理最早点；超过窗口则跳过截至 now 的全部到期点，后续游标严格晚于 now。窗口 300 时，300 秒受理，301 秒跳过。错过一次性计划不伪造 Run。
 
 Task 保存固定大小的 `lastTriggerDecision`，包含 sequence、decidedAt、planRevision、originalScheduledAt、dueThrough、dueCount、nextRunAt 和 outcome。outcome 为 admitted（带 runId）、skippedOverlap 或 missedWindow。skippedRuns 只累计重叠次数。新 Run 的 `acceptedSchedule` 保存受理时的规则、策略和 Task revision；自动 Run 另保存真实受理决策，manual 快照省略 decision；后续修改不会重写。客户端按该快照的时区显示历史。旧 Run 不补造快照。
 
 ## 定时、预算与恢复
 
-schedule 为 `{at: UTC Unix秒, intervalSeconds?: 1..31536000, timeZone?: IANA 时区名}`；仅 scheduled 可指定。timeZone 保存客户端解释日期时的时区，不改变 UTC／固定间隔语义。省略 intervalSeconds 表示一次性；重复调度以 at 为锚点，服务恢复后错过的触发点合并为一次，已有未结束 Run 时跳过本次触发，不创建重叠 Run。该旧字段始终表示固定秒数，不会因升级变为日历规则。不支持 cron、RRULE 或操作系统关机唤醒。Core 服务和已登记桌面 Host 必须保持在线。空闲且 Host 离线时保留最早待执行时间，恢复后按计划的漏执行策略处理；运行中断则保留原 Run／Thread，等待用户明确恢复。
+schedule 为 `{at: UTC Unix秒, intervalSeconds?: 1..31536000, timeZone?: IANA 时区名}`；仅 scheduled 可指定。timeZone 保存客户端解释日期时的时区，不改变 UTC／固定间隔语义。省略 intervalSeconds 表示一次性；重复调度以 at 为锚点，服务恢复后错过的触发点合并为一次，与活动或未结算执行重叠时跳过本次触发，不创建重叠 Run。该旧字段始终表示固定秒数，不会因升级变为日历规则。不支持 cron、RRULE 或操作系统关机唤醒。Core 服务和已登记桌面 Host 必须保持在线。空闲且 Host 离线时保留最早待执行时间，恢复后按计划的漏执行策略处理；运行中断则保留原 Run／Thread且不记录完成时间，等待用户明确恢复。重连不会自动恢复中断的 Run；独立到期触发仍可开始新 Run。下一次到期触发前，显式 resumeRun 保留原 Run／Thread并创建新 Turn，旧交互答案仍被拒绝。后续触发替换旧 Run 后，其终态不可再恢复。
 
 Task tokenBudget 覆盖所有 Run 的已确认和预留消费；maxTurns/maxActiveSeconds 分别限制每个 Run。沿用 Goal 的保守准入与未知消费处理。协调 Turn 和 detached worker 的活动时间取并集，重叠不重复计时；释放所有执行后等待用户的时间不计入。每个 worker 继承冻结配置、权限和同一 Goal 预算；最多使用部署 maxChildrenPerTurn 个 worker（按 Run 累计），maxModelRounds 默认取 16 与父上限的较小值，显式值不能超过父配置。交互式协调者的 worker 使用 asynchronous；headless 保持 headless。worker 不再递归创建 Task worker，也不能修改根 Goal；共享工作区写入仍须明确文件归属。
 

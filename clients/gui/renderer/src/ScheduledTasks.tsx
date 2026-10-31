@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ScheduledWorkspace } from "@areal/ui/experimental";
 import { Button } from "./components/ui/button.js";
 import {
@@ -17,8 +17,8 @@ import {
   scheduledTaskStateLabel,
   scheduledTaskSummary,
 } from "./scheduleText.js";
-import { ScheduledTaskEditDialog } from "./ScheduledTaskEditDialog.js";
 import type { Action, Data } from "./services.js";
+import { createScheduleEditorLoader, type ScheduleEditorState } from "./schedule-editor-loader.js";
 
 // 定时任务页与会话共用同一处实验组件入口，毕业前只在这里登记一次。
 export { ScheduledWorkspace };
@@ -245,7 +245,26 @@ export function ScheduledTaskRow({
   onOpen?: (task: Data) => void;
 } & Record<`data-${string}`, string | undefined>) {
   const { t } = useI18n();
-  const [editing, setEditing] = useState(false);
+  type Editor = (typeof import("./ScheduledTaskEditDialog.js"))["ScheduledTaskEditDialog"];
+  const [{ editor: Editor, loading: editorLoading, error: editorError, editing }, setEditorState] =
+    useState<ScheduleEditorState<Editor>>({
+      editor: null,
+      loading: false,
+      error: "",
+      editing: false,
+    });
+  const loader = useMemo(
+    () =>
+      createScheduleEditorLoader(
+        async () => (await import("./ScheduledTaskEditDialog.js")).ScheduledTaskEditDialog,
+        setEditorState,
+      ),
+    [],
+  );
+  useEffect(() => {
+    loader.reset();
+    return loader.invalidate;
+  }, [task.id, project.id, loader]);
   const state = scheduledTaskState(task, project, t);
   const name = scheduledTaskName(task);
   const summary =
@@ -281,16 +300,22 @@ export function ScheduledTaskRow({
             disabled={disabled}
             onChanged={onChanged}
             onOpen={onOpen ? () => onOpen(task) : undefined}
-            onEdit={() => setEditing(true)}
+            onEdit={() => void loader.open()}
           />
         }
       />
-      {editing && (
-        <ScheduledTaskEditDialog
+      {editorLoading && <p role="status">{t("common.loading")}</p>}
+      {editorError && (
+        <p role="alert" className="scheduled-task-error">
+          {editorError}
+        </p>
+      )}
+      {editing && Editor && (
+        <Editor
           task={task}
           project={project}
           action={action}
-          onClose={() => setEditing(false)}
+          onClose={() => setEditorState((state) => ({ ...state, editing: false }))}
           onChanged={onChanged}
         />
       )}

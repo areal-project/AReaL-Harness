@@ -4,8 +4,8 @@ const {
   readManagementRequest,
   validateManagementResponse,
   readPluginReadiness,
-  pluginMutation,
 } = require("@areal/workbench/desktop-contract/management");
+const { readPluginSubmission } = require("./plugin-submission.cjs");
 const { commandResponseError } = require("@areal/workbench/desktop-contract");
 const { configurePluginAuthentication } = require("./plugin-authentication.cjs");
 const { manageTask, taskOperations } = require("./tasks.cjs");
@@ -270,7 +270,13 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
       throw new Error("Missing upload submission ID");
     return backend.readSubmission(project, method, { requestId: request.requestId });
   }
-  if (operation === "pluginSubmission") return readPluginSubmission(backend, project, request);
+  if (operation === "pluginSubmission")
+    return readPluginSubmission(
+      backend,
+      project,
+      request,
+      request.mutation ? mutations[request.mutation] : undefined,
+    );
   if (operation === "pluginCredentialsReload")
     return require("./plugin-configuration.cjs").reloadPluginCredentials(backend, project);
   if (rawRequest.operation === "pluginUserConfigSave")
@@ -781,41 +787,6 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
     shell: terminal.shell,
     ...(await resolveTerminalPresentation(backend.library?.value.settings, backend.userHome)),
   };
-}
-/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {Request} request */
-async function readPluginSubmission(backend, project, request) {
-  const method = request.mutation ? mutations[request.mutation] : undefined;
-  if (
-    !pluginMutation(request.mutation) ||
-    !method ||
-    typeof request.requestId !== "string" ||
-    !request.requestId.trim()
-  )
-    throw new Error("缺少原插件提交标识");
-  const receipt = await backend.readSubmission(project, method, {
-    requestId: request.requestId,
-    ...(request.threadId ? { threadId: request.threadId } : {}),
-  });
-  if (!receipt.confirmed) return receipt;
-  const result = "result" in receipt ? receipt.result : undefined;
-  const error = "error" in receipt ? receipt.error : undefined;
-  let warning;
-  if (
-    !error &&
-    request.mutation === "pluginSetup" &&
-    modelRecord(result) &&
-    modelRecord(result.thread) &&
-    typeof result.thread.id === "string"
-  ) {
-    try {
-      await backend.openThread(project, result.thread.id);
-      await backend.listThreads(project);
-    } catch (cause) {
-      warning = `设置已受理，刷新对话失败：${cause instanceof Error ? cause.message : String(cause)}`;
-    }
-  }
-  backend.onChange();
-  return { ...receipt, ...(warning ? { warning } : {}) };
 }
 
 /** @param {Record<string,unknown>} value @returns {Request} */

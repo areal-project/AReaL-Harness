@@ -2,7 +2,7 @@
 
 # Conversation targets for scheduled messages
 
-Status: core product decisions confirmed, not implemented; creation, editing and cancellation boundaries remain open. This design changes the always-new-conversation rule in [ADR 0013](0013-desktop-scheduled-runs.en.md), without changing Core ownership of scheduling, history or execution records.
+Status: core product decisions confirmed, not implemented; creation, editing and cancellation boundaries remain open. This design changes the original always-new-conversation rule for scheduled runs, without changing Core ownership of scheduling, history or execution records.
 
 ## Decision and trade-offs
 

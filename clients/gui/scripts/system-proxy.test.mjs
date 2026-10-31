@@ -20,7 +20,12 @@ const settings = (entries) => `<dictionary> {\n${entries}\n}\n`;
 test("constructing and closing an unused transport never loads system certificates", () => {
   // 独立子进程替换 TLS 探针，避免改动其他并行用例的全局绑定。
   const networkUrl = new URL("../packages/chatgpt-provider/network.js", import.meta.url).href;
-  const child = spawnSync(process.execPath, ["--input-type=module", "-e", `
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
     import tls from 'node:tls';
     import { syncBuiltinESMExports } from 'node:module';
     tls.getCACertificates = () => { throw Error('unexpected system certificate access'); };
@@ -31,7 +36,10 @@ test("constructing and closing an unused transport never loads system certificat
     try { await network.fetch('https://example.invalid'); throw Error('unexpected request'); }
     catch (error) { if (error.message !== 'ChatGPT proxy unavailable') throw error; }
     network.close();
-  `], { encoding: "utf8", timeout: 5000 });
+  `,
+    ],
+    { encoding: "utf8", timeout: 5000 },
+  );
   assert.equal(child.status, 0, child.stderr || String(child.error));
 });
 
@@ -126,14 +134,19 @@ function responsesProviders(t, endpoint, environment = {}) {
     { hooks: { environment: () => environment } },
     { decryptString: (bytes) => bytes.toString() },
   );
-  providers.config.vault.keys.AREAL_CREDENTIAL_fixture = Buffer.from(responsesKey).toString("base64");
-  providers.config.value = { data: [{
-    id: "responses-fixture",
-    endpoint,
-    protocol: "responses",
-    apiKeyEnv: "AREAL_CREDENTIAL_fixture",
-    models: [{ id: "fixture-model", enabled: true }],
-  }] };
+  providers.config.vault.keys.AREAL_CREDENTIAL_fixture =
+    Buffer.from(responsesKey).toString("base64");
+  providers.config.value = {
+    data: [
+      {
+        id: "responses-fixture",
+        endpoint,
+        protocol: "responses",
+        apiKeyEnv: "AREAL_CREDENTIAL_fixture",
+        models: [{ id: "fixture-model", enabled: true }],
+      },
+    ],
+  };
   providers.config.current = async () => providers.value;
   t.after(() => providers.close());
   return providers;
@@ -145,183 +158,354 @@ function safeConnectionError(code, message) {
   return (error) => {
     assert.deepEqual({ code: error.code, message: error.message }, { code, message });
     assert.equal(Object.hasOwn(error, "cause"), false);
-    assert.doesNotMatch(`${error.message}\n${error.stack}\n${JSON.stringify(error)}`, /sk-fixture|secret-query|private-host/);
+    assert.doesNotMatch(
+      `${error.message}\n${error.stack}\n${JSON.stringify(error)}`,
+      /sk-fixture|secret-query|private-host/,
+    );
     return true;
   };
 }
 
-test("Responses connection probe sends the saved endpoint and validates real SSE", { timeout: 5000 }, async (t) => {
-  const requests = [];
-  const server = httpServer(async (req, res) => {
-    const chunks = [];
-    for await (const chunk of req) chunks.push(chunk);
-    requests.push({ path: req.url, method: req.method, authorization: req.headers.authorization, body: JSON.parse(Buffer.concat(chunks)) });
-    res.writeHead(200, { "Content-Type": "text/event-stream" });
-    res.end('data: {"type":"response.output_text.delta","delta":"OK"}\n\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n');
-  });
-  const port = await listen(t, server);
-  const providers = responsesProviders(t, `http://127.0.0.1:${port}/v1/responses`);
-  assert.deepEqual(await providers.test(responsesProbe), { state: "connected" });
-  assert.deepEqual(requests, [{
-    path: "/v1/responses",
-    method: "POST",
-    authorization: `Bearer ${responsesKey}`,
-    body: { model: "fixture-model", input: [{ role: "user", content: "Reply with OK." }], store: false, stream: true },
-  }]);
-});
+test(
+  "Responses connection probe sends the saved endpoint and validates real SSE",
+  { timeout: 5000 },
+  async (t) => {
+    const requests = [];
+    const server = httpServer(async (req, res) => {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      requests.push({
+        path: req.url,
+        method: req.method,
+        authorization: req.headers.authorization,
+        body: JSON.parse(Buffer.concat(chunks)),
+      });
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end(
+        'data: {"type":"response.output_text.delta","delta":"OK"}\n\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n',
+      );
+    });
+    const port = await listen(t, server);
+    const providers = responsesProviders(t, `http://127.0.0.1:${port}/v1/responses`);
+    assert.deepEqual(await providers.test(responsesProbe), { state: "connected" });
+    assert.deepEqual(requests, [
+      {
+        path: "/v1/responses",
+        method: "POST",
+        authorization: `Bearer ${responsesKey}`,
+        body: {
+          model: "fixture-model",
+          input: [{ role: "user", content: "Reply with OK." }],
+          store: false,
+          stream: true,
+        },
+      },
+    ]);
+  },
+);
 
-test("self-contained model discovery works without saved configuration and saved keys still check revisions", { timeout: 5000 }, async t => {
-  const requests = [];
-  const port = await listen(t, httpServer((req, res) => {
-    requests.push({ path: req.url, authorization: req.headers.authorization ?? null });
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ data: [{ id: "draft-model" }] }));
-  }));
-  const providers = responsesProviders(t, `http://127.0.0.1:${port}/v1/responses`);
-  providers.config.current = async () => { throw new Error("saved configuration unavailable"); };
-  for (const credential of [{ kind: "none" }, { kind: "draft", value: "synthetic-draft-key" }]) {
-    assert.deepEqual(await providers.command({ operation: "discover", connection: {
-      protocol: "responses", baseUrl: `http://127.0.0.1:${port}/v1`, credential,
-    } }), { models: ["draft-model"] });
-  }
-  assert.deepEqual(requests, [
-    { path: "/v1/models", authorization: null },
-    { path: "/v1/models", authorization: "Bearer synthetic-draft-key" },
-  ]);
-  providers.config.current = async () => {
-    providers.config.value.revision = "new-revision";
-    return providers.config.value;
-  };
-  await assert.rejects(providers.command({ operation: "discover", connection: {
-    protocol: "responses", baseUrl: `http://127.0.0.1:${port}/v1`,
-    credential: { kind: "saved", providerId: "responses-fixture", expectedRevision: "stale" },
-  } }), /刷新/);
-  assert.equal(requests.length, 2, "a stale stored credential never reaches the upstream server");
-});
+test(
+  "self-contained model discovery works without saved configuration and saved keys still check revisions",
+  { timeout: 5000 },
+  async (t) => {
+    const requests = [];
+    const port = await listen(
+      t,
+      httpServer((req, res) => {
+        requests.push({ path: req.url, authorization: req.headers.authorization ?? null });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ data: [{ id: "draft-model" }] }));
+      }),
+    );
+    const providers = responsesProviders(t, `http://127.0.0.1:${port}/v1/responses`);
+    providers.config.current = async () => {
+      throw new Error("saved configuration unavailable");
+    };
+    for (const credential of [{ kind: "none" }, { kind: "draft", value: "synthetic-draft-key" }]) {
+      assert.deepEqual(
+        await providers.command({
+          operation: "discover",
+          connection: {
+            protocol: "responses",
+            baseUrl: `http://127.0.0.1:${port}/v1`,
+            credential,
+          },
+        }),
+        { models: ["draft-model"] },
+      );
+    }
+    assert.deepEqual(requests, [
+      { path: "/v1/models", authorization: null },
+      { path: "/v1/models", authorization: "Bearer synthetic-draft-key" },
+    ]);
+    providers.config.current = async () => {
+      providers.config.value.revision = "new-revision";
+      return providers.config.value;
+    };
+    await assert.rejects(
+      providers.command({
+        operation: "discover",
+        connection: {
+          protocol: "responses",
+          baseUrl: `http://127.0.0.1:${port}/v1`,
+          credential: { kind: "saved", providerId: "responses-fixture", expectedRevision: "stale" },
+        },
+      }),
+      /刷新/,
+    );
+    assert.equal(requests.length, 2, "a stale stored credential never reaches the upstream server");
+  },
+);
 
 for (const protocol of ["responses", "chat-completions"]) {
-  test(`${protocol} connection probe completes and releases an open successful stream`, { timeout: 5000 }, async (t) => {
-    let endedByServer = false;
-    let closed;
-    const disconnected = new Promise(resolve => { closed = resolve; });
-    const server = httpServer(async (req, res) => {
-      for await (const _ of req) {}
-      res.on("close", closed);
-      res.writeHead(200, { "Content-Type": "text/event-stream" });
-      res.write(protocol === "responses"
-        ? 'data: {"type":"response.output_text.delta","delta":"OK"}\n\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n'
-        : 'data: {"choices":[{"index":0,"delta":{"content":"OK"},"finish_reason":null}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n');
-    });
-    const port = await listen(t, server);
-    const providers = responsesProviders(t, `http://127.0.0.1:${port}/v1/responses`);
-    providers.value.data[0].protocol = protocol;
-    let timer;
-    const guard = new Promise((_, reject) => {
-      timer = setTimeout(() => {
-        endedByServer = true;
-        server.closeAllConnections();
-        reject(new Error("connection probe must complete before upstream EOF"));
-      }, 1500);
-    });
-    try {
-      assert.deepEqual(await Promise.race([providers.test(responsesProbe), guard]), { state: "connected" });
-      assert.equal(endedByServer, false);
-      await Promise.race([disconnected, guard]);
-    } finally { clearTimeout(timer); }
-  });
+  test(
+    `${protocol} connection probe completes and releases an open successful stream`,
+    { timeout: 5000 },
+    async (t) => {
+      let endedByServer = false;
+      let closed;
+      const disconnected = new Promise((resolve) => {
+        closed = resolve;
+      });
+      const server = httpServer(async (req, res) => {
+        for await (const _ of req) {
+        }
+        res.on("close", closed);
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.write(
+          protocol === "responses"
+            ? 'data: {"type":"response.output_text.delta","delta":"OK"}\n\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n'
+            : 'data: {"choices":[{"index":0,"delta":{"content":"OK"},"finish_reason":null}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+        );
+      });
+      const port = await listen(t, server);
+      const providers = responsesProviders(t, `http://127.0.0.1:${port}/v1/responses`);
+      providers.value.data[0].protocol = protocol;
+      let timer;
+      const guard = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          endedByServer = true;
+          server.closeAllConnections();
+          reject(new Error("connection probe must complete before upstream EOF"));
+        }, 1500);
+      });
+      try {
+        assert.deepEqual(await Promise.race([providers.test(responsesProbe), guard]), {
+          state: "connected",
+        });
+        assert.equal(endedByServer, false);
+        await Promise.race([disconnected, guard]);
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+  );
 }
 
-test("connection probes reject empty, incomplete and failed terminal replies", { timeout: 5000 }, async t => {
-  const cases = [
-    { protocol: "responses", body: 'data: {"type":"response.completed","response":{"status":"completed"}}\n\n' },
-    { protocol: "responses", body: 'data: {"type":"response.output_text.delta","delta":"OK"}\n\n' },
-    { protocol: "responses", body: 'data: {"type":"response.output_text.delta","delta":"OK"}\n\ndata: {"type":"response.failed"}\n\n' },
-    { protocol: "chat-completions", body: 'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n' },
-    { protocol: "chat-completions", body: 'data: {"choices":[{"index":0,"delta":{"content":"OK"},"finish_reason":"length"}]}\n\n' },
-  ];
-  for (const sample of cases) await t.test(`${sample.protocol} rejects ${sample.body}`, async t => {
-    const port = await listen(t, httpServer(async (req, res) => {
-      for await (const _ of req) {}
-      res.writeHead(200, { "Content-Type": "text/event-stream" });
-      res.end(sample.body);
-    }));
+test(
+  "connection probes reject empty, incomplete and failed terminal replies",
+  { timeout: 5000 },
+  async (t) => {
+    const cases = [
+      {
+        protocol: "responses",
+        body: 'data: {"type":"response.completed","response":{"status":"completed"}}\n\n',
+      },
+      {
+        protocol: "responses",
+        body: 'data: {"type":"response.output_text.delta","delta":"OK"}\n\n',
+      },
+      {
+        protocol: "responses",
+        body: 'data: {"type":"response.output_text.delta","delta":"OK"}\n\ndata: {"type":"response.failed"}\n\n',
+      },
+      {
+        protocol: "chat-completions",
+        body: 'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+      },
+      {
+        protocol: "chat-completions",
+        body: 'data: {"choices":[{"index":0,"delta":{"content":"OK"},"finish_reason":"length"}]}\n\n',
+      },
+    ];
+    for (const sample of cases)
+      await t.test(`${sample.protocol} rejects ${sample.body}`, async (t) => {
+        const port = await listen(
+          t,
+          httpServer(async (req, res) => {
+            for await (const _ of req) {
+            }
+            res.writeHead(200, { "Content-Type": "text/event-stream" });
+            res.end(sample.body);
+          }),
+        );
+        const providers = responsesProviders(t, `http://127.0.0.1:${port}/v1/responses`);
+        providers.value.data[0].protocol = sample.protocol;
+        await assert.rejects(providers.test(responsesProbe), /未完成有效/);
+      });
+  },
+);
+
+test(
+  "Responses connection refusal reports a safe actionable transport failure",
+  { timeout: 5000 },
+  async (t) => {
+    const server = tcpServer();
+    const port = await listen(t, server);
+    await new Promise((resolve) => server.close(resolve));
     const providers = responsesProviders(t, `http://127.0.0.1:${port}/v1/responses`);
-    providers.value.data[0].protocol = sample.protocol;
-    await assert.rejects(providers.test(responsesProbe), /未完成有效/);
-  });
-});
+    await assert.rejects(
+      providers.test(responsesProbe),
+      safeConnectionError(
+        "PROVIDER_NETWORK_REFUSED",
+        "连接被拒绝：请检查 Base URL、服务端口及网络代理是否可用",
+      ),
+    );
+  },
+);
 
-test("Responses connection refusal reports a safe actionable transport failure", { timeout: 5000 }, async (t) => {
-  const server = tcpServer();
-  const port = await listen(t, server);
-  await new Promise((resolve) => server.close(resolve));
-  const providers = responsesProviders(t, `http://127.0.0.1:${port}/v1/responses`);
-  await assert.rejects(providers.test(responsesProbe), safeConnectionError(
-    "PROVIDER_NETWORK_REFUSED",
-    "连接被拒绝：请检查 Base URL、服务端口及网络代理是否可用",
-  ));
-});
-
-test("Responses connection redirects remain blocked and explain the endpoint correction", { timeout: 5000 }, async (t) => {
-  const paths = [];
-  const server = httpServer(async (req, res) => {
-    for await (const _ of req) {}
-    paths.push(req.url);
-    res.writeHead(302, { Location: `/target?secret-query=${responsesKey}` });
-    res.end();
-  });
-  const port = await listen(t, server);
-  const providers = responsesProviders(t, `http://127.0.0.1:${port}/v1/responses`);
-  await assert.rejects(providers.test(responsesProbe), safeConnectionError(
-    "PROVIDER_NETWORK_REDIRECT",
-    "模型服务返回重定向：请将 Base URL 改为最终服务地址",
-  ));
-  assert.deepEqual(paths, ["/v1/responses"]);
-});
-
-for (const { status, contentType, body, message } of [
-  { status: 401, contentType: "application/json", body: JSON.stringify({ error: responsesKey }), message: "认证失败：请检查 API Key 及模型访问权限" },
-  { status: 403, contentType: "application/json", body: JSON.stringify({ error: responsesKey }), message: "认证失败：请检查 API Key 及模型访问权限" },
-  { status: 200, contentType: "application/json", body: JSON.stringify({ error: responsesKey }), message: "模型服务未完成有效的流式文本回复，请检查模型和协议" },
-  { status: 200, contentType: "text/event-stream", body: `data: ${responsesKey}\n\n`, message: "模型服务未完成有效的流式文本回复，请检查模型和协议" },
-]) {
-  test(`Responses HTTP ${status} ${contentType} preserves authentication and stream failures`, { timeout: 5000 }, async (t) => {
+test(
+  "Responses connection redirects remain blocked and explain the endpoint correction",
+  { timeout: 5000 },
+  async (t) => {
+    const paths = [];
     const server = httpServer(async (req, res) => {
-      for await (const _ of req) {}
-      res.writeHead(status, { "Content-Type": contentType });
-      res.end(body);
+      for await (const _ of req) {
+      }
+      paths.push(req.url);
+      res.writeHead(302, { Location: `/target?secret-query=${responsesKey}` });
+      res.end();
     });
     const port = await listen(t, server);
     const providers = responsesProviders(t, `http://127.0.0.1:${port}/v1/responses`);
-    await assert.rejects(providers.test(responsesProbe), safeConnectionError(undefined, message));
-  });
+    await assert.rejects(
+      providers.test(responsesProbe),
+      safeConnectionError(
+        "PROVIDER_NETWORK_REDIRECT",
+        "模型服务返回重定向：请将 Base URL 改为最终服务地址",
+      ),
+    );
+    assert.deepEqual(paths, ["/v1/responses"]);
+  },
+);
+
+for (const { status, contentType, body, message } of [
+  {
+    status: 401,
+    contentType: "application/json",
+    body: JSON.stringify({ error: responsesKey }),
+    message: "认证失败：请检查 API Key 及模型访问权限",
+  },
+  {
+    status: 403,
+    contentType: "application/json",
+    body: JSON.stringify({ error: responsesKey }),
+    message: "认证失败：请检查 API Key 及模型访问权限",
+  },
+  {
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ error: responsesKey }),
+    message: "模型服务未完成有效的流式文本回复，请检查模型和协议",
+  },
+  {
+    status: 200,
+    contentType: "text/event-stream",
+    body: `data: ${responsesKey}\n\n`,
+    message: "模型服务未完成有效的流式文本回复，请检查模型和协议",
+  },
+]) {
+  test(
+    `Responses HTTP ${status} ${contentType} preserves authentication and stream failures`,
+    { timeout: 5000 },
+    async (t) => {
+      const server = httpServer(async (req, res) => {
+        for await (const _ of req) {
+        }
+        res.writeHead(status, { "Content-Type": contentType });
+        res.end(body);
+      });
+      const port = await listen(t, server);
+      const providers = responsesProviders(t, `http://127.0.0.1:${port}/v1/responses`);
+      await assert.rejects(providers.test(responsesProbe), safeConnectionError(undefined, message));
+    },
+  );
 }
 
 for (const { failure, code, message, initialization } of [
-  { failure: Object.assign(new Error(`private-host secret-query=${responsesKey}`), { code: "ENOTFOUND" }), code: "PROVIDER_NETWORK_DNS", message: "域名解析失败：请检查 Base URL、DNS 和网络代理设置" },
-  { failure: new Error(`private-host ${responsesKey}`, { cause: Object.assign(new Error("secret-query"), { code: "EAI_AGAIN" }) }), code: "PROVIDER_NETWORK_DNS", message: "域名解析失败：请检查 Base URL、DNS 和网络代理设置" },
-  { failure: Object.assign(new Error(`private-host ${responsesKey}`), { code: "ERR_TLS_CERT_ALTNAME_INVALID" }), code: "PROVIDER_NETWORK_TLS", message: "TLS 证书验证失败：请检查服务地址、系统信任证书和网络代理证书" },
-  { failure: new Error(`private-host ${responsesKey}`, { cause: Object.assign(new Error("secret-query"), { code: "UNABLE_TO_VERIFY_LEAF_SIGNATURE" }) }), code: "PROVIDER_NETWORK_TLS", message: "TLS 证书验证失败：请检查服务地址、系统信任证书和网络代理证书" },
-  { failure: Object.assign(new Error(`secret-query=${responsesKey}`), { name: "AbortError" }), code: "PROVIDER_NETWORK_TIMEOUT", message: "连接超时或已取消：请检查网络和服务状态后重试" },
-  { failure: Object.assign(new Error(`private-host ${responsesKey}`), { code: "ETIMEDOUT" }), code: "PROVIDER_NETWORK_TIMEOUT", message: "连接超时或已取消：请检查网络和服务状态后重试" },
-  { failure: new Error(`private-host secret-query=${responsesKey}`), code: "PROVIDER_NETWORK_UNAVAILABLE", message: "连接失败：请检查 Base URL、网络及服务是否可用", initialization: true },
-  { failure: Object.assign(new Error(`private-host ${responsesKey}`), { code: responsesKey }), code: "PROVIDER_NETWORK_UNAVAILABLE", message: "连接失败：请检查 Base URL、网络及服务是否可用" },
+  {
+    failure: Object.assign(new Error(`private-host secret-query=${responsesKey}`), {
+      code: "ENOTFOUND",
+    }),
+    code: "PROVIDER_NETWORK_DNS",
+    message: "域名解析失败：请检查 Base URL、DNS 和网络代理设置",
+  },
+  {
+    failure: new Error(`private-host ${responsesKey}`, {
+      cause: Object.assign(new Error("secret-query"), { code: "EAI_AGAIN" }),
+    }),
+    code: "PROVIDER_NETWORK_DNS",
+    message: "域名解析失败：请检查 Base URL、DNS 和网络代理设置",
+  },
+  {
+    failure: Object.assign(new Error(`private-host ${responsesKey}`), {
+      code: "ERR_TLS_CERT_ALTNAME_INVALID",
+    }),
+    code: "PROVIDER_NETWORK_TLS",
+    message: "TLS 证书验证失败：请检查服务地址、系统信任证书和网络代理证书",
+  },
+  {
+    failure: new Error(`private-host ${responsesKey}`, {
+      cause: Object.assign(new Error("secret-query"), { code: "UNABLE_TO_VERIFY_LEAF_SIGNATURE" }),
+    }),
+    code: "PROVIDER_NETWORK_TLS",
+    message: "TLS 证书验证失败：请检查服务地址、系统信任证书和网络代理证书",
+  },
+  {
+    failure: Object.assign(new Error(`secret-query=${responsesKey}`), { name: "AbortError" }),
+    code: "PROVIDER_NETWORK_TIMEOUT",
+    message: "连接超时或已取消：请检查网络和服务状态后重试",
+  },
+  {
+    failure: Object.assign(new Error(`private-host ${responsesKey}`), { code: "ETIMEDOUT" }),
+    code: "PROVIDER_NETWORK_TIMEOUT",
+    message: "连接超时或已取消：请检查网络和服务状态后重试",
+  },
+  {
+    failure: new Error(`private-host secret-query=${responsesKey}`),
+    code: "PROVIDER_NETWORK_UNAVAILABLE",
+    message: "连接失败：请检查 Base URL、网络及服务是否可用",
+    initialization: true,
+  },
+  {
+    failure: Object.assign(new Error(`private-host ${responsesKey}`), { code: responsesKey }),
+    code: "PROVIDER_NETWORK_UNAVAILABLE",
+    message: "连接失败：请检查 Base URL、网络及服务是否可用",
+  },
 ]) {
   test(`Responses ${code} diagnostics discard untrusted transport details${initialization ? " during initialization" : ""}`, async (t) => {
     const providers = responsesProviders(t, "http://127.0.0.1:1/v1/responses");
     providers.network = initialization
-      ? async () => { throw failure; }
-      : async () => ({ fetch: async () => { throw failure; } });
+      ? async () => {
+          throw failure;
+        }
+      : async () => ({
+          fetch: async () => {
+            throw failure;
+          },
+        });
     await assert.rejects(providers.test(responsesProbe), safeConnectionError(code, message));
   });
 }
 
 test("Responses proxy setup failure reports safe proxy guidance", { timeout: 5000 }, async (t) => {
-  const providers = responsesProviders(t, "http://127.0.0.1:1/v1/responses", { AREAL_CHATGPT_PROXY_ERROR: responsesKey });
-  await assert.rejects(providers.test(responsesProbe), safeConnectionError(
-    "PROVIDER_NETWORK_PROXY",
-    "网络代理不可用：请检查系统代理设置后重试",
-  ));
+  const providers = responsesProviders(t, "http://127.0.0.1:1/v1/responses", {
+    AREAL_CHATGPT_PROXY_ERROR: responsesKey,
+  });
+  await assert.rejects(
+    providers.test(responsesProbe),
+    safeConnectionError("PROVIDER_NETWORK_PROXY", "网络代理不可用：请检查系统代理设置后重试"),
+  );
 });
 
 async function origin(t, secure) {
@@ -474,6 +658,8 @@ for (const kind of ["http", "socks"])
           env: {
             ...env,
             ...proxyEnv,
+            // 由 AppProviders 验证 SOCKS/HTTP 代理，不能继承宿主 Node 的 HTTP-only 启动代理。
+            NODE_USE_ENV_PROXY: "0",
             NODE_EXTRA_CA_CERTS: fileURLToPath(
               new URL("../../../tests/fixtures/proxy/cert.pem", import.meta.url),
             ),

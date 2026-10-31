@@ -297,6 +297,7 @@ def run_plan(
         "platform": platform,
         "status": "running",
         "results": results,
+        "selectedRequired": [item["id"] for item in selected],
         "remoteRequired": [item["id"] for item in selected if platform not in item["platforms"]],
         "pendingRequired": sorted(
             {item["id"] for item in plan["items"]} - {item["id"] for item in selected}
@@ -391,20 +392,30 @@ def run_plan(
                                 )
                             tests = detail["results"]
                             expected = item["expectedTests"][platform]
-                            if (
-                                detail.get("status") != "passed"
-                                or detail.get("passed") is not True
-                                or len(tests) != len(expected)
-                                or {test["script"] for test in tests} != set(expected)
-                                or not all(
-                                    test.get("passed") and test.get("status") == "passed"
-                                    for test in tests
-                                )
-                            ):
+                            if len(tests) != len(expected) or {
+                                test["script"] for test in tests
+                            } != set(expected):
                                 result.update(
                                     status="failed",
                                     reason="runner results do not cover the required test set",
                                 )
+                            else:
+                                failed_scripts = [
+                                    test["script"]
+                                    for test in tests
+                                    if not test.get("passed") or test.get("status") != "passed"
+                                ]
+                                if failed_scripts:
+                                    result.update(
+                                        status="failed",
+                                        reason="runner child tests failed",
+                                        failedScripts=failed_scripts,
+                                    )
+                                elif (
+                                    detail.get("status") != "passed"
+                                    or detail.get("passed") is not True
+                                ):
+                                    result.update(status="failed", reason="runner reported failure")
                             result["tests"] = tests
                         if result["status"] == "passed":
                             result["artifacts"] = artifacts(item, root)

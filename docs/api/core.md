@@ -504,6 +504,8 @@ checkpoint 恢复最多保留 8 组接口导向文件片段，序列化内容总
 
 CLI 保持 `--input-file` 的 2 MiB 上限，以有界读取在 JSON 解析前校验；可用 `--input-error-file` 写入不含正文的结构化拒绝 `INPUT_ENVELOPE_TOO_LARGE`。Arena Runner 将该原因及公开输入准备失败 `PUBLIC_INPUT_NOT_ACCESSIBLE` 投影到既有 outcome，不再统一报告缺少 Core Turn。媒体工具失败仍是可恢复工具结果，解码失败 details.reason 为 `MEDIA_PREPROCESS_FAILED`，不伪造一次终止 Turn。
 
+不存在规则文件时，项目规则加载不申请 Runtime Scope，也不插入空规则说明；发现规则文件后才创建受限 Scope，权限拒绝仍在模型请求前使 Turn 失败。
+
 项目指令由 Engine 在每个 Turn 首次模型请求前加载，并保存为 `instructionSnapshot`。按工作区根到 Thread `cwd` 的目录链读取 `AGENTS.md`，来源路径随正文写入快照；不新增 API 字段，已有仅根文件项目保持兼容。正文合计超过 32 KiB、无效 UTF-8、符号链接或超过 64 层的目录链使 Turn 在请求模型前失败，不截断规则。作用域、优先级与 cwd 路径别名见[客户端指南](../guides/clients.md#历史恢复与观测)。
 
 Shared Browser 的旧 Thread 固定工具包追加已实现，方法为 `areal/thread/tools/attach`；请求、回执、存储版本与回退限制见[Browser 契约](browser.md#10-旧-thread-与多客户端新增-core-接口)。工具准备仍是设计契约；只读观察使用 `areal/thread/observe`。`thread/resume` 保留 Host 绑定语义，并可协商上述有界显示响应。

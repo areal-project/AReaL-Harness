@@ -1,6 +1,8 @@
 import { expect, test, vi } from "vite-plus/test";
 import {
   activityDuration,
+  copyTrace,
+  type TraceNode,
   loadTraceTree,
   traceCoverage,
   traceDuration,
@@ -127,4 +129,52 @@ test("interruption does not keep counting, and overlapping child work is never s
   expect(
     activityDuration({ status: "running", startedAtMs: 1000 }, { status: "inProgress" }, 3000),
   ).toBe(2000);
+});
+
+test("trace export retains selected-turn child scope, observation facts and read errors", () => {
+  const child = (id: string): TraceNode => ({
+    threadId: id,
+    title: id,
+    turns: [],
+    children: [],
+    readAtMs: 500,
+    stateConfirmed: false,
+    errors: ["child read incomplete"],
+  });
+  const root: TraceNode = {
+    threadId: "root",
+    title: "task",
+    readAtMs: 1000,
+    stateConfirmed: true,
+    errors: ["root read incomplete"],
+    turns: [
+      { id: "first", items: [] },
+      { id: "second", items: [] },
+    ],
+    children: [
+      { execution: { executionId: "owned", owner: { turnId: "first" } }, nodes: [child("owned")] },
+      { execution: { executionId: "other", owner: { turnId: "second" } }, nodes: [child("other")] },
+      { execution: { executionId: "unassigned" }, nodes: [child("unassigned")] },
+    ],
+  };
+  const before = structuredClone(root);
+  const selected = JSON.parse(
+    copyTrace(root, "Title", "first", ["refresh failed", "refresh failed"]),
+  );
+  expect(selected.scope).toBe("turnIncludingSubagents");
+  expect(selected.turns.map((turn: Data) => turn.id)).toEqual(["first"]);
+  expect(selected.children.map((entry: Data) => entry.execution.executionId)).toEqual(["owned"]);
+  expect(selected.readAtMs).toBe(1000);
+  expect(selected.stateConfirmed).toBe(true);
+  expect(selected.children[0].sources[0].stateConfirmed).toBe(false);
+  expect(selected.coverage).toContain("root read incomplete");
+  expect(selected.coverage).toContain("child read incomplete");
+  expect(selected.coverage.filter((value: string) => value === "refresh failed")).toHaveLength(1);
+  expect(
+    selected.coverage.some((value: string) => value.includes("lack a recorded creation turn")),
+  ).toBe(true);
+  const all = JSON.parse(copyTrace(root, "Title"));
+  expect(all.scope).toBe("conversationIncludingSubagents");
+  expect(all.children).toHaveLength(3);
+  expect(root).toEqual(before);
 });

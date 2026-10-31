@@ -41,6 +41,20 @@ Calls in a complete response execute in order. The per-response resource cap def
 
 Restricted macOS commands entering through `bash`/`sh` use the private Bash distributed with Runtime, with here-documents in private scratch. System Git is resolved to its trusted toolchain executable before sandboxing and does not load ambient system/user Git configuration by default. The existing Scope still controls source writes, network and external temporary files. Nested hard-coded `/bin/bash` paths or shebangs still invoke the old system Bash; see the [Runtime contract](../api/runtime.en.md#system-tools-in-restricted-macos-commands).
 
+## Choose visible tools for the workspace
+
+For a new, exclusively owned workspace that primarily produces files through commands, the existing CLI tool selector can expose a smaller explicit set:
+
+```sh
+areal exec --config ./config.toml --workspace ./artifact-workspace \
+  --tools run_command,read_process,image_read,write_process,terminate_process,task_state,read_tool_result \
+  'Read the public inputs, create the requested artifact, and inspect the actual result.'
+```
+
+The set changes model-visible capabilities, not Runtime permissions, budgets or network access. The model still chooses its steps: one command can create a directory and several files, `image_read` observes actual images, asynchronous commands settle through their original process handles, and `read_tool_result` retrieves original results. Selecting tools neither combines calls automatically nor replaces validation.
+
+This is not a general default. Retain native file reads and CAS editing for concurrent edits or tasks requiring file-version checks in existing repositories. Workflows that need historical retrieval, browser access, delegation or extensions must explicitly include those capabilities. Validate latency and quality with paired runs in the actual workflow; a shorter schema alone does not establish a benefit. See the bounded development comparison and rejected candidate in [modeling tool-surface comparison](../benchmarks/reports/modeling-tool-surface.en.md).
+
 ## Design choices
 
 Command observation separates execution, waiting, display and readback: `run_command`/`read_process` read Runtime facts through cursors, and explicitly recognized test commands fold only successful progress lines and preserve diagnostics and unknown lines. Unknown commands are never guessed. This takes the explicit wait/output limits seen in Codex and the retained failure output used by Claude Code, while avoiding a global RTK pipe rewrite in the model protocol; RTK's automatic format detection can misclassify ordinary Karma timestamps, so the native parser accepts only an explicit command type from argv.

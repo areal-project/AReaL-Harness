@@ -289,3 +289,40 @@ test("plugin recovery rejects unrelated mutations before reaching the receipt ow
     assert.equal(fixture.writes(), 0);
   }
 });
+
+test("confirmed plugin setup recovery refreshes its thread without replaying setup", async () => {
+  const { readPluginSubmission } = require("../app/src/core/plugin-submission.cjs");
+  const receipt = { confirmed: true, result: { thread: { id: "setup-thread" } } };
+  const fixture = receiptFixture("pluginSetup", receipt);
+  const events = [];
+  fixture.backend.openThread = async (project, id) => {
+    assert.equal(project, fixture.project);
+    events.push(id);
+  };
+  fixture.backend.listThreads = async () => events.push("list");
+  fixture.backend.onChange = () => events.push("change");
+  assert.deepEqual(
+    await readPluginSubmission(
+      fixture.backend,
+      fixture.project,
+      fixture.request,
+      "areal/plugin/setup",
+    ),
+    receipt,
+  );
+  assert.deepEqual(events, ["setup-thread", "list", "change"]);
+  assert.equal(fixture.writes(), 0);
+  fixture.backend.openThread = async () => {
+    throw new Error("REFRESH_FAILED");
+  };
+  const result = await readPluginSubmission(
+    fixture.backend,
+    fixture.project,
+    fixture.request,
+    "areal/plugin/setup",
+  );
+  assert.equal(result.confirmed, true);
+  assert.equal(result.result, receipt.result);
+  assert.match(result.warning, /REFRESH_FAILED/);
+  assert.equal(fixture.writes(), 0);
+});

@@ -41,6 +41,20 @@ Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后�
 
 macOS 的受限命令直接调用 `bash`/`sh` 时使用随 Runtime 发布的私有 Bash，here-document 使用独立 scratch；系统 Git 在沙箱前解析到可信工具链程序，默认不读取工作区外的系统/用户 Git 配置。源码写入、网络和外部临时文件权限仍由原 Scope 限制。嵌套硬编码 `/bin/bash` 或其 shebang 仍是系统旧 Bash，完整边界见 [Runtime 契约](../api/runtime.md#macos-受限命令的系统工具)。
 
+## 按工作区选择可见工具
+
+对以命令和文件产出为主的新建、独占工作区，可以使用现有 CLI 工具选择，显式提供一个较小的工具集：
+
+```sh
+areal exec --config ./config.toml --workspace ./artifact-workspace \
+  --tools run_command,read_process,image_read,write_process,terminate_process,task_state,read_tool_result \
+  '读取公开输入，创建所需制品，并检查实际结果。'
+```
+
+工具集合只改变模型可见能力，不扩大 Runtime 权限、预算或网络访问。模型仍自行选择步骤；一个命令可组合目录和多个文件的创建，`image_read` 仍用于观察实际图像，异步命令继续通过原进程句柄结算，原始结果可用 `read_tool_result` 回取。工具选择不会自动合并调用，也不会代替验证。
+
+这不是通用默认配置。已有代码库的并发编辑或需要文件版本检查的任务，应保留原生文件读取与 CAS 编辑工具；依赖历史回取、浏览器、委派或扩展工具的任务，应显式包含相应能力。缩小工具集后的时延和质量需要在实际工作流中配对验证，不能仅凭 schema 更短判断效果。限定开发对照与未晋级候选见[建模工具集合对照](../benchmarks/reports/modeling-tool-surface.md)。
+
 ## 设计取舍
 
 命令观察将执行、等待、显示和回读分开：`run_command`/`read_process` 只按 cursor 读取 Runtime 保留的事实，明确识别的测试命令仅折叠成功进度行，诊断和未知行原样保留，未知命令不猜格式。这个边界吸收了 Codex 的显式等待/输出上限和 Claude Code 的失败输出保留思路，同时避免把 RTK 的全局管道改写接入模型协议；RTK 的自动格式探测在 Karma 时间戳等普通日志上可能误判，因此解析器只接受命令 argv 的显式类型。

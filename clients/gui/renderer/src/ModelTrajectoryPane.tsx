@@ -10,9 +10,10 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, RefreshCw, X, ChevronDown, ChevronRight } from "lucide-react";
 import type { Action, Data } from "./services.js";
-import { trajectoryEntries, trajectoryText, type TrajectoryEntry } from "./trajectory.js";
+import { trajectoryEntries, type TrajectoryEntry } from "./trajectory.js";
 import {
   activityDuration,
+  copyTrace,
   loadTraceTree,
   traceCoverage,
   traceDuration,
@@ -48,56 +49,6 @@ const isException = (status?: string) =>
   ["failed", "unknown", "interrupted", "cancelled"].includes(status ?? "");
 const entryId = (node: TraceNode, turn: Data, entry: TrajectoryEntry) =>
   `${node.threadId}:${turn.id}:${entry.id}`;
-
-function copyTrace(root: TraceNode, title: string, turnId?: string, readErrors: string[] = []) {
-  const include = (node: TraceNode, selectedTurn?: string): Data => {
-    const turns = node.turns.filter((t) => !selectedTurn || t.id === selectedTurn);
-    const children = node.children.filter(
-      (child) =>
-        !selectedTurn ||
-        traceCreationTurn(node, child.execution) === selectedTurn ||
-        turns.some((turn) =>
-          turn.items.some((item: Data) =>
-            traceReferences(node, item).includes(child.execution.executionId),
-          ),
-        ),
-    );
-    const coverage = [
-      ...node.errors,
-      ...children.flatMap((child) => [
-        ...(child.error ? [child.error] : []),
-        ...child.nodes.flatMap(traceCoverage),
-      ]),
-    ];
-    if (selectedTurn && node.children.some((child) => !traceCreationTurn(node, child.execution)))
-      coverage.push(
-        "部分子代理属于任务或未记录创建轮次 / Some agents are task-owned or lack a recorded creation turn",
-      );
-    return {
-      ...JSON.parse(
-        trajectoryText({ id: node.threadId, parentThreadId: node.parentThreadId, turns }, title),
-      ),
-      readAtMs: node.readAtMs,
-      stateConfirmed: node.stateConfirmed,
-      coverage,
-      children: children.map((c) => ({
-        execution: c.execution,
-        error: c.error,
-        sources: c.nodes.map((n) => include(n)),
-      })),
-    };
-  };
-  const value = include(root, turnId);
-  return JSON.stringify(
-    {
-      scope: turnId ? "turnIncludingSubagents" : "conversationIncludingSubagents",
-      ...value,
-      coverage: [...new Set([...value.coverage, ...readErrors])],
-    },
-    null,
-    2,
-  );
-}
 
 function OriginalResult({
   uri,

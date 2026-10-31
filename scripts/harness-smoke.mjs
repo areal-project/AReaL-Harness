@@ -1,3 +1,4 @@
+import { assertCurrentStateVersion } from "./persisted-state-fixture.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import WebSocket from "ws";
 // Real binaries and native sandbox, with a deterministic model HTTP fixture.
@@ -729,7 +730,7 @@ try {
     3,
   );
   const stored = JSON.parse(await readFile(join(data, `${id}.json`), "utf8"));
-  assert.equal(stored.version, 15);
+  await assertCurrentStateVersion(stored, () => server.call("areal/server/status", {}));
   console.log("PASS model → read → patch → command → durable result");
   const created = (await server.call("thread/start", {})).thread.id;
   await server.call("turn/start", {
