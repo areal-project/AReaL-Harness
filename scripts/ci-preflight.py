@@ -370,6 +370,30 @@ def run_plan(
                                 "--plan=" + str(output / "plan.json"),
                                 "--item=" + item["id"],
                             ]
+                        # 复用产物身份检查，在启动任何源码 GUI 场景前拒绝混用构建。
+                        if item["group"] == "smoke":
+                            startup = output / (item["id"].replace(":", "_") + "-startup.json")
+                            preflight = runner(
+                                [
+                                    sys.executable,
+                                    str(root / "scripts/verification.py"),
+                                    "--root",
+                                    str(root),
+                                    "doctor",
+                                    "--core",
+                                    env["AREAL_CORE_BIN"],
+                                    "--report",
+                                    str(startup),
+                                ],
+                                cwd=root,
+                                env=env,
+                            )
+                            result["startupReport"] = str(startup)
+                            if preflight.returncode:
+                                raise ValueError(
+                                    "GUI build identity/startup check failed; inspect "
+                                    + str(startup)
+                                )
                         print(json.dumps({"check": item["id"], "command": command}), flush=True)
                         report["activeItem"] = item["id"]
                         publish_progress(plan, report, output)

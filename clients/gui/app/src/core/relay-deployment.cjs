@@ -1,11 +1,16 @@
+// @ts-check
 const { spawn, execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { createHash } = require("node:crypto");
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const execute = promisify(execFile);
+/** @param {string} value */
 const quote = (value) => `'${value.replace(/'/g, `'"'"'`)}'`;
 
+/** @typedef {{target:string,port:number,ownerId:string,address:string,room:string,removeData?:boolean}} DeploymentTarget */
+/** @typedef {{ownerId:string,active:boolean,installed:boolean,version?:string,absent?:boolean,dataRetained?:boolean,room?:string,roomActive?:boolean,address?:string}} DeploymentReceipt */
+/** @param {DeploymentTarget} input */
 function parseTarget(input) {
   if (
     !input ||
@@ -31,12 +36,15 @@ function parseTarget(input) {
 }
 
 class RelayDeployment {
+  /** @param {{home:string,bundleDir:string}} options */
   constructor({ home, bundleDir }) {
     this.home = home;
     this.bundleDir = bundleDir;
+    /** @type {Set<import("node:child_process").ChildProcessWithoutNullStreams>} */
     this.children = new Set();
     this.closed = false;
   }
+  /** @param {"deploy"|"upgrade"|"inspect"|"remove"} op @param {DeploymentTarget} input @returns {Promise<DeploymentReceipt>} */
   async run(op, input) {
     if (this.closed) throw new Error("RELAY_DEPLOYMENT_CLOSED");
     const value = parseTarget(input);
@@ -64,6 +72,7 @@ class RelayDeployment {
     const body = `set -eu; stage=$(mktemp -d); trap 'rm -rf -- "$stage"' EXIT; printf %s ${quote(script.toString("base64"))} | base64 -d > "$stage/install.sh"; bash "$stage/install.sh" ${args}`;
     const command = `${value.target.startsWith("root@") ? "" : "sudo -n "}bash -c ${quote(body)}`;
     if (this.closed) throw new Error("RELAY_DEPLOYMENT_CLOSED");
+    /** @type {DeploymentReceipt} */
     const output = await new Promise((resolve, reject) => {
       const child = spawn(
         "ssh",
@@ -85,6 +94,7 @@ class RelayDeployment {
       this.children.add(child);
       if (this.closed) child.kill();
       child.once("close", () => this.children.delete(child));
+      /** @type {Buffer[]} */
       const chunks = [];
       let size = 0;
       let overflow = false;
@@ -98,6 +108,7 @@ class RelayDeployment {
       });
       child.stderr.resume();
       child.stdin.on("error", () => {});
+      /** @param {unknown} [cause] */
       const fail = (cause) =>
         reject(
           Object.assign(
@@ -109,7 +120,9 @@ class RelayDeployment {
       child.once("close", (code) => {
         if (code !== 0 || overflow) return fail();
         try {
-          const result = JSON.parse(Buffer.concat(chunks).toString().trim().split("\n").at(-1));
+          const result = JSON.parse(
+            Buffer.concat(chunks).toString().trim().split("\n").at(-1) ?? "",
+          );
           if (
             result.ownerId !== value.ownerId ||
             typeof result.active !== "boolean" ||
@@ -137,21 +150,25 @@ class RelayDeployment {
       [...this.children].map(
         (child) =>
           new Promise((resolve) => {
-            child.once("close", resolve);
+            child.once("close", () => resolve(undefined));
             child.kill();
           }),
       ),
     );
   }
+  /** @param {DeploymentTarget} input */
   deploy(input) {
     return this.run("deploy", input);
   }
+  /** @param {DeploymentTarget} input */
   upgrade(input) {
     return this.run("upgrade", input);
   }
+  /** @param {DeploymentTarget} input */
   inspect(input) {
     return this.run("inspect", input);
   }
+  /** @param {DeploymentTarget} input */
   remove(input) {
     if (typeof input.removeData !== "boolean") throw new Error("REMOVE_DATA_REQUIRED");
     return this.run("remove", input);

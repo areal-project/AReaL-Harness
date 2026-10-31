@@ -79,6 +79,33 @@ class ChangedChecks(unittest.TestCase):
             capability_probe=lambda *args: set(),
         )
 
+    def test_smoke_starts_only_after_matching_build_identity(self):
+        for code in (0, 1):
+            with self.subTest(doctor_exit=code):
+                calls = []
+                item = self.item("source-gui-smoke")
+                item["group"] = "smoke"
+
+                def runner(command, **kwargs):
+                    calls.append(command)
+                    if "doctor" in command:
+                        Path(command[-1]).write_text(json.dumps({"passed": code == 0}))
+                        return subprocess.CompletedProcess(command, code)
+                    return subprocess.CompletedProcess(command, 0)
+
+                with patch.object(
+                    checks.preflight,
+                    "environment",
+                    return_value={"AREAL_CORE_BIN": "/fixture/areal"},
+                ):
+                    report = self.execute([item], runner=runner)
+                self.assertIn("doctor", calls[0])
+                self.assertEqual(len(calls), 2 if code == 0 else 1)
+                self.assertEqual(
+                    report["results"][0]["status"], "passed" if code == 0 else "failed"
+                )
+                self.assertTrue(Path(report["results"][0]["startupReport"]).is_file())
+
     def test_merge_base_diff_keeps_every_worktree_state_and_both_rename_paths(self):
         (self.root / "source.rs").write_text("committed\n")
         self.git("add", "source.rs")

@@ -130,6 +130,8 @@ The history-navigation runner calls this entry point automatically and serves on
 
 The task catalog smoke fixture lives in `clients/gui/renderer/test-fixtures/scheduled-workspace.tsx`, is typechecked with Renderer, and is loaded directly by the existing browser runner. It checks new intents routed through `onStartDraft`, project defaults, explicit reconciliation and observed receipts for legacy requests. Only the IPC boundary is replaced by the fixture.
 
+CI smoke execution and the shared source Electron application fixture run this doctor before starting product scenarios, preserving a separate startup report for each attempt. CI transfers the Core build receipt with its binaries. A failed identity/probe check blocks scenario execution; it is not a passing scenario. Review evidence records the revision and relevant file hashes; unrelated HEAD movement alone does not invalidate those hashes.
+
 ## GUI test registry and platform qualification
 
 `clients/gui/scripts/test-manifest.json` registers every `test:*` command in the root GUI `package.json`. `layer` distinguishes pure unit tests, contracts without a GUI, and browser/Electron end-to-end boundaries. `platforms`, `areas`, and `requires` declare runnable platforms, covered areas, and prerequisites. Entries limited to one platform require `platformReason`. A platform declaration is not acceptance evidence. Headless tests that need Core remain contract tests.

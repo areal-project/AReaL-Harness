@@ -354,7 +354,7 @@ jobs:
         run: |
           git rev-parse HEAD > target/ci/gui/source.sha
           tar -czf target/ci/gui/gui-smoke-inputs.tar.gz \
-            target/ci/gui/source.sha target/debug/areal target/debug/areal-runtime \
+            target/ci/gui/source.sha target/debug/verification-build.json target/debug/areal target/debug/areal-runtime \
             target/debug/areal-runtime-fs target/debug/areal-runtime-reaper \
             target/debug/shells clients/gui/renderer/dist clients/gui/dist/design-system \
             target/ci/checks/gui-build/report.json clients/gui/native/computer-helper/build

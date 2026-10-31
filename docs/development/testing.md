@@ -128,6 +128,8 @@ pnpm --dir clients/gui test:history-navigation-ui
 
 任务目录 smoke 的页面夹具位于 `clients/gui/renderer/test-fixtures/scheduled-workspace.tsx`，与 Renderer 一起类型检查，并由原浏览器 runner 直接加载。它验证新意图经 `onStartDraft` 打开草稿、项目默认值及旧请求的显式核对与被动回执；夹具仅替换 IPC 边界。
 
+CI smoke 执行器与共享源码 Electron fixture 在产品场景启动前自动运行此 doctor，每次尝试保留独立启动报告；CI 随二进制传递 Core 构建回执。身份或探测失败即阻止场景启动，不计为场景通过。评审证据绑定源码提交与相关文件哈希，无关 HEAD 移动本身不使这些哈希失效。
+
 ## GUI 测试清单与平台资格
 
 `clients/gui/scripts/test-manifest.json` 是根 `package.json` 中全部 `test:*` 命令的登记表。`layer` 区分纯逻辑单元、无 GUI 的契约和浏览器/Electron 端到端边界；`platforms` 声明脚本可运行的平台，`areas` 声明领域，`requires` 声明环境条件。仅支持一个平台的条目必须填写 `platformReason`。平台声明不等于该平台已经验收通过。需要 Core 的无界面测试仍属契约层。

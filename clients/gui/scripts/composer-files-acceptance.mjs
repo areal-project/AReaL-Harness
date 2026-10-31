@@ -517,6 +517,44 @@ export async function runComposerFilesAcceptance({
     "workspace internal drag validates identity, relative path, kind and privileged symlink containment; invalid custom payload never inserts plaintext",
   );
 
+  // CDP 文件拖放提供带原生路径的 File，粘贴场景复用该原生 DataTransfer。
+  const cdp = await page.context().newCDPSession(page);
+  for (const kind of ["drop", "paste"]) {
+    if (kind === "paste") {
+      await input().evaluate((element) => {
+        element.addEventListener(
+          "drop",
+          (event) => {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            element.dispatchEvent(
+              new ClipboardEvent("paste", {
+                clipboardData: event.dataTransfer,
+                bubbles: true,
+                cancelable: true,
+              }),
+            );
+          },
+          { capture: true, once: true },
+        );
+      });
+    }
+    const bounds = await input().boundingBox();
+    assert.ok(bounds);
+    const position = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    const data = { items: [], files: [join(workspace, "目录")], dragOperationsMask: 1 };
+    await cdp.send("Input.dispatchDragEvent", { type: "dragEnter", ...position, data });
+    await cdp.send("Input.dispatchDragEvent", { type: "drop", ...position, data });
+    await page.waitForFunction(() =>
+      document.querySelector('[data-testid="chat-input"]')?.textContent.includes("目录"),
+    );
+    await input().fill("");
+  }
+  await cdp.detach();
+  checks.push(
+    "native-path directory drag and synthetic paste of its native DataTransfer resolve a workspace reference through Electron",
+  );
+
   await app.evaluate(() => {
     globalThis.filesHoldList = true;
     globalThis.filesListEntered = false;

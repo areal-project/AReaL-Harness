@@ -1,3 +1,5 @@
+import { BrowserDetails } from "./BrowserDetails.js";
+import { browserLabel, devicePresets, deviceDimension } from "./browserPreview.js";
 import { observeResize } from "@areal/ui/observe-resize";
 import { Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@areal/ui";
 import { browserMessages } from "./i18n/messages/browser.js";
@@ -25,7 +27,6 @@ import {
   browserAnnotation,
   setBrowserAnnotationEditing,
 } from "./browserAnnotations.js";
-import { BrowserVerificationCard } from "./BrowserVerificationCard.js";
 import { uninspectedToolCalls } from "./toolInspection.js";
 import "./BrowserFileHandoff.layout.css";
 import { BrowserStyleTrial, type StyleTrialDraft } from "./BrowserStyleTrial.js";
@@ -1102,179 +1103,23 @@ export function Preview({
         </div>
       )}
       {detailsOpen && (
-        <div className="browser-details" aria-label="浏览器详情">
-          <div className="preview-viewport-toolbar">
-            <span>{t("settings.browserData.sharedShort")}</span>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setDetailsOpen(false)}>
-              关闭详情
-            </Button>
-          </div>
-          {state.url && (
-            <div className="preview-viewport-toolbar" role="group" aria-label="网页文件交接">
-              {state.browser?.control === "human" ? (
-                <>
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={
-                      !!state.browser?.downloadIntentExpiresAt || !!annotating || !!styleTrial
-                    }
-                    onClick={() =>
-                      void request({ operation: "allowNextDownload", userIntent: true })
-                    }
-                  >
-                    允许下一次下载
-                  </Button>
-                  {state.browser?.downloadIntentExpiresAt && (
-                    <>
-                      <span role="status">30 秒内在当前网页触发一次下载，随后选择保存位置。</span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => void request({ operation: "cancelFileHandoff" })}
-                      >
-                        取消下载许可
-                      </Button>
-                    </>
-                  )}
-                  <span>上传请在网页中使用文件选择控件；系统选择器取消后可继续操作。</span>
-                </>
-              ) : (
-                <span>直接操作页面可选择文件。</span>
-              )}
-            </div>
-          )}
-          {(state.workspace?.fileReceipts ?? []).length > 0 && (
-            <div
-              className="preview-viewport-toolbar preview-file-status"
-              role="list"
-              aria-label="网页下载状态"
-            >
-              {(state.workspace.fileReceipts as Data[]).map((receipt: Data) => (
-                <div role="listitem" key={receipt.id}>
-                  {receipt.name || "未命名下载"} · 页面 {receipt.pageOrigin || "未知"} · 发起者{" "}
-                  {receipt.initiator === "unknown" ? "未知" : receipt.initiator}
-                  {" · "}
-                  {receipt.source || "来源网址未知"}
-                  {" · "}
-                  {receipt.sizeBytes == null ? "大小未知" : `${receipt.sizeBytes} B`}
-                  {" · "}
-                  {(
-                    {
-                      choosing: "选择保存位置",
-                      downloading: "下载中",
-                      completed: "已完成",
-                      cancelled: "已取消",
-                      interrupted: "已中断",
-                      unknown: "结果待核对",
-                    } as Record<string, string>
-                  )[receipt.status] ?? "状态未知"}
-                  {receipt.target ? ` · 保存为 ${receipt.target}` : ""}
-                  {["choosing", "downloading", "interrupted"].includes(receipt.status) &&
-                    receipt.pageId === state.browser?.pageId &&
-                    state.browser?.control === "human" && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() =>
-                          void request({
-                            operation: "cancelDownload",
-                            downloadId: receipt.id,
-                            userIntent: true,
-                          })
-                        }
-                      >
-                        取消下载
-                      </Button>
-                    )}
-                </div>
-              ))}
-            </div>
-          )}
-          {state.url && state.browser?.control === "human" && (
-            <div className="preview-viewport-toolbar" role="group" aria-label="嵌入站点授权">
-              {state.browser.frameOriginGrant ? (
-                <>
-                  <span role="status">
-                    嵌入站点 {state.browser.frameOriginGrant.origin}{" "}
-                    {t("common.browser.manualFrame")}
-                  </span>
-                  {state.browser.frameOriginGrant.status === "pending" && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={!!annotating || !!styleTrial}
-                      onClick={() =>
-                        void request({ operation: "reloadFrameOrigin", userIntent: true })
-                      }
-                    >
-                      重载并应用嵌入授权
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={!!annotating || !!styleTrial}
-                    onClick={() =>
-                      void request({ operation: "revokeFrameOrigin", userIntent: true })
-                    }
-                  >
-                    撤销嵌入授权并关闭页面
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!!annotating || !!styleTrial || annotationBusy}
-                  onClick={() =>
-                    void request({ operation: "authorizeFrameOrigin", userIntent: true })
-                  }
-                >
-                  授权当前页面的嵌入站点
-                </Button>
-              )}
-            </div>
-          )}
-          {state.url && (
-            <div className="preview-viewport-toolbar" role="group" aria-label="页面标注">
-              <Button
-                ref={styleControl}
-                type="button"
-                size="sm"
-                disabled={
-                  annotationBusy ||
-                  styleBusy ||
-                  !!keyboardCapture ||
-                  !!styleTrial ||
-                  !!annotating ||
-                  state.browser?.control === "transferring"
-                }
-                onClick={(event) => void startStyleTrial(event.detail === 0)}
-              >
-                选择元素并试改
-              </Button>
-              <span>F6 返回应用；键盘选择使用截图坐标。</span>
-              <span
-                role="status"
-                aria-hidden={!annotationBusy || !!annotating}
-                style={{ visibility: annotationBusy && !annotating ? "visible" : "hidden" }}
-              >
-                在页面中点击要标注的元素；按 Esc 取消。
-              </span>
-            </div>
-          )}
-          {thread && (
-            <BrowserVerificationCard
-              thread={thread}
-              projectId={projectId}
-              action={action}
-              onReview={onReview}
-              onTool={onTool}
-              trialActive={(!!styleTrial && !styleTrial.cleared) || !!state.browser?.trialActive}
-            />
-          )}
-        </div>
+        <BrowserDetails
+          state={state}
+          annotating={annotating}
+          styleTrial={styleTrial}
+          annotationBusy={annotationBusy}
+          styleBusy={styleBusy}
+          keyboardCapture={keyboardCapture}
+          styleControl={styleControl}
+          startStyleTrial={startStyleTrial}
+          request={request}
+          thread={thread}
+          projectId={projectId}
+          action={action}
+          onReview={onReview}
+          onTool={onTool}
+          onClose={() => setDetailsOpen(false)}
+        />
       )}
       {styleTrial && (
         <BrowserStyleTrial
@@ -1317,7 +1162,7 @@ export function Preview({
             <SelectContent>
               {devicePresets.map((preset) => (
                 <SelectItem key={preset.id} value={preset.id}>
-                  {t(preset.label)} {preset.width} × {preset.height}
+                  {t(preset.labelMessage)} {preset.width} × {preset.height}
                 </SelectItem>
               ))}
               <SelectItem value="custom" disabled>
@@ -1432,38 +1277,4 @@ export function Preview({
       </div>
     </div>
   );
-}
-
-function browserLabel({ id }: { id: string }): string {
-  return (
-    (
-      {
-        "browser.back": "后退",
-        "browser.forward": "前进",
-        "browser.reload": "刷新预览",
-        "browser.stop": "停止加载",
-        "browser.addressPlaceholder": "输入网址，按 Enter 打开",
-        "browser.responsive.enter": "响应式预览",
-        "browser.responsive.exit": "退出响应式预览",
-        "browser.more": "浏览器更多操作",
-        "browser.openExternal": "在默认浏览器打开",
-        "browser.devtools": "开发者工具",
-        "browser.details": "浏览器详情",
-        "browser.title": "浏览器",
-        "browser.empty": "粘贴或输入网址，按 Enter 打开页面。",
-        "browser.loadError.title": "无法打开网页",
-        "browser.loadError.retry": "重新加载网页",
-      } as Record<string, string>
-    )[id] ?? id
-  );
-}
-
-const devicePresets = [
-  { id: "phone", label: "browser.viewport.phone", width: 390, height: 844 },
-  { id: "tablet", label: "browser.viewport.tablet", width: 768, height: 1024 },
-  { id: "desktop", label: "browser.viewport.desktop", width: 1440, height: 900 },
-] as const;
-
-function deviceDimension(value: string | undefined, fallback: number) {
-  return Math.min(2560, Math.max(240, Math.round(Number(value) || fallback)));
 }

@@ -55,7 +55,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["diagnostics"],
-    "requires": ["electron", "core-binary", "git", "gui-build"],
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"],
     "notes": "Mixed command; classified by highest browser or Electron boundary."
   },
   {
@@ -77,7 +77,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["recovery", "worktree"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"]
   },
   {
     "script": "test:service-connection",
@@ -91,7 +91,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["service", "lifecycle"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:backend-toast-ui",
@@ -133,7 +133,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["tasks"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:task-catalog-startup",
@@ -147,21 +147,21 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["tasks", "schedules"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"]
   },
   {
     "script": "test:schedule-reliability-lifecycle",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["tasks", "schedules", "lifecycle"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"]
   },
   {
     "script": "test:stop-turn",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["lifecycle"],
-    "requires": ["electron", "core-binary", "git", "gui-build"],
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"],
     "qualificationJourney": "stop-turn"
   },
   {
@@ -169,7 +169,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["service", "lifecycle"],
-    "requires": ["electron", "browser", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "browser", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:lifecycle",
@@ -185,14 +185,14 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["desktop"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:quit-draft",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["lifecycle", "draft"],
-    "requires": ["electron", "core-binary", "gui-build", "git"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
     "qualificationJourney": "quit-draft"
   },
   {
@@ -200,7 +200,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["lifecycle", "draft"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:legacy-recovery",
@@ -243,7 +243,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["composer"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:composer",
@@ -268,14 +268,14 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["composer"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"]
   },
   {
     "script": "test:subscription-send",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["provider", "worktree"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:provider-hot-apply",
@@ -289,7 +289,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["context"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:model-selection",
@@ -375,7 +375,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["lifecycle", "startup"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"]
   },
   {
     "script": "test:history",
@@ -390,7 +390,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["architecture"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:conversation-continue",
@@ -465,7 +465,7 @@
     "layer": "e2e",
     "platforms": ["darwin"],
     "areas": ["remote"],
-    "requires": ["electron", "browser", "core-binary", "git", "gui-build"],
+    "requires": ["electron", "browser", "core-binary", "git", "gui-build", "python3"],
     "platformReason": "Browser executable is the installed macOS Google Chrome application."
   },
   {
@@ -541,7 +541,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["annotations"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"]
   },
   {
     "script": "test:browser-contracts",
@@ -591,7 +591,7 @@
     "layer": "e2e",
     "platforms": ["darwin"],
     "areas": ["remote"],
-    "requires": ["electron", "browser", "core-binary", "git", "gui-build"],
+    "requires": ["electron", "browser", "core-binary", "git", "gui-build", "python3"],
     "platformReason": "Browser executable is the installed macOS Google Chrome application."
   },
   {
@@ -795,7 +795,7 @@
     "layer": "e2e",
     "platforms": ["darwin"],
     "areas": ["recovery", "lifecycle"],
-    "requires": ["electron", "core-binary", "gui-build", "git"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
     "platformReason": "Runner explicitly asserts darwin and uses its existing macOS acceptance setup."
   },
   {
@@ -810,7 +810,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["side-chat"],
-    "requires": ["electron", "core-binary", "gui-build", "git"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
     "ciSmoke": "side-chat"
   },
   {

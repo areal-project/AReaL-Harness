@@ -559,6 +559,13 @@ impl ResponsesDecoder {
         }
         let event: Value = serde_json::from_str(data).context("invalid Responses SSE JSON")?;
         telemetry::response(&event, ModelProtocol::Responses);
+        // 网关可用 HTTP 200 返回不带事件 type 的错误封套，仍须保留其错误分类。
+        if event.get("type").is_none()
+            && let Some(error) = event.get("error").filter(|error| !error.is_null())
+        {
+            return Err(StreamError::from_value(error, "error").into());
+        }
+
         self.usage_details
             .observe_response_id(event["response"].get("id"));
         if matches!(
@@ -1053,6 +1060,32 @@ mod tests {
         .to_string();
         assert!(!error.contains("secret"));
         assert!(!error.contains("private"));
+    }
+
+    #[test]
+    fn untyped_responses_error_preserves_category_and_private_detail() {
+        for (kind, retry) in [("api_error", true), ("authentication_error", false)] {
+            let event = json!({"error":{"type":kind,"message":"private-provider-detail"}});
+            let error = ResponsesDecoder::default()
+                .feed(format!("data: {event}\n\n").as_bytes())
+                .unwrap_err();
+            assert_eq!(is_network_error(&error), retry);
+            let detail = error.downcast_ref::<StreamError>().unwrap();
+            assert_eq!(detail.error_type.as_deref(), Some(kind));
+            assert!(
+                detail
+                    .private_detail
+                    .0
+                    .to_string()
+                    .contains("private-provider-detail")
+            );
+            assert!(
+                !serde_json::to_string(detail)
+                    .unwrap()
+                    .contains("private-provider-detail")
+            );
+            assert!(!error.to_string().contains("private-provider-detail"));
+        }
     }
 
     #[test]
