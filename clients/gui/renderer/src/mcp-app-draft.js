@@ -1,6 +1,37 @@
 import { composerDraftStorage } from "./composerDraftStorage.js";
 // Unsent MCP content belongs to the same durable key as the ordinary composer text.
 const suffix = ":mcpContent";
+// 持久 entry.id 跨 JSON.parse 稳定，上传身份还须绑定实际执行会话。
+const images = new Map();
+export function mcpImageFile(block) {
+  if (
+    !/^image\/(png|jpeg|gif|webp)$/.test(block.mimeType) ||
+    typeof block.data !== "string" ||
+    block.data.length > 12 * 1024 * 1024
+  )
+    throw new Error("应用图片类型或大小不受支持。");
+  const bytes = Uint8Array.from(atob(block.data), (character) => character.charCodeAt(0));
+  return new File(
+    [bytes],
+    typeof block._meta?.["openai/title"] === "string" ? block._meta["openai/title"] : "应用图片",
+    { type: block.mimeType },
+  );
+}
+export function mcpDraftImageFiles(key, entries, owner, release) {
+  const imageEntries = entries.filter((entry) => entry.block.type === "image");
+  if (!imageEntries.length) return [];
+  const draft = images.get(key) ?? new Map();
+  return imageEntries.map((entry) => {
+    const owners = draft.get(entry.id) ?? new Map();
+    const existing = owners.get(owner);
+    if (existing) return existing.file;
+    const file = mcpImageFile(entry.block);
+    images.set(key, draft);
+    draft.set(entry.id, owners);
+    owners.set(owner, { file, release });
+    return file;
+  });
+}
 function changed(key) {
   if (typeof window !== "undefined")
     window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: key }));
@@ -18,6 +49,16 @@ export function writeMcpDraft(key, entries, storage = composerDraftStorage) {
   if (text.length > 4 * 1024 * 1024) throw Error("应用附件过大，未更改草稿。");
   if (entries.length) storage.setItem(key + suffix, text);
   else storage.removeItem(key + suffix);
+  const draft = images.get(key);
+  if (draft) {
+    const retained = new Set(entries.map((entry) => entry.id));
+    for (const [id, owners] of draft) {
+      if (retained.has(id)) continue;
+      for (const { file, release } of owners.values()) release([file]);
+      draft.delete(id);
+    }
+    if (!draft.size) images.delete(key);
+  }
   changed(key);
 }
 export function appendMcpDraft(key, blocks, storage = composerDraftStorage) {

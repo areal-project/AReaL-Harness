@@ -28,7 +28,13 @@ import { ContextMeter } from "./ContextMeter.js";
 import { isOrdinaryConversation, interruptedConversationTurn } from "./ordinaryConversation.js";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { McpComposerAttachments, useMcpDraft } from "./McpComposerAttachments.js";
-import { readMcpDraft, consumeMcpDraft, clearMcpDraft } from "./mcp-app-draft.js";
+import {
+  readMcpDraft,
+  consumeMcpDraft,
+  clearMcpDraft,
+  mcpDraftImageFiles,
+  mcpImageFile,
+} from "./mcp-app-draft.js";
 import {
   setApplicationPreferences,
   useApplicationPreferences,
@@ -1464,106 +1470,100 @@ export async function submitMessage(
     ? (options.mcpContent ?? [])
     : capturedMcp.map((entry: Data) => entry.block);
   const imageBlocks = blocks.filter((block: Data) => block.type === "image");
-  const imageFiles = imageBlocks.map((block: Data) => {
-    if (
-      !/^image\/(png|jpeg|gif|webp)$/.test(block.mimeType) ||
-      typeof block.data !== "string" ||
-      block.data.length > 12 * 1024 * 1024
-    )
-      throw new Error("应用图片类型或大小不受支持。");
-    const bytes = Uint8Array.from(atob(block.data), (character) => character.charCodeAt(0));
-    return new File(
-      [bytes],
-      typeof block._meta?.["openai/title"] === "string" ? block._meta["openai/title"] : "应用图片",
-      { type: block.mimeType },
-    );
-  });
-  const input = composerInput(text, files);
-  const imageSnapshot = snapshotImageAnnotations(input.files);
-  const plugins = options.appMessage
-    ? []
-    : await revalidateComposerPlugins(
-        options.skillAction ?? action,
-        options.pluginContext ?? { kind: "mainThread", projectId, threadId },
-        key,
-        input.text,
-        options.pluginMessages?.unavailable ?? "chat.composer.pluginReferenceUnavailable",
+  const uploadOwner = options.uploadOwner ?? JSON.stringify([projectId, threadId]);
+  const imageFiles: File[] = options.appMessage
+    ? imageBlocks.map(mcpImageFile)
+    : mcpDraftImageFiles(key, capturedMcp, uploadOwner, (files: File[]) =>
+        forgetComposerUploads(uploadOwner, files),
       );
-  const pluginIntent = composerPluginIntent(
-    plugins,
-    options.pluginMessages?.intent ??
-      ((name: string) => `Use the selected plugin ${name} for this request.`),
-  );
-  const skillContent = options.appMessage
-    ? ""
-    : await composerSkillContent(
-        options.skillAction ?? action,
-        projectId,
-        threadId,
-        mergeComposerPluginSkills(readComposerSkills(key), plugins),
-      );
-  const attachments = await uploadComposerFiles(
-    action,
-    projectId,
-    threadId,
-    [...input.files, ...imageFiles],
-    undefined,
-    options.uploadOwner,
-  );
-  imageBlocks.forEach((block: Data, index: number) => {
-    if (block._meta) attachments[input.files.length + index]._meta = block._meta;
-  });
-  const annotationFeedback = input.files
-    .flatMap((file, index) => {
-      const note = browserAnnotation(file);
-      return note ? [browserAnnotationText(note, attachments[index].url)] : [];
-    })
-    .join("\n\n");
-  const feedback = [
-    annotationFeedback,
-    serializeImageAnnotations(imageSnapshot, attachments),
-    comments.map(reviewCommentText).join("\n\n"),
-    pluginIntent,
-    skillContent,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
   try {
-    await action(options.steer ? "steer" : "send", {
+    const input = composerInput(text, files);
+    const imageSnapshot = snapshotImageAnnotations(input.files);
+    const plugins = options.appMessage
+      ? []
+      : await revalidateComposerPlugins(
+          options.skillAction ?? action,
+          options.pluginContext ?? { kind: "mainThread", projectId, threadId },
+          key,
+          input.text,
+          options.pluginMessages?.unavailable ?? "chat.composer.pluginReferenceUnavailable",
+        );
+    const pluginIntent = composerPluginIntent(
+      plugins,
+      options.pluginMessages?.intent ??
+        ((name: string) => `Use the selected plugin ${name} for this request.`),
+    );
+    const skillContent = options.appMessage
+      ? ""
+      : await composerSkillContent(
+          options.skillAction ?? action,
+          projectId,
+          threadId,
+          mergeComposerPluginSkills(readComposerSkills(key), plugins),
+        );
+    const attachments = await uploadComposerFiles(
+      action,
       projectId,
       threadId,
-      text: feedback ? (input.text ? `${input.text}\n\n${feedback}` : feedback) : input.text,
-      attachments,
-      ...(capturedReferences.length
-        ? { conversationQuotes: capturedReferences.map(({ text }) => ({ text })) }
-        : {}),
-      ...(blocks.some((block: Data) => block.type !== "image")
-        ? { mcpContent: blocks.filter((block: Data) => block.type !== "image") }
-        : {}),
-      expectedTurnId: options.expectedTurnId,
-      enqueue: options.enqueue === true,
+      [...input.files, ...imageFiles],
+      undefined,
+      options.uploadOwner,
+    );
+    imageBlocks.forEach((block: Data, index: number) => {
+      if (block._meta) attachments[input.files.length + index]._meta = block._meta;
     });
-  } catch (cause) {
-    const error = cause as Error & { submissionUnknown?: boolean; requestId?: string };
-    if (error.submissionUnknown && error.requestId && comments.length) {
-      try {
-        recordUnknownReviewSubmission(reviewKey, error.requestId, comments);
-      } catch {
-        error.message += " 评论提交记录无法保存，原评论已保留。";
+    const annotationFeedback = input.files
+      .flatMap((file, index) => {
+        const note = browserAnnotation(file);
+        return note ? [browserAnnotationText(note, attachments[index].url)] : [];
+      })
+      .join("\n\n");
+    const feedback = [
+      annotationFeedback,
+      serializeImageAnnotations(imageSnapshot, attachments),
+      comments.map(reviewCommentText).join("\n\n"),
+      pluginIntent,
+      skillContent,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    try {
+      await action(options.steer ? "steer" : "send", {
+        projectId,
+        threadId,
+        text: feedback ? (input.text ? `${input.text}\n\n${feedback}` : feedback) : input.text,
+        attachments,
+        ...(capturedReferences.length
+          ? { conversationQuotes: capturedReferences.map(({ text }) => ({ text })) }
+          : {}),
+        ...(blocks.some((block: Data) => block.type !== "image")
+          ? { mcpContent: blocks.filter((block: Data) => block.type !== "image") }
+          : {}),
+        expectedTurnId: options.expectedTurnId,
+        enqueue: options.enqueue === true,
+      });
+    } catch (cause) {
+      const error = cause as Error & { submissionUnknown?: boolean; requestId?: string };
+      if (error.submissionUnknown && error.requestId && comments.length) {
+        try {
+          recordUnknownReviewSubmission(reviewKey, error.requestId, comments);
+        } catch {
+          error.message += " 评论提交记录无法保存，原评论已保留。";
+        }
       }
+      throw cause;
     }
-    throw cause;
-  }
-  // Only explicit acceptance consumes the captured records. Unknown submissions
-  // retain their exact IDs until the existing Core receipt is reconciled.
-  forgetComposerUploads(options.uploadOwner ?? JSON.stringify([projectId, threadId]), [
-    ...input.files,
-    ...imageFiles,
-  ]);
-  consumeReviewComments(reviewKey, comments);
-  if (!options.appMessage) {
-    consumeMcpDraft(key, capturedMcp);
-    consumeConversationSelections(selectionScope, capturedReferences);
+    // Only explicit acceptance consumes the captured records. Unknown submissions
+    // retain their exact IDs until the existing Core receipt is reconciled.
+    forgetComposerUploads(uploadOwner, [...input.files, ...imageFiles]);
+    consumeReviewComments(reviewKey, comments);
+    if (!options.appMessage) {
+      consumeMcpDraft(key, capturedMcp);
+      consumeConversationSelections(selectionScope, capturedReferences);
+    }
+  } finally {
+    // 直接 RPC 没有可继续编辑的草稿，临时图片只属于这次调用。
+    if (options.appMessage) forgetComposerUploads(uploadOwner, imageFiles);
   }
 }
 export function stageThreadDraft(
