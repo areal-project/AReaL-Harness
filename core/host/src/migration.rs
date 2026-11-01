@@ -162,6 +162,38 @@ pub(crate) struct Migration {
     pub vault: vault::Vault,
 }
 impl Migration {
+    pub(crate) fn operation_offline(home: &Path, id: &str) -> Result<Option<Value>> {
+        wire::request_id(id)?;
+        if !home.join("host/imports").try_exists()? {
+            return Ok(None);
+        }
+        let migration = Self {
+            home: home.to_owned(),
+            guards: RefCell::new(BTreeMap::new()),
+            vault: vault::Vault::new(home),
+        };
+        for record in migration.records()? {
+            if record.request_id == id || record.request_aliases.iter().any(|alias| alias == id) {
+                return Ok(Some(json!({
+                    "requestId":id,
+                    "method":"gui.import",
+                    "state":if migration.committed(&record)?.is_some() {"completed"} else {"acceptedPending"},
+                    "result":migration.result(&record)?
+                })));
+            }
+            if let Some(receipt) = record
+                .vault_receipts
+                .iter()
+                .find(|receipt| receipt.request_id == id)
+            {
+                return Ok(Some(json!({
+                    "requestId":id,"method":"gui.importSecret",
+                    "state":receipt.state,"result":receipt
+                })));
+            }
+        }
+        Ok(None)
+    }
     pub fn new(home: &Path) -> Result<Self> {
         storage::private_dir(&home.join("host/imports"))?;
         File::open(home.join("host"))?.sync_all()?;
@@ -1367,6 +1399,10 @@ mod tests {
         assert_eq!(receipt["requestId"], alias);
         assert_eq!(receipt["state"], "completed");
         assert_eq!(receipt["result"], result);
+        assert_eq!(
+            crate::operation_offline(&f.migration.home, &alias).unwrap(),
+            Some(receipt)
+        );
     }
 
     #[test]
@@ -1697,6 +1733,20 @@ mod tests {
             .vault
             .write(&secret.entry_id, &json!("isolated-dummy"))
             .unwrap();
+        let record_path = f
+            .migration
+            .directory(&f.request)
+            .unwrap()
+            .join("record.json");
+        let before = std::fs::read(&record_path).unwrap();
+        assert_eq!(
+            crate::operation_offline(&f.migration.home, &id)
+                .unwrap()
+                .unwrap()["state"],
+            "acceptedPending",
+            "offline lookup must not inspect secure storage or promote a pending import secret"
+        );
+        assert_eq!(std::fs::read(&record_path).unwrap(), before);
         assert_eq!(
             f.migration.operation(&id).unwrap().unwrap()["state"],
             "completed"

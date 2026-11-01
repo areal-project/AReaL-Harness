@@ -40,6 +40,20 @@ pub(crate) struct RemoteState {
     lease: RefCell<Option<(String, String)>>,
 }
 impl RemoteState {
+    pub(crate) fn operation_offline(home: &Path, id: &str) -> Result<Option<Value>> {
+        wire::request_id(id)?;
+        let remote = Self::new(home);
+        if let Some(state) = migration::read_optional::<State>(&remote.path())? {
+            if let Some(receipt) = state.receipt.filter(|value| value["requestId"] == id) {
+                return Ok(Some(receipt));
+            }
+        }
+        migration::read_optional(
+            &home
+                .join("host/remote-operations")
+                .join(format!("{id}.json")),
+        )
+    }
     pub fn new(home: &Path) -> Self {
         Self {
             home: home.into(),
@@ -379,6 +393,23 @@ mod tests {
                     .unwrap();
             }
             storage::write(&remote.path(), &state).unwrap();
+            let offline = crate::operation_offline(home, &request).unwrap().unwrap();
+            assert_eq!(
+                offline["state"],
+                if window == "afterState" {
+                    "completed"
+                } else {
+                    "acceptedPending"
+                },
+                "offline lookup uses metadata only at {window}"
+            );
+            let stored: Value = storage::read(
+                &home
+                    .join("host/remote-operations")
+                    .join(format!("{request}.json")),
+            )
+            .unwrap();
+            assert_eq!(stored, pending);
             let restarted = RemoteState::new(home);
             let receipt = restarted.operation(&request, &migration).unwrap().unwrap();
             let applied = matches!(window, "afterVault" | "afterState");

@@ -133,5 +133,32 @@ pub fn operation_offline(
     wire::request_id(request_id)?;
     let record: Option<Value> =
         areal_local_service::storage::read_optional(&wire::operation_path(home, request_id))?;
-    Ok(record.map(|record| record["receipt"].clone()))
+    if let Some(record) = record {
+        return Ok(Some(record["receipt"].clone()));
+    }
+    if let Some(receipt) = migration::Migration::operation_offline(home, request_id)? {
+        return Ok(Some(receipt));
+    }
+    if let Some(receipt) = journal::Journal::operation_offline(home, request_id)? {
+        return Ok(Some(receipt));
+    }
+    if let Some(receipt) = vault::Vault::operation_offline(home, request_id)? {
+        return Ok(Some(receipt));
+    }
+    remote_state::RemoteState::operation_offline(home, request_id)
+}
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test(flavor = "current_thread")]
+    async fn missing_offline_operation_does_not_initialize_host_storage() {
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path().join("not-created");
+        assert!(super::Client::connect_at(home.clone()).await.is_err());
+        assert_eq!(
+            super::operation_offline(&home, &uuid::Uuid::new_v4().to_string()).unwrap(),
+            None
+        );
+        assert!(!home.exists());
+    }
 }

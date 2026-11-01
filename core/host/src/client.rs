@@ -29,8 +29,15 @@ impl Client {
     }
     pub async fn connect_at(home: PathBuf) -> Result<Self> {
         let home = storage::canonical_pending(&home)?;
-        storage::private_dir(&home)?;
-        storage::private_dir(&home.join("host"))?;
+        for directory in [&home, &home.join("host")] {
+            let metadata = std::fs::symlink_metadata(directory)?;
+            ensure!(
+                metadata.is_dir()
+                    && metadata.uid() == unsafe { libc::geteuid() }
+                    && metadata.mode() & 0o077 == 0,
+                "Host discovery directory must be private and owned by this user"
+            );
+        }
         let identity: HostIdentity = storage::read(&home.join("host/host.json"))?;
         ensure!(
             identity.version == VERSION

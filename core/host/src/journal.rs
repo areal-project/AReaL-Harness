@@ -94,6 +94,37 @@ struct ReadRequest {
 }
 
 impl Journal {
+    pub(crate) fn operation_offline(home: &Path, id: &str) -> Result<Option<Value>> {
+        request_id(id)?;
+        let journal = Self {
+            root: home.join("host/journals"),
+            epoch: String::new(),
+            reads: RefCell::new(BTreeMap::new()),
+        };
+        let Some(operation) = journal.prepared(id)? else {
+            let directory = journal.root.join("records");
+            if directory.try_exists()? {
+                for entry in std::fs::read_dir(directory)? {
+                    let record: Record = read_large(&entry?.path())?;
+                    if let Some(committed) =
+                        record.last_operation.filter(|value| value.request_id == id)
+                    {
+                        return Ok(Some(committed.receipt));
+                    }
+                }
+            }
+            return Ok(None);
+        };
+        let record: Record = read_large(&journal.record_path(&operation.project_id)?)?;
+        ensure!(
+            record.project_id == operation.project_id,
+            "journal project identity mismatch"
+        );
+        if let Some(committed) = record.last_operation.filter(|value| value.request_id == id) {
+            return Ok(Some(committed.receipt));
+        }
+        Ok(Some(operation.receipt))
+    }
     pub(crate) fn new(home: &Path) -> Result<Self> {
         let root = home.join("host/journals");
         for path in [
@@ -544,6 +575,21 @@ mod tests {
         let receipt = commit(&journal, "client", &prepared).unwrap();
         let request = prepared["requestId"].as_str().unwrap();
         std::fs::remove_file(journal.operation_path(request)).unwrap();
+        assert_eq!(
+            crate::operation_offline(root.path(), request).unwrap(),
+            Some(receipt.clone())
+        );
+        assert!(
+            !journal.operation_path(request).exists(),
+            "offline lookup must not repair receipt files"
+        );
+        assert_eq!(
+            crate::operation_offline(root.path(), unused["requestId"].as_str().unwrap())
+                .unwrap()
+                .unwrap()["state"],
+            "prepared",
+            "offline lookup cannot expire a connection-owned slot"
+        );
         drop(journal);
         let restarted = Journal::new(root.path()).unwrap();
         assert_eq!(restarted.operation(request).unwrap(), Some(receipt));

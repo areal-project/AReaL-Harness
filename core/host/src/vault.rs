@@ -103,6 +103,27 @@ pub(crate) struct Vault {
     locked: std::cell::Cell<bool>,
 }
 impl Vault {
+    pub(crate) fn operation_offline(home: &Path, id: &str) -> Result<Option<Value>> {
+        wire::request_id(id)?;
+        let vault = Self::new(home);
+        let receipt: Option<Value> = crate::migration::read_optional(&vault.operation_path(id))?;
+        if receipt
+            .as_ref()
+            .is_some_and(|value| value["state"] != "acceptedPending")
+        {
+            return Ok(receipt);
+        }
+        let directory = home.join("host/vault-slots");
+        if directory.try_exists()? {
+            for entry in std::fs::read_dir(directory)? {
+                let state: SlotState = storage::read(&entry?.path())?;
+                if let Some(committed) = state.receipt.filter(|value| value["requestId"] == id) {
+                    return Ok(Some(committed));
+                }
+            }
+        }
+        Ok(receipt)
+    }
     fn state_path(&self, slot: &Slot) -> Result<PathBuf> {
         Ok(self.home.join("host/vault-slots").join(format!(
             "{}.json",
@@ -560,6 +581,22 @@ mod tests {
                 state.entry_id = Some(revoked);
             }
             f.migration.vault.save_state(&state).unwrap();
+            let offline = crate::operation_offline(&f.migration.vault.home, &id)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                offline["state"],
+                if window == "afterState" {
+                    "completed"
+                } else {
+                    "acceptedPending"
+                },
+                "offline lookup uses metadata only at {window}"
+            );
+            assert_eq!(
+                storage::read::<Value>(&f.migration.vault.operation_path(&id)).unwrap(),
+                pending
+            );
             let restarted = Vault::isolated_files(&f.migration.vault.home);
             let receipt = restarted.operation(&id, &f.migration).unwrap().unwrap();
             let applied = matches!(window, "afterVault" | "afterState");
@@ -590,6 +627,10 @@ mod tests {
         let pending = json!({"requestId":id,"method":"vault.replace","slot":f.slot,"previousRevision":0,"entryId":entry,"state":"acceptedPending"});
         f.migration.vault.save_operation(&pending).unwrap();
         f.migration.vault.locked.set(true);
+        assert_eq!(
+            crate::operation_offline(&f.migration.vault.home, &id).unwrap(),
+            Some(pending.clone())
+        );
         assert!(
             f.migration
                 .vault
