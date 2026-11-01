@@ -391,6 +391,106 @@ class CiContracts(unittest.TestCase):
                 plan, _ = self.gate_fixture([path], workflow="verify")
                 self.assertEqual({item["group"] for item in plan["items"]}, {"early"})
 
+    def test_timing_collects_attempt_specific_runs_and_jobs(self):
+        run = {"id": 7, "run_attempt": 2}
+
+        def api(command, text):
+            endpoint = command[-1]
+            if "/attempts/" not in endpoint:
+                return json.dumps({"workflow_runs": [run]})
+            attempt = int(endpoint.split("/attempts/")[1].split("/")[0])
+            if "/jobs?" in endpoint:
+                return json.dumps({"jobs": [{"id": attempt, "run_attempt": attempt}]})
+            return json.dumps({"id": 7, "run_attempt": attempt})
+
+        with patch.object(timing.subprocess, "check_output", side_effect=api):
+            collected = timing.collect("owner/repo", 1)
+        self.assertEqual([entry["run"]["run_attempt"] for entry in collected], [1, 2])
+        for entry in collected:
+            self.assertEqual(entry["jobs"][0]["run_attempt"], entry["run"]["run_attempt"])
+
+    def test_shell_cache_identity_failure_cannot_restore_a_partial_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            python = root / "python3"
+            for workflow in ("ci", "gui"):
+                declaration = (ROOT / f".github/workflows/{workflow}.yml").read_text()
+                step = declaration.split("- name: Identify private Bash cache", 1)[1].split(
+                    "- name: Restore verified private Bash build", 1
+                )[0]
+                command = textwrap.dedent(step.split("run: |\n", 1)[1])
+                for body in ("exit 42", "exit 0", "echo verified-key"):
+                    with self.subTest(workflow=workflow, body=body):
+                        python.write_text("#!/bin/sh\n" + body + "\n")
+                        python.chmod(0o755)
+                        output = root / "output"
+                        output.unlink(missing_ok=True)
+                        result = subprocess.run(
+                            ["bash", "-e", "-o", "pipefail", "-c", command],
+                            env={
+                                **os.environ,
+                                "PATH": str(root) + os.pathsep + os.environ["PATH"],
+                                "GITHUB_OUTPUT": str(output),
+                            },
+                        )
+                        if body.startswith("echo"):
+                            self.assertEqual(result.returncode, 0)
+                            self.assertEqual(output.read_text(), "key=verified-key\n")
+                        else:
+                            self.assertNotEqual(result.returncode, 0)
+                            self.assertFalse(output.exists())
+
+    def test_timing_reruns_use_their_own_start_and_runner_minutes(self):
+        run = {
+            "id": 1,
+            "name": "fixture",
+            "head_sha": "source",
+            "event": "pull_request",
+            "status": "completed",
+            "conclusion": "success",
+            "created_at": "2026-01-01T00:00:00Z",
+        }
+        snapshot = []
+        for attempt, start, job_start, end in [
+            (1, "00:00", "00:01", "00:02"),
+            (2, "01:00", "01:04", "01:05"),
+        ]:
+
+            def stamp(value):
+                return f"2026-01-01T{value}:00Z"
+
+            snapshot.append(
+                {
+                    "run": {**run, "run_attempt": attempt, "run_started_at": stamp(start)},
+                    "jobs": [
+                        {
+                            "id": attempt,
+                            "name": "fixture",
+                            "run_attempt": attempt,
+                            "started_at": stamp(job_start),
+                            "completed_at": stamp(end),
+                        }
+                    ],
+                }
+            )
+        result = timing.analyze(snapshot)
+        self.assertEqual([run["wall_s"] for run in result["runs"]], [120, 300])
+        self.assertEqual([run["runner_minutes"] for run in result["runs"]], [1, 1])
+        self.assertEqual(result["jobs"][1]["wait_from_run_s"], 240)
+        self.assertEqual([run["attempt"] for run in result["runs"]], [1, 2])
+        snapshot[1]["jobs"][0]["run_attempt"] = 1
+        with self.assertRaisesRegex(ValueError, "mixes workflow attempts"):
+            timing.analyze(snapshot)
+
+    def test_core_aggregate_waits_for_every_actual_shard(self):
+        jobs = [
+            {"id": 1, "name": "macOS GUI build and contracts"},
+            {"id": 2, "name": "macOS Core contracts (contracts-1)"},
+            {"id": 3, "name": "macOS Core contracts (contracts-2)"},
+            {"id": 4, "name": "macOS Core contracts"},
+        ]
+        self.assertEqual(timing.predecessors(jobs[-1], jobs), jobs[1:3])
+
     def test_main_runs_cannot_replace_each_other_and_prs_cancel_superseded_runs(self):
         for name in ("ci", "gui", "workflow-lint", "provider-config"):
             workflow = (ROOT / f".github/workflows/{name}.yml").read_text()
@@ -462,6 +562,30 @@ class CiContracts(unittest.TestCase):
             self.assertIn("macos:desktop", item["dependsOn"])
         for group in ("gui-native-checks", "core-contracts", "smoke"):
             self.assertEqual(scope.CI_PLATFORMS[group], "darwin")
+
+    def test_two_core_lanes_execute_every_contract_and_native_item_once(self):
+        plan, _ = self.gate_fixture()
+        selected = []
+        for lane in scope.CORE_LANES:
+            selected.extend(
+                item["id"]
+                for item in plan["items"]
+                if item["group"] == lane["group"] and item["id"] == lane["item"]
+            )
+            if lane["native"]:
+                selected.extend(
+                    item["id"] for item in plan["items"] if item["group"] == "gui-native-checks"
+                )
+        required = [
+            item["id"]
+            for item in plan["items"]
+            if item["group"] in {"core-contracts", "gui-native-checks"}
+        ]
+        self.assertCountEqual(selected, required)
+        self.assertEqual(len(selected), len(set(selected)))
+        workflow = (ROOT / ".github/workflows/gui.yml").read_text()
+        self.assertIn("if: ${{ !cancelled() && matrix.native }}", workflow)
+        self.assertIn("--output target/ci/checks/core-native-checks", workflow)
 
     def test_gate_rejects_missing_and_duplicate_core_shards(self):
         plan, reports = self.gate_fixture()

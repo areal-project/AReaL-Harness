@@ -1,5 +1,7 @@
 import hashlib
+import importlib.util
 import json
+import os
 from pathlib import Path
 import platform
 import subprocess
@@ -7,10 +9,83 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
 VERSION = "GNU bash, version 5.3.20(1)-release"
+
+spec = importlib.util.spec_from_file_location(
+    "runtime_shell", ROOT / "scripts/prepare-runtime-shell.py"
+)
+shell = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(shell)
+
+
+class RuntimeShellCacheTests(unittest.TestCase):
+    def test_key_changes_with_native_build_inputs(self):
+        with (
+            patch.object(shell.subprocess, "check_output", side_effect=["clang A", "15.4"]),
+            patch.object(shell.platform, "mac_ver", return_value=("15.4", (), "")),
+        ):
+            identity = shell.build_identity(ROOT)
+        for field in identity:
+            with self.subTest(field=field):
+                changed = {**identity, field: [identity[field], "changed"]}
+                self.assertNotEqual(shell.cache_key(identity), shell.cache_key(changed))
+
+    def fixture(self, root):
+        lock = root / "runtime/host-tools/bash.lock.json"
+        lock.parent.mkdir(parents=True)
+        lock.write_text(json.dumps({"version": "fixture", "minimumMacOSVersion": "15.0"}))
+        identity = {"lockSha256": shell.digest(lock), "compiler": "fixture compiler"}
+        build = root / "target/runtime-shell" / shell.cache_key(identity)
+        build.mkdir(parents=True)
+        for name in ["bash", "corresponding-source.tar.gz", "COPYING"]:
+            (build / name).write_text("fixture " + name)
+        (build / "bash").chmod(0o755)
+        metadata = {
+            **identity,
+            "binarySha256": shell.digest(build / "bash"),
+            "sourceSha256": shell.digest(build / "corresponding-source.tar.gz"),
+            "licenseSha256": shell.digest(build / "COPYING"),
+        }
+        (build / "build.json").write_text(json.dumps(metadata))
+        return identity, build
+
+    def test_complete_verified_cache_restores_without_download_or_compile(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            identity, build = self.fixture(root)
+            with (
+                patch.object(shell, "build_identity", return_value=identity),
+                patch.object(shell, "fetch", side_effect=AssertionError("unexpected download")),
+                patch.object(
+                    shell.subprocess, "run", side_effect=AssertionError("unexpected compile")
+                ),
+            ):
+                for profile in ["debug", "release"]:
+                    output = root / "target" / profile / "shells"
+                    shell.prepare(root, output)
+                    self.assertTrue(os.access(output / "bash", os.X_OK))
+                    for name in ["bash", "COPYING", "corresponding-source.tar.gz", "build.json"]:
+                        self.assertEqual((output / name).read_bytes(), (build / name).read_bytes())
+
+    def test_corrupt_or_wrong_identity_cache_fails_closed(self):
+        for name in ["bash", "corresponding-source.tar.gz", "COPYING", "build.json"]:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                identity, build = self.fixture(root)
+                if name == "build.json":
+                    metadata = json.loads((build / name).read_text())
+                    metadata["compiler"] = "different compiler"
+                    (build / name).write_text(json.dumps(metadata))
+                else:
+                    (build / name).write_text("corrupt")
+                with patch.object(shell, "build_identity", return_value=identity):
+                    with self.assertRaisesRegex(ValueError, "identity mismatch|checksum mismatch"):
+                        shell.prepare(root, root / "output")
+                self.assertFalse((root / "output").exists())
 
 
 @unittest.skipUnless(platform.system() == "Darwin", "macOS private shell builder")

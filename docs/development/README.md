@@ -99,7 +99,7 @@ Homebrew/Linux 发行产物、安装验收与 draft 发布流程见[发行流程
 
 GUI 使用独立 pnpm 11.7.0 workspace。运行 `make gui-install`、`make gui-build`、`make gui-smoke`；启动、打包与隔离配置见 [GUI 指南](../../clients/gui/README.md)。
 
-PR CI 以包含 runner 排队的 10–15 分钟端到端反馈为目标。GUI smoke 复用绑定同一 SHA 的 debug 构建，最多六个场景并发。`make verify-native` 先构建，再以四个 Make worker 运行既有 launcher、Runtime、Harness、Desktop API 和 Workgroup 验收组；公共构建及 SDK 前置在对应消费者启动前完成。验收命令保持不变，PR 关键路径不执行发行打包。托管 runner 排队与冷缓存仍可能超出目标，应测量实际流水线耗时，不能用超时设置冒充性能达标。CLI/GUI 完整打包、安装升级验收、签名、公证、上传及频道同步归本地发行流程。
+PR CI 以包含 runner 排队的 10–15 分钟端到端反馈为目标。GUI smoke 复用绑定同一 SHA 的 debug 构建，最多四个场景并发。`make verify-native` 先构建，再以四个 Make worker 运行既有 launcher、Runtime、Harness、Desktop API 和 Workgroup 验收组；公共构建及 SDK 前置在对应消费者启动前完成。验收命令保持不变，PR 关键路径不执行发行打包。托管 runner 排队与冷缓存仍可能超出目标，应测量实际流水线耗时，不能用超时设置冒充性能达标。CLI/GUI 完整打包、安装升级验收、签名、公证、上传及频道同步归本地发行流程。
 
 `make setup-node` 仅安装锁定的 Node 开发依赖，供不运行格式检查的原生 CI 使用；本地完整开发仍使用 `make setup`。
 
