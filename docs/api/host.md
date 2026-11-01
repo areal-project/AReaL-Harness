@@ -2,7 +2,7 @@
 
 # 共享 Host 协议
 
-本文包含已实现接口与后续目标契约。Host 提供认证后的项目管理、停止回执、订阅、旧服务迁移，以及 H2 的来源导入、提交 journal、固定凭据槽与 Remote 状态接口。`hello` 声明 `projects`、`stopOperations`、`subscriptions`、`legacyMigration`、`guiImport`、`submissionJournal`、`credentialVault` 和 `remoteState`，尚不提供 `updates`。普通 GUI 消费者与生命周期切换、旧密文退役、Remote 执行和服务管理器交付仍未完成。协议定义不代表运行或安装包验收通过。另见[实施规格](../development/shared-host-spec.md)、[所有权决策](../adr/0016-shared-host.md)与[每项目服务契约](local-service.md)。
+本文包含已实现接口与后续目标契约。Host 提供认证后的项目管理、停止回执、订阅、旧服务迁移，以及 H2 的来源导入、旧秘密退役、提交 journal、固定凭据槽与 Remote 状态接口。`hello` 声明 `projects`、`stopOperations`、`subscriptions`、`legacyMigration`、`guiImport`、`submissionJournal`、`credentialVault` 和 `remoteState`，尚不提供 `updates`。普通 GUI 消费者与生命周期切换、Remote 执行和服务管理器交付仍未完成。协议定义不代表运行或安装包验收通过。另见[实施规格](../development/shared-host-spec.md)、[所有权决策](../adr/0016-shared-host.md)与[每项目服务契约](local-service.md)。
 
 ## 传输与认证
 
@@ -95,6 +95,9 @@ GUI 根目录中的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` �
 | `gui.import`       | `{requestId,expectedGeneration,source:GuiSource}`                             | 来源迁移状态，包括 `migrationId`、待提交秘密与已完成导入回执。                    |
 | `gui.importStatus` | `{migrationId}`                                                               | 原迁移状态，不推进来源写入。                                                      |
 | `gui.importSecret` | `{requestId,expectedGeneration,migrationId,slot,sourceDigest,value}`          | 密钥库写入并读回核验后的回执。`slot` 必须来自原 manifest，秘密不进入操作日志。    |
+| `gui.retirementPrepare` | `{requestId,expectedGeneration,migrationId}` | 建立或恢复原退役计划，校验凭据持久性后返回下一个固定文件目标。 |
+| `gui.retirementConfirm` | `{requestId,expectedGeneration,migrationId,planId}` | 核验文件摘要并保存退役进度。使用原 prepare 的 requestId。 |
+| `gui.retirementStatus` | `{migrationId}` | 只读退役进度，尚无计划时返回 null。 |
 | `journal.read`     | `{projectId}`                                                                 | `{projectId,revision,sha256,byteLength,snapshotPath}`。固定私有槽位中的完整快照。 |
 | `journal.prepare`  | `{requestId,expectedGeneration,projectId,expectedRevision,sha256,byteLength}` | `{requestId,state:"prepared",slotId,writePath}` 或 blocked 回执。                 |
 | `journal.commit`   | `{requestId,expectedGeneration,slotId}`                                       | 原提交的 completed 或 blocked 回执。必须使用 prepare 的连接与 requestId。         |
@@ -102,11 +105,23 @@ GUI 根目录中的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` �
 | `remote.acquire`   | `{sourceId}`                                                                  | `{leaseId,sourceId}`。执行租约绑定当前连接，断连释放。                            |
 | `remote.replace`   | `{requestId,expectedGeneration,expectedRevision,sourceId,config}`             | 持久替换回执，以 revision 校验写入冲突。执行租约不限制本机配置写入。              |
 
-导入先保存固定 manifest 和原字节备份，再保存秘密与回执，核验旧服务清理证明和锁。Host 随后安装非 JSON 来源启动哨兵及每项目 journal 哨兵，最后发布 committed marker。未发布来源占用的项目不能激活或访问 journal，包括复用的 CLI 登记。导入保留原 Store、scratch 路径和 `(profile,legacyProjectId)` 别名。原 registry 与非秘密备份保留。密文退役尚未实现，导入回执明确返回 `retirement:"pending"`。
+导入先保存固定 manifest 和原字节备份，再保存秘密与回执，核验旧服务清理证明和锁。Host 随后安装非 JSON 来源启动哨兵及每项目 journal 哨兵，最后发布 committed marker。未发布来源占用的项目不能激活或访问 journal，包括复用的 CLI 登记。导入保留原 Store、scratch 路径和 `(profile,legacyProjectId)` 别名。原 registry 与非秘密备份保留。原导入回执中的 `retirement:"pending"` 记录导入提交时的事实，后续退役结果由独立接口查询。
+
+### 旧秘密退役
+
+Host 在 `retirement.json` 保存独立计划与回执，不改原 manifest、凭据导入回执或 committed marker。Electron adapter 持有原 Desktop singleton，按计划替换原文件及对应备份。退役仅移除 manifest 覆盖的 provider 密文、订阅账户密文、Remote 密文及订阅传输明文 token。非秘密配置和未知字段保留。重复 JSON 键或不支持的来源格式会阻止退役，保留未处理文件。provider 启动哨兵、journal 哨兵、原 journal 备份、Store 和 `cloud.json` 不进入替换清单。
+
+进度为 `{requestId,migrationId,planId,state,next}`，`state` 为 `applying` 或 `completed`。只有 prepare 返回下一个目标 `{site,relativeName,backupId,beforeDigest,afterDigest,byteLength}`。`site` 为 `source` 或 `backup`。status、confirm 和操作回执的 `next` 均为 null，不返回文件内容。Host 将派生内容保存在固定私有文件 `host/imports/<migrationId>/retirement/<planId>/<backupId>.bytes`，避免控制帧限制截断大文件。adapter 校验文件所有者、权限、类型、长度和摘要后，使用临时文件、fsync、rename 及目录 fsync 替换目标。备份路径沿用 `host/imports/<migrationId>/backups/<backupId>.bytes`。
+
+prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每项秘密都有 completed 回执和可读的原 vault entry。缺失或锁定 entry 阻止后续替换。退役不使用当前凭据版本补种旧值，因此后续撤销不会复活旧账户。每个文件替换前重新 prepare，替换后 confirm。Host 独立读取并核验目标，只接受原摘要或计划中的派生摘要。完成前还会核验原启动及 journal 哨兵。
+
+中断恢复读取原计划与派生文件，不再解析已退役的密文。rename 完成而 confirm 未完成时，Host 根据派生摘要记录进度。连接断开后重新绑定来源，并使用 status 返回的原 requestId。同一计划不能换 requestId 重建。status 和离线操作查询不访问密钥库，不推进退役。原 manifest 的摘要仍描述历史原字节；已退役的备份是由独立计划记录的派生副本。未被当前 committed manifest 引用的旧备份不在本计划内。
+
+### journal 与操作回执
 
 journal 快照为 `{version:1,pending:object[],outcomes:object}`，保留条目内的未知字段。固定文件槽位承载大于 1 MiB 的快照，控制帧仍受传输上限约束。prepare 或 commit 的 CAS 冲突通过 `result.state:"blocked"` 与 `result.error.code:"revisionConflict"` 表达，不是顶层 RPC error。只有该明确冲突允许重读并重新计算修改。断连、超时或未决 commit 只允许查询原 requestId，不重新执行修改 closure 或 Core 派发。
 
-在线 `host.operation` 与离线 `areal host operation <request-id>` 都查询生命周期、来源导入、秘密写入、journal、vault 与 Remote 替换回执。离线查询不启动 Host、不访问 Keychain、不写入或修复状态文件。缺失 home 不会创建目录。
+在线 `host.operation` 与离线 `areal host operation <request-id>` 都查询生命周期、来源导入、秘密写入、秘密退役、journal、vault 与 Remote 替换回执。退役回执的方法为 `gui.retirementPrepare`，未完成时为 `acceptedPending`。离线查询不启动 Host、不访问 Keychain、不写入或修复状态文件。缺失 home 不会创建目录。
 
 `ClientStateReceipt` 是这些 H2 领域回执的并集。每项包含原 `requestId`、`method` 和 `state`，以及对应接口的结果字段；`gui.import` 与 `gui.importSecret` 将领域结果放在 `result` 中。回执不包含秘密值。
 

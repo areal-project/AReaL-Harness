@@ -167,6 +167,27 @@ class HostClient {
   importStatus(migrationId) {
     return this.request("gui.importStatus", { migrationId });
   }
+  /** @param {string} requestId @param {string} migrationId */
+  retirementPrepare(requestId, migrationId) {
+    return this.request("gui.retirementPrepare", {
+      requestId,
+      migrationId,
+      expectedGeneration: this.generation,
+    });
+  }
+  /** @param {string} requestId @param {string} migrationId @param {string} planId */
+  retirementConfirm(requestId, migrationId, planId) {
+    return this.request("gui.retirementConfirm", {
+      requestId,
+      migrationId,
+      planId,
+      expectedGeneration: this.generation,
+    });
+  }
+  /** @param {string} migrationId */
+  retirementStatus(migrationId) {
+    return this.request("gui.retirementStatus", { migrationId });
+  }
   /** @param {string} migrationId @param {{slot:unknown,sourceDigest:string}} secret @param {unknown} value */
   importSecret(migrationId, secret, value) {
     return this.request("gui.importSecret", {

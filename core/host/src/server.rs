@@ -375,6 +375,8 @@ impl Host {
             }
             if let Some(receipt) = self.client_operation(id)? {
                 let same = receipt["method"] == method
+                    || (method == "gui.retirementConfirm"
+                        && receipt["method"] == "gui.retirementPrepare")
                     || (method.starts_with("journal.")
                         && receipt["method"]
                             .as_str()
@@ -441,6 +443,25 @@ impl Host {
                 let input: crate::migration::ImportSecret = serde_json::from_value(params)?;
                 self.generation(&input.expected_generation)?;
                 self.migration.import_secret(input, &connection.id)
+            }
+            "gui.retirementPrepare" => {
+                let input: crate::migration::retirement::Prepare = serde_json::from_value(params)?;
+                self.generation(&input.expected_generation)?;
+                self.migration.retirement_prepare(input, &connection.id)
+            }
+            "gui.retirementConfirm" => {
+                let input: crate::migration::retirement::Confirm = serde_json::from_value(params)?;
+                self.generation(&input.expected_generation)?;
+                self.migration.retirement_confirm(input, &connection.id)
+            }
+            "gui.retirementStatus" => {
+                #[derive(Deserialize)]
+                #[serde(rename_all = "camelCase", deny_unknown_fields)]
+                struct Query {
+                    migration_id: String,
+                }
+                self.migration
+                    .retirement_status(&serde_json::from_value::<Query>(params)?.migration_id)
             }
             "journal.read" | "journal.prepare" | "journal.commit" => {
                 let project = if method == "journal.commit" {
@@ -1825,6 +1846,47 @@ mod tests {
         drop(lock);
         let ready = host.client_state("gui.import", json!({"requestId":result["requestId"],"expectedGeneration":"generation","source":source}), &connection).unwrap();
         assert_eq!(ready["kind"], "ready");
+        let retirement_id = uuid::Uuid::new_v4().to_string();
+        let retirement_params = json!({"requestId":retirement_id,"migrationId":result["requestId"],"expectedGeneration":"generation"});
+        let mut stale = retirement_params.clone();
+        stale["expectedGeneration"] = json!("stale-generation");
+        assert!(
+            host.client_state("gui.retirementPrepare", stale, &connection)
+                .unwrap_err()
+                .to_string()
+                .contains("generationMismatch")
+        );
+        assert!(
+            host.client_state(
+                "gui.retirementStatus",
+                json!({"migrationId":result["requestId"]}),
+                &connection
+            )
+            .unwrap()
+            .is_null()
+        );
+        let retirement = host
+            .client_state("gui.retirementPrepare", retirement_params, &connection)
+            .unwrap();
+        assert_eq!(retirement["state"], "completed");
+        let confirm = json!({"requestId":retirement_id,"migrationId":result["requestId"],"planId":retirement["planId"],"expectedGeneration":"generation"});
+        assert_eq!(
+            host.client_state("gui.retirementConfirm", confirm.clone(), &connection)
+                .unwrap(),
+            retirement
+        );
+        let mut stale = confirm;
+        stale["expectedGeneration"] = json!("stale-generation");
+        assert!(
+            host.client_state("gui.retirementConfirm", stale, &connection)
+                .unwrap_err()
+                .to_string()
+                .contains("generationMismatch")
+        );
+        assert_eq!(
+            host.client_operation(&retirement_id).unwrap().unwrap()["method"],
+            "gui.retirementPrepare"
+        );
         let vault_slot =
             json!({"kind":"subscriptionTransport","sourceId":ready["receipt"]["sourceId"]});
         assert_eq!(

@@ -100,7 +100,7 @@ pub(crate) struct Vault {
     #[cfg(test)]
     isolated_files: bool,
     #[cfg(test)]
-    locked: std::cell::Cell<bool>,
+    pub(crate) locked: std::cell::Cell<bool>,
 }
 impl Vault {
     pub(crate) fn operation_offline(home: &Path, id: &str) -> Result<Option<Value>> {

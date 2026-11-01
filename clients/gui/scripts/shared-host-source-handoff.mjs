@@ -597,6 +597,13 @@ async function integration() {
     const hostClient = new HostClient();
     try {
       await hostClient.connect(hostHome);
+      const retirement = await hostClient.retirementStatus(result.migrationId);
+      assert.equal(
+        retirement.state,
+        "completed",
+        "controlled import retires covered legacy secrets",
+      );
+      assert.equal(retirement.next, null, "read-only status exposes no derivative payload");
       const binding = result.receipt.bindings.find(
         (entry) => entry.alias.legacyProjectId === ids[0],
       );
@@ -684,6 +691,7 @@ async function integration() {
         "old Desktop opens two real projects and its lifecycle persists exact Runtime cleanup receipts",
         "existing singleton acquired before import",
         "dummy safeStorage credential imported",
+        "controlled import completes credential retirement before returning ready",
         "registry and Store bytes retained",
         "journal fences cover absent files",
         "original request/admission/Remote identities and coexisting UNKNOWN retained",

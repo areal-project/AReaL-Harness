@@ -17,6 +17,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub(crate) mod retirement;
+
 pub(crate) const FENCE: &str = "AREAL_HOST_MIGRATED\n";
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -173,6 +175,9 @@ impl Migration {
             vault: vault::Vault::new(home),
         };
         for record in migration.records()? {
+            if let Some(operation) = migration.retirement_operation(&record, id)? {
+                return Ok(Some(operation));
+            }
             if record.request_id == id || record.request_aliases.iter().any(|alias| alias == id) {
                 return Ok(Some(json!({
                     "requestId":id,
@@ -351,6 +356,9 @@ impl Migration {
     }
     pub fn operation(&self, id: &str) -> Result<Option<Value>> {
         for mut r in self.records()? {
+            if let Some(operation) = self.retirement_operation(&r, id)? {
+                return Ok(Some(operation));
+            }
             if r.request_id == id || r.request_aliases.iter().any(|alias| alias == id) {
                 return Ok(Some(
                     json!({"requestId":id,"method":"gui.import","state":if self.committed(&r)?.is_some(){"completed"}else{"acceptedPending"},"result":self.result(&r)?}),
