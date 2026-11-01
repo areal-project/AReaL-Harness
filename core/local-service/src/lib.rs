@@ -13,7 +13,7 @@ pub use client::{
     list, operation, probe, reconnect, recover_crashed, restart, rpc, select, status,
     status_with_recovery, stop, stop_operation, stop_with_generation,
 };
-pub use spec::{LaunchSpec, LocalArgs, parse_agent_profile};
+pub use spec::{LaunchContext, LaunchSpec, LocalArgs, parse_agent_profile};
 
 pub fn home() -> anyhow::Result<std::path::PathBuf> {
     // 服务登记可单独隔离；配置位置继续由 core/config 的 home 规则决定。

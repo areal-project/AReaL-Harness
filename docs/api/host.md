@@ -2,11 +2,11 @@
 
 # 共享 Host 协议
 
-状态为目标契约，实施中。本文固定 H0，不代表运行验收通过。支持的能力由 `hello` 声明；未声明的能力不可用。另见[实施规格](../development/shared-host-spec.md)、[所有权决策](../adr/0016-shared-host.md)与现有[每项目服务契约](local-service.md)。
+本文包含 H1 实现与后续目标契约。H1 提供认证后的项目管理、停止回执、订阅与旧服务迁移。`hello` 声明 `projects`、`stopOperations`、`subscriptions` 和 `legacyMigration`，尚不提供 `updates`。GUI 生命周期、密钥库迁移、Remote 接入与服务管理器交付属于后续工作。协议定义不代表运行或安装包验收通过。另见[实施规格](../development/shared-host-spec.md)、[所有权决策](../adr/0016-shared-host.md)与[每项目服务契约](local-service.md)。
 
 ## 传输与认证
 
-规范化 `AREAL_HARNESS_HOME` 中只有一个 Host 独占 `host.lock`，默认 home 为 `~/.areal`，权限 0700。Host 描述包含 `version`、稳定 `hostId`、每次启动更新的 `generation`、`socketPath`、`authFile`、`pid` 和可执行版本。PID 仅供诊断，不作为发信号或接管依据。Unix 路径超长时沿用现有私有短路径 `control.sock` 派生规则。socket 与认证文件权限 0600，必须归相同 UID 所有，不得经不可信符号链接解析。
+规范化服务 home 中只有一个 Host 独占 `host.lock`。H1 按 `AREAL_HARNESS_SERVICE_HOME`、`AREAL_HARNESS_HOME`、`~/.areal` 的顺序选择 home，权限为 0700。Host 描述包含 `version`、稳定 `hostId`、每次启动更新的 `generation`、`socketPath`、`authFile`、`pid` 和可执行版本。PID 仅供诊断，不作为发信号或接管依据。Unix 路径超长时沿用现有私有短路径 `control.sock` 派生规则。socket 与认证文件权限 0600，必须归相同 UID 所有，不得经不可信符号链接解析。
 
 本机 Unix domain socket 使用逐行 UTF-8 JSON，每帧一个请求，最大 1 MiB。分发前校验 peer UID 与 Host UID 相同，并核对 `hello.params.authToken` 与当前认证文件秘密。认证失败关闭连接。token 不进入命令行参数、URL、日志、状态事件或 Remote 响应。认证前只接受 `hello`，重连重新握手。认证 token 随 Host generation 轮换。本契约授予可信本机用户访问权，不隔离该用户自己的进程。
 
@@ -28,7 +28,15 @@
 
 监督 owner 为 `{kind:"host",hostId,generation}`，标识持有 service-host 生命期管道的进程。它与 Remote Noise peer 身份、设备授权分别建模。H1 与 H2 保留 `{kind:"gui",appRunId,profile}` 的运行支持，直到 GUI 生命周期迁移完成；之后只保留旧身份识别。旧 GUI 不能接管新 Host-owned 服务。不能静默改变严格 service-v1 的旧客户端解码行为，必须协商 Host-aware 描述或返回能力错误。
 
-`LaunchInputs` 包含 `workspace`，可选绝对路径 `configPath`、`deploymentPath`、`mcpConfigPath`、`skillsPaths:string[]`，以及允许的非秘密字符串环境映射 `environment:object`。客户端发送前解析路径与配置上下文；Host 在边界校验规范路径、登记一致性、配置和允许的环境键。秘密只通过认证连接的独立 `credentials:object` 字段传递，键为配置实际引用的环境名，值为秘密字符串。该字段禁止 Debug 输出、日志、状态投影和普通 JSON 持久化。H1 将秘密保存在当前 Host 的项目私有内存中，并仅注入该项目子进程；重启后缺失时返回 `credentialsRequired`，不能沿用另一个客户端的环境。H2 将这些值迁入密钥库，启动回执只保存作用域化引用。对客户端生成的临时输入，`project.ensure` 在确认 ready 前将完整引用内容复制到 Host 持有的项目 launch 目录，并在持久启动回执记录内容摘要与路径。配置变更继续遵守既有服务 fingerprint 与安全重启规则。启动和子进程执行都不改变 Host 进程的全局 cwd 或环境，子进程只使用已验证输入派生的专属 cwd 和环境。CLI 退出并删除临时目录不能使运行中服务失效。
+`LaunchInputs` 必须包含绝对路径 `workspace`、`cwd`、`configHome` 与 `options:LocalArgs`，另有可选绝对路径 `homedir`、`configPath`、`deploymentPath`，非秘密字符串映射 `environment` 和 `credentialNames:string[]`。外层字段使用 camelCase；`options` 保留 `core/local-service/src/spec.rs` 中的 snake_case 字段，可选参数值允许 null。它包含模型选择、权限、沙箱与 Runtime 限额、工作区/数据/配置路径，以及 `read_only_path`、`task_credential_command`、`no_deployment_mcp`。CLI 参数使用连字符。CLI 连接后通过 Core 配置 run-scoped MCP；Host 启动输入携带相应凭据名，不携带 `mcpConfigPath`。Skill 根目录属于部署条目，不另设 `skillsPaths`。
+
+客户端发送前解析路径与启动上下文。Host 启动前校验登记一致性、绝对路径、允许的环境名与配置。秘密通过认证连接中的独立字符串映射 `project.ensure.credentials` 传递；`credentialNames` 标识所需条目，也包括生成的 MCP 秘密引用。凭据值不进入 Debug 输出、日志、状态或持久操作参数。H1 将它们保存在当前 Host generation 的项目私有内存中；缺失必要值返回 `credentialsRequired`。密钥库持久化属于 H2。
+
+发布 ready 前，Host 将部署 JSON 和引用的 Skill 树快照到 `<home>/host/launch/<project-id-digest>/`，保留嵌套资源和可执行位。重写后的路径保存在 `inputs.json`，部署与 Skill 路径包含内容摘要。Core 对同一 `id/revision` 保留显式部署的 Skill 根目录，自动发现及刷新不会覆盖该快照；不同 revision 继续按现有发现规则处理。CLI 随后可移除自己的临时部署目录。普通 TOML 保留原路径与既有配置监听行为，配置兼容性与安全重启规则继续生效。各子进程使用提交的 cwd 和环境，Host 不修改进程全局 cwd 或环境。`configHome` 保留调用端的配置、插件与 Hook 根目录，与 Host registry home 独立；Host 仅把 `AREAL_HARNESS_SERVICE_HOME` 指向自身 registry。
+
+`noAutoRestart` 默认为 false。设为 true 时，ensure 不会自动重启已有但不兼容的服务；它仍是显式激活，可以启动已停止项目。自动重连只读取 `host.status`，配置变更需显式重新打开或重启。
+
+`projects.register` 可在项目身份、工作区、数据目录和来源不变时更新 `defaultBinding`。普通登记只修改 Host 项目目录，允许登记忙碌的旧服务。`bindExisting` 默认为 false；兼容命令 `areal service bind` 设为 true，由 Host 核验停止状态与 Store 工作区归属，再提交旧工作区映射和默认登记。失败保留原操作回执。
 
 ## 方法参考
 
@@ -39,8 +47,8 @@
 | `hello` | `protocolVersions:number[]`、`capabilities:string[]`、`authToken:string` | `{version,hostId,generation,capabilities,executableVersion}` | `versionMismatch` | 只读握手。重连后重做，不按可执行版本推断能力。 |
 | `host.status` | `{}` | `{hostId,generation,state,projects:ProjectStatus[],restartPending,stopIntent,capabilities}` | 无 | 只读快照，不激活项目。 |
 | `projects.list` | `{}` | `{projects:ProjectRegistration[]}` | 无 | 只读持久登记，包含已停止项目。 |
-| `projects.register` | `{requestId,expectedGeneration,registration:ProjectRegistration}` | `{registration,created:boolean}` | `projectConflict`、`dataDirConflict`、`defaultBindingConflict`、`migrationConflict` | 在 Host 锁下持久化键、规范参数与结果。同键同参数返回原结果，参数变化返回 `requestConflict`。仅本机。 |
-| `project.ensure` | `{requestId,expectedGeneration,projectId,launchInputs?:LaunchInputs}` | `{project:ProjectStatus,service?:Service}` | `projectNotFound`、`configurationConflict`、`migrationBlocked`、`credentialsRequired` | 显式用户激活，可清除该项目已结算的停止意图。同键返回原受理或结果。同一绑定的并发 ensure 收敛到一个服务。只有核验后的 ready Host-owned 服务返回 `service`。`legacyPending` 只返回状态，不声称已接管。 |
+| `projects.register` | `{requestId,expectedGeneration,registration:ProjectRegistration,bindExisting?:boolean}` | `{registration,created:boolean}` | `projectConflict`、`dataDirConflict`、`defaultBindingConflict`、`migrationConflict` | 在 Host 锁下持久化键、规范参数与结果。同键同参数返回原结果，参数变化返回 `requestConflict`。仅本机。 |
+| `project.ensure` | `{requestId,expectedGeneration,projectId,launchInputs?:LaunchInputs,credentials?:object,noAutoRestart?:boolean}` | `{project:ProjectStatus,service?:Service}` | `projectNotFound`、`configurationConflict`、`migrationBlocked`、`credentialsRequired` | 显式用户激活，可清除该项目已结算的停止意图。同键返回原受理或结果。同一绑定的并发 ensure 收敛到一个服务。只有核验后的 ready Host-owned 服务返回 `service`。`legacyPending` 只返回状态，不声称已接管。 |
 | `project.stop` | `{requestId,expectedGeneration,projectId,serviceGeneration,strategy:"ifIdle"\|"cancel"}` | `StopReceipt` | `projectNotFound`、`generationMismatch`、`requestConflict` | drain 前持久化。重复键读取同一操作，不重复 drain。忙碌或结算未知用回执状态表达。 |
 | `host.stop` | `{requestId,expectedGeneration,strategy:"ifIdle"\|"cancel"}` | `HostStopReceipt` | `requestConflict` | 分发前冻结目标代际并持久化逐项目子操作 ID。重复键返回原汇总，不存在全局事务。 |
 | `host.operation` | `{requestId}` | `{operation:ProjectMutationReceipt\|StopReceipt\|HostStopReceipt\|UpdateReceipt\|null}` | 无 | 跨 Host 重启只读核查。`null` 是缺少证据，不授权重放。 |

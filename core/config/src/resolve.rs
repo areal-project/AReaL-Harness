@@ -232,6 +232,14 @@ const ENV: &[(&str, &str, &str)] = &[
     ("AREAL_HARNESS_LOG_FILTER", "RUST_LOG", "logging.filter"),
 ];
 
+/// 已知的非秘密配置覆盖键；配置根目录由调用方单独提供。
+pub fn is_config_environment_name(name: &str) -> bool {
+    name == "ASK_PERMISSIONS"
+        || ENV
+            .iter()
+            .any(|(key, alias, _)| name == *key || (!alias.is_empty() && name == *alias))
+}
+
 fn env(inputs: &ConfigInputs, name: &str) -> Result<Option<Entry>> {
     let source = ConfigSource::Env { name: name.into() };
     inputs

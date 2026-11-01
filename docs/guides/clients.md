@@ -31,9 +31,9 @@ target/debug/areal exec --workspace /absolute/task 'Describe the task'
 target/debug/areal --endpoint ws://127.0.0.1:4500 --auth-file /absolute/core-data/security/auth.json
 ```
 
-省略 endpoint 时，交互式 TUI 连接共享 Core/Runtime，监听随机 loopback 端口。同一工作区多个窗口复用服务，关闭窗口保留后台服务和任务。`--prompt`、`--goal`、`--input-file` 默认使用 owned 模式，退出后清理所拥有的服务；`--local-mode shared|owned` 可覆盖默认选择。显式 endpoint（别名 `--remote`）只连接已有服务，不能与本地部署参数混用。
+省略 endpoint 时，交互式 TUI 与 `--prompt`、`--goal`、`--input-file` 无界面入口都通过共享 Host 打开项目。客户端退出后，Host-owned Core/Runtime 与任务继续运行。`--local-mode owned` 保留为兼容写法，使用共享生命周期并沿用原默认 Profile 选择；`--local-mode shared` 同样使用 Host。显式 `--endpoint`（别名 `--remote`）只连接已有服务，不能与本地部署参数混用。
 
-共享模式默认在 `~/.areal/instances/` 下按工作区保存数据；显式数据目录配置保持优先级。旧 `~/.areal-harness/state` 历史须使用 `--data-dir`，或停止旧 Core 后绑定。模型 TOML 配置自动热更新；其他 TOML 变化等待后台工作结算后重启，权限/部署参数变化需显式 restart。发现、迁移、日志和 Desktop 接入见[本地服务契约](../api/local-service.md)。
+本地 TUI 与 Web 默认在 `~/.areal/instances/` 下按工作区保存数据，显式数据目录配置优先。旧 `~/.areal-harness/state` 历史须使用 `--data-dir`，或停止旧 Core 后绑定。模型 TOML 自动热更新；其他配置变化需显式重新打开或执行 `areal service restart`，并遵守既有空闲检查。自动重连与 `Ctrl-R` 只观察已有服务、恢复快照，不激活项目或重放请求。详见[本地服务契约](../api/local-service.md)。
 
 TUI 的模型凭据来自 Core 启动时的环境。先在终端导出密钥变量，再通过供应商 TOML 的 `api_key_env = "MY_MODEL_KEY"`、`AREAL_HARNESS_API_KEY_ENV=MY_MODEL_KEY` 或 `--api-key-env MY_MODEL_KEY` 指定变量名；优先级为 CLI、环境覆盖、TOML。GUI 保存的加密密钥不会自动进入独立 TUI 的环境，共享模型目录也不共享这些密钥。缺少或无效的凭据会显示环境变量名，会话创建失败后可退出修正配置。
 
@@ -49,9 +49,20 @@ target/debug/areal service stop --json
 
 `areal exec 'prompt' --output-format stream-json --verbose` 提供非交互 CLI，`areal serve` 启动持续服务；参数、认证、恢复与退出码见 [CLI 契约](../api/claude-cli.md)。Web 位于服务的 `/ui`；通过 `areal web` 打开会自动登录，无需复制 token。直接打开地址且没有有效会话时，可在设置中填写服务数据目录 `security/auth.json` 中的本地 token。
 
-本地 `areal exec` 通过受监督的 launcher 拥有 Core/Runtime；macOS 复用可信服务启动适配，需要可用的 `/usr/bin/python3`，Linux 直接启动。CLI 退出时等待实际 launcher 的清理回执；启动阶段提前退出会报告其退出状态，就绪或认证文件无效也会先回收已启动的 owned 服务。显式 `--endpoint` 连接不拥有远端服务生命周期。
+本地 `areal exec` 与 `-p` 将启动所有权交给共享 Host。每个 run 继续使用 `<home>/cli/runs/<runId>/state` 与 `<home>/cli/sessions/` 会话映射，`--resume` 重新打开原 run。Host 在 ready 前保存临时部署和 Skill 输入快照，并在内存保存项目凭据。CLI 退出只断开连接，不停止 Core/Runtime。显式 `--endpoint` 也由服务宿主管理生命周期。macOS 可信服务链需要 `/usr/bin/python3`。GUI 迁移完成前仍使用独立的应用生命周期。
 
 TUI 的 `--input-file /absolute/input.json` 与 `--prompt` 互斥，接受最多 2 MiB 的 Core Input 数组，如 `[{"type":"text","text":"Inspect the image"},{"type":"localImage","path":"/absolute/image.png"}]`。本地模式和显式 endpoint 均支持，可信 launcher 可用 `--tui --input-file` 透传；媒体路径与字段仍按 [Core API](../api/core.md) 验证。
+
+使用 `areal host list --json` 查询持久项目 ID，包括已停止项目。`status` 观察运行中的 Host；`ensure` 显式启动或打开项目。`stop` 默认只在空闲时结算，`--cancel` 显式取消工作。响应丢失后使用原 request ID 查询。
+
+```sh
+areal host run
+areal host status --json
+areal host list --json
+areal host ensure --workspace /absolute/task --json
+areal host stop --request-id UUID --expected-generation GENERATION --json
+areal host operation UUID --json
+```
 
 ## Web 操作与外观
 

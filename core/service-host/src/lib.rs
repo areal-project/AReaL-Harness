@@ -209,15 +209,29 @@ async fn run_host(
     let launcher_exited = child
         .try_wait()
         .is_ok_and(|status| status.is_some_and(|status| status.code().is_some()));
-    let crash_proof = storage::read::<storage::LauncherCleanup>(&run.join("cleanup.json"));
+    let launcher_proof = storage::read::<storage::LauncherCleanup>(&run.join("cleanup.json"));
+    let cleanup_proof = launcher_proof.ok().filter(|proof| {
+        launcher_exited
+            && process_cleanup.is_ok()
+            && proof.identity == identity
+            && proof.runtime_cleanup_confirmed
+    });
+    if cleanup_proof.is_some() {
+        storage::write(
+            &directory.join("cleanup.json"),
+            &storage::CleanupReceipt {
+                version: VERSION,
+                identity: identity.clone(),
+                owner: spec.owner.clone(),
+                components: spec.components.clone(),
+                cleanup_confirmed: true,
+            },
+        )?;
+    }
     if result.is_err()
-        && launcher_exited
         && !shutdown.is_cancelled()
-        && process_cleanup.is_ok()
-        && let Ok(proof) = crash_proof
-        && proof.identity == identity
+        && let Some(proof) = cleanup_proof
         && proof.unexpected_core_exit
-        && proof.runtime_cleanup_confirmed
         && !storage::has_admitted_stop_receipt(&directory, &identity)?
         && let Ok(record) = storage::read::<Service>(&directory.join("service.json"))
         && record.identity == identity

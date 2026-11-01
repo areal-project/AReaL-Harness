@@ -1,5 +1,6 @@
 //! 统一产品命令；子命令只装配已有入口，历史、工具循环和队列仍属于 Core。
 mod cloud;
+mod host;
 mod local;
 mod plugins;
 mod rpc;
@@ -46,6 +47,11 @@ enum Command {
     Service {
         #[command(subcommand)]
         command: service::ServiceCommand,
+    },
+    /// 管理每用户共享 Host 与项目生命周期。
+    Host {
+        #[command(subcommand)]
+        command: host::HostCommand,
     },
     /// 管理共享 Core 的 Codex 插件包。
     Plugin(plugins::Options),
@@ -236,6 +242,7 @@ async fn main() {
             execute(*cli).await;
             return;
         }
+        Some(Command::Host { command }) => host::execute(command).await,
         Some(Command::Service { command }) => {
             service_result(service::execute(command).await);
             return;

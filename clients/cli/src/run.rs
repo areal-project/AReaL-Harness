@@ -174,11 +174,8 @@ pub async fn execute(args: &Cli) -> Result<i32> {
             "unsupported effort"
         );
     }
-    let mut local = local::Local::start(args).await?;
-    let result = execute_connected(args, &local).await;
-    let cleanup = local.close().await;
-    cleanup?;
-    let (code, results) = result?;
+    let local = local::Local::start(args).await?;
+    let (code, results) = execute_connected(args, &local).await?;
     for value in results {
         output_result(args, &value)?;
     }

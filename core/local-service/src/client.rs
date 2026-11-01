@@ -112,7 +112,12 @@ async fn ensure_inner(
                 if Instant::now() >= deadline {
                     check_model_restart(&state)?;
                     // 重连可持有旧 LaunchSpec；停止前重新校验文件和当前环境，避免停掉可用服务。
-                    let current = LaunchSpec::in_bin(&spec.args, spec.bin_dir.clone())?;
+                    let current = match &spec.context {
+                        Some(context) => {
+                            LaunchSpec::in_context(&spec.args, spec.bin_dir.clone(), context)?
+                        }
+                        None => LaunchSpec::in_bin(&spec.args, spec.bin_dir.clone())?,
+                    };
                     ensure!(
                         current.service_id == spec.service_id
                             && current.fingerprint == spec.fingerprint
@@ -206,6 +211,20 @@ async fn launch_unlocked(
         }
         None => crate::native_process::TrustedCommand::persistent(&binary)?,
     };
+    if let Some(context) = &spec.context {
+        command.env_clear().envs(&context.environment);
+        if let Some(lifetime) = lifetime {
+            command
+                .env(
+                    gui_owner::SERVICE_LIFETIME_FD_ENV,
+                    lifetime.as_raw_fd().to_string(),
+                )
+                .env(
+                    gui_owner::SERVICE_OWNER_ENV,
+                    serde_json::to_string(spec.owner.as_ref().unwrap())?,
+                );
+        }
+    }
     command
         .env_remove(gui_owner::OWNER_ENV)
         .env_remove(gui_owner::LIFETIME_FD_ENV)

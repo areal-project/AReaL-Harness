@@ -262,6 +262,8 @@ Each Core applies and confirms independently. The GUI provider Save action uses 
 
 Trusted deployment manifests accept skills as `{id,revision,root,metadata?:{name,description}}`, with root relative to the manifest directory. When metadata is omitted, registration parses only the bounded SKILL.md header without scanning attachments. Explicit deployments and discovery share the same on-demand read behavior.
 
+When explicit deployment and automatic discovery provide the same `id/revision`, the explicit deployment owns the resource root. Discovery refresh does not replace that root. Other revisions remain discoverable, and explicit redeployment can update the root. Shared Host deployments reference transferred Skill snapshots, which remain usable after removal of the client source directory.
+
 `areal/skill/list` accepts either `{threadId}` or `{agentProfile:{id,revision}}`. Drafts can observe registered Profile metadata without creating a Thread or reading content. `areal/skill/read` accepts the same mutually exclusive contexts for draft previews of resources allowed by that Profile. Profile reads do not register Thread loading state; sending reads again in the owning Thread. Composer stores skill references and sources, reads SKILL.md before sending, and attaches it to the current message. Read failures preserve the draft.
 
 Entries in `areal/skill/list` data add name/description; resources is always null instead of a complete resource inventory. available and resourceRoot retain their meaning. Initial model prompts include only names and bounded descriptions; agents call skill_read for full instructions.

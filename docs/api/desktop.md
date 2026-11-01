@@ -260,6 +260,8 @@ Desktop 首先按相同 generation 查询状态并尝试重连。仅在 `status 
 
 可信部署清单的 skills 接受 `{id,revision,root,metadata?:{name,description}}`；root 相对清单目录。省略 metadata 时只解析 SKILL.md 的有界文件头，不扫描附件；显式部署和自动发现使用同一种按需读取行为。
 
+相同 `id/revision` 同时由显式部署和自动发现提供时，使用显式部署的资源根目录。发现刷新不覆盖该根目录；不同 revision 仍可发现，显式重新部署可以更新资源根目录。共享 Host 的部署指向已转移的 Skill 快照，客户端源目录移除不影响该快照。
+
 `areal/skill/list` 接受 `{threadId}`；新草稿可用 `{agentProfile:{id,revision}}` 观察已登记 Profile 的技能，两者互斥。Profile 目录查询不创建 Thread、不读取正文；`areal/skill/read` 同样接受两种互斥上下文，以便草稿预览当前 Profile 允许的资源。Profile 读取不登记 Thread 加载状态，发送前仍在所属 Thread 中重新读取。Composer 保存技能引用与来源，发送前读取 SKILL.md 并附加到当前消息；读取失败保留草稿。
 
 `areal/skill/list` 的 data 条目增加 name/description，resources 统一为 null（不再返回完整资源清单），available 和 resourceRoot 保持原意。模型初始提示只注入名称和有界描述；需要正文时调用 skill_read。

@@ -1,5 +1,5 @@
 //! 可信桌面 Main 可直接 exec 此 JSON 入口；浏览器只访问 Core HTTP/WS。
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use areal_local_service::{
     LaunchSpec, LocalArgs,
     gui_owner::{self, GuiLifetime},
@@ -144,22 +144,28 @@ pub async fn execute(command: ServiceCommand) -> Result<()> {
             no_auto_restart,
             ..
         } => {
+            if owner.is_none() {
+                let mut input = areal_host::ResolveProject::from_local_args(&local)?;
+                input.no_auto_restart = no_auto_restart;
+                let opened = areal_host::Client::connect_or_start()
+                    .await?
+                    .open(input)
+                    .await?;
+                println!("{}", serde_json::to_string_pretty(opened.service()?)?);
+                return Ok(());
+            }
             let mut spec = LaunchSpec::resolve(&local)?;
             spec.owner = owner.clone();
-            serde_json::to_value(if owner.is_some() {
+            serde_json::to_value(
                 areal_local_service::ensure_with_lifetime(
                     &spec,
-                    lifetime.as_ref().ok_or_else(|| {
-                        anyhow::anyhow!("GUI ensure requires an inherited lifetime descriptor")
-                    })?,
+                    lifetime
+                        .as_ref()
+                        .context("GUI ensure requires an inherited lifetime descriptor")?,
                     no_auto_restart,
                 )
-                .await?
-            } else if no_auto_restart {
-                areal_local_service::ensure_without_restart(&spec).await?
-            } else {
-                areal_local_service::ensure(&spec).await?
-            })?
+                .await?,
+            )?
         }
         ServiceCommand::Recover {
             local,
@@ -246,6 +252,26 @@ pub async fn execute(command: ServiceCommand) -> Result<()> {
             request_id,
             ..
         } => {
+            if owner.is_none() {
+                let operation = match areal_host::Client::connect().await {
+                    Ok(client) => client.operation(&request_id).await?,
+                    Err(_) => areal_host::operation_offline(&root, &request_id)?,
+                };
+                if let Some(operation) = operation {
+                    ensure!(
+                        operation["serviceId"] == target.resolve(&root).await?
+                            && operation["serviceGeneration"] == expected_generation,
+                        "operation does not match the requested service generation"
+                    );
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(
+                            &serde_json::json!({"operation":service_stop_receipt(operation)})
+                        )?
+                    );
+                    return Ok(());
+                }
+            }
             serde_json::json!({"operation": areal_local_service::operation(
                 &root, &target.resolve(&root).await?, &expected_generation, &request_id,
             ).await?})
@@ -258,6 +284,38 @@ pub async fn execute(command: ServiceCommand) -> Result<()> {
             ..
         } => {
             let id = target.resolve(&root).await?;
+            if owner.is_none() {
+                let service = areal_local_service::status(&root, &id).await?;
+                let client = areal_host::Client::connect_or_start().await?;
+                let project = registered_service(&client, &service).await?;
+                let receipt = client
+                    .stop_project(
+                        request_id
+                            .as_deref()
+                            .unwrap_or(&uuid::Uuid::new_v4().to_string()),
+                        &project.project_id,
+                        expected_generation
+                            .as_deref()
+                            .unwrap_or(&service.identity.generation),
+                        if cancel {
+                            areal_host::StopStrategy::Cancel
+                        } else {
+                            areal_host::StopStrategy::IfIdle
+                        },
+                    )
+                    .await?;
+                let value = if request_id.is_some() {
+                    service_stop_receipt(receipt)
+                } else {
+                    ensure!(
+                        receipt["state"] == "completed",
+                        "service stop did not complete: {receipt}"
+                    );
+                    serde_json::to_value(areal_local_service::status(&root, &id).await?)?
+                };
+                println!("{}", serde_json::to_string_pretty(&value)?);
+                return Ok(());
+            }
             if let Some(request_id) = request_id {
                 serde_json::to_value(
                     areal_local_service::stop_operation(
@@ -279,15 +337,54 @@ pub async fn execute(command: ServiceCommand) -> Result<()> {
                 serde_json::to_value(service)?
             }
         }
-        ServiceCommand::Restart { local, cancel, .. } => serde_json::to_value(
-            areal_local_service::restart(&LaunchSpec::resolve(&local)?, cancel).await?,
-        )?,
+        ServiceCommand::Restart { local, cancel, .. } => {
+            if owner.is_some() {
+                anyhow::bail!("GUI restart requires its generation-bound lifecycle operation");
+            }
+            let input = areal_host::ResolveProject::from_local_args(&local)?;
+            let client = areal_host::Client::connect_or_start().await?;
+            let opened = client
+                .restart(
+                    input,
+                    if cancel {
+                        areal_host::StopStrategy::Cancel
+                    } else {
+                        areal_host::StopStrategy::IfIdle
+                    },
+                )
+                .await?;
+            serde_json::to_value(opened.service()?)?
+        }
         ServiceCommand::Bind {
             workspace,
             data_dir,
             ..
         } => {
-            serde_json::json!({"dataDir":areal_local_service::bind(&root, &workspace, &data_dir).await?})
+            let data_dir = if owner.is_some() {
+                areal_local_service::bind(&root, &workspace, &data_dir).await?
+            } else {
+                let data_dir = data_dir.canonicalize()?;
+                let client = areal_host::Client::connect_or_start().await?;
+                let existing = client
+                    .list()
+                    .await?
+                    .into_iter()
+                    .find(|p| p.data_dir == data_dir);
+                let project = areal_host::ProjectRegistration {
+                    project_id: existing
+                        .map(|p| p.project_id)
+                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                    workspace: workspace.canonicalize()?,
+                    data_dir: data_dir.clone(),
+                    source: areal_host::ProjectSource::Cli,
+                    default_binding: true,
+                };
+                client
+                    .bind_registration(&uuid::Uuid::new_v4().to_string(), project)
+                    .await?;
+                data_dir
+            };
+            serde_json::json!({"dataDir":data_dir})
         }
     };
     println!("{}", serde_json::to_string_pretty(&value)?);
@@ -295,7 +392,11 @@ pub async fn execute(command: ServiceCommand) -> Result<()> {
 }
 
 pub async fn web(local: LocalArgs, json: bool) -> Result<()> {
-    let service = areal_local_service::ensure(&LaunchSpec::resolve(&local)?).await?;
+    let opened = areal_host::Client::connect_or_start()
+        .await?
+        .open(areal_host::ResolveProject::from_local_args(&local)?)
+        .await?;
+    let service = opened.service()?;
     if !json {
         let login_url = areal_local_service::browser_login_url(&service).await?;
         let opener = if cfg!(target_os = "macos") {
@@ -319,4 +420,44 @@ pub async fn web(local: LocalArgs, json: bool) -> Result<()> {
     }
     println!("{}", serde_json::to_string_pretty(&service)?);
     Ok(())
+}
+
+async fn registered_service(
+    client: &areal_host::Client,
+    service: &areal_protocol::service::Service,
+) -> Result<areal_host::ProjectRegistration> {
+    if let Some(project) = client
+        .list()
+        .await?
+        .into_iter()
+        .find(|p| p.data_dir == service.identity.data_dir)
+    {
+        return Ok(project);
+    }
+    client
+        .register(
+            &uuid::Uuid::new_v4().to_string(),
+            areal_host::ProjectRegistration {
+                project_id: uuid::Uuid::new_v4().to_string(),
+                workspace: service.identity.workspace.clone(),
+                data_dir: service.identity.data_dir.clone(),
+                source: areal_host::ProjectSource::Cli,
+                default_binding: false,
+            },
+        )
+        .await
+}
+
+fn service_stop_receipt(receipt: serde_json::Value) -> serde_json::Value {
+    let mut result = serde_json::json!({
+        "version":1, "requestId":receipt["requestId"], "serviceId":receipt["serviceId"],
+        "generation":receipt["serviceGeneration"], "cancel":receipt["strategy"]=="cancel",
+        "state":receipt["state"],
+    });
+    for name in ["message", "lifecycle"] {
+        if let Some(value) = receipt.get(name) {
+            result[name] = value.clone();
+        }
+    }
+    result
 }

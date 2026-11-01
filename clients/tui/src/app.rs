@@ -631,7 +631,7 @@ impl App {
         self.configuration_notice = if let Some(error) = configuration["error"].as_str() {
             Some(format!("Configuration unchanged: {}", safe_text(error)))
         } else if configuration["restartRequired"] == true {
-            Some("Configuration update pending · restarting when background work settles".into())
+            Some("Configuration update pending · explicitly reopen the project to apply".into())
         } else {
             None
         };

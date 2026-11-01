@@ -147,6 +147,7 @@ dependencies = [
  "anyhow",
  "areal-config",
  "areal-engine",
+ "areal-host",
  "areal-local-service",
  "areal-plugins",
  "areal-protocol",
@@ -227,6 +228,23 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "uuid",
+]
+
+[[package]]
+name = "areal-host"
+version = "0.1.7"
+dependencies = [
+ "anyhow",
+ "areal-config",
+ "areal-local-service",
+ "areal-protocol",
+ "fs2",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
  "uuid",
 ]
 
@@ -481,6 +499,7 @@ name = "areal-tui"
 version = "0.1.7"
 dependencies = [
  "anyhow",
+ "areal-host",
  "areal-local-service",
  "areal-protocol",
  "clap",

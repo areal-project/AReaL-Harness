@@ -2,7 +2,7 @@
 
 # Architecture and repository
 
-The shared Host [target design and stages](../development/shared-host-spec.en.md) are fixed by [ADR 0016](../adr/0016-shared-host.en.md) and the [Host API](../api/host.en.md). One Rust Host per user owns service supervision, registrations, credentials, and Gateway; Core retains execution and history authority. The source ownership below describes the pre-migration implementation. Report Host-owned and `legacyPending` separately. Remote, schedules, and provider subscriptions after GUI exit require H3 acceptance.
+The shared Host [target design and stages](../development/shared-host-spec.en.md) are fixed by [ADR 0016](../adr/0016-shared-host.en.md) and the [Host API](../api/host.en.md). One Rust Host per user owns service supervision, registrations, credentials, and Gateway; Core retains execution and history authority. `core/host` implements authenticated local control, project registration, and service lifetime for CLI/TUI/Web. Accepted work survives client disconnection. GUI retains application ownership; credentials and Gateway migration remain pending. Report Host-owned and `legacyPending` separately. Remote, schedules, and provider subscriptions after GUI exit require H3 acceptance.
 
 AReaL-Harness follows **Clients → Core → Runtime**. Core exclusively owns sessions, Turns, model loops and agent state. Runtime handles execution permissions, operation facts and resource lifecycles. Clients project the authoritative history rather than maintaining another one.
 

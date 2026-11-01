@@ -31,7 +31,15 @@ pub(super) struct Catalog {
     _legacy_skill_hashes: serde::de::IgnoredAny,
     #[serde(skip)]
     pub(crate) skills: BTreeMap<String, Skill>,
+    #[serde(skip)]
+    deployed_skill_revisions: BTreeSet<String>,
 }
+
+enum SkillSource {
+    Deployment,
+    Discovery,
+}
+
 impl Catalog {
     pub fn load(root: &Path) -> anyhow::Result<Self> {
         let path = root.join("desktop/catalog.json");
@@ -113,6 +121,7 @@ impl Engine {
         self.install_deployment_data(
             deployment,
             path.parent().context("deployment directory missing")?,
+            SkillSource::Deployment,
         )
     }
 
@@ -145,12 +154,18 @@ impl Engine {
                 workflows: vec![],
             },
             Path::new("/"),
+            SkillSource::Discovery,
         )?;
         *self.desktop.default_profile.write().unwrap() = Some(reference);
         Ok(())
     }
 
-    fn install_deployment_data(&self, deployment: Deployment, base: &Path) -> anyhow::Result<()> {
+    fn install_deployment_data(
+        &self,
+        deployment: Deployment,
+        base: &Path,
+        skill_source: SkillSource,
+    ) -> anyhow::Result<()> {
         anyhow::ensure!(
             deployment.profiles.len() <= 64 && deployment.skills.len() <= MAX_REGISTERED_SKILLS,
             "deployment catalog capacity exceeded: profiles {} (limit 64), skills {} (limit {MAX_REGISTERED_SKILLS})",
@@ -169,11 +184,17 @@ impl Engine {
                 .retain(|_, profile| profile.id != "areal-discovered-skills");
         }
         for location in deployment.skills {
+            let identity = key(&location.id, &location.revision);
+            if matches!(skill_source, SkillSource::Discovery)
+                && catalog.deployed_skill_revisions.contains(&identity)
+            {
+                continue;
+            }
             let skill = Skill::load(location, base)?;
-            let location = &skill.location;
-            catalog
-                .skills
-                .insert(key(&location.id, &location.revision), skill);
+            if matches!(skill_source, SkillSource::Deployment) {
+                catalog.deployed_skill_revisions.insert(identity.clone());
+            }
+            catalog.skills.insert(identity, skill);
         }
         for profile in deployment.profiles {
             anyhow::ensure!(

@@ -2,11 +2,11 @@
 
 # 共享本地服务
 
-共享 Host 是[目标设计，实施中](host.md)。本页描述现有每项目 service-host，不能将其名称中的 Host 等同于每用户共享 Host。共享 Host 仅对经受控重启迁移后的 Host-owned generation 提供客户端退出不影响执行的保证；`legacyPending` 保留旧生命周期。
+[共享 Host](host.md) 在 H1 中管理普通 CLI、TUI 与 Web 项目的生命周期。本页描述其底层每项目 service-host 与独立的旧 GUI 路径。客户端退出不影响执行的保证适用于经受控重启迁移并核验的 Host-owned generation；`legacyPending` 保留旧生命周期。GUI 迁移与后续 Host 交付阶段尚未完成。
 
-底层服务已支持 `{kind:"host",hostId,generation}` owner 和 `OwnerLifetime`。可信宿主独占生命期写端，通过 `AREAL_SERVICE_OWNER` 与 `AREAL_SERVICE_LIFETIME_FD` 向服务启动入口传递身份与读端。旧 GUI 环境入口仍可用，两组环境不能混用。描述中的 Host owner 是扩展类型，旧严格客户端必须拒绝未知类型，不能据此接管或停止服务。此底层能力不表示共享 Host 命令和客户端迁移已经完成。真实进程检查使用 `python3 scripts/host-lifetime-smoke.py`，验证 owner 匹配、管理客户端退出后服务存活及写端 EOF 后的整链清理。
+底层服务已支持 `{kind:"host",hostId,generation}` owner 和 `OwnerLifetime`。可信宿主独占生命期写端，通过 `AREAL_SERVICE_OWNER` 与 `AREAL_SERVICE_LIFETIME_FD` 向服务启动入口传递身份与读端。旧 GUI 环境入口仍可用，两组环境不能混用。描述中的 Host owner 是扩展类型，旧严格客户端必须拒绝未知类型，不能据此接管或停止服务。真实进程检查使用 `python3 scripts/host-lifetime-smoke.py`，验证 owner 匹配、管理客户端退出后服务存活及写端 EOF 后的整链清理。
 
-TUI、Web 启动入口和可信 Desktop Main 共用 `areal service`，由独立 `areal service-host` 托管一组 Core/Runtime。窗口只拥有连接。运行平台沿用[Runtime 边界](../guides/runtime.md)，不是系统级、多用户或远程 daemon。
+TUI 与 Web 启动入口通过共享 Host 激活项目。普通 `areal service ensure` 委托共享 Host，可信 Desktop Main 保留旧 GUI-owned 路径。每个 `areal service-host` 在生命周期宿主下管理一组 Core/Runtime。运行平台沿用[Runtime 边界](../guides/runtime.md)。
 
 ## 公共入口
 
@@ -136,17 +136,17 @@ target/debug/areal service bind --workspace /absolute/workspace \
 
 Store 当前写入版本、`areal/server/status.stateVersion` 与发行 `manifest.json.stateVersion` 均为 16；API 仍为 `areal.core.v1`，服务发现协议仍为 1。版本 16 增加持久执行计时与排队时间戳，保留版本 15 的主会话最后受理模型偏好，继续读取版本 1–15 的旧记录；旧 Core 不保证读取新记录，回退应恢复升级前备份。无派生元数据的旧记录可读取并在下一次写入升级；Fork/Side 记录必须具有受支持的会话版本和版本 14 的权限语义，不能仅降低记录版本来交给旧二进制。服务重启不重放创建或首问，结果不确定时先查 `areal/request/read`。能力声明不替代各平台原生权限验证、安装包或真实供应商的独立验收。
 
-macOS 的 owned TUI 与 Core/Runtime 一样通过可信系统父进程启动，交接真实 PID、退出状态和清理回执。交互启动在 TUI 读取前将控制终端交给其独立进程组，结算后恢复原前台组与终端属性；无终端输入不执行交接，Linux 保留原生直启。该适配只处理可信客户端生命周期，不执行模型命令、不改变 Runtime 权限或沙箱。
+交互式与无界面本地 TUI 都使用共享 Host，包括兼容选项 `--local-mode owned`。客户端退出后 Host-owned 服务继续运行。直接 `serve --tui` 仍由 launcher 管理，并沿用既有终端交接。
 
 ## 生命周期与恢复
 
-关闭窗口不结束 GUI 应用会话，活动 Turn/Goal 可继续，多个窗口可订阅同一 Thread。退出应用或 ⌘Q 则停止本应用全部 Desktop、Host、Core 和 Runtime；活动任务需要确认停止或取消退出，结算未完成时 Main 保持恢复入口。相同 Thread 的并发写入仍遵循 Core 的准入、CAS、队列及 requestId 规则。显式取消与关闭窗口是不同操作。
+H1 保留独立的旧 GUI 生命周期。关闭窗口不结束 GUI 应用会话，活动 Turn/Goal 可继续，多个窗口可订阅同一 Thread。退出应用或 ⌘Q 则停止本应用全部 Desktop、Host、Core 和 Runtime；活动任务需要确认停止或取消退出，结算未完成时 Main 保持恢复入口。相同 Thread 的并发写入仍遵循 Core 的准入、CAS、队列及 requestId 规则。显式取消与关闭窗口是不同操作。
 
-服务没有闲置退出计时器。模型文件更新保持 generation 和连接；其他 TOML 更新由 TUI 在后台工作结算后发起安全重启。Web 等客户端可运行 `areal service ensure` 或 `restart`；浏览器不拥有进程生命周期。默认 stop 检查 `restartSafe`、`activeGoals`、`pendingQueueItems`、`activeTasks`，再通过 `drain(strategy="ifIdle")` 在 Core 准入锁内复查；有工作或资源时拒绝且不暂停任务。仅等待触发的定时安排不阻止安全重启，安排保持启用。GUI 对旧后台同时检查显式任务、目标和队列计数；旧后台将空闲安排计为忙碌时，显式停止或更新恢复可在用户再次确认后暂停这些安排，保留历史，重启后需手动恢复。`--cancel` 通过 Core drain 取消并结算。历史工具/Hook UNKNOWN 保留在 `lifecycle.executionOutcomes.uninspectedUnknown` 与 `unresolvedTools` 中，仍阻止原 Thread 继续，但不阻止已完成物理结算的服务停止。Runtime 观察失败、活跃进程、Hook task scope 不确定及未确认清理仍会阻止成功。受理停止后禁止新工作；清理失败应查日志/权威状态，不能推断任务未发生。状态检查和 drain 之间新受理的工作遵循 drain 的等待/暂停规则。
+服务没有闲置退出计时器。模型文件更新保持 generation 和连接；其他 TOML 更新需在后台工作结算后显式重新打开或重启。Web 等客户端可运行 `areal service ensure` 或 `restart`；浏览器不拥有进程生命周期。默认 stop 检查 `restartSafe`、`activeGoals`、`pendingQueueItems`、`activeTasks`，再通过 `drain(strategy="ifIdle")` 在 Core 准入锁内复查；有工作或资源时拒绝且不暂停任务。仅等待触发的定时安排不阻止安全重启，安排保持启用。GUI 对旧后台同时检查显式任务、目标和队列计数；旧后台将空闲安排计为忙碌时，显式停止或更新恢复可在用户再次确认后暂停这些安排，保留历史，重启后需手动恢复。`--cancel` 通过 Core drain 取消并结算。历史工具/Hook UNKNOWN 保留在 `lifecycle.executionOutcomes.uninspectedUnknown` 与 `unresolvedTools` 中，仍阻止原 Thread 继续，但不阻止已完成物理结算的服务停止。Runtime 观察失败、活跃进程、Hook task scope 不确定及未确认清理仍会阻止成功。受理停止后禁止新工作；清理失败应查日志/权威状态，不能推断任务未发生。状态检查和 drain 之间新受理的工作遵循 drain 的等待/暂停规则。
 
 宿主控制 Core/Runtime 的启动和关闭；Rust launcher 持有独立进程与私有管道，Linux 不依赖 Python；macOS 使用可执行的 `/usr/bin/python3` 作为 service-host、launcher、Core 和 Runtime 的实际父进程。可信服务链只转交明确的租约/生命周期描述符，记录实际子 PID，并核对 wait/reap 退出回执；没有回执不会报告成功清理。PID 握手限时 10 秒，握手失败或取消清退本次独立组。握手后常规信号发给实际子进程；受监督桥在原宿主死亡时发送 TERM，45 秒后仍未退出则 KILL 并回收，覆盖 launcher 的 Core/Runtime 清理时间。独立 CLI 的持久 service-host 脱离首次客户端，不因 CLI 退出而停止。GUI Main 独占 Desktop 生命期管道写端，Desktop 独占每个 GUI Host 的写端。短命管理 CLI 只转交读端，Host 在启动前和服务期间监视 EOF。读端在非可信子进程创建前恢复 CLOEXEC，GUI owner 环境不传给 Core、Runtime 或模型工具。Main 或 Desktop 被强退时，EOF 启动已有有界清理链；中断和 UNKNOWN 不标成成功。配置预检也使用可信启动与退出回执，stdin 关闭，stdout/stderr 并发读取且每路最多 2 MiB，总时限 15 秒；超时、输出超限或调用取消后继续有界回收临时进程，取消清理等待者不会撤销回收。Runtime 保留原独立进程组超时清理。启动前检查解释器可用性；缺失时安装 Xcode Command Line Tools 后重试。Core 生命周期管道在 launcher 死亡后收到 EOF，Runtime 沿私有管道执行清理。宿主死亡由 launcher 的父进程检查触发清理；launcher 继承并持有实例锁，但不让 Core/Runtime 继承锁，即使宿主被强杀也会保持到 Core/Runtime 清理结束。旧 Core 锁未释放时不启动替代实例。`service.json` 是发现线索，客户端同时验证持锁状态、控制 socket 和经过认证的 Core 身份，不信任历史 PID 或端口。
 
-TUI 断线会重新发现服务，故障清理完成后可启动新 generation；显式 stop 会留下停止标记，现有窗口不会自动撤销停止。新开窗口或手工 ensure 可重新启动。恢复使用 `thread/resume` 获取快照，不重放请求；Goal 重启后暂停，工具 UNKNOWN 保持原有检查要求。
+TUI 重连只读取共享 Host 状态，并连接已有 ready 服务；不启动新 Host 或 Core generation，不清除停止意图，也不应用配置变更。新开客户端或显式 ensure 可激活项目。恢复使用权威 thread/resume 快照，不重放请求；Goal 重启后暂停，工具 UNKNOWN 保持原有检查要求。
 
 ### GUI 崩溃后的受保护替代
 
@@ -215,3 +215,5 @@ Core 仅在已授权 MCP 连接边界解析秘密引用，敏感值只绑定声�
 桌面 `fileOpen` 窄桥提供 `{ operation: "openHtml", projectId, threadId, path }`，成功返回 `{}`，文档打开回执仅供 Main 发送既有 reveal 事件。这是本地桌面桥能力，不是 Core RPC。宿主核对项目和会话归属，拒绝云端会话及尚未就绪的工作树。相对路径按该会话执行目录解析，也接受工作区外的绝对路径。请求路径与 realpath 后的路径都须以 `.html` 或 `.htm` 结尾，且目标须为普通文件。异步解析后重新核对执行目录归属，再通过 Main 的文档 owner 打开当前聊天内置 Browser，成功后发送既有 reveal 事件；该操作不使用编辑器打开偏好。工作区入口授权同目录树静态资产，外部入口只授权确切 HTML。显式外部打开才交给系统默认应用。范围、入口快照、撤销和 Agent 的 `browser_v1.openDocument` 见 [Browser 契约](browser.md#本地-html-文档)。打开错误显示可见反馈。通用 `open`、读取、定位与另存操作继续限制在工作区根内。
 
 回复中的本地 HTML 文件链接使用此操作，兼容历史 `file:///` 和 `file://localhost/` URI。Markdown 链接边界仅为 HTML 链接规范化本地 URI，保留文件名中的空格、非 ASCII 字符、百分号、`#` 和 `?`，不接受远程 authority；图片继续禁用 `file:` 协议。URI 中的查询与片段不参与文件路径解析，仅打开对应文档。
+
+service-host 在收到精确代际的 launcher 与 Runtime 清理证明后，将一般清理回执保存到私有服务目录的 `cleanup.json`。该回执也覆盖 owner 生命期 EOF，包含 `version`、`identity`、`owner`、`components` 和 `cleanupConfirmed`。共享 Host 核查代际、owner 及两个生命周期锁释放后才能启动后继。`crash.json` 仍仅授权既有意外 Core 退出恢复；一般清理回执不扩大该自动恢复条件。

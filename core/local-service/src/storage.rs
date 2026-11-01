@@ -152,6 +152,16 @@ pub struct CrashReceipt {
     pub cleanup_confirmed: bool,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CleanupReceipt {
+    pub version: u32,
+    pub identity: areal_protocol::service::Identity,
+    pub owner: Option<areal_protocol::service::Owner>,
+    pub components: std::collections::BTreeMap<String, String>,
+    pub cleanup_confirmed: bool,
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LauncherCleanup {

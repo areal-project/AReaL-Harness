@@ -31,9 +31,9 @@ target/debug/areal exec --workspace /absolute/task 'Describe the task'
 target/debug/areal --endpoint ws://127.0.0.1:4500 --auth-file /absolute/core-data/security/auth.json
 ```
 
-Without an endpoint, interactive TUI attaches to a shared Core/Runtime on a random loopback port. Multiple windows in the same workspace reuse it; closing a window leaves service and tasks running. `--prompt`, `--goal` and `--input-file` default to owned mode and clean up on exit. `--local-mode shared|owned` overrides this choice. Explicit endpoint (alias `--remote`) only connects and cannot be combined with local deployment arguments.
+Without an endpoint, interactive TUI and headless `--prompt`, `--goal`, and `--input-file` open projects through the shared Host. Closing the client leaves its Host-owned Core/Runtime and tasks running. `--local-mode owned` remains a compatibility spelling with shared lifetime; it retains its existing default Profile selection. `--local-mode shared` also uses the Host. Explicit `--endpoint` (alias `--remote`) only connects and cannot be combined with local deployment arguments.
 
-Shared mode defaults to a workspace-specific data directory under `~/.areal/instances/`; explicit data configuration keeps its precedence. To open old `~/.areal-harness/state` history, specify `--data-dir` or bind it after stopping the old Core. Model TOML changes reload automatically; other TOML changes restart after background work settles, while permission/deployment argument changes require explicit restart. Discovery, migration, logs and Desktop integration are specified in [local services](../api/local-service.en.md).
+Local TUI and Web default to workspace-specific data under `~/.areal/instances/`; explicit data configuration takes precedence. To open old `~/.areal-harness/state` history, specify `--data-dir` or bind it after stopping the old Core. Model TOML changes reload automatically. Other configuration changes require an explicit reopen or `areal service restart` and retain existing idle checks. Automatic reconnect and `Ctrl-R` observe existing services and restore snapshots without activating projects or replaying requests. See [local services](../api/local-service.en.md).
 
 TUI model credentials come from the environment that starts Core. Export the key variable in your terminal, then select its name with the provider's TOML `api_key_env = "MY_MODEL_KEY"`, `AREAL_HARNESS_API_KEY_ENV=MY_MODEL_KEY`, or `--api-key-env MY_MODEL_KEY`. CLI takes precedence over the environment override, then TOML. Encrypted keys saved by the GUI do not automatically enter an independent TUI's environment. Sharing the model catalog does not share those keys. Missing or invalid credentials identify the environment variable; you can exit after session creation fails and correct the configuration.
 
@@ -49,9 +49,20 @@ target/debug/areal service stop --json
 
 `areal exec 'prompt' --output-format stream-json --verbose` provides noninteractive CLI operation; `areal serve` starts a persistent service. See the [CLI contract](../api/claude-cli.en.md) for arguments, authentication, resume and exit codes. Web is served at `/ui`; `areal web` opens it and signs in automatically without copying a token. Direct visits without a valid session can use the local token from `security/auth.json` in the service data directory.
 
-Local `areal exec` owns Core/Runtime through a supervised launcher. macOS uses the existing trusted-service launch adapter and requires a working `/usr/bin/python3`; Linux launches directly. Normal CLI shutdown waits for the actual launcher's cleanup receipt. Early startup exits report their status, and invalid readiness or authentication files trigger cleanup of the owned services before returning an error. An explicit `--endpoint` connection does not own the remote service lifecycle.
+Local `areal exec` and `-p` transfer launch ownership to the shared Host. Each run retains `<home>/cli/runs/<runId>/state` and session mappings in `<home>/cli/sessions/`; `--resume` reopens that run. The Host snapshots temporary deployment and Skill inputs before readiness and keeps project credentials in memory. CLI exit disconnects without stopping Core/Runtime. Explicit `--endpoint` also leaves service lifecycle to its owner. On macOS the trusted service chain requires `/usr/bin/python3`. The GUI still uses its separate application-owned lifecycle until its migration completes.
 
 TUI `--input-file /absolute/input.json` is mutually exclusive with `--prompt` and accepts a Core Input array up to 2 MiB, for example `[{"type":"text","text":"Inspect the image"},{"type":"localImage","path":"/absolute/image.png"}]`. Both local and explicit-endpoint modes support it; the trusted launcher forwards `--tui --input-file`. Media paths and fields remain subject to [Core API](../api/core.en.md) validation.
+
+Use `areal host list --json` to find durable project IDs, including stopped projects. `status` observes a running Host; `ensure` explicitly starts or opens a project. `stop` defaults to idle-only settlement; `--cancel` explicitly cancels work. Query a lost response with its original request ID.
+
+```sh
+areal host run
+areal host status --json
+areal host list --json
+areal host ensure --workspace /absolute/task --json
+areal host stop --request-id UUID --expected-generation GENERATION --json
+areal host operation UUID --json
+```
 
 ## Web controls and appearance
 

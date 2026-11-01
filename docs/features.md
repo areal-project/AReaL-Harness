@@ -6,6 +6,7 @@
 
 | 能力 | 实现与入口 |
 |---|---|
+| 共享 Host | `areal host` 提供认证本机控制、项目登记、停止回执和状态订阅。CLI/TUI/Web 通过 Host 激活项目，客户端退出后原任务继续；旧服务空闲排空后受控换代。GUI、密钥库、Remote 与系统服务迁移另行实施。[Host API](api/host.md) |
 | 会话目录 | 默认内存索引、正确的授权后分页与 GUI 刷新合并；显式 SQLite 索引可回退内存，两者均可显式启用轻量元数据目录与按需历史加载。文件保持事实，复杂恢复仍全量；无自动历史淘汰或全文检索。[配置](guides/configuration.md#会话目录后端) |
 | 项目规则 | 按工作区根到会话 cwd 加载规则，同层 `AGENTS.override.md` 优先于 `AGENTS.md`，空白回退、子目录优先、每 Turn 刷新、有界且经 Runtime 读取。[客户端](guides/clients.md) |
 | 会话与模型 | 持久 Thread/Turn、流式正文、Chat Completions 思考与 Responses 思考摘要/文本事件、追加输入、取消、恢复；Chat Completions / Responses，模态取决于 adapter 和模型。桌面可独立切换 Fast 服务档位，配置与供应商请求沿现有模型参数链路保存；请求不保证实际加速。[客户端](guides/clients.md) |
@@ -19,7 +20,7 @@
 | Workgroup | DAG、隔离写工作区、制品检查与集成，fixed/auto/adaptive 准入；CLI 和服务接口。[使用指南](guides/workgroups.md) |
 | 权限模式 | 本地默认 YOLO，可配置 ASK_PERMISSIONS；TUI/Web 审批、会话/项目精确授权与自动 Thread scratch。[配置](guides/configuration.md#permissions) |
 | 桌面接口 | 认证、Profile/Skill/Plan、`--agent id@revision` 选择、Profile 绑定 Workflow 自动启动、审批/追问、提交去重与队列、共享终端、配置 CAS、模型切换、媒体 Blob、归档与 GC。[桌面 API](api/desktop.md) |
-| 桌面 GUI | `clients/gui` 提供 React/Electron、原生文件/差异/终端/浏览器面板、模型与资源设置、手机配对和定时任务界面；聊天模型选择器按供应商分组展示模型，直接选择所需模型；当前模型入口和思考强度页保留来源，区分不同供应商的同名模型。普通会话支持暂停后在原会话手动继续，最后一条用户消息可编辑后作为新消息发送并保留原记录。启用 Browser 的聊天可在用户授权后让 Core 读取该聊天当前原生网页的可访问性文本。人工批注支持冻结原生截图、元素/区域选择、多条 Composer 附件与含裁图和说明的消息，不要求启用模型 Browser 工具包。公共服务连接使 GUI 退出不终止 Core 任务；启动恢复支持二次确认后取消活动轮次并重启后台。支持独立公开依赖构建与 macOS arm64 本地包。[GUI](../clients/gui/README.md)  SnapShots 支持 macOS 前台窗口捕获、可选应用文本、系统全局快捷键、音效、闪光与原生附件动画；截图草稿可跨重启恢复。 |
+| 桌面 GUI | `clients/gui` 提供 React/Electron、原生文件/差异/终端/浏览器面板、模型与资源设置、手机配对和定时任务界面；聊天模型选择器按供应商分组展示模型，直接选择所需模型；当前模型入口和思考强度页保留来源，区分不同供应商的同名模型。普通会话支持暂停后在原会话手动继续，最后一条用户消息可编辑后作为新消息发送并保留原记录。启用 Browser 的聊天可在用户授权后让 Core 读取该聊天当前原生网页的可访问性文本。人工批注支持冻结原生截图、元素/区域选择、多条 Composer 附件与含裁图和说明的消息，不要求启用模型 Browser 工具包。关闭窗口保留后台；当前退出 GUI 应用仍终止 GUI-owned Core 任务；启动恢复支持二次确认后取消活动轮次并重启后台。支持独立公开依赖构建与 macOS arm64 本地包。[GUI](../clients/gui/README.md)  SnapShots 支持 macOS 前台窗口捕获、可选应用文本、系统全局快捷键、音效、闪光与原生附件动画；截图草稿可跨重启恢复。 |
 | iOS Remote | `clients/mobile` 使用 Capacitor 与共享 Remote 协议，提供钥匙串身份、扫码/粘贴配对、前后台重连、授权项目、会话历史、实时消息，以及普通会话创建、模型/权限选择、发送、排队和停止。未知命令通过原 ID 核对。Task 详情只读，审批问答和 App 推送尚未接入。原生下限为 iOS 17.4，开发门禁在 iOS 17.5 模拟器运行；真机验收尚未完成。[iOS 开发指南](development/ios-development.md) |
 | Android Remote | 复用当前 iOS 移动 UI、配对、重连、浏览与命令恢复，原生存储使用 Android Keystore。最低安装 API 26，WebView、真机与 Release 分别验收。[Android 开发指南](development/android-development.md) |
 | 生成式交互回答 | 主会话和 Side 显示 Core 发布的不可变 HTML 制品，复用 MCP Apps 沙箱。状态在同一 Desktop 配置中有界保存，后续输入只附加模型可见参数，私有状态不进入模型请求。页面后续问题经宿主确认发送。[桌面 API](api/desktop.md#生成式交互回答) |

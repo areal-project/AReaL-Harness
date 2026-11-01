@@ -57,6 +57,15 @@ pub struct LocalArgs {
     pub api_key_env: Option<String>,
     #[arg(long)]
     pub desktop_config: Option<PathBuf>,
+    #[arg(long)]
+    #[serde(default)]
+    pub read_only_path: Vec<PathBuf>,
+    #[arg(long)]
+    #[serde(default)]
+    pub task_credential_command: Vec<PathBuf>,
+    #[arg(long)]
+    #[serde(default)]
+    pub no_deployment_mcp: bool,
 }
 
 impl LocalArgs {
@@ -75,6 +84,14 @@ impl LocalArgs {
                 out.extend([format!("--{name}").into(), value.as_os_str().to_owned()]);
             }
         }
+        for (name, paths) in [
+            ("read-only-path", &self.read_only_path),
+            ("task-credential-command", &self.task_credential_command),
+        ] {
+            for path in paths {
+                out.extend([format!("--{name}").into(), path.as_os_str().to_owned()]);
+            }
+        }
         for (name, value) in [
             ("permissions", &self.permissions),
             ("sandbox-profile", &self.sandbox_profile),
@@ -89,6 +106,7 @@ impl LocalArgs {
             }
         }
         for (name, enabled) in [
+            ("no-deployment-mcp", self.no_deployment_mcp),
             ("allow-write", self.allow_write),
             ("allow-network", self.allow_network),
             ("allow-concurrent-writes", self.allow_concurrent_writes),
@@ -148,9 +166,19 @@ pub fn parse_agent_profile(value: &str) -> Result<areal_protocol::desktop::Versi
     })
 }
 
+#[derive(Clone)]
+pub struct LaunchContext {
+    pub cwd: PathBuf,
+    pub homedir: Option<PathBuf>,
+    pub home: PathBuf,
+    pub environment: BTreeMap<OsString, OsString>,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LaunchSpec {
+    #[serde(skip)]
+    pub context: Option<LaunchContext>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovery_origin: Option<areal_protocol::service::Identity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -177,6 +205,19 @@ impl LaunchSpec {
     }
 
     pub fn in_bin(args: &LocalArgs, bin_dir: PathBuf) -> Result<Self> {
+        Self::in_context(
+            args,
+            bin_dir,
+            &LaunchContext {
+                cwd: std::env::current_dir()?,
+                homedir: std::env::home_dir(),
+                home: crate::home()?,
+                environment: std::env::vars_os().collect(),
+            },
+        )
+    }
+
+    pub fn in_context(args: &LocalArgs, bin_dir: PathBuf, context: &LaunchContext) -> Result<Self> {
         ensure!(
             args.desktop_process_timeout_ms
                 .is_none_or(|value| (1..=86_400_000).contains(&value)),
@@ -205,7 +246,7 @@ impl LaunchSpec {
                 )),
             "sandbox profile must be native, outer-container-perf, or full-access"
         );
-        let launch_cwd = std::env::current_dir()?.canonicalize()?;
+        let launch_cwd = context.cwd.canonicalize()?;
         let workspace = args
             .workspace
             .as_ref()
@@ -214,8 +255,8 @@ impl LaunchSpec {
         ensure!(workspace.is_dir(), "workspace must be a directory");
         let inputs = ConfigInputs {
             cwd: launch_cwd.clone(),
-            homedir: std::env::home_dir(),
-            env: std::env::vars_os().collect(),
+            homedir: context.homedir.clone(),
+            env: context.environment.clone(),
             config_file: args.config.clone(),
             overrides: ConfigOverrides {
                 permissions: args.permissions.clone(),
@@ -231,7 +272,7 @@ impl LaunchSpec {
         };
         // 共享服务与 launcher 的管理模式一致；缺少模型凭据不能阻止连接和设置恢复。
         let config = areal_config::load_management_config(&inputs)?;
-        let root = crate::home()?;
+        let root = context.home.clone();
         let workspace_key = storage::digest(workspace.as_os_str().as_encoded_bytes());
         let mapping = root
             .join("workspaces")
@@ -297,7 +338,18 @@ impl LaunchSpec {
         .into_iter()
         .flatten()
         {
-            *path = path.canonicalize()?;
+            *path = path
+                .canonicalize()
+                .with_context(|| format!("resolve launch path {}", path.display()))?;
+        }
+        for path in resolved
+            .read_only_path
+            .iter_mut()
+            .chain(resolved.task_credential_command.iter_mut())
+        {
+            *path = path
+                .canonicalize()
+                .with_context(|| format!("resolve launch path {}", path.display()))?;
         }
         let mut effective = config.diagnostic(false);
         effective["server"]["data_dir"] = json!(data);
@@ -343,6 +395,7 @@ impl LaunchSpec {
             (
                 "permissions",
                 json!({"policy":config.permissions,"scratch":resolved.scratch,
+                    "readOnlyPaths":resolved.read_only_path,"taskCredentialCommands":resolved.task_credential_command,"noDeploymentMcp":resolved.no_deployment_mcp,
                     "sandbox":args.sandbox_profile.as_deref().unwrap_or("full-access"),"allowConcurrentWrites":args.allow_concurrent_writes}),
             ),
             (
@@ -364,6 +417,7 @@ impl LaunchSpec {
         let service_id = storage::digest(data.as_os_str().as_encoded_bytes())[..24].to_owned();
         storage::registry(&root, &service_id)?;
         Ok(Self {
+            context: Some(context.clone()),
             recovery_origin: None,
             owner: None,
             args: resolved,
@@ -417,6 +471,7 @@ mod tests {
     #[test]
     fn restart_command_uses_current_binary_and_preserves_deployment_args() {
         let spec = LaunchSpec {
+            context: None,
             recovery_origin: None,
             owner: None,
             args: LocalArgs {
