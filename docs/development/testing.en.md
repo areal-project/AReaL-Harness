@@ -229,6 +229,8 @@ Composer and queue smoke share navigation and narrow-window steps in `clients/gu
 
 Composer IME setup clears the editor with native select-all and Backspace, then requires the DOM, Lexical state, and stored draft to be empty. Playwright `fill("")` can select DOM content without synchronizing the editor's internal selection, so it is unsuitable for this setup. Candidate input, commit, and cancellation remain covered through native Chromium IME events.
 
+Lost-send-response acceptance waits for the current request's receipt and message, rather than the previous Turn's completed status. Barriers preserve concurrent reconciliation and submission, and the same mounted editor must settle its text, attachments, and stored draft consistently; a transient empty editor does not establish recovery. Reading recovery first confirms history readiness, focus, and actual reading input, then establishes the target geometry and checks the saved item, block, and offset.
+
 Composer smoke closes a completed Side reading view with its tab's Delete key and waits for the main editor to become visible, covering full view in narrow windows and split view in wide windows. The narrow-window panel button switches views. Before applying configuration after a cold reopen, model-selection smoke reads the real `serviceStatus` and waits for tasks, operations, project startup, and configuration updates to settle, then submits once.
 
 Slash keyboard acceptance waits for the Core catalog refresh triggered by this opening, then requires the intended option selected by ArrowDown and the editor's `aria-activedescendant` to agree before pressing Enter. The previous option's selected state cannot prove that keyboard navigation has completed.

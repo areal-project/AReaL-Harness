@@ -4,14 +4,17 @@ import { readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createReadingFixture } from "./conversation-reading-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 const require = createRequire(new URL("../app/package.json", import.meta.url));
 const { chromium } = require("playwright-core");
 const evidence = await makeTempDir("areal-reading-continuity-");
 const fixture = await createReadingFixture();
+const repository = fileURLToPath(new URL("../../../", import.meta.url));
 const dirtyFiles = execFileSync("git", ["ls-files", "-m", "-o", "--exclude-standard"], {
   encoding: "utf8",
+  cwd: repository,
 })
   .trim()
   .split("\n")
@@ -22,7 +25,7 @@ const hashes = async () =>
       dirtyFiles.map(async (path) => [
         path,
         createHash("sha256")
-          .update(await readFile(path))
+          .update(await readFile(join(repository, path)))
           .digest("hex"),
       ]),
     ),
@@ -69,14 +72,57 @@ try {
       for (let n = 0; n < 6; n++) await new Promise(requestAnimationFrame);
     });
   const messages = page.locator(".messages");
+  const historyReady = () =>
+    page.waitForFunction(() => {
+      const fixture = document.querySelector("[data-fixture-history]");
+      const history = JSON.parse(fixture?.getAttribute("data-fixture-history") ?? "null");
+      return (
+        history?.supported &&
+        fixture?.getAttribute("data-fixture-history-ready") === history.viewGeneration &&
+        !history.loadingLatest &&
+        history.latestTurnComplete !== false &&
+        !history.loadingOlder
+      );
+    });
   assert.equal(await page.getByRole("button", { name: "加载更早的消息", exact: true }).count(), 0);
+  await historyReady();
+  await page.waitForFunction(() => {
+    const reader = document.querySelector(".messages");
+    const saved = JSON.parse(sessionStorage.getItem("areal-gui:reading-views:v1") ?? "null");
+    return (
+      reader &&
+      reader.scrollHeight - reader.scrollTop - reader.clientHeight <= 1 &&
+      saved?.views?.[0]?.position?.kind === "latest"
+    );
+  });
+  report.initialReading = await messages.evaluate((reader) => ({
+    top: reader.scrollTop,
+    max: reader.scrollHeight - reader.clientHeight,
+    saved: sessionStorage.getItem("areal-gui:reading-views:v1"),
+  }));
   for (let n = 0; n < 6; n++) {
+    await historyReady();
+    const previousCalls = fixture.snapshot().calls;
     await messages.evaluate((element) => {
       element.scrollTop = 0;
     });
     await messages.focus();
+    await page.waitForFunction(() => {
+      const reader = document.querySelector(".messages");
+      return document.activeElement === reader && reader.scrollTop === 0;
+    });
     await page.keyboard.press("PageUp");
     await page.locator(`[data-side-item-id="answer-${n}"]`).waitFor({ state: "attached" });
+    await page.waitForFunction(
+      (previous) =>
+        Number(
+          document
+            .querySelector("[data-fixture-history-calls]")
+            ?.getAttribute("data-fixture-history-calls"),
+        ) > previous,
+      previousCalls,
+    );
+    await historyReady();
     await frames();
   }
   const disclosure = () => page.locator('[data-turn-id="old-5"] .turn-progress-summary');
@@ -93,18 +139,61 @@ try {
   await reasoning().click();
   await activity().click();
   await tool().click();
+  await messages.evaluate(async (reader) => {
+    await Promise.all(
+      reader
+        .getAnimations({ subtree: true })
+        .filter(
+          (animation) =>
+            animation.playState === "running" &&
+            Number.isFinite(animation.effect?.getComputedTiming().endTime),
+        )
+        .map((animation) => animation.finished.catch(() => {})),
+    );
+  });
   const checkDisclosures = async () => {
     for (const control of [disclosure(), reasoning(), activity(), tool()])
       assert.equal(await control.getAttribute("aria-expanded"), "true");
   };
   await checkDisclosures();
-  await page.locator(".messages").hover();
-  const answerOffset = await page.locator('[data-side-item-id="answer-5"]').evaluate((answer) => {
-    const reader = answer.closest(".messages");
-    return answer.getBoundingClientRect().top - reader.getBoundingClientRect().top;
+  await messages.focus();
+  const beforeReading = await messages.evaluate((reader) => reader.scrollTop);
+  await messages.evaluate((reader) => {
+    reader.dataset.fixtureScrollEnd = "pending";
+    reader.addEventListener(
+      "scrollend",
+      () => {
+        reader.dataset.fixtureScrollEnd = "settled";
+      },
+      {
+        once: true,
+      },
+    );
   });
-  await page.mouse.wheel(0, answerOffset + 200);
+  await messages.press("ArrowDown");
+  await page.waitForFunction(
+    (previous) => document.querySelector(".messages").scrollTop > previous,
+    beforeReading,
+  );
+  await page.locator('.messages[data-fixture-scroll-end="settled"]').waitFor();
+  await messages.evaluate((reader) => {
+    const answer = reader.querySelector('[data-side-item-id="answer-5"]');
+    reader.scrollTop +=
+      answer.getBoundingClientRect().top - reader.getBoundingClientRect().top + 200;
+  });
+  await page.waitForFunction(() => {
+    const reader = document.querySelector(".messages");
+    const answer = reader?.querySelector('[data-side-item-id="answer-5"]');
+    if (!answer) return false;
+    const top = reader.getBoundingClientRect().top;
+    const rect = answer.getBoundingClientRect();
+    return rect.top < top && rect.bottom > top;
+  });
   await frames();
+  await page.waitForFunction(() => {
+    const saved = JSON.parse(sessionStorage.getItem("areal-gui:reading-views:v1") ?? "null");
+    return saved?.views?.[0]?.position?.anchor?.itemId === "answer-5";
+  });
   const anchor = await page.locator(".messages").evaluate((reader) => {
     const top = reader.getBoundingClientRect().top;
     const node = [
@@ -237,6 +326,27 @@ try {
   report.passed = true;
 } catch (error) {
   report.failure = { message: error.message, stack: error.stack };
+  const snapshot = fixture.snapshot();
+  report.history = {
+    calls: snapshot.calls,
+    pending: snapshot.pending,
+    displayHistory: snapshot.thread?.displayHistory,
+    view: await page
+      ?.evaluate(() => {
+        const reader = document.querySelector(".messages");
+        return {
+          focused: document.activeElement === reader,
+          scrollTop: reader?.scrollTop,
+          scrollHeight: reader?.scrollHeight,
+          clientHeight: reader?.clientHeight,
+          displayedHistory: document
+            .querySelector("[data-fixture-history]")
+            ?.getAttribute("data-fixture-history"),
+          saved: sessionStorage.getItem("areal-gui:reading-views:v1"),
+        };
+      })
+      .catch(() => undefined),
+  };
   await page?.screenshot({ path: join(evidence, "failure.png") }).catch(() => {});
   throw error;
 } finally {

@@ -390,16 +390,17 @@ export function Composer({
     setText("");
     const remaining = (attachmentDrafts.get(key) ?? []).filter((file) => !files.includes(file));
     setFiles(remaining);
+    // 后续消费操作会同步通知草稿监听器，先完成存储结算以免读回已发送内容。
+    if (remaining.length) attachmentDrafts.set(key, remaining);
+    else attachmentDrafts.delete(key);
+    composerDraftStorage.removeItem(key);
     forgetComposerUploads(uploadOwner, files.filter(isComposerFile));
     skills.clear();
     plugins.clear();
     clearMcpDraft(key);
     consumeConversationSelections(selectionScope, references);
     void consumeSnapShotFiles(files.filter(isComposerFile));
-    if (remaining.length) attachmentDrafts.set(key, remaining);
-    else attachmentDrafts.delete(key);
     setAdmissionError("");
-    composerDraftStorage.removeItem(key);
   };
   useEffect(() => {
     setGoalError("");

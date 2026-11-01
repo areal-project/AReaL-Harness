@@ -841,6 +841,7 @@ export async function runComposerFilesAcceptance({
       };
       globalThis.composerUploadFixture = fixture;
       fixture.restore = () => {
+        fixture.releaseSendResponse?.();
         ServiceConnection.prototype.request = original;
       };
       ServiceConnection.prototype.request = async function (method, params, mutation) {
@@ -857,6 +858,12 @@ export async function runComposerFilesAcceptance({
         }
         const send = command?.name === "send" && command.request.text.includes("FILES_UPLOAD_");
         if (send) fixture.sends.push({ ...command.request });
+        if (send && fixture.dropSend) {
+          fixture.sendResponseHeld = true;
+          await new Promise((resolve) => {
+            fixture.releaseSendResponse = resolve;
+          });
+        }
         const result = await original.call(this, method, params, mutation);
         if (upload) fixture.uploads.at(-1).uri = result.uri;
         if (upload && fixture.dropUpload) {
@@ -926,6 +933,24 @@ export async function runComposerFilesAcceptance({
       "actual Core worktree first-send partial upload failure survives navigation, retries only the failed file and sends once with both original receipts",
     );
 
+    await page.evaluate(
+      ({ projectId, threadId }) => {
+        const key = `areal-gui:draft:${projectId}:${threadId}`;
+        const changes = [];
+        const listener = (event) => {
+          if (event.detail === key && changes.length < 20)
+            changes.push({
+              draft: localStorage.getItem(key),
+              pending: localStorage.getItem(`${key}:pending`),
+            });
+        };
+        window.addEventListener("areal-draft-change", listener);
+        globalThis.__composerRecoveryChanges = changes;
+        globalThis.__stopComposerRecoveryChanges = () =>
+          window.removeEventListener("areal-draft-change", listener);
+      },
+      { projectId: pid, threadId: uploadThreadId },
+    );
     await page.locator("input[type=file]").setInputFiles({
       name: "unknown.txt",
       mimeType: "text/plain",
@@ -937,13 +962,30 @@ export async function runComposerFilesAcceptance({
     });
     await button("发送").click();
     await until(
-      async () =>
-        (await current()).turns.at(-1)?.status === "completed" &&
-        (await app.evaluate(() => globalThis.composerUploadFixture.sends)).length === 2,
-      "accepted send response dropped after Core admission",
+      () =>
+        app.evaluate(() => {
+          const fixture = globalThis.composerUploadFixture;
+          return fixture.sendResponseHeld && fixture.sends.at(-1)?.requestId
+            ? fixture.sends.at(-1)
+            : null;
+        }),
+      "send held before admission to Core",
+    );
+    const heldSend = await app.evaluate(() => globalThis.composerUploadFixture.sends.at(-1));
+    assert.equal((await current()).turns.at(-1)?.status, "completed");
+    assert.equal(project(await state()).outcomes?.[heldSend.requestId], undefined);
+    assert.equal(
+      (await current()).turns.some((turn) =>
+        turn.items.some(
+          (item) => item.type === "userMessage" && textOf(item).includes("FILES_UPLOAD_UNKNOWN"),
+        ),
+      ),
+      false,
+      "held send has not reached Core",
     );
     await call("reconcile", { projectId: pid });
     await call("open", { projectId: pid, threadId: uploadThreadId });
+    await app.evaluate(() => globalThis.composerUploadFixture.releaseSendResponse());
     try {
       await page.waitForFunction(
         () => !document.querySelector('[data-testid="chat-input"]')?.textContent,
@@ -952,9 +994,12 @@ export async function runComposerFilesAcceptance({
         const snapshot = await state();
         const activeThreadId = await activeId();
         const restored = project(snapshot).state.threads[uploadThreadId];
+        const outcome = project(snapshot).outcomes?.[heldSend.requestId];
         return (
           activeThreadId === uploadThreadId &&
           !project(snapshot).pending.length &&
+          outcome?.accepted === true &&
+          outcome.operation?.target?.threadId === uploadThreadId &&
           restored?.turns.some((turn) =>
             turn.items.some(
               (item) =>
@@ -963,7 +1008,31 @@ export async function runComposerFilesAcceptance({
           )
         );
       }, "accepted send restored in the original thread");
+      await page.evaluate(async () => {
+        for (let frame = 0; frame < 4; frame++)
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+      });
+      assert.equal(await input().textContent(), "", "settled send leaves the editor empty");
+      assert.equal(await page.getByTestId("composer-attachment").count(), 0);
+      assert.equal(
+        await page.evaluate(
+          (key) => localStorage.getItem(key),
+          `areal-gui:draft:${pid}:${uploadThreadId}`,
+        ),
+        null,
+        "settled send removes the stored draft",
+      );
+      const changes = await page.evaluate(() => globalThis.__composerRecoveryChanges);
+      assert.ok(changes.length, "draft consumers publish their change");
+      assert.ok(
+        changes.every((entry) => entry.draft !== "FILES_UPLOAD_UNKNOWN"),
+        "draft change listeners never read the consumed text",
+      );
     } catch (error) {
+      const changes = await page.evaluate(() => {
+        globalThis.__stopComposerRecoveryChanges();
+        return globalThis.__composerRecoveryChanges;
+      });
       const snapshot = await state();
       const activeThreadId = await activeId();
       const restored = project(snapshot).state.threads[uploadThreadId];
@@ -977,6 +1046,7 @@ export async function runComposerFilesAcceptance({
             outcomes: project(snapshot).outcomes,
             core: project(snapshot).core,
             executionCore: restored?.executionCore,
+            changes,
             draft: await page.evaluate(
               (prefix) =>
                 Object.fromEntries(
@@ -994,6 +1064,7 @@ export async function runComposerFilesAcceptance({
       );
       throw error;
     }
+    await page.evaluate(() => globalThis.__stopComposerRecoveryChanges());
     const unknownSends = await app.evaluate(() => globalThis.composerUploadFixture.sends);
     assert.equal(
       unknownSends.filter((entry) => entry.text.includes("FILES_UPLOAD_UNKNOWN")).length,

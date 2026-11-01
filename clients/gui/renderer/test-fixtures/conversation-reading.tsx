@@ -33,6 +33,7 @@ const project = {
 };
 function Fixture() {
   const [state, setState] = useState<Data>();
+  const [committedView, setCommittedView] = useState<string>();
   const [shown, setShown] = useState(true);
   const [dark, setDark] = useState(false);
   const [narrow, setNarrow] = useState(false);
@@ -44,6 +45,10 @@ function Fixture() {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
+  const viewGeneration = state?.thread?.displayHistory?.viewGeneration;
+  useEffect(() => {
+    if (shown && viewGeneration) setCommittedView(viewGeneration);
+  }, [shown, viewGeneration]);
   return (
     <ApplicationIntlProvider>
       <TooltipProvider>
@@ -58,6 +63,9 @@ function Fixture() {
             color: "var(--color-foreground)",
           }}
           data-fixture-revision={state?.revision}
+          data-fixture-history={JSON.stringify(state?.thread?.displayHistory)}
+          data-fixture-history-calls={state?.calls ?? 0}
+          data-fixture-history-ready={shown ? committedView : undefined}
         >
           <header style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: 8 }}>
             <button onClick={() => setShown((value) => !value)}>
