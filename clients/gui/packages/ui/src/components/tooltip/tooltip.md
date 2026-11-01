@@ -25,7 +25,7 @@ exports: ["Tooltip", "TooltipContent", "TooltipProvider", "TooltipTrigger"]
 
 ## 状态
 
-延迟、打开、四向定位、触发器聚焦。
+`R-TOOLTIP-002` 延迟、打开、四向定位、触发器聚焦。首个提示悬停约 600ms 出现，400ms 内移到相邻触发器立即出现且不播入场；滚动时收起悬停打开的提示，键盘聚焦打开的保留。
 
 ## 行为
 
