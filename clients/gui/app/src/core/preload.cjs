@@ -62,6 +62,37 @@ onDesktopEvent(
 );
 /** @satisfies {import("@areal/workbench/desktop-contract").DesktopBridge} */
 const desktopBridge = {
+  getSnapShotState: () => invokeDesktop("areal-core:snap-shot-state"),
+  /** @param {unknown} includeAccessibility */
+  requestSnapShotPermissions: (includeAccessibility) =>
+    invokeDesktop("areal-core:snap-shot-permissions", includeAccessibility),
+  /** @param {unknown} action */
+  setupSnapShot: (action) => invokeDesktop("areal-core:snap-shot-setup", action),
+  captureSnapShot: () => invokeDesktop("areal-core:snap-shot-capture"),
+  /** @param {unknown} shortcut */
+  checkSnapShotShortcut: (shortcut) =>
+    invokeDesktop("areal-core:snap-shot-shortcut-check", shortcut),
+  /** @param {unknown} suppressed */
+  setSnapShotShortcutSuppressed: (suppressed) =>
+    invokeDesktop("areal-core:snap-shot-shortcut-suppressed", suppressed),
+  listPendingSnapShots: () => invokeDesktop("areal-core:snap-shot-pending"),
+  /** @param {unknown} id */
+  readSnapShot: (id) => invokeDesktop("areal-core:snap-shot-read", id),
+  /** @param {unknown} destination */
+  setSnapShotAnimationDestination: (destination) =>
+    invokeDesktop("areal-core:snap-shot-destination", destination),
+  /** @param {unknown} id */
+  dismissSnapShotAnimation: (id) => invokeDesktop("areal-core:snap-shot-dismiss", id),
+  /** @param {unknown} id */
+  acknowledgeSnapShot: (id) => invokeDesktop("areal-core:snap-shot-acknowledge", id),
+  /** @param {(event:unknown)=>void} listener */
+  onSnapShotEvent: (listener) => {
+    /** @param {Electron.IpcRendererEvent} _event @param {unknown} value */
+    const handler = (_event, value) => listener(value);
+    onDesktopEvent("areal-core:snap-shot-event", handler);
+    return () => ipcRenderer.removeListener("areal-core:snap-shot-event", handler);
+  },
+
   /** @param {File} file */
   droppedFilePath: (file) => webUtils.getPathForFile(file),
   /** @param {unknown} locale */

@@ -129,6 +129,16 @@ MCP app pages stay live within a window. Tab switches, panel hiding, conversatio
 
 Supported successful MCP tool records offer **Open interactive result**. Opening reads the saved effective input and result without repeating the business tool. Repeated opening focuses the same page and preserves edits. Explicit close permits a fresh reopen; an old request cannot revive a closed page. Missing old provenance, an invalid package or original connection, and page failures preserve the readable result. Reading history does not automatically mount pages. `AREAL_MCP_RESULT_MODE=1 pnpm --dir clients/gui run test:mcp-app-lifecycle` exercises this path with an ordinary model call and an independent MCP counter.
 
+## SnapShots
+
+On macOS, open **Settings > SnapShots** to capture the foreground window and attach it to the current draft. SnapShots starts disabled. The default shortcut is both Shift keys. Include app text, capture sound, flash, and animations start enabled. The sound menu offers **Whoosh (Default)**, **Click**, and **Off**.
+
+The setup dialog checks Screen Recording access and optional Accessibility access, then verifies the capture shortcut. Include app text attaches available window text and controls. Missing app text does not prevent the image attachment. macOS grants apply to the application that performs the capture.
+
+Captures keep the draft selected when capture starts. Screenshot attachments survive app restart and follow a new draft when it becomes a conversation. The desktop retains a pending capture until its image, source, and draft destination are saved. Sending uses the existing media upload path. An unconfirmed send retains the attachment.
+
+The screenshot card shows the source application and window. Its details expose available captured text and controls. Captured content enters the user message as external window data associated with the image. SnapShots supports the macOS desktop backend; Windows and Linux capture backends are unavailable.
+
 ## Generated interactive answers
 
 Main and Side Chat can display generated interactive pages after an assistant reply completes. The model publishes an HTML fragment of up to 48 KiB through Core's `gen_ui_publish`, then references the protected artifact with `::visualize`. Ordinary file paths, user messages, and code examples cannot open executable pages inside the app. Pages share the MCP Apps sandbox and the eight-page limit per window. They have no Node, arbitrary file, tool, or network access.

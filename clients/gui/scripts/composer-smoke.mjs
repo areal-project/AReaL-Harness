@@ -1,4 +1,5 @@
 import { makeTempDir } from "./support/temp.mjs";
+import { runSnapShotsAcceptance } from "./snapshots-acceptance.mjs";
 import { composerFilesResponse, runComposerFilesAcceptance } from "./composer-files-acceptance.mjs";
 import {
   composerReferencesResponse,
@@ -24,16 +25,18 @@ import { createHash } from "node:crypto";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = join(gui, "app");
 const filesRegression = process.env.AREAL_COMPOSER_FILES_REGRESSION === "1";
+const snapshotsRegression = process.env.AREAL_SNAPSHOTS_REGRESSION === "1";
 const referencesRegression = process.env.AREAL_COMPOSER_REFERENCES_REGRESSION === "1";
 const referencesFixture = { held: new Set() };
 const filesFixture = { held: new Set() };
 const skillsRegression = process.env.AREAL_COMPOSER_SKILLS_REGRESSION === "1";
 assert.ok(
-  [skillsRegression, filesRegression, referencesRegression].filter(Boolean).length <= 1,
+  [skillsRegression, filesRegression, referencesRegression, snapshotsRegression].filter(Boolean)
+    .length <= 1,
   "Choose one source fixture regression mode",
 );
 assert.ok(
-  !(skillsRegression || filesRegression || referencesRegression) ||
+  !(skillsRegression || filesRegression || referencesRegression || snapshotsRegression) ||
     !process.env.AREAL_GUI_EXECUTABLE,
   "Composer regression modes require the source Electron fixture",
 );
@@ -141,6 +144,7 @@ await writeFile(
   }),
 );
 const received = [];
+let snapshotsCoverage = null;
 let predictionRequests = 0;
 const server = createServer(async (req, res) => {
   let raw = "";
@@ -483,7 +487,38 @@ try {
       throw error;
     }
   };
-  if (filesRegression) {
+  if (snapshotsRegression) {
+    snapshotsCoverage = await runSnapShotsAcceptance({
+      app,
+      page,
+      workspace,
+      scratch,
+      endpoint,
+      desktop,
+      call,
+      state,
+      project,
+      until,
+      received,
+      checks,
+      shot,
+      reopen: async () => {
+        await quit();
+        await launch();
+        return page;
+      },
+    });
+    assert.equal(
+      snapshotsCoverage.nativeCapture,
+      true,
+      "SnapShots native capture acceptance is incomplete; see coverage",
+    );
+    assert.equal(
+      snapshotsCoverage.settings,
+      true,
+      "SnapShots settings acceptance is incomplete; see coverage",
+    );
+  } else if (filesRegression) {
     await runComposerFilesAcceptance({
       app,
       page,
@@ -1975,6 +2010,8 @@ try {
         runtime: "real Electron + real Rust Core/Runtime + deterministic local HTTP/SSE model",
         skillsRegression,
         filesRegression,
+        snapshotsRegression,
+        snapshotsCoverage,
         referencesRegression,
         predictionRequests,
         modelRequests: "model-requests.json",

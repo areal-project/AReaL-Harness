@@ -1,3 +1,5 @@
+import { snapShotContext, snapShotAttachmentMeta } from "./snapshots/source.js";
+import { consumeSnapShotFiles } from "./snapshots/drafts.js";
 import { forgetComposerUploads } from "./ComposerUploadState.js";
 import { uploadComposerFiles } from "./ComposerUploads.js";
 import { composerInput, type ComposerDraftAttachment } from "./ComposerAttachments.js";
@@ -91,6 +93,10 @@ export async function submitMessage(
     imageBlocks.forEach((block: Data, index: number) => {
       if (block._meta) attachments[input.files.length + index]._meta = block._meta;
     });
+    input.files.forEach((file, index) => {
+      const meta = snapShotAttachmentMeta(file);
+      if (meta) attachments[index]._meta = { ...attachments[index]._meta, ...meta };
+    });
     const annotationFeedback = input.files
       .flatMap((file, index) => {
         const note = browserAnnotation(file);
@@ -99,6 +105,7 @@ export async function submitMessage(
       .join("\n\n");
     const feedback = [
       annotationFeedback,
+      snapShotContext(input.files, attachments),
       serializeImageAnnotations(imageSnapshot, attachments),
       comments.map(reviewCommentText).join("\n\n"),
       pluginIntent,
@@ -135,6 +142,7 @@ export async function submitMessage(
     }
     // Only explicit acceptance consumes the captured records. Unknown submissions
     // retain their exact IDs until the existing Core receipt is reconciled.
+    await consumeSnapShotFiles(input.files);
     forgetComposerUploads(uploadOwner, [...input.files, ...imageFiles]);
     consumeReviewComments(reviewKey, comments);
     if (!options.appMessage) {

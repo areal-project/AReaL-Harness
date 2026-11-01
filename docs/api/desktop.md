@@ -561,3 +561,17 @@ Core 的 `externalCua` 能力表示支持原始 CUA 工具结果与轮次清理�
 ## Cloud 配置与会话生命周期
 
 Cloud 设置只接受 `status` 和 `save`，不提供会分配资源的 `check`。固定地址为 `/openapi/v1/app-server/`；桌面可信适配器用持久化的 Cloud Session UUID 派生 workspace endpoint。打开新 Cloud 聊天只编辑本地草稿，首次发送才提交 `cloudSession/create`、建立原生 thread 并投影真实连接状态，query 直接使用该连接。创建请求 ID 必须符合 UUID 的 8-4-4-4-12 十六进制布局，在保存或派生 workspace 前校验。服务端回收后的断线不自动重连；下一条用户消息或显式“恢复连接”恢复原 endpoint、thread 和 UPFS；断线前仍显示运行中时可显式恢复并读取权威历史，避免旧状态阻塞发送。已提交但结果未知的 Turn 不自动重发。旧会话 endpoint 保持绑定，不因修改服务地址而迁移到新工作区。
+
+## SnapShots 桌面能力
+
+SnapShots 是 Electron 本地能力，不新增 Core 或 Runtime RPC。主窗口 bridge 和可选 `PlatformServices.snapShots` 提供 `getSnapShotState`、`requestSnapShotPermissions`、`setupSnapShot`、`captureSnapShot`、`checkSnapShotShortcut`、`setSnapShotShortcutSuppressed`、`listPendingSnapShots`、`readSnapShot`、`setSnapShotAnimationDestination`、`dismissSnapShotAnimation`、`acknowledgeSnapShot` 和 `onSnapShotEvent`。权威类型与边界读取器位于 `clients/gui/packages/workbench/client/desktop-contract/snapshots.cjs`。特权请求只接受主窗口的可信 main frame。
+
+现有 Library 设置 `snapShot` 保存 `snapShotEnabled`、`snapShotIncludeAccessibility`、`snapShotShortcut`、`snapShotPlaySound`、`snapShotSound`、`snapShotFlash` 和 `snapShotAnimations`，默认值与 T3 Code 一致。快捷键支持左右 Shift、左右同类修饰键或带修饰键的普通组合。`soft-pop` 对应 Whoosh，`camera-shutter` 对应 Click。`setupStep` 用于恢复设置向导。
+
+事件包括 `requested`、`started`、`ready`、`failed` 和 `shortcut-changed`。捕获 ID 标识已持久化的 PNG 与来源元信息。`readSnapShot` 返回图片 data URL 和来源。renderer 保存捕获与固定草稿归属后，才通过 `acknowledgeSnapShot` 删除待处理文件。重复交付按捕获 ID 去重。删除附件和已受理发送消费持久草稿，结果未确认的发送保留原附件。
+
+`SnapShotSource` 包含 `kind: "snap-shot"`、`capturedAt`、`appName`、`windowTitle`，以及可选的应用标识、PNG 图标、可访问性文本与数据。可访问性数据支持 `flat-text` 和 `element-tree`，树坐标相对捕获图片。文本与序列化树各最多 32,000 字符，树最多 10,000 节点。图片等比缩放到 2560 × 1600 像素内，不放大。可访问性读取失败不取消图片交付。
+
+macOS 原生后端拥有捕获权限、系统全局快捷键、辅助进程和透明捕获窗口。其它桌面平台报告 `unavailable`，Web 和 Remote 不暴露本机桌面捕获。该能力为增量接口，没有 `snapShots` 的调用方继续使用既有附件路径。
+
+应用图标只写入图片附件的 `_meta["areal.snapShot"]` 展示信息，经既有同 URI 的资源 sidecar 保存到历史；模型文本剔除图标，历史卡片仅合并同条消息图片 URI 匹配的图标。

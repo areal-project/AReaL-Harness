@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "id": "snapshots",
+  "intent": "配置全局窗口捕获，回到捕获时固定的聊天草稿并核对图片来源。",
+  "pattern": "P-SETTINGS",
+  "target": "renderer/src/snapshots/SnapShotSettings.tsx",
+  "runtime": "desktop",
+  "interactionFamilies": ["I-MANAGE", "I-INPUT", "I-RETURN", "I-RECOVER"],
+  "reference": {
+    "kind": "existing-code",
+    "path": "renderer/src/snapshots/SnapShotSettings.tsx",
+    "visualTarget": "T3 Code SnapShotSettings、SnapShotSetupDialog、SnapShotAttachmentDetails。MIT来源见THIRD-PARTY-NOTICES.md。"
+  },
+  "slots": {
+    "label": ["SettingsRow", "SettingsSection"],
+    "control": ["Button", "Switch"],
+    "detail": ["Feedback"]
+  },
+  "states": [
+    {
+      "id": "default",
+      "condition": "启用且设置与权限已就绪",
+      "expected": "展示T3六项设置，配置由Library投影并可读。"
+    },
+    {
+      "id": "busy",
+      "condition": "设置保存或权限操作进行中",
+      "expected": "保留当前值并禁止重复提交。"
+    },
+    {
+      "id": "failed",
+      "condition": "捕获或设置明确失败",
+      "expected": "显示实际错误，可再次发起用户动作。"
+    },
+    {
+      "id": "unknown",
+      "condition": "上传或发送受理回执未确定",
+      "expected": "保留草稿与截图，等待原回执核对。"
+    },
+    {
+      "id": "disabled",
+      "condition": "snapShotEnabled=false",
+      "expected": "显示SnapShots启用行，打开后按Access与Shortcut两步配置。"
+    },
+    {
+      "id": "setup-resume",
+      "condition": "启用且setupStep未complete，重启后的Core连接已就绪",
+      "expected": "恢复同一步向导；稍后完成禁用首次未完成的启用。"
+    },
+    {
+      "id": "recording",
+      "condition": "正在录制快捷键",
+      "expected": "全局捕获与应用快捷键暂停；取消、失焦、卸载后释放。冲突候选无法保存。"
+    },
+    {
+      "id": "capturing",
+      "condition": "requested已固定draft key，用户切换聊天",
+      "expected": "ready持久接收到原草稿；不跟随会话切换重新归属。"
+    },
+    {
+      "id": "recovered",
+      "condition": "重启后Main有pending或IDB已有附件",
+      "expected": "按capture ID幂等恢复。只有IDB事务完成才acknowledge。无目标时提供手动接收。"
+    },
+    {
+      "id": "sent-unknown",
+      "condition": "Core返回UNKNOWN",
+      "expected": "保留截图File与source等待原受理回执；不自动重发。"
+    },
+    {
+      "id": "local-storage-failed",
+      "condition": "发送已明确受理后IDB清理失败",
+      "expected": "保留受理结果，当前会话消耗附件并显示本地草稿警告。"
+    },
+    {
+      "id": "animation",
+      "condition": "ready且启用动画且未减少动态效果",
+      "expected": "隐藏真实尺寸的附件占位。上报实际DOM矩形，原生落地后绘制附件再ack。"
+    }
+  ],
+  "conditions": {
+    "themes": ["light", "dark"],
+    "fontSizes": [14, 18],
+    "widthModes": ["wide", "narrow"],
+    "reducedMotion": [false, true]
+  },
+  "invariants": [
+    "Library snapShot是设置唯一持久所有者。",
+    "图片沿既有File上传与Core blob路径发送。",
+    "来源文本以不可信JSON绑定实际image URI；图标仅走同URI元数据。",
+    "固定媒体遮罩颜色使用media-overlay语义Token，独立于主题。"
+  ],
+  "evidence": {
+    "status": "pending",
+    "artifacts": [],
+    "gaps": [
+      "实际桌面权限、后台快捷键、焦点与动画由snapshots-acceptance.mjs记录。",
+      "静态与局部测试不证明真实供应商、安装包与其他平台。"
+    ]
+  }
+}

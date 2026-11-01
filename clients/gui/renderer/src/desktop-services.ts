@@ -1,3 +1,9 @@
+import {
+  readSnapShotState,
+  readSnapShot,
+  readPendingSnapShot,
+  readSnapShotEvent,
+} from "@areal/workbench/desktop-contract/snapshots";
 import { commandResponseError } from "@areal/workbench/desktop-contract/transport";
 import { ProjectionReader } from "@areal/workbench/state-projection";
 import type { DesktopBridge, PreviewRequest } from "@areal/workbench/desktop-contract";
@@ -114,7 +120,55 @@ export function createDesktopServices(bridge: DesktopBridge): PlatformServices {
     if (typeof request.uri !== "string") throw new Error("Invalid form resource URI");
     return command(operation, { ...request, uri: request.uri });
   }
+  const snapShots: PlatformServices["snapShots"] = bridge.getSnapShotState
+    ? {
+        getSnapShotState: async () => readSnapShotState(await bridge.getSnapShotState!()),
+        requestSnapShotPermissions: async (value) => {
+          await bridge.requestSnapShotPermissions!(value);
+        },
+        setupSnapShot: async (value) => {
+          await bridge.setupSnapShot!(value);
+        },
+        captureSnapShot: async () => {
+          await bridge.captureSnapShot!();
+        },
+        checkSnapShotShortcut: async (value) => {
+          const result = await bridge.checkSnapShotShortcut!(value);
+          if (
+            !result ||
+            typeof result !== "object" ||
+            !("available" in result) ||
+            typeof result.available !== "boolean" ||
+            !("message" in result) ||
+            !(result.message === null || typeof result.message === "string")
+          )
+            throw new Error("Invalid SnapShot shortcut availability");
+          return { available: result.available, message: result.message };
+        },
+        setSnapShotShortcutSuppressed: async (value) => {
+          await bridge.setSnapShotShortcutSuppressed!(value);
+        },
+        listPendingSnapShots: async () => {
+          const value = await bridge.listPendingSnapShots!();
+          if (!Array.isArray(value)) throw new Error("Invalid pending SnapShots");
+          return value.map(readPendingSnapShot);
+        },
+        readSnapShot: async (id) => readSnapShot(await bridge.readSnapShot!(id)),
+        setSnapShotAnimationDestination: async (value) => {
+          await bridge.setSnapShotAnimationDestination!(value);
+        },
+        dismissSnapShotAnimation: async (id) => {
+          await bridge.dismissSnapShotAnimation!(id);
+        },
+        acknowledgeSnapShot: async (id) => {
+          await bridge.acknowledgeSnapShot!(id);
+        },
+        onSnapShotEvent: (listener) =>
+          bridge.onSnapShotEvent!((value) => listener(readSnapShotEvent(value))),
+      }
+    : undefined;
   return {
+    snapShots,
     snapshot,
     onState(listener) {
       listeners.add(listener);

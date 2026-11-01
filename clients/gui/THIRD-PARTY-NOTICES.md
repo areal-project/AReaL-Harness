@@ -44,3 +44,5 @@ Relay certificate management adapts Cindy ACME, CSR, and certificate storage at 
 Relay 证书管理适配 Cindy 修订 `7d7473c62d17b0a893fa503d8a42e35c34ae02d1` 的 ACME、CSR 与证书存储，采用 Apache-2.0；Relay 资源包保留 `deploy/licenses/CINDY-LICENSE` 与 `CINDY-NOTICE`。Android 原生内网连接使用 Java-WebSocket 1.6.0 与 SLF4J API 2.0.13，均为 MIT；许可证随 Android assets 的 `legal/Java-WebSocket-LICENSE.txt` 与 `legal/SLF4J-LICENSE.txt` 分发。
 
 Read-only PDF previews use Mozilla PDF.js (`pdfjs-dist` 6.4.299), Apache-2.0. The retained license is `licenses/pdfjs-dist-LICENSE`. The renderer bundles a dedicated worker and the package's CMaps, standard fonts, ICC profiles, and image decoders with their original license files. Documents are supplied as workspace-scoped bytes, without PDF scripting, form actions, or external document navigation.
+
+SnapShots adapts T3 Code revision `c8a606c7b73e1e3586d5c06f76c69525f2d4c679`, Copyright (c) 2026 T3 Tools Inc., MIT. Retained terms are in `licenses/t3code-snapshots-LICENSE`. Native window capture, modifier-pair shortcuts, capture transitions, accessibility context, settings interactions, and capture sounds are adapted to AReaL desktop and Composer ownership.

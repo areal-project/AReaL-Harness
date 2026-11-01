@@ -41,6 +41,9 @@ const { CorePreview } = require("./preview.cjs");
 const { ComputerControl } = require("./computer-control.cjs");
 const { ExternalCua, upstream: cuaUpstream } = require("./external-cua.cjs");
 const diagnostics = require("./diagnostics.cjs");
+/** @type {typeof import("./snapshots/DesktopSnapShots.js")} */
+const { DesktopSnapShots } = require("./snapshots/build/DesktopSnapShots.cjs");
+const snapShotContract = require("@areal/workbench/desktop-contract/snapshots");
 const { configureUserData, serviceOptions, serviceHome } = require("./service-config.cjs");
 const { readLibraryStartupSettings } = require("./library.cjs");
 const { applyDesktopSessionNetworkPolicy } = require("./desktop-network.cjs");
@@ -161,6 +164,8 @@ function startDesktop() {
   const closeComputer = () => Promise.all([computer?.close(), externalCua?.close()]);
   /** @type {Electron.BrowserWindow|undefined} */
   let window;
+  /** @type {import("./snapshots/DesktopSnapShots.js").DesktopSnapShots|undefined} */
+  let snapShots;
   /** @type {InstanceType<typeof SharedCoreBackend>|undefined} */
   let backend;
   /** @type {InstanceType<typeof CorePreview>|undefined} */
@@ -585,6 +590,10 @@ function startDesktop() {
     // A temporary disconnect must not reset the native preference.
     if (state.connection?.state === "ready" && state.library && !quitting)
       menuBar?.sync(state.library.settings?.showInMenuBar !== false);
+    if (state.connection?.state === "ready" && state.library && !quitting)
+      void snapShots
+        ?.configure(state.library.settings?.snapShot)
+        .catch((error) => console.error("SnapShots settings failed", error));
     const enabled = state.library?.settings?.computerControlEnabled === true;
     const wasEnabled = computerWasEnabled;
     computerWasEnabled = enabled;
@@ -740,9 +749,11 @@ function startDesktop() {
         computerUiAvailable = createdWindow.webContents.mainFrame.url.startsWith("areal-ui://app/");
         diagnostics.record({ type: "renderer-responsive" });
       });
+      createdWindow.on("blur", () => snapShots?.setSnapShotShortcutSuppressed(false));
       const owner = createdWindow.webContents;
       owner.on("did-start-navigation", (_event, _url, inPlace, mainFrame) => {
         if (mainFrame && !inPlace) {
+          snapShots?.setSnapShotShortcutSuppressed(false);
           computerUiAvailable = false;
           void stopComputer("ui_navigation").catch(() => {});
           projections.delete(owner);
@@ -753,11 +764,13 @@ function startDesktop() {
         computerUiAvailable = owner.mainFrame.url.startsWith("areal-ui://app/");
       });
       owner.on("destroyed", () => {
+        snapShots?.setSnapShotShortcutSuppressed(false);
         computerUiAvailable = false;
         void stopComputer("ui_destroyed").catch(() => {});
         projections.delete(owner);
       });
       owner.on("render-process-gone", () => {
+        snapShots?.setSnapShotShortcutSuppressed(false);
         computerUiAvailable = false;
         void stopComputer("ui_crashed").catch(() => {});
         projections.delete(owner);
@@ -826,6 +839,27 @@ function startDesktop() {
     .whenReady()
     .then(async () => {
       if (startupSettingsError) throw startupSettingsError;
+      snapShots = new DesktopSnapShots({
+        directory: join(app.getPath("userData"), "snap-shots"),
+        workerPath: app.isPackaged
+          ? join(
+              process.resourcesPath,
+              "app.asar.unpacked/src/core/snapshots/build/SnapShotAccessibilityWorker.cjs",
+            )
+          : join(__dirname, "snapshots/build/SnapShotAccessibilityWorker.cjs"),
+        window: () => window ?? null,
+        revealWindow,
+        emit: (value) => {
+          if (
+            window &&
+            !window.isDestroyed() &&
+            window.webContents.mainFrame.url.startsWith("areal-ui://app/")
+          )
+            sendDesktopEvent(window.webContents, "areal-core:snap-shot-event", value);
+        },
+      });
+      app.on("will-quit", () => snapShots?.close());
+
       await Promise.all(
         [session.defaultSession, session.fromPartition("persist:areal-embedded-browser")].map(
           (target) => applyDesktopSessionNetworkPolicy(target, startupSettings),
@@ -1374,6 +1408,93 @@ function startDesktop() {
       handleDesktopIpc("areal-core:notification-consumed", (event, id) => {
         trusted(event);
         if (notificationTarget?.id === id) notificationTarget = null;
+      });
+      function snapshotOwner() {
+        if (!snapShots) throw new Error("SnapShots is not ready");
+        return snapShots;
+      }
+      handleDesktopIpc("areal-core:snap-shot-state", async (event) => {
+        trusted(event);
+        const result = await snapshotOwner().getSnapShotState();
+        trusted(event);
+        return result;
+      });
+      handleDesktopIpc("areal-core:snap-shot-permissions", async (event, includeAccessibility) => {
+        trusted(event);
+        if (typeof includeAccessibility !== "boolean") throw new Error("Invalid SnapShot flag");
+        const result = await snapshotOwner().requestSnapShotPermissions(includeAccessibility);
+        trusted(event);
+        return result;
+      });
+      handleDesktopIpc("areal-core:snap-shot-setup", async (event, action) => {
+        trusted(event);
+        if (
+          action !== "test-mac-capture" &&
+          action !== "allow-screen-recording" &&
+          action !== "allow-accessibility" &&
+          action !== "retry-shortcut"
+        )
+          throw new Error("Invalid SnapShot setup action");
+        const result = await snapshotOwner().setupSnapShot(action);
+        trusted(event);
+        return result;
+      });
+      handleDesktopIpc("areal-core:snap-shot-capture", async (event) => {
+        trusted(event);
+        const result = await snapshotOwner().captureSnapShot();
+        trusted(event);
+        return result;
+      });
+      handleDesktopIpc("areal-core:snap-shot-shortcut-check", async (event, shortcut) => {
+        trusted(event);
+        const result = await snapshotOwner().checkSnapShotShortcut(
+          snapShotContract.readSnapShotShortcut(shortcut),
+        );
+        trusted(event);
+        return result;
+      });
+      handleDesktopIpc("areal-core:snap-shot-shortcut-suppressed", async (event, suppressed) => {
+        trusted(event);
+        if (typeof suppressed !== "boolean") throw new Error("Invalid SnapShot flag");
+        const result = await snapshotOwner().setSnapShotShortcutSuppressed(suppressed);
+        trusted(event);
+        return result;
+      });
+      handleDesktopIpc("areal-core:snap-shot-pending", async (event) => {
+        trusted(event);
+        const result = await snapshotOwner().pending.list();
+        trusted(event);
+        return result;
+      });
+      handleDesktopIpc("areal-core:snap-shot-read", async (event, id) => {
+        trusted(event);
+        const result = await snapshotOwner().pending.read(snapShotContract.readSnapShotId(id));
+        trusted(event);
+        return result;
+      });
+      handleDesktopIpc("areal-core:snap-shot-destination", async (event, destination) => {
+        trusted(event);
+        const result = await snapshotOwner().setSnapShotAnimationDestination(
+          snapShotContract.readSnapShotAnimationDestination(destination),
+        );
+        trusted(event);
+        return result;
+      });
+      handleDesktopIpc("areal-core:snap-shot-dismiss", async (event, id) => {
+        trusted(event);
+        const result = await snapshotOwner().dismissSnapShotAnimation(
+          snapShotContract.readSnapShotId(id),
+        );
+        trusted(event);
+        return result;
+      });
+      handleDesktopIpc("areal-core:snap-shot-acknowledge", async (event, id) => {
+        trusted(event);
+        const result = await snapshotOwner().acknowledgeSnapShot(
+          snapShotContract.readSnapShotId(id),
+        );
+        trusted(event);
+        return result;
       });
       handleDesktopIpc("areal-core:snapshot", (event) => {
         trusted(event);

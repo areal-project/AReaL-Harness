@@ -1,3 +1,7 @@
+import { Camera } from "lucide-react";
+import { useSnapShotCapture } from "./snapshots/captureContext.js";
+import { useSnapShotDraft } from "./snapshots/activeDraft.js";
+import { consumeSnapShotFiles, moveSnapShotDraft } from "./snapshots/drafts.js";
 import { requestTurnStart, cancelTurnStart, type TurnStartRequest } from "./readingViews.js";
 import { composerUploadOwner } from "./ComposerUploadState.js";
 import type { DraftComposerProps } from "./draftComposerTypes.js";
@@ -107,6 +111,8 @@ export function DraftComposer({
   const defaultPermissionPreset = useRef(prefs.defaultPermissionPreset);
   defaultPermissionPreset.current = prefs.defaultPermissionPreset;
   const key = draftKey ?? `areal-gui:draft:${project.id}:new`;
+  useSnapShotDraft(key);
+  const snapshotCapture = useSnapShotCapture();
   const reviewKey = reviewCommentKey(project.id, "new");
   const reviewDraft = useReviewComments(reviewKey);
   const comments = attachedReviewComments(reviewDraft.draft);
@@ -233,7 +239,7 @@ export function DraftComposer({
     text: input.text,
     action: readAction,
   });
-  const finishRecoveredCreation = (id: string) => {
+  const finishRecoveredCreation = async (id: string) => {
     if (acceptedRecovery.current === unknown) return;
     transferNewReviewComments(project.id, id);
     acceptedRecovery.current = unknown;
@@ -243,6 +249,7 @@ export function DraftComposer({
       localStorage.getItem(key) ?? "",
       attachmentDrafts.get(key) ?? [],
     );
+    await moveSnapShotDraft(key, `areal-gui:draft:${project.id}:${id}`);
     transferComposerSkills(key, `areal-gui:draft:${project.id}:${id}`);
     transferComposerPlugins(key, `areal-gui:draft:${project.id}:${id}`);
     if (goalMode) localStorage.setItem(`areal-gui:draft:${project.id}:${id}:goal`, "true");
@@ -491,6 +498,7 @@ export function DraftComposer({
       localStorage.removeItem(`${key}:pending-create-request`);
       onWorktreeCreated?.();
       targetKey = stageThreadDraft(owner.id, result.threadId, value, files);
+      await moveSnapShotDraft(key, targetKey);
       transferNewReviewComments(owner.id, result.threadId);
       transferComposerSkills(key, targetKey);
       transferComposerPlugins(key, targetKey);
@@ -548,7 +556,11 @@ export function DraftComposer({
             intent: (name: string) => t("chat.composer.pluginReferenceIntent", { name }),
           },
         });
-        attachmentDrafts.delete(targetKey);
+        const remaining = (attachmentDrafts.get(targetKey) ?? []).filter(
+          (file) => !files.includes(file),
+        );
+        if (remaining.length) attachmentDrafts.set(targetKey, remaining);
+        else attachmentDrafts.delete(targetKey);
         clearComposerSkills(targetKey);
         clearComposerPlugins(targetKey);
       }
@@ -829,6 +841,22 @@ export function DraftComposer({
               if (executionReady && !editLocked) skills.catalog.refresh();
             },
             entries: [
+              ...(snapshotCapture
+                ? [
+                    {
+                      value: "snapshot",
+                      label: t("snapshots.capture"),
+                      description: t("snapshots.shortcutDescription"),
+                      icon: <Camera size={16} />,
+                      group: "功能" as const,
+                      run: () => {
+                        void snapshotCapture
+                          .captureSnapShot()
+                          .catch((cause: Error) => setDraftError(cause.message));
+                      },
+                    },
+                  ]
+                : []),
               {
                 value: "upload",
                 label: "上传文件",
@@ -946,11 +974,13 @@ export function DraftComposer({
                         onRemove={() => {
                           if (!editLocked)
                             setFiles((current) => current.filter((_, at) => at !== i));
+                          if (isComposerFile(file)) void consumeSnapShotFiles([file]);
                         }}
                         onExpand={(content) => {
                           if (editLocked) return;
                           api.current?.appendText(`${text.length ? "\n\n" : ""}${content}`);
                           setFiles((current) => current.filter((item) => item !== file));
+                          if (isComposerFile(file)) void consumeSnapShotFiles([file]);
                         }}
                       />
                     ))}

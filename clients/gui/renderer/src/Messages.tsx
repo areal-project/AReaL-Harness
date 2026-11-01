@@ -1,3 +1,4 @@
+import { sentSnapShots, isSnapShotDecoration } from "./snapshots/source.js";
 import { commandResourceLabel } from "./conversationPresentation.js";
 import { useTranscriptSelection } from "./useTranscriptSelection.js";
 import { readingAnchor, restoreReadingAnchor } from "./conversationReadingDom.js";
@@ -1263,8 +1264,15 @@ export function Messages({
                         );
                       }
                       const content = item.content ?? [];
+                      const imageParts = content.filter((part: Data) => part.type === "image");
+                      const decorations = content
+                        .filter((part: Data) => part.type === "text" && part.mcpContent)
+                        .map((part: Data) => part.mcpContent);
                       const appContent = content.filter(
-                        (part: Data) => part.type === "text" && part.mcpContent,
+                        (part: Data) =>
+                          part.type === "text" &&
+                          part.mcpContent &&
+                          !isSnapShotDecoration(part.mcpContent, imageParts),
                       );
                       const text = content
                         .filter((part: Data) => part.type === "text" && !part.mcpContent)
@@ -1275,7 +1283,15 @@ export function Messages({
                         (part: Data) => part.type !== "text",
                       );
                       const browserFeedback = sentBrowserAnnotations(feedback.text, attachments);
-                      const imageFeedback = sentImageAnnotations(browserFeedback.text, attachments);
+                      const snapshotFeedback = sentSnapShots(
+                        browserFeedback.text,
+                        attachments,
+                        decorations,
+                      );
+                      const imageFeedback = sentImageAnnotations(
+                        snapshotFeedback.text,
+                        attachments,
+                      );
                       const ordinaryAttachments = attachments
                         .map((part: Data, index: number) => ({ part, index }))
                         .filter(
@@ -1317,6 +1333,12 @@ export function Messages({
                                         <SentAttachment
                                           part={part}
                                           annotation={note}
+                                          snapShotSource={
+                                            snapshotFeedback.notes.find(
+                                              (record) =>
+                                                record.imageUri === (part.url ?? part.uri),
+                                            )?.source
+                                          }
                                           projectId={project.id}
                                           threadId={thread.id}
                                           action={action}

@@ -1,4 +1,4 @@
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -30,6 +30,8 @@ export async function signLocalMacOSApp(app, run) {
     }
   }
   await signLibraries(join(app, "Contents", "Frameworks"));
+  const unpacked = join(app, "Contents", "Resources", "app.asar.unpacked");
+  if (existsSync(unpacked)) await signLibraries(unpacked);
   run("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", app]);
   run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app]);
 }

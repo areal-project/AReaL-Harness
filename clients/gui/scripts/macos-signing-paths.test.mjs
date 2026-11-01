@@ -68,15 +68,21 @@ test("local signing covers nested libraries before enclosing bundles without fol
   }
   const resources = join(app, "Contents/Resources");
   await mkdir(resources);
+  const addon = join(
+    resources,
+    "app.asar.unpacked/node_modules/@crowecawcaw/xa11y-darwin-arm64/xa11y.darwin-arm64.node",
+  );
+  await mkdir(join(addon, ".."), { recursive: true });
+  await writeFile(addon, "native fixture");
   await writeFile(join(resources, "core.dylib"), "protected Core bytes");
   await symlink("../../../Resources", join(frameworks, "Service.app/Contents/Resources"));
   await symlink("../../Resources", join(frameworks, "ResourceAlias"));
   const calls = [];
   await signLocalMacOSApp(app, (command, args) => calls.push({ command, args }));
-  assert.equal(calls.length, 6);
+  assert.equal(calls.length, 8);
   assert.deepEqual(
     calls.filter((call) => call.args[0] === "--force").map((call) => call.args.at(-1)),
-    [...libraries.map((name) => join(frameworks, name)), app],
+    [...libraries.map((name) => join(frameworks, name)), addon, app],
   );
   assert.equal(
     calls.some((call) => call.args.at(-1).includes("ResourceAlias")),

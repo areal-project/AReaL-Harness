@@ -101,6 +101,7 @@ export interface UpdateState {
 }
 export type { NotificationTarget, QuitProgress } from "@areal/workbench/desktop-contract";
 export interface PlatformServices {
+  snapShots?: import("@areal/workbench/desktop-contract/snapshots").SnapShotServices;
   mcpApp?: McpAppCommand;
   onMcpAppEvent?(listener: (event: McpAppEvent) => void): () => void;
   onMcpAppDeepLink?(listener: (link: McpAppDeepLink) => Promise<void> | void): () => void;

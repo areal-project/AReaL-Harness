@@ -127,6 +127,8 @@
 | `--color-destructive-foreground` | `var(--color-foreground-inverse)` | 危险底色上的文字 |
 | `--color-warning` | `#e07b00（暗色 #ff8a30）` | 警告反馈；AReaL 明暗主题值 |
 | `--color-warning-foreground` | `#000000` | 警告橙色底上的高对比文字；明暗底色均使用黑色，D4可读性修订。 |
+| `--color-media-overlay` | `#000000` | 截图与图像内容上的固定深色遮罩；透明度由媒体组件拥有，不随应用明暗主题翻转。 |
+| `--color-media-overlay-foreground` | `#ffffff` | 媒体深色遮罩上的固定浅色文字与图标，与 media-overlay 配对使用。 |
 | `--color-foreground-inverse` | `#ffffff（暗色 #000000）` | 强调底色上的反色文字；明暗主题各自取值 |
 | `--color-ring` | `var(--color-input-border-focused)` | 键盘焦点环颜色，跟随强调色 |
 | `--color-muted` | `var(--color-surface)` | 弱化区域底色 |

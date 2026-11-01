@@ -1,3 +1,7 @@
+import { Camera } from "lucide-react";
+import { useSnapShotCapture } from "./snapshots/captureContext.js";
+import { useSnapShotDraft } from "./snapshots/activeDraft.js";
+import { consumeSnapShotFiles } from "./snapshots/drafts.js";
 import { submitMessage } from "./ComposerSubmission.js";
 export { submitMessage } from "./ComposerSubmission.js";
 import {
@@ -112,9 +116,9 @@ import {
 } from "./recoveryPresentation.js";
 // Draft attachments and in-flight UI admission survive task navigation. These are
 // unsent client inputs only; Core remains authoritative for acceptance/outcomes.
-export const attachmentDrafts = new Map<string, ComposerDraftAttachment[]>();
+import { attachmentDrafts, sending } from "./composerDraftAttachments.js";
+export { attachmentDrafts, sending } from "./composerDraftAttachments.js";
 export const attachmentErrors = new Map<string, string>();
-export const sending = new Set<string>();
 const sendListeners = new Set<() => void>();
 export const subscribeSending = (listener: () => void) => {
   sendListeners.add(listener);
@@ -126,6 +130,7 @@ export const markSending = (key: string, active: boolean) => {
   if (active) sending.add(key);
   else sending.delete(key);
   sendListeners.forEach((listener) => listener());
+  window.dispatchEvent(new Event("areal-snapshot-drain"));
 };
 export function Composer({
   project,
@@ -169,6 +174,8 @@ export function Composer({
   );
   const prefs = useApplicationPreferences();
   const key = `areal-gui:draft:${project.id}:${thread.id}`;
+  useSnapShotDraft(key);
+  const snapshotCapture = useSnapShotCapture();
   const uploadOwner = composerUploadOwner(project, thread.id);
   const selectionScope = conversationSelectionScope(project.id, thread.id);
   const references = useConversationSelections(selectionScope);
@@ -381,13 +388,16 @@ export function Composer({
   const clear = () => {
     api.current?.clear();
     setText("");
-    setFiles([]);
+    const remaining = (attachmentDrafts.get(key) ?? []).filter((file) => !files.includes(file));
+    setFiles(remaining);
     forgetComposerUploads(uploadOwner, files.filter(isComposerFile));
     skills.clear();
     plugins.clear();
     clearMcpDraft(key);
     consumeConversationSelections(selectionScope, references);
-    attachmentDrafts.delete(key);
+    void consumeSnapShotFiles(files.filter(isComposerFile));
+    if (remaining.length) attachmentDrafts.set(key, remaining);
+    else attachmentDrafts.delete(key);
     setAdmissionError("");
     composerDraftStorage.removeItem(key);
   };
@@ -438,6 +448,7 @@ export function Composer({
     if (outcome.accepted === false && turnStart?.requestId === unknown) cancelTurnStart(turnStart);
     composerDraftStorage.removeItem(`${key}:pending`);
     composerDraftStorage.removeItem(`${key}:pending-operation`);
+    window.dispatchEvent(new Event("areal-snapshot-drain"));
     setUnknown(null);
     reconcileReviewSubmission(reviewKey, unknown, outcome.accepted !== false);
     const wasGoal = composerDraftStorage.getItem(`${key}:pending-goal`) === unknown;
@@ -685,6 +696,22 @@ export function Composer({
             icon: <ComposerMcpIcon />,
             group: "功能" as const,
             run: onMcpMention,
+          },
+        ]
+      : []),
+    ...(snapshotCapture
+      ? [
+          {
+            value: "snapshot",
+            label: t("snapshots.capture"),
+            description: t("snapshots.shortcutDescription"),
+            icon: <Camera size={16} />,
+            group: "功能" as const,
+            run: () => {
+              void snapshotCapture
+                .captureSnapShot()
+                .catch((cause: Error) => setDeliveryError(cause.message));
+            },
           },
         ]
       : []),
@@ -1229,11 +1256,13 @@ export function Composer({
                           onRemove={() => {
                             if (isComposerFile(file)) forgetComposerUploads(uploadOwner, [file]);
                             setFiles((current) => current.filter((item) => item !== file));
+                            if (isComposerFile(file)) void consumeSnapShotFiles([file]);
                           }}
                           onExpand={(content) => {
                             if (isComposerFile(file)) forgetComposerUploads(uploadOwner, [file]);
                             api.current?.appendText(`${text.length ? "\n\n" : ""}${content}`);
                             setFiles((current) => current.filter((item) => item !== file));
+                            if (isComposerFile(file)) void consumeSnapShotFiles([file]);
                           }}
                         />
                       ))}
