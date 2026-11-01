@@ -1,0 +1,417 @@
+use crate::{
+    migration::{self, Migration},
+    wire::{self, error},
+};
+use anyhow::{Context, Result, ensure};
+use areal_local_service::storage;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use std::{
+    cell::RefCell,
+    path::{Path, PathBuf},
+};
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct State {
+    source_id: String,
+    revision: u64,
+    entry_id: String,
+    allowed_projects: Vec<String>,
+    #[serde(default)]
+    receipt: Option<Value>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Replace {
+    request_id: String,
+    expected_generation: String,
+    expected_revision: u64,
+    source_id: String,
+    config: Value,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Acquire {
+    source_id: String,
+}
+pub(crate) struct RemoteState {
+    home: PathBuf,
+    lease: RefCell<Option<(String, String)>>,
+}
+impl RemoteState {
+    pub fn new(home: &Path) -> Self {
+        Self {
+            home: home.into(),
+            lease: RefCell::new(None),
+        }
+    }
+    fn path(&self) -> PathBuf {
+        self.home.join("host/remote-state.json")
+    }
+    fn state(&self, migration: &Migration) -> Result<Option<State>> {
+        if let Some(state) = migration::read_optional(&self.path())? {
+            return Ok(Some(state));
+        }
+        let Some((source_id, entry_id, allowed_projects)) = migration.remote_seed()? else {
+            return Ok(None);
+        };
+        let state = State {
+            source_id,
+            revision: 1,
+            entry_id,
+            allowed_projects,
+            receipt: None,
+        };
+        storage::write(&self.path(), &state)?;
+        Ok(Some(state))
+    }
+    pub fn dispatch(
+        &self,
+        method: &str,
+        params: Value,
+        connection: &str,
+        generation: &str,
+        migration: &Migration,
+    ) -> Result<Value> {
+        self.recover(migration)?;
+        let Some(mut state) = self.state(migration)? else {
+            return Err(error("remoteUnavailable", "no committed Remote source"));
+        };
+        let current = migration
+            .vault
+            .read(&state.entry_id)?
+            .context("missing Remote vault entry")?;
+        match method {
+            "remote.read" => {
+                ensure!(params == json!({}), "invalid remote.read parameters");
+                Ok(json!({"revision":state.revision,"sourceId":state.source_id,"config":current}))
+            }
+            "remote.acquire" => {
+                let input: Acquire = serde_json::from_value(params)?;
+                if input.source_id != state.source_id {
+                    return Err(error("migrationConflict", "Remote source does not match"));
+                }
+                if self
+                    .lease
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|(owner, _)| owner != connection)
+                {
+                    return Err(error(
+                        "remoteBusy",
+                        "Remote execution lease is already held",
+                    ));
+                }
+                let lease_id = self
+                    .lease
+                    .borrow()
+                    .as_ref()
+                    .map(|(_, id)| id.clone())
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                *self.lease.borrow_mut() = Some((connection.into(), lease_id.clone()));
+                Ok(json!({"leaseId":lease_id,"sourceId":state.source_id}))
+            }
+            "remote.replace" => {
+                let input: Replace = serde_json::from_value(params)?;
+                wire::request_id(&input.request_id)?;
+                if input.expected_generation != generation {
+                    return Err(error("generationMismatch", "Host generation changed"));
+                }
+                if let Some(previous) = self.operation(&input.request_id, migration)? {
+                    if previous["state"] != "completed" {
+                        if previous["sourceId"] != input.source_id
+                            || previous["previousRevision"] != input.expected_revision
+                        {
+                            return Err(error(
+                                "requestConflict",
+                                "Remote operation parameters differ",
+                            ));
+                        }
+                        return Ok(previous);
+                    }
+                    if previous["sourceId"] != input.source_id
+                        || previous["previousRevision"] != input.expected_revision
+                        || migration
+                            .vault
+                            .read(
+                                previous["entryId"]
+                                    .as_str()
+                                    .context("missing operation entry")?,
+                            )?
+                            .as_ref()
+                            != Some(&input.config)
+                    {
+                        return Err(error(
+                            "requestConflict",
+                            "Remote operation parameters differ",
+                        ));
+                    }
+                    return Ok(previous);
+                }
+                if state.source_id != input.source_id {
+                    return Err(error("migrationConflict", "Remote source does not match"));
+                }
+                if state.revision != input.expected_revision {
+                    return Err(error("revisionConflict", "Remote revision changed"));
+                }
+                if current["identity"] != input.config["identity"] {
+                    return Err(error(
+                        "migrationConflict",
+                        "Remote Noise identity is immutable",
+                    ));
+                }
+                validate(&input.config, &state.allowed_projects)?;
+                if let Some(receipt) = &state.receipt {
+                    self.save_receipt(receipt)?;
+                }
+                let operations = self.home.join("host/remote-operations");
+                if operations.is_dir() {
+                    for entry in std::fs::read_dir(operations)? {
+                        let receipt: Value = storage::read(&entry?.path())?;
+                        if receipt["state"] == "acceptedPending" {
+                            return Err(error(
+                                "operationPending",
+                                "an earlier Remote replacement has not settled",
+                            ));
+                        }
+                    }
+                }
+                let entry_id = uuid::Uuid::new_v4().to_string();
+                self.save_receipt(&json!({"requestId":input.request_id,"method":"remote.replace","sourceId":state.source_id,"previousRevision":input.expected_revision,"entryId":entry_id,"state":"acceptedPending"}))?;
+                migration.vault.write(&entry_id, &input.config)?;
+                state.revision += 1;
+                state.entry_id = entry_id.clone();
+                let receipt = json!({"requestId":input.request_id,"method":"remote.replace","sourceId":state.source_id,"previousRevision":input.expected_revision,"revision":state.revision,"entryId":entry_id,"state":"completed"});
+                state.receipt = Some(receipt.clone());
+                storage::write(&self.path(), &state)?;
+                self.save_receipt(&receipt)?;
+                Ok(receipt)
+            }
+            _ => Err(error("methodNotFound", "unknown Remote state method")),
+        }
+    }
+    fn save_receipt(&self, receipt: &Value) -> Result<()> {
+        storage::private_dir(&self.home.join("host/remote-operations"))?;
+        std::fs::File::open(self.home.join("host"))?.sync_all()?;
+        storage::write(
+            &self.home.join("host/remote-operations").join(format!(
+                "{}.json",
+                receipt["requestId"]
+                    .as_str()
+                    .context("missing Remote requestId")?
+            )),
+            receipt,
+        )
+    }
+    fn recover(&self, migration: &Migration) -> Result<()> {
+        let Some(mut state) = migration::read_optional::<State>(&self.path())? else {
+            return Ok(());
+        };
+        if let Some(receipt) = &state.receipt {
+            self.save_receipt(receipt)?;
+        }
+        let directory = self.home.join("host/remote-operations");
+        if !directory.is_dir() {
+            return Ok(());
+        }
+        for entry in std::fs::read_dir(directory)? {
+            let mut receipt: Value = storage::read(&entry?.path())?;
+            if receipt["state"] != "acceptedPending" {
+                continue;
+            }
+            let entry_id = receipt["entryId"]
+                .as_str()
+                .context("missing pending Remote entry")?
+                .to_owned();
+            let value = migration.vault.read(&entry_id)?;
+            let failure = if receipt["sourceId"] != state.source_id
+                || receipt["previousRevision"] != state.revision
+            {
+                Some((
+                    "revisionConflict",
+                    "Remote revision changed before recovery",
+                ))
+            } else if value.is_none() {
+                Some((
+                    "storageWriteNotApplied",
+                    "Remote vault entry was not written",
+                ))
+            } else {
+                None
+            };
+            if let Some((code, message)) = failure {
+                receipt["state"] = json!("blocked");
+                receipt["error"] = json!({"code":code,"message":message});
+                self.save_receipt(&receipt)?;
+                continue;
+            }
+            let value = value.context("missing pending Remote value")?;
+            validate(&value, &state.allowed_projects)?;
+            let current = migration
+                .vault
+                .read(&state.entry_id)?
+                .context("missing Remote vault entry")?;
+            ensure!(
+                current["identity"] == value["identity"],
+                "pending Remote identity differs"
+            );
+            state.revision += 1;
+            state.entry_id = entry_id;
+            receipt["state"] = json!("completed");
+            receipt["revision"] = json!(state.revision);
+            state.receipt = Some(receipt.clone());
+            storage::write(&self.path(), &state)?;
+            self.save_receipt(&receipt)?;
+        }
+        Ok(())
+    }
+    pub fn operation(&self, id: &str, migration: &Migration) -> Result<Option<Value>> {
+        wire::request_id(id)?;
+        self.recover(migration)?;
+        if let Some(state) = migration::read_optional::<State>(&self.path())? {
+            if let Some(receipt) = state.receipt {
+                if receipt["requestId"] == id {
+                    self.save_receipt(&receipt)?;
+                    return Ok(Some(receipt));
+                }
+            }
+        }
+        migration::read_optional(
+            &self
+                .home
+                .join("host/remote-operations")
+                .join(format!("{id}.json")),
+        )
+    }
+    pub fn disconnect(&self, connection: &str) {
+        if self
+            .lease
+            .borrow()
+            .as_ref()
+            .is_some_and(|(owner, _)| owner == connection)
+        {
+            *self.lease.borrow_mut() = None;
+        }
+    }
+}
+pub(crate) fn validate(config: &Value, projects: &[String]) -> Result<()> {
+    ensure!(config.is_object(), "Remote configuration must be an object");
+    if let Some(identity) = config.get("identity") {
+        ensure!(
+            identity.as_str().is_some_and(|id| !id.is_empty()),
+            "invalid Remote identity"
+        );
+    }
+    for (list, key) in [("deviceGrants", "projectIds"), ("devices", "projects")] {
+        if let Some(grants) = config.get(list) {
+            for grant in grants.as_array().context("invalid Remote grants")? {
+                if let Some(scope) = grant.get(key) {
+                    for project in scope.as_array().context("invalid Remote scope")? {
+                        let project = project.as_str().context("invalid Remote project alias")?;
+                        if !projects.iter().any(|id| id == project) {
+                            return Err(error(
+                                "migrationConflict",
+                                "Remote grant references an unknown source project",
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interrupted_replace_settles_original_id_without_replaying_vault_write() {
+        for window in ["beforeVault", "afterVault", "afterState", "afterLogout"] {
+            let root = tempfile::tempdir().unwrap();
+            let home = root.path();
+            storage::private_dir(&home.join("host")).unwrap();
+            let mut migration = Migration::new(home).unwrap();
+            migration.vault = crate::vault::Vault::isolated_files(home);
+            let remote = RemoteState::new(home);
+            let original_entry = uuid::Uuid::new_v4().to_string();
+            migration
+                .vault
+                .write(
+                    &original_entry,
+                    &json!({"identity":"dummy-noise", "deviceGrants":[]}),
+                )
+                .unwrap();
+            let request = uuid::Uuid::new_v4().to_string();
+            let pending_entry = uuid::Uuid::new_v4().to_string();
+            let proposed = json!({"identity":"dummy-noise", "relayEnabled":true,"deviceGrants":[{"projectIds":["project"]}]});
+            let mut state = State {
+                source_id: "source".into(),
+                revision: 1,
+                entry_id: original_entry,
+                allowed_projects: vec!["project".into()],
+                receipt: None,
+            };
+            let pending = json!({"requestId":request,"method":"remote.replace","sourceId":"source","previousRevision":1,"entryId":pending_entry,"state":"acceptedPending"});
+            remote.save_receipt(&pending).unwrap();
+            if window != "beforeVault" {
+                migration.vault.write(&pending_entry, &proposed).unwrap();
+            }
+            if window == "afterState" {
+                let mut completed = pending.clone();
+                completed["state"] = json!("completed");
+                completed["revision"] = json!(2);
+                state.revision = 2;
+                state.entry_id = pending_entry.clone();
+                state.receipt = Some(completed);
+            }
+            if window == "afterLogout" {
+                state.revision = 3;
+                state.entry_id = uuid::Uuid::new_v4().to_string();
+                migration
+                    .vault
+                    .write(
+                        &state.entry_id,
+                        &json!({"identity":"dummy-noise","deviceGrants":[]}),
+                    )
+                    .unwrap();
+            }
+            storage::write(&remote.path(), &state).unwrap();
+            let restarted = RemoteState::new(home);
+            let receipt = restarted.operation(&request, &migration).unwrap().unwrap();
+            let applied = matches!(window, "afterVault" | "afterState");
+            assert_eq!(
+                receipt["state"],
+                if applied { "completed" } else { "blocked" },
+                "{window}"
+            );
+            let read = restarted
+                .dispatch(
+                    "remote.read",
+                    json!({}),
+                    "connection",
+                    "generation",
+                    &migration,
+                )
+                .unwrap();
+            assert_eq!(read["revision"], if applied { 2 } else { state.revision });
+            assert_eq!(
+                read["config"]["deviceGrants"].as_array().unwrap().len(),
+                usize::from(applied)
+            );
+            assert_eq!(
+                migration.vault.read(&pending_entry).unwrap().is_some(),
+                window != "beforeVault"
+            );
+            let replay = restarted.dispatch("remote.replace",json!({"requestId":request,"expectedGeneration":"generation","expectedRevision":1,"sourceId":"source","config":proposed}),"connection","generation",&migration).unwrap();
+            assert_eq!(replay, receipt);
+            let next = restarted.dispatch("remote.replace",json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":"generation","expectedRevision":read["revision"],"sourceId":"source","config":{"identity":"dummy-noise","deviceGrants":[]}}),"connection","generation",&migration).unwrap();
+            assert_eq!(
+                next["state"], "completed",
+                "settled failure must not permanently block new commands"
+            );
+        }
+    }
+}

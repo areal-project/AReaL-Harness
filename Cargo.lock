@@ -241,6 +241,7 @@ dependencies = [
  "areal-protocol",
  "fs2",
  "libc",
+ "security-framework",
  "serde",
  "serde_json",
  "tempfile",

@@ -2,7 +2,7 @@
 
 # 共享 Host 协议
 
-本文包含 H1 实现与后续目标契约。H1 提供认证后的项目管理、停止回执、订阅与旧服务迁移。`hello` 声明 `projects`、`stopOperations`、`subscriptions` 和 `legacyMigration`，尚不提供 `updates`。GUI 生命周期、密钥库迁移、Remote 接入与服务管理器交付属于后续工作。协议定义不代表运行或安装包验收通过。另见[实施规格](../development/shared-host-spec.md)、[所有权决策](../adr/0016-shared-host.md)与[每项目服务契约](local-service.md)。
+本文包含已实现接口与后续目标契约。Host 提供认证后的项目管理、停止回执、订阅、旧服务迁移，以及 H2 的来源导入、提交 journal 和 Remote 状态接口。`hello` 声明 `projects`、`stopOperations`、`subscriptions`、`legacyMigration`、`guiImport`、`submissionJournal` 和 `remoteState`，尚不提供 `updates` 或通用 `credentialVault`。普通 GUI 消费者与生命周期切换、旧密文退役、Remote 执行和服务管理器交付仍未完成。协议定义不代表运行或安装包验收通过。另见[实施规格](../development/shared-host-spec.md)、[所有权决策](../adr/0016-shared-host.md)与[每项目服务契约](local-service.md)。
 
 ## 传输与认证
 
@@ -42,18 +42,18 @@
 
 所有方法均可返回 `invalidRequest`、`unsupportedVersion`、`unsupportedCapability`、`unauthorized`、`internalError`。未知方法返回 `methodNotFound`。下表列出额外错误。缺少回执、断连和超时都不证明未受理。
 
-| 方法 | 请求 params | result | 额外错误 | 幂等规则 |
-| --- | --- | --- | --- | --- |
-| `hello` | `protocolVersions:number[]`、`capabilities:string[]`、`authToken:string` | `{version,hostId,generation,capabilities,executableVersion}` | `versionMismatch` | 只读握手。重连后重做，不按可执行版本推断能力。 |
-| `host.status` | `{}` | `{hostId,generation,state,projects:ProjectStatus[],restartPending,stopIntent,capabilities}` | 无 | 只读快照，不激活项目。 |
-| `projects.list` | `{}` | `{projects:ProjectRegistration[]}` | 无 | 只读持久登记，包含已停止项目。 |
-| `projects.register` | `{requestId,expectedGeneration,registration:ProjectRegistration,bindExisting?:boolean}` | `{registration,created:boolean}` | `projectConflict`、`dataDirConflict`、`defaultBindingConflict`、`migrationConflict` | 在 Host 锁下持久化键、规范参数与结果。同键同参数返回原结果，参数变化返回 `requestConflict`。仅本机。 |
-| `project.ensure` | `{requestId,expectedGeneration,projectId,launchInputs?:LaunchInputs,credentials?:object,noAutoRestart?:boolean}` | `{project:ProjectStatus,service?:Service}` | `projectNotFound`、`configurationConflict`、`migrationBlocked`、`credentialsRequired` | 显式用户激活，可清除该项目已结算的停止意图。同键返回原受理或结果。同一绑定的并发 ensure 收敛到一个服务。只有核验后的 ready Host-owned 服务返回 `service`。`legacyPending` 只返回状态，不声称已接管。 |
-| `project.stop` | `{requestId,expectedGeneration,projectId,serviceGeneration,strategy:"ifIdle"\|"cancel"}` | `StopReceipt` | `projectNotFound`、`generationMismatch`、`requestConflict` | drain 前持久化。重复键读取同一操作，不重复 drain。忙碌或结算未知用回执状态表达。 |
-| `host.stop` | `{requestId,expectedGeneration,strategy:"ifIdle"\|"cancel"}` | `HostStopReceipt` | `requestConflict` | 分发前冻结目标代际并持久化逐项目子操作 ID。重复键返回原汇总，不存在全局事务。 |
-| `host.operation` | `{requestId}` | `{operation:ProjectMutationReceipt\|StopReceipt\|HostStopReceipt\|UpdateReceipt\|null}` | 无 | 跨 Host 重启只读核查。`null` 是缺少证据，不授权重放。 |
-| `host.subscribe` | `{}` | `{subscriptionId,generation,sequence:0,status:<host.status result>}` | 无 | 每次请求在当前连接建立观察，断连释放，不停止工作。 |
-| `host.update` | `{requestId,expectedGeneration,action:"prepare"\|"apply",targetVersion,strategy?:"ifIdle"\|"cancel"}` | `UpdateReceipt` | `updateUnavailable`、`invalidUpdateTarget`、`requestConflict`、`generationMismatch` | `prepare` 登记已在本机安装且验证的目标。`apply` 必须携带 strategy，且目标与准备记录匹配，排空前持久化。回复丢失后只查询。不下载或执行客户端任意路径。 |
+| 方法                | 请求 params                                                                                                      | result                                                                                      | 额外错误                                                                              | 幂等规则                                                                                                                                                                                             |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hello`             | `protocolVersions:number[]`、`capabilities:string[]`、`authToken:string`                                         | `{version,hostId,generation,capabilities,executableVersion}`                                | `versionMismatch`                                                                     | 只读握手。重连后重做，不按可执行版本推断能力。                                                                                                                                                       |
+| `host.status`       | `{}`                                                                                                             | `{hostId,generation,state,projects:ProjectStatus[],restartPending,stopIntent,capabilities}` | 无                                                                                    | 只读快照，不激活项目。                                                                                                                                                                               |
+| `projects.list`     | `{}`                                                                                                             | `{projects:ProjectRegistration[]}`                                                          | 无                                                                                    | 只读持久登记，包含已停止项目。                                                                                                                                                                       |
+| `projects.register` | `{requestId,expectedGeneration,registration:ProjectRegistration,bindExisting?:boolean}`                          | `{registration,created:boolean}`                                                            | `projectConflict`、`dataDirConflict`、`defaultBindingConflict`、`migrationConflict`   | 在 Host 锁下持久化键、规范参数与结果。同键同参数返回原结果，参数变化返回 `requestConflict`。仅本机。                                                                                                 |
+| `project.ensure`    | `{requestId,expectedGeneration,projectId,launchInputs?:LaunchInputs,credentials?:object,noAutoRestart?:boolean}` | `{project:ProjectStatus,service?:Service}`                                                  | `projectNotFound`、`configurationConflict`、`migrationBlocked`、`credentialsRequired` | 显式用户激活，可清除该项目已结算的停止意图。同键返回原受理或结果。同一绑定的并发 ensure 收敛到一个服务。只有核验后的 ready Host-owned 服务返回 `service`。`legacyPending` 只返回状态，不声称已接管。 |
+| `project.stop`      | `{requestId,expectedGeneration,projectId,serviceGeneration,strategy:"ifIdle"\|"cancel"}`                         | `StopReceipt`                                                                               | `projectNotFound`、`generationMismatch`、`requestConflict`                            | drain 前持久化。重复键读取同一操作，不重复 drain。忙碌或结算未知用回执状态表达。                                                                                                                     |
+| `host.stop`         | `{requestId,expectedGeneration,strategy:"ifIdle"\|"cancel"}`                                                     | `HostStopReceipt`                                                                           | `requestConflict`                                                                     | 分发前冻结目标代际并持久化逐项目子操作 ID。重复键返回原汇总，不存在全局事务。                                                                                                                        |
+| `host.operation`    | `{requestId}`                                                                                                    | `{operation:ProjectMutationReceipt\|StopReceipt\|HostStopReceipt\|UpdateReceipt\|null}`     | 无                                                                                    | 跨 Host 重启只读核查。`null` 是缺少证据，不授权重放。                                                                                                                                                |
+| `host.subscribe`    | `{}`                                                                                                             | `{subscriptionId,generation,sequence:0,status:<host.status result>}`                        | 无                                                                                    | 每次请求在当前连接建立观察，断连释放，不停止工作。                                                                                                                                                   |
+| `host.update`       | `{requestId,expectedGeneration,action:"prepare"\|"apply",targetVersion,strategy?:"ifIdle"\|"cancel"}`            | `UpdateReceipt`                                                                             | `updateUnavailable`、`invalidUpdateTarget`、`requestConflict`、`generationMismatch`   | `prepare` 登记已在本机安装且验证的目标。`apply` 必须携带 strategy，且目标与准备记录匹配，排空前持久化。回复丢失后只查询。不下载或执行客户端任意路径。                                                |
 
 `host.status.state` 为 `running`、`stopping`、`stopped` 或 `crashLoopStopped`。`restartPending` 与 `stopIntent` 均为布尔值。能力是可加性的字符串，包括 `projects`、`stopOperations`、`subscriptions`、`updates`、`legacyMigration`，只声明已实现的契约。缺少 `updates` 的 Host 在副作用前拒绝 `host.update`。Host socket 关闭后，本机发现层通过 `areal host operation` 读取持久终态回执，不启动或恢复停止操作。
 
@@ -84,6 +84,29 @@ GUI 根目录中的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` �
 旧无 owner 服务有活动任务时保持 `legacyPending`，原连接继续。迁移先空闲排空或显式授权取消，再核查持久停止回执、清理证明和锁，最后启动新的 Host-owned generation。修改登记元数据不能转交管道或进程所有权。旧 GUI-owned 服务同样要求原生命周期 owner 排空并结算后再替换。
 
 只自动迁移一个具有兼容 Remote 身份的旧 GUI profile。稳定 Host 监督 ID 与 Remote Noise 密钥独立。保留 profile 的 Noise 密钥、设备 pin、grants、撤销记录与 journal 关联。第二个具有不同 Noise 身份的 profile 返回 `migrationConflict`，保留原状态，要求显式选择身份或隔离 home；禁止覆盖、合并或静默重新生成 Noise 身份。凭据迁移覆盖 API keys、OAuth refresh/access tokens 与 provider subscription transport 会话。密钥库成功写入回执必须先于旧密文退役。
+
+## GUI 来源与提交 journal 接口
+
+这些接口仅供经过认证的本机客户端使用。`GuiSource` 包含规范绝对路径 `profile`、`coreHome` 和 `legacyServiceHome`。Electron adapter 在持有原 Desktop singleton、停止旧 writer 并完成 flush 后绑定来源。连接断开释放来源 guard，不授权另一客户端重放未决请求。
+
+| 方法               | 请求 params                                                                   | result                                                                            |
+| ------------------ | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `gui.attachSource` | `{source:GuiSource}`                                                          | 当前连接的来源 guard。                                                            |
+| `gui.import`       | `{requestId,expectedGeneration,source:GuiSource}`                             | 来源迁移状态，包括 `migrationId`、待提交秘密与已完成导入回执。                    |
+| `gui.importStatus` | `{migrationId}`                                                               | 原迁移状态，不推进来源写入。                                                      |
+| `gui.importSecret` | `{requestId,expectedGeneration,migrationId,slot,sourceDigest,value}`          | 密钥库写入并读回核验后的回执。`slot` 必须来自原 manifest，秘密不进入操作日志。    |
+| `journal.read`     | `{projectId}`                                                                 | `{projectId,revision,sha256,byteLength,snapshotPath}`。固定私有槽位中的完整快照。 |
+| `journal.prepare`  | `{requestId,expectedGeneration,projectId,expectedRevision,sha256,byteLength}` | `{requestId,state:"prepared",slotId,writePath}` 或 blocked 回执。                 |
+| `journal.commit`   | `{requestId,expectedGeneration,slotId}`                                       | 原提交的 completed 或 blocked 回执。必须使用 prepare 的连接与 requestId。         |
+| `remote.read`      | `{}`                                                                          | `{revision,sourceId,config}`。包含秘密的配置只返回可信本机连接。                  |
+| `remote.acquire`   | `{sourceId}`                                                                  | `{leaseId,sourceId}`。执行租约绑定当前连接，断连释放。                            |
+| `remote.replace`   | `{requestId,expectedGeneration,expectedRevision,sourceId,config}`             | 持久替换回执，以 revision 校验写入冲突。执行租约不限制本机配置写入。              |
+
+导入先保存固定 manifest 和原字节备份，再保存秘密与回执，核验旧服务清理证明和锁。Host 随后安装非 JSON 来源启动哨兵及每项目 journal 哨兵，最后发布 committed marker。未发布来源占用的项目不能激活或访问 journal，包括复用的 CLI 登记。导入保留原 Store、scratch 路径和 `(profile,legacyProjectId)` 别名。原 registry 与非秘密备份保留。密文退役尚未实现，导入回执明确返回 `retirement:"pending"`。
+
+journal 快照为 `{version:1,pending:object[],outcomes:object}`，保留条目内的未知字段。固定文件槽位承载大于 1 MiB 的快照，控制帧仍受传输上限约束。prepare 或 commit 的 CAS 冲突通过 `result.state:"blocked"` 与 `result.error.code:"revisionConflict"` 表达，不是顶层 RPC error。只有该明确冲突允许重读并重新计算修改。断连、超时或未决 commit 只允许查询原 requestId，不重新执行修改 closure 或 Core 派发。
+
+在线 `host.operation` 也查询来源导入、秘密写入、journal 与 Remote 替换回执。离线 CLI 查询目前只覆盖生命周期回执，不能把离线缺失当作这些 H2 操作未受理。Remote 状态写入中断后依据原稳定 vault entry 与 revision 核查，不使用新 requestId 重放。
 
 ## 退出与服务管理器契约
 

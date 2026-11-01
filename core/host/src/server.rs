@@ -73,6 +73,36 @@ struct Host {
     host_stop_gate: Mutex<()>,
     changes: watch::Sender<u64>,
     exit: Notify,
+    migration: crate::migration::Migration,
+    journal: crate::journal::Journal,
+    remote: crate::remote_state::RemoteState,
+}
+impl Slot {
+    fn imported(registration: ProjectRegistration) -> Self {
+        Self {
+            registration,
+            gate: Arc::new(Mutex::new(())),
+            writer: None,
+            uncertain_start: false,
+            lifetime: None,
+            state: "stopped".into(),
+            service: None,
+            migration: None,
+            credentials: BTreeMap::new(),
+        }
+    }
+}
+struct ConnectionGuard {
+    host: Rc<Host>,
+    id: String,
+    socket: std::os::fd::RawFd,
+}
+impl Drop for ConnectionGuard {
+    fn drop(&mut self) {
+        self.host.migration.disconnect(&self.id);
+        let _ = self.host.journal.disconnect(&self.id);
+        self.host.remote.disconnect(&self.id);
+    }
 }
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -203,6 +233,23 @@ async fn run_local(options: RunOptions) -> Result<HostExit> {
             );
         }
     }
+    let migration = crate::migration::Migration::new(&home)?;
+    for registration in migration.published()? {
+        if slots
+            .get(&registration.project_id)
+            .is_some_and(|s| s.registration != registration)
+        {
+            return Err(error(
+                "migrationConflict",
+                "committed import conflicts with project registry",
+            ));
+        }
+        slots
+            .entry(registration.project_id.clone())
+            .or_insert_with(|| Slot::imported(registration));
+    }
+    let journal = crate::journal::Journal::new(&home)?;
+    let remote = crate::remote_state::RemoteState::new(&home);
     let stop: Option<Value> = storage::read_optional(&directory.join("stop.json"))?;
     let stop = stop.filter(|v| v["state"] != "completed" && !settled_refusal(v));
     let (changes, _) = watch::channel(0);
@@ -216,6 +263,9 @@ async fn run_local(options: RunOptions) -> Result<HostExit> {
         host_stop_gate: Mutex::new(()),
         changes,
         exit: Notify::new(),
+        migration,
+        journal,
+        remote,
     });
     storage::write(&directory.join("host.json"), &host.identity)?;
     loop {
@@ -233,6 +283,7 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
         stream.peer_cred()?.uid() == unsafe { libc::geteuid() },
         "unauthorized peer"
     );
+    let socket = std::os::fd::AsRawFd::as_raw_fd(&stream);
     let (reader, mut writer) = stream.into_split();
     let mut reader = BufReader::new(reader);
     let value = tokio::time::timeout(Duration::from_secs(10), wire::read(&mut reader))
@@ -255,6 +306,11 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
         return Ok(());
     }
     let _ = hello.capabilities;
+    let connection = ConnectionGuard {
+        host: host.clone(),
+        id: uuid::Uuid::new_v4().to_string(),
+        socket,
+    };
     let mut subscription: Option<(String, u64)> = None;
     let mut changes = host.changes.subscribe();
     let mut tick = tokio::time::interval(Duration::from_secs(1));
@@ -265,7 +321,7 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
             value=wire::read_buffered(&mut reader,&mut frame_bytes)=> {
                 let Some(value)=value? else {return Ok(());};
                 let request:wire::Request=serde_json::from_value(value)?;
-                let result=if request.version!=VERSION {Err(error("unsupportedVersion","Host requires version 1"))} else if request.id.is_empty() {Err(error("invalidRequest","id must be nonempty"))} else if request.method=="host.subscribe" {serde_json::from_value::<Empty>(request.params).map_err(anyhow::Error::from)?;let id=uuid::Uuid::new_v4().to_string();subscription=Some((id.clone(),0));let status=host.status().await;previous=serde_json::to_value(&status)?;Ok(json!({"subscriptionId":id,"generation":host.identity.generation,"sequence":0,"status":status}))} else {host.dispatch(&request.method,request.params).await};
+                let result=if request.version!=VERSION {Err(error("unsupportedVersion","Host requires version 1"))} else if request.id.is_empty() {Err(error("invalidRequest","id must be nonempty"))} else if request.method=="host.subscribe" {serde_json::from_value::<Empty>(request.params).map_err(anyhow::Error::from)?;let id=uuid::Uuid::new_v4().to_string();subscription=Some((id.clone(),0));let status=host.status().await;previous=serde_json::to_value(&status)?;Ok(json!({"subscriptionId":id,"generation":host.identity.generation,"sequence":0,"status":status}))} else {host.dispatch_connection(&request.method,request.params,&connection).await};
                 let response=match result {Ok(value)=>json!({"version":VERSION,"id":request.id,"result":value}),Err(e)=>{let code=e.downcast_ref::<wire::Error>().map(|e|e.code).unwrap_or(if e.downcast_ref::<serde_json::Error>().is_some(){"invalidRequest"}else{"internalError"});json!({"version":VERSION,"id":request.id,"error":{"code":code,"message":e.to_string()}})}};
                 let sent=wire::write(&mut writer,&response).await;
                 if host.stop.borrow().as_ref().is_some_and(|v|v["state"]=="completed") {host.exit.notify_one();}
@@ -285,6 +341,143 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
     }
 }
 impl Host {
+    fn client_operation(&self, id: &str) -> Result<Option<Value>> {
+        if let Some(receipt) = self.migration.operation(id)? {
+            return Ok(Some(receipt));
+        }
+        if let Some(receipt) = self.journal.operation(id)? {
+            return Ok(Some(receipt));
+        }
+        self.remote.operation(id, &self.migration)
+    }
+    fn client_state(
+        &self,
+        method: &str,
+        params: Value,
+        connection: &ConnectionGuard,
+    ) -> Result<Value> {
+        if let Some(id) = params.get("requestId").and_then(Value::as_str) {
+            wire::request_id(id)?;
+            self.admission()?;
+            self.generation(
+                params["expectedGeneration"]
+                    .as_str()
+                    .ok_or_else(|| error("invalidRequest", "expectedGeneration is required"))?,
+            )?;
+            if self.receipt(id)?.is_some() {
+                return Err(error(
+                    "requestConflict",
+                    "requestId belongs to a Host lifecycle operation",
+                ));
+            }
+            if let Some(receipt) = self.client_operation(id)? {
+                let same = receipt["method"] == method
+                    || (method.starts_with("journal.")
+                        && receipt["method"]
+                            .as_str()
+                            .is_some_and(|m| m.starts_with("journal.")));
+                if !same {
+                    return Err(error(
+                        "requestConflict",
+                        "requestId belongs to a different domain operation",
+                    ));
+                }
+            }
+        }
+        match method {
+            "gui.attachSource" => {
+                #[derive(Deserialize)]
+                #[serde(deny_unknown_fields)]
+                struct Attach {
+                    source: crate::migration::Source,
+                }
+                let input: Attach = serde_json::from_value(params)?;
+                self.migration
+                    .attach(input.source, &connection.id, Some(connection.socket))
+            }
+            "gui.import" => {
+                let input: crate::migration::Import = serde_json::from_value(params)?;
+                self.generation(&input.expected_generation)?;
+                let existing = self
+                    .slots
+                    .borrow()
+                    .values()
+                    .map(|s| s.registration.clone())
+                    .collect::<Vec<_>>();
+                let result =
+                    self.migration
+                        .import(input, &connection.id, &existing, &self.journal)?;
+                for registration in self.migration.published()? {
+                    let mut slots = self.slots.borrow_mut();
+                    if slots
+                        .get(&registration.project_id)
+                        .is_some_and(|s| s.registration != registration)
+                    {
+                        return Err(error(
+                            "migrationConflict",
+                            "committed import conflicts with current registration",
+                        ));
+                    }
+                    slots
+                        .entry(registration.project_id.clone())
+                        .or_insert_with(|| Slot::imported(registration));
+                }
+                self.changed();
+                Ok(result)
+            }
+            "gui.importStatus" => {
+                #[derive(Deserialize)]
+                #[serde(rename_all = "camelCase", deny_unknown_fields)]
+                struct Query {
+                    migration_id: String,
+                }
+                self.migration
+                    .status(&serde_json::from_value::<Query>(params)?.migration_id)
+            }
+            "gui.importSecret" => {
+                let input: crate::migration::ImportSecret = serde_json::from_value(params)?;
+                self.generation(&input.expected_generation)?;
+                self.migration.import_secret(input, &connection.id)
+            }
+            "journal.read" | "journal.prepare" | "journal.commit" => {
+                let project = if method == "journal.commit" {
+                    self.journal.project_for_slot(
+                        params["requestId"]
+                            .as_str()
+                            .context("requestId is required")?,
+                        params["slotId"].as_str().context("slotId is required")?,
+                    )?
+                } else {
+                    Some(
+                        params["projectId"]
+                            .as_str()
+                            .ok_or_else(|| error("invalidRequest", "projectId is required"))?
+                            .to_owned(),
+                    )
+                };
+                if let Some(id) = project {
+                    if !self.slots.borrow().contains_key(&id) {
+                        return Err(error("projectNotFound", "project is not published"));
+                    }
+                    if self.migration.unpublished_reserved(&id)? {
+                        return Err(error(
+                            "migrationPending",
+                            "project is reserved by an unpublished GUI import",
+                        ));
+                    }
+                }
+                self.journal.dispatch(method, params, &connection.id)
+            }
+            "remote.read" | "remote.replace" | "remote.acquire" => self.remote.dispatch(
+                method,
+                params,
+                &connection.id,
+                &self.identity.generation,
+                &self.migration,
+            ),
+            _ => Err(error("methodNotFound", "unknown Host client-state method")),
+        }
+    }
     fn changed(&self) {
         self.changes.send_modify(|sequence| *sequence += 1);
     }
@@ -348,6 +541,12 @@ impl Host {
         project_id: &str,
     ) -> Result<(String, Option<Value>)> {
         wire::request_id(id)?;
+        if self.client_operation(id)?.is_some() {
+            return Err(error(
+                "requestConflict",
+                "requestId belongs to a client-state operation",
+            ));
+        }
         let digest = storage::digest(&serde_json::to_vec(
             &json!({"method":method,"params":params}),
         )?);
@@ -444,6 +643,20 @@ impl Host {
         let slot = &slots[id];
         ProjectStatus {registration,state:slot.state.clone(),service:slot.service.clone().filter(|s|s.owner.as_ref()==Some(&self.owner()) && slot.writer.is_some() && slot.state=="ready"),migration:slot.migration.clone().or_else(||slot.service.as_ref().filter(|s|s.owner.is_none() && s.state==State::Ready).map(|s|json!({"serviceId":s.identity.service_id,"generation":s.identity.generation,"phase":"legacyPending"})))}
     }
+    async fn dispatch_connection(
+        &self,
+        method: &str,
+        params: Value,
+        connection: &ConnectionGuard,
+    ) -> Result<Value> {
+        if method.starts_with("gui.")
+            || method.starts_with("journal.")
+            || method.starts_with("remote.")
+        {
+            return self.client_state(method, params, connection);
+        }
+        self.dispatch(method, params).await
+    }
     async fn dispatch(&self, method: &str, params: Value) -> Result<Value> {
         match method {
             "host.status" => {
@@ -463,7 +676,9 @@ impl Host {
             "host.operation" => {
                 let query: OperationQuery = serde_json::from_value(params)?;
                 wire::request_id(&query.request_id)?;
-                Ok(json!({"operation":self.reconcile(&query.request_id).await?}))
+                Ok(
+                    json!({"operation":match self.client_operation(&query.request_id)? { Some(receipt) => Some(receipt), None => self.reconcile(&query.request_id).await? }}),
+                )
             }
             "host.update" => Err(error(
                 "unsupportedCapability",
@@ -513,6 +728,16 @@ impl Host {
             return previous_result(previous);
         }
         let r = input.registration;
+        if self.migration.reserved(&r)? {
+            return self.finish_mutation(
+                &input.request_id,
+                &digest,
+                Err(error(
+                    "migrationConflict",
+                    "project ID or Store is reserved by a GUI import",
+                )),
+            );
+        }
         if input.bind_existing {
             let conflict = {
                 let slots = self.slots.borrow();
@@ -682,6 +907,12 @@ impl Host {
         self.finish_mutation(&input.request_id, &digest, result)
     }
     async fn ensure_inner(&self, input: &Ensure) -> Result<Value> {
+        if self.migration.unpublished_reserved(&input.project_id)? {
+            return Err(error(
+                "migrationBlocked",
+                "project is reserved by an unpublished GUI import",
+            ));
+        }
         let registration = self.slots.borrow()[&input.project_id].registration.clone();
         let saved_path = self
             .home
@@ -705,9 +936,16 @@ impl Host {
                 .all(|k| inputs.credential_names.contains(k)),
             "invalidRequest: credentials must be named by launch inputs"
         );
+        let mut imported_credentials = BTreeMap::new();
+        for name in &inputs.credential_names {
+            if let Some(value) = self.migration.credential(&input.project_id, name)? {
+                imported_credentials.insert(name.clone(), value);
+            }
+        }
         let credentials = {
             let mut slots = self.slots.borrow_mut();
             let slot = slots.get_mut(&input.project_id).unwrap();
+            slot.credentials.extend(imported_credentials);
             slot.credentials.extend(input.credentials.clone());
             slot.credentials.clone()
         };
@@ -1465,6 +1703,102 @@ mod tests {
     use super::*;
     use crate::Client;
 
+    #[test]
+    fn unpublished_cli_import_blocks_journal_read_prepare_and_bound_commit() {
+        use std::os::fd::AsRawFd;
+        let root = tempfile::tempdir().unwrap();
+        let base = root.path().canonicalize().unwrap();
+        let home = base.join("home");
+        let core = base.join("core");
+        let workspace = base.join("workspace");
+        let project = "a".repeat(24);
+        let data = core.join(&project).join("state");
+        for path in [
+            &home,
+            &home.join("host/operations"),
+            &core,
+            &workspace,
+            &data,
+        ] {
+            storage::private_dir(path).unwrap();
+        }
+        let registration = ProjectRegistration {
+            project_id: project.clone(),
+            workspace: workspace.clone(),
+            data_dir: data.clone(),
+            source: ProjectSource::Cli,
+            default_binding: true,
+        };
+        let journal = crate::journal::Journal::new(&home).unwrap();
+        let initial = json!({"version":1,"pending":[],"outcomes":{}});
+        journal.initialize(&project, initial.clone()).unwrap();
+        let bytes = serde_json::to_vec(&initial).unwrap();
+        let request = uuid::Uuid::new_v4().to_string();
+        let prepare = json!({"requestId":request,"expectedGeneration":"generation","projectId":project,"expectedRevision":0,"sha256":storage::digest(&bytes),"byteLength":bytes.len()});
+        let slot = journal
+            .dispatch("journal.prepare", prepare.clone(), "connection")
+            .unwrap();
+        std::fs::write(slot["writePath"].as_str().unwrap(), bytes).unwrap();
+        storage::write(
+            &core.join("projects.json"),
+            &json!([{"id":project,"root":workspace}]),
+        )
+        .unwrap();
+        let lock = storage::open_private(&data.join("owner.lock"), true).unwrap();
+        lock.try_lock_exclusive().unwrap();
+        let (changes, _) = watch::channel(0);
+        let host = Rc::new(Host {
+            home: home.clone(),
+            bin: base.clone(),
+            identity: HostIdentity {
+                version: 1,
+                host_id: uuid::Uuid::new_v4().to_string(),
+                generation: "generation".into(),
+                socket_path: home.join("socket"),
+                auth_file: home.join("auth"),
+                pid: std::process::id(),
+                executable_version: "fixture".into(),
+            },
+            token: "fixture".into(),
+            slots: RefCell::new(BTreeMap::from([(
+                project.clone(),
+                Slot::imported(registration),
+            )])),
+            stop: RefCell::new(None),
+            host_stop_gate: Mutex::new(()),
+            changes,
+            exit: Notify::new(),
+            migration: crate::migration::Migration::new(&home).unwrap(),
+            journal,
+            remote: crate::remote_state::RemoteState::new(&home),
+        });
+        let (socket, _peer) = std::os::unix::net::UnixStream::pair().unwrap();
+        let connection = ConnectionGuard {
+            host: host.clone(),
+            id: "connection".into(),
+            socket: socket.as_raw_fd(),
+        };
+        let source = json!({"profile":base.join("profile"),"coreHome":core,"legacyServiceHome":base.join("legacy")});
+        host.client_state("gui.attachSource", json!({"source":source}), &connection)
+            .unwrap();
+        let result = host.client_state("gui.import",json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":"generation","source":source}),&connection).unwrap();
+        assert_eq!(result["kind"], "legacyPending");
+        for (method, params) in [
+            ("journal.read", json!({"projectId":project})),
+            ("journal.prepare", prepare),
+            (
+                "journal.commit",
+                json!({"requestId":request,"expectedGeneration":"generation","slotId":slot["slotId"]}),
+            ),
+        ] {
+            let error = host.client_state(method, params, &connection).unwrap_err();
+            assert!(
+                error.to_string().contains("migrationPending"),
+                "{method}: {error:#}"
+            );
+        }
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn activation_preserves_status_errors_without_attempting_launch() {
         tokio::task::LocalSet::new().run_until(async {
@@ -1716,7 +2050,7 @@ mod tests {
             let workspace=root.path().join("workspace");std::fs::create_dir(&workspace).unwrap();let workspace=workspace.canonicalize().unwrap();
             let mut slots=BTreeMap::new();
             for id in ["a","b","c"] {slots.insert(id.into(),Slot {registration:ProjectRegistration {project_id:id.into(),workspace:workspace.clone(),data_dir:home.join(id),source:ProjectSource::Cli,default_binding:false},gate:Arc::new(Mutex::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new()});}
-            let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new()});
+            let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home)});
             let registration=host.slots.borrow()["b"].registration.clone();storage::private_dir(&registration.data_dir).unwrap();let instance=Host::service_id(&registration);let directory=storage::registry(&home,&instance).unwrap();storage::private_dir(&directory).unwrap();
             let service:Service=serde_json::from_value(json!({"protocolVersion":1,"serviceId":instance,"generation":uuid::Uuid::new_v4().to_string(),"workspace":workspace,"dataDir":registration.data_dir,"configFingerprint":"fixture","owner":host.owner(),"endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1","authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),"hostPid":1,"corePid":1,"state":"stopped"})).unwrap();storage::write(&directory.join("service.json"),&service).unwrap();storage::write(&directory.join("crash.json"),&storage::CrashReceipt {version:1,unexpected_core_exit:true,identity:service.identity.clone(),owner:service.owner.clone(),components:BTreeMap::new(),cleanup_confirmed:true}).unwrap();
             let activation=uuid::Uuid::new_v4().to_string();let record=Operation {digest:"fixture".into(),receipt:json!({"version":1,"requestId":activation,"method":"project.ensure","projectId":"b","state":"acceptedPending"}),evidence:json!({"serviceId":instance,"fingerprint":"fixture","owner":host.owner(),"registration":registration,"previousService":null})};storage::write(&wire::operation_path(&home,&activation),&record).unwrap();

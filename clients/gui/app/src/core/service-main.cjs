@@ -204,6 +204,18 @@ async function start() {
     app.exit(0);
     return;
   }
+  const imported = await require("./gui-source.cjs").prepareGuiSource({
+    app,
+    guiUserData,
+    coreHome: home,
+    legacyServiceHome: options.harnessHome,
+    encryption: safeStorage,
+  });
+  if (imported) {
+    startupTraceService.finish("skipped");
+    app.exit(imported.kind === "ready" ? 0 : 2);
+    return;
+  }
   diagnostics.start({
     role: "desktop",
     root: join(home, "diagnostics", "desktop"),

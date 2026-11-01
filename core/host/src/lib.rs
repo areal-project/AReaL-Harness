@@ -1,7 +1,11 @@
 //! 每用户共享 Host。客户端发现与项目激活不承载 Core 执行或生命期。
 mod client;
+mod journal;
 mod launch;
+mod migration;
+mod remote_state;
 mod server;
+mod vault;
 mod wire;
 use areal_local_service::LocalArgs;
 use areal_protocol::service::Service;
@@ -18,6 +22,9 @@ pub const CAPABILITIES: &[&str] = &[
     "stopOperations",
     "subscriptions",
     "legacyMigration",
+    "guiImport",
+    "submissionJournal",
+    "remoteState",
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
