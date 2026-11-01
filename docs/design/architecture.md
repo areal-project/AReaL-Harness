@@ -4,6 +4,8 @@
 
 AReaL-Harness 采用 **Clients → Core → Runtime** 分层。Core 是会话、Turn、模型循环与 Agent 状态的唯一所有者；Runtime 只处理执行权限、操作事实和资源生命周期。客户端不维护另一套权威历史。
 
+Desktop Service 演进为独立后台的目标设计见[开发环境服务](environment-service.md)，交付顺序见[实施计划](../development/environment-service-plan.md)。两篇均为待实施方案，不改变本页现行 Core/Runtime 权威与 API 契约；独立 owner、登录服务及 GUI 退出后接续须分别验收。
+
 ![架构](diagrams/architecture.svg)
 
 [draw.io 源文件](diagrams/architecture.drawio) · [PNG](diagrams/architecture.png) · [图表规范](STYLE_GUIDE.md)
@@ -186,7 +188,7 @@ GUI 的 `history-observation` 委托 `catalog-observation` 按项目、连接和
 
 ## 仓库目录
 
-桌面客户端归属见[迁移决策](../adr/0001-desktop-client-module.md)。`clients/gui` 的独立 Electron 适配器保留系统凭据与订阅转发，通过共享服务公共入口连接 Core；退出 GUI 不终止 Core 任务。macOS 安装包中，前台与后台适配器使用不同的应用身份，后台共享主包资源与原有数据目录，避免 Finder 将重开前台的请求交给无窗口后台。GUI 构建、数据隔离与本地包见 [GUI 指南](../../clients/gui/README.md)。iOS/Android Remote 客户端位于 `clients/mobile`，Web、iOS 与 Android 通过 `@areal/remote-client` 共享协议、命令核对与会话状态；平台分别提供 IndexedDB、Keychain 与 Android Keystore 持久化适配。执行和历史权威仍在电脑端 Core/Runtime。Android 使用共享移动入口和原生 Keystore 适配，构建、Origin、兼容性和验收边界见 [Android 开发指南](../development/android-development.md)。
+桌面客户端归属见[迁移决策](../adr/0001-desktop-client-module.md)。`clients/gui` 的独立 Electron 适配器保留系统凭据与订阅转发，通过共享服务公共入口连接 Core；关闭 GUI 窗口与退出应用分别遵循生命周期契约；当前 GUI-owned 后台仍受应用生命期管道约束，不能将独立后台进程等同于退出应用后持续执行。macOS 安装包中，前台与后台适配器使用不同的应用身份，后台共享主包资源与原有数据目录，避免 Finder 将重开前台的请求交给无窗口后台。GUI 构建、数据隔离与本地包见 [GUI 指南](../../clients/gui/README.md)。iOS/Android Remote 客户端位于 `clients/mobile`，Web、iOS 与 Android 通过 `@areal/remote-client` 共享协议、命令核对与会话状态；平台分别提供 IndexedDB、Keychain 与 Android Keystore 持久化适配。执行和历史权威仍在电脑端 Core/Runtime。Android 使用共享移动入口和原生 Keystore 适配，构建、Origin、兼容性和验收边界见 [Android 开发指南](../development/android-development.md)。
 
 GUI的混合消息采用可重建展示投影：Markdown沿Streamdown，严格版本化`areal-ui`数据由共享UI目录校验并以只读React组件展示，Gen UI/MCP仍由原隔离宿主处理。Core保留原始消息和制品权威，复制可使用同一文字投影；这不是持久历史迁移或可执行组件协议。审批和Ask User共享展示外壳，合法动作、草稿、提交锁与UNKNOWN核对仍归原请求控制器。
 
