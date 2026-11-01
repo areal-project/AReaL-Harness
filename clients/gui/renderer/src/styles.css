@@ -837,6 +837,15 @@ body {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-reduced-motion="false"])
+    .areal-update-charge-progress
+    [data-slot="progress-indicator"]::after {
+    animation: none;
+    opacity: 0.2;
+    transform: none;
+  }
+}
 @scope (:root[data-reduced-motion="true"]) {
   .areal-update-charge-progress [data-slot="progress-indicator"]::after {
     animation: none;

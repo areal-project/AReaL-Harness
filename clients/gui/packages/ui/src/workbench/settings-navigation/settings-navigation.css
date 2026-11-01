@@ -29,8 +29,8 @@
   padding-left: 36px;
   color: var(--color-foreground);
   transition:
-    border-color 0.15s ease,
-    background-color 0.15s ease;
+    border-color var(--motion-normal) var(--ease-standard),
+    background-color var(--motion-normal) var(--ease-standard);
 }
 
 .settings-sidebar .settings-navigation-search input:focus {
@@ -84,8 +84,8 @@
   text-align: left;
   cursor: var(--interactive-cursor, pointer);
   transition:
-    background-color 0.12s ease,
-    color 0.12s ease;
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
 }
 
 .settings-sidebar .settings-navigation-item svg {
@@ -210,8 +210,8 @@
   cursor: var(--interactive-cursor, pointer);
   flex-shrink: 0;
   transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
+    color var(--motion-normal) var(--ease-standard),
+    background-color var(--motion-normal) var(--ease-standard);
 }
 .icon-button:hover:not(:disabled) {
   color: var(--color-foreground);

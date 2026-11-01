@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
 import { colorContrastRatio } from "@areal/ui/theme";
 import { useI18n, UiMessageError, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.js";
@@ -135,19 +136,22 @@ function CodeThemeSample({ theme }: { theme: CodePreviewTheme }) {
   }, [theme]);
   const current = sample?.theme === theme ? sample : undefined;
   return (
-    <span
-      className="appearance-aa"
-      aria-hidden="true"
-      data-code-theme={current?.style ? theme : undefined}
-      style={current?.style}
+    <TitleTooltip
       title={
         current && !current.style
           ? t("settings.displaySettings.previewTemporarilyUnavailable")
           : undefined
       }
     >
-      Aa
-    </span>
+      <span
+        className="appearance-aa"
+        aria-hidden="true"
+        data-code-theme={current?.style ? theme : undefined}
+        style={current?.style}
+      >
+        Aa
+      </span>
+    </TitleTooltip>
   );
 }
 

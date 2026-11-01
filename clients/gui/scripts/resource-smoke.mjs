@@ -372,7 +372,7 @@ export async function verifyResourceSlice({
     .filter({ hasText: /(?:不存在|not found|No such file|ENOENT|NOT_FOUND)/i })
     .waitFor();
   assert.ok(
-    (await missing.getByRole("navigation", { name: "文件路径" }).getAttribute("title")).endsWith(
+    (await missing.getByRole("navigation", { name: "文件路径" }).getAttribute("aria-description")).endsWith(
       "/missing-resource.md",
     ),
     "missing-file error retains the requested resource identity",

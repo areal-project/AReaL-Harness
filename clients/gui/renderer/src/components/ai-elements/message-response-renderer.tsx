@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { normalizeMessageSingleDollarMath } from "@areal/ui/math-text";
 import "katex/contrib/mhchem";
 import "katex/contrib/copy-tex";
@@ -219,7 +220,11 @@ export const MessageResponse = memo(function MessageResponse({
         node?: ExtraProps["node"];
       }) => {
         if (node?.children.length && node.children.every(isImageContent))
-          return <span title={href}>{children}</span>;
+          return (
+            <TitleTooltip title={href}>
+              <span>{children}</span>
+            </TitleTooltip>
+          );
         const data = node?.data;
         const originalPath =
           data && "workspaceFilePath" in data && typeof data.workspaceFilePath === "string"

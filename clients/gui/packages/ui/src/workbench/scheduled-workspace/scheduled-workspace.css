@@ -241,3 +241,8 @@
     animation: none;
   }
 }
+@scope (:root[data-reduced-motion="true"]) {
+  .scheduled-status[data-state="running"]::before {
+    animation: none;
+  }
+}

@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { SettingsRow } from "@areal/ui/compositions";
 import { useI18n, UiMessageError, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.js";
 import { useRef, useState } from "react";
@@ -44,9 +45,11 @@ export function ProjectlessDirectorySetting({
         description={t("settings.projectlessDirectorySetting.newTasksOutsideProjectsAreSavedIn")}
         control={
           <div className="flex min-w-0 items-center gap-2">
-            <span className="max-w-60 truncate text-compact-caption" title={directory}>
-              {directory ?? t("settings.projectlessDirectorySetting.disconnected")}
-            </span>
+            <TitleTooltip title={directory}>
+              <span className="max-w-60 truncate text-compact-caption">
+                {directory ?? t("settings.projectlessDirectorySetting.disconnected")}
+              </span>
+            </TitleTooltip>
             <Button
               size="sm"
               variant="outline"
