@@ -1,20 +1,35 @@
 {
-  "schemaVersion": 1,
-  "status": "blocked-on-arena-tls-connectivity",
+  "schemaVersion": 2,
+  "status": "native-teardown-accepted-new-paired-freeze-pending",
   "harnessSourceHead": "3a868d54b9aea13dae1ea15f56c72ab9965889f9",
   "productSourceHead": "4b3921947f06c3055fdd80b518283a769cbf7bb9",
   "pairedExperiment": {
     "plannedAttempts": 130,
     "ordinaryAttemptsPerArm": 60,
     "stopAttemptsPerArm": 5,
-    "startedAttempts": 0,
+    "startedAttempts": 25,
     "freezeDigest": "79eb4ba524e648486f539469a18474a731614e9372d69c059fd9448d0a208a5a",
-    "armHashDifferences": ["/mainSources/core/service-protocol.cjs"],
-    "results": "not_run"
+    "armHashDifferences": [
+      "/mainSources/core/service-protocol.cjs"
+    ],
+    "results": "INCONCLUSIVE",
+    "attemptReceipts": 25,
+    "completeReceipts": 24,
+    "remainingPlanned": 105,
+    "observedOrdinaryOutcomes": {
+      "passed": 14,
+      "attempts": 23
+    },
+    "observedStopOutcomes": {
+      "passed": 2,
+      "attempts": 2
+    },
+    "reason": "Attempt 025 Electron cleanup timeout; frozen runner cannot resume an incomplete receipt.",
+    "actualForwardedRequestsObserved": 379
   },
   "validation": {
-    "nodeTests": 71,
-    "nodeTestsPassed": 71,
+    "nodeTests": 73,
+    "nodeTestsPassed": 73,
     "guiTypecheck": "passed",
     "ownedGuiStaticCheck": "passed",
     "documentationCheck": "passed",
@@ -26,25 +41,11 @@
       "A-old-guide/miniwob/enter-text",
       "generated-local-html"
     ],
-    "nativeGeneratedVisualReview": "passed; deterministic fixture only"
-  },
-  "standaloneGeneratedHtml": {
-    "status": "failed",
-    "accepted": false,
-    "forwardedRequests": 6,
-    "httpResponses": 0,
-    "transportErrors": 6,
-    "originalTransportErrorCode": "not_recorded",
-    "usage": "unknown",
-    "actualServiceTier": "unknown",
-    "providerInFlightAtCleanup": 0,
-    "cleanup": {
-      "electronStopped": true,
-      "applicationStopped": true
-    },
-    "sourceStable": true,
-    "replayed": false,
-    "includedInPairedResults": false
+    "nativeGeneratedVisualReview": "passed; deterministic fixture only",
+    "browserContractsPassed": 93,
+    "navigationFixNativeControlsPassed": 8,
+    "navigationFixRealCoreFixtureTasksPassed": 3,
+    "nativeClosureFocusedTestsPassed": 39
   },
   "networkDiagnosis": {
     "credentialFree": true,
@@ -55,19 +56,116 @@
     "arenaTlsThroughSystemProxy": "timed out at 8000ms",
     "routeInterface": "utun4",
     "vpnIdentity": "unknown",
-    "conclusion": "Arena endpoint or its current network/tunnel path cannot complete TLS; no model capability or cost improvement conclusion"
+    "conclusion": "Arena endpoint or its current network/tunnel path cannot complete TLS; no model capability or cost improvement conclusion",
+    "status": "Restored before generated-real-arena-02",
+    "restoredTls": "Verified TLS handshake in 207ms; unauthenticated HEAD reached HTTP 404."
   },
   "remaining": [
-    "Restore Arena TLS connectivity and verify without credentials.",
-    "Run the sealed paired workload using the existing authorization and per-attempt budgets; retain every failure and UNKNOWN.",
-    "Complete standalone real autonomous HTML acceptance without overwriting the failed attempt or silently replaying it.",
-    "Evaluate quality and source-weighted penalized Solve cost, then test one evidence-backed candidate at a time."
+    "Freeze and audit fresh D/E arms and input plan for the complete current-product versus local-link-fix cohort.",
+    "Preregister a fresh complete current-product versus local-link-fix cohort, sharing the lifecycle repair; preserve old 25 attempts and 105 planned rows without sample stitching.",
+    "Run all 130 new paired attempts at the unchanged per-attempt budgets.",
+    "Use full paired results to decide the 95% quality and 15% penalized Solve-cost goals, then test the next supported mechanism if needed."
   ],
   "limits": [
-    "No new real-model quality score.",
-    "No demonstrated model request or token savings.",
-    "Three development source groups do not establish generalization.",
+    "No completed expanded real-model comparison or demonstrated efficiency gain.",
+    "Independent real HTML acceptance is one successful flow, not generalization.",
+    "Known partial token usage is a lower bound, not complete billing.",
+    "Three development sources do not establish generalization.",
     "No package or cross-platform acceptance."
   ],
-  "localEvidenceRoot": ".scratch/browser-hillclimb-v2/"
+  "localEvidenceRoot": ".scratch/browser-hillclimb-v2/",
+  "navigationFixSourceHead": "19834532",
+  "standaloneGeneratedHtmlAttempts": [
+    {
+      "status": "failed",
+      "accepted": false,
+      "forwardedRequests": 6,
+      "httpResponses": 0,
+      "transportErrors": 6,
+      "originalTransportErrorCode": "not_recorded",
+      "usage": "unknown",
+      "actualServiceTier": "unknown",
+      "providerInFlightAtCleanup": 0,
+      "cleanup": {
+        "electronStopped": true,
+        "applicationStopped": true
+      },
+      "sourceStable": true,
+      "replayed": false,
+      "includedInPairedResults": false,
+      "attemptId": "generated-real-arena-01"
+    },
+    {
+      "attemptId": "generated-real-arena-02",
+      "status": "completed",
+      "accepted": true,
+      "forwardedRequests": 8,
+      "solveHttpAttempts": 6,
+      "usage": "partial",
+      "knownUsageLowerBound": {
+        "cachedInputTokens": 11008,
+        "inputTokens": 33987,
+        "outputTokens": 433
+      },
+      "actualServiceTierCoverage": "unknown",
+      "cleanup": {
+        "electronStopped": true,
+        "applicationStopped": true
+      },
+      "providerInFlightAtCleanup": 0,
+      "sourceStable": true,
+      "nativeVisualReview": "passed by Terra",
+      "replayedWithinAttempt": false,
+      "includedInPairedResults": false
+    }
+  ],
+  "nativeTeardownDiagnosis": {
+    "status": "validated common product repair; no real-model efficiency conclusion",
+    "nativeSelectOpenClose": "Open SELECT prevents native contents destruction in local Electron controls; stable owner and attached view controls also fail.",
+    "rendererDomBlur": "Fixed synthetic fixture: native blur closes SELECT without global window focus events; subsequent contents destruction and normal exit pass.",
+    "rejectedHypotheses": [
+      "A local-link fix does not repair teardown.",
+      "Temporary render-surface reparenting is not necessary for the failure.",
+      "Main-renderer focus in the confirmation stub did not repair the real replay.",
+      "Real native confirmation did not establish automatic popup closure."
+    ],
+    "ownershipLimit": "The observed resource replay waited and failed for the retained native contents. Earlier release paths can leave contents outside workspace.pages; the exact earlier premature-success ordering is not established by that replay.",
+    "repairBoundary": "Existing Electron page lifecycle; retain native resources until destroyed, bounded isolated SELECT focus release and strict close/drain.",
+    "modelRequestsForDiagnosis": 0,
+    "candidateValidation": {
+      "lifecycleSHA256": "b596ad0ceba7a3364247d2e8a1b7f7aaf6f30d24c2102efdd311445ece942f64",
+      "previewSHA256": "43b37516159f85d19ba642d10efce1cc9748a9f76d76b22744193e1b51d2eab8",
+      "sourceHashBeforeAfter": "matched for accepted cases",
+      "nativePassed": [
+        "unnavigated empty-URL page",
+        "same-ID replacement and replacement closure",
+        "open SELECT",
+        "pending subresource load",
+        "strict 025 replay normal exit (task remains failed)"
+      ],
+      "barrierLimit": "Recording and action barriers are controlled promises, not the actual recorder.",
+      "strict025Replay": {
+        "solveRounds": 20,
+        "toolCalls": 19,
+        "qualityPassed": false,
+        "normalExit": true,
+        "electronStopped": true,
+        "applicationStopped": true
+      },
+      "pending": [],
+      "actualRecordingRegression": "Existing real-Core browser suite passed, actual WebM header checked; recording finished before shutdown, not an active-recording interruption test.",
+      "emptyPageCounterexample": "Original lifecycle passes; parent3505 fails and is archived under first-pass; final b596 passes with no-document guard.",
+      "parent3505Evidence": [
+        "ordinary page",
+        "focused INPUT",
+        "closed SELECT",
+        "crashed renderer",
+        "controlled delayed surface, recording and action barriers",
+        "existing real-Core browser suite including completed WebM recording"
+      ],
+      "parentDifference": "Final revision adds only the no-committed-document guard before isolated DOM inspection.",
+      "pendingLoadLimit": "Final pending-load control destroys promptly; isolated blur returned false, so that case does not establish blur execution."
+    }
+  },
+  "nativeTeardownSourceHead": "c19cd5d5c54538f804b36a97ffba9e269225d8e9"
 }
