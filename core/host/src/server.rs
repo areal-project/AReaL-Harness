@@ -128,7 +128,7 @@ struct Register {
     expected_generation: String,
     registration: ProjectRegistration,
 }
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Ensure {
     #[serde(default)]
@@ -390,6 +390,21 @@ impl Host {
             }
         }
         match method {
+            "gui.source" => {
+                #[derive(Deserialize)]
+                #[serde(deny_unknown_fields)]
+                struct Query {
+                    source: crate::migration::Source,
+                }
+                let input: Query = serde_json::from_value(params)?;
+                let registrations = self
+                    .slots
+                    .borrow()
+                    .values()
+                    .map(|slot| slot.registration.clone())
+                    .collect::<Vec<_>>();
+                self.migration.source(input.source, &registrations)
+            }
             "gui.attachSource" => {
                 #[derive(Deserialize)]
                 #[serde(deny_unknown_fields)]
@@ -739,12 +754,15 @@ impl Host {
                 && !self.home.starts_with(&r.workspace),
             "invalidRequest: state must be outside workspace"
         );
-        if matches!(r.source, ProjectSource::Gui { .. }) {
-            return Err(error(
-                "unsupportedCapability",
-                "GUI import requires a migration receipt",
-            ));
-        }
+        self.migration.validate_registration(
+            r,
+            &self
+                .slots
+                .borrow()
+                .values()
+                .map(|slot| slot.registration.clone())
+                .collect::<Vec<_>>(),
+        )?;
         ensure!(
             !input.bind_existing || input.registration.default_binding,
             "invalidRequest: bindExisting requires defaultBinding"
@@ -967,16 +985,13 @@ impl Host {
                 .all(|k| inputs.credential_names.contains(k)),
             "invalidRequest: credentials must be named by launch inputs"
         );
-        let imported_source = self
-            .migration
-            .credential_source(&input.project_id)?
-            .is_some();
+        let imported_source = self.migration.credential_source(&registration)?.is_some();
         let mut imported_credentials = BTreeMap::new();
         for name in &inputs.credential_names {
             if imported_source && name.starts_with("AREAL_CREDENTIAL_") {
                 imported_credentials.insert(
                     name.clone(),
-                    self.migration.credential(&input.project_id, name)?,
+                    self.migration.credential(&registration, name)?,
                 );
             }
         }
@@ -1760,6 +1775,7 @@ mod tests {
         for path in [
             &home,
             &home.join("host/operations"),
+            &home.join("host/projects"),
             &core,
             &workspace,
             &data,
@@ -1825,6 +1841,11 @@ mod tests {
             socket: socket.as_raw_fd(),
         };
         let source = json!({"profile":base.join("profile"),"coreHome":core,"legacyServiceHome":base.join("legacy")});
+        assert!(
+            host.client_state("gui.source", json!({"source":source}), &connection)
+                .unwrap()
+                .is_null()
+        );
         host.client_state("gui.attachSource", json!({"source":source}), &connection)
             .unwrap();
         let result = host.client_state("gui.import",json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":"generation","source":source}),&connection).unwrap();
@@ -1846,6 +1867,127 @@ mod tests {
         drop(lock);
         let ready = host.client_state("gui.import", json!({"requestId":result["requestId"],"expectedGeneration":"generation","source":source}), &connection).unwrap();
         assert_eq!(ready["kind"], "ready");
+        let original_source = host
+            .client_state("gui.source", json!({"source":source}), &connection)
+            .unwrap();
+        assert_eq!(
+            original_source["bindings"][0]["registration"]["source"]["kind"],
+            "cli"
+        );
+        let alias = "b".repeat(24);
+        let gui_registration = ProjectRegistration {
+            project_id: "new-gui-project".into(),
+            workspace: workspace.clone(),
+            data_dir: core.join(&alias).join("state"),
+            source: ProjectSource::Gui {
+                profile: base.join("profile"),
+                legacy_project_id: alias.clone(),
+            },
+            default_binding: false,
+        };
+        let gui_request = uuid::Uuid::new_v4().to_string();
+        let registered = host
+            .register(Register {
+                request_id: gui_request.clone(),
+                expected_generation: "generation".into(),
+                registration: gui_registration.clone(),
+                bind_existing: false,
+            })
+            .await
+            .unwrap();
+        assert_eq!(registered["created"], true);
+        assert_eq!(
+            host.register(Register {
+                request_id: gui_request.clone(),
+                expected_generation: "generation".into(),
+                registration: gui_registration.clone(),
+                bind_existing: false
+            })
+            .await
+            .unwrap(),
+            registered
+        );
+        assert_eq!(
+            host.receipt(&gui_request).unwrap().unwrap().receipt["state"],
+            "completed"
+        );
+        let mut alias_conflict = gui_registration.clone();
+        alias_conflict.project_id = "alias-rebound".into();
+        let mut path_conflict = gui_registration.clone();
+        path_conflict.data_dir = base.join("incorrect-store");
+        let mut unknown_source = gui_registration.clone();
+        unknown_source.source = ProjectSource::Gui {
+            profile: base.join("unknown-profile"),
+            legacy_project_id: alias.clone(),
+        };
+        let mut invalid_alias = gui_registration.clone();
+        invalid_alias.source = ProjectSource::Gui {
+            profile: base.join("profile"),
+            legacy_project_id: "../invalid".into(),
+        };
+        let mut imported_alias = gui_registration.clone();
+        imported_alias.source = ProjectSource::Gui {
+            profile: base.join("profile"),
+            legacy_project_id: project.clone(),
+        };
+        for (registration, code) in [
+            (alias_conflict, "aliasConflict"),
+            (path_conflict, "invalidRequest"),
+            (unknown_source, "sourceNotFound"),
+            (invalid_alias, "invalidRequest"),
+            (imported_alias, "aliasConflict"),
+        ] {
+            let error = host
+                .register(Register {
+                    request_id: uuid::Uuid::new_v4().to_string(),
+                    expected_generation: "generation".into(),
+                    registration: registration.clone(),
+                    bind_existing: false,
+                })
+                .await
+                .unwrap_err();
+            assert!(error.to_string().contains(code), "{code}: {error:#}");
+            assert!(
+                host.register(Register {
+                    request_id: uuid::Uuid::new_v4().to_string(),
+                    expected_generation: "stale".into(),
+                    registration,
+                    bind_existing: false
+                })
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("generationMismatch")
+            );
+        }
+        assert_eq!(host.slots.borrow().len(), 2);
+        let view = host
+            .client_state("gui.source", json!({"source":source}), &connection)
+            .unwrap();
+        assert_eq!(view["bindings"].as_array().unwrap().len(), 2);
+        assert_eq!(view["bindings"][0], original_source["bindings"][0]);
+        assert_eq!(
+            view["bindings"][1]["registration"],
+            serde_json::to_value(&gui_registration).unwrap()
+        );
+        assert_eq!(
+            view["bindings"][1]["scratchDir"],
+            core.join(&alias).join("scratch").to_str().unwrap()
+        );
+        let persisted: ProjectRegistration =
+            storage::read(&host.record_path(&gui_registration.project_id)).unwrap();
+        let restarted = crate::migration::Migration::new(&home).unwrap();
+        let restarted_view = restarted
+            .source(
+                serde_json::from_value(source.clone()).unwrap(),
+                &[persisted],
+            )
+            .unwrap();
+        assert_eq!(restarted_view, view);
+        assert_eq!(
+            restarted.credential_source(&gui_registration).unwrap(),
+            Some(view["sourceId"].as_str().unwrap().to_owned())
+        );
         let retirement_id = uuid::Uuid::new_v4().to_string();
         let retirement_params = json!({"requestId":retirement_id,"migrationId":result["requestId"],"expectedGeneration":"generation"});
         let mut stale = retirement_params.clone();
@@ -1955,7 +2097,32 @@ mod tests {
             host.slots.borrow()[&project].credentials[reference],
             "vault-secret"
         );
+        let gui_input = Ensure {
+            project_id: gui_registration.project_id.clone(),
+            ..input.clone()
+        };
+        let gui_error = host.ensure_inner(&gui_input).await.unwrap_err();
+        assert!(
+            gui_error.to_string().contains("missing activation receipt"),
+            "{gui_error:#}"
+        );
+        assert_eq!(
+            host.slots.borrow()[&gui_registration.project_id].credentials[reference],
+            "vault-secret"
+        );
         host.client_state("vault.replace",json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":"generation","slot":credential_slot,"expectedRevision":1,"value":null}),&connection).unwrap();
+        assert!(
+            host.ensure_inner(&gui_input)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("credentialsRequired")
+        );
+        assert!(
+            !host.slots.borrow()[&gui_registration.project_id]
+                .credentials
+                .contains_key(reference)
+        );
         assert!(
             host.ensure_inner(&input)
                 .await
@@ -2028,6 +2195,36 @@ mod tests {
             let mut subscription=client.subscribe().await.unwrap();
             let id=uuid::Uuid::new_v4().to_string();let registration=ProjectRegistration {project_id:"test-project".into(),workspace:workspace.canonicalize().unwrap(),data_dir:storage::canonical_pending(&root.path().join("data")).unwrap(),source:ProjectSource::Cli,default_binding:true};
             assert_eq!(client.register(&id,registration.clone()).await.unwrap(),registration);
+            let journal_record = home.join("host/journals/records").join(format!("{}.json", storage::digest(registration.project_id.as_bytes())));
+            assert!(!journal_record.exists());
+            assert!(crate::operation_offline(&home, &uuid::Uuid::new_v4().to_string()).unwrap().is_none());
+            assert!(!journal_record.exists());
+            let mut journal_connection = BufReader::new(UnixStream::connect(&identity.socket_path).await.unwrap());
+            let auth: String = storage::read(&identity.auth_file).unwrap();
+            wire::write(journal_connection.get_mut(), &json!({"version":1,"id":"hello-journal","method":"hello","params":{"protocolVersions":[1],"capabilities":["submissionJournal"],"authToken":auth}})).await.unwrap();
+            assert!(wire::read(&mut journal_connection).await.unwrap().unwrap().get("result").is_some());
+            wire::write(journal_connection.get_mut(), &json!({"version":1,"id":"missing-journal","method":"journal.read","params":{"projectId":"missing"}})).await.unwrap();
+            assert_eq!(wire::read(&mut journal_connection).await.unwrap().unwrap()["error"]["code"], "projectNotFound");
+            for (method, params) in [
+                ("journal.read", json!({"projectId":registration.project_id,"unexpected":true})),
+                ("journal.prepare", json!({"projectId":registration.project_id,"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":identity.generation})),
+                ("journal.prepare", json!({"projectId":registration.project_id,"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":identity.generation,"expectedRevision":0,"sha256":"invalid","byteLength":1})),
+            ] {
+                wire::write(journal_connection.get_mut(), &json!({"version":1,"id":"invalid-journal","method":method,"params":params})).await.unwrap();
+                assert!(wire::read(&mut journal_connection).await.unwrap().unwrap().get("error").is_some());
+                assert!(!journal_record.exists(), "invalid journal request must not initialize storage");
+            }
+            wire::write(journal_connection.get_mut(), &json!({"version":1,"id":"read-journal","method":"journal.read","params":{"projectId":registration.project_id}})).await.unwrap();
+            let read = wire::read(&mut journal_connection).await.unwrap().unwrap();
+            assert_eq!(read["result"]["revision"], 0);
+            let snapshot: Value = storage::read(PathBuf::from(read["result"]["snapshotPath"].as_str().unwrap()).as_path()).unwrap();
+            assert_eq!(snapshot, json!({"version":1,"pending":[],"outcomes":{}}));
+            let prepare_request = uuid::Uuid::new_v4().to_string();
+            let snapshot_bytes = serde_json::to_vec(&snapshot).unwrap();
+            wire::write(journal_connection.get_mut(), &json!({"version":1,"id":"prepare-journal","method":"journal.prepare","params":{"requestId":prepare_request,"expectedGeneration":identity.generation,"projectId":registration.project_id,"expectedRevision":0,"sha256":storage::digest(&snapshot_bytes),"byteLength":snapshot_bytes.len()}})).await.unwrap();
+            assert!(wire::read(&mut journal_connection).await.unwrap().unwrap()["result"]["slotId"].is_string());
+            assert!(journal_record.exists());
+            drop(journal_connection);
             assert_eq!(client.register(&id,registration.clone()).await.unwrap(),registration);
             let mut changed=registration.clone();changed.data_dir=root.path().join("different");assert!(format!("{:#}",client.register(&id,changed).await.unwrap_err()).contains("requestConflict"));
             let event=tokio::time::timeout(Duration::from_secs(3),subscription.next()).await.unwrap().unwrap().unwrap();assert_eq!(event["method"],"host.statusChanged");assert_eq!(event["params"]["sequence"],1);

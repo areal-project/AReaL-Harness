@@ -155,6 +155,24 @@ class HostClient {
     this.requireCapability("guiImport");
     return this.request("gui.attachSource", { source });
   }
+  /** @param {import('./gui-source.cjs').GuiSource} source */
+  sourceState(source) {
+    this.requireCapability("guiImport");
+    return this.request("gui.source", { source });
+  }
+  listProjects() {
+    this.requireCapability("projects");
+    return this.request("projects.list", {});
+  }
+  /** @param {string} requestId @param {{projectId:string,workspace:string,dataDir:string,source:{kind:'gui',profile:string,legacyProjectId:string}|{kind:'cli'},defaultBinding:boolean}} registration */
+  registerProject(requestId, registration) {
+    this.requireCapability("projects");
+    return this.request("projects.register", {
+      requestId,
+      expectedGeneration: this.generation,
+      registration,
+    });
+  }
   /** @param {string} requestId @param {unknown} source */
   importSource(requestId, source) {
     return this.request("gui.import", {

@@ -39,7 +39,6 @@ impl Source {
             }
             *path = storage::canonical_pending(path)?;
         }
-        ensure!(self.core_home.is_dir(), "source Core home must exist");
         Ok(self)
     }
 }
@@ -239,6 +238,7 @@ impl Migration {
         socket: Option<std::os::fd::RawFd>,
     ) -> Result<Value> {
         let source = source.canonical()?;
+        ensure!(source.core_home.is_dir(), "source Core home must exist");
         let mut guards = self.guards.borrow_mut();
         if guards
             .get(&source.core_home)
@@ -337,6 +337,146 @@ impl Migration {
         }
         Ok(output)
     }
+    fn profile_source(&self, profile: &Path) -> Result<Record> {
+        let mut selected = None;
+        for record in self.records()? {
+            if record.source.profile != profile || self.committed(&record)?.is_none() {
+                continue;
+            }
+            if selected.is_some() {
+                return Err(error(
+                    "sourceConflict",
+                    "GUI profile has multiple committed sources",
+                ));
+            }
+            selected = Some(record);
+        }
+        selected.ok_or_else(|| error("sourceNotFound", "GUI profile has no committed source"))
+    }
+    pub fn source(&self, source: Source, current: &[ProjectRegistration]) -> Result<Value> {
+        let source = source.canonical()?;
+        let mut selected = None;
+        let mut matching_profiles = 0;
+        for record in self.records()? {
+            if record.source.profile == source.profile && self.committed(&record)?.is_some() {
+                matching_profiles += 1;
+                if record.source == source {
+                    selected = Some(record);
+                }
+            }
+        }
+        let Some(record) = selected else {
+            return Ok(Value::Null);
+        };
+        if matching_profiles != 1 {
+            return Err(error(
+                "sourceConflict",
+                "GUI profile has multiple committed sources",
+            ));
+        }
+        let mut bindings = record.bindings;
+        for binding in &mut bindings {
+            if let Some(registration) = current.iter().find(|r| r.project_id == binding.project_id)
+            {
+                binding.default_binding = registration.default_binding;
+                binding.registration = registration.clone();
+            }
+        }
+        for registration in current {
+            let ProjectSource::Gui {
+                profile,
+                legacy_project_id,
+            } = &registration.source
+            else {
+                continue;
+            };
+            if profile != &source.profile {
+                continue;
+            }
+            if let Some(binding) = bindings
+                .iter()
+                .find(|b| b.alias.legacy_project_id == *legacy_project_id)
+            {
+                ensure!(
+                    binding.project_id == registration.project_id,
+                    "sourceConflict: GUI alias has another project binding"
+                );
+                continue;
+            }
+            bindings.push(Binding {
+                alias: Alias {
+                    profile: profile.clone(),
+                    legacy_project_id: legacy_project_id.clone(),
+                },
+                project_id: registration.project_id.clone(),
+                workspace: registration.workspace.clone(),
+                data_dir: registration.data_dir.clone(),
+                scratch_dir: storage::canonical_pending(
+                    &source.core_home.join(legacy_project_id).join("scratch"),
+                )?,
+                default_binding: registration.default_binding,
+                logical_alias: None,
+                worktree_request_id: None,
+                projectless_request_id: None,
+                registration: registration.clone(),
+            });
+        }
+        Ok(
+            json!({"sourceId":record.source_id,"migrationId":record.request_id,"source":source,"bindings":bindings}),
+        )
+    }
+    pub fn validate_registration(
+        &self,
+        registration: &mut ProjectRegistration,
+        current: &[ProjectRegistration],
+    ) -> Result<()> {
+        let ProjectSource::Gui {
+            profile,
+            legacy_project_id,
+        } = &mut registration.source
+        else {
+            return Ok(());
+        };
+        ensure!(
+            profile.is_absolute() && legacy_id(legacy_project_id),
+            "invalidRequest: invalid GUI profile or legacyProjectId"
+        );
+        *profile = storage::canonical_pending(profile)?;
+        let record = self.profile_source(profile)?;
+        let original = record
+            .bindings
+            .iter()
+            .find(|b| b.alias.legacy_project_id == *legacy_project_id);
+        let original_conflict = original.is_some_and(|binding| {
+            binding.project_id != registration.project_id
+                || binding.workspace != registration.workspace
+                || binding.data_dir != registration.data_dir
+        });
+        let current_conflict = current.iter().any(|other| {
+            matches!(&other.source, ProjectSource::Gui { profile: p, legacy_project_id: id } if p == profile && id == legacy_project_id)
+                && other.project_id != registration.project_id
+        });
+        if original_conflict || current_conflict {
+            return Err(error(
+                "aliasConflict",
+                "GUI alias already binds another project",
+            ));
+        }
+        if original.is_none() {
+            let expected = storage::canonical_pending(
+                &record
+                    .source
+                    .core_home
+                    .join(legacy_project_id)
+                    .join("state"),
+            )?;
+            ensure!(
+                registration.data_dir == expected,
+                "invalidRequest: GUI dataDir must match its source alias"
+            );
+        }
+        Ok(())
+    }
     pub fn unpublished_reserved(&self, project: &str) -> Result<bool> {
         for record in self.records()? {
             if record.bindings.iter().any(|b| b.project_id == project)
@@ -391,6 +531,7 @@ impl Migration {
     ) -> Result<Value> {
         wire::request_id(&input.request_id)?;
         let source = input.source.canonical()?;
+        ensure!(source.core_home.is_dir(), "source Core home must exist");
         let directory = self.directory(&input.request_id)?;
         let mut record = if let Some(record) =
             read_optional::<Record>(&directory.join("record.json"))?
@@ -1250,15 +1391,26 @@ impl Migration {
         }
         Err(error("sourceNotFound", "vault source is not published"))
     }
-    pub fn credential_source(&self, project: &str) -> Result<Option<String>> {
+    pub fn credential_source(&self, project: &ProjectRegistration) -> Result<Option<String>> {
         for r in self.records()? {
-            if self.committed(&r)?.is_some() && r.bindings.iter().any(|b| b.project_id == project) {
+            if self.committed(&r)?.is_some()
+                && r.bindings
+                    .iter()
+                    .any(|b| b.project_id == project.project_id)
+            {
                 return Ok(Some(r.source_id));
             }
         }
+        if let ProjectSource::Gui { profile, .. } = &project.source {
+            return Ok(Some(self.profile_source(profile)?.source_id));
+        }
         Ok(None)
     }
-    pub fn credential(&self, project: &str, reference: &str) -> Result<Option<String>> {
+    pub fn credential(
+        &self,
+        project: &ProjectRegistration,
+        reference: &str,
+    ) -> Result<Option<String>> {
         if !reference.starts_with("AREAL_CREDENTIAL_") {
             return Ok(None);
         }
@@ -1379,6 +1531,115 @@ mod tests {
                 .attach(self.source.clone(), "connection", None)
                 .unwrap();
         }
+    }
+    #[test]
+    fn source_lookup_is_exact_read_only_and_registration_requires_unique_profile() {
+        let f = Fixture::new();
+        let mut missing = f.source.clone();
+        missing.core_home = missing.core_home.with_file_name("not-created");
+        assert!(f.migration.source(missing.clone(), &[]).unwrap().is_null());
+        assert!(!missing.core_home.exists());
+        f.attach();
+        assert_eq!(f.import().unwrap()["kind"], "ready");
+        f.migration.disconnect("connection");
+        let view = f.migration.source(f.source.clone(), &[]).unwrap();
+        assert_eq!(view["migrationId"], f.request);
+        let mut current = f.migration.published().unwrap();
+        current[0].default_binding = !current[0].default_binding;
+        let current_view = f.migration.source(f.source.clone(), &current).unwrap();
+        assert_eq!(
+            current_view["bindings"][0]["registration"],
+            serde_json::to_value(&current[0]).unwrap()
+        );
+        assert_eq!(
+            current_view["bindings"][0]["defaultBinding"],
+            current[0].default_binding
+        );
+        for field in [
+            "alias",
+            "workspace",
+            "dataDir",
+            "scratchDir",
+            "logicalAlias",
+            "worktreeRequestId",
+            "projectlessRequestId",
+        ] {
+            assert_eq!(
+                current_view["bindings"][0][field],
+                view["bindings"][0][field]
+            );
+        }
+        let mut wrong_home = f.source.clone();
+        wrong_home.legacy_service_home = wrong_home.legacy_service_home.join("different");
+        assert!(f.migration.source(wrong_home, &[]).unwrap().is_null());
+
+        let profile_alias = f.source.profile.with_file_name("profile-link");
+        std::os::unix::fs::symlink(&f.source.profile, &profile_alias).unwrap();
+        let new_alias = "c".repeat(24);
+        let mut registration = ProjectRegistration {
+            project_id: "ordinary-gui".into(),
+            workspace: f.source.core_home.parent().unwrap().join("workspace"),
+            data_dir: f.source.core_home.join(&new_alias).join("state"),
+            source: ProjectSource::Gui {
+                profile: profile_alias,
+                legacy_project_id: new_alias.clone(),
+            },
+            default_binding: false,
+        };
+        f.migration
+            .validate_registration(&mut registration, &[])
+            .unwrap();
+        assert_eq!(
+            registration.source,
+            ProjectSource::Gui {
+                profile: f.source.profile.clone(),
+                legacy_project_id: new_alias
+            }
+        );
+        assert_eq!(
+            f.migration.credential_source(&registration).unwrap(),
+            Some(view["sourceId"].as_str().unwrap().to_owned())
+        );
+
+        let mut duplicate = f.migration.read(&f.request).unwrap();
+        duplicate.request_id = uuid::Uuid::new_v4().to_string();
+        duplicate.source.core_home = missing.core_home;
+        duplicate.source_id = "another-source".into();
+        duplicate.bindings.clear();
+        storage::private_dir(&f.migration.directory(&duplicate.request_id).unwrap()).unwrap();
+        f.migration.save(&duplicate).unwrap();
+        storage::write(
+            &f.migration
+                .directory(&duplicate.request_id)
+                .unwrap()
+                .join("committed.json"),
+            &Commit {
+                bundle_digest: f.migration.bundle_digest(&duplicate).unwrap(),
+                receipt: json!({}),
+            },
+        )
+        .unwrap();
+        assert!(
+            f.migration
+                .validate_registration(&mut registration, &[])
+                .unwrap_err()
+                .to_string()
+                .contains("sourceConflict")
+        );
+        assert!(
+            f.migration
+                .source(f.source.clone(), std::slice::from_ref(&registration))
+                .unwrap_err()
+                .to_string()
+                .contains("sourceConflict")
+        );
+        assert!(
+            f.migration
+                .credential_source(&registration)
+                .unwrap_err()
+                .to_string()
+                .contains("sourceConflict")
+        );
     }
     #[test]
     fn repeated_source_request_has_durable_operation_alias() {
@@ -1572,7 +1833,10 @@ mod tests {
         assert_eq!(f.import().unwrap()["kind"], "ready");
         assert_eq!(
             f.migration
-                .credential(&f.ids[0], "AREAL_CREDENTIAL_disabled")
+                .credential(
+                    &f.migration.published().unwrap()[0],
+                    "AREAL_CREDENTIAL_disabled"
+                )
                 .unwrap(),
             Some("dummy-secret".into())
         );
@@ -1825,12 +2089,14 @@ mod tests {
         );
         assert_eq!(
             restarted
-                .credential(&f.ids[0], "AREAL_CREDENTIAL_key")
+                .credential(&f.migration.published().unwrap()[0], "AREAL_CREDENTIAL_key")
                 .unwrap(),
             None
         );
         assert_eq!(
-            restarted.credential(&f.ids[0], "OPENAI_API_KEY").unwrap(),
+            restarted
+                .credential(&f.migration.published().unwrap()[0], "OPENAI_API_KEY")
+                .unwrap(),
             None
         );
         assert_eq!(

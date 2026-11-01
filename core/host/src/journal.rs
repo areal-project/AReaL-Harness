@@ -24,18 +24,23 @@ impl Snapshot {
     fn parse(value: Value) -> Result<Self> {
         let value: Self = serde_json::from_value(value)
             .map_err(|_| error("invalidJournal", "expected version, pending, and outcomes"))?;
-        ensure!(value.version == 1, "unsupported journal version");
-        for entry in &value.pending {
+        value.validate()?;
+        Ok(value)
+    }
+
+    fn validate(&self) -> Result<()> {
+        ensure!(self.version == 1, "unsupported journal version");
+        for entry in &self.pending {
             ensure!(
                 entry["method"].is_string() && entry["params"].is_object(),
                 "invalid pending submission"
             );
         }
         ensure!(
-            value.outcomes.values().all(Value::is_object),
+            self.outcomes.values().all(Value::is_object),
             "invalid submission outcomes"
         );
-        Ok(value)
+        Ok(())
     }
 }
 
@@ -178,6 +183,19 @@ impl Journal {
         )
     }
 
+    fn ensure_empty(&self, project_id: &str) -> Result<()> {
+        match std::fs::symlink_metadata(self.record_path(project_id)?) {
+            Ok(_) => {
+                self.load(project_id)?;
+                Ok(())
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                self.initialize(project_id, json!({"version":1,"pending":[],"outcomes":{}}))
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
     pub(crate) fn dispatch(
         &self,
         method: &str,
@@ -267,6 +285,7 @@ impl Journal {
             record.project_id == project_id,
             "journal project identity mismatch"
         );
+        record.snapshot.validate()?;
         self.recover(&record)?;
         Ok(record)
     }
@@ -293,6 +312,7 @@ impl Journal {
         Ok(directory.join(name))
     }
     fn read(&self, project_id: &str, connection_id: &str) -> Result<Value> {
+        self.ensure_empty(project_id)?;
         let record = self.load(project_id)?;
         let path = self.transfer(
             connection_id,
@@ -326,7 +346,6 @@ impl Journal {
                 && request.byte_length < usize::MAX as u64,
             "invalid journal digest or length"
         );
-        let record = self.load(&request.project_id)?;
         if let Some(old) = self.prepared(&request.request_id)? {
             if old.project_id != request.project_id
                 || old.expected_revision != request.expected_revision
@@ -338,8 +357,14 @@ impl Journal {
                     "journal requestId already has different inputs",
                 ));
             }
-            return Ok(old.receipt);
+            self.load(&request.project_id)?;
+            return Ok(self
+                .prepared(&request.request_id)?
+                .context("original journal operation is missing")?
+                .receipt);
         }
+        self.ensure_empty(&request.project_id)?;
+        let record = self.load(&request.project_id)?;
         let slot_id = uuid::Uuid::new_v4().to_string();
         let path = self.transfer(connection_id, &format!("{slot_id}.json"))?;
         let receipt = if record.revision == request.expected_revision {
@@ -524,11 +549,90 @@ mod tests {
     }
 
     #[test]
+    fn ensure_empty_allows_first_read_or_prepare_and_preserves_committed_record() {
+        for read_first in [true, false] {
+            let root = tempfile::tempdir().unwrap();
+            let journal = Journal::new(root.path()).unwrap();
+            journal.ensure_empty("project").unwrap();
+            if read_first {
+                let (descriptor, value) = read(&journal, "client");
+                assert_eq!(descriptor["revision"], 0);
+                assert_eq!(value, json!({"version":1,"pending":[],"outcomes":{}}));
+            }
+            let next = snapshot("first submission");
+            let prepared = prepare(&journal, "client", 0, next.clone());
+            assert_eq!(prepared["state"], "prepared");
+            let operation_path = journal.operation_path(prepared["requestId"].as_str().unwrap());
+            let operation_bytes = std::fs::read(&operation_path).unwrap();
+            journal.ensure_empty("project").unwrap();
+            assert_eq!(std::fs::read(&operation_path).unwrap(), operation_bytes);
+            assert_eq!(
+                commit(&journal, "client", &prepared).unwrap()["revision"],
+                1
+            );
+            let path = journal.record_path("project").unwrap();
+            let committed = std::fs::read(&path).unwrap();
+            journal.ensure_empty("project").unwrap();
+            assert_eq!(std::fs::read(&path).unwrap(), committed);
+            assert_eq!(read(&journal, "observer").1, next);
+        }
+    }
+
+    #[test]
+    fn ensure_empty_rejects_corrupt_foreign_and_untrusted_records_without_resetting() {
+        let root = tempfile::tempdir().unwrap();
+        let journal = Journal::new(root.path()).unwrap();
+        let path = journal.record_path("project").unwrap();
+        let invalid_snapshots = [
+            json!({"version":2,"pending":[],"outcomes":{}}),
+            json!({"version":1,"pending":[{"params":{}}],"outcomes":{}}),
+            json!({"version":1,"pending":[],"outcomes":{"bad":false}}),
+        ];
+        let mut records = vec![b"{broken journal".to_vec()];
+        records.push(
+            serde_json::to_vec(&json!({
+                "projectId":"foreign","revision":7,"initialDigest":"imported",
+                "snapshot":{"version":1,"pending":[],"outcomes":{}},"lastOperation":null
+            }))
+            .unwrap(),
+        );
+        records.extend(invalid_snapshots.into_iter().map(|snapshot| {
+            serde_json::to_vec(&json!({
+                "projectId":"project","revision":7,"initialDigest":"imported",
+                "snapshot":snapshot,"lastOperation":null
+            }))
+            .unwrap()
+        }));
+        for bytes in records {
+            std::fs::write(&path, &bytes).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+            assert!(journal.ensure_empty("project").is_err());
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        }
+        std::fs::remove_file(&path).unwrap();
+        let missing = root.path().join("missing-target");
+        std::os::unix::fs::symlink(&missing, &path).unwrap();
+        assert!(journal.ensure_empty("project").is_err());
+        assert_eq!(std::fs::read_link(&path).unwrap(), missing);
+        assert!(!missing.exists());
+        std::fs::remove_file(&path).unwrap();
+        journal.ensure_empty("project").unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(journal.ensure_empty("project").is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    #[test]
     fn snapshot_larger_than_frame_preserves_original_pending_and_cas_updates() {
         let root = tempfile::tempdir().unwrap();
         let journal = Journal::new(root.path()).unwrap();
         let original = snapshot(&"x".repeat(2 * 1024 * 1024));
         journal.initialize("project", original.clone()).unwrap();
+        let path = journal.record_path("project").unwrap();
+        let imported = std::fs::read(&path).unwrap();
+        journal.ensure_empty("project").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), imported);
         let (descriptor, initial) = read(&journal, "first");
         assert!(descriptor["byteLength"].as_u64().unwrap() > crate::wire::MAX_FRAME as u64);
         assert_eq!(initial, original);
@@ -539,6 +643,9 @@ mod tests {
         let done = commit(&journal, "first", &first).unwrap();
         assert_eq!(done["state"], "completed");
         assert_eq!(done["revision"], 1);
+        let committed = std::fs::read(&path).unwrap();
+        journal.ensure_empty("project").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), committed);
         assert_eq!(
             commit(&journal, "second", &second).unwrap()["error"]["code"],
             "revisionConflict"
@@ -589,6 +696,15 @@ mod tests {
                 .unwrap()["state"],
             "prepared",
             "offline lookup cannot expire a connection-owned slot"
+        );
+        journal.ensure_empty("project").unwrap();
+        assert_eq!(journal.operation(request).unwrap(), Some(receipt.clone()));
+        assert_eq!(
+            journal
+                .operation(unused["requestId"].as_str().unwrap())
+                .unwrap()
+                .unwrap()["state"],
+            "prepared"
         );
         drop(journal);
         let restarted = Journal::new(root.path()).unwrap();

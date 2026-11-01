@@ -24,6 +24,8 @@
 
 `ProjectRegistration` 独立于运行服务描述持久化。字段为 `projectId`、规范绝对路径 `workspace` 与 `dataDir`、`source`、`defaultBinding`。`source` 为 `{kind:"cli"}` 或 `{kind:"gui",profile,legacyProjectId}`。`defaultBinding` 是布尔值，为工作区选择默认登记。`projectId` 是稳定不透明标识，不等同于工作区路径。服务描述保留 service-v1 既有字段，仅在协商后的 Host-aware 契约中增加 Host owner。
 
+普通 GUI 登记要求 `profile` 对应唯一已提交来源，`legacyProjectId` 为 24 位小写十六进制别名。新 GUI 项目的 `dataDir` 必须为该来源的 `<coreHome>/<legacyProjectId>/state`。原导入绑定保留原 Store 路径。同一来源别名不能改绑另一个 Host 项目。Host 在现有项目登记文件中保存新别名，不改原导入 manifest。未知或歧义来源分别返回 `sourceNotFound` 或 `sourceConflict`。
+
 `ProjectStatus` 包含 `registration`、`state`、可选 `service` 和 `migration`。状态为 `stopped`、`starting`、`ready`、`stopping`、`unavailable` 或 `legacyPending`。迁移记录包含原 `serviceId`、`generation`、存在时的 owner、来源 profile 与阶段。`legacyPending` 不制造 Host owner，也不签发声称受 Host 监督的描述。等待迁移时，客户端原有旧连接可以继续运行。
 
 监督 owner 为 `{kind:"host",hostId,generation}`，标识持有 service-host 生命期管道的进程。它与 Remote Noise peer 身份、设备授权分别建模。H1 与 H2 保留 `{kind:"gui",appRunId,profile}` 的运行支持，直到 GUI 生命周期迁移完成；之后只保留旧身份识别。旧 GUI 不能接管新 Host-owned 服务。不能静默改变严格 service-v1 的旧客户端解码行为，必须协商 Host-aware 描述或返回能力错误。
@@ -47,7 +49,7 @@
 | `hello`             | `protocolVersions:number[]`、`capabilities:string[]`、`authToken:string`                                         | `{version,hostId,generation,capabilities,executableVersion}`                                                | `versionMismatch`                                                                     | 只读握手。重连后重做，不按可执行版本推断能力。                                                                                                                                                       |
 | `host.status`       | `{}`                                                                                                             | `{hostId,generation,state,projects:ProjectStatus[],restartPending,stopIntent,capabilities}`                 | 无                                                                                    | 只读快照，不激活项目。                                                                                                                                                                               |
 | `projects.list`     | `{}`                                                                                                             | `{projects:ProjectRegistration[]}`                                                                          | 无                                                                                    | 只读持久登记，包含已停止项目。                                                                                                                                                                       |
-| `projects.register` | `{requestId,expectedGeneration,registration:ProjectRegistration,bindExisting?:boolean}`                          | `{registration,created:boolean}`                                                                            | `projectConflict`、`dataDirConflict`、`defaultBindingConflict`、`migrationConflict`   | 在 Host 锁下持久化键、规范参数与结果。同键同参数返回原结果，参数变化返回 `requestConflict`。仅本机。                                                                                                 |
+| `projects.register` | `{requestId,expectedGeneration,registration:ProjectRegistration,bindExisting?:boolean}`                          | `{registration,created:boolean}`                                                                            | `projectConflict`、`dataDirConflict`、`defaultBindingConflict`、`migrationConflict`、`aliasConflict`、`sourceNotFound`、`sourceConflict`   | 在 Host 锁下持久化键、规范参数与结果。同键同参数返回原结果，参数变化返回 `requestConflict`。仅本机。                                                                                                 |
 | `project.ensure`    | `{requestId,expectedGeneration,projectId,launchInputs?:LaunchInputs,credentials?:object,noAutoRestart?:boolean}` | `{project:ProjectStatus,service?:Service}`                                                                  | `projectNotFound`、`configurationConflict`、`migrationBlocked`、`credentialsRequired` | 显式用户激活，可清除该项目已结算的停止意图。同键返回原受理或结果。同一绑定的并发 ensure 收敛到一个服务。只有核验后的 ready Host-owned 服务返回 `service`。`legacyPending` 只返回状态，不声称已接管。 |
 | `project.stop`      | `{requestId,expectedGeneration,projectId,serviceGeneration,strategy:"ifIdle"\|"cancel"}`                         | `StopReceipt`                                                                                               | `projectNotFound`、`generationMismatch`、`requestConflict`                            | drain 前持久化。重复键读取同一操作，不重复 drain。忙碌或结算未知用回执状态表达。                                                                                                                     |
 | `host.stop`         | `{requestId,expectedGeneration,strategy:"ifIdle"\|"cancel"}`                                                     | `HostStopReceipt`                                                                                           | `requestConflict`                                                                     | 分发前冻结目标代际并持久化逐项目子操作 ID。重复键返回原汇总，不存在全局事务。                                                                                                                        |
@@ -92,6 +94,7 @@ GUI 根目录中的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` �
 | 方法               | 请求 params                                                                   | result                                                                            |
 | ------------------ | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `gui.attachSource` | `{source:GuiSource}`                                                          | 当前连接的来源 guard。                                                            |
+| `gui.source` | `{source:GuiSource}` | `{sourceId,migrationId,source,bindings}` 或 null。只读查询精确来源的原导入别名及当前 GUI 登记。 |
 | `gui.import`       | `{requestId,expectedGeneration,source:GuiSource}`                             | 来源迁移状态，包括 `migrationId`、待提交秘密与已完成导入回执。                    |
 | `gui.importStatus` | `{migrationId}`                                                               | 原迁移状态，不推进来源写入。                                                      |
 | `gui.importSecret` | `{requestId,expectedGeneration,migrationId,slot,sourceDigest,value}`          | 密钥库写入并读回核验后的回执。`slot` 必须来自原 manifest，秘密不进入操作日志。    |
@@ -107,6 +110,8 @@ GUI 根目录中的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` �
 
 导入先保存固定 manifest 和原字节备份，再保存秘密与回执，核验旧服务清理证明和锁。Host 随后安装非 JSON 来源启动哨兵及每项目 journal 哨兵，最后发布 committed marker。未发布来源占用的项目不能激活或访问 journal，包括复用的 CLI 登记。导入保留原 Store、scratch 路径和 `(profile,legacyProjectId)` 别名。原 registry 与非秘密备份保留。原导入回执中的 `retirement:"pending"` 记录导入提交时的事实，后续退役结果由独立接口查询。
 
+`gui.source` 按规范化的完整 `GuiSource` 查询，仅返回已提交来源。同一 profile 对应多个已提交来源时返回 `sourceConflict`，不混合新登记的别名。查询不取得来源 guard，不启动导入，不读取凭据，也不创建目录。`bindings` 中保留导入时复用的 CLI 项目别名，并加入该 profile 的新 GUI 登记。新绑定的 scratch 路径为 `<coreHome>/<legacyProjectId>/scratch`。Host 重启后从原导入回执和现有项目登记重建结果。
+
 ### 旧秘密退役
 
 Host 在 `retirement.json` 保存独立计划与回执，不改原 manifest、凭据导入回执或 committed marker。Electron adapter 持有原 Desktop singleton，按计划替换原文件及对应备份。退役仅移除 manifest 覆盖的 provider 密文、订阅账户密文、Remote 密文及订阅传输明文 token。非秘密配置和未知字段保留。重复 JSON 键或不支持的来源格式会阻止退役，保留未处理文件。provider 启动哨兵、journal 哨兵、原 journal 备份、Store 和 `cloud.json` 不进入替换清单。
@@ -120,6 +125,8 @@ prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每�
 ### journal 与操作回执
 
 journal 快照为 `{version:1,pending:object[],outcomes:object}`，保留条目内的未知字段。固定文件槽位承载大于 1 MiB 的快照，控制帧仍受传输上限约束。prepare 或 commit 的 CAS 冲突通过 `result.state:"blocked"` 与 `result.error.code:"revisionConflict"` 表达，不是顶层 RPC error。只有该明确冲突允许重读并重新计算修改。断连、超时或未决 commit 只允许查询原 requestId，不重新执行修改 closure 或 Core 派发。
+
+已发布普通项目首次 `journal.read` 或 `journal.prepare` 时，Host 仅在记录缺失时创建 revision 0 的空快照。这也适用于先由 CLI 登记的项目。已有导入数据、revision 与操作回执保留。损坏记录不会被空快照覆盖。未知项目及未提交迁移保留项目在初始化前被拒绝；离线回执查询不初始化 journal。
 
 在线 `host.operation` 与离线 `areal host operation <request-id>` 都查询生命周期、来源导入、秘密写入、秘密退役、journal、vault 与 Remote 替换回执。退役回执的方法为 `gui.retirementPrepare`，未完成时为 `acceptedPending`。离线查询不启动 Host、不访问 Keychain、不写入或修复状态文件。缺失 home 不会创建目录。
 
@@ -140,7 +147,7 @@ provider 值是非空字符串或 null；subscription 值是完整记录对象�
 
 写入先保存非秘密 acceptedPending 回执，再保存稳定 vault entry 并读回验证，最后原子提交槽版本和 completed 回执。恢复根据原 entry 与版本结算；系统存储锁定仍返回 `storageLocked`，不推断为缺失。明确缺失的 entry 可结算为 `blocked/storageWriteNotApplied`。操作回执不含秘密值或秘密的普通哈希。丢失响应只查询原 requestId。
 
-每次激活已导入项目时，Host 从当前 vault 获取固定 provider 引用。撤销会移除 Host 的旧缓存值，客户端提交的旧值不能覆盖 vault。普通 CLI 项目与非固定引用沿用既有按启动输入提供凭据的方式。此接口尚未替换 GUI 的设置与订阅消费者，也不宣称撤销已注入运行中 Core 的凭据。
+每次激活已导入项目或已提交来源的新 GUI 项目时，Host 从该来源的当前 vault 获取固定 provider 引用。撤销会移除 Host 的旧缓存值，客户端提交的旧值不能覆盖 vault。缺失或歧义 GUI 来源返回错误，不回退到客户端旧值。普通 CLI 项目与非固定引用沿用既有按启动输入提供凭据的方式。此接口尚未替换 GUI 的设置与订阅消费者，也不宣称撤销已注入运行中 Core 的凭据。
 
 ## 退出与服务管理器契约
 
