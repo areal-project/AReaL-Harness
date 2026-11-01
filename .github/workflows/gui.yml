@@ -44,6 +44,7 @@ jobs:
       gui: ${{ steps.scope.outputs.gui }}
       release: ${{ steps.scope.outputs.release }}
       smoke_matrix: ${{ steps.scope.outputs.smoke_matrix }}
+      core_matrix: ${{ steps.scope.outputs.core_matrix }}
       gui_health: ${{ steps.scope.outputs.gui_health }}
       gui_portable: ${{ steps.scope.outputs.gui_portable }}
       relay: ${{ steps.scope.outputs.relay }}
@@ -330,6 +331,8 @@ jobs:
         with:
           node-version: '24.22.1'
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          shared-key: host-debug-${{ runner.os }}
       - name: Locate GUI dependency cache
         id: tools
         run: |
@@ -369,13 +372,16 @@ jobs:
             target/ci/gui/source.sha target/debug/verification-build.json target/debug/areal target/debug/areal-runtime \
             target/debug/areal-runtime-fs target/debug/areal-runtime-reaper \
             target/debug/shells clients/gui/renderer/dist clients/gui/dist/design-system clients/gui/packages/ui/dist \
-            target/ci/checks/gui-build/report.json clients/gui/native/computer-helper/build
+            target/ci/checks/gui-build/report.json clients/gui/native/computer-helper/build \
+            clients/gui/packages/gen-ui/dist clients/gui/packages/browser-automation/dist \
+            clients/gui/packages/browser-data/dist clients/gui/app/src/core/snapshots/build
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         id: smoke-inputs
         if: ${{ !cancelled() && steps.build.outputs.artifact_ready == 'true' }}
         with:
           name: macos-gui-smoke-inputs-${{ github.run_attempt }}
           path: target/ci/gui/gui-smoke-inputs.tar.gz
+          compression-level: 0
           if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -398,12 +404,16 @@ jobs:
           retention-days: 7
 
 
-  core-contracts:
-    name: macOS Core contracts
+  core-contract-shards:
+    name: macOS Core contracts (${{ matrix.lane }})
     needs: [scope, gui]
     if: ${{ always() && !cancelled() && needs.scope.outputs.gui_build == 'true' && needs.gui.outputs.artifact_ready == 'true' }}
     runs-on: macos-15
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix: ${{ fromJSON(needs.scope.outputs.core_matrix) }}
     steps:
       - name: Prepare isolated contract temporary root
         run: |
@@ -435,8 +445,6 @@ jobs:
         run: |
           mkdir -p "$TMPDIR"
           pnpm --dir clients/gui install --frozen-lockfile
-      - name: Build desktop package entry points
-        run: pnpm --dir clients/gui build:desktop
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: macos-gui-smoke-inputs-${{ github.run_attempt }}
@@ -449,14 +457,19 @@ jobs:
           test -x target/debug/areal-runtime
           test -x target/debug/areal-runtime-fs
           test -x target/debug/areal-runtime-reaper
-      - name: Verify registered Core-dependent contracts
+      - name: Verify registered Core-dependent contracts and native checks
         env:
           AREAL_CORE_BIN: ${{ github.workspace }}/target/debug/areal
-        run: python3 scripts/ci-preflight.py --groups core-contracts --dependencies target/ci/checks/gui-build/report.json --output target/ci/checks/core-contracts 2>&1 | tee target/ci/gui/core-contracts.log
+          CHECK_GROUP: ${{ matrix.group }}
+          CHECK_ITEM: ${{ matrix.item }}
+        run: |
+          args=()
+          if [ -n "$CHECK_ITEM" ]; then args+=(--item "$CHECK_ITEM"); fi
+          python3 scripts/ci-preflight.py --groups "$CHECK_GROUP" "${args[@]}" --dependencies target/ci/checks/gui-build/report.json --output "target/ci/checks/core-${{ matrix.lane }}" 2>&1 | tee target/ci/gui/core-contracts.log
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: macos-core-contracts-evidence
+          name: macos-core-contracts-${{ matrix.lane }}-evidence
           path: |
             target/ci/gui/core-contracts.log
             target/ci/gui/core-contracts/**/report.json
@@ -465,10 +478,25 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: ci-checks-${{ github.run_id }}-${{ github.run_attempt }}-core-contracts
-          path: target/ci/checks/core-contracts/
+          name: ci-checks-${{ github.run_id }}-${{ github.run_attempt }}-core-${{ matrix.lane }}
+          path: target/ci/checks/core-${{ matrix.lane }}/
           if-no-files-found: warn
           retention-days: 7
+
+
+  # 保留原检查名；三条 macOS lane 全部通过才能发布成功状态。
+  core-contracts:
+    name: macOS Core contracts
+    needs: [scope, core-contract-shards]
+    if: ${{ always() && needs.scope.outputs.gui_build == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require every native contract lane
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          SHARDS_RESULT: ${{ needs.core-contract-shards.result }}
+        run: test "$SCOPE_RESULT" = success && test "$SHARDS_RESULT" = success
 
 
   smoke:
@@ -479,7 +507,8 @@ jobs:
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      max-parallel: 6
+      # 为共享 macOS 资源中的原生合同/Harness 留出调度空间。
+      max-parallel: 4
       matrix: ${{ fromJSON(needs.scope.outputs.smoke_matrix) }}
     steps:
       - name: Prepare isolated smoke temporary root
@@ -512,8 +541,6 @@ jobs:
         run: |
           mkdir -p "$TMPDIR"
           make gui-install
-      - name: Build desktop package entry points
-        run: pnpm --dir clients/gui build:desktop
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: macos-gui-smoke-inputs-${{ github.run_attempt }}
@@ -550,6 +577,7 @@ jobs:
         with:
           name: macos-gui-${{ matrix.scenario }}-evidence
           path: gui-smoke-evidence.tar.gz
+          compression-level: 0
           if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

@@ -63,7 +63,13 @@ pnpm --dir clients/gui test:unit renderer/src/readingViews.test.ts
 pnpm --dir clients/gui test:conversation-reading
 ```
 
-PR 工作流按 PR 编号取消旧运行；main 与手动运行按 run ID 独立分组，避免共享并发组替换等待中的 main 提交。纯说明文档保留轻量格式、合同和链接门禁，不下载 Cargo 依赖或恢复 Rust 构建缓存，也不运行依赖审计；内置 Skill Markdown 等产品输入仍按代码处理。工作流本身不使用 paths 跳过必需检查，最终门禁继续验证明确的不适用结果。Linux GUI 安装使用 setup-node 的 pnpm store 缓存，Relay 使用独立 Node 版本和 npm 锁文件缓存；依赖审计下载固定版本与 SHA-256 校验的官方 cargo-audit 二进制。
+PR 工作流按 PR 编号取消旧运行；Verify/GUI 的 main 与手动运行按 run ID 独立分组，避免共享并发组替换等待中的 main 提交。纯说明文档保留轻量格式、合同和链接门禁，不下载 Cargo 依赖或恢复 Rust 构建缓存，也不运行依赖审计；内置 Skill Markdown 等产品输入仍按代码处理。工作流本身不使用 paths 跳过必需检查，最终门禁继续验证明确的不适用结果。Linux GUI 安装使用 setup-node 的 pnpm store 缓存，Relay 使用独立 Node 版本和 npm 锁文件缓存；依赖审计下载固定版本与 SHA-256 校验的官方 cargo-audit 二进制。
+
+GUI 的产物 job 完成必要构建与 RPC 校验后即可发布同一源码的输入包；Core 合同按 manifest 稳定分成两片，构建后的独立原生/设计校验另占一条 macOS lane。三条 lane 共用同一 run/attempt 的依赖报告，各自产生唯一结果；原有 `macOS Core contracts` 检查名作为严格汇总保留。桌面模块、截图模块和既有 Core/renderer/原生 helper 产物一起冻结，消费者不再重复 `build:desktop`。最终门禁仍核对检查 ID、子测试全集、平台、源码、计划、run 和 attempt，拒绝漏项、重复、失败或过期输入。
+
+容器使用固定版本和摘要的官方 cargo-chef 二进制，从清单与锁文件生成依赖配方；依赖编译层位于真实源码 COPY 之前。源码变动只重建工作区代码；新增 target、清单或锁文件变化仍会更新配方。运行镜像仅导出最终层缓存，测试镜像保留完整构建层，避免两套完整依赖缓存重复占用空间；macOS 原生与 GUI 构建共用同一环境键的 Rust 依赖缓存。验收结果及失败报告从不作为缓存通过证据。
+
+用 `python3 scripts/ci-timing.py --collect areal-project/AReaL-Harness --limit 50 --output target/ci/timing` 保存 gh 原始数据并生成逐 job/step CSV；离线重放使用 `--input <snapshot.json>`。分析保留取消、失败、重跑 attempt 和 runner 信息；依赖等待只作估计，机器排队只报告可识别下界。包含安装/编译的复合 step 独立列为 mixed，不能全算测试耗时。缺少日志或子报告时缓存冷热及精确测试拆分保持 unknown；只比较覆盖相同的成功运行，并同时查看墙钟关键路径和累计 runner minutes。
 
 `scripts/ci-scope.py` 是本地与 CI 共用的检查计划所有者；`check-changed` 解析一次 merge-base，合并暂存、未暂存与未跟踪路径，重命名两侧均纳入，部分暂存相互抵消也保留选检。计划登记命令、依赖、环境能力、平台和 manifest 子测试全集，并绑定 base/source/head 与输入摘要。共享 Rust、schema、锁文件、构建与 CI 变化扩大范围，未知代码保守扩大；比较基准不可用时不得放行。
 

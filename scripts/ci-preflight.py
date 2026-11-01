@@ -119,7 +119,7 @@ def environment(item, root):
     env["AREAL_VERIFICATION_INPUT_HASH"] = item.get("inputHash", "")
     if item["group"] == "verify":
         env.setdefault("CARGO_TEST_ARGS", "--exclude areal-runtime-exec-native")
-    if item["group"] in ("core-contracts", "smoke"):
+    if item["group"] in ("core-contracts", "gui-native-checks", "smoke"):
         env["AREAL_CORE_BIN"] = str(matching_core(root))
     if item["id"] == "gui-portable":
         env.pop("AREAL_CORE_BIN", None)
@@ -241,6 +241,19 @@ def artifacts(item, root):
             root / "target/debug" / name
             for name in ("areal", "areal-runtime", "areal-runtime-fs", "areal-runtime-reaper")
         ]
+    if item["id"].endswith(":desktop"):
+        # 将同一构建的桌面模块连同摘要交付给消费者，禁止重新编译混入新输出。
+        for relative in (
+            "packages/gen-ui/dist",
+            "packages/browser-automation/dist",
+            "packages/browser-data/dist",
+            "app/src/core/snapshots/build",
+        ):
+            directory = root / "clients/gui" / relative
+            built = [path for path in sorted(directory.rglob("*")) if path.is_file()]
+            if not built:
+                raise ValueError("desktop build output is missing: " + relative)
+            files.extend(built)
     if item["id"].endswith(":renderer"):
         directory = root / "clients/gui/renderer/dist"
         files = [

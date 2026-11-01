@@ -2,12 +2,41 @@ ARG BASE_IMAGE=alpine:3.22.4
 ARG RUST_IMAGE=rust:1.94-alpine
 ARG BUILD_PROFILE=release
 
-FROM ${RUST_IMAGE} AS runtime-builder
+FROM ${RUST_IMAGE} AS chef
 
-ARG BUILD_PROFILE
-
-RUN apk add --no-cache git build-base cmake python3 curl
+RUN apk add --no-cache git build-base cmake python3 curl xz
+# 固定官方预编译工具及摘要，避免在 CI 现场 cargo install。
+RUN case "$(uname -m)" in \
+      x86_64) chef_target=x86_64-unknown-linux-musl; chef_sha=aca691abfbfbbe00d482e0ed2249eec3091b65e96a0ce92947fb5b254d48b16d ;; \
+      aarch64) chef_target=aarch64-unknown-linux-musl; chef_sha=cd59b90fce5fa84c4189648fec33404ec5491791eebdb812df5e7fca8336408d ;; \
+      *) echo "unsupported cargo-chef architecture" >&2; exit 1 ;; \
+    esac \
+    && curl --fail --silent --show-error --location \
+      "https://github.com/LukeMathWalker/cargo-chef/releases/download/v0.1.78/cargo-chef-${chef_target}.tar.xz" -o /tmp/cargo-chef.tar.xz \
+    && echo "${chef_sha}  /tmp/cargo-chef.tar.xz" | sha256sum -c - \
+    && tar -xJf /tmp/cargo-chef.tar.xz -C /usr/local/bin --strip-components=1 \
+    && rm /tmp/cargo-chef.tar.xz
 WORKDIR /src
+
+FROM chef AS planner
+COPY upstream/pins.json ./upstream/pins.json
+COPY Cargo.toml Cargo.lock ./
+COPY core ./core
+COPY clients/cli ./clients/cli
+COPY clients/tui ./clients/tui
+COPY clients/web ./clients/web
+COPY design/tokens ./design/tokens
+COPY runtime ./runtime
+COPY scripts/launch.py ./scripts/launch.py
+COPY scripts/install.py ./scripts/install.py
+RUN cargo chef prepare --recipe-path /src/recipe.json
+
+FROM chef AS runtime-builder
+ARG BUILD_PROFILE
+# 仅清单与锁文件决定依赖层；普通源码变化复用已编译的第三方依赖。
+COPY --from=planner /src/recipe.json /src/recipe.json
+RUN cargo chef cook --locked --profile "${BUILD_PROFILE}" --recipe-path /src/recipe.json \
+    -p areal-runtime -p areal-runtime-fs -p areal-runtime-exec-native -p areal-cli
 COPY upstream/pins.json ./upstream/pins.json
 COPY Cargo.toml Cargo.lock ./
 COPY core ./core
