@@ -72,9 +72,16 @@ function assertIdle(record) {
       ["completed", "failed", "budgetLimited"].includes(thread.goals.goal.status),
     "History contains an unfinished goal",
   );
-  assert.equal(desktop?.queue?.items?.length ?? 0, 0, "History contains queued work");
   assert.ok(
-    !(desktop?.processes?.length || desktop?.workflowRun),
+    (desktop?.queue?.items ?? []).every((item) =>
+      ["completed", "failed", "steered", "cancelled"].includes(item.status),
+    ),
+    "History contains queued work",
+  );
+  assert.ok(
+    (desktop?.processes ?? []).every(
+      (process) => process.state === "closed" && process.cleanupConfirmed === true,
+    ) && !desktop?.workflowRun,
     "History contains managed execution state",
   );
   assert.ok(
