@@ -1016,11 +1016,11 @@ export async function runComposerFilesAcceptance({
       assert.equal(await page.getByTestId("composer-attachment").count(), 0);
       assert.equal(
         await page.evaluate(
-          (key) => localStorage.getItem(key),
+          (key) => localStorage.getItem(key) ?? "",
           `areal-gui:draft:${pid}:${uploadThreadId}`,
         ),
-        null,
-        "settled send removes the stored draft",
+        "",
+        "settled send leaves no stored draft text",
       );
       const changes = await page.evaluate(() => globalThis.__composerRecoveryChanges);
       assert.ok(changes.length, "draft consumers publish their change");
