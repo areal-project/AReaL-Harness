@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "status": "native-teardown-accepted-new-paired-freeze-pending",
+  "status": "delivery-closed-development-comparison-stopped-by-user",
   "harnessSourceHead": "3a868d54b9aea13dae1ea15f56c72ab9965889f9",
   "productSourceHead": "4b3921947f06c3055fdd80b518283a769cbf7bb9",
   "pairedExperiment": {
@@ -61,10 +61,9 @@
     "restoredTls": "Verified TLS handshake in 207ms; unauthenticated HEAD reached HTTP 404."
   },
   "remaining": [
-    "Freeze and audit fresh D/E arms and input plan for the complete current-product versus local-link-fix cohort.",
-    "Preregister a fresh complete current-product versus local-link-fix cohort, sharing the lifecycle repair; preserve old 25 attempts and 105 planned rows without sample stitching.",
-    "Run all 130 new paired attempts at the unchanged per-attempt budgets.",
-    "Use full paired results to decide the 95% quality and 15% penalized Solve-cost goals, then test the next supported mechanism if needed."
+    "Separate follow-up: complete unnamed native SELECT observation/action coverage, including the failed cancellation counterexample in the unpromoted F prototype.",
+    "Separate follow-up: verify reproduced lifecycle/navigation/cancellation mechanisms without a model, then a small real-model pilot before deciding another full comparison.",
+    "Quality >=95%, complete stop safety and penalized Solve HTTP improvement >=15% remain unverified; retain the full planned denominator and all prior failures."
   ],
   "limits": [
     "No completed expanded real-model comparison or demonstrated efficiency gain.",
@@ -167,5 +166,64 @@
       "pendingLoadLimit": "Final pending-load control destroys promptly; isolated blur returned false, so that case does not establish blur execution."
     }
   },
-  "nativeTeardownSourceHead": "c19cd5d5c54538f804b36a97ffba9e269225d8e9"
+  "nativeTeardownSourceHead": "c19cd5d5c54538f804b36a97ffba9e269225d8e9",
+  "deliveryDecision": "Keep validated executor and navigation fixes; stop new model attempts and defer unresolved capability work to a separate task.",
+  "currentProductComparison": {
+    "experimentId": "browser-hillclimb-v2-local-link-01",
+    "status": "INCONCLUSIVE",
+    "stopReason": "user-requested early stop after current attempt; frozen 130-plan remains incomplete",
+    "freezeDigest": "f56f7ad1e405ff5b09af15dbc19ee1bbc2145bbbdf88f57a0a8754dca039b2db",
+    "plannedAttempts": 130,
+    "settledAttempts": 14,
+    "remainingPlanned": 116,
+    "runningAttempts": 0,
+    "observedOrdinary": {
+      "A": {
+        "passed": 3,
+        "settled": 6,
+        "planned": 60
+      },
+      "B": {
+        "passed": 5,
+        "settled": 6,
+        "planned": 60
+      }
+    },
+    "observedStop": {
+      "A": {
+        "passed": 1,
+        "settled": 1,
+        "planned": 5
+      },
+      "B": {
+        "passed": 1,
+        "settled": 1,
+        "planned": 5
+      }
+    },
+    "allSettledReceiptsValid": true,
+    "allSettledCleanupAndSourceStable": true,
+    "forwardedHTTP": 222,
+    "solveHTTP": 202,
+    "usage": {
+      "completeAttempts": 2,
+      "partialAttempts": 12,
+      "unknownAttempts": 0,
+      "tokenOrDollarSavingsClaimAllowed": false
+    },
+    "inference": "Incomplete development observations only; no 95-percent quality or 15-percent efficiency acceptance.",
+    "closeoutPath": ".scratch/browser-hillclimb-v2/next-pair/user-stop-closeout.json",
+    "closeoutSHA256": "63a58e2c6ae8dcc084890e046357be84c79c27ad00eacfc843a5af9970d124be",
+    "rawManifestStatus": "running (stale after explicit next-admission EEXIST stop; not an active run)",
+    "stopBoundary": "Attempt 14 settled; attempt 15 not admitted. No task or receipt replaced."
+  },
+  "deferredCandidate": {
+    "worktree": ".scratch/browser-hillclimb-v2/arms/F-unnamed-select",
+    "promoted": false,
+    "committed": false,
+    "status": "incomplete; minimum candidate has a failing navigation-cancellation counterexample",
+    "nodeEvidence": "46/47 reported; that intermediate disk log was overwritten, tool output remains. A later 47/47 log contains a withdrawn guard and does not verify the retained candidate.",
+    "uiOrProviderValidation": "not run",
+    "handoff": ".scratch/browser-hillclimb-v2/arms/F-unnamed-select/candidate-evidence/README.md"
+  }
 }
