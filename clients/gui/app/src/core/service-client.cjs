@@ -2,7 +2,7 @@
 "use strict";
 const { requiresCurrentCommands } = require("./service-command-compatibility.cjs");
 const diagnostics = require("./diagnostics.cjs");
-const { observedOperation } = require("./receipt-contract.cjs");
+const { operationCore, observedOperation } = require("./receipt-contract.cjs");
 const { commandSemantics, desktopError } = require("@areal/workbench/desktop-contract");
 const { startupTrace } = require("./startup-timing.cjs");
 const { spawn } = require("node:child_process");
@@ -953,10 +953,12 @@ class SharedCoreBackend {
         await this.genUiState.list(this.genUiScope(project, request.threadId));
       }
     }
-    const originalCore = this.value.projects.find(
-      (project) => project.id === params.projectId,
-    )?.core;
-    const pending = this.requireConnection()
+    const originalCore = operationCore(
+      this.value.projects.find((project) => project.id === params.projectId),
+      params,
+    );
+    const connection = this.requireConnection();
+    const pending = connection
       .request(
         "command",
         { name, request: name === "media" ? encodeMedia(params) : params },
@@ -1025,6 +1027,14 @@ class SharedCoreBackend {
           typeof error.requestId === "string" &&
           error.requestId === params[semantics.requestId]
         ) {
+          if (connection === this.connection && this.status.connected) {
+            await connection
+              .request("snapshot")
+              .then((packet) => {
+                if (connection === this.connection && this.status.connected) this.accept(packet);
+              })
+              .catch(() => {});
+          }
           const operation = observedOperation(
             this.value.projects.find((project) => project.id === params.projectId),
             originalCore,

@@ -171,6 +171,8 @@ Source and installation details expand inline; full paths, configuration, and di
 
 ## Fork and Side Chat
 
+For text selections spanning multiple viewports, the action toolbar anchors to the visible portion. Adding a reference retains the full selection and applies the existing reference length limits.
+
 Side Chat creation does not show an unconfirmed notice while the request is in flight. An unknown outcome uses a brief top toast rather than a persistent banner above the main Composer. After dismissal, **Inspect initial request** in the side-pane launcher still reads the original receipt and opens the confirmed child without creating it again. Opening review, terminal, browser, and files is reflected by the panel change; loading and failure states belong to the affected panel.
 
 The branch action below a completed response directly opens a compact dialog centered in the window with only “Create in current workspace”. The independent chat inherits the current turn, all earlier history, and the current turn’s model configuration. Click outside or press Esc to close. There is no before/after menu or separate three-dot action. Files keep their current state; creating a new worktree is not offered. Unknown creation outcomes are reconciled before retrying.

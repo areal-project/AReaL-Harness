@@ -224,6 +224,7 @@ async function fixture(
     commandResult,
     projectState = {},
     commandState,
+    deferredCommandState = false,
     service = {},
     resources = [],
     resourceError,
@@ -429,7 +430,18 @@ async function fixture(
         (message.method === "command" && commandResult === undefined) ||
         (message.method === "stopService" && stop === "unknown")
       ) {
-        if (message.method === "command" && commandState) {
+        if (message.method === "command" && deferredCommandState) {
+          socket.send(
+            JSON.stringify({
+              id: message.id,
+              error: {
+                message: "fixture lost response",
+                submissionUnknown: true,
+                requestId: message.params.request.requestId,
+              },
+            }),
+          );
+        } else if (message.method === "command" && commandState) {
           Object.assign(projectState, commandState);
           await new Promise((resolve) =>
             socket.send(JSON.stringify({ method: "state", params: packet() }), resolve),
@@ -447,6 +459,8 @@ async function fixture(
         );
         return;
       }
+      if (message.method === "snapshot" && deferredCommandState && commandState)
+        Object.assign(projectState, commandState);
       let result =
         message.method === "command"
           ? commandResult
@@ -1140,6 +1154,77 @@ for (const mismatch of [null, "request", "target", "generation", "instance"]) {
       },
     );
     assert.equal(f.calls.filter((call) => call.method === "command").length, 1);
+  });
+}
+
+for (const scenario of [
+  "matching",
+  "logical-core-changed",
+  "execution-generation-changed",
+  "missing-receipt",
+  "invalid-snapshot",
+]) {
+  test(`lost worktree response reads one fresh snapshot (${scenario})`, async (t) => {
+    const requestId = "b6fdd8bc-29eb-4c07-9121-e04f427dc8cb";
+    const core = {
+      binary: "fixture",
+      apiVersion: null,
+      runtimeEpoch: null,
+      runtimeAvailable: null,
+      features: null,
+      instanceId: null,
+      connectionGeneration: 0,
+    };
+    const executionCore = { instanceId: "worktree-core", connectionGeneration: 5 };
+    const operation = {
+      requestId,
+      method: "areal/turn/submit",
+      target: { kind: "thread", threadId: "t" },
+    };
+    const f = await fixture(t, {
+      projectState: { core, state: { threads: { t: { id: "t", turns: [], executionCore } } } },
+      commandState: {
+        core:
+          scenario === "logical-core-changed"
+            ? { ...core, instanceId: "logical-core", connectionGeneration: 1 }
+            : core,
+        state:
+          scenario === "invalid-snapshot"
+            ? { threads: null }
+            : {
+                threads: {
+                  t: {
+                    id: "t",
+                    turns: [],
+                    executionCore:
+                      scenario === "execution-generation-changed"
+                        ? { ...executionCore, connectionGeneration: 6 }
+                        : executionCore,
+                  },
+                },
+              },
+        outcomes:
+          scenario === "missing-receipt"
+            ? {}
+            : { [requestId]: { status: "completed", accepted: true, operation } },
+      },
+      deferredCommandState: true,
+    });
+    await f.publish();
+    await f.backend.attach();
+    await assert.rejects(
+      f.backend.command("send", { projectId: "p", threadId: "t", text: "once", requestId }),
+      (error) => {
+        assert.equal(error.submissionUnknown, true);
+        assert.deepEqual(
+          error.outcome?.operation,
+          ["matching", "logical-core-changed"].includes(scenario) ? operation : undefined,
+        );
+        return true;
+      },
+    );
+    assert.equal(f.calls.filter((call) => call.method === "command").length, 1);
+    assert.equal(f.calls.filter((call) => call.method === "snapshot").length, 1);
   });
 }
 

@@ -944,10 +944,10 @@ export async function runComposerFilesAcceptance({
     );
     await call("reconcile", { projectId: pid });
     await call("open", { projectId: pid, threadId: uploadThreadId });
-    await page.waitForFunction(
-      () => !document.querySelector('[data-testid="chat-input"]')?.textContent,
-    );
     try {
+      await page.waitForFunction(
+        () => !document.querySelector('[data-testid="chat-input"]')?.textContent,
+      );
       await until(async () => {
         const snapshot = await state();
         const activeThreadId = await activeId();
@@ -974,6 +974,18 @@ export async function runComposerFilesAcceptance({
             uploadThreadId,
             activeThreadId,
             pending: project(snapshot).pending,
+            outcomes: project(snapshot).outcomes,
+            core: project(snapshot).core,
+            executionCore: restored?.executionCore,
+            draft: await page.evaluate(
+              (prefix) =>
+                Object.fromEntries(
+                  Object.entries(localStorage).filter(
+                    ([key]) => key === prefix || key.startsWith(`${prefix}:`),
+                  ),
+                ),
+              `areal-gui:draft:${pid}:${uploadThreadId}`,
+            ),
             thread: restored,
           },
           null,

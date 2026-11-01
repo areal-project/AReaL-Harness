@@ -99,7 +99,11 @@ try {
   };
   await checkDisclosures();
   await page.locator(".messages").hover();
-  await page.mouse.wheel(0, 400);
+  const answerOffset = await page.locator('[data-side-item-id="answer-5"]').evaluate((answer) => {
+    const reader = answer.closest(".messages");
+    return answer.getBoundingClientRect().top - reader.getBoundingClientRect().top;
+  });
+  await page.mouse.wheel(0, answerOffset + 200);
   await frames();
   const anchor = await page.locator(".messages").evaluate((reader) => {
     const top = reader.getBoundingClientRect().top;
@@ -121,7 +125,10 @@ try {
   report.savedBeforeLeave = await page.evaluate(() =>
     sessionStorage.getItem("areal-gui:reading-views:v1"),
   );
-  assert.equal(JSON.parse(report.savedBeforeLeave).views[0].position.anchor.itemId, "answer-5");
+  const savedAnchor = JSON.parse(report.savedBeforeLeave).views[0].position.anchor;
+  assert.equal(savedAnchor.itemId, "answer-5");
+  assert.equal(savedAnchor.blockIndex, anchor.index);
+  assert.ok(Math.abs(savedAnchor.offset - anchor.offset) <= 2);
   const anchorNode = () =>
     page
       .locator('[data-side-item-id="answer-5"] .conversation-markdown')

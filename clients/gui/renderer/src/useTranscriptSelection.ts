@@ -133,6 +133,24 @@ export function useTranscriptSelection({
           : canonical.type === "reasoning"
             ? "reasoning"
             : "tool";
+    const viewport = container.current.getBoundingClientRect();
+    const visibleRects = [...range.getClientRects()].filter(
+      (rect) =>
+        rect.bottom > viewport.top &&
+        rect.top < viewport.bottom &&
+        rect.right > viewport.left &&
+        rect.left < viewport.right,
+    );
+    const center = (viewport.top + viewport.bottom) / 2;
+    const visibleRect = visibleRects.reduce<DOMRect | undefined>(
+      (best, rect) =>
+        !best ||
+        Math.abs((rect.top + rect.bottom) / 2 - center) <
+          Math.abs((best.top + best.bottom) / 2 - center)
+          ? rect
+          : best,
+      undefined,
+    );
     const snapshot = {
       owner: selectionOwner,
       text,
@@ -140,7 +158,7 @@ export function useTranscriptSelection({
       itemId,
       contentType,
       range: range.cloneRange(),
-      rect: range.getBoundingClientRect(),
+      rect: visibleRect ?? range.getBoundingClientRect(),
     };
     // 流式回复的增量尚未确认持久化；DOM 相等不能证明选区属于冻结证据。
     const streamingReply =
