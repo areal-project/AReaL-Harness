@@ -130,11 +130,17 @@ pnpm --dir clients/gui test:history-navigation-ui
 
 CI smoke 执行器与共享源码 Electron fixture 在产品场景启动前自动运行此 doctor，每次尝试保留独立启动报告；CI 随二进制传递 Core 构建回执。身份或探测失败即阻止场景启动，不计为场景通过。评审证据绑定源码提交与相关文件哈希，无关 HEAD 移动本身不使这些哈希失效。
 
+`pnpm --dir clients/gui verify` 在执行契约和测试前运行 `pnpm health`，直接检查生产源码相对已审核基线的健康预算。`test:health` 验证检查器自身，不能替代该门禁；健康失败会使 `verify` 返回非零。完整受影响检查、构建体积与平台验收仍由既有 CI 计划执行。
+
 ## 验收用例：文件夹中的三张图片
 
 在隔离桌面实例中使用支持视觉输入的模型和工作区外的本机文件夹。文件夹包含三张内容不同的 PNG/JPEG 图片，使用不透露内容的文件名。通过 Composer 拖入或粘贴文件夹引用，发送“这个文件夹里的三张图片分别是什么内容？”。
 
 成功条件是目录接收、列举和三个原图读取成功；只读操作经过当前权限模式的审批，Scope 不增加写入或网络权限；模型请求实际包含三个对应图片载荷，最终回答逐张描述并与图片内容一致。仅返回文件名、复制成功、OCR 文本或本地脚本模型的固定回答均不足以证明视觉识别。另在后续轮次不带追加权限读取同一外部目录，验证本次操作授权没有改变基础 Scope。
+
+可重复的确定性桌面入口为 `pnpm --dir clients/gui test:composer-folder-vision`，使用匹配当前源码的 `AREAL_CORE_BIN` 和已构建的 GUI。它复用 Composer runner，在工作区外创建三张无语义文件名的不同 PNG，经目录拖入、四次“允许一次”、真实 Runtime 读取与媒体投影，核对模型收到与三个原图逐一对应的 Core 图片载荷，并确认后续未申请追加权限的读取被拒绝。原生项目选择器返回值是注入边界；目录拖入使用 CDP 合成事件，模型仅在本地确定性边界替换。
+
+证据目录的 `folder-vision-evidence.json` 按阶段记录目录接收、Runtime 读取、模型载荷和 `visualRecognition: not_run`；同目录保留 `manifest.json`、`model-requests.json`、`authoritative-history.json` 与审批截图。`test:composer-folder-vision-contract` 检查证据断言会拒绝缺图、重复图、失败工具和扩大权限。这些通过结果只证明目录到模型输入的链路；真实视觉识别仍须按上述完整成功条件，以已授权的视觉模型逐张核对最终回答，不能把确定性模型输出计为识别通过。
 
 工具契约回归为 `cargo test -p areal-engine --lib read_tools_request_only_additional_read_roots` 和 `cargo test -p areal-engine --lib read_permission_admission_rejects_write_and_network_fields`。零写/禁网下真实文本读取和搜索回归为 `AREAL_TEST_BIN_DIR=/absolute/verified/bundle cargo test -p areal-engine --features native-tests --lib read_helpers_work_without_write_or_network_permissions`。这些回归不替代真实桌面媒体链和真实视觉模型验收；保存源码与产物身份、审批 Scope、工具媒体摘要、模型图片摘要及最终回答，凭据不进入证据。
 

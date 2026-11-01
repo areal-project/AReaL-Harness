@@ -654,6 +654,93 @@ export function applyChildExit(result, child) {
   return result;
 }
 
+export async function validatePairedInputPlan(configuration, configurationPath) {
+  assert.ok(
+    typeof configuration.inputPlanPath === "string" && configuration.inputPlanPath,
+    "Paired experiments require inputPlanPath",
+  );
+  assert.match(
+    configuration.inputPlanSHA256 ?? "",
+    /^[a-f0-9]{64}$/,
+    "Paired experiments require inputPlanSHA256",
+  );
+  const path = resolve(dirname(resolve(configurationPath)), configuration.inputPlanPath);
+  const bytes = await readFile(path);
+  assert.equal(sha(bytes), configuration.inputPlanSHA256, "Input plan SHA256 differs");
+  const plan = JSON.parse(bytes);
+  assert.equal(plan.schemaVersion, 2, "Expected input plan schema 2");
+  assert.equal(plan.experimentId, configuration.experimentId, "Input plan experiment differs");
+  assert.ok(
+    ["current-product", "historical-guide-ablation"].includes(plan.comparisonKind),
+    "Input plan requires an explicit comparisonKind",
+  );
+  assert.equal(
+    plan.comparisonKind,
+    configuration.comparisonKind,
+    "Input plan comparison kind differs",
+  );
+  assert.deepEqual(
+    plan.arms.map((arm) => arm.id).sort(),
+    Object.keys(configuration.arms).sort(),
+    "Input plan comparison arms differ",
+  );
+  assert.deepEqual(
+    plan.model && {
+      protocol: plan.model.protocol,
+      model: plan.model.model,
+      reasoningEffort: plan.model.reasoningEffort,
+      serviceTierRequested: plan.model.serviceTierRequested,
+      temperature: plan.model.temperature,
+    },
+    {
+      protocol: "responses",
+      model: "gpt-6.1-terra",
+      reasoningEffort: "medium",
+      serviceTierRequested: "default",
+      temperature: "omitted",
+    },
+    "Input plan model differs",
+  );
+  const { maxHttpRequests, ...budget } = BUDGET;
+  assert.deepEqual(
+    plan.budgetPerAttempt,
+    { ...budget, maxForwardedHttpRequests: maxHttpRequests },
+    "Input plan attempt budget differs",
+  );
+  assert.deepEqual(
+    plan.tasks.map((task) => ({
+      id: task.id,
+      sourceGroup: task.sourceGroup,
+      kind: task.kind,
+      repeatsPerArm: task.repeatsPerArm,
+    })),
+    PAIRED_TASK_CATALOG.map((task) => ({
+      id: task.id,
+      sourceGroup: task.sourceId,
+      kind: task.safety ? "safety" : "ordinary",
+      repeatsPerArm: 5,
+    })),
+    "Input plan task catalog differs",
+  );
+  assert.equal(plan.scheduleSeed, configuration.seed, "Input plan schedule seed differs");
+  const schedule = buildPairedSchedule(PAIRED_TASK_CATALOG, configuration.seed);
+  assert.deepEqual(plan.schedule, schedule, "Input plan schedule differs");
+  assert.equal(plan.minimumAttempts, schedule.length, "Input plan attempt count differs");
+  for (const arm of Object.keys(configuration.arms)) {
+    assert.equal(
+      plan.ordinaryAttemptsPerArm,
+      schedule.filter((row) => row.arm === arm && !row.safety).length,
+      "Input plan ordinary denominator differs",
+    );
+    assert.equal(
+      plan.safetyAttemptsPerArm,
+      schedule.filter((row) => row.arm === arm && row.safety).length,
+      "Input plan safety denominator differs",
+    );
+  }
+  return { inputPlan: { path, sha256: sha(bytes) }, schedule };
+}
+
 export async function runPairedExperiment(options) {
   const configuration = JSON.parse(await readFile(resolve(options.pairedConfig), "utf8"));
   validateFrozenProvider(configuration.provider, options.upstream, options.mode === "real");
@@ -661,6 +748,11 @@ export async function runPairedExperiment(options) {
   assert.ok(
     configuration.arms?.A && configuration.arms?.B,
     "Explicit A/B arm artifacts are required",
+  );
+  // 预登记与执行计划在同一入口核对，拒绝在差异未解释时创建实验或请求模型。
+  const { inputPlan, schedule } = await validatePairedInputPlan(
+    configuration,
+    options.pairedConfig,
   );
   const output = options.output
     ? resolve(options.output)
@@ -676,6 +768,7 @@ export async function runPairedExperiment(options) {
     const freeze = {
       experimentId: configuration.experimentId,
       configuration,
+      inputPlan,
       configDigest,
       provider: configuration.provider,
       provenance,
@@ -689,7 +782,7 @@ export async function runPairedExperiment(options) {
         serviceTier: "default",
       },
       policy: { normalControlsOnly: true, arbitraryEvaluation: "denied", taskReruns: 0 },
-      schedule: buildPairedSchedule(PAIRED_TASK_CATALOG, configuration.seed),
+      schedule,
     };
     const freezeDigest = sha(JSON.stringify(freeze));
     let manifest;

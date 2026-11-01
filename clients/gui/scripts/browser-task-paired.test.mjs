@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, mkdtemp, rm } from "node:fs/promises";
+import { readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createServer } from "node:http";
@@ -21,6 +21,7 @@ import {
   validateFrozenProvider,
   runPairedExperiment,
   applyChildExit,
+  validatePairedInputPlan,
 } from "./browser-task-benchmark.mjs";
 import {
   PAIRED_TASK_CATALOG,
@@ -44,6 +45,133 @@ import {
 const golden = JSON.parse(
   await readFile(new URL("./fixtures/browser-task-usage-receipt.json", import.meta.url), "utf8"),
 );
+
+test("paired admission binds the preregistered plan and rejects drift before creating an experiment", async (t) => {
+  const original = await readFile(
+    new URL("../../../docs/benchmarks/browser-local-link-plan.json", import.meta.url),
+  );
+  const upstream = "https://arena.example.invalid/v1/responses";
+  for (const [name, mutate, expected] of [
+    ["valid", () => {}, null],
+    [
+      "missing plan",
+      (_plan, config) => {
+        delete config.inputPlanPath;
+      },
+      /require inputPlanPath/,
+    ],
+    [
+      "digest",
+      (_plan, config) => {
+        config.inputPlanSHA256 = "0".repeat(64);
+      },
+      /SHA256 differs/,
+    ],
+    [
+      "experiment",
+      (plan) => {
+        plan.experimentId = "other";
+      },
+      /experiment differs/,
+    ],
+    [
+      "comparison",
+      (plan) => {
+        plan.comparisonKind = "historical-guide-ablation";
+      },
+      /comparison kind differs/,
+    ],
+    [
+      "arms",
+      (plan) => {
+        plan.arms[1].id = "C";
+      },
+      /comparison arms differ/,
+    ],
+    [
+      "model",
+      (plan) => {
+        plan.model.model = "another-model";
+      },
+      /model differs/,
+    ],
+    [
+      "budget",
+      (plan) => {
+        plan.budgetPerAttempt.maxToolCalls++;
+      },
+      /budget differs/,
+    ],
+    [
+      "catalog",
+      (plan) => {
+        plan.tasks[0].sourceGroup = "other";
+      },
+      /task catalog differs/,
+    ],
+    [
+      "seed",
+      (plan) => {
+        plan.scheduleSeed = "other";
+      },
+      /seed differs/,
+    ],
+    [
+      "schedule",
+      (plan) => {
+        [plan.schedule[0], plan.schedule[1]] = [plan.schedule[1], plan.schedule[0]];
+      },
+      /schedule differs/,
+    ],
+    [
+      "denominator",
+      (plan) => {
+        plan.ordinaryAttemptsPerArm = 59;
+      },
+      /ordinary denominator differs/,
+    ],
+  ])
+    await t.test(name, async () => {
+      const directory = await mkdtemp(join(tmpdir(), "browser-input-plan-"));
+      try {
+        const plan = JSON.parse(original);
+        const configPath = join(directory, "config.json");
+        const config = {
+          experimentId: plan.experimentId,
+          comparisonKind: plan.comparisonKind,
+          seed: plan.scheduleSeed,
+          inputPlanPath: "plan.json",
+          arms: { A: {}, B: {} },
+          provider: {
+            name: "Arena",
+            protocol: "responses",
+            endpointSHA256: createHash("sha256").update(upstream).digest("hex"),
+          },
+        };
+        mutate(plan, config);
+        const bytes = Buffer.from(JSON.stringify(plan));
+        config.inputPlanSHA256 ??= createHash("sha256").update(bytes).digest("hex");
+        await writeFile(join(directory, "plan.json"), bytes);
+        await atomicJSON(configPath, config);
+        if (!expected) {
+          const result = await validatePairedInputPlan(config, configPath);
+          assert.equal(result.inputPlan.sha256, config.inputPlanSHA256);
+          assert.equal(result.schedule.length, 130);
+          assert.deepEqual(result.schedule, plan.schedule);
+          return;
+        }
+        const output = join(directory, "not-created");
+        await assert.rejects(
+          runPairedExperiment({ mode: "real", pairedConfig: configPath, output, upstream }),
+          expected,
+        );
+        await assert.rejects(readFile(join(output, "manifest.json")), { code: "ENOENT" });
+        await assert.rejects(readFile(join(output, "runner.lock")), { code: "ENOENT" });
+      } finally {
+        await rm(directory, { recursive: true });
+      }
+    });
+});
 
 test("paired schedule freezes 12 ordinary and one safety task across three source groups", () => {
   const schedule = buildPairedSchedule();

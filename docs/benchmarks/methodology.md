@@ -94,7 +94,7 @@ pnpm --dir clients/gui bench:browser-tasks:real \
 
 当前执行与连通性状态见[配对基准验收报告](reports/browser-paired-readiness.md)。
 
-固定输入与判定门槛见[参数指引消融预登记](browser-guide-ablation-plan.json)。12 道普通任务来自三个母来源，另列一道停止任务；每题每臂独立重复 5 次，共 130 次尝试。普通质量分母为每臂 60 次，开发观察目标为至少 57/60，停止须 5/5。95% 是开发集观察门槛，不是总体能力保证。
+当前固定输入与判定门槛见[本地链接导航对照预登记](browser-local-link-plan.json)；[参数指引消融预登记](browser-guide-ablation-plan.json)保留为历史实验输入。12 道普通任务来自三个母来源，另列一道停止任务；每题每臂独立重复 5 次，共 130 次尝试。普通质量分母为每臂 60 次，开发观察目标为至少 57/60，停止须 5/5。95% 是开发集观察门槛，不是总体能力保证。
 
 来源包括既有五道普通合成任务、[MiniWoB++ 固定源码](https://github.com/Farama-Foundation/miniwob-plusplus/tree/33c3b4ddef8c6eb67c57a29663d844b1eda7e614)的 enter-text、choose-list、click-checkboxes、click-option，以及 [TodoMVC 官方测试](https://github.com/tastejs/todomvc/blob/ff43b02e59dfa604386bb382034b2cd07c2bcd8a/cypress/e2e/spec.cy.js)派生的添加、编辑和 Active 筛选。原始资产、许可与 SHA 保存在 `clients/gui/scripts/fixtures/vendor/browser-task-sources/`。MiniWoB 时限由原始 10 秒移植为 180 秒，START 仍由模型操作并计入预算。TodoMVC 使用官方 React 内存应用，从空列表经正常控件建立任务状态，不要求持久化。这些结果不称官方 benchmark 分数。
 
@@ -102,7 +102,9 @@ pnpm --dir clients/gui bench:browser-tasks:real \
 
 第一轮是历史指引消融。A 从当前修复版只撤回 checked/topic 运行时指引，B 为当前产品；两者保留相同几何修复、Core、Electron、renderer 和 browser bundles，共用同一冻结测试执行器。实际加载的 Main 路径与 guide 摘要分别核验，仅改 cwd 或 binary 路径不能充当 arm 隔离。Core 沿用已授权的固定路径及相同 debug profile，逐次校验三个组件 SHA，不在运行期间重编译或部署；本轮不宣称发布安装包的绝对时延。
 
-本地配置须给出 `experimentId`、`comparisonKind`、调度 seed、Arena Responses 完整 endpoint 的 SHA256，以及每臂的 `appRoot`、`launcherPath`、`coreBinary`、`electronExecutable` 绝对路径。完整 endpoint 由授权执行器提供，校验摘要后才能发请求；凭据不进入配置、子进程或证据。运行命令为：
+配对 runner 在创建输出目录或请求模型前读取 `inputPlanPath`（相对配置文件目录解析）并核对原始文件的 `inputPlanSHA256`。它检查 schema 2、实验 ID、明确的比较类型、A/B 分组、模型参数、完整任务与来源归属、单次预算、调度 seed、全部调度及质量分母。计划不一致直接失败；`--plan`、fixture、真实运行和 `--resume` 使用同一准入。验证过的计划路径与摘要进入 freeze。旧配置仅提供计划摘要、缺少路径或缺少明确比较类型时拒绝运行；已归档实验及其回执保留，不能修改原冻结配置来续跑。该检查不解释 `sourceChange` 自然语言，实际产物仍通过既有 provenance 和独立差异审查核对。
+
+本地配置须给出 `inputPlanPath`、`inputPlanSHA256`、`experimentId`、`comparisonKind`、调度 seed、Arena Responses 完整 endpoint 的 SHA256，以及每臂的 `appRoot`、`launcherPath`、`coreBinary`、`electronExecutable` 绝对路径。完整 endpoint 由授权执行器提供，校验摘要后才能发请求；凭据不进入配置、子进程或证据。运行命令为：
 
 ```sh
 pnpm --dir clients/gui test:browser-tasks
