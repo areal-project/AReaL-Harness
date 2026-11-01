@@ -1,5 +1,6 @@
 // @ts-check
 "use strict";
+const { isAwaitingResponse } = require("./project-state.cjs");
 const { randomUUID } = require("node:crypto");
 const {
   readQueueCounts,
@@ -161,7 +162,7 @@ async function inspectResources(backend, { includeTasks = false, purpose } = {})
           .filter((queue) => queue.pending || queue.running),
         pendingRequests: (project.pending ?? []).map((entry) => ({
           threadId: entry.params.threadId,
-          awaitingResponse: backend.awaitingResponses?.has(entry) === true,
+          awaitingResponse: isAwaitingResponse(backend.awaitingResponses, project.id, entry),
         })),
       });
     } catch (error) {

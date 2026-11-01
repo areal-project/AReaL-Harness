@@ -71,7 +71,7 @@ async function fixture(t, { independent = true } = {}) {
     },
     providers: { lastAcceptedModel: null, catalog: (models) => models },
     resources: { beforeCreate: async () => {} },
-    awaitingResponses: new WeakSet(),
+    awaitingResponses: new Set(),
     async save(name, value) {
       const file = join(home, name);
       await mkdir(dirname(file), { recursive: true });

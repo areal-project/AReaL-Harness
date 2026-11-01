@@ -70,8 +70,30 @@ function isRemoteRecord(value) {
   );
 }
 
+/** @param {string} projectId @param {PendingSubmission} entry @returns {string|null} */
+function submissionKey(projectId, entry) {
+  const requestId = entry.params.requestId ?? entry.operation?.requestId;
+  if (!requestId && !entry.operationId) return null;
+  return JSON.stringify([projectId, requestId ?? null, entry.operationId ?? null]);
+}
+
+/** @param {string} projectId @param {PendingSubmission} left @param {PendingSubmission} right */
+function sameSubmission(projectId, left, right) {
+  const key = submissionKey(projectId, left);
+  return key !== null && key === submissionKey(projectId, right);
+}
+
+/** @param {Set<string>} responses @param {string} projectId @param {PendingSubmission} entry */
+function isAwaitingResponse(responses, projectId, entry) {
+  const key = submissionKey(projectId, entry);
+  return key !== null && responses.has(key);
+}
+
 module.exports = {
   createProjectState,
+  submissionKey,
+  sameSubmission,
+  isAwaitingResponse,
   parsePendingSubmissions,
   parseSubmissionOutcomes,
   isSubmissionParams,

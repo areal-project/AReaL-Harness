@@ -3,6 +3,9 @@
 const { randomUUID } = require("node:crypto");
 const {
   createProjectState,
+  submissionKey,
+  sameSubmission,
+  isAwaitingResponse,
   parsePendingSubmissions,
   parseSubmissionOutcomes,
   isPendingSubmission,
@@ -28,7 +31,7 @@ const { taskMutationMethods } = require("./tasks.cjs");
 /** @typedef {import('./receipt-contract.cjs').Receipt} Receipt */
 /** @typedef {{client?:Client|null,generation?:number,deadline?:number,observeOnly?:boolean}} ReconcileOptions */
 /** @typedef {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'worktrees'|'lifecycleOperations'|'providers'> & {
- * home:string,closing:boolean,saved:import('./project-index.cjs').SavedProject[],projects:Map<string,Project>,awaitingResponses:WeakSet<object>,onChange:()=>void,
+ * home:string,closing:boolean,saved:import('./project-index.cjs').SavedProject[],projects:Map<string,Project>,awaitingResponses:Set<string>,onChange:()=>void,
  * save:(path:string,value:unknown)=>Promise<void>,currentConnection:(project:Project,client:Client|null|undefined)=>client is Client,
  * requireConnection:(project:Project,client:Client|null|undefined)=>void,openThread:(project:Project,threadId:string)=>Promise<unknown>,
  * supportsBoundedHistory:(client:Client|null|undefined)=>boolean,readObservation:(project:Project,threadId:string,options:import('./history-state.cjs').ReadOptions)=>Promise<import('./history-contract.cjs').ObservationResult>,
@@ -179,7 +182,7 @@ class SubmissionRecovery {
     const entry = project.pending.find(
       (item) => item.params.requestId === requestId && workgroupMutationMethods.has(item.method),
     );
-    if (entry && this.host.awaitingResponses.has(entry)) return null;
+    if (entry && isAwaitingResponse(this.host.awaitingResponses, project.id, entry)) return null;
     let receipt = project.outcomes?.[requestId];
     if (!receipt?.workgroupId && entry?.method === "areal/workgroup/revise") {
       if (!project.client) throw new Error("Core 连接尚未就绪");
@@ -200,7 +203,9 @@ class SubmissionRecovery {
     // never a reason to retry a mutation or identify a similar-looking group.
     if (!receipt?.workgroupId || !workgroupMutationMethods.has(receipt.method ?? "")) return null;
     if (entry)
-      await this.changePending(project, (pending) => pending.filter((item) => item !== entry));
+      await this.changePending(project, (pending) =>
+        pending.filter((item) => !sameSubmission(project.id, item, entry)),
+      );
     return receipt;
   }
 
@@ -211,7 +216,7 @@ class SubmissionRecovery {
       entry &&
       (entry.method !== "areal/process/start" ||
         entry.params.threadId !== threadId ||
-        this.host.awaitingResponses.has(entry))
+        isAwaitingResponse(this.host.awaitingResponses, project.id, entry))
     )
       return null;
     const client = project.client;
@@ -239,7 +244,9 @@ class SubmissionRecovery {
       await project.client.request("areal/process/get", { threadId, id: process.id });
     }
     if (entry)
-      await this.changePending(project, (pending) => pending.filter((item) => item !== entry));
+      await this.changePending(project, (pending) =>
+        pending.filter((item) => !sameSubmission(project.id, item, entry)),
+      );
     return {
       ...result,
       argv: process.argv,
@@ -255,7 +262,8 @@ class SubmissionRecovery {
     );
     if (
       entry &&
-      (this.host.awaitingResponses.has(entry) || entry.params.parentThreadId !== parentThreadId)
+      (isAwaitingResponse(this.host.awaitingResponses, project.id, entry) ||
+        entry.params.parentThreadId !== parentThreadId)
     )
       return null;
     const receipt = project.outcomes?.[requestId];
@@ -268,7 +276,9 @@ class SubmissionRecovery {
     )
       return null;
     if (entry)
-      await this.changePending(project, (pending) => pending.filter((item) => item !== entry));
+      await this.changePending(project, (pending) =>
+        pending.filter((item) => !sameSubmission(project.id, item, entry)),
+      );
     return receipt;
   }
 
@@ -424,7 +434,7 @@ class SubmissionRecovery {
     );
     try {
       await this.changePending(project, (pending) =>
-        pending.filter((value) => value.operationId !== entry.operationId),
+        pending.filter((value) => !sameSubmission(project.id, value, entry)),
       );
     } catch {
       /* 已落盘终态优先；遗留 pending 可在下次只读查询时清理。 */
@@ -436,10 +446,11 @@ class SubmissionRecovery {
   async recoverRemoteSubmission(project, entry, beforeReceipt) {
     const known = project.outcomes?.[entry.operationId];
     if (known?.remote) {
-      if (project.pending.some((value) => value.operationId === entry.operationId)) {
+      const pendingEntry = project.pending.find((value) => value.operationId === entry.operationId);
+      if (pendingEntry) {
         try {
           await this.changePending(project, (pending) =>
-            pending.filter((value) => value.operationId !== entry.operationId),
+            pending.filter((value) => !sameSubmission(project.id, value, pendingEntry)),
           );
         } catch {}
       }
@@ -447,7 +458,7 @@ class SubmissionRecovery {
     }
     if (
       !isPendingSubmission(entry) ||
-      this.host.awaitingResponses.has(entry) ||
+      isAwaitingResponse(this.host.awaitingResponses, project.id, entry) ||
       !project.client?.ready ||
       project.client.closed ||
       !project.model?.state?.connected
@@ -517,7 +528,9 @@ class SubmissionRecovery {
     if (Buffer.byteLength(JSON.stringify(entry)) > 72 * 1024)
       throw Object.assign(new Error("提交记录超过预算"), { code: "LIMIT_EXCEEDED" });
     let original;
-    this.host.awaitingResponses.add(entry);
+    const key = submissionKey(project.id, entry);
+    if (key === null) throw new Error("原请求标识缺失");
+    this.host.awaitingResponses.add(key);
     try {
       await this.changePending(project, (pending) => {
         original = this.remoteRecord(project, remote);
@@ -564,7 +577,7 @@ class SubmissionRecovery {
         return entry;
       }
     } finally {
-      this.host.awaitingResponses.delete(entry);
+      this.host.awaitingResponses.delete(key);
       this.scheduleReconciliation(project);
       this.host.onChange();
     }
@@ -619,7 +632,11 @@ class SubmissionRecovery {
       createdAt: new Date().toISOString(),
     };
     // 活跃请求仅保存在内存；重启后仍在恢复日志中的请求应显示为结果未知。
-    this.host.awaitingResponses.add(entry);
+    const key = submissionKey(project.id, entry);
+    if (key === null) throw new Error("原请求标识缺失");
+    if (this.host.awaitingResponses.has(key))
+      throw new Error("请求标识已使用，请核对原提交；不会重复执行。");
+    this.host.awaitingResponses.add(key);
     try {
       // 检查与持久化在同一队列中，两个同时到达的发送不能穿透阻塞。
       await this.changePending(project, (pending) => {
@@ -657,7 +674,7 @@ class SubmissionRecovery {
                 ),
             );
         if (conflicting) {
-          const awaiting = this.host.awaitingResponses.has(conflicting);
+          const awaiting = isAwaitingResponse(this.host.awaitingResponses, project.id, conflicting);
           throw Object.assign(
             new Error(
               awaiting
@@ -682,7 +699,7 @@ class SubmissionRecovery {
         if (!dispatchStarted || explicitRejection(error)) {
           try {
             await this.changePending(project, (pending) =>
-              pending.filter((value) => value !== entry),
+              pending.filter((value) => !sameSubmission(project.id, value, entry)),
             );
           } catch {
             throw Object.assign(new Error("原请求结果已知，但恢复日志更新失败；请检查本机存储"), {
@@ -710,7 +727,9 @@ class SubmissionRecovery {
           ["areal/turn/submit", "areal/agent/spawn"].includes(method)
         )
           await this.rememberOutcome(project, entry, { status: "completed", result });
-        await this.changePending(project, (pending) => pending.filter((value) => value !== entry));
+        await this.changePending(project, (pending) =>
+          pending.filter((value) => !sameSubmission(project.id, value, entry)),
+        );
       } catch {
         project.refreshErrors ??= {};
         project.refreshErrors[params.requestId] = {
@@ -742,7 +761,7 @@ class SubmissionRecovery {
       }
       return result;
     } finally {
-      this.host.awaitingResponses.delete(entry);
+      this.host.awaitingResponses.delete(key);
       this.scheduleReconciliation(project);
       this.host.onChange();
     }
@@ -901,7 +920,7 @@ class SubmissionRecovery {
     const pending = project.pending.find(
       (entry) => entry.method === method && entry.params.requestId === params.requestId,
     );
-    if (pending && this.host.awaitingResponses.has(pending))
+    if (pending && isAwaitingResponse(this.host.awaitingResponses, project.id, pending))
       return { confirmed: false, state: "admitted" };
     const known = project.outcomes?.[params.requestId];
     const entry = pending ?? {
@@ -920,7 +939,9 @@ class SubmissionRecovery {
       await this.rememberOutcome(project, entry, receipt, current);
       if (current())
         await this.changePending(project, (entries) =>
-          current() ? entries.filter((value) => value !== pending) : entries,
+          current()
+            ? entries.filter((value) => !sameSubmission(project.id, value, pending))
+            : entries,
         );
     }
     const failure = receipt.error ?? receipt.response?.error;
@@ -1087,7 +1108,7 @@ class SubmissionRecovery {
     const current = () => this.reconciliationCurrent(project, client, generation);
     for (const entry of Array.from(project.pending)) {
       if (!current() || !client || Date.now() >= deadline) break;
-      if (this.host.awaitingResponses.has(entry)) continue;
+      if (isAwaitingResponse(this.host.awaitingResponses, project.id, entry)) continue;
       try {
         if (isRemoteRecord(entry)) {
           await this.recoverRemoteSubmission(project, entry);
@@ -1147,7 +1168,9 @@ class SubmissionRecovery {
             );
             if (current())
               await this.changePending(project, (pending) =>
-                current() ? pending.filter((value) => value !== entry) : pending,
+                current()
+                  ? pending.filter((value) => !sameSubmission(project.id, value, entry))
+                  : pending,
               );
           }
           continue;
@@ -1165,8 +1188,8 @@ class SubmissionRecovery {
         );
         if (
           !current() ||
-          this.host.awaitingResponses.has(entry) ||
-          !project.pending.includes(entry) ||
+          isAwaitingResponse(this.host.awaitingResponses, project.id, entry) ||
+          !project.pending.some((value) => sameSubmission(project.id, value, entry)) ||
           !receipt
         )
           continue;
@@ -1187,7 +1210,9 @@ class SubmissionRecovery {
         const outcome = await this.rememberOutcome(project, entry, receipt, current);
         if (!current()) break;
         await this.changePending(project, (pending) =>
-          current() ? pending.filter((value) => value !== entry) : pending,
+          current()
+            ? pending.filter((value) => !sameSubmission(project.id, value, entry))
+            : pending,
         );
         if (!current()) break;
         if (entry.params.requestId) delete project.refreshErrors?.[entry.params.requestId];

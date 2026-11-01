@@ -6,6 +6,7 @@ const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { snapshotProject } = require("../app/src/core/project-snapshot.cjs");
 const { manageTask } = require("../app/src/core/tasks.cjs");
 const contract = require("../packages/workbench/client/desktop-contract.cjs");
 
@@ -14,9 +15,9 @@ async function fixture(t, entries, read) {
   const backend = Object.assign(Object.create(CoreBackend.prototype), {
     home,
     saves: new Map(),
-    awaitingResponses: new WeakSet(),
+    awaitingResponses: new Set(),
     onChange() {},
-    providers: { redact: (value) => value, acceptModelSelection: async () => {} },
+    providers: { redact: (value) => value, acceptModelSelection: async () => {}, rejectModel() {} },
     lifecycleOperations: { activeTargets: new Set(), blocking: () => false },
     listThreads: async () => {},
     openThread: async () => {},
@@ -316,4 +317,152 @@ test("new creation freezes its advertised Core binding and send time in the pend
   assert.equal(f.calls.length, 1);
   assert.deepEqual(f.project.pending, []);
   assert.ok(original);
+});
+
+test("a rebuilt journal retains only this project's live submission and settles its original request", async (t) => {
+  const started = Promise.withResolvers();
+  const response = Promise.withResolvers();
+  const requestId = randomUUID();
+  const f = await fixture(t, [], async (method) => {
+    if (method === "areal/request/read") return { data: [] };
+    assert.equal(method, "areal/thread/start");
+    started.resolve();
+    return response.promise;
+  });
+  const submitting = f.backend.submit(f.project, "areal/thread/start", {}, { requestId });
+  await started.promise;
+  const original = f.project.pending[0];
+  const other = entry("areal/queue/pause", { threadId: "other-thread" });
+  f.project.pending = structuredClone([original, other]);
+  const anotherProject = {
+    ...f.project,
+    id: "another-project",
+    pending: [structuredClone(original)],
+  };
+  f.backend.projects = new Map([
+    [f.project.id, f.project],
+    [anotherProject.id, anotherProject],
+  ]);
+  f.backend.cloudConversations = {
+    mergeSnapshot: (_id, state) => state,
+    projection: () => ({ summaries: [] }),
+  };
+  f.backend.ownerTasks = { revision: () => 0 };
+  f.backend.lifecycleOperations.schedulingSuppressed = () => false;
+  f.backend.providers.catalog = (models) => models;
+  f.project.model.getSnapshot = () => null;
+  const snapshot = (project) => snapshotProject(f.backend, project, new Set());
+  try {
+    assert.notEqual(f.project.pending[0], original);
+    await assert.rejects(
+      f.backend.submit(f.project, "areal/thread/start", {}, { requestId }),
+      /请求标识已使用/,
+    );
+    assert.deepEqual(
+      snapshot(f.project).pending.map((item) => item.awaitingResponse),
+      [true, false],
+    );
+    assert.equal(snapshot(anotherProject).pending[0].awaitingResponse, false);
+    assert.deepEqual(await f.backend.readSubmission(f.project, original.method, original.params), {
+      confirmed: false,
+      state: "admitted",
+    });
+    assert.equal(
+      f.calls.length,
+      1,
+      "the live submission is not reconciled while its response is pending",
+    );
+    assert.deepEqual(
+      await f.backend.readSubmission(anotherProject, original.method, original.params),
+      {
+        confirmed: false,
+        state: "unconfirmed",
+      },
+    );
+    assert.deepEqual(await f.backend.readSubmission(f.project, other.method, other.params), {
+      confirmed: false,
+      state: "unconfirmed",
+    });
+  } finally {
+    response.resolve({ thread: { id: "created-once" } });
+    await submitting;
+  }
+  assert.deepEqual(f.project.pending, [other]);
+  assert.equal(f.project.outcomes[requestId].threadId, "created-once");
+  assert.deepEqual(anotherProject.pending, [original]);
+  assert.equal(snapshot(anotherProject).pending[0].awaitingResponse, false);
+  assert.equal(f.calls.filter((call) => call.method === "areal/thread/start").length, 1);
+});
+
+test("a journal rebuilt while reading a receipt settles only the original pending identity", async (t) => {
+  const item = entry("areal/task/update", { taskId: "task", expectedRevision: 1 });
+  const other = entry("areal/task/update", { taskId: "other-task", expectedRevision: 1 });
+  const f = await fixture(t, [item], async (method) => {
+    if (method === "areal/request/read") {
+      f.project.pending = structuredClone([item, other]);
+      return { data: [receipt(item)] };
+    }
+    assert.equal(method, "areal/task/read");
+    return { id: "task", mode: "manual", revision: 2 };
+  });
+  await f.backend.reconcile(f.project);
+  assert.deepEqual(f.project.pending, [other]);
+  assert.equal(f.project.outcomes[item.params.requestId].status, "completed");
+  assert.equal(f.project.outcomes[other.params.requestId], undefined);
+});
+
+test("a rebuilt Remote control journal preserves the original interaction and operation identity", async (t) => {
+  const started = Promise.withResolvers();
+  const response = Promise.withResolvers();
+  const f = await fixture(t, [], async () => {
+    throw new Error("control recovery must not query Core while dispatch is pending");
+  });
+  const remote = {
+    hostId: "host",
+    devicePeerId: "device",
+    projectId: f.project.id,
+    commandId: "command",
+    method: "interaction.respond",
+    capability: "control",
+    semanticDigest: "digest",
+    target: {},
+  };
+  const submitting = f.backend.submit(
+    f.project,
+    "areal/interaction/respond",
+    {
+      requestId: "interaction-request",
+      threadId: "thread",
+      turnId: "turn",
+    },
+    {
+      remote,
+      dispatch: async () => {
+        started.resolve();
+        return response.promise;
+      },
+    },
+  );
+  await started.promise;
+  const original = f.project.pending[0];
+  const other = {
+    ...structuredClone(original),
+    operationId: randomUUID(),
+    remote: { ...remote, commandId: "other-command" },
+  };
+  f.project.pending = structuredClone([original, other]);
+  try {
+    const recovered = await f.backend.readRemoteRecord(f.project, remote);
+    assert.equal(recovered.params.requestId, "interaction-request");
+    assert.equal(recovered.operationId, original.operationId);
+    assert.equal(f.calls.length, 0);
+    await f.backend.reconcile(f.project);
+    assert.deepEqual(f.project.pending, [original, other]);
+  } finally {
+    response.resolve({});
+    await submitting;
+  }
+  assert.deepEqual(f.project.pending, [other]);
+  assert.equal(f.project.outcomes[original.operationId].admissionState, "accepted");
+  assert.equal(f.project.outcomes[other.operationId], undefined);
 });

@@ -158,8 +158,8 @@ class CoreBackend {
     this.providerUpdating = undefined;
     /** @type {boolean|undefined} */
     this.resourcesUpdating = undefined;
-    /** @type {WeakSet<object>} */
-    this.awaitingResponses = new WeakSet();
+    /** @type {Set<string>} */
+    this.awaitingResponses = new Set();
     this.lifecycleOperations = new LifecycleOperations(this);
   }
 

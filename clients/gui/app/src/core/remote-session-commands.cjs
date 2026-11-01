@@ -1,5 +1,6 @@
 // @ts-check
 "use strict";
+const { isPendingSubmission, isAwaitingResponse } = require("./project-state.cjs");
 const decoder = require("./remote-core-decoder.cjs");
 /** @typedef {InstanceType<typeof import('./remote.cjs').RemoteControl>} Remote */
 /** @typedef {import('./remote-session-observer.cjs').RemoteConnection} Connection */
@@ -195,8 +196,8 @@ function nativeError(raw, method) {
     message: "命令未受理，请刷新状态后检查草稿",
   };
 }
-/** @param {Remote["backend"]} backend @param {CommandRecord|null} record @param {string} commandId */
-function view(backend, record, commandId) {
+/** @param {Remote["backend"]} backend @param {string} projectId @param {CommandRecord|null} record @param {string} commandId */
+function view(backend, projectId, record, commandId) {
   if (!record) return { commandId, admissionState: "notFound", submissionUnknown: true };
   return {
     commandId,
@@ -207,7 +208,11 @@ function view(backend, record, commandId) {
       ? { nativeRequestId: record.params?.requestId ?? record.operationId }
       : {}),
     admissionState:
-      record.admissionState ?? (backend.awaitingResponses.has(record) ? "pending" : "unknown"),
+      record.admissionState ??
+      (isPendingSubmission(record) &&
+      isAwaitingResponse(backend.awaitingResponses, projectId, record)
+        ? "pending"
+        : "unknown"),
     submissionUnknown: !record.admissionState,
     ...(record.threadId ? { threadId: record.threadId } : {}),
     ...(record.turnId ? { turnId: record.turnId } : {}),
@@ -730,7 +735,7 @@ async function sessionCommand(
   if (identity) current();
   if (record) remote.push.track(projectId, record, !firstAdmission);
   return publish({
-    ...view(backend, record, association.commandId),
+    ...view(backend, projectId, record, association.commandId),
     ...(observedState ? { observedState } : {}),
   });
 }

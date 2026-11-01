@@ -1,5 +1,6 @@
 // @ts-check
 "use strict";
+const { isAwaitingResponse, sameSubmission } = require("./project-state.cjs");
 const { createHash, randomUUID } = require("node:crypto");
 const { manageTaskDraft, taskDraftOperations } = require("./task-draft.cjs");
 
@@ -120,9 +121,9 @@ async function taskCreate(backend, project, request) {
         const pending = project.pending.find((entry) => entry.params.requestId === preludeId);
         if (receipt) {
           if (pending) {
-            if (backend.awaitingResponses.has(pending)) throw unknown();
+            if (isAwaitingResponse(backend.awaitingResponses, project.id, pending)) throw unknown();
             await backend.changePending(project, (entries) =>
-              entries.filter((entry) => entry !== pending),
+              entries.filter((entry) => !sameSubmission(project.id, entry, pending)),
             );
           }
           params.threadId = receipt.threadId ?? undefined;
