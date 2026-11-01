@@ -2,6 +2,18 @@
 
 # Changelog
 
+## GUI 0.1.17
+
+### Fixed and changed
+
+- Preserve the latest installation state after downloads, avoiding progress stuck at 0% and missing recovery actions while waiting for background work.
+- The compact lower-left update entry opens a status popover with download progress, waiting, preparation, restart, error details, and recovery actions.
+- Retry failed downloads. Unconfirmed installations ask users to reopen and check the version; cancelling background tasks still requires confirmation.
+
+### Upgrade
+
+macOS Apple Silicon users can upgrade through the production in-app channel or install the signed, notarized DMG manually. Check for 0.1.17 in About afterward. If an older version waits for the backend without a recovery action, let tasks finish, safely stop the backend, and retry the update.
+
 ## GUI 0.1.15
 
 ### Fixes

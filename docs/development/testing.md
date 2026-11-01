@@ -63,6 +63,14 @@ pnpm --dir clients/gui test:unit renderer/src/readingViews.test.ts
 pnpm --dir clients/gui test:conversation-reading
 ```
 
+PR 工作流按 PR 编号取消旧运行；Verify/GUI 的 main 与手动运行按 run ID 独立分组，避免共享并发组替换等待中的 main 提交。纯说明文档保留轻量格式、合同和链接门禁，不下载 Cargo 依赖或恢复 Rust 构建缓存，也不运行依赖审计；内置 Skill Markdown 等产品输入仍按代码处理。工作流本身不使用 paths 跳过必需检查，最终门禁继续验证明确的不适用结果。Linux GUI 安装使用 setup-node 的 pnpm store 缓存，Relay 使用独立 Node 版本和 npm 锁文件缓存；依赖审计下载固定版本与 SHA-256 校验的官方 cargo-audit 二进制。
+
+GUI 的产物 job 完成必要构建与 RPC 校验后即可发布同一源码的输入包；Core 合同按 manifest 稳定分成两片，构建后的独立原生/设计校验另占一条 macOS lane。三条 lane 共用同一 run/attempt 的依赖报告，各自产生唯一结果；原有 `macOS Core contracts` 检查名作为严格汇总保留。桌面模块、截图模块和既有 Core/renderer/原生 helper 产物一起冻结，消费者不再重复 `build:desktop`。最终门禁仍核对检查 ID、子测试全集、平台、源码、计划、run 和 attempt，拒绝漏项、重复、失败或过期输入。
+
+容器使用固定版本和摘要的官方 cargo-chef 二进制，从清单与锁文件生成依赖配方；依赖编译层位于真实源码 COPY 之前。源码变动只重建工作区代码；新增 target、清单或锁文件变化仍会更新配方。运行镜像仅导出最终层缓存，测试镜像保留完整构建层，避免两套完整依赖缓存重复占用空间；macOS 原生与 GUI 构建共用同一环境键的 Rust 依赖缓存。验收结果及失败报告从不作为缓存通过证据。
+
+用 `python3 scripts/ci-timing.py --collect areal-project/AReaL-Harness --limit 50 --output target/ci/timing` 保存 gh 原始数据并生成逐 job/step CSV；离线重放使用 `--input <snapshot.json>`。分析保留取消、失败、重跑 attempt 和 runner 信息；依赖等待只作估计，机器排队只报告可识别下界。包含安装/编译的复合 step 独立列为 mixed，不能全算测试耗时。缺少日志或子报告时缓存冷热及精确测试拆分保持 unknown；只比较覆盖相同的成功运行，并同时查看墙钟关键路径和累计 runner minutes。
+
 `scripts/ci-scope.py` 是本地与 CI 共用的检查计划所有者；`check-changed` 解析一次 merge-base，合并暂存、未暂存与未跟踪路径，重命名两侧均纳入，部分暂存相互抵消也保留选检。计划登记命令、依赖、环境能力、平台和 manifest 子测试全集，并绑定 base/source/head 与输入摘要。共享 Rust、schema、锁文件、构建与 CI 变化扩大范围，未知代码保守扩大；比较基准不可用时不得放行。
 
 快检默认运行计划的 `commit` 阶段，加上历史报告中尚未通过的项目及其依赖，`ARGS=--phase=full` 执行完整计划。命令读取 `working-tree`，暂存内容影响选检和漂移检测；快检不证明部分暂存内容已执行验收。报告将未选的完整验收列为 `pendingRequired`，其他平台列为 `remoteRequired`。`passed` 只表示本轮所选项通过，`blocked`、`invalidated`、`failed` 均不得作为通过。
@@ -335,6 +343,16 @@ done
 `make integration-boundaries` 需要 Git checkout，随 `make script-test` 执行，防止平台适配依赖进入产品源码、发行/安装入口、工作流和递归默认 Make 目标。通用 Rust `id-arena` 分配器不属于平台依赖。平台适配与生命周期验收由消费端维护；原生 CLI、Runtime、Engine 和工具测试覆盖公开契约。
 
 ## CI 与契约
+
+CI 失败先按“证据 → 操作身份与状态所有者 → 可控反例 → 修复 → 同版本验收”推进。同类失败再次出现，或本地通过而 CI 失败时，下一轮修改前重新审查整条因果路径，不能以局部补丁和无新信息重跑代替诊断。
+
+1. 汇总同一版本的失败项，区分产品缺陷、测试缺陷、环境阻塞和契约问题。保留 PR head、CI 实际 checkout/merge revision、产物身份、工具版本和首跑日志；核实差异后再判断环境原因。
+2. 沿本次请求记录权威受理、回执、投影、存储和界面终态的所有者及完成信号。异步断言绑定 `requestId`、目标和执行 Core 代次，历史视图绑定 `viewId/revision`；上一轮完成、发送计数或单次 RPC 的 pending 清零不能代替本次操作完成。
+3. 用一次性屏障固定已观察的并发顺序，确认暂停位置及原请求身份后才执行竞争动作。保持原挂载实例和连接生命周期；新增导航、重挂载或移动暂停阶段作为另一用例记录。释放后等待对应响应及 Renderer 投影，失败清理也释放屏障。
+4. 夹具复用真实状态所有者的订阅、登记、取消和释放逻辑。简化传输仍需显式连接身份，覆盖刷新、连接重叠及关闭后的迟到 acquire。同一所有者先结算其状态与存储，再通知同步消费者；验收同时检查通知时状态和结算后的正文、附件及界面。
+5. 对产品缺陷保留同一反例的修复前红灯和修复后绿灯；对测试缺陷记录前置或断言与契约不符的证据。断言用户可观察结果，允许契约内的空值表示或历史前插坐标变化，继续拒绝内容复活、错误目标结算和可见锚点偏移。未复现时记录未知并补有界观测，不以重跑通过宣称根因已修。
+
+每次诊断运行应区分一个明确假设。候选原因仍无法区分或补丁开始跨模块扩散时，先进行针对性的所有权与设计审查。复用现有日志、状态和 trace；不要求新增统一诊断平台。修复完成后检查 owned diff、运行受影响测试及必需门禁，按最终源码版本核对远端状态；本地快检通过只证明其已执行范围，条件跳过单独列出。
 
 macOS 与 Linux 宿主检查使用同一矩阵定义，`fail-fast: false` 保证任一平台失败不取消另一平台的覆盖。macOS 使用 `make setup-node`，仅安装原生 smoke 和 SDK 所需的 Node 依赖；Linux `make setup` 继续安装全部锁定格式工具。原生验收在同一次子 Make 调用中运行 Runtime、Harness、桌面 API 和 Workgroup smoke，共用一次 workspace build。Docker 只复制所需 CLI/TUI/Web 客户端，GUI 不进入构建上下文。原生 Runtime 和 Harness 覆盖保持不变。
 
