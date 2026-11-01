@@ -978,7 +978,7 @@ try {
     await button("选择模型").click();
     await page.getByRole("tab", { name: "fixture-provider", exact: true }).click();
     await page.getByRole("radio", { name: "fixture-alt", exact: true }).click();
-    assert.match(await button("选择思考强度").innerText(), /未指定/);
+    assert.match(await button("选择思考强度").innerText(), /默认/);
     await button("选择思考强度").click();
     await page.getByRole("button", { name: "中", exact: true }).click();
     const slider = page.getByRole("slider", { name: "选择思考强度" });

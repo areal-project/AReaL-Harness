@@ -495,7 +495,7 @@ export const commonMessages = {
     "zh-CN": "{model} 不支持思考强度 {effort}，请在模型菜单重新选择。",
     en: "{model} does not support reasoning effort {effort}. Choose another in the model menu.",
   },
-  "chat.composer.effortUnspecified": { "zh-CN": "未指定", en: "Unspecified" },
+  "chat.composer.effortUnspecified": { "zh-CN": "默认", en: "Default" },
   "chat.composer.noModels": { "zh-CN": "暂无可用模型", en: "No models available" },
   "chat.composer.noModelsGuidance": {
     "zh-CN": "暂无可用模型，请前往设置 > 模型设置",
