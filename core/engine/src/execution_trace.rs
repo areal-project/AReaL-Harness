@@ -106,6 +106,8 @@ impl Engine {
             .or_else(|| (matches!(kind, "model" | "retryWait")).then(|| turn.trace.activities.iter().rev().find(|a| a.logical_id.as_deref() == logical_id).and_then(|a| a.after_item_id.clone())).flatten())
             .or_else(|| turn.items.last().map(|item| item.id().to_owned()));
         turn.trace.activities.push(TraceActivity {
+            retry_delay_ms: None,
+            retry_disposition: None,
             after_item_id,
             id: timer.id.clone(),
             kind: kind.into(),
@@ -122,6 +124,17 @@ impl Engine {
         });
         self.persist(&candidate).await?;
         state.thread = candidate;
+        if matches!(kind, "model" | "retryWait") {
+            let activity = state
+                .thread
+                .turns
+                .last()
+                .and_then(|turn| turn.trace.activities.last());
+            cell.emit(
+                "areal/turn/traceActivity",
+                json!({"threadId":state.thread.id,"turnId":turn_id,"activity":activity}),
+            );
+        }
         Ok(Some(TraceTimer(Arc::new(std::sync::Mutex::new(timer)))))
     }
     pub(crate) async fn trace_content(
@@ -202,6 +215,47 @@ impl Engine {
         }
         self.persist(&candidate).await?;
         state.thread = candidate;
+        if let Some(turn) = state.thread.turns.last()
+            && let Some(activity) = turn.trace.activities.iter().find(|activity| {
+                activity.id == measured.id
+                    && matches!(activity.kind.as_str(), "model" | "retryWait")
+            })
+        {
+            cell.emit(
+                "areal/turn/traceActivity",
+                json!({"threadId":state.thread.id,"turnId":turn.id,"activity":activity}),
+            );
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn trace_retry(
+        &self,
+        cell: &Cell,
+        logical_id: &str,
+        delay_ms: Option<u64>,
+        disposition: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let mut state = cell.state.lock().await;
+        let mut candidate = state.thread.clone();
+        let Some(turn) = candidate.turns.last_mut() else {
+            return Ok(());
+        };
+        let Some(activity) = turn
+            .trace
+            .activities
+            .iter_mut()
+            .rev()
+            .find(|activity| activity.logical_id.as_deref() == Some(logical_id))
+        else {
+            return Ok(());
+        };
+        activity.retry_delay_ms = delay_ms;
+        activity.retry_disposition = disposition.map(str::to_owned);
+        let event = json!({"threadId":candidate.id,"turnId":turn.id,"activity":activity});
+        self.persist(&candidate).await?;
+        state.thread = candidate;
+        cell.emit("areal/turn/traceActivity", event);
         Ok(())
     }
 }
@@ -605,6 +659,16 @@ mod tests {
                 .filter(|a| a.kind == "retryWait" && a.status == "completed")
                 .count(),
             1
+        );
+        assert!(
+            activities.iter().any(
+                |activity| activity.kind == "retryWait" && activity.retry_delay_ms == Some(250)
+            )
+        );
+        assert!(
+            activities
+                .iter()
+                .all(|activity| activity.retry_disposition.is_none())
         );
         assert_eq!(completed.turns[0].status, TurnStatus::Completed);
         engine.shutdown().await;

@@ -2,6 +2,8 @@
 
 import importlib.util
 import copy
+import contextlib
+import io
 import json
 import os
 import re
@@ -29,9 +31,30 @@ scope = load("ci-scope")
 audit = load("dependency-audit")
 gate = load("ci-gate")
 preflight = load("ci-preflight")
+docs = load("check-docs")
 
 
 class CiContracts(unittest.TestCase):
+    def test_tracked_docs_cannot_link_ignored_or_untracked_markdown(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            (root / "guide.md").write_text("[local](target.md)\n")
+            (root / ".gitignore").write_text("target.md\n")
+            (root / "target.md").write_text("# Local-only target\n")
+            subprocess.run(["git", "add", "guide.md", ".gitignore"], cwd=root, check=True)
+            for ignored in (True, False):
+                if not ignored:
+                    (root / ".gitignore").write_text("")
+                output = io.StringIO()
+                with patch.object(docs, "ROOT", root), contextlib.redirect_stdout(output):
+                    result = docs.main()
+                self.assertEqual(result, 1)
+                self.assertIn("未纳入 Git", output.getvalue())
+            subprocess.run(["git", "add", "target.md"], cwd=root, check=True)
+            with patch.object(docs, "ROOT", root), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(docs.main(), 0)
+
     def test_red_main_issue_changes_only_for_the_current_completed_attempt(self):
         workflow = (ROOT / ".github/workflows/ci-red-main.yml").read_text()
         script = textwrap.dedent(workflow.split("        run: |\n", 1)[1])

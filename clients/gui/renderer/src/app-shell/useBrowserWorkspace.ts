@@ -40,6 +40,19 @@ export function useBrowserWorkspace(
     owner,
     value: {},
   });
+  const publish = useCallback(
+    (value: Data) => {
+      if (current.current.owner !== owner) return;
+      setProjection((previous) =>
+        previous.owner === owner &&
+        previous.value.workspace?.workspaceId === value.workspace?.workspaceId &&
+        previous.value.workspace?.sequence > value.workspace?.sequence
+          ? previous
+          : { owner, value },
+      );
+    },
+    [owner],
+  );
   const refreshRef = useRef<() => Promise<void>>(async () => {});
   useEffect(() => {
     if (!projectId || !threadId) return;
@@ -71,7 +84,7 @@ export function useBrowserWorkspace(
         const serialized = JSON.stringify(value);
         if (serialized !== lastValue) {
           lastValue = serialized;
-          setProjection({ owner, value });
+          publish(value);
         }
         if (value.workspace?.workspaceId && value.workspace.workspaceId !== subscribedWorkspace) {
           const snapshot = await services.preview({ operation: "subscribe", projectId, threadId });
@@ -106,7 +119,7 @@ export function useBrowserWorkspace(
       off?.();
       void services.preview({ operation: "unsubscribe", projectId, threadId }).catch(() => {});
     };
-  }, [services, projectId, threadId, owner]);
+  }, [services, projectId, threadId, owner, publish]);
   useEffect(() => {
     void refreshRef.current();
   }, [activePageId]);
@@ -114,10 +127,17 @@ export function useBrowserWorkspace(
     async (request: BrowserWorkspaceRequest) => {
       if (current.current.owner !== owner) throw new Error("页面归属已变化");
       const result = await services.preview({ ...request, projectId, threadId });
-      if (current.current.owner === owner) await refreshRef.current();
+      if (current.current.owner === owner) {
+        if (
+          result.workspace?.workspaceId &&
+          result.browser?.pageId === current.current.activePageId
+        )
+          publish(result);
+        await refreshRef.current();
+      }
       return result;
     },
-    [services, projectId, threadId, owner],
+    [services, projectId, threadId, owner, publish],
   );
   const value = projection.owner === owner ? projection.value : {};
   const state =

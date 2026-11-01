@@ -173,7 +173,45 @@ const isRemoteControl = (entry) =>
     Number.isSafeInteger(entry.params.expectedRevision) &&
     entry.remote.target.expectedRevision === entry.params.expectedRevision);
 
+/** @param {import('@areal/workbench/desktop-contract/shared').ServiceProject|undefined} project
+ * @param {{threadId?:unknown}} expected */
+function operationCore(project, expected) {
+  return (
+    (typeof expected.threadId === "string"
+      ? project?.state?.threads[expected.threadId]?.executionCore
+      : undefined) ?? project?.core
+  );
+}
+
+/** 从已校验服务快照保留原操作身份；缺失或跨 Core 代次时继续保持 UNKNOWN。
+ * @param {import('@areal/workbench/desktop-contract/shared').ServiceProject|undefined} project
+ * @param {{instanceId:string|null,connectionGeneration?:unknown}|null|undefined} core
+ * @param {{threadId?:unknown,taskId?:unknown}} expected @param {string} requestId
+ */
+function observedOperation(project, core, expected, requestId) {
+  const current = operationCore(project, expected);
+  if (
+    !project ||
+    !core?.instanceId ||
+    typeof core.connectionGeneration !== "number" ||
+    current?.instanceId !== core.instanceId ||
+    current.connectionGeneration !== core.connectionGeneration
+  )
+    return;
+  const operation =
+    project.pending?.find((entry) => entry.params.requestId === requestId)?.operation ??
+    project.outcomes?.[requestId]?.operation;
+  if (!operation || operation.requestId !== requestId) return;
+  if (
+    (operation.target.kind === "thread" && operation.target.threadId === expected.threadId) ||
+    (operation.target.kind === "task" && operation.target.taskId === expected.taskId)
+  )
+    return operation;
+}
+
 module.exports = {
+  operationCore,
+  observedOperation,
   isRemoteControl,
   creationTargets,
   processControls,

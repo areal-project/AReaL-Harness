@@ -72,16 +72,100 @@ await mkdir(outside);
 await writeFile(join(outside, "secret"), secret);
 await symlink(outside, join(mainRoot, randomUUID()));
 const destination = join(scratch, "export.json");
-await diagnostics.exportTo(destination, { mainRoot, desktopRoot });
+const coreRoot = join(scratch, "core"),
+  project = "a".repeat(24);
+const modelRoot = join(coreRoot, project, "state/model-requests");
+await mkdir(join(modelRoot, "errors"), { recursive: true });
+const requestId = randomUUID();
+await writeFile(
+  join(modelRoot, requestId + ".json"),
+  JSON.stringify({
+    requestId,
+    protocol: "responses",
+    transport: "http-sse",
+    startedAtUnixMs: 1,
+    endpoint: {
+      origin: `https://user:${secret}@example.invalid/private?token=${secret}`,
+      route: `/private/${secret}`,
+    },
+    parameters: { model: "gpt-fixture", service_tier: "priority", instructions: secret },
+    usageDetails: { serviceTier: "default" },
+    httpStatus: 200,
+    outcome: "failed",
+    streamError: {
+      eventType: "error",
+      errorType: "api_error",
+      messageSummary: "upstream stream request failed",
+      message: secret,
+      code: secret,
+    },
+    errorDetailFile: join(modelRoot, "errors", requestId + ".json"),
+    error: secret,
+  }),
+);
+await writeFile(join(modelRoot, "errors", requestId + ".json"), secret);
+await symlink(join(outside, "secret"), join(modelRoot, randomUUID() + ".json"));
+const unfinishedId = randomUUID();
+await writeFile(
+  join(modelRoot, unfinishedId + ".json"),
+  JSON.stringify({
+    requestId: unfinishedId,
+    outcome: "interrupted_or_unfinished",
+    parameters: { service_tier: "priority" },
+  }),
+);
+await diagnostics.exportTo(destination, {
+  mainRoot,
+  desktopRoot,
+  coreRoot,
+  instance: {
+    packaged: false,
+    coreBinary: join(scratch, "areal"),
+    coreHome: coreRoot,
+    config: join(scratch, "config.toml"),
+    explicitConfig: true,
+  },
+});
 let raw = await readFile(destination, "utf8"),
   report = JSON.parse(raw);
 assert.equal(report.format, "areal-harness-diagnostics-v1");
+assert.equal(report.instance.mode, "source");
+assert.equal(report.instance.configSource, "explicit");
+assert.match(report.instance.configPathSha256, /^[a-f0-9]{64}$/);
+assert.equal(report.modelRequests.length, 2);
+const request = report.modelRequests.find((item) => item.requestId === requestId);
+const unfinished = report.modelRequests.find((item) => item.requestId === unfinishedId);
+assert.equal(unfinished.outcome, "interrupted_or_unfinished");
+assert.equal(unfinished.actualServiceTier, undefined);
+assert.equal(request.requestedServiceTier, "priority");
+assert.equal(request.actualServiceTier, "default");
+assert.equal(request.httpStatus, 200);
+assert.deepEqual(request.endpoint, {
+  origin: "https://example.invalid",
+  route: "[redacted]",
+});
+assert.equal(request.error.type, "api_error");
+assert.equal(request.error.summary, "upstream stream request failed");
+assert.equal(request.privateDetailAvailable, true);
+
 assert.ok(!raw.includes(secret));
 assert.ok(!raw.includes(scratch));
 assert.match(raw, /WS_ERR_UNSUPPORTED_MESSAGE_LENGTH/);
 assert.ok(report.omissions.rejectedEntries > 0 && report.omissions.invalidLines > 0);
 assert.ok(report.runs.some((item) => item.health.rotations > 0));
 assert.ok(report.bytesRead <= 16 * 1024 * 1024);
+for (let index = 0; index < 140; index++) {
+  const id = randomUUID();
+  await writeFile(
+    join(modelRoot, id + ".json"),
+    JSON.stringify({ requestId: id, protocol: "responses" }),
+  );
+}
+await diagnostics.exportTo(destination, { mainRoot, desktopRoot, coreRoot });
+const bounded = JSON.parse(await readFile(destination, "utf8"));
+assert.equal(bounded.modelRequests.length, 32);
+assert.ok(bounded.omissions.truncatedFiles > 0);
+assert.ok(bounded.bytesRead <= 16 * 1024 * 1024);
 const { WebSocket, WebSocketServer } = require("ws");
 const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
 await new Promise((resolve) => server.once("listening", resolve));

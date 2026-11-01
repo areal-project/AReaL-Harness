@@ -83,9 +83,12 @@ class RelayTransport {
     remote.channels = this.channels;
     const relay = remote.config.relay;
     if (typeof relay !== "string") throw new Error("Relay 未配置");
-    this.socket = new WebSocket(relay.replace(/^https:/, "wss:") + "/remote/socket", {
-      ...desktopTlsOptions(),
-      headers: { "X-Areal-Relay-Capabilities": "push" },
+    const local = remote.isLocalRelay();
+    const origin = new URL(relay);
+    const socketOrigin = local ? `ws://127.0.0.1:${origin.port}` : relay.replace(/^https:/, "wss:");
+    this.socket = new WebSocket(socketOrigin + "/remote/socket", {
+      ...(local ? {} : desktopTlsOptions()),
+      headers: { "X-Areal-Relay-Capabilities": "push", ...(local ? { Host: origin.host } : {}) },
       maxPayload: LIMITS.transportFrameBytes,
       perMessageDeflate: false,
     });

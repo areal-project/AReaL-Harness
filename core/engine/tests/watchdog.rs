@@ -143,6 +143,19 @@ async fn bounded_network_recovery_preserves_tools_and_usage_then_stops() {
             result.turns[0].usage.as_ref().unwrap().input_tokens,
             failures as u64 * 10
         );
+        let activities = &result.turns[0].trace.activities;
+        assert!(
+            activities
+                .iter()
+                .any(|activity| activity.kind == "retryWait" && activity.retry_delay_ms.is_some())
+        );
+        assert_eq!(
+            activities
+                .iter()
+                .filter(|activity| activity.retry_disposition.as_deref() == Some("exhausted"))
+                .count(),
+            usize::from(failures == 6)
+        );
         let history = model.history.lock().unwrap().clone();
         assert!(history[2..].iter().all(|request| request == &history[1]));
         engine.shutdown().await;
@@ -936,11 +949,18 @@ async fn goal_http_rejections_preserve_the_cause_and_safe_audit() {
                 "private-url",
                 "private-key",
                 "private-prompt",
-                "127.0.0.1",
             ] {
                 assert!(!audit_text.contains(private), "{private}");
                 assert!(!error.contains(private), "{private}");
             }
+            assert!(
+                audit["endpoint"]["origin"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("http://127.0.0.1:")
+            );
+            assert_eq!(audit["endpoint"]["route"], "[redacted]");
+            assert!(!error.contains("127.0.0.1"));
             engine.shutdown().await;
             server.abort();
             let _ = server.await;

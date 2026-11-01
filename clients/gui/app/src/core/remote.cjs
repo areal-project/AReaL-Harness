@@ -1,31 +1,26 @@
 // @ts-check
 "use strict";
+const { enrollRelay, pairingError } = require("./remote-enrollment.cjs");
 const { randomBytes, randomUUID, timingSafeEqual } = require("node:crypto");
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const {
   parseRemoteConfig,
+  PRESETS,
+  selectRelayProfile,
+  withCurrentProfile,
   migrateLegacyDevices,
   strings,
   failureCode,
-  enrollmentFailureMessage,
 } = require("./remote-config.cjs");
 const { RemotePush } = require("./remote-push.cjs");
+const { RelayService } = require("./relay-service.cjs");
 const { RelayTransport } = require("./remote-relay.cjs");
-const { request: httpsRequest } = require("node:https");
-const { desktopTlsOptions } = require("./desktop-network.cjs");
-const { createHash } = require("node:crypto");
 const QRCode = require("qrcode");
 const { SessionAcceptor } = require("./remote-session-acceptor.cjs");
 const { distinctName, forgetRevoked, renameDevice, revokeDevice } = require("./remote-devices.cjs");
 const { startDirect } = require("./remote-direct.cjs");
 const { createRemoteNetworkAdapter, validateHttpsOrigin } = require("./remote-network.cjs");
-const PRESETS = Object.freeze({
-  Observer: ["observe", "review"],
-  Operator: ["observe", "review", "submit", "interrupt", "answer", "pauseTask"],
-});
-/** @param {string} code @param {string} message */
-const pairingError = (code, message) => Object.assign(new Error(message), { code });
 
 const { isRemoteRequest } = require("@areal/workbench/desktop-contract/desktop-control");
 /** @typedef {import('./remote-config.cjs').RemoteConfig} RemoteConfig */
@@ -80,6 +75,7 @@ class RemoteControl {
     this.connected = false;
     this.sessions = new SessionAcceptor(this);
     this.push = new RemotePush(this);
+    this.relayService = new RelayService(this);
   }
   async init() {
     this.transportModule = await import("@areal/remote");
@@ -124,7 +120,16 @@ class RemoteControl {
       await this.save({ ...this.config, enabled: false });
       this.relayError = "旧 Relay 登记需使用管理员登记码重新确认";
     }
-    if (this.config.enabled) this.connect();
+    if (this.config.relayLocal?.enabled) {
+      try {
+        await this.relayService.startLocal(
+          this.config.enabled === true && this.config.relay === this.config.relayLocal.origin,
+        );
+      } catch {
+        this.relayError = this.relayService.local.error;
+      }
+      if (this.config.enabled && !this.isLocalRelay()) this.connect();
+    } else if (this.config.enabled) this.connect();
     if (
       !this.config.directEnabled &&
       this.config.network?.mapping &&
@@ -167,6 +172,7 @@ class RemoteControl {
   }
   state() {
     return {
+      relayService: this.relayService.state(),
       enabled: this.config?.enabled === true,
       connected: this.connected,
       relay: this.config?.relay ?? "",
@@ -176,7 +182,7 @@ class RemoteControl {
         this.config?.relayProtocol === "areal.remote.v2" &&
         this.config?.identity &&
         this.config.room
-          ? `${this.config.relay}/#${new URLSearchParams({ host: this.crypto.identityId(this.config.identity), room: this.config.room })}`
+          ? `${this.config.relay}/#${new URLSearchParams({ host: this.crypto.identityId(this.config.identity), room: this.config.room, ...(this.isLocalRelay() ? { local: "1" } : {}) })}`
           : "",
       directEnabled: this.config?.directEnabled === true,
       directUrl: this.direct ? this.networkOrigin || this.direct.origin : "",
@@ -221,6 +227,7 @@ class RemoteControl {
   /** @param {unknown} request */
   control(request) {
     if (!isRemoteRequest(request)) throw new Error("无效手机设置参数");
+    if (request.operation === "status") return Promise.resolve(this.state());
     // Pairing and revocation are serialized with durable configuration writes.
     const task = (this.writes ?? Promise.resolve())
       .catch(() => {})
@@ -257,6 +264,29 @@ class RemoteControl {
       case "networkRemove":
         this.validateNetworkRequest(request, ["confirmed"], true);
         await this.removeNetwork();
+        break;
+      case "relayServiceStartLocal":
+        await this.relayService.startLocal();
+        break;
+      case "relayServiceStopLocal":
+        await this.relayService.stopLocal();
+        break;
+      case "relayUse":
+        if (request.origin === this.config.relayLocal?.origin && !this.relayService.server)
+          await this.relayService.startLocal();
+        else await this.useRelayProfile(request.origin);
+        break;
+      case "relayServiceDeploy":
+        await this.relayService.startDeployment("deploy", request);
+        break;
+      case "relayServiceUpgrade":
+        await this.relayService.startDeployment("upgrade", {});
+        break;
+      case "relayServiceInspect":
+        await this.relayService.startDeployment("inspect", {});
+        break;
+      case "relayServiceRemove":
+        await this.relayService.startDeployment("remove", request);
         break;
       case "enable":
         await this.enableRelay(request);
@@ -322,6 +352,7 @@ class RemoteControl {
         if (transport === "relay") {
           if (!this.config.room) throw new Error("Relay 房间不可用");
           fragment.set("room", this.config.room);
+          if (this.isLocalRelay()) fragment.set("local", "1");
         }
         const origin =
           transport === "relay" ? this.config.relay : this.networkOrigin || this.direct?.origin;
@@ -435,60 +466,7 @@ class RemoteControl {
     if (request.code !== undefined) {
       if (typeof request.code !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(request.code))
         throw pairingError("invalid-code", "请输入管理员生成的一次性登记码");
-      // 使用系统 TLS 验证，不重定向、不发送 Origin；错误不包含登记凭据。
-      registration = await new Promise((resolve, reject) => {
-        const body = JSON.stringify({ code: request.code });
-        const req = httpsRequest(
-          `${relay}/enroll`,
-          {
-            ...desktopTlsOptions(),
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-              "content-length": Buffer.byteLength(body),
-            },
-          },
-          (response) => {
-            /** @type {Buffer[]} */
-            const chunks = [];
-            let size = 0;
-            response.on("data", (chunk) => {
-              if ((size += chunk.length) > 4096) req.destroy();
-              else chunks.push(chunk);
-            });
-            response.on("error", () =>
-              reject(pairingError("enrollment-failed", "Relay 登记失败，请检查 HTTPS 和登记码")),
-            );
-            response.on("end", () => {
-              try {
-                /** @type {unknown} */
-                const value = JSON.parse(Buffer.concat(chunks).toString());
-                if (
-                  response.statusCode !== 201 ||
-                  !value ||
-                  typeof value !== "object" ||
-                  !("capability" in value) ||
-                  typeof value.capability !== "string" ||
-                  !("room" in value) ||
-                  typeof value.room !== "string" ||
-                  !/^[A-Za-z0-9_-]{43}$/.test(value.capability) ||
-                  createHash("sha256").update(value.capability).digest("hex") !== value.room
-                )
-                  throw new Error();
-                resolve({ room: value.room, capability: value.capability });
-              } catch {
-                reject(pairingError("enrollment-failed", "Relay 登记失败，请检查 HTTPS 和登记码"));
-              }
-            });
-          },
-        );
-        const deadline = setTimeout(() => req.destroy(), 15000);
-        req.once("close", () => clearTimeout(deadline));
-        req.once("error", (error) => {
-          reject(pairingError("enrollment-failed", enrollmentFailureMessage(error)));
-        });
-        req.end(body);
-      });
+      registration = await enrollRelay(relay, request.code);
     } else {
       if (
         this.config.relayProtocol !== "areal.remote.v2" ||
@@ -503,12 +481,34 @@ class RemoteControl {
     if (this.closed) throw new Error("Host 已关闭");
     // 长期凭据必须先进入既有加密配置，成功后才建立出站连接。
     await this.save({
-      ...this.config,
+      ...withCurrentProfile(this.config),
+      relayProfiles: [
+        ...(withCurrentProfile(this.config).relayProfiles ?? []).filter(
+          (item) => item.origin !== relay,
+        ),
+        { origin: relay, kind: "external", ...registration },
+      ],
       ...registration,
       relay,
       identity,
       enabled: true,
       relayProtocol: "areal.remote.v2",
+    });
+    this.cancelPair();
+    this.disconnect();
+    this.connect();
+  }
+  isLocalRelay() {
+    return (
+      this.config.relay === this.relayService.local.address &&
+      this.relayService.local.phase === "running"
+    );
+  }
+  /** @param {string} origin */
+  async useRelayProfile(origin) {
+    await this.save({
+      ...selectRelayProfile(this.config, this.relayService.local, origin),
+      identity: this.config.identity ?? (await this.crypto.createIdentity()),
     });
     this.cancelPair();
     this.disconnect();
@@ -916,7 +916,7 @@ class RemoteControl {
     if (!this.config.enabled || this.closed || this.config.relayProtocol !== "areal.remote.v2")
       return;
     try {
-      validateHttpsOrigin(this.config.relay);
+      if (!this.isLocalRelay()) validateHttpsOrigin(this.config.relay);
     } catch {
       this.relayError = "Relay 来源无效，请重新登记";
       return;
@@ -952,6 +952,7 @@ class RemoteControl {
     this.push.close();
     this.direct?.close();
     this.direct = null;
+    this.relayService.close();
   }
 }
 /** @typedef {Record<string,unknown>} RemoteSettingsFields */

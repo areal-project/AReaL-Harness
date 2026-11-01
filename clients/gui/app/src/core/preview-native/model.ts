@@ -74,6 +74,11 @@ export type ActionRequest = HostIdentity &
   );
 export type NavigationRequest = HostIdentity &
   Extract<ToolInput, { operation: "navigate" | "newPage" }>;
+export type DocumentRequest = HostIdentity & Extract<ToolInput, { operation: "openDocument" }>;
+export type DocumentWorkspace = (
+  projectId: string,
+  threadId: string,
+) => { root: string; executionProjectId?: unknown };
 export type CommandRequest = HostIdentity & Extract<ToolInput, { operation: "command" }>;
 export type BatchRequest = HostIdentity & Extract<ToolInput, { operation: "runBatch" }>;
 export type DiscoveryRequest = Pick<
@@ -102,6 +107,7 @@ export type Viewport = {
   deviceScaleFactor: number;
 };
 export type ViewportFacts = Viewport & {
+  displayScale?: number;
   pageZoom: number;
   guiZoom: number;
   nativeBounds: Bounds;
@@ -198,6 +204,7 @@ export type Capture = { width: number; height: number } & {
   viewportKey: string;
   bitmapWidth: number;
   bitmapHeight: number;
+  bitmapScale: Point;
   url: string;
 };
 export type AnnotationCapture = {
@@ -216,6 +223,7 @@ export type AnnotationCapture = {
   viewportRevision: number;
   bitmapWidth: number;
   bitmapHeight: number;
+  bitmapScale: Point;
 };
 export type AnnotationEvidence = {
   available: true;
@@ -433,6 +441,9 @@ export interface Page {
   frameDocumentGeneration?: number;
   frameGrant?: FrameGrant | null;
   guiZoom?: number;
+  presentationBounds?: Bounds;
+  viewportScale?: number;
+  emulationKey?: string;
   humanInputPending?: Promise<unknown> | null;
   humanRevision?: number;
   lastCapture?: Capture | null;
@@ -443,6 +454,16 @@ export interface Page {
   pendingDevelopmentPrompt?: string | null;
   styleTrial?: StyleTrial | null;
   transferError?: string | null;
+  document?: {
+    entryUrl: string;
+    matchesEntry: (url: string) => boolean;
+    openExternal: () => Promise<void>;
+    revoke: () => void;
+    request: (
+      details: import("../browser-network.cjs").NetworkRequest,
+    ) => import("./documents.cjs").DocumentRequestDecision | null;
+    committed: (url: string) => void;
+  } | null;
   unregisterProfilePage?: (() => void) | null;
   userPopupIntentUntil?: number;
   viewportKey?: string | null;
@@ -556,7 +577,24 @@ export type SavedCommand = {
   dialog?: Page["commandDialog"];
 };
 export type SavedBatch = { kind: "batch"; plan: BatchPlan; pageUrl: string };
-export type SavedPlan = SavedRead | SavedAction | SavedNavigation | SavedCommand | SavedBatch;
+export type DocumentPlan = PlanIdentity & {
+  operation: "openDocument";
+  parameters: DocumentRequest["parameters"];
+  document: { scope: import("./documents.cjs").DocumentScope; entryDigest: string };
+};
+export type SavedDocument = {
+  kind: "document";
+  plan: DocumentPlan;
+  pageUrl: string;
+  prepared: import("./documents.cjs").PreparedDocument;
+};
+export type SavedPlan =
+  | SavedDocument
+  | SavedRead
+  | SavedAction
+  | SavedNavigation
+  | SavedCommand
+  | SavedBatch;
 
 export type PreparedAction = Pick<
   HostIdentity,

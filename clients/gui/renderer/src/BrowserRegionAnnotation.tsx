@@ -1,9 +1,11 @@
+import { observeResize } from "@areal/ui/observe-resize";
 import { Input } from "@areal/ui";
 import { useLayoutEffect, useRef, useState } from "react";
 import { MousePointer2, Square, X } from "lucide-react";
 import { Button } from "./components/ui/button.js";
 import { AnnotationNoteEditor } from "./AnnotationNoteEditor.js";
 import type { BrowserAnnotation } from "./browserAnnotations.js";
+import { useI18n } from "./i18n/IntlProvider.js";
 import "./BrowserRegionAnnotation.css";
 
 export interface RegionDraft {
@@ -32,6 +34,7 @@ export interface RegionDraft {
       nativeBounds: { x: number; y: number; width: number; height: number };
       bitmapWidth: number;
       bitmapHeight: number;
+      bitmapScale?: { x: number; y: number };
     };
   };
   comment: string;
@@ -53,6 +56,23 @@ export interface RegionDraft {
   unavailableReason?: string;
 }
 
+export function annotationRegionAroundPoint(
+  capture: RegionDraft["capture"],
+  point: NonNullable<RegionDraft["point"]>,
+): NonNullable<RegionDraft["region"]> {
+  const { viewport } = capture;
+  const scaleX = viewport.bitmapScale?.x ?? viewport.bitmapWidth / viewport.width;
+  const scaleY = viewport.bitmapScale?.y ?? viewport.bitmapHeight / viewport.height;
+  const width = Math.min(viewport.bitmapWidth, Math.max(1, Math.round(160 * scaleX)));
+  const height = Math.min(viewport.bitmapHeight, Math.max(1, Math.round(96 * scaleY)));
+  return {
+    x: Math.max(0, Math.min(viewport.bitmapWidth - width, Math.round(point.x - width / 2))),
+    y: Math.max(0, Math.min(viewport.bitmapHeight - height, Math.round(point.y - height / 2))),
+    width,
+    height,
+  };
+}
+
 export function BrowserRegionAnnotation({
   draft,
   busy,
@@ -72,6 +92,7 @@ export function BrowserRegionAnnotation({
   onStage: (draft: RegionDraft) => void;
   onSelectElement: (point: { x: number; y: number }) => void;
 }) {
+  const { t } = useI18n();
   const host = useRef<HTMLDivElement>(null),
     image = useRef<HTMLImageElement>(null);
   const start = useRef<{ x: number; y: number } | null>(null);
@@ -87,10 +108,9 @@ export function BrowserRegionAnnotation({
       );
       setSize({ width, height: (width * bitmapHeight) / bitmapWidth });
     };
-    const observer = new ResizeObserver(measure);
-    observer.observe(host.current!);
+    const stopResize = observeResize(host.current!, measure);
     measure();
-    return () => observer.disconnect();
+    return stopResize;
   }, [bitmapWidth, bitmapHeight]);
   const point = (clientX: number, clientY: number) => {
     const bounds = image.current?.getBoundingClientRect();
@@ -138,6 +158,7 @@ export function BrowserRegionAnnotation({
       point: { x: next.x + next.width / 2, y: next.y + next.height / 2 },
       mode: "region",
       element: undefined,
+      unavailableReason: undefined,
     });
   };
   const scale = size.width / bitmapWidth;
@@ -258,14 +279,20 @@ export function BrowserRegionAnnotation({
                     4,
                     Math.min(
                       anchor.y * scale + (editorBelow ? 16 : -20),
-                      size.height - (details ? 300 : 110),
+                      size.height - (details ? 300 : 44),
                     ),
                   ),
                 }}
                 onChange={(comment) => onChange({ ...draft, comment })}
                 onConfirm={confirm}
                 onCancel={() =>
-                  onChange({ ...draft, region: null, element: undefined, comment: "" })
+                  onChange({
+                    ...draft,
+                    region: null,
+                    element: undefined,
+                    comment: "",
+                    unavailableReason: undefined,
+                  })
                 }
               />
             )}
@@ -275,12 +302,14 @@ export function BrowserRegionAnnotation({
       <div className="browser-annotation-context" role="status">
         {busy
           ? "正在读取当前选区…"
-          : draft.unavailableReason ||
-            (region
-              ? "确认后加入 Composer；仅分享选区截图"
-              : draft.mode === "element"
-                ? "点选元素添加批注；截图已冻结"
-                : "拖动框选区域；截图已冻结")}
+          : region && !draft.element && draft.mode === "element"
+            ? t("browser.annotation.regionFallback")
+            : draft.unavailableReason ||
+              (region
+                ? "确认后加入 Composer；仅分享选区截图"
+                : draft.mode === "element"
+                  ? "点选元素添加批注；截图已冻结"
+                  : "拖动框选区域；截图已冻结")}
       </div>
       <div className="browser-annotation-dock" role="group" aria-label="标注工具栏">
         <Button
@@ -297,6 +326,7 @@ export function BrowserRegionAnnotation({
               region: null,
               element: undefined,
               comment: "",
+              unavailableReason: undefined,
             })
           }
         >
@@ -316,6 +346,7 @@ export function BrowserRegionAnnotation({
               region: null,
               element: undefined,
               comment: "",
+              unavailableReason: undefined,
             })
           }
         >

@@ -8,6 +8,7 @@ const { join, resolve, sep, basename, dirname } = require("node:path");
 const childProcess = require("node:child_process");
 const { modelRecord } = require("@areal/workbench/core-model-contract");
 // 对话里内联显示工作区图片：只按文件头识别常见位图，SVG 等可执行格式只给文件卡。
+const MAX_PDF_BYTES = 20 * 1024 * 1024;
 const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024;
 /** @param {Buffer} bytes */
 function imageMimeType(bytes) {
@@ -42,6 +43,11 @@ function fileWorkspace(backend, request) {
       ? project.summaries.filter(modelRecord).find((value) => value.id === request.threadId)
       : undefined);
   if (!modelRecord(thread)) throw new Error("会话工作目录尚未确认，请先打开会话");
+  if (thread.cloud) {
+    if (request.operation === "readPdf") throw new Error("云端 PDF 不能通过本地文件路径读取");
+    if (request.operation === "openHtml" || request.operation === "openDocument")
+      throw new Error("云端 HTML 不能通过本地文件路径打开");
+  }
   if (!thread.worktree) return project;
   if (
     !modelRecord(thread.worktree) ||
@@ -56,10 +62,8 @@ function fileWorkspace(backend, request) {
   };
 }
 
-// Main owns OS handoff. Renderer selects a registered workspace and an opaque
-// target ID, never an executable, command line or unrestricted absolute path.
-/** @param {{backend:Pick<InstanceType<typeof import("./service-client.cjs").SharedCoreBackend>,"snapshot"|"command">,shell:Pick<typeof import("electron").shell,"showItemInFolder"|"openPath">,home:string,authorize:()=>void,chooseSave:(options:import("electron").SaveDialogOptions)=>Promise<import("electron").SaveDialogReturnValue>}} options @param {unknown} request */
-async function fileOpen({ backend, shell, home, authorize, chooseSave }, request) {
+/** @param {{backend:Pick<InstanceType<typeof import("./service-client.cjs").SharedCoreBackend>,"snapshot"|"command">,shell:Pick<typeof import("electron").shell,"showItemInFolder"|"openPath">,home:string,authorize:()=>void,openHtml:(request:{projectId:string,threadId:string,path:string,workspacePath:string,valid:()=>boolean})=>Promise<{pageId:string,url:string,dispatch:string}>,chooseSave:(options:import("electron").SaveDialogOptions)=>Promise<import("electron").SaveDialogReturnValue>}} options @param {unknown} request */
+async function fileOpen({ backend, shell, home, authorize, chooseSave, openHtml }, request) {
   if (!modelRecord(request)) throw new Error("无效文件打开请求");
   /** @type {Array<{id:string,label:string,application?:string}>} */
   const targets = [{ id: "system", label: "系统默认应用" }];
@@ -101,20 +105,83 @@ async function fileOpen({ backend, shell, home, authorize, chooseSave }, request
   }
   if (
     typeof request.operation !== "string" ||
-    !["open", "reveal", "saveAs", "readImage"].includes(request.operation) ||
+    !["open", "openHtml", "reveal", "saveAs", "readImage", "readPdf"].includes(request.operation) ||
     typeof request.projectId !== "string" ||
     typeof request.path !== "string" ||
     !request.path ||
     request.path.length > 4096 ||
-    request.path.includes("\0")
+    request.path.includes("\0") ||
+    (request.operation === "openHtml" &&
+      (typeof request.threadId !== "string" || !request.threadId || /^[\\/]{2}/.test(request.path)))
   )
     throw new Error("无效文件打开请求");
   const project = fileWorkspace(backend, request);
+  const requestedPath =
+    request.operation === "openHtml" && process.platform === "win32"
+      ? request.path.replace(/^\/(?=[a-z]:[\\/])/i, "")
+      : request.path;
   const root = await realpath(project.root),
-    path = await realpath(resolve(root, request.path));
+    path = await realpath(resolve(root, requestedPath));
+  if (request.operation === "openHtml") {
+    if (!/\.html?$/i.test(request.path) || !/\.html?$/i.test(path) || !(await stat(path)).isFile())
+      throw new Error("仅支持普通 HTML 文件");
+    const current = fileWorkspace(backend, request);
+    if (current.root !== project.root || current.executionProjectId !== project.executionProjectId)
+      throw new Error("会话工作目录已变化，请重新打开");
+    authorize();
+    await openHtml({
+      projectId: /** @type {string} */ (request.projectId),
+      threadId: /** @type {string} */ (request.threadId),
+      path,
+      workspacePath: project.root,
+      valid: () => {
+        authorize();
+        const current = fileWorkspace(backend, request);
+        return (
+          current.root === project.root && current.executionProjectId === project.executionProjectId
+        );
+      },
+    });
+    return {};
+  }
   if (path !== root && !path.startsWith(root + sep)) throw new Error("文件不在当前工作区内");
   const info = await stat(path);
   if (!info.isFile() && !info.isDirectory()) throw new Error("仅支持文件或目录");
+  if (request.operation === "readPdf") {
+    if (!info.isFile()) throw new Error("仅支持 PDF 文件");
+    if (info.size > MAX_PDF_BYTES) throw new Error("PDF 超过 20 MB，请在外部应用中打开");
+    const source = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const opened = await source.stat();
+      if (!opened.isFile() || opened.dev !== info.dev || opened.ino !== info.ino)
+        throw new Error("PDF 文件已变化，请重新打开");
+      const bytes = Buffer.alloc(Math.min(opened.size, MAX_PDF_BYTES) + 1);
+      let length = 0;
+      while (length < bytes.length) {
+        const { bytesRead } = await source.read(bytes, length, bytes.length - length, length);
+        if (!bytesRead) break;
+        length += bytesRead;
+      }
+      if (length > MAX_PDF_BYTES) throw new Error("PDF 超过 20 MB，请在外部应用中打开");
+      const current = fileWorkspace(backend, request);
+      const after = await source.stat();
+      if (
+        current.root !== project.root ||
+        current.executionProjectId !== project.executionProjectId ||
+        (await realpath(resolve(root, request.path))) !== path ||
+        after.size !== opened.size ||
+        after.mtimeMs !== opened.mtimeMs ||
+        after.ctimeMs !== opened.ctimeMs ||
+        length !== opened.size
+      )
+        throw new Error("PDF 文件已变化，请重新打开");
+      if (!bytes.subarray(0, length).subarray(0, 1024).includes(Buffer.from("%PDF-")))
+        throw new Error("不是有效的 PDF 文件");
+      return { mimeType: "application/pdf", bytes: new Uint8Array(bytes.subarray(0, length)) };
+    } finally {
+      await source.close();
+    }
+  }
   if (request.operation === "readImage") {
     if (!info.isFile()) throw new Error("仅支持图片文件");
     if (info.size > MAX_INLINE_IMAGE_BYTES) throw new Error("图片超过 20 MB，请在外部应用中打开");
@@ -221,4 +288,4 @@ async function fileOpen({ backend, shell, home, authorize, chooseSave }, request
   });
   return {};
 }
-module.exports = { fileOpen };
+module.exports = { fileOpen, fileWorkspace };

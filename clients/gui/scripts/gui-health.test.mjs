@@ -87,6 +87,7 @@ test("temporary path source audit still counts hardcoded paths", async (t) => {
 test("JSON report counts production code and keeps report-only counts separate", async (t) => {
   const f = await fixture(t);
   await f.put("app/src/vendor/vendor.cjs", "x\n".repeat(1001));
+  await f.put("app/src/core/snapshots/build/DesktopSnapShots.cjs", "x\n".repeat(1356));
   await f.put("renderer/src/generated/gen.tsx", "x\n".repeat(1001));
   await f.put("renderer/src/i18n/messages/en.ts", "x\n".repeat(1001));
   await f.put("renderer/src/design-system/preview.tsx", "x\n".repeat(1001));

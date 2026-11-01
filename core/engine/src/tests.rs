@@ -43,6 +43,7 @@ async fn fork_settled_failure_and_interruption_preserve_status() {
             status,
             usage: None,
             items: vec![Item::UserMessage {
+                created_at: None,
                 id: id(),
                 content: vec![Input::text(turn_id)],
             }],
@@ -156,6 +157,7 @@ async fn fork_unknown_hook_requires_source_inspection_and_keeps_unknown() {
         usage: None,
         items: vec![
             Item::UserMessage {
+                created_at: None,
                 id: id(),
                 content: vec![Input::text("lookup")],
             },
@@ -307,10 +309,12 @@ async fn fork_creation_faults_recover_only_committed_targets() {
             usage: None,
             items: vec![
                 Item::UserMessage {
+                    created_at: None,
                     id: id(),
                     content: vec![Input::text("known prefix")],
                 },
                 Item::AgentMessage {
+                    created_at: None,
                     id: id(),
                     phase: None,
                     text: "known answer".into(),
@@ -471,6 +475,7 @@ async fn inherited_media_survives_release_gc_and_restart() {
         usage: None,
         items: vec![
             Item::UserMessage {
+                created_at: None,
                 id: id(),
                 content: vec![Input::File {
                     url: media.uri.clone(),
@@ -612,6 +617,7 @@ async fn model_history_preserves_completion_batches_and_defers_tool_images() {
         usage: None,
         items: vec![
             Item::AgentMessage {
+                created_at: None,
                 phase: None,
                 id: "completion-1".into(),
                 text: "Inspect both".into(),
@@ -620,6 +626,7 @@ async fn model_history_preserves_completion_batches_and_defers_tool_images() {
             call("b", false),
             // An empty text item still marks a new model decision.
             Item::AgentMessage {
+                created_at: None,
                 phase: None,
                 id: "completion-2".into(),
                 text: String::new(),
@@ -944,10 +951,12 @@ async fn compacted_history_preserves_steer_inside_an_automatic_goal_turn() {
         usage: None,
         items: vec![
             Item::UserMessage {
+                created_at: None,
                 id: "automatic".into(),
                 content: vec![Input::text("Automatic continuation adds no authorization")],
             },
             Item::UserMessage {
+                created_at: None,
                 id: "repair".into(),
                 content: vec![
                     Input::text("修订：只修组合键；取消旧音乐任务。"),
@@ -955,6 +964,7 @@ async fn compacted_history_preserves_steer_inside_an_automatic_goal_turn() {
                 ],
             },
             Item::AgentMessage {
+                created_at: None,
                 id: "boundary".into(),
                 phase: None,
                 text: "verified".into(),
@@ -1022,6 +1032,7 @@ async fn persistence_encoding_benchmark() {
         usage: None,
         items: (0..4000)
             .map(|n| Item::AgentMessage {
+                created_at: None,
                 id: n.to_string(),
                 phase: None,
                 text: "Observed tool JSON: {\"file\":\"src/main.rs\",\"result\":\"verified\"}\n"

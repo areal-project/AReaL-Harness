@@ -54,7 +54,7 @@ const vite = await createServer({
         if (!id.endsWith("/src/conversationPresentation.ts")) return;
         const start =
           "export function executionSegments(items: Data[], turnStatus: string): Data[] {";
-        const end = "  return result;\n}\n/** Only Core's explicit continuation origin";
+        const end = "  return result;\n}\nexport function progressGroups(";
         assert.ok(source.includes(start) && source.includes(end));
         return source
           .replace(
@@ -63,7 +63,7 @@ const vite = await createServer({
           )
           .replace(
             end,
-            "  return result; } finally { window.messageCounts.cpuMs += performance.now() - began; }\n}\n/** Only Core's explicit continuation origin",
+            "  return result; } finally { window.messageCounts.cpuMs += performance.now() - began; }\n}\nexport function progressGroups(",
           );
       },
       configureServer(server) {

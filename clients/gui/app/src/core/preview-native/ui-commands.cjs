@@ -5,7 +5,6 @@ const { webUrl } = require("../preview/urls.cjs");
 const { workspaceKey, pageKey } = require("./identity.cjs");
 const { randomUUID } = require("node:crypto");
 const { performance } = require("node:perf_hooks");
-const { isDeepStrictEqual } = require("node:util");
 /** @type {typeof import("@areal/workbench/desktop-contract").validatePreview} */
 const validatePreview = require("@areal/workbench/desktop-contract").validatePreview;
 const { WorkspaceNetworkPolicy } = require("../browser-network.cjs");
@@ -449,7 +448,9 @@ class HumanBrowserCommands {
           url,
         )
       )
-        throw new Error("浏览安全策略拒绝该地址");
+        throw Object.assign(new Error("浏览安全策略拒绝该地址"), {
+          code: "BROWSER_PERMISSION_DENIED",
+        });
       const local =
         host === "localhost" ||
         host.endsWith(".localhost") ||
@@ -506,6 +507,7 @@ class HumanBrowserCommands {
       page.title = previous.title;
       page.url = previous.url;
       page.error = previous.error;
+      page.commandViewport = previous.commandViewport;
       if (wasSelected) this.workspace.selected.set(workspace, page.id);
     }
     if (!page && ["show", "navigate", "reload"].includes(request.operation)) {
@@ -524,7 +526,7 @@ class HumanBrowserCommands {
       !page.view.webContents.getURL() &&
       !page.view.webContents.isLoadingMainFrame()
     ) {
-      const restored = request.operation !== "navigate" && restoreUrl ? webUrl(restoreUrl) : null;
+      const restored = request.operation === "show" && restoreUrl ? webUrl(restoreUrl) : null;
       if (restored) {
         page.url = restored;
         void page.view.webContents.loadURL(restored).catch((error) => {
@@ -542,7 +544,7 @@ class HumanBrowserCommands {
         ...this.presentation.state(null),
         workspace: this.workspace.snapshot(request.projectId, request.threadId),
       };
-    if (!page.view) {
+    if (!hasNativePage(page)) {
       if (request.operation === "selectPage") {
         this.workspace.selected.set(workspace, page.id);
         this.workspace.changed(page);
@@ -556,9 +558,14 @@ class HumanBrowserCommands {
       nativeGeneration = page.pageGeneration;
     const c = view.webContents;
     if (target) {
-      if (!page.networkPolicy.canAuthorize(target)) throw new Error("浏览安全策略拒绝该地址");
+      if (!page.networkPolicy.canAuthorize(target))
+        throw Object.assign(new Error("浏览安全策略拒绝该地址"), {
+          code: "BROWSER_PERMISSION_DENIED",
+        });
       if (!page.networkPolicy.allowHumanNavigation(target))
-        throw new Error("浏览安全策略拒绝该地址");
+        throw Object.assign(new Error("浏览安全策略拒绝该地址"), {
+          code: "BROWSER_PERMISSION_DENIED",
+        });
     }
     if (
       ["navigate", "back", "forward", "reload", "devtools"].includes(request.operation) &&
@@ -569,7 +576,12 @@ class HumanBrowserCommands {
       if (!cleared.cleared && request.operation !== "reload")
         throw new Error("试改已失效，请刷新页面后继续导航");
     }
-    if (["navigate", "back", "forward", "reload"].includes(request.operation)) {
+    if (
+      request.operation === "setViewport" &&
+      (page.annotationCaptureId || page.styleTrial || page.commandSurface)
+    )
+      throw new Error("请先结束批注、页面试改或浏览器命令，再调整视口");
+    if (["navigate", "back", "forward", "reload", "setViewport"].includes(request.operation)) {
       if (
         !this.workspace.pageStillOwned(page) ||
         page.view !== view ||
@@ -599,20 +611,20 @@ class HumanBrowserCommands {
     )
       throw new Error("原生输入尚未收敛，请停止或关闭页面");
     if (request.bounds) {
-      const bounds = rendererBoundsWithinWindow(request.bounds, this.presentation.window);
-      const previous = page.view.getBounds();
-      const guiZoom = this.presentation.window.webContents.getZoomFactor();
-      if (!isDeepStrictEqual(bounds, previous) || page.guiZoom !== guiZoom) {
-        page.view.setBounds(bounds);
-        page.guiZoom = guiZoom;
-        page.viewportKey = null;
-        page.viewportRevision++;
-        page.lastCapture = null;
-        page.plans.clear();
-        this.workspace.changed(page, "viewportChanged");
-      }
+      page.presentationBounds = rendererBoundsWithinWindow(
+        request.bounds,
+        this.presentation.window,
+      );
+      if (!page.commandSurface) this.presentation.layout(page, page.presentationBounds);
     }
     switch (request.operation) {
+      case "setViewport":
+        page.commandViewport =
+          request.viewport.mode === "device"
+            ? { width: request.viewport.width, height: request.viewport.height }
+            : null;
+        this.presentation.layout(page, page.presentationBounds ?? page.view.getBounds());
+        break;
       case "selectPage":
         {
           const outgoing =
@@ -664,6 +676,7 @@ class HumanBrowserCommands {
         );
         break;
       case "navigate":
+        page.document?.revoke();
         if (target === null) throw new Error("无效浏览地址");
         page.url = target;
         page.error = "";
@@ -678,9 +691,11 @@ class HumanBrowserCommands {
         });
         break;
       case "back":
+        page.document?.revoke();
         if (c.navigationHistory.canGoBack()) c.navigationHistory.goBack();
         break;
       case "forward":
+        page.document?.revoke();
         if (c.navigationHistory.canGoForward()) c.navigationHistory.goForward();
         break;
       case "reload":
@@ -700,7 +715,8 @@ class HumanBrowserCommands {
         c.stop();
         break;
       case "external":
-        await require("electron").shell.openExternal(webUrl(c.getURL() || page.url));
+        if (page.document) await page.document.openExternal();
+        else await require("electron").shell.openExternal(webUrl(c.getURL() || page.url));
         break;
       case "devtools":
         this.control.revoke(page);

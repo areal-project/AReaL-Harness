@@ -1477,6 +1477,7 @@ mod tests {
                 .unwrap(),
         );
         t.turns[0].items.push(Item::AgentMessage {
+            created_at: None,
             id: "empty".into(),
             text: String::new(),
             phase: None,
@@ -1648,6 +1649,7 @@ mod tests {
         let mut t = thread("root", None);
         t.turns[0].items = vec![
             Item::UserMessage {
+                created_at: None,
                 id: "you".into(),
                 content: vec![Input::Text {
                     text: "question".into(),
@@ -1656,6 +1658,7 @@ mod tests {
                 }],
             },
             Item::AgentMessage {
+                created_at: None,
                 phase: None,
                 id: "agent".into(),
                 text: "answer".into(),

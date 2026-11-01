@@ -25,9 +25,9 @@ const { randomUUID } = require("node:crypto");
 const { ProjectionEncoder } = require("@areal/workbench/state-projection");
 const { createOwner } = require("./application-owner.cjs");
 const { setupUpdater } = require("../update/electron.cjs");
-const { showCoreNotification } = require("./notifications.cjs");
+const { showCoreNotification, readNotificationTarget } = require("./notifications.cjs");
 const { MenuBar } = require("./menu-bar.cjs");
-const { fileOpen } = require("./file-open.cjs");
+const { fileOpen, fileWorkspace } = require("./file-open.cjs");
 const { PluginArchives } = require("./plugin-archives.cjs");
 const { McpFormResources } = require("./mcp-form-resources.cjs");
 const { McpAppsHost, parseDeepLink } = require("./mcp-apps.cjs");
@@ -41,13 +41,14 @@ const { CorePreview } = require("./preview.cjs");
 const { ComputerControl } = require("./computer-control.cjs");
 const { ExternalCua, upstream: cuaUpstream } = require("./external-cua.cjs");
 const diagnostics = require("./diagnostics.cjs");
+const { startSnapShots } = require("./snapshots/host.cjs");
 const { configureUserData, serviceOptions, serviceHome } = require("./service-config.cjs");
 const { readLibraryStartupSettings } = require("./library.cjs");
 const { applyDesktopSessionNetworkPolicy } = require("./desktop-network.cjs");
 const { SharedCoreBackend } = require("./service-client.cjs");
 const { recoverConnectedService } = require("./startup-recovery.cjs");
 const { setNativeLocale, nativeText } = require("./native-i18n.cjs");
-const { loadThemes, engineCss, panelCss } = require("../themes");
+const { loadThemes, desktopTheme } = require("../themes");
 
 startDesktop();
 
@@ -161,6 +162,8 @@ function startDesktop() {
   const closeComputer = () => Promise.all([computer?.close(), externalCua?.close()]);
   /** @type {Electron.BrowserWindow|undefined} */
   let window;
+  /** @type {import("./snapshots/DesktopSnapShots.js").DesktopSnapShots|undefined} */
+  let snapShots;
   /** @type {InstanceType<typeof SharedCoreBackend>|undefined} */
   let backend;
   /** @type {InstanceType<typeof CorePreview>|undefined} */
@@ -453,7 +456,18 @@ function startDesktop() {
         ? showSaveDialog(options)
         : dialog.showSaveDialog(options));
       if (result.canceled || !result.filePath) return { canceled: true };
-      await diagnostics.exportTo(result.filePath, diagnosticsRoots);
+      const selectedService = serviceOptions(app);
+      await diagnostics.exportTo(result.filePath, {
+        ...diagnosticsRoots,
+        coreRoot: selectedService.home,
+        instance: {
+          packaged: app.isPackaged,
+          coreBinary: selectedService.binary,
+          coreHome: selectedService.home,
+          config: selectedService.config || join(selectedService.configHome, "config.toml"),
+          explicitConfig: !!selectedService.config,
+        },
+      });
       return { path: result.filePath };
     } catch {
       throw Object.assign(new Error(nativeText("diagnostics.saveFailed")), {
@@ -477,28 +491,9 @@ function startDesktop() {
   let notificationSequence = 0;
   /** @param {unknown} target */
   function openNotificationTarget(target) {
-    if (!modelRecord(target) || typeof target.projectId !== "string") return;
-    if (typeof target.taskId === "string") {
-      if (
-        (target.runId !== undefined && typeof target.runId !== "string") ||
-        (target.questionId !== undefined && typeof target.questionId !== "string")
-      )
-        return;
-      notificationTarget = {
-        projectId: target.projectId,
-        taskId: target.taskId,
-        runId: target.runId,
-        questionId: target.questionId,
-        id: ++notificationSequence,
-      };
-    } else {
-      if (typeof target.threadId !== "string") return;
-      notificationTarget = {
-        projectId: target.projectId,
-        threadId: target.threadId,
-        id: ++notificationSequence,
-      };
-    }
+    const parsed = readNotificationTarget(target);
+    if (!parsed) return;
+    notificationTarget = { ...parsed, id: ++notificationSequence };
     if (!window || window.isDestroyed()) return;
     if (startupPresentation === "presented") revealWindow();
     sendDesktopEvent(window.webContents, "areal-core:notification-open");
@@ -530,25 +525,7 @@ function startDesktop() {
   app.on("second-instance", revealWindow);
 
   function theme() {
-    const id =
-      themeId === "system"
-        ? nativeTheme.shouldUseDarkColors
-          ? "data-dense"
-          : "soft-glass"
-        : themeId;
-    const selected = themes.find((item) => item.id === id) ?? themes[0];
-    return {
-      platform: process.platform,
-      id: themeId,
-      dark: selected.dark,
-      css: engineCss(selected) + panelCss(selected),
-      options: themes.map((item) => ({
-        id: item.id,
-        name: item.name,
-        author: item.author,
-        swatch: [item.colors.bg, item.colors.bgRaised, item.colors.accent],
-      })),
-    };
+    return desktopTheme(themes, themeId, nativeTheme.shouldUseDarkColors);
   }
   let publishPending = false;
   function publish() {
@@ -574,6 +551,10 @@ function startDesktop() {
     // A temporary disconnect must not reset the native preference.
     if (state.connection?.state === "ready" && state.library && !quitting)
       menuBar?.sync(state.library.settings?.showInMenuBar !== false);
+    if (state.connection?.state === "ready" && state.library && !quitting)
+      void snapShots
+        ?.configure(state.library.settings?.snapShot)
+        .catch((error) => console.error("SnapShots settings failed", error));
     const enabled = state.library?.settings?.computerControlEnabled === true;
     const wasEnabled = computerWasEnabled;
     computerWasEnabled = enabled;
@@ -714,6 +695,8 @@ function startDesktop() {
           return response === 1 && current();
         },
         (projectId, threadId) => backend.retainsThreadResources(projectId, threadId),
+        (projectId, threadId) =>
+          fileWorkspace(backend, { projectId, threadId, operation: "openDocument" }),
       );
       preview.onRevoke = (identity) => {
         void backend.browserRevoke(identity).catch(() => {});
@@ -727,9 +710,11 @@ function startDesktop() {
         computerUiAvailable = createdWindow.webContents.mainFrame.url.startsWith("areal-ui://app/");
         diagnostics.record({ type: "renderer-responsive" });
       });
+      createdWindow.on("blur", () => snapShots?.setSnapShotShortcutSuppressed(false));
       const owner = createdWindow.webContents;
       owner.on("did-start-navigation", (_event, _url, inPlace, mainFrame) => {
         if (mainFrame && !inPlace) {
+          snapShots?.setSnapShotShortcutSuppressed(false);
           computerUiAvailable = false;
           void stopComputer("ui_navigation").catch(() => {});
           projections.delete(owner);
@@ -740,11 +725,13 @@ function startDesktop() {
         computerUiAvailable = owner.mainFrame.url.startsWith("areal-ui://app/");
       });
       owner.on("destroyed", () => {
+        snapShots?.setSnapShotShortcutSuppressed(false);
         computerUiAvailable = false;
         void stopComputer("ui_destroyed").catch(() => {});
         projections.delete(owner);
       });
       owner.on("render-process-gone", () => {
+        snapShots?.setSnapShotShortcutSuppressed(false);
         computerUiAvailable = false;
         void stopComputer("ui_crashed").catch(() => {});
         projections.delete(owner);
@@ -813,6 +800,7 @@ function startDesktop() {
     .whenReady()
     .then(async () => {
       if (startupSettingsError) throw startupSettingsError;
+      snapShots = startSnapShots({ window: () => window ?? null, revealWindow, trusted });
       await Promise.all(
         [session.defaultSession, session.fromPartition("persist:areal-embedded-browser")].map(
           (target) => applyDesktopSessionNetworkPolicy(target, startupSettings),
@@ -1114,6 +1102,18 @@ function startDesktop() {
                 ),
               ];
           }
+          if (
+            browserRequest.operation === "openDocument" &&
+            browserRequest.phase === "execute" &&
+            result.dispatch === "confirmed" &&
+            !window.isDestroyed()
+          )
+            sendDesktopEvent(window.webContents, "areal-core:preview-event", {
+              kind: "reveal",
+              projectId: browserRequest.projectId,
+              threadId: browserRequest.threadId,
+              pageId: browserRequest.pageId,
+            });
           return result;
         } catch (error) {
           return browserHostFailure(request, error);
@@ -1123,6 +1123,20 @@ function startDesktop() {
         mcpApps?.dispose();
         void closeComputer().catch(() => {});
       });
+      /** @param {Parameters<InstanceType<typeof CorePreview>["openDocument"]>[0]} request */
+      const openHtml = async (request) => {
+        if (!preview || !window || window.isDestroyed())
+          throw new Error("Browser host unavailable");
+        const result = await preview.openDocument(request);
+        if (result.dispatch === "confirmed" && !window.isDestroyed())
+          sendDesktopEvent(window.webContents, "areal-core:preview-event", {
+            kind: "reveal",
+            projectId: request.projectId,
+            threadId: request.threadId,
+            pageId: result.pageId,
+          });
+        return result;
+      };
       const mcpHost = (mcpApps = new McpAppsHost({
         backend: serviceBackend,
         ownerId: () =>
@@ -1139,6 +1153,7 @@ function startDesktop() {
               backend: serviceBackend,
               shell,
               home: app.getPath("home"),
+              openHtml,
               authorize: current,
               chooseSave: (options) => showSaveDialog(options),
             },
@@ -1321,7 +1336,11 @@ function startDesktop() {
             .catch(() => {});
           return value;
         }
-        return activePreview.command(request);
+        try {
+          return await activePreview.command(request);
+        } catch (error) {
+          return { previewFailure: desktopError(error) };
+        }
       });
       handleDesktopIpc("areal-core:notification-target", (event) => {
         trusted(event);
@@ -1434,6 +1453,7 @@ function startDesktop() {
             backend: serviceBackend,
             shell,
             home: app.getPath("home"),
+            openHtml,
             authorize: () => trusted(event),
             chooseSave: (options) => showSaveDialog(options),
           },

@@ -17,6 +17,8 @@ import { decoratePromptMention } from "@/mentions/nodes/promptMentionDecoration.
 export * from "@/mentions/nodes/mentionIconDom.js";
 
 function displayLabel(payload: PromptMentionPayload): string {
+  if (payload.category === "files" && payload.data?.path && !payload.data.relativePath)
+    return payload.label;
   const label = normalizePromptMentionDisplayLabel(payload.category, payload.label, payload.value);
   return payload.category === "files"
     ? resolveFileDisplayDescriptor(

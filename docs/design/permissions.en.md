@@ -30,6 +30,8 @@ Core retains a private Turn authority scope that is never passed to tools. Base 
 
 `run_command.permissionRequest` explicitly requests extra read directories, write directories or networking for one operation. Core validates final arguments against deployment and parent ceilings and binds the digest before review. Approval creates only an operation scope without widening the base. Background process reads, input and termination remain bound to the original scope.
 
+`read_file`, `search_files`, `image_read`, `fs_read`, `fs_list` and `fs_stat` reuse the same per-operation approval entry. Their `permissionRequest` accepts only `readRoots` and `justification`, rejecting write, network and unknown fields. Approved read scopes have `writeRoots=[]` and `network=deny`, without changing the original base scope. A directory reference remains task input; ordinary Markdown is never an automatic grant. Approved image reads enter the existing Core media path directly.
+
 A denied compound command may already have partial effects and is never replayed automatically. Cancellation prevents new dispatch. Lost receipts or failed cleanup retain UNKNOWN rather than claiming rollback. Restart never replays unknown operations.
 
 ## Independent review

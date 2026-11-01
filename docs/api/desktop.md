@@ -28,6 +28,7 @@ Thread 快照和 Item 通知支持可选 `agentMessage.phase`，生命周期、�
 
 | operation | 请求补充字段 | 返回与作用 |
 |---|---|---|
+| `localDirectoryReference` | `path`，本机绝对目录路径 | 返回 `{path,name,type:"directory"}`。宿主仅 stat 确认存在的目录，允许工作区外路径；不枚举、上传、切换工作区或授予 Agent 权限。原 `list/read/save` 的工作区边界不变。 |
 | `worktreeOptions` | `sourceRoot?` | 返回同仓库来源、分支、settings、defaultRoot、项目 environments 和 environmentRevision。 |
 | `worktreeSettings` | `worktreeRoot,branchPrefix,fetchBeforeCreate?,autoCleanup?,keepCount?,expectedRevision?` | 保存全局未来创建策略，已有目录不移动。空根使用用户 home 下 `.areal/worktrees`，其下按项目分组。 |
 | `worktreeList` | 无 | 返回 `{settings,defaultRoot,revision,projects,worktrees}`。全局列表来自宿主登记，不为列举启动每个 Core。 |
@@ -127,6 +128,9 @@ Core 返回可选 `EffectiveConfig.permissions: {resources:"workspace"|"deployme
 
 Desktop 的 `reconcile` 接受 `{projectId, requestId?}`。携带原 `requestId` 时，现有请求归属路由选择实际执行宿主，再核对该宿主的收据；省略时保留项目级核对。核查不会重新提交创建或发送草稿。旧 Worktree 的独立创建保留在“设置 → 后台服务”的待核对记录中，不作为新草稿的操作提示；当前草稿独占本次创建的未知结果提示。缺少收据时保留原请求及资源，不推断成功或失败。
 
+
+共享服务外层响应丢失时，桌面客户端在原连接仍可用时只读刷新一次快照，再从已校验快照保留原操作身份：请求键、线程或任务目标、执行 Core 实例及连接代次必须匹配。Worktree 线程使用其 `executionCore`，不借用逻辑项目的 Core 身份。错误仍为 `unconfirmed`，Renderer 沿现有原操作回执核对；没有匹配身份时继续保留 UNKNOWN，不按消息内容推断，也不重放提交。
+
 requestId 是持久业务键，RPC id 只关联响应。相同身份、方法、键和规范参数返回原结果；参数不同冲突。Thread 最多 1024 收据，管理日志 4096；容量满拒绝而不遗忘旧键。重启后 accepted 但无结果的管理记录为 UNKNOWN，不重新执行。
 
 `features.taskRequestReceipts` 扩展 `areal/request/read`，统一查询当前身份的 Thread、管理和 Task 回执，仍保留旧字段。每条记录增加 `operation:{method,requestId,target}` 和 `status:admitted|completed|failed|unconfirmed`；完成时提供原始 `result` 或 `error`。Task 方法名统一为公开 RPC 名称，创建结果保留原始 Task ID。查询还检查 Task 及其所有 Run 的 Thread 可见范围。带 `threadId` 时限定 Thread 和 Task 回执，并兼容附带同身份、同请求键的部署管理回执；受限 principal 仍只能取得可见 Thread 的记录。`retention:threadAndDeploymentLifetime` 与 `capacities:{thread:1024,management:4096,task:8192}` 分别说明保留范围与容量。恢复需匹配方法、身份、目标和已有 digest，空结果仍是未确认。归档后的 Thread 仍可查询保留回执。
@@ -217,15 +221,17 @@ Desktop 在同步观察结果内一次安装会话内容、`thread.desktop.confi
 
 GUI 协商 `boundedObservation` 与 `boundedHistory` 后，普通、Side 和归档聊天统一使用 `areal/thread/observe {mode:"bounded",maxBytes:262144}` 建立显示基线。Core 明确返回 `HISTORY_BUDGET_TOO_SMALL` 时，仅增大一次到 1 MiB；仍失败则保留当前聊天的读取错误。`CoreClient` 对该次完整响应独立执行同样的字节上限，安装基线仍在同步 `onResult` 中完成。浏览器宿主恢复另须 `boundedResume`；不以附加工具替代原有宿主绑定。缺少新能力的 Core 保留完整历史兼容路径，不能提供分页容量保证。
 
-Desktop 的只读 `history` 命令接受 `{projectId,threadId,viewId,operation:"acquire"|"loadOlder"|"loadItem"|"release",itemId?}`。仅 `loadItem` 接受 `itemId`；游标、预算与 Core 身份由 Desktop 持有。Messages 为每个阅读视图获取并释放独立 `viewId`，主聊天、Side 和子对话复用同一入口。加载旧页按 Turn/Item ID 合并到当前显示投影，保留读取期间的新事件。Fork 继承历史和 Side 参考快照继续保留原有来源契约。
+Desktop 的只读 `history` 命令接受 `{projectId,threadId,viewId,operation:"acquire"|"loadOlder"|"loadItem"|"retain"|"ensureAnchor"|"release",itemId?,pageId?,revision?,anchor?}`。`loadItem` 接受 `itemId`，`loadOlder` 可用 `pageId` 回读缺口；游标、预算与 Core 身份由 Desktop 持有。Messages 为每个阅读视图获取并释放独立 `viewId`，主聊天、Side 和子对话复用同一入口。加载旧页按 Turn/Item ID 合并到当前显示投影，保留读取期间的新事件。Fork 继承历史和 Side 参考快照继续保留原有来源契约。
 
-显示缓存最多保留 8 个聊天窗口，每个保留最新基线和 4 个已加载旧页；更深翻页会释放靠近最新基线的旧页，并在消息流明确标出省略区间。最后一个阅读视图释放时删除旧页和显式展开内容；另一个 GUI 的同一聊天视图仍存在时不释放其内容，也不取消 Core 执行或删除持久历史。完整条目及正在拼接的条目共享 128 MiB 序列化字节预算。打开聊天不自动展开大型 `historyDeferred` 条目；用户点击“加载完整内容”后，Desktop 才按不超过 1 MiB 的响应分片校验 UTF-8 偏移、总长度和版本，完成后替换原占位项。显式展开会增加该条目的可见内存，预算不代表进程峰值内存上限。
+`retain {revision,anchor:{turnId,itemId}|null}` 登记该视图的阅读目标，null 释放目标。`ensureAnchor {revision,anchor:{turnId,itemId}}` 保证目标正文可用，返回 `{supported:true,revision,viewGeneration,kind}`。kind 为 `ready`、`missing`、`cancelled` 或 `limited`；limited 的 reason 为 `scanBudget`、`cacheBudget`、`deferred` 或 `unavailable`。revision 只能递增，相同 revision 只能重复相同目标。retain 的结果为 `{supported:true,retained,revision,viewGeneration}`，retained=false 表示拒绝过期目标。新目标、释放视图或窗口代际变化使旧恢复结果失效。恢复每次最多读取 32 页或 8 MiB，不自动展开大型条目；达到预算保留可重试状态。旧 Core 返回 supported=false。此新增 Desktop 命令不改变 Core RPC。
+
+显示缓存最多保留 8 个聊天窗口，每个保留最新基线和 4 个已加载旧页；更深翻页淘汰非阅读目标页，并在消息流明确标出省略区间。所有视图的目标页共同受保护；四页预算无法容纳新页时读取失败，既有目标正文保留。当前快照的轻量拓扑最多 64 KiB，记录内容身份与语义边界，不保存正文。已知拓扑的缺口不改变既有分组身份，未知缺口仍分隔分组。最后一个阅读视图释放时删除旧页和显式展开内容；另一个 GUI 的同一聊天视图仍存在时不释放其内容，也不取消 Core 执行或删除持久历史。完整条目及正在拼接的条目共享 128 MiB 序列化字节预算。打开聊天不自动展开大型 `historyDeferred` 条目；用户点击“加载完整内容”后，Desktop 才按不超过 1 MiB 的响应分片校验 UTF-8 偏移、总长度和版本，完成后替换原占位项。显式展开会增加该条目的可见内存，预算不代表进程峰值内存上限。
 
 旧页游标失效只重建对应聊天基线；条目版本变化丢弃已读片段并至多从 Core 提供的 `restartCursor` 重读一次。加载中保留真实占位项和进度，错误不伪装为 Agent 消息。自动文件变更摘要只读取已加载显示内容；大型工具记录尚未加载时明确提示先展开，不通过完整 `thread/read` 绕过预算。所有历史读取均不重放提交。
 
 桌面 `workspace.turnReview` 使用不可变文件工具回执和前像构建历史比较。某个文件的版本链因格式化或其他外部编辑断开时，仅将该文件列入 `unavailableFiles: [{path,reason}]`，其余可验证文件继续返回 Diff 和行数。摘要明确标记部分统计；未验证文件不视为零改动，审查面板显式说明排除项。单次工具比较仍严格校验；不读取当前磁盘补齐历史，也不将版本链中间的外部修改归为工具修改。
 
-Desktop 按已认证 socket 管理阅读视图，客户端断开会释放其全部引用；迟到的 acquire 不能恢复已关闭的视图，也不能释放另一客户端的同名视图。重建基线会让 Renderer 重新登记视图，不先释放。同一连接、未失效的重建保留已显示的上一轮边界条目，并在新基线补全追上之前沿用原显示边界，不在已显示内容上方重复出现恢复提示；“加载更早”读到的旧页仍随重建释放。会话内容与 `displayHistory` 同次发布。完成轮次后，如果显示历史超过 1 MiB，会重取有界基线，并释放旧页及显式展开内容，用户可再次按需读取；显式展开不能豁免后续完成历史的容量限制。
+Desktop 按已认证 socket 管理阅读视图，客户端断开会释放其全部引用；迟到的 acquire 不能恢复已关闭的视图，也不能释放另一客户端的同名视图。重建基线会让 Renderer 重新登记视图，不先释放。同一连接、未失效的重建保留已显示的上一轮边界条目，并在新基线补全追上之前沿用原显示边界，不在已显示内容上方重复出现恢复提示；未受阅读目标保护的旧页随重建释放。受保护页暂留为待核实正文，新基线与回读完成后以权威内容替换；无法找到的目标不伪装为恢复成功。会话内容与 `displayHistory` 同次发布。完成轮次后，如果显示历史超过 1 MiB，会重取有界基线，并释放未受保护旧页及显式展开内容，用户可再次按需读取；显式展开不能豁免后续完成历史的容量限制。
 
 Desktop → Main 延续 256 MiB 单帧边界。发送端每连接最多一个正在发送的帧、一份合并后的待发状态，以及总序列化字节不超过 32 MiB 的有序普通回包队列。投影只在实际发送时编码；大条目状态等待发送回调后才发送下一帧，避免将合法大帧后的命令回包误判为慢消费者。发送错误、超时或队列超限关闭连接并释放缓存；现有请求超时仍生效。
 
@@ -558,3 +564,17 @@ Core 的 `externalCua` 能力表示支持原始 CUA 工具结果与轮次清理�
 ## Cloud 配置与会话生命周期
 
 Cloud 设置只接受 `status` 和 `save`，不提供会分配资源的 `check`。固定地址为 `/openapi/v1/app-server/`；桌面可信适配器用持久化的 Cloud Session UUID 派生 workspace endpoint。打开新 Cloud 聊天只编辑本地草稿，首次发送才提交 `cloudSession/create`、建立原生 thread 并投影真实连接状态，query 直接使用该连接。创建请求 ID 必须符合 UUID 的 8-4-4-4-12 十六进制布局，在保存或派生 workspace 前校验。服务端回收后的断线不自动重连；下一条用户消息或显式“恢复连接”恢复原 endpoint、thread 和 UPFS；断线前仍显示运行中时可显式恢复并读取权威历史，避免旧状态阻塞发送。已提交但结果未知的 Turn 不自动重发。旧会话 endpoint 保持绑定，不因修改服务地址而迁移到新工作区。
+
+## SnapShots 桌面能力
+
+SnapShots 是 Electron 本地能力，不新增 Core 或 Runtime RPC。主窗口 bridge 和可选 `PlatformServices.snapShots` 提供 `getSnapShotState`、`requestSnapShotPermissions`、`setupSnapShot`、`captureSnapShot`、`checkSnapShotShortcut`、`setSnapShotShortcutSuppressed`、`listPendingSnapShots`、`readSnapShot`、`setSnapShotAnimationDestination`、`dismissSnapShotAnimation`、`acknowledgeSnapShot` 和 `onSnapShotEvent`。权威类型与边界读取器位于 `clients/gui/packages/workbench/client/desktop-contract/snapshots.cjs`。特权请求只接受主窗口的可信 main frame。
+
+现有 Library 设置 `snapShot` 保存 `snapShotEnabled`、`snapShotIncludeAccessibility`、`snapShotShortcut`、`snapShotPlaySound`、`snapShotSound`、`snapShotFlash` 和 `snapShotAnimations`，默认值与 T3 Code 一致。快捷键支持左右 Shift、左右同类修饰键或带修饰键的普通组合。`soft-pop` 对应 Whoosh，`camera-shutter` 对应 Click。`setupStep` 用于恢复设置向导。
+
+事件包括 `requested`、`started`、`ready`、`failed` 和 `shortcut-changed`。捕获 ID 标识已持久化的 PNG 与来源元信息。`readSnapShot` 返回图片 data URL 和来源。renderer 保存捕获与固定草稿归属后，才通过 `acknowledgeSnapShot` 删除待处理文件。重复交付按捕获 ID 去重。删除附件和已受理发送消费持久草稿，结果未确认的发送保留原附件。
+
+`SnapShotSource` 包含 `kind: "snap-shot"`、`capturedAt`、`appName`、`windowTitle`，以及可选的应用标识、PNG 图标、可访问性文本与数据。可访问性数据支持 `flat-text` 和 `element-tree`，树坐标相对捕获图片。文本与序列化树各最多 32,000 字符，树最多 10,000 节点。图片等比缩放到 2560 × 1600 像素内，不放大。可访问性读取失败不取消图片交付。
+
+macOS 原生后端拥有捕获权限、系统全局快捷键、辅助进程和透明捕获窗口。其它桌面平台报告 `unavailable`，Web 和 Remote 不暴露本机桌面捕获。该能力为增量接口，没有 `snapShots` 的调用方继续使用既有附件路径。
+
+应用图标只写入图片附件的 `_meta["areal.snapShot"]` 展示信息，经既有同 URI 的资源 sidecar 保存到历史；模型文本剔除图标，历史卡片仅合并同条消息图片 URI 匹配的图标。

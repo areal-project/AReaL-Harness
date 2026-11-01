@@ -1,6 +1,7 @@
 import { useI18n } from "./i18n/IntlProvider.js";
 // Adapted from ZCode ToolSummaryRow / ToolLayout; Codex reference guides presentation.
 // Core owns all outcomes.
+import { readingDisclosure, rememberDisclosure } from "./conversationReading.js";
 import { useEffect, useId, useState } from "react";
 import {
   ActivityRow,
@@ -60,8 +61,10 @@ export function ToolEvent({
   threadId?: string;
 }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
+  const readingKey = JSON.stringify([projectId, threadId, turnId, item.id, "tool"]);
+  const [open, setOpen] = useState(() => readingDisclosure(readingKey) ?? false);
   const toggle = () => {
+    rememberDisclosure(readingKey, !open);
     setOpen(!open);
   };
   const [imageError, setImageError] = useState("");

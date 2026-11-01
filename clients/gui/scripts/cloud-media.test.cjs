@@ -4,14 +4,22 @@ const assert = require("node:assert/strict");
 const http = require("node:http");
 const { once } = require("node:events");
 const { mediaCommand } = require("../app/src/core/media.cjs");
-const { readFileSync } = require("node:fs");
-const ts = require("../renderer/node_modules/typescript");
-const compiled = ts.transpileModule(
-  readFileSync(require.resolve("../renderer/src/ComposerUploads.ts"), "utf8"),
-  { compilerOptions: { module: ts.ModuleKind.CommonJS } },
-).outputText;
-const exportsObject = {};
-new Function("exports", compiled)(exportsObject);
+const { createRequire } = require("node:module");
+const { buildSync } = createRequire(require.resolve("../packages/gen-ui/package.json"))("esbuild");
+const compiled = buildSync({
+  entryPoints: [require.resolve("../renderer/src/ComposerUploads.ts")],
+  bundle: true,
+  write: false,
+  platform: "node",
+  format: "cjs",
+  external: ["react"],
+}).outputFiles[0].text;
+const exportsObject = { exports: {} };
+new Function("module", "exports", "require", compiled)(
+  exportsObject,
+  exportsObject.exports,
+  createRequire(require.resolve("../renderer/package.json")),
+);
 test("Cloud media preserves workspace path, credentials and thread query, and treats incomplete receipts as unknown", async (t) => {
   let malformed = false;
   const seen = [];
@@ -73,11 +81,11 @@ test("partial batch upload reuses accepted receipts when the second file is retr
     return { uri: "areal://blob/" + calls, mimeType: "text/plain", sizeBytes: 1 };
   };
   await assert.rejects(
-    exportsObject.uploadComposerFiles(action, "p", "t", [first, second], accepted),
+    exportsObject.exports.uploadComposerFiles(action, "p", "t", [first, second], accepted),
     /quota/,
   );
   fail = false;
-  const result = await exportsObject.uploadComposerFiles(
+  const result = await exportsObject.exports.uploadComposerFiles(
     action,
     "p",
     "t",

@@ -25,7 +25,13 @@ export type FileOpenRequest =
   | { operation: "targets" }
   | { operation: "setDefault"; target: string }
   | {
-      operation: "open" | "reveal" | "saveAs" | "readImage";
+      operation: "openHtml";
+      projectId: string;
+      threadId: string;
+      path: string;
+    }
+  | {
+      operation: "open" | "reveal" | "saveAs" | "readImage" | "readPdf";
       projectId: string;
       threadId?: string;
       path: string;
@@ -95,6 +101,7 @@ export interface UpdateState {
 }
 export type { NotificationTarget, QuitProgress } from "@areal/workbench/desktop-contract";
 export interface PlatformServices {
+  snapShots?: import("@areal/workbench/desktop-contract/snapshots").SnapShotServices;
   mcpApp?: McpAppCommand;
   onMcpAppEvent?(listener: (event: McpAppEvent) => void): () => void;
   onMcpAppDeepLink?(listener: (link: McpAppDeepLink) => Promise<void> | void): () => void;

@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "description": "Production build byte budgets with 5% headroom. HTML entries include static imports and modulepreloads. Review every budget change.",
-  "totalJsBytes": 20741945,
+  "totalJsBytes": 22447997,
   "entries": {
     "index.html": 4292557,
-    "remote.html": 3420541
+    "remote.html": 3669871
   },
   "lazyChunks": {
     "abap": 16638,
@@ -416,16 +416,18 @@
     "chunk-P2QGCYS3": 2045,
     "chunk-PWAF6VOD": 6125,
     "chunk-Y2CYZVJY": 163,
-    "desktop-contract": 787100,
+    "desktop-contract": 828525,
     "dist": 2282,
     "graphlib": 25100,
-    "katex": 70,
+    "katex": 271362,
     "line": 991,
     "mcp-app-response": 2412,
     "message-response-renderer": 455779,
     "path": 2392,
     "rough.esm": 28465,
-    "src": 47953
+    "src": 47953,
+    "message-code-block": 100827,
+    "WorkspacePdfPreview": 454089
   },
   "forbiddenInitialModules": [
     "terminal/TerminalSession.tsx",

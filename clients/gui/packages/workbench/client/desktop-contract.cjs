@@ -50,6 +50,17 @@ const {
  * "areal-core:present-ready":[],
  * "areal-core:preview":[request:unknown],
  * "areal-core:snapshot":[],
+ * "areal-core:snap-shot-state":[],
+ * "areal-core:snap-shot-permissions":[includeAccessibility:unknown],
+ * "areal-core:snap-shot-setup":[action:unknown],
+ * "areal-core:snap-shot-capture":[],
+ * "areal-core:snap-shot-shortcut-check":[shortcut:unknown],
+ * "areal-core:snap-shot-shortcut-suppressed":[suppressed:unknown],
+ * "areal-core:snap-shot-pending":[],
+ * "areal-core:snap-shot-read":[id:unknown],
+ * "areal-core:snap-shot-destination":[destination:unknown],
+ * "areal-core:snap-shot-dismiss":[id:unknown],
+ * "areal-core:snap-shot-acknowledge":[id:unknown],
  * "areal-core:theme":[id?:unknown],
  * "areal-core:update-download":[],
  * "areal-core:update-recover-resources":[],
@@ -65,6 +76,7 @@ const {
  * "areal-core:mcp-app-event":[event:unknown],
  * "areal-core:notification-open":[],
  * "areal-core:preview-event":[event:unknown],
+ * "areal-core:snap-shot-event":[event:unknown],
  * "areal-core:projection":[message:unknown],
  * "areal-core:quit-progress":[progress:unknown],
  * "areal-core:quit-request":[id:unknown],
@@ -81,6 +93,19 @@ const {
 /** @template {keyof DesktopInvokeArguments} N @typedef {(...args:DesktopInvokeArguments[N])=>Promise<unknown>} BridgeInvoke */
 /** The preload transport stays opaque; the renderer adapter owns response decoding. */
 /** @typedef {{
+ * droppedFilePath?:(file:File)=>string,
+ * getSnapShotState?:BridgeInvoke<'areal-core:snap-shot-state'>,
+ * requestSnapShotPermissions?:BridgeInvoke<'areal-core:snap-shot-permissions'>,
+ * setupSnapShot?:BridgeInvoke<'areal-core:snap-shot-setup'>,
+ * captureSnapShot?:BridgeInvoke<'areal-core:snap-shot-capture'>,
+ * checkSnapShotShortcut?:BridgeInvoke<'areal-core:snap-shot-shortcut-check'>,
+ * setSnapShotShortcutSuppressed?:BridgeInvoke<'areal-core:snap-shot-shortcut-suppressed'>,
+ * listPendingSnapShots?:BridgeInvoke<'areal-core:snap-shot-pending'>,
+ * readSnapShot?:BridgeInvoke<'areal-core:snap-shot-read'>,
+ * setSnapShotAnimationDestination?:BridgeInvoke<'areal-core:snap-shot-destination'>,
+ * dismissSnapShotAnimation?:BridgeInvoke<'areal-core:snap-shot-dismiss'>,
+ * acknowledgeSnapShot?:BridgeInvoke<'areal-core:snap-shot-acknowledge'>,
+ * onSnapShotEvent?:(listener:(event:unknown)=>void)=>()=>void,
  * command:BridgeInvoke<'areal-core:command'>,snapshot:BridgeInvoke<'areal-core:snapshot'>,
  * presentReady:BridgeInvoke<'areal-core:present-ready'>,installCommandLineTools:BridgeInvoke<'areal-core:install-command-line-tools'>,
  * chooseProject:BridgeInvoke<'areal-core:choose-project'>,chooseTaskDirectory:BridgeInvoke<'areal-core:choose-task-directory'>,
@@ -162,10 +187,12 @@ function isCommandInvocation(invocation, options) {
  * : N extends 'cloud' ? import('./desktop-contract/cloud.cjs').SettingsResponse
  * : N extends 'cloudSession' ? import('./desktop-contract/cloud.cjs').SessionResponse<Extract<P,Requests['cloudSession']>>
  * : N extends 'media' ? import('./desktop-contract/library-media.cjs').MediaResponse<Extract<P,Requests['media']>> : never} CommandResponse */
-/** @typedef {'show'|'navigate'|'back'|'forward'|'reload'|'stop'|'state'|'external'|'devtools'|'openLink'|'release'|'claim'|'takeover'|'captureRegion'|'captureElement'|'selectElement'|'cancelElementSelection'|'checkElement'|'endRegion'|'beginStyleTrial'|'applyStyleTrial'|'undoStyleTrial'|'redoStyleTrial'|'styleTrialState'|'captureStyleTrialAfter'|'clearStyleTrial'|'newPage'|'selectPage'|'subscribe'|'unsubscribe'|'allowNextDownload'|'cancelFileHandoff'|'cancelDownload'|'authorizeFrameOrigin'|'reloadFrameOrigin'|'revokeFrameOrigin'} OwnedPreviewOperation */
+/** @typedef {{mode:'auto'}|{mode:'device',width:number,height:number}} PreviewViewport */
+/** @typedef {'setViewport'|'show'|'navigate'|'back'|'forward'|'reload'|'stop'|'state'|'external'|'devtools'|'openLink'|'release'|'claim'|'takeover'|'captureRegion'|'captureElement'|'selectElement'|'cancelElementSelection'|'checkElement'|'endRegion'|'beginStyleTrial'|'applyStyleTrial'|'undoStyleTrial'|'redoStyleTrial'|'styleTrialState'|'captureStyleTrialAfter'|'clearStyleTrial'|'newPage'|'selectPage'|'subscribe'|'unsubscribe'|'allowNextDownload'|'cancelFileHandoff'|'cancelDownload'|'authorizeFrameOrigin'|'reloadFrameOrigin'|'revokeFrameOrigin'} OwnedPreviewOperation */
 /** @typedef {{projectId:string,threadId:string,pageId?:string,captureId?:string,downloadId?:string,url?:string,userIntent?:boolean,visible?:boolean,bounds?:{x:number,y:number,width:number,height:number},[key:string]:unknown}} PreviewOwner */
 /** @typedef {PreviewOwner & (
  * {operation:'show'|'back'|'forward'|'reload'|'stop'|'state'|'external'|'devtools'|'claim'|'takeover'|'captureRegion'|'captureElement'|'cancelElementSelection'|'newPage'|'subscribe'|'unsubscribe'}
+ * | {operation:'setViewport',pageId:string,viewport:PreviewViewport}
  * | {operation:'navigate'|'openLink',url:string}
  * | {operation:'release',userIntent:true}
  * | {operation:'selectPage'|'cancelFileHandoff',pageId:string}
@@ -291,6 +318,7 @@ const validatePreview = (request) => {
   }
   if (
     ![
+      "setViewport",
       "show",
       "navigate",
       "back",
@@ -343,6 +371,22 @@ const validatePreview = (request) => {
       ))
   )
     invalid();
+  if (request.operation === "setViewport") {
+    const value = request.viewport;
+    if (!identifier(request.pageId) || !record(value)) invalid();
+    if (value.mode === "auto") {
+      if (Object.keys(value).some((key) => key !== "mode")) invalid();
+    } else if (value.mode === "device") {
+      if (
+        Object.keys(value).some((key) => !["mode", "width", "height"].includes(key)) ||
+        ![value.width, value.height].every(
+          (size) =>
+            typeof size === "number" && Number.isSafeInteger(size) && size >= 240 && size <= 2560,
+        )
+      )
+        invalid();
+    } else invalid();
+  }
   if (request.url !== undefined && typeof request.url !== "string") invalid();
   if (request.pageId !== undefined && !identifier(request.pageId)) invalid();
   if (request.captureId !== undefined && !identifier(request.captureId)) invalid();

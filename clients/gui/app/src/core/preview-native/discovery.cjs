@@ -191,6 +191,7 @@ class BrowserDiscovery {
           "act",
           "wait",
           "navigate",
+          "openDocument",
           "newPage",
           "diagnostics",
           "runBatch",

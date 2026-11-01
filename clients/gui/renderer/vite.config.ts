@@ -3,8 +3,42 @@ import { remoteStaticAssets } from "../scripts/remote-static-assets.mjs";
 import { bundleAnalysis } from "../scripts/bundle-analysis.mjs";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { readFile, readdir } from "node:fs/promises";
+import { createRequire } from "node:module";
+
+const pdfRoot = new URL(
+  "./",
+  pathToFileURL(createRequire(import.meta.url).resolve("pdfjs-dist/package.json")),
+);
+const pdfFiles = Promise.all(
+  ["cmaps", "standard_fonts", "wasm", "iccs"].map(async (directory) =>
+    (await readdir(new URL(directory + "/", pdfRoot))).map(
+      (name) =>
+        [`pdf-assets/${directory}/${name}`, new URL(`${directory}/${name}`, pdfRoot)] as const,
+    ),
+  ),
+).then((groups) => new Map<string, URL>(groups.flat()));
+const pdfDocumentAssets: Plugin = {
+  name: "pdf-document-assets",
+  configureServer(server) {
+    server.middlewares.use(async (request, response, next) => {
+      const file = (await pdfFiles).get(
+        new URL(request.url ?? "/", "http://pdf.invalid").pathname.slice(1),
+      );
+      if (!file) return next();
+      response.setHeader(
+        "Content-Type",
+        file.pathname.endsWith(".wasm") ? "application/wasm" : "application/octet-stream",
+      );
+      response.end(await readFile(file));
+    });
+  },
+  async generateBundle() {
+    for (const [fileName, file] of await pdfFiles)
+      this.emitFile({ type: "asset", fileName, source: await readFile(file) });
+  },
+};
 
 const libraryAsset = (file: string) => new URL(`../packages/ui/dist/${file}`, import.meta.url);
 async function libraryFiles() {
@@ -76,6 +110,7 @@ export default defineConfig(({ mode }): UserConfig => ({
     react(),
     tailwindcss(),
     bundleAnalysis(),
+    pdfDocumentAssets,
     ...(mode === "design-system" ? [designLibraryAssets] : [remoteShell]),
   ],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },

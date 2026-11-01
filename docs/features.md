@@ -10,7 +10,7 @@
 | 项目规则 | 按工作区根到会话 cwd 加载规则，同层 `AGENTS.override.md` 优先于 `AGENTS.md`，空白回退、子目录优先、每 Turn 刷新、有界且经 Runtime 读取。[客户端](guides/clients.md) |
 | 会话与模型 | 持久 Thread/Turn、流式正文、Chat Completions 思考与 Responses 思考摘要/文本事件、追加输入、取消、恢复；Chat Completions / Responses，模态取决于 adapter 和模型。桌面可独立切换 Fast 服务档位，配置与供应商请求沿现有模型参数链路保存；请求不保证实际加速。[客户端](guides/clients.md) |
 | 会话名称 | 普通根会话首个成功 Turn 后异步总结名称，手动名称优先；失败保留预览，重启不重复请求。可通过 `options.automaticSessionName=false` 或 CLI `--no-session-name` 显式关闭，保留持久历史与恢复。[Core 契约](api/core.md#会话名称) |
-| 文件与进程 | 条件文件写入、命令、stdin、PTY、有界输出、Scope 权限收窄及清理。[Runtime](api/runtime.md) |
+| 文件与进程 | 条件文件写入、命令、stdin、PTY、有界输出、Scope 权限收窄及清理。原生只读工具可经逐操作审批读取具体外部目录，图片沿媒体链路进入支持视觉输入的模型。[Runtime](api/runtime.md) |
 | 工具结果 | 内置固定版本 rg、历史结果原文分页回取；可配置的搜索分组与精确重复行视图，默认 observe。[工具](guides/tools.md) |
 | 公开多模态输入 | 原生 CLI 只读附件绑定；按需 PNG/JPEG/WebP/GIF 视图，独立模型请求字节限额。[评测输入](benchmarks/README.md#原生平台接入) |
 | 工具扩展 | 命令工具、hooks、客户端动态工具、MCP stdio/Streamable HTTP、可信 Node 插件 Host。[工具](guides/tools.md) |
@@ -19,7 +19,7 @@
 | Workgroup | DAG、隔离写工作区、制品检查与集成，fixed/auto/adaptive 准入；CLI 和服务接口。[使用指南](guides/workgroups.md) |
 | 权限模式 | 本地默认 YOLO，可配置 ASK_PERMISSIONS；TUI/Web 审批、会话/项目精确授权与自动 Thread scratch。[配置](guides/configuration.md#permissions) |
 | 桌面接口 | 认证、Profile/Skill/Plan、`--agent id@revision` 选择、Profile 绑定 Workflow 自动启动、审批/追问、提交去重与队列、共享终端、配置 CAS、模型切换、媒体 Blob、归档与 GC。[桌面 API](api/desktop.md) |
-| 桌面 GUI | `clients/gui` 提供 React/Electron、原生文件/差异/终端/浏览器面板、模型与资源设置、手机配对和定时任务界面；聊天模型选项同时展示模型名与供应商 ID，当前模型入口和思考强度页保留来源，区分不同供应商的同名模型。普通会话支持暂停后在原会话手动继续，最后一条用户消息可编辑后作为新消息发送并保留原记录。启用 Browser 的聊天可在用户授权后让 Core 读取该聊天当前原生网页的可访问性文本。人工批注支持冻结原生截图、元素/区域选择、多条 Composer 附件与含裁图和说明的消息，不要求启用模型 Browser 工具包。公共服务连接使 GUI 退出不终止 Core 任务；启动恢复支持二次确认后取消活动轮次并重启后台。支持独立公开依赖构建与 macOS arm64 本地包。[GUI](../clients/gui/README.md) |
+| 桌面 GUI | `clients/gui` 提供 React/Electron、原生文件/差异/终端/浏览器面板、模型与资源设置、手机配对和定时任务界面；聊天模型选择器按供应商分组展示模型，直接选择所需模型；当前模型入口和思考强度页保留来源，区分不同供应商的同名模型。普通会话支持暂停后在原会话手动继续，最后一条用户消息可编辑后作为新消息发送并保留原记录。启用 Browser 的聊天可在用户授权后让 Core 读取该聊天当前原生网页的可访问性文本。人工批注支持冻结原生截图、元素/区域选择、多条 Composer 附件与含裁图和说明的消息，不要求启用模型 Browser 工具包。公共服务连接使 GUI 退出不终止 Core 任务；启动恢复支持二次确认后取消活动轮次并重启后台。支持独立公开依赖构建与 macOS arm64 本地包。[GUI](../clients/gui/README.md)  SnapShots 支持 macOS 前台窗口捕获、可选应用文本、系统全局快捷键、音效、闪光与原生附件动画；截图草稿可跨重启恢复。 |
 | iOS Remote | `clients/mobile` 使用 Capacitor 与共享 Remote 协议，提供钥匙串身份、扫码/粘贴配对、前后台重连、授权项目、会话历史、实时消息，以及普通会话创建、模型/权限选择、发送、排队和停止。未知命令通过原 ID 核对。Task 详情只读，审批问答和 App 推送尚未接入。原生下限为 iOS 17.4，开发门禁在 iOS 17.5 模拟器运行；真机验收尚未完成。[iOS 开发指南](development/ios-development.md) |
 | Android Remote | 复用当前 iOS 移动 UI、配对、重连、浏览与命令恢复，原生存储使用 Android Keystore。最低安装 API 26，WebView、真机与 Release 分别验收。[Android 开发指南](development/android-development.md) |
 | 生成式交互回答 | 主会话和 Side 显示 Core 发布的不可变 HTML 制品，复用 MCP Apps 沙箱。状态在同一 Desktop 配置中有界保存，后续输入只附加模型可见参数，私有状态不进入模型请求。页面后续问题经宿主确认发送。[桌面 API](api/desktop.md#生成式交互回答) |
@@ -29,7 +29,7 @@
 | Skills | 自动发现与显式 Profile 共用元信息登记、正文/附件按需读取；单个无效全局 Skill 告警隔离，不创建内容快照。[Skill 指南](guides/skills.md) |
 | Task Mode 与独立频道 | foreground/scheduled/background、持久 TaskRun、独立 Inbox 回复、headless 无人工等待；统一委派的 TaskRun worker 跨协调 Turn 存活并共享预算。Web 提供任务控制、定时创建和独立收件箱。[接口](api/tasks.md) 计划支持显式“立即运行”，创建独立 manual Run，保留暂停和下次计划时间，使用原总预算；响应丢失时只读核对原收据。 |
 | 插件组件支持 | 无项目或 Core 未连接时可读取安装快照与静态诊断；组件报告区分候选和安装摘要。支持受限 Markdown Commands、Agent Profile、用户配置与本地开发链接。MCP 连接、认证和 Hook 信任独立。[插件](guides/plugins.md) |
-| 浏览器自动化 | 复用 ZCode 已实现命令，包括定位器、iframe、CUA、截图、alert/confirm、下载和 WebM。全部项目共享持久登录态，设置提供显式 Chrome 导入及数据清理；页面控制和审批仍绑定聊天，UNKNOWN 不重放。[Browser](api/browser.md) |
+| 浏览器自动化 | 复用 ZCode 已实现命令，包括定位器、iframe、CUA、截图、alert/confirm、下载和 WebM。全部项目共享持久登录态，设置提供显式 Chrome 导入及数据清理；页面控制和审批仍绑定聊天，UNKNOWN 不重放。预览支持手机、平板与桌面设备宽高、旋转和自适应显示，并区分页面加载失败、权限拒绝与原动作结果未确认。[Browser](api/browser.md) |
 | 电脑控制 | 默认关闭的本机 macOS 原生 Helper，通过设置由用户授予辅助功能、屏幕录制及输入监控；支持应用/窗口观察、AX 与键鼠输入、停止和接管。Core 保留单次计划审批与历史。可显式选择外部 LCU，由原运行时处理 JS 与应用授权，仅用于新建普通聊天；内置浏览器保持可用。[电脑控制](api/computer.md) |
 | Goal 持久目标 | 通过 `/goal` 等入口显式创建，无需配置开关；跨 Turn 自动推进、暂停/恢复/编辑/清除，用户输入优先；主/子 Agent、Workgroup、摘要共享预算。[客户端指南](guides/clients.md#goals) · [接口](api/core.md#goals) |
 | 共享本地服务 | 多 TUI 窗口与 Web 复用 Core/Runtime；本地 Web 启动通过一次性登录码自动认证；公共 JSON 发现/控制供 Desktop Main 使用，按工作区隔离、模型配置热更新、热更新未应用时的空闲安全重启（支持继承新凭据）、显式停止与故障清理。[契约](api/local-service.md) |
@@ -64,3 +64,5 @@ Remote 的 Direct 与 Relay 已接入共同 Host 授权和 PWA 协议，Direct �
 可信原生只读调用支持有界并发，写入、游标和未知后端保持顺序；共享作者可在已确认资源结算的模型等待边界让出租约。隔离源码投影保留已跟踪和未忽略的脏源码，执行依赖单独提供。契约与反例见[Core](api/core.md)和[多 Agent 设计](design/multi-agent.md)。
 
 隔离 worker 继承父纯工具策略，不继承外部工具、hooks、插件和凭据。协作回执区分制品支持与当前就绪，版本化等待跳过未变化的已结算状态，批量回执保留结构化状态、有界正文预览、分页与原文回取。App 引用变化追加为任务数据，不回写系统指令快照；Responses HTTP 路由按会话与 Turn 隔离。`completionFocus` 与独立的 `executionFocus` 均为默认关闭的显式实验策略，分别引导交付收尾与独立读取、等待和委派契约组织；不保证消除长尾或降低消费；协议与兼容边界见[Core](api/core.md)。
+
+桌面手机连接支持启动本机 Relay、自动生成私有网络配对二维码、系统 SSH 部署 Linux Relay，以及手工配置外部 HTTPS Relay。内网可达的公司 VPN 可复用本机入口；不内置公网连接服务。SSH 路径包含 ACME 证书续期、升级和移除，公网、真机及安装包验收独立报告。

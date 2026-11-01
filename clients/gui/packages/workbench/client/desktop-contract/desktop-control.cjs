@@ -4,7 +4,7 @@ const { modelRecord, count, isLifecycleReceipt, isLifecycleProjection } = requir
 const { resourceInspection } = require("./desktop-control-resources.cjs");
 /** @typedef {'accessibility'|'screenRecording'|'inputMonitoring'} Capability */
 /** @typedef {{operation:'status'|'restart'|'stop',capability?:never}|{operation:'requestAccess'|'openSettings',capability:Capability}} ComputerRequest */
-/** @typedef {{operation:'status'|'networkInspect'|'disable'|'enableDirect'|'disableDirect'|'cancelPair'|'forgetRevoked'}|{operation:'reject'|'revoke',id:string}|{operation:'renameDevice',id:string,name:string}|{operation:'approve'|'updateGrant',id:string,projects:string[],preset:'Observer'|'Operator'}|{operation:'pair',transport?:'direct'|'relay'}|{operation:'networkPropose',httpsPort?:number}|{operation:'networkProposeScope',scope:'private'|'public'}|{operation:'networkApply',proposalId:string,confirmed:true}|{operation:'networkChangeScope',proposalId:string,confirmed:true,publicConfirmed?:boolean}|{operation:'networkRecover'|'networkRemove',confirmed:true}|{operation:'networkConfigureOrganization',publicOrigin:string,visibility:'private'|'public',confirmed:true,publicConfirmed?:boolean}|{operation:'enable',relay:string,code?:string,confirmed:true}} RemoteRequest */
+/** @typedef {{operation:'relayServiceStartLocal'|'relayServiceStopLocal'|'relayServiceUpgrade'|'relayServiceInspect'}|{operation:'relayUse',origin:string}|{operation:'relayServiceDeploy',target:string,port:number,address:string}|{operation:'relayServiceRemove',removeData:boolean}|{operation:'status'|'networkInspect'|'disable'|'enableDirect'|'disableDirect'|'cancelPair'|'forgetRevoked'}|{operation:'reject'|'revoke',id:string}|{operation:'renameDevice',id:string,name:string}|{operation:'approve'|'updateGrant',id:string,projects:string[],preset:'Observer'|'Operator'}|{operation:'pair',transport?:'direct'|'relay'}|{operation:'networkPropose',httpsPort?:number}|{operation:'networkProposeScope',scope:'private'|'public'}|{operation:'networkApply',proposalId:string,confirmed:true}|{operation:'networkChangeScope',proposalId:string,confirmed:true,publicConfirmed?:boolean}|{operation:'networkRecover'|'networkRemove',confirmed:true}|{operation:'networkConfigureOrganization',publicOrigin:string,visibility:'private'|'public',confirmed:true,publicConfirmed?:boolean}|{operation:'enable',relay:string,code?:string,confirmed:true}} RemoteRequest */
 /** @typedef {{serviceLifecycle:{operation:'check'}|{operation:'update'}|{operation:'stop'}|{operation:'recover'}|{operation:'quitInterface'}|{operation:'stopAndQuit'},serviceStatus:Record<string,never>,stopService:Record<string,never>,recoverResources:Record<string,never>,browserData:{operation:'status'}|{operation:'importChrome'}|{operation:'clearCache'}|{operation:'clearAll'},computerControl:ComputerRequest,exportDiagnostics:Record<string,never>,connectService:Record<string,never>,export:{projectId:string,threadId:string},remoteControl:RemoteRequest}} Requests */
 /** @typedef {keyof Requests} Name */
 /** @template {Name} N @typedef {Requests[N]} Request */
@@ -20,7 +20,8 @@ const { resourceInspection } = require("./desktop-control-resources.cjs");
 /** @typedef {{provider:'lcu',supported:boolean,platform:string,ready:boolean,state:string,reason:string,active:boolean,sessions:number,code?:string}} ExternalStatus */
 /** @typedef {NativeStatus|ExternalStatus} ComputerStatus */
 /** @typedef {{available?:boolean,diagnostic?:string,version?:string,persistentServe?:boolean,funnelPorts?:number[]|null,login?:string,https?:string,policy?:string}} NetworkInspection */
-/** @typedef {{enabled:boolean,connected:boolean,relay:string,relayError:string,relayUrl:string,directEnabled:boolean,directUrl:string,network:{kind:'tailscale'|'organization'|null,scope:'private'|'public'|null,reconciliation:string|null,publicOrigin:string,diagnostic:string,policy:'unknown',phoneAccess:'unknown',inspection:NetworkInspection|null},directHostId:string,directError:string,migrationError:string,pushSupported?:boolean,deviceGrants:Array<{pushRegistered?:boolean,devicePeerId:string,displayName:string,clientKind?:'web'|'ios'|'android',projectIds:string[],capabilities:string[],revision:number,status:'active'|'revoked'|'reviewRequired',pairedAt?:number,revokedAt?:number,online?:boolean,lastSeenAt?:number|null}>,devices:[],pending:Array<{id:string,name:string,clientKind?:'web'|'ios'|'android',fingerprint:string,expiresAt:number}>}} RemoteStatus */
+/** @typedef {{local:{phase:'stopped'|'starting'|'running'|'failed',address:string,error:string,version:string},deployment:{target:string,port:number,address:string,phase:'pending'|'ready'|'failed'|'removed',version:string,active:boolean,canReconfigure?:boolean}|null,job:{operation:string,phase:'running'|'done'|'failed'|'unknown',error:string}|null,profiles:Array<{origin:string,kind:'local'|'ssh'|'external',active:boolean}>}} RelayServiceStatus */
+/** @typedef {{relayService?:RelayServiceStatus,enabled:boolean,connected:boolean,relay:string,relayError:string,relayUrl:string,directEnabled:boolean,directUrl:string,network:{kind:'tailscale'|'organization'|null,scope:'private'|'public'|null,reconciliation:string|null,publicOrigin:string,diagnostic:string,policy:'unknown',phoneAccess:'unknown',inspection:NetworkInspection|null},directHostId:string,directError:string,migrationError:string,pushSupported?:boolean,deviceGrants:Array<{pushRegistered?:boolean,devicePeerId:string,displayName:string,clientKind?:'web'|'ios'|'android',projectIds:string[],capabilities:string[],revision:number,status:'active'|'revoked'|'reviewRequired',pairedAt?:number,revokedAt?:number,online?:boolean,lastSeenAt?:number|null}>,devices:[],pending:Array<{id:string,name:string,clientKind?:'web'|'ios'|'android',fingerprint:string,expiresAt:number}>}} RemoteStatus */
 /** @typedef {{proposalId:string,publicOrigin:string,confirmation:string}} NetworkProposal */
 /** @template {Name} N @template [P=Requests[N]] @typedef {N extends 'connectService' ? null : N extends 'export'|'exportDiagnostics' ? Canceled|{path:string} : N extends 'serviceStatus' ? ServiceStatus : N extends 'stopService' ? LifecycleResult|Canceled : N extends 'recoverResources' ? RecoveryResult : N extends 'computerControl' ? ComputerStatus : N extends 'browserData' ? P extends {operation:'status'} ? {persistent:true,shared:true,busy:boolean} : P extends {operation:'importChrome'} ? BrowserImportResult : {success:true} : N extends 'remoteControl' ? P extends {operation:'pair'} ? {payload:string,qr:string,expiresAt:number} : P extends {operation:'networkPropose'} ? NetworkProposal : P extends {operation:'networkProposeScope'} ? NetworkProposal & {sourceScope?:'private'|'public',scope:'private'|'public'} : RemoteStatus : N extends 'serviceLifecycle' ? P extends {operation:'check'} ? import('./shared.cjs').LifecycleProjection : P extends {operation:'recover'} ? RecoveryResult : P extends {operation:'quitInterface'|'stopAndQuit'} ? QuitResult : P extends {operation:'update'} ? LifecycleResult|Canceled|RecoveryResult : LifecycleResult|Canceled : never} Response */
 /** @param {unknown} value @returns {value is string[]} */
@@ -80,6 +81,10 @@ function isRequest(name, value) {
 function isRemoteRequest(value) {
   if (!modelRecord(value)) return false;
   switch (value.operation) {
+    case "relayServiceStartLocal":
+    case "relayServiceStopLocal":
+    case "relayServiceUpgrade":
+    case "relayServiceInspect":
     case "status":
     case "networkInspect":
     case "disable":
@@ -88,6 +93,34 @@ function isRemoteRequest(value) {
     case "cancelPair":
     case "forgetRevoked":
       return only(value, ["operation"]);
+    case "relayUse":
+      return typeof value.origin === "string" && only(value, ["operation", "origin"]);
+    case "relayServiceDeploy": {
+      if (
+        typeof value.target !== "string" ||
+        !/^[a-z_][a-z0-9_-]{0,31}@[A-Za-z0-9][A-Za-z0-9.-]{0,252}$/.test(value.target) ||
+        value.target.includes("..") ||
+        !count(value.port) ||
+        value.port < 1 ||
+        value.port > 65535 ||
+        typeof value.address !== "string" ||
+        !only(value, ["operation", "target", "port", "address"])
+      )
+        return false;
+      try {
+        const origin = new URL(value.address);
+        return (
+          origin.protocol === "https:" &&
+          origin.origin === value.address &&
+          !origin.username &&
+          !origin.password
+        );
+      } catch {
+        return false;
+      }
+    }
+    case "relayServiceRemove":
+      return typeof value.removeData === "boolean" && only(value, ["operation", "removeData"]);
     case "renameDevice":
       return (
         typeof value.id === "string" &&
@@ -253,9 +286,58 @@ function networkInspection(value) {
   );
 }
 /** @param {unknown} value @returns {value is RemoteStatus} */
+/** @param {unknown} value */
+function relayServiceStatus(value) {
+  return (
+    modelRecord(value) &&
+    only(value, ["local", "deployment", "job", "profiles"]) &&
+    modelRecord(value.local) &&
+    only(value.local, ["phase", "address", "error", "version"]) &&
+    ["stopped", "starting", "running", "failed"].includes(String(value.local.phase)) &&
+    ["address", "error", "version"].every(
+      (key) => modelRecord(value.local) && typeof value.local[key] === "string",
+    ) &&
+    (value.deployment === null ||
+      (modelRecord(value.deployment) &&
+        only(value.deployment, [
+          "target",
+          "port",
+          "address",
+          "phase",
+          "version",
+          "active",
+          "canReconfigure",
+        ]) &&
+        ["target", "address", "version"].every(
+          (key) => modelRecord(value.deployment) && typeof value.deployment[key] === "string",
+        ) &&
+        count(value.deployment.port) &&
+        typeof value.deployment.active === "boolean" &&
+        (value.deployment.canReconfigure === undefined ||
+          typeof value.deployment.canReconfigure === "boolean") &&
+        ["pending", "ready", "failed", "removed"].includes(String(value.deployment.phase)))) &&
+    (value.job === null ||
+      (modelRecord(value.job) &&
+        only(value.job, ["operation", "phase", "error"]) &&
+        typeof value.job.operation === "string" &&
+        typeof value.job.error === "string" &&
+        ["running", "done", "failed", "unknown"].includes(String(value.job.phase)))) &&
+    Array.isArray(value.profiles) &&
+    value.profiles.every(
+      (item) =>
+        modelRecord(item) &&
+        only(item, ["origin", "kind", "active"]) &&
+        typeof item.origin === "string" &&
+        typeof item.active === "boolean" &&
+        ["local", "ssh", "external"].includes(String(item.kind)),
+    )
+  );
+}
+/** @param {unknown} value @returns {value is RemoteStatus} */
 function isRemoteStatus(value) {
   return (
     modelRecord(value) &&
+    (value.relayService === undefined || relayServiceStatus(value.relayService)) &&
     ["enabled", "connected", "directEnabled"].every((key) => typeof value[key] === "boolean") &&
     [
       "relay",

@@ -9,7 +9,7 @@ function DiagramError() {
   const { t } = useI18n();
   return <p role="status">{t("content.diagramUnavailable")}</p>;
 }
-function DiagramPreview({ code, theme }: { code: string; theme: "light" | "dark" }) {
+export function DiagramPreview({ code, theme }: { code: string; theme: "light" | "dark" }) {
   // 通过公开Streamdown入口使用既有图形渲染；围栏长度避免源代码意外闭合外层。
   const fence = "`".repeat(
     Math.max(3, ...(code.match(/^`+/gm) ?? []).map((run) => run.length + 1)),

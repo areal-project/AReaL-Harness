@@ -202,6 +202,17 @@ async fn websocket_lifecycle_matches_pinned_upstream_schemas() {
             "item/agentMessage/delta" => "AgentMessageDeltaNotification",
             "item/reasoning/textDelta" => "ReasoningTextDeltaNotification",
             "item/reasoning/summaryTextDelta" => "ReasoningSummaryTextDeltaNotification",
+            "areal/turn/traceActivity" => {
+                let schemas: Value =
+                    serde_json::from_str(include_str!("../../../schemas/areal-core-v1.json"))
+                        .unwrap();
+                let validator = jsonschema::validator_for(
+                    &schemas["notifications"]["areal/turn/traceActivity"],
+                )
+                .unwrap();
+                assert!(validator.is_valid(&event["params"]), "{event}");
+                continue;
+            }
             other => panic!("unexpected {other}"),
         };
         validate(name, &event["params"]);

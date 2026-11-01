@@ -124,7 +124,7 @@ GUI 首次展示与后台就绪分别判定。Renderer 在主题和图标加载�
 
 Renderer 的 `state/` 所有者分别管理启动、导航、工作区、任务、外观与通知的界面状态，领域 store 通过 `useSyncExternalStore` 订阅；持久化沿用原偏好键和所有者。`App.tsx` 保留读取与写入跨领域状态的编排 effect，不能把 Core 收据、历史或 UNKNOWN 恢复变成 store 内的重发逻辑。视图组合归 `app-shell/`，原生预览的 Electron 适配归 `app/src/core/preview-native/`，不依赖 Electron 的 URL、坐标、观察与计划逻辑归 `preview/`。窗口、WebContentsView 与后台焦点仍由 Main 的既有所有者管理。
 
-GUI 的 Desktop 服务和 Main 使用 `workbench/client/state-projection` 编码可重建状态。每条连接先发送当前显示窗口的基线，之后按 Project、Thread、Turn、Item 身份发送变化和顺序；未变化的正文不重复传输。Main 只编码筛选后的桌面状态，Renderer 在 contextBridge 之后重组显示快照。缺失基线或序号不连续时重新读取状态，不重发执行请求。支持有界历史的 Core 通过 `areal/thread/observe` 提供近期窗口，较早历史和超大条目由分页与分片读取；Renderer 只在主动向上阅读时自动读取一页，保留按钮供重试及键盘访问，并在合并后恢复阅读锚点。Desktop 每个窗口最多缓存 4 页较早正文；卸载页只保留当前快照内的轻量游标记录，在原位置提供可回读占位，回读仍受相同正文缓存上限约束。重新观察或游标失效会重建窗口与占位；显示窗口不包含另一份完整权威历史。正在变化的单个 Item 通知仍整体替换，单条记录解析与活动条目增长的限制见 [Core 历史契约](../api/core.md)。
+GUI 的 Desktop 服务和 Main 使用 `workbench/client/state-projection` 编码可重建状态。每条连接先发送当前显示窗口的基线，之后按 Project、Thread、Turn、Item 身份发送变化和顺序；未变化的正文不重复传输。Main 只编码筛选后的桌面状态，Renderer 在 contextBridge 之后重组显示快照。缺失基线或序号不连续时重新读取状态，不重发执行请求。支持有界历史的 Core 通过 `areal/thread/observe` 提供近期窗口，较早历史和超大条目由分页与分片读取；Renderer 在主动向上滚轮、键盘、滚动条或触摸阅读时，每次新输入最多读取一页，并在合并后恢复阅读锚点。短历史可通过后续输入继续读取，加载中与失败期间的输入不排队。时间线可聚焦以接收导航键；正常阅读没有普通历史加载按钮，加载只显示状态，失败提供独立重试。Desktop 每个窗口最多缓存 4 页较早正文；卸载页只保留当前快照内的轻量游标记录，在原位置提供可回读占位，回读仍受相同正文缓存上限约束。各阅读视图通过版本化目标保护当前正文页；缓存不足时拒绝新页而不驱逐目标。重新观察或游标失效重建窗口与占位，受保护正文等待权威核实。Messages 的显式阅读状态负责恢复、取消与定位，Desktop history 的 ensureAnchor 在有限扫描内取回缺失正文；缺页拓扑与正文驻留分别管理以保留语义分组身份。显示窗口不包含另一份完整权威历史。正在变化的单个 Item 通知仍整体替换，单条记录解析与活动条目增长的限制见 [Core 历史契约](../api/core.md)。
 
 Renderer 文档重载或崩溃不拥有后台执行生命周期。显式刷新后，新文档从新的投影基线挂接原应用会话，不能重放已受理输入。`test:service-reopen` 用原模型连接上的新增片段和生产 App 的显示验证挂接，并区分文档恢复与应用重启后的新 owner、代际。
 
@@ -154,9 +154,13 @@ Fork 与 Side 复用 Core/Runtime 的会话、历史和执行所有者。`conver
 
 共享 Browser 的普通网络加载使用 Chromium 的系统代理、DNS 与站点策略；Main 只隔离活动控制端口，网页不取得产品 bridge。适配器把用户新发送绑定到确切 Turn 和 GUI 连接，首次经 Core 审批的工具发现才懒绑定当前原生页；不以 `thread/resume` 抢宿主。人工键鼠事件由 Main 在派发前撤销页面读取与动作代次，排空在途输入后交付首个用户事件。Core 的读取和动作许可绑定页面、控制代次及具体计划，UNKNOWN 不重放。产品流程及局限见 [Browser 契约](../api/browser.md)。
 
+本地 HTML 的入口快照、文件范围和原生页授权由 Main 的 `preview-native/documents.cjs` 唯一持有；人工文件打开与 Agent `openDocument` 共用该 owner。它按需启动仅交付文档内容的独立 loopback listener，复用共享 Browser Profile 的请求身份 hook，不暴露产品接口。Core 审批文件范围，Renderer 只接收既有页面状态与 reveal 事件。
+
 客户端设计规则与页面模式归 [`clients/gui/design-system/`](../../clients/gui/design-system/README.md)。首批基础值、纯调色板、基础控件，以及Composer表面/工具栏和设置页面/分区/组/行的纯布局由私有 workspace 包 [`@areal/ui`](../../clients/gui/packages/ui/README.md)承接，原 renderer 保留其余控件、命名主题、偏好与开发预览；规则目录不承载业务执行或第二份可编辑值。迁移边界见 [D-004](../../design/decisions/004-local-ui-package.md)。[设计系统架构](../../clients/gui/design-system/architecture.md)明确架构、Base、独立题目与反馈的阶段准入；包构建和目录生成不代表完整 Base 或视觉验收完成。
 
 有限浏览器动作仍由 Main 的原生预览所有者执行。观察持有独立视口及原生 OPTION 身份，准备和执行复核同一目标；状态等待只读原生事实。scroll/hover 后失效观察保留批量确认前缀与调用去重，固定 select 语义不开放任意脚本入口。
+
+SnapShots 的本机窗口捕获、系统全局快捷键、辅助功能读取进程和透明过渡窗口归 `app/src/core/snapshots/` 的 Main owner。设置复用 Library 的 `snapShot` 键。`renderer/src/snapshots/` 固定触发时的草稿归属，在 IndexedDB 保存图片与来源后才确认删除 Main 待交付文件；删除、会话创建后的迁移与已受理发送沿现有 Composer 生命周期处理。图片沿既有 Core blob 上传，来源上下文作为不可信窗口数据绑定图片，不新增 Agent 工具执行通道。接口见[桌面能力契约](../api/desktop.md#snapshots-桌面能力)。
 
 ## 客户端恢复与用户感知
 
@@ -193,6 +197,8 @@ GUI的混合消息采用可重建展示投影：Markdown沿Streamdown，严格�
 Desktop 后台在同一进程内按职责装配三个模块：`project-connections.cjs` 管理连接身份、只读等待器、退避与受约束重连；`history-observation.cjs` 管理历史观察、分页、显示窗口和读取恢复，不获得写命令入口；`submission-recovery.cjs` 串行写入 pending/outcomes 并核对原请求收据，空收据和断线继续保持 UNKNOWN，不重发修改。`CoreBackend` 保留项目登记、部署、业务命令编排和既有调用入口，只注入显式依赖；模块共用原项目对象，不复制业务状态。历史窗口归观察模块，连接与核对计时器受原连接身份约束；重试时序、持久文件和 Core/Runtime 所有权不变，不新增进程。 历史纯投影由 `history-projection.cjs` 负责，回执身份校验归 `receipt-contract.cjs`。供应商目录投影与网络探测分别归 `provider-model-catalog.cjs`、`provider-probe.cjs`；订阅公开缓存与审计序列化归 `subscription.cjs`。这些模块复用原状态与请求身份。
 
 [Remote v2](remote-control.md) 的 Gateway 归现有桌面后台适配器，浏览器只持有受限投影；Core 与 Runtime 继续拥有执行和历史。Direct 与 Relay 共用 RemoteControl 拥有的 session acceptor、观察器和授权预算，传输适配器只提供字节/存活/背压。Direct 使用独立低权限入口，Relay 仅拥有连接路由与登记元数据；两者都不转发高权限本地接口。契约与实施状态见 [Remote API](../api/remote-control.md)，决策见 [Host 所有权](../adr/0008-remote-host-ownership.md)。
+
+Relay Service 生命周期归 DesktopService 中的 `RelayService`，继续复用 `RemoteControl` 的身份、加密配置与设备授权。本机 Relay 通过 loopback 接受 Host，内网手机原生适配只传递受限 WebSocket 字节；外部服务继续验证 HTTPS/WSS。Linux SSH 部署由桌面管理，服务器以 systemd 运行同一 Relay 内核；证书与续期归服务端。公网入口、内网地址可达性和本机服务运行状态分别处理。
 
 Remote 的 React Workbench 直接复用桌面 `Messages`、`ConversationComposer`、模型/权限菜单、`ComposerQueue` 与 `GoalCard`。浏览器控制器仍拥有配对、代际、草稿与 commandId 核对；项目/Session 来自授权 Core 概览，详情使用有界原子订阅。`session.control` 只接收模型/权限、目标与文本队列意图，Gateway 校验后经现有 journal 派发；不提供通用 Core RPC 或凭据访问。普通 Session 的排队提交使用 Core 原子归属/配置准入检查，工具执行与历史权威不迁入浏览器。
 

@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "scope": "Deterministic correctness and compatibility regression after one preserved real Arena baseline; no further provider calls.",
+  "realBaseline": {
+    "source": "e8c29c09",
+    "report": "browser-real-arena-pilot.json",
+    "ordinaryCompleted": 4,
+    "ordinaryPlanned": 5,
+    "stopSafety": "passed",
+    "postfixRealModelRerun": false
+  },
+  "mechanism": {
+    "before": "Wrapped inline overall bounds center hits parent LI; both fragment centers hit the anchor; both production paths fail before input.",
+    "probe": ".scratch/browser-delivery/wrapped-inline/evidence.json",
+    "change": "Native uses content quad centers and exact hit identity; locator uses client rect fragments with existing hit-target validation. Existing explicit forced pointer actions retain coordinates.",
+    "ordinaryCoveredTargetsRemainRejected": true
+  },
+  "acceptance": {
+    "wrappedNative": {
+      "checks": 5,
+      "passed": true,
+      "cases": [
+        "block",
+        "block-force",
+        "wrapped",
+        "first-covered",
+        "all-covered"
+      ],
+      "evidence": ".scratch/browser-delivery/postfix-acceptance/wrapped-final.stdout",
+      "providerCalls": 0
+    },
+    "coreFixture": {
+      "summary": {
+        "ordinaryTasksPlanned": 5,
+        "ordinaryTasksCompleted": 5,
+        "stopSafetyOutcome": "passed"
+      },
+      "integrity": {
+        "sourceStable": true,
+        "artifactsAvailable": true
+      },
+      "fixtureFlow": {
+        "revision": "browser-task-script-v2",
+        "information": "Directory snapshot, exact accessible-name link locator click, then detail snapshot. Replaces the fixture-only direct detail navigation; real-task prompts and grading are unchanged."
+      },
+      "allCleanupValid": true,
+      "informationDetailRequests": 1,
+      "evidence": ".scratch/browser-delivery/task-pilot-postfix-fixture/manifest.json",
+      "providerCalls": 0
+    },
+    "existingCoreRegression": {
+      "checks": 33,
+      "passed": true,
+      "integrity": "verified",
+      "evidence": "/private/var/folders/06/v03n2mms0ks1nrrvkyzjllr40000gr/T/areal-automation-core-a0oJjQ/run-manifest.json",
+      "providerCalls": 0
+    }
+  },
+  "sourceFiles": {
+    "clients/gui/app/src/core/preview-native/native-targets.cjs": "8e9748c2625e6cb5755cd9cca9389f31eb419a96456796424a612a67d48398a8",
+    "clients/gui/packages/browser-automation/src/upstream/browser/browserPlaywrightLocatorExecutor.ts": "a2b76d71c64e11676faf104992c234c4537d52cb060246defd3f16a1900dd56a",
+    "clients/gui/app/src/core/service-protocol.cjs": "7032547216ba41b026af9e8f308eb121f423515c43df8540e53edf8ce75e7d75"
+  },
+  "limits": [
+    "The real baseline remains failed / UNKNOWN, with no replay.",
+    "No real-model A/B or efficiency gain claim.",
+    "Package and other-platform acceptance not run."
+  ]
+}

@@ -39,7 +39,7 @@ export const MessageResponse = memo(function MessageResponse(props: MessageRespo
     <MessageResponseBoundary text={props.children} className={props.className}>
       <Suspense
         fallback={
-          <p role="status" className="p-3 text-ui-base text-foreground-subtle">
+          <p role="status" data-reading-pending className="p-3 text-ui-base text-foreground-subtle">
             {t("common.loading")}
           </p>
         }

@@ -18,6 +18,8 @@
 
 当前动作支持经 Core 批准的本地开发操作，以及公网页面中语义明确的普通文本输入、GET 搜索提交和链接导航等 Ref 操作。Main 在准备与执行时核查实际目标；敏感、未知或高影响动作返回 `human_takeover_required`，公网截图坐标动作仍拒绝。读取与动作都经过 Core 权限路径，许可绑定页面和控制代次。每份计划短期有效，绑定当前观察、目标、文档、控制代次和视口；过期返回 `plan_stale`，不自动改目标。输入确认回执的业务验证仍为 `not_checked`。
 
+localhost、127.0.0.1 与 IPv6 loopback 开发页的普通 Ref 链接点击也在审批计划中绑定精确目标 URL。派发前重新核查相同原生节点与 href；变更返回 `plan_stale`，不发送输入。批准的链接只允许一次精确匹配的 hash 或文档导航，并继续受网络政策检查；导航后必须重新观察。普通本地按钮沿用本地动作语义，无关联脚本导航仍撤销控制权。
+
 已批准的公共 GET 搜索可在派发后的 30 秒内保留同 Page、控制代次、Origin 和路径的跳转链；跳转不续期。查询字段的全部值、顺序和重数必须一致且不能缺失；网站可改写、添加或省略其他参数。审批计划保留提交前的完整表单字段，准备与派发之间仍精确复核；这不保证网站脚本实际生成的请求包含同一套辅助参数。每次导航仍撤销旧观察、Ref 和计划。人工接管、下一次实际动作、取消或 UNKNOWN 清除此意图；后续读取仍需 Core 审批。
 
 开发闭环中，Agent 可通过 `development_service_inspect` 与 `development_service_start` 检查或启动当前 Thread 既有 Core 受管服务。进程面板只提供当前运行进程完整输出中出现的明确回环地址，用户选择后在同一原生预览页打开。该输出是端点证据，不能证明监听已就绪，也不授予 Browser 权限。预览验证卡关联 Core 检查、Browser 观察/截图和文件写入 Item，以及原始截图 Blob 和本轮 diff。命令退出、视觉判断、已加载构建身份和刷新后行为分别标注；源码指纹不能单独证明页面加载版本。
@@ -34,7 +36,7 @@
 
 可信 GUI 的 `selectElement` IPC 接收当前 `pageId`、`captureId` 与非负整数截图像素坐标 `x/y`，用于冻结截图点选与键盘坐标选择。Main 校验当前人工控制、任务/页面/截图身份、边界、文档和视口；跨源嵌入授权期间仍仅支持区域标注，不开放元素选择或模型操作。
 
-人工冻结截图的 DOM 变化标记保留至选择/确认结束。截图后发生节点、属性或文本变化时，元素身份选择与确认拒绝继续；仍可仅以原截图框选区域作证，或重新截图。结束标注、进入样式试改、重新认领、换文档或释放页面会清理该标记。
+人工冻结截图的 DOM 变化标记保留至选择/确认结束。截图后发生节点、属性或文本变化时，元素身份选择与确认拒绝继续；仍可仅以原截图区域作证，或重新截图。可信 GUI 收到正常的 `available:false` 结果时，在原点击位置附近生成可调整选区并直接打开评论编辑器。这类批注只有冻结区域证据，不生成元素身份或选择器；身份失效、导航或取消引发的异常不进入该降级。结束标注、进入样式试改、重新认领、换文档或释放页面会清理该标记。
 
 诊断提供 `diagnostics` 只读操作：参数为 `pageId`、`kind=console|network`、可选非负整数 `cursor`、可选 `limit=1–200`（默认 50）。结果带页/控制/文档代次、事件序号、下一游标、丢失区间标记和 200 条/256 KiB 页缓冲上限。Console 来自当前 WebContents 的实时事件；网络来自同一页 CDP 的请求/响应/失败元数据，启用时不调用可能回放旧日志的 `Runtime.enable` 或 `Console.enable`。只保存 URL 的去查询/片段形式、方法、状态与有界错误信息，不保存 body、header 或凭据；敏感文本保守隐藏。接管立即清空缓冲并停止采集，交还开启新控制代次；迟到的网络请求按原生创建时间排除。显式 DevTools 打开撤销 Agent 控制，关闭后需要重新认领和观察。诊断工具结果是当前 Thread 的 Core Item，预览验证卡链接其来源；
 
@@ -48,17 +50,43 @@
 
 主文档 Ref `press` 的原生 keyDown 已确认后，若只有非目标子 Frame 导航使全页观察代次失效，可在主文档、原生 Page、Host/Core 归属、控制和视口均未变化且未取消时完成该按键的唯一 keyUp。该例外只结束已确认的输入，不允许复用旧 Ref、继续其他输入或扩大导航许可；旧读取计划仍失效，后续动作须 fresh observe 并经 Core 权限检查。回执仍为 `inputConfirmed:true / verification:not_checked`；ACK 丢失或其他 fence 失效仍保持 UNKNOWN，不重放。
 
+## 本地 HTML 文档
+
+回复中的本地 HTML 链接默认在当前聊天的内置 Browser 打开。Agent 生成 HTML 后先 `describe` 取得 pageId，再调用 `{"operation":"openDocument","parameters":{"pageId":"<pageId>","path":"/absolute/path/report.html"}}` 自动展示结果。已有页面先取得新观察。普通 `navigate` 仍只接受 HTTP(S)，不能传入 `file:` URI。显式“外部打开”把原始 HTML 文件交给系统应用；地址栏中的临时内容 URL 只供当前原生页使用，复制到其他浏览器不能读取文件。
+
+`openDocument` 经独立的 prepare、Core 审批和 execute 路径。计划包含 canonical 入口、文件范围与入口 SHA-256，并绑定当前 Page、原生代次、文档/控制代次、宿主、Thread/Turn/Call 与期限。执行精确匹配计划；页面的网络许可不批准文件范围，也不因内容 URL 位于 localhost 自动许可。审批展示以下范围。
+
+- 工作区内的入口授权其 canonical 所在目录树中的 CSS、JS、MJS、PNG、JPG/JPEG、GIF、WebP、AVIF、ICO、SVG、WOFF/WOFF2、TTF 和 OTF。此范围包含没有被 HTML 引用的同类文件，不能识别任意 `secret.js` 或图片中的秘密。
+- 工作区外的入口，包括 `/tmp`，只授权确切 HTML 文件。因此外部交付应使用内联脚本、样式和图片。其他 HTML、JSON、source map、隐藏路径和指向范围外的符号链接均不能作为静态资产读取。入口和每份资产上限均为 20 MiB。
+
+Main 的 `NativeDocuments` 唯一持有入口快照、有效 grant 和按需启动的 loopback 内容 listener。每次 grant 使用独立 localhost origin 和随机路径。共享 Browser Profile 的请求 hook 先剥离任意伪造私有 header，只向有效 grant 对应原生 WebContents 的准确入口请求或同 origin 主 Frame 资产请求重新注入授权值。首次 loading 入口请求可在 Frame 身份尚未就绪时，凭精确原生 WebContents 与入口 URL 放行；active 后的 reload 和资产请求要求准确主 Frame 身份。其他原生页、导入器、其余无 Frame 请求、子 Frame、worker 和持有 URL 的外部客户端没有读取权限。监听器校验 GET、Host、令牌、私有 header、路径范围和文件版本；不提供目录列举、磁盘写入或产品控制接口，产品控制端口的封锁继续生效。
+
+文档不具备 Node、preload 或产品 bridge。CSP 允许同 origin 与内联 JavaScript/样式、自身及 data/blob 图片，并阻止外部连接、Frame、worker、对象、base 和表单提交。网页脚本不能把文件能力转移到另一个页面。已批准导航、显式人工导航、替换文档、关闭、驱逐、原生销毁、会话执行目录/宿主/Core 换代和 dispose 撤销 grant；人工答题和接管本身保留文档资产能力。最后一份 grant 释放后关闭 listener。
+
+入口字节在 prepare 时固定；reload 复用同一入口快照并读取范围内当前静态资产，重新 `openDocument` 才刷新入口。资产目录不是不可变快照。成功返回 `dispatch:confirmed`、readiness、页面身份和 URL，随后通过既有 reveal 事件显示当前聊天；后台完成只更新原聊天。派发后的超时或中断保持 UNKNOWN 和实际页面，供 observe 核对，不自动重放。
+
 ## ZCode 命令适配
 
 新增 `{operation:"command",parameters:{pageId,command}}`。`describe` 的 `command` 字段返回实际方法、有效示例和不支持项。通过 `describe` 的 `parameters.topic` 指定 `command.<method>` 或 `command.playwright.<action>` 获取对应的上游严格 schema，避免完整 schema 被结果预算截断。命令 schema 与执行器复用 ZCode `3c5b227649371507ddc4eb46ac5133afe6db1cab`，来源和适配点见[包说明](../../clients/gui/packages/browser-automation/README.md)。
 
 命令组包括 Playwright 风格定位器与跨域 iframe、语义快照、页面和元素求值、CUA 输入、整页/裁剪/元素截图、视口管理、alert/confirm、下载、WebM 录制与标签交付。所有命令沿既有 Core 准备和审批路径，不提供任意 Node 或原始 CDP。`evaluate` 只在已授权网页上下文运行；这不授予宿主文件或产品 bridge 访问。录制输出路径由可信项目根约束。
 
-准备记录绑定原始命令和涉及的每个真实 Page。执行不因审批等待而换目标；取消、页面接管、关闭、原生代次变化撤销后续输入。隐藏页面临时借用不可聚焦透明窗口取得 compositor surface，然后交还同一个 WebContentsView。截图经 Core Blob 返回，交付前后复核来源页控制代次。未知副作用保留 UNKNOWN，不重发。
+命令 `navigate` 接受本次主文档提交后的 `dom-ready` 作为可交互完成证据，无需等待图片等全部资源。成功回执只确认导航完成，业务结果仍须单独验证。
+
+准备记录绑定原始命令和涉及的每个真实 Page。执行不因审批等待而换目标；取消、页面接管、关闭、原生代次变化撤销后续输入。命令 `navigate` 不租借渲染窗口，仍执行页面隐私检查。隐藏页面的截图和输入等路径继续临时借用不可聚焦透明窗口取得 compositor surface，然后交还同一个 WebContentsView。截图经 Core Blob 返回，交付前后复核来源页控制代次。未知副作用保留 UNKNOWN，不重发。
 
 上游声明并非全部可执行。普通 `fill`/`waitFor` 应改用 locator；上传、file chooser 和 `networkidle` 明确不支持。locator `downloadMedia` 复用上游下载锚点实现，并绑定修改操作审批与下载回执。Electron WebContentsView 的 `prompt()` 不可用。该适配不提供完整 Playwright/ZCode JavaScript SDK、外部 CDP、扩展或 CLI 无头后端。全部项目和聊天共用 Main 持有的 `persist:areal-embedded-browser` Session。关闭 Workspace 或聊天只销毁 Page 和控制引用，保留 Cookie、localStorage、IndexedDB 及登录状态。Profile 存放在当前 GUI userData 中，隔离测试 home 和不同安装配置不共享。旧临时 Session 不自动迁移。共享登录不授予其他聊天的页面控制权。
 
 `pnpm --dir clients/gui run test:automation --suite browser` 通过真实 Core、隔离 Electron 和确定性本地模型验证命令效果、审批拒绝、截图媒体和录屏产物。包内直接执行器验收与这一模型调用链分别保留证据，不能代替真实供应商或安装包验收。
+
+
+### 桌面设备视口与错误恢复
+
+可信 GUI 的 `setViewport {projectId, threadId, pageId, viewport}` 使用判别状态。`viewport` 为 `{mode:"auto"}` 或 `{mode:"device", width, height}`。设备宽高是 240 至 2560 的整数 CSS 像素。`state.browser.viewport` 返回当前页状态。省略新操作的旧客户端仍使用自适应视口。设备选择只改变布局视口，不模拟移动设备的 UA、触摸或硬件能力。
+
+Electron 在原生页面所有者中维护设备尺寸。手机、平板与桌面预设分别为 390×844、768×1024 与 1440×900，旋转交换宽高。原生显示区域按面板可用空间等比缩小，页面仍以目标 CSS 宽高排版。GUI 缩放先转换原生 DIP bounds，随后计算显示比例。Agent CDP 鼠标输入在最终派发处转换显示坐标。尺寸、旋转与显示比例变化均失效旧截图、计划与 viewportRevision。页面批注、试改或浏览器命令期间拒绝 GUI 视口变更。浏览器命令与 GUI 共用已有页级视口状态。宽高编辑累积在同一个页级草稿中，未确认时显示待应用；回执只清理匹配的草稿。GUI 按工作区事件序号接收投影，迟到的旧状态不能覆盖已确认尺寸。截图另含 `viewport.bitmapScale {x,y}`，表示每个 CSS 像素对应的实际位图像素数。设备模式使用原生显示比例与截图实际像素尺寸计算该值。截图输入、元素批注和试改按同一比例双向转换，不把原生整数边界裁剪后的图像拉伸成完整逻辑视口。
+
+页面加载错误提供重新加载当前页面。可信导航被网络政策拒绝时返回 `BROWSER_PERMISSION_DENIED`。原生预览命令失败通过 `{previewFailure: DesktopError}` 值跨 IPC 返回，由 Renderer 适配器恢复带 code 的错误，避免 Electron 丢失异常自定义字段。GUI 保留页面内容并提示核对网址与权限。其他操作错误保留具体说明。UNKNOWN 工具动作仍绑定原 Core Item，只提供原动作核对入口。读取页面状态与重新加载页面都不重放原动作，也不替代 Core 的结果核对。
 
 
 ## 原生控件与状态等待
@@ -99,6 +127,7 @@
 | listPages | 无或已知 workspaceId | 只列当前 Thread 的授权页；人工页仅元数据 |
 | claimPage | pageId | 用户已选择/授权页；保留同一对象，不跨 Thread |
 | newPage | URL、用户可见目的 | 同一临时上下文；配额；导航审批 |
+| openDocument | pageId、本地 HTML 路径 | Core 文件范围审批；入口快照；工作区目录静态资产或外部 exact-file |
 | navigate | pageId、URL | 不依据活动标签推断目标；HTTP(S)；跨 Origin 重新检查 |
 | observe | pageId、scope、可选 rootRef、budget | DOM/AX 默认；标注 iframe 覆盖和截断 |
 | capture | pageId、viewport/full、可选 clip | 绑定视口；隐私与尺寸检查；返回 Core 授权证据 |
@@ -148,7 +177,9 @@ Browser Workspace 绑定 `(coreInstanceId, projectId, threadId)`。首期每 Thr
 
 Controller 提供**原子 snapshot + subscribe**，UI 先安装 snapshot 的序号，再消费后续增量。发现序号缺口就重取，不能靠独立 read 和 subscribe 假设无窗口。事件至多携带元数据；DOM、图像和网络正文按需读取，不广播。
 
-桌面 Main 的唯一 Page Map 持有原生对象。可信主视图通过 `preview.subscribe` 一次安装监听并取得快照；后续事件只携带 Page 元数据，序号缺口重新订阅。人工新建、切换和关闭是主视图意图；关闭人工或未知来源页必须带明确用户意图。`browser_v1` 的 `navigate` / `newPage` 先只读准备，再经 Core 审批，执行时按 Page ID 和代次路由。`newPage` 的 `pageId` 指 opener；子页加载后沿同一 claim 路径建立独立 controlEpoch、诊断和原生文件选择拦截，成功回执给出新 Page ID 和子页代次。认领或交还后，导航和新建页也必须先有新的 observe/capture。网页弹窗只有近期、一次性的本地人工输入才能进入同一临时上下文；其他原生开窗请求被拒绝。
+桌面 Main 的活动 Page Map 与同一生命周期内的关闭资源共同持有原生对象。逻辑释放同步撤销能力并移除 Page；关闭中的旧 view 和 WebContents 保留到真实 `destroyed`。窗口释放和 Profile 清理都等待先前已释放的原生资源，失败时保留 Profile 归属及未结算资源，不能把 Page Map 为空当作关闭完成。可信主视图通过 `preview.subscribe` 一次安装监听并取得快照；后续事件只携带 Page 元数据，序号缺口重新订阅。人工新建、切换和关闭是主视图意图；关闭人工或未知来源页必须带明确用户意图。`browser_v1` 的 `navigate` / `newPage` 先只读准备，再经 Core 审批，执行时按 Page ID 和代次路由。`newPage` 的 `pageId` 指 opener；子页加载后沿同一 claim 路径建立独立 controlEpoch、诊断和原生文件选择拦截，成功回执给出新 Page ID 和子页代次。认领或交还后，导航和新建页也必须先有新的 observe/capture。网页弹窗只有近期、一次性的本地人工输入才能进入同一临时上下文；其他原生开窗请求被拒绝。
+
+原生关闭先撤销网络、文件和控制能力，在同一关闭预算内等待已启动的输入及截图/录制清理，再在私有隔离世界中仅对主框架当前活动且打开的原生 SELECT 调用原型 `blur`，随后请求关闭并等待 `destroyed`。它不聚焦窗口、不读取或修改选项值，也不重写工具回执；正常 `onblur` 仍可能运行。普通输入和已关闭的 SELECT 不新增 blur。首次导航前尚无已提交文档、已销毁或崩溃的 Renderer 跳过 DOM 步骤，崩溃本身不等于原生销毁。隔离步骤失败或超时仍会请求原生关闭，但本次清理保留失败，迟到销毁不能把原回执改成成功。该步骤尚不遍历跨源 iframe 或 shadow tree 的活动控件。
 
 事件包括 `pageAdded/pageChanged/pageRemoved`、`controlChanged`、`operationChanged`、`hostAvailabilityChanged`、`viewportChanged`、`diagnosticsAvailable`。GUI-only 投影可在原有本地状态通道中分发；持久工具事件仍使用 Core Item。只对所属 Thread/项目/window 授权接收者广播。
 
@@ -171,7 +202,7 @@ Page shell 可恢复 URL 与标题，但不恢复原生对象身份或表单/JS 
 
 Ref 私有映射键至少含 Page generation、Frame identity、Frame document identity、backend node identity。引用公开 ID 单调不复用；只在同一节点确实仍存在时复用。查不到或已导航时返回 `stale_ref`，不按名称/XPath fallback 去点击另一个节点。重新观察后由 Agent 决定新动作。
 
-Ref 动作准备与派发都验证目标仍连接、可见、可交互且 hit test 命中。布局可变时等待有界稳定，再检查；不使用页面脚本的 `.click()` 冒充真实输入。滚动/刷新可能改变有效条件，不能只比较一个全页 DOM revision。Canvas 坐标以**截图 bitmap → 页面 CSS viewport**的明确变换转换；不直接乘 DPR 猜测。缩放、视口或文档变化必须重新截图。
+Ref 动作准备与派发都验证目标仍连接、可见、可交互且 hit test 命中。换行内联目标从实际 content quads 中逐一选择命中点；兼容 locator 从 client rect fragments 中选点并保留遮挡检查。普通点击在全部片段被挡时仍拒绝，不以整体边界中心代表目标可点击区域。布局可变时等待有界稳定，再检查；不使用页面脚本的 `.click()` 冒充真实输入。滚动/刷新可能改变有效条件，不能只比较一个全页 DOM revision。Canvas 坐标以**截图 bitmap → 页面 CSS viewport**的明确变换转换；不直接乘 DPR 猜测。缩放、视口或文档变化必须重新截图。
 
 当前仅本地开发页支持截图坐标动作，公网页拒绝；坐标动作使用最新可见视口 `capture` 的 `observationId` 作为 `snapshotId`：`clickAt(x,y)`、`drag(fromX,fromY,toX,toY,steps)` 与 `pressAt(x,y,key)` 的坐标是截图 bitmap 整数像素，必须落在实际位图内；拖拽 `steps` 为 1–20。`describe` 公布当前支持的动作。Main 以实际 bitmap 和页面 CSS 尺寸转换为 CDP 输入坐标，将转换后的目标绑定到 Core 审批计划。转换统一使用可精确表示的 1/64 CSS 像素精度，避免 JSON 往返的浮点末位变化。本地 Canvas 无 Ref 时只能使用此截图路径；公网 Canvas 交给人工，不编造 DOM selector。每次动作后都需重新截图才能继续按坐标输入。截图同时记录 CSS viewport、scroll、DPR、page zoom、GUI zoom、原生 DIP bounds 和 bitmap 尺寸；GUI Renderer 的 CSS bounds 按 GUI zoom 转为原生 DIP bounds。隐藏、最小化或零尺寸页面不提供自动截图。视口、缩放、scroll 或文档变化使旧截图和准备计划失效；稳定 Ref 仍重新检查 actionability。
 

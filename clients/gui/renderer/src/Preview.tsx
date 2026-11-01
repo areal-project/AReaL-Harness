@@ -1,4 +1,9 @@
-import { Input } from "@areal/ui";
+import { BrowserDetails } from "./BrowserDetails.js";
+import { browserLabel, devicePresets, deviceDimension } from "./browserPreview.js";
+import { observeResize } from "@areal/ui/observe-resize";
+import { Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@areal/ui";
+import { browserMessages } from "./i18n/messages/browser.js";
+import { previewFailure, type PreviewFailure } from "./browserPreview.js";
 import { composerDraftStorage } from "./composerDraftStorage.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import {
@@ -10,7 +15,11 @@ import {
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";
 import type { PlatformServices, Data } from "./services.js";
-import { BrowserRegionAnnotation, type RegionDraft } from "./BrowserRegionAnnotation.js";
+import {
+  BrowserRegionAnnotation,
+  annotationRegionAroundPoint,
+  type RegionDraft,
+} from "./BrowserRegionAnnotation.js";
 import { attachmentDrafts, sending, stageThreadDraft } from "./Composer.js";
 import { isComposerFile } from "./ComposerAttachments.js";
 import {
@@ -18,13 +27,12 @@ import {
   browserAnnotation,
   setBrowserAnnotationEditing,
 } from "./browserAnnotations.js";
-import { BrowserVerificationCard } from "./BrowserVerificationCard.js";
 import { uninspectedToolCalls } from "./toolInspection.js";
 import "./BrowserFileHandoff.layout.css";
 import { BrowserStyleTrial, type StyleTrialDraft } from "./BrowserStyleTrial.js";
 import { BrowserKeyboardElementPicker } from "./BrowserKeyboardElementPicker.js";
 import type { Action } from "./services.js";
-import type { PreviewRequest } from "@areal/workbench/desktop-contract";
+import type { PreviewViewport, PreviewRequest } from "@areal/workbench/desktop-contract";
 import type { BrowserWorkspaceRequest } from "./app-shell/useBrowserWorkspace.js";
 type WithoutPage<Request> = Request extends unknown ? Omit<Request, "pageId"> : never;
 type PagePreviewRequest = WithoutPage<BrowserWorkspaceRequest>;
@@ -58,6 +66,8 @@ export function Preview({
   onError: (s: string) => void;
 }) {
   const { t } = useI18n();
+  const label = ({ id }: { id: string }) =>
+    id in browserMessages ? t(id as keyof typeof browserMessages) : browserLabel({ id });
   const owner = `${projectId}:${threadId}:${pageId}`;
   const draftKey = `areal-gui:draft:${projectId}:${threadId}`;
   const stagedAnnotations = (attachmentDrafts.get(draftKey) ?? [])
@@ -67,10 +77,33 @@ export function Preview({
       return note ? [note] : [];
     });
   const [url, setUrl] = useState(locations.get(owner)?.url ?? state.url ?? "");
-  const [error, setError] = useState("");
-  const [responsive, setResponsive] = useState(false);
+  const [error, setError] = useState<PreviewFailure | null>(null);
+  const viewport: PreviewViewport = state.browser?.viewport ?? { mode: "auto" };
+  const responsive = viewport.mode === "device";
+  const [viewportEdit, setViewportEdit] = useState<{
+    owner: string;
+    width: string;
+    height: string;
+    phase: "editing" | "applying" | "acknowledged";
+  } | null>(null);
+  const viewportEditRef = useRef(viewportEdit);
+  const viewportFields = viewportEdit?.owner === owner ? viewportEdit : null;
+  useEffect(() => {
+    const edit = viewportEditRef.current;
+    if (
+      edit &&
+      (edit.owner !== owner ||
+        (edit.phase === "acknowledged" &&
+          viewport.mode === "device" &&
+          edit.width === String(viewport.width) &&
+          edit.height === String(viewport.height)))
+    ) {
+      viewportEditRef.current = null;
+      setViewportEdit(null);
+    }
+  }, [owner, viewport, viewportEdit]);
+  useEffect(() => setError(null), [owner]);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [width, setWidth] = useState(390);
   const [addressFocused, setAddressFocused] = useState(false);
   const [annotationState, setAnnotationState] = useState<{
     owner: string;
@@ -168,16 +201,43 @@ export function Preview({
     try {
       await requestPage({ ...request, pageId });
       if (!mounted.current || current.current !== owner || seq !== sequence.current) return;
-      if (operation !== "state") setError("");
+      if (operation !== "state") setError(null);
+      return true;
     } catch (e) {
-      if (mounted.current && current.current === owner)
-        setError(e instanceof Error ? e.message : String(e));
+      if (mounted.current && current.current === owner && seq === sequence.current)
+        setError(previewFailure(e));
+      return false;
     }
+  };
+  const applyViewport = async (next: PreviewViewport) => {
+    const edit =
+      next.mode === "device"
+        ? {
+            owner,
+            width: String(next.width),
+            height: String(next.height),
+            phase: "applying" as const,
+          }
+        : null;
+    viewportEditRef.current = edit;
+    setViewportEdit(edit);
+    const applied = await request({ operation: "setViewport", viewport: next });
+    if (current.current !== owner || viewportEditRef.current !== edit) return;
+    const acknowledged = applied && edit ? { ...edit, phase: "acknowledged" as const } : null;
+    viewportEditRef.current = acknowledged;
+    setViewportEdit(acknowledged);
+  };
+  const deviceViewport = () => {
+    const edit = viewportEditRef.current?.owner === owner ? viewportEditRef.current : null;
+    const value = viewport.mode === "device" ? viewport : { width: 390, height: 844 };
+    return {
+      mode: "device" as const,
+      width: deviceDimension(edit?.width, value.width),
+      height: deviceDimension(edit?.height, value.height),
+    };
   };
   const stateRef = useRef(state);
   stateRef.current = state;
-  const errorRef = useRef(error);
-  errorRef.current = error;
   useEffect(() => {
     mounted.current = true;
     let active = true;
@@ -213,7 +273,6 @@ export function Preview({
         visible:
           !!value.url &&
           !value.error &&
-          !errorRef.current &&
           !overlay &&
           !annotatingRef.current &&
           !styleTrialRef.current?.after &&
@@ -226,15 +285,13 @@ export function Preview({
       lastDisplay = signature;
       void services.preview(display).catch((e) => {
         lastDisplay = "";
-        if (active) setError(e.message);
+        if (active) setError(previewFailure(e));
       });
     };
-    const resize = new ResizeObserver(update);
-    resize.observe(box.current!);
     const composer = box.current
       ?.closest(".work-area")
       ?.querySelector(".active-composer, .draft-composer");
-    if (composer) resize.observe(composer);
+    const stopResize = observeResize(composer ? [box.current!, composer] : box.current!, update);
     const mutation = new MutationObserver(update);
     mutation.observe(document.body, {
       childList: true,
@@ -253,7 +310,7 @@ export function Preview({
       setBrowserAnnotationEditing(draftKey, false);
       sequence.current++;
       clearInterval(timer);
-      resize.disconnect();
+      stopResize();
       mutation.disconnect();
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
@@ -281,7 +338,7 @@ export function Preview({
     if (styleBusy || styleTrial || annotating || annotationBusy || keyboardCaptureRef.current)
       return;
     setStyleBusyOwner(owner);
-    setError("");
+    setError(null);
     let capture: RegionDraft["capture"] | null = null;
     try {
       const pageId = stateRef.current.browser?.pageId;
@@ -359,8 +416,7 @@ export function Preview({
             captureId: capture.captureId,
           })
           .catch(() => {});
-      if (mounted.current && current.current === owner)
-        setError(e instanceof Error ? e.message : String(e));
+      if (mounted.current && current.current === owner) setError(previewFailure(e));
     } finally {
       setStyleBusyOwner((value) => (value === owner ? null : value));
     }
@@ -369,7 +425,7 @@ export function Preview({
     const capture = keyboardCaptureRef.current;
     if (!capture || styleBusy) return;
     setStyleBusyOwner(owner);
-    setError("");
+    setError(null);
     try {
       if (point) {
         const element = await services.preview({
@@ -432,8 +488,7 @@ export function Preview({
         window.dispatchEvent(new Event("resize"));
       }
     } catch (e) {
-      if (mounted.current && current.current === owner)
-        setError(e instanceof Error ? e.message : String(e));
+      if (mounted.current && current.current === owner) setError(previewFailure(e));
     } finally {
       setStyleBusyOwner((value) => (value === owner ? null : value));
     }
@@ -446,7 +501,7 @@ export function Preview({
     const draft = styleTrialRef.current;
     if (!draft || styleBusy) return;
     setStyleBusyOwner(owner);
-    setError("");
+    setError(null);
     try {
       const next = await services.preview({
         ...change,
@@ -465,7 +520,7 @@ export function Preview({
         });
     } catch (e) {
       if (mounted.current && current.current === owner) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(previewFailure(e));
         const latest = styleTrialRef.current;
         if (latest?.trialId === draft.trialId && /失效|已修改|已替换/.test(String(e)))
           updateStyleTrial({ ...latest, stale: true });
@@ -478,7 +533,7 @@ export function Preview({
     const draft = styleTrialRef.current;
     if (!draft || styleBusy) return;
     setStyleBusyOwner(owner);
-    setError("");
+    setError(null);
     try {
       if (!draft.cleared) {
         try {
@@ -514,8 +569,7 @@ export function Preview({
         styleFocusOwner.current = owner;
       }
     } catch (e) {
-      if (mounted.current && current.current === owner)
-        setError(e instanceof Error ? e.message : String(e));
+      if (mounted.current && current.current === owner) setError(previewFailure(e));
     } finally {
       setStyleBusyOwner((value) => (value === owner ? null : value));
     }
@@ -561,7 +615,7 @@ export function Preview({
     )
       return;
     setStyleBusyOwner(owner);
-    setError("");
+    setError(null);
     try {
       let draft = original;
       if (!draft.after) {
@@ -636,8 +690,7 @@ export function Preview({
         captureId: draft.after!.capture.captureId,
       });
     } catch (e) {
-      if (mounted.current && current.current === owner)
-        setError(e instanceof Error ? e.message : String(e));
+      if (mounted.current && current.current === owner) setError(previewFailure(e));
     } finally {
       setStyleBusyOwner((value) => (value === owner ? null : value));
     }
@@ -645,7 +698,7 @@ export function Preview({
   const cancelAnnotation = async () => {
     if (!annotating || annotationBusy) return;
     setAnnotationBusyOwner(owner);
-    setError("");
+    setError(null);
     try {
       await services.preview({
         operation: "endRegion",
@@ -657,8 +710,7 @@ export function Preview({
       updateAnnotation(null);
       if (mounted.current && current.current === owner) annotationFocusOwner.current = owner;
     } catch (e) {
-      if (mounted.current && current.current === owner)
-        setError(e instanceof Error ? e.message : String(e));
+      if (mounted.current && current.current === owner) setError(previewFailure(e));
     } finally {
       setAnnotationBusyOwner((value) => (value === owner ? null : value));
     }
@@ -748,7 +800,7 @@ export function Preview({
     if (!draft || annotationBusy) return;
     setAnnotationBusyOwner(owner);
     setBrowserAnnotationEditing(draftKey, true);
-    setError("");
+    setError(null);
     try {
       const element = await services.preview({
         operation: "selectElement",
@@ -759,16 +811,20 @@ export function Preview({
         ...point,
       });
       if (!mounted.current || current.current !== owner || annotatingRef.current !== draft) return;
+      if (element.available !== true && element.available !== false)
+        throw new Error("无法读取页面元素选择结果");
       updateAnnotation({
         ...draft,
         point,
-        region: element.available ? element.bounds : null,
+        region: element.available
+          ? element.bounds
+          : annotationRegionAroundPoint(draft.capture, point),
         element: element.available ? (element as RegionDraft["element"]) : undefined,
-        mode: element.available ? "element" : "region",
+        mode: "element",
         unavailableReason: element.available ? undefined : element.reason,
       });
     } catch (cause) {
-      if (mounted.current && current.current === owner) setError((cause as Error).message);
+      if (mounted.current && current.current === owner) setError(previewFailure(cause));
     } finally {
       if (current.current === owner)
         setBrowserAnnotationEditing(draftKey, !!annotatingRef.current?.region);
@@ -779,7 +835,7 @@ export function Preview({
     if (annotationBusy || !draft.region?.width || !draft.region.height || !draft.comment.trim())
       return;
     setAnnotationBusyOwner(owner);
-    setError("");
+    setError(null);
     try {
       const image = new Image();
       image.src = `data:image/png;base64,${draft.capture.imageBase64}`;
@@ -798,31 +854,34 @@ export function Preview({
         ),
       );
       const capture = draft.capture;
-      const scaleX = capture.viewport.width / capture.viewport.bitmapWidth;
-      const scaleY = capture.viewport.height / capture.viewport.bitmapHeight;
-      const elementCheck =
-        draft.element && draft.mode === "element"
-          ? await services
-              .preview({
-                operation: "checkElement",
-                projectId,
-                threadId,
-                pageId: capture.pageId,
-                captureId: capture.captureId,
-                elementId: draft.element.elementId,
-              })
-              .catch(() => ({ stale: true }))
-          : null;
+      const scaleX =
+        1 /
+        (capture.viewport.bitmapScale?.x ?? capture.viewport.bitmapWidth / capture.viewport.width);
+      const scaleY =
+        1 /
+        (capture.viewport.bitmapScale?.y ??
+          capture.viewport.bitmapHeight / capture.viewport.height);
+      const elementCheck = draft.element
+        ? await services
+            .preview({
+              operation: "checkElement",
+              projectId,
+              threadId,
+              pageId: capture.pageId,
+              captureId: capture.captureId,
+              elementId: draft.element.elementId,
+            })
+            .catch(() => ({ stale: true }))
+        : null;
       if (!mounted.current || current.current !== owner || annotatingRef.current !== draft)
         throw new Error("标注所属聊天已变化");
-      const elementDescription =
-        draft.element && draft.mode === "element"
-          ? `\n选择时元素: role=${JSON.stringify(draft.element.role)}; name=${JSON.stringify(draft.element.name)}; bounds bitmap(px)=${x},${y},${width},${height}; frame=${draft.element.frameId}; historicalRef=${draft.element.evidenceRef}; sourceMapping=${draft.element.sourceMapping}; ${elementCheck?.stale ? "stale: 页面元素已变化，保留原证据。" : "确认时仍命中同一节点；页面之后仍可能变化。"} Agent 必须重新 observe 并取得新 Ref，禁止用 historicalRef 动作。React 源码位置未知。`
-          : "";
+      const elementDescription = draft.element
+        ? `\n选择时元素: role=${JSON.stringify(draft.element.role)}; name=${JSON.stringify(draft.element.name)}; bounds bitmap(px)=${x},${y},${width},${height}; frame=${draft.element.frameId}; historicalRef=${draft.element.evidenceRef}; sourceMapping=${draft.element.sourceMapping}; ${elementCheck?.stale ? "stale: 页面元素已变化，保留原证据。" : "确认时仍命中同一节点；页面之后仍可能变化。"} Agent 必须重新 observe 并取得新 Ref，禁止用 historicalRef 动作。React 源码位置未知。`
+        : "";
       const frameDescription = capture.frameEvidence
         ? `\n嵌入站点截图检查: ${JSON.stringify(capture.frameEvidence)}；仅区域证据，无选择器或 Agent 跨源授权。`
         : "";
-      const description = `页面${draft.element && draft.mode === "element" ? "元素" : "区域"}标注（冻结截图，页面之后可能变化；仅分享选中区域）\nURL: ${capture.url}\n截图时间: ${capture.capturedAt}\nCore: ${capture.coreInstanceId}; Page: ${capture.pageId}; pageGeneration: ${capture.pageGeneration}; documentEpoch: ${capture.documentEpoch}; controlEpoch: ${capture.controlEpoch}; viewportRevision: ${capture.viewportRevision}; captureId: ${capture.captureId}\n原截图 bitmap(px): ${capture.viewport.bitmapWidth}×${capture.viewport.bitmapHeight}; CSS viewport(px): ${capture.viewport.width}×${capture.viewport.height}; scroll(px): ${capture.viewport.scrollX},${capture.viewport.scrollY}; pageZoom: ${capture.viewport.pageZoom}; GUI zoom: ${capture.viewport.guiZoom}; DPR: ${capture.viewport.deviceScaleFactor}; native DIP bounds: ${JSON.stringify(capture.viewport.nativeBounds)}\n选区 bitmap(px): ${x},${y},${width},${height}; viewport CSS(px): ${(x * scaleX).toFixed(1)},${(y * scaleY).toFixed(1)},${(width * scaleX).toFixed(1)},${(height * scaleY).toFixed(1)}${elementDescription}${frameDescription}\n裁图: browser-region-${capture.captureId}.png`;
+      const description = `页面${draft.element ? "元素" : "区域"}标注（冻结截图，页面之后可能变化；仅分享选中区域）\nURL: ${capture.url}\n截图时间: ${capture.capturedAt}\nCore: ${capture.coreInstanceId}; Page: ${capture.pageId}; pageGeneration: ${capture.pageGeneration}; documentEpoch: ${capture.documentEpoch}; controlEpoch: ${capture.controlEpoch}; viewportRevision: ${capture.viewportRevision}; captureId: ${capture.captureId}\n原截图 bitmap(px): ${capture.viewport.bitmapWidth}×${capture.viewport.bitmapHeight}; CSS viewport(px): ${capture.viewport.width}×${capture.viewport.height}; scroll(px): ${capture.viewport.scrollX},${capture.viewport.scrollY}; pageZoom: ${capture.viewport.pageZoom}; GUI zoom: ${capture.viewport.guiZoom}; DPR: ${capture.viewport.deviceScaleFactor}; native DIP bounds: ${JSON.stringify(capture.viewport.nativeBounds)}\n选区 bitmap(px): ${x},${y},${width},${height}; viewport CSS(px): ${(x * scaleX).toFixed(1)},${(y * scaleY).toFixed(1)},${(width * scaleX).toFixed(1)},${(height * scaleY).toFixed(1)}${elementDescription}${frameDescription}\n裁图: browser-region-${capture.captureId}.png`;
       if (composerDraftStorage.getItem(`${draftKey}:queue-edit`))
         throw new Error("请先结束排队消息编辑，再加入标注");
       if (sending.has(draftKey) || composerDraftStorage.getItem(`${draftKey}:pending`))
@@ -836,8 +895,7 @@ export function Preview({
         id,
         comment: draft.comment.trim(),
         label:
-          draft.element?.name ||
-          (draft.mode === "element" ? draft.element?.role || "页面元素" : "区域标注"),
+          draft.element?.name || (draft.element ? draft.element.role || "页面元素" : "区域标注"),
         url: capture.url,
         capturedAt: capture.capturedAt,
         captureId: capture.captureId,
@@ -858,10 +916,10 @@ export function Preview({
         region: null,
         element: undefined,
         point: undefined,
+        unavailableReason: undefined,
       });
     } catch (e) {
-      if (mounted.current && current.current === owner)
-        setError(e instanceof Error ? e.message : String(e));
+      if (mounted.current && current.current === owner) setError(previewFailure(e));
     } finally {
       setAnnotationBusyOwner((value) => (value === owner ? null : value));
     }
@@ -872,8 +930,8 @@ export function Preview({
       locations.set(owner, { url: state.url ?? "" });
     }
   }, [state.url, state.browser?.pageId, owner, pageId]);
-  const failure = error || state.error;
-  const uninspectedUnknown = uninspectedToolCalls(thread ?? {}).some(
+  const failure = state.error;
+  const uninspectedUnknown = uninspectedToolCalls(thread ?? {}).filter(
     (item) => item.tool === "browser_v1",
   );
   const batch = state.workspace?.pages?.find(
@@ -903,7 +961,7 @@ export function Preview({
           isLoading: !!state.loading,
           currentUrl: state.url ?? "",
         }}
-        formatMessage={browserLabel}
+        formatMessage={label}
         onToggleDetails={() => setDetailsOpen((value) => !value)}
         onAddressChange={(value) => {
           editing.current = true;
@@ -926,7 +984,11 @@ export function Preview({
         onOpenExternal={() => void request({ operation: "external" })}
         onOpenDevTools={() => void request({ operation: "devtools" })}
         onReload={() => void request({ operation: state.loading ? "stop" : "reload" })}
-        onToggleResponsiveMode={() => setResponsive(!responsive)}
+        onToggleResponsiveMode={() =>
+          void applyViewport(
+            responsive ? { mode: "auto" } : { mode: "device", width: 390, height: 844 },
+          )
+        }
         isResponsiveMode={responsive}
         annotationControl={annotationControl}
         annotationDisabled={
@@ -974,9 +1036,60 @@ export function Preview({
           </Button>
         </div>
       )}
-      {uninspectedUnknown && (
+      {error && (
+        <div
+          className="preview-viewport-toolbar browser-request-error"
+          role="alert"
+          data-testid="browser-request-error"
+          data-error-kind={error.kind}
+        >
+          <span>
+            <strong>
+              {t(
+                error.kind === "permission"
+                  ? "browser.failure.permission"
+                  : error.kind === "unknown"
+                    ? "browser.failure.unknown"
+                    : "browser.failure.operation",
+              )}
+            </strong>{" "}
+            {error.message}
+          </span>
+          <span>
+            {t(
+              error.kind === "permission"
+                ? "browser.failure.permissionHint"
+                : error.kind === "unknown"
+                  ? "browser.failure.unknownHint"
+                  : "browser.failure.operationHint",
+            )}
+          </span>
+          {error.kind === "unknown" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => void request({ operation: "state" })}
+            >
+              {t("browser.failure.checkState")}
+            </Button>
+          )}
+          <Button type="button" size="sm" variant="ghost" onClick={() => setError(null)}>
+            {t("common.close")}
+          </Button>
+        </div>
+      )}
+      {uninspectedUnknown.length > 0 && (
         <div className="preview-viewport-toolbar" role="status">
           {t("operations.browserRecovery")}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => onTool(uninspectedUnknown[0].id)}
+          >
+            {t("browser.failure.inspectAction")}
+          </Button>
         </div>
       )}
       {annotationBusy && !annotating && (
@@ -990,179 +1103,23 @@ export function Preview({
         </div>
       )}
       {detailsOpen && (
-        <div className="browser-details" aria-label="浏览器详情">
-          <div className="preview-viewport-toolbar">
-            <span>{t("settings.browserData.sharedShort")}</span>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setDetailsOpen(false)}>
-              关闭详情
-            </Button>
-          </div>
-          {state.url && (
-            <div className="preview-viewport-toolbar" role="group" aria-label="网页文件交接">
-              {state.browser?.control === "human" ? (
-                <>
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={
-                      !!state.browser?.downloadIntentExpiresAt || !!annotating || !!styleTrial
-                    }
-                    onClick={() =>
-                      void request({ operation: "allowNextDownload", userIntent: true })
-                    }
-                  >
-                    允许下一次下载
-                  </Button>
-                  {state.browser?.downloadIntentExpiresAt && (
-                    <>
-                      <span role="status">30 秒内在当前网页触发一次下载，随后选择保存位置。</span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => void request({ operation: "cancelFileHandoff" })}
-                      >
-                        取消下载许可
-                      </Button>
-                    </>
-                  )}
-                  <span>上传请在网页中使用文件选择控件；系统选择器取消后可继续操作。</span>
-                </>
-              ) : (
-                <span>直接操作页面可选择文件。</span>
-              )}
-            </div>
-          )}
-          {(state.workspace?.fileReceipts ?? []).length > 0 && (
-            <div
-              className="preview-viewport-toolbar preview-file-status"
-              role="list"
-              aria-label="网页下载状态"
-            >
-              {(state.workspace.fileReceipts as Data[]).map((receipt: Data) => (
-                <div role="listitem" key={receipt.id}>
-                  {receipt.name || "未命名下载"} · 页面 {receipt.pageOrigin || "未知"} · 发起者{" "}
-                  {receipt.initiator === "unknown" ? "未知" : receipt.initiator}
-                  {" · "}
-                  {receipt.source || "来源网址未知"}
-                  {" · "}
-                  {receipt.sizeBytes == null ? "大小未知" : `${receipt.sizeBytes} B`}
-                  {" · "}
-                  {(
-                    {
-                      choosing: "选择保存位置",
-                      downloading: "下载中",
-                      completed: "已完成",
-                      cancelled: "已取消",
-                      interrupted: "已中断",
-                      unknown: "结果待核对",
-                    } as Record<string, string>
-                  )[receipt.status] ?? "状态未知"}
-                  {receipt.target ? ` · 保存为 ${receipt.target}` : ""}
-                  {["choosing", "downloading", "interrupted"].includes(receipt.status) &&
-                    receipt.pageId === state.browser?.pageId &&
-                    state.browser?.control === "human" && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() =>
-                          void request({
-                            operation: "cancelDownload",
-                            downloadId: receipt.id,
-                            userIntent: true,
-                          })
-                        }
-                      >
-                        取消下载
-                      </Button>
-                    )}
-                </div>
-              ))}
-            </div>
-          )}
-          {state.url && state.browser?.control === "human" && (
-            <div className="preview-viewport-toolbar" role="group" aria-label="嵌入站点授权">
-              {state.browser.frameOriginGrant ? (
-                <>
-                  <span role="status">
-                    嵌入站点 {state.browser.frameOriginGrant.origin}{" "}
-                    {t("common.browser.manualFrame")}
-                  </span>
-                  {state.browser.frameOriginGrant.status === "pending" && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={!!annotating || !!styleTrial}
-                      onClick={() =>
-                        void request({ operation: "reloadFrameOrigin", userIntent: true })
-                      }
-                    >
-                      重载并应用嵌入授权
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={!!annotating || !!styleTrial}
-                    onClick={() =>
-                      void request({ operation: "revokeFrameOrigin", userIntent: true })
-                    }
-                  >
-                    撤销嵌入授权并关闭页面
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!!annotating || !!styleTrial || annotationBusy}
-                  onClick={() =>
-                    void request({ operation: "authorizeFrameOrigin", userIntent: true })
-                  }
-                >
-                  授权当前页面的嵌入站点
-                </Button>
-              )}
-            </div>
-          )}
-          {state.url && (
-            <div className="preview-viewport-toolbar" role="group" aria-label="页面标注">
-              <Button
-                ref={styleControl}
-                type="button"
-                size="sm"
-                disabled={
-                  annotationBusy ||
-                  styleBusy ||
-                  !!keyboardCapture ||
-                  !!styleTrial ||
-                  !!annotating ||
-                  state.browser?.control === "transferring"
-                }
-                onClick={(event) => void startStyleTrial(event.detail === 0)}
-              >
-                选择元素并试改
-              </Button>
-              <span>F6 返回应用；键盘选择使用截图坐标。</span>
-              <span
-                role="status"
-                aria-hidden={!annotationBusy || !!annotating}
-                style={{ visibility: annotationBusy && !annotating ? "visible" : "hidden" }}
-              >
-                在页面中点击要标注的元素；按 Esc 取消。
-              </span>
-            </div>
-          )}
-          {thread && (
-            <BrowserVerificationCard
-              thread={thread}
-              projectId={projectId}
-              action={action}
-              onReview={onReview}
-              onTool={onTool}
-              trialActive={(!!styleTrial && !styleTrial.cleared) || !!state.browser?.trialActive}
-            />
-          )}
-        </div>
+        <BrowserDetails
+          state={state}
+          annotating={annotating}
+          styleTrial={styleTrial}
+          annotationBusy={annotationBusy}
+          styleBusy={styleBusy}
+          keyboardCapture={keyboardCapture}
+          styleControl={styleControl}
+          startStyleTrial={startStyleTrial}
+          request={request}
+          thread={thread}
+          projectId={projectId}
+          action={action}
+          onReview={onReview}
+          onTool={onTool}
+          onClose={() => setDetailsOpen(false)}
+        />
       )}
       {styleTrial && (
         <BrowserStyleTrial
@@ -1178,35 +1135,104 @@ export function Preview({
           onCancel={() => void cancelStyleTrial()}
         />
       )}
-      {responsive && (
-        <div className="preview-viewport-toolbar">
-          <label>
-            宽度{" "}
-            <Input
-              unstyled
-              data-slot={undefined}
-              aria-label="预览宽度"
-              type="number"
-              min={240}
-              max={2560}
-              value={width}
-              onChange={(e) =>
-                setWidth(Math.min(2560, Math.max(240, Number(e.target.value) || 240)))
-              }
-            />{" "}
-            px
-          </label>
-          <Button variant="ghost" size="sm" onClick={() => setResponsive(false)}>
-            自适应
+      {viewport.mode === "device" && (
+        <div
+          className="preview-viewport-toolbar preview-device-controls"
+          role="group"
+          aria-label={t("browser.viewport.preset")}
+        >
+          <Select
+            value={
+              devicePresets.find(
+                (preset) => preset.width === viewport.width && preset.height === viewport.height,
+              )?.id ?? "custom"
+            }
+            disabled={
+              !!annotating || !!styleTrial || !!keyboardCapture || annotationBusy || styleBusy
+            }
+            onValueChange={(id) => {
+              const preset = devicePresets.find((preset) => preset.id === id);
+              if (preset)
+                void applyViewport({ mode: "device", width: preset.width, height: preset.height });
+            }}
+          >
+            <SelectTrigger aria-label={t("browser.viewport.preset")} size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {devicePresets.map((preset) => (
+                <SelectItem key={preset.id} value={preset.id}>
+                  {t(preset.labelMessage)} {preset.width} × {preset.height}
+                </SelectItem>
+              ))}
+              <SelectItem value="custom" disabled>
+                {t("browser.viewport.custom")}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          {(["width", "height"] as const).map((dimension) => (
+            <label key={dimension}>
+              {t(dimension === "width" ? "browser.viewport.width" : "browser.viewport.height")}
+              <Input
+                aria-label={t(
+                  dimension === "width" ? "browser.viewport.width" : "browser.viewport.height",
+                )}
+                type="number"
+                min={240}
+                max={2560}
+                value={viewportFields?.[dimension] ?? String(viewport[dimension])}
+                disabled={
+                  !!annotating || !!styleTrial || !!keyboardCapture || annotationBusy || styleBusy
+                }
+                onChange={(event) => {
+                  const previous =
+                    viewportEditRef.current?.owner === owner
+                      ? viewportEditRef.current
+                      : { owner, width: String(viewport.width), height: String(viewport.height) };
+                  const edit = {
+                    ...previous,
+                    [dimension]: event.target.value,
+                    phase: "editing" as const,
+                  };
+                  viewportEditRef.current = edit;
+                  setViewportEdit(edit);
+                }}
+                onBlur={() => {
+                  if (viewportEditRef.current) void applyViewport(deviceViewport());
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
+                }}
+              />
+            </label>
+          ))}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={
+              !!annotating || !!styleTrial || !!keyboardCapture || annotationBusy || styleBusy
+            }
+            onClick={() => {
+              const next = deviceViewport();
+              void applyViewport({ mode: "device", width: next.height, height: next.width });
+            }}
+          >
+            {t("browser.viewport.rotate")}
           </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => void applyViewport({ mode: "auto" })}
+          >
+            {t("browser.viewport.auto")}
+          </Button>
+          {viewportFields && <span role="status">{t("browser.viewport.pending")}</span>}
         </div>
       )}
       <div className="preview-stage">
-        <div
-          ref={box}
-          className="preview-webview"
-          style={responsive ? { width: `min(100%, ${width}px)`, flex: "none" } : undefined}
-        />
+        <div ref={box} className="preview-webview" />
         {keyboardCapture?.projectId === projectId && keyboardCapture.threadId === threadId && (
           <BrowserKeyboardElementPicker
             key={keyboardCapture.captureId}
@@ -1232,8 +1258,8 @@ export function Preview({
           <BrowserLoadErrorState
             errorMessage={failure}
             isCertificateError={false}
-            formatMessage={browserLabel}
-            onRetry={() => void request({ operation: "navigate", url })}
+            formatMessage={label}
+            onRetry={() => void request({ operation: "reload" })}
           />
         ) : !state.url ? (
           <BrowserEmptyState
@@ -1245,34 +1271,10 @@ export function Preview({
               currentUrl: "",
             }}
             isGuestStarting={false}
-            formatMessage={browserLabel}
+            formatMessage={label}
           />
         ) : null}
       </div>
     </div>
-  );
-}
-
-function browserLabel({ id }: { id: string }): string {
-  return (
-    (
-      {
-        "browser.back": "后退",
-        "browser.forward": "前进",
-        "browser.reload": "刷新预览",
-        "browser.stop": "停止加载",
-        "browser.addressPlaceholder": "输入网址，按 Enter 打开",
-        "browser.responsive.enter": "响应式预览",
-        "browser.responsive.exit": "退出响应式预览",
-        "browser.more": "浏览器更多操作",
-        "browser.openExternal": "在默认浏览器打开",
-        "browser.devtools": "开发者工具",
-        "browser.details": "浏览器详情",
-        "browser.title": "浏览器",
-        "browser.empty": "粘贴或输入网址，按 Enter 打开页面。",
-        "browser.loadError.title": "无法打开网页",
-        "browser.loadError.retry": "重试",
-      } as Record<string, string>
-    )[id] ?? id
   );
 }

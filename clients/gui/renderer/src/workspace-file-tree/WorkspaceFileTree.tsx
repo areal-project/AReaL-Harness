@@ -17,12 +17,22 @@ import {
 } from "../components/ui/dropdown-menu.js";
 import { WorkspaceFileIconDefinitions } from "./WorkspaceFileIcon.js";
 import { WorkspaceFileTreeRowView, type FileRow } from "./WorkspaceFileTreeRowView.js";
+import { workspaceDocumentOwner } from "../WorkspaceFilePane.js";
+import type { FileLocation } from "../state/useWorkspacePanels.js";
+import { useI18n } from "../i18n/IntlProvider.js";
 import type { Action } from "../services.js";
 type Entry = { name: string; dir: boolean };
 type Listing = { entries: Entry[]; truncated: boolean };
 const views = new Map<
   string,
-  { expanded: string[]; query: string; selected: string; changedOnly: boolean }
+  {
+    expanded: string[];
+    query: string;
+    selected: string;
+    changedOnly: boolean;
+    returnSearch?: { query: string; changedOnly: boolean };
+    revealRequest?: number;
+  }
 >();
 export function WorkspaceFileTree({
   projectId,
@@ -31,6 +41,7 @@ export function WorkspaceFileTree({
   onClose,
   onOpen,
   activePath,
+  location,
 }: {
   projectId: string;
   root: string;
@@ -38,8 +49,16 @@ export function WorkspaceFileTree({
   onClose: () => void;
   onOpen: (path: string) => void;
   activePath: string;
+  location?: FileLocation;
 }) {
-  const remembered = views.get(projectId);
+  const { t } = useI18n();
+  const owner = workspaceDocumentOwner(projectId, root);
+  const remembered = views.get(owner);
+  const [returnSearch, setReturnSearch] = useState<
+    { query: string; changedOnly: boolean } | undefined
+  >(remembered?.returnSearch);
+  const scrolledRequest = useRef<number | undefined>(undefined);
+  const internalOpen = useRef<string | undefined>(undefined);
   const [expanded, setExpanded] = useState(new Set(remembered?.expanded ?? []));
   const [query, setQuery] = useState(remembered?.query ?? "");
   const [selected, setSelected] = useState(activePath || remembered?.selected || "");
@@ -54,8 +73,15 @@ export function WorkspaceFileTree({
   const [revision, refresh] = useState(0);
   const tree = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    views.set(projectId, { expanded: [...expanded], query, selected, changedOnly });
-  }, [projectId, expanded, query, selected, changedOnly]);
+    views.set(owner, {
+      expanded: [...expanded],
+      query,
+      selected,
+      changedOnly,
+      returnSearch,
+      revealRequest: views.get(owner)?.revealRequest,
+    });
+  }, [owner, expanded, query, selected, changedOnly, returnSearch]);
   useEffect(() => {
     if (!activePath) return;
     setSelected(activePath);
@@ -66,6 +92,41 @@ export function WorkspaceFileTree({
       return next;
     });
   }, [activePath]);
+  useEffect(() => {
+    if (
+      !location ||
+      location.owner !== owner ||
+      views.get(owner)?.revealRequest === location.requestId
+    )
+      return;
+    const view = views.get(owner);
+    if (view) view.revealRequest = location.requestId;
+    if (internalOpen.current === location.path) {
+      internalOpen.current = undefined;
+      scrolledRequest.current = location.requestId;
+      return;
+    }
+    if (query || changedOnly) setReturnSearch((previous) => previous ?? { query, changedOnly });
+    setQuery("");
+    setChangedOnly(false);
+  }, [owner, location?.requestId]);
+  useEffect(() => {
+    if (
+      !location ||
+      location.owner !== owner ||
+      query ||
+      changedOnly ||
+      busy ||
+      scrolledRequest.current === location.requestId
+    )
+      return;
+    const row = tree.current?.querySelector<HTMLElement>(
+      `[data-file-path="${CSS.escape(location.path)}"]`,
+    );
+    if (!row) return;
+    row.scrollIntoView({ block: "nearest" });
+    scrolledRequest.current = location.requestId;
+  }, [owner, location, query, changedOnly, busy, directories]);
   const paths = JSON.stringify(["", ...expanded].sort());
   useEffect(() => {
     let alive = true;
@@ -192,7 +253,10 @@ export function WorkspaceFileTree({
   );
   const open = (path: string) => {
     setSelected(path);
-    if (statuses[path] !== "D") onOpen(path);
+    if (statuses[path] !== "D") {
+      internalOpen.current = path;
+      onOpen(path);
+    }
   };
   const keyDown = (event: KeyboardEvent<HTMLDivElement>, row: FileRow) => {
     if (event.key === "Enter") {
@@ -289,6 +353,19 @@ export function WorkspaceFileTree({
           </DropdownMenu>
         </div>
       </div>
+      {returnSearch && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setQuery(returnSearch.query);
+            setChangedOnly(returnSearch.changedOnly);
+            setReturnSearch(undefined);
+          }}
+        >
+          {t("resources.returnSearch")}
+        </Button>
+      )}
       <div
         ref={tree}
         role="tree"

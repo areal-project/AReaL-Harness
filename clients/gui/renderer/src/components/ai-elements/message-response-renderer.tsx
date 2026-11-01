@@ -26,7 +26,7 @@ import { createMathPlugin } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import { cn } from "../lib/utils.js";
 import { ControlHintTooltip } from "../../ControlHintTooltip.js";
-import { decodeFilePathUriEscapes, joinFilePath } from "../../lib/path.js";
+import { decodeFilePathUriEscapes, joinFilePath, markdownFileLocation } from "../../lib/path.js";
 import { Button } from "../ui/button.js";
 import { MessageCodeBlock } from "./message-code-block.js";
 import { useCodePreferences } from "../../settings/preferences.js";
@@ -48,6 +48,20 @@ import { parsePluginStableId } from "../../mentions/mentionMarkdown.js";
 function relativeFileLinks() {
   return (tree: { type?: string; url?: string; children?: any[] }) => {
     const visit = (node: typeof tree) => {
+      if (node.type === "link" && node.url && /^file:/i.test(node.url)) {
+        try {
+          const uri = new URL(node.url);
+          const path = decodeURIComponent(uri.pathname);
+          if (
+            uri.protocol === "file:" &&
+            (!uri.hostname || uri.hostname === "localhost") &&
+            !/%(?:2f|5c)/i.test(uri.pathname) &&
+            !path.includes("\0") &&
+            /\.html?$/i.test(path)
+          )
+            node.url = uri.pathname;
+        } catch {}
+      }
       if (
         (node.type === "link" || node.type === "image") &&
         node.url &&
@@ -120,7 +134,7 @@ export type MessageResponseProps = {
   streaming?: boolean;
   theme?: "light" | "dark";
   onOpenExternalUrl?: (url: string) => void;
-  onOpenFileLink?: (path: string) => void;
+  onOpenFileLink?: (path: string, line?: number) => void;
   onRenderImage?: (uri: string, alt: string) => ReactNode;
   /** A paragraph holding only one file link may become a file card; null keeps the link. */
   onRenderFileCard?: (path: string, label: string) => ReactNode;
@@ -151,11 +165,11 @@ export const MessageResponse = memo(function MessageResponse({
   // The caller still validates the exact blob URI and reads it through Core.
   const rehypePlugins = useMemo(
     () =>
-      onRenderImage || fileLinkBase || fileReferenceRoot
+      fileLinks || onRenderImage || fileLinkBase || fileReferenceRoot
         ? Object.entries(defaultRehypePlugins).flatMap(
             ([name, plugin]): (typeof defaultRehypePlugins)[string][] => {
               const before =
-                name === "harden" && (fileReferenceRoot || onRenderImage)
+                name === "harden" && (fileLinks || fileReferenceRoot || onRenderImage)
                   ? [preserveWorkspaceFilePaths]
                   : [];
               if (name === "harden" && fileLinkBase && Array.isArray(plugin))
@@ -179,7 +193,7 @@ export const MessageResponse = memo(function MessageResponse({
             },
           )
         : undefined,
-    [Boolean(onRenderImage), fileLinkBase, Boolean(fileReferenceRoot)],
+    [fileLinks, Boolean(onRenderImage), fileLinkBase, Boolean(fileReferenceRoot)],
   );
   const remarkPlugins = useMemo(
     () =>
@@ -228,8 +242,10 @@ export const MessageResponse = memo(function MessageResponse({
             title={fileReference ? undefined : href}
             onClick={() => {
               if (/^https?:\/\//i.test(href ?? "")) callbacks.current.onOpenExternalUrl?.(href!);
-              else if (href && !/^[\w+.-]+:/.test(href))
-                callbacks.current.onOpenFileLink?.(originalPath ?? href);
+              else if (href && !/^[\w+.-]+:/.test(href)) {
+                const location = markdownFileLocation(originalPath ?? href);
+                callbacks.current.onOpenFileLink?.(location.path, location.line);
+              }
             }}
           >
             {fileReference && (

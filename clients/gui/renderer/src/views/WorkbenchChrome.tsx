@@ -273,6 +273,7 @@ export function ConversationHeader({
           <>
             {thread && project && !empty && (
               <TaskResourcesPopover
+                fileOpen={session.contextualFileOpen}
                 key={panelOwner}
                 onLink={onLink}
                 onAddSource={() =>

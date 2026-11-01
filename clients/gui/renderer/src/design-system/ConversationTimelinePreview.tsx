@@ -6,6 +6,8 @@ import { CodeViewer } from "../components/ui/code-viewer.js";
 import { DiffViewer } from "../components/ui/diff-viewer.js";
 import { CloseIcon, StopIcon } from "../interfaceIcons.js";
 import { Messages } from "../Messages.js";
+import { requestTurnStart, readingViews } from "../readingViews.js";
+import { setPendingMessage } from "../pendingMessage.js";
 import { Button } from "../components/ui/button.js";
 import type { Action, Data } from "../services.js";
 import sampleImage from "../assets/codex-fork-mask.png";
@@ -279,10 +281,40 @@ function ActivityReadingPreview({ dark }: { dark: boolean }) {
   };
   const turn = {
     id: "reading-turn",
-    status: "inProgress",
+    status: ["paused", "recovery"].includes(state)
+      ? "interrupted"
+      : ["recovered", "exhausted", "otherFailure"].includes(state)
+        ? "failed"
+        : "inProgress",
+    interruption:
+      state === "paused" ? "userPause" : state === "recovery" ? "coreRecovery" : undefined,
+    trace: {
+      activities: [
+        { id: "first", logicalId: "logical", kind: "model", status: "failed" },
+        {
+          id: "wait",
+          logicalId: "logical",
+          kind: "retryWait",
+          status: state === "waiting" ? "running" : "completed",
+          retryDelayMs: 2000,
+        },
+        ...(state === "waiting"
+          ? []
+          : [
+              {
+                id: "second",
+                logicalId: "logical",
+                kind: "model",
+                status: state === "recovered" ? "completed" : "failed",
+                retryDisposition: state === "exhausted" ? "exhausted" : undefined,
+              },
+            ]),
+      ].filter(() => ["waiting", "recovered", "exhausted", "otherFailure"].includes(state)),
+    },
     items: [
       {
         id: "reading-user",
+        createdAt: 1793422800,
         type: "userMessage",
         content: [{ type: "text", text: "展开执行详情并继续阅读。" }],
       },
@@ -313,6 +345,7 @@ function ActivityReadingPreview({ dark }: { dark: boolean }) {
         ? [
             {
               id: "reading-output",
+              createdAt: 1793422801,
               type: "agentMessage",
               phase: "commentary",
               text:
@@ -326,6 +359,22 @@ function ActivityReadingPreview({ dark }: { dark: boolean }) {
   };
   const thread = {
     id: "reading-preview",
+    desktop: {
+      modelChanges: [
+        {
+          revision: 2,
+          occurredAt: 1793422798,
+          from: { providerId: null, modelId: "default" },
+          to: { providerId: "provider", modelId: "model-b" },
+        },
+        {
+          revision: 3,
+          occurredAt: 1793422799,
+          from: { providerId: "provider", modelId: "model-b" },
+          to: { providerId: "provider", modelId: "model-c" },
+        },
+      ],
+    },
     turns: [
       {
         id: "reading-history",
@@ -390,10 +439,23 @@ function ActivityReadingPreview({ dark }: { dark: boolean }) {
             <option value="running">运行中</option>
             <option value="input">等待输入</option>
             <option value="retry">模型重试</option>
+            <option value="waiting">重试等待事实</option>
+            <option value="recovered">重试恢复后其他请求失败</option>
+            <option value="exhausted">重试耗尽</option>
+            <option value="otherFailure">其他原因停止重试</option>
+            <option value="paused">用户暂停</option>
+            <option value="recovery">Core 恢复中断</option>
             <option value="disconnected">连接中断</option>
           </select>
         </label>
-        <Button variant="outline" disabled={accepted} onClick={() => setAccepted(true)}>
+        <Button
+          variant="outline"
+          disabled={accepted}
+          onClick={() => {
+            requestTurnStart(project.id, thread.id, thread.turns.at(-1)?.id);
+            setAccepted(true);
+          }}
+        >
           接受新轮次
         </Button>
         <Button
@@ -413,6 +475,148 @@ function ActivityReadingPreview({ dark }: { dark: boolean }) {
         onFile={() => {}}
         onReview={() => {}}
       />
+    </section>
+  );
+}
+
+function FirstTurnReadingPreview({ dark }: { dark: boolean }) {
+  const [scenario, setScenario] = useState("mounted");
+  const [revision, setRevision] = useState(0);
+  const [started, setStarted] = useState(false);
+  const [accepted, setAccepted] = useState(false);
+  const [output, setOutput] = useState(0);
+  const projectId = "first-turn-project";
+  const threadId = `first-turn-${scenario}-${revision}`;
+  const key = `areal-gui:draft:${projectId}:${threadId}`;
+  const historyTurn = {
+    id: "history-turn",
+    status: "completed",
+    items: [
+      {
+        id: "history-user",
+        type: "userMessage",
+        content: [{ type: "text", text: "上一轮用户消息。" }],
+      },
+      {
+        id: "history-answer",
+        type: "agentMessage",
+        phase: "final_answer",
+        text: "此前的回复保留完整阅读空间。\n\n".repeat(50),
+      },
+    ],
+  };
+  const turn = {
+    id: "accepted-turn",
+    status: scenario === "cold" ? "completed" : "inProgress",
+    items: [
+      {
+        id: "accepted-user",
+        type: "userMessage",
+        content: [{ type: "text", text: "首轮发送锚点验收。" }],
+      },
+      ...(output
+        ? [
+            {
+              id: "accepted-output",
+              type: "agentMessage",
+              phase: "commentary",
+              text: "后续输出继续增加，用户可以选择自己的阅读位置。\n\n".repeat(output * 20),
+            },
+          ]
+        : []),
+    ],
+  };
+  const thread = {
+    id: threadId,
+    turns: [...(scenario === "history" ? [historyTurn] : []), ...(accepted ? [turn] : [])],
+  };
+  const project = {
+    id: projectId,
+    root: "/preview",
+    configurations: {},
+    pending: [],
+    state: { connected: true, threads: {}, interactions: {}, queues: {} },
+  };
+  const begin = () => {
+    requestTurnStart(projectId, threadId, thread.turns.at(-1)?.id);
+    setPendingMessage(key, {
+      text: "首轮发送锚点验收。",
+      files: [],
+      previousUserIds: scenario === "history" ? ["history-user"] : [],
+    });
+    setStarted(true);
+  };
+  return (
+    <section
+      id="first-turn-reading-preview"
+      className="design-preview-panel design-preview-messages"
+      aria-label="首次发送阅读顺序预览"
+    >
+      <div className="design-preview-actions">
+        <label>
+          发送顺序
+          <select
+            aria-label="发送顺序"
+            value={scenario}
+            onChange={(event) => {
+              setPendingMessage(key);
+              readingViews.delete(JSON.stringify([projectId, threadId, false]));
+              setScenario(event.target.value);
+              setRevision((value) => value + 1);
+              setStarted(false);
+              setAccepted(event.target.value === "cold");
+              setOutput(event.target.value === "cold" ? 4 : 0);
+            }}
+          >
+            <option value="mounted">空线程先挂载</option>
+            <option value="before-mount">受理先于挂载</option>
+            <option value="unknown">UNKNOWN 后快照到达</option>
+            <option value="history">回看后主动发送</option>
+            <option value="cold">冷打开历史</option>
+          </select>
+        </label>
+        <Button variant="outline" disabled={started || accepted} onClick={begin}>
+          开始发送
+        </Button>
+        <Button
+          variant="outline"
+          disabled={!started || accepted}
+          onClick={() => setPendingMessage(key)}
+        >
+          响应丢失
+        </Button>
+        <Button
+          variant="outline"
+          disabled={accepted}
+          onClick={() => {
+            if (!started && scenario !== "mounted") begin();
+            setPendingMessage(key);
+            setAccepted(true);
+          }}
+        >
+          收到用户消息
+        </Button>
+        <Button
+          variant="outline"
+          disabled={!accepted}
+          onClick={() => window.setTimeout(() => setOutput((value) => value + 1), 120)}
+        >
+          追加长输出
+        </Button>
+      </div>
+      {(scenario !== "before-mount" || accepted) && (
+        <Messages
+          key={threadId}
+          project={project}
+          thread={thread}
+          action={action}
+          dark={dark}
+          readTurnReview={readReview}
+          onLink={() => {}}
+          onFile={() => {}}
+          onReview={() => {}}
+        />
+      )}
     </section>
   );
 }
@@ -638,6 +842,7 @@ export function ConversationTimelinePreview({ dark }: { dark: boolean }) {
       </section>
       <DisclosureUpdatePreview dark={dark} />
       <ActivityReadingPreview dark={dark} />
+      <FirstTurnReadingPreview dark={dark} />
     </>
   );
 }

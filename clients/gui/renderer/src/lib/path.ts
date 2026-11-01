@@ -45,6 +45,8 @@ export function decodeFilePathUriEscapes(path: string): string {
     // markdown/tool 输出里的本地文件路径可能已经按 URI 编码，
     // 例如 workspace 名里的空格会变成 %20。这里用 decodeURI 只还原路径文本，
     // 保留 %2F 这类分隔符转义，避免把文件名内容误拆成新的路径层级。
+    const decoded = decodeURIComponent(path);
+    if (/\.html?$/i.test(decoded)) return /%(?:2f|5c)/i.test(path) ? path : decoded;
     return decodeURI(path);
   } catch {
     return path;
@@ -89,4 +91,13 @@ export function toFileUrl(path: string): string {
   }
 
   return encodeUriPathForFileUrl(normalizedPath);
+}
+
+export function markdownFileLocation(reference: string): { path: string; line?: number } {
+  const match = /^(.*?)(?:#L(\d+)(?:-L?\d+)?|:(\d+)(?::\d+)?)$/.exec(reference);
+  const line = match ? Number(match[2] ?? match[3]) : undefined;
+  return {
+    path: decodeFilePathUriEscapes(match?.[1] ?? reference).replace(/^(?:\.\/)+/, ""),
+    line: line && Number.isSafeInteger(line) && line > 0 ? line : undefined,
+  };
 }

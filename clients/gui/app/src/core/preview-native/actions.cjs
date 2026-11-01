@@ -144,8 +144,10 @@ class ApprovedActions {
           throw new Error("target_unavailable");
       }
       const semantics =
-        !local && target && requestedAction
-          ? await this.native_targets.publicActionSemantics(page, c, target, requestedAction)
+        target && requestedAction
+          ? local
+            ? await this.native_targets.linkNavigationSemantics(page, c, target, requestedAction)
+            : await this.native_targets.publicActionSemantics(page, c, target, requestedAction)
           : null;
       const viewport = readiness
         ? null
@@ -450,15 +452,22 @@ class ApprovedActions {
         let navigationIntent = null;
         if (saved.plan.target?.semantics) {
           if (!nativeTarget) throw new Error("plan_stale");
-          const semantics = await this.native_targets.publicActionSemantics(
-            page,
-            c,
-            nativeTarget,
-            request.parameters.action,
-          );
+          const semantics = await (saved.plan.localDevelopment
+            ? this.native_targets.linkNavigationSemantics(
+                page,
+                c,
+                nativeTarget,
+                request.parameters.action,
+              )
+            : this.native_targets.publicActionSemantics(
+                page,
+                c,
+                nativeTarget,
+                request.parameters.action,
+              ));
           if (!isDeepStrictEqual(semantics, saved.plan.target.semantics))
             throw new Error("plan_stale");
-          if (semantics.kind === "public_search" || semantics.kind === "link_navigation")
+          if (semantics?.kind === "public_search" || semantics?.kind === "link_navigation")
             navigationIntent = semantics;
         }
         // If the native page still owns local keyboard focus, do not dispatch.
@@ -523,6 +532,7 @@ class ApprovedActions {
         await Promise.race([
           (async () => {
             live();
+            if (navigationIntent) page.document?.revoke();
             page.approvedActionNavigation = navigationIntent
               ? {
                   ...navigationIntent,

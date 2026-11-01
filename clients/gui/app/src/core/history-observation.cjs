@@ -1,13 +1,11 @@
 // @ts-check
 "use strict";
-const { mergeHistory, historyGaps } = require("./history-projection.cjs");
+const { historyCommand } = require("./history-navigation.cjs");
+const { mergeHistory, historyGaps, pageTopology } = require("./history-projection.cjs");
 const { randomUUID } = require("node:crypto");
 const {
   readObservationResult,
   readHistoryPage,
-  readHistoryFragmentPage,
-  readHistoryEntry,
-  isDeferredItem,
   isHistoryNotification,
   historyFailure,
 } = require("./history-contract.cjs");
@@ -31,7 +29,7 @@ const historyPageBytes = 256 * 1024,
   historyMaxBytes = 1024 * 1024;
 const historyViewLimit = 8,
   historyPageLimit = 4,
-  historyItemBytes = 128 * 1024 * 1024;
+  historyTopologyBytes = 64 * 1024;
 /** @param {unknown} error */
 const historyReason = (error) =>
   modelRecord(error)
@@ -350,7 +348,6 @@ class HistoryObservation {
   publishHistory(project, window, thread = project.model.state.threads[window.threadId], metadata) {
     if (this.historyWindow(project, window.threadId) !== window) return;
     if (!thread) return;
-    // 会话内容与历史边界一次发布：中间态缺少 displayHistory 会让渲染端以为不再支持分页而释放视图。
     project.model.replace(
       {
         ...thread,
@@ -367,6 +364,15 @@ class HistoryObservation {
           loadingItems: Object.fromEntries(window.loading),
           baselineFirstItemId: window.baselineFirstItemId,
           viewGeneration: window.viewGeneration,
+          restoringItems: window.stalePages.flatMap((page) =>
+            page.data.map((entry) => entry.sourceItemId),
+          ),
+          pageTopology: window.pageRecords
+            .filter((record) => record.items.length)
+            .map((record) => ({
+              id: record.id,
+              items: record.items,
+            })),
         },
       },
       metadata,
@@ -485,6 +491,17 @@ class HistoryObservation {
         threadId: thread.id,
         ...result.history,
         views: previous?.views ?? new Set(),
+        targets: new Map(previous?.targets),
+        stalePages:
+          previous && !previous.invalidated
+            ? [...previous.pages, ...previous.stalePages]
+                .map((page) => ({
+                  ...page,
+                  data: page.data.filter((entry) => !seen.has(entry.sourceItemId)),
+                }))
+                .filter((page) => page.data.length && this.pinnedPage(previous, page))
+                .slice(0, historyPageLimit)
+            : [],
         viewGeneration: randomUUID(),
         client,
         generation: project.connectionGeneration,
@@ -509,12 +526,24 @@ class HistoryObservation {
         baselineComplete: result.history.complete,
         baselineFirstItemId: thread.turns?.flatMap((turn) => turn.items ?? [])[0]?.id,
       };
+      const previousOrder = new Map(
+        (previousThread?.turns ?? [])
+          .flatMap((turn) => turn.items ?? [])
+          .map((item, index) => [item.id, index]),
+      );
       this.historyWindows.delete(key);
       this.historyWindows.set(key, window);
       this.publishHistory(
         project,
         window,
         mergeHistory(observed, [
+          ...window.stalePages
+            .flatMap((page) => page.data)
+            .sort(
+              (a, b) =>
+                (previousOrder.get(a.sourceItemId) ?? -1) -
+                (previousOrder.get(b.sourceItemId) ?? -1),
+            ),
           ...retained,
           ...(latestTurn
             ? prefix.map((item) => ({
@@ -710,299 +739,272 @@ class HistoryObservation {
     return page;
   }
 
-  /** @param {import('./project-state.cjs').CoreProject} project @param {import('@areal/workbench/desktop-contract').HistoryRequest} request @returns {Promise<unknown>} */
-  async historyCommand(project, request) {
-    const { threadId, viewId, operation } = request;
-    let window = this.historyWindow(project, threadId);
-    if (operation === "release") {
-      if (!window) return { released: true };
-      const released = window;
-      window.views.delete(viewId);
-      if (!window.views.size) {
-        window.epoch++;
-        const drop = new Set(
-          window.pages.flatMap((page) => page.data.map((entry) => entry.sourceItemId)),
-        );
-        const thread = project.model.state.threads[threadId];
-        if (thread)
-          project.model.replace({
-            ...thread,
-            turns: (thread.turns ?? [])
-              .map((turn) => ({
-                ...turn,
-                items: (turn.items ?? [])
-                  .filter((item) => !drop.has(item.id))
-                  .map((item) => released.loaded.get(item.id)?.placeholder ?? item),
-              }))
-              .filter((turn) => turn.items.length || turn.status === "inProgress"),
-          });
-        window.pages = [];
-        window.pageRecords = [];
-        window.loaded.clear();
-        window.loading.clear();
-        window.olderRead = null;
-        window.latestTurn.read = null;
-        window.displayed = undefined;
-        window.nextCursor = window.baselineCursor;
-        window.complete = window.baselineComplete;
-        window.omitted = false;
-        this.publishHistory(project, window);
+  /** @param {import('./history-state.cjs').HistoryWindow} window @param {import('./history-contract.cjs').HistoryPage} page */
+  pinnedPage(window, page) {
+    return [...window.targets.values()].some(
+      ({ anchor }) =>
+        anchor &&
+        page.data.some(
+          (entry) => entry.sourceTurnId === anchor.turnId && entry.sourceItemId === anchor.itemId,
+        ),
+    );
+  }
+
+  /** @param {import('./project-state.cjs').CoreProject} project @param {import('./history-state.cjs').HistoryWindow} window @param {import('./history-state.cjs').Anchor} [missing] */
+  pruneReadingSnapshots(project, window, missing) {
+    const previous = window.stalePages;
+    const retained = previous
+      .map((page) => ({
+        ...page,
+        data: page.data.filter(
+          (entry) =>
+            !missing ||
+            entry.sourceTurnId !== missing.turnId ||
+            entry.sourceItemId !== missing.itemId,
+        ),
+      }))
+      .filter((page) => page.data.length && this.pinnedPage(window, page));
+    const kept = new Set(retained.flatMap((page) => page.data.map((entry) => entry.sourceItemId)));
+    if (previous.every((page) => page.data.every((entry) => kept.has(entry.sourceItemId)))) return;
+    const authoritative = new Set(
+      window.pages.flatMap((page) => page.data.map((entry) => entry.sourceItemId)),
+    );
+    const removed = new Set(
+      previous
+        .flatMap((page) => page.data.map((entry) => entry.sourceItemId))
+        .filter((id) => !kept.has(id) && !authoritative.has(id)),
+    );
+    window.stalePages = retained;
+    for (const id of removed) window.loaded.delete(id);
+    const thread = project.model.state.threads[window.threadId];
+    this.publishHistory(project, window, {
+      ...thread,
+      turns: (thread.turns ?? []).map((turn) => ({
+        ...turn,
+        items: (turn.items ?? []).filter((item) => !removed.has(item.id)),
+      })),
+    });
+  }
+
+  /** @param {import('./project-state.cjs').CoreProject} project @param {import('./history-state.cjs').HistoryWindow} window @param {import('./history-state.cjs').HistoryWindow['pages']} input @param {import('./history-state.cjs').PageRecord[]} incoming @param {string|null} startCursor */
+  cacheHistoryPages(project, window, input, incoming, startCursor) {
+    const records = [...window.pageRecords];
+    for (const record of incoming) {
+      const index = records.findIndex((current) => current.cursor === record.cursor);
+      if (index < 0) records.push(record);
+      else records[index] = { ...record, id: records[index].id };
+    }
+    const added = input.map((page) => ({
+      ...page,
+      pageId:
+        records.find(
+          (record) => record.cursor === incoming.find((entry) => entry.id === page.pageId)?.cursor,
+        )?.id ?? page.pageId,
+    }));
+    const target = added.at(-1)?.pageId;
+    const replaced = new Set(added.flatMap((page) => page.data.map((entry) => entry.sourceItemId)));
+    const stale = window.stalePages
+      .map((page) => ({
+        ...page,
+        data: page.data.filter((entry) => !replaced.has(entry.sourceItemId)),
+      }))
+      .filter((page) => page.data.length && this.pinnedPage(window, page));
+    const pages = [
+      ...window.pages.filter((page) => !added.some((next) => next.pageId === page.pageId)),
+      ...added,
+    ];
+    const position = (/** @type {string} */ id) => records.findIndex((record) => record.id === id);
+    const targetIndex = target ? position(target) : -1;
+    while (pages.length + stale.length > historyPageLimit) {
+      const victim = pages
+        .filter((page) => page.pageId !== target && !this.pinnedPage(window, page))
+        .sort(
+          (a, b) =>
+            Math.abs(position(b.pageId) - targetIndex) - Math.abs(position(a.pageId) - targetIndex),
+        )[0];
+      if (!victim) return false;
+      pages.splice(pages.indexOf(victim), 1);
+    }
+    const baseline = project.model.state.threads[window.threadId];
+    const removed = new Set(
+      [...window.pages, ...window.stalePages].flatMap((page) =>
+        page.data.map((entry) => entry.sourceItemId),
+      ),
+    );
+    const shown = new Map(
+      (baseline.turns ?? []).flatMap((turn) => (turn.items ?? []).map((item) => [item.id, item])),
+    );
+    const staleIds = new Set(
+      window.stalePages.flatMap((page) => page.data.map((entry) => entry.sourceItemId)),
+    );
+    let thread = {
+      ...baseline,
+      turns: (baseline.turns ?? [])
+        .map((turn) => ({
+          ...turn,
+          items: (turn.items ?? []).filter((item) => !removed.has(item.id)),
+        }))
+        .filter((turn) => turn.items.length || turn.status === "inProgress"),
+    };
+    pages.sort((a, b) => position(a.pageId) - position(b.pageId));
+    const entries = [...pages].reverse().flatMap((page) => page.data);
+    const oldOrder = (baseline.turns ?? [])
+      .flatMap((turn) => turn.items ?? [])
+      .map((item) => item.id);
+    const snapshots = stale
+      .flatMap((page) => page.data)
+      .sort((a, b) => oldOrder.indexOf(a.sourceItemId) - oldOrder.indexOf(b.sourceItemId));
+    for (const entry of snapshots) {
+      const index = oldOrder.indexOf(entry.sourceItemId);
+      const next = entries.findIndex((current) => oldOrder.indexOf(current.sourceItemId) > index);
+      const previous = entries.findLastIndex((current) => {
+        const position = oldOrder.indexOf(current.sourceItemId);
+        return position >= 0 && position < index;
+      });
+      entries.splice(next >= 0 ? next : previous + 1, 0, entry);
+    }
+    thread = mergeHistory(
+      thread,
+      entries.map((entry) => ({
+        ...entry,
+        item: staleIds.has(entry.sourceItemId)
+          ? entry.item
+          : (shown.get(entry.sourceItemId) ?? entry.item),
+      })),
+    );
+    const retained = new Set(
+      [...pages, ...stale].flatMap((page) => page.data.map((entry) => entry.sourceItemId)),
+    );
+    for (const id of removed) if (!retained.has(id)) window.loaded.delete(id);
+    window.pages = pages;
+    window.stalePages = stale;
+    const resident = new Set(pages.map((page) => page.pageId));
+    const pinned = new Set(
+      pages.filter((page) => this.pinnedPage(window, page)).map((page) => page.pageId),
+    );
+    let bytes = 2;
+    const topology = new Set();
+    for (const record of [...records].sort(
+      (a, b) =>
+        Number(pinned.has(b.id)) - Number(pinned.has(a.id)) ||
+        Number(resident.has(b.id)) - Number(resident.has(a.id)) ||
+        Math.abs(position(a.id) - targetIndex) - Math.abs(position(b.id) - targetIndex),
+    )) {
+      const size = Buffer.byteLength(JSON.stringify({ id: record.id, items: record.items })) + 1;
+      if (record.items.length && bytes + size <= historyTopologyBytes) {
+        bytes += size;
+        topology.add(record.id);
       }
-      return { released: true };
     }
-    if (!this.supportsBoundedHistory(project.client))
-      return { supported: false, message: "当前 Core 使用完整历史读取，不支持分页；请更新 Core。" };
-    if (!window) {
-      await this.openThread(project, threadId);
-      window = this.historyWindow(project, threadId);
+    window.pageRecords = records.map((record) =>
+      topology.has(record.id) ? record : { ...record, items: [] },
+    );
+    if (startCursor && window.nextCursor === startCursor) {
+      const last = added.at(-1);
+      if (last) {
+        window.nextCursor = last.nextCursor;
+        window.complete = last.complete;
+      }
     }
-    if (!window) throw historyFailure("历史视图尚未就绪，请重新打开聊天。");
-    if (operation === "acquire") {
-      window.views.add(viewId);
-      await this.hydrateLatest(project, window);
-      return { supported: true, complete: window.complete };
-    }
-    if (!window.views.has(viewId)) throw historyFailure("历史视图已关闭，请重新打开聊天。");
-    if (operation === "loadOlder" && window.invalidated) {
-      await this.refreshHistory(project, window);
-      window = this.historyWindow(project, threadId);
-      if (!window?.views.has(viewId)) throw historyFailure("历史视图已关闭，请重新打开聊天。");
-    }
-    const client = project.client,
-      epoch = window.epoch;
-    if (!client) throw historyFailure("会话连接尚未就绪。");
+    window.omitted = records.length > pages.length;
+    this.publishHistory(project, window, thread);
+    return true;
+  }
+
+  /** @param {import('./project-state.cjs').CoreProject} project @param {import('./history-state.cjs').HistoryWindow} window @param {string} viewId @param {number} revision @param {import('./history-state.cjs').Anchor} anchor @returns {Promise<import('@areal/workbench/desktop-contract/conversation').AnchorResult>} */
+  async ensureAnchor(project, window, viewId, revision, anchor) {
+    const intent = window.targets.get(viewId);
+    const { client, generation, epoch, threadId } = window;
     const current = () =>
       this.host.currentConnection(project, client) &&
+      project.connectionGeneration === generation &&
       this.historyWindow(project, threadId) === window &&
+      !window.invalidated &&
       window.epoch === epoch &&
-      window.views.has(viewId);
-    /** @param {string|null} cursor @param {number} [maxBytes] */
-    const read = (cursor, maxBytes = historyPageBytes) =>
-      client.request(
-        "areal/conversation/history",
-        { threadId, view: "own", cursor, maxBytes },
-        { decode: readHistoryPage, maxResponseBytes: maxBytes },
-      );
-    if (operation === "loadOlder") {
-      await this.hydrateLatest(project, window);
-      if (!current()) throw historyFailure("历史视图已变化，请重新加载。");
-      if (window.olderRead) return window.olderRead;
-      const oldest = Math.max(
-        -1,
-        ...window.pages.map((page) =>
-          window.pageRecords.findIndex((record) => record.id === page.pageId),
-        ),
-      );
-      const revisit = request.pageId
-        ? window.pageRecords.find((record) => record.id === request.pageId)
-        : window.pageRecords[oldest + 1];
-      if (request.pageId && !revisit) throw historyFailure("历史占位已变化，请重新加载。");
-      if (!revisit && !window.nextCursor) return { data: [], complete: true, nextCursor: null };
-      const cursor = revisit?.cursor ?? window.nextCursor;
-      if (!cursor) throw historyFailure("历史游标不可用，请重新加载。");
-      const loading = Promise.resolve().then(async () => {
-        try {
-          const page = await read(cursor);
-          if (!current()) throw historyFailure("历史视图已变化，请重新加载。");
-          this.validateHistoryPage(window, page, cursor);
-          const record = revisit ?? { id: randomUUID(), cursor };
-          if (!revisit) {
-            window.pageRecords.push(record);
-            window.nextCursor = page.nextCursor;
-            window.complete = page.complete;
-          }
-          const removed = new Set(
-            window.pages.flatMap((cached) => cached.data.map((entry) => entry.sourceItemId)),
-          );
-          const baseline = project.model.state.threads[threadId];
-          const shown = new Map(
-            (baseline.turns ?? []).flatMap((turn) =>
-              (turn.items ?? []).map((item) => [item.id, item]),
-            ),
-          );
-          let thread = {
-            ...baseline,
-            turns: (baseline.turns ?? [])
-              .map((turn) => ({
-                ...turn,
-                items: (turn.items ?? []).filter((item) => !removed.has(item.id)),
-              }))
-              .filter((turn) => turn.items.length || turn.status === "inProgress"),
-          };
-          window.pages = [
-            ...window.pages.filter((cached) => cached.pageId !== record.id),
-            { ...page, pageId: record.id },
-          ];
-          const target = window.pageRecords.indexOf(record);
-          if (window.pages.length > historyPageLimit) {
-            const evicted = [...window.pages].sort(
-              (a, b) =>
-                Math.abs(window.pageRecords.findIndex((entry) => entry.id === b.pageId) - target) -
-                Math.abs(window.pageRecords.findIndex((entry) => entry.id === a.pageId) - target),
-            )[0];
-            window.pages = window.pages.filter((cached) => cached !== evicted);
-            for (const entry of evicted.data) window.loaded.delete(entry.sourceItemId);
-          }
-          window.pages.sort(
-            (a, b) =>
-              window.pageRecords.findIndex((entry) => entry.id === a.pageId) -
-              window.pageRecords.findIndex((entry) => entry.id === b.pageId),
-          );
-          for (const cached of window.pages) {
-            thread = mergeHistory(
-              thread,
-              cached.data.map((entry) => ({
-                ...entry,
-                item: shown.get(entry.sourceItemId) ?? entry.item,
-              })),
-            );
-          }
-          window.omitted = window.pageRecords.length > window.pages.length;
-          this.publishHistory(project, window, thread);
-          return page;
-        } catch (error) {
-          if (current() && historyReason(error) === "HISTORY_CURSOR_STALE")
-            await this.refreshHistory(project, window);
-          throw error;
-        } finally {
-          if (window.olderRead === loading) {
-            window.olderRead = null;
-            this.publishHistory(project, window);
-          }
-        }
-      });
-      window.olderRead = loading;
-      this.publishHistory(project, window);
-      return loading;
-    }
-    if (operation !== "loadItem") throw historyFailure("不支持的历史读取操作。");
-    const placeholder = project.model.state.threads[threadId]?.turns
-      ?.flatMap((turn) => turn.items ?? [])
-      .find((item) => item.id === request.itemId);
-    if (!isDeferredItem(placeholder)) return { loaded: true, itemId: request.itemId };
-    if (window.loading.has(placeholder.id)) throw historyFailure("此内容正在加载。");
-    let cursor = placeholder.cursor,
-      version = /** @type {string|undefined} */ (placeholder.version),
-      totalBytes = placeholder.totalBytes,
-      offset = 0,
-      chunks = [],
-      restarted = false;
-    const reserved = () =>
-      [...this.historyWindows.values()].reduce(
-        (sum, view) =>
-          sum +
-          [...view.loaded.values()].reduce((n, item) => n + item.bytes, 0) +
-          [...view.loading.entries()].reduce(
-            (n, [id, item]) => n + (view === window && id === placeholder.id ? 0 : item.totalBytes),
-            0,
-          ),
-        0,
-      );
-    const reserve = () => {
-      if (
-        !Number.isSafeInteger(totalBytes) ||
-        totalBytes < 1 ||
-        totalBytes + reserved() > historyItemBytes
-      )
-        throw historyFailure("完整内容超过当前 128 MiB 阅读缓存，请关闭其他已加载内容后重试。");
-      window.loading.set(placeholder.id, { bytes: offset, totalBytes });
-      this.publishHistory(project, window);
+      window.views.has(viewId) &&
+      window.targets.get(viewId) === intent;
+    const base = {
+      supported: /** @type {const} */ (true),
+      revision,
+      viewGeneration: window.viewGeneration,
     };
-    reserve();
+    const matches = (/** @type {import('./history-contract.cjs').HistoryEntry} */ entry) =>
+      entry.sourceTurnId === anchor.turnId && entry.sourceItemId === anchor.itemId;
     try {
-      while (true) {
-        if (!current()) throw historyFailure("历史视图已关闭或变化。");
-        let page;
-        try {
-          page = await client.request(
-            "areal/conversation/history",
-            { threadId, view: "own", cursor, maxBytes: historyMaxBytes },
-            { decode: readHistoryFragmentPage, maxResponseBytes: historyMaxBytes },
-          );
-        } catch (error) {
-          if (
-            historyReason(error) === "HISTORY_ITEM_CHANGED" &&
-            modelRecord(error) &&
-            modelRecord(error.data) &&
-            typeof error.data.restartCursor === "string" &&
-            !restarted
-          ) {
-            cursor = error.data.restartCursor;
-            offset = 0;
-            chunks = [];
-            version = undefined;
-            restarted = true;
-            continue;
-          }
-          if (current() && historyReason(error) === "HISTORY_CURSOR_STALE")
-            await this.refreshHistory(project, window);
-          throw error;
+      if (!current()) return { ...base, kind: "cancelled" };
+      await this.hydrateLatest(project, window);
+      if (!current()) return { ...base, kind: "cancelled" };
+      const shown = project.model.state.threads[threadId]?.turns
+        ?.find((turn) => turn.id === anchor.turnId)
+        ?.items?.find((item) => item.id === anchor.itemId);
+      const stale = window.stalePages.some((page) => page.data.some(matches));
+      if (shown && !stale)
+        return shown.type === "historyDeferred"
+          ? { ...base, kind: "limited", reason: "deferred" }
+          : { ...base, kind: "ready" };
+      const known = window.pageRecords.find((record) =>
+        record.items.some((item) => item.turnId === anchor.turnId && item.itemId === anchor.itemId),
+      );
+      // 拓扑被裁剪不代表目标不存在；从第一个未知缺口回读，仍遵守本次扫描预算。
+      let cursor =
+        known?.cursor ??
+        window.pageRecords.find((record) => !record.items.length)?.cursor ??
+        window.nextCursor;
+      const startCursor = cursor;
+      /** @type {import('./history-state.cjs').PageRecord[]} */
+      const records = [];
+      /** @type {import('./history-state.cjs').HistoryWindow['pages']} */
+      const nearby = [];
+      let bytes = 0;
+      for (let reads = 0; cursor && reads < 32; reads++) {
+        const page = await client.request(
+          "areal/conversation/history",
+          { threadId, view: "own", cursor, maxBytes: historyPageBytes },
+          { decode: readHistoryPage, maxResponseBytes: historyPageBytes },
+        );
+        if (!current()) return { ...base, kind: "cancelled" };
+        this.validateHistoryPage(window, page, cursor);
+        bytes += Buffer.byteLength(JSON.stringify(page));
+        if (bytes > 8 * 1024 * 1024) return { ...base, kind: "limited", reason: "scanBudget" };
+        const record = {
+          id: window.pageRecords.find((record) => record.cursor === cursor)?.id ?? randomUUID(),
+          cursor,
+          items: pageTopology(page.data),
+        };
+        records.push(record);
+        nearby.push({ ...page, pageId: record.id });
+        if (nearby.length > 2) nearby.shift();
+        const found = page.data.find(matches);
+        if (found) {
+          if (found.item.type === "historyDeferred")
+            return { ...base, kind: "limited", reason: "deferred" };
+          if (!this.cacheHistoryPages(project, window, nearby, records, startCursor))
+            return { ...base, kind: "limited", reason: "cacheBudget" };
+          return { ...base, kind: "ready" };
         }
-        if (!current()) throw historyFailure("历史视图已关闭或变化。");
-        const entry = page.data?.[0],
-          fragment = entry?.fragment;
-        if (
-          page.data?.length !== 1 ||
-          entry.sourceThreadId !== threadId ||
-          entry.sourceItemId !== placeholder.id ||
-          !fragment ||
-          fragment.offsetUtf8 !== offset ||
-          typeof fragment.text !== "string" ||
-          typeof fragment.version !== "string" ||
-          (version !== undefined && fragment.version !== version) ||
-          (offset > 0 && fragment.totalBytes !== totalBytes)
-        )
-          throw historyFailure("历史内容分片不连续或版本已变化。");
-        if (version === undefined) {
-          version = fragment.version;
-          totalBytes = fragment.totalBytes;
-        }
-        if (fragment.totalBytes !== totalBytes) throw historyFailure("历史内容长度已变化。");
-        const bytes = Buffer.from(fragment.text, "utf8");
-        offset += bytes.length;
-        chunks.push(bytes);
-        if (offset > totalBytes) throw historyFailure("历史内容超过声明长度。");
-        reserve();
-        if (offset === totalBytes) {
-          if (!page.complete || page.nextCursor) throw historyFailure("历史内容终点无效。");
-          const complete = readHistoryEntry(
-            JSON.parse(Buffer.concat(chunks, totalBytes).toString("utf8")),
-          );
-          if (
-            complete.sourceThreadId !== threadId ||
-            complete.sourceItemId !== placeholder.id ||
-            complete.item?.id !== placeholder.id
-          )
-            throw historyFailure("完整历史内容与当前条目不匹配。");
-          const thread = project.model.state.threads[threadId];
-          const stillDeferred = (thread.turns ?? [])
-            .flatMap((turn) => turn.items ?? [])
-            .find((item) => item.id === placeholder.id);
-          if (
-            stillDeferred?.type === "historyDeferred" &&
-            stillDeferred.cursor === placeholder.cursor
-          ) {
-            window.loaded.set(placeholder.id, { placeholder, bytes: totalBytes });
-            project.model.replace({
-              ...thread,
-              turns: (thread.turns ?? []).map((turn) => ({
-                ...turn,
-                items: (turn.items ?? []).map((item) =>
-                  item.id === placeholder.id ? complete.item : item,
-                ),
-              })),
-            });
-          }
-          return { loaded: true, itemId: placeholder.id };
-        }
-        if (!page.nextCursor || page.nextCursor === cursor || !bytes.length)
-          throw historyFailure("历史内容游标未推进。");
         cursor = page.nextCursor;
+        if (page.complete) {
+          this.pruneReadingSnapshots(project, window, anchor);
+          return { ...base, kind: "missing" };
+        }
       }
-    } finally {
-      window.loading.delete(placeholder.id);
-      this.publishHistory(project, window);
+      if (!cursor) this.pruneReadingSnapshots(project, window, anchor);
+      return cursor
+        ? { ...base, kind: "limited", reason: "scanBudget" }
+        : { ...base, kind: "missing" };
+    } catch (error) {
+      if (!current()) return { ...base, kind: "cancelled" };
+      if (historyReason(error) === "HISTORY_CURSOR_STALE") {
+        await this.refreshHistory(project, window).catch(() => {});
+        return { ...base, kind: "cancelled" };
+      }
+      return { ...base, kind: "limited", reason: "unavailable" };
     }
+  }
+
+  /** @param {import('./project-state.cjs').CoreProject} project @param {import('@areal/workbench/desktop-contract').HistoryRequest} request */
+  historyCommand(project, request) {
+    return historyCommand(this, project, request);
   }
 
   /** @param {import('./project-state.cjs').CoreProject} project @param {string} threadId @param {import('./history-state.cjs').ObserveOptions} options */

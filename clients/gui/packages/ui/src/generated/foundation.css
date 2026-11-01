@@ -70,6 +70,8 @@
   --color-destructive-foreground: var(--color-foreground-inverse);
   --color-warning: #e07b00;
   --color-warning-foreground: #000000;
+  --color-media-overlay: #000000;
+  --color-media-overlay-foreground: #ffffff;
   --color-foreground-inverse: #ffffff;
   --color-ring: var(--color-input-border-focused);
   --color-muted: var(--color-surface);

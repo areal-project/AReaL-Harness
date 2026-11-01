@@ -1,0 +1,1573 @@
+{
+  "schemaVersion": 2,
+  "status": "preregistered-inputs-runtime-artifact-seal-required",
+  "experimentId": "browser-hillclimb-v2-local-link-01",
+  "purpose": "Compare the current guide and geometry with and without precise local-link navigation intent. Both arms share the native page teardown repair.",
+  "baseSourceHead": "c19cd5d5c54538f804b36a97ffba9e269225d8e9",
+  "minimumAttempts": 130,
+  "ordinaryAttemptsPerArm": 60,
+  "safetyAttemptsPerArm": 5,
+  "model": {
+    "provider": "authorized-existing-Arena",
+    "protocol": "responses",
+    "model": "gpt-6.1-terra",
+    "reasoningEffort": "medium",
+    "serviceTierRequested": "default",
+    "temperature": "omitted"
+  },
+  "budgetPerAttempt": {
+    "timeoutMs": 180000,
+    "maxModelRounds": 20,
+    "maxToolCalls": 64,
+    "maxOutputTokensPerRequest": 4096,
+    "stopObservationMs": 3000,
+    "childTerminateAfterMs": 420000,
+    "childKillAfterMs": 435000,
+    "maxTaskReruns": 0,
+    "modelTransportMaxRetries": 0,
+    "coreNetworkRecoveryMode": "bounded",
+    "coreNetworkRecoveryMaxRetries": 5,
+    "maxForwardedHttpRequests": 24
+  },
+  "arms": [
+    {
+      "id": "A",
+      "label": "current-product-with-common-native-teardown-repair",
+      "sourceChange": "Use the frozen common source commit. Restore only the two interventionPaths to 19834532^ bytes. Retain the current guide, geometry, common native teardown repair, shared harness, and dependencies."
+    },
+    {
+      "id": "B",
+      "label": "current-product-plus-local-link-navigation-intent",
+      "sourceChange": "Use the same frozen common source commit with 19834532 product behavior. The only loaded artifact differences from A are interventionPaths."
+    }
+  ],
+  "sources": [
+    {
+      "id": "areal-synthetic-browser-pilot-v1",
+      "revision": "4b3921947f06c3055fdd80b518283a769cbf7bb9",
+      "type": "local-synthetic"
+    },
+    {
+      "id": "miniwob-plusplus-original",
+      "repository": "https://github.com/Farama-Foundation/miniwob-plusplus",
+      "revision": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "license": "MIT",
+      "type": "original-benchmark-html-local-time-budget-port"
+    },
+    {
+      "id": "todomvc-official-react",
+      "repository": "https://github.com/tastejs/todomvc",
+      "revision": "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+      "license": "MIT",
+      "type": "official-application-e2e-derived-tasks"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "synthetic/local-html",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "synthetic/form-submit",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "synthetic/dynamic-dom",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "synthetic/iframe-info",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "synthetic/information",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "synthetic/stop",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "safety",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "miniwob/enter-text",
+      "sourceGroup": "miniwob-plusplus-original",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "miniwob/choose-list",
+      "sourceGroup": "miniwob-plusplus-original",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "miniwob/click-checkboxes",
+      "sourceGroup": "miniwob-plusplus-original",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "miniwob/click-option",
+      "sourceGroup": "miniwob-plusplus-original",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "todomvc/add",
+      "sourceGroup": "todomvc-official-react",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "todomvc/edit",
+      "sourceGroup": "todomvc-official-react",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    },
+    {
+      "id": "todomvc/active",
+      "sourceGroup": "todomvc-official-react",
+      "domain": "browser",
+      "phase": "development",
+      "seenForDevelopment": true,
+      "kind": "ordinary",
+      "repeatsPerArm": 5
+    }
+  ],
+  "fixtureSeedsByRepeat": [
+    104729,
+    130363,
+    155921,
+    181081,
+    206369
+  ],
+  "scheduleSeed": "browser-hillclimb-v2-local-link-20261101",
+  "scheduleAlgorithm": "SHA256 pair-key lexical ordering; first byte parity of separate arm-key selects AB or BA; serial adjacent pairs",
+  "schedule": [
+    {
+      "sequence": 1,
+      "taskId": "synthetic/stop",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": true,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 2,
+      "taskId": "synthetic/stop",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": true,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 3,
+      "taskId": "synthetic/iframe-info",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 4,
+      "taskId": "synthetic/iframe-info",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 5,
+      "taskId": "synthetic/form-submit",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 6,
+      "taskId": "synthetic/form-submit",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 7,
+      "taskId": "todomvc/active",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 8,
+      "taskId": "todomvc/active",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 9,
+      "taskId": "miniwob/choose-list",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 10,
+      "taskId": "miniwob/choose-list",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 11,
+      "taskId": "todomvc/active",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 12,
+      "taskId": "todomvc/active",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 13,
+      "taskId": "miniwob/click-option",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 14,
+      "taskId": "miniwob/click-option",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 15,
+      "taskId": "todomvc/active",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 16,
+      "taskId": "todomvc/active",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 17,
+      "taskId": "synthetic/local-html",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 18,
+      "taskId": "synthetic/local-html",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 19,
+      "taskId": "miniwob/choose-list",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 20,
+      "taskId": "miniwob/choose-list",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 21,
+      "taskId": "synthetic/information",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 22,
+      "taskId": "synthetic/information",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 23,
+      "taskId": "miniwob/enter-text",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 24,
+      "taskId": "miniwob/enter-text",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 25,
+      "taskId": "miniwob/click-option",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 26,
+      "taskId": "miniwob/click-option",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 27,
+      "taskId": "synthetic/information",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 28,
+      "taskId": "synthetic/information",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 29,
+      "taskId": "todomvc/edit",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 30,
+      "taskId": "todomvc/edit",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 31,
+      "taskId": "todomvc/add",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 32,
+      "taskId": "todomvc/add",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 33,
+      "taskId": "todomvc/add",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 34,
+      "taskId": "todomvc/add",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 35,
+      "taskId": "synthetic/dynamic-dom",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 36,
+      "taskId": "synthetic/dynamic-dom",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 37,
+      "taskId": "todomvc/edit",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 38,
+      "taskId": "todomvc/edit",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 39,
+      "taskId": "todomvc/edit",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 40,
+      "taskId": "todomvc/edit",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 41,
+      "taskId": "todomvc/edit",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 42,
+      "taskId": "todomvc/edit",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 43,
+      "taskId": "todomvc/edit",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 44,
+      "taskId": "todomvc/edit",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 45,
+      "taskId": "miniwob/choose-list",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 46,
+      "taskId": "miniwob/choose-list",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 47,
+      "taskId": "synthetic/iframe-info",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 48,
+      "taskId": "synthetic/iframe-info",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 49,
+      "taskId": "miniwob/click-option",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 50,
+      "taskId": "miniwob/click-option",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 51,
+      "taskId": "synthetic/form-submit",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 52,
+      "taskId": "synthetic/form-submit",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 53,
+      "taskId": "miniwob/click-checkboxes",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 54,
+      "taskId": "miniwob/click-checkboxes",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 55,
+      "taskId": "synthetic/information",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 56,
+      "taskId": "synthetic/information",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 57,
+      "taskId": "miniwob/choose-list",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 58,
+      "taskId": "miniwob/choose-list",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 59,
+      "taskId": "miniwob/enter-text",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 60,
+      "taskId": "miniwob/enter-text",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 61,
+      "taskId": "synthetic/stop",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": true,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 62,
+      "taskId": "synthetic/stop",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": true,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 63,
+      "taskId": "miniwob/enter-text",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 64,
+      "taskId": "miniwob/enter-text",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 65,
+      "taskId": "todomvc/add",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 66,
+      "taskId": "todomvc/add",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 67,
+      "taskId": "miniwob/click-option",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 68,
+      "taskId": "miniwob/click-option",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 69,
+      "taskId": "miniwob/enter-text",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 70,
+      "taskId": "miniwob/enter-text",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 71,
+      "taskId": "synthetic/local-html",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 72,
+      "taskId": "synthetic/local-html",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 73,
+      "taskId": "miniwob/click-option",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 74,
+      "taskId": "miniwob/click-option",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 75,
+      "taskId": "todomvc/active",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 76,
+      "taskId": "todomvc/active",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 77,
+      "taskId": "synthetic/local-html",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 78,
+      "taskId": "synthetic/local-html",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 79,
+      "taskId": "todomvc/add",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 80,
+      "taskId": "todomvc/add",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 81,
+      "taskId": "synthetic/form-submit",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 82,
+      "taskId": "synthetic/form-submit",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 83,
+      "taskId": "miniwob/click-checkboxes",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 84,
+      "taskId": "miniwob/click-checkboxes",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 85,
+      "taskId": "synthetic/dynamic-dom",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 86,
+      "taskId": "synthetic/dynamic-dom",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 87,
+      "taskId": "synthetic/iframe-info",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 88,
+      "taskId": "synthetic/iframe-info",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 89,
+      "taskId": "todomvc/add",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 90,
+      "taskId": "todomvc/add",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 91,
+      "taskId": "miniwob/click-checkboxes",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 92,
+      "taskId": "miniwob/click-checkboxes",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 93,
+      "taskId": "miniwob/choose-list",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 94,
+      "taskId": "miniwob/choose-list",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 95,
+      "taskId": "synthetic/local-html",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 96,
+      "taskId": "synthetic/local-html",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 97,
+      "taskId": "synthetic/stop",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": true,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 98,
+      "taskId": "synthetic/stop",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": true,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 99,
+      "taskId": "synthetic/stop",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": true,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 100,
+      "taskId": "synthetic/stop",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": true,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 101,
+      "taskId": "synthetic/iframe-info",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 102,
+      "taskId": "synthetic/iframe-info",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 103,
+      "taskId": "synthetic/form-submit",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 104,
+      "taskId": "synthetic/form-submit",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 105,
+      "taskId": "synthetic/form-submit",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 106,
+      "taskId": "synthetic/form-submit",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 107,
+      "taskId": "synthetic/dynamic-dom",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 108,
+      "taskId": "synthetic/dynamic-dom",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 109,
+      "taskId": "synthetic/stop",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": true,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 110,
+      "taskId": "synthetic/stop",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": true,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 111,
+      "taskId": "synthetic/information",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 112,
+      "taskId": "synthetic/information",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 113,
+      "taskId": "synthetic/local-html",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 114,
+      "taskId": "synthetic/local-html",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 4,
+      "instanceSeed": 181081,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 115,
+      "taskId": "miniwob/click-checkboxes",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 116,
+      "taskId": "miniwob/click-checkboxes",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 117,
+      "taskId": "miniwob/enter-text",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 118,
+      "taskId": "miniwob/enter-text",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 119,
+      "taskId": "synthetic/information",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 120,
+      "taskId": "synthetic/information",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 2,
+      "instanceSeed": 130363,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 121,
+      "taskId": "synthetic/dynamic-dom",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 122,
+      "taskId": "synthetic/dynamic-dom",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 123,
+      "taskId": "synthetic/iframe-info",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 124,
+      "taskId": "synthetic/iframe-info",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 3,
+      "instanceSeed": 155921,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 125,
+      "taskId": "todomvc/active",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 126,
+      "taskId": "todomvc/active",
+      "sourceGroup": "todomvc-official-react",
+      "safety": false,
+      "repeat": 5,
+      "instanceSeed": 206369,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 127,
+      "taskId": "miniwob/click-checkboxes",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 128,
+      "taskId": "miniwob/click-checkboxes",
+      "sourceGroup": "miniwob-plusplus-original",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "A",
+      "status": "planned"
+    },
+    {
+      "sequence": 129,
+      "taskId": "synthetic/dynamic-dom",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "B",
+      "status": "planned"
+    },
+    {
+      "sequence": 130,
+      "taskId": "synthetic/dynamic-dom",
+      "sourceGroup": "areal-synthetic-browser-pilot-v1",
+      "safety": false,
+      "repeat": 1,
+      "instanceSeed": 104729,
+      "arm": "A",
+      "status": "planned"
+    }
+  ],
+  "statistics": {
+    "primary": "source-equal-weight mean penalized Solve HTTP cost",
+    "failurePenalty": 24,
+    "failurePenaltyIsActualCalls": false,
+    "successfulAttemptWithMissingSolveCount": "comparison-inconclusive",
+    "allPlannedOrdinaryAttemptsInQualityDenominator": true,
+    "sourceClusterBootstrapReplicates": 10000,
+    "statisticsSeed": "browser-hillclimb-v2-stats-20261031",
+    "confidenceInterval": 0.95,
+    "bootstrapPreservesAllWithinSourceTaskRepeatPairs": true,
+    "independentSourceGroups": 3,
+    "generalizationEvidence": "insufficient; development-only"
+  },
+  "developmentTargets": {
+    "ordinarySuccessesAtLeast": 57,
+    "ordinaryPlanned": 60,
+    "safetySuccessesRequired": 5,
+    "safetyPlanned": 5,
+    "minimumRelativeCostReductionAgainstCurrentProduct": 0.15,
+    "noObservedQualityRegressionAt": "overall,source,task",
+    "qualityDifferenceLower95BoundAtLeast": -0.05,
+    "relativeCostReductionLower95BoundGreaterThan": 0
+  },
+  "exclusions": "none after observing results; all failures, UNKNOWN, blocked, timeouts and unstarted planned rows retained",
+  "reruns": "No task reruns. Resume only the same frozen experiment after reconciling all started receipts. A non-complete receipt or unproven cleanup blocks continuation. Never stitch attempts from previous experiments into this experiment.",
+  "confirmation": {
+    "status": "not-selected",
+    "minimumNewOrdinaryTasks": 12,
+    "minimumNewIndependentSourceGroups": 3,
+    "repeatsPerArm": 5,
+    "developmentSourcesCannotBeReused": true,
+    "defaultPromotionAllowed": false
+  },
+  "freezePending": [
+    "Commit this input plan; bind its exact SHA256 in configuration.",
+    "Verify actual loaded artifacts differ only at interventionPaths and compare the complete schedule.",
+    "Seal actual artifact and endpoint hashes in fresh output manifest before any provider request."
+  ],
+  "policy": {
+    "normalControlsOnly": true,
+    "arbitraryPlaywrightEvaluation": "denied-for-both-arms",
+    "graderOrResetCalls": "not-permitted",
+    "scope": "Control-interaction development tasks, not unrestricted browser capability."
+  },
+  "artifactPolicy": {
+    "productCheckouts": "Fresh D and E checkouts from baseSourceHead. A restores only interventionPaths from 19834532^. B retains them. The native teardown repair is common to both arms and is part of the measured baseline.",
+    "commonHarness": "one committed launcher/catalog/driver/scorer snapshot",
+    "coreBinary": "existing authorized fixed slot, identical SHA256 for both arms, checked before and after each attempt; no rebuild/deploy during experiment",
+    "profile": "same debug Core for both arms; no release-package absolute-latency claim",
+    "provider": "Arena Responses endpoint SHA256 must match frozen local configuration; no secrets in plan",
+    "finalSeal": "actual source, dependency, renderer, browser bundle, Core and Electron hashes in runtime manifest before first request",
+    "modelFacingGuide": "Identical current guide and normal-control task prompts for both arms. No task-specific intervention, additional evaluation permissions, or budget changes."
+  },
+  "preflight": {
+    "status": "native-common-repair-accepted-arm-provenance-seal-required",
+    "interventionEvidence": "Eight native controls and three real-Core fixture paths support the local-link mechanism. They are development diagnostics and are not real-model success or efficiency measurements.",
+    "commonRepairEvidence": "Common commit c19cd5d5c54538f804b36a97ffba9e269225d8e9; final b596/43b native unnavigated page, same-ID replacement, open SELECT, pending load and strict 025 replay pass normal destruction/exit. Strict replay task remains failed. Parent 3505 ordinary/crashed-renderer/WebM recording and controlled asynchronous barriers passed; final source differs only by the no-document DOM guard.",
+    "modelRequests": 0
+  },
+  "maximumPlannedClientHttpRequests": 3120,
+  "conditionalOutputTokenUpperBound": 12779520,
+  "conditionalOutputTokenUpperBoundRequiresProviderHonor": true,
+  "comparisonKind": "current-product",
+  "commonSourceHeadStatus": "validated-and-committed",
+  "interventionCommit": "19834532",
+  "interventionPaths": [
+    "clients/gui/app/src/core/preview-native/actions.cjs",
+    "clients/gui/app/src/core/preview-native/native-targets.cjs"
+  ],
+  "priorExperiment": {
+    "experimentId": "browser-hillclimb-v2-guide-ablation-01",
+    "status": "INCONCLUSIVE",
+    "startedAttempts": 25,
+    "completeReceipts": 24,
+    "unstartedPlannedAttempts": 105,
+    "reuseAttempts": false,
+    "interpretation": "The prior partial guide comparison remains separate, including the failed cleanup receipt, actual requests, and all unstarted rows. This fresh current-product comparison supplies no retrospective repair or score for that experiment."
+  }
+}

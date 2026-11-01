@@ -1,5 +1,6 @@
 // @ts-check
 "use strict";
+const { captureBitmapScale } = require("../preview/geometry.cjs");
 const { hasNativePage } = require("./workspace.cjs");
 const { preparedActionId } = require("../preview/approval.cjs");
 const { observationUrl } = require("../preview/urls.cjs");
@@ -314,6 +315,7 @@ class BrowserReads {
         )
           throw new Error("Browser viewport changed during capture");
         const size = image.getSize();
+        const bitmapScale = captureBitmapScale(facts, size);
         if (
           size.width <= 0 ||
           size.height <= 0 ||
@@ -345,12 +347,18 @@ class BrowserReads {
           height: viewport.height,
           bitmapWidth: size.width,
           bitmapHeight: size.height,
+          bitmapScale,
         };
         page.needsObservation = false;
         return {
           ...base,
           capturedAt: new Date().toISOString(),
-          viewport: { ...base.viewport, bitmapWidth: size.width, bitmapHeight: size.height },
+          viewport: {
+            ...base.viewport,
+            bitmapWidth: size.width,
+            bitmapHeight: size.height,
+            bitmapScale,
+          },
           mimeType: "image/png",
           imageBase64: png.toString("base64"),
           byteLength: png.length,

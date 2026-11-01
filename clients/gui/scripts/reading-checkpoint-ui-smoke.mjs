@@ -248,22 +248,60 @@ try {
     await page.reload();
     await page.locator(".messages").waitFor();
     const anchor = saved.views[0].position.anchor;
-    await page.waitForFunction((anchor) => {
-      const container = document.querySelector(".messages");
-      const item = [...container.querySelectorAll("[data-side-item-id]")].find(
-        (element) => element.dataset.sideItemId === anchor.itemId,
-      );
-      const block =
-        anchor.blockIndex === null
-          ? item
-          : item?.querySelector(".conversation-markdown")?.children[anchor.blockIndex];
-      return (
-        block &&
-        Math.abs(
-          block.getBoundingClientRect().top - container.getBoundingClientRect().top - anchor.offset,
-        ) <= 1
-      );
-    }, anchor);
+    try {
+      await page.waitForFunction((anchor) => {
+        const container = document.querySelector(".messages");
+        const item = [...container.querySelectorAll("[data-side-item-id]")].find(
+          (element) => element.dataset.sideItemId === anchor.itemId,
+        );
+        const block =
+          anchor.blockIndex === null
+            ? item
+            : item?.querySelector(".conversation-markdown")?.children[anchor.blockIndex];
+        return (
+          block &&
+          Math.abs(
+            block.getBoundingClientRect().top -
+              container.getBoundingClientRect().top -
+              anchor.offset,
+          ) <= 1
+        );
+      }, anchor);
+    } catch (error) {
+      report.reloadFailure = await page.evaluate((anchor) => {
+        const container = document.querySelector(".messages");
+        const item = [...(container?.querySelectorAll("[data-side-item-id]") ?? [])].find(
+          (element) => element.dataset.sideItemId === anchor.itemId,
+        );
+        const block =
+          anchor.blockIndex === null
+            ? item
+            : item?.querySelector(".conversation-markdown")?.children[anchor.blockIndex];
+        const box = (element) =>
+          element
+            ? {
+                top: element.getBoundingClientRect().top,
+                height: element.getBoundingClientRect().height,
+                display: getComputedStyle(element).display,
+              }
+            : null;
+        return {
+          anchor,
+          container: container && {
+            ...box(container),
+            scrollTop: container.scrollTop,
+            scrollHeight: container.scrollHeight,
+            clientHeight: container.clientHeight,
+          },
+          item: box(item),
+          block: box(block),
+          blocked: document.querySelector("[data-reading-blocked]")?.outerHTML,
+          saved: sessionStorage.getItem("areal-gui:reading-views:v1"),
+        };
+      }, anchor);
+      await page.screenshot({ path: join(evidence, `${contexts}-reload-failure.png`) });
+      throw error;
+    }
     report.cases.push({
       contexts,
       scroll,

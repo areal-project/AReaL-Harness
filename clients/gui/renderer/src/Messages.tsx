@@ -1,17 +1,25 @@
+import { sentSnapShots, isSnapShotDecoration } from "./snapshots/source.js";
+import { commandResourceLabel } from "./conversationPresentation.js";
+import { useTranscriptSelection } from "./useTranscriptSelection.js";
+import { readingAnchor, restoreReadingAnchor } from "./conversationReadingDom.js";
+import { MessageTime, ModelChanges, TurnRetries } from "./ConversationTimeline.js";
+import {
+  beginReadingRestore,
+  changeReadingIntent,
+  createReadingState,
+  settleReadingRestore,
+} from "./conversationReading.js";
 import { observeResize } from "@areal/ui/observe-resize";
 import { PendingMessageView } from "./UserMessageBody.js";
 import {
   readingViews,
+  cancelTurnStart,
   hydrateReadingViews,
   saveReadingViews,
   type ResponseSpace,
-  type ReadingAnchor,
 } from "./readingViews.js";
 import { usePendingMessage } from "./pendingMessage.js";
-import type {
-  ConversationSelectionReference,
-  ConversationSelectionContentType,
-} from "./conversationSelectionReference.js";
+import type { ConversationSelectionReference } from "./conversationSelectionReference.js";
 import { projectConversationContent, conversationContentToText } from "./conversationContent.js";
 import { ConversationContentView } from "./ConversationContentView.js";
 import { GenUiCard } from "./GenUiWorkspace.js";
@@ -29,6 +37,7 @@ import { TurnNavigation } from "./TurnNavigation.js";
 import {
   executionOutcome,
   executionSegments,
+  progressGroups,
   goalContinuationLabel,
   turnFailureMessage,
 } from "./conversationPresentation.js";
@@ -37,7 +46,7 @@ import { TurnElapsed } from "./TurnElapsed.js";
 import { ForkIcon } from "./interfaceIcons.js";
 import { UserPromptEdit } from "./UserPromptEdit.js";
 import { UserMessageBody } from "./UserMessageBody.js";
-import { isOrdinaryConversation, interruptionLabel } from "./ordinaryConversation.js";
+import { isOrdinaryConversation } from "./ordinaryConversation.js";
 import { MessageActions } from "./MessageActions.js";
 import { CollapsibleText } from "./CollapsibleText.js";
 import { UserFeedback } from "./UserFeedback.js";
@@ -57,6 +66,7 @@ import {
 } from "react";
 import { TimelineBottomButton } from "./TimelineBottomButton.js";
 import { Button } from "./components/ui/button.js";
+import { toast } from "./components/ui/toast.js";
 import { Popover, PopoverContent } from "./components/ui/popover.js";
 import { MessageResponse } from "./components/ai-elements/message.js";
 import { SentAttachment } from "./MessageAttachment.js";
@@ -77,71 +87,7 @@ import { latestScheduleItems, ScheduledTaskCards } from "./ScheduledTasks.js";
 import { TurnFileSummary } from "./TurnFileSummary.js";
 import type { Data, Action, PlatformServices } from "./services.js";
 import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
-type TranscriptSelectionSnapshot = {
-  owner: string;
-  text: string;
-  turnId: string;
-  itemId: string;
-  contentType: ConversationSelectionContentType;
-  range: Range;
-  rect: DOMRect;
-  provenance: { kind: "userQuote" } | { kind: "itemRange"; startUtf8: number; endUtf8: number };
-};
-function readingBlocks(item: HTMLElement) {
-  return [...(item.querySelector<HTMLElement>(".conversation-markdown")?.children ?? [])].filter(
-    (element): element is HTMLElement => element instanceof HTMLElement,
-  );
-}
-function readingAnchor(element: HTMLElement): ReadingAnchor | undefined {
-  const viewport = element.getBoundingClientRect();
-  for (const item of element.querySelectorAll<HTMLElement>("[data-side-item-id]")) {
-    const turnId = item.closest<HTMLElement>("[data-turn-id]")?.dataset.turnId;
-    if (!turnId || !item.dataset.sideItemId) continue;
-    const blocks = readingBlocks(item);
-    const blockIndex = blocks.findIndex(
-      (block) =>
-        block.getBoundingClientRect().bottom > viewport.top &&
-        block.getBoundingClientRect().top < viewport.bottom,
-    );
-    const block = blocks[blockIndex] ?? item;
-    const box = block.getBoundingClientRect();
-    if (box.bottom > viewport.top && box.top < viewport.bottom)
-      return {
-        turnId,
-        itemId: item.dataset.sideItemId,
-        blockIndex: blockIndex < 0 ? null : blockIndex,
-        offset: box.top - viewport.top,
-      };
-  }
-}
-function restoreReadingAnchor(element: HTMLElement, anchor: ReadingAnchor) {
-  const turn = [...element.querySelectorAll<HTMLElement>("[data-turn-id]")].find(
-    (turn) => turn.dataset.turnId === anchor.turnId,
-  );
-  const item = [...(turn?.querySelectorAll<HTMLElement>("[data-side-item-id]") ?? [])].find(
-    (item) => item.dataset.sideItemId === anchor.itemId,
-  );
-  const block =
-    item && (anchor.blockIndex === null ? item : readingBlocks(item)[anchor.blockIndex]);
-  if (!block) return false;
-  const box = block.getBoundingClientRect();
-  if (box.height <= 0 || element.clientHeight <= 0) return false;
-  const offset = Math.max(1 - box.height, anchor.offset);
-  element.scrollTop += box.top - element.getBoundingClientRect().top - offset;
-  return (
-    Math.abs(block.getBoundingClientRect().top - element.getBoundingClientRect().top - offset) <= 1
-  );
-}
 // Queue pauseReason "stopped" is Core's stop receipt. It stays separate from the turn status.
-function commandResourceLabel(tool: Data) {
-  const outcome = tool.execution?.outcome;
-  if (tool.status === "inProgress" || outcome === "running") return "命令资源仍在运行";
-  if (outcome === "unknown" || outcome === "pending") return "命令资源结果待确认";
-  if (outcome === "failed" || outcome === "error" || tool.success === false) return "命令资源失败";
-  if (outcome === "interrupted" || outcome === "cancelled") return "命令资源已停止";
-  if (outcome === "succeeded" || outcome === "success") return "命令资源已结束";
-  return null;
-}
 export function Messages({
   project,
   thread: localThread,
@@ -194,7 +140,7 @@ export function Messages({
   action: Action;
   dark: boolean;
   onLink: (url: string) => void;
-  onFile: (path: string) => void;
+  onFile: (path: string, line?: number) => void;
   /** Desktop file host for workspace images and file cards; absent for cloud and previews. */
   fileOpen?: PlatformServices["fileOpen"];
   onReview: (turnId: string) => void;
@@ -217,15 +163,60 @@ export function Messages({
     ...localThread,
     turns: [
       ...inherited.turns,
-      ...(localThread.turns ?? []).map((turn: Data) => ({
-        ...turn,
-        items: (turn.items ?? []).flatMap((item: Data) => [
-          ...(localThread.displayHistory?.gaps ?? [])
-            .filter((gap: Data) => gap.beforeItemId === item.id)
-            .map((gap: Data) => ({ ...gap, type: "historyPageGap" })),
-          item,
-        ]),
-      })),
+      ...(localThread.turns ?? []).map((turn: Data) => {
+        const items: Data[] = turn.items ?? [];
+        const records: Data[] = [...(localThread.displayHistory?.pageTopology ?? [])]
+          .reverse()
+          .flatMap((page: Data) => page.items.filter((item: Data) => item.turnId === turn.id));
+        const known = new Set(records.map((item) => item.itemId));
+        const shown = new Map(items.map((item) => [item.id, item]));
+        const topology = records.flatMap((record) => {
+          if (shown.has(record.itemId)) return [shown.get(record.itemId)!];
+          const slot = {
+            id: record.itemId,
+            type: record.type,
+            phase: record.phase,
+            historyActivityBreak: record.activityBreak,
+            historyOmitted: true,
+          };
+          return record.answers
+            ? [
+                slot,
+                {
+                  id: `question-answer:${record.itemId}`,
+                  type: "questionAnswer",
+                  historyOmitted: true,
+                },
+              ]
+            : record.visible === false
+              ? []
+              : [slot];
+        });
+        const ordered: Data[] = [];
+        let cursor = 0;
+        for (const item of items) {
+          if (known.has(item.id)) {
+            const index = topology.findIndex((entry) => entry.id === item.id);
+            while (cursor < index) ordered.push(topology[cursor++]);
+            cursor = Math.max(cursor, index + 1);
+          }
+          ordered.push(item);
+        }
+        ordered.push(...topology.slice(cursor).filter((item) => !shown.has(item.id)));
+        return {
+          ...turn,
+          items: ordered.flatMap((item) => [
+            ...(localThread.displayHistory?.gaps ?? [])
+              .filter((gap: Data) => gap.beforeItemId === item.id)
+              .map((gap: Data) => ({
+                ...gap,
+                type: "historyPageGap",
+                topologyKnown: gap.topologyKnown === true,
+              })),
+            item,
+          ]),
+        };
+      }),
     ],
   };
   const inheritedIds = new Set(inherited.turns.map((turn) => turn.id));
@@ -244,208 +235,45 @@ export function Messages({
       : undefined;
   const responseSpace = useRef<HTMLDivElement>(null);
   const container = useRef<HTMLDivElement>(null);
-  const follow = useRef(true);
   const olderSentinel = useRef<HTMLDivElement>(null);
   const autoOlderIntent = useRef(false);
-  const shortAutoPages = useRef(0);
   const olderInFlight = useRef<object | undefined>(undefined);
   const scrollbarReading = useRef<number | undefined>(undefined);
-  const pageReading = useRef<{ owner: string; anchor?: ReadingAnchor; turns: Data } | undefined>(
-    undefined,
-  );
-  const pendingReading = useRef<ReadingAnchor | undefined>(undefined);
-  const disclosureReading = useRef<{ control: HTMLElement; offset: number } | undefined>(undefined);
+  const touchReading = useRef<{ y: number; requested: boolean } | undefined>(undefined);
   const readingViewport = useRef<{ width: number; height: number } | undefined>(undefined);
   const owner = JSON.stringify([project.id, thread.id, embedded]);
+  const reading = useRef(createReadingState(owner, history.generation));
+  const [, refreshReading] = useState(0);
+  const readingFrame = useRef<number | undefined>(undefined);
+  const layoutReading = useRef<() => void>(() => {});
+  const historyCurrent = useRef(history);
+  historyCurrent.current = history;
+  const retainedReading = useRef("");
   const latestTurnId = thread.turns?.at(-1)?.id;
+  const latestUserId = thread.turns
+    ?.at(-1)
+    ?.items?.find((item: Data) => item.type === "userMessage")?.id;
+  const turnStartRequest = readingViews.get(owner)?.pendingTurnStart;
   const latestSchedules = useMemo(() => latestScheduleItems(thread.turns ?? []), [thread.turns]);
   const [forking, setForking] = useState(false);
   const [forkError, setForkError] = useState<{ turnId: string; message: string } | null>(null);
-  const selectionOwner = JSON.stringify([
-    project.core?.instanceId,
-    project.core?.connectionGeneration,
-    project.id,
-    thread.id,
-  ]);
-  const currentSelectionOwner = useRef(selectionOwner);
-  currentSelectionOwner.current = selectionOwner;
-  const [selectedSideText, updateSelection] = useState<TranscriptSelectionSnapshot | null>(null);
-  const selectionSnapshot = useRef<TranscriptSelectionSnapshot | null>(null);
-  const setSelectedSideText = (next: TranscriptSelectionSnapshot | null) => {
-    selectionSnapshot.current = next;
-    updateSelection(next);
-  };
-  useLayoutEffect(() => {
-    setSelectedSideText(null);
-  }, [selectionOwner, !!onAddSelection, !!onSideSelection, readOnly]);
-  const selectionIsCurrent = (chosen: TranscriptSelectionSnapshot) => {
-    const selected = window.getSelection();
-    return (
-      currentSelectionOwner.current === chosen.owner &&
-      selectionSnapshot.current === chosen &&
-      chosen.range.startContainer.isConnected &&
-      chosen.range.endContainer.isConnected &&
-      !!container.current?.contains(chosen.range.commonAncestorContainer) &&
-      selected?.rangeCount === 1 &&
-      !selected.isCollapsed &&
-      selected.toString() === chosen.text &&
-      selected.getRangeAt(0).compareBoundaryPoints(Range.START_TO_START, chosen.range) === 0 &&
-      selected.getRangeAt(0).compareBoundaryPoints(Range.END_TO_END, chosen.range) === 0 &&
-      chosen.range.toString() === chosen.text
-    );
-  };
-  useEffect(() => {
-    const invalidate = () => {
-      const chosen = selectionSnapshot.current;
-      if (chosen && !selectionIsCurrent(chosen)) setSelectedSideText(null);
-    };
-    const dismiss = () => setSelectedSideText(null);
-    const escape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !selectionSnapshot.current) return;
-      event.preventDefault();
-      dismiss();
-    };
-    document.addEventListener("selectionchange", invalidate);
-    document.addEventListener("keydown", escape);
-    window.addEventListener("scroll", dismiss, true);
-    window.addEventListener("resize", dismiss);
-    return () => {
-      document.removeEventListener("selectionchange", invalidate);
-      document.removeEventListener("keydown", escape);
-      window.removeEventListener("scroll", dismiss, true);
-      window.removeEventListener("resize", dismiss);
-    };
+  const {
+    selectedSideText,
+    setSelectedSideText,
+    selectionIsCurrent,
+    captureSideSelection,
+    referenceFor,
+    askAboutSelection,
+    selectionOwner,
+    selectionSnapshot,
+  } = useTranscriptSelection({
+    project,
+    thread,
+    container,
+    onAddSelection,
+    onSideSelection,
+    readOnly,
   });
-  const captureSideSelection = () => {
-    setSelectedSideText(null);
-    if ((!onSideSelection && !onAddSelection) || readOnly) return;
-    const selected = window.getSelection();
-    if (!selected || selected.isCollapsed || selected.rangeCount !== 1) return;
-    const range = selected.getRangeAt(0);
-    const start = (
-      range.startContainer.nodeType === Node.ELEMENT_NODE
-        ? (range.startContainer as Element)
-        : range.startContainer.parentElement
-    )?.closest<HTMLElement>("[data-side-item-id]");
-    const end = (
-      range.endContainer.nodeType === Node.ELEMENT_NODE
-        ? (range.endContainer as Element)
-        : range.endContainer.parentElement
-    )?.closest<HTMLElement>("[data-side-item-id]");
-    if (
-      !start ||
-      start !== end ||
-      !container.current?.contains(start) ||
-      !container.current.contains(range.commonAncestorContainer)
-    )
-      return;
-    const selectedElement =
-      range.startContainer instanceof Element
-        ? range.startContainer
-        : range.startContainer.parentElement;
-    if (selectedElement?.closest("button, input, textarea, [contenteditable='true']")) return;
-    const text = selected.toString();
-    if (!text.trim()) return;
-    const turnId = start.closest<HTMLElement>("[data-turn-id]")?.dataset.turnId;
-    const itemId = start.dataset.sideItemId;
-    if (!turnId || !itemId) return;
-    const sourceTurn = (thread.turns ?? []).find((turn: Data) => turn.id === turnId);
-    const canonical = sourceTurn?.items?.find((item: Data) => item.id === itemId);
-    if (!canonical) return;
-    const contentType: ConversationSelectionContentType =
-      canonical.type === "userMessage"
-        ? "user"
-        : canonical.type === "agentMessage"
-          ? "assistant"
-          : canonical.type === "reasoning"
-            ? "reasoning"
-            : "tool";
-    const snapshot = {
-      owner: selectionOwner,
-      text,
-      turnId,
-      itemId,
-      contentType,
-      range: range.cloneRange(),
-      rect: range.getBoundingClientRect(),
-    };
-    // 流式回复的增量尚未确认持久化；DOM 相等不能证明选区属于冻结证据。
-    const streamingReply =
-      sourceTurn?.status === "inProgress" && canonical?.type === "agentMessage";
-    const canonicalText =
-      canonical?.type === "agentMessage"
-        ? canonical.text
-        : canonical?.type === "userMessage" &&
-            canonical.content?.length === 1 &&
-            canonical.content[0].type === "text"
-          ? canonical.content[0].text
-          : canonical?.type === "dynamicToolCall" &&
-              canonical.success === true &&
-              canonical.contentItems?.length === 1
-            ? canonical.contentItems[0]?.text
-            : undefined;
-    const body =
-      canonical?.type === "dynamicToolCall"
-        ? start.querySelector<HTMLElement>("[aria-label='工具结果']")
-        : start.querySelector<HTMLElement>(".conversation-markdown");
-    if (
-      !streamingReply &&
-      canonicalText &&
-      body &&
-      body.textContent === canonicalText &&
-      body.contains(range.startContainer) &&
-      body.contains(range.endContainer)
-    ) {
-      const prefix = range.cloneRange();
-      prefix.selectNodeContents(body);
-      prefix.setEnd(range.startContainer, range.startOffset);
-      const startUtf8 = new TextEncoder().encode(prefix.toString()).length;
-      const endUtf8 = startUtf8 + new TextEncoder().encode(text).length;
-      setSelectedSideText({ ...snapshot, provenance: { kind: "itemRange", startUtf8, endUtf8 } });
-    } else setSelectedSideText({ ...snapshot, provenance: { kind: "userQuote" } });
-  };
-  const referenceFor = (chosen: TranscriptSelectionSnapshot): ConversationSelectionReference => ({
-    id: crypto.randomUUID(),
-    sourceSessionId: thread.id,
-    sourceRowId: `${chosen.turnId}:${chosen.itemId}`,
-    contentType: chosen.contentType,
-    text: chosen.text,
-  });
-  const askAboutSelection = async () => {
-    const chosen = selectedSideText;
-    if (!chosen || !selectionIsCurrent(chosen) || !onSideSelection) return;
-    let selection: Data = {
-      kind: "userQuote",
-      text: chosen.text,
-      claimedTurnId: chosen.turnId,
-      claimedItemId: chosen.itemId,
-    };
-    if (chosen.provenance.kind === "itemRange") {
-      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(chosen.text));
-      selection = {
-        kind: "itemRange",
-        turnId: chosen.turnId,
-        itemId: chosen.itemId,
-        startUtf8: chosen.provenance.startUtf8,
-        endUtf8: chosen.provenance.endUtf8,
-        textSha256: Array.from(new Uint8Array(digest), (byte) =>
-          byte.toString(16).padStart(2, "0"),
-        ).join(""),
-      };
-    }
-    // 计算摘要期间也可能切换来源；旧回调不能把选区交给新会话。
-    if (!selectionIsCurrent(chosen)) return;
-    const turn = (thread.turns ?? []).find((item: Data) => item.id === chosen.turnId);
-    onSideSelection(
-      selection,
-      chosen.text,
-      turn?.status === "completed"
-        ? { kind: "turn", turnId: chosen.turnId, boundary: "after" }
-        : undefined,
-      referenceFor(chosen),
-    );
-    setSelectedSideText(null);
-  };
   const canFork =
     !!onFork &&
     project.core?.features?.forkPreview === true &&
@@ -474,15 +302,44 @@ export function Messages({
   const [readingHistory, setReadingHistory] = useState(false);
   const rememberReading = () => {
     const element = container.current;
-    if (!element || !activeOwner.current || pendingReading.current) return;
+    if (
+      !element ||
+      !activeOwner.current ||
+      reading.current.kind === "restoring" ||
+      reading.current.kind === "blocked"
+    )
+      return;
+    const pendingTurnStart = readingViews.get(activeOwner.current)?.pendingTurnStart;
     readingViews.delete(activeOwner.current);
     readingViews.set(activeOwner.current, {
+      pendingTurnStart,
       top: element.scrollTop,
-      following: follow.current,
+      following: reading.current.kind === "following",
       atTail: element.scrollHeight - element.scrollTop - element.clientHeight <= 1,
       responseSpace: reservation.current && { ...reservation.current },
-      anchor: follow.current ? undefined : readingAnchor(element),
+      anchor: reading.current.kind === "following" ? undefined : readingAnchor(element),
     });
+    const anchor = readingViews.get(activeOwner.current)?.anchor;
+    const identity = JSON.stringify([
+      historyCurrent.current.generation,
+      anchor?.turnId,
+      anchor?.itemId,
+    ]);
+    if (identity !== retainedReading.current) {
+      retainedReading.current = identity;
+      reading.current = changeReadingIntent(
+        reading.current,
+        reading.current.kind === "following"
+          ? { kind: "following", target: reading.current.target }
+          : {
+              kind: "holding",
+              anchor,
+              disclosure:
+                reading.current.kind === "holding" ? reading.current.disclosure : undefined,
+            },
+      );
+      void historyCurrent.current.retain(reading.current.revision, anchor ?? null).catch(() => {});
+    } else if (reading.current.kind === "holding") reading.current = { ...reading.current, anchor };
     saveReadingViews();
   };
   const releaseResponseSpace = () => {
@@ -490,21 +347,26 @@ export function Messages({
     if (responseSpace.current) responseSpace.current.style.height = "0px";
   };
   const readHere = (control?: HTMLElement) => {
-    pendingReading.current = undefined;
-    disclosureReading.current =
-      control && container.current
-        ? {
-            control,
-            offset:
-              control.getBoundingClientRect().top - container.current.getBoundingClientRect().top,
-          }
-        : undefined;
-    follow.current = false;
+    cancelTurnStart(readingViews.get(owner)?.pendingTurnStart);
+    const element = container.current;
+    const anchor = element ? readingAnchor(element) : undefined;
+    reading.current = changeReadingIntent(reading.current, {
+      kind: "holding",
+      anchor,
+      disclosure:
+        control && element
+          ? {
+              control,
+              offset: control.getBoundingClientRect().top - element.getBoundingClientRect().top,
+            }
+          : undefined,
+    });
+    void historyCurrent.current.retain(reading.current.revision, anchor ?? null).catch(() => {});
     rememberReading();
   };
   const updateReading = () => {
     const element = container.current;
-    if (!element || pendingReading.current || pageReading.current) return;
+    if (!element || reading.current.kind === "restoring") return;
     const space = reservation.current;
     const section = element.querySelector<HTMLElement>("[data-latest-turn=true]");
     const viewport = readingViewport.current;
@@ -534,30 +396,39 @@ export function Messages({
     if (departed) releaseResponseSpace();
     // Releasing space can clamp this same navigation frame to the new tail.
     // Preserve its departure intent instead of immediately resuming following.
-    follow.current =
-      !disclosureReading.current &&
+    const following =
+      !(reading.current.kind === "holding" && reading.current.disclosure) &&
       !departed &&
-      element.scrollHeight - element.scrollTop - element.clientHeight < 120 &&
-      (follow.current || (!!previous && element.scrollTop > previous.top + 1));
+      ((reading.current.kind === "following" && reading.current.target?.kind === "turnStart") ||
+        (element.scrollHeight - element.scrollTop - element.clientHeight < 120 &&
+          (reading.current.kind === "following" ||
+            (!!previous && element.scrollTop > previous.top + 1))));
+    if (following && reading.current.kind !== "following")
+      reading.current = changeReadingIntent(reading.current, { kind: "following" });
+    if (!following && reading.current.kind === "following")
+      reading.current = changeReadingIntent(reading.current, {
+        kind: "holding",
+        anchor: readingAnchor(element),
+      });
     rememberReading();
     setReadingHistory(
-      !follow.current && element.scrollHeight - element.scrollTop - element.clientHeight >= 120,
+      (reading.current.kind !== "following" || reading.current.target?.kind === "turnStart") &&
+        element.scrollHeight - element.scrollTop - element.clientHeight >= 120,
     );
   };
-  const loadOlder = async (pageId?: string, automatic = false) => {
-    if (!automatic) shortAutoPages.current = 0;
+  const loadOlder = async (pageId?: string) => {
     if (olderInFlight.current || localThread.displayHistory?.loadingOlder) return;
     autoOlderIntent.current = false;
     readHere();
-    const element = container.current;
-    pageReading.current = {
-      owner,
-      anchor: element ? readingAnchor(element) : undefined,
-      turns: localThread.turns,
-    };
     const request = {};
     olderInFlight.current = request;
     try {
+      const state = reading.current;
+      await history.retain(
+        state.revision,
+        state.kind === "holding" ? (state.anchor ?? null) : null,
+      );
+      if (reading.current.owner !== owner) return;
       await history.load(undefined, pageId);
     } finally {
       if (olderInFlight.current === request) olderInFlight.current = undefined;
@@ -569,7 +440,7 @@ export function Messages({
     if (
       !element ||
       !autoOlderIntent.current ||
-      follow.current ||
+      reading.current.kind === "following" ||
       history.failure ||
       !display?.supported ||
       display.complete ||
@@ -580,19 +451,14 @@ export function Messages({
       element.scrollTop > element.clientHeight
     )
       return;
-    if (element.scrollHeight <= element.clientHeight) {
-      if (shortAutoPages.current >= 2) return;
-      shortAutoPages.current++;
-    } else shortAutoPages.current = 0;
-    void loadOlder(undefined, true);
+    void loadOlder();
   };
   const autoLoadCurrent = useRef(autoLoadOlder);
   autoLoadCurrent.current = autoLoadOlder;
   useEffect(() => {
     autoOlderIntent.current = false;
-    shortAutoPages.current = 0;
     olderInFlight.current = undefined;
-    pageReading.current = undefined;
+    touchReading.current = undefined;
     const element = container.current;
     const sentinel = olderSentinel.current;
     if (embedded || !element || !sentinel) return;
@@ -605,9 +471,11 @@ export function Messages({
       scrollbarReading.current = undefined;
     };
     window.addEventListener("pointerup", releaseScrollbar);
+    window.addEventListener("pointercancel", releaseScrollbar);
     return () => {
       observer.disconnect();
       window.removeEventListener("pointerup", releaseScrollbar);
+      window.removeEventListener("pointercancel", releaseScrollbar);
     };
   }, [
     owner,
@@ -615,18 +483,33 @@ export function Messages({
     localThread.displayHistory?.supported,
     localThread.displayHistory?.viewGeneration,
   ]);
+  const scheduleReading = () => {
+    if (readingFrame.current !== undefined) return;
+    readingFrame.current = requestAnimationFrame(() => {
+      readingFrame.current = undefined;
+      if (activeOwner.current !== owner) return;
+      updateReading();
+      autoLoadCurrent.current();
+    });
+  };
   const requestOlderFromInput = () => {
+    if (
+      olderInFlight.current ||
+      localThread.displayHistory?.loadingOlder ||
+      localThread.displayHistory?.loadingLatest ||
+      history.failure
+    )
+      return;
     autoOlderIntent.current = true;
-    follow.current = false;
-    requestAnimationFrame(() => autoLoadCurrent.current());
+    if (reading.current.kind === "following")
+      reading.current = changeReadingIntent(reading.current, { kind: "holding" });
+    scheduleReading();
   };
   const returnToBottom = () => {
     autoOlderIntent.current = false;
-    pageReading.current = undefined;
-    pendingReading.current = undefined;
-    disclosureReading.current = undefined;
+    reading.current = changeReadingIntent(reading.current, { kind: "following" });
+    void historyCurrent.current.retain(reading.current.revision, null).catch(() => {});
     releaseResponseSpace();
-    follow.current = true;
     // Instant scrolling avoids interpreting smooth-scroll frames as a reader
     // leaving the tail. Reading navigation never submits or restores execution.
     container.current?.scrollTo({ top: container.current.scrollHeight });
@@ -646,25 +529,49 @@ export function Messages({
       ) : fileOpen && isWorkspaceImagePath(uri) ? (
         <WorkspaceImage path={uri} alt={name} projectId={project.id} fileOpen={fileOpen} />
       ) : fileOpen && workspaceFileCardType(uri) ? (
-        <WorkspaceFileCard path={uri} label={name} projectId={project.id} fileOpen={fileOpen} />
+        <WorkspaceFileCard
+          path={uri}
+          label={name}
+          projectId={project.id}
+          fileOpen={fileOpen}
+          onOpen={onFile}
+        />
       ) : null,
-    [project.id, thread.id, action, fileOpen],
+    [project.id, thread.id, action, fileOpen, onFile],
   );
   const renderFileCard = useCallback(
     (path: string, label: string) =>
       fileOpen && workspaceFileCardType(path) ? (
-        <WorkspaceFileCard path={path} label={label} projectId={project.id} fileOpen={fileOpen} />
+        <WorkspaceFileCard
+          path={path}
+          label={label}
+          projectId={project.id}
+          fileOpen={fileOpen}
+          onOpen={onFile}
+        />
       ) : null,
-    [project.id, fileOpen],
+    [project.id, fileOpen, onFile],
   );
-  // Binary files cannot be shown in the file pane; hand them to the desktop instead.
   const openReplyFile = useCallback(
-    (path: string) => {
+    (path: string, line?: number) => {
+      if (fileOpen && /\.html?$/i.test(path)) {
+        void fileOpen({
+          operation: "openHtml",
+          projectId: project.id,
+          threadId: thread.id,
+          path,
+        }).catch((error: unknown) =>
+          toast(error instanceof Error ? error.message : String(error), "error"),
+        );
+        return;
+      }
       if (fileOpen && opensOutside(path))
-        void fileOpen({ operation: "open", projectId: project.id, path }).catch(() => onFile(path));
-      else onFile(path);
+        void fileOpen({ operation: "open", projectId: project.id, path }).catch(() =>
+          onFile(path, line),
+        );
+      else onFile(path, line);
     },
-    [fileOpen, onFile, project.id],
+    [fileOpen, onFile, project.id, thread.id],
   );
   const sendGenUi = async (prompt: string) => {
     if (readOnly || !project.state?.connected || localThread.desktop?.archived)
@@ -756,12 +663,50 @@ export function Messages({
             )
           }
         />
+        <MessageTime createdAt={entry.createdAt} />
         {!deferActions && entry.phase !== "commentary" && turn.status !== "inProgress" && (
           <MessageActions text={conversationContentToText(blocks)} />
         )}
       </div>
     );
   };
+  useLayoutEffect(() => {
+    if (embedded) return;
+    if (
+      reading.current.owner === owner &&
+      reading.current.generation === history.generation &&
+      activeOwner.current === owner
+    )
+      return;
+    const remembered = readingViews.get(owner);
+    const previous = reading.current;
+    reading.current = {
+      ...createReadingState(owner, history.generation),
+      revision: previous.revision + 1,
+    };
+    if (remembered?.following === false && remembered.anchor) {
+      const request = beginReadingRestore(reading.current, remembered.anchor);
+      reading.current = request;
+      const local = (localThread.turns ?? []).some(
+        (turn: Data) =>
+          turn.id === request.anchor.turnId &&
+          (turn.items ?? []).some(
+            (item: Data) => item.id === request.anchor.itemId && item.type !== "historyDeferred",
+          ),
+      );
+      const stale = localThread.displayHistory?.restoringItems?.includes(request.anchor.itemId);
+      if (local && !stale) {
+        reading.current = settleReadingRestore(reading.current, request, "ready");
+        void history.retain(request.revision, request.anchor).catch(() => {});
+      } else
+        void history.ensure(request.revision, request.anchor).then((result) => {
+          const next = settleReadingRestore(reading.current, request, result);
+          if (next === reading.current) return;
+          reading.current = next;
+          refreshReading((value) => value + 1);
+        });
+    } else void history.retain(reading.current.revision, null).catch(() => {});
+  }, [owner, history.generation, embedded]);
   useLayoutEffect(() => {
     const element = container.current,
       spacer = responseSpace.current;
@@ -786,33 +731,30 @@ export function Messages({
         element.clientHeight - parseFloat(column.paddingTop) - parseFloat(column.paddingBottom),
       );
     };
-    if (switched || previous.id !== latestTurnId) disclosureReading.current = undefined;
     if (switched) {
-      follow.current = remembered?.following ?? true;
-      pendingReading.current = follow.current ? undefined : remembered?.anchor;
       reservation.current =
         reserveResponseSpace && remembered?.responseSpace
           ? { ...remembered.responseSpace }
           : undefined;
-    } else if (previous.id !== latestTurnId) {
-      // Reflow may leave all prior history visible while preserving a former
-      // departure. The next accepted message follows from that actual tail;
-      // readers still above an overflowing history retain their position.
-      if (!pendingReading.current) follow.current ||= remembered?.atTail === true;
-      // Only a mounted, accepted user follow-up creates space. Cold history,
-      // the first turn and Goal continuations retain natural content height.
-      // Core may deliver the user and process together or separately. Reserve
-      // from the accepted user boundary, never the first transient process size.
+    }
+    const requested = readingViews.get(owner)?.pendingTurnStart;
+    const firstMountedTurn =
+      !switched && !previous.id && latestTurnId && reading.current.kind === "following";
+    const accepted =
+      user &&
+      !goalContinuationLabel(latest) &&
+      ((requested && requested.afterTurnId !== latestTurnId) || firstMountedTurn);
+    if (accepted) {
+      cancelTurnStart(requested);
+      reading.current = changeReadingIntent(reading.current, {
+        kind: "following",
+        target: { kind: "turnStart", turnId: latestTurnId },
+      });
       reservation.current =
-        reserveResponseSpace &&
-        previous.id &&
-        follow.current &&
-        section &&
-        user &&
-        !goalContinuationLabel(latest)
+        reserveResponseSpace && section
           ? { turnId: latestTurnId, height: 0, contentHeight: 0 }
           : undefined;
-    }
+    } else if (!switched && previous.id !== latestTurnId) reservation.current = undefined;
     // 自然流布局由父容器滚动；自身高度包含占位，
     // 用它计算预留空间会在下一次尺寸变化时形成反馈增长。
     if (!reserveResponseSpace) reservation.current = undefined;
@@ -828,33 +770,70 @@ export function Messages({
         space.contentHeight = contentHeight;
         spacer.style.height = `${space.height}px`;
       } else spacer.style.height = "0px";
-      const disclosure = disclosureReading.current;
+      if (readingFrame.current !== undefined) {
+        cancelAnimationFrame(readingFrame.current);
+        readingFrame.current = undefined;
+        updateReading();
+      }
+      const state = reading.current;
+      const disclosure = state.kind === "holding" ? state.disclosure : undefined;
       if (disclosure && element.contains(disclosure.control)) {
         element.scrollTop +=
           disclosure.control.getBoundingClientRect().top -
           element.getBoundingClientRect().top -
           disclosure.offset;
-      } else if (follow.current) element.scrollTop = element.scrollHeight;
-      else if (pendingReading.current && restoreReadingAnchor(element, pendingReading.current))
-        pendingReading.current = undefined;
+      } else if (state.kind === "following") {
+        if (state.target?.kind === "turnStart" && state.target.turnId === latestTurnId && user) {
+          const inset = parseFloat(getComputedStyle(section!.parentElement!).paddingTop);
+          element.scrollTop +=
+            user.getBoundingClientRect().top - element.getBoundingClientRect().top - inset;
+        } else element.scrollTop = element.scrollHeight;
+      } else if (state.kind === "holding" && state.anchor)
+        restoreReadingAnchor(element, state.anchor);
+      else if (state.kind === "restoring" && state.phase === "ready") {
+        const result = restoreReadingAnchor(element, state.anchor);
+        if (result === true) {
+          reading.current = {
+            owner: state.owner,
+            generation: state.generation,
+            revision: state.revision,
+            kind: "holding",
+            anchor: state.anchor,
+          };
+        } else if (result === "pending") {
+          // Markdown 的惰性模块尚未准入正文，尺寸变化后沿原锚点继续恢复。
+        } else if (state.attempts >= 2) {
+          reading.current = settleReadingRestore(state, state, "layout");
+          refreshReading((value) => value + 1);
+        } else {
+          reading.current = { ...state, attempts: state.attempts + 1 };
+          requestAnimationFrame(() => layoutReading.current());
+        }
+      }
       readingViewport.current = { width: element.clientWidth, height: element.clientHeight };
       setReadingHistory(
-        !follow.current && element.scrollHeight - element.scrollTop - element.clientHeight >= 120,
+        (reading.current.kind !== "following" || reading.current.target?.kind === "turnStart") &&
+          element.scrollHeight - element.scrollTop - element.clientHeight >= 120,
       );
       rememberReading();
     };
-    if (switched && !follow.current) element.scrollTop = remembered?.top ?? 0;
-    layout();
-    const cancelPendingReading = () => {
-      pageReading.current = undefined;
-      pendingReading.current = undefined;
-      disclosureReading.current = undefined;
-      rememberReading();
+    if (switched && reading.current.kind !== "following") element.scrollTop = remembered?.top ?? 0;
+    layoutReading.current = layout;
+    const cancelPendingReading = (event: Event) => {
+      if (
+        event instanceof KeyboardEvent &&
+        (!["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key) ||
+          (event.target instanceof Element &&
+            event.target.closest("input, textarea, [contenteditable=true]")))
+      )
+        return;
+      readHere();
     };
     const wheel = (event: WheelEvent) => {
-      cancelPendingReading();
+      cancelPendingReading(event);
       if (event.deltaY >= 0 || element.scrollHeight <= element.clientHeight) return;
-      follow.current = false;
+      if (reading.current.kind === "following")
+        reading.current = changeReadingIntent(reading.current, { kind: "holding" });
       if (reservation.current) {
         const top = element.scrollTop;
         releaseResponseSpace();
@@ -869,16 +848,25 @@ export function Messages({
     // 回合完成时过程组自动收起：跟随底部的读者继续跟随；离开底部的读者以该过程标题为锚，
     // 标题已滚出视口时把它放到视口顶部，最终回答紧随其后，而不是被截断落在中间。
     const autoCollapse = (event: Event) => {
-      if (follow.current || !(event.target instanceof HTMLElement)) return;
+      const state = reading.current;
+      if (state.kind !== "holding" || !state.anchor || !(event.target instanceof HTMLElement))
+        return;
+      const item = event.target.querySelector<HTMLElement>(
+        `[data-side-item-id="${CSS.escape(state.anchor.itemId)}"]`,
+      );
+      if (!item) return;
       const control = event.target.querySelector<HTMLElement>(".turn-progress-summary");
       if (!control) return;
-      disclosureReading.current = {
-        control,
-        offset: Math.max(
-          0,
-          control.getBoundingClientRect().top - element.getBoundingClientRect().top,
-        ),
-      };
+      reading.current = changeReadingIntent(reading.current, {
+        kind: "holding",
+        disclosure: {
+          control,
+          offset: Math.max(
+            0,
+            control.getBoundingClientRect().top - element.getBoundingClientRect().top,
+          ),
+        },
+      });
     };
     element.addEventListener(progressAutoCollapse, autoCollapse);
     element.addEventListener("wheel", wheel, { passive: false });
@@ -892,35 +880,26 @@ export function Messages({
       layout,
     );
     return () => {
+      layoutReading.current = () => {};
       stopObserving();
       element.removeEventListener(progressAutoCollapse, autoCollapse);
       element.removeEventListener("wheel", wheel);
       element.removeEventListener("pointerdown", cancelPendingReading);
       element.removeEventListener("keydown", cancelPendingReading);
     };
-  }, [owner, latestTurnId, reserveResponseSpace]);
+  }, [owner, latestTurnId, latestUserId, turnStartRequest, reserveResponseSpace]);
   useLayoutEffect(() => {
-    const element = container.current;
-    if (embedded || !element || activeOwner.current !== owner || !pendingReading.current) return;
-    if (restoreReadingAnchor(element, pendingReading.current)) {
-      pendingReading.current = undefined;
-      rememberReading();
-    }
-    setReadingHistory(element.scrollHeight - element.scrollTop - element.clientHeight >= 120);
+    layoutReading.current();
   });
   useLayoutEffect(() => {
-    const reading = pageReading.current;
-    const element = container.current;
-    if (!reading || !element || reading.owner !== owner) return;
-    if (
-      history.failure ||
-      (reading.turns !== localThread.turns && !localThread.displayHistory?.loadingOlder)
-    ) {
-      if (reading.anchor) restoreReadingAnchor(element, reading.anchor);
-      pageReading.current = undefined;
-      rememberReading();
-    }
-  });
+    return () => {
+      if (readingFrame.current !== undefined) cancelAnimationFrame(readingFrame.current);
+      readingFrame.current = undefined;
+      // React 已替换子节点，清理时只保存最近一次已确认的阅读记录。
+      saveReadingViews();
+      reading.current = changeReadingIntent(reading.current, { kind: "holding" });
+    };
+  }, [owner]);
   return (
     <div className={embedded ? "messages-embedded" : "messages-shell"}>
       {!embedded && showTurnNavigation && (
@@ -929,17 +908,15 @@ export function Messages({
           turns={thread.turns ?? []}
           container={container}
           onNavigate={() => {
-            pendingReading.current = undefined;
-            disclosureReading.current = undefined;
-            follow.current = false;
+            readHere();
             releaseResponseSpace();
-            rememberReading();
           }}
         />
       )}
       <div
         className={embedded ? "messages-embedded-content" : "messages"}
         ref={container}
+        tabIndex={embedded ? undefined : 0}
         onScroll={
           embedded
             ? undefined
@@ -947,10 +924,11 @@ export function Messages({
                 const element = container.current;
                 if (element && scrollbarReading.current !== undefined) {
                   if (element.scrollTop < scrollbarReading.current) requestOlderFromInput();
+                  else if (element.scrollTop > scrollbarReading.current)
+                    autoOlderIntent.current = false;
                   scrollbarReading.current = element.scrollTop;
                 }
-                updateReading();
-                autoLoadOlder();
+                scheduleReading();
               }
         }
         onWheelCapture={
@@ -975,7 +953,8 @@ export function Messages({
                   )
                     return;
                   requestOlderFromInput();
-                }
+                } else if (["ArrowDown", "PageDown", "End", " "].includes(event.key))
+                  autoOlderIntent.current = false;
               }
         }
         onPointerDownCapture={
@@ -983,12 +962,43 @@ export function Messages({
             ? undefined
             : (event) => {
                 if (
-                  event.pointerType === "touch" ||
+                  event.pointerType !== "touch" &&
                   event.clientX >= event.currentTarget.getBoundingClientRect().right - 16
                 )
                   scrollbarReading.current = event.currentTarget.scrollTop;
               }
         }
+        onTouchStartCapture={
+          embedded
+            ? undefined
+            : (event) => {
+                const touch = event.touches[0];
+                touchReading.current = touch ? { y: touch.clientY, requested: false } : undefined;
+              }
+        }
+        onTouchMoveCapture={
+          embedded
+            ? undefined
+            : (event) => {
+                const gesture = touchReading.current;
+                const touch = event.touches[0];
+                if (!gesture || !touch) return;
+                const delta = touch.clientY - gesture.y;
+                if (delta < 0) autoOlderIntent.current = false;
+                if (delta > 0 && !gesture.requested) {
+                  gesture.requested = true;
+                  requestOlderFromInput();
+                }
+                gesture.y = touch.clientY;
+              }
+        }
+        onTouchEndCapture={() => {
+          touchReading.current = undefined;
+        }}
+        onTouchCancelCapture={() => {
+          touchReading.current = undefined;
+          autoOlderIntent.current = false;
+        }}
         onMouseUp={captureSideSelection}
         onKeyUp={(event) => {
           if (event.key !== "Escape" && event.key !== "Tab" && event.key !== "Enter")
@@ -1015,27 +1025,15 @@ export function Messages({
               <WorktreeStatus events={localThread.worktreeEvents} current={localThread.worktree} />
             )}
           {beforeTurns}
+          <ModelChanges changes={thread.desktop?.modelChanges} />
           {inherited.loading && <p role="status">正在加载继承历史…</p>}
           {inherited.error && <p role="alert">继承历史读取失败：{inherited.error}</p>}
           {localThread.displayHistory?.supported && (
             <div ref={olderSentinel} className="message-history-controls" aria-live="polite">
               {localThread.displayHistory.loadingLatest ? (
                 <span role="status">{t("chat.history.loadingLatest")}</span>
-              ) : localThread.displayHistory.latestTurnComplete !== false &&
-                !localThread.displayHistory.complete ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={localThread.displayHistory.loadingOlder}
-                  onClick={() => {
-                    void loadOlder();
-                  }}
-                >
-                  {localThread.displayHistory.loadingOlder
-                    ? t("chat.history.loadingOlder")
-                    : t("chat.history.loadOlder")}
-                </Button>
+              ) : localThread.displayHistory.loadingOlder ? (
+                <span role="status">{t("chat.history.loadingOlder")}</span>
               ) : null}
             </div>
           )}
@@ -1046,8 +1044,11 @@ export function Messages({
                 type="button"
                 variant="ghost"
                 size="sm"
-                disabled={localThread.displayHistory.loadingLatest}
-                onClick={() => void history.load()}
+                disabled={
+                  localThread.displayHistory.loadingLatest ||
+                  localThread.displayHistory.loadingOlder
+                }
+                onClick={() => void loadOlder()}
               >
                 {t("recovery.retryView")}
               </Button>
@@ -1148,38 +1149,7 @@ export function Messages({
             const hasReadingSummary = hasFinal || !!legacyReply;
             // 带phase与旧快照共用同一过程总组；从运行期起保留挂载，
             // 完成收敛只隐藏内容，不重置工具详情或改变历史顺序。
-            const groups: {
-              id: string;
-              progress: boolean;
-              entries: { item: Data; index: number }[];
-            }[] = [];
-            segments.forEach((item: Data, index: number) => {
-              const progress =
-                item.type !== "historyDeferred" &&
-                item.type !== "historyPageGap" &&
-                item.type !== "questionAnswer" &&
-                item.type !== "userMessage" &&
-                item.type !== "agentMedia" &&
-                (item.type !== "agentMessage" ||
-                  item.phase === "commentary" ||
-                  (!!legacyReply && item.id !== legacyReply.id));
-              const previous = groups.at(-1);
-              if (progress && previous?.progress) previous.entries.push({ item, index });
-              // An earlier empty commentary can become visible after the reader
-              // opens tools. Anchor its group to the preceding reading boundary
-              // so that insertion retains both disclosure levels.
-              else
-                groups.push({
-                  id: progress ? `progress:${previous?.id ?? turn.id}` : item.id,
-                  progress,
-                  entries: [{ item, index }],
-                });
-            });
-            // Stop is a Core terminal state, not a completed response. Keep its
-            // process text inspectable and put the state before that content.
-            const stopHeaderIndex = groups.findIndex((group) =>
-              group.entries.some(({ item }) => item.type !== "userMessage"),
-            );
+            const groups = progressGroups(segments, turn.id, legacyReply?.id);
             const firstProgress = groups.findIndex((group) => group.progress);
             const initialUser = segments.find((item) => item.type === "userMessage");
             const queue = project.state?.queues?.[thread.id];
@@ -1196,11 +1166,17 @@ export function Messages({
                 : null;
             const hasInterruption =
               turn.status === "interrupted" || (turn.status === "failed" && !!turn.interruption);
-            const stopHeading = turn.interruption !== "userPause" && (
+            const stopHeading = (
               <div className="turn-stop-heading turn-progress-heading">
                 <div className="turn-progress-label">
                   <span className="turn-status turn-progress-summary" role="status">
-                    {ordinary ? interruptionLabel(turn) : "已停止"}
+                    {t(
+                      turn.interruption === "userPause"
+                        ? "chat.timeline.interruption.userPause"
+                        : turn.interruption === "coreRecovery"
+                          ? "chat.timeline.interruption.coreRecovery"
+                          : "chat.timeline.interruption.other",
+                    )}
                     {turn.error ? `：${turnFailureMessage(turn)}` : ""}
                   </span>
                 </div>
@@ -1209,7 +1185,7 @@ export function Messages({
             );
             return (
               <section
-                key={turn.id}
+                key={JSON.stringify([owner, turn.id])}
                 data-turn-id={turn.id}
                 data-turn-status={turn.status}
                 data-latest-turn={turn.id === latestTurnId}
@@ -1225,6 +1201,7 @@ export function Messages({
                     group.entries.flatMap(({ item }) => item.items ?? []),
                   );
                   const contents = group.entries.map(({ item }) => {
+                    if (item.historyOmitted) return null;
                     if (item.type === "historyPageGap")
                       return (
                         <div key={item.id} className="notice" data-history-page-id={item.id}>
@@ -1287,8 +1264,15 @@ export function Messages({
                         );
                       }
                       const content = item.content ?? [];
+                      const imageParts = content.filter((part: Data) => part.type === "image");
+                      const decorations = content
+                        .filter((part: Data) => part.type === "text" && part.mcpContent)
+                        .map((part: Data) => part.mcpContent);
                       const appContent = content.filter(
-                        (part: Data) => part.type === "text" && part.mcpContent,
+                        (part: Data) =>
+                          part.type === "text" &&
+                          part.mcpContent &&
+                          !isSnapShotDecoration(part.mcpContent, imageParts),
                       );
                       const text = content
                         .filter((part: Data) => part.type === "text" && !part.mcpContent)
@@ -1299,7 +1283,15 @@ export function Messages({
                         (part: Data) => part.type !== "text",
                       );
                       const browserFeedback = sentBrowserAnnotations(feedback.text, attachments);
-                      const imageFeedback = sentImageAnnotations(browserFeedback.text, attachments);
+                      const snapshotFeedback = sentSnapShots(
+                        browserFeedback.text,
+                        attachments,
+                        decorations,
+                      );
+                      const imageFeedback = sentImageAnnotations(
+                        snapshotFeedback.text,
+                        attachments,
+                      );
                       const ordinaryAttachments = attachments
                         .map((part: Data, index: number) => ({ part, index }))
                         .filter(
@@ -1341,6 +1333,12 @@ export function Messages({
                                         <SentAttachment
                                           part={part}
                                           annotation={note}
+                                          snapShotSource={
+                                            snapshotFeedback.notes.find(
+                                              (record) =>
+                                                record.imageUri === (part.url ?? part.uri),
+                                            )?.source
+                                          }
                                           projectId={project.id}
                                           threadId={thread.id}
                                           action={action}
@@ -1356,7 +1354,10 @@ export function Messages({
                                   <CollapsibleText
                                     key={`${owner}:${item.id}`}
                                     onExpandedChange={() => {
-                                      follow.current = false;
+                                      if (reading.current.kind === "following")
+                                        reading.current = changeReadingIntent(reading.current, {
+                                          kind: "holding",
+                                        });
                                       releaseResponseSpace();
                                       rememberReading();
                                     }}
@@ -1374,6 +1375,7 @@ export function Messages({
                                   </CollapsibleText>
                                 </div>
                               ) : null}
+                              <MessageTime createdAt={item.createdAt} />
                               {(text.trim() || item.id === editable) && (
                                 <MessageActions text={text}>
                                   {item.id === editable && (
@@ -1423,11 +1425,24 @@ export function Messages({
                     return (
                       <TurnExecution
                         key={item.id}
+                        readingKey={JSON.stringify([project.id, thread.id, turn.id, item.id])}
                         items={item.items}
                         turn={turn}
                         project={project}
                         threadId={thread.id}
                         renderItem={(entry: Data, disclosure) => {
+                          if (entry.type === "historyPageGap")
+                            return (
+                              <Button
+                                key={entry.id}
+                                data-history-page-id={entry.id}
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => void loadOlder(entry.id)}
+                              >
+                                {t("chat.history.reloadPage")}
+                              </Button>
+                            );
                           if (entry.type === "dynamicToolCall")
                             return (
                               <div data-side-item-id={entry.id} key={entry.id}>
@@ -1485,9 +1500,9 @@ export function Messages({
                   });
                   return (
                     <Fragment key={group.id}>
-                      {hasInterruption && groupIndex === stopHeaderIndex && stopHeading}
                       {group.progress ? (
                         <TurnProgress
+                          readingKey={JSON.stringify([project.id, thread.id, turn.id, group.id])}
                           summaryAvailable
                           turn={!thread.cloud && groupIndex === firstProgress ? turn : undefined}
                           connected={!!project.state?.connected}
@@ -1512,6 +1527,8 @@ export function Messages({
                     </Fragment>
                   );
                 })}
+                {hasInterruption && stopHeading}
+                <TurnRetries turn={turn} />
                 {!isInherited &&
                   (turn.items ?? [])
                     .filter((item: Data) => item.type === "dynamicToolCall")
@@ -1583,6 +1600,7 @@ export function Messages({
                     {forkControls}
                   </div>
                 )}
+                <ModelChanges changes={thread.desktop?.modelChanges} afterTurnId={turn.id} />
                 {canFork && forkReason && turn.status !== "inProgress" && (
                   <p id={`fork-reason-${turn.id}`} className="notice">
                     {forkReason}
@@ -1593,7 +1611,6 @@ export function Messages({
                     {forkError?.message}
                   </p>
                 )}
-                {hasInterruption && stopHeaderIndex < 0 && stopHeading}
                 {showTurnStatus(turn, hasInterruption, hasReadingSummary) && (
                   <div className="turn-status">
                     {({ completed: "已完成", interrupted: "已停止", failed: "执行失败" } as Data)[

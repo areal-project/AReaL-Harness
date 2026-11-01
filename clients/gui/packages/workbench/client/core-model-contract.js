@@ -1,7 +1,7 @@
 // @ts-check
 /** Types for the fields the rebuildable model reads; opaque Core extensions remain unknown. */
 /** @typedef {import('./state-projection.cjs').ProjectionNode & {type?:string,text?:unknown,summary?:unknown[],content?:unknown[]}} CoreItem */
-/** @typedef {import('./state-projection.cjs').ProjectionNode & {status?:string,items?:CoreItem[]|null,modelRetry?:{purpose:string,retry:number}}} CoreTurn */
+/** @typedef {import('./state-projection.cjs').ProjectionNode & {trace?:{activities?:Record<string,unknown>[],[key:string]:unknown},status?:string,items?:CoreItem[]|null,modelRetry?:{purpose:string,retry:number,delayMs?:number}}} CoreTurn */
 /** @typedef {{revision:number,eventSequence?:number,goal?:unknown,[key:string]:unknown}} CoreGoals */
 /** @typedef {{revision:number,steps:unknown[],[key:string]:unknown}} CorePlan */
 /** @typedef {Record<string,unknown> & {id?:string,status?:string,input?:unknown[]}} CoreQueueItem */
@@ -26,6 +26,7 @@ export function isCoreItem(value) {
     modelRecord(value) &&
     typeof value.id === "string" &&
     (value.type === undefined || typeof value.type === "string") &&
+    (value.createdAt == null || revision(value.createdAt)) &&
     (value.summary === undefined || Array.isArray(value.summary)) &&
     (value.content === undefined || Array.isArray(value.content))
   );
@@ -97,6 +98,22 @@ export function isCoreTask(value) {
     (value.channelSequence === undefined || revision(value.channelSequence))
   );
 }
+/** @param {unknown} value @returns {boolean} */
+export function isCoreModelChange(value) {
+  if (
+    !modelRecord(value) ||
+    !revision(value.revision) ||
+    !revision(value.occurredAt) ||
+    (value.afterTurnId != null && typeof value.afterTurnId !== "string")
+  )
+    return false;
+  return [value.from, value.to].every(
+    (identity) =>
+      modelRecord(identity) &&
+      (identity.providerId === null || typeof identity.providerId === "string") &&
+      typeof identity.modelId === "string",
+  );
+}
 /** @param {unknown} value @returns {value is CoreThread} */
 export function isCoreThread(value) {
   return (
@@ -108,7 +125,10 @@ export function isCoreThread(value) {
     (value.goals === undefined || isCoreGoals(value.goals)) &&
     (value.desktop == null ||
       (modelRecord(value.desktop) &&
-        (value.desktop.plan == null || isCorePlan(value.desktop.plan)))) &&
+        (value.desktop.plan == null || isCorePlan(value.desktop.plan)) &&
+        (value.desktop.modelChanges === undefined ||
+          (Array.isArray(value.desktop.modelChanges) &&
+            value.desktop.modelChanges.every(isCoreModelChange))))) &&
     (value.conversation == null ||
       (modelRecord(value.conversation) &&
         (value.conversation.kind === undefined || typeof value.conversation.kind === "string")))

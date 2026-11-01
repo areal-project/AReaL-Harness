@@ -1,5 +1,6 @@
 // @ts-check
 "use strict";
+const { isDeepStrictEqual } = require("node:util");
 const { workspaceKey, pageKey } = require("./identity.cjs");
 
 class PreviewPresentation {
@@ -19,6 +20,55 @@ class PreviewPresentation {
     /** @type {{page:import("./model.js").Page|undefined,view:import("electron").WebContentsView|null,visible:boolean}|null} */
     this.suppressedPresentation = null;
   }
+  /** @param {import('./model.js').LivePage} page @param {import('./model.js').Bounds} available */
+  layout(page, available) {
+    const c = page.view.webContents;
+    const viewport = page.commandViewport;
+    const guiZoom = this.window.webContents.getZoomFactor();
+    const fit = viewport
+      ? Math.min(1, available.width / viewport.width, available.height / viewport.height)
+      : 1;
+    const bounds = viewport
+      ? {
+          x: available.x + Math.floor((available.width - Math.floor(viewport.width * fit)) / 2),
+          y: available.y,
+          width: Math.max(1, Math.floor(viewport.width * fit)),
+          height: Math.max(1, Math.floor(viewport.height * fit)),
+        }
+      : available;
+    const scale = fit;
+    const key = JSON.stringify([viewport ?? null, scale]);
+    if (
+      isDeepStrictEqual(bounds, page.view.getBounds()) &&
+      page.guiZoom === guiZoom &&
+      page.emulationKey === key
+    )
+      return;
+    page.activeRead?.cancel("plan_stale");
+    page.activeSelection?.cancel();
+    page.view.setBounds(bounds);
+    if (viewport) {
+      c.setZoomFactor(1);
+      c.enableDeviceEmulation({
+        screenPosition: "desktop",
+        screenSize: viewport,
+        viewPosition: { x: 0, y: 0 },
+        deviceScaleFactor: 0,
+        viewSize: viewport,
+        scale,
+      });
+    } else if (page.viewportScale !== undefined) c.disableDeviceEmulation();
+    page.emulationKey = key;
+    page.viewportScale = viewport ? scale : undefined;
+    page.guiZoom = guiZoom;
+    page.viewportKey = null;
+    page.viewportRevision++;
+    page.lastCapture = null;
+    page.plans.clear();
+    page.needsObservation = true;
+    this.workspace.changed(page, "viewportChanged");
+  }
+
   /**
    * @param {boolean} suppressed
    */
@@ -112,6 +162,9 @@ class PreviewPresentation {
       browser: page
         ? {
             pageId: page.id,
+            viewport: page.commandViewport
+              ? { mode: "device", ...page.commandViewport }
+              : { mode: "auto" },
             control: page.control,
             frameOriginGrant: page.frameGrant
               ? { origin: page.frameGrant.origin, status: page.frameGrant.status }

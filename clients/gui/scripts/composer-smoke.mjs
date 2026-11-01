@@ -1,4 +1,10 @@
+import {
+  createFolderVisionFixture,
+  composerFolderVisionResponse,
+  runComposerFolderVisionAcceptance,
+} from "./composer-folder-vision-acceptance.mjs";
 import { makeTempDir } from "./support/temp.mjs";
+import { runSnapShotsAcceptance } from "./snapshots-acceptance.mjs";
 import { composerFilesResponse, runComposerFilesAcceptance } from "./composer-files-acceptance.mjs";
 import {
   composerReferencesResponse,
@@ -24,17 +30,30 @@ import { createHash } from "node:crypto";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = join(gui, "app");
 const filesRegression = process.env.AREAL_COMPOSER_FILES_REGRESSION === "1";
+const folderVisionRegression = process.env.AREAL_COMPOSER_FOLDER_VISION_REGRESSION === "1";
+const snapshotsRegression = process.env.AREAL_SNAPSHOTS_REGRESSION === "1";
 const referencesRegression = process.env.AREAL_COMPOSER_REFERENCES_REGRESSION === "1";
 const referencesFixture = { held: new Set() };
 const filesFixture = { held: new Set() };
 const skillsRegression = process.env.AREAL_COMPOSER_SKILLS_REGRESSION === "1";
 assert.ok(
-  [skillsRegression, filesRegression, referencesRegression].filter(Boolean).length <= 1,
+  [
+    skillsRegression,
+    filesRegression,
+    referencesRegression,
+    snapshotsRegression,
+    folderVisionRegression,
+  ].filter(Boolean).length <= 1,
   "Choose one source fixture regression mode",
 );
 assert.ok(
-  !(skillsRegression || filesRegression || referencesRegression) ||
-    !process.env.AREAL_GUI_EXECUTABLE,
+  !(
+    skillsRegression ||
+    filesRegression ||
+    referencesRegression ||
+    snapshotsRegression ||
+    folderVisionRegression
+  ) || !process.env.AREAL_GUI_EXECUTABLE,
   "Composer regression modes require the source Electron fixture",
 );
 let launchApp = desktop;
@@ -46,6 +65,9 @@ const binary = process.env.AREAL_GUI_EXECUTABLE
   : process.env.AREAL_CORE_BIN || join(root, "target/debug/areal");
 assert.ok(binary, "AREAL_CORE_BIN must point to the actual built Core");
 const scratch = await makeTempDir("areal-gui-");
+const folderVisionFixture = folderVisionRegression
+  ? await createFolderVisionFixture(scratch)
+  : null;
 const workspace = join(scratch, "workspace");
 await mkdir(workspace);
 await mkdir(join(scratch, "user-home"));
@@ -141,6 +163,7 @@ await writeFile(
   }),
 );
 const received = [];
+let snapshotsCoverage = null;
 let predictionRequests = 0;
 const server = createServer(async (req, res) => {
   let raw = "";
@@ -164,6 +187,10 @@ const server = createServer(async (req, res) => {
     return;
   }
   received.push(body);
+  if (folderVisionRegression) {
+    composerFolderVisionResponse(body, res, folderVisionFixture);
+    return;
+  }
   if (filesRegression) {
     composerFilesResponse(body, res, filesFixture);
     return;
@@ -483,7 +510,51 @@ try {
       throw error;
     }
   };
-  if (filesRegression) {
+  if (folderVisionRegression) {
+    await runComposerFolderVisionAcceptance({
+      page,
+      pid,
+      state,
+      project,
+      until,
+      received,
+      checks,
+      shot,
+      scratch,
+      fixture: folderVisionFixture,
+    });
+  } else if (snapshotsRegression) {
+    snapshotsCoverage = await runSnapShotsAcceptance({
+      app,
+      page,
+      workspace,
+      scratch,
+      endpoint,
+      desktop,
+      call,
+      state,
+      project,
+      until,
+      received,
+      checks,
+      shot,
+      reopen: async () => {
+        await quit();
+        await launch();
+        return page;
+      },
+    });
+    assert.equal(
+      snapshotsCoverage.nativeCapture,
+      true,
+      "SnapShots native capture acceptance is incomplete; see coverage",
+    );
+    assert.equal(
+      snapshotsCoverage.settings,
+      true,
+      "SnapShots settings acceptance is incomplete; see coverage",
+    );
+  } else if (filesRegression) {
     await runComposerFilesAcceptance({
       app,
       page,
@@ -978,7 +1049,7 @@ try {
     await button("选择模型").click();
     await page.getByRole("tab", { name: "fixture-provider", exact: true }).click();
     await page.getByRole("radio", { name: "fixture-alt", exact: true }).click();
-    assert.match(await button("选择思考强度").innerText(), /未指定/);
+    assert.match(await button("选择思考强度").innerText(), /默认/);
     await button("选择思考强度").click();
     await page.getByRole("button", { name: "中", exact: true }).click();
     const slider = page.getByRole("slider", { name: "选择思考强度" });
@@ -1975,6 +2046,10 @@ try {
         runtime: "real Electron + real Rust Core/Runtime + deterministic local HTTP/SSE model",
         skillsRegression,
         filesRegression,
+        snapshotsRegression,
+        snapshotsCoverage,
+        folderVisionRegression,
+        folderVisionEvidence: folderVisionRegression ? "folder-vision-evidence.json" : undefined,
         referencesRegression,
         predictionRequests,
         modelRequests: "model-requests.json",

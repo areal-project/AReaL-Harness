@@ -172,8 +172,6 @@ try {
   });
   const identity = { projectId: project.id, threadId: first.threadId };
   await selectConversation(page, first.threadId);
-  await page.keyboard.press("Meta+t");
-  await page.locator(".preview-panel").waitFor();
   await app.evaluate(({ app, BrowserWindow }) => {
     app.setActivationPolicy("regular");
     const window = BrowserWindow.getAllWindows()[0];
@@ -190,6 +188,8 @@ try {
       }),
     "visible owned annotation window",
   );
+  await page.keyboard.press("Meta+t");
+  await page.locator(".preview-panel").waitFor();
   await page.evaluate((q) => window.arealDesktop.preview(q), {
     ...identity,
     operation: "navigate",
@@ -306,10 +306,50 @@ try {
   const image = region.locator("img");
   const box = await image.boundingBox();
   assert.ok(box?.width && box.height);
+  // 在现有 IPC 边界拒绝一次元素选择，随后通过真实工具栏切换区域模式。
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = ipcMain._invokeHandlers;
+    const original = handlers.get("areal-core:preview");
+    handlers.set("areal-core:preview", (event, request) => {
+      if (request.operation === "selectElement") {
+        handlers.set("areal-core:preview", original);
+        throw new Error("测试：元素选择失败");
+      }
+      return original(event, request);
+    });
+  });
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page
+    .getByText(/元素选择失败/)
+    .first()
+    .waitFor();
+  await region.getByRole("button", { name: "框选区域" }).click();
+  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.4, box.y + box.height * 0.4, { steps: 5 });
+  await page.mouse.up();
+  const recoveryEditor = region.getByRole("dialog", { name: "编辑当前标注" });
+  await recoveryEditor.waitFor();
+  await recoveryEditor.getByRole("textbox", { name: "标注意见" }).fill("REGION_RECOVERED");
+  await recoveryEditor.getByRole("button", { name: "加入聊天草稿" }).click();
+  await page.getByRole("button", { name: "1 条标注", exact: true }).waitFor();
+  await region.getByRole("button", { name: "完成", exact: true }).click();
+  await page.getByRole("button", { name: "1 条标注", exact: true }).click();
+  await settlePopup();
+  await page.getByRole("button", { name: "删除标注 1", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "批注", exact: true }).click();
+  await region.waitFor();
+  await region.getByRole("button", { name: "点选元素" }).click();
+  checks.push(
+    "Element selection failure recovers through region mode and stages a region annotation",
+  );
+  const resumedBox = await region.locator("img").boundingBox();
+  assert.ok(resumedBox?.width && resumedBox.height);
   for (const [index, target] of targets.entries()) {
     await page.mouse.click(
-      box.x + (target.x / target.width) * box.width,
-      box.y + (target.y / target.height) * box.height,
+      resumedBox.x + (target.x / target.width) * resumedBox.width,
+      resumedBox.y + (target.y / target.height) * resumedBox.height,
     );
     const editor = region.getByRole("dialog", { name: "编辑当前标注" });
     await editor.waitFor();
@@ -436,10 +476,7 @@ try {
     buffer: Buffer.alloc(17 * 1024 * 1024),
   });
   await page.getByTestId("chat-send-button").click();
-  await page
-    .getByRole("alert")
-    .filter({ hasText: /附件|限制/ })
-    .waitFor();
+  await page.locator("p.notice[role=alert]").filter({ hasText: "oversize.bin" }).waitFor();
   await page.getByRole("button", { name: "2 条标注", exact: true }).waitFor();
   assert.equal(requests.length, 0, "upload refusal cannot submit the message");
   await page.getByRole("button", { name: "移除附件 oversize.bin", exact: true }).click();

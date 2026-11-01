@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "id": "relay-service",
+  "intent": "开启内网扫码并管理本机、SSH和外部Relay服务",
+  "pattern": "P-SETTINGS",
+  "target": "renderer/src/settings/RelayServicePanel.tsx",
+  "runtime": "desktop",
+  "reference": {
+    "kind": "existing-code",
+    "path": "renderer/src/settings/MobileSettings.tsx",
+    "visualTarget": null
+  },
+  "slots": {
+    "label": ["SettingsSection"],
+    "control": ["Button"],
+    "detail": ["SettingsDisclosure"]
+  },
+  "states": [
+    {
+      "id": "default",
+      "condition": "尚未开启手机连接",
+      "expected": "本机入口无需填写地址，SSH和外部服务在折叠项内"
+    },
+    {
+      "id": "busy",
+      "condition": "本机启动或SSH后台任务运行",
+      "expected": "相关写操作禁用，状态读取继续"
+    },
+    {
+      "id": "failed",
+      "condition": "网络、端口或预检失败",
+      "expected": "就近显示错误，首次只读SSH失败后保留可纠正输入"
+    },
+    {
+      "id": "unknown",
+      "condition": "SSH写入无权威回执",
+      "expected": "保留待核对状态，仅检查不重放写入"
+    },
+    {
+      "id": "disabled",
+      "condition": "参数不完整或当前状态不允许操作",
+      "expected": "动作保留可读标签并禁用"
+    }
+  ],
+  "conditions": {
+    "themes": ["light", "dark"],
+    "fontSizes": [14, 18],
+    "widthModes": ["wide", "narrow"],
+    "reducedMotion": [false, true]
+  },
+  "invariants": [
+    "运行状态不等于手机或公网可达",
+    "复用现有Host授权与加密配置",
+    "UNKNOWN不能当作未执行，只有独立absence回执允许换目标",
+    "私有HTTP仅用于原生App字节传输，不加载远程HTTP客户端脚本"
+  ],
+  "evidence": {
+    "status": "pending",
+    "artifacts": [],
+    "gaps": [
+      "源码Electron与原生App验收证据留在本地run manifest；公开合同不带私有网络地址",
+      "真实公司VPN、公网Linux服务器、物理扫码和安装包独立验收"
+    ]
+  },
+  "interactionFamilies": ["I-MANAGE", "I-DECIDE", "I-READ"]
+}

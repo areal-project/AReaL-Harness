@@ -852,6 +852,7 @@ impl Engine {
                     return Err(invalid("MODEL_CONTEXT_INCOMPATIBLE"));
                 }
                 let mut candidate = state.thread.clone();
+                engine.record_model_change(&mut candidate, &configuration);
                 candidate
                     .desktop
                     .get_or_insert_with(Default::default)
@@ -872,7 +873,7 @@ impl Engine {
                 crate::prompt_prediction::invalidate(&mut state);
                 cell.emit(
                     "areal/thread/configured",
-                    json!({"threadId":request.thread_id,"configuration":configuration}),
+                    json!({"threadId":request.thread_id,"configuration":configuration,"modelChanges":state.thread.desktop.as_ref().map(|data| &data.model_changes)}),
                 );
                 return Ok(configuration);
             }
@@ -1023,6 +1024,7 @@ impl Engine {
                 configuration.tool_allowlist = Some(names.clone());
             }
             let mut candidate = state.thread.clone();
+            engine.record_model_change(&mut candidate, &configuration);
             candidate
                 .desktop
                 .get_or_insert_with(Default::default)
@@ -1047,7 +1049,7 @@ impl Engine {
             cell.bindings.write().await.registry = registry;
             cell.emit(
                 "areal/thread/configured",
-                json!({"threadId":request.thread_id,"configuration":configuration}),
+                json!({"threadId":request.thread_id,"configuration":configuration,"modelChanges":state.thread.desktop.as_ref().map(|data| &data.model_changes)}),
             );
             Ok(configuration)
         })

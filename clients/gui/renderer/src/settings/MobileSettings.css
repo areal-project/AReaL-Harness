@@ -493,3 +493,31 @@
 .remote-relay-settings > section {
   margin-top: var(--spacing-field);
 }
+
+.remote-relay-service > [data-slot="card-content"] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-panel);
+  padding: var(--spacing-panel);
+}
+
+.remote-relay-service-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--spacing-field);
+  overflow-wrap: anywhere;
+}
+
+.remote-relay-profiles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-field);
+}
+
+.remote-relay-remove-data {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-inline);
+}

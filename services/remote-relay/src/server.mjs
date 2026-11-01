@@ -21,11 +21,12 @@ export async function serve(config, store, pushOptions) {
     res.setHeader('content-security-policy', "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
     res.setHeader('x-content-type-options', 'nosniff'); res.setHeader('referrer-policy', 'no-referrer');
     res.setHeader('permissions-policy', 'camera=(), microphone=(), geolocation=()');
-    if (!config.development) res.setHeader('strict-transport-security', 'max-age=31536000');
+    if (!config.development && !config.local) res.setHeader('strict-transport-security', 'max-age=31536000');
     if (req.headers.host !== config.publicHost) return reply(421, { error: 'UNAVAILABLE' });
     if (!requestBudget(0)) return reply(429, { error: 'LIMIT_EXCEEDED' });
     if (req.method === 'GET' && req.url === '/healthz') return reply(200, { ok: true });
     if (req.method === 'POST' && req.url === '/enroll') {
+      if (config.local) return reply(403, { error: 'UNAVAILABLE' });
       if (!enrollBudget(0)) return reply(429, { error: 'LIMIT_EXCEEDED' });
       if (req.headers.origin !== undefined || req.headers['content-type'] !== 'application/json') return reply(403, { error: 'UNAVAILABLE' });
       if (+req.headers['content-length'] > 1024) { reply(413, { error: 'LIMIT_EXCEEDED' }); req.resume(); return; }

@@ -79,6 +79,18 @@ function validToolInput(value) {
       return false;
     }
   }
+  if (value.operation === "openDocument")
+    return (
+      keys.every((key) => ["pageId", "path"].includes(key)) &&
+      typeof parameters.pageId === "string" &&
+      /^[0-9a-f-]{36}$/.test(parameters.pageId) &&
+      typeof parameters.path === "string" &&
+      parameters.path.length > 0 &&
+      parameters.path.length <= 4096 &&
+      !parameters.path.includes("\0") &&
+      !/^[\\/]{2}/.test(parameters.path) &&
+      /\.html?$/i.test(parameters.path)
+    );
   if (oneOf(["navigate", "newPage"], value.operation)) {
     if (
       !keys.every((key) => ["pageId", "url"].includes(key)) ||
@@ -348,7 +360,71 @@ function success(value) {
   return { success: true, contentItems: [{ type: "inputText", text: JSON.stringify(value) }] };
 }
 
+const discoveryGuidance = {
+  instructions:
+    "After creating a local HTML deliverable, use openDocument with a listed pageId and its full path to display it in the current chat. Its file scope requires Core approval. Workspace HTML permits static assets in its directory tree; HTML outside the workspace is exact-file only. Use navigate with a listed pageId and a URL to open a site, then observe to obtain current refs. Fill the search field and press Enter to submit an approved public search. describe creates or reuses the visible page after Core approval; no development service is needed. Human input revokes access; only a new explicit chat request can authorize re-entry.",
+  parameterGuide:
+    "Invoke browser_v1 only when the current user task requires browser interaction. For ordinary chat and tasks that do not need a browser, do not call browser_v1 merely because it is available. Every new browser task starts with describe and empty parameters, then a fresh observe for an existing page; never reuse earlier-turn snapshotId or refs. Replace pageId with an ID from pages, snapshotId with the latest observe.observationId, and ref with a ref from that observation. act takes one nested action object. For setChecked, action.checked must be a boolean. describe topic accepts only command.<method> or command.playwright.<action>, such as command.playwright.locator; use empty describe parameters for top-level browser operations. Observe again after fill before submitting with press Enter.",
+  examples: [
+    { operation: "describe", parameters: { topic: "command.playwright.locator" } },
+    {
+      operation: "openDocument",
+      parameters: { pageId: "<pageId>", path: "/absolute/path/report.html" },
+    },
+    { operation: "observe", parameters: { pageId: "<pageId>" } },
+    {
+      operation: "act",
+      parameters: {
+        pageId: "<pageId>",
+        snapshotId: "<observe.observationId>",
+        action: { kind: "fill", ref: "<ref>", value: "<search query>" },
+      },
+    },
+    {
+      operation: "act",
+      parameters: {
+        pageId: "<pageId>",
+        snapshotId: "<observe.observationId>",
+        action: { kind: "setChecked", ref: "<ref>", checked: true },
+      },
+    },
+    {
+      operation: "act",
+      parameters: {
+        pageId: "<pageId>",
+        snapshotId: "<observe.observationId>",
+        action: { kind: "press", ref: "<ref>", key: "Enter" },
+      },
+    },
+    {
+      operation: "act",
+      parameters: {
+        pageId: "<pageId>",
+        snapshotId: "<observe.observationId>",
+        action: { kind: "scroll", target: "viewport", deltaX: 0, deltaY: 512 },
+      },
+    },
+    {
+      operation: "act",
+      parameters: {
+        pageId: "<pageId>",
+        snapshotId: "<observe.observationId>",
+        action: {
+          kind: "selectOption",
+          ref: "<native SELECT ref>",
+          value: "<observed exact option value>",
+        },
+      },
+    },
+    {
+      operation: "diagnostics",
+      parameters: { pageId: "<pageId>", kind: "network", limit: 20 },
+    },
+  ],
+};
+
 module.exports = {
+  discoveryGuidance,
   definition,
   validToolInput,
   describeCommands,

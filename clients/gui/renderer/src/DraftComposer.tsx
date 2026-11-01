@@ -1,3 +1,9 @@
+import { snapShotCommandEntries } from "./snapshots/shortcut.js";
+import { useSnapShotCapture } from "./snapshots/captureContext.js";
+import { useSnapShotDraft } from "./snapshots/activeDraft.js";
+import { consumeSnapShotFiles, moveSnapShotDraft } from "./snapshots/drafts.js";
+import { requestTurnStart, cancelTurnStart, type TurnStartRequest } from "./readingViews.js";
+import { composerUploadOwner } from "./ComposerUploadState.js";
 import type { DraftComposerProps } from "./draftComposerTypes.js";
 import { PendingMessageView } from "./UserMessageBody.js";
 import { setPendingMessage, usePendingMessage } from "./pendingMessage.js";
@@ -5,12 +11,12 @@ import { Input } from "@areal/ui";
 import { useComposerWorkspaceFiles } from "./lib/workspaceFileComposer.js";
 import { imageAnnotationBlocked, useImageAnnotationRevision } from "./imageAnnotations.js";
 import { resolveDraftProfile } from "./ProfileDetails.js";
-import { draftModelSelection, modelValue } from "./lib/draftModelSelection.js";
+import { draftModelSelection, draftModelOptions, modelValue } from "./lib/draftModelSelection.js";
 import {
   setApplicationPreferences,
   useApplicationPreferences,
 } from "./settings/applicationPreferences.js";
-import { ComposerModelMenu, composerModelOption } from "./ComposerModelMenu.js";
+import { ComposerModelMenu } from "./ComposerModelMenu.js";
 import { ComposerPermissionMenu } from "./ComposerPermissionMenu.js";
 import { permissionOptions, planModeOptions, type PermissionPreset } from "./permissions.js";
 import { ComposerPlanMode } from "./ComposerPlanMode.js";
@@ -105,6 +111,8 @@ export function DraftComposer({
   const defaultPermissionPreset = useRef(prefs.defaultPermissionPreset);
   defaultPermissionPreset.current = prefs.defaultPermissionPreset;
   const key = draftKey ?? `areal-gui:draft:${project.id}:new`;
+  useSnapShotDraft(key);
+  const snapshotCapture = useSnapShotCapture();
   const reviewKey = reviewCommentKey(project.id, "new");
   const reviewDraft = useReviewComments(reviewKey);
   const comments = attachedReviewComments(reviewDraft.draft);
@@ -231,7 +239,7 @@ export function DraftComposer({
     text: input.text,
     action: readAction,
   });
-  const finishRecoveredCreation = (id: string) => {
+  const finishRecoveredCreation = async (id: string) => {
     if (acceptedRecovery.current === unknown) return;
     transferNewReviewComments(project.id, id);
     acceptedRecovery.current = unknown;
@@ -241,6 +249,7 @@ export function DraftComposer({
       localStorage.getItem(key) ?? "",
       attachmentDrafts.get(key) ?? [],
     );
+    await moveSnapShotDraft(key, `areal-gui:draft:${project.id}:${id}`);
     transferComposerSkills(key, `areal-gui:draft:${project.id}:${id}`);
     transferComposerPlugins(key, `areal-gui:draft:${project.id}:${id}`);
     if (goalMode) localStorage.setItem(`areal-gui:draft:${project.id}:${id}:goal`, "true");
@@ -409,6 +418,8 @@ export function DraftComposer({
         starting: true,
       });
     setDraftError("");
+    let turnStart: TurnStartRequest | undefined;
+    let sendStarted = false;
     let targetKey: string | undefined;
     let creationAttempted = false;
     const creationRequestId = crypto.randomUUID();
@@ -487,17 +498,20 @@ export function DraftComposer({
       localStorage.removeItem(`${key}:pending-create-request`);
       onWorktreeCreated?.();
       targetKey = stageThreadDraft(owner.id, result.threadId, value, files);
+      await moveSnapShotDraft(key, targetKey);
       transferNewReviewComments(owner.id, result.threadId);
       transferComposerSkills(key, targetKey);
       transferComposerPlugins(key, targetKey);
       if (goalMode) localStorage.setItem(`${targetKey}:goal`, "true");
       markSending(targetKey, true);
-      if (!goalMode)
+      if (!goalMode) {
+        turnStart = requestTurnStart(owner.id, result.threadId);
         setPendingMessage(targetKey, {
           text: submittedInput.text,
           files: submittedInput.files,
           previousUserIds: [],
         });
+      }
       clear();
       // Show the accepted task immediately, including while the first model request waits.
       if (mounted.current) void onOpen(owner.id, result.threadId);
@@ -518,7 +532,17 @@ export function DraftComposer({
         localStorage.removeItem(`${targetKey}:goal`);
         attachmentDrafts.set(targetKey, submittedInput.files);
       } else {
+        const attachmentOwner = submittedInput.files.length
+          ? (
+              await readAction("open", { projectId: owner.id, threadId: result.threadId })
+            ).projects.find((project) => project.id === owner.id)
+          : owner;
+        if (!attachmentOwner) throw new Error("无法确认附件所属的执行会话，草稿已保留。");
         await submitMessage(action, owner.id, result.threadId, value, files, {
+          onSendStart: () => {
+            sendStarted = true;
+          },
+          uploadOwner: composerUploadOwner(attachmentOwner, result.threadId),
           skillAction: readAction,
           pluginContext: {
             kind: "mainThread",
@@ -532,7 +556,11 @@ export function DraftComposer({
             intent: (name: string) => t("chat.composer.pluginReferenceIntent", { name }),
           },
         });
-        attachmentDrafts.delete(targetKey);
+        const remaining = (attachmentDrafts.get(targetKey) ?? []).filter(
+          (file) => !files.includes(file),
+        );
+        if (remaining.length) attachmentDrafts.set(targetKey, remaining);
+        else attachmentDrafts.delete(targetKey);
         clearComposerSkills(targetKey);
         clearComposerPlugins(targetKey);
       }
@@ -541,12 +569,15 @@ export function DraftComposer({
     } catch (e) {
       const failure = e as RecoveryFailure;
       if (stoppedCreation.current.has(creationRequestId)) return;
+      if (!sendStarted || !failure.submissionUnknown) cancelTurnStart(turnStart);
       if (!failure.submissionUnknown) {
         localStorage.removeItem(`${key}:pending-create-request`);
-        setDraftError(recoveryMessage(failure));
-        if (targetKey) attachmentErrors.set(targetKey, recoveryMessage(failure));
+        if (targetKey) {
+          attachmentErrors.set(targetKey, failure.message);
+        } else setDraftError(recoveryMessage(failure));
       }
       const requestId = failure.requestId ?? (!targetKey ? creationRequestId : undefined);
+      if (turnStart && sendStarted && failure.submissionUnknown) turnStart.requestId = requestId;
       if (creationAttempted && failure.submissionUnknown && requestId) {
         if (targetKey) {
           localStorage.setItem(`${targetKey}:pending`, requestId);
@@ -745,11 +776,7 @@ export function DraftComposer({
           detail={isTechnicalErrorMessage(draftError) ? draftError : undefined}
         />
       )}
-      {reviewDraft.error && (
-        <p role="alert" className="px-3 py-2 text-ui-sm text-destructive">
-          {reviewDraft.error}
-        </p>
-      )}
+      {reviewDraft.error && <FeedbackNotice tone="error" message={reviewDraft.error} />}
       <div className="composer-input-stack">
         <div ref={setMenuAnchor} className="composer-menu-anchor" />
         <ChatPromptEditor
@@ -761,6 +788,7 @@ export function DraftComposer({
           enableWorkspaceFileDrop={!!project.root && !editLocked}
           enableExternalFileDrop={!editLocked}
           validateWorkspaceFile={workspaceFiles?.validate}
+          resolveWorkspaceDirectory={workspaceFiles?.directory}
           onFileDrop={(files) => setFiles((current) => [...current, ...files])}
           onWorkspaceReferencePendingChange={setWorkspaceReferencePending}
           taskId={null}
@@ -813,6 +841,7 @@ export function DraftComposer({
               if (executionReady && !editLocked) skills.catalog.refresh();
             },
             entries: [
+              ...snapShotCommandEntries(snapshotCapture, t, setDraftError),
               {
                 value: "upload",
                 label: "上传文件",
@@ -901,7 +930,7 @@ export function DraftComposer({
               composerPaste(event, (pasted) => setFiles((current) => [...current, ...pasted]));
           }}
           topContent={
-            <div hidden={!!outgoing}>
+            <div hidden={!!outgoing && !files.length}>
               {skills.tags}
               <div className="composer-attachment-row">
                 {files.length ? (
@@ -930,11 +959,13 @@ export function DraftComposer({
                         onRemove={() => {
                           if (!editLocked)
                             setFiles((current) => current.filter((_, at) => at !== i));
+                          if (isComposerFile(file)) void consumeSnapShotFiles([file]);
                         }}
                         onExpand={(content) => {
                           if (editLocked) return;
                           api.current?.appendText(`${text.length ? "\n\n" : ""}${content}`);
                           setFiles((current) => current.filter((item) => item !== file));
+                          if (isComposerFile(file)) void consumeSnapShotFiles([file]);
                         }}
                       />
                     ))}
@@ -1037,31 +1068,7 @@ export function DraftComposer({
                   setEfforts(next);
                   localStorage.setItem(`${key}:efforts`, JSON.stringify(next));
                 }}
-                options={[
-                  ...project.models
-                    .filter(
-                      (item: Data) =>
-                        modelValue(item) === effectiveModel ||
-                        item.providerId ||
-                        !project.models.some(
-                          (candidate: Data) => candidate.providerId && candidate.isDefault,
-                        ),
-                    )
-                    .map((item: Parameters<typeof composerModelOption>[0]) => ({
-                      ...composerModelOption(item),
-                      value: modelValue(item),
-                    })),
-                  ...(!currentModel && effectiveModel
-                    ? [
-                        {
-                          value: effectiveModel,
-                          label: effectiveModel.slice(effectiveModel.indexOf("/") + 1),
-                          providerId: effectiveModel.slice(0, effectiveModel.indexOf("/")),
-                          historical: true,
-                        },
-                      ]
-                    : []),
-                ]}
+                options={draftModelOptions(project, effectiveModel, currentModel)}
                 onChange={(value) => {
                   setModel(value);
                   localStorage.setItem(`${key}:model`, value);

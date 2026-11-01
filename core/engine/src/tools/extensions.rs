@@ -231,6 +231,7 @@ impl Invocation<'_> {
                             | "wait"
                             | "navigate"
                             | "newPage"
+                            | "openDocument"
                             | "runBatch"
                             | "observe"
                             | "capture"
@@ -259,6 +260,19 @@ impl Invocation<'_> {
                 || prepared["operation"] != arguments["operation"]
                 || prepared["origin"].as_str().is_none()
                 || prepared["fingerprint"].as_str().is_none()
+                || (arguments["operation"] == "openDocument"
+                    && (!matches!(
+                        prepared["document"]["scope"]["kind"].as_str(),
+                        Some("exactHtml" | "workspaceDirectory")
+                    ) || prepared["document"]["scope"]["canonicalFile"]
+                        .as_str()
+                        .is_none()
+                        || prepared["document"]["entryDigest"].as_str().is_none()
+                        || (prepared["document"]["scope"]["kind"] == "workspaceDirectory"
+                            && prepared["document"]["scope"]["canonicalRoot"]
+                                .as_str()
+                                .is_none())
+                        || prepared["parameters"] != arguments["parameters"]))
             {
                 return Err(invalid("browser host returned an invalid plan"));
             }

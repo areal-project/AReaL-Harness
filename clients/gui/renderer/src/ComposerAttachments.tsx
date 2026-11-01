@@ -1,3 +1,5 @@
+import { SnapShotAttachment } from "./snapshots/SnapShotAttachment.js";
+import { snapShotFile } from "./snapshots/source.js";
 import { Button } from "@areal/ui";
 import { AttachmentCard } from "@areal/ui/experimental";
 import { useI18n } from "./i18n/IntlProvider.js";
@@ -6,6 +8,9 @@ import type { ChatComposerPasteEvent } from "./LexicalChatInput.js";
 import { ScanText } from "lucide-react";
 import { ImagePreview } from "./MessageAttachment.js";
 import { imageAnnotation, useImageAnnotationRevision } from "./imageAnnotations.js";
+import { useComposerUploadState } from "./ComposerUploadState.js";
+import { isTechnicalErrorMessage } from "./recoveryPresentation.js";
+import { FeedbackNotice } from "./FeedbackNotice.js";
 import { CloseIcon, ReviewCommentGlyph } from "./interfaceIcons.js";
 
 export type ComposerDraftAttachment =
@@ -59,8 +64,12 @@ export function ComposerAttachment({
   onRemove,
   onExpand,
   onAnnotate,
+  uploadOwner,
+  onRetry,
 }: {
   file: ComposerDraftAttachment;
+  uploadOwner?: string;
+  onRetry?: (file: File) => Promise<unknown>;
   disabled?: boolean;
   onRemove: () => void;
   onExpand: (text: string) => void;
@@ -73,6 +82,7 @@ export function ComposerAttachment({
   const [error, setError] = useState("");
   const [reading, setReading] = useState(false);
   const actualFile = isComposerFile(file) ? file : null;
+  const preparation = useComposerUploadState(uploadOwner, actualFile);
   const name = isComposerFile(file)
     ? file.name
     : file.text
@@ -87,7 +97,17 @@ export function ComposerAttachment({
     setUrl(value);
     return () => URL.revokeObjectURL(value);
   }, [actualFile, image]);
-  const tile = (
+  const snapshot = actualFile ? snapShotFile(actualFile) : undefined;
+  const tile = snapshot ? (
+    <SnapShotAttachment
+      id={snapshot.id}
+      source={snapshot.source}
+      url={url}
+      name={name}
+      disabled={disabled}
+      onRemove={onRemove}
+    />
+  ) : (
     <AttachmentCard image={image} data-testid="composer-attachment">
       {image ? (
         <>
@@ -173,27 +193,62 @@ export function ComposerAttachment({
       >
         <CloseIcon size={12} />
       </AttachmentCard.Remove>
-      {error && <AttachmentCard.Error role="alert">{error}</AttachmentCard.Error>}
     </AttachmentCard>
   );
-  return image ? (
-    <AttachmentCard.WithNote>
-      {tile}
-      {!!count && (
-        <AttachmentCard.Note
+  const attachment =
+    image && !snapshot ? (
+      <AttachmentCard.WithNote>
+        {tile}
+        {!!count && (
+          <AttachmentCard.Note
+            type="button"
+            disabled={disabled}
+            aria-label={`${count} 条标注`}
+            onClick={() => {
+              if (actualFile) onAnnotate?.(actualFile);
+            }}
+          >
+            <ReviewCommentGlyph size={13} />
+            {count} 条标注
+          </AttachmentCard.Note>
+        )}
+      </AttachmentCard.WithNote>
+    ) : (
+      tile
+    );
+  return (
+    <div
+      className={
+        snapshot
+          ? "flex w-52 max-w-full flex-none flex-col gap-1 break-words"
+          : "composer-attachment-item"
+      }
+      data-upload-state={actualFile ? (preparation?.state ?? "pending") : undefined}
+    >
+      {attachment}
+      {error && (
+        <FeedbackNotice
+          tone="error"
+          message={
+            isTechnicalErrorMessage(error) ? `${name}: ${t("recovery.operationFailed")}` : error
+          }
+          detail={isTechnicalErrorMessage(error) ? error : undefined}
+          onDismiss={() => setError("")}
+        />
+      )}
+      {actualFile && preparation?.state === "failed" && onRetry && (
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           disabled={disabled}
-          aria-label={`${count} 条标注`}
           onClick={() => {
-            if (actualFile) onAnnotate?.(actualFile);
+            void onRetry(actualFile).catch(() => {});
           }}
         >
-          <ReviewCommentGlyph size={13} />
-          {count} 条标注
-        </AttachmentCard.Note>
+          {t("chat.composer.retryAttachment")}
+        </Button>
       )}
-    </AttachmentCard.WithNote>
-  ) : (
-    tile
+    </div>
   );
 }

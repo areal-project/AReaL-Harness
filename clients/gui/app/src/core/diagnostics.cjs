@@ -1,5 +1,6 @@
 // @ts-check
 "use strict";
+const { readModelRequests, dumps, instanceSelection } = require("./model-diagnostics.cjs");
 const fs = require("node:fs");
 const { join, dirname, resolve } = require("node:path");
 const { randomUUID } = require("node:crypto");
@@ -304,8 +305,8 @@ function directory(path, create = false) {
       throw Object.assign(new Error("Unsafe diagnostics directory"), { code: "EACCES" });
   }
 }
-/** @param {string} path */
-function entries(path) {
+/** @param {string} path @param {number} [limit] */
+function entries(path, limit = SCAN_ENTRIES) {
   directory(path);
   const handle = fs.opendirSync(path),
     result = [];
@@ -313,7 +314,7 @@ function entries(path) {
     for (let i = 0; ; i++) {
       const entry = handle.readSync();
       if (!entry) return result;
-      if (i === SCAN_ENTRIES)
+      if (i === limit)
         throw Object.assign(new Error("Diagnostics scan limit"), { code: "SCAN_LIMIT" });
       result.push(entry);
     }
@@ -578,8 +579,8 @@ function startCrashReporter({ app, crashReporter }) {
     record({ type: "crash-reporter", state: "unavailable" });
   }
 }
-/** @param {string} destination @param {{mainRoot:string,desktopRoot:string}} roots */
-async function exportTo(destination, { mainRoot, desktopRoot }) {
+/** @param {string} destination @param {{mainRoot:string,desktopRoot:string,coreRoot?:string,instance?:Parameters<typeof instanceSelection>[0]}} roots */
+async function exportTo(destination, { mainRoot, desktopRoot, coreRoot, instance }) {
   const omissions = {
     rejectedEntries: 0,
     invalidLines: 0,
@@ -624,9 +625,9 @@ async function exportTo(destination, { mainRoot, desktopRoot }) {
       await file?.close().catch(() => {});
     }
   }
-  /** @param {string} path @param {boolean} [optional] @returns {Promise<unknown>} */
-  async function json(path, optional) {
-    const raw = await read(path, 2048, optional);
+  /** @param {string} path @param {boolean} [optional] @param {number} [limit] @returns {Promise<unknown>} */
+  async function json(path, optional, limit = 2048) {
+    const raw = await read(path, limit, optional);
     if (raw === null) return null;
     try {
       return JSON.parse(raw);
@@ -635,10 +636,10 @@ async function exportTo(destination, { mainRoot, desktopRoot }) {
       return null;
     }
   }
-  /** @param {string} root */
-  function list(root) {
+  /** @param {string} root @param {number} [limit] */
+  function list(root, limit = SCAN_ENTRIES) {
     try {
-      return entries(root);
+      return entries(root, limit);
     } catch (error) {
       if (errorCode(error) === "SCAN_LIMIT") omissions.scanLimit++;
       else if (errorCode(error) !== "ENOENT") omissions.readFailures++;
@@ -646,44 +647,13 @@ async function exportTo(destination, { mainRoot, desktopRoot }) {
       return [];
     }
   }
-  /** @param {string} root */
-  function dumps(root) {
-    let count = 0,
-      scanned = 0,
-      truncated = false,
-      available = false;
-    for (const suffix of ["", "pending", "completed", "reports"]) {
-      const path = join(`${root}-crashes`, suffix);
-      let handle;
-      try {
-        directory(path);
-        available = true;
-        handle = fs.opendirSync(path);
-        for (;;) {
-          const entry = handle.readSync();
-          if (!entry) break;
-          if (++scanned > 64) {
-            truncated = true;
-            break;
-          }
-          if (entry.isFile() && !entry.isSymbolicLink() && entry.name.endsWith(".dmp")) count++;
-        }
-      } catch (error) {
-        if (errorCode(error) !== "ENOENT") omissions.readFailures++;
-      } finally {
-        handle?.closeSync();
-      }
-      if (truncated) break;
-    }
-    return { available, count, truncated, dumpContentsIncluded: false };
-  }
   const runs = [],
     crashDumps = [];
   for (const [role, root] of [
     ["main", mainRoot],
     ["desktop", desktopRoot],
   ]) {
-    crashDumps.push({ role, ...dumps(root) });
+    crashDumps.push({ role, ...dumps(root, directory, omissions) });
     const candidates = list(root).filter((entry) => {
       if (!UUID.test(entry.name) || !entry.isDirectory() || entry.isSymbolicLink()) {
         omissions.rejectedEntries++;
@@ -768,6 +738,12 @@ async function exportTo(destination, { mainRoot, desktopRoot }) {
       });
     }
   }
+  const modelRequests = await readModelRequests(coreRoot, {
+    list,
+    json,
+    omissions,
+    available: () => remaining > 0,
+  });
   const currentRecorder = recorder
     ? { role: recorder.header?.role, ...projectHealth(recorder.health) }
     : { state: "unavailable" };
@@ -787,10 +763,14 @@ async function exportTo(destination, { mainRoot, desktopRoot }) {
       shardsPerRun: SHARDS,
       shardBytes: SHARD_BYTES,
       readBytes: READ_BYTES,
+      modelRequests: 128,
+      modelRequestsPerProject: 32,
     },
     dumpContentsIncluded: false,
     crashDumps,
     runs,
+    instance: instance ? instanceSelection(instance) : undefined,
+    modelRequests,
   };
   const temporary = join(dirname(destination), `.areal-diagnostics-${randomUUID()}.tmp`);
   let output;

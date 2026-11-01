@@ -44,3 +44,5 @@ export const readCommandInvocation = contract.readCommandInvocation;
 /** @typedef {import("./desktop-contract.cjs").CommandInvocation} CommandInvocation */
 
 /** @typedef {import("./desktop-contract.cjs").DesktopBridge} DesktopBridge */
+
+/** @typedef {import("./desktop-contract.cjs").PreviewViewport} PreviewViewport */

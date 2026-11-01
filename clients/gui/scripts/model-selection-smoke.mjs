@@ -1082,7 +1082,7 @@ async function verifyModelDefaults(projectId) {
     "clicking selected model retains its configuration",
   );
   await chooseModel("Beta");
-  await expectModel("Beta", "未指定");
+  await expectModel("Beta", "默认");
   await button("选择思考强度").click();
   await page.getByRole("button", { name: "中", exact: true }).click();
   await page.keyboard.press("Escape");
@@ -1117,7 +1117,7 @@ async function verifyModelDefaults(projectId) {
   await createProjectConversation(page, "workspace");
   await expectModel("Alpha", "高");
   await chooseModel("Beta");
-  await expectModel("Beta", "未指定");
+  await expectModel("Beta", "默认");
   await button("选择思考强度").click();
   await page.getByRole("button", { name: "中", exact: true }).click();
   await page.keyboard.press("Escape");
@@ -1144,7 +1144,7 @@ async function verifyModelDefaults(projectId) {
   await selectConversation(page, beta);
   await expectModel("Beta", "无");
   await call("configure", { projectId, threadId: beta, parameters: { reasoningEffort: null } });
-  await expectModel("Beta", "未指定");
+  await expectModel("Beta", "默认");
   const historicalConfig = snapshotProject(await state()).configurations[beta];
   await button("选择思考强度").click();
   await assertComposerActions();
@@ -1165,7 +1165,7 @@ async function verifyModelDefaults(projectId) {
     "keyboard selects explicit none from unspecified history",
   );
   await call("configure", { projectId, threadId: beta, parameters: { reasoningEffort: null } });
-  await expectModel("Beta", "未指定");
+  await expectModel("Beta", "默认");
   await send("Historical unspecified effort stays omitted until explicitly selected", {
     model: "beta-default",
     effort: null,
@@ -1282,7 +1282,7 @@ async function verifyModelDefaults(projectId) {
   await selectConversation(page, switched);
   await expectModel("Beta", "无");
   await selectConversation(page, beta);
-  await expectModel("Beta", "未指定");
+  await expectModel("Beta", "默认");
   assert.equal(
     modelRequests.length,
     beforeRestart,

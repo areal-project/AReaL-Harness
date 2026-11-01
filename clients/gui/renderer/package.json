@@ -42,6 +42,7 @@
     "katex": "0.16.47",
     "lexical": "0.42.0",
     "lucide-react": "1.47.0",
+    "pdfjs-dist": "6.4.299",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-intl": "12.1.5",

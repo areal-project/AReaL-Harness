@@ -6,6 +6,7 @@ import com.getcapacitor.BridgeActivity
 open class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         registerPlugin(ArealKeychainPlugin::class.java)
+        registerPlugin(ArealLocalSocketPlugin::class.java)
         super.onCreate(savedInstanceState)
     }
 }

@@ -222,7 +222,7 @@ export class MobileWorkspace {
         ...this.state.groups,
         [projectId]: {
           ...page,
-          data: rows,
+          data: rows.sort((a, b) => (b.sourceUpdatedAt ?? 0) - (a.sourceUpdatedAt ?? 0)),
           expanded: append || expanded,
           ...(expanded ? { nextCursor: previous.nextCursor } : {}),
         },

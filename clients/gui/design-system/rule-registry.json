@@ -2695,7 +2695,7 @@
       "title": "默认收起",
       "owner": "clients/gui/packages/ui/src/components/disclosure/disclosure.md#状态",
       "strength": "default",
-      "textSha256": "7e0b2bf361f66591422edde17cad0f0d80b7fd4cf99fb4555a6cdd9607485fec"
+      "textSha256": "f05c24a237a33769308d61bbfd44a56139db8f64c61ed627c4874937dbe1fee0"
     },
     {
       "id": "R-DISCLOSURE-003",
@@ -2919,7 +2919,7 @@
       "title": "默认收起",
       "owner": "clients/gui/packages/ui/src/conversation/activity-group/activity-group.md#状态",
       "strength": "default",
-      "textSha256": "a50a4ebdff5e245b3b32752fe7f72f7ec1d41771d539b48e65fc1e7963abe3ce"
+      "textSha256": "f8833a40ce601b44e78dfb06f59f687f99ab867162bffbbc1e756da0cd977c53"
     },
     {
       "id": "R-ACTIVITYGROUP-004",
@@ -2994,7 +2994,7 @@
       "title": "仅拥有Root/Open/Remove/Icon/Text/Error/WithNote/Note的外观和语义",
       "owner": "clients/gui/packages/ui/src/conversation/attachment-card/attachment-card.md#规则",
       "strength": "default",
-      "textSha256": "67a9031ff622287fb1abd2ddd49e8bdae1b3bf27b411210698338a385534c653"
+      "textSha256": "2caf94278cfedd3b5238aad666df4d756402d6b1925a93ff3921737164e5e6e1"
     },
     {
       "id": "R-COLLAPSIBLETEXT-001",
@@ -3064,7 +3064,7 @@
       "title": "占位说明输入目标",
       "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#内容",
       "strength": "must",
-      "textSha256": "633356a5b1109b30bc9cafd3f62c5fd03dd632e2b34ee1a7a61fa51eaf3fbe6a"
+      "textSha256": "7aee40cf26c03126b1e201720a3d3edd47f1317ce58ed546112626d27337606b"
     },
     {
       "id": "R-COMPOSERSURFACE-005",
@@ -3092,7 +3092,7 @@
       "title": "默认布局的 Composer 是对话的一部分",
       "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#输入区与面板组合",
       "strength": "default",
-      "textSha256": "8c5e61a8d9aea130be4b15bef9f7589ba9fd6143cc5435ba83151f24776f3050"
+      "textSha256": "92103205656ace08657f0535972f2a1e96e20de2d5a24465b37300e3778630d9"
     },
     {
       "id": "R-LAYOUT-012",
@@ -4513,7 +4513,7 @@
       "title": "Messages.tsx 由 App.tsx 挂载，在主阅读区或嵌入上下文中展示传入的任务投影",
       "owner": "clients/gui/renderer/src/Messages.md#messages",
       "strength": "default",
-      "textSha256": "4abc7a6e29e04ddcbae7f87f11a9ecd85f814f6f1980f657f5336265f9887c20"
+      "textSha256": "73fcd3ca917d8d27e43e295f227eff622899471bbbb52665ed0dd2de01d714d1"
     },
     {
       "id": "R-MESSAGES-003",
@@ -4527,21 +4527,21 @@
       "title": "Messages 继续拥有阅读状态",
       "owner": "clients/gui/renderer/src/Messages.md#同窗口-renderer-恢复阅读",
       "strength": "must",
-      "textSha256": "f69b7ea1bb21ff57ea76f7988f325724cbb4635738c26ca7d98452944bcb3399"
+      "textSha256": "70e01ed977659457d4431f442a1bef7fd09911697cef97ba32aef130a6fd9963"
     },
     {
       "id": "R-MESSAGES-005",
       "title": "权威历史尚未补齐时，未解析的锚点保持待恢复",
       "owner": "clients/gui/renderer/src/Messages.md#同窗口-renderer-恢复阅读",
       "strength": "must",
-      "textSha256": "885bd6fe0f0dda9ca68fdb5da0af8cb32cafeecb2d80c993732a46caa75360a7"
+      "textSha256": "0bd4f8a1af577641b2ee61a64257dd157e4b58e21d5c673a79992faae2a61f55"
     },
     {
       "id": "R-MESSAGES-006",
-      "title": "本合同不承诺同一字符、完整应用退出后的阅读位置、过程展开状态、跨窗口或嵌入阅读区恢复",
+      "title": "本合同不承诺同一字符、完整应用退出后的阅读位置、跨窗口或嵌入阅读区恢复",
       "owner": "clients/gui/renderer/src/Messages.md#同窗口-renderer-恢复阅读",
       "strength": "default",
-      "textSha256": "9412b8ed2aac889b5b4a88f385206963703cd0dfd584232e28c17e7c651d84ba"
+      "textSha256": "62aa7235d17d8e2a04c9aca9869fa857b148189614ca781345fbcc2c5fb0a15f"
     },
     {
       "id": "R-MESSAGES-007",
@@ -4555,7 +4555,7 @@
       "title": "TurnExecution.tsx 由 Messages 使用，按顺序组织过程项",
       "owner": "clients/gui/renderer/src/Messages.md#turnexecution",
       "strength": "default",
-      "textSha256": "0c9268d4f313dded67014e2e2f151ff2b8af0195fec3ec7687119dd5328b6fff"
+      "textSha256": "69a32f00098a5706e4a43de1bac93bb1e69c6e0c7cf106cb493e7c58450d3148"
     },
     {
       "id": "R-MESSAGES-009",
@@ -4668,7 +4668,7 @@
       "title": "跟随最新时，新内容可推进视口",
       "owner": "clients/gui/renderer/src/Messages.md#对话信息流",
       "strength": "default",
-      "textSha256": "6672abc1fa63a14a5b64ca803d8f2e1be22be823e474553f9a9f45a844083b89"
+      "textSha256": "62a5903587098565d30c916355d98f4e3e2c4c832b674f0df5a5cac12997baa5"
     },
     {
       "id": "CONV-RESOURCE-01",
@@ -6631,7 +6631,7 @@
       "title": "裸 @ 或清空关键词时隐藏文件候选及搜索状态",
       "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#工作区文件引用",
       "strength": "must",
-      "textSha256": "82a90147c08c174be6ca5bccd97e524cd969ff6e8da61092930e9e46df13acc5",
+      "textSha256": "0cc8eaf8ec4b366ea9e712788f44b00dc3b1ab84c9c39b31654ac789d826e806",
       "check": "clients/gui/scripts/composer-files-acceptance.mjs"
     },
     {
@@ -6661,6 +6661,27 @@
       "owner": "design/patterns/plugin-resources.md#模板配置与开发",
       "strength": "default",
       "textSha256": "3734c78b0ced5174384097bfd84a306aa103effdb3e99e3f5587bba569899af3"
+    },
+    {
+      "id": "R-MESSAGES-010",
+      "title": "Core 消息的可选 createdAt 通过消息内时间控件显示",
+      "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
+      "strength": "default",
+      "textSha256": "75cb31589683c4a4cfd70310cf3e7b4087fa9ecfcffe92191607f4781abb0afe"
+    },
+    {
+      "id": "R-MESSAGES-011",
+      "title": "中断分隔行位于轮次边界，使用持久 interruption 区分用户暂停与 Core 恢复，无工具轮次也显示",
+      "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
+      "strength": "default",
+      "textSha256": "5805c887484a411fc654e093e60c649e14b96e2619bd247c79f6abb81f053761"
+    },
+    {
+      "id": "R-MESSAGES-012",
+      "title": "本地点击发送在现有 ReadingView 登记临时阅读意图",
+      "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
+      "strength": "default",
+      "textSha256": "8031a268b55291f53f3c83ce0557cf1a3da0ea3d91ff9b9e87e190c1f6f1893a"
     }
   ]
 }

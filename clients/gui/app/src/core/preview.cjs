@@ -1,7 +1,10 @@
 // @ts-check
 "use strict";
 const { performance } = require("node:perf_hooks");
-const { pageKey } = require("./preview-native/identity.cjs");
+const { randomUUID } = require("node:crypto");
+const { loadNavigationDocument } = require("./browser-navigation.cjs");
+const { NativeDocuments } = require("./preview-native/documents.cjs");
+const { pageKey, workspaceKey } = require("./preview-native/identity.cjs");
 const { nativeWithin } = require("./preview-native/read-session.cjs");
 const { PreviewWorkspace } = require("./preview-native/workspace.cjs");
 const { PreviewPresentation } = require("./preview-native/presentation.cjs");
@@ -33,6 +36,7 @@ class CorePreview {
    * @param {import("./preview-native/model.js").CoreIdentity} coreIdentity
    * @param {()=>string[]} controlEndpoints
    * @param {(prompt:import("./preview-native/model.js").DevelopmentPrompt)=>Promise<boolean>} confirmDevelopmentOrigin
+   * @param {import("./preview-native/model.js").DocumentWorkspace} documentWorkspace
    * @param {import("./preview-native/model.js").Ownership} retainsOwner
    */
   constructor(
@@ -44,7 +48,12 @@ class CorePreview {
     controlEndpoints = () => [],
     confirmDevelopmentOrigin = async () => false,
     retainsOwner = () => false,
+    documentWorkspace = () => {
+      throw new Error("document_workspace_unavailable");
+    },
   ) {
+    this.documents = new NativeDocuments();
+    this.documentWorkspace = documentWorkspace;
     this.workspace = new PreviewWorkspace(owns, coreIdentity, retainsOwner, controlEndpoints, () =>
       this.quiesceBrowserPages(),
     );
@@ -220,11 +229,61 @@ class CorePreview {
   browserData(operation, options) {
     return this.workspace.profile.browserData(operation, options);
   }
+  /** @param {{projectId:string,threadId:string,path:string,workspacePath:string,valid:()=>boolean}} request */
+  async openDocument(request) {
+    this.workspace.profile.assertAvailable();
+    const prepared = await this.documents.prepareFile(request);
+    if (!request.valid() || !this.workspace.owns(request.projectId, request.threadId))
+      throw new Error("document_owner_changed");
+    const id = randomUUID();
+    const core = this.workspace.coreIdentity(request.projectId, request.threadId);
+    const key = pageKey(core, request.projectId, request.threadId, id);
+    const page = this.lifecycle.create(key, request.projectId, request.threadId, {
+      id,
+      origin: "human",
+    });
+    let dispatched = false;
+    /** @type {NodeJS.Timeout|undefined} */ let timer;
+    /** @type {Promise<never>} */ const stopped = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("outcome_unknown")), 12000);
+    });
+    try {
+      const grant = await this.documents.bindPage(page, prepared, this.workspace);
+      if (!request.valid() || !this.workspace.pageStillOwned(page))
+        throw new Error("document_owner_changed");
+      page.approvedNavigation = grant.entryUrl;
+      page.url = grant.entryUrl;
+      dispatched = true;
+      const navigation = await loadNavigationDocument(
+        page.view.webContents,
+        grant.entryUrl,
+        stopped,
+      );
+      if (!request.valid() || !this.workspace.pageStillOwned(page))
+        throw new Error("outcome_unknown");
+      this.workspace.selected.set(workspaceKey(core, request.projectId, request.threadId), id);
+      this.workspace.changed(page);
+      return {
+        pageId: id,
+        url: navigation.url,
+        dispatch: "confirmed",
+        readiness: navigation.readiness,
+      };
+    } catch (error) {
+      if (!dispatched) this.lifecycle.release(key);
+      if (dispatched) throw new Error("outcome_unknown", { cause: error });
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   /** @param {import("./preview-native/model.js").HostRequest} request */
   prepare(request) {
     this.workspace.profile.assertAvailable();
     if (request.phase !== "prepare") throw new Error("not_sent");
     if (request.operation === "command") return this.commands.prepareCommand(request);
+    if (request.operation === "openDocument")
+      return this.documents.prepare(request, this.workspace, this.documentWorkspace);
     if (
       request.operation === "observe" ||
       request.operation === "capture" ||
@@ -242,6 +301,8 @@ class CorePreview {
     this.workspace.profile.assertAvailable();
     if (request.phase !== "execute") throw new Error("not_sent");
     if (request.operation === "command") return this.commands.executeCommand(request);
+    if (request.operation === "openDocument")
+      return this.documents.execute(request, this.workspace);
     if (
       request.operation === "observe" ||
       request.operation === "capture" ||
@@ -255,36 +316,28 @@ class CorePreview {
     return this.actions.execute(request);
   }
   dispose() {
+    const deadline = performance.now() + 10000;
     const recordings = [...this.workspace.pages.values()]
       .map((page) => page.commandRecording?.promise)
-      .filter((c) => c !== undefined && c !== null);
-    const contents = [...this.workspace.pages.values()]
-      .map((page) => page.view?.webContents)
       .filter((c) => c !== undefined && c !== null);
     this.discovery.discoveryPlans.clear();
     for (const key of Array.from(this.workspace.pages.keys())) this.lifecycle.release(key);
     this.presentation.view = null;
     this.presentation.owner = null;
     this.workspace.fileReceipts.clear();
-    this.workspace.unregisterProfileHost?.();
-    this.workspace.unregisterProfileHost = null;
-    return nativeWithin(
-      Promise.allSettled([
-        ...recordings,
-        ...contents
-          .filter((c) => !c.isDestroyed())
-          .map((c) => new Promise((resolve) => c.once("destroyed", () => resolve(undefined)))),
-      ]),
-      performance.now() + 10000,
-    ).then(() => this.workspace.profile.flush());
+    return Promise.all([
+      nativeWithin(Promise.allSettled([this.documents.dispose(), ...recordings]), deadline),
+      this.lifecycle.drain(deadline),
+    ]).then(async () => {
+      await this.workspace.profile.flush();
+      this.workspace.unregisterProfileHost?.();
+      this.workspace.unregisterProfileHost = null;
+    });
   }
   async quiesceBrowserPages() {
     const pages = [...this.workspace.pages.values()];
     const recordings = pages
       .map((page) => page.commandRecording?.promise)
-      .filter((c) => c !== undefined && c !== null);
-    const native = pages
-      .map((page) => page.view?.webContents)
       .filter((c) => c !== undefined && c !== null);
     this.discovery.discoveryPlans.clear();
     for (const page of pages) {
@@ -306,14 +359,7 @@ class CorePreview {
         );
     }
     await nativeWithin(Promise.allSettled(recordings), performance.now() + 10000);
-    await nativeWithin(
-      Promise.all(
-        native
-          .filter((c) => !c.isDestroyed())
-          .map((c) => new Promise((resolve) => c.once("destroyed", () => resolve(undefined)))),
-      ),
-      performance.now() + 5000,
-    );
+    await this.lifecycle.drain(performance.now() + 5000);
   }
 }
 

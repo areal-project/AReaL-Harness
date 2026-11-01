@@ -99,6 +99,13 @@ async fn phases_follow_execution_and_survive_events_and_persistence() {
                 TurnStatus::Completed
             }
         );
+        for item in &done.turns[0].items {
+            if let Item::UserMessage { created_at, .. } | Item::AgentMessage { created_at, .. } =
+                item
+            {
+                assert!(created_at.is_some_and(|time| time > 0));
+            }
+        }
         let messages: Vec<_> = done.turns[0]
             .items
             .iter()
@@ -126,6 +133,16 @@ async fn phases_follow_execution_and_survive_events_and_persistence() {
             }
             if event["method"] == "item/started" {
                 started += 1;
+                let item_id = event["params"]["item"]["id"].as_str().unwrap();
+                let persisted = done.turns[0]
+                    .items
+                    .iter()
+                    .find(|item| item.id() == item_id)
+                    .unwrap();
+                assert_eq!(
+                    event["params"]["item"]["createdAt"],
+                    serde_json::to_value(persisted).unwrap()["createdAt"]
+                );
                 assert_eq!(event["params"]["item"]["phase"], "commentary");
             }
             if event["method"] == "item/completed" {
@@ -156,4 +173,20 @@ fn old_messages_remain_unclassified_and_roundtrip_without_a_phase() {
     let item: Item = serde_json::from_value(old.clone()).unwrap();
     assert!(matches!(&item, Item::AgentMessage { phase: None, .. }));
     assert_eq!(serde_json::to_value(item).unwrap(), old);
+    let old_user =
+        json!({"type":"userMessage","id":"old-user","content":[{"type":"text","text":"original"}]});
+    let item: Item = serde_json::from_value(old_user.clone()).unwrap();
+    assert!(matches!(
+        &item,
+        Item::UserMessage {
+            created_at: None,
+            ..
+        }
+    ));
+    assert!(
+        serde_json::to_value(item)
+            .unwrap()
+            .get("createdAt")
+            .is_none()
+    );
 }

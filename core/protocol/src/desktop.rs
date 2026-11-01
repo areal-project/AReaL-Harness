@@ -349,6 +349,7 @@ pub const NOTIFICATIONS: &[&str] = &[
     "areal/context/compactionFailed",
     "areal/model/completionDiscarded",
     "areal/model/watchdogRetry",
+    "areal/turn/traceActivity",
     "areal/tool/cancelled",
     "areal/thread/configured",
     "areal/thread/edited",
@@ -718,9 +719,29 @@ pub enum PromptPredictionOperation {
     Cancel,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModelIdentity {
+    pub provider_id: Option<String>,
+    pub model_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModelChange {
+    pub revision: u64,
+    pub occurred_at: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after_turn_id: Option<String>,
+    pub from: ModelIdentity,
+    pub to: ModelIdentity,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DesktopState {
+    #[serde(default)]
+    pub model_changes: Vec<ModelChange>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_prediction: Option<PromptPrediction>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

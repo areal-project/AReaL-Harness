@@ -646,6 +646,10 @@ pub fn projections() -> (Value, Value) {
         object(json!({"threadId":string,"itemIds":array(string.clone()),"retry":{"type":"integer","minimum":1},"retryKind":{"enum":["network","completion","goalReport"]}})),
     );
     notifications.insert(
+        "areal/turn/traceActivity".into(),
+        object(json!({"threadId":string,"turnId":string,"activity":schema::<TraceActivity>()})),
+    );
+    notifications.insert(
         "areal/model/watchdogRetry".into(),
         object(json!({"threadId":string,"turnId":nullable(string.clone()),"purpose":{"enum":["solve","summary"]},"retry":{"type":"integer","minimum":1},"delayMs":number})),
     );
@@ -657,7 +661,9 @@ pub fn projections() -> (Value, Value) {
     for (name, value) in [
         (
             "areal/thread/configured",
-            object(json!({"threadId":string,"configuration":config})),
+            object(
+                json!({"threadId":string,"configuration":config,"modelChanges":array(schema::<ModelChange>())}),
+            ),
         ),
         (
             "areal/thread/tools/attached",

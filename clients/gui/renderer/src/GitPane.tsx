@@ -1,3 +1,13 @@
+import { JumpToFileIcon } from "./GitPaneChangeCard.js";
+import {
+  views,
+  commitAge,
+  type ReviewScope,
+  type TurnReviewRequest,
+  type ReviewReading,
+  type CommitChoice,
+  type BranchChoice,
+} from "./gitReviewState.js";
 import { observeResize } from "@areal/ui/observe-resize";
 // Toolbar, empty state and change-card layout adapted from ZCode GitPane.
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -56,65 +66,7 @@ import {
 } from "./reviewComments.js";
 import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 // File lookup glyph from the saved Codex 26.928 readonly CDP geometry.
-function JumpToFileIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M10.8711 8.80615C12.3848 8.80615 13.6123 10.0336 13.6123 11.5474C13.6123 12.1172 13.4374 12.646 13.1396 13.0845L14.374 14.3179C14.579 14.5228 14.5789 14.856 14.374 15.061C14.169 15.266 13.8359 15.266 13.6309 15.061L12.3945 13.8237C11.9586 14.1161 11.4353 14.2886 10.8711 14.2886C9.35746 14.2886 8.13001 13.061 8.12988 11.5474C8.12989 10.0337 9.35738 8.80616 10.8711 8.80615ZM10.8711 9.85693C9.93728 9.85694 9.18067 10.6136 9.18066 11.5474C9.1808 12.4811 9.93736 13.2378 10.8711 13.2378C11.8048 13.2378 12.5614 12.4811 12.5615 11.5474C12.5615 10.6135 11.8049 9.85693 10.8711 9.85693Z"
-        fill="currentColor"
-      />
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M9.36816 1.80811C10.0378 1.80811 10.6798 2.07482 11.1533 2.54834L12.6484 4.04346C13.122 4.51699 13.3887 5.15895 13.3887 5.82861V7.16357C13.3886 7.45346 13.1532 7.68799 12.8633 7.68799C12.5734 7.68799 12.338 7.45346 12.3379 7.16357V6.85889H10.833C9.80694 6.85871 8.97479 6.02656 8.97461 5.00049V2.85889H4.86328C4.04866 2.85889 3.38867 3.51888 3.38867 4.3335V11.6665C3.38867 12.4811 4.04866 13.1421 4.86328 13.1421H6.36328C6.65312 13.1421 6.8885 13.3767 6.88867 13.6665C6.88867 13.9565 6.65323 14.1919 6.36328 14.1919H4.86328C3.46876 14.1919 2.33789 13.061 2.33789 11.6665V4.3335C2.33789 2.93898 3.46876 1.80811 4.86328 1.80811H9.36816ZM10.0254 5.00049C10.0256 5.44666 10.3868 5.80793 10.833 5.80811H12.3369C12.3316 5.42434 12.178 5.05742 11.9062 4.78564L10.4111 3.29053C10.2975 3.17693 10.1665 3.08541 10.0254 3.01514V5.00049Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
 
-type ReviewScope =
-  | NonNullable<
-      Extract<import("./services.js").CommandParams<"workspace">, { operation: "review" }>["scope"]
-    >
-  | "last-turn"
-  | "turn";
-type TurnReviewRequest = { turnId: string; scope?: never } | { scope: "unstaged"; turnId?: never };
-const views = new Map<
-  string,
-  {
-    selectedTurnId?: string;
-    request?: TurnReviewRequest;
-    scope: ReviewScope;
-    ref: string;
-    activePath: string | null;
-    fileExpansion: Map<string, boolean>;
-    expandedAll: boolean;
-    treeQuery: string;
-    treeCollapsed: string[];
-    scrollTop: number;
-  }
->();
-type CommitChoice = { id: string; subject: string; committedAt: number };
-type BranchChoice = { ref: string; name: string; id: string };
-const commitAge = (timestamp: number) => {
-  const seconds = (timestamp * 1000 - Date.now()) / 1000;
-  const units: [Intl.RelativeTimeFormatUnit, number][] = [
-    ["year", 31536000],
-    ["month", 2592000],
-    ["week", 604800],
-    ["day", 86400],
-    ["hour", 3600],
-    ["minute", 60],
-  ];
-  const [unit, size] = units.find(([, size]) => Math.abs(seconds) >= size) ?? ["second", 1];
-  return new Intl.RelativeTimeFormat("zh-CN", { numeric: "auto", style: "short" }).format(
-    Math.trunc(seconds / size),
-    unit,
-  );
-};
 export function GitPane({
   projectId,
   root,
@@ -219,7 +171,7 @@ export function GitPane({
     setOpeningFile(true);
     setFileError("");
     try {
-      await fileOpen({ operation, projectId, path: file.workspaceRelativePath });
+      await fileOpen({ operation, projectId, threadId, path: file.workspaceRelativePath });
     } catch (cause) {
       setFileError((cause as Error).message);
     } finally {
@@ -246,7 +198,7 @@ export function GitPane({
       return false;
     }
   };
-  const viewKey = JSON.stringify([projectId, threadId]);
+  const viewKey = JSON.stringify([projectId, threadId, root]);
   const remembered = views.get(viewKey);
   const [selectedTurnId, setSelectedTurnId] = useState(remembered?.selectedTurnId);
   const handledRequest = useRef(remembered?.request);
@@ -362,6 +314,47 @@ export function GitPane({
   }, [turnId, scope, selectedTurnId]);
   const reviewTurnId = scope === "turn" ? selectedTurnId : turnId;
   const reviewRef = scope === "turn" ? (selectedTurnId ?? "") : applied;
+  const rangeKey = JSON.stringify([
+    scope,
+    reviewRef,
+    scope === "turn" || scope === "last-turn" ? reviewTurnId : undefined,
+  ]);
+  const readings = useRef(remembered?.readings ?? new Map<string, ReviewReading>());
+  const previousRange = useRef(rangeKey);
+  const previousReading = useRef<ReviewReading>({
+    activePath: activePath ?? null,
+    treeQuery,
+    treeCollapsed,
+    fileExpansion,
+    expandedAll,
+    scrollTop: readingTop.current,
+  });
+  useLayoutEffect(() => {
+    if (previousRange.current === rangeKey) return;
+    readings.current.set(previousRange.current, {
+      ...previousReading.current,
+      scrollTop: readingTop.current,
+    });
+    previousRange.current = rangeKey;
+    const saved = readings.current.get(rangeKey);
+    setActivePath(saved?.activePath ?? null);
+    setTreeQuery(saved?.treeQuery ?? "");
+    setTreeCollapsed(saved?.treeCollapsed ?? []);
+    setFileExpansion(saved?.fileExpansion ?? new Map());
+    setExpandedAll(saved?.expandedAll ?? false);
+    readingTop.current = saved?.scrollTop ?? 0;
+    restoringTop.current = readingTop.current;
+  }, [rangeKey]);
+  useEffect(() => {
+    previousReading.current = {
+      activePath: activePath ?? null,
+      treeQuery,
+      treeCollapsed,
+      fileExpansion,
+      expandedAll,
+      scrollTop: readingTop.current,
+    };
+  });
   const [files, setFiles] = useState<FileChange[]>([]);
   const [unavailableFiles, setUnavailableFiles] = useState<Array<{ path: string; reason: string }>>(
     [],
@@ -395,6 +388,7 @@ export function GitPane({
   useEffect(() => {
     if (activePath !== undefined)
       views.set(viewKey, {
+        readings: readings.current,
         selectedTurnId,
         request: handledRequest.current,
         scope,

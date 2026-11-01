@@ -1,7 +1,9 @@
+import { WorkspaceDelimitedPreview } from "./WorkspaceDelimitedPreview.js";
 import { Textarea } from "@areal/ui";
 // ZCode PreviewPane breadcrumb/header composition + its CodeViewer.
 // AReaL's optional edit mode uses the existing revision-checked workspace API.
 import { Fragment, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import type { FileLocation } from "./state/useWorkspacePanels.js";
 import type { EditorState } from "@codemirror/state";
 import {
   MessageCopy as Copy,
@@ -25,6 +27,14 @@ import { CodeViewer } from "./components/ui/code-viewer.js";
 import type { Action, PlatformServices, FileOpenTargets } from "./services.js";
 import { useCodePreferences } from "./settings/preferences.js";
 import { useI18n } from "./i18n/IntlProvider.js";
+const DiagramPreview = lazy(async () => {
+  const { DiagramPreview } = await import("./components/ai-elements/message-code-block.js");
+  return { default: DiagramPreview };
+});
+const WorkspacePdfPreview = lazy(async () => {
+  const { WorkspacePdfPreview } = await import("./WorkspacePdfPreview.js");
+  return { default: WorkspacePdfPreview };
+});
 const WorkspaceMarkdownView = lazy(async () => {
   const { WorkspaceMarkdownView } = await import("./WorkspaceMarkdownView.js");
   return { default: WorkspaceMarkdownView };
@@ -56,6 +66,7 @@ export function WorkspaceFilePane({
   projectId,
   root,
   path,
+  location,
   action,
   onDirty,
   onLink,
@@ -68,6 +79,7 @@ export function WorkspaceFilePane({
   projectId: string;
   root: string;
   path: string;
+  location?: FileLocation;
   action: Action;
   onDirty: (path: string, dirty: boolean) => void;
   onLink: (url: string) => void;
@@ -78,6 +90,8 @@ export function WorkspaceFilePane({
   tree?: ReactNode;
 }) {
   const { t } = useI18n();
+  const isPdf = /\.pdf$/i.test(path);
+  const [pdfRevision, refreshPdf] = useState(0);
   const key = `${workspaceDocumentOwner(projectId, root)}:${path}`;
   const [doc, setDoc] = useState<Document | undefined>(documents.get(key));
   const [message, setMessage] = useState(doc?.saveError ?? "");
@@ -85,6 +99,14 @@ export function WorkspaceFilePane({
   const preferences = useCodePreferences();
   const [wrap, setWrap] = useState<boolean | undefined>();
   const [markdown, setMarkdown] = useState(true);
+  const focus =
+    location?.owner === workspaceDocumentOwner(projectId, root) && location.path === path
+      ? location
+      : undefined;
+  const scrollContainer = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focus?.line) setMarkdown(false);
+  }, [focus?.requestId]);
   const mounted = useRef(true);
   const opening = useRef(false);
   const [openTargets, setOpenTargets] = useState<FileOpenTargets>();
@@ -115,6 +137,10 @@ export function WorkspaceFilePane({
   };
   useEffect(() => {
     mounted.current = true;
+    if (isPdf)
+      return () => {
+        mounted.current = false;
+      };
     let cancelled = false;
     const cached = documents.get(key);
     if (cached) onDirty(path, cached.text !== cached.original);
@@ -214,6 +240,10 @@ export function WorkspaceFilePane({
     }
   };
   const reload = async () => {
+    if (isPdf) {
+      refreshPdf((value) => value + 1);
+      return;
+    }
     if (doc && doc.text !== doc.original && !window.confirm("丢弃当前草稿，重新读取磁盘版本？"))
       return;
     setBusy(true);
@@ -261,6 +291,9 @@ export function WorkspaceFilePane({
     }
   };
   const isMarkdown = /\.(md|mdx|markdown)$/i.test(path);
+  const isDelimited = /\.(csv|tsv)$/i.test(path);
+  const isDiagram = /\.(mmd|mermaid)$/i.test(path);
+  const hasPreview = isMarkdown || isDelimited || isDiagram;
   return (
     <aside
       className="flex h-full min-h-0 flex-col overflow-hidden bg-background"
@@ -298,7 +331,7 @@ export function WorkspaceFilePane({
           </div>
         </nav>
         <div className="file-preview-actions flex shrink-0 items-center gap-1.5">
-          {isMarkdown && !doc?.editing && (
+          {hasPreview && !doc?.editing && (
             <Button
               size="sm"
               variant="ghost"
@@ -306,7 +339,7 @@ export function WorkspaceFilePane({
               disabled={!doc}
               onClick={() => setMarkdown((value) => !value)}
             >
-              {markdown ? "查看源代码" : "渲染预览"}
+              {t(markdown ? "resources.source" : "resources.preview")}
             </Button>
           )}
           <Button
@@ -448,8 +481,23 @@ export function WorkspaceFilePane({
         </p>
       )}
       <div className="workspace-file-layout min-h-0 min-w-0 flex flex-1">
-        <div className="min-h-0 min-w-0 flex-1 overflow-auto">
-          {doc?.editing ? (
+        <div ref={scrollContainer} className="min-h-0 min-w-0 flex-1 overflow-auto">
+          {isPdf ? (
+            <Suspense
+              fallback={
+                <p role="status" className="p-3 text-ui-sm text-foreground-subtle">
+                  {t("common.loading")}
+                </p>
+              }
+            >
+              <WorkspacePdfPreview
+                key={`${key}:${pdfRevision}`}
+                projectId={projectId}
+                path={path}
+                fileOpen={fileOpen}
+              />
+            </Suspense>
+          ) : doc?.editing ? (
             <Textarea
               unstyled
               data-slot={undefined}
@@ -461,7 +509,21 @@ export function WorkspaceFilePane({
               onChange={(e) => update({ ...doc, text: e.target.value })}
             />
           ) : doc ? (
-            isMarkdown && markdown ? (
+            markdown && isDelimited ? (
+              <WorkspaceDelimitedPreview
+                text={doc.text}
+                delimiter={/\.tsv$/i.test(path) ? "\t" : ","}
+              />
+            ) : markdown && isDiagram ? (
+              <div className="p-3">
+                <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
+                  <DiagramPreview
+                    code={doc.text}
+                    theme={document.documentElement.classList.contains("dark") ? "dark" : "light"}
+                  />
+                </Suspense>
+              </div>
+            ) : isMarkdown && markdown ? (
               <div className="workspace-markdown-reading">
                 <Suspense
                   fallback={
@@ -501,6 +563,11 @@ export function WorkspaceFilePane({
               </div>
             ) : (
               <CodeViewer
+                focusedRange={
+                  focus?.line ? { startLine: focus.line, endLine: focus.line } : undefined
+                }
+                focusRequestId={focus ? String(focus.requestId) : undefined}
+                scrollContainerRef={scrollContainer}
                 code={doc.text}
                 language={getFiletypeFromFileName(path)}
                 wrapLongLines={wrap ?? preferences.wrapLongLines}

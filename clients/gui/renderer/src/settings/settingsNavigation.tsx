@@ -1,4 +1,4 @@
-import { Cpu, Database, GitFork, Monitor, Server, Smartphone } from "lucide-react";
+import { Camera, Cpu, Database, GitFork, Monitor, Server, Smartphone } from "lucide-react";
 import type { useI18n } from "../i18n/IntlProvider.js";
 import {
   SettingsAppearanceIcon,
@@ -25,6 +25,7 @@ export const settingsNavigationGroups = [
     label: "settings.navigation.integrations",
     items: [
       { id: "插件", label: "settings.plugins.title", icon: <SettingsPluginIcon /> },
+      { id: "SnapShots", label: "settings.snapshots.title", icon: <Camera strokeWidth={1.5} /> },
       { id: "浏览器", label: "settings.browser.title", icon: <SettingsBrowserIcon /> },
       {
         id: "电脑控制",

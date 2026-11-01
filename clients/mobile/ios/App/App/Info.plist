@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Connect securely to the computer you pair with on your local network.</string>
   <key>NSCameraUsageDescription</key>
   <string>Scan the pairing QR code shown by AReaL on your computer.</string>
   <key>CAPACITOR_DEBUG</key>

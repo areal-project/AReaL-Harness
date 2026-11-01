@@ -1,0 +1,314 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "id": "miniwob-plusplus-original",
+      "repository": "https://github.com/Farama-Foundation/miniwob-plusplus",
+      "revision": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "license": "MIT",
+      "tasks": [
+        "miniwob/enter-text",
+        "miniwob/choose-list",
+        "miniwob/click-checkboxes",
+        "miniwob/click-option"
+      ]
+    },
+    {
+      "id": "todomvc-official-react",
+      "repository": "https://github.com/tastejs/todomvc",
+      "revision": "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+      "license": "MIT",
+      "tasks": [
+        "todomvc/add",
+        "todomvc/edit",
+        "todomvc/active"
+      ]
+    }
+  ],
+  "adaptations": [
+    "All vendored files are unchanged upstream bytes. Only HTTP-served MiniWoB HTML adds a script immediately after core.js to seed its original random generator and change EPISODE_MAX_TIME from 10000 to 180000 milliseconds.",
+    "MiniWoB START is a model action counted in the shared task budget. The first episode goal is independently latched by the driver before answer approval. Missing initial evidence is UNKNOWN.",
+    "MiniWoB success requires original done/raw reward/episode count and exact native control state against the latched initial goal. Positive partial reward is failure.",
+    "TodoMVC tasks derive from official Cypress assertions at spec.cy.js lines 561-587, 763-791 and 962-979. The model creates all initial todos through public controls within its task budget.",
+    "TodoMVC React uses in-memory state. No persistence assertion is added. Local learn.json returns 404.",
+    "These are local environment ports, not official benchmark scores. The seedrandom supplementary upstream license does not establish the exact embedded seedrandom version.",
+    "MiniWoB document continuity uses Main-owned native page/document identity and a permanent observed-restart flag. Same-seed reloads cannot reuse the first episode goal as a successful new attempt.",
+    "TodoMVC Active verification reads All through the normal filter control after task completion, requires exactly the three original items with only the second completed, then restores and verifies Active. This adds no model actions or model budget."
+  ],
+  "files": [
+    {
+      "file": "miniwob/LICENSE",
+      "size": 1222,
+      "sha256": "fd6529fb8f648d4130fd969e3d7fc740c9992a0bd94a1998f52555a873311511",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "LICENSE",
+      "gitBlobSha1": "75494c6902bfbad33d925ac637b1d9e59ededa87"
+    },
+    {
+      "file": "miniwob/dependency-licenses/d3-v3.5.12/LICENSE",
+      "size": 1429,
+      "sha256": "cfbbc38bc63359f41eef41f92314754d6652fd1a17d016de344926d5de34b7d5"
+    },
+    {
+      "file": "miniwob/dependency-licenses/d3-v3.5.12/revision.json",
+      "size": 201,
+      "sha256": "e5c01bde52d5164c42f0ba41337ce59c2cf92704dcb09ce22f3f80524edb5857"
+    },
+    {
+      "file": "miniwob/dependency-licenses/jquery-ui-v1.12.1/LICENSE.txt",
+      "size": 1817,
+      "sha256": "de33fb695880d0b07615d4b86f78cd43796906959ade5fdfef70968827a0db78"
+    },
+    {
+      "file": "miniwob/dependency-licenses/jquery-ui-v1.12.1/revision.json",
+      "size": 226,
+      "sha256": "483ded001ad109e27ace5d85475ae93b97080e9f2b0b1da82006518e75d484f5"
+    },
+    {
+      "file": "miniwob/dependency-licenses/jquery-v1.12.4/LICENSE.txt",
+      "size": 1606,
+      "sha256": "f980a306a01e5881cc8004115f7e6dde44e7f5296477237d37d169a86ce7c094"
+    },
+    {
+      "file": "miniwob/dependency-licenses/jquery-v1.12.4/revision.json",
+      "size": 220,
+      "sha256": "dfb82078ff03ad4ea218ba16c1481df324de2af2854d1ba3dd1377a5b3fefd63"
+    },
+    {
+      "file": "miniwob/dependency-licenses/seedrandom-upstream-notice/README.md",
+      "size": 10360,
+      "sha256": "1917e6011d71665b6a832c9d10692d33b9b3122cceaafc4e7571b353a8d345fa"
+    },
+    {
+      "file": "miniwob/dependency-licenses/seedrandom-upstream-notice/revision.json",
+      "size": 230,
+      "sha256": "ba83629bf78a0b8d11f36419071b8fec150d3c13c8356836844d607649652f4b"
+    },
+    {
+      "file": "miniwob/miniwob/html/common/ui_utils.js",
+      "size": 78175,
+      "sha256": "65301ee11f483df7e9114f3fac2e2938e8b56933fecbed36bce310e2d8d90368",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/common/ui_utils.js",
+      "gitBlobSha1": "a0ae438baf601f87525c84e998a9de96364c4079"
+    },
+    {
+      "file": "miniwob/miniwob/html/core/core.css",
+      "size": 1582,
+      "sha256": "795f8e686125b71e89a21ffe9e03406c6498f1e135175ba63321f3051a720042",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/core/core.css",
+      "gitBlobSha1": "e5cfe33f6dbbbc580d6cdf3b1f4bb7755c74acfa"
+    },
+    {
+      "file": "miniwob/miniwob/html/core/core.js",
+      "size": 22274,
+      "sha256": "db8f489ab947a3194b99e718bce5e59ea9aaf0a3c35410d8c9c79e56e6123d14",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/core/core.js",
+      "gitBlobSha1": "08f57ffa652a44a20ac4fe0953c171dfcf0fcef7"
+    },
+    {
+      "file": "miniwob/miniwob/html/core/d3.v3.min.js",
+      "size": 151665,
+      "sha256": "8ca4da6691fb142cd76283014e887e7c3e61e3b63eff9ebb08eeb5c51d56aafb",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/core/d3.v3.min.js",
+      "gitBlobSha1": "ca05c719a789e0d889d923ac73381b46d5ed0144"
+    },
+    {
+      "file": "miniwob/miniwob/html/core/jquery-ui/external/jquery/jquery.js",
+      "size": 293430,
+      "sha256": "430f36f9b5f21aae8cc9dca6a81c4d3d84da5175eaedcf2fdc2c226302cb3575",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/core/jquery-ui/external/jquery/jquery.js",
+      "gitBlobSha1": "7fc60fca78b6201f814da4b2906cae2b69ee9610"
+    },
+    {
+      "file": "miniwob/miniwob/html/core/jquery-ui/images/ui-icons_444444_256x240.png",
+      "size": 7006,
+      "sha256": "eaf7c7ee2747275dda6c53e731a10db1a7b15f4fbb46e1b69d6bb2056bc9fd81",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/core/jquery-ui/images/ui-icons_444444_256x240.png",
+      "gitBlobSha1": "c2daae1663d47f397a01fd4166bce9b6b9ac4183"
+    },
+    {
+      "file": "miniwob/miniwob/html/core/jquery-ui/images/ui-icons_555555_256x240.png",
+      "size": 7074,
+      "sha256": "5d04051dfd9d2d740355404f98a683d1ec0feb2fca7d76e533c1a6e5ce92dd2e",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/core/jquery-ui/images/ui-icons_555555_256x240.png",
+      "gitBlobSha1": "47849283f84f7026932bf50282ee8af51444c26e"
+    },
+    {
+      "file": "miniwob/miniwob/html/core/jquery-ui/images/ui-icons_777620_256x240.png",
+      "size": 4676,
+      "sha256": "9dbe4a0d03feed6f65eb2560a0a8b4ba4264545ee8fd31c1763a3b219d0328d6",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/core/jquery-ui/images/ui-icons_777620_256x240.png",
+      "gitBlobSha1": "d2f58d25581c605a5538fa50408fe09c4a30740d"
+    },
+    {
+      "file": "miniwob/miniwob/html/core/jquery-ui/images/ui-icons_777777_256x240.png",
+      "size": 7013,
+      "sha256": "e75b27211e16fcf94715168001bb7055ca376d46f928110ba3d0825232452e5a",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/core/jquery-ui/images/ui-icons_777777_256x240.png",
+      "gitBlobSha1": "1d532588b989c5fd03e7a63f7e829b017c35d3cf"
+    },
+    {
+      "file": "miniwob/miniwob/html/core/jquery-ui/images/ui-icons_cc0000_256x240.png",
+      "size": 4632,
+      "sha256": "02891575d4358e9edde3e42d94057f8e9f82a9d64376f71ee86cef149d30537e",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/core/jquery-ui/images/ui-icons_cc0000_256x240.png",
+      "gitBlobSha1": "2825f2004d10b413a76317d47384e6139abcbe00"
+    },
+    {
+      "file": "miniwob/miniwob/html/core/jquery-ui/images/ui-icons_ffffff_256x240.png",
+      "size": 6313,
+      "sha256": "b6b06deef2b924cc3835d63f4883d47882734a33e71b212d917a68cede3b8e9d",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/core/jquery-ui/images/ui-icons_ffffff_256x240.png",
+      "gitBlobSha1": "136a4f97bd2e204943789c1ba9ac9bf0e997ff81"
+    },
+    {
+      "file": "miniwob/miniwob/html/core/jquery-ui/jquery-ui.min.css",
+      "size": 32076,
+      "sha256": "ac1c8f94750b39b12327a5d0c56fdf946dabfb6d91e5d2a202879ff9a5d67e29",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/core/jquery-ui/jquery-ui.min.css",
+      "gitBlobSha1": "776e2595ad336c9b7fafe5358c0898f183f05f4d"
+    },
+    {
+      "file": "miniwob/miniwob/html/core/jquery-ui/jquery-ui.min.js",
+      "size": 253669,
+      "sha256": "28ce75d953678c4942df47a11707a15e3c756021cf89090e3e6aa7ad6b6971c3",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/core/jquery-ui/jquery-ui.min.js",
+      "gitBlobSha1": "25398a167415050ae8bfb0bfebac6aa3ab790909"
+    },
+    {
+      "file": "miniwob/miniwob/html/miniwob/choose-list.html",
+      "size": 1540,
+      "sha256": "ecf216009d4a0dda4d8beab574d03c2919ee6d44f7b9c6e850e26f3d8abe9586",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/miniwob/choose-list.html",
+      "gitBlobSha1": "654715e9a518b4aebcbe59d81b6be8c90982f157"
+    },
+    {
+      "file": "miniwob/miniwob/html/miniwob/click-checkboxes.html",
+      "size": 1973,
+      "sha256": "b799bd1749dd603029e7479c56efceb38a425af47c04267fe46f6d7a64ac1895",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/miniwob/click-checkboxes.html",
+      "gitBlobSha1": "84d3f10c2d285195ea69ec8e6055ba383a70dc9c"
+    },
+    {
+      "file": "miniwob/miniwob/html/miniwob/click-option.html",
+      "size": 1656,
+      "sha256": "b918237b51a1b364d990714deffbec9942dc8c1fac0920dce06adb2c07c5da6e",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/miniwob/click-option.html",
+      "gitBlobSha1": "bd00c5c2c88883178b4f5e1fd01bf18a3df7254c"
+    },
+    {
+      "file": "miniwob/miniwob/html/miniwob/enter-text.html",
+      "size": 1396,
+      "sha256": "cea0bd69c5070d069552879007c935fe6d715a05642127fa465b87f7e4bcaf05",
+      "repo": "Farama-Foundation/miniwob-plusplus",
+      "commit": "33c3b4ddef8c6eb67c57a29663d844b1eda7e614",
+      "sourcePath": "miniwob/html/miniwob/enter-text.html",
+      "gitBlobSha1": "f2821adad6284bc853f680920691c0034bbb2611"
+    },
+    {
+      "file": "todomvc/cypress/e2e/spec.cy.js",
+      "size": 35412,
+      "sha256": "81beec13cc2f6e28577c560325fa07297e3b480d7694bf6f4bd822c0a3f57c22",
+      "repo": "tastejs/todomvc",
+      "commit": "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+      "sourcePath": "cypress/e2e/spec.cy.js",
+      "gitBlobSha1": "478bcfb17f407d56b4db19c4bffadcd0aa1e0972"
+    },
+    {
+      "file": "todomvc/cypress/support/commands.js",
+      "size": 2985,
+      "sha256": "95a8fd96014a3d07a378f2331a151f5bb7af0378ddb47541767755e58d5d998b",
+      "repo": "tastejs/todomvc",
+      "commit": "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+      "sourcePath": "cypress/support/commands.js",
+      "gitBlobSha1": "029abdbaf932cd1dded89e79c7943aa2fcab9c36"
+    },
+    {
+      "file": "todomvc/examples/react/dist/app.bundle.js",
+      "size": 236914,
+      "sha256": "6197ad9358985fb3f745aef3fca9abbe2fc7f0cd35cd4525cb8570107ae6b78a",
+      "repo": "tastejs/todomvc",
+      "commit": "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+      "sourcePath": "examples/react/dist/app.bundle.js",
+      "gitBlobSha1": "08741691a2f21c53f816811aa5750f7448b1f376"
+    },
+    {
+      "file": "todomvc/examples/react/dist/app.bundle.js.LICENSE.txt",
+      "size": 1332,
+      "sha256": "2fde10fedaa9ebac195ff484ddb08969f5d04ab284ba65000b3cbf0992703640",
+      "repo": "tastejs/todomvc",
+      "commit": "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+      "sourcePath": "examples/react/dist/app.bundle.js.LICENSE.txt",
+      "gitBlobSha1": "8176893c2c9fd488645d2fd92ca4119d0e49f693"
+    },
+    {
+      "file": "todomvc/examples/react/dist/app.css",
+      "size": 7400,
+      "sha256": "a0ccea8c39f22bcad35a2821b1e1009a05e028e51884649d0cd1552776b0fdef",
+      "repo": "tastejs/todomvc",
+      "commit": "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+      "sourcePath": "examples/react/dist/app.css",
+      "gitBlobSha1": "676204ebeac3d26572e969bdc229dbbce7237336"
+    },
+    {
+      "file": "todomvc/examples/react/dist/base.js",
+      "size": 3752,
+      "sha256": "8cfbaa8d2bc03e2e52a8b7788e041efda231a17e2a25c8bc4bfe2659adc5bb90",
+      "repo": "tastejs/todomvc",
+      "commit": "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+      "sourcePath": "examples/react/dist/base.js",
+      "gitBlobSha1": "013aacecb4f9f2e87b04552cd8b571d53cf55c0d"
+    },
+    {
+      "file": "todomvc/examples/react/dist/index.html",
+      "size": 645,
+      "sha256": "23b40a8b71f26e44f3e72e682188a3ab238d17fd375ff0ec06295af9971fa959",
+      "repo": "tastejs/todomvc",
+      "commit": "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+      "sourcePath": "examples/react/dist/index.html",
+      "gitBlobSha1": "82aa905b19394a7537790670445e3848d1d02c47"
+    },
+    {
+      "file": "todomvc/license.md",
+      "size": 1166,
+      "sha256": "32238c5c6759b589ea768661b6eb0fcb42449b74d57cdf09928743f2e1eb748d",
+      "repo": "tastejs/todomvc",
+      "commit": "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+      "sourcePath": "license.md",
+      "gitBlobSha1": "9275d4371020294b6a107e454a0d1819f8b71c31"
+    }
+  ]
+}

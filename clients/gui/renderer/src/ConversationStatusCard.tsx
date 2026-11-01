@@ -1,5 +1,5 @@
 import { useI18n } from "./i18n/IntlProvider.js";
-import { Disclosure, TaskContext } from "@areal/ui/experimental";
+import { TaskContext } from "@areal/ui/experimental";
 import "@areal/ui/conversation.css";
 import { Button } from "./components/ui/button.js";
 import { useEffect, useRef, useState } from "react";
@@ -12,7 +12,7 @@ import { verifiedFileReceipts } from "./TurnFileSummary.js";
 import { LinkIcon, RefreshCwIcon } from "lucide-react";
 import { ProjectFolderIcon } from "./homeChromeIcons.js";
 import { ActivityIcon } from "./ActivityIcon.js";
-import type { Action, Data } from "./services.js";
+import type { Action, Data, PlatformServices } from "./services.js";
 import "./AgentResources.css";
 
 export function ConversationStatusCard({
@@ -28,7 +28,9 @@ export function ConversationStatusCard({
   onAgents,
   onAddSource,
   onLink,
+  fileOpen,
 }: {
+  fileOpen?: PlatformServices["fileOpen"];
   project: Data;
   thread: Data;
   action: Action;
@@ -43,6 +45,8 @@ export function ConversationStatusCard({
   onOpenSchedule?: (task: Data) => void;
 }) {
   const { t, intl } = useI18n();
+  const [workspaceError, setWorkspaceError] = useState("");
+  const [openingWorkspace, setOpeningWorkspace] = useState(false);
   const [allSources, setAllSources] = useState(false);
   const [git, setGit] = useState<Data>({ loading: true });
   const [processes, setProcesses] = useState<Data[]>([]);
@@ -142,6 +146,7 @@ export function ConversationStatusCard({
     ).values(),
   ];
   const total = (key: string) => files.reduce((sum, file) => sum + (file[key] ?? 0), 0);
+  const executionRoot = thread.worktree?.directory ?? project.root;
   const workspaceName = project.projectless
     ? "独立任务"
     : project.name || project.root.split(/[\\/]/).pop();
@@ -236,21 +241,43 @@ export function ConversationStatusCard({
             />
           </TaskContext.Section>
         )}
-        {thread.worktree && (
-          <TaskContext.Section label={t("chat.context.projects")}>
-            <Disclosure
-              label={workspaceName}
-              textRole="interface"
-              icon={<ProjectFolderIcon />}
-              keepMounted
-            >
-              <p className="task-resource-note">{thread.worktree.sourceRoot}</p>
-              <p className="task-resource-note">
-                {thread.worktree.directory} · {thread.worktree.branch}
-              </p>
-            </Disclosure>
-          </TaskContext.Section>
-        )}
+        <TaskContext.Section label={t("resources.workspace")}>
+          <p className="task-resource-note">
+            {t(thread.cloud ? "resources.cloud" : "resources.local")}
+          </p>
+          <TaskContext.Item
+            title={executionRoot}
+            tooltip={executionRoot}
+            icon={<ProjectFolderIcon />}
+            aria-label={t("resources.openWorkspace")}
+            disabled={!fileOpen || openingWorkspace || !!thread.cloud || !connected}
+            onClick={() => {
+              if (!fileOpen) return;
+              setOpeningWorkspace(true);
+              setWorkspaceError("");
+              void fileOpen({
+                operation: "open",
+                projectId: project.id,
+                threadId: thread.id,
+                path: ".",
+              })
+                .catch((cause: Error) => setWorkspaceError(cause.message))
+                .finally(() => setOpeningWorkspace(false));
+            }}
+          />
+          {!git.loading && git.info?.branch && (
+            <TaskContext.Item
+              title={`${t("resources.branch")} · ${git.info.branch}`}
+              onClick={() => onPanel("改动")}
+              icon={<ReviewPanelIcon />}
+            />
+          )}
+          {workspaceError && (
+            <p role="alert" className="task-resource-note">
+              {workspaceError}
+            </p>
+          )}
+        </TaskContext.Section>
         <AgentsPane
           key={`${project.id}:${thread.id}`}
           project={project}

@@ -1,3 +1,5 @@
+import { decodeFilePathUriEscapes, isAbsoluteFilePath } from "@/lib/path.js";
+
 const LINK_MENTION_MARKDOWN_PATTERN =
   /\[((?:\\.|[^\\\]])*)\]\((?:<((?:\\.|[^>])*?)>|((?:\\.|[^)])*))\)/g;
 const INLINE_MENTION_TOKEN_PATTERN =
@@ -44,25 +46,17 @@ function normalizeMarkdownDestination(destination: string): string {
   return `./${destination}`;
 }
 
-function normalizeFileMentionRelativePath(
-  relativePath: string,
-  kind: "file" | "directory",
-): string {
-  const trimmedRelativePath = relativePath.trim();
-  if (kind === "directory") {
-    return `${trimmedRelativePath.replace(/[\\/]+$/, "")}/`;
-  }
-
-  return trimmedRelativePath;
-}
-
 export function buildFileMentionMarkdown(
-  relativePath: string,
+  path: string,
   label: string,
   kind: "file" | "directory" = "file",
 ): string {
-  const normalizedRelativePath = normalizeFileMentionRelativePath(relativePath, kind);
-  return `[${escapeMarkdownLabel(label)}](${escapeMarkdownDestination(normalizeMarkdownDestination(normalizedRelativePath))})`;
+  const target = kind === "directory" && !path.endsWith("/") ? `${path}/` : path;
+  const absolute = isAbsoluteFilePath(target);
+  const destination = absolute ? encodeURI(target) : normalizeMarkdownDestination(target);
+  const escaped = escapeMarkdownDestination(destination);
+  const protectedDestination = absolute || /[\s()<>]/.test(destination) ? `<${escaped}>` : escaped;
+  return `[${escapeMarkdownLabel(label)}](${protectedDestination})`;
 }
 
 export function buildSkillMentionMarkdown(label: string, skillPath?: string): string {
@@ -189,7 +183,11 @@ export function parseMentionMarkdown(content: string): MentionTextPart[] {
     }
     const threadId = parseSessionThreadId(destination);
     if (threadId) {
-      parts.push({ type: "session", label: label.startsWith("#") ? label.slice(1) : label, threadId });
+      parts.push({
+        type: "session",
+        label: label.startsWith("#") ? label.slice(1) : label,
+        threadId,
+      });
     } else if (destination.startsWith("plugin://")) {
       // Plugin 引用链接绝不能落入 file 分支或被当外链处理；
       // 发送后曾只保留 label，消息层失去 stable ID，只能固定显示兜底图标。
@@ -201,6 +199,11 @@ export function parseMentionMarkdown(content: string): MentionTextPart[] {
         label: label.startsWith("@") ? label.slice(1) : label,
         ...(pluginId ? { pluginId } : {}),
       });
+    } else if (
+      isAbsoluteFilePath(decodeFilePathUriEscapes(destination)) &&
+      isDirectoryMentionDestination(destination)
+    ) {
+      parts.push({ type: "directory", label });
     } else if (label.startsWith("$")) {
       parts.push({ type: "skill", label: label.slice(1) });
     } else if (isDirectoryMentionDestination(destination)) {

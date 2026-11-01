@@ -20,6 +20,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 class MobileViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(ArealKeychainPlugin())
+        bridge?.registerPluginInstance(ArealLocalSocketPlugin())
         #if DEBUG
         if #available(iOS 16.4, *) { webView?.isInspectable = true }
         if let product = ProcessInfo.processInfo.environment["AREAL_MOBILE_PRODUCT"],

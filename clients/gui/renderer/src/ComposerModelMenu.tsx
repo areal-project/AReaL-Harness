@@ -29,37 +29,7 @@ export interface ComposerModelOption {
   unavailableReason?: string;
   historical?: boolean;
 }
-/** 可用性直接投影 Core 目录，不在 Renderer 重新判断凭据。 */
-export function composerModelOption(model: {
-  providerId?: string | null;
-  providerName?: string;
-  modelId: string;
-  displayName?: string;
-  reasoningEffortOptions?: readonly string[];
-  capabilities?: { reasoning: boolean; reasoningEffortOptions?: readonly string[] };
-  available?: boolean;
-  availability?: "checking" | "available" | "unavailable";
-  credentialState?: string;
-}): ComposerModelOption {
-  return {
-    value: model.providerId ? `${model.providerId}/${model.modelId}` : "",
-    label: model.displayName ?? model.modelId,
-    providerId: model.providerId ?? undefined,
-    providerName: model.providerName,
-    efforts: model.reasoningEffortOptions,
-    reasoning: model.capabilities?.reasoning,
-    effortsKnown:
-      model.capabilities?.reasoningEffortOptions !== undefined ||
-      !!model.reasoningEffortOptions?.length,
-    unavailableReason:
-      model.availability === "unavailable" ||
-      (model.available === false && model.availability !== "checking")
-        ? model.credentialState === "unavailable"
-          ? "缺少 API Key"
-          : "模型不可用"
-        : undefined,
-  };
-}
+export { composerModelOption } from "./lib/draftModelSelection.js";
 export function ComposerModelMenu({
   options,
   value,
@@ -145,6 +115,37 @@ export function ComposerModelMenu({
     const fraction = Math.max(0, step) / Math.max(1, efforts.length - 1);
     return `calc(${fraction * 100}% + ${14 - fraction * 28}px)`;
   };
+  const modelOptions = (models: ComposerModelOption[]) => (
+    <div role="radiogroup" aria-label={t("chat.composer.models")}>
+      {models.map((option) => (
+        <div className="flex items-center" key={option.value} data-model-value={option.value}>
+          <label className="composer-model-option">
+            <Input
+              unstyled
+              data-slot={undefined}
+              type="radio"
+              name={radioName}
+              value={option.value}
+              checked={value === option.value}
+              disabled={disabled || pending}
+              onClick={() => {
+                if (option.value === value) {
+                  onChange(option.value);
+                  setModelOpen(false);
+                }
+              }}
+              onChange={() => {
+                onChange(option.value);
+                setModelOpen(false);
+              }}
+            />
+            <span className="composer-model-option-text">{option.label}</span>
+            {value === option.value && <MenuSelectedIcon size={16} aria-hidden="true" />}
+          </label>
+        </div>
+      ))}
+    </div>
+  );
   if (!availableOptions.length && !model)
     return (
       <span
@@ -164,9 +165,9 @@ export function ComposerModelMenu({
           if (next) {
             setEffortOpen(false);
             setProvider(
-              providers.has(model?.providerId ?? "")
+              availableOptions.some((option) => option.providerId === model?.providerId)
                 ? (model?.providerId ?? "")
-                : (providers.keys().next().value ?? ""),
+                : (availableOptions[0]?.providerId ?? ""),
             );
           }
         }}
@@ -232,39 +233,7 @@ export function ComposerModelMenu({
               </TabsList>
               {[...providers].map(([providerId, models]) => (
                 <TabsContent key={providerId} value={providerId} className="composer-model-list">
-                  <div role="radiogroup" aria-label={t("chat.composer.models")}>
-                    {models.map((option) => (
-                      <label
-                        className="composer-model-option"
-                        key={option.value}
-                        data-model-value={option.value}
-                      >
-                        <Input
-                          unstyled
-                          data-slot={undefined}
-                          type="radio"
-                          name={radioName}
-                          value={option.value}
-                          checked={value === option.value}
-                          disabled={disabled || pending}
-                          onClick={() => {
-                            if (option.value === value) {
-                              onChange(option.value);
-                              setModelOpen(false);
-                            }
-                          }}
-                          onChange={() => {
-                            onChange(option.value);
-                            setModelOpen(false);
-                          }}
-                        />
-                        <span className="composer-model-option-text">{option.label}</span>
-                        {value === option.value && (
-                          <MenuSelectedIcon size={16} aria-hidden="true" />
-                        )}
-                      </label>
-                    ))}
-                  </div>
+                  {modelOptions(models)}
                 </TabsContent>
               ))}
             </Tabs>

@@ -87,25 +87,30 @@ export async function runProduct(
             throw new Error("HistoryFixtureTooSmall");
           const messages = document.querySelector<HTMLElement>(".messages")!;
           if (["history", "live"].includes(config.mode)) {
-            const older = await wait(() =>
-              [
-                ...document.querySelectorAll<HTMLButtonElement>(".message-history-controls button"),
-              ].find((button) => !button.disabled),
-            );
-            if (config.mode === "history") {
-              messages.scrollTop = messages.scrollHeight;
-              messages.dispatchEvent(new Event("scroll"));
-              const bounds = messages.getBoundingClientRect();
+            messages.scrollTop = 0;
+            messages.dispatchEvent(new Event("scroll"));
+            const bounds = messages.getBoundingClientRect();
+            const touch = (clientY: number) =>
+              new Touch({
+                identifier: 1,
+                target: messages,
+                clientX: bounds.left + bounds.width / 2,
+                clientY,
+              });
+            for (const [type, clientY] of [
+              ["touchstart", bounds.top + 20],
+              ["touchmove", bounds.top + 80],
+              ["touchend", bounds.top + 80],
+            ] as const) {
+              const point = touch(clientY);
               messages.dispatchEvent(
-                new PointerEvent("pointerdown", {
+                new TouchEvent(type, {
                   bubbles: true,
-                  pointerType: "touch",
-                  clientX: bounds.left + bounds.width / 2,
+                  touches: type === "touchend" ? [] : [point],
+                  changedTouches: [point],
                 }),
               );
-              messages.scrollTop = 0;
-              messages.dispatchEvent(new Event("scroll"));
-            } else older.click();
+            }
             await wait(() =>
               document.querySelector(".messages")?.textContent?.includes("MOBILE_HISTORY_001"),
             );

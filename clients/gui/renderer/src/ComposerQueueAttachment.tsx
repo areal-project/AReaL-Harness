@@ -1,6 +1,9 @@
 import { AttachmentCard } from "@areal/ui/experimental";
 import { useEffect, useState } from "react";
 import { ScanText } from "lucide-react";
+import { useI18n } from "./i18n/IntlProvider.js";
+import { isTechnicalErrorMessage } from "./recoveryPresentation.js";
+import { FeedbackNotice } from "./FeedbackNotice.js";
 import { CloseIcon } from "./interfaceIcons.js";
 import type { Action, Data } from "./services.js";
 
@@ -20,6 +23,7 @@ export function ComposerQueueAttachment({
   disabled: boolean;
   onRemove: () => void;
 }) {
+  const { t } = useI18n();
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const name =
@@ -49,28 +53,37 @@ export function ComposerQueueAttachment({
     };
   }, [part.url, projectId, threadId]);
   return (
-    <AttachmentCard image={part.type === "image"} data-testid="composer-queued-attachment">
-      {part.type === "image" && url ? (
-        <img src={url} alt={name} />
-      ) : (
-        <>
-          <AttachmentCard.Icon>
-            <ScanText size={22} />
-          </AttachmentCard.Icon>
-          <AttachmentCard.Text>
-            <span>{name}</span>
-          </AttachmentCard.Text>
-        </>
+    <div className="composer-attachment-item">
+      <AttachmentCard image={part.type === "image"} data-testid="composer-queued-attachment">
+        {part.type === "image" && url ? (
+          <img src={url} alt={name} />
+        ) : (
+          <>
+            <AttachmentCard.Icon>
+              <ScanText size={22} />
+            </AttachmentCard.Icon>
+            <AttachmentCard.Text>
+              <span title={name}>{name}</span>
+            </AttachmentCard.Text>
+          </>
+        )}
+        <AttachmentCard.Remove
+          type="button"
+          disabled={disabled}
+          aria-label={`移除排队附件 ${name}`}
+          onClick={onRemove}
+        >
+          <CloseIcon size={12} />
+        </AttachmentCard.Remove>
+      </AttachmentCard>
+      {error && (
+        <FeedbackNotice
+          tone="error"
+          message={`${name}: ${isTechnicalErrorMessage(error) ? t("recovery.operationFailed") : error}`}
+          detail={isTechnicalErrorMessage(error) ? error : undefined}
+          onDismiss={() => setError("")}
+        />
       )}
-      <AttachmentCard.Remove
-        type="button"
-        disabled={disabled}
-        aria-label={`移除排队附件 ${name}`}
-        onClick={onRemove}
-      >
-        <CloseIcon size={12} />
-      </AttachmentCard.Remove>
-      {error && <AttachmentCard.Error role="alert">{error}</AttachmentCard.Error>}
-    </AttachmentCard>
+    </div>
   );
 }

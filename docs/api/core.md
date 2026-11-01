@@ -211,7 +211,7 @@ Checkpoint 的 `retainedInputs: [{itemId, content}]` 与 `evidence: string[]` �
 
 `limits.context_compaction_enabled=false` 时自动阈值超限使 Turn 失败，显式 `areal/context/compact` 返回错误，不写入 checkpoint；配置见[上下文限额](../guides/configuration.md#模型与限额)。
 
-CLI 默认模型与 GUI/桌面目录选定的供应商模型共用审计链路，覆盖求解、摘要及子 Agent 请求；通过 Core 发起的请求保留 thread/turn 关联。模型审计写入 `data_dir/model-requests/*.json` 与 `requests.jsonl`，记录 solve/summary、参数、请求体摘要/大小、attempt、usage、stopReason、耗时与有限响应形状，不记录 header、endpoint 或 prompt。`usageObserved=true` 表示收到可解析的完整用量事件（包括 0）；缺失/false 不能视为已知零。length 终态仍收集同帧/尾帧 usage，等待受期限和取消限制，随后判定截断并禁止执行工具。
+CLI 默认模型与 GUI/桌面目录选定的供应商模型共用审计链路，覆盖求解、摘要及子 Agent 请求；通过 Core 发起的请求保留 thread/turn 关联。模型审计写入 `data_dir/model-requests/*.json` 与 `requests.jsonl`，记录 solve/summary、参数、请求体摘要/大小、attempt、usage、stopReason、耗时与有限响应形状，仅记录去除凭据、query 和 fragment 的 endpoint origin 与已知协议路由；自定义路径标为 `[redacted]`，不记录 header 或 prompt。`usageObserved=true` 表示收到可解析的完整用量事件（包括 0）；缺失/false 不能视为已知零。length 终态仍收集同帧/尾帧 usage，等待受期限和取消限制，随后判定截断并禁止执行工具。
 
 SSE 流式 Provider 错误另写入 `data_dir/model-requests/errors/<requestId>.json`，普通审计的 `errorDetailFile` 指向该文件。目录 0700、文件 0600，保存错误对象原文（包括未进入白名单的 code/type/message）；序列化原文超过 16 KiB 时保存 UTF-8 安全截取的 `rawJsonPrefix` 并标记 `truncated=true`。这些私有排障制品可能包含上游回显内容，不进入 `requests.jsonl`、TurnOutcome 或遥测；旧请求未保存的原文无法回取。HTTP 请求或响应正文的传输失败也在同一私有详情中保留阶段、分类标志和移除 URL 后的底层原因；公开分类、重试与 Goal 未知用量门禁不变。
 
@@ -260,6 +260,10 @@ thread/start.dynamicTools 为 `{name,description,inputSchema,outputSchema?}[]`�
 success/contentItems 必填；结构化成功结果按 outputSchema 校验，产品媒体扩展见[桌面 API](desktop.md)。success=false 为确定失败；RPC error、无效/超限结果、断连、超时或取消记 UNKNOWN。Core 不重试。areal/tool/cancelled 只是尽力通知，不保证回滚。
 
 恢复的定义没有宿主绑定；旧宿主断开且 Thread 空闲时，由实现回调的客户端 resume 接管。执行宿主断连停止对应 Turn；TUI/Web 对任意回调返回 method-not-found。注册/预算见[工具指南](../guides/tools.md)。
+
+## 原生文件工具权限
+
+原生只读工具 `read_file`、`search_files`、`image_read`、`fs_read`、`fs_list`、`fs_stat` 的动态参数合同增加可选 `permissionRequest:{readRoots,justification}`，仅接受具体读取根。`writeRoots`、`network` 及未知字段拒绝。已有不带该字段的调用兼容；`run_command` 的追加权限合同不变。申请需要显式权限预设并经过现有审批及 Runtime Scope 校验；只读授权仅归本次操作，不写入会话 base Scope。图片成功结果沿既有媒体合同进入模型请求，见[工具指南](../guides/tools.md)。
 
 <a id="agent-tools"></a>
 ## Agent 工具
@@ -330,7 +334,7 @@ list/read/wait/artifact 需要 observe，delegate/cancel/apply 需要 interact�
 
 投影分别返回 status、settled、resourcesReleased、verification 和 delivery。verification.status=notRun 不代表通过；严格模式使用可信部署检查，自动隔离不会伪造验收。delivery=candidate 只表示候选就绪，只有 applied 表示改动已交付当前工作区。交付日志保留原 sourceHead、实际组合 head、基线及逐操作回执；不相交的改动可以组合，严格模式对变化后的组合树重新验收。同文件变化拒绝覆盖，partial/unknown 不视作成功，也不自动重放。验证与应用是历史事实，后续工作区变化不撤销旧回执。
 
-交付在写入源码前预检整组变更路径。Runtime v0 的未编码路径不支持含 `%`、`?`、`#` 或超过 URI 长度限制的文件名；交付也不执行目录删除，因此拒绝把现有目录替换为普通文件，包括空目录。这些情况返回 conflict，整组不启动文件操作；未改动的特殊文件名和文件替换为目录不受此限制。
+交付在写入源码前预检整组变更路径。路径沿用 Runtime v0 的未编码字面规则，支持 `%`、`?`、`#` 文件名，不做 URL 解码；实际 . / .. 段、NUL 或超出长度限制的路径拒绝。交付不执行目录删除，因此拒绝把现有目录替换为普通文件，包括空目录。这些情况返回 conflict，整组不启动文件操作；未改动的特殊文件名和文件替换为目录不受此限制。
 
 执行归属于当前 Turn 或已有 TaskRun，复用原 Thread/Turn、Task/TaskRun 与 Goal 预算，不新增生命周期状态机。TaskRun worker 跨协调 Turn 存活；候选待写回时唤醒同一协调者，未交付或未确认清理不能完成 Goal。普通模型子任务结束前自动 join。兼容保留旧 prompt/threadId 工具调用及 `areal/agent/spawn`、Workgroup 高级 API；旧的手工 spawn 在父 Turn 结束时取消后代。旧记录从原历史入口查看，不伪造统一执行回执。
 

@@ -628,16 +628,6 @@ button.composer-project:hover > svg,
   font-size: var(--text-content-caption);
   margin: 8px 0 16px;
 }
-.queue-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 0 24px;
-  padding: 9px 12px;
-  border-radius: var(--radius-inset);
-  border: 1px solid var(--color-border);
-  font-size: var(--text-ui-sm);
-}
 .bottom-terminal {
   height: 30%;
   min-height: 180px;
@@ -1346,34 +1336,6 @@ button.composer-project:hover > svg,
 }
 .resource-settings .settings-resource-list {
   border: 0;
-}
-.resource-switch {
-  width: 32px;
-  height: 18px;
-  border-radius: var(--radius-panel);
-  flex-shrink: 0;
-  background: var(--color-foreground-subtlest);
-  position: relative;
-}
-.resource-switch::after {
-  content: "";
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  top: 2px;
-  left: 2px;
-  border-radius: 50%;
-  background: var(--color-control-thumb);
-}
-.resource-switch[aria-checked="true"] {
-  background: var(--color-foreground);
-}
-.resource-switch[aria-checked="true"]::after {
-  transform: translateX(14px);
-}
-.resource-switch:disabled {
-  opacity: 0.4;
-  cursor: default;
 }
 .skill-resource-row {
   display: flex;
@@ -2366,6 +2328,12 @@ button[aria-label="停止"] {
   font: inherit;
   text-align: left;
 }
+.model-change-notice {
+  margin: var(--spacing-inline) 0;
+  color: var(--color-status-settled);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
 .turn-progress-divider {
   margin-top: 4px;
   border-bottom: 1px solid var(--color-menu-border, var(--color-border));
@@ -2398,6 +2366,17 @@ button[aria-label="停止"] {
 }
 .turn-progress-body > :last-child {
   margin-bottom: 0;
+}
+.message-time {
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-ui-xs);
+  opacity: 0;
+}
+.user-message:hover .message-time,
+.user-message:focus-within .message-time,
+.assistant-message:hover .message-time,
+.assistant-message:focus-within .message-time {
+  opacity: 1;
 }
 .message-actions:empty {
   display: none;
@@ -3973,7 +3952,7 @@ button[aria-label="停止"] {
   background: var(--color-hover);
 }
 .composer-attachments {
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 12px;
   margin-bottom: 12px;
   max-height: 270px;
@@ -3985,7 +3964,7 @@ button[aria-label="停止"] {
   min-width: 0;
   max-width: 100%;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 8px;
   margin-bottom: 10px;
   max-height: 270px;
@@ -4566,6 +4545,22 @@ button[aria-label="停止"] {
   min-width: 0;
   margin-block: var(--conversation-gap) 0;
 }
+.turn-retry-notice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-conversation);
+  line-height: var(--conversation-line);
+  overflow-wrap: anywhere;
+}
+.turn-retry-attention {
+  color: var(--color-status-attention);
+}
+.turn-retry-notice > svg {
+  flex: none;
+}
 .execution-status {
   color: var(--color-status-running);
   font-size: var(--text-conversation);
@@ -4615,43 +4610,6 @@ button[aria-label="停止"] {
 .turn-progress-heading {
   position: relative;
 }
-.turn-failure-indicator {
-  position: static;
-  color: var(--color-foreground-subtle);
-}
-.turn-failure-indicator > summary {
-  list-style: none;
-  cursor: pointer;
-  display: flex;
-  padding: 4px;
-}
-.turn-failure-indicator > summary::-webkit-details-marker {
-  display: none;
-}
-.turn-failure-indicator > summary:focus-visible {
-  outline: 2px solid var(--color-ring);
-  border-radius: var(--radius-control);
-}
-.turn-failure-details {
-  position: absolute;
-  z-index: 10;
-  top: 100%;
-  left: 0;
-  width: min(480px, 100%);
-  max-height: 45dvh;
-  overflow: auto;
-  padding: var(--spacing-field);
-  background: var(--color-background);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  color: var(--color-foreground);
-  box-shadow: var(--shadow-result-card);
-}
-.turn-failure-details pre {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 .content-system-preview > section {
   margin-block: var(--spacing-section);
 }
@@ -4694,4 +4652,18 @@ button[aria-label="停止"] {
   align-items: flex-start;
   gap: 6px;
   padding: 8px 12px;
+}
+
+.preview-device-controls,
+.browser-request-error {
+  flex-wrap: wrap;
+  gap: var(--spacing-inline);
+}
+.preview-device-controls label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-inline);
+}
+.preview-device-controls [data-slot="select-trigger"] {
+  width: auto;
 }

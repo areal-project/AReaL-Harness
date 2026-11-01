@@ -15,6 +15,7 @@ import {
   $isPromptMentionNode,
 } from "@/mentions/nodes/PromptMentionNode.js";
 
+import { decodeFilePathUriEscapes, isAbsoluteFilePath } from "@/lib/path.js";
 import { parsePluginStableId, parseSessionThreadId } from "./mentionMarkdown.js";
 
 /** 编辑器文本用于光标；业务输出显式读取 canonical，不能覆写 TextNode 文本语义。 */
@@ -133,31 +134,45 @@ export function $createPromptParagraph(text: string) {
     const destination = text.slice(destinationStart + (angleDestination ? 1 : 0), destinationEnd);
     const pluginId = parsePluginStableId(destination);
     const threadId = parseSessionThreadId(destination);
+    const fileDestination = destination.replace(/\\(.)/g, "$1");
+    const decodedDestination = decodeFilePathUriEscapes(fileDestination);
+    const isFile =
+      !match[1]?.startsWith("$") ||
+      (isAbsoluteFilePath(decodedDestination) && decodedDestination.endsWith("/"));
     const relativePath =
-      destination.startsWith("./") && !match[1]?.startsWith("$")
-        ? destination.slice(2).replace(/\\(.)/g, "$1")
-        : undefined;
-    if (!pluginId && !threadId && !relativePath) continue;
+      isFile && fileDestination.startsWith("./") ? fileDestination.slice(2) : undefined;
+    const absolutePath =
+      isFile && isAbsoluteFilePath(decodedDestination) ? decodedDestination : undefined;
+    const directory = (absolutePath ?? relativePath)?.endsWith("/");
+    const path =
+      absolutePath && directory && absolutePath.length > 1
+        ? absolutePath.slice(0, -1)
+        : absolutePath;
+    const fileValue = path ?? relativePath;
+    if (!pluginId && !threadId && !fileValue) continue;
     if (start > cursor) $appendPromptTextLines(paragraph, text.slice(cursor, start));
-    const label = (match[1]?.replace(/\\(.)/g, "$1") ?? "").replace(
-      pluginId ? /^@/ : threadId ? /^#/ : /^@/,
-      "",
-    );
+    const sourceLabel = match[1]?.replace(/\\(.)/g, "$1") ?? "";
+    const label = absolutePath ? sourceLabel : sourceLabel.replace(threadId ? /^#/ : /^@/, "");
     paragraph.append(
       $createPromptMentionNode({
         id: pluginId
           ? `plugin:${pluginId}`
           : threadId
             ? `session:${threadId}`
-            : `file:${relativePath}`,
+            : `file:${fileValue}`,
         category: pluginId ? "plugins" : threadId ? "sessions" : "files",
         label,
-        value: pluginId ?? threadId ?? relativePath!,
+        value: pluginId ?? threadId ?? fileValue!,
         markdown: text.slice(start, markdownEnd),
         ...(pluginId
           ? { data: { pluginId } }
-          : relativePath
-            ? { data: { relativePath, kind: relativePath.endsWith("/") ? "directory" : "file" } }
+          : fileValue
+            ? {
+                data: {
+                  ...(path ? { path } : { relativePath }),
+                  kind: directory ? "directory" : "file",
+                },
+              }
             : {}),
       }),
     );

@@ -11,9 +11,9 @@ pub fn workspace_relative_path(suffix: &str) -> crate::Result<&std::path::Path> 
     if !suffix.is_empty() && !suffix.starts_with('/') {
         return Err(invalid("workspace path suffix must begin with a slash"));
     }
-    // v0 不做 URL 解码，防止解析器归一化掉越界证据。
-    if suffix.contains(['%', '?', '#', '\\', '\0']) || suffix.len() > 4096 {
-        return Err(invalid("unsupported workspace path encoding"));
+    // 后缀是本地文件名，%?# 均按字面处理，不进行 URL 解码或归一化。
+    if suffix.contains('\0') || suffix.len() > 4096 || cfg!(windows) && suffix.contains('\\') {
+        return Err(invalid("invalid workspace path"));
     }
     let relative = Path::new(suffix.trim_start_matches('/'));
     if suffix.split('/').any(|part| part == "." || part == "..")
@@ -189,19 +189,36 @@ mod tests {
             workspace_relative_path("/folder with spaces/中文.txt").unwrap(),
             std::path::Path::new("folder with spaces/中文.txt")
         );
+        for suffix in [
+            "/中文 空格(v2)#1/name?part%done",
+            "/%2e%2e/outside",
+            "/%2fetc%2fpasswd",
+        ] {
+            assert_eq!(
+                workspace_relative_path(suffix).unwrap(),
+                std::path::Path::new(&suffix[1..])
+            );
+        }
+        #[cfg(unix)]
+        assert_eq!(
+            workspace_relative_path("/a\\b/..\\outside").unwrap(),
+            std::path::Path::new("a\\b/..\\outside")
+        );
         assert!(workspace_relative_path(&format!("/{}", "a".repeat(4095))).is_ok());
         assert!(workspace_relative_path(&format!("/{}", "a".repeat(4096))).is_err());
         for suffix in [
             "relative",
             "/../outside",
             "/a/./b",
-            "/name#part",
-            "/name?part",
-            "/name%part",
-            "/%2e%2e/outside",
-            "/a\\b",
+            "/a/../b",
+            "/.",
+            "/..",
             "/a\0b",
         ] {
+            assert!(workspace_relative_path(suffix).is_err(), "{suffix:?}");
+        }
+        #[cfg(windows)]
+        for suffix in ["/a\\b", "/..\\outside", "/C:/outside", "/\\\\server\\share"] {
             assert!(workspace_relative_path(suffix).is_err(), "{suffix:?}");
         }
     }

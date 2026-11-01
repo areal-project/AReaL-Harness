@@ -102,6 +102,10 @@
     "./desktop-contract/generated/management-processes-protocol": {
       "types": "./client/desktop-contract/generated/management-processes-protocol.cjs",
       "default": "./client/desktop-contract/generated/management-processes-protocol.cjs"
+    },
+    "./desktop-contract/snapshots": {
+      "types": "./client/desktop-contract/snapshots.cjs",
+      "default": "./client/desktop-contract/snapshots.cjs"
     }
   },
   "dependencies": {

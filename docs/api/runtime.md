@@ -87,7 +87,7 @@ Rust Client 的 `launch_with_limits` 投影可信 PATH 并向 Runtime 传递上�
 
 `scope.check` 根据父权限校验路径、读写根和网络收窄，并调用后端的实际执行先决条件探测；不创建 Scope、操作记录或任务进程，不占用累计配额。不能满足时返回 `UNSUPPORTED` 或原权限错误。检查结果不是授权或执行承诺；`scope.create` 再次校验。Core 在子任务的首个模型请求前使用此查询；Rust `Client::check_scope`、TypeScript `client.scopes.check` 使用同一契约。旧 Runtime 未宣告此方法时拒绝新子任务并提示升级，原有父任务和控制请求不因此中断。
 
-路径使用未编码 `workspace://repo[/path]`，拒绝百分号、问号、井号、反斜线、NUL 和 . / .. 段。子根须在父授权内，写根在读根内；network=inherit 继承父策略，deny 后不能恢复。owner 仅归因。argv 为 1–256 项，环境白名单见[部署](../guides/runtime.md)。
+路径使用未编码 `workspace://repo[/path]`，后缀按本地文件名逐字处理，不解析 URL 查询、片段或百分号转义。`%`、`?`、`#` 是字面文件名字符，`%2e%2e` 不会变成父目录。POSIX 支持字面反斜线；Windows 拒绝反斜线及路径前缀。NUL、实际 . / .. 段及超过4096字节的后缀继续拒绝。子根须在父授权内，写根在读根内；network=inherit 继承父策略，deny 后不能恢复。owner 仅归因。argv 为 1–256 项，环境白名单见[部署](../guides/runtime.md)。
 
 配置独立 scratch 根后，文件与进程 cwd 可使用 `workspace://scratch[/path]`；未配置时拒绝。它与 repo 不重叠，scratch 根可写且独立于 repo 的 allow-write，子 Scope 仍只能收窄。目录身份检查、路径遍历和符号链接限制同样适用。Core 的短句柄在调用 Runtime 前解析，不改变 ProcessId、游标或 ExpectedFile wire 类型。
 

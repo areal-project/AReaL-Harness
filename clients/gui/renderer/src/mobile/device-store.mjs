@@ -1,17 +1,23 @@
 import { remoteLocator } from "@areal/remote/wire";
+import { isLocalRelayOrigin } from "./local-socket.mjs";
 
 export function parsePairingLink(value) {
   try {
     const url = new URL(value);
+    const fragment = new URLSearchParams(url.hash.slice(1));
+    const authority = /^http:\/\/([^/]+)/.exec(value)?.[1];
+    const local =
+      fragment.get("local") === "1" &&
+      isLocalRelayOrigin(url.origin) &&
+      (authority === url.host || authority === `${url.hostname}:80`);
     if (
-      url.protocol !== "https:" ||
+      (url.protocol !== "https:" && !local) ||
       url.username ||
       url.password ||
       url.pathname !== "/" ||
       url.search
     )
       throw new Error("INVALID_PAIRING_LINK");
-    const fragment = new URLSearchParams(url.hash.slice(1));
     const { host, room } = remoteLocator(fragment);
     const invite = fragment.get("invite");
     if (!host || !room || !invite || !/^[a-f0-9]{64}$/.test(invite))
@@ -43,7 +49,10 @@ export class DeviceStore {
     if (device.schema !== 1 || !Number.isSafeInteger(device.grantRevision) || !device.client)
       throw new Error("INVALID_DEVICE_RECORD");
     const origin = new URL(device.relayOrigin);
-    if (origin.protocol !== "https:" || origin.origin !== device.relayOrigin)
+    if (
+      (origin.protocol !== "https:" && !isLocalRelayOrigin(device.relayOrigin)) ||
+      origin.origin !== device.relayOrigin
+    )
       throw new Error("INVALID_DEVICE_RECORD");
     return device;
   }

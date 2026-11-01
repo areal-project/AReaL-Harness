@@ -167,7 +167,10 @@ export function useSessionNavigation(
       services.fileOpen
         ? (request) => {
             return services.fileOpen!(
-              "projectId" in request && request.projectId === project?.id && threadId
+              "projectId" in request &&
+                request.threadId === undefined &&
+                request.projectId === project?.id &&
+                threadId
                 ? { ...request, threadId }
                 : request,
             );

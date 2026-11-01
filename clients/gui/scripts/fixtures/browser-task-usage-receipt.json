@@ -1,0 +1,368 @@
+{
+  "source": "browser-task-pilot-real-arena-1/form-submit",
+  "audits": [
+    {
+      "requestId": "014ae7fa-a553-45f0-848b-550d471878fd",
+      "bodySha256": "f7a5006ae1d9d2af2da2263910f7b35864d4d687f510771abeb63ba93f6b5c9c",
+      "purpose": "Solve",
+      "httpAttempts": 1,
+      "usageObserved": true,
+      "usage": {
+        "cachedInputTokens": 0,
+        "inputTokens": 4637,
+        "outputTokens": 46
+      },
+      "usageDetails": {
+        "cacheWriteTokens": 0,
+        "cachedInputTokens": 0,
+        "providerResponseId": "resp_06aa15d9ecccdad1016ae5f3b1b6ec819381c3451141cc888d",
+        "reasoningTokens": 0,
+        "serviceTier": "default"
+      }
+    },
+    {
+      "requestId": "02b50550-d619-4628-8fcf-f761a4fcdf17",
+      "bodySha256": "a102a9bc72e9c62f40e59ce9910b03d677443b3fdb9ced2c7e41093bf7d4e9b0",
+      "purpose": "PromptPrediction",
+      "httpAttempts": 1,
+      "usageObserved": false,
+      "usage": {
+        "cachedInputTokens": 0,
+        "inputTokens": 0,
+        "outputTokens": 0
+      }
+    },
+    {
+      "requestId": "14ba270a-e725-4092-a98e-3e9c9b060cf8",
+      "bodySha256": "025ab0bb3e0a9c8464db9fac4a621e5d70e7acaf41343e32df59661fc7b9f6a3",
+      "purpose": "Summary",
+      "httpAttempts": 1,
+      "usageObserved": false,
+      "usage": {
+        "cachedInputTokens": 0,
+        "inputTokens": 0,
+        "outputTokens": 0
+      }
+    },
+    {
+      "requestId": "1d18e5da-4eae-4acb-801d-1d844f9370b8",
+      "bodySha256": "cc92778d2ac5e4fe6d81a9a3b77f1f0ea55abc16f0007f448651e72561276029",
+      "purpose": "Solve",
+      "httpAttempts": 1,
+      "usageObserved": true,
+      "usage": {
+        "cachedInputTokens": 5248,
+        "inputTokens": 7951,
+        "outputTokens": 46
+      },
+      "usageDetails": {
+        "cacheWriteTokens": 0,
+        "cachedInputTokens": 5248,
+        "providerResponseId": "resp_06aa15d9ecccdad1016ae5f3c1cb048193954249562a8866a0",
+        "reasoningTokens": 0,
+        "serviceTier": "default"
+      }
+    },
+    {
+      "requestId": "20165cc2-f5bb-4ef8-a89d-a7540307730c",
+      "bodySha256": "f7ae2c018df6a1604ae543daaf9f29d34c08070e8de058944b86a0e890d2a18e",
+      "purpose": "Solve",
+      "httpAttempts": 1,
+      "usageObserved": true,
+      "usage": {
+        "cachedInputTokens": 9216,
+        "inputTokens": 12127,
+        "outputTokens": 46
+      },
+      "usageDetails": {
+        "cacheWriteTokens": 0,
+        "cachedInputTokens": 9216,
+        "providerResponseId": "resp_06aa15d9ecccdad1016ae5f3d8c6188193901e7adb75defebc",
+        "reasoningTokens": 0,
+        "serviceTier": "default"
+      }
+    },
+    {
+      "requestId": "248a14a7-b7af-4a28-b4d3-a10e5340a4a4",
+      "bodySha256": "d63820b2fd7882f156183c6ad7f2a5a92d720fc2e8b09e4941ee7ebee68f280b",
+      "purpose": "Solve",
+      "httpAttempts": 1,
+      "usageObserved": true,
+      "usage": {
+        "cachedInputTokens": 9088,
+        "inputTokens": 9346,
+        "outputTokens": 92
+      },
+      "usageDetails": {
+        "cacheWriteTokens": 0,
+        "cachedInputTokens": 9088,
+        "providerResponseId": "resp_06aa15d9ecccdad1016ae5f3cd51cc8193bb9757fdb52c8abe",
+        "reasoningTokens": 8,
+        "serviceTier": "default"
+      }
+    },
+    {
+      "requestId": "32de47cf-8ced-4235-b2e1-80e79604a9ec",
+      "bodySha256": "d3a839a4517840ba8055c20e0c61def33fde0c735d3c5b9d0c0b1f387cf76a96",
+      "purpose": "Solve",
+      "httpAttempts": 1,
+      "usageObserved": true,
+      "usage": {
+        "cachedInputTokens": 0,
+        "inputTokens": 11296,
+        "outputTokens": 81
+      },
+      "usageDetails": {
+        "cacheWriteTokens": 0,
+        "cachedInputTokens": 0,
+        "providerResponseId": "resp_06aa15d9ecccdad1016ae5f3d4cc408193a2defe2cd8ab5dab",
+        "reasoningTokens": 0,
+        "serviceTier": "default"
+      }
+    },
+    {
+      "requestId": "39dcec3d-77e9-4e1a-a906-2099df975c73",
+      "bodySha256": "cfef02c89e580ce26476cfe9109f0fdadc0e398e9500b7cf166b1952ed63a6e8",
+      "purpose": "Solve",
+      "httpAttempts": 1,
+      "usageObserved": true,
+      "usage": {
+        "cachedInputTokens": 3072,
+        "inputTokens": 10176,
+        "outputTokens": 46
+      },
+      "usageDetails": {
+        "cacheWriteTokens": 0,
+        "cachedInputTokens": 3072,
+        "providerResponseId": "resp_06aa15d9ecccdad1016ae5f3d10f4481938e35ce3ab6ef78b4",
+        "reasoningTokens": 0,
+        "serviceTier": "default"
+      }
+    },
+    {
+      "requestId": "4372af71-1f93-4aba-a5c0-672d0e0dbfc2",
+      "bodySha256": "06ab8f95038135998f0ce76c6b4ca03f38ed310a08fc7eb741abb873304b70c2",
+      "purpose": "Solve",
+      "httpAttempts": 1,
+      "usageObserved": true,
+      "usage": {
+        "cachedInputTokens": 6016,
+        "inputTokens": 7114,
+        "outputTokens": 91
+      },
+      "usageDetails": {
+        "cacheWriteTokens": 0,
+        "cachedInputTokens": 6016,
+        "providerResponseId": "resp_06aa15d9ecccdad1016ae5f3bddba481938871f1611b8880fa",
+        "reasoningTokens": 0,
+        "serviceTier": "default"
+      }
+    },
+    {
+      "requestId": "448e0dba-5032-4bfa-aaaf-11473d4663b1",
+      "bodySha256": "761acc24656e05bf26784df7dd0c0d13e9e4c11b0d182757405d15b49cb6003a",
+      "purpose": "Solve",
+      "httpAttempts": 1,
+      "usageObserved": true,
+      "usage": {
+        "cachedInputTokens": 0,
+        "inputTokens": 6059,
+        "outputTokens": 46
+      },
+      "usageDetails": {
+        "cacheWriteTokens": 0,
+        "cachedInputTokens": 0,
+        "providerResponseId": "resp_06aa15d9ecccdad1016ae5f3b997988193acb4abe08754b491",
+        "reasoningTokens": 0,
+        "serviceTier": "default"
+      }
+    },
+    {
+      "requestId": "45059e33-e413-49bf-95e3-897775f10aa9",
+      "bodySha256": "0cfdd491e52ed757bec2ecd80463518b3cc0304fe9861d5b3ebb2fe1cff8b3d6",
+      "purpose": "Solve",
+      "httpAttempts": 1,
+      "usageObserved": true,
+      "usage": {
+        "cachedInputTokens": 8960,
+        "inputTokens": 9240,
+        "outputTokens": 36
+      },
+      "usageDetails": {
+        "cacheWriteTokens": 0,
+        "cachedInputTokens": 8960,
+        "providerResponseId": "resp_06aa15d9ecccdad1016ae5f3c9bdc881938da4660f6d74521b",
+        "reasoningTokens": 9,
+        "serviceTier": "default"
+      }
+    },
+    {
+      "requestId": "5589c6f5-7a28-48c4-8ecd-d4c488cdd53a",
+      "bodySha256": "d91eec2d2db7aff4186d74b6519dd117553ea3e4f8f1691e79c6f6108dc21861",
+      "purpose": "Solve",
+      "httpAttempts": 1,
+      "usageObserved": true,
+      "usage": {
+        "cachedInputTokens": 0,
+        "inputTokens": 9072,
+        "outputTokens": 87
+      },
+      "usageDetails": {
+        "cacheWriteTokens": 0,
+        "cachedInputTokens": 0,
+        "providerResponseId": "resp_06aa15d9ecccdad1016ae5f3c550c48193a3a8d9413d56af67",
+        "reasoningTokens": 0,
+        "serviceTier": "default"
+      }
+    },
+    {
+      "requestId": "68fcfeec-1683-471d-a0fa-8c8f37fd60df",
+      "bodySha256": "d808d7ef35c789d916e755c0c79c15fd201581df5e1b725ac2d91e3624c9d094",
+      "purpose": "Solve",
+      "httpAttempts": 1,
+      "usageObserved": true,
+      "usage": {
+        "cachedInputTokens": 4480,
+        "inputTokens": 5287,
+        "outputTokens": 62
+      },
+      "usageDetails": {
+        "cacheWriteTokens": 0,
+        "cachedInputTokens": 4480,
+        "providerResponseId": "resp_06aa15d9ecccdad1016ae5f3b5abe481938515e1dbff8c6a47",
+        "reasoningTokens": 0,
+        "serviceTier": "default"
+      }
+    },
+    {
+      "requestId": "c602189b-95f6-4878-8281-34e4f23a482f",
+      "bodySha256": "4a71a0d3d860b2361cd9ac02b53b5192a622524a1deeccf8d7104b3265054a5b",
+      "purpose": "Solve",
+      "httpAttempts": 1,
+      "usageObserved": true,
+      "usage": {
+        "cachedInputTokens": 0,
+        "inputTokens": 3271,
+        "outputTokens": 23
+      },
+      "usageDetails": {
+        "cacheWriteTokens": 0,
+        "cachedInputTokens": 0,
+        "providerResponseId": "resp_06aa15d9ecccdad1016ae5f3adf0148193bb1db241ae5fd382",
+        "reasoningTokens": 0,
+        "serviceTier": "default"
+      }
+    },
+    {
+      "requestId": "e8bd00d0-031d-4ca2-b4b0-a7a7d4b15138",
+      "bodySha256": "ab181e31f8985bf17c126fb15265731088ee1aa8ad62d926f05fa7ef18b03e95",
+      "purpose": "Solve",
+      "httpAttempts": 1,
+      "usageObserved": true,
+      "usage": {
+        "cachedInputTokens": 12032,
+        "inputTokens": 13284,
+        "outputTokens": 22
+      },
+      "usageDetails": {
+        "cacheWriteTokens": 0,
+        "cachedInputTokens": 12032,
+        "providerResponseId": "resp_06aa15d9ecccdad1016ae5f3dc5f9881938b2800ac705dda6c",
+        "reasoningTokens": 0,
+        "serviceTier": "default"
+      }
+    }
+  ],
+  "httpRequests": [
+    {
+      "ordinal": 1,
+      "bodySHA256": "4a71a0d3d860b2361cd9ac02b53b5192a622524a1deeccf8d7104b3265054a5b",
+      "status": "completed",
+      "httpStatus": 200
+    },
+    {
+      "ordinal": 2,
+      "bodySHA256": "f7a5006ae1d9d2af2da2263910f7b35864d4d687f510771abeb63ba93f6b5c9c",
+      "status": "completed",
+      "httpStatus": 200
+    },
+    {
+      "ordinal": 3,
+      "bodySHA256": "d808d7ef35c789d916e755c0c79c15fd201581df5e1b725ac2d91e3624c9d094",
+      "status": "completed",
+      "httpStatus": 200
+    },
+    {
+      "ordinal": 4,
+      "bodySHA256": "761acc24656e05bf26784df7dd0c0d13e9e4c11b0d182757405d15b49cb6003a",
+      "status": "completed",
+      "httpStatus": 200
+    },
+    {
+      "ordinal": 5,
+      "bodySHA256": "06ab8f95038135998f0ce76c6b4ca03f38ed310a08fc7eb741abb873304b70c2",
+      "status": "completed",
+      "httpStatus": 200
+    },
+    {
+      "ordinal": 6,
+      "bodySHA256": "cc92778d2ac5e4fe6d81a9a3b77f1f0ea55abc16f0007f448651e72561276029",
+      "status": "completed",
+      "httpStatus": 200
+    },
+    {
+      "ordinal": 7,
+      "bodySHA256": "d91eec2d2db7aff4186d74b6519dd117553ea3e4f8f1691e79c6f6108dc21861",
+      "status": "completed",
+      "httpStatus": 200
+    },
+    {
+      "ordinal": 8,
+      "bodySHA256": "0cfdd491e52ed757bec2ecd80463518b3cc0304fe9861d5b3ebb2fe1cff8b3d6",
+      "status": "completed",
+      "httpStatus": 200
+    },
+    {
+      "ordinal": 9,
+      "bodySHA256": "d63820b2fd7882f156183c6ad7f2a5a92d720fc2e8b09e4941ee7ebee68f280b",
+      "status": "completed",
+      "httpStatus": 200
+    },
+    {
+      "ordinal": 10,
+      "bodySHA256": "cfef02c89e580ce26476cfe9109f0fdadc0e398e9500b7cf166b1952ed63a6e8",
+      "status": "completed",
+      "httpStatus": 200
+    },
+    {
+      "ordinal": 11,
+      "bodySHA256": "d3a839a4517840ba8055c20e0c61def33fde0c735d3c5b9d0c0b1f387cf76a96",
+      "status": "completed",
+      "httpStatus": 200
+    },
+    {
+      "ordinal": 12,
+      "bodySHA256": "f7ae2c018df6a1604ae543daaf9f29d34c08070e8de058944b86a0e890d2a18e",
+      "status": "completed",
+      "httpStatus": 200
+    },
+    {
+      "ordinal": 13,
+      "bodySHA256": "ab181e31f8985bf17c126fb15265731088ee1aa8ad62d926f05fa7ef18b03e95",
+      "status": "completed",
+      "httpStatus": 200
+    },
+    {
+      "ordinal": 14,
+      "bodySHA256": "025ab0bb3e0a9c8464db9fac4a621e5d70e7acaf41343e32df59661fc7b9f6a3",
+      "status": "cancelled",
+      "httpStatus": 200
+    },
+    {
+      "ordinal": 15,
+      "bodySHA256": "a102a9bc72e9c62f40e59ce9910b03d677443b3fdb9ced2c7e41093bf7d4e9b0",
+      "status": "cancelled",
+      "httpStatus": 200
+    }
+  ]
+}

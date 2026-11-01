@@ -1,6 +1,8 @@
 import { defineConfig } from "vite-plus";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
+  resolve: { alias: { "@": fileURLToPath(new URL("./renderer/src", import.meta.url)) } },
   test: {
     include: [
       "renderer/src/**/*.test.{ts,tsx}",
@@ -85,7 +87,10 @@ export default defineConfig({
         cache: {
           input: [
             { pattern: "packages/browser-automation/src/**", base: "workspace" },
-            { pattern: "packages/browser-automation/scripts/build.mjs", base: "workspace" },
+            {
+              pattern: "packages/browser-automation/scripts/build.mjs",
+              base: "workspace",
+            },
             { pattern: "packages/browser-automation/*.json", base: "workspace" },
             { pattern: "pnpm-lock.yaml", base: "workspace" },
           ],
@@ -108,7 +113,7 @@ export default defineConfig({
       "desktop-build": {
         command: "node build.mjs",
         cwd: "packages/gen-ui",
-        dependsOn: ["browser-automation-build", "browser-data-build"],
+        dependsOn: ["browser-automation-build", "browser-data-build", "snapshots-build"],
         cache: {
           input: [
             { pattern: "packages/gen-ui/*.ts", base: "workspace" },
@@ -119,6 +124,10 @@ export default defineConfig({
           ],
           output: [{ pattern: "packages/gen-ui/dist/**", base: "workspace" }],
         },
+      },
+      "snapshots-build": {
+        command: "node scripts/build-snapshots.mjs",
+        cache: false,
       },
       "computer-helper-build": {
         command: "node scripts/build-computer-helper.mjs",
@@ -138,6 +147,7 @@ export default defineConfig({
       },
       "verify-suite": {
         command: [
+          "pnpm health",
           "pnpm contracts:check",
           "pnpm --filter @areal/ui check",
           "node scripts/verify-public.mjs",
@@ -176,7 +186,7 @@ export default defineConfig({
           "pnpm --filter @areal/gui-renderer exec tsc --ignoreConfig --project ../app/tsconfig.json",
           "pnpm --filter @areal/gui-renderer exec tsc --ignoreConfig --allowJs --checkJs --noEmit --skipLibCheck --target ES2022 --module NodeNext ../packages/workbench/client/desktop-contract.cjs",
         ],
-        dependsOn: ["ui-build"],
+        dependsOn: ["ui-build", "snapshots-build"],
         cache: false,
       },
     },

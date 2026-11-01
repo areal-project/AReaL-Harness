@@ -5,13 +5,70 @@ import { describe, expect, it } from "vite-plus/test";
 import type { Data } from "./services.js";
 import {
   activityRunLabel,
+  executionSegments,
+  progressGroups,
   activityRuns,
+  timelineItems,
   statusTarget,
   toolPresentation,
 } from "./conversationPresentation.js";
 
 const intl = createIntl({ locale: "zh-CN", messages: catalogs["zh-CN"] });
 const t: Translate = (id, values) => intl.formatMessage({ id }, values);
+
+describe("history group identity", () => {
+  it("keeps a reasoning disclosure and ordered reload slot across a known page gap", () => {
+    const first = { id: "r1", type: "reasoning", summary: ["first"] };
+    const last = { id: "r2", type: "reasoning", summary: ["last"] };
+    const before = timelineItems([first, last]);
+    const gap = { id: "gap", type: "historyPageGap", topologyKnown: true };
+    const missing = timelineItems([first, gap, last]);
+    expect(missing).toHaveLength(1);
+    expect(missing[0].id).toBe(before[0].id);
+    expect(missing[0].items.map((item: Data) => item.id)).toEqual(["r1", "gap", "r2"]);
+    expect(timelineItems([first, { ...gap, topologyKnown: false }, last])).toHaveLength(3);
+  });
+  const commentary = (id: string) => ({ id, type: "agentMessage", phase: "commentary", text: id });
+  it("missing page slots do not split an established progress group", () => {
+    const full = [commentary("a"), commentary("b"), commentary("c")];
+    const omitted = [
+      full[0],
+      { id: "gap", type: "historyPageGap", topologyKnown: true },
+      { ...full[1], text: undefined, historyOmitted: true },
+      full[2],
+    ];
+    const groups = (items: Data[]) => progressGroups(executionSegments(items, "completed"), "t");
+    expect(groups(omitted).map((group) => group.id)).toEqual(groups(full).map((group) => group.id));
+    expect(groups(omitted).filter((group) => group.progress)).toHaveLength(1);
+  });
+  it.each(["userMessage", "agentMedia", "questionAnswer", "agentMessage"])(
+    "omitted %s remains a real semantic boundary",
+    (type) => {
+      const boundary = {
+        id: "boundary",
+        type,
+        phase: "final_answer",
+        text: "answer",
+        historyOmitted: true,
+      };
+      const groups = progressGroups(
+        executionSegments([commentary("a"), boundary, commentary("c")], "completed"),
+        "t",
+      );
+      expect(groups.filter((group) => group.progress).map((group) => group.id)).toEqual([
+        "progress:t",
+        "progress:boundary",
+      ]);
+    },
+  );
+  it("omitted first tool keeps execution identity while its body is evicted", () => {
+    const full = [read("a"), read("b")];
+    const missing = [{ ...full[0], historyOmitted: true }, full[1]];
+    expect(executionSegments(missing, "completed")[0].id).toBe(
+      executionSegments(full, "completed")[0].id,
+    );
+  });
+});
 
 describe("statusTarget", () => {
   it("keeps a one-line command as is, with collapsed whitespace", () => {

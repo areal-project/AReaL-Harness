@@ -5,7 +5,7 @@ mod scopes;
 use crate::*;
 use areal_config::{ConfigSource, PermissionConfig, PermissionMode};
 use areal_protocol::desktop::PermissionGrant;
-pub(crate) use scopes::additional_schema;
+pub(crate) use scopes::{additional_schema, read_permission_tool};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -201,7 +201,7 @@ impl Engine {
                 "controlEpoch":plan["controlEpoch"],"browserHostId":plan["browserHostId"],
                 "hostGeneration":plan["hostGeneration"],"operation":plan["operation"],
                 "targetUrl":plan["targetUrl"],"target":plan["target"],"action":plan["action"],
-                "parameters":arguments["arguments"]["parameters"]})
+                "parameters":arguments["arguments"]["parameters"],"document":plan["document"]})
         } else {
             arguments.clone()
         };
@@ -499,6 +499,8 @@ fn browser_permit_key(plan: &Value) -> Option<String> {
 fn browser_safe_plan(plan: &Value) -> bool {
     match plan["operation"].as_str() {
         Some("observe" | "capture" | "diagnostics" | "wait" | "describe") => true,
+        // 文件目录范围不继承页面网络许可，必须经过本次或既有精确文件审批。
+        Some("openDocument") => false,
         Some("navigate" | "newPage") => plan["targetUrl"].as_str().is_some_and(|target| {
             url::Url::parse(target).is_ok_and(|url| matches!(url.scheme(), "http" | "https"))
         }),
@@ -661,6 +663,51 @@ mod tests {
                 engine.shutdown().await;
             }
         }
+    }
+
+    #[test]
+    fn document_file_scope_cannot_inherit_browser_network_permit() {
+        assert!(browser_safe_plan(
+            &json!({"operation":"navigate","targetUrl":"http://a.localhost:30000/report.html"})
+        ));
+        for kind in ["exactHtml", "workspaceDirectory"] {
+            assert!(!browser_safe_plan(
+                &json!({"operation":"openDocument","localDevelopment":true,
+                "targetUrl":"http://a.localhost:30000/report.html",
+                "document":{"scope":{"kind":kind,"canonicalFile":"/tmp/report.html","canonicalRoot":"/tmp"}}})
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn remembered_document_approval_binds_scope_and_entry_digest() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+        let original = json!({"arguments":{"operation":"openDocument","parameters":{"pageId":"page","path":"report.html"}},
+            "plan":{"operation":"openDocument","document":{"scope":{"kind":"exactHtml","canonicalFile":"/tmp/report.html"},"entryDigest":"original"}}});
+        let key = engine
+            .permission_grant("browser_v1", &original, Some("host"), &Value::Null)
+            .unwrap()
+            .key;
+        let mut changed = original.clone();
+        changed["plan"]["document"]["entryDigest"] = json!("replaced");
+        assert_ne!(
+            key,
+            engine
+                .permission_grant("browser_v1", &changed, Some("host"), &Value::Null)
+                .unwrap()
+                .key
+        );
+        changed = original.clone();
+        changed["plan"]["document"]["scope"] = json!({"kind":"workspaceDirectory","canonicalFile":"/tmp/report.html","canonicalRoot":"/tmp"});
+        assert_ne!(
+            key,
+            engine
+                .permission_grant("browser_v1", &changed, Some("host"), &Value::Null)
+                .unwrap()
+                .key
+        );
+        engine.shutdown().await;
     }
 
     #[test]

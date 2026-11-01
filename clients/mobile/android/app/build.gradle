@@ -42,6 +42,7 @@ repositories {
 }
 
 dependencies {
+    implementation 'org.java-websocket:Java-WebSocket:1.6.0'
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"

@@ -37,6 +37,19 @@ export function openStore(config) {
         db.exec('COMMIT'); return { capability, room };
       } catch (error) { db.exec('ROLLBACK'); throw error; }
     },
+    provision(room) {
+      if (typeof room !== 'string' || !/^[a-f0-9]{64}$/.test(room)) throw new Error('INVALID_ROOM');
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const previous = db.prepare('SELECT active FROM rooms WHERE room=?').get(room);
+        if (previous && previous.active !== 1) throw new Error('ROOM_REVOKED');
+        if (!previous) {
+          if (db.prepare('SELECT count(*) AS n FROM rooms').get().n >= config.maxRooms) throw new Error('CAPACITY_EXCEEDED');
+          db.prepare('INSERT INTO rooms VALUES (?,1,?,?)').run(room, Date.now(), config.maxChannelsPerHost);
+        }
+        db.exec('COMMIT'); return { room, active: true };
+      } catch (error) { db.exec('ROLLBACK'); throw error; }
+    },
     room(room) { return db.prepare('SELECT max_channels FROM rooms WHERE room=? AND active=1').get(room); },
     revoke(room) { if (!/^[a-f0-9]{64}$/.test(room ?? '')) throw new Error('INVALID_ROOM'); db.prepare('UPDATE rooms SET active=0 WHERE room=?').run(room); return { revoked: true }; },
     async backup(path) { if (existsSync(path)) throw new Error('BACKUP_EXISTS'); await backup(db, path); chmodSync(path, 0o600); return { backedUp: true }; },

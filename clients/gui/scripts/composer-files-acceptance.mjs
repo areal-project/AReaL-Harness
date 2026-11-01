@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile, symlink } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createProjectConversation, selectConversation } from "./smoke-navigation.mjs";
 
 const textOf = (message) =>
@@ -292,7 +293,7 @@ export async function runComposerFilesAcceptance({
   );
   await assertNoReferenceAttachment();
   assert(
-    users(received.at(-1)).at(-1).includes(`[${selectedFile}](./mention-files/${selectedFile})`),
+    users(received.at(-1)).at(-1).includes(`[${selectedFile}](<./mention-files/${selectedFile}>)`),
   );
   assert(!users(received.at(-1)).at(-1).includes(workspace));
   checks.push(
@@ -514,6 +515,44 @@ export async function runComposerFilesAcceptance({
   }
   checks.push(
     "workspace internal drag validates identity, relative path, kind and privileged symlink containment; invalid custom payload never inserts plaintext",
+  );
+
+  // CDP 文件拖放提供带原生路径的 File，粘贴场景复用该原生 DataTransfer。
+  const cdp = await page.context().newCDPSession(page);
+  for (const kind of ["drop", "paste"]) {
+    if (kind === "paste") {
+      await input().evaluate((element) => {
+        element.addEventListener(
+          "drop",
+          (event) => {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            element.dispatchEvent(
+              new ClipboardEvent("paste", {
+                clipboardData: event.dataTransfer,
+                bubbles: true,
+                cancelable: true,
+              }),
+            );
+          },
+          { capture: true, once: true },
+        );
+      });
+    }
+    const bounds = await input().boundingBox();
+    assert.ok(bounds);
+    const position = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    const data = { items: [], files: [join(workspace, "目录")], dragOperationsMask: 1 };
+    await cdp.send("Input.dispatchDragEvent", { type: "dragEnter", ...position, data });
+    await cdp.send("Input.dispatchDragEvent", { type: "drop", ...position, data });
+    await page.waitForFunction(() =>
+      document.querySelector('[data-testid="chat-input"]')?.textContent.includes("目录"),
+    );
+    await input().fill("");
+  }
+  await cdp.detach();
+  checks.push(
+    "native-path directory drag and synthetic paste of its native DataTransfer resolve a workspace reference through Electron",
   );
 
   await app.evaluate(() => {
@@ -789,5 +828,291 @@ export async function runComposerFilesAcceptance({
   checks.push(
     "real Git worktree file search uses the active thread root, distinguishes same-name files by parent path, sends the selected relative path, and rejects old-worktree responses after switching",
   );
+  await app.evaluate(
+    (_, clientPath) => {
+      const { ServiceConnection } = process.mainModule.require(clientPath);
+      const original = ServiceConnection.prototype.request;
+      const fixture = {
+        uploads: [],
+        sends: [],
+        rejectSecond: true,
+        dropSend: false,
+        dropUpload: false,
+      };
+      globalThis.composerUploadFixture = fixture;
+      fixture.restore = () => {
+        fixture.releaseSendResponse?.();
+        ServiceConnection.prototype.request = original;
+      };
+      ServiceConnection.prototype.request = async function (method, params, mutation) {
+        const command = method === "command" ? params : null;
+        const upload = command?.name === "media" && command.request.operation === "upload";
+        if (upload) {
+          fixture.uploads.push({ threadId: command.request.threadId });
+          if (fixture.rejectSecond && fixture.uploads.length === 2) {
+            fixture.rejectSecond = false;
+            throw Object.assign(new Error("fixture second upload denied"), {
+              submissionUnknown: false,
+            });
+          }
+        }
+        const send = command?.name === "send" && command.request.text.includes("FILES_UPLOAD_");
+        if (send) fixture.sends.push({ ...command.request });
+        if (send && fixture.dropSend) {
+          fixture.sendResponseHeld = true;
+          await new Promise((resolve) => {
+            fixture.releaseSendResponse = resolve;
+          });
+        }
+        const result = await original.call(this, method, params, mutation);
+        if (upload) fixture.uploads.at(-1).uri = result.uri;
+        if (upload && fixture.dropUpload) {
+          fixture.dropUpload = false;
+          throw Object.assign(new Error("fixture dropped accepted upload response"), {
+            submissionUnknown: true,
+          });
+        }
+        if (send && fixture.dropSend) {
+          fixture.dropSend = false;
+          throw Object.assign(new Error("fixture dropped accepted send response"), {
+            submissionUnknown: true,
+            requestId: command.request.requestId,
+          });
+        }
+        return result;
+      };
+    },
+    fileURLToPath(new URL("../app/src/core/service-client.cjs", import.meta.url)),
+  );
+  try {
+    await createProjectConversation(page, "workspace");
+    await button("新会话工作区").click();
+    const worktreeToggle = page.getByRole("switch", {
+      name: "在新 Worktree 中工作",
+      exact: true,
+    });
+    await until(async () => !(await worktreeToggle.isDisabled()), "upload worktree options ready");
+    if ((await worktreeToggle.getAttribute("aria-checked")) !== "true")
+      await worktreeToggle.click();
+    await page.keyboard.press("Escape");
+    await page.locator("input[type=file]").setInputFiles([
+      { name: "receipt-first.txt", mimeType: "text/plain", buffer: Buffer.from("FIRST_RECEIPT") },
+      { name: "receipt-second.txt", mimeType: "text/plain", buffer: Buffer.from("SECOND_RECEIPT") },
+    ]);
+    await input().fill("FILES_UPLOAD_TRANSFER");
+    await button("发送").click();
+    await page.locator('[data-upload-state="failed"]').waitFor();
+    assert.equal(await page.locator('[data-upload-state="ready"]').count(), 1);
+    const uploadThreadId = await activeId();
+    assert((await current()).worktree?.directory !== workspace);
+    assert(
+      (await current()).worktree?.directory,
+      "first send created an actual execution worktree",
+    );
+    assert.equal((await app.evaluate(() => globalThis.composerUploadFixture.sends)).length, 0);
+    await shot("files-upload-partial-failure-worktree");
+    await selectConversation(page, tid);
+    await selectConversation(page, uploadThreadId);
+    assert.equal(await page.locator('[data-upload-state="ready"]').count(), 1);
+    await page.getByRole("button", { name: "重试此附件", exact: true }).click();
+    await until(
+      async () => (await page.locator('[data-upload-state="ready"]').count()) === 2,
+      "only failed attachment retry reaches ready",
+    );
+    await send();
+    const uploaded = await app.evaluate(() => globalThis.composerUploadFixture.uploads);
+    assert.equal(uploaded.length, 3, "retry and final Send reuse the first worktree receipt");
+    assert.equal(uploaded.filter((entry) => entry.uri).length, 2);
+    assert(uploaded.every((entry) => entry.threadId === uploadThreadId));
+    const sent = await app.evaluate(() => globalThis.composerUploadFixture.sends);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].attachments[0].url, uploaded[0].uri);
+    assert.equal(sent[0].attachments[1].url, uploaded[2].uri);
+    assert.equal(await page.getByTestId("composer-attachment").count(), 0);
+    checks.push(
+      "actual Core worktree first-send partial upload failure survives navigation, retries only the failed file and sends once with both original receipts",
+    );
+
+    await page.evaluate(
+      ({ projectId, threadId }) => {
+        const key = `areal-gui:draft:${projectId}:${threadId}`;
+        const changes = [];
+        const listener = (event) => {
+          if (event.detail === key && changes.length < 20)
+            changes.push({
+              draft: localStorage.getItem(key),
+              pending: localStorage.getItem(`${key}:pending`),
+            });
+        };
+        window.addEventListener("areal-draft-change", listener);
+        globalThis.__composerRecoveryChanges = changes;
+        globalThis.__stopComposerRecoveryChanges = () =>
+          window.removeEventListener("areal-draft-change", listener);
+      },
+      { projectId: pid, threadId: uploadThreadId },
+    );
+    await page.locator("input[type=file]").setInputFiles({
+      name: "unknown.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("UNKNOWN_RECEIPT"),
+    });
+    await input().fill("FILES_UPLOAD_UNKNOWN");
+    await app.evaluate(() => {
+      globalThis.composerUploadFixture.dropSend = true;
+    });
+    await button("发送").click();
+    await until(
+      () =>
+        app.evaluate(() => {
+          const fixture = globalThis.composerUploadFixture;
+          return fixture.sendResponseHeld && fixture.sends.at(-1)?.requestId
+            ? fixture.sends.at(-1)
+            : null;
+        }),
+      "send held before admission to Core",
+    );
+    const heldSend = await app.evaluate(() => globalThis.composerUploadFixture.sends.at(-1));
+    assert.equal((await current()).turns.at(-1)?.status, "completed");
+    assert.equal(project(await state()).outcomes?.[heldSend.requestId], undefined);
+    assert.equal(
+      (await current()).turns.some((turn) =>
+        turn.items.some(
+          (item) => item.type === "userMessage" && textOf(item).includes("FILES_UPLOAD_UNKNOWN"),
+        ),
+      ),
+      false,
+      "held send has not reached Core",
+    );
+    await call("reconcile", { projectId: pid });
+    await call("open", { projectId: pid, threadId: uploadThreadId });
+    await app.evaluate(() => globalThis.composerUploadFixture.releaseSendResponse());
+    try {
+      await page.waitForFunction(
+        () => !document.querySelector('[data-testid="chat-input"]')?.textContent,
+      );
+      await until(async () => {
+        const snapshot = await state();
+        const activeThreadId = await activeId();
+        const restored = project(snapshot).state.threads[uploadThreadId];
+        const outcome = project(snapshot).outcomes?.[heldSend.requestId];
+        return (
+          activeThreadId === uploadThreadId &&
+          !project(snapshot).pending.length &&
+          outcome?.accepted === true &&
+          outcome.operation?.target?.threadId === uploadThreadId &&
+          restored?.turns.some((turn) =>
+            turn.items.some(
+              (item) =>
+                item.type === "userMessage" && textOf(item).includes("FILES_UPLOAD_UNKNOWN"),
+            ),
+          )
+        );
+      }, "accepted send restored in the original thread");
+      await page.evaluate(async () => {
+        for (let frame = 0; frame < 4; frame++)
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+      });
+      assert.equal(await input().textContent(), "", "settled send leaves the editor empty");
+      assert.equal(await page.getByTestId("composer-attachment").count(), 0);
+      assert.equal(
+        await page.evaluate(
+          (key) => localStorage.getItem(key) ?? "",
+          `areal-gui:draft:${pid}:${uploadThreadId}`,
+        ),
+        "",
+        "settled send leaves no stored draft text",
+      );
+      const changes = await page.evaluate(() => globalThis.__composerRecoveryChanges);
+      assert.ok(changes.length, "draft consumers publish their change");
+      assert.ok(
+        changes.every((entry) => entry.draft !== "FILES_UPLOAD_UNKNOWN"),
+        "draft change listeners never read the consumed text",
+      );
+    } catch (error) {
+      const changes = await page.evaluate(() => {
+        globalThis.__stopComposerRecoveryChanges();
+        return globalThis.__composerRecoveryChanges;
+      });
+      const snapshot = await state();
+      const activeThreadId = await activeId();
+      const restored = project(snapshot).state.threads[uploadThreadId];
+      await writeFile(
+        join(scratch, "files-upload-reconcile-timeout.json"),
+        JSON.stringify(
+          {
+            uploadThreadId,
+            activeThreadId,
+            pending: project(snapshot).pending,
+            outcomes: project(snapshot).outcomes,
+            core: project(snapshot).core,
+            executionCore: restored?.executionCore,
+            changes,
+            draft: await page.evaluate(
+              (prefix) =>
+                Object.fromEntries(
+                  Object.entries(localStorage).filter(
+                    ([key]) => key === prefix || key.startsWith(`${prefix}:`),
+                  ),
+                ),
+              `areal-gui:draft:${pid}:${uploadThreadId}`,
+            ),
+            thread: restored,
+          },
+          null,
+          2,
+        ),
+      );
+      throw error;
+    }
+    await page.evaluate(() => globalThis.__stopComposerRecoveryChanges());
+    const unknownSends = await app.evaluate(() => globalThis.composerUploadFixture.sends);
+    assert.equal(
+      unknownSends.filter((entry) => entry.text.includes("FILES_UPLOAD_UNKNOWN")).length,
+      1,
+    );
+    assert.equal((await app.evaluate(() => globalThis.composerUploadFixture.uploads)).length, 4);
+    assert.equal(
+      (await current()).turns
+        .flatMap((turn) => turn.items)
+        .filter(
+          (item) => item.type === "userMessage" && textOf(item).includes("FILES_UPLOAD_UNKNOWN"),
+        ).length,
+      1,
+    );
+    checks.push(
+      "lost accepted send response reconciles against the original real Core thread without another upload or message submission",
+    );
+    await shot("files-upload-reconciled");
+    await page.locator("input[type=file]").setInputFiles({
+      name: "unknown-upload.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("UNKNOWN_UPLOAD"),
+    });
+    await input().fill("FILES_UPLOAD_UNKNOWN_MEDIA");
+    await app.evaluate(() => {
+      globalThis.composerUploadFixture.dropUpload = true;
+    });
+    await button("发送").click();
+    const unknownUpload = page.locator('[data-upload-state="unknown"]');
+    await unknownUpload.waitFor();
+    assert.equal(
+      await unknownUpload.getByRole("button", { name: "重试此附件", exact: true }).count(),
+      0,
+    );
+    await button("发送").click();
+    await until(async () => !(await button("发送").isDisabled()), "unknown upload draft unlocked");
+    assert.equal((await app.evaluate(() => globalThis.composerUploadFixture.uploads)).length, 5);
+    assert.equal((await app.evaluate(() => globalThis.composerUploadFixture.sends)).length, 2);
+    assert.equal(await input().textContent(), "FILES_UPLOAD_UNKNOWN_MEDIA");
+    await shot("files-upload-unknown-retained");
+    await button("移除附件 unknown-upload.txt").click();
+    assert.equal(await input().textContent(), "FILES_UPLOAD_UNKNOWN_MEDIA");
+    await input().fill("");
+    checks.push(
+      "lost actual Core upload response keeps the file and body, removes retry, blocks another upload on Send, and permits explicit file removal",
+    );
+  } finally {
+    await app.evaluate(() => globalThis.composerUploadFixture.restore());
+  }
   await shot("files-complete");
 }

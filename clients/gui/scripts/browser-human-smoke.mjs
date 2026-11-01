@@ -365,12 +365,23 @@ try {
       options: { permissionPreset: "fullAccess" },
     });
   await selectConversation(page, threadId);
-  await page.keyboard.press("Meta+t");
-  await page.locator(".preview-panel").waitFor();
   await app.evaluate(({ app, BrowserWindow }) => {
     app.focus({ steal: true });
-    BrowserWindow.getAllWindows()[0].focus();
+    const window = BrowserWindow.getAllWindows()[0];
+    window.focus();
+    window.webContents.focus();
   });
+  await until(
+    () =>
+      app.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        return window.isFocused() && window.webContents.isFocused();
+      }),
+    "focused main window and web contents",
+  );
+  await page.waitForFunction(() => document.hasFocus());
+  await page.keyboard.press("Meta+t");
+  await page.locator(".preview-panel").waitFor();
   if (faultMode === "navigation") {
     // 完全访问夹具不触发本地站点授权弹框；截图仍要求真实窗口可见。
     await until(
@@ -408,6 +419,14 @@ try {
         siteUrl,
       ),
     "native page",
+  );
+  await until(
+    () =>
+      app.evaluate(({ webContents }, id) => {
+        const contents = webContents.fromId(id);
+        return contents && !contents.isLoading();
+      }, nativeId),
+    "initial native navigation settled",
   );
   if (faultMode === "navigation") {
     pageId = (await controlState()).browser.pageId;
@@ -1908,7 +1927,7 @@ try {
             ),
           )
           .digest("hex"),
-        ...(!packaged
+        ...(!packaged && process.platform === "linux"
           ? {
               reaperBinary: join(dirname(coreBinary), "areal-runtime-reaper"),
               reaperBinarySHA256: createHash("sha256")

@@ -1,0 +1,229 @@
+{
+  "schemaVersion": 2,
+  "status": "delivery-closed-development-comparison-stopped-by-user",
+  "harnessSourceHead": "3a868d54b9aea13dae1ea15f56c72ab9965889f9",
+  "productSourceHead": "4b3921947f06c3055fdd80b518283a769cbf7bb9",
+  "pairedExperiment": {
+    "plannedAttempts": 130,
+    "ordinaryAttemptsPerArm": 60,
+    "stopAttemptsPerArm": 5,
+    "startedAttempts": 25,
+    "freezeDigest": "79eb4ba524e648486f539469a18474a731614e9372d69c059fd9448d0a208a5a",
+    "armHashDifferences": [
+      "/mainSources/core/service-protocol.cjs"
+    ],
+    "results": "INCONCLUSIVE",
+    "attemptReceipts": 25,
+    "completeReceipts": 24,
+    "remainingPlanned": 105,
+    "observedOrdinaryOutcomes": {
+      "passed": 14,
+      "attempts": 23
+    },
+    "observedStopOutcomes": {
+      "passed": 2,
+      "attempts": 2
+    },
+    "reason": "Attempt 025 Electron cleanup timeout; frozen runner cannot resume an incomplete receipt.",
+    "actualForwardedRequestsObserved": 379
+  },
+  "validation": {
+    "nodeTests": 73,
+    "nodeTestsPassed": 73,
+    "guiTypecheck": "passed",
+    "ownedGuiStaticCheck": "passed",
+    "documentationCheck": "passed",
+    "precommitFormatCheck": "passed",
+    "deterministicCurrentProductTasksPassed": 13,
+    "nativeNegativeExamplesRejected": 3,
+    "affectedNativeRechecks": [
+      "todomvc/active",
+      "A-old-guide/miniwob/enter-text",
+      "generated-local-html"
+    ],
+    "nativeGeneratedVisualReview": "passed; deterministic fixture only",
+    "browserContractsPassed": 93,
+    "navigationFixNativeControlsPassed": 8,
+    "navigationFixRealCoreFixtureTasksPassed": 3,
+    "nativeClosureFocusedTestsPassed": 39
+  },
+  "networkDiagnosis": {
+    "credentialFree": true,
+    "publicControlTls": "TLS 1.3 verified in 68ms",
+    "arenaDirectTcp": "connected",
+    "arenaDirectTls": "default and TLS 1.2 timed out at 8000ms",
+    "systemProxyConnect": "HTTP 200",
+    "arenaTlsThroughSystemProxy": "timed out at 8000ms",
+    "routeInterface": "utun4",
+    "vpnIdentity": "unknown",
+    "conclusion": "Arena endpoint or its current network/tunnel path cannot complete TLS; no model capability or cost improvement conclusion",
+    "status": "Restored before generated-real-arena-02",
+    "restoredTls": "Verified TLS handshake in 207ms; unauthenticated HEAD reached HTTP 404."
+  },
+  "remaining": [
+    "Separate follow-up: complete unnamed native SELECT observation/action coverage, including the failed cancellation counterexample in the unpromoted F prototype.",
+    "Separate follow-up: verify reproduced lifecycle/navigation/cancellation mechanisms without a model, then a small real-model pilot before deciding another full comparison.",
+    "Quality >=95%, complete stop safety and penalized Solve HTTP improvement >=15% remain unverified; retain the full planned denominator and all prior failures."
+  ],
+  "limits": [
+    "No completed expanded real-model comparison or demonstrated efficiency gain.",
+    "Independent real HTML acceptance is one successful flow, not generalization.",
+    "Known partial token usage is a lower bound, not complete billing.",
+    "Three development sources do not establish generalization.",
+    "No package or cross-platform acceptance."
+  ],
+  "localEvidenceRoot": ".scratch/browser-hillclimb-v2/",
+  "navigationFixSourceHead": "19834532",
+  "standaloneGeneratedHtmlAttempts": [
+    {
+      "status": "failed",
+      "accepted": false,
+      "forwardedRequests": 6,
+      "httpResponses": 0,
+      "transportErrors": 6,
+      "originalTransportErrorCode": "not_recorded",
+      "usage": "unknown",
+      "actualServiceTier": "unknown",
+      "providerInFlightAtCleanup": 0,
+      "cleanup": {
+        "electronStopped": true,
+        "applicationStopped": true
+      },
+      "sourceStable": true,
+      "replayed": false,
+      "includedInPairedResults": false,
+      "attemptId": "generated-real-arena-01"
+    },
+    {
+      "attemptId": "generated-real-arena-02",
+      "status": "completed",
+      "accepted": true,
+      "forwardedRequests": 8,
+      "solveHttpAttempts": 6,
+      "usage": "partial",
+      "knownUsageLowerBound": {
+        "cachedInputTokens": 11008,
+        "inputTokens": 33987,
+        "outputTokens": 433
+      },
+      "actualServiceTierCoverage": "unknown",
+      "cleanup": {
+        "electronStopped": true,
+        "applicationStopped": true
+      },
+      "providerInFlightAtCleanup": 0,
+      "sourceStable": true,
+      "nativeVisualReview": "passed by Terra",
+      "replayedWithinAttempt": false,
+      "includedInPairedResults": false
+    }
+  ],
+  "nativeTeardownDiagnosis": {
+    "status": "validated common product repair; no real-model efficiency conclusion",
+    "nativeSelectOpenClose": "Open SELECT prevents native contents destruction in local Electron controls; stable owner and attached view controls also fail.",
+    "rendererDomBlur": "Fixed synthetic fixture: native blur closes SELECT without global window focus events; subsequent contents destruction and normal exit pass.",
+    "rejectedHypotheses": [
+      "A local-link fix does not repair teardown.",
+      "Temporary render-surface reparenting is not necessary for the failure.",
+      "Main-renderer focus in the confirmation stub did not repair the real replay.",
+      "Real native confirmation did not establish automatic popup closure."
+    ],
+    "ownershipLimit": "The observed resource replay waited and failed for the retained native contents. Earlier release paths can leave contents outside workspace.pages; the exact earlier premature-success ordering is not established by that replay.",
+    "repairBoundary": "Existing Electron page lifecycle; retain native resources until destroyed, bounded isolated SELECT focus release and strict close/drain.",
+    "modelRequestsForDiagnosis": 0,
+    "candidateValidation": {
+      "lifecycleSHA256": "b596ad0ceba7a3364247d2e8a1b7f7aaf6f30d24c2102efdd311445ece942f64",
+      "previewSHA256": "43b37516159f85d19ba642d10efce1cc9748a9f76d76b22744193e1b51d2eab8",
+      "sourceHashBeforeAfter": "matched for accepted cases",
+      "nativePassed": [
+        "unnavigated empty-URL page",
+        "same-ID replacement and replacement closure",
+        "open SELECT",
+        "pending subresource load",
+        "strict 025 replay normal exit (task remains failed)"
+      ],
+      "barrierLimit": "Recording and action barriers are controlled promises, not the actual recorder.",
+      "strict025Replay": {
+        "solveRounds": 20,
+        "toolCalls": 19,
+        "qualityPassed": false,
+        "normalExit": true,
+        "electronStopped": true,
+        "applicationStopped": true
+      },
+      "pending": [],
+      "actualRecordingRegression": "Existing real-Core browser suite passed, actual WebM header checked; recording finished before shutdown, not an active-recording interruption test.",
+      "emptyPageCounterexample": "Original lifecycle passes; parent3505 fails and is archived under first-pass; final b596 passes with no-document guard.",
+      "parent3505Evidence": [
+        "ordinary page",
+        "focused INPUT",
+        "closed SELECT",
+        "crashed renderer",
+        "controlled delayed surface, recording and action barriers",
+        "existing real-Core browser suite including completed WebM recording"
+      ],
+      "parentDifference": "Final revision adds only the no-committed-document guard before isolated DOM inspection.",
+      "pendingLoadLimit": "Final pending-load control destroys promptly; isolated blur returned false, so that case does not establish blur execution."
+    }
+  },
+  "nativeTeardownSourceHead": "c19cd5d5c54538f804b36a97ffba9e269225d8e9",
+  "deliveryDecision": "Keep validated executor and navigation fixes; stop new model attempts and defer unresolved capability work to a separate task.",
+  "currentProductComparison": {
+    "experimentId": "browser-hillclimb-v2-local-link-01",
+    "status": "INCONCLUSIVE",
+    "stopReason": "user-requested early stop after current attempt; frozen 130-plan remains incomplete",
+    "freezeDigest": "f56f7ad1e405ff5b09af15dbc19ee1bbc2145bbbdf88f57a0a8754dca039b2db",
+    "plannedAttempts": 130,
+    "settledAttempts": 14,
+    "remainingPlanned": 116,
+    "runningAttempts": 0,
+    "observedOrdinary": {
+      "A": {
+        "passed": 3,
+        "settled": 6,
+        "planned": 60
+      },
+      "B": {
+        "passed": 5,
+        "settled": 6,
+        "planned": 60
+      }
+    },
+    "observedStop": {
+      "A": {
+        "passed": 1,
+        "settled": 1,
+        "planned": 5
+      },
+      "B": {
+        "passed": 1,
+        "settled": 1,
+        "planned": 5
+      }
+    },
+    "allSettledReceiptsValid": true,
+    "allSettledCleanupAndSourceStable": true,
+    "forwardedHTTP": 222,
+    "solveHTTP": 202,
+    "usage": {
+      "completeAttempts": 2,
+      "partialAttempts": 12,
+      "unknownAttempts": 0,
+      "tokenOrDollarSavingsClaimAllowed": false
+    },
+    "inference": "Incomplete development observations only; no 95-percent quality or 15-percent efficiency acceptance.",
+    "closeoutPath": ".scratch/browser-hillclimb-v2/next-pair/user-stop-closeout.json",
+    "closeoutSHA256": "63a58e2c6ae8dcc084890e046357be84c79c27ad00eacfc843a5af9970d124be",
+    "rawManifestStatus": "running (stale after explicit next-admission EEXIST stop; not an active run)",
+    "stopBoundary": "Attempt 14 settled; attempt 15 not admitted. No task or receipt replaced."
+  },
+  "deferredCandidate": {
+    "worktree": ".scratch/browser-hillclimb-v2/arms/F-unnamed-select",
+    "promoted": false,
+    "committed": false,
+    "status": "incomplete; minimum candidate has a failing navigation-cancellation counterexample",
+    "nodeEvidence": "46/47 reported; that intermediate disk log was overwritten, tool output remains. A later 47/47 log contains a withdrawn guard and does not verify the retained candidate.",
+    "uiOrProviderValidation": "not run",
+    "handoff": ".scratch/browser-hillclimb-v2/arms/F-unnamed-select/candidate-evidence/README.md"
+  }
+}

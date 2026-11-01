@@ -9,6 +9,7 @@
  * @typedef {{operation:'act',snapshotId:string,action:BrowserAction}|({operation:'wait'} & WaitParameters)} BatchStep
  * @typedef {{operation:'describe',parameters:{topic?:string}}
  * | {operation:'command',parameters:{pageId:string,command:import('@areal/browser-automation').BrowserCommandInput}}
+ * | {operation:'openDocument',parameters:{pageId:string,path:string}}
  * | {operation:'navigate'|'newPage',parameters:{pageId:string,url:string}}
  * | {operation:'diagnostics',parameters:{pageId:string,kind:'console'|'network',cursor?:number,limit?:number}}
  * | {operation:'observe',parameters:{pageId:string,scope?:'document',rootRef?:string,budget?:{nodes?:number,textBytes?:number}}}

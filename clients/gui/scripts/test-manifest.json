@@ -55,7 +55,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["diagnostics"],
-    "requires": ["electron", "core-binary", "git", "gui-build"],
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"],
     "notes": "Mixed command; classified by highest browser or Electron boundary."
   },
   {
@@ -77,7 +77,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["recovery", "worktree"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"]
   },
   {
     "script": "test:service-connection",
@@ -91,7 +91,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["service", "lifecycle"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:backend-toast-ui",
@@ -133,7 +133,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["tasks"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:task-catalog-startup",
@@ -147,21 +147,21 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["tasks", "schedules"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"]
   },
   {
     "script": "test:schedule-reliability-lifecycle",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["tasks", "schedules", "lifecycle"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"]
   },
   {
     "script": "test:stop-turn",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["lifecycle"],
-    "requires": ["electron", "core-binary", "git", "gui-build"],
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"],
     "qualificationJourney": "stop-turn"
   },
   {
@@ -169,7 +169,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["service", "lifecycle"],
-    "requires": ["electron", "browser", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "browser", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:lifecycle",
@@ -185,14 +185,14 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["desktop"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:quit-draft",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["lifecycle", "draft"],
-    "requires": ["electron", "core-binary", "gui-build", "git"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
     "qualificationJourney": "quit-draft"
   },
   {
@@ -200,7 +200,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["lifecycle", "draft"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:legacy-recovery",
@@ -243,7 +243,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["composer"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:composer",
@@ -268,14 +268,14 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["composer"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"]
   },
   {
     "script": "test:subscription-send",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["provider", "worktree"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:provider-hot-apply",
@@ -289,7 +289,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["context"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:model-selection",
@@ -354,6 +354,15 @@
     "notes": "Chrome production Messages and reading checkpoint persistence; counts synchronous encoding work and verifies reload anchors."
   },
   {
+    "script": "test:conversation-reading",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["conversation", "history", "design"],
+    "requires": ["browser", "gui-build", "git"],
+    "ciSmoke": "conversation-reading",
+    "notes": "Production Messages and Desktop history with deterministic Core RPCs check evicted-page restore, reobservation, streaming and reflow. No provider or package coverage."
+  },
+  {
     "script": "test:history-recovery",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
@@ -366,7 +375,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["lifecycle", "startup"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"]
   },
   {
     "script": "test:history",
@@ -381,7 +390,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["architecture"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
     "script": "test:conversation-continue",
@@ -456,7 +465,7 @@
     "layer": "e2e",
     "platforms": ["darwin"],
     "areas": ["remote"],
-    "requires": ["electron", "browser", "core-binary", "git", "gui-build"],
+    "requires": ["electron", "browser", "core-binary", "git", "gui-build", "python3"],
     "platformReason": "Browser executable is the installed macOS Google Chrome application."
   },
   {
@@ -532,7 +541,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["annotations"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"]
   },
   {
     "script": "test:browser-contracts",
@@ -582,7 +591,7 @@
     "layer": "e2e",
     "platforms": ["darwin"],
     "areas": ["remote"],
-    "requires": ["electron", "browser", "core-binary", "git", "gui-build"],
+    "requires": ["electron", "browser", "core-binary", "git", "gui-build", "python3"],
     "platformReason": "Browser executable is the installed macOS Google Chrome application."
   },
   {
@@ -786,7 +795,7 @@
     "layer": "e2e",
     "platforms": ["darwin"],
     "areas": ["recovery", "lifecycle"],
-    "requires": ["electron", "core-binary", "gui-build", "git"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
     "platformReason": "Runner explicitly asserts darwin and uses its existing macOS acceptance setup."
   },
   {
@@ -801,7 +810,7 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["side-chat"],
-    "requires": ["electron", "core-binary", "gui-build", "git"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
     "ciSmoke": "side-chat"
   },
   {
@@ -810,6 +819,14 @@
     "platforms": ["darwin", "linux"],
     "areas": ["schedules"],
     "requires": ["electron", "browser", "core-binary", "gui-build", "git"]
+  },
+  {
+    "script": "test:browser-tasks",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["browser", "benchmark"],
+    "requires": [],
+    "notes": "Node-only task oracles, paired schedules, receipts, summaries and loopback transport contracts; no Electron or provider calls."
   },
   {
     "script": "test:health",
@@ -928,6 +945,34 @@
     "requires": []
   },
   {
+    "script": "test:html-document",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["browser"],
+    "requires": ["electron", "core-binary", "gui-build"]
+  },
+  {
+    "script": "test:browser-benchmark-summary",
+    "layer": "contract",
+    "platforms": ["darwin", "linux", "win32"],
+    "areas": ["browser"],
+    "requires": []
+  },
+  {
+    "script": "test:browser-wrapped-inline",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["browser"],
+    "requires": ["electron", "gui-build"]
+  },
+  {
+    "script": "test:browser-navigation-recovery",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["browser"],
+    "requires": ["electron", "gui-build"]
+  },
+  {
     "script": "test:browser-navigation",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
@@ -976,5 +1021,50 @@
     "platforms": ["darwin", "linux"],
     "areas": ["remote", "mobile"],
     "requires": ["android-sdk", "android-emulator"]
+  },
+  {
+    "script": "test:relay-service",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["remote", "mobile"],
+    "requires": ["gui-build", "openssl", "node-24.2.0"]
+  },
+  {
+    "script": "test:relay-service-ui",
+    "layer": "e2e",
+    "platformReason": "Uses the macOS fixed Core runner and optional iOS Simulator.",
+    "platforms": ["darwin"],
+    "areas": ["remote", "mobile"],
+    "requires": ["electron", "gui-build", "core-build"]
+  },
+  {
+    "script": "test:snapshots",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Native foreground-window SnapShots uses the macOS capture and modifier-pair backends.",
+    "areas": ["desktop", "composer"],
+    "requires": ["browser", "git", "gui-build", "core-binary", "screen-recording"]
+  },
+  {
+    "script": "test:snapshots-native",
+    "layer": "contract",
+    "platforms": ["darwin", "linux", "win32"],
+    "areas": ["desktop", "composer"],
+    "requires": []
+  },
+  {
+    "script": "test:composer-folder-vision",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["composer", "design"],
+    "requires": ["electron", "core-binary", "git", "gui-build", "native-runtime"],
+    "notes": "External directory drop, one-operation read approvals, three original image payloads, authoritative Runtime media and rejection of later unapproved reads; deterministic model does not verify visual recognition."
+  },
+  {
+    "script": "test:composer-folder-vision-contract",
+    "layer": "contract",
+    "platforms": ["darwin", "linux", "win32"],
+    "areas": ["composer"],
+    "requires": []
   }
 ]

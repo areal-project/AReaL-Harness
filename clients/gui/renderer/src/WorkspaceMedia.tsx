@@ -50,7 +50,7 @@ const cardTypes: Record<string, string> = {
   mp3: "音频",
   wav: "音频",
 };
-const paneReadable = new Set(["csv", "tsv", "svg"]);
+const paneReadable = new Set(["csv", "tsv", "svg", "pdf"]);
 
 function extension(path: string) {
   return /\.([A-Za-z0-9]+)$/.exec(path)?.[1]?.toLowerCase() ?? "";
@@ -153,12 +153,14 @@ export function WorkspaceFileCard({
   projectId,
   fileOpen,
   notice,
+  onOpen,
 }: {
   path: string;
   label: string;
   projectId: string;
   fileOpen: FileOpen;
   notice?: string;
+  onOpen?: (path: string) => void;
 }) {
   const { t } = useI18n();
   const [targets, setTargets] = useState<FileOpenTargets>();
@@ -197,6 +199,11 @@ export function WorkspaceFileCard({
           {message || notice || (label && label !== name ? label : type)}
         </small>
       </span>
+      {onOpen && paneReadable.has(extension(path)) && (
+        <Button variant="outline" size="sm" onClick={() => onOpen(path)}>
+          {t("resources.preview")}
+        </Button>
+      )}
       <DropdownMenu
         onOpenChange={(open) => {
           if (open && !targets)

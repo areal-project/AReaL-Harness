@@ -99,6 +99,7 @@ struct StreamError {
     reason: Option<String>,
     error_shape: &'static str,
     parameter: Option<&'static str>,
+    message_summary: Option<&'static str>,
     #[serde(skip)]
     private_detail: PrivateErrorDetail,
 }
@@ -170,6 +171,11 @@ impl StreamError {
             parameter: match value["param"].as_str() {
                 Some("reasoning.effort" | "reasoning_effort") => Some("reasoning.effort"),
                 Some("service_tier") => Some("service_tier"),
+                _ => None,
+            },
+            message_summary: match value["message"].as_str() {
+                Some("upstream stream request failed") => Some("upstream stream request failed"),
+                Some("Unsupported service_tier: fast") => Some("Unsupported service_tier: fast"),
                 _ => None,
             },
             private_detail: PrivateErrorDetail(private_detail),
@@ -1390,6 +1396,8 @@ impl Model for HttpModel {
         }
         let encoded = self.encode_request(&body, purpose)?;
         let mut audit = audit::Audit::new(self.audit_directory.as_deref(), &body, purpose);
+        audit.endpoint(&self.endpoint);
+        audit.value["transport"] = json!("http-sse");
         let routing = (self.protocol == ModelProtocol::Responses)
             .then(|| {
                 self.http_affinity.begin(
@@ -1499,6 +1507,17 @@ impl Model for HttpModel {
                 } else {
                     None
                 };
+                if let Some(context) = &trace {
+                    context
+                        .engine
+                        .trace_retry(
+                            &context.cell,
+                            &context.logical_id,
+                            Some(delay.as_millis() as u64),
+                            None,
+                        )
+                        .await?;
+                }
                 drop(result);
                 let retried = capacity::retry_after(delay).await.with_context(|| {
                     format!(
@@ -1521,6 +1540,16 @@ impl Model for HttpModel {
                 }
                 retried?;
                 continue;
+            }
+            if transient
+                && attempt >= self.options.max_retries
+                && GOAL_REQUEST.try_with(|_| ()).is_err()
+                && let Ok(context) = crate::execution_trace::REQUEST_TRACE.try_with(Clone::clone)
+            {
+                context
+                    .engine
+                    .trace_retry(&context.cell, &context.logical_id, None, Some("exhausted"))
+                    .await?;
             }
             break result.map_err(|error| {
                 let error = error.without_url();
@@ -1564,6 +1593,7 @@ impl Model for HttpModel {
                 .and_then(|failure| failure.detail.as_ref())
             {
                 audit.save_error_detail(&detail.private_detail.0);
+                audit.value["streamError"] = json!(detail);
             }
             audit.value["terminalOutcome"] = json!(terminal_outcome(&error));
             audit.value["outcome"] = json!("failed");

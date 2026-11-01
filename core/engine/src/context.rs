@@ -589,9 +589,9 @@ impl Engine {
         if !mcp_instructions.is_empty() {
             instructions.push(Kind::Other, "运行上下文", &format!("\nMCP server instructions, subordinate to user instructions and Core permissions: {}",serde_json::to_string(&mcp_instructions)?));
         }
-        instructions.push(Kind::Other, "运行上下文", &format!("\nExecution settings supplied by Core: {}. Runtime reports the deployment ceiling; chatPermissions, taskReadOnly and baseNetworkPolicy restrict this task. Network denial includes local listeners and connections; current shared source visibility is not a network grant. Tool approvals use the product dialog; do not ask the user to repeat approval in chat.\n", json!({"deploymentPermissionMode":self.permission_config().mode,"permissionPreset":permission_preset,"chatPermissions":chat_permissions,"runtime":self.sandbox(),"taskReadOnly":task_read_only || cell.research,"baseNetworkPolicy":base_network_policy,"temporaryDirectory":self.command_scratch(cell)})));
+        instructions.push(Kind::Other, "运行上下文", &format!("\nExecution settings supplied by Core: {}. Runtime reports the deployment ceiling; chatPermissions, taskReadOnly and baseNetworkPolicy restrict this task. Network denial includes local listeners and connections; current shared source visibility is not a network grant. Tool approvals use the product dialog; do not ask the user to repeat approval in chat.\n", json!({"deploymentPermissionMode":self.permission_config().mode,"permissionPreset":permission_preset,"chatPermissions":chat_permissions,"runtime":self.sandbox(),"taskReadOnly":task_read_only || cell.research,"baseNetworkPolicy":base_network_policy,"temporaryDirectory":self.command_scratch(cell),"temporaryDirectoryUri":self.command_scratch(cell).map(|_| self.scratch_uri(cell))})));
         if permission_preset.is_some() {
-            instructions.push(Kind::Other, "运行上下文", "\nWhen an operation needs additional file or command network access, request only the required roots or network through run_command.permissionRequest with a concrete justification. A request does not grant access. Do not retry a partially executed command automatically after a permission failure. Reviewer denial requires a materially safer alternative or user resolution, not a workaround.\n");
+            instructions.push(Kind::Other, "运行上下文", "\nWhen a read_file, search_files, image_read, fs_read, fs_stat or fs_list operation needs access outside its current scope, request only the required readRoots through that tool's permissionRequest with a concrete justification. run_command.permissionRequest additionally supports writeRoots and network. A request does not grant access. Use the exact temporaryDirectory or temporaryDirectoryUri supplied above for temporary files; workspace://scratch is not the private task directory. Do not retry a partially executed command automatically after a permission failure. Reviewer denial requires a materially safer alternative or user resolution, not a workaround.\n");
         }
         if cell.research {
             instructions.push(Kind::Other, "运行上下文", &format!("\nYou are a bounded research worker. Your deliverable is an answer to the assigned subquestion, not a complete solution of the original issue. The repository is read-only. Write reproductions, logs and test output only under {} (also TMPDIR). Do not edit source or tests, install dependencies, delegate further, or leave background work. Inspect the assigned question and run focused checks when useful. Once you have enough evidence, report it instead of expanding into additional investigations or broad test suites. If a check needs repository writes, report that limitation or run a focused reproduction in your scratch. Return concise evidence within 2500 UTF-8 bytes with file paths/lines, observed commands/results, uncertainties and a recommended change. Reserve enough of your request budget to write this report; incomplete evidence with explicit limitations is useful. Parent performs integration and final verification; your conclusions are advisory.", self.command_scratch(cell).context("research scratch missing")?.display()));
@@ -1217,6 +1217,7 @@ impl Engine {
                         "network watchdog retrying context summary"
                     );
                     let mut retry_trace = self.trace_begin(cell, "retryWait", "摘要重试等待", None, Some(&summary_logical_id)).await?;
+                    self.trace_retry(cell, &summary_logical_id, Some(delay.as_millis() as u64), None).await?;
                     tokio::select! { biased;
                         _ = cancel.cancelled() => { self.trace_finish(cell, &mut retry_trace, Some("cancelled")).await?; anyhow::bail!("cancelled"); },
                         _ = tokio::time::sleep(delay) => {},
@@ -1225,6 +1226,7 @@ impl Engine {
                     continue;
                 }
                 if watchdog::exhausted(self.limits.network_retry_mode, &error, network_retries) {
+                    self.trace_retry(cell, &summary_logical_id, None, Some("exhausted")).await?;
                     return Err(error.context(CompactionFailure("bounded Core network recovery exhausted after 5 retries")));
                 }
                 if !validation_failed {

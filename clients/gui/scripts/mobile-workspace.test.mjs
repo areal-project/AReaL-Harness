@@ -132,3 +132,38 @@ test("clearing a device discards navigation targets from the previous computer",
   assert.deepEqual(workspace.visibleTurns, []);
   workspace.dispose();
 });
+
+test("work pages and refreshes merge by modification time descending", async () => {
+  const { workspace, client } = fixture();
+  let refreshed = false;
+  client.request = async ({ params }) =>
+    params.cursor
+      ? {
+          serviceGeneration: "s",
+          data: [{ threadId: "older", sourceUpdatedAt: 100 }],
+          nextCursor: "last",
+        }
+      : {
+          serviceGeneration: "s",
+          data: [
+            { threadId: "recent", sourceUpdatedAt: 300 },
+            { threadId: "updated", sourceUpdatedAt: refreshed ? 400 : 200 },
+          ],
+          nextCursor: "older",
+        };
+  workspace.publish({ page: { kind: "work", projectId: "project" } });
+  await workspace.refresh();
+  await workspace.more();
+  assert.deepEqual(
+    workspace.state.groups.project.data.map((row) => row.threadId),
+    ["recent", "updated", "older"],
+  );
+  refreshed = true;
+  await workspace.refresh(true);
+  assert.deepEqual(
+    workspace.state.groups.project.data.map((row) => row.threadId),
+    ["updated", "recent", "older"],
+  );
+  assert.equal(workspace.state.groups.project.nextCursor, "last");
+  workspace.dispose();
+});

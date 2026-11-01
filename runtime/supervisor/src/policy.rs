@@ -212,6 +212,50 @@ pub(crate) fn denied(message: &str) -> Error {
 #[cfg(test)]
 mod scratch_tests {
     use super::*;
+    #[cfg(unix)]
+    #[test]
+    fn literal_names_preserve_namespace_and_permission_roots() {
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let outside = temp.path().join("中文 空格(v2)#1?%done");
+        std::fs::create_dir(&repo).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        let outside = outside.canonicalize().unwrap();
+        let host_uri = format!("workspace://host{}", outside.display());
+        let mut workspace = Workspace::new(&repo).unwrap();
+        assert!(workspace.resolve(&host_uri).is_err());
+        workspace.full_access = true;
+        assert_eq!(workspace.resolve(&host_uri).unwrap(), outside);
+        assert_eq!(workspace.uri(&outside), host_uri);
+        assert_eq!(
+            workspace
+                .roots(&Some(vec![host_uri.clone()]), &[PathBuf::from("/")])
+                .unwrap(),
+            vec![outside.clone()]
+        );
+        assert!(
+            workspace
+                .roots(&Some(vec![host_uri]), &[workspace.root.clone()])
+                .is_err()
+        );
+        for uri in [
+            "workspace://repo-other/file",
+            "workspace://host-other/file",
+            "workspace://unknown/file",
+            "workspace://repo/../outside",
+            "workspace://host/tmp/../outside",
+            "workspace://repo/a\0b",
+        ] {
+            assert!(workspace.file_path(uri).is_err(), "{uri:?}");
+        }
+        assert_eq!(
+            workspace
+                .file_path("workspace://repo/%2e%2e/marker")
+                .unwrap(),
+            workspace.root.join("%2e%2e/marker")
+        );
+    }
+
     #[test]
     fn scratch_is_explicit_disjoint_and_rejects_traversal() {
         let temp = tempfile::tempdir().unwrap();

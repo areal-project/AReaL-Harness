@@ -100,6 +100,13 @@ export function readFields(value: unknown): Record<string, unknown> {
     throw new Error("Invalid Desktop object response");
   return fields.parse(value);
 }
+export function readPreviewResult(value: unknown): Record<string, unknown> {
+  const result = readFields(value);
+  if (!Object.hasOwn(result, "previewFailure")) return result;
+  const error = readFields(result.previewFailure);
+  if (typeof error.message !== "string") throw new Error("Invalid Desktop preview failure");
+  throw Object.assign(new Error(error.message), desktopError(error));
+}
 export function readCommandResult(value: unknown): DesktopResult<unknown> {
   const result = readFields(value);
   if (result.ok === true && Object.hasOwn(result, "value"))
@@ -153,7 +160,7 @@ export function readFileOpenResult(
   return z
     .union([
       z.object({
-        mimeType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+        mimeType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"]),
         bytes: z.instanceof(Uint8Array),
       }),
       z.object({

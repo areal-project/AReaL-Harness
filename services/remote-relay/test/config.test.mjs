@@ -54,3 +54,33 @@ test('APNs config is optional, exact, bounded and does not read the configured k
     assert.throws(() => readConfig(file), { message: 'CONFIG_APNS' });
   }
 });
+
+test('local mode only accepts private numeric HTTP origins with exact client origin and explicit wildcard binding', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'areal-local-relay-config-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = join(dir, 'config.json');
+  const base = { local: true, publicOrigin: 'http://192.168.2.3:47820', listen: '0.0.0.0:47820',
+    allowedClientOrigins: ['http://192.168.2.3:47820'], allowedAppOrigins: ['capacitor://localhost'], dataDir: join(dir, 'data') };
+  await writeFile(file, JSON.stringify(base));
+  const local = readConfig(file);
+  assert.equal(local.local, true);
+  assert.equal(local.listenHost, '0.0.0.0');
+  assert.equal(local.publicHost, '192.168.2.3:47820');
+  for (const host of ['10.8.0.2', '172.31.3.4', '[fd00::1]']) {
+    const origin = `http://${host}:47820`;
+    await writeFile(file, JSON.stringify({ ...base, publicOrigin: origin, allowedClientOrigins: [origin] }));
+    assert.equal(readConfig(file).publicOrigin, origin);
+  }
+  for (const change of [
+    { publicOrigin: 'http://8.8.8.8:47820' }, { publicOrigin: 'http://127.0.0.1:47820' },
+    { publicOrigin: 'http://relay.example:47820' }, { publicOrigin: 'http://[fe80::1]:47820' },
+    { publicOrigin: 'http://[ff00::1]:47820' }, { publicOrigin: 'https://192.168.2.3:47820' },
+    { development: true }, { local: false }, { listen: '192.168.2.3:47820' },
+    { allowedClientOrigins: ['http://192.168.2.4:47820'] },
+  ]) {
+    await writeFile(file, JSON.stringify({ ...base, ...change }));
+    assert.throws(() => readConfig(file));
+  }
+  await writeFile(file, JSON.stringify({ ...base, local: false, publicOrigin: 'https://relay.example', allowedClientOrigins: ['https://relay.example'], trustedLocalTlsProxy: true }));
+  assert.throws(() => readConfig(file), { message: 'CONFIG_LISTEN' });
+});

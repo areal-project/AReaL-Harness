@@ -21,6 +21,11 @@ const visit = (node, accept) => {
 };
 const sorted = (values) => [...values].sort();
 
+function mainSource(text = readFileSync(mainPath, "utf8")) {
+  const snapshots = readFileSync(resolve("app/src/core/snapshots/host.cjs"), "utf8");
+  return source(mainPath, text + "\n" + snapshots);
+}
+
 function maps(override) {
   const options = {
     allowJs: true,
@@ -125,7 +130,7 @@ function assertChannels(contract, main, preload) {
 }
 
 test("shared IPC types cover Main registration and preload directions without importing Electron", () => {
-  assertChannels(maps(), source(mainPath), source(preloadPath));
+  assertChannels(maps(), mainSource(), source(preloadPath));
 });
 test("deleting a contract channel and adding a Main handler both fail the consistency gate", () => {
   const contract = maps(),
@@ -138,12 +143,8 @@ test("deleting a contract channel and adding a Main handler both fail the consis
   const line = file.getLineAndCharacterOfPosition(declaration.getStart(file)).line;
   const starts = file.getLineStarts(),
     text = file.text.slice(0, starts[line]) + file.text.slice(starts[line + 1]);
-  assert.throws(
-    () => assertChannels(maps(text), source(mainPath), source(preloadPath)),
-    /IPC owner/,
-  );
-  const extra = source(
-    mainPath,
+  assert.throws(() => assertChannels(maps(text), mainSource(), source(preloadPath)), /IPC owner/);
+  const extra = mainSource(
     readFileSync(mainPath, "utf8") +
       '\nhandleDesktopIpc("areal-core:unexpected", () => undefined);\n',
   );
@@ -227,7 +228,7 @@ function commandNames(file) {
 function assertCommands(file) {
   const declared = commandNames(file).map((property) => property.name.text);
   const dispatched = union(
-    commandBranches(source(mainPath)),
+    commandBranches(mainSource()),
     commandBranches(source(resolve("app/src/core/backend.cjs"))),
   );
   assert.deepEqual(
@@ -323,7 +324,7 @@ function coreTargets(file, checker) {
 }
 
 test("Desktop commands map to their own dispatch layer and Core catalog through actual RPC targets", () => {
-  const main = commandBranches(source(mainPath)),
+  const main = commandBranches(mainSource()),
     backend = commandBranches(source(resolve("app/src/core/backend.cjs")));
   for (const [name, [owner]] of Object.entries(commandDefinitions))
     assert.ok(

@@ -1,23 +1,36 @@
+import { prepareTaskBenchmark } from "./browser-task-benchmark-driver.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { performance } from "node:perf_hooks";
+import { arch, cpus, loadavg, platform, release } from "node:os";
 import { selectConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
-import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
+import { assertApplicationStopped, closeRecordedSmokeApplication } from "./application-cleanup.mjs";
 import { checkBrowserStartup } from "./browser-startup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 
+const runStarted = performance.now();
 const options = { suite: "all", native: false };
 for (let index = 2; index < process.argv.length; index++) {
   const flag = process.argv[index];
   if (flag === "--native") options.native = true;
+  else if (flag === "--benchmark") options.benchmark = true;
   else if (flag === "--ecosystem") options.ecosystem = true;
-  else if (["--suite", "--native-bundle-id", "--native-fixture-app"].includes(flag)) {
+  else if (
+    [
+      "--suite",
+      "--native-bundle-id",
+      "--native-fixture-app",
+      "--task-benchmark-config",
+      "--app-root",
+    ].includes(flag)
+  ) {
     assert.ok(
       process.argv[index + 1] && !process.argv[index + 1].startsWith("--"),
       `${flag} needs a value`,
@@ -25,6 +38,8 @@ for (let index = 2; index < process.argv.length; index++) {
     options[
       {
         "--suite": "suite",
+        "--app-root": "appRoot",
+        "--task-benchmark-config": "taskConfig",
         "--native-bundle-id": "bundleId",
         "--native-fixture-app": "fixtureApp",
       }[flag]
@@ -35,6 +50,10 @@ assert.ok(
   ["all", "browser", "computer"].includes(options.suite),
   "--suite must be all, browser, or computer",
 );
+if (options.benchmark) {
+  assert.equal(options.suite, "browser", "--benchmark requires --suite browser");
+  assert.ok(!options.ecosystem, "--benchmark measures the fixed non-ecosystem browser suite");
+}
 if (options.ecosystem) {
   assert.notEqual(options.suite, "all", "--ecosystem requires one explicit --suite");
   assert.ok(process.env.AREAL_CORE_BIN, "--ecosystem requires an explicit AREAL_CORE_BIN");
@@ -54,6 +73,9 @@ if (options.native) {
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
+assert.ok(!options.appRoot || isAbsolute(options.appRoot), "--app-root must be absolute");
+assert.ok(!options.appRoot || options.taskConfig, "--app-root requires a task configuration");
+const productGUI = options.appRoot ? dirname(options.appRoot) : gui;
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const { CoreClient } = await import("../packages/runtime-client/core.js");
@@ -64,6 +86,10 @@ const scratch = await makeTempDir("areal-automation-core-");
 const workspace = join(scratch, "workspace"),
   userHome = join(scratch, "user");
 await mkdir(workspace);
+const taskBenchmark = options.taskConfig
+  ? await prepareTaskBenchmark(options.taskConfig, workspace)
+  : null;
+if (taskBenchmark) assert.equal(options.suite, "browser");
 const ecosystem = options.ecosystem
   ? {
       pluginId: `${options.suite}-control@areal-adapters`,
@@ -119,6 +145,77 @@ if (ecosystem)
     "Creator replaces the existing official builtin source or skips its real Runtime initialization and validation.",
     "Stale, denied or UNKNOWN mutations execute again. Only denied mutation replay is covered by this combined runner.",
   );
+// 固定工作量先登记，失败后尚未进入的场景仍须进入分母。
+const requiredBenchmarkIds = [
+  "describe",
+  "locator-schema",
+  "observe-before-navigation",
+  "navigate",
+  "observe-before-command-navigation",
+  "command-navigate",
+  "dom-snapshot",
+  "long-command",
+  "fill",
+  "check",
+  "click",
+  "denied-click",
+  "read-after-denial",
+  "screenshot",
+  "full-page",
+  "hide",
+  "background-capture",
+  "show",
+  "open-dialog",
+  "get-dialog",
+  "denied-handle-dialog",
+  "dialog-after-denial",
+  "handle-dialog",
+  "open-dialog-cancel",
+  "get-dialog-cancel",
+  "handle-dialog-cancel",
+  "recording-start",
+  "open-dialog-stop",
+  "get-dialog-stop",
+].map((id) => `browser-${id}`);
+const benchmark = options.benchmark
+  ? {
+      schemaVersion: 1,
+      benchmarkVersion: "browser-core-v1",
+      measurementKind: "deterministic-core-chain",
+      runStatus: "blocked",
+      workload: {
+        suite: "complete-browser-smoke",
+        requiredCaseIds: requiredBenchmarkIds,
+        pollMs: 100,
+        timeoutMs: 90000,
+        viewport: [1440, 960],
+      },
+      realModel: {
+        status: "not_run",
+        reason: "The loopback model emits a predetermined tool call per scenario.",
+      },
+      setupMs: null,
+      teardownMs: null,
+      elapsedMs: null,
+      cases: requiredBenchmarkIds.map((id) => ({
+        id,
+        required: true,
+        status: "planned",
+        caseMs: null,
+      })),
+      diagnosticCases: [],
+      environment: {
+        node: process.version,
+        os: `${platform()} ${release()}`,
+        arch: arch(),
+        cpuCount: cpus().length,
+        loadAverage: loadavg(),
+        argv: process.argv,
+      },
+      timing:
+        "Monotonic send-to-oracle time includes automatic approval and 100ms GUI polling. Recording polls and fixed dialog holds remain part of total run cost.",
+    }
+  : null;
 const siteFacts = { gets: [], effects: [] };
 const sentinel = "AUTOMATION_REAL_NATIVE_PAGE_23";
 const site = createServer(async (request, response) => {
@@ -146,6 +243,14 @@ await new Promise((resolve) => site.listen(0, "127.0.0.1", resolve));
 const siteUrl = `http://127.0.0.1:${site.address().port}/`;
 let app, page, projectId, threadId, pageId, nativeId, activeScenario, fixtureProcess;
 const model = createServer(async (request, response) => {
+  if (taskBenchmark)
+    return taskBenchmark.fixtureModel(request, response).catch((error) => {
+      const failure = taskBenchmark.recordFixtureError(error);
+      errors.push(failure);
+      console.error(`Task model fixture failed: ${failure.stack ?? failure.message}`);
+      if (!response.headersSent) response.writeHead(500);
+      response.end();
+    });
   try {
     let raw = "";
     for await (const chunk of request) raw += chunk;
@@ -280,6 +385,11 @@ await writeFile(
   join(userHome, ".areal/config.toml"),
   `schema_version=1\n[limits]\ncontext_window_tokens=1000000\ncontext_mode="manual"\n[model]\nprovider="fixture"\nname="fixture"\ncontext_window_tokens=1000000\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\n`,
 );
+if (taskBenchmark)
+  await writeFile(
+    join(userHome, ".areal/config.toml"),
+    taskBenchmark.configText(`http://127.0.0.1:${model.address().port}/v1/chat/completions`),
+  );
 const deployment = join(scratch, "desktop.json");
 await writeFile(
   deployment,
@@ -289,7 +399,9 @@ await writeFile(
         id: "fixture",
         revision: "v1",
         displayName: "Fixture",
-        instructions: "Use the requested tool and report the result.",
+        instructions: taskBenchmark
+          ? "Complete the user task within its stated scope using the browser. Stop when asked."
+          : "Use the requested tool and report the result.",
         allowPluginSkills: options.ecosystem === true,
       },
     ],
@@ -303,6 +415,14 @@ const env = {
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
   AREAL_CORE_DESKTOP_CONFIG: deployment,
   AREAL_CORE_BIN: binary,
+  ...(taskBenchmark
+    ? {
+        HOME: userHome,
+        USERPROFILE: userHome,
+        XDG_CONFIG_HOME: join(userHome, ".config"),
+        XDG_CACHE_HOME: join(userHome, ".cache"),
+      }
+    : {}),
 };
 for (const key of [
   "AREAL_CORE_WORKSPACE",
@@ -312,6 +432,52 @@ for (const key of [
 ])
   delete env[key];
 const sha = (value) => createHash("sha256").update(value).digest("hex");
+async function benchmarkSourceSnapshot() {
+  const assets = await readdir(join(gui, "renderer/dist/assets"), { recursive: true }).catch(
+    () => [],
+  );
+  const paths = {
+    "scripts/automation-core-smoke.mjs": join(gui, "scripts/automation-core-smoke.mjs"),
+    "pnpm-lock.yaml": join(gui, "pnpm-lock.yaml"),
+    "renderer/dist/index.html": join(gui, "renderer/dist/index.html"),
+    ...Object.fromEntries(
+      assets
+        .filter((file) => /\.(js|css)$/.test(file))
+        .map((file) => [`renderer/dist/assets/${file}`, join(gui, "renderer/dist/assets", file)]),
+    ),
+    ...Object.fromEntries(
+      [
+        "app/src/main.cjs",
+        "app/src/core/browser-tool.cjs",
+        "app/src/core/service-protocol.cjs",
+        "app/src/core/preview-native/native-targets.cjs",
+        "packages/browser-automation/src/upstream/browser/browserPlaywrightLocatorExecutor.ts",
+        "app/src/core/preview.cjs",
+        "app/src/core/browser-navigation.cjs",
+        "app/src/core/preview-native/navigation.cjs",
+        "app/src/core/preview-native/commands.cjs",
+        "app/src/core/preview-native/native-command.cjs",
+        "packages/browser-automation/dist/electron.cjs",
+        "packages/browser-automation/dist/index.cjs",
+      ].map((file) => [file, join(gui, file)]),
+    ),
+    coreBinary: binary,
+    electronExecutable: process.env.AREAL_ELECTRON_EXECUTABLE || require("electron"),
+  };
+  const hashes = Object.fromEntries(
+    await Promise.all(
+      Object.entries(paths).map(async ([file, path]) => [
+        file,
+        await readFile(path).then(sha, (error) => `unavailable ${error.code}`),
+      ]),
+    ),
+  );
+  return {
+    sourceHead: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
+    diffSHA256: sha(execFileSync("git", ["diff", "HEAD"], { cwd: root })),
+    hashes,
+  };
+}
 async function until(predicate, label, timeout = 60000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -396,9 +562,97 @@ function successful(item) {
   assert.equal(item.success, true, JSON.stringify(item));
 }
 async function runScenario(scenario) {
+  if (!benchmark) return executeScenario(scenario);
+  const record = benchmark.cases.find((entry) => entry.id === scenario.id);
+  assert.ok(
+    record || /^browser-recording-status-\d+$/.test(scenario.id),
+    `Unregistered benchmark case ${scenario.id}`,
+  );
+  const measurement = record ?? {
+    id: scenario.id,
+    required: false,
+    status: "planned",
+    caseMs: null,
+  };
+  if (!record) benchmark.diagnosticCases.push(measurement);
+  assert.equal(measurement.status, "planned", "fixed benchmark cases cannot silently repeat");
+  const before = {
+    modelCalls: events.modelCalls.length,
+    gets: siteFacts.gets.length,
+    effects: siteFacts.effects.length,
+  };
+  measurement.expectedDenial = scenario.approval === "deny";
+  measurement.approvalCount = 0;
+  measurement.approvalMs = null;
+  try {
+    const result = await executeScenario(scenario, measurement);
+    measurement.status = "passed";
+    return result;
+  } catch (error) {
+    measurement.status = "failed";
+    measurement.error = { code: error.code ?? "ACCEPTANCE_FAILED", message: error.message };
+    if (!events.histories[scenario.id] && activeScenario?.sent) {
+      const history = await readCoreThread().catch(() => null);
+      const turn = history?.turns?.findLast((turn) =>
+        turn.items?.some((item) => item.callId === scenario.id),
+      );
+      if (turn) events.histories[scenario.id] = turn;
+    }
+    throw error;
+  } finally {
+    const ended = performance.now();
+    measurement.caseMs = measurement.started === undefined ? null : ended - measurement.started;
+    measurement.verificationMs =
+      measurement.terminalMs === undefined ? null : measurement.caseMs - measurement.terminalMs;
+    delete measurement.started;
+    const items = (events.histories[scenario.id]?.items ?? []).filter(
+      (item) => item.type === "dynamicToolCall" && item.callId === scenario.id,
+    );
+    measurement.modelRequests = events.modelCalls
+      .slice(before.modelCalls)
+      .filter((call) => call.scenario === scenario.id).length;
+    measurement.browserCalls = items.length;
+    measurement.toolFailureCount = events.histories[scenario.id]
+      ? items.filter((item) => item.success === false).length
+      : null;
+    measurement.unexpectedFailureCount = measurement.status === "failed" ? 1 : 0;
+    measurement.toolResultBytes = items.reduce(
+      (total, item) => total + Buffer.byteLength(JSON.stringify(item)),
+      0,
+    );
+    measurement.resultTextBytes = items.reduce(
+      (total, item) =>
+        total +
+        (item.contentItems ?? [])
+          .filter((part) => ["inputText", "text"].includes(part.type))
+          .reduce((bytes, part) => bytes + Buffer.byteLength(part.text ?? ""), 0),
+      0,
+    );
+    measurement.imageBytes = items.reduce(
+      (total, item) =>
+        total +
+        (item.contentItems ?? [])
+          .filter((part) => part.type === "arealMedia" && part.modality === "image")
+          .reduce((bytes, part) => bytes + (part.media?.sizeBytes ?? 0), 0),
+      0,
+    );
+    measurement.callIds = items.map((item) => item.callId);
+    measurement.siteRequests = siteFacts.gets.length - before.gets;
+    measurement.sideEffects = siteFacts.effects.length - before.effects;
+    measurement.observations = structuredClone({
+      gets: siteFacts.gets.slice(before.gets),
+      effects: siteFacts.effects.slice(before.effects),
+    });
+  }
+}
+async function executeScenario(scenario, measurement) {
   activeScenario = { approval: "allow", ...scenario, sent: false };
   console.error(`automation-core ${scenario.id}`);
   const previous = (await readCoreThread()).turns?.at(-1)?.id;
+  if (measurement) {
+    measurement.started = performance.now();
+    benchmark.setupMs ??= measurement.started - runStarted;
+  }
   await command("send", { projectId, threadId, text: `automation acceptance ${scenario.id}` });
   let approvals = 0;
   await until(
@@ -450,11 +704,11 @@ async function runScenario(scenario) {
           );
         await panel
           .getByRole("button", {
-            name: activeScenario.approval === "deny" ? "拒绝" : "允许一次",
-            exact: true,
+            name: activeScenario.approval === "deny" ? /^拒绝(?:\s|$)/ : /^允许一次(?:\s|$)/,
           })
           .click();
         approvals++;
+        if (measurement) measurement.approvalCount = approvals;
         assert.ok(approvals <= 1, `${scenario.id} must not prompt twice or replay`);
       }
       return false;
@@ -462,10 +716,11 @@ async function runScenario(scenario) {
     `terminal Core turn ${scenario.id}`,
     90000,
   );
+  if (measurement) measurement.terminalMs = performance.now() - measurement.started;
   const history = await readCoreThread();
   const turn = history.turns.at(-1);
-  assert.equal(turn.status, "completed", JSON.stringify(turn));
   events.histories[scenario.id] = turn;
+  assert.equal(turn.status, "completed", JSON.stringify(turn));
   if (!scenario.tool) return { history, turn };
   assert.equal(
     approvals,
@@ -741,7 +996,7 @@ async function installEcosystem() {
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBox = async () => ({ response: 1 });
   });
-  await closeSmokeApplication(app);
+  await closeRecordedSmokeApplication(app);
   app = undefined;
   await assertApplicationStopped(binary, env, metadata);
   await launch();
@@ -774,10 +1029,34 @@ async function installEcosystem() {
 async function launch() {
   app = await electron.launch({
     executablePath: process.env.AREAL_ELECTRON_EXECUTABLE || require("electron"),
-    args: [join(gui, "app")],
+    args: [join(productGUI, "app")],
     env,
     timeout: 120000,
   });
+  if (taskBenchmark) {
+    await writeFile(
+      join(scratch, "task-launch.json"),
+      JSON.stringify(
+        {
+          scratch,
+          workspace,
+          userHome,
+          launcherPID: process.pid,
+          electronPID: app.process().pid,
+          appRoot: options.appRoot ?? join(gui, "app"),
+          appPath: join(productGUI, "app"),
+          binary,
+          electronExecutable: process.env.AREAL_ELECTRON_EXECUTABLE || require("electron"),
+        },
+        null,
+        2,
+      ),
+    );
+    await writeFile(
+      join(dirname(taskBenchmark.configuration.resultPath), "launch.json"),
+      await readFile(join(scratch, "task-launch.json")),
+    );
+  }
   app
     .process()
     .stderr.on(
@@ -799,7 +1078,10 @@ async function launch() {
   await until(async () => (await state()).connection?.state === "ready", "desktop service ready");
   events.startup = await checkBrowserStartup(app, { binary, userHome, scratch });
   events.runtime = await app.evaluate(
-    ({ app, BrowserWindow, dialog, shell, webContents }, { workspace, computerModule }) => {
+    (
+      { app, BrowserWindow, dialog, shell, webContents },
+      { workspace, computerModule, taskLifecycle },
+    ) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [workspace] });
       globalThis.__automationPermissionRequests = [];
       globalThis.__automationDialogs = [];
@@ -821,6 +1103,7 @@ async function launch() {
         const webContentsId = contents.id;
         trace({
           kind: "contents-created",
+          type: contents.getType(),
           webContentsId,
           parentWindowId: parentWindowId(contents),
         });
@@ -863,6 +1146,21 @@ async function launch() {
             });
         });
         contents.on("destroyed", () => trace({ kind: "contents-destroyed", webContentsId }));
+        if (taskLifecycle) {
+          contents.on("render-process-gone", (_event, details) =>
+            trace({ kind: "render-process-gone", webContentsId, details }),
+          );
+          contents.on("did-fail-load", (_event, errorCode, errorDescription, url, isMainFrame) =>
+            trace({
+              kind: "did-fail-load",
+              webContentsId,
+              errorCode,
+              errorDescription,
+              url,
+              isMainFrame,
+            }),
+          );
+        }
       };
       const traceWindow = (window, kind) => {
         const windowId = window.id;
@@ -954,6 +1252,7 @@ async function launch() {
     },
     {
       workspace,
+      taskLifecycle: Boolean(taskBenchmark),
       computerModule:
         options.suite === "browser" ? null : join(gui, "app/src/core/computer-control.cjs"),
     },
@@ -982,7 +1281,22 @@ async function launch() {
 let passed = false;
 console.log(`Automation Core evidence ${scratch}`);
 try {
+  if (benchmark) benchmark.provenanceBefore = await benchmarkSourceSnapshot();
   await launch();
+  if (taskBenchmark) {
+    events.taskBenchmark = await taskBenchmark.run({
+      app,
+      page,
+      command,
+      readCoreThread,
+      preview,
+      projectId,
+      setThread: (id) => {
+        threadId = id;
+      },
+      scratch,
+    });
+  }
   if (ecosystem) {
     if (options.suite === "computer") await setComputerEnabled(true);
     await installEcosystem();
@@ -1285,7 +1599,7 @@ try {
     assertComputerCatalog("computer-disabled-again", false);
     checks.push("computer-disabled-again");
   }
-  if (options.suite !== "computer") {
+  if (!taskBenchmark && options.suite !== "computer") {
     if (ecosystem) await readiness(true);
     await newThread();
     await page.keyboard.press("Meta+t");
@@ -1343,6 +1657,27 @@ try {
         assert.equal(siteFacts.gets.filter((path) => path === "/target").length, 1);
       },
     });
+    if (benchmark) {
+      await runScenario({
+        id: "browser-observe-before-command-navigation",
+        tool: "browser_v1",
+        approval: "none",
+        arguments: { operation: "observe", parameters: { pageId } },
+      });
+      await browserCase(
+        "command-navigate",
+        { method: "navigate", url: `${siteUrl}command-target` },
+        {
+          assertEffect: async () => {
+            await until(
+              async () => (await nativeFacts()).url === `${siteUrl}command-target`,
+              "actual command native navigation",
+            );
+            assert.equal(siteFacts.gets.filter((path) => path === "/command-target").length, 1);
+          },
+        },
+      );
+    }
     await browserCase(
       "dom-snapshot",
       { method: "playwright", action: { name: "domSnapshot" } },
@@ -1602,12 +1937,15 @@ try {
       : "passive-status-no-authorization-request",
   );
   assert.deepEqual(errors, []);
-  passed = true;
+  passed = taskBenchmark
+    ? !["blocked", "timeout", "unknown"].includes(events.taskBenchmark?.status)
+    : true;
 } catch (error) {
   errors.push({ code: error.code ?? "ACCEPTANCE_FAILED", message: error.stack ?? String(error) });
   if (page) await captureSmokeFailure(page, scratch, error);
   process.exitCode = error.code === "NATIVE_GRANTS_REQUIRED" ? 2 : 1;
 } finally {
+  const teardownStarted = performance.now();
   if (fixtureProcess && fixtureProcess.exitCode === null && fixtureProcess.signalCode === null) {
     fixtureProcess.kill("SIGTERM");
     await until(
@@ -1646,7 +1984,7 @@ try {
             : original(...args);
         };
       });
-      await closeSmokeApplication(app);
+      await closeRecordedSmokeApplication(app);
       events.cleanup.electronStopped = true;
     } catch (error) {
       errors.push(`Electron cleanup ${error.message}`);
@@ -1659,7 +1997,7 @@ try {
     } catch (error) {
       errors.push(`Application cleanup ${error.message}`);
       const { ServiceConnection, waitForServiceProcessExit } = require(
-        join(gui, "app/src/core/service-client.cjs"),
+        join(productGUI, "app/src/core/service-client.cjs"),
       );
       const connection = new ServiceConnection();
       try {
@@ -1706,6 +2044,9 @@ try {
     "app/src/core/preview.cjs",
     "app/src/core/agent-dialog-presentation.cjs",
     "renderer/dist/index.html",
+    "packages/browser-automation/dist/electron.cjs",
+    "packages/browser-automation/dist/index.cjs",
+    "pnpm-lock.yaml",
   ];
   const hashes = Object.fromEntries(
     await Promise.all(
@@ -1734,6 +2075,56 @@ try {
     scope:
       "Real isolated source Electron, independent desktop service, Core and native browser executor. Loopback model/site, directory chooser, explicit plugin-enabled Profile and its saved draft selection are fixtures. Explicit OS authorization and System Settings opening are guarded to fail and recorded. Native OS actions require explicit mode and pre-existing grants.",
   };
+  if (benchmark) {
+    const entered = benchmark.cases.some((item) => item.status !== "planned");
+    for (const item of benchmark.cases) if (item.status === "planned") item.status = "not_run";
+    const after = await benchmarkSourceSnapshot();
+    const before = benchmark.provenanceBefore ?? after;
+    const changedFiles = [
+      ...new Set([...Object.keys(before.hashes), ...Object.keys(after.hashes)]),
+    ].filter((file) => before.hashes[file] !== after.hashes[file]);
+    const unavailableFiles = Object.keys(before.hashes).filter(
+      (file) => !/^[a-f0-9]{64}$/.test(before.hashes[file]),
+    );
+    benchmark.integrity = {
+      status: changedFiles.length
+        ? "changed"
+        : unavailableFiles.length || !benchmark.provenanceBefore
+          ? "unavailable"
+          : "verified",
+      changedFiles,
+      unavailableFiles,
+    };
+    benchmark.runStatus =
+      passed && benchmark.integrity.status === "verified"
+        ? "completed"
+        : entered
+          ? "failed"
+          : "blocked";
+    if (benchmark.runStatus !== "completed") process.exitCode ||= 1;
+    benchmark.setupMs ??= teardownStarted - runStarted;
+    benchmark.teardownMs = performance.now() - teardownStarted;
+    benchmark.elapsedMs = performance.now() - runStarted;
+    benchmark.provenance = {
+      sourceHead: before.sourceHead,
+      diffSHA256: before.diffSHA256,
+      scriptSHA256: before.hashes["scripts/automation-core-smoke.mjs"],
+      fixtureSHA256: before.hashes["scripts/automation-core-smoke.mjs"],
+      coreBinarySHA256: before.hashes.coreBinary,
+      browserAutomationDistSHA256: before.hashes["packages/browser-automation/dist/electron.cjs"],
+      hashes: before.hashes,
+      hashesAfter: after.hashes,
+      electron: events.runtime?.electron ?? null,
+      chromium: events.runtime?.chromium ?? null,
+      node: process.version,
+      os: benchmark.environment.os,
+      arch: benchmark.environment.arch,
+    };
+    benchmark.errors = errors;
+    delete benchmark.provenanceBefore;
+    manifest.benchmark = benchmark;
+  }
+  if (taskBenchmark) await taskBenchmark.finish(scratch, events, errors);
   await writeFile(join(scratch, "run-manifest.json"), JSON.stringify(manifest, null, 2));
   console.log(JSON.stringify({ passed, evidence: scratch, checks, errors, gaps }));
 }

@@ -173,6 +173,75 @@ fn removed_single_patch_tool_is_not_registered_or_dispatched() {
 }
 
 #[test]
+fn read_tools_request_only_additional_read_roots() {
+    let registry = Registry::new(true, &ToolExtensions::default()).unwrap();
+    for (name, arguments) in [
+        ("read_file", json!({"path":"a"})),
+        ("search_files", json!({"path":".","pattern":"needle"})),
+        ("image_read", json!({"path":"a.png"})),
+        ("fs_read", json!({"path":"a"})),
+        ("fs_stat", json!({"path":"a"})),
+        ("fs_list", json!({"path":"."})),
+    ] {
+        let mut args = arguments;
+        args["permissionRequest"] =
+            json!({"readRoots":["/external/images"],"justification":"Read user-selected files"});
+        registry.get(name).unwrap().validate_input(&args).unwrap();
+        if name.starts_with("fs_") {
+            assert!(
+                request(
+                    &ToolCall {
+                        id: "test".into(),
+                        name: name.into(),
+                        arguments: args.to_string()
+                    },
+                    Path::new("/app"),
+                    "epoch",
+                    &BTreeMap::new()
+                )
+                .is_ok(),
+                "{name}"
+            );
+        }
+        for (field, value) in [
+            ("writeRoots", json!(["/external"])),
+            ("network", json!(true)),
+            ("unexpected", json!(true)),
+        ] {
+            let mut invalid = args.clone();
+            invalid["permissionRequest"][field] = value;
+            assert!(
+                registry
+                    .get(name)
+                    .unwrap()
+                    .validate_input(&invalid)
+                    .is_err(),
+                "{name}: {field}"
+            );
+        }
+    }
+    let command = json!({"argv":["/bin/true"],"permissionRequest":{"readRoots":["/external"],"writeRoots":["/external/output"],"network":true,"justification":"Run the requested operation"}});
+    registry
+        .get("run_command")
+        .unwrap()
+        .validate_input(&command)
+        .unwrap();
+    assert!(
+        request(
+            &ToolCall {
+                id: "test".into(),
+                name: "run_command".into(),
+                arguments: command.to_string()
+            },
+            Path::new("/app"),
+            "epoch",
+            &BTreeMap::new()
+        )
+        .is_ok()
+    );
+}
+
+#[test]
 fn every_builtin_enforces_required_fields_and_rejects_unknown_arguments() {
     let process = format!("epoch:process:{}", uuid::Uuid::new_v4());
     let examples = json!({
@@ -313,6 +382,46 @@ fn relative_and_absolute_paths_stay_inside_the_workspace() {
     ] {
         assert!(workspace_uri(path, root).is_err());
     }
+}
+
+#[tokio::test]
+async fn resource_paths_preserve_literal_native_filenames() {
+    let client = process_fixture(0, None, None, false).await;
+    let runtime = RuntimeConfig {
+        client: client.clone(),
+        workspace: PathBuf::from("/app"),
+        writable: false,
+        command_scope: None,
+        command_scratch: Some(PathBuf::from("/task-scratch")),
+    };
+    for name in ["中文 空格(v2)#1/name?part%done", "%2e%2e/marker"] {
+        for path in [
+            name.to_owned(),
+            format!("/app/{name}"),
+            format!("workspace://repo/{name}"),
+        ] {
+            assert_eq!(
+                resource_uri(&path, &runtime).unwrap(),
+                format!("workspace://repo/{name}")
+            );
+        }
+        assert_eq!(
+            resource_uri(&format!("/task-scratch/{name}"), &runtime).unwrap(),
+            format!("workspace://scratch/{name}")
+        );
+        assert_eq!(
+            resource_uri(&format!("workspace://host/tmp/{name}"), &runtime).unwrap(),
+            format!("workspace://host/tmp/{name}")
+        );
+    }
+    #[cfg(unix)]
+    assert_eq!(
+        resource_uri("a\\b/..\\marker", &runtime).unwrap(),
+        "workspace://repo/a\\b/..\\marker"
+    );
+    #[cfg(windows)]
+    assert!(resource_uri("..\\secret", &runtime).is_err());
+    client.shutdown().await.unwrap();
 }
 
 #[test]
@@ -1953,4 +2062,75 @@ async fn process_input_preserves_primary_operation_identity_and_orders_eof() {
         }
         client.shutdown().await.unwrap();
     }
+}
+
+#[cfg(feature = "native-tests")]
+#[tokio::test]
+async fn read_helpers_work_without_write_or_network_permissions() {
+    let bin = std::path::PathBuf::from(
+        std::env::var_os("AREAL_TEST_BIN_DIR")
+            .expect("set AREAL_TEST_BIN_DIR to a verified fixed Runtime bundle"),
+    );
+    let workspace = tempfile::tempdir().unwrap();
+    let workspace = workspace.path().canonicalize().unwrap();
+    std::fs::write(workspace.join("proof.txt"), "read-scope-proof\n").unwrap();
+    let client = Client::launch(
+        &bin.join("areal-runtime"),
+        &bin.join("areal-runtime-fs"),
+        &workspace,
+        true,
+    )
+    .await
+    .unwrap();
+    let result = async {
+        let scope = client
+            .create_scope(rt::CreateScope {
+                operation_id: client.operation_id(),
+                parent_scope_id: client.info().root_scope_id.clone(),
+                owner: rt::Owner {
+                    task_id: "read-helper-regression".into(),
+                    plugin_instance_id: None,
+                },
+                permissions: rt::PermissionRequest {
+                    read_roots: Some(vec!["workspace://repo".into()]),
+                    write_roots: Some(Vec::new()),
+                    network: rt::NetworkRequest::Deny,
+                },
+                limits: Default::default(),
+            })
+            .await?;
+        let runtime = RuntimeConfig {
+            client: client.clone(),
+            workspace: workspace.clone(),
+            writable: false,
+            command_scope: None,
+            command_scratch: None,
+        };
+        for (tool, args) in [
+            ("read_file", json!({"path":"workspace://repo/proof.txt"})),
+            (
+                "search_files",
+                json!({"path":"workspace://repo","pattern":"read-scope-proof"}),
+            ),
+        ] {
+            let (success, value) = navigation::invoke(
+                &runtime,
+                &scope.scope_id,
+                &client.operation_id(),
+                tool,
+                &args,
+            )
+            .await?;
+            anyhow::ensure!(success, "{tool}: {value}");
+            anyhow::ensure!(
+                value.to_string().contains("read-scope-proof"),
+                "{tool}: {value}"
+            );
+        }
+        client.close_scope(&scope.scope_id).await?;
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+    client.shutdown().await.unwrap();
+    result.unwrap();
 }

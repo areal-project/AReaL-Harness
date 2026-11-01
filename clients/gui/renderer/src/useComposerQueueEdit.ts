@@ -1,3 +1,4 @@
+import { composerUploadOwner, forgetComposerUploads } from "./ComposerUploadState.js";
 import type { Attachment } from "@areal/workbench/desktop-contract/conversation";
 import type { QueueEditInput } from "./Queue.js";
 import { composerDraftStorage } from "./composerDraftStorage.js";
@@ -13,7 +14,11 @@ import type { RefObject } from "react";
 import type { Action, Data } from "./services.js";
 import { recoveredOutcome } from "./recoveryPresentation.js";
 import type { LexicalChatInputHandle } from "./LexicalChatInput.js";
-import { composerInput, type ComposerDraftAttachment } from "./ComposerAttachments.js";
+import {
+  composerInput,
+  isComposerFile,
+  type ComposerDraftAttachment,
+} from "./ComposerAttachments.js";
 
 type QueueEdit = {
   id: string;
@@ -124,7 +129,14 @@ export function useComposerQueueEdit({
       if (value !== null) composerDraftStorage.setItem(`${draftKey}:${suffix}`, value);
       else composerDraftStorage.removeItem(`${draftKey}:${suffix}`);
     }
-    draftFiles.set(draftKey, draftFiles.get(backupKey) ?? []);
+    const originalFiles = draftFiles.get(backupKey) ?? [];
+    forgetComposerUploads(
+      composerUploadOwner(project, threadId),
+      (draftFiles.get(draftKey) ?? []).filter(
+        (file): file is File => isComposerFile(file) && !originalFiles.includes(file),
+      ),
+    );
+    draftFiles.set(draftKey, originalFiles);
     draftFiles.delete(backupKey);
     saveRecord(null);
     sync();

@@ -151,3 +151,188 @@ test("sensitive capture script fails closed when a frame cannot be inspected", (
   assert.equal(runInNewContext(sensitiveCaptureScript(), { document }), true);
   assert.equal(runInNewContext(sensitiveCaptureScript(false), { document }), false);
 });
+
+test("device viewport requests accept exact dimensions and reject ambiguous or unbounded modes", () => {
+  const { validatePreview } = require("../packages/workbench/client/desktop-contract.cjs");
+  const request = {
+    operation: "setViewport",
+    projectId: "project",
+    threadId: "thread",
+    pageId: "page",
+  };
+  for (const viewport of [
+    { mode: "auto" },
+    { mode: "device", width: 390, height: 844 },
+    { mode: "device", width: 844, height: 390 },
+  ])
+    assert.doesNotThrow(() => validatePreview({ ...request, viewport }));
+  for (const viewport of [
+    undefined,
+    { mode: "auto", width: 390 },
+    { mode: "device", width: 390 },
+    { mode: "device", width: 239, height: 844 },
+    { mode: "device", width: 2561, height: 844 },
+    { mode: "device", width: 390.5, height: 844 },
+    { mode: "device", width: 390, height: Infinity },
+    { mode: "mobile", width: 390, height: 844 },
+  ])
+    assert.throws(() => validatePreview({ ...request, viewport }));
+  assert.throws(() =>
+    validatePreview({ ...request, pageId: undefined, viewport: { mode: "auto" } }),
+  );
+});
+
+test("native viewport fitting preserves the requested device and invalidates old coordinate plans", () => {
+  const { PreviewPresentation } = require("../app/src/core/preview-native/presentation.cjs");
+  const { rendererBoundsWithinWindow } = require("../app/src/core/preview-native/read-session.cjs");
+  let bounds = { x: 0, y: 0, width: 1, height: 1 },
+    emulation,
+    disabled = false;
+  const changes = [];
+  const window = { webContents: { getZoomFactor: () => 1.25 }, getContentSize: () => [1000, 800] };
+  const page = {
+    commandViewport: { width: 390, height: 844 },
+    viewportRevision: 1,
+    lastCapture: {},
+    plans: new Map([["old", {}]]),
+    needsObservation: false,
+    view: {
+      getBounds: () => bounds,
+      setBounds: (value) => {
+        bounds = value;
+      },
+      webContents: {
+        setZoomFactor() {},
+        enableDeviceEmulation: (value) => {
+          emulation = value;
+        },
+        disableDeviceEmulation: () => {
+          disabled = true;
+        },
+      },
+    },
+  };
+  const presentation = new PreviewPresentation(
+    { changed: (_page, event) => changes.push(event) },
+    () => {},
+    window,
+  );
+  const available = rendererBoundsWithinWindow({ x: 20, y: 40, width: 260, height: 400 }, window);
+  assert.deepEqual(available, { x: 25, y: 50, width: 325, height: 500 });
+  presentation.layout(page, available);
+  assert.deepEqual(emulation.viewSize, { width: 390, height: 844 });
+  assert.ok(bounds.width <= 325 && bounds.height <= 500);
+  assert.equal(page.plans.size, 0);
+  assert.equal(page.lastCapture, null);
+  assert.equal(page.needsObservation, true);
+  assert.deepEqual(changes, ["viewportChanged"]);
+  presentation.layout(page, available);
+  assert.equal(changes.length, 1);
+  page.commandViewport = { width: 844, height: 390 };
+  presentation.layout(page, available);
+  assert.deepEqual(emulation.viewSize, { width: 844, height: 390 });
+  page.commandViewport = null;
+  presentation.layout(page, available);
+  assert.equal(disabled, true);
+  assert.deepEqual(bounds, available);
+  assert.equal(page.viewportScale, undefined);
+});
+
+test("scaled CDP input keeps logical held positions and scales release exactly once", async () => {
+  const { PageControl } = require("../app/src/core/preview-native/control.cjs");
+  const sent = [];
+  const page = {
+    viewportScale: 0.5,
+    heldButtons: new Map(),
+    heldKeys: new Map(),
+    inputPending: new Set(),
+    view: {
+      webContents: {
+        debugger: {
+          sendCommand: async (method, params) => {
+            sent.push({ method, params });
+          },
+        },
+      },
+    },
+  };
+  const control = new PageControl({}, () => {});
+  await control.dispatchInput(page, "Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    button: "left",
+    x: 100,
+    y: 200,
+  });
+  assert.deepEqual(page.heldButtons.get("left"), { x: 100, y: 200 });
+  await control.dispatchInput(page, "Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    button: "left",
+    ...page.heldButtons.get("left"),
+  });
+  assert.equal(page.heldButtons.size, 0);
+  assert.deepEqual(
+    sent.map(({ params }) => [params.x, params.y]),
+    [
+      [50, 100],
+      [50, 100],
+    ],
+  );
+});
+
+test("trusted navigation policy rejection survives the desktop error boundary", async () => {
+  const { HumanBrowserCommands } = require("../app/src/core/preview-native/ui-commands.cjs");
+  const { desktopError } = require("../packages/workbench/client/desktop-contract.cjs");
+  const workspace = {
+    profile: { assertAvailable() {} },
+    coreIdentity: () => "core",
+    owns: () => true,
+    page: () => ({
+      id: "page",
+      coreInstanceId: "core",
+      networkPolicy: { canAuthorize: () => false },
+    }),
+  };
+  const commands = new HumanBrowserCommands(
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    workspace,
+    () => ({}),
+    () => [],
+  );
+  await assert.rejects(
+    commands.command({
+      operation: "openLink",
+      projectId: "project",
+      threadId: "thread",
+      url: "https://example.com",
+    }),
+    (error) => {
+      assert.equal(desktopError(error).code, "BROWSER_PERMISSION_DENIED");
+      return true;
+    },
+  );
+});
+
+test("device bitmap coordinates follow the measured native scale rather than stretching cropped pixels", () => {
+  const { captureBitmapScale } = require("../app/src/core/preview/geometry.cjs");
+  const facts = {
+    width: 240,
+    height: 2560,
+    displayScale: 0.15625,
+    nativeBounds: { width: 37, height: 400 },
+  };
+  const bitmapScale = captureBitmapScale(facts, { width: 74, height: 800 });
+  assert.deepEqual(bitmapScale, { x: 0.3125, y: 0.3125 });
+  const capture = { width: 240, height: 2560, bitmapWidth: 74, bitmapHeight: 800, bitmapScale };
+  assert.deepEqual(bitmapPoint(capture, 72, 790), { x: 230.40625, y: 2528 });
+  const paddedScale = { x: 37 / 120, y: 37 / 120 };
+  assert.throws(
+    () => bitmapPoint({ ...capture, bitmapScale: paddedScale }, 36, 799),
+    /target_unavailable/,
+  );
+});

@@ -18,7 +18,7 @@
 
 `work.list` 必须提供 `context.projectId`，接受 `filter: all|active|attention`（默认 all）、`cursor?` 和 `limit?`，返回 `{projectId,serviceGeneration,data,nextCursor,complete}`。`attention.list` 使用同一项目上下文，接受 cursor/limit，返回有界 AttentionSummary 页并额外标注 `summariesComplete`。两者只使用当前在线且兼容的既有 Core 连接，异步读取后重新核验授权，不启动服务或修复配置。ready 与 host.describe 同时返回实际已实现的方法列表。
 
-原生 `areal/work/overview` 在分页前按 principal/thread 范围收窄，直接读取既有 Thread/Turn、TaskRun、待处理交互、队列和 Task Channel，不展开完整历史或新增持久状态。普通已归档 Thread 不进入概览；已由 Run 表示的协调 Thread 与 worker 不重复列作普通会话，worker 在 Run 下明确归属。运行中或失败工作也可能有可读结果，结果可读不表示成功。更新时间只用来源记录，没有可证更新时间时为 null。
+原生 `areal/work/overview` 在分页前按 principal/thread 范围收窄，直接读取既有 Thread/Turn、TaskRun、待处理交互、队列和 Task Channel，不展开完整历史或新增持久状态。普通已归档 Thread 不进入概览；已由 Run 表示的协调 Thread 与 worker 不重复列作普通会话，worker 在 Run 下明确归属。运行中或失败工作也可能有可读结果，结果可读不表示成功。更新时间 `sourceUpdatedAt` 使用 Unix 秒；普通会话取会话更新时间、创建时间及轮次开始/完成时间的最大值，没有可证更新时间时为 null。查询在分页前按更新时间倒序，同秒以原生身份稳定排序；手机列表展示该更新时间。游标为不透明的 v2 时间键，旧身份游标需重新从首页查询；分页期间记录更新时应刷新首页。
 
 概览默认 30 条、最多 100 条、页面不超过 128 KiB。标题最多 512 UTF-8 字节，待处理摘要最多 256 字节；每张工作卡最多携带 32 个待处理引用和 32 个 worker，另给出实际数量、完整性及 `summaryTruncated`。原生 thread/task/run/interaction/question 身份是桌面详情引用。摘要截断不表示已加载全部待处理或 worker；此时 attention.list 明确返回 `summariesComplete: false`。不包含完整参数或 transcript。概览的 `availableActions` 仍为空；创建/发送入口根据连接能力与当前详情状态启用。
 
@@ -335,6 +335,14 @@ HTTP 仅接受当前 loopback 或已配置 HTTPS 来源的精确 Host；WebSocke
 旧 Relay 登记不会自动转换成 v2 登记，需管理员 code 重新确认。hello 的 `apiVersion` 不为 `areal.remote.v2` 时返回 `PROTOCOL_UNSUPPORTED` 并关闭连接；升级客户端后重新连接，不降级到旧写协议。
 
 ## C12. Relay 的最低服务契约
+
+可信桌面 `remoteControl` 增加 `relayServiceStartLocal`、`relayServiceStopLocal`、`relayServiceDeploy {target,port,address}`、`relayServiceUpgrade`、`relayServiceInspect`、`relayServiceRemove {removeData}` 和 `relayUse {origin}`。SSH target 为 `user@host`，port 为 SSH 端口，address 为精确 HTTPS origin。状态中的 `relayService` 投影本机运行状态、脱敏部署记录、异步任务和已保存服务。部署操作先保存意图再异步执行，状态查询不等待 SSH 完成。中断的写操作保留待核对状态，检查不会自动重放写入。
+
+首次部署先异步检查 SSH 与既有实例；只读检查失败不创建待受理记录，用户可纠正输入。`deployment.canReconfigure` 只在独立检查确认程序、unit 和数据均不存在后为 true，允许更改 SSH 目标；保留数据的实例仍绑定原目标和 owner。已核对的失败或移除实例可纠正 HTTPS 地址并重新部署。
+
+本机模式以 `local:true` 独立于生产 HTTPS 模式，只接受 RFC1918 IPv4 或 ULA IPv6 的 HTTP origin。本机 Host 使用 loopback WS 和精确 Host 头；网卡来源不能注册 Host，HTTP `/enroll` 被拒绝。服务数据库通过 `provision --room <sha256>` 幂等登记公开 room，不接收 capability，也不恢复已撤销 room。主人 capability 先保存在加密 `remote.json`。手机配对链接额外携带 `local=1`，原生 socket 只接受私有数字 IP 和 `/remote/socket`，固定 App Origin；网页和外部服务的 HTTPS/WSS 校验不放宽。
+
+托管 Linux 入口 `managed-serve --config <path>` 共享独占服务锁，启动 loopback 后端与自动证书 TLS 代理。证书与私钥原子存储为 `tls/material.json`，权限 0600。证书最后三分之一寿命内续期，每小时检查并热更新。SSH 安装核对实例 owner，升级保留数据，移除需显式指定是否删除数据。客户端仍验证 HTTPS 链、域名与有效期；服务端提供证书不会自动建立客户端信任。
 
 可信本地 `remoteControl` 的 `enable` 接受 `{relay, code?, confirmed: true}`：`relay` 必须为精确 HTTPS origin；首次登记和更换 origin 必须提供管理员 code，同一已登记 origin 可以不提供 code 重新启用。Host 使用系统 TLS 校验、无 Origin 的 `POST /enroll`，拒绝重定向，取得 capability/room 后先持久化到既有加密 `remote.json`，再出站连接 WSS。`disable` 关闭 Relay，保留加密登记供显式重新启用；旧版 Relay 配置不自动升级登记。可信状态只投影公开 origin/room/pin、连接状态与脱敏错误，不返回 capability。
 

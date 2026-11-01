@@ -103,6 +103,10 @@ export const commonMessages = {
   "common.tools.rawRecord": { "zh-CN": "查看工具原始记录", en: "View raw tool record" },
   "common.turn.failed": { "zh-CN": "回合失败", en: "Turn failed" },
   "common.turn.reasoning": { "zh-CN": "思考过程", en: "Reasoning" },
+  "common.turn.reasoningCount": {
+    "zh-CN": "思考过程 · {count} 段",
+    en: "Reasoning · {count} {count, plural, one {part} other {parts}}",
+  },
   "common.turn.activity": { "zh-CN": "执行活动", en: "Execution activity" },
   "common.feedback.contextHelp": {
     "zh-CN": "提交评价会附上截至这条回复的上下文；用 Agent 润色时也会采集讨论。",
@@ -456,6 +460,11 @@ export const commonMessages = {
     "zh-CN": "历史内容加载失败，请重试。",
     en: "Could not load history. Please try again.",
   },
+  "chat.history.restoreBlocked": {
+    "zh-CN": "暂时无法恢复阅读位置。可重试或继续浏览。",
+    en: "Reading position could not be restored. Retry or continue reading.",
+  },
+  "chat.history.restoreRetry": { "zh-CN": "重试恢复位置", en: "Retry reading position" },
   "chat.history.deferred": {
     "zh-CN":
       "{kind, select, userMessage {这条消息} dynamicToolCall {这条工具记录} other {这段历史内容}}较大（{size, number} MiB），可按需加载完整内容。",
@@ -486,7 +495,7 @@ export const commonMessages = {
     "zh-CN": "{model} 不支持思考强度 {effort}，请在模型菜单重新选择。",
     en: "{model} does not support reasoning effort {effort}. Choose another in the model menu.",
   },
-  "chat.composer.effortUnspecified": { "zh-CN": "未指定", en: "Unspecified" },
+  "chat.composer.effortUnspecified": { "zh-CN": "默认", en: "Default" },
   "chat.composer.noModels": { "zh-CN": "暂无可用模型", en: "No models available" },
   "chat.composer.noModelsGuidance": {
     "zh-CN": "暂无可用模型，请前往设置 > 模型设置",

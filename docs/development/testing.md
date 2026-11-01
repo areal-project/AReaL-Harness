@@ -41,6 +41,11 @@ Linux 宿主常规检查使用 `make verify CARGO_TEST_ARGS='--exclude areal-run
 
 原生 Side 验收还在运行时通过 `CARGO_MANIFEST_DIR` 启动 MCP fixture。镜像必须复制该文件到对应源码路径；离线合同从测试源码提取路径并核对镜像的 COPY 映射，Docker 构建再检查文件可读性。编译通过不能证明运行时 fixture 已随镜像交付。
 
+
+截图 IPC 的注册与窗口归属复核由 `app/src/core/snapshots/host.cjs` 负责；健康检查只统计受控源码，不重复统计其 `snapshots/build/` 生成包。GUI 类型检查先生成截图原生模块，支持干净 checkout。Cloud 上传回归打包真实 Composer 上传与状态模块，保留部分批次失败后复用已接收回执的断言。
+
+图表文件预览通过动态导入复用消息图表组件，Mermaid 不进入首屏静态依赖。PDF 预览及独立 worker 按新增模块实测值加 5% 计入总量预算；新增 PDF 和图表懒加载 chunk、重分块后的 KaTeX、截图桌面契约及共享 Remote 入口分别登记有界预算。`index.html` 首屏上限与所有首屏禁载模块继续由原预算检查约束；预算变更须在 PR 中列明来源供审查。
+
 ## 可重复故障、本地快检与缓存验收
 
 从仓库根选择与改动相关的入口：
@@ -55,6 +60,7 @@ cargo test --locked -p areal-engine --test model_input_budget
 node --test clients/gui/scripts/desktop-projection-transport.test.mjs
 pnpm --dir clients/gui test:navigation-cache
 pnpm --dir clients/gui test:unit renderer/src/readingViews.test.ts
+pnpm --dir clients/gui test:conversation-reading
 ```
 
 `scripts/ci-scope.py` 是本地与 CI 共用的检查计划所有者；`check-changed` 解析一次 merge-base，合并暂存、未暂存与未跟踪路径，重命名两侧均纳入，部分暂存相互抵消也保留选检。计划登记命令、依赖、环境能力、平台和 manifest 子测试全集，并绑定 base/source/head 与输入摘要。共享 Rust、schema、锁文件、构建与 CI 变化扩大范围，未知代码保守扩大；比较基准不可用时不得放行。
@@ -94,6 +100,8 @@ AREAL_CORE_BIN=/absolute/verified/bin/areal pnpm --dir clients/gui test:history-
 
 `model_input_budget` 从默认 Desktop 的真实出站求解请求计量固定指令、环境说明及每工具的 name/description/parameters。首个 profile 明确不含 Runtime 与插件；动态用户正文和随机路径不计入固定基线。基线变化报告分项与工具名，必须人工审阅更新，不自动调整生产输入或额度。
 
+`test:conversation-reading` 使用生产 Messages、Desktop 历史窗口与确定性 Core RPC fixture，组合验证旧页淘汰、离开返回、重观察、后台增量、宽度变化和 Renderer 重载。该短场景登记为常规 ciSmoke；它不启动真实 Core 或 Electron，不证明供应商、安装包或物理输入验收。历史窗口的多视图保护、有限扫描、取消及预算失败由 bounded-history-client 行为检查覆盖。
+
 `test:navigation-cache` 使用生产 React App、真实 Chrome 和 fixture PlatformServices，记录无关 UI 操作的派生计算次数，检查名称、未读、运行、排序和新快照刷新，并保存源码身份及截图。它不启动 Core/Electron，也不验证安装包或感知延迟。`readingViews` 单测覆盖 32 项内存边界、最近访问淘汰、存储不可用和语义锚点重载；真实主题与布局连续性仍需 Renderer 场景。旧 `conversation-flow` 场景在 `.tool-summary-row .tool-failed` 定位器超时；生产折叠失败状态由 `ActivityRowStatus` 的 `data-tone="failed"` 表达。该 markup 与 `readingViews` 容量裁剪属于不同边界，本专项未修改旧 runner，完整对话流未计为通过。
 
 ## 本地验证产物与启动诊断
@@ -124,6 +132,22 @@ pnpm --dir clients/gui test:history-navigation-ui
 历史导航 runner 自动调用该入口，只服务本轮静态副本；设置 `AREAL_RENDERER_DIST` 仍要求其回执匹配当前源码。`renderer/test-fixtures/history-navigation.ts` 直接实现生产 `DesktopBridge`，随 Renderer 类型检查；删掉 `onPreviewEvent` 或 `onUpdate` 会在启动浏览器前失败。runner 以现有 Vite 构建该夹具并核对与 Renderer 相同的输入摘要，保留真实桌面适配器和投影读取路径。检查覆盖鼠标与键盘历史导航、冷项目切换、UNKNOWN 原请求保留和零提交；边界是 Chrome + Renderer + bridge 夹具，不覆盖 Electron/Core。
 
 任务目录 smoke 的页面夹具位于 `clients/gui/renderer/test-fixtures/scheduled-workspace.tsx`，与 Renderer 一起类型检查，并由原浏览器 runner 直接加载。它验证新意图经 `onStartDraft` 打开草稿、项目默认值及旧请求的显式核对与被动回执；夹具仅替换 IPC 边界。
+
+CI smoke 执行器与共享源码 Electron fixture 在产品场景启动前自动运行此 doctor，每次尝试保留独立启动报告；CI 随二进制传递 Core 构建回执。身份或探测失败即阻止场景启动，不计为场景通过。评审证据绑定源码提交与相关文件哈希，无关 HEAD 移动本身不使这些哈希失效。
+
+`pnpm --dir clients/gui verify` 在执行契约和测试前运行 `pnpm health`，直接检查生产源码相对已审核基线的健康预算。`test:health` 验证检查器自身，不能替代该门禁；健康失败会使 `verify` 返回非零。完整受影响检查、构建体积与平台验收仍由既有 CI 计划执行。
+
+## 验收用例：文件夹中的三张图片
+
+在隔离桌面实例中使用支持视觉输入的模型和工作区外的本机文件夹。文件夹包含三张内容不同的 PNG/JPEG 图片，使用不透露内容的文件名。通过 Composer 拖入或粘贴文件夹引用，发送“这个文件夹里的三张图片分别是什么内容？”。
+
+成功条件是目录接收、列举和三个原图读取成功；只读操作经过当前权限模式的审批，Scope 不增加写入或网络权限；模型请求实际包含三个对应图片载荷，最终回答逐张描述并与图片内容一致。仅返回文件名、复制成功、OCR 文本或本地脚本模型的固定回答均不足以证明视觉识别。另在后续轮次不带追加权限读取同一外部目录，验证本次操作授权没有改变基础 Scope。
+
+可重复的确定性桌面入口为 `pnpm --dir clients/gui test:composer-folder-vision`，使用匹配当前源码的 `AREAL_CORE_BIN` 和已构建的 GUI。它复用 Composer runner，在工作区外创建三张无语义文件名的不同 PNG，经目录拖入、四次“允许一次”、真实 Runtime 读取与媒体投影，核对模型收到与三个原图逐一对应的 Core 图片载荷，并确认后续未申请追加权限的读取被拒绝。原生项目选择器返回值是注入边界；目录拖入使用 CDP 合成事件，模型仅在本地确定性边界替换。
+
+证据目录的 `folder-vision-evidence.json` 按阶段记录目录接收、Runtime 读取、模型载荷和 `visualRecognition: not_run`；同目录保留 `manifest.json`、`model-requests.json`、`authoritative-history.json` 与审批截图。`test:composer-folder-vision-contract` 检查证据断言会拒绝缺图、重复图、失败工具和扩大权限。这些通过结果只证明目录到模型输入的链路；真实视觉识别仍须按上述完整成功条件，以已授权的视觉模型逐张核对最终回答，不能把确定性模型输出计为识别通过。
+
+工具契约回归为 `cargo test -p areal-engine --lib read_tools_request_only_additional_read_roots` 和 `cargo test -p areal-engine --lib read_permission_admission_rejects_write_and_network_fields`。零写/禁网下真实文本读取和搜索回归为 `AREAL_TEST_BIN_DIR=/absolute/verified/bundle cargo test -p areal-engine --features native-tests --lib read_helpers_work_without_write_or_network_permissions`。这些回归不替代真实桌面媒体链和真实视觉模型验收；保存源码与产物身份、审批 Scope、工具媒体摘要、模型图片摘要及最终回答，凭据不进入证据。
 
 ## GUI 测试清单与平台资格
 
@@ -203,11 +227,17 @@ Composer 和队列 smoke 共用 `clients/gui/scripts/smoke-navigation.mjs` 的�
 
 Composer 的 IME 前置清空通过真实键盘全选与退格完成，再同时核对 DOM、Lexical 和草稿存储为空。Playwright `fill("")` 的 DOM 全选可能与编辑器内部选区不同步，不能作为组词测试的清空前置；后续候选输入、提交和取消仍通过 Chromium 原生 IME 事件验收。
 
+丢失发送响应的验收以本次请求的回执和消息为完成条件，不能借用上一轮的完成状态。使用屏障保留核对与发送并行的顺序，并在同一挂载的编辑器中核对正文、附件和草稿存储一致结算；短暂显示为空不代表恢复完成。阅读恢复验收先确认历史加载、焦点和真实阅读输入已生效，再建立目标几何位置并核对保存的 item、block 和 offset。
+
+阅读取消验收用一次性屏障控制旧恢复请求，先确认用户新意图的 retain 已受理，再释放并等待原 ensureAnchor 的取消回执。滚轮触发的前文加载可以改变绝对 `scrollTop`；验收比较同一可见 item、block、正文及视口偏移，而不是以单次 RPC 的 pending 计数或绝对滚动坐标判断整次恢复完成。
+
 Composer smoke 通过 Side 标签的 Delete 键关闭已完成的阅读视图，并等待主编辑器可见，覆盖窄窗完整视图和宽窗分屏；窄窗的面板按钮仅切换视图。模型选择 smoke 在冷重启后的配置应用前，读取真实 `serviceStatus`，等待任务、操作、项目启动和配置更新全部结算后单次提交。
 
 Slash 键盘验收等待本次打开触发的 Core 目录刷新完成，再核对方向键移动到的具体选项及编辑器 `aria-activedescendant` 一致后按 Enter；原选项的已选中状态不能证明方向键已经生效。
 
 原生工具 smoke 在断言前等待 HTTP fixture 的请求线程全部结束。主求解请求与完成审计严格等量；单次辅助命名允许在 HTTP 抵达前取消，此时只接受无 HTTP 状态的中断审计。已观测请求缺审计、重复命名、未观测却完成以及命名携带工具均失败。
+
+`node --test clients/gui/scripts/browser-diagnostics-contract.test.cjs` 覆盖原生关闭的资源所有权和错误边界：先释放后 dispose/profile quiesce、输入与录制收敛、旧 Page 重建、隔离动作超时及迟到销毁。它用受控事件检验等待条件，不证明真实 DOM、窗口焦点或 SELECT popup。后者须用隔离 Electron 核对活动 open SELECT 的关闭、无窗口聚焦、真实 `destroyed` 与自然退出；保留原 10 秒原生关闭和 20 秒 runner 清理期限，强杀仍计失败。
 
 插件连接回归通过一次性屏障冻结旧目录扫描，验证其不能撤销扫描后发布的新代；另在握手暂停时禁用插件，要求禁用完成且连接不得发布。原生工作组用例失败时保留临时目录，并输出具体场景、模型用量和权威工具回执，区分预算错误与其前序失败。
 

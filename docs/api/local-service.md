@@ -116,6 +116,8 @@ target/debug/areal service bind --workspace /absolute/workspace \
 
 共享服务使用管理模式启动：默认模型凭据缺失、为空或不满足 HTTP header 格式时，Core 仍可连接，模型目录将其标记为不可用。该模型的执行返回 `MODEL_CREDENTIAL_UNAVAILABLE`，不发送匿名请求、不切换模型。GUI 可进入设置补填密钥并保存应用；支持热应用的 Core 通过[受保护的模型配置接口](desktop.md#模型配置热应用)追加安全存储引用并确认文件版本，不重启 Core 或 Runtime。启动环境中的普通凭据和非模型部署变化继续遵循原重启规则。配置语法、模型地址和协议等其他校验仍然保留。
 
+供应商终态 `TurnOutcome.details` 可含可选 `messageSummary`，仅允许精确白名单摘要（`upstream stream request failed` 或 `Unsupported service_tier: fast`），任意上游文本仍不进入该字段。这是可忽略的增量字段，旧消费者无需改变。Responses SSE 错误封套缺少顶层事件 `type` 时，沿用有类型错误的供应商分类与重试策略；HTTP 200 状态不代表模型成功。
+
 模型目录 `reasoningEffortOptions` 只列已声明或已核实的档位；未知时返回空列表。`capabilities.reasoningEffortOptions` 省略表示未知，显式空列表表示无可选强度。Core 在最终参数合并后阻止已知非法值，供应商目录仍可用于修正。配置 `reasoningEffort: "default"` 明确覆盖继承默认，HTTP 请求省略强度；null／省略仍继承。识别出的参数拒绝使用 `MODEL_PARAMETER_UNSUPPORTED`，只公开白名单参数和关联 `requestId`；原始供应商错误保存在私有本机诊断，不自动改参重发。
 
 `parameters.serviceTier` 独立于推理强度，可设为 `"fast"` 或 `"default"`。`"fast"` 请求供应商 Fast 优先服务；`"default"` 显式覆盖继承的 Fast 设置并请求标准服务。null／省略仍继承模型、供应商或上游项目默认。Core 在 Chat Completions、Responses HTTP 与 Responses WebSocket 请求中按原值发送 `service_tier`，仅配置时发送。使用 ChatGPT 授权访问 OpenAI API 的适配器将 `fast` 编码为该通道接受的 `priority`；显式 `default` 与省略语义不变。该转换不应用于 API Key 供应商或 Codex 订阅传输。Responses 终态返回已识别的实际档位时，请求审计在 `usageDetails.serviceTier` 中记录该值；缺失或未知时省略，不从请求推断。请求 Fast 而实际返回 `default` 表示本次按标准档位处理，不能将请求被接受视为已获得加速。不预判模型或供应商支持情况，供应商拒绝按现有失败路径上报；可识别的 `service_tier` 参数拒绝使用 `MODEL_PARAMETER_UNSUPPORTED`，不改参重发。请求 Fast 不保证实际加速。会话配置和快照保留该值，旧快照缺失此字段时仍可读取。旧客户端省略该字段时沿用原行为；包含该字段的新请求和快照需要支持 `serviceTier` 的 Core。
@@ -192,3 +194,20 @@ Core 仅在已授权 MCP 连接边界解析秘密引用，敏感值只绑定声�
 `areal/plugin/development/link` 参数为 `requestId`、`id`、`expectedRevision`、`expectedDigest`。`areal/plugin/development/unlink` 省略摘要参数。两者均返回 PluginList 并复用原管理回执。链接只使用已选择的本地来源。服务现有 watcher 每秒检查链接，变化通过 Store 发布不可变新快照。错误保留上一成功版本，组件摘要的 `developmentError` 返回诊断。新摘要不继承 MCP 或 Hook 信任。活动 Turn 持有旧快照，后续准入采用最新快照。
 
 可信 server 装配声明普通 Skill 的 workspace 与 home 来源，watcher 同步刷新元信息。自动发现 Profile 在同会话下一次 Turn 使用最新引用，全部删除会发布空集合。显式 Profile 保留原引用。普通 Skill 正文维持当前文件读取语义，插件 Skill 正文由安装快照固定。
+
+### 对话时间线事实
+
+`userMessage.createdAt` 与 `agentMessage.createdAt` 是可选 Unix 秒。Core 在用户输入受理及助手正文条目首次创建时保存，正文增量不修改它。旧快照缺失时客户端不补造时间。
+
+`DesktopState.modelChanges` 默认为空数组。每个事件包含配置 `revision`、Unix 秒 `occurredAt`、可选 `afterTurnId`、`from` 和 `to`。模型身份包含保存时解析的 `modelId` 与可空 `providerId`，其中 `null` 表示 Core 默认模型。只在实际模型身份变化时追加，与配置和请求回执一起持久化。参数变化、拒绝和同 requestId 重放不追加。无 `afterTurnId` 的事件位于首轮之前，零轮次连续变更也保留。该记录仅表示下轮采用的配置选择，不表示模型交接或执行成功。
+
+`TraceActivity.retryDelayMs` 保存计划等待毫秒数，`retryDisposition: "exhausted"` 只在原重试决策确认额度耗尽时出现。客户端按 `logicalId` 聚合 `model` 和 `retryWait`，根据同一逻辑请求的成功活动判断恢复，不能用其他请求的失败推断重试耗尽。新增 `areal/turn/traceActivity` 通知携带 `threadId`、`turnId` 和已持久化的单条 `activity`；快照仍是重连权威。`areal/thread/configured` 同时携带完整 `modelChanges`。上述字段为向后兼容的可选事实或缺省集合，不改变执行和重试策略。
+### 桌面 PDF 文件读取
+
+桌面 `fileOpen` 窄桥增加 `readPdf` 操作，参数为 `{ operation: "readPdf", projectId, threadId?, path }`，成功返回 `{ mimeType: "application/pdf", bytes: Uint8Array }`。这是本地桌面桥能力，不是 Core RPC；现有操作和请求保持兼容。带 `threadId` 时由宿主核对已就绪的执行工作区，路径经 realpath 限制在该根内。只读取普通文件，预算为 20 MiB，读取中版本或归属改变会失败。文件头检查后仍由独立 PDF.js worker 负责格式解析，失败不触发外部打开。Renderer 不接受任意 URL、file URL 或脚本动作，外部打开仍由用户显式触发。
+
+### 桌面 HTML 文档打开
+
+桌面 `fileOpen` 窄桥提供 `{ operation: "openHtml", projectId, threadId, path }`，成功返回 `{}`，文档打开回执仅供 Main 发送既有 reveal 事件。这是本地桌面桥能力，不是 Core RPC。宿主核对项目和会话归属，拒绝云端会话及尚未就绪的工作树。相对路径按该会话执行目录解析，也接受工作区外的绝对路径。请求路径与 realpath 后的路径都须以 `.html` 或 `.htm` 结尾，且目标须为普通文件。异步解析后重新核对执行目录归属，再通过 Main 的文档 owner 打开当前聊天内置 Browser，成功后发送既有 reveal 事件；该操作不使用编辑器打开偏好。工作区入口授权同目录树静态资产，外部入口只授权确切 HTML。显式外部打开才交给系统默认应用。范围、入口快照、撤销和 Agent 的 `browser_v1.openDocument` 见 [Browser 契约](browser.md#本地-html-文档)。打开错误显示可见反馈。通用 `open`、读取、定位与另存操作继续限制在工作区根内。
+
+回复中的本地 HTML 文件链接使用此操作，兼容历史 `file:///` 和 `file://localhost/` URI。Markdown 链接边界仅为 HTML 链接规范化本地 URI，保留文件名中的空格、非 ASCII 字符、百分号、`#` 和 `?`，不接受远程 authority；图片继续禁用 `file:` 协议。URI 中的查询与片段不参与文件路径解析，仅打开对应文档。

@@ -1,11 +1,12 @@
 import { createIdentity, identityId } from "@areal/remote";
 import { ClientState, RemoteConnection } from "@areal/remote-client";
 import { DeviceStore, parsePairingLink } from "./device-store.mjs";
+import { createMobileSocket } from "./local-socket.mjs";
 
 /** @typedef {{kind:"loading"|"connecting"|"offline"|"background"|"revoked"|"blocked"}|{kind:"unpaired",cleared?:boolean,error?:"invalidLink"|"pairFailed"}|{kind:"pairing",fingerprint:string}|{kind:"connected",ready:{capabilities:string[],grantRevision:number,hostId:string,gatewayGeneration:string},remembered:boolean,fingerprint:string}} MobileConnectionState */
 export class MobileClient {
   /** @param {{keychain: import("./device-store.mjs").DeviceStore["keychain"], clientKind:"ios"|"android", socket?:(url:string)=>WebSocket}} options */
-  constructor({ keychain, clientKind, socket = (url) => new WebSocket(url) }) {
+  constructor({ keychain, clientKind, socket = createMobileSocket }) {
     this.clientKind = clientKind;
     this.store = new DeviceStore(keychain);
     this.identities = new ClientState({ createIdentity, identityId, store: this.store });
@@ -93,7 +94,7 @@ export class MobileClient {
   async connect(target, token, epoch, displayName) {
     const deviceName = displayName ?? (await this.store.keychain.deviceName()).name;
     if (epoch !== this.epoch || !this.active) return;
-    const socket = this.socket(`${target.relayOrigin.replace("https:", "wss:")}/remote/socket`);
+    const socket = this.socket(`${target.relayOrigin.replace(/^http/, "ws")}/remote/socket`);
     const connection = new RemoteConnection({
       socket,
       identity: token.identity,

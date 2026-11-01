@@ -1,6 +1,18 @@
+import { snapShotCommandEntries } from "./snapshots/shortcut.js";
+import { useSnapShotCapture } from "./snapshots/captureContext.js";
+import { useSnapShotDraft } from "./snapshots/activeDraft.js";
+import { consumeSnapShotFiles } from "./snapshots/drafts.js";
+import { submitMessage } from "./ComposerSubmission.js";
+export { submitMessage } from "./ComposerSubmission.js";
+import {
+  composerUploadOwner,
+  composerUploads,
+  forgetComposerUploads,
+} from "./ComposerUploadState.js";
 import { uploadComposerFiles } from "./ComposerUploads.js";
 export { uploadComposerFiles } from "./ComposerUploads.js";
 
+import { requestTurnStart, cancelTurnStart, readingViews } from "./readingViews.js";
 import { setPendingMessage, usePendingMessage } from "./pendingMessage.js";
 import { Input } from "@areal/ui";
 import { ComposerActionButton } from "@areal/ui/experimental";
@@ -10,7 +22,6 @@ import { ConversationSelectionReferences } from "./ConversationSelectionReferenc
 import {
   conversationSelectionScope,
   useConversationSelections,
-  readConversationSelections,
   consumeConversationSelections,
 } from "./conversationSelectionReference.js";
 import { parseSideSlashCommand } from "./sideSlashCommand.js";
@@ -27,7 +38,7 @@ import { ContextMeter } from "./ContextMeter.js";
 import { isOrdinaryConversation, interruptedConversationTurn } from "./ordinaryConversation.js";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { McpComposerAttachments, useMcpDraft } from "./McpComposerAttachments.js";
-import { readMcpDraft, consumeMcpDraft, clearMcpDraft } from "./mcp-app-draft.js";
+import { clearMcpDraft } from "./mcp-app-draft.js";
 import {
   setApplicationPreferences,
   useApplicationPreferences,
@@ -69,13 +80,8 @@ import {
   isComposerFile,
   type ComposerDraftAttachment,
 } from "./ComposerAttachments.js";
-import {
-  useComposerPlugins,
-  revalidateComposerPlugins,
-  mergeComposerPluginSkills,
-  composerPluginIntent,
-} from "./ComposerPlugins.js";
-import { useComposerSkills, composerSkillContent, readComposerSkills } from "./ComposerSkills.js";
+import { useComposerPlugins } from "./ComposerPlugins.js";
+import { useComposerSkills } from "./ComposerSkills.js";
 import { ComposerMcpIcon } from "./ComposerIcons.js";
 import { ComposerMcp } from "./ComposerMcp.js";
 import { AttachmentIcon } from "./interfaceIcons.js";
@@ -86,27 +92,17 @@ import {
 } from "./ConversationReferences.js";
 import {
   imageAnnotationBlocked,
-  snapshotImageAnnotations,
-  serializeImageAnnotations,
   useImageAnnotationRevision,
   type ImageAnnotationTarget,
 } from "./imageAnnotations.js";
 import { BrowserAnnotationAttachments } from "./BrowserAnnotationAttachments.js";
-import {
-  browserAnnotation,
-  browserAnnotationText,
-  useBrowserAnnotationEditing,
-} from "./browserAnnotations.js";
+import { browserAnnotation, useBrowserAnnotationEditing } from "./browserAnnotations.js";
 import { ReviewCommentAttachment } from "./ReviewCommentViews.js";
 import {
   attachedReviewComments,
-  consumeReviewComments,
   detachReviewComments,
-  recordUnknownReviewSubmission,
   reconcileReviewSubmission,
-  readReviewComments,
   reviewCommentKey,
-  reviewCommentText,
   useReviewComments,
 } from "./reviewComments.js";
 import type { LexicalChatInputHandle } from "./LexicalChatInput.js";
@@ -114,14 +110,15 @@ import type { Data, Action } from "./services.js";
 import {
   recoveredOutcome,
   recoveryMessage,
+  isTechnicalErrorMessage,
   type RecoveryFailure,
   type RecoveryOperation,
 } from "./recoveryPresentation.js";
 // Draft attachments and in-flight UI admission survive task navigation. These are
 // unsent client inputs only; Core remains authoritative for acceptance/outcomes.
-export const attachmentDrafts = new Map<string, ComposerDraftAttachment[]>();
+import { attachmentDrafts, sending } from "./composerDraftAttachments.js";
+export { attachmentDrafts, sending } from "./composerDraftAttachments.js";
 export const attachmentErrors = new Map<string, string>();
-export const sending = new Set<string>();
 const sendListeners = new Set<() => void>();
 export const subscribeSending = (listener: () => void) => {
   sendListeners.add(listener);
@@ -133,6 +130,7 @@ export const markSending = (key: string, active: boolean) => {
   if (active) sending.add(key);
   else sending.delete(key);
   sendListeners.forEach((listener) => listener());
+  window.dispatchEvent(new Event("areal-snapshot-drain"));
 };
 export function Composer({
   project,
@@ -176,6 +174,9 @@ export function Composer({
   );
   const prefs = useApplicationPreferences();
   const key = `areal-gui:draft:${project.id}:${thread.id}`;
+  useSnapShotDraft(key);
+  const snapshotCapture = useSnapShotCapture();
+  const uploadOwner = composerUploadOwner(project, thread.id);
   const selectionScope = conversationSelectionScope(project.id, thread.id);
   const references = useConversationSelections(selectionScope);
   const mcpDraft = useMcpDraft(key);
@@ -223,6 +224,7 @@ export function Composer({
     (file) => browserAnnotation(file)?.comment.trim() === "",
   );
   const [admissionError, setAdmissionError] = useState(() => attachmentErrors.get(key) ?? "");
+  const [admissionAttempt, setAdmissionAttempt] = useState(0);
   useEffect(() => {
     attachmentDrafts.set(key, files);
     window.dispatchEvent(new CustomEvent("areal-attachments-change", { detail: key }));
@@ -276,7 +278,8 @@ export function Composer({
     annotationBlocked: annotationEditing || invalidAnnotation,
     inFlight: busy,
     setInFlight: (active) => markSending(key, active),
-    uploadFiles: (selected) => uploadComposerFiles(action, project.id, thread.id, selected),
+    uploadFiles: (selected) =>
+      uploadComposerFiles(action, project.id, thread.id, selected, undefined, uploadOwner),
   });
   // 配置写入仍占用提交锁，但不把草稿编辑和模型浮层切成消息发送态。
   const editorDisabled = baseDisabled || (queueEditor.busy && !configuring) || queueEditor.locked;
@@ -385,14 +388,19 @@ export function Composer({
   const clear = () => {
     api.current?.clear();
     setText("");
-    setFiles([]);
+    const remaining = (attachmentDrafts.get(key) ?? []).filter((file) => !files.includes(file));
+    setFiles(remaining);
+    // 后续消费操作会同步通知草稿监听器，先完成存储结算以免读回已发送内容。
+    if (remaining.length) attachmentDrafts.set(key, remaining);
+    else attachmentDrafts.delete(key);
+    composerDraftStorage.removeItem(key);
+    forgetComposerUploads(uploadOwner, files.filter(isComposerFile));
     skills.clear();
     plugins.clear();
     clearMcpDraft(key);
     consumeConversationSelections(selectionScope, references);
-    attachmentDrafts.delete(key);
+    void consumeSnapShotFiles(files.filter(isComposerFile));
     setAdmissionError("");
-    composerDraftStorage.removeItem(key);
   };
   useEffect(() => {
     setGoalError("");
@@ -435,8 +443,13 @@ export function Composer({
     } catch {}
     const outcome = recoveredOutcome(project, unknown, thread.id, operation);
     if (!outcome) return;
+    const turnStart = readingViews.get(
+      JSON.stringify([project.id, thread.id, false]),
+    )?.pendingTurnStart;
+    if (outcome.accepted === false && turnStart?.requestId === unknown) cancelTurnStart(turnStart);
     composerDraftStorage.removeItem(`${key}:pending`);
     composerDraftStorage.removeItem(`${key}:pending-operation`);
+    window.dispatchEvent(new Event("areal-snapshot-drain"));
     setUnknown(null);
     reconcileReviewSubmission(reviewKey, unknown, outcome.accepted !== false);
     const wasGoal = composerDraftStorage.getItem(`${key}:pending-goal`) === unknown;
@@ -485,6 +498,7 @@ export function Composer({
     setGoalError("");
     setDeliveryError("");
     let configurationRequestId: string | undefined;
+    let sendStarted = false;
     const sideCommand = parseSideSlashCommand(
       submittedInput.text,
       submittedInput.files,
@@ -496,7 +510,13 @@ export function Composer({
         !matchMedia("(max-width: 640px)").matches,
       appEntries.map((entry) => entry.value),
     );
-    if (!sideCommand && !creatingGoal)
+    const steer = !taskManagement && !!running && shouldSteer(prefs.followUp, invert);
+    const enqueue = !taskManagement && !!running && !steer;
+    const turnStart =
+      !sideCommand && !creatingGoal && !steer && !enqueue
+        ? requestTurnStart(project.id, thread.id, thread.turns?.at(-1)?.id)
+        : undefined;
+    if (!sideCommand && !creatingGoal && !enqueue)
       setPendingMessage(key, {
         text: submittedInput.text,
         files: submittedInput.files,
@@ -537,9 +557,13 @@ export function Composer({
         configurationRequestId = undefined;
       }
       await submitMessage(action, project.id, thread.id, value, files, {
-        steer: !taskManagement && !!running && shouldSteer(prefs.followUp, invert),
+        onSendStart: () => {
+          sendStarted = true;
+        },
+        uploadOwner,
+        steer,
         expectedTurnId: running?.id,
-        enqueue: !taskManagement && !!running,
+        enqueue,
         skillAction: readAction,
         pluginContext,
         pluginMessages: {
@@ -553,11 +577,14 @@ export function Composer({
         submissionUnknown?: boolean;
         requestId?: string;
       };
+      if (!sendStarted || !error.submissionUnknown) cancelTurnStart(turnStart);
+      else if (turnStart) turnStart.requestId = error.requestId;
       if (creatingGoal) setGoalError(goalControlError(error));
       else if (!(error.submissionUnknown && error.requestId)) {
-        // 附件失败留在所属 Composer，切换任务后仍能看到；没有附件的未受理发送/steer 单独显示投递原因。
-        if (files.length > 0) setAdmissionError(error.message);
-        else if (!error.submissionUnknown) setDeliveryError(recoveryMessage(error));
+        if (files.length > 0) {
+          setAdmissionAttempt((attempt) => attempt + 1);
+          setAdmissionError(error.message);
+        } else if (!error.submissionUnknown) setDeliveryError(recoveryMessage(error));
         else setAdmissionError(error.message);
       }
       if (error.submissionUnknown && error.requestId) {
@@ -673,6 +700,7 @@ export function Composer({
           },
         ]
       : []),
+    ...snapShotCommandEntries(snapshotCapture, t, setDeliveryError),
     {
       value: "upload",
       label: "上传文件",
@@ -792,9 +820,7 @@ export function Composer({
           此 worker 由原 TaskRun 管理。打开历史不会重新执行已结束的工作。
         </p>
         {returnError && (
-          <p role="alert" className="px-3 text-ui-sm">
-            {returnError}
-          </p>
+          <FeedbackNotice tone="error" message={returnError} onDismiss={() => setReturnError("")} />
         )}
         <div className="px-3 py-3">
           <Button
@@ -808,6 +834,11 @@ export function Composer({
         </div>
       </div>
     );
+  const failedAttachment = input.files.find((file) => admissionError.startsWith(`${file.name}:`));
+  const unknownAttachment =
+    failedAttachment &&
+    composerUploads(uploadOwner).states.get(failedAttachment)?.state === "unknown";
+  const technicalAdmissionError = isTechnicalErrorMessage(admissionError);
   return (
     <div className="composer-dock" data-v4-composer-dock="true">
       {desktopUnsupported && (
@@ -916,20 +947,24 @@ export function Composer({
           />
         ))}
         {goalError && (
-          <p role="alert" className="notice text-destructive">
-            {goalError}
-          </p>
+          <FeedbackNotice tone="error" message={goalError} onDismiss={() => setGoalError("")} />
         )}
         {admissionError && (
-          <p role="alert" className="notice text-destructive">
-            {admissionError}
-          </p>
+          <FeedbackNotice
+            id={`composer-admission:${key}:${admissionAttempt}`}
+            tone="error"
+            message={
+              unknownAttachment
+                ? `${failedAttachment.name}: ${t("chat.composer.attachmentUnknown")}`
+                : technicalAdmissionError
+                  ? `${failedAttachment ? `${failedAttachment.name}: ` : ""}${t("recovery.operationFailed")}`
+                  : admissionError
+            }
+            detail={technicalAdmissionError || unknownAttachment ? admissionError : undefined}
+            onDismiss={() => setAdmissionError("")}
+          />
         )}
-        {reviewDraft.error && (
-          <p role="alert" className="notice">
-            {reviewDraft.error}
-          </p>
-        )}
+        {reviewDraft.error && <FeedbackNotice tone="error" message={reviewDraft.error} />}
         {thread.desktop?.workflowRun && (
           <div className="flex flex-wrap items-center gap-2 px-3 py-1 text-ui-sm text-foreground-subtle">
             <Button
@@ -988,6 +1023,7 @@ export function Composer({
           enableWorkspaceFileDrop={!!project.root && !editorDisabled}
           enableExternalFileDrop={!editorDisabled}
           validateWorkspaceFile={workspaceFiles?.validate}
+          resolveWorkspaceDirectory={workspaceFiles?.directory}
           onFileDrop={(files) => setFiles((current) => [...current, ...files])}
           onWorkspaceReferencePendingChange={setWorkspaceReferencePending}
           taskId={thread.id}
@@ -1080,7 +1116,7 @@ export function Composer({
             composerPaste(event, (pasted) => setFiles((current) => [...current, ...pasted]))
           }
           topContent={
-            <div hidden={!!outgoing}>
+            <div hidden={!!outgoing && !files.length}>
               {queueEditor.edit && (
                 <div className="composer-queue-edit-banner" aria-label="编辑排队消息">
                   <span>
@@ -1117,9 +1153,7 @@ export function Composer({
                 </div>
               )}
               {queueEditor.feedback && (
-                <p role="alert" className="composer-queue-feedback">
-                  {queueEditor.feedback}
-                </p>
+                <FeedbackNotice tone="error" message={queueEditor.feedback} />
               )}
               {queueEditor.edit?.unknown && (
                 <Button
@@ -1178,6 +1212,23 @@ export function Composer({
                               : `pasted-text-${i}`
                           }
                           file={file}
+                          uploadOwner={uploadOwner}
+                          onRetry={async (file) => {
+                            setAdmissionError("");
+                            try {
+                              await uploadComposerFiles(
+                                action,
+                                project.id,
+                                thread.id,
+                                [file],
+                                undefined,
+                                uploadOwner,
+                              );
+                            } catch (cause) {
+                              setAdmissionAttempt((attempt) => attempt + 1);
+                              setAdmissionError((cause as Error).message);
+                            }
+                          }}
                           onAnnotate={
                             onAnnotate
                               ? (file) =>
@@ -1188,12 +1239,16 @@ export function Composer({
                                   })
                               : undefined
                           }
-                          onRemove={() =>
-                            setFiles((current) => current.filter((item) => item !== file))
-                          }
+                          onRemove={() => {
+                            if (isComposerFile(file)) forgetComposerUploads(uploadOwner, [file]);
+                            setFiles((current) => current.filter((item) => item !== file));
+                            if (isComposerFile(file)) void consumeSnapShotFiles([file]);
+                          }}
                           onExpand={(content) => {
+                            if (isComposerFile(file)) forgetComposerUploads(uploadOwner, [file]);
                             api.current?.appendText(`${text.length ? "\n\n" : ""}${content}`);
                             setFiles((current) => current.filter((item) => item !== file));
+                            if (isComposerFile(file)) void consumeSnapShotFiles([file]);
                           }}
                         />
                       ))}
@@ -1425,119 +1480,6 @@ export function Composer({
   );
 }
 
-// Both the first message and later turns use the same attachment and admission path.
-export async function submitMessage(
-  action: Action,
-  projectId: string,
-  threadId: string,
-  text: string,
-  files: ComposerDraftAttachment[],
-  options: Data = {},
-) {
-  const reviewKey = reviewCommentKey(projectId, threadId);
-  const comments = options.appMessage ? [] : attachedReviewComments(readReviewComments(reviewKey));
-  const key = `areal-gui:draft:${projectId}:${threadId}`;
-  const selectionScope = conversationSelectionScope(projectId, threadId);
-  const capturedReferences = options.appMessage ? [] : readConversationSelections(selectionScope);
-  const capturedMcp = options.appMessage ? [] : readMcpDraft(key);
-  const blocks = options.appMessage
-    ? (options.mcpContent ?? [])
-    : capturedMcp.map((entry: Data) => entry.block);
-  const imageBlocks = blocks.filter((block: Data) => block.type === "image");
-  const imageFiles = imageBlocks.map((block: Data) => {
-    if (
-      !/^image\/(png|jpeg|gif|webp)$/.test(block.mimeType) ||
-      typeof block.data !== "string" ||
-      block.data.length > 12 * 1024 * 1024
-    )
-      throw new Error("应用图片类型或大小不受支持。");
-    const bytes = Uint8Array.from(atob(block.data), (character) => character.charCodeAt(0));
-    return new File(
-      [bytes],
-      typeof block._meta?.["openai/title"] === "string" ? block._meta["openai/title"] : "应用图片",
-      { type: block.mimeType },
-    );
-  });
-  const input = composerInput(text, files);
-  const imageSnapshot = snapshotImageAnnotations(input.files);
-  const plugins = options.appMessage
-    ? []
-    : await revalidateComposerPlugins(
-        options.skillAction ?? action,
-        options.pluginContext ?? { kind: "mainThread", projectId, threadId },
-        key,
-        input.text,
-        options.pluginMessages?.unavailable ?? "chat.composer.pluginReferenceUnavailable",
-      );
-  const pluginIntent = composerPluginIntent(
-    plugins,
-    options.pluginMessages?.intent ??
-      ((name: string) => `Use the selected plugin ${name} for this request.`),
-  );
-  const skillContent = options.appMessage
-    ? ""
-    : await composerSkillContent(
-        options.skillAction ?? action,
-        projectId,
-        threadId,
-        mergeComposerPluginSkills(readComposerSkills(key), plugins),
-      );
-  const attachments = await uploadComposerFiles(action, projectId, threadId, [
-    ...input.files,
-    ...imageFiles,
-  ]);
-  imageBlocks.forEach((block: Data, index: number) => {
-    if (block._meta) attachments[input.files.length + index]._meta = block._meta;
-  });
-  const annotationFeedback = input.files
-    .flatMap((file, index) => {
-      const note = browserAnnotation(file);
-      return note ? [browserAnnotationText(note, attachments[index].url)] : [];
-    })
-    .join("\n\n");
-  const feedback = [
-    annotationFeedback,
-    serializeImageAnnotations(imageSnapshot, attachments),
-    comments.map(reviewCommentText).join("\n\n"),
-    pluginIntent,
-    skillContent,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-  try {
-    await action(options.steer ? "steer" : "send", {
-      projectId,
-      threadId,
-      text: feedback ? (input.text ? `${input.text}\n\n${feedback}` : feedback) : input.text,
-      attachments,
-      ...(capturedReferences.length
-        ? { conversationQuotes: capturedReferences.map(({ text }) => ({ text })) }
-        : {}),
-      ...(blocks.some((block: Data) => block.type !== "image")
-        ? { mcpContent: blocks.filter((block: Data) => block.type !== "image") }
-        : {}),
-      expectedTurnId: options.expectedTurnId,
-      enqueue: options.enqueue === true,
-    });
-  } catch (cause) {
-    const error = cause as Error & { submissionUnknown?: boolean; requestId?: string };
-    if (error.submissionUnknown && error.requestId && comments.length) {
-      try {
-        recordUnknownReviewSubmission(reviewKey, error.requestId, comments);
-      } catch {
-        error.message += " 评论提交记录无法保存，原评论已保留。";
-      }
-    }
-    throw cause;
-  }
-  // Only explicit acceptance consumes the captured records. Unknown submissions
-  // retain their exact IDs until the existing Core receipt is reconciled.
-  consumeReviewComments(reviewKey, comments);
-  if (!options.appMessage) {
-    consumeMcpDraft(key, capturedMcp);
-    consumeConversationSelections(selectionScope, capturedReferences);
-  }
-}
 export function stageThreadDraft(
   projectId: string,
   threadId: string,

@@ -77,7 +77,16 @@ class PageControl {
       if (params.type === "keyDown" || params.type === "rawKeyDown")
         page.heldKeys.set(params.key, params);
     }
-    const pending = c.debugger.sendCommand(method, params, sessionId).then((value) => {
+    // 设备缩放下的 CDP 鼠标坐标使用显示尺寸，计划与 Ref 仍保存网页 CSS 坐标。
+    const input =
+      method === "Input.dispatchMouseEvent" && page.viewportScale !== undefined
+        ? {
+            ...params,
+            ...(typeof params.x === "number" ? { x: params.x * page.viewportScale } : {}),
+            ...(typeof params.y === "number" ? { y: params.y * page.viewportScale } : {}),
+          }
+        : params;
+    const pending = c.debugger.sendCommand(method, input, sessionId).then((value) => {
       if (method === "Input.dispatchMouseEvent" && params.type === "mouseReleased")
         page.heldButtons.delete(params.button);
       if (method === "Input.dispatchKeyEvent" && params.type === "keyUp")
@@ -346,6 +355,7 @@ class PageControl {
           "act",
           "wait",
           "navigate",
+          "openDocument",
           "newPage",
           "diagnostics",
           "runBatch",

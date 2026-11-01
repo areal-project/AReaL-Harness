@@ -79,7 +79,10 @@ export function MobileAddDevice({
   const { t } = useI18n();
   const remaining = useRemaining(invite?.expiresAt);
   const [copied, setCopied] = useState(false);
-  const scannable = invite?.payload.startsWith("https://");
+  const localApp =
+    invite?.payload.startsWith("http://") &&
+    new URLSearchParams(invite.payload.split("#")[1]).get("local") === "1";
+  const scannable = invite?.payload.startsWith("https://") || localApp;
   const title =
     step === "review" && pending
       ? t("settings.mobileConnect.reviewTitle", { device: pending.name })
@@ -93,11 +96,13 @@ export function MobileAddDevice({
       ? t("settings.mobileConnect.reviewDescription")
       : step === "done"
         ? t("settings.mobileConnect.doneDescription")
-        : scannable
-          ? t("settings.mobileConnect.scanDescription")
-          : invite
-            ? t("settings.mobileConnect.localInvitationDescription")
-            : t("settings.mobileConnect.generating");
+        : localApp
+          ? t("settings.relayService.scanLocal")
+          : scannable
+            ? t("settings.mobileConnect.scanDescription")
+            : invite
+              ? t("settings.mobileConnect.localInvitationDescription")
+              : t("settings.mobileConnect.generating");
   return (
     <SettingsDialog
       className="remote-dialog remote-add-device"

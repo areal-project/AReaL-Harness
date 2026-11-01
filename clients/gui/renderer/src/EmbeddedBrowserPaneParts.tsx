@@ -49,7 +49,10 @@ export function BrowserToolbar({
   onSubmit,
   onToggleDetails,
   isResponsiveMode,
-  annotationControl, annotationDisabled, annotating, onAnnotation,
+  annotationControl,
+  annotationDisabled,
+  annotating,
+  onAnnotation,
 }: {
   addressValue: string;
   browserState: BrowserState;
@@ -91,16 +94,29 @@ export function BrowserToolbar({
           onClick={onGoForward}
         />
         <BrowserIconButton
-          icon={browserState.isLoading ? <X className="size-4" /> : <RefreshCw className="size-4" />}
+          icon={
+            browserState.isLoading ? <X className="size-4" /> : <RefreshCw className="size-4" />
+          }
           title={formatMessage({ id: browserState.isLoading ? "browser.stop" : "browser.reload" })}
           disabled={!browserState.isReady}
           dataTestId={"browser-refresh-button"}
           onClick={onReload}
         />
       </div>
-      <Button ref={annotationControl} type="button" size="sm" variant="ghost" className="browser-annotation-trigger"
-        data-testid="browser-annotation-button" aria-label="批注" aria-pressed={annotating} disabled={annotationDisabled} onClick={onAnnotation}>
-        <SquareDashedMousePointer className="size-4" /><span>批注</span>
+      <Button
+        ref={annotationControl}
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="browser-annotation-trigger"
+        data-testid="browser-annotation-button"
+        aria-label="批注"
+        aria-pressed={annotating}
+        disabled={annotationDisabled}
+        onClick={onAnnotation}
+      >
+        <SquareDashedMousePointer className="size-4" />
+        <span>批注</span>
       </Button>
       <Input
         type="text"
@@ -125,7 +141,10 @@ export function BrowserToolbar({
           event.preventDefault();
           event.currentTarget.select();
         }}
-        onBlur={() => { selectOnPointerUp.current = false; onAddressBlur(); }}
+        onBlur={() => {
+          selectOnPointerUp.current = false;
+          onAddressBlur();
+        }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             onAddressEscape();
@@ -209,10 +228,12 @@ function BrowserToolbarMoreMenu({
           <Bug className="size-4" />
           <span>{formatMessage({ id: "browser.devtools" })}</span>
         </DropdownMenuItem>
-        {onToggleDetails && <DropdownMenuItem onClick={onToggleDetails}>
-          <Globe className="size-4" />
-          <span>{formatMessage({ id: "browser.details" })}</span>
-        </DropdownMenuItem>}
+        {onToggleDetails && (
+          <DropdownMenuItem onClick={onToggleDetails}>
+            <Globe className="size-4" />
+            <span>{formatMessage({ id: "browser.details" })}</span>
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -288,6 +309,9 @@ export function BrowserLoadErrorState({
             {formatMessage({ id: "browser.loadError.certHint" })}
           </p>
         ) : null}
+        <p className="mt-3 text-ui-base text-foreground-subtle">
+          {formatMessage({ id: "browser.loadError.hint" })}
+        </p>
         <Button type="button" variant="outline" className="mt-6" onClick={onRetry}>
           <RefreshCw className="size-4" />
           {formatMessage({ id: "browser.loadError.retry" })}

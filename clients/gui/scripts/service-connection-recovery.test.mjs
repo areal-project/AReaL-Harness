@@ -222,6 +222,9 @@ async function fixture(
     helloErrors = [],
     commandContract = COMMAND_CONTRACT,
     commandResult,
+    projectState = {},
+    commandState,
+    deferredCommandState = false,
     service = {},
     resources = [],
     resourceError,
@@ -264,6 +267,7 @@ async function fixture(
           id: "p",
           root: home,
           state: { threads: {} },
+          ...projectState,
           desktopCapabilities: { currentCommands: commandContract !== COMMAND_CONTRACT },
         },
       ],
@@ -426,7 +430,24 @@ async function fixture(
         (message.method === "command" && commandResult === undefined) ||
         (message.method === "stopService" && stop === "unknown")
       ) {
-        socket.terminate();
+        if (message.method === "command" && deferredCommandState) {
+          socket.send(
+            JSON.stringify({
+              id: message.id,
+              error: {
+                message: "fixture lost response",
+                submissionUnknown: true,
+                requestId: message.params.request.requestId,
+              },
+            }),
+          );
+        } else if (message.method === "command" && commandState) {
+          Object.assign(projectState, commandState);
+          await new Promise((resolve) =>
+            socket.send(JSON.stringify({ method: "state", params: packet() }), resolve),
+          );
+          socket.close();
+        } else socket.terminate();
         return;
       }
       if (message.method === "stopService" && stop === "refused") {
@@ -438,6 +459,8 @@ async function fixture(
         );
         return;
       }
+      if (message.method === "snapshot" && deferredCommandState && commandState)
+        Object.assign(projectState, commandState);
       let result =
         message.method === "command"
           ? commandResult
@@ -1090,6 +1113,120 @@ test("a persisted user stop discovered during retry ends connecting with an acti
   assert.equal(f.backend.snapshot().connection.recovery, "check");
   assert.equal(f.connections(), 1);
 });
+
+for (const mismatch of [null, "request", "target", "generation", "instance"]) {
+  test(`lost GUI response retains only the matching observed operation (${mismatch ?? "matching"})`, async (t) => {
+    const requestId = "e99d906b-7912-4e95-81dc-a3fd3c967779";
+    const core = {
+      binary: "fixture",
+      apiVersion: null,
+      runtimeEpoch: null,
+      runtimeAvailable: null,
+      features: null,
+      instanceId: "core-1",
+      connectionGeneration: 1,
+    };
+    const operation = {
+      method: "areal/turn/submit",
+      requestId: mismatch === "request" ? "other-request" : requestId,
+      target: { kind: "thread", threadId: mismatch === "target" ? "other-thread" : "t" },
+    };
+    const f = await fixture(t, {
+      projectState: { core },
+      commandState: {
+        core: {
+          ...core,
+          ...(mismatch === "generation" ? { connectionGeneration: 2 } : {}),
+          ...(mismatch === "instance" ? { instanceId: "core-2" } : {}),
+        },
+        outcomes: { [requestId]: { status: "completed", accepted: true, operation } },
+      },
+    });
+    await f.publish();
+    await f.backend.attach();
+    await assert.rejects(
+      f.backend.command("send", { projectId: "p", threadId: "t", text: "once", requestId }),
+      (error) => {
+        assert.equal(error.submissionUnknown, true);
+        assert.equal(error.requestId, requestId);
+        assert.deepEqual(error.outcome?.operation, mismatch ? undefined : operation);
+        return true;
+      },
+    );
+    assert.equal(f.calls.filter((call) => call.method === "command").length, 1);
+  });
+}
+
+for (const scenario of [
+  "matching",
+  "logical-core-changed",
+  "execution-generation-changed",
+  "missing-receipt",
+  "invalid-snapshot",
+]) {
+  test(`lost worktree response reads one fresh snapshot (${scenario})`, async (t) => {
+    const requestId = "b6fdd8bc-29eb-4c07-9121-e04f427dc8cb";
+    const core = {
+      binary: "fixture",
+      apiVersion: null,
+      runtimeEpoch: null,
+      runtimeAvailable: null,
+      features: null,
+      instanceId: null,
+      connectionGeneration: 0,
+    };
+    const executionCore = { instanceId: "worktree-core", connectionGeneration: 5 };
+    const operation = {
+      requestId,
+      method: "areal/turn/submit",
+      target: { kind: "thread", threadId: "t" },
+    };
+    const f = await fixture(t, {
+      projectState: { core, state: { threads: { t: { id: "t", turns: [], executionCore } } } },
+      commandState: {
+        core:
+          scenario === "logical-core-changed"
+            ? { ...core, instanceId: "logical-core", connectionGeneration: 1 }
+            : core,
+        state:
+          scenario === "invalid-snapshot"
+            ? { threads: null }
+            : {
+                threads: {
+                  t: {
+                    id: "t",
+                    turns: [],
+                    executionCore:
+                      scenario === "execution-generation-changed"
+                        ? { ...executionCore, connectionGeneration: 6 }
+                        : executionCore,
+                  },
+                },
+              },
+        outcomes:
+          scenario === "missing-receipt"
+            ? {}
+            : { [requestId]: { status: "completed", accepted: true, operation } },
+      },
+      deferredCommandState: true,
+    });
+    await f.publish();
+    await f.backend.attach();
+    await assert.rejects(
+      f.backend.command("send", { projectId: "p", threadId: "t", text: "once", requestId }),
+      (error) => {
+        assert.equal(error.submissionUnknown, true);
+        assert.deepEqual(
+          error.outcome?.operation,
+          ["matching", "logical-core-changed"].includes(scenario) ? operation : undefined,
+        );
+        return true;
+      },
+    );
+    assert.equal(f.calls.filter((call) => call.method === "command").length, 1);
+    assert.equal(f.calls.filter((call) => call.method === "snapshot").length, 1);
+  });
+}
 
 test("an unknown command is never replayed when its observer reconnects", async (t) => {
   const f = await fixture(t);

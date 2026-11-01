@@ -43,6 +43,11 @@ Integration tests that embed Runtime inside the Cargo test process need the matc
 
 Native Side acceptance also starts an MCP fixture at runtime through `CARGO_MANIFEST_DIR`. The image must copy that file to the corresponding source path. The offline contract extracts these paths from the test source and checks the image's COPY mappings; the Docker build also checks readability. Successful compilation does not establish delivery of runtime fixtures.
 
+
+Snapshot IPC registration and window ownership rechecks belong to `app/src/core/snapshots/host.cjs`. Health checks count owned source, excluding duplicate generated bundles under `snapshots/build/`. GUI type checking builds the native snapshot modules first for a clean checkout. Cloud upload regression tests bundle the real Composer upload and state modules, retaining the assertion that accepted receipts survive a partial batch failure.
+
+Diagram file previews dynamically import the shared message diagram component, keeping Mermaid outside initial static dependencies. The total budget includes the measured PDF preview and isolated worker sizes plus 5%. Bounded budgets cover the new PDF and diagram lazy chunks, redistributed KaTeX, snapshot desktop contracts, and the shared Remote entry. The existing `index.html` initial limit and all forbidden initial modules remain enforced. PRs must identify the source of budget changes for review.
+
 ## Repeatable faults, local checks, and cache acceptance
 
 Select relevant entry points from the repository root:
@@ -57,6 +62,7 @@ cargo test --locked -p areal-engine --test model_input_budget
 node --test clients/gui/scripts/desktop-projection-transport.test.mjs
 pnpm --dir clients/gui test:navigation-cache
 pnpm --dir clients/gui test:unit renderer/src/readingViews.test.ts
+pnpm --dir clients/gui test:conversation-reading
 ```
 
 `scripts/ci-scope.py` owns the plan shared by local checks and CI. `check-changed` resolves merge-base once and unions staged, unstaged, and untracked paths, including both rename sides and changes cancelled by partial staging. The plan records commands, dependencies, capabilities, platforms, and manifest child-test sets, bound to base/source/head and input digests. Shared Rust, schema, lockfile, build, and CI changes broaden selection; unknown code selects conservatively. An unavailable comparison base cannot pass.
@@ -96,6 +102,8 @@ This native test compiles under `native-tests` (which includes `test-support`) a
 
 `model_input_budget` measures fixed instructions, environment text, and each tool's name/description/parameters from actual outbound solve requests under default Desktop configuration. The initial profile excludes Runtime/plugins; dynamic user content and random paths stay outside its fixed baseline. Changes report components and tool names and require manual baseline review without changing production inputs or limits.
 
+`test:conversation-reading` combines production Messages, the Desktop history window, and deterministic Core RPC fixtures. It checks evicted pages, leaving and returning, reobservation, live deltas, width changes, and Renderer reload. This short path is registered as a regular ciSmoke. It does not launch Core or Electron and does not qualify providers, packages, or physical input. The bounded-history-client behavior checks cover shared-view protection, bounded scans, cancellation, and budget failures.
+
 `test:navigation-cache` uses the production React App, real Chrome, and fixture PlatformServices to count derivations for unrelated UI actions, check name/unread/running/order/new-snapshot freshness, and save source identity and screenshots. It does not start Core/Electron or establish package or perceived-latency acceptance. `readingViews` unit tests cover the 32-entry memory bound, recency eviction, unavailable storage, and semantic-anchor reload; real theme/layout continuity needs Renderer scenarios. The legacy `conversation-flow` scenario times out at `.tool-summary-row .tool-failed`; production collapsed failure state is expressed by `ActivityRowStatus` with `data-tone="failed"`. That markup is a separate boundary from the `readingViews` capacity change. This effort does not change the legacy runner, and the complete conversation flow is not counted as passing.
 
 ## Local verification artifacts and startup diagnostics
@@ -126,6 +134,22 @@ The output directory must not already exist. The command checks the build receip
 The history-navigation runner calls this entry point automatically and serves only its private static copy. `AREAL_RENDERER_DIST` still requires a receipt matching the current sources. `renderer/test-fixtures/history-navigation.ts` implements the production `DesktopBridge` and participates in Renderer typechecking; removing `onPreviewEvent` or `onUpdate` fails before browser startup. The runner builds the fixture with the existing Vite toolchain and requires its input digest to match the Renderer, retaining the real desktop adapter and projection reader. Assertions cover mouse and keyboard history navigation, cold-project switching, preservation of UNKNOWN requests, and zero submissions. The boundary is Chrome + Renderer + a bridge fixture, excluding Electron/Core.
 
 The task catalog smoke fixture lives in `clients/gui/renderer/test-fixtures/scheduled-workspace.tsx`, is typechecked with Renderer, and is loaded directly by the existing browser runner. It checks new intents routed through `onStartDraft`, project defaults, explicit reconciliation and observed receipts for legacy requests. Only the IPC boundary is replaced by the fixture.
+
+CI smoke execution and the shared source Electron application fixture run this doctor before starting product scenarios, preserving a separate startup report for each attempt. CI transfers the Core build receipt with its binaries. A failed identity/probe check blocks scenario execution; it is not a passing scenario. Review evidence records the revision and relevant file hashes; unrelated HEAD movement alone does not invalidate those hashes.
+
+`pnpm --dir clients/gui verify` runs `pnpm health` before contracts and tests to check production source against the reviewed health budgets. `test:health` tests the checker itself and does not replace this gate. A health failure makes `verify` exit nonzero. The existing CI plan still owns the complete affected checks, bundle budgets, and platform acceptance.
+
+## Acceptance case: three images in a folder
+
+Use an isolated desktop instance, a vision-capable model and a native folder outside the workspace. Put three different PNG/JPEG images in the folder, with filenames that do not reveal their contents. Drop or paste the folder reference into the Composer and send “What is in each of the three images in this folder?”.
+
+Success requires accepting and listing the directory and reading all three source images. Read operations follow the current approval mode, with no added write or network access. Actual model requests must contain the three corresponding image payloads, and the final answer must describe each image correctly. Filenames, a successful copy, OCR text or a scripted local model’s fixed answer do not establish visual recognition. In a later Turn, read the same external directory without additional permissions to verify that the operation grant did not widen the base Scope.
+
+Run `pnpm --dir clients/gui test:composer-folder-vision` with a matching `AREAL_CORE_BIN` and built GUI for repeatable deterministic desktop coverage. It reuses the Composer runner, creates three different PNGs with opaque filenames outside the workspace, drops the directory, approves four operations once, and checks real Runtime reads, media projection, the Core image payload corresponding to each original image, and rejection of a later read without additional permission. The native project-picker result is injected; directory drag uses synthetic CDP events, and only the model boundary is replaced by a local deterministic server.
+
+The evidence directory contains `folder-vision-evidence.json` with directory, Runtime, and model-payload stages and `visualRecognition: not_run`, alongside `manifest.json`, `model-requests.json`, `authoritative-history.json`, and approval screenshots. `test:composer-folder-vision-contract` verifies that missing or duplicated images, failed tools, and widened permissions reject the evidence. Passing these checks proves the directory-to-model-input path. Real recognition still requires an authorized visual model and comparison of every final description against its image; deterministic output cannot count as recognition acceptance.
+
+Tool-contract regressions are `cargo test -p areal-engine --lib read_tools_request_only_additional_read_roots` and `cargo test -p areal-engine --lib read_permission_admission_rejects_write_and_network_fields`. Real text reading and search with zero writes and denied networking use `AREAL_TEST_BIN_DIR=/absolute/verified/bundle cargo test -p areal-engine --features native-tests --lib read_helpers_work_without_write_or_network_permissions`. These checks do not replace the real desktop media path or real visual-model acceptance. Preserve source and binary identity, approval Scopes, tool-media and model-image digests, and the final answer. Keep credentials out of evidence.
 
 ## GUI test registry and platform qualification
 
@@ -205,11 +229,17 @@ Composer and queue smoke share navigation and narrow-window steps in `clients/gu
 
 Composer IME setup clears the editor with native select-all and Backspace, then requires the DOM, Lexical state, and stored draft to be empty. Playwright `fill("")` can select DOM content without synchronizing the editor's internal selection, so it is unsuitable for this setup. Candidate input, commit, and cancellation remain covered through native Chromium IME events.
 
+Lost-send-response acceptance waits for the current request's receipt and message, rather than the previous Turn's completed status. Barriers preserve concurrent reconciliation and submission, and the same mounted editor must settle its text, attachments, and stored draft consistently; a transient empty editor does not establish recovery. Reading recovery first confirms history readiness, focus, and actual reading input, then establishes the target geometry and checks the saved item, block, and offset.
+
+Reading cancellation acceptance holds the old restore request with a one-shot barrier, confirms the user's newer retain intent, then releases and waits for the original ensureAnchor cancellation receipt. Wheel-triggered history prepends may change absolute `scrollTop`; acceptance compares the same visible item, block, text, and viewport offset. A single RPC's pending count or absolute scroll coordinate cannot establish completion of the whole restore operation.
+
 Composer smoke closes a completed Side reading view with its tab's Delete key and waits for the main editor to become visible, covering full view in narrow windows and split view in wide windows. The narrow-window panel button switches views. Before applying configuration after a cold reopen, model-selection smoke reads the real `serviceStatus` and waits for tasks, operations, project startup, and configuration updates to settle, then submits once.
 
 Slash keyboard acceptance waits for the Core catalog refresh triggered by this opening, then requires the intended option selected by ArrowDown and the editor's `aria-activedescendant` to agree before pressing Enter. The previous option's selected state cannot prove that keyboard navigation has completed.
 
 Native tool smoke drains all HTTP fixture request threads before assertions. Solve requests require an equal number of completed audits. A single auxiliary naming attempt may be cancelled before HTTP arrival, in which case only an interrupted audit without an HTTP status is accepted. Missing audits for observed requests, duplicate naming, unobserved completion, and naming with tools fail acceptance.
+
+`node --test clients/gui/scripts/browser-diagnostics-contract.test.cjs` checks native-close ownership and failure boundaries, including release before dispose/Profile quiesce, input and recording convergence, replacement Pages, isolated-action timeout, and late destruction. Controlled events test the waits; they do not prove real DOM, window focus, or SELECT popup behavior. Isolated Electron acceptance must check an active open SELECT, absence of window focus, a real `destroyed` event, and natural exit. Keep the existing 10-second native-close and 20-second runner cleanup deadlines; a forced kill remains a failure.
 
 Plugin connection regressions freeze an old catalog scan with one-shot barriers and require newly published generations to survive it. A paired test disables a plugin while its handshake is held, requiring disable to complete and preventing publication. Failed native workgroup cases retain their temporary directory and print the specific case, model usage, and authoritative tool receipts, separating budget errors from earlier failures.
 

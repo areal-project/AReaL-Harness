@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force \
     && mkdir -p /data && chown 1000:1000 /data && chmod 0700 /data
-COPY src/cli.mjs src/config.mjs src/server.mjs src/relay.mjs src/store.mjs src/push.mjs ./src/
+COPY src/ ./src/
 COPY deploy/healthcheck.mjs ./deploy/healthcheck.mjs
 COPY deploy/licenses/ ./licenses/
 USER 1000:1000

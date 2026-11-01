@@ -18,6 +18,7 @@ const {
 } = require("@areal/browser-automation/electron");
 const { invalidateActionObservation } = require("../preview/observation-state.cjs");
 const { browserCommandMutates } = require("./command-policy.cjs");
+const { loadNavigationDocument } = require("../browser-navigation.cjs");
 const DOWNLOAD_INTENT_MS = 30000;
 
 class NativeCommandExecution {
@@ -137,16 +138,22 @@ class NativeCommandExecution {
         signal: controller.signal,
         restoreVisible,
       });
+      if (page.viewportScale !== undefined) {
+        c.disableDeviceEmulation();
+        page.viewportScale = undefined;
+        page.emulationKey = undefined;
+      }
     };
     /** @param {string} url */
-    const navigate = (url) => {
+    const navigate = async (url) => {
       live();
       const targetUrl = url === "about:blank" ? url : webUrl(url);
       if (targetUrl !== "about:blank" && !page.networkPolicy.allowApprovedNavigation(targetUrl))
         throw new Error("not_sent");
+      page.document?.revoke();
       page.approvedNavigation = targetUrl;
       action.dispatched = true;
-      return race(c.loadURL(targetUrl));
+      await loadNavigationDocument(c, targetUrl, stopped);
     };
     /** @type {import("./model.js").ControlledView} */
     const view = {
@@ -164,6 +171,7 @@ class NativeCommandExecution {
         canGoForward: () => c.navigationHistory.canGoForward(),
         goBack: () => {
           live();
+          page.document?.revoke();
           page.approvedNavigation =
             c.navigationHistory.getAllEntries()[c.navigationHistory.getActiveIndex() - 1]?.url;
           action.dispatched = true;
@@ -171,6 +179,7 @@ class NativeCommandExecution {
         },
         goForward: () => {
           live();
+          page.document?.revoke();
           page.approvedNavigation =
             c.navigationHistory.getAllEntries()[c.navigationHistory.getActiveIndex() + 1]?.url;
           action.dispatched = true;
@@ -216,6 +225,13 @@ class NativeCommandExecution {
       clearTimeout(timeout);
       surface?.release();
       page.commandSurface = false;
+      if (
+        this.workspace.pageStillOwned(page) &&
+        page.view?.webContents === c &&
+        !c.isDestroyed() &&
+        page.presentationBounds
+      )
+        this.presentation.layout(page, page.presentationBounds);
       if (page.activeAction === action) page.activeAction = null;
       if (
         this.workspace.pageStillOwned(page) &&
@@ -247,23 +263,16 @@ class NativeCommandExecution {
           ["downloadPath", "waitForEvent", "fileChooserSetFiles"].includes(command.action.name)
         );
       if (pageMethod) {
-        await acquireSurface();
+        if (command.method !== "navigate") await acquireSurface();
         await race(this.assertCommandPrivacy(page, send));
       }
       if (command.method === "browserViewportSet" || command.method === "browserViewportReset") {
         action.dispatched = true;
-        if (command.method === "browserViewportSet") {
-          page.commandViewport = { width: command.width, height: command.height };
-          c.setZoomFactor(1);
-          await send("Emulation.setDeviceMetricsOverride", {
-            ...page.commandViewport,
-            deviceScaleFactor: 1,
-            mobile: false,
-          });
-        } else {
-          page.commandViewport = null;
-          await send("Emulation.clearDeviceMetricsOverride");
-        }
+        page.commandViewport =
+          command.method === "browserViewportSet"
+            ? { width: command.width, height: command.height }
+            : null;
+        this.presentation.layout(page, page.presentationBounds ?? page.view.getBounds());
         page.viewportRevision++;
         invalidateActionObservation(page);
         return done({ ok: true, value: { viewport: page.commandViewport } });

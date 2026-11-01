@@ -4,7 +4,7 @@ import { ConversationStatusCard } from "../ConversationStatusCard.js";
 import { Button } from "../components/ui/button.js";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover.js";
 import { TaskSummaryIcon } from "../homeChromeIcons.js";
-import type { Action, Data } from "../services.js";
+import type { Action, Data, PlatformServices } from "../services.js";
 
 export function TaskResourcesPopover({
   project,
@@ -21,7 +21,9 @@ export function TaskResourcesPopover({
   onReadAgents,
   onAddSource,
   onLink,
+  fileOpen,
 }: {
+  fileOpen?: PlatformServices["fileOpen"];
   onAddSource?: () => void;
   onLink?: (url: string) => void;
   onReadAgents?: (restore: () => void) => void;
@@ -90,6 +92,7 @@ export function TaskResourcesPopover({
       >
         <Activity mode={open ? "visible" : "hidden"}>
           <ConversationStatusCard
+            fileOpen={fileOpen}
             onLink={onLink}
             onAddSource={
               onAddSource
