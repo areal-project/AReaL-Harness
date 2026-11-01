@@ -109,6 +109,7 @@ function fixture({
   let writes = 0,
     release;
   const backend = {
+    host: { sourceId: "fixture", resolve: () => ({ sourceId: "fixture" }) },
     projects: new Map([["p", project]]),
     starting: new Set(),
     hasWork: () => busy,
@@ -122,7 +123,9 @@ function fixture({
   };
   const service = new AppProviders(backend, {});
   service.config.value = structuredClone(original);
+  backend.providers = service;
   service.config.current = async () => service.config.value;
+  service.config.refreshCredentials = async () => {};
   service.config.execute = async (_operation, request) => {
     calls.push(["write", structuredClone(request)]);
     writes++;

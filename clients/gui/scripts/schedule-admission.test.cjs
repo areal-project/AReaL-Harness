@@ -1159,6 +1159,7 @@ test("shared schedule approval replies retain exact pending interaction and work
 test("legacy TaskDraft retains its remembered subscription model while discovery is pending", async (t) => {
   const f = await fixture(t);
   const { AppProviders } = require("../app/src/core/providers.cjs");
+  f.backend.host = { sourceId: "fixture", resolve: () => ({ sourceId: "fixture" }) };
   const providers = new AppProviders(f.backend, {});
   providers.config.value = { data: [], revision: "fixture" };
   providers.subscription = {

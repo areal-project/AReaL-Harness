@@ -84,7 +84,7 @@ async function previewRead(backend, saved, limit, sourceThreadId) {
     else pending.active++;
     try {
       guard();
-      const dataPath = join(backend.home, saved.id, "state");
+      const dataPath = backend.host.resolve(saved.id).dataDir;
       const [workspace, dataDir] = await Promise.all([
         realpath(saved.root),
         canonicalPending(dataPath),

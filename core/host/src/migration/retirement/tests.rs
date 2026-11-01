@@ -1,5 +1,127 @@
 use super::*;
 
+#[test]
+fn source_credential_metadata_survives_retirement_and_discovers_new_slots() {
+    let fixture = Fixture::new(&[
+        ("provider-credentials.json", br#"{"keys":{"AREAL_CREDENTIAL_old":"cipher"},"migrated":["/old/config"]}"#),
+        ("providers.json", br#"{"data":[{"id":"legacy","secret":"cipher","name":"Legacy"},{"id":"public","secret":""}],"retired":["removed"]}"#),
+    ]);
+    let view = || {
+        fixture
+            .migration
+            .source(fixture.source.clone(), &[])
+            .unwrap()["credentials"]
+            .clone()
+    };
+    let before = view();
+    assert_eq!(
+        before["references"],
+        json!(["AREAL_CREDENTIAL_legacy", "AREAL_CREDENTIAL_old"])
+    );
+    assert_eq!(before["migratedConfigPaths"], json!(["/old/config"]));
+    assert_eq!(
+        before["legacyProviders"]["data"][0]["apiKeyEnv"],
+        "AREAL_CREDENTIAL_legacy"
+    );
+    assert!(before["legacyProviders"]["data"][0].get("secret").is_none());
+    assert!(
+        before["legacyProviders"]["data"][1]
+            .get("apiKeyEnv")
+            .is_none()
+    );
+    fixture.finish(&fixture.migration);
+    assert_eq!(view(), before);
+    let source_id = fixture
+        .migration
+        .read(&fixture.migration_id)
+        .unwrap()
+        .source_id;
+    let slot = vault::Slot::ProviderCredential {
+        source_id: source_id.clone(),
+        reference: "AREAL_CREDENTIAL_new".into(),
+    };
+    for (revision, value) in [(0, json!("new-secret")), (1, Value::Null)] {
+        fixture
+            .migration
+            .vault
+            .dispatch(
+                "vault.replace",
+                json!({
+                    "requestId":uuid::Uuid::new_v4().to_string(), "expectedGeneration":"generation",
+                    "slot":slot, "expectedRevision":revision, "value":value
+                }),
+                "generation",
+                &fixture.migration,
+            )
+            .unwrap();
+    }
+    assert_eq!(
+        view()["references"],
+        json!([
+            "AREAL_CREDENTIAL_legacy",
+            "AREAL_CREDENTIAL_new",
+            "AREAL_CREDENTIAL_old"
+        ])
+    );
+    let transport = vault::Slot::SubscriptionTransport { source_id };
+    let project = fixture.migration.published().unwrap().remove(0);
+    for (revision, value, expected) in [
+        (
+            0,
+            json!({"token":"transport-token","port":1234}),
+            Some("transport-token"),
+        ),
+        (1, Value::Null, None),
+    ] {
+        fixture
+            .migration
+            .vault
+            .dispatch(
+                "vault.replace",
+                json!({
+                    "requestId":uuid::Uuid::new_v4().to_string(), "expectedGeneration":"generation",
+                    "slot":transport, "expectedRevision":revision, "value":value
+                }),
+                "generation",
+                &fixture.migration,
+            )
+            .unwrap();
+        assert_eq!(
+            fixture
+                .migration
+                .credential(&project, "AREAL_CREDENTIAL_areal_openai")
+                .unwrap()
+                .as_deref(),
+            expected
+        );
+    }
+    let record = fixture.migration.read(&fixture.migration_id).unwrap();
+    let backup = record
+        .originals
+        .iter()
+        .find(|f| f.relative_name == "providers.json")
+        .unwrap();
+    let Original::Bytes { backup_id, .. } = &backup.original else {
+        panic!("missing backup")
+    };
+    atomic_bytes(
+        &fixture
+            .migration
+            .directory(&fixture.migration_id)
+            .unwrap()
+            .join("backups")
+            .join(format!("{backup_id}.bytes")),
+        br#"{"data":[]}"#,
+    )
+    .unwrap();
+    assert!(
+        fixture
+            .migration
+            .source(fixture.source.clone(), &[])
+            .is_err()
+    );
+}
+
 struct Fixture {
     _root: tempfile::TempDir,
     migration: Migration,

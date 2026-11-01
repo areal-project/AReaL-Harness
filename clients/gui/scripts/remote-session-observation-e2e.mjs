@@ -1,3 +1,4 @@
+import { attachRemoteHostFixture } from "./remote-host-fixture.cjs";
 import { makeTempDir } from "./support/temp.mjs";
 import { selectRemoteTransport, requireBrowserTransport } from "./remote-conformance-transport.mjs";
 const transport = selectRemoteTransport();
@@ -765,7 +766,8 @@ try {
     encryptString: (value) => Buffer.from(value),
     decryptString: (value) => value.toString("utf8"),
   };
-  remote = service.remote = new RemoteControl(service, encryptionFixture);
+  remote = service.remote = new RemoteControl(service);
+  attachRemoteHostFixture(remote, encryptionFixture);
   await remote.init();
   await remote.control({ operation: "enableDirect" });
   const realCrypto = remote.crypto;

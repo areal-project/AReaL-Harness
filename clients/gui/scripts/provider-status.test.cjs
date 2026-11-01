@@ -15,7 +15,7 @@ test("optional desktop audit preserves routing presence without persisting opaqu
   });
   const home = await mkdtemp(join(tmpdir(), "areal-provider-audit-"));
   t.after(() => rm(home, { recursive: true, force: true }));
-  const providers = new AppProviders({ home }, {});
+  const providers = new AppProviders({ home, host: { sourceId: "fixture" } }, {});
   providers.transport = { port: 0 };
   const service = await providers.openai();
   t.after(() => service.close());
@@ -43,7 +43,7 @@ test("optional desktop audit preserves routing presence without persisting opaqu
   assert(!text.includes("fixture-secret"));
   assert.equal((await stat(filename)).mode & 0o077, 0);
   delete process.env.AREAL_CORE_PROVIDER_AUDIT;
-  const disabled = new AppProviders({ home }, {});
+  const disabled = new AppProviders({ home, host: { sourceId: "fixture" } }, {});
   disabled.transport = { port: 0 };
   const quiet = await disabled.openai();
   t.after(() => quiet.close());
@@ -63,6 +63,7 @@ function fixture() {
     reads = [],
     tracked = [];
   const backend = {
+    host: { sourceId: "fixture", resolve: () => ({ sourceId: "fixture" }) },
     submit: async (project, method, params) => {
       applications.push({ projectId: project.id, method, params });
       if (method === "areal/provider/upsert")

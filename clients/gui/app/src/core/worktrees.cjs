@@ -220,8 +220,8 @@ class CoreWorktrees {
     if (request.requestId && !(name === "workspace" && request.operation?.startsWith("worktree"))) {
       for (const owner of this.owners(logicalId)) {
         const live =
-          this.backend.projects.get(owner.id) ??
-          (await this.backend.loadProjectJournal?.(owner.id));
+          (await this.backend.loadProjectJournal?.(owner.id)) ??
+          this.backend.projects.get(owner.id);
         if (
           live?.pending?.some((entry) => entry.params?.requestId === request.requestId) ||
           live?.outcomes?.[request.requestId]
@@ -493,6 +493,10 @@ class CoreWorktrees {
           { id, root, logicalProjectId: logicalProject.id, worktreeRequestId: requestId },
         ];
         await b.save("projects.json", saved);
+        await b.host.register(
+          require("./gui-host-projects.cjs").requestIdFor(`${b.host.sourceId}:register:${id}`),
+          saved[saved.length - 1],
+        );
         b.saved = saved;
       });
     b.projectWrites = registration.catch(() => {});
@@ -884,6 +888,7 @@ class CoreWorktrees {
   }
   /** @param {WorktreeOperation} value @param {Project|null} execution */
   async deletionBlockers(value, execution) {
+    if (execution) await this.backend.loadProjectJournal(execution.id);
     const blockers = [];
     if (
       this.active.has(value.requestId) ||

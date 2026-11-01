@@ -40,6 +40,28 @@ async function fixture(t, entries, read) {
       },
     },
   };
+  const journals = new Map();
+  const journalFor = (id) => {
+    let journal = journals.get(id);
+    if (!journal) {
+      const owner = id === project.id ? project : backend.projects.get(id);
+      let snapshot = structuredClone({
+        version: 1,
+        pending: owner.pending,
+        outcomes: owner.outcomes,
+      });
+      journal = {
+        read: async () => ({ snapshot: structuredClone(snapshot) }),
+        change: async (mutate) => {
+          snapshot = structuredClone(await mutate(structuredClone(snapshot)));
+          return { state: "completed" };
+        },
+      };
+      journals.set(id, journal);
+    }
+    return journal;
+  };
+  backend.host = { journal: journalFor };
   t.after(async () => {
     backend.closing = true;
     clearTimeout(project.reconciliation?.timer);
@@ -286,14 +308,17 @@ test("a proven rejection is persisted before pending is removed and never resubm
     version: 1,
     binding: { ...binding, coreInstanceId: randomUUID() },
   };
-  const save = f.backend.save.bind(f.backend);
-  f.backend.save = async (path, value) => {
-    if (path.endsWith("-outcomes.json")) throw new Error("fixture: outcome disk unavailable");
-    return save(path, value);
+  const journal = f.backend.host.journal(f.project.id);
+  const change = journal.change;
+  journal.change = async (mutate) => {
+    const { snapshot } = await journal.read();
+    const next = mutate(snapshot);
+    if (Object.keys(next.outcomes).length) throw new Error("fixture: outcome disk unavailable");
+    return change(mutate);
   };
   await f.backend.reconcile(f.project);
   assert.deepEqual(f.project.pending, [item]);
-  f.backend.save = save;
+  journal.change = change;
   await f.backend.reconcile(f.project);
   assert.deepEqual(f.project.pending, []);
   assert.equal(f.project.outcomes[item.params.requestId].accepted, false);
@@ -333,7 +358,7 @@ test("a rebuilt journal retains only this project's live submission and settles 
   await started.promise;
   const original = f.project.pending[0];
   const other = entry("areal/queue/pause", { threadId: "other-thread" });
-  f.project.pending = structuredClone([original, other]);
+  await f.backend.changePending(f.project, () => structuredClone([original, other]));
   const anotherProject = {
     ...f.project,
     id: "another-project",
@@ -399,7 +424,7 @@ test("a journal rebuilt while reading a receipt settles only the original pendin
   const other = entry("areal/task/update", { taskId: "other-task", expectedRevision: 1 });
   const f = await fixture(t, [item], async (method) => {
     if (method === "areal/request/read") {
-      f.project.pending = structuredClone([item, other]);
+      await f.backend.changePending(f.project, () => structuredClone([item, other]));
       return { data: [receipt(item)] };
     }
     assert.equal(method, "areal/task/read");
@@ -450,7 +475,7 @@ test("a rebuilt Remote control journal preserves the original interaction and op
     operationId: randomUUID(),
     remote: { ...remote, commandId: "other-command" },
   };
-  f.project.pending = structuredClone([original, other]);
+  await f.backend.changePending(f.project, () => structuredClone([original, other]));
   try {
     const recovered = await f.backend.readRemoteRecord(f.project, remote);
     assert.equal(recovered.params.requestId, "interaction-request");

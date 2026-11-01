@@ -61,8 +61,14 @@ function snapshotProject(backend, project, taskHistoryOwners) {
     outcomes: live?.outcomes ?? {},
     models: live ? backend.providers.catalog(live.models ?? [], live) : [],
     profiles: live?.profiles ?? [],
-    lastAcceptedModel: backend.providers.lastAcceptedModel ?? null,
-    defaultProfile: live?.resourceProfile ?? backend.defaultProfile ?? null,
+    lastAcceptedModel:
+      live && backend.providers.manages(live)
+        ? (backend.providers.lastAcceptedModel ?? null)
+        : null,
+    defaultProfile:
+      live && backend.providers.manages(live)
+        ? (live.resourceProfile ?? backend.defaultProfile ?? null)
+        : null,
     configurations: live?.configurations ?? {},
     summaries: [
       ...(live?.summaries ?? []),

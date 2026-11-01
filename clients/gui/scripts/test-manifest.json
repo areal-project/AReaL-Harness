@@ -1,5 +1,13 @@
 [
   {
+    "script": "test:shared-host-consumers",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["service", "provider", "lifecycle"],
+    "requires": ["core-binary", "native-runtime"],
+    "notes": "Real isolated Host/Core startup with dummy environment credentials and CLI/GUI ownership."
+  },
+  {
     "script": "test:worktree",
     "layer": "contract",
     "platforms": ["darwin", "linux"],
@@ -685,7 +693,7 @@
     "script": "test:regressions",
     "layer": "contract",
     "platforms": ["darwin", "linux"],
-    "areas": ["regression", "bundle", "design"],
+    "areas": ["regression", "bundle", "design", "provider", "desktop"],
     "requires": ["python3"]
   },
   {

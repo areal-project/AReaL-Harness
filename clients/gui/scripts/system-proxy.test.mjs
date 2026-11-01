@@ -134,8 +134,7 @@ function responsesProviders(t, endpoint, environment = {}) {
     { hooks: { environment: () => environment } },
     { decryptString: (bytes) => bytes.toString() },
   );
-  providers.config.vault.keys.AREAL_CREDENTIAL_fixture =
-    Buffer.from(responsesKey).toString("base64");
+  providers.config.vault.keys.AREAL_CREDENTIAL_fixture = responsesKey;
   providers.config.value = {
     data: [
       {

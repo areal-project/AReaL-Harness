@@ -1,6 +1,6 @@
 use crate::{
     CAPABILITIES, HostIdentity, HostStatus, LaunchInputs, OpenResult, ProjectRegistration,
-    ProjectSource, ProjectStatus, StopStrategy, VERSION, launch,
+    ProjectStatus, StopStrategy, VERSION, launch,
     wire::{self, error},
 };
 use anyhow::{Context, Result, ensure};
@@ -513,13 +513,30 @@ impl Host {
                 &self.identity.generation,
                 &self.migration,
             ),
-            "remote.read" | "remote.replace" | "remote.acquire" => self.remote.dispatch(
-                method,
-                params,
-                &connection.id,
-                &self.identity.generation,
-                &self.migration,
-            ),
+            "remote.read" | "remote.replace" | "remote.acquire" => {
+                let projects = if method == "remote.read" {
+                    Vec::new()
+                } else {
+                    let source = params["sourceId"]
+                        .as_str()
+                        .ok_or_else(|| error("invalidRequest", "sourceId is required"))?;
+                    let current: Vec<_> = self
+                        .slots
+                        .borrow()
+                        .values()
+                        .map(|slot| slot.registration.clone())
+                        .collect();
+                    self.migration.remote_projects(source, &current)?
+                };
+                self.remote.dispatch(
+                    method,
+                    params,
+                    &connection.id,
+                    &self.identity.generation,
+                    &self.migration,
+                    &projects,
+                )
+            }
             _ => Err(error("methodNotFound", "unknown Host client-state method")),
         }
     }
@@ -1760,7 +1777,7 @@ fn aggregate(receipt: &Value) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Client;
+    use crate::{Client, ProjectSource};
 
     #[tokio::test(flavor = "current_thread")]
     async fn unpublished_cli_import_blocks_journal_read_prepare_and_bound_commit() {

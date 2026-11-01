@@ -8,7 +8,6 @@ const { isDeepStrictEqual } = require("node:util");
 const {
   record,
   strings,
-  stringMap,
   modelConfig,
   parameters,
   modelSnapshot,
@@ -30,15 +29,15 @@ function credentialValue(value, { privateKey = false } = {}) {
   return value.trim();
 }
 
-// Core 拥有配置和版本；此处只保存加密凭据与迁移回执，不可变凭据引用保护失败的 CAS。
 class ModelConfiguration {
-  /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend @param {import('electron').SafeStorage} [encryption] */
-  constructor(backend, encryption) {
+  /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend @param {InstanceType<typeof import('./host-vault.cjs').HostVault>} hostVault */
+  constructor(backend, hostVault) {
     this.backend = backend;
-    this.encryption = encryption;
+    this.hostVault = hostVault;
     /** @type {{keys:Record<string,string>,migrated:string[]}} */
     this.vault = { keys: {}, migrated: [] };
-    /** @type {{data:Array<{id:string,name:string,baseUrl:string,protocol:string,enabled:boolean,models:import('./provider-contract.cjs').ModelConfig[],parameters:import('./provider-contract.cjs').ModelParameters,secret?:string}>,retired?:string[]}|undefined} */
+    /** @type {Set<string>} */ this.references = new Set();
+    /** @type {{data:Array<{id:string,name:string,baseUrl:string,protocol:string,enabled:boolean,models:import('./provider-contract.cjs').ModelConfig[],parameters:import('./provider-contract.cjs').ModelParameters,apiKeyEnv?:string}>,retired?:string[]}|undefined} */
     this.legacy = undefined;
     /** @type {import('./provider-contract.cjs').ModelSnapshot|undefined} */
     this.value = undefined;
@@ -46,23 +45,57 @@ class ModelConfiguration {
     this.reading = null;
   }
   async init() {
+    const metadata = this.backend.host.state.credentials;
+    if (!metadata || !strings(metadata.references) || !strings(metadata.migratedConfigPaths))
+      throw new Error("Host 凭据来源元数据无效");
+    this.vault.migrated = [...metadata.migratedConfigPaths];
+    if (metadata.legacyProviders) this.legacy = legacyProviders(metadata.legacyProviders);
     try {
-      this.vault = credentialVault(
-        JSON.parse(await readFile(join(this.backend.home, "provider-credentials.json"), "utf8")),
+      const paths = JSON.parse(
+        await readFile(join(this.backend.home, "model-config-migrations.json"), "utf8"),
       );
+      if (!strings(paths)) throw new Error("模型配置迁移记录无效");
+      this.vault.migrated = [...new Set([...this.vault.migrated, ...paths])];
     } catch (error) {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
-    try {
-      this.legacy = legacyProviders(
-        JSON.parse(await readFile(join(this.backend.home, "providers.json"), "utf8")),
-      );
-    } catch (error) {
-      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-    }
+    await this.refreshCredentials(metadata.references);
   }
+  /** @param {string[]} [references] */
+  async refreshCredentials(references) {
+    const vault = this.hostVault;
+    const source = this.backend.host;
+    if (!references) {
+      const state = await source.client.sourceState(source.source);
+      if (!state || state.sourceId !== source.sourceId) throw new Error("Host 凭据来源已变化");
+      source.state = state;
+      references = state.credentials.references;
+    }
+    const names = references ?? source.state.credentials.references;
+    if (!strings(names)) throw new Error("Host 凭据来源元数据无效");
+    const keys = Object.fromEntries(
+      await Promise.all(
+        names.map(async (reference) => {
+          const current = await vault.read({
+            kind: "providerCredential",
+            sourceId: source.sourceId,
+            reference,
+          });
+          if (current.value !== null && typeof current.value !== "string")
+            throw new Error("Host 供应商凭据记录无效");
+          return [reference, current.value];
+        }),
+      ),
+    );
+    this.references = new Set(names);
+    this.vault.keys = Object.fromEntries(
+      Object.entries(keys).filter(([, value]) => value !== null),
+    );
+  }
+
   /** @param {'read'|'write'} operation @param {import('./provider-contract.cjs').ModelUpdate} [request] */
   async execute(operation, request) {
+    await this.refreshCredentials();
     const args = ["config", "models", operation];
     if (this.backend.config) args.push("--config", this.backend.config);
     for (const reference of Object.keys(this.vault.keys))
@@ -71,7 +104,14 @@ class ModelConfiguration {
     try {
       // 与项目启动使用相同的凭据环境，由 Core 判断就绪状态，输出不含密钥。
       ({ stdout } = await executeCore(this.backend.binary, args, {
-        env: { ...this.backend.hooks.environment(), ...this.environment() },
+        env: {
+          ...Object.fromEntries(
+            Object.entries(this.backend.hooks.environment()).filter(
+              ([name]) => !this.references.has(name),
+            ),
+          ),
+          ...this.environment(),
+        },
         timeout: 15000,
         maxBuffer: 2 * 1024 * 1024,
         input: request ? JSON.stringify(request) : undefined,
@@ -118,7 +158,7 @@ class ModelConfiguration {
     let current = await this.execute("read");
     if (this.legacy && !this.vault.migrated.includes(current.path)) {
       const imported = this.legacy.data.map(
-        ({ id, name, baseUrl: url, protocol, enabled, models, parameters, secret }) => ({
+        ({ id, name, baseUrl: url, protocol, enabled, models, parameters, apiKeyEnv }) => ({
           id,
           name,
           endpoint: url + (protocol === "responses" ? "/responses" : "/chat/completions"),
@@ -126,7 +166,7 @@ class ModelConfiguration {
           enabled,
           models,
           parameters,
-          ...(secret ? { apiKeyEnv: `AREAL_CREDENTIAL_${id}` } : {}),
+          ...(apiKeyEnv ? { apiKeyEnv } : {}),
         }),
       );
       for (const item of imported) {
@@ -136,15 +176,6 @@ class ModelConfiguration {
             `旧供应商与 Core 配置存在同 ID 冲突：${item.id}。请先调整文件中的 ID，再刷新。`,
           );
       }
-      // 保留原文档用于恢复；配置写入成功但回执中断后，重试不得覆盖已保存密钥。
-      for (const item of this.legacy.data)
-        if (item.secret) {
-          const reference = `AREAL_CREDENTIAL_${item.id}`;
-          if (this.vault.keys[reference] && this.vault.keys[reference] !== item.secret)
-            throw new Error(`旧供应商凭据冲突：${item.id}`);
-          this.vault.keys[reference] = item.secret;
-        }
-      await this.backend.save("provider-credentials.json", this.vault);
       current = await this.execute("write", {
         expectedRevision: current.revision,
         data: [
@@ -154,7 +185,7 @@ class ModelConfiguration {
         defaultModel: current.defaultModel,
       });
       this.vault.migrated.push(current.path);
-      await this.backend.save("provider-credentials.json", this.vault);
+      await this.backend.save("model-config-migrations.json", this.vault.migrated);
     }
     if (this.value === previous) this.value = current;
     return this.value ?? current;
@@ -163,28 +194,27 @@ class ModelConfiguration {
   async credential(value, { privateKey = false } = {}) {
     const secret = credentialValue(value, { privateKey });
     if (!secret) return undefined;
-    if (
-      !this.encryption?.isEncryptionAvailable() ||
-      this.encryption.getSelectedStorageBackend?.() === "basic_text"
-    )
-      throw new Error("系统安全存储不可用，API Key 未保存");
     const reference = `AREAL_CREDENTIAL_${randomUUID().replaceAll("-", "")}`;
-    this.vault.keys[reference] = this.encryption.encryptString(secret).toString("base64");
-    await this.backend.save("provider-credentials.json", this.vault);
+    await this.hostVault.replace(
+      {
+        kind: "providerCredential",
+        sourceId: this.backend.host.sourceId,
+        reference,
+      },
+      0,
+      secret,
+    );
+    this.references.add(reference);
+    this.vault.keys[reference] = secret;
     return reference;
   }
   /** @param {{apiKeyEnv?:string}} item */
   key(item) {
     if (!item?.apiKeyEnv) return "";
-    const encrypted = this.vault.keys[item?.apiKeyEnv];
-    if (!encrypted) return process.env[item?.apiKeyEnv] ?? "";
-    try {
-      if (!this.encryption) throw new Error("系统安全存储不可用");
-      return this.encryption.decryptString(Buffer.from(encrypted, "base64"));
-    } catch {
-      throw new Error("无法读取已保存的 API Key，请解锁系统钥匙串或重新填写密钥");
-    }
+    if (Object.hasOwn(this.vault.keys, item.apiKeyEnv)) return this.vault.keys[item.apiKeyEnv];
+    return this.references.has(item.apiKeyEnv) ? "" : (process.env[item.apiKeyEnv] ?? "");
   }
+
   /** @param {import('./provider-contract.cjs').ModelSnapshot} snapshot */
   credentialsFor(snapshot) {
     const references = new Set(
@@ -220,35 +250,33 @@ class ModelConfiguration {
         protocol: item.protocol === "chat-completions" ? "chatCompletions" : item.protocol,
         baseUrl: baseUrl(item.endpoint),
       })),
-      projects: [...this.backend.projects.values()].map((project) => ({
-        projectId: project.id,
-        root: project.root,
-        connected: !!project.client?.ready,
-        applied:
-          !!project.client?.ready &&
-          !project.providerError &&
-          !this.backend.providers?.pendingApplications?.has(project.id) &&
-          project.providerRevision === value.revision,
-        error: project.providerError ?? null,
-      })),
-      pendingApply: [...this.backend.projects.values()].some(
-        (project) =>
-          project.service &&
-          (project.providerRevision !== value.revision ||
-            project.providerError ||
-            this.backend.providers?.pendingApplications?.has(project.id)),
-      ),
+      projects: [...this.backend.projects.values()]
+        .filter((project) => this.backend.providers.manages(project))
+        .map((project) => ({
+          projectId: project.id,
+          root: project.root,
+          connected: !!project.client?.ready,
+          applied:
+            !!project.client?.ready &&
+            !project.providerError &&
+            !this.backend.providers?.pendingApplications?.has(project.id) &&
+            project.providerRevision === value.revision,
+          error: project.providerError ?? null,
+        })),
+      pendingApply: [...this.backend.projects.values()]
+        .filter((project) => this.backend.providers.manages(project))
+        .some(
+          (project) =>
+            project.service &&
+            (project.providerRevision !== value.revision ||
+              project.providerError ||
+              this.backend.providers?.pendingApplications?.has(project.id)),
+        ),
     };
   }
 }
 module.exports = { ModelConfiguration, protocolToCore, baseUrl, credentialValue };
 
-/** @param {unknown} value @returns {{keys:Record<string,string>,migrated:string[]}} */
-function credentialVault(value) {
-  if (!record(value) || !stringMap(value.keys) || !strings(value.migrated))
-    throw new Error("供应商凭据记录无效");
-  return { keys: value.keys, migrated: value.migrated };
-}
 /** @param {unknown} value @returns {NonNullable<ModelConfiguration['legacy']>} */
 function legacyProviders(value) {
   if (
@@ -268,7 +296,7 @@ function legacyProviders(value) {
       !Array.isArray(item.models) ||
       !item.models.every(modelConfig) ||
       !parameters(item.parameters) ||
-      (item.secret !== undefined && typeof item.secret !== "string")
+      (item.apiKeyEnv !== undefined && item.apiKeyEnv !== `AREAL_CREDENTIAL_${item.id}`)
     )
       throw new Error("旧供应商配置无效");
     return {
@@ -279,7 +307,7 @@ function legacyProviders(value) {
       enabled: item.enabled,
       models: item.models,
       parameters: item.parameters,
-      ...(item.secret === undefined ? {} : { secret: item.secret }),
+      ...(item.apiKeyEnv ? { apiKeyEnv: item.apiKeyEnv } : {}),
     };
   });
   return { data, ...(value.retired === undefined ? {} : { retired: value.retired }) };

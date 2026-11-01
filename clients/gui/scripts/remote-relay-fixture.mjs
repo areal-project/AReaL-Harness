@@ -1,3 +1,4 @@
+import { attachRemoteHostFixture } from "./remote-host-fixture.cjs";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -290,13 +291,14 @@ export async function hostFixture(t, { config, commands = false } = {}) {
     service.backend = backend;
   }
   if (config)
-    await service.backend.save("remote.json", {
+    await service.backend.save("remote-host-fixture.json", {
       encrypted: encryption.encryptString(JSON.stringify(config)).toString("base64"),
     });
   const instances = [];
   const make = async () => {
-    const remote = new RemoteControl(service, encryption);
+    const remote = new RemoteControl(service);
     instances.push(remote);
+    attachRemoteHostFixture(remote, encryption);
     await remote.init();
     return remote;
   };
@@ -317,7 +319,7 @@ export async function hostFixture(t, { config, commands = false } = {}) {
       JSON.parse(
         encryption.decryptString(
           Buffer.from(
-            JSON.parse(await readFile(join(home, "remote.json"), "utf8")).encrypted,
+            JSON.parse(await readFile(join(home, "remote-host-fixture.json"), "utf8")).encrypted,
             "base64",
           ),
         ),

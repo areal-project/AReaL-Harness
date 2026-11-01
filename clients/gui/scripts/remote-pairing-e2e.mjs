@@ -1,3 +1,4 @@
+import { attachRemoteHostFixture } from "./remote-host-fixture.cjs";
 import { makeTempDir } from "./support/temp.mjs";
 import { selectRemoteTransport, requireBrowserTransport } from "./remote-conformance-transport.mjs";
 const transport = selectRemoteTransport();
@@ -93,7 +94,7 @@ await writeFile(
   networkCli,
   `#!${process.execPath}
 const fs = require('node:fs');
-const file = ${JSON.stringify(networkCliState)}, journal = ${JSON.stringify(join(home, "remote.json"))};
+const file = ${JSON.stringify(networkCliState)}, journal = ${JSON.stringify(join(home, "remote-host-fixture.json"))};
 const s = JSON.parse(fs.readFileSync(file, 'utf8')), a = process.argv.slice(2);
 if (a[0] === 'version') console.log(JSON.stringify({short:'1.52.0'}));
 else if (a[0] === 'status') console.log(JSON.stringify({BackendState:'Running',Self:{DNSName:'fixture.example.ts.net.',CapMap:{https:[],funnel:[],'https://tailscale.com/cap/funnel-ports?ports=443':[]}},CertDomains:['fixture.example.ts.net']}));
@@ -198,21 +199,23 @@ try {
   const legacyFile = JSON.stringify({
     encrypted: Buffer.from(JSON.stringify(legacy)).toString("base64"),
   });
-  await writeFile(join(home, "remote.json"), legacyFile);
+  await writeFile(join(home, "remote-host-fixture.json"), legacyFile);
   const saveBeforeMigration = backend.save.bind(backend);
   backend.save = (name, value) =>
-    name === "remote.json"
+    name === "remote-host-fixture.json"
       ? Promise.reject(new Error("fixture migration disk failure"))
       : saveBeforeMigration(name, value);
-  const failedMigration = new RemoteControl(service, encryptionFixture);
+  const failedMigration = new RemoteControl(service);
+  attachRemoteHostFixture(failedMigration, encryptionFixture);
   await failedMigration.init();
   assert.equal(failedMigration.state().enabled, false);
   assert.equal(failedMigration.state().directEnabled, false);
   assert.ok(failedMigration.state().migrationError);
-  assert.equal(await readFile(join(home, "remote.json"), "utf8"), legacyFile);
+  assert.equal(await readFile(join(home, "remote-host-fixture.json"), "utf8"), legacyFile);
   failedMigration.close();
   backend.save = saveBeforeMigration;
-  const migrated = new RemoteControl(service, encryptionFixture);
+  const migrated = new RemoteControl(service);
+  attachRemoteHostFixture(migrated, encryptionFixture);
   await migrated.init();
   assert.equal(identityId(migrated.config.identity), identityId(legacyIdentity));
   assert.equal(migrated.state().deviceGrants[0].status, "reviewRequired");
@@ -223,16 +226,17 @@ try {
     "legacy identity/project scope preserved; migration save failure leaves original file and disables entry",
   );
   await writeFile(
-    join(home, "remote.json"),
+    join(home, "remote-host-fixture.json"),
     JSON.stringify({ encrypted: Buffer.from(JSON.stringify(protectedConfig)).toString("base64") }),
   );
-  const remote = (service.remote = new RemoteControl(service, encryptionFixture, {
+  const remote = (service.remote = new RemoteControl(service, {
     networkAdapterFactory: (options) =>
       createRemoteNetworkAdapter({ ...options, executable: networkCli }),
   }));
   const previousResourcePath = process.resourcesPath;
   process.resourcesPath = join(scratch, "missing-assets");
   try {
+    attachRemoteHostFixture(remote, encryptionFixture);
     await remote.init();
   } finally {
     process.resourcesPath = previousResourcePath;
@@ -261,7 +265,7 @@ try {
   const savedAfterFailure = JSON.parse(
     encryptionFixture.decryptString(
       Buffer.from(
-        JSON.parse(await readFile(join(home, "remote.json"), "utf8")).encrypted,
+        JSON.parse(await readFile(join(home, "remote-host-fixture.json"), "utf8")).encrypted,
         "base64",
       ),
     ),
@@ -476,7 +480,7 @@ try {
   await approval.getByRole("radio", { name: "可操作", exact: true }).check();
   const originalSave = backend.save.bind(backend);
   backend.save = (name, value) =>
-    name === "remote.json"
+    name === "remote-host-fixture.json"
       ? Promise.reject(new Error("fixture disk failure"))
       : originalSave(name, value);
   await approval.getByRole("button", { name: "允许连接", exact: true }).click();
@@ -515,7 +519,7 @@ try {
     await desktop.getByRole("dialog").getByRole("button", { name: "撤销访问" }).click();
   };
   backend.save = (name, value) =>
-    name === "remote.json"
+    name === "remote-host-fixture.json"
       ? Promise.reject(new Error("fixture revoke failure"))
       : originalSave(name, value);
   await revokeFromMenu();
@@ -647,12 +651,12 @@ try {
   );
   assert.equal((await fetch(address.origin + "/service.json")).status, 404);
   await remote.control({ operation: "disableDirect" });
-  encryptionFixture.isEncryptionAvailable = () => false;
+  remote.storage.available = () => false;
   await assert.rejects(() => remote.control({ operation: "enableDirect" }));
   assert.equal(remote.direct ?? null, null);
   assert.equal(remote.state().directEnabled, false);
-  encryptionFixture.isEncryptionAvailable = () => true;
-  checks.push("unavailable secure storage rejects enable without leaving a listener");
+  remote.storage.available = () => true;
+  checks.push("unavailable Host Remote storage rejects enable without leaving a listener");
 
   passed = true;
   checks.push("public listener did not expose desktop service token or route");

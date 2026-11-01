@@ -63,15 +63,7 @@ function exitProcess(exitCode) {
   exited = true;
   clearTimeout(finalizationTimer);
   try {
-    for (const entry of backend?.ownedEngines?.values() ?? []) {
-      for (const lifetime of entry.lifetimes ?? []) {
-        try {
-          lifetime.destroy();
-        } catch {
-          exitCode = 1;
-        }
-      }
-    }
+    backend?.host.close();
   } finally {
     try {
       applicationLifetime?.destroy();
@@ -243,6 +235,7 @@ async function start() {
   });
   const activeBackend = (backend = new CoreBackend({
     ...options,
+    sourceSingletonHeld: true,
     proxyEnvironment: network,
     encryption: safeStorage,
   }));
@@ -304,7 +297,7 @@ async function start() {
     notifications,
     power,
   );
-  service.remote = new RemoteControl(service, safeStorage);
+  service.remote = new RemoteControl(service);
   startupTraceService.advance("remote_init");
   await service.remote.init();
   power.start();

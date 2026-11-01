@@ -103,6 +103,28 @@ pub(crate) struct Vault {
     pub(crate) locked: std::cell::Cell<bool>,
 }
 impl Vault {
+    pub(crate) fn provider_references(
+        &self,
+        source: &str,
+    ) -> Result<std::collections::BTreeSet<String>> {
+        let mut references = std::collections::BTreeSet::new();
+        let directory = self.home.join("host/vault-slots");
+        if directory.try_exists()? {
+            for entry in std::fs::read_dir(directory)? {
+                let state: SlotState = storage::read(&entry?.path())?;
+                if let Slot::ProviderCredential {
+                    source_id,
+                    reference,
+                } = state.slot
+                {
+                    if source_id == source {
+                        references.insert(reference);
+                    }
+                }
+            }
+        }
+        Ok(references)
+    }
     pub(crate) fn operation_offline(home: &Path, id: &str) -> Result<Option<Value>> {
         wire::request_id(id)?;
         let vault = Self::new(home);

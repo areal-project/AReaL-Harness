@@ -26,6 +26,7 @@ const {
   baseUrl,
 } = require("./model-config.cjs");
 const providerContract = require("./provider-contract.cjs");
+const { HostVault } = require("./host-vault.cjs");
 
 /** @typedef {import('./provider-contract.cjs').ModelSnapshot} ModelSnapshot */
 /** @typedef {import('./provider-contract.cjs').ConfigurationProof} ConfigurationProof */
@@ -43,11 +44,12 @@ const providerContract = require("./provider-contract.cjs");
 const { connection, modelParameters, modelCapabilities } = providerContract;
 
 class AppProviders {
-  /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend @param {import('electron').SafeStorage} [encryption] */
-  constructor(backend, encryption) {
+  /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend */
+  constructor(backend) {
     this.backend = backend;
-    this.encryption = encryption;
-    this.config = new ModelConfiguration(backend, encryption);
+    this.hostVault = new HostVault(backend);
+    this.config = new ModelConfiguration(backend, this.hostVault);
+    this.transportRevision = 0;
     this.openaiToken = "";
     /** @type {Map<string,PendingApplication>} */ this.pendingApplications = new Map();
     /** @type {Map<string,Promise<unknown>>} */ this.projectApplications = new Map();
@@ -98,6 +100,7 @@ class AppProviders {
     this.saving = false;
   }
   async init() {
+    await this.hostVault.init();
     await this.config.init();
     try {
       this.lastAcceptedModel = providerContract.acceptedModel(
@@ -106,19 +109,25 @@ class AppProviders {
     } catch (error) {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
-    // 与 Core 的本机连接令牌一样，权限为 0600 的能力文件仅由后台读取。
-    // 保留端口与令牌，避免后台重启后失效仍在运行的 Core 中冻结的传输配置。
-    try {
-      this.transport = transportRecord(
-        JSON.parse(await readFile(join(this.backend.home, "subscription-transport.json"), "utf8")),
-      );
-    } catch (error) {
-      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    const slot = {
+      kind: /** @type {const} */ ("subscriptionTransport"),
+      sourceId: this.backend.host.sourceId,
+    };
+    let current = await this.hostVault.read(slot);
+    if (current.value === null) {
+      try {
+        current = await this.hostVault.replace(slot, current.revision, {
+          token: randomBytes(32).toString("hex"),
+          port: 0,
+        });
+      } catch (error) {
+        if (!(error instanceof Error && "code" in error && error.code === "account_changed"))
+          throw error;
+        current = await this.hostVault.read(slot);
+      }
     }
-    if (!this.transport) {
-      this.transport = { token: randomBytes(32).toString("hex"), port: 0 };
-      await this.backend.save("subscription-transport.json", this.transport);
-    }
+    this.transport = transportRecord(current.value);
+    this.transportRevision = current.revision;
     this.openaiToken = this.transport.token;
     await this.readSubscription(await this.openai(), true);
   }
@@ -140,7 +149,7 @@ class AppProviders {
     if (!this.openaiPromise)
       this.openaiPromise = import("@areal/chatgpt-provider/core")
         .then(({ CoreSubscription }) => {
-          this.openaiStore = new SubscriptionStore(this.backend, this.encryption);
+          this.openaiStore = new SubscriptionStore(this.backend, this.hostVault);
           const onRequest =
             process.env.AREAL_CORE_PROVIDER_AUDIT === "1"
               ? requestAudit(this.backend.home)
@@ -153,8 +162,17 @@ class AppProviders {
             token: this.openaiToken,
             port: transport.port,
             onListen: async (port) => {
+              const next = { ...transport, port };
+              const saved = await this.hostVault.replace(
+                {
+                  kind: "subscriptionTransport",
+                  sourceId: this.backend.host.sourceId,
+                },
+                this.transportRevision,
+                next,
+              );
               transport.port = port;
-              await this.backend.save("subscription-transport.json", this.transport);
+              this.transportRevision = saved.revision;
             },
             kind: "openai",
             onRequest,
@@ -171,6 +189,7 @@ class AppProviders {
             this.backend.providerUpdating = true;
             try {
               for (const project of this.backend.projects.values()) {
+                if (!this.manages(project)) continue;
                 if (project.service && !project.client?.ready) return false;
                 if (
                   project.client?.ready &&
@@ -383,6 +402,7 @@ class AppProviders {
   }
   /** @param {CoreProject} project */
   async ensureSubscription(project) {
+    if (!this.manages(project)) return;
     const service = await this.openai();
     const applied = this.subscriptionApplications.get(project);
     if (applied && this.currentSubscription(applied.scope)) return;
@@ -515,7 +535,7 @@ class AppProviders {
       /** @type {InstanceType<typeof import('./subscription.cjs').SubscriptionStore>|undefined} */
       const store = this.openaiStore;
       if (!store) throw new Error("订阅凭据尚未初始化");
-      store.check();
+      await store.check();
       if (!request.newAccount && !request.accountId && (await service.account.read()))
         throw new Error("请先退出当前 ChatGPT 账号");
       if (
@@ -565,6 +585,7 @@ class AppProviders {
       this.backend.providerUpdating = true;
       try {
         for (const project of this.backend.projects.values()) {
+          if (!this.manages(project)) continue;
           if (project.service && !project.client?.ready)
             throw new Error("请先重新连接项目，再切换 ChatGPT 账号");
           // 桌面投影可能保留旧轮次；账号变更以原 Core 的实时空闲状态为准。
@@ -626,6 +647,7 @@ class AppProviders {
   }
   /** @param {CoreProject} project @param {Record<string,unknown>} [correlation] */
   refreshSubscription(project, correlation, { observeOnly = false } = {}) {
+    if (!this.manages(project)) return Promise.resolve();
     const target = this.target(project),
       connectionGeneration = project.connectionGeneration;
     return Promise.resolve(this.openaiPromise ?? null)
@@ -831,6 +853,7 @@ class AppProviders {
   }
   /** @param {CoreProject} project @param {string} threadId */
   async refreshGoalTransport(project, threadId) {
+    if (!this.manages(project)) return;
     const client = this.target(project).client;
     const { configuration } = await this.backend.refreshConfiguration(project, threadId);
     if (configuration.model?.providerId !== "areal_openai") return;
@@ -943,6 +966,7 @@ class AppProviders {
       this.reconciliationTimer = null;
       this.reconciliation = (async () => {
         for (const project of this.backend.projects.values()) {
+          if (!this.manages(project)) continue;
           if (this.closed || this.backend.closing) break;
           const state = this.applicationState(project);
           if (project.client?.ready && ["deferred", "unknown"].includes(state.kind))
@@ -1003,6 +1027,7 @@ class AppProviders {
   key(item) {
     return this.config.key(item);
   }
+  /** @returns {Record<string,string>} */
   environment() {
     return { ...this.config.environment(), AREAL_CREDENTIAL_areal_openai: this.openaiToken };
   }
@@ -1023,6 +1048,7 @@ class AppProviders {
   }
   /** @param {CoreProject} project */
   async syncLocal(project) {
+    if (!this.manages(project)) return;
     const client = this.target(project).client;
     // 停用旧桌面目录，不导入其 OAuth 授权，也不改变任务历史。
     const retired = (
@@ -1216,8 +1242,13 @@ class AppProviders {
       this.saving = false;
     }
   }
+  /** @param {CoreProject} project */
+  manages(project) {
+    return this.backend.host.resolve(project.id).sourceId === this.backend.host.sourceId;
+  }
   /** @param {CoreProject} project @returns {ProviderTarget} */
   target(project) {
+    if (!this.manages(project)) throw new Error("该项目使用其他来源的模型配置，请在原客户端修改");
     if (!project.client) throw new Error("Core 尚未连接");
     return {
       project,
@@ -1379,6 +1410,7 @@ class AppProviders {
   async prepareProjects(projects = this.backend.projects.values()) {
     const targets = [];
     for (const project of projects) {
+      if (!this.manages(project)) continue;
       if (project.service && !project.client?.ready)
         throw new Error("项目尚未连接，重新连接后再保存。");
       if (!project.client?.ready) continue;
@@ -1430,6 +1462,8 @@ class AppProviders {
         await this.confirmProof(target, target.proof, snapshot, { refreshModels });
         return { target, applied: true };
       }
+      await this.config.refreshCredentials();
+      this.requireTarget(target);
       const credentials = this.config.credentialsFor(snapshot);
       const pending = {
         requestId: randomUUID(),
@@ -1504,6 +1538,7 @@ class AppProviders {
   }
   /** @param {CoreProject} project */
   reconcileProject(project, { refreshModels = true } = {}) {
+    if (!this.manages(project)) return Promise.resolve();
     const target = this.target(project);
     return this.inProject(project, async () => {
       try {

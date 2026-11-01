@@ -2,7 +2,7 @@
 
 # 共享 Host 协议
 
-本文包含已实现接口与后续目标契约。Host 提供认证后的项目管理、停止回执、订阅、旧服务迁移，以及 H2 的来源导入、旧秘密退役、提交 journal、固定凭据槽与 Remote 状态接口。`hello` 声明 `projects`、`stopOperations`、`subscriptions`、`legacyMigration`、`guiImport`、`submissionJournal`、`credentialVault` 和 `remoteState`，尚不提供 `updates`。普通 GUI 消费者与生命周期切换、Remote 执行和服务管理器交付仍未完成。协议定义不代表运行或安装包验收通过。另见[实施规格](../development/shared-host-spec.md)、[所有权决策](../adr/0016-shared-host.md)与[每项目服务契约](local-service.md)。
+本文包含已实现接口与后续目标契约。Host 提供认证后的项目管理、停止回执、订阅、旧服务迁移，以及 H2 的来源导入、旧秘密退役、提交 journal、固定凭据槽与 Remote 状态接口。`hello` 声明 `projects`、`stopOperations`、`subscriptions`、`legacyMigration`、`guiImport`、`submissionJournal`、`credentialVault` 和 `remoteState`，尚不提供 `updates`。普通 GUI 的项目连接、journal、凭据与 Remote 状态消费者使用 Host。完整退出语义、连接资源撤销、Remote 执行迁移和服务管理器交付仍在实施。协议定义不代表运行或安装包验收通过。另见[实施规格](../development/shared-host-spec.md)、[所有权决策](../adr/0016-shared-host.md)与[每项目服务契约](local-service.md)。
 
 ## 传输与认证
 
@@ -94,7 +94,7 @@ GUI 根目录中的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` �
 | 方法               | 请求 params                                                                   | result                                                                            |
 | ------------------ | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `gui.attachSource` | `{source:GuiSource}`                                                          | 当前连接的来源 guard。                                                            |
-| `gui.source` | `{source:GuiSource}` | `{sourceId,migrationId,source,bindings}` 或 null。只读查询精确来源的原导入别名及当前 GUI 登记。 |
+| `gui.source` | `{source:GuiSource}` | `{sourceId,migrationId,source,bindings,credentials}` 或 null。只读查询精确来源的原导入别名及当前 GUI 登记。 |
 | `gui.import`       | `{requestId,expectedGeneration,source:GuiSource}`                             | 来源迁移状态，包括 `migrationId`、待提交秘密与已完成导入回执。                    |
 | `gui.importStatus` | `{migrationId}`                                                               | 原迁移状态，不推进来源写入。                                                      |
 | `gui.importSecret` | `{requestId,expectedGeneration,migrationId,slot,sourceDigest,value}`          | 密钥库写入并读回核验后的回执。`slot` 必须来自原 manifest，秘密不进入操作日志。    |
@@ -112,6 +112,8 @@ GUI 根目录中的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` �
 
 `gui.source` 按规范化的完整 `GuiSource` 查询，仅返回已提交来源。同一 profile 对应多个已提交来源时返回 `sourceConflict`，不混合新登记的别名。查询不取得来源 guard，不启动导入，不读取凭据，也不创建目录。`bindings` 中保留导入时复用的 CLI 项目别名，并加入该 profile 的新 GUI 登记。新绑定的 scratch 路径为 `<coreHome>/<legacyProjectId>/scratch`。Host 重启后从原导入回执和现有项目登记重建结果。
 
+`credentials` 仅含非秘密迁移元数据。`references` 合并原 provider 引用与该来源后续创建的 vault 槽，保留已撤销引用；值仍由 `vault.read` 决定。`migratedConfigPaths` 保留原配置迁移标记。`legacyProviders` 去除密文，仅对原 providers manifest 中有秘密的条目附加 `apiKeyEnv`。读取会核对原备份摘要或退役计划的派生摘要，不读取已封存的凭据源文件。
+
 ### 旧秘密退役
 
 Host 在 `retirement.json` 保存独立计划与回执，不改原 manifest、凭据导入回执或 committed marker。Electron adapter 持有原 Desktop singleton，按计划替换原文件及对应备份。退役仅移除 manifest 覆盖的 provider 密文、订阅账户密文、Remote 密文及订阅传输明文 token。非秘密配置和未知字段保留。重复 JSON 键或不支持的来源格式会阻止退役，保留未处理文件。provider 启动哨兵、journal 哨兵、原 journal 备份、Store 和 `cloud.json` 不进入替换清单。
@@ -121,6 +123,8 @@ Host 在 `retirement.json` 保存独立计划与回执，不改原 manifest、�
 prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每项秘密都有 completed 回执和可读的原 vault entry。缺失或锁定 entry 阻止后续替换。退役不使用当前凭据版本补种旧值，因此后续撤销不会复活旧账户。每个文件替换前重新 prepare，替换后 confirm。Host 独立读取并核验目标，只接受原摘要或计划中的派生摘要。完成前还会核验原启动及 journal 哨兵。
 
 中断恢复读取原计划与派生文件，不再解析已退役的密文。rename 完成而 confirm 未完成时，Host 根据派生摘要记录进度。连接断开后重新绑定来源，并使用 status 返回的原 requestId。同一计划不能换 requestId 重建。status 和离线操作查询不访问密钥库，不推进退役。原 manifest 的摘要仍描述历史原字节；已退役的备份是由独立计划记录的派生副本。未被当前 committed manifest 引用的旧备份不在本计划内。
+
+没有已导入或新建 Remote 配置时，`remote.read` 返回 `{revision:0,sourceId:null,config:null}`，不访问密钥库。已发布来源可用 `expectedRevision:0` 首次写入；一旦存在 Noise identity，后续替换不能改变它。待完成的首次写入也保留来源选择，不能由另一来源导入覆盖。授权范围包含该来源的原别名、新 GUI 登记和其他 Host 项目的稳定本地别名。GUI 的 Gateway 使用独立租约连接，连接失效关闭入口，迟到的 Direct listener 也会关闭。
 
 ### journal 与操作回执
 
@@ -147,7 +151,7 @@ provider 值是非空字符串或 null；subscription 值是完整记录对象�
 
 写入先保存非秘密 acceptedPending 回执，再保存稳定 vault entry 并读回验证，最后原子提交槽版本和 completed 回执。恢复根据原 entry 与版本结算；系统存储锁定仍返回 `storageLocked`，不推断为缺失。明确缺失的 entry 可结算为 `blocked/storageWriteNotApplied`。操作回执不含秘密值或秘密的普通哈希。丢失响应只查询原 requestId。
 
-每次激活已导入项目或已提交来源的新 GUI 项目时，Host 从该来源的当前 vault 获取固定 provider 引用。撤销会移除 Host 的旧缓存值，客户端提交的旧值不能覆盖 vault。缺失或歧义 GUI 来源返回错误，不回退到客户端旧值。普通 CLI 项目与非固定引用沿用既有按启动输入提供凭据的方式。此接口尚未替换 GUI 的设置与订阅消费者，也不宣称撤销已注入运行中 Core 的凭据。
+每次激活已导入项目或已提交来源的新 GUI 项目时，Host 从该来源的当前 vault 获取固定 provider 引用。撤销会移除 Host 的旧缓存值，客户端提交的旧值不能覆盖 vault。缺失或歧义 GUI 来源返回错误，不回退到客户端旧值。普通 CLI 项目与非固定引用沿用既有按启动输入提供凭据的方式。GUI 设置与订阅消费者通过这些槽位读取和保存凭据。固定引用 `AREAL_CREDENTIAL_areal_openai` 取该来源 `subscriptionTransport` 的 token；其他环境凭据通过独立的 `project.ensure.credentials` 传入，不写进启动环境快照。撤销不会自动移除已注入运行中 Core 的凭据。
 
 ## 退出与服务管理器契约
 

@@ -1,3 +1,4 @@
+import { attachRemoteHostFixture } from "./remote-host-fixture.cjs";
 import { makeTempDir } from "./support/temp.mjs";
 import { selectRemoteTransport, requireBrowserTransport } from "./remote-conformance-transport.mjs";
 const transport = selectRemoteTransport();
@@ -349,7 +350,7 @@ try {
     decryptString: (value) => value.toString("utf8"),
   };
   await writeFile(
-    join(home, "remote.json"),
+    join(home, "remote-host-fixture.json"),
     JSON.stringify({
       encrypted: Buffer.from(
         JSON.stringify({
@@ -361,7 +362,8 @@ try {
       ).toString("base64"),
     }),
   );
-  const remote = (service.remote = new RemoteControl(service, encryptionFixture));
+  const remote = (service.remote = new RemoteControl(service));
+  attachRemoteHostFixture(remote, encryptionFixture);
   await remote.init();
   const invite = await remote.control({ operation: "pair" });
   const invitation = new URL(invite.payload);

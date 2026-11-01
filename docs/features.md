@@ -6,7 +6,7 @@
 
 | 能力 | 实现与入口 |
 |---|---|
-| 共享 Host | `areal host` 提供认证本机控制、项目登记、停止回执和状态订阅。CLI/TUI/Web 通过 Host 激活项目，客户端退出后原任务继续；旧服务空闲排空后受控换代。GUI、密钥库、Remote 与系统服务迁移另行实施。[Host API](api/host.md) |
+| 共享 Host | `areal host` 提供认证本机控制、项目登记、停止回执和状态订阅。CLI/TUI/Web 通过 Host 激活项目，客户端退出后原任务继续；旧服务空闲排空后受控换代。GUI 项目连接、提交 journal、凭据与 Remote 配置也使用 Host；完整退出语义、Remote 执行与系统服务迁移仍在实施。[Host API](api/host.md) |
 | 会话目录 | 默认内存索引、正确的授权后分页与 GUI 刷新合并；显式 SQLite 索引可回退内存，两者均可显式启用轻量元数据目录与按需历史加载。文件保持事实，复杂恢复仍全量；无自动历史淘汰或全文检索。[配置](guides/configuration.md#会话目录后端) |
 | 项目规则 | 按工作区根到会话 cwd 加载规则，同层 `AGENTS.override.md` 优先于 `AGENTS.md`，空白回退、子目录优先、每 Turn 刷新、有界且经 Runtime 读取。[客户端](guides/clients.md) |
 | 会话与模型 | 持久 Thread/Turn、流式正文、Chat Completions 思考与 Responses 思考摘要/文本事件、追加输入、取消、恢复；Chat Completions / Responses，模态取决于 adapter 和模型。桌面可独立切换 Fast 服务档位，配置与供应商请求沿现有模型参数链路保存；请求不保证实际加速。[客户端](guides/clients.md) |

@@ -229,9 +229,11 @@ App 运行期间，共享 Desktop 后端独立发现启用安排，并连接其�
 
 ## 生命周期
 
-`AREAL_REOPEN_FORCE_GUI=1` 配合 `test:service-reopen` 强制结束隔离 Main，验证 owner 管道回收原引擎，随后新应用会话从原历史恢复。新代际不重放中断输入。`test:desktop-exit` 分别验证 Main、Desktop 强退和测试 runner 失败、SIGTERM、SIGKILL 的清理。浏览器与动态 ToolHost 的真实强退 UNKNOWN 仍需专项验收，既有宿主丢失与 generation 失效契约保持不变。
+普通 GUI 在原 singleton 内导入来源并恢复未完成的秘密退役，然后连接共享 Host。项目 ID 在界面中仍使用稳定本地别名，执行与 journal 路由使用 Host 绑定及原 `dataDir`。CLI 项目在 GUI 中保留其启动配置、模型和资源目录，不自动套用当前 GUI 的默认 profile 或订阅。凭据的非秘密未决操作保存在 `host-vault-operations.json`，后续配置迁移标记保存在 `model-config-migrations.json`。Remote 的非秘密未决操作保存在 `host-remote-operation.json`。这些记录只用于查询原回执。
 
-关闭窗口只隐藏界面，GUI 仍持有单实例锁；再次启动或从 Dock 激活会唤回原窗口。应用菜单、菜单栏和后台设置的“退出 AReaL Harness”（⌘Q / Ctrl+Q）共用安全退出。应用拥有 Desktop、每项目 Host、Core、Runtime 和监督桥，窗口不拥有引擎。每次普通退出都会显示原生确认，提供“取消”和“退出”，空闲时也需确认。有活动任务、已启用的定时安排或手机入口时，确认框简要提示退出影响。只有原引擎物理清理和 Desktop 退出已确认后才退出 Main。部分停止、结果未知或清理未完成保留恢复入口，不自动重复停止。退出后安排不再触发，手机入口断开；安排定义、历史与草稿保留。CLI 与其他 GUI profile 保持独立。
+Host 持有每项目 Core 的生命期管道。强退 GUI 不结束 Host-owned Core；重新打开通过原 Host 描述连接，不重放输入。`gui-host-lifecycle-smoke.mjs` 验证客户端断开、原停止回执、被动观察不重启和显式重新打开。真实 GUI/TUI 审批交接、桌面工具撤销与安装包需要各自验收。
+
+关闭窗口只隐藏界面，GUI 仍持有单实例锁；再次启动或从 Dock 激活会唤回原窗口。应用菜单、菜单栏和后台设置共用现有退出流程。Core 的生命周期归共享 Host。当前退出流程仍显示原生确认并停止目标项目；规格要求的空闲直接退出、保持后台运行与取消任务后退出尚未完成。部分停止与未知结果保留原请求供核查。Gateway 和定时激活仍在 Desktop 中执行，退出后不可用。
 
 普通退出先通过未保存修改检查，再显示原生确认。只有确认退出后，才显示带持续动画的进度弹窗，直到窗口真正退出。弹窗显示停止后台与完成退出，不显示百分比或预计时间；等待期间关闭窗口不会隐藏弹窗。取消原生确认或退出失败后恢复界面，原请求与未知结果仍由现有恢复入口核查。原生浏览器视图在确认退出后暂时隐藏，退出失败后恢复原页面。取消确认保留界面与原生页面的正常操作。`AREAL_CORE_BIN=/absolute/fixed-slot/areal pnpm --dir clients/gui run test:quit-progress` 使用隔离 Electron/Core 验证发送、暂停、退出反馈、取消、失败恢复、重复退出与实际进程清理；原生确认由 fixture 应答，不证明物理快捷键或安装包通过。
 

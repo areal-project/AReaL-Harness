@@ -15,13 +15,11 @@ const { modelRecord, isCoreTask } = require("@areal/workbench/core-model-contrac
 /** @typedef {Awaited<ReturnType<InstanceType<typeof import('./backend.cjs').CoreBackend>['prepareServiceLaunch']>>} Launch */
 /** @typedef {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'applicationOwner'|'worktrees'|'lifecycleOperations'|'providers'|'resources'|'scheduleAdmission'|'hooks'|'defaultProfile'|'analytics'|'saved'> & {
  * closing:boolean,providerUpdating:boolean|undefined,resourcesUpdating:boolean|undefined,
- * starting:Map<string,Promise<Project>>,projects:Map<string,Project>,ownedEngines:Map<string,{service?:import('./local-service.cjs').ServiceReference,pending?:boolean}>,
+ * starting:Map<string,Promise<Project>>,projects:Map<string,Project>,
  * startProject:(id:string)=>Promise<Project>,stopReconciliation:(project:Project)=>void,
  * scheduleReconciliation:(project:Project)=>void,onChange:()=>void,
  * connectExisting:(project:Project,service:Service)=>Promise<ServiceConnection>,
- * recoveryStatus:(project:Project,service:Service)=>Promise<import('./local-service.cjs').RecoveryStatus>,
  * prepareServiceLaunch:(project:Project,trace:ReturnType<typeof startupTrace>)=>Promise<Launch>,
- * recoverService:(project:Project,service:Service,launch:Launch)=>Promise<ServiceConnection>,
  * reconcile:(project:Project,options:{observeOnly:boolean})=>Promise<unknown>,
  * desktopTools:(project:Project)=>unknown[],supportsBrowser:(project:Project)=>boolean|undefined,supportsComputer:(project:Project)=>boolean|undefined,
  * cuaRead:(request:Record<string,unknown>)=>Promise<unknown>|undefined,computerRead:(request:Record<string,unknown>)=>Promise<unknown>|undefined,browserRead?:(request:Record<string,unknown>)=>Promise<unknown>|undefined,
@@ -235,23 +233,7 @@ class ProjectConnections {
         throw Object.assign(new Error("服务归属已变化"), { code: "STALE_CONNECTION" });
     };
     current();
-    let connection;
-    try {
-      connection = await this.host.connectExisting(project, previous);
-      current();
-      if (connection.descriptor.generation !== previous.generation) {
-        if (project.crashRecovery?.original !== previous)
-          throw Object.assign(new Error("Core 代际已变化，请检查原服务"), {
-            code: "CORE_INCOMPATIBLE",
-          });
-        connection = await this.recoverCrashedProject(project, previous, current);
-      }
-    } catch (error) {
-      if (!modelRecord(error) || error.code !== "CORE_STOPPED" || !this.host.applicationOwner)
-        throw error;
-      current();
-      connection = await this.recoverCrashedProject(project, previous, current);
-    }
+    const connection = await this.host.connectExisting(project, previous);
     current();
     const { descriptor, token } = connection;
     if (
@@ -264,75 +246,10 @@ class ProjectConnections {
     project.service = descriptor;
     project.endpoint = descriptor.endpoint;
     project.token = token;
-    const owned = this.host.ownedEngines.get(project.id);
-    if (owned) {
-      owned.service = descriptor;
-      owned.pending = false;
-    }
     await this.connect(project, { observeOnly: true });
     await this.host.reconcile(project, { observeOnly: true });
     project.reconnectAttempt = 0;
     return project;
-  }
-
-  /** @param {Project} project @param {Service} original @param {()=>void} current */
-  async recoverCrashedProject(project, original, current) {
-    current();
-    let attempt = project.crashRecovery;
-    if (attempt?.original !== original) {
-      project.crashCheck ??= { generation: original.generation, started: Date.now() };
-      if (project.crashCheck.generation !== original.generation)
-        project.crashCheck = { generation: original.generation, started: Date.now() };
-      const { service, recovery } = await this.host.recoveryStatus(project, original);
-      current();
-      if (!recovery.eligible) {
-        const waiting =
-          service.state !== "stopping" &&
-          recovery.reason === "cleanupUnconfirmed" &&
-          Date.now() - project.crashCheck.started < 30000;
-        throw Object.assign(
-          new Error(
-            waiting
-              ? "正在确认原执行资源已清理"
-              : "当前服务无法自动恢复，请检查原服务状态后重新连接",
-          ),
-          { code: waiting ? "CORE_RECOVERY_PENDING" : "CORE_STOPPED" },
-        );
-      }
-      const now = Date.now();
-      project.crashAttempts = (project.crashAttempts ?? []).filter((time) => now - time < 300000);
-      if (project.crashAttempts.length >= 2)
-        throw Object.assign(new Error("服务连续中断，自动恢复已暂停，请检查服务详情后重新连接"), {
-          code: "CORE_RECOVERY_EXHAUSTED",
-        });
-      project.crashAttempts.push(now);
-      attempt = project.crashRecovery = { original, calls: 0 };
-    }
-    if (attempt.calls >= 2)
-      throw Object.assign(new Error("原服务的自动恢复结果仍未确认，请检查服务详情后重新连接"), {
-        code: "CORE_RECOVERY_EXHAUSTED",
-      });
-    const trace = startupTrace("core.crash_recovery", {
-      projectId: project.id,
-      coreGeneration: original.generation,
-    });
-    try {
-      const launch = await this.host.prepareServiceLaunch(project, trace);
-      current();
-      attempt.calls++;
-      const connection = await this.host.recoverService(project, original, launch);
-      current();
-      if (connection.descriptor.generation === original.generation)
-        throw Object.assign(new Error("恢复未返回原服务的后继代际"), { code: "CORE_INCOMPATIBLE" });
-      if ((await this.host.hooks.current()).revision === launch.hookDeployment.revision)
-        project.hookRevision = launch.hookDeployment.revision;
-      current();
-      trace.finish("ok");
-      return connection;
-    } catch (error) {
-      trace.finish("error", error);
-      throw error;
-    }
   }
 
   /** @param {Project} project @param {{observeOnly?:boolean}} [options] */
@@ -392,7 +309,7 @@ class ProjectConnections {
           this.requireConnection(project, client);
           await this.host.scheduleAdmission.prepare(project, params);
           this.requireConnection(project, client);
-          if (params.intent === "resume") return {};
+          if (params.intent === "resume" || !this.host.providers.manages(project)) return {};
           await this.host.resources.beforeCreate(project);
           this.requireConnection(project, client);
           const model = this.host.providers.value.defaultModel;
@@ -554,7 +471,7 @@ class ProjectConnections {
         await this.host.providers.syncLocal(project);
         this.requireConnection(project, client);
         trace.advance("mcp");
-        await this.host.resources.syncMcp(project);
+        if (this.host.providers.manages(project)) await this.host.resources.syncMcp(project);
         this.requireConnection(project, client);
       }
       trace.advance("catalogs");

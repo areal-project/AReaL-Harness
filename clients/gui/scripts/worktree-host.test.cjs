@@ -63,6 +63,18 @@ async function setup(t, { gitRepo = true } = {}) {
       await writeFile(temp, JSON.stringify(value));
       await rename(temp, path);
     };
+    b.host = {
+      sourceId: "fixture",
+      resolve: () => ({ sourceId: "fixture" }),
+      async register(_requestId, project) {
+        const persisted = JSON.parse(await readFile(join(home, "projects.json"), "utf8"));
+        assert.ok(
+          persisted.some((entry) => entry.id === project.id),
+          "client metadata precedes Host registration",
+        );
+      },
+    };
+    b.loadProjectJournal = async (projectId) => b.projects.get(projectId) ?? b.start(projectId);
     b.providers.catalog = () => [];
     b.providers.lastAcceptedModel = null;
     b.resources.beforeCreate = async () => {};

@@ -235,6 +235,73 @@ impl Plan {
     }
 }
 impl Migration {
+    pub(super) fn credential_metadata(&self, record: &Record) -> Result<Value> {
+        let mut references = self.vault.provider_references(&record.source_id)?;
+        for secret in &record.secrets {
+            if let vault::Slot::ProviderCredential { reference, .. } = &secret.slot {
+                references.insert(reference.clone());
+            }
+        }
+        let plan = self.retirement_plan(&record.request_id)?;
+        let mut result = json!({"references":references,"migratedConfigPaths":[]});
+        for name in ["provider-credentials.json", "providers.json"] {
+            let file = record
+                .originals
+                .iter()
+                .find(|f| f.relative_name == name)
+                .context("missing credential manifest")?;
+            let Original::Bytes {
+                backup_id, sha256, ..
+            } = &file.original
+            else {
+                continue;
+            };
+            let bytes = read_bytes(
+                &self
+                    .directory(&record.request_id)?
+                    .join("backups")
+                    .join(format!("{backup_id}.bytes")),
+            )?
+            .context("missing credential metadata backup")?;
+            let digest = storage::digest(&bytes);
+            let retired = plan
+                .as_ref()
+                .and_then(|p| {
+                    p.items.iter().find(|item| {
+                        item.target.site == Site::Backup
+                            && item.target.backup_id == *backup_id
+                            && item.target.before_digest == *sha256
+                    })
+                })
+                .is_some_and(|item| item.target.after_digest == digest);
+            ensure!(
+                digest == *sha256 || retired,
+                "credential metadata backup digest mismatch"
+            );
+            let mut value: Value = serde_json::from_slice(&bytes)?;
+            if name == "provider-credentials.json" {
+                result["migratedConfigPaths"] = value.get("migrated").cloned().unwrap_or(json!([]));
+                continue;
+            }
+            if let Some(providers) = value.get_mut("data").and_then(Value::as_array_mut) {
+                for provider in providers {
+                    if let Some(object) = provider.as_object_mut() {
+                        object.remove("secret");
+                        object.remove("apiKeyEnv");
+                        if let Some(id) = object.get("id").and_then(Value::as_str) {
+                            let reference = format!("AREAL_CREDENTIAL_{id}");
+                            if record.secrets.iter().any(|secret| secret.relative_name == name
+                                && matches!(&secret.slot, vault::Slot::ProviderCredential { reference: r, .. } if *r == reference)) {
+                                object.insert("apiKeyEnv".into(), json!(reference));
+                            }
+                        }
+                    }
+                }
+            }
+            result["legacyProviders"] = value;
+        }
+        Ok(result)
+    }
     fn retirement_path(&self, migration: &str) -> Result<PathBuf> {
         Ok(self.directory(migration)?.join("retirement.json"))
     }

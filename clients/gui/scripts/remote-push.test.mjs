@@ -1,3 +1,4 @@
+import { attachRemoteHostFixture } from "./remote-host-fixture.cjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createRequire } from "node:module";
@@ -110,7 +111,8 @@ async function fixture(t) {
       await writeFile(join(home, name), JSON.stringify(value));
     },
   };
-  const remote = new RemoteControl({ backend, schedule() {} }, encryption);
+  const remote = new RemoteControl({ backend, schedule() {} });
+  attachRemoteHostFixture(remote, encryption);
   await remote.init();
   const identity = await crypto.createIdentity(),
     device = await crypto.createIdentity(),
@@ -257,7 +259,7 @@ test("Noise device commands persist encrypted receipts, preserve revision, and e
   assert.equal(state.deviceGrants[0].pushRegistered, true);
   assert.ok(!JSON.stringify(state).includes(params.token));
   assert.equal(state.deviceGrants[0].push, undefined);
-  const disk = await readFile(join(f.home, "remote.json"), "utf8");
+  const disk = await readFile(join(f.home, "remote-host-fixture.json"), "utf8");
   assert.ok(!disk.includes(params.token));
   const config = parseRemoteConfig(
     JSON.parse(f.encryption.decryptString(Buffer.from(JSON.parse(disk).encrypted, "base64"))),
@@ -533,7 +535,33 @@ test("enqueue admission journal preserves exact queue identity across durable re
   const f = await fixture(t);
   const { SubmissionRecovery } = require("../app/src/core/submission-recovery.cjs");
   const { parseSubmissionOutcomes } = require("../app/src/core/project-state.cjs");
-  const recovery = new SubmissionRecovery({ ...f.remote.backend, onChange() {} });
+  const journalPath = join(f.home, "host-journal-fixture.json");
+  const journal = {
+    async read() {
+      try {
+        return { snapshot: JSON.parse(await readFile(journalPath, "utf8")) };
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+        return {
+          snapshot: structuredClone({
+            version: 1,
+            pending: f.project.pending,
+            outcomes: f.project.outcomes,
+          }),
+        };
+      }
+    },
+    async change(mutate) {
+      const { snapshot } = await this.read();
+      await writeFile(journalPath, JSON.stringify(await mutate(snapshot)));
+      return { state: "completed" };
+    },
+  };
+  const recovery = new SubmissionRecovery({
+    ...f.remote.backend,
+    host: { journal: () => journal },
+    onChange() {},
+  });
   const operationId = randomUUID();
   const entry = {
     method: "areal/turn/enqueue",
@@ -549,9 +577,7 @@ test("enqueue admission journal preserves exact queue identity across durable re
   };
   f.project.pending = [entry];
   await recovery.rememberRemoteOutcome(f.project, entry, { queueItemId: "native-queue-id" }, null);
-  const disk = parseSubmissionOutcomes(
-    JSON.parse(await readFile(join(f.home, "p-outcomes.json"), "utf8")),
-  );
+  const disk = parseSubmissionOutcomes((await journal.read()).snapshot.outcomes);
   assert.equal(disk[operationId].receipt.queueItemId, "native-queue-id");
   assert.equal(disk[operationId].turnId, undefined);
   assert.equal(f.project.pending.length, 0);

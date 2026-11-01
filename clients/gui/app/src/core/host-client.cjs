@@ -4,6 +4,8 @@ const { randomUUID, createHash } = require("node:crypto");
 const { constants } = require("node:fs");
 const { open, lstat, realpath } = require("node:fs/promises");
 const { connect } = require("node:net");
+const { spawn } = require("node:child_process");
+const { mkdir } = require("node:fs/promises");
 const { join, isAbsolute, relative, sep } = require("node:path");
 const MAX_FRAME = 1024 * 1024;
 
@@ -31,6 +33,7 @@ class HostClient {
     this.socket = undefined;
     this.bytes = Buffer.alloc(0);
     this.generation = "";
+    this.hostId = "";
     /** @type {string[]} */
     this.capabilities = [];
     this.home = "";
@@ -76,9 +79,75 @@ class HostClient {
       this.close();
       throw new Error("Host identity changed during authentication");
     }
+    this.hostId = hello.hostId;
     this.generation = hello.generation;
     this.capabilities = hello.capabilities;
     return hello;
+  }
+  /** @param {string} home @param {string} binary */
+  async connectOrStart(home, binary) {
+    try {
+      return await this.connect(home);
+    } catch {
+      this.close();
+    }
+    await mkdir(home, { recursive: true, mode: 0o700 });
+    const log = await open(join(home, "host.log"), "a", 0o600);
+    const child = spawn(binary, ["host", "run"], {
+      env: {
+        ...Object.fromEntries(
+          ["HOME", "PATH", "TMPDIR", "LANG"].flatMap((key) =>
+            process.env[key] ? [[key, process.env[key]]] : [],
+          ),
+        ),
+        AREAL_HARNESS_HOME: home,
+        AREAL_HARNESS_SERVICE_HOME: home,
+      },
+      detached: true,
+      stdio: ["ignore", "ignore", log.fd],
+      windowsHide: true,
+    });
+    let failure;
+    child.on("error", (error) => {
+      failure = error;
+    });
+    child.unref();
+    await log.close();
+    const deadline = Date.now() + 15000;
+    for (;;) {
+      if (failure) throw failure;
+      try {
+        return await this.connect(home);
+      } catch (error) {
+        this.close();
+        if (Date.now() >= deadline) throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+  status() {
+    return this.request("host.status", {});
+  }
+  /** @param {string} requestId @param {string} projectId @param {unknown} launchInputs @param {Record<string,string>} [credentials] */
+  ensureProject(requestId, projectId, launchInputs, credentials) {
+    return this.request("project.ensure", {
+      requestId,
+      expectedGeneration: this.generation,
+      projectId,
+      ...(launchInputs ? { launchInputs } : {}),
+      ...(credentials ? { credentials } : {}),
+      noAutoRestart: true,
+    });
+  }
+  /** @param {string} requestId @param {string} projectId @param {string} serviceGeneration @param {'ifIdle'|'cancel'} strategy */
+  stopProject(requestId, projectId, serviceGeneration, strategy) {
+    return this.request("project.stop", {
+      requestId,
+      expectedGeneration: this.generation,
+      projectId,
+      serviceGeneration,
+      strategy,
+    });
   }
   /** @param {Buffer} bytes */
   receive(bytes) {
@@ -271,6 +340,7 @@ class HostClient {
   close() {
     this.fail(new Error("Host client disconnected; mutation outcome may be unknown"));
     this.socket = undefined;
+    this.bytes = Buffer.alloc(0);
   }
 }
 

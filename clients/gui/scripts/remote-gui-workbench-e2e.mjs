@@ -1,3 +1,4 @@
+import { attachRemoteHostFixture } from "./remote-host-fixture.cjs";
 import { makeTempDir } from "./support/temp.mjs";
 // Isolated real Core + production Direct/Noise + GUI components. Provider and safeStorage are explicit fixtures.
 import assert from "node:assert/strict";
@@ -149,7 +150,7 @@ try {
   service = new DesktopService(backend, join(scratch, "service.sock"), () => {}, null);
   const hostIdentity = await createIdentity();
   await writeFile(
-    join(home, "remote.json"),
+    join(home, "remote-host-fixture.json"),
     JSON.stringify({
       encrypted: Buffer.from(
         JSON.stringify({
@@ -161,7 +162,8 @@ try {
       ).toString("base64"),
     }),
   );
-  const remote = (service.remote = new RemoteControl(service, encryption));
+  const remote = (service.remote = new RemoteControl(service));
+  attachRemoteHostFixture(remote, encryption);
   await remote.init();
   if (process.env.AREAL_REMOTE_GUI_MANUAL === "1") {
     const invitation = await remote.control({ operation: "pair" });

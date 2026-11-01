@@ -45,6 +45,12 @@ function serviceOptions(app) {
       resourcesPath: process.resourcesPath,
     }),
     home: serviceHome(app),
+    guiProfile: app.getPath("userData"),
+    hostHome: resolve(
+      process.env.AREAL_HARNESS_SERVICE_HOME ||
+        process.env.AREAL_HARNESS_HOME ||
+        join(process.env.AREAL_CORE_USER_HOME || homedir(), ".areal"),
+    ),
     applicationOwner: process.env.AREAL_GUI_OWNER
       ? require("./application-owner.cjs").parseOwner(process.env.AREAL_GUI_OWNER)
       : undefined,
@@ -185,6 +191,8 @@ async function serviceIdentity(options) {
   hash.update(
     JSON.stringify({
       harnessHome: options.harnessHome,
+      hostHome: options.hostHome,
+      guiProfile: options.guiProfile,
       userHome: options.userHome,
       toolExtensions: options.toolExtensions,
       sandboxProfile: options.sandboxProfile || "full-access",

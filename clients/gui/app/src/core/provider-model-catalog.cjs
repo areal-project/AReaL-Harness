@@ -4,6 +4,7 @@ const providerContract = require("./provider-contract.cjs");
 /** @typedef {import('./project-state.cjs').CoreProject} CoreProject */
 /** @param {InstanceType<typeof import('./providers.cjs').AppProviders>} providers @param {import('./provider-contract.cjs').ModelCatalogEntry[]} models @param {CoreProject} project */
 function catalog(providers, models, project) {
+  if (!providers.manages(project)) return models;
   const configuration = project.providerSnapshot ?? providers.config.value;
   const references = Object.values(project.configurations ?? {}).flatMap((value) =>
     value?.model?.providerId === "areal_openai" ? [value.model.modelId] : [],
@@ -138,6 +139,7 @@ function rejectModel(providers, project, model, error) {
 
 /** @param {InstanceType<typeof import('./providers.cjs').AppProviders>} providers @param {import('./provider-contract.cjs').ModelCatalogEntry} model @param {CoreProject} project */
 function subscriptionAvailable(providers, model, project) {
+  if (!providers.manages(project)) return model.available !== false;
   if (model.providerId !== "areal_openai") return true;
   const application = providers.subscriptionApplications.get(project),
     service = providers.openaiService;

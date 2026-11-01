@@ -351,7 +351,7 @@ if (!process.env.RC12_TLS_HOME) {
     const saved = await f.persisted();
     assert.equal(saved.relay, relay.origin);
     assert.match(saved.room, /^[a-f0-9]{64}$/);
-    const disk = await readFile(join(f.home, "remote.json"), "utf8");
+    const disk = await readFile(join(f.home, "remote-host-fixture.json"), "utf8");
     for (const secret of [code, saved.capability]) {
       assert.ok(!disk.includes(secret));
       assert.ok(!JSON.stringify(f.remote.state()).includes(secret));

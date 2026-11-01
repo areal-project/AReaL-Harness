@@ -226,12 +226,28 @@ test("new authorization saved during an old-account Core request never aborts th
     onChange() {},
     save: async (name, value) => writeFile(join(home, name), JSON.stringify(value)),
   };
-  // 该跨层 fixture 使用隔离测试记录；安全存储替身不代表真实钥匙串。
-  const providers = new AppProviders(backend, {
-    isEncryptionAvailable: () => true,
-    encryptString: (value) => Buffer.from(value),
-    decryptString: (value) => value.toString(),
-  });
+  const values = new Map(),
+    operations = new Map();
+  backend.host = {
+    sourceId: "fixture",
+    resolve: () => ({ sourceId: "fixture" }),
+    client: {
+      vaultRead: async (slot) =>
+        structuredClone(values.get(JSON.stringify(slot)) ?? { revision: 0, value: null }),
+      vaultReplace: async (requestId, slot, expectedRevision, value) => {
+        const key = JSON.stringify(slot),
+          current = values.get(key) ?? { revision: 0, value: null };
+        assert.equal(current.revision, expectedRevision);
+        const saved = { revision: current.revision + 1, value: structuredClone(value) };
+        values.set(key, saved);
+        const receipt = { requestId, slot, revision: saved.revision, state: "completed" };
+        operations.set(requestId, receipt);
+        return receipt;
+      },
+      operation: async (id) => ({ operation: operations.get(id) ?? null }),
+    },
+  };
+  const providers = new AppProviders(backend);
   providers.transport = { port: 0 };
   providers.openaiToken = "fixture-transport";
   const service = await providers.openai();
@@ -332,6 +348,7 @@ for (const operation of ["logout", "selectAccount"]) {
       const f = await fixture({ failures: 0 });
       const pending = [{ method: "areal/thread/start", params: { requestId: "unknown" } }];
       const backend = {
+        host: { sourceId: "fixture", resolve: () => ({ sourceId: "fixture" }) },
         hasWork: () => true,
         activeCommands: 0,
         starting: new Set(),

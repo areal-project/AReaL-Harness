@@ -379,7 +379,13 @@ test("status to Core sync retains provider while refreshing or storage is locked
     return { ...credential, expires: Date.now() + 3600000 };
   });
   const calls = [];
-  const app = new AppProviders({ submit: async (...args) => calls.push(args) }, {});
+  const app = new AppProviders(
+    {
+      host: { sourceId: "fixture", resolve: () => ({ sourceId: "fixture" }) },
+      submit: async (...args) => calls.push(args),
+    },
+    {},
+  );
   const project = {
     client: {
       ready: true,
@@ -406,7 +412,13 @@ test("status to Core sync retains provider while refreshing or storage is locked
 
 test("Core sync removes subscription only on explicit sign-out or confirmed empty ready catalog", async () => {
   const calls = [];
-  const app = new AppProviders({ submit: async (_project, method) => calls.push(method) }, {});
+  const app = new AppProviders(
+    {
+      host: { sourceId: "fixture", resolve: () => ({ sourceId: "fixture" }) },
+      submit: async (_project, method) => calls.push(method),
+    },
+    {},
+  );
   const project = {
     client: { ready: true, request: async () => ({ data: [{ id: "areal_openai", revision: 1 }] }) },
   };
@@ -556,6 +568,7 @@ async function startupSubscription(t, { catalog, refresh, expired = false } = {}
   const mutations = [];
   let provider = { id: "areal_openai", revision: 7, models: ["old-model"] };
   const backend = {
+    host: { sourceId: "fixture", resolve: () => ({ sourceId: "fixture" }) },
     home,
     projects: new Map(),
     onChange() {},

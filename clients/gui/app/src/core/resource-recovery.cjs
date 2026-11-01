@@ -30,14 +30,13 @@ const unavailableRead = (error) =>
 // drain closes Core admission and cannot be undone by the GUI.
 /** @param {Backend} backend @param {{includeTasks?:boolean,purpose?:string}} [options] @returns {Promise<Inspection[]>} */
 async function inspectResources(backend, { includeTasks = false, purpose } = {}) {
-  await backend.refreshOwnedEngines?.();
+  await backend.refreshHostProjects();
   const deadline = purpose === "quit" ? Date.now() + QUIT_INSPECTION_TIMEOUT_MS : null;
   /** @type {Inspection[]} */
   const projects = [];
   const engines = new Map(backend.projects);
-  for (const [projectId, owned] of backend.ownedEngines ?? [])
-    engines.set(projectId, owned.project);
   for (const [projectId, project] of engines) {
+    await backend.loadProjectJournal(projectId);
     if (project.service && !project.client?.ready && backend.applicationOwner && purpose !== "quit")
       await backend.reconnectProject(project);
     const identity = {
@@ -179,9 +178,7 @@ async function recoverResource(backend, request) {
     .find((p) => p.projectId === request.projectId)
     ?.resources?.find((p) => p.threadId === request.threadId && p.id === request.id);
   if (!target || target.epoch !== request.epoch) throw new Error("资源状态已变化，请重新检查");
-  const client = (
-    backend.projects.get(target.projectId) ?? backend.ownedEngines?.get(target.projectId)?.project
-  )?.client;
+  const client = backend.projects.get(target.projectId)?.client;
   if (!client) throw new Error("Core 连接未恢复，无法确认资源清理");
   if (target.stale) {
     if (request.operation !== "acknowledge" || request.confirmed !== true)

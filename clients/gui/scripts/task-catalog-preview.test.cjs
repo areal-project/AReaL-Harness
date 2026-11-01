@@ -81,6 +81,7 @@ async function fixture(t) {
   const backend = {
     home,
     binary: "/trusted/areal",
+    host: { resolve: (id) => ({ dataDir: join(home, id, "state") }) },
     saved: [{ id: "owner", root }],
     library: { value: { projects: {} } },
     hooks: { environment: () => ({ FIXTURE: "1" }) },
@@ -193,6 +194,26 @@ test("preview rejects wrong target and observation metadata", async (t) => {
     assert.equal(result.errors.length, 1);
     assert.equal(result.owners[0].status, "error");
   }
+});
+
+test("foreign alias preview reads the original Host Store binding", async (t) => {
+  const f = await fixture(t);
+  const dataDir = join(f.backend.home, "original-cli-store");
+  await mkdir(dataDir);
+  f.backend.host.resolve = (id) => {
+    assert.equal(id, "owner");
+    return { dataDir };
+  };
+  f.response.target.dataDir = await realpath(dataDir);
+  f.response.target.instanceId = createHash("sha256")
+    .update(f.response.target.dataDir)
+    .digest("hex")
+    .slice(0, 24);
+  const result = await taskCatalog(f.backend, request);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.data[0].id, f.task.id);
+  const args = f.calls[0].args;
+  assert.equal(args[args.indexOf("--data-dir") + 1], dataDir);
 });
 
 test("missing catalog stays empty while migration failures preserve the previous snapshot", async (t) => {

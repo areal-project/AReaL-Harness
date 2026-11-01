@@ -2,7 +2,7 @@ import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { mkdir, writeFile, rename, rm } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
@@ -56,6 +56,20 @@ let watch;
 const backend = new CoreBackend({
   binary: process.env.AREAL_CORE_BIN || resolve(gui, "../../target/debug/areal"),
   home: join(scratch, "desktop"),
+  hostHome: join(scratch, "host-home"),
+  guiProfile: join(scratch, "profile"),
+  sourceSingletonHeld: true,
+  encryption: {
+    isEncryptionAvailable() {
+      throw new Error("fixture must not access Keychain");
+    },
+    encryptString() {
+      throw new Error("fixture must not encrypt credentials");
+    },
+    decryptString() {
+      throw new Error("fixture must not decrypt credentials");
+    },
+  },
   harnessHome: join(scratch, "registry"),
   userHome: join(scratch, "user"),
   desktopConfig: deployment,
@@ -328,10 +342,16 @@ async function journalCase(project, evidence) {
   });
   const requestId = randomUUID(),
     count = workRequests();
-  const path = join(backend.home, `${project.id}-outcomes.json`),
-    backup = `${path}.fixture-backup`;
-  await rename(path, backup);
-  await mkdir(path);
+  const journal = backend.host.journal(project.id);
+  const change = journal.change.bind(journal);
+  let blockOutcome = true;
+  journal.change = (mutate) =>
+    change((snapshot) => {
+      const next = mutate(snapshot);
+      if (blockOutcome && next.outcomes[requestId])
+        throw new Error("fixture blocks Host journal outcome staging");
+      return next;
+    });
   const request = project.client.request.bind(project.client);
   let writes = 0;
   project.client.request = (method, params, options) => {
@@ -345,7 +365,7 @@ async function journalCase(project, evidence) {
       requestId,
       text: "Keep admission through local disk failure",
     });
-    assert.ok(result.turn?.id, "known Core acceptance survives local outcome rename failure");
+    assert.ok(result.turn?.id, "known Core acceptance survives Host journal staging failure");
     assert.equal(
       project.pending.find((value) => value.params.requestId === requestId)?.operation.requestId,
       requestId,
@@ -353,13 +373,12 @@ async function journalCase(project, evidence) {
     assert.equal(project.refreshErrors[requestId].refreshPending, true);
     evidence.acceptedTurnId = result.turn.id;
     evidence.retainedRequestId = requestId;
-    await rm(path, { recursive: true });
-    await rename(backup, path);
+    blockOutcome = false;
     await until(
       () =>
         project.outcomes[requestId]?.accepted === true &&
         !project.pending.some((value) => value.params.requestId === requestId),
-      "receipt settles after local disk recovers",
+      "receipt settles after Host journal staging recovers",
     );
     await completed(project, threadId);
     assert.equal(project.model.state.threads[threadId].turns.length, 1);
@@ -369,11 +388,7 @@ async function journalCase(project, evidence) {
     evidence.modelRequests = workRequests() - count;
   } finally {
     project.client.request = request;
-    await rm(path, { recursive: true, force: true });
-    await rename(backup, path).catch((error) => {
-      if (error.code !== "ENOENT") throw error;
-    });
-    await backend.save(`${project.id}-outcomes.json`, project.outcomes);
+    journal.change = change;
   }
 }
 
@@ -510,7 +525,7 @@ try {
         receipt:
           "CoreClient request after real submit; matching receipt hidden on first two real query responses",
         read: "CoreClient request before first observe read, healthy client retained",
-        journal: "real Desktop outcome rename blocked by a directory after real Core admission",
+        journal: "HostJournal staging adapter rejects outcome change after real Core admission",
         domain: "real configure and Task mutation replies lost; first two receipt reads hidden",
       }[name],
     };
@@ -527,6 +542,14 @@ try {
   fatal = { message: error.message, stack: error.stack };
 } finally {
   try {
+    if (backend.host.client.generation) {
+      const stopped = await backend.host.client.request("host.stop", {
+        requestId: randomUUID(),
+        expectedGeneration: backend.host.client.generation,
+        strategy: "cancel",
+      });
+      assert.equal(stopped.state, "completed", "isolated Host cleanup completes");
+    }
     await backend.shutdown({ cancel: true });
   } catch (error) {
     cleanupError = error.message;

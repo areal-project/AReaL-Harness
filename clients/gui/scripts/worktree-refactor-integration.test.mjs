@@ -17,6 +17,15 @@ async function backendFixture(t) {
   await mkdir(join(home, "thread-owners"));
   const backend = new CoreBackend({ binary: "/bin/true", home });
   backend.saved = [{ id: physical, logicalProjectId: logical, root: home }];
+  let snapshot = { version: 1, pending: [], outcomes: {} };
+  const journal = {
+    read: async () => ({ snapshot: structuredClone(snapshot) }),
+    change: async (mutate) => {
+      snapshot = structuredClone(await mutate(structuredClone(snapshot)));
+      return { state: "completed" };
+    },
+  };
+  backend.host = { journal: () => journal };
   backend.scheduleReconciliation = () => {};
   backend.stopReconciliation = () => {};
   return { backend, home };
@@ -56,7 +65,7 @@ test("refactored connection guards scheduled start and resume before resources a
   const { backend } = await backendFixture(t);
   const project = await backend.loadProjectJournal(physical),
     calls = [];
-  backend.providers = { value: {} };
+  backend.providers = { value: {}, manages: () => true };
   backend.supportsBrowser = () => false;
   backend.resources.beforeCreate = async () => calls.push("resources");
   backend.scheduleAdmission.prepare = async (_project, params) => {

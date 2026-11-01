@@ -34,7 +34,7 @@ const backend = {
   providers: { redact: (value) => value },
 };
 const service = { backend, schedule() {} };
-const remote = new RemoteControl(service, {});
+const remote = new RemoteControl(service);
 remote.crypto = { byteChannel, createIdentity, identityId, secureChannel };
 remote.config = {
   enabled: false,

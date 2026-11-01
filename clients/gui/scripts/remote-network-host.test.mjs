@@ -1,3 +1,4 @@
+import { attachRemoteHostFixture } from "./remote-host-fixture.cjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
@@ -10,7 +11,7 @@ async function fixture() {
   const home = await mkdtemp(join(tmpdir(), "rc11-host-"));
   const cli = join(home, "fixture cli; no-shell");
   const cliState = join(home, "cli.json");
-  const journal = join(home, "remote.json");
+  const journal = join(home, "remote-host-fixture.json");
   await writeFile(cliState, JSON.stringify({ config: {} }));
   await writeFile(
     cli,
@@ -62,7 +63,8 @@ else if (a[0] === 'serve' || a[0] === 'funnel') {
   };
   const instances = [];
   const make = async () => {
-    const r = new RemoteControl(service, encryption, options);
+    const r = new RemoteControl(service, options);
+    attachRemoteHostFixture(r, encryption);
     instances.push(r);
     await r.init();
     return r;

@@ -2,71 +2,49 @@
 "use strict";
 const providerContract = require("./provider-contract.cjs");
 const { validContextWindow } = providerContract;
-const { readFile, appendFile } = require("node:fs/promises");
+const { appendFile } = require("node:fs/promises");
 const { join } = require("node:path");
 
 // 凭据存储与 OAuth 使用同一串行读写契约。
 class SubscriptionStore {
-  /** @param {{home:string,save:(name:string,value:unknown)=>Promise<void>}} backend @param {import("electron").SafeStorage} [encryption] */
-  constructor(backend, encryption) {
-    this.filename = "openai-subscription.json";
-    this.backend = backend;
-    this.encryption = encryption;
+  /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend @param {InstanceType<typeof import('./host-vault.cjs').HostVault>} vault */
+  constructor(backend, vault) {
+    this.vault = vault;
+    /** @type {import('./host-client.cjs').VaultSlot} */
+    this.slot = {
+      kind: "subscriptionAccount",
+      sourceId: backend.host.sourceId,
+      providerId: "openai",
+    };
     /** @type {Promise<unknown>} */
     this.chain = Promise.resolve();
   }
-  /** @returns {import("electron").SafeStorage} */
-  check() {
-    if (
-      !this.encryption?.isEncryptionAvailable() ||
-      this.encryption.getSelectedStorageBackend?.() === "basic_text"
-    )
-      throw Object.assign(new Error("系统安全存储不可用，请解锁后重试"), {
-        code: "storage_locked",
-      });
-    return this.encryption;
+  async check() {
+    await this.vault.ready(this.slot);
+    await this.readRecord();
   }
-  /** @returns {Promise<unknown>} */
   async readRecord() {
-    try {
-      /** @type {unknown} */
-      const record = JSON.parse(await readFile(join(this.backend.home, this.filename), "utf8"));
-      if (!record || typeof record !== "object" || !("secret" in record))
-        throw new Error("订阅凭据记录无效");
-      if (record.secret == null || record.secret === "") return undefined;
-      if (typeof record.secret !== "string") throw new Error("订阅凭据记录无效");
-      const encryption = this.check();
-      return JSON.parse(encryption.decryptString(Buffer.from(record.secret, "base64")));
-    } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
-      throw Object.assign(new Error("无法读取 ChatGPT 登录，请解锁系统安全存储后重试"), {
-        code: "storage_locked",
-      });
-    }
+    const current = await this.vault.read(this.slot);
+    return current.value ?? undefined;
   }
   /** @param {unknown} _key @param {(current:unknown)=>unknown|Promise<unknown>} mutate */
   modifyRecord(_key, mutate) {
     const result = this.chain.then(async () => {
-      const current = await this.readRecord(),
-        next = await mutate(current);
-      if (next === undefined) return current;
-      const encryption = this.check();
-      try {
-        await this.backend.save(this.filename, {
-          secret: encryption.encryptString(JSON.stringify(next)).toString("base64"),
-        });
-      } catch {
-        throw Object.assign(new Error("ChatGPT 凭据轮换尚未保存，请重试"), {
-          code: "storage_write_failed",
-        });
-      }
-      return next;
+      await this.vault.ready(this.slot);
+      const current = await this.vault.read(this.slot);
+      const next = await mutate(current.value ?? undefined);
+      if (next === undefined) return current.value ?? undefined;
+      return (await this.vault.replace(this.slot, current.revision, next)).value;
     });
     this.chain = result.catch(() => {});
     return result;
   }
   deleteRecord() {
-    const result = this.chain.then(() => this.backend.save(this.filename, { secret: null }));
+    const result = this.chain.then(async () => {
+      await this.vault.ready(this.slot);
+      const current = await this.vault.read(this.slot);
+      await this.vault.replace(this.slot, current.revision, null);
+    });
     this.chain = result.catch(() => {});
     return result;
   }

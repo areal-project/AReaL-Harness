@@ -264,6 +264,7 @@ class ScopedResources {
   /** @param {CoreProject} project */
   async beforeCreate(project) {
     if (!project.client) throw new Error("Core 尚未连接");
+    if (!this.backend.providers.manages(project)) return project;
     const deployment = await this.deployment(project);
     if (deployment.fingerprint === project.resourceFingerprint) return project;
     if (
@@ -361,7 +362,9 @@ class ScopedResources {
       !requestedProfile ||
       (managed && requestedProfile.id === base?.id && requestedProfile.revision === base?.revision);
     const profile = useCurrent
-      ? (project.resourceProfile ?? this.backend.defaultProfile)
+      ? this.backend.providers.manages(project)
+        ? (project.resourceProfile ?? this.backend.defaultProfile)
+        : undefined
       : requestedProfile;
     if (!profile) throw new Error("当前部署未配置默认任务配置，现有草稿已保留。");
     const available = await project.client.request(

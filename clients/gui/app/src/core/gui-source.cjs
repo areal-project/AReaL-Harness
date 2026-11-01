@@ -109,7 +109,7 @@ async function canonicalSource(source) {
 
 // 仅在原 Desktop singleton 已取得、业务对象尚未初始化时使用。
 class GuiSourceAdapter {
-  /** @param {{source:GuiSource,hostHome:string,encryption:import('electron').SafeStorage,singletonHeld:boolean}} options */
+  /** @param {{source:GuiSource,hostHome:string,encryption?:import('electron').SafeStorage,singletonHeld:boolean}} options */
   constructor(options) {
     if (!options.singletonHeld) throw new Error("Original Desktop singleton is required");
     this.source = options.source;
@@ -152,7 +152,7 @@ class GuiSourceAdapter {
     )
       return require("./subscription.cjs").transportRecord(value);
     if (
-      !this.encryption.isEncryptionAvailable() ||
+      !this.encryption?.isEncryptionAvailable() ||
       this.encryption.getSelectedStorageBackend?.() === "basic_text"
     )
       throw Object.assign(new Error("Unlock system secure storage before importing credentials"), {
@@ -400,10 +400,7 @@ async function prepareGuiSource(options) {
   const importArgument = process.argv.find((value) =>
     value.startsWith("--areal-host-import-source="),
   );
-  if (!importArgument) {
-    await assertLegacySourceWritable(options.coreHome);
-    return undefined;
-  }
+  if (!importArgument) return undefined;
   const requestPath = importArgument.slice("--areal-host-import-source=".length);
   if (!isAbsolute(requestPath)) throw new Error("Import request path must be absolute");
   const request = JSON.parse(await readFile(requestPath, "utf8"));

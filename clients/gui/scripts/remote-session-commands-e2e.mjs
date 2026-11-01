@@ -1,3 +1,4 @@
+import { attachRemoteHostFixture } from "./remote-host-fixture.cjs";
 import { makeTempDir } from "./support/temp.mjs";
 // 原生 T18–T34：真实 DesktopService/Core/Runtime/Noise；本机安全存储用显式 fixture。
 import assert from "node:assert/strict";
@@ -331,7 +332,8 @@ if (process.argv[2] === "--host-worker") {
     );
   });
   const service = new DesktopService(backend, "rc05-native-fixture");
-  const remote = (service.remote = new RemoteControl(service, encryptionFixture));
+  const remote = (service.remote = new RemoteControl(service));
+  attachRemoteHostFixture(remote, encryptionFixture);
   await remote.init();
   const endpoint = await initializeConformanceHost(remote, transport, options.remoteTransport);
   let fault = null,
@@ -930,7 +932,7 @@ if (process.argv[2] === "--host-worker") {
     deviceA = await createIdentity(),
     deviceB = await createIdentity();
   await writeFile(
-    join(home, "remote.json"),
+    join(home, "remote-host-fixture.json"),
     JSON.stringify({
       encrypted: Buffer.from(
         JSON.stringify({
@@ -2983,7 +2985,7 @@ if (process.argv[2] === "--host-worker") {
     let remoteConfigSha256 = null;
     try {
       remoteConfigSha256 = createHash("sha256")
-        .update(await readFile(join(home, "remote.json")))
+        .update(await readFile(join(home, "remote-host-fixture.json")))
         .digest("hex");
     } catch (error) {
       passed = false;

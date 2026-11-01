@@ -123,6 +123,19 @@ console.log(
 const home = await makeTempDir("rc-native-harness-contract-");
 const backend = new CoreBackend({ home, binary: "/unused", onChange() {} });
 backend.saved = [{ id: "p", root: home }];
+let journalSnapshot = { version: 1, pending: [], outcomes: {} };
+const journal = {
+  read: async () => ({ snapshot: structuredClone(journalSnapshot) }),
+  change: async (mutate) => {
+    journalSnapshot = structuredClone(await mutate(structuredClone(journalSnapshot)));
+    return { state: "completed" };
+  },
+};
+backend.host = {
+  sourceId: "fixture",
+  resolve: () => ({ sourceId: "fixture" }),
+  journal: () => journal,
+};
 backend.defaultProfile = { id: "fixture", revision: "v1" };
 const project = await backend.loadProjectJournal("p");
 project.resourceProfile = { id: "fixture", revision: "v1" };
@@ -168,6 +181,7 @@ const flow = { id: "flow", revision: "v1" };
 assert.deepEqual(JSON.parse(JSON.stringify(await control("profile", flow))), flow);
 const remote = {
   backend,
+  push: { track() {} },
   gatewayGeneration: "gw",
   config: {
     identity: {},
@@ -202,7 +216,7 @@ assert.equal(result.error.code, "UNSUPPORTED_PROFILE");
 console.log("Trusted profile control reaches actual production Gateway native create parameters");
 const modes = between(
   '  const taskPauseOnly = process.env.RC09_TASK_PAUSE_ONLY === "1";',
-  "  const scratch = await mkdtemp(",
+  "  const scratch = await makeTempDir(",
 );
 const reportSource = between(
   "    const report = {",
@@ -1319,7 +1333,11 @@ assert.ok(
 for (const name of ["session-observation", "observation", "pairing", "work-overview", "gui-quit"]) {
   const entry = await readFile(new URL(`./remote-${name}-e2e.mjs`, import.meta.url), "utf8");
   assert.ok(
-    entry.startsWith("import { selectRemoteTransport, requireBrowserTransport }"),
+    entry
+      .replace(/^(?:import [^\n]+;\n)+/, "")
+      .startsWith(
+        "const transport = selectRemoteTransport();\nawait requireBrowserTransport(transport,",
+      ),
     "transport preflight is the first evaluated harness statement",
   );
 }
@@ -1446,6 +1464,7 @@ for (const fault of ["enrollment-reject", "ready-timeout", "early-worker-exit"])
       }
     },
     encryptionFixture: {},
+    attachRemoteHostFixture() {},
     transport: "relay",
     initializeConformanceHost: fail,
   }).catch((error) => {
@@ -2139,7 +2158,7 @@ console.log(
   const { RemoteControl } = require("../app/src/core/remote.cjs");
   const source = await readFile(new URL("./remote-pairing-e2e.mjs", import.meta.url), "utf8");
   const start = source.indexOf("  await enableLocal.click();");
-  const end = source.indexOf("  checks.push('one-use invitation uses URL fragment');", start);
+  const end = source.indexOf('  checks.push("one-use invitation uses URL fragment");', start);
   assert.ok(start > 0 && end > start);
   const moved = source.slice(start, end);
   const consumer = moved
@@ -2172,6 +2191,12 @@ console.log(
         isEncryptionAvailable: () => true,
         encryptString: (value) => Buffer.from(value),
       },
+      storage: {
+        available: () => true,
+        refresh: async () => remote.config,
+        replace: async (config) => config,
+      },
+      relayService: { state: () => ({}) },
       backend: { save: async () => {} },
       service: { schedule() {} },
       crypto: { identityId: () => "fixture-host" },
@@ -2280,8 +2305,8 @@ console.log(
   const init = slice(main, "async function initializeBrowser() {", "async function connectHost(");
   const fixed = slice(
     source,
-    "    const evaluate = async expression =>",
-    "    await remote.control({ operation: 'approve'",
+    "    const evaluate = async (expression) =>",
+    '    await remote.control({\n      operation: "approve"',
   );
   const waitSource = slice(source, "async function waitFor(", "async function fileSha256(");
   const domFixture = slice(lifecycle, "function events() {", "function inbox() {");
@@ -2456,10 +2481,10 @@ console.log(
   const initial = slice(
     harness,
     "  assertPublicDirectUrl(page.url()",
-    "  await page.getByRole('button', { name: '连接电脑' }).click();",
+    '  await page.getByRole("button", { name: "连接电脑" }).click();',
   );
-  const open = slice(harness, "  const openInvite = async link =>", "  const pinInvite =");
-  const wrongPin = slice(harness, "  const pinInvite =", "  await wrong.locator('#status')");
+  const open = slice(harness, "  const openInvite = async (link) =>", "  const pinInvite =");
+  const wrongPin = slice(harness, "  const pinInvite =", "  await wrong\n");
   const host = "12D3KooW" + "a".repeat(44),
     other = "12D3KooW" + "b".repeat(44),
     secret = "c".repeat(64);
@@ -2713,12 +2738,15 @@ console.log(
     ["status", "device-storage", "update-status"],
   );
   assert.ok(main.includes('const status = document.getElementById("status");'));
-  assert.ok(harness.includes("getByRole('radio', { name: '可操作', exact: true }).check()"));
+  assert.ok(harness.includes('getByRole("radio", { name: "可操作", exact: true }).check()'));
 
-  const presetSource = slice(hostSource, "const PRESETS =", "const pairingError");
-  const control = slice(hostSource, "    async controlOnce(request) {", "    async enableRelay(");
-  const save = slice(hostSource, "    async save(config) {", "    state() {");
-  const methods = runInNewContext(presetSource + "\n({" + control + "," + save + "})", {
+  const { PRESETS, strings } = require("../app/src/core/remote-config.cjs");
+  const control = slice(hostSource, "  async controlOnce(request) {", "  async enableRelay(");
+  const save = slice(hostSource, "  async save(config) {", "  state() {");
+  const methods = runInNewContext("({" + control + "," + save + "})", {
+    PRESETS,
+    strings,
+    distinctName: require("../app/src/core/remote-devices.cjs").distinctName,
     clearTimeout() {},
   });
   let accepts = 0,
@@ -2748,14 +2776,14 @@ console.log(
     ]),
     backend: {
       saved: [{ id: "p" }, { id: "q" }],
-      async save(name, value) {
-        assert.equal(name, "remote.json");
+    },
+    storage: {
+      async replace(value) {
         if (fail) throw diskError;
         persisted = value;
+        return value;
       },
     },
-    storageAvailable: () => true,
-    encryption: { encryptString: (value) => Buffer.from(value) },
     closePeer() {},
     service: { schedule() {} },
     state() {
@@ -2779,7 +2807,7 @@ console.log(
   const grant = remote.config.deviceGrants[0];
   assert.deepEqual(Array.from(grant.projectIds), ["p", "q"]);
   assert.deepEqual(
-    JSON.parse(Buffer.from(persisted.encrypted, "base64").toString()),
+    JSON.parse(JSON.stringify(persisted)),
     JSON.parse(JSON.stringify(remote.config)),
   );
   const supported = runInNewContext(
@@ -2796,26 +2824,24 @@ console.log(
     },
   );
   let ready;
-  runInNewContext(
-    slice(acceptor, '    secure.send({\n        event: "ready",', "    let windowStart ="),
-    {
-      secure: {
-        send(value) {
-          ready = value;
-        },
+  runInNewContext(slice(acceptor, '  secure.send({\n    event: "ready",', "  let windowStart ="), {
+    secure: {
+      send(value) {
+        ready = value;
       },
-      grant,
-      CAPABILITIES: supported,
-      METHODS: [],
-      LIMITS: limits,
-      remote: {
-        crypto: { identityId: () => "fixture-host" },
-        config: { identity: {} },
-        gatewayGeneration: "fixture-generation",
-      },
-      connectionId: "fixture-connection",
     },
-  );
+    grant,
+    identity: {},
+    CAPABILITIES: supported,
+    METHODS: [],
+    LIMITS: limits,
+    remote: {
+      crypto: { identityId: () => "fixture-host" },
+      config: { identity: {} },
+      gatewayGeneration: "fixture-generation",
+    },
+    connectionId: "fixture-connection",
+  });
   const expected = ["observe", "review", "submit", "interrupt", "answer", "pauseTask"];
   assert.deepEqual(Array.from(ready.capabilities), expected);
   assert.equal(ready.limits.applicationMessageBytes, 262144);
@@ -2880,15 +2906,14 @@ console.log(
       async close() {},
     };
   }
-  const consumers = harness.split("\n").filter((line) => line.includes("locator('#status')"));
+  const statements = harness.split(";").map((statement) => statement.trim() + ";");
+  const consumers = statements.filter((statement) => statement.includes('locator("#status")'));
   assert.equal(consumers.length, 15);
-  assert.ok(!harness.includes("getByRole('status')"));
-  const capabilityCheck = harness
-    .split("\n")
-    .find(
-      (line) =>
-        line.includes("locator('#connection-protocol')") && line.includes("消息上限：262144 字节"),
-    );
+  assert.ok(!/getByRole\(["']status["']\s*\)/.test(harness));
+  const capabilityCheck = statements.find(
+    (line) =>
+      line.includes('locator("#connection-protocol")') && line.includes("消息上限：262144 字节"),
+  );
   const protocolPage = (value) => ({
     locator(selector) {
       assert.equal(selector, "#connection-protocol");
@@ -2917,7 +2942,7 @@ console.log(
     runInNewContext("(async()=>{" + line + "})()", { assert, Promise, ...context });
   const oldWaiting = consumers
     .find((line) => line.includes("assert.match") && line.includes("等待桌面确认"))
-    .replaceAll("locator('#status')", "getByRole('status')");
+    .replaceAll('locator("#status")', "getByRole('status')");
   await assert.rejects(
     run(oldWaiting, { page: page("等待桌面确认", "unrelated status") }),
     /strict mode violation: status resolved to 3 elements/,

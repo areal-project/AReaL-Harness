@@ -18,9 +18,9 @@ const {
 /** @typedef {import('@areal/workbench/desktop-contract/shared').LifecycleMode} LifecycleMode */
 /** @typedef {import('@areal/workbench/desktop-contract/shared').TargetPhase} TargetPhase */
 /** @typedef {import('@areal/workbench/desktop-contract/shared').LifecycleIdentity} LifecycleIdentity */
-/** @typedef {import('@areal/workbench/desktop-contract/shared').LifecycleTarget & {requestId:string}} LifecycleTarget */
+/** @typedef {import('@areal/workbench/desktop-contract/shared').LifecycleTarget & {requestId:string,dataDir?:string}} LifecycleTarget */
 /** @typedef {{requestId:string,kind:LifecycleKind,mode:LifecycleMode,desktopGeneration:string,targets:LifecycleIdentity[],threadId?:string,turnId?:string}} LifecycleRequest */
-/** @typedef {import('@areal/workbench/desktop-contract/shared').LifecycleReceipt & {targets:LifecycleTarget[]}} LifecycleReceipt */
+/** @typedef {import('@areal/workbench/desktop-contract/shared').LifecycleReceipt & {targets:LifecycleTarget[],sharedHost?:boolean}} LifecycleReceipt */
 /** @typedef {import('./project-state.cjs').CoreProject} Project */
 /** @typedef {import('@areal/runtime-client/core').CoreClient} CoreClient */
 /** @typedef {InstanceType<typeof import('./backend.cjs').CoreBackend>} Backend */
@@ -187,6 +187,9 @@ function validReceipt(record, requestId) {
         text(target.projectId) &&
         text(target.serviceId) &&
         text(target.generation) &&
+        (!("dataDir" in target) ||
+          target.dataDir === undefined ||
+          (typeof target.dataDir === "string" && isAbsolute(target.dataDir))) &&
         uuid(target.requestId) &&
         typeof target.phase === "string" &&
         PHASES.has(target.phase),
@@ -237,6 +240,7 @@ async function reconcileLifecycleReceipt(
   const reader = {
     binary,
     home,
+    ...(record.sharedHost ? { hostRegistry: registry } : {}),
     providers: { redact },
     hooks: { environment: () => ({ ...process.env, AREAL_HARNESS_SERVICE_HOME: registry }) },
   };
@@ -367,13 +371,7 @@ class LifecycleOperations {
   }
 
   targets() {
-    const engines = this.backend.applicationOwner
-      ? [...this.backend.ownedEngines]
-          .filter(([, entry]) => entry.service)
-          .map(
-            /** @returns {[string,Project]} */ ([projectId, entry]) => [projectId, entry.project],
-          )
-      : [...this.backend.projects];
+    const engines = [...this.backend.projects];
     return identities(
       engines.flatMap(([projectId, project]) =>
         project.service
@@ -616,9 +614,11 @@ class LifecycleOperations {
     const record = {
       version: 1,
       ...request,
-      harnessHome: resolve(this.backend.harnessHome),
+      harnessHome: resolve(this.backend.host.home),
+      sharedHost: true,
       targets: request.targets.map((target) => ({
         ...target,
+        dataDir: this.backend.host.resolve(target.projectId).dataDir,
         requestId: randomUUID(),
         phase: "notAttempted",
         ...(request.kind === "stopProject" ? { scheduleActivationSuppressed: true } : {}),
@@ -677,9 +677,7 @@ class LifecycleOperations {
 
   /** @param {LifecycleIdentity} target */
   currentTarget(target) {
-    const project =
-      this.backend.projects.get(target.projectId) ??
-      this.backend.ownedEngines?.get(target.projectId)?.project;
+    const project = this.backend.projects.get(target.projectId);
     if (
       project?.service?.serviceId !== target.serviceId ||
       project.service.generation !== target.generation
@@ -810,9 +808,7 @@ class LifecycleOperations {
 
   /** @param {LifecycleReceipt} record @param {LifecycleTarget} target */
   async inspectInterrupt(record, target) {
-    const project =
-      this.backend.projects.get(target.projectId) ??
-      this.backend.ownedEngines?.get(target.projectId)?.project;
+    const project = this.backend.projects.get(target.projectId);
     let turn;
     if (
       project?.client?.ready &&
@@ -841,6 +837,16 @@ class LifecycleOperations {
       .then(async () => {
         const record = await this.read(requestId);
         if (!record) return null;
+        if (!record.sharedHost && this.backend.host) {
+          const legacy = await reconcileLifecycleReceipt(this.backend.home, {
+            requestId: record.requestId,
+            binary: this.backend.binary,
+            harnessHome: record.harnessHome,
+            redact: (value) => this.backend.providers.redact(value),
+          });
+          if (legacy) await this.store(legacy);
+          return legacy;
+        }
         await reconcileReceipt(record, {
           readHost: (target) => readStop(this.backend, target),
           inspectTurn: async (receipt, target) => {

@@ -1,3 +1,4 @@
+const { attachRemoteHostFixture } = require("./remote-host-fixture.cjs");
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { mkdtemp, writeFile, readFile, rm, mkdir, chmod } = require("node:fs/promises");
@@ -24,25 +25,21 @@ async function waitFor(predicate) {
 }
 async function host(t, home, { keepHome = false } = {}) {
   home ??= await mkdtemp(join(tmpdir(), "relay-local-"));
-  const remote = new RemoteControl(
-    {
-      schedule() {},
-      backend: {
-        home,
-        saved: [{ id: "project", name: "Test project", root: home }],
-        projects: new Map(),
-        async save(name, value) {
-          await writeFile(join(home, name), JSON.stringify(value));
-        },
+  const remote = new RemoteControl({
+    schedule() {},
+    backend: {
+      home,
+      saved: [{ id: "project", name: "Test project", root: home }],
+      projects: new Map(),
+      async save(name, value) {
+        await writeFile(join(home, name), JSON.stringify(value));
       },
     },
-    {
-      isEncryptionAvailable: () => true,
-      getSelectedStorageBackend: () => "fixture",
-      encryptString: (value) => Buffer.from(value),
-      decryptString: (value) => value.toString(),
-    },
-  );
+  });
+  attachRemoteHostFixture(remote, {
+    encryptString: (value) => Buffer.from(value),
+    decryptString: (value) => value.toString(),
+  });
   remote.relayService = new RelayService(remote, { interfaces });
   await remote.init();
   t.after(async () => {
@@ -126,7 +123,7 @@ test("local Relay persists registration, hosts a native Noise pairing and reuses
   assert.doesNotMatch(JSON.stringify(remote.state()), new RegExp(capability));
   const disk = JSON.parse(
     Buffer.from(
-      JSON.parse(await readFile(join(home, "remote.json"), "utf8")).encrypted,
+      JSON.parse(await readFile(join(home, "remote-host-fixture.json"), "utf8")).encrypted,
       "base64",
     ).toString(),
   );
@@ -242,7 +239,7 @@ test("SSH jobs save their intended registration before writing and status remain
 const fs = require('node:fs');
 const path = require('node:path');
 const home = ${JSON.stringify(home)};
-const file = path.join(home, 'remote.json');
+const file = path.join(home, 'remote-host-fixture.json');
 const config = fs.existsSync(file) ? JSON.parse(Buffer.from(JSON.parse(fs.readFileSync(file)).encrypted, 'base64').toString()).relayDeployment : undefined;
 if ((!config || config.phase !== 'pending') && process.argv.at(-1).includes('inspect')) {
   console.log(JSON.stringify({ ownerId: process.argv.at(-1).match(/[a-f0-9]{32}/)[0], installed: false, active: false, absent: true, dataRetained: false }));
@@ -422,7 +419,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const home = ${JSON.stringify(home)};
 const command = process.argv.at(-1);
-const file = path.join(home, 'remote.json');
+const file = path.join(home, 'remote-host-fixture.json');
 const config = fs.existsSync(file) ? JSON.parse(Buffer.from(JSON.parse(fs.readFileSync(file)).encrypted, 'base64').toString()).relayDeployment : undefined;
 const ownerId = command.match(/[a-f0-9]{32}/)[0];
 if (command.includes('inspect')) {

@@ -1,6 +1,5 @@
 // @ts-check
 "use strict";
-const { parseProjectIndex } = require("./project-index.cjs");
 const {
   commandSemantics,
   desktopError,
@@ -8,12 +7,12 @@ const {
 } = require("@areal/workbench/desktop-contract");
 const { startupTrace } = require("./startup-timing.cjs");
 
-const { connectService } = require("./local-service.cjs");
+const { GuiHostProjects, requestIdFor } = require("./gui-host-projects.cjs");
 const { LifecycleOperations } = require("./lifecycle-operations.cjs");
 const { ScheduledOwnerActivation } = require("./schedule-owner-activation.cjs");
 const { randomUUID, createHash } = require("node:crypto");
 const { isDeepStrictEqual } = require("node:util");
-const { mkdir, readFile, writeFile, rename, realpath } = require("node:fs/promises");
+const { mkdir, writeFile, rename, realpath } = require("node:fs/promises");
 const { join, isAbsolute } = require("node:path");
 const { ScopedResources } = require("./scoped-resources.cjs");
 const { AppHooks } = require("./hooks.cjs");
@@ -60,7 +59,7 @@ const { SubmissionRecovery, operationOf, isRemoteControl } = require("./submissi
 /** @typedef {import('./project-state.cjs').CoreProject} Project */
 /** @typedef {import('@areal/runtime-client/core').CoreClient} Client */
 /** @typedef {Record<string,unknown>} Fields */
-/** @typedef {{binary:string,home:string,applicationOwner?:import('./application-owner.cjs').ApplicationOwner,harnessHome?:string,config?:string,desktopConfig?:string,userHome?:string,toolExtensions?:string,workgroupPolicy?:string,workgroupToolchain?:string,sandboxProfile?:string,desktopProcesses?:boolean,defaultProfile?:import('@areal/workbench/desktop-contract').ResourceRef,encryption?:import('electron').SafeStorage,proxyEnvironment?:NodeJS.ProcessEnv,onChange?:()=>void}} CoreBackendOptions */
+/** @typedef {{binary:string,home:string,hostHome?:string,guiProfile?:string,sourceSingletonHeld?:boolean,configHome?:string,applicationOwner?:import('./application-owner.cjs').ApplicationOwner,harnessHome?:string,config?:string,desktopConfig?:string,userHome?:string,toolExtensions?:string,workgroupPolicy?:string,workgroupToolchain?:string,sandboxProfile?:string,desktopProcesses?:boolean,defaultProfile?:import('@areal/workbench/desktop-contract').ResourceRef,encryption?:import('electron').SafeStorage,proxyEnvironment?:NodeJS.ProcessEnv,onChange?:()=>void}} CoreBackendOptions */
 /** 每个项目连接公开的共享 Core 服务；这里只保留可重建投影与客户端受理回执。 */
 class CoreBackend {
   /** @param {CoreBackendOptions} options */
@@ -68,6 +67,10 @@ class CoreBackend {
     binary,
     home,
     applicationOwner,
+    hostHome = join(require("node:os").homedir(), ".areal"),
+    guiProfile = join(home, ".."),
+    sourceSingletonHeld = false,
+    configHome,
     harnessHome = join(home, "harness"),
     config,
     desktopConfig,
@@ -86,8 +89,14 @@ class CoreBackend {
       throw new Error("请设置 AREAL_CORE_BIN 为 areal 可执行文件的绝对路径");
     this.binary = binary;
     this.applicationOwner = applicationOwner;
-    /** @type {Map<string,Omit<import('./local-service.cjs').OwnedEngine,'project'|'service'> & {project:Project,service?:import('./local-service.cjs').RecoveryTarget,dataDir:string,pending?:boolean}>} */
-    this.ownedEngines = new Map();
+    this.host = new GuiHostProjects({
+      binary,
+      home: hostHome,
+      source: { profile: guiProfile, coreHome: home, legacyServiceHome: harnessHome },
+      encryption,
+      singletonHeld: sourceSingletonHeld,
+    });
+    this.configHome = configHome ?? join(userHome || require("node:os").homedir(), ".areal");
     this.home = home;
     this.genUiState = createGenUiState(home);
     this.harnessHome = harnessHome;
@@ -121,6 +130,8 @@ class CoreBackend {
 
     /** @type {Map<string,import('./project-state.cjs').CoreProject>} */
     this.projects = new Map();
+    /** @type {import("./project-index.cjs").SavedProject[]} */
+    this.saved = [];
     /** @type {Map<string,Promise<import('./project-state.cjs').CoreProject>>} */
     this.starting = new Map();
     /** @type {Map<string,Promise<void>>} */
@@ -150,7 +161,7 @@ class CoreBackend {
     this.hooks = new AppHooks(this);
     this.trajectory = new TrajectoryExport(this);
     this.feedback = new UserFeedback(this);
-    this.providers = new AppProviders(this, encryption);
+    this.providers = new AppProviders(this);
     this.cloud = new CloudSettings(this, encryption);
     this.cloudConversations = new CloudConversations(this);
     this.activeCommands = 0;
@@ -212,9 +223,6 @@ class CoreBackend {
         startTaskMonitor: (...args) => backend.observations.startTaskMonitor(...args),
         onMcpPageToolsDisconnected: (...args) => backend.onMcpPageToolsDisconnected?.(...args),
         openThread: (...args) => backend.openThread(...args),
-        get ownedEngines() {
-          return backend.ownedEngines;
-        },
         prepareServiceLaunch: (...args) => backend.prepareServiceLaunch(...args),
         get projects() {
           return backend.projects;
@@ -246,19 +254,7 @@ class CoreBackend {
         stopReconciliation: (...args) => backend.stopReconciliation(...args),
         supportsBrowser: backend.supportsBrowser.bind(backend),
         supportsComputer: (...args) => backend.supportsComputer(...args),
-        connectExisting: (project, previous) =>
-          connectService(
-            backend,
-            "status",
-            ["--instance", previous.serviceId],
-            backend.hooks.environment(),
-            project,
-            previous.dataDir,
-          ),
-        recoveryStatus: (...args) =>
-          require("./local-service.cjs").recoveryStatus(backend, ...args),
-        recoverService: (...args) =>
-          require("./local-service.cjs").recoverService(backend, ...args),
+        connectExisting: (project) => backend.host.observe(project.id),
       });
     }
     return this._connections;
@@ -317,8 +313,8 @@ class CoreBackend {
           return backend.closing;
         },
         currentConnection: backend.currentConnection.bind(backend),
-        get home() {
-          return backend.home;
+        get host() {
+          return backend.host;
         },
         get worktrees() {
           return backend.worktrees;
@@ -338,7 +334,6 @@ class CoreBackend {
         refreshAfterAdmission: (...args) => backend.refreshAfterAdmission(...args),
         refreshConfiguration: (...args) => backend.refreshConfiguration(...args),
         requireConnection: backend.requireConnection.bind(backend),
-        save: (...args) => backend.save(...args),
         get saved() {
           return backend.saved;
         },
@@ -357,16 +352,9 @@ class CoreBackend {
     trace.advance("project_index");
     try {
       await mkdir(this.home, { recursive: true, mode: 0o700 });
+      await this.host.init();
+      this.saved = await this.host.list();
       await this.lifecycleOperations.init();
-      try {
-        /** @type {import('./project-index.cjs').SavedProject[]} */
-        this.saved = parseProjectIndex(
-          JSON.parse(await readFile(join(this.home, "projects.json"), "utf8")),
-        );
-      } catch (error) {
-        if (desktopError(error).code !== "ENOENT") throw error;
-        this.saved = [];
-      }
       trace.advance("library");
       await this.library.init();
       await this.cloudConversations.init();
@@ -442,6 +430,10 @@ class CoreBackend {
           },
         ];
         await this.save("projects.json", saved);
+        await this.host.register(
+          requestIdFor(`${this.host.sourceId}:register:${id}`),
+          saved[saved.length - 1],
+        );
         this.saved = saved;
       });
     this.projectWrites = registration.catch(() => {});
@@ -545,27 +537,12 @@ class CoreBackend {
   /** @param {import('./project-state.cjs').CoreProject} project @param {ReturnType<typeof startupTrace>} trace */
   async prepareServiceLaunch(project, trace) {
     const directory = join(this.home, project.id);
-    const dataDir = join(directory, "state");
-    const scratch = join(directory, "scratch");
+    const binding = this.host.resolve(project.id);
+    const dataDir = binding.dataDir;
+    const scratch = binding.scratchDir;
     await mkdir(scratch, { recursive: true, mode: 0o700 });
-    const args = [
-      "--workspace",
-      project.root,
-      "--data-dir",
-      dataDir,
-      "--scratch",
-      scratch,
-      "--allow-write",
-    ];
-    if (this.desktopProcesses)
-      args.push("--allow-concurrent-writes", "--desktop-process-timeout-ms", "86400000");
-    if (this.config) args.push("--config", this.config);
-    if (this.sandboxProfile) args.push("--sandbox-profile", this.sandboxProfile);
-    if (this.workgroupPolicy) args.push("--workgroup-policy", this.workgroupPolicy);
-    if (this.workgroupToolchain) args.push("--workgroup-toolchain", this.workgroupToolchain);
     trace.advance("resources");
     const resourceDeployment = await this.resources.deployment(project);
-    if (resourceDeployment.path) args.push("--desktop-config", resourceDeployment.path);
     project.resourceProfile = resourceDeployment.profile;
     project.resourceFingerprint = resourceDeployment.fingerprint;
     trace.advance("provider_prepare");
@@ -581,12 +558,57 @@ class CoreBackend {
     await writeFile(genUiExtensions, JSON.stringify({ ...hookDeployment.value, genUi: true }), {
       mode: 0o600,
     });
-    const environment = {
-      ...this.hooks.environment(),
-      AREAL_HARNESS_TOOL_EXTENSIONS: genUiExtensions,
-      ...this.providers.environment(),
+    const providerEnvironment = this.providers.environment();
+    /** @type {NodeJS.ProcessEnv} */
+    const hookEnvironment = this.hooks.environment();
+    const credentials = Object.fromEntries(
+      this.providers.snapshot().data.flatMap(({ apiKeyEnv }) => {
+        const value = apiKeyEnv ? hookEnvironment[apiKeyEnv] : undefined;
+        return apiKeyEnv && !apiKeyEnv.startsWith("AREAL_CREDENTIAL_") && value
+          ? [[apiKeyEnv, value]]
+          : [];
+      }),
+    );
+    const environment = Object.fromEntries(
+      Object.entries({
+        ...hookEnvironment,
+        AREAL_HARNESS_TOOL_EXTENSIONS: genUiExtensions,
+      }).filter(
+        ([name, value]) =>
+          typeof value === "string" && require("./gui-host-projects.cjs").allowedEnvironment(name),
+      ),
+    );
+    const launchInputs = {
+      workspace: binding.workspace,
+      cwd: binding.workspace,
+      configHome: this.configHome,
+      homedir: this.userHome || require("node:os").homedir(),
+      configPath: this.config,
+      deploymentPath: resourceDeployment.path || undefined,
+      environment,
+      credentialNames: [
+        ...Object.keys(providerEnvironment).filter((name) => providerEnvironment[name]),
+        ...Object.keys(credentials),
+      ],
+      options: {
+        workspace: binding.workspace,
+        data_dir: dataDir,
+        scratch,
+        config: this.config,
+        desktop_config: resourceDeployment.path || undefined,
+        allow_write: true,
+        allow_network: false,
+        allow_concurrent_writes: this.desktopProcesses,
+        desktop_process_timeout_ms: this.desktopProcesses ? 86400000 : undefined,
+        sandbox_profile: this.sandboxProfile,
+        workgroup_policy: this.workgroupPolicy,
+        workgroup_toolchain: this.workgroupToolchain,
+        read_only_path: [],
+        task_credential_command: [],
+        no_deployment_mcp: false,
+      },
     };
-    return { args, environment, dataDir, hookDeployment };
+    return { launchInputs, credentials, dataDir, hookDeployment };
   }
 
   /** @param {Project} project */
@@ -594,31 +616,22 @@ class CoreBackend {
     const trace = startupTrace("core.launch", { projectId: project.id });
     trace.advance("directories");
     try {
-      const { args, environment, dataDir, hookDeployment } = await this.prepareServiceLaunch(
-        project,
-        trace,
-      );
+      const launch = this.providers.manages(project)
+        ? await this.prepareServiceLaunch(project, trace)
+        : undefined;
       trace.advance("service_ensure");
-      const owned = this.ownedEngines.get(project.id) ?? { project, dataDir, pending: true };
-      owned.project = project;
-      owned.pending = true;
-      this.ownedEngines.set(project.id, owned);
-      const { descriptor, token } = await connectService(
-        this,
-        "ensure",
-        args,
-        environment,
-        project,
-        dataDir,
+      const { descriptor, token } = await this.host.ensure(
+        randomUUID(),
+        project.id,
+        launch?.launchInputs,
+        launch?.credentials,
       );
       project.service = descriptor;
-      owned.service = descriptor;
-      owned.pending = false;
       project.endpoint = descriptor.endpoint;
       project.token = token;
       trace.advance("configuration_recheck");
-      if ((await this.hooks.current()).revision === hookDeployment.revision)
-        project.hookRevision = hookDeployment.revision;
+      if (launch && (await this.hooks.current()).revision === launch.hookDeployment.revision)
+        project.hookRevision = launch.hookDeployment.revision;
       trace.finish("ok");
       const attached = startupTrace("core.service_ready", {
         projectId: project.id,
@@ -631,84 +644,22 @@ class CoreBackend {
     }
   }
 
-  async refreshOwnedEngines() {
-    if (!this.applicationOwner) return;
-    const { serviceRequest } = require("./local-service.cjs");
-    const { sameOwner } = require("./application-owner.cjs");
-    const descriptors = require("./local-service.cjs").readOwnedServices(
-      await serviceRequest(this, ["list"]),
-      this.applicationOwner,
-    );
-    for (const descriptor of descriptors) {
-      // 历史索引沿用原项目 ID；路径散列只用于尚未登记的启动恢复，不能替换已登记身份。
-      const registered = this.saved.find(
-        (project) =>
-          /^[a-f0-9]{24}$/.test(project.id) &&
-          project.root === descriptor.workspace &&
-          descriptor.dataDir === join(this.home, project.id, "state"),
+  async refreshHostProjects() {
+    this.saved = await this.host.list();
+    const status = await this.host.client.status();
+    for (const saved of this.saved) {
+      const binding = this.host.resolve(saved.id);
+      const state = status.projects.find(
+        /** @param {{registration:{projectId:string}}} item */ (item) =>
+          item.registration.projectId === binding.projectId,
       );
-      const projectId =
-        registered?.id ??
-        createHash("sha256").update(descriptor.workspace).digest("hex").slice(0, 24);
-      if (descriptor.dataDir !== join(this.home, projectId, "state"))
-        throw new Error("所属 Core 的数据目录与登记不匹配");
-      if (descriptor.state === "stopped") {
-        const target = {
-          projectId,
-          serviceId: descriptor.serviceId,
-          generation: descriptor.generation,
-          root: descriptor.workspace,
-        };
-        const original = await require("./local-service.cjs").inspectOriginalService(this, target);
-        if (!original.cleanupConfirmed) throw new Error("所属 Core 已失联，但原代际清理尚未确认");
-        const owned = this.ownedEngines.get(projectId);
-        if (owned && (!owned.service || owned.service.generation === descriptor.generation)) {
-          owned.service ??= descriptor;
-          require("./local-service.cjs").detachStoppedProject(this, target);
-        }
-        continue;
+      if (!state?.service || state.state === "stopped") continue;
+      const project = await this.loadProjectJournal(saved.id);
+      if (project.service && project.service.generation !== state.service.generation) {
+        project.client?.close();
+        project.client = null;
       }
-      let owned = this.ownedEngines.get(projectId);
-      if (
-        owned?.service &&
-        (owned.service.serviceId !== descriptor.serviceId ||
-          owned.service.generation !== descriptor.generation)
-      )
-        throw Object.assign(new Error("所属 Core 代际发生变化，请检查原请求"), {
-          code: "CONFIRMATION_STALE",
-        });
-      if (!owned) {
-        const { CoreTaskModel } = await import("@areal/workbench/core-model");
-        const project =
-          this.projects.get(projectId) ??
-          require("./project-state.cjs").createProjectState(
-            { id: projectId, root: descriptor.workspace },
-            new CoreTaskModel(),
-          );
-        owned = { project, dataDir: descriptor.dataDir };
-        this.ownedEngines.set(projectId, owned);
-      }
-      owned.service ??= descriptor;
-      owned.pending = false;
-      owned.project.service ??= owned.service;
-    }
-    for (const [projectId, owned] of this.ownedEngines) {
-      if (!owned.pending || this.starting.has(projectId)) continue;
-      if (
-        !descriptors.some(
-          (descriptor) =>
-            sameOwner(descriptor.owner, this.applicationOwner) &&
-            descriptor.dataDir === owned.dataDir &&
-            descriptor.state !== "stopped",
-        )
-      ) {
-        throw Object.assign(
-          new Error(
-            `项目 ${owned.project.root} 的启动结果尚未确认。请检查原服务启动日志并重新连接核对，不能将缺少登记视为已清理。`,
-          ),
-          { code: "LIFECYCLE_INCOMPLETE" },
-        );
-      }
+      project.service = state.service;
     }
   }
 
@@ -765,11 +716,6 @@ class CoreBackend {
   /** @param {Parameters<InstanceType<typeof ProjectConnections>['reconnectProject']>} args */
   reconnectProject(...args) {
     return this.connections.reconnectProject(...args);
-  }
-
-  /** @param {Parameters<InstanceType<typeof ProjectConnections>['recoverCrashedProject']>} args */
-  recoverCrashedProject(...args) {
-    return this.connections.recoverCrashedProject(...args);
   }
 
   /** @param {Parameters<InstanceType<typeof ProjectConnections>['connect']>} args */
@@ -1577,6 +1523,11 @@ class CoreBackend {
         throw new Error("Complete LCU and client instructions exceed the 32768-byte budget");
       tools = [...tools, ...catalog.tools];
     }
+    const profile =
+      request.profile ??
+      (this.providers.manages(project)
+        ? (project.resourceProfile ?? this.defaultProfile)
+        : undefined);
     const { thread } = readThreadAdmission(
       await this.submit(
         project,
@@ -1587,11 +1538,7 @@ class CoreBackend {
           ...(request.parameters ? { parameters: request.parameters } : {}),
           options,
           ...(request.model ? { model: request.model } : {}),
-          ...((request.profile ?? project.resourceProfile ?? this.defaultProfile)
-            ? {
-                agentProfile: request.profile ?? project.resourceProfile ?? this.defaultProfile,
-              }
-            : {}),
+          ...(profile ? { agentProfile: profile } : {}),
         },
         { requestId: request.requestId },
       ),
@@ -2239,10 +2186,7 @@ class CoreBackend {
     this.cloudConversations.close();
     this.ownerTasks.stop();
     this.scheduleOwners?.stop();
-    for (const project of new Set([
-      ...this.projects.values(),
-      ...[...this.ownedEngines.values()].map((entry) => entry.project),
-    ])) {
+    for (const project of this.projects.values()) {
       if (project.reconnectTimer) clearTimeout(project.reconnectTimer);
       project.reconnectTimer = null;
       project.taskNotificationMonitor?.stop();
@@ -2254,6 +2198,7 @@ class CoreBackend {
     await this.providers.close();
     await this.proxyRelay?.close();
     await this.analytics.flush();
+    this.host.close();
   }
 }
 

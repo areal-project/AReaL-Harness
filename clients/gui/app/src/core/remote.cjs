@@ -2,10 +2,8 @@
 "use strict";
 const { enrollRelay, pairingError } = require("./remote-enrollment.cjs");
 const { randomBytes, randomUUID, timingSafeEqual } = require("node:crypto");
-const { readFile } = require("node:fs/promises");
-const { join } = require("node:path");
+const { HostRemote } = require("./host-remote.cjs");
 const {
-  parseRemoteConfig,
   PRESETS,
   selectRelayProfile,
   withCurrentProfile,
@@ -29,7 +27,6 @@ const { isRemoteRequest } = require("@areal/workbench/desktop-contract/desktop-c
 /** @typedef {Awaited<ReturnType<typeof startDirect>>} DirectServer */
 /** @typedef {{name:string,clientKind?:'web'|'ios'|'android',expiresAt:number,connected:()=>boolean,accept:(grant:DeviceGrant)=>void,reject:(error:Error)=>void,arm:()=>void,timer?:NodeJS.Timeout,approving?:boolean}} PendingPair */
 /** @typedef {{backend:InstanceType<typeof import('./backend.cjs').CoreBackend>,schedule:()=>void}} RemoteService */
-/** @typedef {Pick<typeof import('electron').safeStorage,'isEncryptionAvailable'|'encryptString'|'decryptString'> & {getSelectedStorageBackend?:()=>string}} RemoteEncryption */
 class RemoteControl {
   /** @type {typeof import('@areal/remote')|null} */ transportModule = null;
   get crypto() {
@@ -56,11 +53,11 @@ class RemoteControl {
   /** @type {{secret:string,expiresAt:number}|null} */ invite = null;
   /** @type {Promise<unknown>|undefined} */ writes;
   closed = false;
-  /** @param {RemoteService} service @param {RemoteEncryption} encryption @param {{networkAdapterFactory?:typeof createRemoteNetworkAdapter}} [options] */
-  constructor(service, encryption, { networkAdapterFactory = createRemoteNetworkAdapter } = {}) {
+  /** @param {RemoteService} service @param {{networkAdapterFactory?:typeof createRemoteNetworkAdapter}} [options] */
+  constructor(service, { networkAdapterFactory = createRemoteNetworkAdapter } = {}) {
     this.service = service;
     this.backend = service.backend;
-    this.encryption = encryption;
+    this.storage = new HostRemote(this.backend, () => this.close());
     this.network = networkAdapterFactory({
       verifyRemoteListener: (listener) => this.verifyListener(listener),
     });
@@ -80,25 +77,19 @@ class RemoteControl {
   async init() {
     this.transportModule = await import("@areal/remote");
     try {
-      /** @type {unknown} */
-      const data = JSON.parse(await readFile(join(this.backend.home, "remote.json"), "utf8"));
-      if (
-        !data ||
-        typeof data !== "object" ||
-        !("encrypted" in data) ||
-        typeof data.encrypted !== "string"
-      )
-        throw new Error("远程配置格式无效");
-      this.config = parseRemoteConfig(
-        JSON.parse(this.encryption.decryptString(Buffer.from(data.encrypted, "base64"))),
-      );
+      this.config = await this.storage.init();
     } catch (error) {
-      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT")
-        throw new Error("无法读取手机配对；请检查系统钥匙串");
-      // 新配置尚未申请远程入口，不让安全存储的系统交互阻塞桌面与 Core 启动。
-      // 已有加密配对仍按原路径读取；首次启用时再检查并使用系统安全存储。
-      this.config = { enabled: false, devices: [] };
-      return;
+      this.close();
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        ["remoteBusy", "migrationConflict"].includes(String(error.code))
+      ) {
+        this.directError = "Remote 入口由其他桌面连接持有";
+        this.relayError = this.directError;
+        return;
+      }
+      throw error;
     }
     this.config ??= { enabled: false, devices: [] };
     if (this.config.schemaVersion !== 2 && this.config.devices?.length) {
@@ -108,12 +99,12 @@ class RemoteControl {
       } catch {
         this.config = migrated;
         this.migrationError =
-          "旧身份和项目范围已保留，但迁移未保存；入口保持关闭，请检查安全存储后重新启用。";
+          "旧身份和项目范围已保留，但迁移未保存；入口保持关闭，请检查 Host 连接后重新启用。";
       }
     }
     if (!this.storageAvailable()) {
       this.config = { ...this.config, enabled: false, directEnabled: false };
-      this.directError = "系统安全存储不可用，远程入口保持关闭";
+      this.directError = "Host Remote 存储不可用，远程入口保持关闭";
       return;
     }
     if (this.config.enabled && this.config.relayProtocol !== "areal.remote.v2") {
@@ -142,8 +133,7 @@ class RemoteControl {
         await this.reconcileNetwork();
       } catch {
         // 可选入口失败不能阻止桌面后台与 Core 恢复；尽力持久关闭入口。
-        this.direct?.close();
-        this.direct = null;
+        this.closeDirect();
         const disabled = { ...this.config, directEnabled: false };
         try {
           await this.save(disabled);
@@ -151,24 +141,17 @@ class RemoteControl {
           if (this.config.network?.mapping) await this.removeNetwork();
         } catch {
           this.config = disabled;
-          this.directError = "本机只读入口启动失败，关闭状态未能保存；请检查系统安全存储后重试。";
+          this.directError = "本机只读入口启动失败，关闭状态未能保存；请检查 Host 连接后重试。";
         }
       }
     }
   }
   storageAvailable() {
-    return (
-      this.encryption.isEncryptionAvailable() &&
-      this.encryption.getSelectedStorageBackend?.() !== "basic_text"
-    );
+    return this.storage.available();
   }
   /** @param {RemoteConfig} config */
   async save(config) {
-    if (!this.storageAvailable()) throw new Error("系统安全存储不可用");
-    await this.backend.save("remote.json", {
-      encrypted: this.encryption.encryptString(JSON.stringify(config)).toString("base64"),
-    });
-    this.config = config;
+    this.config = await this.storage.replace(config);
   }
   state() {
     return {
@@ -231,7 +214,10 @@ class RemoteControl {
     // Pairing and revocation are serialized with durable configuration writes.
     const task = (this.writes ?? Promise.resolve())
       .catch(() => {})
-      .then(() => this.controlOnce(request));
+      .then(async () => {
+        this.config = await this.storage.refresh();
+        return this.controlOnce(request);
+      });
     this.writes = task;
     return task;
   }
@@ -297,14 +283,14 @@ class RemoteControl {
         this.disconnect();
         break;
       case "enableDirect": {
-        if (!this.storageAvailable()) throw new Error("系统安全存储不可用");
+        if (!this.storageAvailable()) throw new Error("Host Remote 存储不可用");
         if (this.direct) break;
         const previous = this.config;
         const identity = this.config.identity ?? (await this.crypto.createIdentity());
         const candidate = { ...this.config, identity, directEnabled: true };
         this.config = candidate;
         try {
-          this.direct = await startDirect(this);
+          await this.startDirect();
           await this.save({
             ...candidate,
             directPort: this.listener().port,
@@ -313,10 +299,9 @@ class RemoteControl {
           this.migrationError = null;
           await this.reconcileNetwork();
         } catch {
-          this.direct?.close();
-          this.direct = null;
+          this.closeDirect();
           this.config = previous;
-          this.directError = "本机只读入口启用失败；请检查 GUI 构建、端口或系统安全存储后重试。";
+          this.directError = "本机只读入口启用失败；请检查 GUI 构建、端口或 Host 连接后重试。";
           this.service.schedule();
           throw new Error(this.directError);
         }
@@ -326,8 +311,7 @@ class RemoteControl {
         await this.save({ ...this.config, directEnabled: false });
         this.cancelPair();
         this.changeNetworkOrigin(null);
-        this.direct?.close();
-        this.direct = null;
+        this.closeDirect();
         this.directError = null;
         await this.removeNetwork();
         break;
@@ -460,7 +444,7 @@ class RemoteControl {
   async enableRelay(request) {
     this.validateNetworkRequest(request, ["relay", "code", "confirmed"], true);
     const relay = validateHttpsOrigin(request.relay);
-    if (!this.storageAvailable()) throw new Error("系统安全存储不可用");
+    if (!this.storageAvailable()) throw new Error("Host Remote 存储不可用");
     /** @type {{room:string,capability:string}} */
     let registration;
     if (request.code !== undefined) {
@@ -938,20 +922,31 @@ class RemoteControl {
     transport?.close();
   }
   async startDirect() {
+    if (this.closed) throw new Error("Remote execution lease is closed");
     if (this.direct) return { origin: this.direct.origin, ws: this.direct.ws };
-    this.direct = await startDirect(this);
+    const direct = await startDirect(this);
+    if (this.closed) {
+      direct.close();
+      throw new Error("Remote execution lease closed during startup");
+    }
+    this.direct = direct;
     return { origin: this.direct.origin, ws: this.direct.ws };
+  }
+  closeDirect() {
+    this.direct?.close();
+    this.direct = null;
   }
   // 进程退出同步关闭入口并保留映射；下次启动先复核所有权，绝不异步遗弃 CLI 清理。
   close() {
+    if (this.closed) return;
+    this.closed = true;
+    this.storage.close();
     this.changeNetworkOrigin(null);
     this.cancelPair();
-    this.closed = true;
     this.disconnect();
     this.sessions.close();
     this.push.close();
-    this.direct?.close();
-    this.direct = null;
+    this.closeDirect();
     this.relayService.close();
   }
 }

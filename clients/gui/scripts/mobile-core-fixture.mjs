@@ -1,3 +1,4 @@
+import { attachRemoteHostFixture } from "./remote-host-fixture.cjs";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
@@ -121,7 +122,8 @@ export async function mobileCoreFixture(t, { commands = false } = {}) {
     encryptString: (value) => Buffer.from(value),
     decryptString: (value) => value.toString("utf8"),
   };
-  const remote = (service.remote = new RemoteControl(service, encryption));
+  const remote = (service.remote = new RemoteControl(service));
+  attachRemoteHostFixture(remote, encryption);
   await remote.init();
   let lostMethod = null;
   const project = backend.projects.get(projectId);

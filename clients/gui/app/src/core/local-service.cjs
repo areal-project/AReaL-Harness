@@ -10,9 +10,8 @@ const { desktopError } = require("@areal/workbench/desktop-contract");
 /** @typedef {import('@areal/runtime-client/core').CoreClient} CoreClient */
 /** @typedef {{protocolVersion:1,state:'ready',serviceId:string,generation:string,configFingerprint:string,workspace:string,dataDir:string,endpoint:string,authFile:string,owner?:unknown,[key:string]:unknown}} ServiceDescriptor */
 /** @typedef {SavedProject & {service?:ServiceReference|null,endpoint?:string|null,reconnectTimer?:NodeJS.Timeout|null,client?:CoreClient|null,model:{connection:(connected:boolean,error?:string|null)=>void},taskNotificationMonitor?:{stop:()=>void}}} ServiceProject */
-/** @typedef {{project:ServiceProject,service?:ServiceReference,lifetimes?:Set<import('node:stream').Duplex>}} OwnedEngine */
-/** @typedef {{binary:string,home:string,applicationOwner?:import('./application-owner.cjs').ApplicationOwner,hooks:{environment:()=>NodeJS.ProcessEnv},providers:{redact:(value:string)=>string},ownedEngines:Map<string,OwnedEngine>,projects:Map<string,ServiceProject>,saved:SavedProject[]}} ServiceHost */
-/** @typedef {Pick<ServiceHost,'binary'|'home'|'hooks'|'providers'> & Partial<Pick<ServiceHost,'applicationOwner'|'ownedEngines'>>} ServiceReader */
+/** @typedef {{binary:string,home:string,applicationOwner?:import('./application-owner.cjs').ApplicationOwner,hooks:{environment:()=>NodeJS.ProcessEnv},providers:{redact:(value:string)=>string},host?:InstanceType<typeof import('./gui-host-projects.cjs').GuiHostProjects>,hostRegistry?:string,projects:Map<string,ServiceProject>,saved:SavedProject[]}} ServiceHost */
+/** @typedef {Pick<ServiceHost,'binary'|'home'|'hooks'|'providers'> & Partial<Pick<ServiceHost,'applicationOwner'|'host'|'hostRegistry'>>} ServiceReader */
 /** @typedef {{serviceId:string,generation:string}} ServiceReference */
 /** @typedef {ServiceReference & {projectId:string,requestId:string}} StopTarget */
 /** @typedef {ServiceReference & {configFingerprint:string,dataDir:string}} RecoveryTarget */
@@ -23,26 +22,16 @@ function record(value) {
 }
 
 // 服务管理只走公共 CLI；轮次核查只读原代际的认证 app-server，不持有或终止 Core/Runtime 子进程。
-/** @param {ServiceReader} backend @param {string[]} args @param {NodeJS.ProcessEnv} [environment] @param {{id:string}} [project] @returns {Promise<unknown>} */
-async function request(backend, args, environment = backend.hooks.environment(), project) {
+/** @param {ServiceReader} backend @param {string[]} args @param {NodeJS.ProcessEnv} [environment] @returns {Promise<unknown>} */
+async function request(backend, args, environment = backend.hooks.environment()) {
   let stdout;
   try {
     const execution = executeCore(backend.binary, ["service", ...args, "--json"], {
-      ...(["ensure", "recover"].includes(args[0]) && backend.applicationOwner
-        ? { applicationOwner: backend.applicationOwner }
-        : {}),
       env: environment,
       timeout: ["status", "capabilities", "operation"].includes(args[0]) ? 10_000 : 120_000,
       maxBuffer: 2 * 1024 * 1024,
       windowsHide: true,
     });
-    if (project && execution.child?.ownerLifetime) {
-      const entry = backend.ownedEngines?.get(project.id);
-      if (!entry) throw new Error("Core owner lifetime has no project registration");
-      entry.lifetimes ??= new Set();
-      entry.lifetimes.add(execution.child?.ownerLifetime);
-      execution.child?.ownerLifetime.on("error", () => {});
-    }
     ({ stdout } = await execution);
   } catch (error) {
     const details = desktopError(error);
@@ -92,7 +81,6 @@ async function connectService(backend, operation, args, environment, project, da
     backend,
     [operation, ...args, ...(operation === "ensure" ? ["--no-auto-restart"] : [])],
     environment,
-    typeof project.id === "string" ? { id: project.id } : undefined,
   );
   if (
     operation === "status" &&
@@ -104,6 +92,21 @@ async function connectService(backend, operation, args, environment, project, da
       code: "CORE_STOPPED",
     });
   }
+  return readServiceConnection(descriptor, project.root, dataDir, backend.applicationOwner);
+}
+
+/** @param {InstanceType<typeof import('./gui-host-projects.cjs').GuiHostProjects>} host @param {string} id @param {unknown} descriptor */
+async function authenticateService(host, id, descriptor) {
+  const binding = host.resolve(id);
+  return readServiceConnection(descriptor, binding.workspace, binding.dataDir, {
+    kind: "host",
+    hostId: host.client.hostId,
+    generation: host.client.generation,
+  });
+}
+
+/** @param {unknown} descriptor @param {string} workspace @param {string} dataDir @param {unknown} owner */
+async function readServiceConnection(descriptor, workspace, dataDir, owner) {
   let endpoint;
   try {
     endpoint = new URL(
@@ -114,7 +117,7 @@ async function connectService(backend, operation, args, environment, project, da
   }
   if (
     !serviceDescriptor(descriptor) ||
-    descriptor.workspace !== (await realpath(project.root)) ||
+    descriptor.workspace !== (await realpath(workspace)) ||
     descriptor.dataDir !== (await realpath(dataDir)) ||
     endpoint.protocol !== "ws:" ||
     endpoint.hostname !== "127.0.0.1" ||
@@ -126,14 +129,10 @@ async function connectService(backend, operation, args, environment, project, da
       code: "CORE_INCOMPATIBLE",
     });
   }
-  if (
-    backend.applicationOwner &&
-    !require("./application-owner.cjs").sameOwner(descriptor.owner, backend.applicationOwner)
-  )
-    throw Object.assign(
-      new Error("原 Core 不属于本次 GUI 应用，请先从原 owner 的安全管理入口停止后再连接"),
-      { code: "APPLICATION_OWNER_MISMATCH" },
-    );
+  if (owner && !require("node:util").isDeepStrictEqual(descriptor.owner, owner))
+    throw Object.assign(new Error("Core 服务所有者与当前连接不匹配"), {
+      code: "CORE_OWNER_MISMATCH",
+    });
   /** @type {unknown} */
   const auth = JSON.parse(await readFile(resolve(descriptor.authFile), "utf8"));
   const principal =
@@ -161,38 +160,12 @@ const targetArguments = (target) => [
   target.generation,
 ];
 
-/** @param {ServiceHost} backend @param {SavedProject} project @param {RecoveryTarget} target */
-async function recoveryStatus(backend, project, target) {
-  const value = await request(backend, ["status", "--instance", target.serviceId, "--recovery"]);
-  if (
-    !recoveryResponse(
-      value,
-      target,
-      await realpath(project.root),
-      await realpath(target.dataDir),
-      backend.applicationOwner,
-    )
-  )
-    throw Object.assign(new Error("原服务的恢复证明与当前应用不匹配"), {
-      code: "CORE_INCOMPATIBLE",
-    });
-  return value;
-}
-
-/** @param {ServiceHost} backend @param {SavedProject} project @param {RecoveryTarget} target @param {{args:string[],environment:NodeJS.ProcessEnv}} launch */
-function recoverService(backend, project, target, launch) {
-  return connectService(
-    backend,
-    "recover",
-    [...targetArguments(target), ...launch.args],
-    launch.environment,
-    project,
-    target.dataDir,
-  );
-}
-
 /** @param {ServiceReader} backend @param {ServiceReference} target */
 async function lifecycleCapabilities(backend, target) {
+  if (backend.host) {
+    backend.host.client.requireCapability("stopOperations");
+    return { version: 1, stopOperations: 1 };
+  }
   let value;
   try {
     value = await request(backend, ["capabilities", ...targetArguments(target)]);
@@ -211,7 +184,18 @@ async function lifecycleCapabilities(backend, target) {
 }
 
 /** @param {ServiceReader} backend @param {StopTarget} target @param {boolean} cancel */
-function requestStop(backend, target, cancel) {
+async function requestStop(backend, target, cancel) {
+  if (backend.host)
+    return hostStopOperation(
+      await backend.host.stop(
+        target.requestId,
+        target.projectId,
+        target.generation,
+        cancel ? "cancel" : "ifIdle",
+      ),
+      target,
+      backend.host.resolve(target.projectId).projectId,
+    );
   return request(backend, [
     "stop",
     ...targetArguments(target),
@@ -223,6 +207,24 @@ function requestStop(backend, target, cancel) {
 
 /** @param {ServiceReader} backend @param {StopTarget} target */
 async function readStop(backend, target) {
+  if (backend.host)
+    return hostStopOperation(
+      await backend.host.operation(target.requestId),
+      target,
+      backend.host.resolve(target.projectId).projectId,
+    );
+  if (backend.hostRegistry) {
+    const { stdout } = await executeCore(
+      backend.binary,
+      ["host", "operation", target.requestId, "--json"],
+      {
+        env: { ...backend.hooks.environment(), AREAL_HARNESS_SERVICE_HOME: backend.hostRegistry },
+        timeout: 10000,
+        maxBuffer: 2 * 1024 * 1024,
+      },
+    );
+    return hostStopOperation(JSON.parse(stdout).operation, target);
+  }
   const result = await request(backend, [
     "operation",
     ...targetArguments(target),
@@ -236,15 +238,7 @@ async function readStop(backend, target) {
 
 /** @param {ServiceHost} backend @param {ServiceReference & {projectId:string}} target */
 function detachStoppedProject(backend, target) {
-  const owned = backend.ownedEngines?.get(target.projectId);
-  if (
-    owned?.service?.serviceId === target.serviceId &&
-    owned.service.generation === target.generation
-  ) {
-    for (const lifetime of owned.lifetimes ?? []) lifetime.destroy();
-    backend.ownedEngines.delete(target.projectId);
-  }
-  const project = backend.projects.get(target.projectId) ?? owned?.project;
+  const project = backend.projects.get(target.projectId);
   if (
     project?.service?.serviceId !== target.serviceId ||
     project.service.generation !== target.generation
@@ -352,23 +346,23 @@ async function readTurnMetadata(
   return null;
 }
 
-/** @param {ServiceReader & {saved:SavedProject[]}} backend @param {ServiceReference & {projectId:string}} target @param {string} threadId @param {string} turnId */
+/** @param {ServiceReader & {saved:SavedProject[]}} backend @param {ServiceReference & {projectId:string,dataDir?:string}} target @param {string} threadId @param {string} turnId */
 async function readOriginalTurn(backend, target, threadId, turnId) {
-  const project =
-    backend.saved.find((project) => project.id === target.projectId) ??
-    backend.ownedEngines?.get(target.projectId)?.project;
+  const project = backend.saved.find((project) => project.id === target.projectId);
   if (!project)
     throw Object.assign(new Error("原工作区登记不可用，无法核对轮次"), {
       code: "LIFECYCLE_INCOMPLETE",
     });
-  const { descriptor, token } = await connectService(
-    backend,
-    "status",
-    ["--instance", target.serviceId],
-    backend.hooks.environment(),
-    project,
-    join(backend.home, target.projectId, "state"),
-  );
+  const { descriptor, token } = backend.host
+    ? await backend.host.observe(target.projectId)
+    : await connectService(
+        backend,
+        "status",
+        ["--instance", target.serviceId],
+        backend.hooks.environment(),
+        project,
+        target.dataDir ?? join(backend.home, target.projectId, "state"),
+      );
   if (descriptor.serviceId !== target.serviceId || descriptor.generation !== target.generation)
     throw Object.assign(new Error("原 Core 代际已变化，不能用新实例代替核查"), {
       code: "CONFIRMATION_STALE",
@@ -466,30 +460,9 @@ function serviceDescriptor(value) {
     typeof value.authFile === "string"
   );
 }
-/** @param {unknown} value @param {RecoveryTarget} target @param {string} workspace @param {string} dataDir @param {unknown} owner @returns {value is RecoveryStatus} */
-function recoveryResponse(value, target, workspace, dataDir, owner) {
-  if (!record(value) || !record(value.service) || !record(value.recovery)) return false;
-  const service = value.service,
-    recovery = value.recovery;
-  return (
-    recovery.version === 1 &&
-    recovery.generation === target.generation &&
-    typeof recovery.eligible === "boolean" &&
-    typeof recovery.reason === "string" &&
-    service.serviceId === target.serviceId &&
-    service.generation === target.generation &&
-    service.configFingerprint === target.configFingerprint &&
-    service.workspace === workspace &&
-    service.dataDir === dataDir &&
-    require("./application-owner.cjs").sameOwner(service.owner, owner)
-  );
-}
-
 module.exports = {
-  readOwnedServices,
+  authenticateService,
   connectService,
-  recoveryStatus,
-  recoverService,
   lifecycleCapabilities,
   requestStop,
   readStop,
@@ -500,27 +473,20 @@ module.exports = {
   serviceRequest: request,
 };
 
-/** @typedef {RecoveryTarget & {workspace:string,state:string,owner:unknown,[key:string]:unknown}} OwnedService */
-/** Only consume descriptors belonging to this application; registry extensions and other owners stay opaque.
- * @param {unknown} value @param {import('./application-owner.cjs').ApplicationOwner} owner @returns {OwnedService[]} */
-function readOwnedServices(value, owner) {
-  if (!Array.isArray(value)) throw new Error("Core 返回了无效的服务登记列表");
-  return value.flatMap(
-    /** @param {unknown} descriptor */ (descriptor) => {
-      if (!record(descriptor)) throw new Error("Core 返回了无效的服务登记列表");
-      if (!require("./application-owner.cjs").sameOwner(descriptor.owner, owner)) return [];
-      if (!ownedService(descriptor))
-        throw Object.assign(new Error("所属 Core 服务登记结构无效"), { code: "CORE_INCOMPATIBLE" });
-      return [descriptor];
-    },
-  );
-}
-/** @param {unknown} value @returns {value is OwnedService} */
-function ownedService(value) {
-  return (
-    record(value) &&
-    ["serviceId", "generation", "configFingerprint", "workspace", "dataDir", "state"].every(
-      (key) => typeof value[key] === "string",
-    )
-  );
+/** @param {unknown} value @param {StopTarget} target @param {string} [projectId] */
+function hostStopOperation(value, target, projectId) {
+  if (value === null) return null;
+  if (
+    !record(value) ||
+    value.version !== 1 ||
+    value.requestId !== target.requestId ||
+    value.serviceId !== target.serviceId ||
+    value.serviceGeneration !== target.generation ||
+    (projectId !== undefined && value.projectId !== projectId) ||
+    !["ifIdle", "cancel"].includes(String(value.strategy))
+  )
+    throw Object.assign(new Error("Host stop receipt identity mismatch"), {
+      code: "LIFECYCLE_RECEIPT_INVALID",
+    });
+  return { ...value, generation: value.serviceGeneration, cancel: value.strategy === "cancel" };
 }

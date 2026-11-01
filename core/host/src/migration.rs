@@ -374,6 +374,7 @@ impl Migration {
                 "GUI profile has multiple committed sources",
             ));
         }
+        let credentials = self.credential_metadata(&record)?;
         let mut bindings = record.bindings;
         for binding in &mut bindings {
             if let Some(registration) = current.iter().find(|r| r.project_id == binding.project_id)
@@ -422,7 +423,7 @@ impl Migration {
             });
         }
         Ok(
-            json!({"sourceId":record.source_id,"migrationId":record.request_id,"source":source,"bindings":bindings}),
+            json!({"sourceId":record.source_id,"migrationId":record.request_id,"source":source,"bindings":bindings,"credentials":credentials}),
         )
     }
     pub fn validate_registration(
@@ -1323,6 +1324,14 @@ impl Migration {
         let Some(current) = current else {
             return Ok(());
         };
+        if crate::remote_state::RemoteState::selected_source(&self.home)?
+            .is_some_and(|source| source != r.source_id)
+        {
+            return Err(error(
+                "migrationConflict",
+                "Remote configuration belongs to another source",
+            ));
+        }
         let value = self
             .vault
             .read(&current.entry_id)?
@@ -1357,6 +1366,60 @@ impl Migration {
             }
         }
         Ok(())
+    }
+    pub fn remote_projects(
+        &self,
+        source_id: &str,
+        current: &[ProjectRegistration],
+    ) -> Result<Vec<String>> {
+        let mut selected = None;
+        for record in self.records()? {
+            if record.source_id == source_id && self.committed(&record)?.is_some() {
+                selected = Some(record);
+                break;
+            }
+        }
+        let record =
+            selected.ok_or_else(|| error("sourceNotFound", "Remote source is not published"))?;
+        let mut bindings: Vec<(String, String)> = record
+            .bindings
+            .iter()
+            .map(|binding| {
+                (
+                    binding.project_id.clone(),
+                    binding.alias.legacy_project_id.clone(),
+                )
+            })
+            .collect();
+        for registration in current {
+            if let ProjectSource::Gui {
+                profile,
+                legacy_project_id,
+            } = &registration.source
+            {
+                if profile == &record.source.profile
+                    && !bindings
+                        .iter()
+                        .any(|(id, _)| id == &registration.project_id)
+                {
+                    bindings.push((registration.project_id.clone(), legacy_project_id.clone()));
+                }
+            }
+        }
+        let mut aliases: Vec<String> = bindings.iter().map(|(_, alias)| alias.clone()).collect();
+        for registration in current {
+            if !bindings
+                .iter()
+                .any(|(id, _)| id == &registration.project_id)
+            {
+                let alias = storage::digest(format!("host:{}", registration.project_id).as_bytes())
+                    [..24]
+                    .to_owned();
+                ensure!(!aliases.contains(&alias), "Host project alias collision");
+                aliases.push(alias);
+            }
+        }
+        Ok(aliases)
     }
     pub fn remote_seed(&self) -> Result<Option<(String, String, Vec<String>)>> {
         for r in self.records()? {
@@ -1417,6 +1480,15 @@ impl Migration {
         let Some(source_id) = self.credential_source(project)? else {
             return Ok(None);
         };
+        if reference == "AREAL_CREDENTIAL_areal_openai" {
+            let result = self.vault.dispatch(
+                "vault.read",
+                json!({"slot":vault::Slot::SubscriptionTransport {source_id}}),
+                "",
+                self,
+            )?;
+            return Ok(result["value"]["token"].as_str().map(str::to_owned));
+        }
         let result = self.vault.dispatch("vault.read", json!({"slot":vault::Slot::ProviderCredential {source_id, reference:reference.to_owned()}}), "", self)?;
         Ok(result["value"].as_str().map(str::to_owned))
     }
@@ -1532,6 +1604,43 @@ mod tests {
                 .unwrap();
         }
     }
+    #[test]
+    fn remote_scopes_include_new_gui_aliases_and_stable_other_project_aliases() {
+        let f = Fixture::new();
+        f.attach();
+        assert_eq!(f.import().unwrap()["kind"], "ready");
+        let view = f.migration.source(f.source.clone(), &[]).unwrap();
+        let source_id = view["sourceId"].as_str().unwrap();
+        let mut projects = f.migration.published().unwrap();
+        let mut gui = projects[0].clone();
+        gui.project_id = "ordinary-gui".into();
+        gui.source = ProjectSource::Gui {
+            profile: f.source.profile.clone(),
+            legacy_project_id: "new-gui-alias".into(),
+        };
+        projects.push(gui);
+        let mut cli = projects[0].clone();
+        cli.project_id = "ordinary-cli".into();
+        cli.source = ProjectSource::Cli;
+        projects.push(cli);
+        let aliases = f.migration.remote_projects(source_id, &projects).unwrap();
+        assert!(aliases.contains(&"new-gui-alias".into()));
+        assert!(aliases.contains(&storage::digest(b"host:ordinary-cli")[..24].to_owned()));
+        assert!(!aliases.contains(&storage::digest(b"host:ordinary-gui")[..24].to_owned()));
+        assert!(
+            f.migration
+                .remote_projects("unpublished-source", &projects)
+                .is_err()
+        );
+        assert!(
+            crate::remote_state::validate(
+                &json!({"deviceGrants":[{"projectIds":["unknown-alias"]}]}),
+                &aliases
+            )
+            .is_err()
+        );
+    }
+
     #[test]
     fn source_lookup_is_exact_read_only_and_registration_requires_unique_profile() {
         let f = Fixture::new();

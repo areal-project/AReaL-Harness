@@ -11,8 +11,6 @@ const {
   isPendingSubmission,
   isRemoteRecord,
 } = require("./project-state.cjs");
-const { readFile } = require("node:fs/promises");
-const { join } = require("node:path");
 const { desktopError } = require("@areal/workbench/desktop-contract");
 const { managementMethods } = require("./management.cjs");
 const { readWorkgroup, readProcesses, submissionError } = require("./submission-results.cjs");
@@ -29,10 +27,11 @@ const { taskMutationMethods } = require("./tasks.cjs");
 /** @typedef {import('./project-state.cjs').RemoteRecord} RemoteRecord */
 /** @typedef {import('./project-state.cjs').RemoteAssociation} RemoteAssociation */
 /** @typedef {import('./receipt-contract.cjs').Receipt} Receipt */
+/** @typedef {{version:1,pending:Pending[],outcomes:Record<string,Outcome>}} JournalSnapshot */
 /** @typedef {{client?:Client|null,generation?:number,deadline?:number,observeOnly?:boolean}} ReconcileOptions */
 /** @typedef {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'worktrees'|'lifecycleOperations'|'providers'> & {
- * home:string,closing:boolean,saved:import('./project-index.cjs').SavedProject[],projects:Map<string,Project>,awaitingResponses:Set<string>,onChange:()=>void,
- * save:(path:string,value:unknown)=>Promise<void>,currentConnection:(project:Project,client:Client|null|undefined)=>client is Client,
+ * host:Pick<InstanceType<typeof import("./host-client.cjs").HostClient>,"journal">,closing:boolean,saved:import('./project-index.cjs').SavedProject[],projects:Map<string,Project>,awaitingResponses:Set<string>,onChange:()=>void,
+ * currentConnection:(project:Project,client:Client|null|undefined)=>client is Client,
  * requireConnection:(project:Project,client:Client|null|undefined)=>void,openThread:(project:Project,threadId:string)=>Promise<unknown>,
  * supportsBoundedHistory:(client:Client|null|undefined)=>boolean,readObservation:(project:Project,threadId:string,options:import('./history-state.cjs').ReadOptions)=>Promise<import('./history-contract.cjs').ObservationResult>,
  * refreshConfiguration:(project:Project,threadId:string)=>Promise<unknown>,refreshAfterAdmission:(project:Project,threadId:string|undefined,operation?:import('@areal/runtime-client/core').OperationRef)=>Promise<unknown>
@@ -92,23 +91,7 @@ class SubmissionRecovery {
           this.host.onChange();
         });
       }
-      if (!project.journalLoaded) {
-        try {
-          project.pending = parsePendingSubmissions(
-            JSON.parse(await readFile(join(this.host.home, `${id}-pending.json`), "utf8")),
-          );
-        } catch (error) {
-          if (!modelRecord(error) || error.code !== "ENOENT") throw error;
-        }
-        try {
-          project.outcomes = parseSubmissionOutcomes(
-            JSON.parse(await readFile(join(this.host.home, `${id}-outcomes.json`), "utf8")),
-          );
-        } catch (error) {
-          if (!modelRecord(error) || error.code !== "ENOENT") throw error;
-        }
-        project.journalLoaded = true;
-      }
+      await this.refreshProjectJournal(project);
       if (
         this.host.projects.get(id) !== project ||
         !this.host.saved.some((value) => value.id === id)
@@ -124,40 +107,64 @@ class SubmissionRecovery {
     return task;
   }
 
-  /** @param {Project} project @param {(entries:Pending[])=>Pending[]} change */
-  changePending(project, change) {
-    const task = (project.pendingWrite ?? Promise.resolve())
+  /** @param {Project} project @param {import('./host-client.cjs').JournalSnapshot} snapshot */
+  projectJournal(project, snapshot) {
+    const pending = parsePendingSubmissions(snapshot.pending);
+    const outcomes = parseSubmissionOutcomes(snapshot.outcomes);
+    project.pending = pending;
+    project.outcomes = outcomes;
+    project.journalLoaded = true;
+    this.host.onChange();
+  }
+
+  /** @param {Project} project */
+  refreshProjectJournal(project) {
+    const task = (project.journalWrite ?? Promise.resolve())
       .catch(() => {})
       .then(async () => {
-        const before = project.pending;
-        project.pending = change(before);
-        this.host.onChange();
-        try {
-          await this.host.save(`${project.id}-pending.json`, project.pending);
-        } catch (error) {
-          project.pending = before;
-          this.host.onChange();
-          throw error;
-        }
-        this.host.onChange();
+        const { snapshot } = await this.host.host.journal(project.id).read();
+        this.projectJournal(project, snapshot);
       });
-    project.pendingWrite = task;
+    project.journalWrite = task;
     return task;
+  }
+
+  /** @param {Project} project @param {(snapshot:JournalSnapshot)=>JournalSnapshot} change */
+  changeJournal(project, change) {
+    const task = (project.journalWrite ?? Promise.resolve())
+      .catch(() => {})
+      .then(async () => {
+        /** @type {import('./host-client.cjs').JournalSnapshot|undefined} */
+        let committed;
+        await this.host.host.journal(project.id).change((snapshot) => {
+          committed = change({
+            version: 1,
+            pending: parsePendingSubmissions(snapshot.pending),
+            outcomes: parseSubmissionOutcomes(snapshot.outcomes),
+          });
+          return committed;
+        });
+        if (!committed) throw new Error("Host 未返回已提交日志");
+        this.projectJournal(project, committed);
+      });
+    project.journalWrite = task;
+    return task;
+  }
+
+  /** @param {Project} project @param {(entries:Pending[],outcomes:Record<string,Outcome>)=>Pending[]} change */
+  changePending(project, change) {
+    return this.changeJournal(project, (snapshot) => ({
+      ...snapshot,
+      pending: change(snapshot.pending, snapshot.outcomes),
+    }));
   }
 
   /** @param {Project} project @param {(outcomes:Record<string,Outcome>)=>Record<string,Outcome>} change */
   changeOutcomes(project, change) {
-    const task = (project.outcomeWrite ?? Promise.resolve())
-      .catch(() => {})
-      .then(async () => {
-        const next = change(project.outcomes ?? {});
-        if (next === project.outcomes) return;
-        await this.host.save(`${project.id}-outcomes.json`, next);
-        project.outcomes = next;
-        this.host.onChange();
-      });
-    project.outcomeWrite = task;
-    return task;
+    return this.changeJournal(project, (snapshot) => ({
+      ...snapshot,
+      outcomes: change(snapshot.outcomes),
+    }));
   }
 
   /** @param {Project} project @param {Pending} entry @param {unknown} input @param {number} [planRevision] */
@@ -179,6 +186,7 @@ class SubmissionRecovery {
 
   /** @param {Project} project @param {string} requestId */
   async recoverWorkgroupSubmission(project, requestId) {
+    await this.refreshProjectJournal(project);
     const entry = project.pending.find(
       (item) => item.params.requestId === requestId && workgroupMutationMethods.has(item.method),
     );
@@ -211,6 +219,7 @@ class SubmissionRecovery {
 
   /** @param {Project} project @param {string} threadId @param {string} requestId */
   async recoverProcessSubmission(project, threadId, requestId) {
+    await this.refreshProjectJournal(project);
     const entry = project.pending.find((item) => item.params.requestId === requestId);
     if (
       entry &&
@@ -257,6 +266,7 @@ class SubmissionRecovery {
 
   /** @param {Project} project @param {string} parentThreadId @param {string} requestId */
   async recoverAgentSubmission(project, parentThreadId, requestId) {
+    await this.refreshProjectJournal(project);
     const entry = project.pending.find(
       (item) => item.params.requestId === requestId && item.method === "areal/agent/spawn",
     );
@@ -282,7 +292,7 @@ class SubmissionRecovery {
     return receipt;
   }
 
-  /** @param {Project} project @param {Record<string,unknown>} association @returns {RemoteRecord|undefined} */
+  /** @param {Pick<Project,"pending"|"outcomes">} project @param {Record<string,unknown>} association @returns {RemoteRecord|undefined} */
   remoteRecord(project, association) {
     /** @param {Pending|Outcome} value @returns {value is RemoteRecord} */
     const matches = (value) =>
@@ -297,15 +307,8 @@ class SubmissionRecovery {
 
   /** @param {Project} project @param {Record<string,unknown>} association @param {(entry:RemotePending)=>void} [beforeReceipt] @returns {Promise<Pending|Outcome|null>} */
   async readRemoteRecord(project, association, beforeReceipt) {
-    // 将读取本身排在 pending 队列中，不能看见下一笔尚未落盘的临时内存。
-    const read = (project.pendingWrite ?? Promise.resolve())
-      .catch(() => {})
-      .then(async () => {
-        await project.outcomeWrite?.catch(() => {});
-        return this.remoteRecord(project, association);
-      });
-    project.pendingWrite = read;
-    const entry = await read;
+    await this.refreshProjectJournal(project);
+    const entry = this.remoteRecord(project, association);
     return entry ? this.recoverRemoteSubmission(project, entry, beforeReceipt) : null;
   }
 
@@ -444,6 +447,7 @@ class SubmissionRecovery {
 
   /** @param {Project} project @param {RemoteRecord} entry @param {(entry:RemotePending)=>void} [beforeReceipt] @returns {Promise<Pending|Outcome>} */
   async recoverRemoteSubmission(project, entry, beforeReceipt) {
+    await this.refreshProjectJournal(project);
     const known = project.outcomes?.[entry.operationId];
     if (known?.remote) {
       const pendingEntry = project.pending.find((value) => value.operationId === entry.operationId);
@@ -532,14 +536,14 @@ class SubmissionRecovery {
     if (key === null) throw new Error("原请求标识缺失");
     this.host.awaitingResponses.add(key);
     try {
-      await this.changePending(project, (pending) => {
-        original = this.remoteRecord(project, remote);
+      await this.changePending(project, (pending, outcomes) => {
+        original = this.remoteRecord({ pending, outcomes }, remote);
         if (original) {
           if (original.remote.semanticDigest !== remote.semanticDigest)
             throw Object.assign(new Error("命令标识已用于不同内容"), { code: "COMMAND_CONFLICT" });
           return pending;
         }
-        if (pending.length + Object.keys(project.outcomes ?? {}).length >= 4096)
+        if (pending.length + Object.keys(outcomes).length >= 4096)
           throw Object.assign(new Error("提交日志容量已满"), { code: "CAPACITY_EXCEEDED" });
         if (
           !["turn/interrupt", "areal/interaction/respond"].includes(method) &&
@@ -554,7 +558,7 @@ class SubmissionRecovery {
             (value) =>
               !isRemoteControl(value) &&
               value.params.threadId === parameters.threadId &&
-              !(value.remote && value.operationId && project.outcomes?.[value.operationId]?.remote),
+              !(value.remote && value.operationId && outcomes[value.operationId]?.remote),
           )
         )
           throw Object.assign(new Error("此会话有未结算提交"), {
@@ -639,9 +643,9 @@ class SubmissionRecovery {
     this.host.awaitingResponses.add(key);
     try {
       // 检查与持久化在同一队列中，两个同时到达的发送不能穿透阻塞。
-      await this.changePending(project, (pending) => {
+      await this.changePending(project, (pending, outcomes) => {
         if (
-          project.outcomes?.[params.requestId] ||
+          outcomes[params.requestId] ||
           pending.some((value) => value.params.requestId === params.requestId)
         )
           throw new Error("请求标识已使用，请核对原提交；不会重复执行。");
@@ -667,11 +671,7 @@ class SubmissionRecovery {
                   : parameters.threadId
                     ? value.params.threadId === parameters.threadId
                     : false) &&
-                !(
-                  value.remote &&
-                  value.operationId &&
-                  project.outcomes?.[value.operationId]?.remote
-                ),
+                !(value.remote && value.operationId && outcomes[value.operationId]?.remote),
             );
         if (conflicting) {
           const awaiting = isAwaitingResponse(this.host.awaitingResponses, project.id, conflicting);
@@ -915,6 +915,7 @@ class SubmissionRecovery {
 
   /** @param {Project} project @param {string} method @param {Params & {requestId:string}} params */
   async readSubmission(project, method, params) {
+    await this.refreshProjectJournal(project);
     const client = project.client,
       generation = project.connectionGeneration;
     const pending = project.pending.find(
@@ -1105,6 +1106,7 @@ class SubmissionRecovery {
 
   /** @param {Project} project @param {ReconcileOptions} options @returns {Promise<void>} */
   async reconcileEntries(project, { client, generation, deadline = Date.now() + 30000 }) {
+    await this.refreshProjectJournal(project);
     const current = () => this.reconciliationCurrent(project, client, generation);
     for (const entry of Array.from(project.pending)) {
       if (!current() || !client || Date.now() >= deadline) break;
