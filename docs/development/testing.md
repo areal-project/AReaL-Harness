@@ -67,7 +67,7 @@ PR 工作流按 PR 编号取消旧运行；Verify/GUI 的 main 与手动运行�
 
 GUI 的产物 job 完成必要构建与 RPC 校验后即可发布同一源码的输入包；Core 合同按 manifest 稳定分成两片，独立原生/设计校验复用第二个分片的准备，保留单独的执行步骤与结果目录，合同失败后仍继续收集。两条 lane 共用同一 run/attempt 的依赖报告，各自产生唯一结果；原有 `macOS Core contracts` 检查名作为严格汇总保留。桌面模块、截图模块和既有 Core/renderer/原生 helper 产物一起冻结，消费者不再重复 `build:desktop`。最终门禁仍核对检查 ID、子测试全集、平台、源码、计划、run 和 attempt，拒绝漏项、重复、失败或过期输入。
 
-容器使用固定版本和摘要的官方 cargo-chef 二进制，从清单与锁文件生成依赖配方；依赖编译层位于真实源码 COPY 之前。源码变动只重建工作区代码；新增 target、清单或锁文件变化仍会更新配方。运行镜像仅导出最终层缓存，测试镜像保留完整构建层，避免两套完整依赖缓存重复占用空间。测试目标只导入自己的完整缓存图，避免最终镜像的 min 图干扰 recipe 交接与编译层的复用；macOS 原生与 GUI 构建共用同一环境键的 Rust 依赖缓存。macOS 私有 Bash 只缓存当前身份目录；锁文件、构建脚本、架构、编译器、SDK、系统或 runner 镜像变化都会换键。恢复后仍核对二进制、对应源码包与许可证摘要，不保存其他身份或下载目录。验收结果及失败报告从不作为缓存通过证据。
+容器使用固定版本和摘要的官方 cargo-chef 二进制，从清单与锁文件生成依赖配方；依赖编译层位于真实源码 COPY 之前。源码变动只重建工作区代码；新增 target、清单或锁文件变化仍会更新配方。运行镜像仅导出最终层缓存，测试镜像保留完整构建层，避免两套完整依赖缓存重复占用空间。测试目标只导入自己的完整缓存图，作为隔离最终镜像 min 图与测试构建图的候选措施。本地 OCI 缓存/native snapshotter 的结构实验支持这一选择；托管 GHA 缓存/overlayfs 仍待验证，尚未证明线上缓存失效的根因或耗时收益。macOS 原生与 GUI 构建共用同一环境键的 Rust 依赖缓存。macOS 私有 Bash 只缓存当前身份目录；锁文件、构建脚本、架构、编译器、SDK、系统或 runner 镜像变化都会换键。恢复后仍核对二进制、对应源码包与许可证摘要，不保存其他身份或下载目录。验收结果及失败报告从不作为缓存通过证据。
 
 用 `python3 scripts/ci-timing.py --collect areal-project/AReaL-Harness --limit 50 --output target/ci/timing` 保存 gh 原始数据并生成逐 job/step CSV；离线重放使用 `--input <snapshot.json>`。采集最近 50 个 run 的全部 attempt，逐轮读取对应 jobs；分析使用各轮 run_started_at，避免把重跑前的等待或前一轮 runner minutes 计入本轮。分析保留取消、失败、重跑 attempt 和 runner 信息；依赖等待只作估计，机器排队只报告可识别下界。包含安装/编译的复合 step 独立列为 mixed，不能全算测试耗时。缺少日志或子报告时缓存冷热及精确测试拆分保持 unknown；只比较覆盖相同的成功运行，并同时查看墙钟关键路径和累计 runner minutes。
 
