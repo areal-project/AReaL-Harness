@@ -379,7 +379,7 @@ JSON 使用 camelCase（`apiKeyEnv`、`displayName`、`maxOutputTokens`、`reaso
 
 供应商与模型的 `parameters.service_tier` 接受 `fast` 或 `default`，JSON 字段为 `serviceTier`。`fast` 请求 Fast，`default` 明确选择标准服务并覆盖继承的 Fast。省略或空值继承模型及供应商默认值。Core 将该值原样作为 `service_tier` 发给 Chat Completions 和 Responses。使用 ChatGPT 授权访问 OpenAI API 的适配器把 `fast` 编码为 `priority`；显式 `default`、省略、API Key 供应商和 Codex 订阅传输仍沿用各自原有语义。供应商决定支持情况与实际处理档位，错误沿原路径返回。Responses 终态返回已识别的实际档位时，请求审计在 `usageDetails.serviceTier` 中保留该值；缺失或未知时省略，不按请求补值。即使 Fast 请求成功，实际档位仍可能是 `default`，不能据此认定已获得加速。
 
-桌面 Composer 的思考强度菜单左上角提供 Fast 闪电开关。开启请求 `fast`，关闭请求 `default`。Fast 和思考强度独立保存。会话切换模型保留当前生效的服务档位，包括从模型或供应商继承的 `fast` 或 `default`；当前档位未设置时使用目标模型的默认值。新草稿没有本地覆盖时使用所选模型及供应商默认值。草稿选择随原草稿保存和清理，会话选择沿原配置保存及恢复。入口中的 Fast 标记只表示当前请求选择，Fast 可能消耗更多额度或费用。
+桌面 Composer 的思考强度菜单左上角提供 Fast 闪电开关。开启请求 `fast`，关闭请求 `default`。Fast 和思考强度独立保存。思考强度菜单按模型声明的支持列表提供档位；明确的空列表或不支持推理的模型不显示档位滑块，仍保留服务默认与 Fast 开关。能力未知时沿用通用档位。会话切换模型保留当前生效的服务档位，包括从模型或供应商继承的 `fast` 或 `default`；当前档位未设置时使用目标模型的默认值。新草稿没有本地覆盖时使用所选模型及供应商默认值。草稿选择随原草稿保存和清理，会话选择沿原配置保存及恢复。入口中的 Fast 标记只表示当前请求选择，Fast 可能消耗更多额度或费用。
 
 普通配置只保存密钥环境变量名。共享接口拒绝带查询参数的 endpoint，避免把 URL 中的认证信息送入 GUI；旧配置诊断仍脱敏查询参数。桌面安全存储不向独立 CLI 暴露，CLI 自行提供引用变量。`areal_openai` 为桌面动态账号目录保留，允许作为默认引用，禁止写为静态供应商；独立 CLI 缺少账号传输端点时明确失败。
 
