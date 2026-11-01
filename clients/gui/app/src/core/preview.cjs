@@ -316,37 +316,28 @@ class CorePreview {
     return this.actions.execute(request);
   }
   dispose() {
+    const deadline = performance.now() + 10000;
     const recordings = [...this.workspace.pages.values()]
       .map((page) => page.commandRecording?.promise)
-      .filter((c) => c !== undefined && c !== null);
-    const contents = [...this.workspace.pages.values()]
-      .map((page) => page.view?.webContents)
       .filter((c) => c !== undefined && c !== null);
     this.discovery.discoveryPlans.clear();
     for (const key of Array.from(this.workspace.pages.keys())) this.lifecycle.release(key);
     this.presentation.view = null;
     this.presentation.owner = null;
     this.workspace.fileReceipts.clear();
-    this.workspace.unregisterProfileHost?.();
-    this.workspace.unregisterProfileHost = null;
-    return nativeWithin(
-      Promise.allSettled([
-        this.documents.dispose(),
-        ...recordings,
-        ...contents
-          .filter((c) => !c.isDestroyed())
-          .map((c) => new Promise((resolve) => c.once("destroyed", () => resolve(undefined)))),
-      ]),
-      performance.now() + 10000,
-    ).then(() => this.workspace.profile.flush());
+    return Promise.all([
+      nativeWithin(Promise.allSettled([this.documents.dispose(), ...recordings]), deadline),
+      this.lifecycle.drain(deadline),
+    ]).then(async () => {
+      await this.workspace.profile.flush();
+      this.workspace.unregisterProfileHost?.();
+      this.workspace.unregisterProfileHost = null;
+    });
   }
   async quiesceBrowserPages() {
     const pages = [...this.workspace.pages.values()];
     const recordings = pages
       .map((page) => page.commandRecording?.promise)
-      .filter((c) => c !== undefined && c !== null);
-    const native = pages
-      .map((page) => page.view?.webContents)
       .filter((c) => c !== undefined && c !== null);
     this.discovery.discoveryPlans.clear();
     for (const page of pages) {
@@ -368,14 +359,7 @@ class CorePreview {
         );
     }
     await nativeWithin(Promise.allSettled(recordings), performance.now() + 10000);
-    await nativeWithin(
-      Promise.all(
-        native
-          .filter((c) => !c.isDestroyed())
-          .map((c) => new Promise((resolve) => c.once("destroyed", () => resolve(undefined)))),
-      ),
-      performance.now() + 5000,
-    );
+    await this.lifecycle.drain(performance.now() + 5000);
   }
 }
 

@@ -177,7 +177,9 @@ Browser Workspace 绑定 `(coreInstanceId, projectId, threadId)`。首期每 Thr
 
 Controller 提供**原子 snapshot + subscribe**，UI 先安装 snapshot 的序号，再消费后续增量。发现序号缺口就重取，不能靠独立 read 和 subscribe 假设无窗口。事件至多携带元数据；DOM、图像和网络正文按需读取，不广播。
 
-桌面 Main 的唯一 Page Map 持有原生对象。可信主视图通过 `preview.subscribe` 一次安装监听并取得快照；后续事件只携带 Page 元数据，序号缺口重新订阅。人工新建、切换和关闭是主视图意图；关闭人工或未知来源页必须带明确用户意图。`browser_v1` 的 `navigate` / `newPage` 先只读准备，再经 Core 审批，执行时按 Page ID 和代次路由。`newPage` 的 `pageId` 指 opener；子页加载后沿同一 claim 路径建立独立 controlEpoch、诊断和原生文件选择拦截，成功回执给出新 Page ID 和子页代次。认领或交还后，导航和新建页也必须先有新的 observe/capture。网页弹窗只有近期、一次性的本地人工输入才能进入同一临时上下文；其他原生开窗请求被拒绝。
+桌面 Main 的活动 Page Map 与同一生命周期内的关闭资源共同持有原生对象。逻辑释放同步撤销能力并移除 Page；关闭中的旧 view 和 WebContents 保留到真实 `destroyed`。窗口释放和 Profile 清理都等待先前已释放的原生资源，失败时保留 Profile 归属及未结算资源，不能把 Page Map 为空当作关闭完成。可信主视图通过 `preview.subscribe` 一次安装监听并取得快照；后续事件只携带 Page 元数据，序号缺口重新订阅。人工新建、切换和关闭是主视图意图；关闭人工或未知来源页必须带明确用户意图。`browser_v1` 的 `navigate` / `newPage` 先只读准备，再经 Core 审批，执行时按 Page ID 和代次路由。`newPage` 的 `pageId` 指 opener；子页加载后沿同一 claim 路径建立独立 controlEpoch、诊断和原生文件选择拦截，成功回执给出新 Page ID 和子页代次。认领或交还后，导航和新建页也必须先有新的 observe/capture。网页弹窗只有近期、一次性的本地人工输入才能进入同一临时上下文；其他原生开窗请求被拒绝。
+
+原生关闭先撤销网络、文件和控制能力，在同一关闭预算内等待已启动的输入及截图/录制清理，再在私有隔离世界中仅对主框架当前活动且打开的原生 SELECT 调用原型 `blur`，随后请求关闭并等待 `destroyed`。它不聚焦窗口、不读取或修改选项值，也不重写工具回执；正常 `onblur` 仍可能运行。普通输入和已关闭的 SELECT 不新增 blur。首次导航前尚无已提交文档、已销毁或崩溃的 Renderer 跳过 DOM 步骤，崩溃本身不等于原生销毁。隔离步骤失败或超时仍会请求原生关闭，但本次清理保留失败，迟到销毁不能把原回执改成成功。该步骤尚不遍历跨源 iframe 或 shadow tree 的活动控件。
 
 事件包括 `pageAdded/pageChanged/pageRemoved`、`controlChanged`、`operationChanged`、`hostAvailabilityChanged`、`viewportChanged`、`diagnosticsAvailable`。GUI-only 投影可在原有本地状态通道中分发；持久工具事件仍使用 Core Item。只对所属 Thread/项目/window 授权接收者广播。
 

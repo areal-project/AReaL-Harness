@@ -6,8 +6,15 @@ const { workspaceKey, pageKey } = require("./identity.cjs");
 const { randomUUID } = require("node:crypto");
 const { attachAgentDialogPresentation } = require("../agent-dialog-presentation.cjs");
 const { invalidateDocumentPlans } = require("../preview/observation-state.cjs");
+const { performance } = require("node:perf_hooks");
+const { readIsolated, nativeWithin } = require("./read-session.cjs");
 
 class NativePageLifecycle {
+  /** @type {Map<import('electron').WebContents,{view:import('electron').WebContentsView,done:Promise<void>}>} */
+  #closing = new Map();
+  /** @type {Error|null} */
+  #firstCloseFailure = null;
+  #activeDrains = 0;
   /**
    * @param {InstanceType<typeof import('./control.cjs').PageControl>} control
    * @param {InstanceType<typeof import('./downloads.cjs').HumanDownloads>} downloads
@@ -81,13 +88,21 @@ class NativePageLifecycle {
    * @param {import('./model.js').Page} page
    */
   closeNative(page) {
+    this.control.revoke(page);
+    page.activeRead?.cancel();
+    page.activeSelection?.cancel();
+    page.activeAction?.cancel();
+    page.activeBatch?.cancel();
     page.document?.revoke();
     this.human_input.cancelHumanGesture(page);
     page.dialogPresentation?.dispose();
     page.dialogPresentation = null;
     if (!page.view) return;
     page.styleTrial = null;
-    const c = page.view.webContents;
+    const view = page.view;
+    const c = view.webContents;
+    const converging = page.converging;
+    const action = page.activeAction;
     page.networkPolicy?.revokeFrameGrant(c.id);
     page.frameGrant = null;
     this.downloads.cancelFileOperations(page, "page_closed_after_dispatch");
@@ -111,10 +126,93 @@ class NativePageLifecycle {
     page.diagnosticsReady = false;
     page.diagnosticRequests?.clear();
     page.claiming?.cancel();
-    if (!this.presentation.window.isDestroyed())
-      this.presentation.window.contentView.removeChildView(page.view);
-    if (!c.isDestroyed()) c.close();
+    /** @type {() => void} */
+    let complete = () => {};
+    /** @type {Promise<void>} */
+    const done = new Promise((resolve) => {
+      complete = resolve;
+    });
+    /** @type {Promise<void>} */
+    const destroyed = new Promise((resolve) => {
+      if (c.isDestroyed()) resolve();
+      else c.once("destroyed", () => resolve());
+    });
+    this.#closing.set(c, { view, done });
     page.view = null;
+    const deadline = performance.now() + 10000;
+    /** @param {unknown} error */
+    const failed = (error) => {
+      this.#firstCloseFailure ??=
+        error instanceof Error ? error : new Error("原生页面关闭失败", { cause: error });
+    };
+    const close = async () => {
+      try {
+        view.setVisible(false);
+        const settled = await nativeWithin(
+          Promise.allSettled([c.isDestroyed() ? undefined : converging, recording?.promise]),
+          deadline,
+        );
+        const rejected = settled.find((result) => result.status === "rejected");
+        if (rejected?.status === "rejected") throw rejected.reason;
+        // 原生命令的 finally 负责归还临时 surface；必须先等它释放旧 view。
+        while (action && page.activeAction === action)
+          await nativeWithin(new Promise((resolve) => setTimeout(resolve, 10)), deadline);
+        // 新建页可在首次导航前关闭，此时还没有可清理的 DOM。
+        if (!c.isDestroyed() && !c.isCrashed() && c.getURL() !== "")
+          await nativeWithin(
+            Promise.race([
+              readIsolated(
+                c,
+                `(() => {
+            const active = document.activeElement;
+            if (!(active instanceof HTMLSelectElement) || !CSS.supports('selector(select:open)') || !active.matches(':open')) return false;
+            HTMLElement.prototype.blur.call(active);
+            return true;
+          })()`,
+              ),
+              destroyed,
+            ]),
+            deadline,
+          );
+      } catch (error) {
+        failed(error);
+      } finally {
+        try {
+          if (!this.presentation.window.isDestroyed())
+            this.presentation.window.contentView.removeChildView(view);
+        } catch (error) {
+          failed(error);
+        }
+        try {
+          if (!c.isDestroyed()) c.close();
+        } catch (error) {
+          failed(error);
+        }
+      }
+    };
+    void close()
+      .then(() => destroyed)
+      .then(() => {
+        this.#closing.delete(c);
+        complete();
+      });
+  }
+
+  /** @param {number} deadline */
+  async drain(deadline) {
+    this.#activeDrains++;
+    try {
+      while (this.#closing.size)
+        await nativeWithin(
+          Promise.all([...this.#closing.values()].map((entry) => entry.done)),
+          deadline,
+        );
+      if (this.#firstCloseFailure) throw this.#firstCloseFailure;
+    } catch (error) {
+      throw this.#firstCloseFailure ?? error;
+    } finally {
+      if (--this.#activeDrains === 0) this.#firstCloseFailure = null;
+    }
   }
 
   /**

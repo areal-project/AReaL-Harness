@@ -33,6 +33,417 @@ const { HumanBrowserInput } = require("../app/src/core/preview-native/human-inpu
 const { PageControl } = require("../app/src/core/preview-native/control.cjs");
 const { NativePageTargets } = require("../app/src/core/preview-native/native-targets.cjs");
 const { EventEmitter } = require("node:events");
+const { NativePageLifecycle } = require("../app/src/core/preview-native/lifecycle.cjs");
+const { performance } = require("node:perf_hooks");
+
+function closingFixture({ automaticDestroy = false, evaluate = () => false } = {}) {
+  const events = [];
+  let destroyed = false;
+  let attached = false;
+  const c = Object.assign(new EventEmitter(), {
+    isDestroyed: () => destroyed,
+    isCrashed: () => false,
+    getURL: () => "about:blank",
+    close() {
+      events.push("close");
+      if (automaticDestroy) queueMicrotask(() => c.destroy());
+    },
+    destroy() {
+      destroyed = true;
+      c.emit("destroyed");
+    },
+  });
+  c.debugger = Object.assign(new EventEmitter(), {
+    isAttached: () => attached,
+    attach() {
+      attached = true;
+    },
+    detach() {
+      attached = false;
+      c.debugger.emit("detach");
+    },
+    async sendCommand(method, parameters) {
+      if (method === "Page.getFrameTree") return { frameTree: { frame: { id: "main" } } };
+      if (method === "Page.createIsolatedWorld") return { executionContextId: 7 };
+      if (method === "Runtime.evaluate") {
+        events.push("isolated");
+        return { result: { value: await evaluate(parameters.expression) } };
+      }
+      assert.fail(`Unexpected close CDP method ${method}`);
+    },
+  });
+  const view = { webContents: c, setVisible() {} };
+  const page = {
+    id: "page",
+    coreInstanceId: "core",
+    projectId: "project",
+    threadId: "thread",
+    view,
+    control: "human",
+    commandDownloads: new Map(),
+    diagnosticRequests: new Map(),
+    networkPolicy: {
+      revokeFrameGrant() {
+        events.push("revoke-network");
+      },
+    },
+    unregisterProfilePage() {
+      events.push("unregister-page");
+    },
+  };
+  const workspace = {
+    pages: new Map([["page", page]]),
+    selected: new Map(),
+    fileReceipts: new Map(),
+    workspacePages: () => [],
+    owns: () => true,
+    coreIdentity: () => "core",
+    changed() {},
+    releaseWorkspaceContext() {},
+    unregisterProfileHost() {
+      events.push("unregister-host");
+    },
+    profile: {
+      async flush() {
+        events.push("flush");
+      },
+    },
+  };
+  const control = { revoke() {}, convergeInput: async () => {} };
+  const humanInput = { cancelHumanGesture() {} };
+  const presentation = {
+    window: {
+      isDestroyed: () => false,
+      contentView: {
+        removeChildView(old) {
+          assert.equal(old, view);
+          events.push("detach-view");
+        },
+      },
+    },
+    view,
+    owner: "page",
+  };
+  const lifecycle = new NativePageLifecycle(
+    control,
+    { cancelFileOperations() {} },
+    humanInput,
+    {},
+    {},
+    presentation,
+    workspace,
+    null,
+  );
+  const preview = Object.assign(Object.create(CorePreview.prototype), {
+    workspace,
+    lifecycle,
+    control,
+    human_input: humanInput,
+    presentation,
+    discovery: { discoveryPlans: new Map() },
+    documents: { dispose: async () => {} },
+  });
+  return { lifecycle, preview, workspace, page, view, c, events };
+}
+
+test("dispose waits for native contents released before the Page Map snapshot", async (t) => {
+  const fixture = closingFixture();
+  t.after(() => fixture.c.destroy());
+  fixture.lifecycle.release("page");
+  assert.equal(fixture.workspace.pages.size, 0);
+  let completed = false;
+  const disposed = fixture.preview.dispose().then(() => {
+    completed = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(completed, false, "logical removal cannot certify native destruction");
+  assert.ok(!fixture.events.includes("unregister-host"));
+  fixture.c.destroy();
+  await disposed;
+  assert.ok(fixture.events.includes("unregister-host"));
+});
+
+test("native close waits for convergence and recording before isolated cleanup and destruction", async () => {
+  const fixture = closingFixture({ automaticDestroy: true });
+  let settleInput;
+  let settleRecording;
+  fixture.page.converging = new Promise((resolve) => {
+    settleInput = resolve;
+  });
+  fixture.page.commandRecording = {
+    controller: new AbortController(),
+    promise: new Promise((resolve) => {
+      settleRecording = resolve;
+    }),
+  };
+  fixture.lifecycle.closeNative(fixture.page);
+  assert.equal(fixture.page.view, null);
+  assert.ok(fixture.page.commandRecording.controller.signal.aborted);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(!fixture.events.includes("close"));
+  settleInput();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(!fixture.events.includes("close"));
+  settleRecording();
+  await fixture.lifecycle.drain(performance.now() + 1000);
+  assert.deepEqual(
+    fixture.events.filter((event) => ["isolated", "detach-view", "close"].includes(event)),
+    ["isolated", "detach-view", "close"],
+  );
+});
+
+test("closing isolates a native blur to the active open SELECT without reading its value", async () => {
+  const vm = require("node:vm");
+  for (const kind of [
+    "open-select",
+    "closed-select",
+    "input",
+    "textarea",
+    "contenteditable",
+    "none",
+  ]) {
+    let blurred = 0;
+    class HTMLElement {
+      blur() {
+        blurred++;
+      }
+    }
+    class HTMLSelectElement extends HTMLElement {
+      matches(selector) {
+        assert.equal(selector, ":open");
+        return kind === "open-select";
+      }
+    }
+    const active = kind.includes("select")
+      ? new HTMLSelectElement()
+      : kind === "none"
+        ? null
+        : new HTMLElement();
+    if (active) {
+      active.blur = () => assert.fail("page-owned blur must not run");
+      Object.defineProperty(active, "value", {
+        get() {
+          return assert.fail("closing must not read form values");
+        },
+      });
+    }
+    const fixture = closingFixture({
+      automaticDestroy: true,
+      evaluate: (expression) =>
+        vm.runInNewContext(expression, {
+          document: { activeElement: active },
+          HTMLSelectElement,
+          HTMLElement,
+          CSS: { supports: () => true },
+        }),
+    });
+    fixture.lifecycle.closeNative(fixture.page);
+    await fixture.lifecycle.drain(performance.now() + 1000);
+    assert.equal(blurred, kind === "open-select" ? 1 : 0, kind);
+    assert.ok(fixture.events.indexOf("revoke-network") < fixture.events.indexOf("isolated"));
+    assert.ok(fixture.events.indexOf("unregister-page") < fixture.events.indexOf("isolated"));
+  }
+});
+
+test("an old close job never clears a replacement Page view", async () => {
+  let finish;
+  const fixture = closingFixture({
+    automaticDestroy: true,
+    evaluate: () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  });
+  fixture.lifecycle.closeNative(fixture.page);
+  await new Promise((resolve) => setImmediate(resolve));
+  const replacement = { webContents: { isDestroyed: () => false } };
+  fixture.page.view = replacement;
+  finish(false);
+  await fixture.lifecycle.drain(performance.now() + 1000);
+  assert.equal(fixture.page.view, replacement);
+});
+
+test("an early isolated close failure survives destruction until drain reports it", async () => {
+  const fixture = closingFixture({
+    automaticDestroy: true,
+    evaluate: () => {
+      throw new Error("isolated close failed");
+    },
+  });
+  fixture.lifecycle.closeNative(fixture.page);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(fixture.c.isDestroyed());
+  await assert.rejects(fixture.lifecycle.drain(performance.now() + 1000), /isolated close failed/);
+  await fixture.lifecycle.drain(performance.now() + 1000);
+});
+
+test("concurrent drains all report the same close failure before an explicit retry", async () => {
+  const fixture = closingFixture({
+    automaticDestroy: true,
+    evaluate: () => {
+      throw new Error("shared close failed");
+    },
+  });
+  fixture.lifecycle.closeNative(fixture.page);
+  const results = await Promise.allSettled([
+    fixture.lifecycle.drain(performance.now() + 1000),
+    fixture.lifecycle.drain(performance.now() + 1000),
+  ]);
+  assert.deepEqual(
+    results.map((result) => result.status),
+    ["rejected", "rejected"],
+  );
+  for (const result of results) assert.match(result.reason.message, /shared close failed/);
+  await fixture.lifecycle.drain(performance.now() + 1000);
+});
+
+test("a real destroyed receipt wins over the resulting isolated channel closure", async () => {
+  const fixture = closingFixture({
+    evaluate: () => {
+      fixture.c.destroy();
+      throw new Error("Target closed during isolated evaluation");
+    },
+  });
+  fixture.lifecycle.closeNative(fixture.page);
+  await fixture.lifecycle.drain(performance.now() + 1000);
+  assert.ok(!fixture.events.includes("close"));
+});
+
+test("already destroyed and crashed contents do not require a live DOM context", async () => {
+  for (const crashed of [false, true]) {
+    const fixture = closingFixture({
+      automaticDestroy: true,
+      evaluate: () => assert.fail("destroyed or crashed contents have no DOM close step"),
+    });
+    fixture.c.isCrashed = () => crashed;
+    if (!crashed) {
+      fixture.c.destroy();
+      fixture.page.converging = new Promise(() => {});
+    }
+    fixture.lifecycle.closeNative(fixture.page);
+    await fixture.lifecycle.drain(performance.now() + 1000);
+    assert.equal(fixture.events.includes("close"), crashed);
+  }
+});
+
+test("a page closed before its first navigation skips DOM preparation and still awaits destruction", async () => {
+  const fixture = closingFixture({
+    automaticDestroy: true,
+    evaluate: () => assert.fail("an uncommitted page has no DOM to blur"),
+  });
+  fixture.c.getURL = () => "";
+  fixture.lifecycle.closeNative(fixture.page);
+  await fixture.lifecycle.drain(performance.now() + 1000);
+  assert.ok(fixture.c.isDestroyed());
+  assert.ok(fixture.events.includes("close"));
+  assert.ok(!fixture.events.includes("isolated"));
+});
+
+test("a hung isolated action still requests close within its original deadline and retains ownership", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let now = 0;
+  t.mock.method(performance, "now", () => now);
+  const fixture = closingFixture({ evaluate: () => new Promise(() => {}) });
+  fixture.lifecycle.closeNative(fixture.page);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(!fixture.events.includes("close"));
+  now = 10001;
+  t.mock.timers.tick(10001);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(
+    fixture.events.includes("close"),
+    "timeout cannot strand close behind a pending script",
+  );
+  const failed = fixture.lifecycle.drain(now + 100);
+  const rejected = assert.rejects(failed, /原生输入结算超时/);
+  now += 101;
+  t.mock.timers.tick(101);
+  await rejected;
+  let completed = false;
+  const late = fixture.lifecycle.drain(now + 100).then(() => {
+    completed = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(completed, false);
+  fixture.c.destroy();
+  await late;
+});
+
+test("failed dispose retains its profile host and reports a throwing native close", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let now = 0;
+  t.mock.method(performance, "now", () => now);
+  const fixture = closingFixture();
+  fixture.c.close = () => {
+    throw new Error("native close failed");
+  };
+  const failed = fixture.preview.dispose();
+  const rejected = assert.rejects(failed, /native close failed/);
+  await new Promise((resolve) => setImmediate(resolve));
+  now = 10001;
+  t.mock.timers.tick(10001);
+  await rejected;
+  assert.ok(!fixture.events.includes("unregister-host"));
+  assert.ok(!fixture.events.includes("flush"));
+  fixture.c.destroy();
+  await fixture.preview.dispose();
+  assert.ok(fixture.events.includes("unregister-host"));
+});
+
+test("profile quiesce waits for previously released native resources", async () => {
+  const fixture = closingFixture();
+  fixture.lifecycle.release("page");
+  let completed = false;
+  const quiesced = fixture.preview.quiesceBrowserPages().then(() => {
+    completed = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(completed, false);
+  fixture.c.destroy();
+  await quiesced;
+});
+
+test("release keeps notify=false when closeNative repeats the existing revoke fence", async () => {
+  for (const notify of [false, true]) {
+    const fixture = closingFixture({ automaticDestroy: true });
+    let notifications = 0;
+    Object.assign(fixture.page, {
+      control: "agent",
+      controlEpoch: 1,
+      refs: new Map(),
+      plans: new Map(),
+    });
+    fixture.lifecycle.control = Object.assign(Object.create(PageControl.prototype), {
+      page_diagnostics: { clearDiagnostics() {} },
+      workspace: { changed() {} },
+      onRevoke: () => {
+        notifications++;
+      },
+      convergeInput: async () => {},
+    });
+    fixture.lifecycle.release("page", { notifyRevocation: notify });
+    assert.equal(fixture.page.controlEpoch, 2);
+    assert.equal(notifications, Number(notify));
+    await fixture.lifecycle.drain(performance.now() + 1000);
+  }
+});
+
+test("drain owns every native close job until the last destroyed receipt", async () => {
+  const fixtures = Array.from({ length: 8 }, () => closingFixture());
+  const lifecycle = fixtures[0].lifecycle;
+  fixtures[0].preview.presentation.window.contentView.removeChildView = () => {};
+  for (const fixture of fixtures) lifecycle.closeNative(fixture.page);
+  let completed = false;
+  const drained = lifecycle.drain(performance.now() + 1000).then(() => {
+    completed = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  for (const fixture of fixtures.slice(0, -1)) fixture.c.destroy();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(completed, false);
+  fixtures.at(-1).c.destroy();
+  await drained;
+});
 
 test("native targets use hit-tested fragments of wrapped inline elements", async () => {
   const identity = JSON.stringify([1, 2, 3, "main", 22]);
