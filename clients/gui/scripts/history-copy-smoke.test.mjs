@@ -46,6 +46,19 @@ test("history preflight accepts settled queue history and rejects executable or 
     assert.throws(() => assertIdle(record(status)), /History contains queued work/);
 });
 
+test("history preflight preserves inactive goals but refuses active or settling goals", () => {
+  const record = (goal) => ({ thread: { status: { type: "idle" }, turns: [], goals: { goal } } });
+  for (const status of ["blocked", "paused", "completed", "failed", "budgetLimited"])
+    assert.doesNotThrow(() => assertIdle(record({ status, activeTurnId: null, settling: false })));
+  for (const goal of [
+    { status: "active", activeTurnId: null, settling: false },
+    { status: "blocked", activeTurnId: "running-turn", settling: false },
+    { status: "paused", activeTurnId: null, settling: true },
+    { status: "unknown", activeTurnId: null, settling: false },
+  ])
+    assert.throws(() => assertIdle(record(goal)), /History contains an unfinished goal/);
+});
+
 test("history preflight rejects active, unknown, or unconfirmed process cleanup", () => {
   for (const process of [
     { state: "running", cleanupConfirmed: false },
