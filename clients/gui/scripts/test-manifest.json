@@ -1051,5 +1051,20 @@
     "platforms": ["darwin", "linux", "win32"],
     "areas": ["desktop", "composer"],
     "requires": []
+  },
+  {
+    "script": "test:composer-folder-vision",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["composer", "design"],
+    "requires": ["electron", "core-binary", "git", "gui-build", "native-runtime"],
+    "notes": "External directory drop, one-operation read approvals, three original image payloads, authoritative Runtime media and rejection of later unapproved reads; deterministic model does not verify visual recognition."
+  },
+  {
+    "script": "test:composer-folder-vision-contract",
+    "layer": "contract",
+    "platforms": ["darwin", "linux", "win32"],
+    "areas": ["composer"],
+    "requires": []
   }
 ]

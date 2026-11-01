@@ -87,7 +87,10 @@ export default defineConfig({
         cache: {
           input: [
             { pattern: "packages/browser-automation/src/**", base: "workspace" },
-            { pattern: "packages/browser-automation/scripts/build.mjs", base: "workspace" },
+            {
+              pattern: "packages/browser-automation/scripts/build.mjs",
+              base: "workspace",
+            },
             { pattern: "packages/browser-automation/*.json", base: "workspace" },
             { pattern: "pnpm-lock.yaml", base: "workspace" },
           ],
@@ -144,6 +147,7 @@ export default defineConfig({
       },
       "verify-suite": {
         command: [
+          "pnpm health",
           "pnpm contracts:check",
           "pnpm --filter @areal/ui check",
           "node scripts/verify-public.mjs",

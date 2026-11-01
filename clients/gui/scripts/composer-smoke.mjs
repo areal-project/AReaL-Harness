@@ -1,3 +1,8 @@
+import {
+  createFolderVisionFixture,
+  composerFolderVisionResponse,
+  runComposerFolderVisionAcceptance,
+} from "./composer-folder-vision-acceptance.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import { runSnapShotsAcceptance } from "./snapshots-acceptance.mjs";
 import { composerFilesResponse, runComposerFilesAcceptance } from "./composer-files-acceptance.mjs";
@@ -25,19 +30,30 @@ import { createHash } from "node:crypto";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = join(gui, "app");
 const filesRegression = process.env.AREAL_COMPOSER_FILES_REGRESSION === "1";
+const folderVisionRegression = process.env.AREAL_COMPOSER_FOLDER_VISION_REGRESSION === "1";
 const snapshotsRegression = process.env.AREAL_SNAPSHOTS_REGRESSION === "1";
 const referencesRegression = process.env.AREAL_COMPOSER_REFERENCES_REGRESSION === "1";
 const referencesFixture = { held: new Set() };
 const filesFixture = { held: new Set() };
 const skillsRegression = process.env.AREAL_COMPOSER_SKILLS_REGRESSION === "1";
 assert.ok(
-  [skillsRegression, filesRegression, referencesRegression, snapshotsRegression].filter(Boolean)
-    .length <= 1,
+  [
+    skillsRegression,
+    filesRegression,
+    referencesRegression,
+    snapshotsRegression,
+    folderVisionRegression,
+  ].filter(Boolean).length <= 1,
   "Choose one source fixture regression mode",
 );
 assert.ok(
-  !(skillsRegression || filesRegression || referencesRegression || snapshotsRegression) ||
-    !process.env.AREAL_GUI_EXECUTABLE,
+  !(
+    skillsRegression ||
+    filesRegression ||
+    referencesRegression ||
+    snapshotsRegression ||
+    folderVisionRegression
+  ) || !process.env.AREAL_GUI_EXECUTABLE,
   "Composer regression modes require the source Electron fixture",
 );
 let launchApp = desktop;
@@ -49,6 +65,9 @@ const binary = process.env.AREAL_GUI_EXECUTABLE
   : process.env.AREAL_CORE_BIN || join(root, "target/debug/areal");
 assert.ok(binary, "AREAL_CORE_BIN must point to the actual built Core");
 const scratch = await makeTempDir("areal-gui-");
+const folderVisionFixture = folderVisionRegression
+  ? await createFolderVisionFixture(scratch)
+  : null;
 const workspace = join(scratch, "workspace");
 await mkdir(workspace);
 await mkdir(join(scratch, "user-home"));
@@ -168,6 +187,10 @@ const server = createServer(async (req, res) => {
     return;
   }
   received.push(body);
+  if (folderVisionRegression) {
+    composerFolderVisionResponse(body, res, folderVisionFixture);
+    return;
+  }
   if (filesRegression) {
     composerFilesResponse(body, res, filesFixture);
     return;
@@ -487,7 +510,20 @@ try {
       throw error;
     }
   };
-  if (snapshotsRegression) {
+  if (folderVisionRegression) {
+    await runComposerFolderVisionAcceptance({
+      page,
+      pid,
+      state,
+      project,
+      until,
+      received,
+      checks,
+      shot,
+      scratch,
+      fixture: folderVisionFixture,
+    });
+  } else if (snapshotsRegression) {
     snapshotsCoverage = await runSnapShotsAcceptance({
       app,
       page,
@@ -2012,6 +2048,8 @@ try {
         filesRegression,
         snapshotsRegression,
         snapshotsCoverage,
+        folderVisionRegression,
+        folderVisionEvidence: folderVisionRegression ? "folder-vision-evidence.json" : undefined,
         referencesRegression,
         predictionRequests,
         modelRequests: "model-requests.json",
