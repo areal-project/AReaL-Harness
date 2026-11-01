@@ -173,7 +173,31 @@ const isRemoteControl = (entry) =>
     Number.isSafeInteger(entry.params.expectedRevision) &&
     entry.remote.target.expectedRevision === entry.params.expectedRevision);
 
+/** 从已校验服务快照保留原操作身份；缺失或跨 Core 代次时继续保持 UNKNOWN。
+ * @param {import('@areal/workbench/desktop-contract/shared').ServiceProject|undefined} project
+ * @param {import('@areal/workbench/desktop-contract/shared').ProjectCapabilities|undefined} core
+ * @param {{threadId?:unknown,taskId?:unknown}} expected @param {string} requestId
+ */
+function observedOperation(project, core, expected, requestId) {
+  if (
+    !core?.instanceId ||
+    project?.core?.instanceId !== core.instanceId ||
+    project.core.connectionGeneration !== core.connectionGeneration
+  )
+    return;
+  const operation =
+    project.pending?.find((entry) => entry.params.requestId === requestId)?.operation ??
+    project.outcomes?.[requestId]?.operation;
+  if (!operation || operation.requestId !== requestId) return;
+  if (
+    (operation.target.kind === "thread" && operation.target.threadId === expected.threadId) ||
+    (operation.target.kind === "task" && operation.target.taskId === expected.taskId)
+  )
+    return operation;
+}
+
 module.exports = {
+  observedOperation,
   isRemoteControl,
   creationTargets,
   processControls,
