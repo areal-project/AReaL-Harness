@@ -256,6 +256,7 @@ struct Active {
     sealed: bool,
     scope: Option<String>,
     base_scope: Option<String>,
+    navigation_scopes: BTreeMap<String, String>,
     model: Arc<dyn Model>,
     tools: TaskTracker,
     process_cursors: BTreeMap<String, String>,
