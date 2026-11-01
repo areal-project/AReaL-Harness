@@ -59,6 +59,7 @@ export async function runUiLibrary(page, scratch, checks) {
       ["SettingsSelect", "experimental", "compositions", "settings"],
       ["SidePaneFrame", "experimental", "experimental", "workbench"],
       ["SidePaneLauncher", "experimental", "experimental", "workbench"],
+      ["Skeleton", "experimental", "experimental", "core"],
       ["Spinner", "experimental", "experimental", "core"],
       ["SubagentPanel", "experimental", "experimental", "conversation"],
       ["Switch", "stable", "index", "core"],
