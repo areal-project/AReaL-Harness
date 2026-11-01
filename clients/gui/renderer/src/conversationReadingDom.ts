@@ -1,4 +1,42 @@
 import type { ReadingAnchor } from "./readingViews.js";
+// 发送后、Core 受理前，阅读目标是本地待发消息；受理后换成同位置的真实用户消息。
+export const pendingTurnTarget = "pending-turn-start";
+/** 发送目标所在分区：待发消息或最新轮次；其他轮次不再是发送目标。 */
+export function responseSection(element: HTMLElement, turnId?: string, latestTurnId?: string) {
+  if (turnId === pendingTurnTarget)
+    return (
+      element.querySelector<HTMLElement>(":scope > .message-column > .pending-message") ?? undefined
+    );
+  if (!turnId || turnId !== latestTurnId) return undefined;
+  return turnSections(element).findLast((section) => section.dataset.turnId === turnId);
+}
+// 回应区从阅读列内边距处开始；之前的操作行与轮次间距属于历史，不计入预留，
+// 否则重排后会露出上一轮的文件卡。长回复自然占满，主动回看会释放预留。
+export function responseTrackHeight(element: HTMLElement, section: HTMLElement) {
+  const column = getComputedStyle(section.parentElement!);
+  return Math.max(
+    0,
+    element.clientHeight - parseFloat(column.paddingTop) - parseFloat(column.paddingBottom),
+  );
+}
+/**
+ * 把发送目标的用户消息放到阅读区上沿。已受理轮次的回复写满阅读区时返回 "tail"：
+ * 此后跟随最新内容（同 T3 Code），预留空间保留，过程收起后用户消息回到上沿。
+ */
+export function positionTurnStart(element: HTMLElement, turnId?: string, latestTurnId?: string) {
+  const section = responseSection(element, turnId, latestTurnId);
+  const user = section?.querySelector<HTMLElement>(".user-message");
+  if (!section || !user) return "missing";
+  const top = user.getBoundingClientRect().top;
+  if (
+    turnId !== pendingTurnTarget &&
+    section.getBoundingClientRect().bottom - top > responseTrackHeight(element, section) + 1
+  )
+    return "tail";
+  const inset = parseFloat(getComputedStyle(section.parentElement!).paddingTop);
+  element.scrollTop += top - element.getBoundingClientRect().top - inset;
+  return "placed";
+}
 function readingBlocks(item: HTMLElement) {
   return [...(item.querySelector<HTMLElement>(".conversation-markdown")?.children ?? [])].filter(
     (element): element is HTMLElement => element instanceof HTMLElement,

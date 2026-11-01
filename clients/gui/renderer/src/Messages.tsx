@@ -1,7 +1,7 @@
 import { sentSnapShots, isSnapShotDecoration } from "./snapshots/source.js";
 import { commandResourceLabel } from "./conversationPresentation.js";
 import { useTranscriptSelection } from "./useTranscriptSelection.js";
-import { readingAnchor, restoreReadingAnchor, turnSections } from "./conversationReadingDom.js";
+import * as readingDom from "./conversationReadingDom.js";
 import { MessageTime, ModelChanges, TurnRetries } from "./ConversationTimeline.js";
 import {
   beginReadingRestore,
@@ -88,15 +88,6 @@ import { latestScheduleItems, ScheduledTaskCards } from "./ScheduledTasks.js";
 import { TurnFileSummary } from "./TurnFileSummary.js";
 import type { Data, Action, PlatformServices } from "./services.js";
 import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
-// 发送后、Core 受理前，阅读目标是本地待发消息；受理后换成同位置的真实用户消息。
-const pendingTurnStart = "pending-turn-start";
-function responseSection(element: HTMLElement, turnId: string) {
-  if (turnId === pendingTurnStart)
-    return (
-      element.querySelector<HTMLElement>(":scope > .message-column > .pending-message") ?? undefined
-    );
-  return turnSections(element).findLast((section) => section.dataset.turnId === turnId);
-}
 // Queue pauseReason "stopped" is Core's stop receipt. It stays separate from the turn status.
 export function Messages({
   project,
@@ -327,7 +318,7 @@ export function Messages({
       following: reading.current.kind === "following",
       atTail: element.scrollHeight - element.scrollTop - element.clientHeight <= 1,
       responseSpace: reservation.current && { ...reservation.current },
-      anchor: reading.current.kind === "following" ? undefined : readingAnchor(element),
+      anchor: reading.current.kind === "following" ? undefined : readingDom.readingAnchor(element),
     });
     const anchor = readingViews.get(activeOwner.current)?.anchor;
     const identity = JSON.stringify([
@@ -359,7 +350,7 @@ export function Messages({
   const readHere = (control?: HTMLElement) => {
     cancelTurnStart(readingViews.get(owner)?.pendingTurnStart);
     const element = container.current;
-    const anchor = element ? readingAnchor(element) : undefined;
+    const anchor = element ? readingDom.readingAnchor(element) : undefined;
     reading.current = changeReadingIntent(reading.current, {
       kind: "holding",
       anchor,
@@ -378,7 +369,7 @@ export function Messages({
     const element = container.current;
     if (!element || reading.current.kind === "restoring") return;
     const space = reservation.current;
-    const section = space && responseSection(element, space.turnId);
+    const section = space && readingDom.responseSection(element, space.turnId, latestTurnId);
     const viewport = readingViewport.current;
     // Viewport/font reflow can queue scroll before resize reconciliation,
     // including natural first-turn history with no reserved response space.
@@ -418,7 +409,7 @@ export function Messages({
     if (!following && reading.current.kind === "following")
       reading.current = changeReadingIntent(reading.current, {
         kind: "holding",
-        anchor: readingAnchor(element),
+        anchor: readingDom.readingAnchor(element),
       });
     rememberReading();
     setReadingHistory(
@@ -729,17 +720,6 @@ export function Messages({
       (el) => el.dataset.turnId === latestTurnId,
     );
     const user = section?.querySelector<HTMLElement>(".user-message");
-    // The accepted user starts at the live column inset. Earlier action rows
-    // and inter-turn gaps belong to history, not this response track; reserving
-    // them exposes the preceding file card after reflow. Long replies still
-    // consume this space naturally, and explicit history reading releases it.
-    const responseTrackHeight = (section: HTMLElement) => {
-      const column = getComputedStyle(section.parentElement!);
-      return Math.max(
-        0,
-        element.clientHeight - parseFloat(column.paddingTop) - parseFloat(column.paddingBottom),
-      );
-    };
     if (switched) {
       reservation.current =
         reserveResponseSpace && remembered?.responseSpace
@@ -764,17 +744,15 @@ export function Messages({
           ? { turnId: latestTurnId, height: 0, contentHeight: 0 }
           : undefined;
     } else if (
-      requested &&
-      requested.afterTurnId === latestTurnId &&
-      responseSection(element, pendingTurnStart) &&
-      !(reading.current.kind === "following" && reading.current.target?.turnId === pendingTurnStart)
+      requested?.afterTurnId === latestTurnId &&
+      readingDom.responseSection(element, readingDom.pendingTurnTarget)
     ) {
       // 点发送即定位待发消息，不等 Core 受理；受理后的真实消息出现在同一位置，不再跳动。
       reading.current = changeReadingIntent(reading.current, {
         kind: "following",
-        target: { kind: "turnStart", turnId: pendingTurnStart },
+        target: { kind: "turnStart", turnId: readingDom.pendingTurnTarget },
       });
-      reservation.current = { turnId: pendingTurnStart, height: 0, contentHeight: 0 };
+      reservation.current = { turnId: readingDom.pendingTurnTarget, height: 0, contentHeight: 0 };
     } else if (!switched && previous.id !== latestTurnId) reservation.current = undefined;
     // 自然流布局由父容器滚动；自身高度包含占位，
     // 用它计算预留空间会在下一次尺寸变化时形成反馈增长。
@@ -783,15 +761,15 @@ export function Messages({
     seenTurn.current = { owner, id: latestTurnId };
     const layout = () => {
       const space = reservation.current;
-      const reserved =
-        space && (space.turnId === latestTurnId || space.turnId === pendingTurnStart)
-          ? responseSection(element, space.turnId)
-          : undefined;
+      const reserved = space && readingDom.responseSection(element, space.turnId, latestTurnId);
       if (space && reserved?.querySelector(".user-message")) {
         const contentHeight = reserved.getBoundingClientRect().height;
         // Recompute from the live track: both response growth and input-area
         // collapse change layout. Neither first-paint size becomes history.
-        space.height = Math.max(0, responseTrackHeight(reserved) - contentHeight);
+        space.height = Math.max(
+          0,
+          readingDom.responseTrackHeight(element, reserved) - contentHeight,
+        );
         space.contentHeight = contentHeight;
         spacer.style.height = `${space.height}px`;
       } else spacer.style.height = "0px";
@@ -808,29 +786,13 @@ export function Messages({
           element.getBoundingClientRect().top -
           disclosure.offset;
       } else if (state.kind === "following") {
-        const targetId = state.target?.turnId;
-        const target =
-          targetId && (targetId === latestTurnId || targetId === pendingTurnStart)
-            ? responseSection(element, targetId)
-            : undefined;
-        const targetUser = target?.querySelector<HTMLElement>(".user-message");
-        if (target && targetUser) {
-          const inset = parseFloat(getComputedStyle(target.parentElement!).paddingTop);
-          const userTop = targetUser.getBoundingClientRect().top;
-          // 回复写满阅读区后改为跟随最新内容（同 T3 Code），继续看到新增活动与正文；
-          // 预留空间保留，过程收起变短时用户消息仍回到顶部。
-          if (
-            targetId === latestTurnId &&
-            target.getBoundingClientRect().bottom - userTop > responseTrackHeight(target) + 1
-          ) {
-            reading.current = changeReadingIntent(state, { kind: "following" });
-            element.scrollTop = element.scrollHeight;
-          } else element.scrollTop += userTop - element.getBoundingClientRect().top - inset;
-        } else element.scrollTop = element.scrollHeight;
+        const placed = readingDom.positionTurnStart(element, state.target?.turnId, latestTurnId);
+        if (placed === "tail") reading.current = changeReadingIntent(state, { kind: "following" });
+        if (placed !== "placed") element.scrollTop = element.scrollHeight;
       } else if (state.kind === "holding" && state.anchor)
-        restoreReadingAnchor(element, state.anchor);
+        readingDom.restoreReadingAnchor(element, state.anchor);
       else if (state.kind === "restoring" && state.phase === "ready") {
-        const result = restoreReadingAnchor(element, state.anchor);
+        const result = readingDom.restoreReadingAnchor(element, state.anchor);
         if (result === true) {
           reading.current = {
             owner: state.owner,
