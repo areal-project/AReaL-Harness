@@ -16,6 +16,68 @@ const body = source.slice(
 );
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
+const assertIdle = new Function(
+  "assert",
+  source.slice(
+    source.indexOf("function assertIdle("),
+    source.indexOf("async function unchanged("),
+  ) + "return assertIdle;",
+)(assert);
+
+test("history preflight accepts retained closed processes with confirmed cleanup", () => {
+  assert.doesNotThrow(() =>
+    assertIdle({
+      thread: {
+        status: { type: "idle" },
+        turns: [],
+        desktop: { processes: [{ state: "closed", cleanupConfirmed: true }] },
+      },
+    }),
+  );
+});
+
+test("history preflight accepts settled queue history and rejects executable or unknown entries", () => {
+  const record = (status) => ({
+    thread: { status: { type: "idle" }, turns: [], desktop: { queue: { items: [{ status }] } } },
+  });
+  for (const status of ["completed", "failed", "steered", "cancelled"])
+    assert.doesNotThrow(() => assertIdle(record(status)));
+  for (const status of ["pending", "running", "unknown"])
+    assert.throws(() => assertIdle(record(status)), /History contains queued work/);
+});
+
+test("history preflight preserves inactive goals but refuses active or settling goals", () => {
+  const record = (goal) => ({ thread: { status: { type: "idle" }, turns: [], goals: { goal } } });
+  for (const status of ["blocked", "paused", "completed", "failed", "budgetLimited"])
+    assert.doesNotThrow(() => assertIdle(record({ status, activeTurnId: null, settling: false })));
+  for (const goal of [
+    { status: "active", activeTurnId: null, settling: false },
+    { status: "blocked", activeTurnId: "running-turn", settling: false },
+    { status: "paused", activeTurnId: null, settling: true },
+    { status: "unknown", activeTurnId: null, settling: false },
+  ])
+    assert.throws(() => assertIdle(record(goal)), /History contains an unfinished goal/);
+});
+
+test("history preflight rejects active, unknown, or unconfirmed process cleanup", () => {
+  for (const process of [
+    { state: "running", cleanupConfirmed: false },
+    { state: "unknown", cleanupConfirmed: false },
+    { state: "running", cleanupConfirmed: true },
+    { state: "unknown", cleanupConfirmed: true },
+    { state: "closed", cleanupConfirmed: false },
+    { state: "closed" },
+  ]) {
+    assert.throws(
+      () =>
+        assertIdle({
+          thread: { status: { type: "idle" }, turns: [], desktop: { processes: [process] } },
+        }),
+      /History contains managed execution state/,
+    );
+  }
+});
+
 async function finish(
   t,
   { blocked = false, businessFailure, inventoryFailure, metadata = "valid", metadataError } = {},
