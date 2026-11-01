@@ -4,9 +4,49 @@ function readingBlocks(item: HTMLElement) {
     (element): element is HTMLElement => element instanceof HTMLElement,
   );
 }
+/** 时间线的轮次分区，按文档顺序自上而下排列。 */
+export function turnSections(element: HTMLElement) {
+  return [
+    ...element.querySelectorAll<HTMLElement>(":scope > .message-column > section[data-turn-id]"),
+  ];
+}
+/** 第一个底边低于 y 的轮次下标；轮次纵向依次排列，可二分，滚动时不必逐条量位置。 */
+export function firstTurnBelow(sections: readonly HTMLElement[], y: number) {
+  let low = 0,
+    high = sections.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (sections[middle].getBoundingClientRect().bottom <= y) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+/** 最后一个顶边不低于 y 的轮次下标；没有时为 -1。 */
+export function lastTurnAbove(sections: readonly HTMLElement[], y: number) {
+  let low = 0,
+    high = sections.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (sections[middle].getBoundingClientRect().top <= y) low = middle + 1;
+    else high = middle;
+  }
+  return low - 1;
+}
+function* visibleItems(element: HTMLElement, viewport: DOMRect) {
+  const sections = turnSections(element);
+  if (!sections.length) {
+    yield* element.querySelectorAll<HTMLElement>("[data-side-item-id]");
+    return;
+  }
+  // 视口上方的轮次整体不可见，从第一个与视口相交的轮次开始逐条检查。
+  for (let index = firstTurnBelow(sections, viewport.top); index < sections.length; index++) {
+    if (sections[index].getBoundingClientRect().top >= viewport.bottom) return;
+    yield* sections[index].querySelectorAll<HTMLElement>("[data-side-item-id]");
+  }
+}
 export function readingAnchor(element: HTMLElement): ReadingAnchor | undefined {
   const viewport = element.getBoundingClientRect();
-  for (const item of element.querySelectorAll<HTMLElement>("[data-side-item-id]")) {
+  for (const item of visibleItems(element, viewport)) {
     const turnId = item.closest<HTMLElement>("[data-turn-id]")?.dataset.turnId;
     if (!turnId || !item.dataset.sideItemId) continue;
     const blocks = readingBlocks(item);

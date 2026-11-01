@@ -1821,7 +1821,14 @@ button[aria-label="停止"] {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+/* 显示前等 150ms：流式输出时离开底部一两帧不会闪出按钮；隐藏是立即的。 */
+@keyframes timeline-bottom-reveal {
+  from {
+    visibility: hidden;
+  }
+}
 .timeline-bottom-button {
+  animation: timeline-bottom-reveal 0s 150ms backwards;
   width: 32px;
   height: 32px;
   padding: 0;
