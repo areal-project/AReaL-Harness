@@ -70,6 +70,7 @@ import {
   SettingsToolbar,
   SidePaneFrame,
   SidePaneLauncher,
+  Skeleton,
   Spinner,
   TaskTitleOverflowText,
   WorkSurface,
@@ -140,6 +141,7 @@ const UI = {
   SettingsToolbar,
   SidePaneFrame,
   SidePaneLauncher,
+  Skeleton,
   Spinner,
   TaskTitleOverflowText,
   WorkSurface,
@@ -434,6 +436,14 @@ function Patterns({ id }: { id: string }) {
         <Button onClick={() => setPending((value) => !value)}>切换处理中</Button>
         <UI.Spinner label="包内加载中" />
       </>
+    );
+  if (id === "skeleton")
+    return (
+      <div className="grid w-64 gap-2">
+        <UI.Skeleton className="w-3/4" />
+        <UI.Skeleton />
+        <UI.Skeleton shape="block" className="h-16" />
+      </div>
     );
   if (id === "input-group")
     return (

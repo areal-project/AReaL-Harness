@@ -127,6 +127,7 @@ export async function runUiLibrary(page, scratch, checks) {
     "settings-select",
     "side-pane-frame",
     "side-pane-launcher",
+    "skeleton",
     "spinner",
     "subagent-panel",
     "switch",

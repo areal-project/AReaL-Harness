@@ -1,0 +1,35 @@
+/* 全部占位条共用一次呼吸；分步关键帧让合成器每周期只画几帧，不在高刷屏上逐帧重绘。 */
+.areal-skeleton {
+  min-width: 0;
+  height: 1em;
+  border-radius: var(--radius-micro);
+  background: var(--color-muted);
+  animation: areal-skeleton 2.4s infinite;
+}
+.areal-skeleton[data-shape="block"] {
+  height: auto;
+  border-radius: var(--radius-card);
+}
+.areal-skeleton[data-shape="pill"] {
+  border-radius: var(--radius-pill);
+}
+@keyframes areal-skeleton {
+  0%,
+  30%,
+  100% {
+    opacity: 1;
+    animation-timing-function: steps(4);
+  }
+  65% {
+    opacity: 0.5;
+    animation-timing-function: steps(4);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-reduced-motion="false"]) .areal-skeleton {
+    animation: none;
+  }
+}
+:root[data-reduced-motion="true"] .areal-skeleton {
+  animation: none;
+}

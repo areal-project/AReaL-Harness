@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button, Input } from "@areal/ui";
 import { Monitor, Settings } from "lucide-react";
 import { FeedbackNotice } from "@areal/ui/experimental";
+import { applyThemeWithoutTransitions } from "@areal/ui/theme";
 import { SettingsGroupCard, SettingsRow } from "@areal/ui/compositions";
 import { ApplicationIntlProvider, useI18n, type MessageId } from "../i18n/IntlProvider.js";
 import { MobileClient } from "./mobile-client.mjs";
@@ -50,7 +51,10 @@ function MobileApp() {
     };
     window.addEventListener("pagehide", close);
     const theme = matchMedia("(prefers-color-scheme: dark)");
-    const update = () => document.documentElement.classList.toggle("dark", theme.matches);
+    const update = () =>
+      applyThemeWithoutTransitions(document.documentElement, () =>
+        document.documentElement.classList.toggle("dark", theme.matches),
+      );
     update();
     theme.addEventListener("change", update);
     return () => {
