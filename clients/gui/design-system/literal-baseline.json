@@ -1,7 +1,7 @@
 {
   "$description": "生产 UI 字面量存量上限，由 scripts/design-system-baseline.mjs --write 生成；只允许减少。",
   "total": {
-    "color": 63,
+    "color": 61,
     "radius": 4,
     "typography": 5
   },
@@ -35,9 +35,6 @@
       "color": 10,
       "typography": 1,
       "radius": 3
-    },
-    "renderer/src/styles.css": {
-      "color": 2
     },
     "packages/ui/src/components/dialog/dialog.tsx": {
       "color": 1
@@ -495,20 +492,6 @@
       "occurrence": 2,
       "reason": "这是微型图表柱或热力图单元的局部几何，2px 或 3px 不用于普通控件。",
       "exitCondition": "图表布局所有者调整单元形状时复核。"
-    },
-    {
-      "file": "renderer/src/styles.css",
-      "finding": "literal color: color: white",
-      "occurrence": 1,
-      "reason": "保留现有装饰渐变或更新动作的固定参考色。它与用户可调的 accent 或 primary 不等色。",
-      "exitCondition": "装饰或更新控件进入组件颜色合同后等价迁移。"
-    },
-    {
-      "file": "renderer/src/styles.css",
-      "finding": "literal color: background: #1d4ed8",
-      "occurrence": 1,
-      "reason": "保留现有装饰渐变或更新动作的固定参考色。它与用户可调的 accent 或 primary 不等色。",
-      "exitCondition": "装饰或更新控件进入组件颜色合同后等价迁移。"
     },
     {
       "file": "packages/ui/src/components/dialog/dialog.tsx",

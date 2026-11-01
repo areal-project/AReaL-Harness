@@ -901,86 +901,188 @@ body {
   border-radius: var(--radius-sm);
 }
 
-/* Update notice stays blue across application themes and accent preferences. */
 .areal-update-indicator {
-  --update-notice: #2563eb;
-  position: relative;
   display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  width: 36px;
   flex-shrink: 0;
 }
-.areal-update-error {
-  position: absolute;
-  left: calc(100% + 8px);
-  bottom: 0;
-  z-index: var(--layer-popover);
-  width: min(280px, calc(100vw - 80px));
-  padding: 10px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-navigation);
-  background: var(--color-popover);
-  color: var(--color-foreground);
-  box-shadow: var(--shadow-tooltip);
-  font-size: var(--text-ui-sm);
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-.areal-update-action,
-.areal-update-current {
+.areal-update-trigger {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 36px;
   height: 36px;
+  flex-shrink: 0;
   border: 0;
   border-radius: var(--radius-navigation);
-}
-.areal-update-action {
-  background: var(--update-notice);
-  color: white;
+  background: transparent;
+  color: var(--color-foreground);
   cursor: var(--interactive-cursor, pointer);
+  transition:
+    background-color var(--motion-fast),
+    color var(--motion-fast);
 }
-.areal-update-action:hover {
-  background: #1d4ed8;
+.areal-update-trigger:hover,
+.areal-update-trigger[data-popup-open] {
+  background: var(--color-secondary);
 }
-.areal-update-action:focus-visible,
-.areal-update-recover:focus-visible {
-  outline: 2px solid var(--update-notice);
+.areal-update-trigger:focus-visible {
+  outline: 2px solid var(--color-brand);
   outline-offset: 2px;
 }
-.areal-update-current {
+.areal-update-trigger[data-state="available"] {
+  color: var(--color-brand);
+}
+.areal-update-trigger[data-state="error"] {
+  color: var(--color-destructive);
+}
+.areal-update-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--color-brand);
+}
+.areal-update-percent {
   font-size: var(--text-ui-xs);
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
+}
+.areal-update-ring {
+  position: absolute;
+  inset: 0;
+  width: 36px;
+  height: 36px;
+  fill: none;
+  stroke-width: 2;
+  transform: rotate(-90deg);
+}
+.areal-update-ring-track {
+  stroke: var(--color-secondary);
+}
+.areal-update-ring-value {
+  stroke: var(--color-foreground);
+  stroke-linecap: round;
+  transition: stroke-dashoffset var(--motion-normal) ease-out;
+}
+.areal-update-ring[data-indeterminate="true"] {
+  animation: areal-update-rotate 1.2s linear infinite;
+}
+.areal-update-panel {
+  width: 304px;
+  max-width: min(304px, calc(100vw - 24px), var(--available-width));
+  padding: 16px;
+  gap: 14px;
+}
+.areal-update-panel-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-inline);
+}
+.areal-update-state-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-muted-foreground);
+}
+.areal-update-state-icon[data-state="error"] {
+  color: var(--color-destructive);
+}
+.areal-update-version {
+  margin: 3px 0 0;
+  color: var(--color-muted-foreground);
+  font-size: var(--text-ui-sm);
+  font-variant-numeric: tabular-nums;
+}
+.areal-update-description,
+.areal-update-detail {
+  margin: 0;
+  font-size: var(--text-ui-sm);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.areal-update-description {
   color: var(--color-foreground);
-  background: var(--color-secondary);
 }
-.areal-update-recover {
-  cursor: var(--interactive-cursor, pointer);
-  color: var(--update-notice);
+.areal-update-detail {
+  color: var(--color-muted-foreground);
 }
-.areal-update-recover:hover {
-  background: var(--color-selected);
+.areal-update-error-detail {
+  color: var(--color-destructive);
 }
-.areal-update-indicator progress {
-  appearance: none;
-  width: 32px;
+.areal-update-progress-section {
+  display: grid;
+  gap: var(--spacing-inline);
+}
+.areal-update-progress-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-inline);
+  color: var(--color-muted-foreground);
+  font-size: var(--text-ui-sm);
+}
+.areal-update-progress-number {
+  color: var(--color-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.areal-update-progress {
   height: 4px;
-  border: 0;
-  border-radius: var(--radius-pill);
   overflow: hidden;
-}
-.areal-update-indicator progress::-webkit-progress-bar {
+  border-radius: var(--radius-pill);
   background: var(--color-secondary);
-  border-radius: var(--radius-pill);
 }
-.areal-update-indicator progress::-webkit-progress-value {
-  background: var(--update-notice);
-  border-radius: var(--radius-pill);
+.areal-update-progress > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-foreground);
+  transform-origin: left;
+  transition: transform var(--motion-normal) ease-out;
 }
+.areal-update-progress[data-indeterminate="true"] > span {
+  width: 35%;
+  animation: areal-update-scan 1.4s ease-in-out infinite;
+}
+.areal-update-primary {
+  width: 100%;
+}
+@keyframes areal-update-rotate {
+  to {
+    transform: rotate(270deg);
+  }
+}
+@keyframes areal-update-scan {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(185%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .areal-update-ring[data-indeterminate="true"],
+  .areal-update-progress[data-indeterminate="true"] > span {
+    animation: none;
+  }
+  .areal-update-ring-value,
+  .areal-update-progress > span {
+    transition: none;
+  }
+}
+@scope (:root[data-reduced-motion="true"]) {
+  .areal-update-ring[data-indeterminate="true"],
+  .areal-update-progress[data-indeterminate="true"] > span {
+    animation: none;
+  }
+  .areal-update-ring-value,
+  .areal-update-progress > span {
+    transition: none;
+  }
+}
+
 .areal-update-floating {
   display: none;
   position: fixed;
@@ -988,20 +1090,6 @@ body {
   bottom: 16px;
   z-index: var(--layer-popover);
 }
-.areal-update-spin {
-  animation: areal-update-spin 1.2s linear infinite;
-}
-@keyframes areal-update-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@scope (:root[data-reduced-motion="true"]) {
-  .areal-update-spin {
-    animation: none;
-  }
-}
-
 /* Application choice also controls Tailwind consumers and native-like controls. */
 @custom-variant motion-reduce (&:where([data-reduced-motion="true"], [data-reduced-motion="true"] *));
 @custom-variant motion-safe (&:where([data-reduced-motion="false"], [data-reduced-motion="false"] *));
