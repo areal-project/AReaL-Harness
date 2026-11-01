@@ -69,12 +69,23 @@ function assertIdle(record) {
   );
   assert.ok(
     !thread.goals?.goal ||
-      ["completed", "failed", "budgetLimited"].includes(thread.goals.goal.status),
+      (["completed", "failed", "budgetLimited", "paused", "blocked"].includes(
+        thread.goals.goal.status,
+      ) &&
+        !thread.goals.goal.activeTurnId &&
+        !thread.goals.goal.settling),
     "History contains an unfinished goal",
   );
-  assert.equal(desktop?.queue?.items?.length ?? 0, 0, "History contains queued work");
   assert.ok(
-    !(desktop?.processes?.length || desktop?.workflowRun),
+    (desktop?.queue?.items ?? []).every((item) =>
+      ["completed", "failed", "steered", "cancelled"].includes(item.status),
+    ),
+    "History contains queued work",
+  );
+  assert.ok(
+    (desktop?.processes ?? []).every(
+      (process) => process.state === "closed" && process.cleanupConfirmed === true,
+    ) && !desktop?.workflowRun,
     "History contains managed execution state",
   );
   assert.ok(
@@ -191,8 +202,8 @@ try {
         );
       }
     }
-    // 归档和附件仍由 Core 读取；不复制锁、服务登记、凭据或部署配置。
-    for (const directory of ["history", "blobs"]) {
+    // 归档、附件和 Goal 计量日志仍由 Core 读取；不复制锁、凭据或部署配置。
+    for (const directory of ["history", "blobs", "goals"]) {
       const relative = join(state, directory);
       try {
         await lstat(join(source, relative));
@@ -252,14 +263,22 @@ try {
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
   for (const project of isolatedProjects) {
     await call("connect", { projectId: project.id });
-    for (const id of sessions.get(project.id))
+    // 历史视图有界缓存；逐个确认打开结果，避免后续打开淘汰已验证的会话。
+    for (const id of sessions.get(project.id)) {
       await call("open", { projectId: project.id, threadId: id });
+      await page.waitForFunction(
+        async ({ projectId, threadId }) =>
+          Boolean(
+            (await window.arealDesktop.snapshot()).projects.find((value) => value.id === projectId)
+              ?.state.threads[threadId],
+          ),
+        { projectId: project.id, threadId: id },
+      );
+    }
     const snapshot = await page.evaluate(() => window.arealDesktop.snapshot());
     const restored = snapshot.projects.find((value) => value.id === project.id);
     assert.equal(restored.state.connected, true);
     assert.equal(restored.error, null);
-    for (const id of sessions.get(project.id))
-      assert.ok(restored.state.threads[id], "Existing session was not restored");
     if (sessions.get(project.id).length === 0)
       assert.equal(
         Object.keys(restored.state.threads).length,

@@ -32,6 +32,7 @@ audit = load("dependency-audit")
 gate = load("ci-gate")
 preflight = load("ci-preflight")
 docs = load("check-docs")
+timing = load("ci-timing")
 
 
 class CiContracts(unittest.TestCase):
@@ -336,6 +337,71 @@ class CiContracts(unittest.TestCase):
                 self.assertTrue(scope.applicable("release", [path]))
         self.assertFalse(scope.applicable("release", ["docs/features.md"]))
 
+    def test_timing_keeps_dependency_wait_and_mixed_builds_out_of_test_duration(self):
+        run = {
+            "id": 1,
+            "name": "GUI checks",
+            "head_sha": "source",
+            "event": "pull_request",
+            "status": "completed",
+            "conclusion": "success",
+            "created_at": "2026-01-01T00:00:00Z",
+        }
+
+        def job(number, name, created, started, ended, steps=()):
+            return {
+                "id": number,
+                "name": name,
+                "run_attempt": 1,
+                "labels": ["macos-15"],
+                "conclusion": "success",
+                "created_at": f"2026-01-01T00:{created}",
+                "started_at": f"2026-01-01T00:{started}",
+                "completed_at": f"2026-01-01T00:{ended}",
+                "steps": steps,
+            }
+
+        jobs = [
+            job(1, "macOS GUI build and contracts", "00:00Z", "00:01Z", "05:00Z"),
+            job(2, "macOS GUI smoke (fixture)", "05:00Z", "05:10Z", "06:00Z"),
+        ]
+        result = timing.analyze([{"run": run, "jobs": jobs}])
+        smoke = result["jobs"][1]
+        self.assertEqual(smoke["dag_wait_estimate_s"], 300)
+        self.assertEqual(smoke["runner_wait_lower_bound_s"], 10)
+        self.assertEqual(smoke["unattributed_wait_s"], 0)
+        self.assertEqual(result["runs"][0]["wall_s"], 360)
+        self.assertEqual(
+            timing.phase("Build and validate independent GUI checks from the shared plan"),
+            "mixed_work",
+        )
+        self.assertEqual(timing.phase("Run actions/upload-artifact@revision"), "upload_cleanup")
+        self.assertEqual(timing.phase("Build native backend tests"), "preparation")
+
+    def test_markdown_runtime_inputs_are_not_documentation_only(self):
+        for path in (
+            "clients/gui/app/assets/builtin-skills/sample/SKILL.md",
+            "core/config/prompt.md",
+            "examples/plugin-marketplace/sample/skills/sample/SKILL.md",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(scope.impact([path])["shared"] or scope.impact([path])["gui"])
+        for path in ("README.md", "docs/guides/configuration.md"):
+            with self.subTest(path=path):
+                plan, _ = self.gate_fixture([path], workflow="verify")
+                self.assertEqual({item["group"] for item in plan["items"]}, {"early"})
+
+    def test_main_runs_cannot_replace_each_other_and_prs_cancel_superseded_runs(self):
+        for name in ("ci", "gui", "workflow-lint", "provider-config"):
+            workflow = (ROOT / f".github/workflows/{name}.yml").read_text()
+            concurrency = workflow.split("concurrency:\n", 1)[1].split("\njobs:", 1)[0]
+            with self.subTest(workflow=name):
+                self.assertIn("github.event.pull_request.number", concurrency)
+                self.assertIn("format('run-{0}', github.run_id)", concurrency)
+                self.assertIn(
+                    "cancel-in-progress: ${{ github.event_name == 'pull_request' }}", concurrency
+                )
+
     def gate_fixture(self, paths=("Makefile",), workflow="gui"):
         source = {
             "baseRevision": "base",
@@ -373,6 +439,73 @@ class CiContracts(unittest.TestCase):
                 ]
             report["results"].append(result)
         return plan, list(grouped.values())
+
+    def test_core_shards_cover_the_manifest_once_and_keep_native_requirements(self):
+        plan, _ = self.gate_fixture()
+        manifest = json.loads((ROOT / "clients/gui/scripts/test-manifest.json").read_text())
+        shards = [item for item in plan["items"] if item["group"] == "core-contracts"]
+        self.assertEqual(len(shards), 2)
+        for platform in ("darwin", "linux"):
+            required = [
+                entry["script"]
+                for entry in manifest
+                if entry["layer"] != "e2e"
+                and "core-binary" in entry["requires"]
+                and platform in entry["platforms"]
+            ]
+            actual = [script for item in shards for script in item["expectedTests"][platform]]
+            self.assertCountEqual(actual, required)
+            self.assertEqual(len(actual), len(set(actual)))
+        for item in shards:
+            self.assertEqual(item["platforms"], ["darwin"])
+            self.assertIn("native-runtime", item["requires"])
+            self.assertIn("macos:desktop", item["dependsOn"])
+        for group in ("gui-native-checks", "core-contracts", "smoke"):
+            self.assertEqual(scope.CI_PLATFORMS[group], "darwin")
+
+    def test_gate_rejects_missing_and_duplicate_core_shards(self):
+        plan, reports = self.gate_fixture()
+        required = "core-contracts:2"
+        owner = next(
+            report
+            for report in reports
+            if any(result["id"] == required for result in report["results"])
+        )
+        result = next(result for result in owner["results"] if result["id"] == required)
+        owner["results"].remove(result)
+        self.assertIn(
+            "missing required check " + required,
+            gate.validate(plan, reports, scope.WORKFLOW_GROUPS["gui"], ("run", "2")),
+        )
+        owner["results"].extend([result, copy.deepcopy(result)])
+        self.assertIn(
+            "duplicate required check " + required,
+            gate.validate(plan, reports, scope.WORKFLOW_GROUPS["gui"], ("run", "2")),
+        )
+
+    def test_desktop_artifacts_include_all_consumed_modules_and_reject_missing_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            outputs = [
+                root / "clients/gui" / relative / "fixture.cjs"
+                for relative in (
+                    "packages/gen-ui/dist",
+                    "packages/browser-automation/dist",
+                    "packages/browser-data/dist",
+                    "app/src/core/snapshots/build",
+                )
+            ]
+            for output in outputs:
+                output.parent.mkdir(parents=True)
+                output.write_text("frozen module")
+            item = {"id": "macos:desktop"}
+            before = preflight.artifacts(item, root)
+            self.assertEqual(len(before), len(outputs))
+            outputs[0].write_text("different module")
+            self.assertNotEqual(before, preflight.artifacts(item, root))
+            outputs[0].unlink()
+            with self.assertRaisesRegex(ValueError, "desktop build output is missing"):
+                preflight.artifacts(item, root)
 
     def test_final_gate_rejects_omitted_required_check_even_when_every_received_check_passed(self):
         plan, reports = self.gate_fixture()

@@ -50,6 +50,7 @@ WORKFLOW_GROUPS = {
         "relay",
         "gui-build",
         "core-contracts",
+        "gui-native-checks",
         "smoke",
         "mobile",
     },
@@ -62,7 +63,7 @@ JOB_GROUPS = {
         "gui-portable": {"gui-portable"},
         "relay-contracts": {"relay-build", "relay"},
         "gui": {"gui-build"},
-        "core-contracts": {"core-contracts"},
+        "core-contracts": {"core-contracts", "gui-native-checks"},
         "smoke": {"smoke"},
         "mobile": {"mobile"},
     },
@@ -74,7 +75,11 @@ JOB_GROUPS = {
     },
 }
 CI_PLATFORMS = {
-    group: ("darwin" if group in {"native", "gui-build", "core-contracts", "smoke"} else "linux")
+    group: (
+        "darwin"
+        if group in {"native", "gui-build", "core-contracts", "gui-native-checks", "smoke"}
+        else "linux"
+    )
     for group in set().union(*WORKFLOW_GROUPS.values())
 }
 
@@ -100,8 +105,21 @@ def impact(paths):
     code = [
         path
         for path in paths
-        if not (path.endswith(".md") or path.startswith("docs/"))
-        or path.startswith("clients/gui/packages/ui/")
+        # 仅明确的说明文档可跳过；内置 SKILL.md、设计合同等仍是产品输入。
+        if not (
+            path.startswith("docs/")
+            or path
+            in {
+                "README.md",
+                "README.en.md",
+                "CONTRIBUTING.md",
+                "CONTRIBUTING.en.md",
+                "SECURITY.md",
+                "SECURITY.en.md",
+            }
+            or path.endswith(".md")
+            and path.startswith(("design/", "clients/gui/design-system/"))
+        )
     ]
     unknown = [
         path
@@ -318,6 +336,7 @@ def build_plan(paths, source, manifest):
             phase="commit",
         )
         add("docs", ["python3", "scripts/check-docs.py"], "early", phase="commit")
+    if affected["code"]:
         add(
             "dependency-audit",
             ["python3", "scripts/dependency-audit.py"],
@@ -671,8 +690,8 @@ def build_plan(paths, source, manifest):
             add(
                 name,
                 command,
-                "gui-build",
-                ("gui-design-build", "gui-core-build", renderer),
+                "gui-build" if name == "rpc-routes" else "gui-native-checks",
+                ("gui-design-build", "gui-core-build", renderer, desktop),
                 platforms=("darwin",),
             )
         core_tests = {
@@ -685,22 +704,23 @@ def build_plan(paths, source, manifest):
             ]
             for platform in ("darwin", "linux")
         }
-        add(
-            "core-contracts",
-            ["node", "clients/gui/scripts/run-portable-tests.mjs", "--core-contracts"],
-            "core-contracts",
-            ("gui-core-build", renderer),
-            ("node-24.22.1", "native-runtime"),
-            platforms=("darwin",),
-            expected=core_tests,
-        )
+        for shard in range(2):
+            add(
+                "core-contracts" if shard == 0 else "core-contracts:2",
+                ["node", "clients/gui/scripts/run-portable-tests.mjs", "--core-contracts"],
+                "core-contracts",
+                ("gui-core-build", renderer, desktop),
+                ("node-24.22.1", "native-runtime"),
+                platforms=("darwin",),
+                expected={platform: scripts[shard::2] for platform, scripts in core_tests.items()},
+            )
         for entry in manifest:
             if entry.get("ciSmoke"):
                 add(
                     "smoke:" + entry["script"],
                     ["pnpm", "--dir", "clients/gui", "run", entry["script"]],
                     "smoke",
-                    ("gui-core-build", renderer, "gui-design-build"),
+                    ("gui-core-build", renderer, "gui-design-build", desktop),
                     tuple(sorted(set(entry["requires"]) - {"core-binary", "gui-build"}))
                     + ("node-24.22.1",),
                     platforms=("darwin",),
@@ -761,6 +781,7 @@ if __name__ == "__main__":
             "target": "early,verify",
             "setup": "setup",
             "log": "verify",
+            "rust_cache": "verify" in groups,
         }
     ]
     if "native" in groups:
@@ -771,6 +792,7 @@ if __name__ == "__main__":
                 "target": "native",
                 "setup": "setup-node",
                 "log": "verify-native",
+                "rust_cache": True,
             }
         )
     outputs = {
@@ -781,6 +803,16 @@ if __name__ == "__main__":
         gui=str(bool(groups & WORKFLOW_GROUPS["gui"])).lower(),
         release=str(applicable("release", plan["paths"])).lower(),
         smoke_matrix=json.dumps(matrix, separators=(",", ":")),
+        core_matrix=json.dumps(
+            {
+                "include": [
+                    {"lane": "contracts-1", "group": "core-contracts", "item": "core-contracts"},
+                    {"lane": "contracts-2", "group": "core-contracts", "item": "core-contracts:2"},
+                    {"lane": "native-checks", "group": "gui-native-checks", "item": ""},
+                ]
+            },
+            separators=(",", ":"),
+        ),
         host_matrix=json.dumps({"include": host}, separators=(",", ":")),
         plan_hash=plan["planHash"],
         input_hash=plan["source"]["inputHash"],

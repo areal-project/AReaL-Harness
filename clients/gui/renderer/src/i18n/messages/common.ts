@@ -67,6 +67,72 @@ export const commonMessages = {
     "zh-CN": "执行依赖等集成完成后启动；集成依赖可提前执行。",
     en: "Execution dependencies start after integration; integration dependencies may run early.",
   },
+  "common.update.panel": { "zh-CN": "应用更新", en: "App update" },
+  "common.update.open": { "zh-CN": "应用更新：{state}", en: "App update: {state}" },
+  "common.update.version": { "zh-CN": "版本 {version}", en: "Version {version}" },
+  "common.update.available": { "zh-CN": "有可用更新", en: "An update is available" },
+  "common.update.downloading": { "zh-CN": "正在下载更新", en: "Downloading update" },
+  "common.update.validating": { "zh-CN": "正在准备安装", en: "Preparing installation" },
+  "common.update.deferred": {
+    "zh-CN": "已下载，等待安装",
+    en: "Downloaded \u00b7 waiting to install",
+  },
+  "common.update.installing": { "zh-CN": "正在重启安装", en: "Restarting to install" },
+  "common.update.failed": { "zh-CN": "更新未完成", en: "Update interrupted" },
+  "common.update.installIncomplete": { "zh-CN": "安装尚未完成", en: "Installation incomplete" },
+  "common.update.availableHelp": {
+    "zh-CN": "下载时可以继续工作。后台空闲后会安装并重启应用。",
+    en: "Keep working while the update downloads. Installation restarts the app once the backend is idle.",
+  },
+  "common.update.downloadingHelp": {
+    "zh-CN": "正在获取更新包，你可以继续当前工作。",
+    en: "The update is downloading. You can keep working.",
+  },
+  "common.update.validatingHelp": {
+    "zh-CN": "后台已停止，正在校验更新并准备替换应用。",
+    en: "The backend has stopped. The update is being verified before the app is replaced.",
+  },
+  "common.update.deferredHelp": {
+    "zh-CN": "后台尚未就绪。可以等待空闲，或检查后台并确认后继续安装。",
+    en: "The backend is not ready. Wait until it is idle, or review it and confirm before continuing.",
+  },
+  "common.update.installingHelp": {
+    "zh-CN": "应用即将重启，完成后请在“关于”中核对版本。",
+    en: "The app will restart shortly. Check the version in About after it reopens.",
+  },
+  "common.update.reopenHelp": {
+    "zh-CN": "请退出并重新打开应用，核对版本后再检查更新。",
+    en: "Quit and reopen the app, check its version, then check for updates again.",
+  },
+  "common.update.retryHelp": {
+    "zh-CN": "查看下方原因后重试。当前工作可以继续。",
+    en: "Review the reason below and retry. You can continue your current work.",
+  },
+  "common.update.progress": { "zh-CN": "下载进度", en: "Download progress" },
+  "common.update.progressUnknown": {
+    "zh-CN": "正在下载，进度暂不可用",
+    en: "Downloading \u00b7 progress unavailable",
+  },
+  "common.update.download": { "zh-CN": "下载更新", en: "Download update" },
+  "common.update.downloadVersion": {
+    "zh-CN": "下载更新 {version}",
+    en: "Download update {version}",
+  },
+  "common.update.retryVersion": { "zh-CN": "重试更新 {version}", en: "Retry update {version}" },
+  "common.update.retry": { "zh-CN": "重试", en: "Retry" },
+  "common.update.recover": { "zh-CN": "检查后台并安装", en: "Review backend and install" },
+  "common.update.recoverLabel": {
+    "zh-CN": "检查后台资源并继续安装更新",
+    en: "Review backend resources and continue installation",
+  },
+  "common.update.downloadFailed": {
+    "zh-CN": "无法启动更新，请重试。",
+    en: "Could not start the update. Try again.",
+  },
+  "common.update.recoveryFailed": {
+    "zh-CN": "后台检查未完成，请重试。",
+    en: "Backend review did not finish. Try again.",
+  },
   "common.update.retryCheck": { "zh-CN": "重新检查更新", en: "Check for updates again" },
   "common.update.networkChanged": {
     "zh-CN": "网络发生变化，更新请求中断。请待网络稳定后点击重试。",
