@@ -79,7 +79,7 @@ try {
       const { EventEmitter } = read("node:events");
       const { createUpdater } = read(app.getAppPath() + "/src/update/controller.cjs");
       const { githubFeedUrl } = read(app.getAppPath() + "/src/update/config.cjs");
-      const probe = { failCheck: true, checks: 0, downloads: 0 };
+      const probe = { failCheck: true, checks: 0, downloads: 0, recoveries: 0 };
       const updater = new EventEmitter();
       updater.setFeedURL = () => {};
       updater.checkForUpdates = async () => {
@@ -125,6 +125,11 @@ try {
         void controller.download();
         return controller.state();
       });
+      ipcMain.removeHandler("areal-core:update-recover-resources");
+      ipcMain.handle("areal-core:update-recover-resources", () => {
+        probe.recoveries++;
+        return controller.state();
+      });
       await controller.check();
     }, targetVersion);
     await page.getByRole("alert").filter({ hasText: "网络发生变化，更新请求中断" }).waitFor();
@@ -159,12 +164,23 @@ try {
     await page.screenshot({ path: join(scratch, `check-recovered-${targetVersion}.png`) });
     if (targetVersion === "0.1.12") {
       await page.getByRole("button", { name: "下载更新 0.1.12", exact: true }).click();
-      await page.getByTestId("areal-update-status").filter({ hasText: "等待安装" }).waitFor();
+      await page.locator('[data-testid="areal-update-status"][title*="等待安装"]').waitFor();
       assert.equal(await app.evaluate(() => globalThis.updateRetrySmoke.downloads), 1);
+      assert.equal(await app.evaluate(() => globalThis.updateRetrySmoke.recoveries), 0);
+      await page.getByRole("button", { name: "检查后台资源并继续安装更新", exact: true }).click();
+      assert.deepEqual(
+        await app.evaluate(() => ({
+          downloads: globalThis.updateRetrySmoke.downloads,
+          recoveries: globalThis.updateRetrySmoke.recoveries,
+        })),
+        { downloads: 1, recoveries: 1 },
+      );
+      await page.screenshot({ path: join(scratch, "deferred-update-action.png") });
     }
   }
   checks.push(
     "real update controller through preload/IPC: network-change check failure retries; new offer needs a second click to download; current version clears the error",
+    "fast download completion keeps the newer deferred event over its stale downloading reply and exposes explicit recovery without re-downloading or automatically requesting recovery",
   );
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
     ipcMain.removeHandler("areal-core:update-download");

@@ -1,5 +1,5 @@
 import { Button } from "@areal/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RefreshIcon } from "./interfaceIcons.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import type { PlatformServices, UpdateState } from "./services.js";
@@ -7,19 +7,26 @@ import type { PlatformServices, UpdateState } from "./services.js";
 export function UpdateIndicator({ services }: { services: PlatformServices }) {
   const { t } = useI18n();
   const [update, setUpdate] = useState<UpdateState | null>(null);
+  const updateRevision = useRef(0);
   useEffect(() => {
     if (!services.updateState || !services.onUpdate) return;
-    const off = services.onUpdate(setUpdate);
+    const off = services.onUpdate((state) => {
+      updateRevision.current++;
+      setUpdate(state);
+    });
+    const revision = updateRevision.current;
     void services
       .updateState()
-      .then(setUpdate)
+      .then((state) => {
+        if (updateRevision.current === revision) setUpdate(state);
+      })
       .catch(() => {});
     return off;
   }, [services]);
   if (!update?.enabled || update.status === "idle") return null;
   const canDownload =
     update.status === "available" || (update.status === "error" && !update.installing);
-  const needsResources = update.status === "deferred" && update.detail?.includes("后台资源");
+  const needsResources = update.status === "deferred" && Boolean(update.downloaded);
   const errorDetail =
     !update.installing && !update.downloaded && update.detail?.includes("ERR_NETWORK_CHANGED")
       ? t("common.update.networkChanged")
@@ -29,11 +36,15 @@ export function UpdateIndicator({ services }: { services: PlatformServices }) {
       ? Math.max(0, Math.min(100, Math.round(update.percent)))
       : null;
   const performUpdate = async (action: () => Promise<UpdateState>, failureDetail: string) => {
+    const revision = updateRevision.current;
     try {
-      setUpdate(await action());
+      const state = await action();
+      // 操作回包可能晚于后续状态事件到达，不能把安装状态退回下载中。
+      if (updateRevision.current === revision) setUpdate(state);
     } catch (error) {
       console.warn("Update action failed", error);
-      setUpdate((current) => current && { ...current, status: "error", detail: failureDetail });
+      if (updateRevision.current === revision)
+        setUpdate((current) => current && { ...current, status: "error", detail: failureDetail });
     }
   };
   const label =
