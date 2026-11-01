@@ -4,6 +4,8 @@
 
 共享 Host 是[目标设计，实施中](host.md)。本页描述现有每项目 service-host，不能将其名称中的 Host 等同于每用户共享 Host。共享 Host 仅对经受控重启迁移后的 Host-owned generation 提供客户端退出不影响执行的保证；`legacyPending` 保留旧生命周期。
 
+底层服务已支持 `{kind:"host",hostId,generation}` owner 和 `OwnerLifetime`。可信宿主独占生命期写端，通过 `AREAL_SERVICE_OWNER` 与 `AREAL_SERVICE_LIFETIME_FD` 向服务启动入口传递身份与读端。旧 GUI 环境入口仍可用，两组环境不能混用。描述中的 Host owner 是扩展类型，旧严格客户端必须拒绝未知类型，不能据此接管或停止服务。此底层能力不表示共享 Host 命令和客户端迁移已经完成。真实进程检查使用 `python3 scripts/host-lifetime-smoke.py`，验证 owner 匹配、管理客户端退出后服务存活及写端 EOF 后的整链清理。
+
 TUI、Web 启动入口和可信 Desktop Main 共用 `areal service`，由独立 `areal service-host` 托管一组 Core/Runtime。窗口只拥有连接。运行平台沿用[Runtime 边界](../guides/runtime.md)，不是系统级、多用户或远程 daemon。
 
 ## 公共入口

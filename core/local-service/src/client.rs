@@ -1,6 +1,6 @@
 use crate::{
     LaunchSpec,
-    gui_owner::{self, GuiLifetime},
+    gui_owner::{self, OwnerLifetime},
     storage,
 };
 use anyhow::{Context, Result, bail, ensure};
@@ -49,13 +49,10 @@ pub async fn restart(spec: &LaunchSpec, cancel: bool) -> Result<Service> {
 
 pub async fn ensure_with_lifetime(
     spec: &LaunchSpec,
-    lifetime: &GuiLifetime,
+    lifetime: &OwnerLifetime,
     no_auto_restart: bool,
 ) -> Result<Service> {
-    ensure!(
-        spec.owner.is_some(),
-        "GUI lifetime requires an application owner"
-    );
+    ensure!(spec.owner.is_some(), "service lifetime requires an owner");
     ensure_inner(spec, None, false, !no_auto_restart, Some(lifetime)).await
 }
 
@@ -64,11 +61,11 @@ async fn ensure_inner(
     restart: Option<bool>,
     reconnect: bool,
     allow_automatic_restart: bool,
-    lifetime: Option<&GuiLifetime>,
+    lifetime: Option<&OwnerLifetime>,
 ) -> Result<Service> {
     ensure!(
         spec.owner.is_some() == lifetime.is_some(),
-        "GUI application services require an inherited lifetime descriptor"
+        "owned services require an inherited lifetime descriptor"
     );
     if let Some(lifetime) = lifetime {
         lifetime.check_open()?;
@@ -173,7 +170,7 @@ async fn ensure_inner(
 
 async fn launch_unlocked(
     spec: &LaunchSpec,
-    lifetime: Option<&GuiLifetime>,
+    lifetime: Option<&OwnerLifetime>,
     directory: &Path,
 ) -> Result<Service> {
     let deadline = Instant::now() + Duration::from_secs(65);
@@ -195,18 +192,24 @@ async fn launch_unlocked(
     let mut command = match lifetime {
         Some(lifetime) => {
             let mut command =
-                crate::native_process::TrustedCommand::gui_host(&binary, lifetime.as_raw_fd())?;
+                crate::native_process::TrustedCommand::owned_host(&binary, lifetime.as_raw_fd())?;
             command
-                .env(gui_owner::LIFETIME_FD_ENV, lifetime.as_raw_fd().to_string())
                 .env(
-                    gui_owner::OWNER_ENV,
+                    gui_owner::SERVICE_LIFETIME_FD_ENV,
+                    lifetime.as_raw_fd().to_string(),
+                )
+                .env(
+                    gui_owner::SERVICE_OWNER_ENV,
                     serde_json::to_string(spec.owner.as_ref().unwrap())?,
                 );
             command
         }
         None => crate::native_process::TrustedCommand::persistent(&binary)?,
     };
-    command.arg("service-host");
+    command
+        .env_remove(gui_owner::OWNER_ENV)
+        .env_remove(gui_owner::LIFETIME_FD_ENV)
+        .arg("service-host");
     command
         .current_dir(&spec.launch_cwd)
         .stdin(Stdio::piped())
@@ -335,7 +338,7 @@ fn check_recovery_spec(
 pub async fn recover_crashed(
     spec: &LaunchSpec,
     expected_generation: &str,
-    lifetime: &GuiLifetime,
+    lifetime: &OwnerLifetime,
 ) -> Result<Service> {
     ensure!(spec.owner.is_some(), "crash recovery requires a GUI owner");
     lifetime.check_open()?;

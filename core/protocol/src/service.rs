@@ -38,6 +38,11 @@ pub enum Owner {
         app_run_id: String,
         profile: PathBuf,
     },
+    Host {
+        #[serde(rename = "hostId")]
+        host_id: String,
+        generation: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -150,6 +155,29 @@ pub enum Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn host_owner_uses_strict_host_aware_wire_shape() {
+        let value = serde_json::json!({
+            "kind":"host", "hostId":"host-id", "generation":"host-generation"
+        });
+        let owner: Owner = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(
+            owner,
+            Owner::Host {
+                host_id: "host-id".into(),
+                generation: "host-generation".into()
+            }
+        );
+        assert_eq!(serde_json::to_value(owner).unwrap(), value);
+        for invalid in [
+            serde_json::json!({"kind":"host", "hostId":"host-id"}),
+            serde_json::json!({"kind":"host", "host_id":"host-id", "generation":"g"}),
+            serde_json::json!({"kind":"host", "hostId":"host-id", "generation":"g", "profile":"/gui"}),
+        ] {
+            assert!(serde_json::from_value::<Owner>(invalid).is_err());
+        }
+    }
 
     #[test]
     fn descriptor_roundtrip_and_strict_identity() {

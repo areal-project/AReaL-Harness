@@ -65,8 +65,8 @@ impl TrustedCommand {
         Self::new(binary, &[], true)
     }
 
-    /// GUI 宿主脱离 ensure 调用者，但只依赖应用独占的生命期写端。
-    pub fn gui_host(binary: &Path, lifetime_fd: RawFd) -> io::Result<Self> {
+    /// 有主宿主脱离 ensure 调用者，但只依赖 owner 独占的生命期写端。
+    pub fn owned_host(binary: &Path, lifetime_fd: RawFd) -> io::Result<Self> {
         Self::new(binary, &[lifetime_fd], true)
     }
 

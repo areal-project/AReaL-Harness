@@ -243,6 +243,27 @@
               "profile"
             ],
             "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "generation": {
+                "type": "string"
+              },
+              "hostId": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "host",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "hostId",
+              "generation"
+            ],
+            "type": "object"
           }
         ]
       },
@@ -478,6 +499,27 @@
               "kind",
               "appRunId",
               "profile"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "generation": {
+                "type": "string"
+              },
+              "hostId": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "host",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "hostId",
+              "generation"
             ],
             "type": "object"
           }

@@ -4,6 +4,7 @@ mod client;
 pub use catalog::{CatalogTarget, catalog_target};
 pub mod gui_owner;
 pub mod native_process;
+pub use gui_owner::{LifetimeWriter, OwnerLifetime};
 mod spec;
 pub mod storage;
 

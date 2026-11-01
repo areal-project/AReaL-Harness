@@ -4,6 +4,8 @@
 
 The shared Host is a [target design, in progress](host.en.md). This page describes existing per-project service-hosts; their Host name does not imply the per-user shared Host. Client exit independence applies only to Host-owned generations after controlled restart migration. `legacyPending` retains the old lifecycle.
 
+The service layer supports `{kind:"host",hostId,generation}` ownership and `OwnerLifetime`. A trusted owner exclusively holds the lifetime writer and passes identity and the reader through `AREAL_SERVICE_OWNER` and `AREAL_SERVICE_LIFETIME_FD`. The legacy GUI environment remains supported; mixing the two environment groups is rejected. Host owner is an extended descriptor type. Old strict clients must reject the unknown type rather than claim or stop the service. This low-level capability does not establish completion of shared Host commands or client migration. Run `python3 scripts/host-lifetime-smoke.py` to check owner matching, service survival after the management client exits, and full-chain cleanup after writer EOF.
+
 TUI, the Web launcher and trusted Desktop Main use `areal service`. An independent `areal service-host` owns one Core/Runtime pair; windows own connections. Platform support follows the [Runtime boundary](../guides/runtime.en.md). This is not a system-wide, multi-user or remote daemon.
 
 ## Public entry points
