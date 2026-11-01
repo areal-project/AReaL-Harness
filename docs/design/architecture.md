@@ -160,6 +160,8 @@ Fork 与 Side 复用 Core/Runtime 的会话、历史和执行所有者。`conver
 
 有限浏览器动作仍由 Main 的原生预览所有者执行。观察持有独立视口及原生 OPTION 身份，准备和执行复核同一目标；状态等待只读原生事实。scroll/hover 后失效观察保留批量确认前缀与调用去重，固定 select 语义不开放任意脚本入口。
 
+SnapShots 的本机窗口捕获、系统全局快捷键、辅助功能读取进程和透明过渡窗口归 `app/src/core/snapshots/` 的 Main owner。设置复用 Library 的 `snapShot` 键。`renderer/src/snapshots/` 固定触发时的草稿归属，在 IndexedDB 保存图片与来源后才确认删除 Main 待交付文件；删除、会话创建后的迁移与已受理发送沿现有 Composer 生命周期处理。图片沿既有 Core blob 上传，来源上下文作为不可信窗口数据绑定图片，不新增 Agent 工具执行通道。接口见[桌面能力契约](../api/desktop.md#snapshots-桌面能力)。
+
 ## 客户端恢复与用户感知
 
 GUI 订阅展示状态由 Desktop 的 `AppProviders` 统一投影，设置分组读取活动账号的本地授权事实，公开模型 JSON 缓存仅用于显示。目录确认中与已确认失效分开，Renderer 不以目录可用性阻止提交，执行资格由提交路径和 Core 判断。当前会话观察在连接后优先恢复，导航摘要后台更新。Core 原子观察结果中的配置、队列、交互和历史由同一模型安装操作发布，最新轮分页完成后基于实时模型合并。Main 合并同一事件循环内的投影通知，原生视图归属校验仍即时执行。

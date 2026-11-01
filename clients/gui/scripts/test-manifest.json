@@ -1036,5 +1036,20 @@
     "platforms": ["darwin"],
     "areas": ["remote", "mobile"],
     "requires": ["electron", "gui-build", "core-build"]
+  },
+  {
+    "script": "test:snapshots",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Native foreground-window SnapShots uses the macOS capture and modifier-pair backends.",
+    "areas": ["desktop", "composer"],
+    "requires": ["browser", "git", "gui-build", "core-binary", "screen-recording"]
+  },
+  {
+    "script": "test:snapshots-native",
+    "layer": "contract",
+    "platforms": ["darwin", "linux", "win32"],
+    "areas": ["desktop", "composer"],
+    "requires": []
   }
 ]

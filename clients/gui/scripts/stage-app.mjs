@@ -34,6 +34,11 @@ function required(pkg) {
   for (const name of Object.keys(pkg.peerDependencies ?? {}))
     if (!pkg.peerDependenciesMeta?.[name]?.optional) result.add(name);
   for (const name of Object.keys(pkg.optionalDependencies ?? {})) result.delete(name);
+  if (pkg.name === "@crowecawcaw/xa11y") {
+    assert.equal(process.platform, "darwin", "SnapShots packaging requires macOS");
+    assert.equal(process.arch, "arm64", "SnapShots packaging requires arm64");
+    result.add("@crowecawcaw/xa11y-darwin-arm64");
+  }
   return [...result];
 }
 

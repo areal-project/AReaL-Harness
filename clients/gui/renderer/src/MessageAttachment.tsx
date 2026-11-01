@@ -1,3 +1,6 @@
+import { observeResize } from "@areal/ui/observe-resize";
+import type { SnapShotSource } from "@areal/workbench/desktop-contract/snapshots";
+import { SnapShotAttachment } from "./snapshots/SnapShotAttachment.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useEffect, useRef, useState } from "react";
 import { ImageAnnotationList } from "./ImageAnnotationViews.js";
@@ -36,10 +39,8 @@ function ImageInspection({ url, name }: { url: string; name: string }) {
     const el = viewport.current;
     if (!el) return;
     const measure = () => setSpace({ width: el.clientWidth, height: el.clientHeight });
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
     measure();
-    return () => observer.disconnect();
+    return observeResize(el, measure);
   }, []);
   const fit =
     natural.width && space.width
@@ -353,6 +354,7 @@ export function SentAttachment({
   compact = false,
   annotation,
   onError,
+  snapShotSource,
 }: {
   part: Data;
   projectId: string;
@@ -361,6 +363,7 @@ export function SentAttachment({
   compact?: boolean;
   annotation?: SentImageAnnotation;
   onError?: (message: string) => void;
+  snapShotSource?: SnapShotSource;
 }) {
   const [media, setMedia] = useState<{ url: string; mime: string } | null>(null);
   const [failure, setFailure] = useState("");
@@ -391,7 +394,11 @@ export function SentAttachment({
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [part.url, part.uri, projectId, threadId, action, onError]);
-  const name = annotation?.name ?? part.name ?? (part.type === "image" ? "消息图片" : "附件");
+  const name =
+    annotation?.name ??
+    part.name ??
+    snapShotSource?.windowTitle ??
+    (part.type === "image" ? "消息图片" : "附件");
   if (failure)
     return (
       <span role="status" className="text-ui-sm text-foreground-subtle">
@@ -413,6 +420,8 @@ export function SentAttachment({
         </Button>
       </div>
     );
+  if (snapShotSource && part.type === "image")
+    return <SnapShotAttachment source={snapShotSource} url={media.url} name={name} />;
   return (
     <AttachmentTile
       name={name}

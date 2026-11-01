@@ -196,6 +196,10 @@ await build({
     electronVersion: require("electron/package.json").version,
     electronDist: join(require.resolve("electron/package.json"), "../dist"),
     asar: true,
+    asarUnpack: [
+      "src/core/snapshots/build/SnapShotAccessibilityWorker.cjs",
+      "node_modules/@crowecawcaw/xa11y*/**/*",
+    ],
     npmRebuild: false,
     nodeGypRebuild: false,
     files: ["**/*"],

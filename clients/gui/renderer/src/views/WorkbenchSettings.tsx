@@ -1,3 +1,4 @@
+import { SnapShotSettings } from "../snapshots/SnapShotSettings.js";
 import { lazy, Suspense, type ReactNode } from "react";
 import { Button } from "../components/ui/button.js";
 import { useI18n } from "../i18n/IntlProvider.js";
@@ -103,6 +104,13 @@ export function WorkbenchSettings({
           projectlessDirectory={snapshot.projectless?.directory}
           chooseProjectlessDirectory={services.chooseProjectlessDirectory}
           fileOpen={contextualFileOpen}
+          action={resourceAction}
+          connected={snapshot.connection?.state === "ready"}
+        />
+      ) : settingsTab === "SnapShots" ? (
+        <SnapShotSettings
+          bridge={services.snapShots}
+          settings={library.settings?.snapShot}
           action={resourceAction}
           connected={snapshot.connection?.state === "ready"}
         />

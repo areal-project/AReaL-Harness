@@ -1,3 +1,4 @@
+import { snapshotMessages } from "./messages/snapshots.js";
 import { browserMessages } from "./messages/browser.js";
 import { composerPriorityMessages } from "./messages/composerPriority.js";
 import { resourceMessages } from "./messages/resources.js";
@@ -18,6 +19,7 @@ import { worktreeMessages } from "./messages/worktrees.js";
 export type AppLocale = "zh-CN" | "en";
 export type MessagePair = Record<AppLocale, string>;
 export const messages = {
+  ...snapshotMessages,
   ...browserMessages,
   ...composerPriorityMessages,
   ...resourceMessages,

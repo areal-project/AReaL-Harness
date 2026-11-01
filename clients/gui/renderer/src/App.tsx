@@ -1,3 +1,6 @@
+import { SnapShotCaptureContext } from "./snapshots/captureContext.js";
+import { SnapShotCoordinator } from "./snapshots/SnapShotCoordinator.js";
+import { readSnapShotSettings } from "@areal/workbench/desktop-contract/snapshots";
 import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { WorkSurface, WorkbenchShell } from "./app-shell/WorkbenchShell.js";
 import { BackendStatusNotice } from "./BackendStatusNotice.js";
@@ -375,6 +378,23 @@ function AppContent({ services }: { services: PlatformServices }) {
     contextReturn,
   );
   const { setTerminalOpen, showFiles, openTerminal, hidePanel, showPanel } = panelNavigation;
+  const snapShotResumeChecked = React.useRef(false);
+  useEffect(() => {
+    if (
+      snapShotResumeChecked.current ||
+      !startupReady ||
+      snapshot.connection?.state !== "ready" ||
+      !services.snapShots
+    )
+      return;
+    snapShotResumeChecked.current = true;
+    const settings = readSnapShotSettings(library.settings?.snapShot);
+    if (!settings.snapShotEnabled || !settings.setupStep || settings.setupStep === "complete")
+      return;
+    setSettingsTab("SnapShots");
+    showPanel("设置");
+  }, [startupReady, snapshot.connection?.state, library.settings?.snapShot, services.snapShots]);
+
   useEffect(panelNavigation.subscribeNarrowLayout, [panel, workspaceView]);
   useEffect(panelNavigation.subscribeShortcuts, [
     initialReleased,
@@ -472,7 +492,7 @@ function AppContent({ services }: { services: PlatformServices }) {
       panelBody={panelBody}
     />
   );
-  return (
+  const workbench = (
     <ComputerControlContext.Provider
       value={{
         visible: library.settings?.computerControlShowEntry === true,
@@ -499,6 +519,10 @@ function AppContent({ services }: { services: PlatformServices }) {
         data-shell-ready={shellReady}
       >
         <ToastHost />
+        <SnapShotCoordinator
+          bridge={services.snapShots}
+          settings={readSnapShotSettings(library.settings?.snapShot)}
+        />
         {snapshot.computerControl?.active === true && (
           <div
             role="status"
@@ -766,5 +790,16 @@ function AppContent({ services }: { services: PlatformServices }) {
         )}
       </WorkbenchShell>
     </ComputerControlContext.Provider>
+  );
+  return (
+    <SnapShotCaptureContext.Provider
+      value={
+        readSnapShotSettings(library.settings?.snapShot).snapShotEnabled
+          ? services.snapShots
+          : undefined
+      }
+    >
+      {workbench}
+    </SnapShotCaptureContext.Provider>
   );
 }

@@ -19,6 +19,7 @@
     "@areal/runtime-client": "workspace:*",
     "@areal/workbench": "workspace:*",
     "@areal/workspace-git": "workspace:*",
+    "@crowecawcaw/xa11y": "0.13.0",
     "@modelcontextprotocol/sdk": "1.32.0",
     "electron-updater": "6.8.9",
     "pkijs": "3.4.1",

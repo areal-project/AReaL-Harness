@@ -110,7 +110,7 @@ export default defineConfig({
       "desktop-build": {
         command: "node build.mjs",
         cwd: "packages/gen-ui",
-        dependsOn: ["browser-automation-build", "browser-data-build"],
+        dependsOn: ["browser-automation-build", "browser-data-build", "snapshots-build"],
         cache: {
           input: [
             { pattern: "packages/gen-ui/*.ts", base: "workspace" },
@@ -121,6 +121,10 @@ export default defineConfig({
           ],
           output: [{ pattern: "packages/gen-ui/dist/**", base: "workspace" }],
         },
+      },
+      "snapshots-build": {
+        command: "node scripts/build-snapshots.mjs",
+        cache: false,
       },
       "computer-helper-build": {
         command: "node scripts/build-computer-helper.mjs",
