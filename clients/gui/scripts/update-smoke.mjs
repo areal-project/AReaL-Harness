@@ -507,7 +507,7 @@ try {
                 ...request,
                 protocol: "http:",
                 hostname: "127.0.0.1",
-                host: "127.0.0.1",
+                host: `127.0.0.1:${options.candidatePort}`,
                 port: options.candidatePort,
                 path: localPath,
               },
@@ -537,10 +537,15 @@ try {
     // 旧版签名基线仍使用直接下载按钮，新版候选使用状态浮层。
     if (await page.getByTestId("areal-update-trigger").count()) await openUpdate(page);
     await page.getByTestId("areal-update-download").waitFor({ timeout: 30000 });
+    const offered = await page.evaluate(() => window.arealDesktop.updateState());
+    await writeFile(
+      join(scratch, "native-offer.json"),
+      JSON.stringify({ offered, transportRequests }, null, 2),
+    );
     assert.equal(
-      (await page.evaluate(() => window.arealDesktop.updateState())).version,
+      offered.version,
       expectedVersion,
-      "The public feed must offer the selected candidate before download",
+      "The feed must offer the selected candidate before download",
     );
     await page.getByTestId("areal-update-download").click();
     await page.waitForFunction(
