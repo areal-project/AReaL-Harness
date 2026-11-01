@@ -336,6 +336,30 @@ class CiContracts(unittest.TestCase):
                 self.assertTrue(scope.applicable("release", [path]))
         self.assertFalse(scope.applicable("release", ["docs/features.md"]))
 
+    def test_markdown_runtime_inputs_are_not_documentation_only(self):
+        for path in (
+            "clients/gui/app/assets/builtin-skills/sample/SKILL.md",
+            "core/config/prompt.md",
+            "examples/plugin-marketplace/sample/skills/sample/SKILL.md",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(scope.impact([path])["shared"] or scope.impact([path])["gui"])
+        for path in ("README.md", "docs/guides/configuration.md"):
+            with self.subTest(path=path):
+                plan, _ = self.gate_fixture([path], workflow="verify")
+                self.assertEqual({item["group"] for item in plan["items"]}, {"early"})
+
+    def test_main_runs_cannot_replace_each_other_and_prs_cancel_superseded_runs(self):
+        for name in ("ci", "gui", "release", "workflow-lint", "provider-config"):
+            workflow = (ROOT / f".github/workflows/{name}.yml").read_text()
+            concurrency = workflow.split("concurrency:\n", 1)[1].split("\njobs:", 1)[0]
+            with self.subTest(workflow=name):
+                self.assertIn("github.event.pull_request.number", concurrency)
+                self.assertIn("format('run-{0}', github.run_id)", concurrency)
+                self.assertIn(
+                    "cancel-in-progress: ${{ github.event_name == 'pull_request' }}", concurrency
+                )
+
     def gate_fixture(self, paths=("Makefile",), workflow="gui"):
         source = {
             "baseRevision": "base",

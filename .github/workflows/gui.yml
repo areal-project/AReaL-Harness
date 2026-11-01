@@ -30,9 +30,10 @@ env:
   CARGO_INCREMENTAL: '0'
   NO_PROXY: 127.0.0.1,localhost
 
+# PR 只保留最新一次；main/手动运行各自独立，避免替换 pending 提交。
 concurrency:
-  group: gui-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   scope:
@@ -144,6 +145,8 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.13'
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@11.7.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '24.2.0'
@@ -154,9 +157,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '24.22.1'
+          cache: pnpm
+          cache-dependency-path: clients/gui/pnpm-lock.yaml
       - name: Install locked dependencies and browsers
         run: |
-          npm install --global pnpm@11.7.0
           pnpm --dir clients/gui install --frozen-lockfile
           pnpm --dir clients/gui/app exec playwright-core install --with-deps chromium webkit
       - name: Verify the shared mobile plan
@@ -192,12 +196,15 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.13'
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@11.7.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '24.22.1'
+          cache: pnpm
+          cache-dependency-path: clients/gui/pnpm-lock.yaml
       - name: Install locked GUI dependencies
         run: |
-          npm install --global pnpm@11.7.0
           pnpm --dir clients/gui install --frozen-lockfile
       - name: Select design audit baseline
         env:
@@ -259,18 +266,23 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.13'
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@11.7.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '24.22.1'
+          cache: pnpm
+          cache-dependency-path: clients/gui/pnpm-lock.yaml
       - name: Prepare locked GUI inputs with the supported build runtime
         run: |
-          npm install --global pnpm@11.7.0
           pnpm --dir clients/gui install --frozen-lockfile
           python3 scripts/ci-preflight.py --groups relay-build --output target/ci/checks/relay-build
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         if: ${{ !cancelled() }}
         with:
           node-version: '24.2.0'
+          cache: npm
+          cache-dependency-path: services/remote-relay/package-lock.json
       - name: Verify Relay contracts with their required runtime
         if: ${{ !cancelled() }}
         run: |

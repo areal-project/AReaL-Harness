@@ -100,8 +100,21 @@ def impact(paths):
     code = [
         path
         for path in paths
-        if not (path.endswith(".md") or path.startswith("docs/"))
-        or path.startswith("clients/gui/packages/ui/")
+        # 仅明确的说明文档可跳过；内置 SKILL.md、设计合同等仍是产品输入。
+        if not (
+            path.startswith("docs/")
+            or path
+            in {
+                "README.md",
+                "README.en.md",
+                "CONTRIBUTING.md",
+                "CONTRIBUTING.en.md",
+                "SECURITY.md",
+                "SECURITY.en.md",
+            }
+            or path.endswith(".md")
+            and path.startswith(("design/", "clients/gui/design-system/"))
+        )
     ]
     unknown = [
         path
@@ -318,6 +331,7 @@ def build_plan(paths, source, manifest):
             phase="commit",
         )
         add("docs", ["python3", "scripts/check-docs.py"], "early", phase="commit")
+    if affected["code"]:
         add(
             "dependency-audit",
             ["python3", "scripts/dependency-audit.py"],
@@ -761,6 +775,7 @@ if __name__ == "__main__":
             "target": "early,verify",
             "setup": "setup",
             "log": "verify",
+            "rust_cache": "verify" in groups,
         }
     ]
     if "native" in groups:
@@ -771,6 +786,7 @@ if __name__ == "__main__":
                 "target": "native",
                 "setup": "setup-node",
                 "log": "verify-native",
+                "rust_cache": True,
             }
         )
     outputs = {

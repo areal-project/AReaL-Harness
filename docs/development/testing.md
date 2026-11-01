@@ -63,6 +63,8 @@ pnpm --dir clients/gui test:unit renderer/src/readingViews.test.ts
 pnpm --dir clients/gui test:conversation-reading
 ```
 
+PR 工作流按 PR 编号取消旧运行；main 与手动运行按 run ID 独立分组，避免共享并发组替换等待中的 main 提交。纯说明文档保留轻量格式、合同和链接门禁，不下载 Cargo 依赖或恢复 Rust 构建缓存，也不运行依赖审计；内置 Skill Markdown 等产品输入仍按代码处理。工作流本身不使用 paths 跳过必需检查，最终门禁继续验证明确的不适用结果。Linux GUI 安装使用 setup-node 的 pnpm store 缓存，Relay 使用独立 Node 版本和 npm 锁文件缓存；依赖审计下载固定版本与 SHA-256 校验的官方 cargo-audit 二进制。
+
 `scripts/ci-scope.py` 是本地与 CI 共用的检查计划所有者；`check-changed` 解析一次 merge-base，合并暂存、未暂存与未跟踪路径，重命名两侧均纳入，部分暂存相互抵消也保留选检。计划登记命令、依赖、环境能力、平台和 manifest 子测试全集，并绑定 base/source/head 与输入摘要。共享 Rust、schema、锁文件、构建与 CI 变化扩大范围，未知代码保守扩大；比较基准不可用时不得放行。
 
 快检默认运行计划的 `commit` 阶段，加上历史报告中尚未通过的项目及其依赖，`ARGS=--phase=full` 执行完整计划。命令读取 `working-tree`，暂存内容影响选检和漂移检测；快检不证明部分暂存内容已执行验收。报告将未选的完整验收列为 `pendingRequired`，其他平台列为 `remoteRequired`。`passed` 只表示本轮所选项通过，`blocked`、`invalidated`、`failed` 均不得作为通过。

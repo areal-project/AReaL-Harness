@@ -11,8 +11,9 @@ defaults:
   run:
     shell: bash
 
+# PR 只保留最新一次；main/手动运行各自独立，避免替换 pending 提交。
 concurrency:
-  group: release-${{ github.event_name }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

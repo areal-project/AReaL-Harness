@@ -23,16 +23,17 @@ jobs:
         with:
           node-version: '24.22.1'
       - run: npm install --global pnpm@11.7.0
-      # 周一的独立审计不复用工具缓存，验证安装路径而不运行完整 GUI/macOS。
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
-        if: github.event_name != 'schedule'
-        id: audit-cache
-        with:
-          path: ~/.cargo/bin/cargo-audit
-          key: cargo-audit-${{ runner.os }}-${{ runner.arch }}-0.22.2
-      - name: Install cargo-audit
-        if: steps.audit-cache.outputs.cache-hit != 'true'
-        run: cargo install cargo-audit --version 0.22.2 --locked
+      - name: Install verified prebuilt cargo-audit
+        run: |
+          directory="$RUNNER_TEMP/cargo-audit"
+          mkdir -p "$directory"
+          curl --fail --silent --show-error --location \
+            https://github.com/rustsec/rustsec/releases/download/cargo-audit/v0.22.2/cargo-audit-x86_64-unknown-linux-gnu-v0.22.2.tgz \
+            --output "$directory/archive.tgz"
+          echo "ab28a1bdb54db4d5d8ad5981cf1f959410370b3d28250dbd35f6a44248620e39  $directory/archive.tgz" | sha256sum --check
+          tar -xzf "$directory/archive.tgz" -C "$directory" --strip-components=1
+          echo "$directory" >> "$GITHUB_PATH"
+          "$directory/cargo-audit" --version
       - name: Audit every lockfile even after Rust scanner installation failure
         if: ${{ !cancelled() }}
         run: |

@@ -19,9 +19,10 @@ env:
   CARGO_PROFILE_TEST_DEBUG: '0'
   CARGO_INCREMENTAL: '0'
 
+# PR 只保留最新一次；main/手动运行各自独立，避免替换 pending 提交。
 concurrency:
-  group: verify-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   plan:
@@ -31,6 +32,7 @@ jobs:
     outputs:
       host_matrix: ${{ steps.plan.outputs.host_matrix }}
       container: ${{ steps.plan.outputs.container }}
+      audit: ${{ steps.plan.outputs.audit }}
       input_hash: ${{ steps.plan.outputs.input_hash }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -78,10 +80,17 @@ jobs:
           if [ "$RUNNER_OS" = macOS ] && ! command -v cmake; then brew install cmake; fi
           cmake --version
           if [ "$RUNNER_OS" = Linux ]; then python3 -m pip install uv==0.12.2; fi
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - if: matrix.rust_cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Install locked dependencies
         run: |
-          make "${{ matrix.setup }}"
+          if [ "${{ matrix.rust_cache }}" = true ]; then
+            make "${{ matrix.setup }}"
+          else
+            # 轻量文档门禁只需格式工具，既不下载 Cargo 依赖也不安装 SDK。
+            npm ci --ignore-scripts
+            uv sync --locked --only-group dev
+          fi
           mkdir -p target/ci
       - name: Record tool and cache fingerprints
         run: python3 scripts/ci-fingerprint.py > target/ci/fingerprint.json
@@ -219,4 +228,6 @@ jobs:
 
   dependencies:
     name: Dependency advisories
+    needs: plan
+    if: needs.plan.outputs.audit == 'true'
     uses: ./.github/workflows/dependency-audit.yml
