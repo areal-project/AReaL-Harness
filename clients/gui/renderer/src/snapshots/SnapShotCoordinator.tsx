@@ -1,3 +1,5 @@
+import { SnapShotCaptureContext } from "./captureContext.js";
+import { readSnapShotSettings } from "@areal/workbench/desktop-contract/snapshots";
 import { sending } from "../composerDraftAttachments.js";
 import { composerDraftStorage } from "../composerDraftStorage.js";
 import {
@@ -6,7 +8,7 @@ import {
   dismissSnapShotAnimations,
   waitForSnapShotAnimation,
 } from "./animation.js";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type {
   SnapShotServices,
   SnapShotSettings,
@@ -193,4 +195,46 @@ export function SnapShotCoordinator({
       )}
     </div>
   );
+}
+
+export function SnapShotProvider({
+  bridge,
+  settings,
+  children,
+  ready,
+  openSettings,
+}: {
+  bridge?: SnapShotServices;
+  settings: unknown;
+  children: ReactNode;
+  ready?: boolean;
+  openSettings: () => void;
+}) {
+  useSnapShotSetupResume(ready === true, settings, bridge, openSettings);
+  const preferences = readSnapShotSettings(settings);
+  return (
+    <SnapShotCaptureContext.Provider value={preferences.snapShotEnabled ? bridge : undefined}>
+      <SnapShotCoordinator bridge={bridge} settings={preferences} />
+      {children}
+    </SnapShotCaptureContext.Provider>
+  );
+}
+export function useSnapShotSetupResume(
+  ready: boolean,
+  settings: unknown,
+  bridge: SnapShotServices | undefined,
+  openSettings: () => void,
+) {
+  const checked = useRef(false);
+  useEffect(() => {
+    if (checked.current || !ready || !bridge) return;
+    checked.current = true;
+    const preferences = readSnapShotSettings(settings);
+    if (
+      preferences.snapShotEnabled &&
+      preferences.setupStep &&
+      preferences.setupStep !== "complete"
+    )
+      openSettings();
+  }, [ready, settings, bridge, openSettings]);
 }

@@ -1,3 +1,5 @@
+import { Camera } from "lucide-react";
+import type { Translate } from "../i18n/IntlProvider.js";
 import { useEffect, useRef, useState } from "react";
 import {
   isModifierPairShortcut,
@@ -151,4 +153,24 @@ export function SnapShotShortcutRecorder({
       {recording ? t("snapshots.pressShortcut") : shortcutLabel(value)}
     </Button>
   );
+}
+
+export function snapShotCommandEntries(
+  bridge: SnapShotServices | undefined,
+  t: Translate,
+  onError: (message: string) => void,
+) {
+  if (!bridge) return [];
+  return [
+    {
+      value: "snapshot",
+      label: t("snapshots.capture"),
+      description: t("snapshots.shortcutDescription"),
+      icon: <Camera size={16} />,
+      group: "功能" as const,
+      run: () => {
+        void bridge.captureSnapShot().catch((cause: Error) => onError(cause.message));
+      },
+    },
+  ];
 }

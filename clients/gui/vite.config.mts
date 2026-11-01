@@ -182,7 +182,7 @@ export default defineConfig({
           "pnpm --filter @areal/gui-renderer exec tsc --ignoreConfig --project ../app/tsconfig.json",
           "pnpm --filter @areal/gui-renderer exec tsc --ignoreConfig --allowJs --checkJs --noEmit --skipLibCheck --target ES2022 --module NodeNext ../packages/workbench/client/desktop-contract.cjs",
         ],
-        dependsOn: ["ui-build"],
+        dependsOn: ["ui-build", "snapshots-build"],
         cache: false,
       },
     },

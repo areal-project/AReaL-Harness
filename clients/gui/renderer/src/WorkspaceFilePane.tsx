@@ -1,5 +1,4 @@
 import { WorkspaceDelimitedPreview } from "./WorkspaceDelimitedPreview.js";
-import { DiagramPreview } from "./components/ai-elements/message-code-block.js";
 import { Textarea } from "@areal/ui";
 // ZCode PreviewPane breadcrumb/header composition + its CodeViewer.
 // AReaL's optional edit mode uses the existing revision-checked workspace API.
@@ -28,6 +27,10 @@ import { CodeViewer } from "./components/ui/code-viewer.js";
 import type { Action, PlatformServices, FileOpenTargets } from "./services.js";
 import { useCodePreferences } from "./settings/preferences.js";
 import { useI18n } from "./i18n/IntlProvider.js";
+const DiagramPreview = lazy(async () => {
+  const { DiagramPreview } = await import("./components/ai-elements/message-code-block.js");
+  return { default: DiagramPreview };
+});
 const WorkspacePdfPreview = lazy(async () => {
   const { WorkspacePdfPreview } = await import("./WorkspacePdfPreview.js");
   return { default: WorkspacePdfPreview };
@@ -513,10 +516,12 @@ export function WorkspaceFilePane({
               />
             ) : markdown && isDiagram ? (
               <div className="p-3">
-                <DiagramPreview
-                  code={doc.text}
-                  theme={document.documentElement.classList.contains("dark") ? "dark" : "light"}
-                />
+                <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
+                  <DiagramPreview
+                    code={doc.text}
+                    theme={document.documentElement.classList.contains("dark") ? "dark" : "light"}
+                  />
+                </Suspense>
               </div>
             ) : isMarkdown && markdown ? (
               <div className="workspace-markdown-reading">

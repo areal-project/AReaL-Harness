@@ -215,16 +215,16 @@ impl Engine {
         }
         self.persist(&candidate).await?;
         state.thread = candidate;
-        if let Some(turn) = state.thread.turns.last() {
-            if let Some(activity) = turn.trace.activities.iter().find(|activity| {
+        if let Some(turn) = state.thread.turns.last()
+            && let Some(activity) = turn.trace.activities.iter().find(|activity| {
                 activity.id == measured.id
                     && matches!(activity.kind.as_str(), "model" | "retryWait")
-            }) {
-                cell.emit(
-                    "areal/turn/traceActivity",
-                    json!({"threadId":state.thread.id,"turnId":turn.id,"activity":activity}),
-                );
-            }
+            })
+        {
+            cell.emit(
+                "areal/turn/traceActivity",
+                json!({"threadId":state.thread.id,"turnId":turn.id,"activity":activity}),
+            );
         }
         Ok(())
     }

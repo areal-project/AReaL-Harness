@@ -646,17 +646,35 @@ try {
         });
       const toggleHere = async (control, key, label) => {
         await control.scrollIntoViewIfNeeded();
+        if (key) await control.focus();
         await settleLayout();
-        const before = await position(control);
+        await control.evaluate(
+          (el, eventName) => {
+            delete el.dataset.beforeDisclosure;
+            el.addEventListener(
+              eventName,
+              () => {
+                const container = el.closest(".messages");
+                el.dataset.beforeDisclosure = JSON.stringify({
+                  y: el.getBoundingClientRect().top - container.getBoundingClientRect().top,
+                  top: container.scrollTop,
+                  max: container.scrollHeight - container.clientHeight,
+                });
+              },
+              { once: true, capture: true },
+            );
+          },
+          key ? "keydown" : "pointerdown",
+        );
         const collapsing = await control.evaluate(
           (el) =>
             el.getAttribute("aria-expanded") === "true" ||
             el.parentElement?.matches("details[open]") === true,
         );
         if (key) {
-          await control.focus();
           await control.press(key);
         } else await control.click();
+        const before = JSON.parse(await control.getAttribute("data-before-disclosure"));
         await settleLayout();
         const after = await position(control);
         const clamped = collapsing ? Math.max(0, before.top - after.max) : 0;
@@ -825,6 +843,8 @@ try {
           `${shape} status is the turn tail`,
         );
         await settleLayout();
+        const bottom = reading.getByRole("button", { name: "滚动到底部", exact: true });
+        if (await bottom.isVisible()) await bottom.click();
         await status.scrollIntoViewIfNeeded();
         // IntersectionObserver publishes visibility asynchronously after layout.
         await page.waitForFunction(

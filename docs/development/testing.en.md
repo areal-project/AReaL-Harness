@@ -43,6 +43,11 @@ Integration tests that embed Runtime inside the Cargo test process need the matc
 
 Native Side acceptance also starts an MCP fixture at runtime through `CARGO_MANIFEST_DIR`. The image must copy that file to the corresponding source path. The offline contract extracts these paths from the test source and checks the image's COPY mappings; the Docker build also checks readability. Successful compilation does not establish delivery of runtime fixtures.
 
+
+Snapshot IPC registration and window ownership rechecks belong to `app/src/core/snapshots/host.cjs`. Health checks count owned source, excluding duplicate generated bundles under `snapshots/build/`. GUI type checking builds the native snapshot modules first for a clean checkout. Cloud upload regression tests bundle the real Composer upload and state modules, retaining the assertion that accepted receipts survive a partial batch failure.
+
+Diagram file previews dynamically import the shared message diagram component, keeping Mermaid outside initial static dependencies. The total budget includes the measured PDF preview and isolated worker sizes plus 5%. Bounded budgets cover the new PDF and diagram lazy chunks, redistributed KaTeX, snapshot desktop contracts, and the shared Remote entry. The existing `index.html` initial limit and all forbidden initial modules remain enforced. PRs must identify the source of budget changes for review.
+
 ## Repeatable faults, local checks, and cache acceptance
 
 Select relevant entry points from the repository root:

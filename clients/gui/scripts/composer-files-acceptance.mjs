@@ -293,7 +293,7 @@ export async function runComposerFilesAcceptance({
   );
   await assertNoReferenceAttachment();
   assert(
-    users(received.at(-1)).at(-1).includes(`[${selectedFile}](./mention-files/${selectedFile})`),
+    users(received.at(-1)).at(-1).includes(`[${selectedFile}](<./mention-files/${selectedFile}>)`),
   );
   assert(!users(received.at(-1)).at(-1).includes(workspace));
   checks.push(

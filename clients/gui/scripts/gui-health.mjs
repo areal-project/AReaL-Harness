@@ -35,7 +35,7 @@ export function reviewedBaselineTransition(name, before, current) {
 const gui = fileURLToPath(new URL("../", import.meta.url));
 const sourceExtension = /\.(?:cjs|mjs|js|jsx|ts|tsx|css)$/;
 const excluded =
-  /(?:^|\/)(?:vendor|generated|dist|node_modules|design-system)(?:\/|$)|(?:^|\/)i18n\/messages\/|\.(?:test|spec)\./;
+  /(?:^|\/)(?:vendor|generated|dist|node_modules|design-system)(?:\/|$)|(?:^|\/)app\/src\/core\/snapshots\/build\/|(?:^|\/)i18n\/messages\/|\.(?:test|spec)\./;
 const lines = (source) =>
   (source.match(/\n/g)?.length ?? 0) + (source.length > 0 && !source.endsWith("\n") ? 1 : 0);
 const sum = (files) => files.reduce((total, file) => total + file.lines, 0);

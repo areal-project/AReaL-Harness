@@ -1544,13 +1544,12 @@ impl Model for HttpModel {
             if transient
                 && attempt >= self.options.max_retries
                 && GOAL_REQUEST.try_with(|_| ()).is_err()
+                && let Ok(context) = crate::execution_trace::REQUEST_TRACE.try_with(Clone::clone)
             {
-                if let Ok(context) = crate::execution_trace::REQUEST_TRACE.try_with(Clone::clone) {
-                    context
-                        .engine
-                        .trace_retry(&context.cell, &context.logical_id, None, Some("exhausted"))
-                        .await?;
-                }
+                context
+                    .engine
+                    .trace_retry(&context.cell, &context.logical_id, None, Some("exhausted"))
+                    .await?;
             }
             break result.map_err(|error| {
                 let error = error.without_url();

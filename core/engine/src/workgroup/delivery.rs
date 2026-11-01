@@ -844,7 +844,7 @@ mod tests {
                 },
             );
             bundle.candidate.insert(
-                path.into(),
+                path,
                 tree::File {
                     bytes: b"late unsupported path".to_vec(),
                     executable: false,

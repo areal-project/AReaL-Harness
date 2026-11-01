@@ -1,6 +1,7 @@
 import { Popover, PopoverContent, PopoverTrigger } from "@areal/ui";
 import { AttachmentCard } from "@areal/ui/experimental";
 import { useEffect, useState } from "react";
+import { useI18n } from "./i18n/IntlProvider.js";
 import type { ContentBlock } from "@modelcontextprotocol/client";
 import { FileText } from "lucide-react";
 import { CloseIcon } from "./interfaceIcons.js";
@@ -20,21 +21,22 @@ export function useMcpDraft(key: string) {
   return entries;
 }
 export function McpContentLabel({ block }: { block: ContentBlock }) {
+  const { t } = useI18n();
   const title = block._meta?.["openai/title"];
   if (block.type === "image")
     return (
       <>
         <img
-          alt={typeof title === "string" ? title : "应用图片"}
+          alt={typeof title === "string" ? title : t("mcp.attachments.image")}
           src={`data:${block.mimeType};base64,${block.data}`}
           style={{ maxWidth: 96, maxHeight: 72 }}
         />
-        <span>{typeof title === "string" ? title : "应用图片"}</span>
+        <span>{typeof title === "string" ? title : t("mcp.attachments.image")}</span>
       </>
     );
   if (block.type === "text")
     return (
-      <SettingsDisclosure title={typeof title === "string" ? title : "应用文本"}>
+      <SettingsDisclosure title={typeof title === "string" ? title : t("mcp.attachments.text")}>
         <p style={{ whiteSpace: "pre-wrap" }}>{block.text}</p>
       </SettingsDisclosure>
     );
@@ -52,8 +54,9 @@ export function McpComposerAttachments({
   entries: McpDraftEntry[];
   disabled?: boolean;
 }) {
+  const { t } = useI18n();
   return entries.length ? (
-    <div className="composer-attachments" aria-label="应用附件">
+    <div className="composer-attachments" aria-label={t("mcp.attachments.label")}>
       {entries.map((entry) => {
         const { block } = entry;
         const title = block._meta?.["openai/title"];
@@ -68,10 +71,10 @@ export function McpComposerAttachments({
                   ? block.text
                       .split(/\r?\n/)
                       .find((line) => line.trim())
-                      ?.trim() || "应用文本"
+                      ?.trim() || t("mcp.attachments.text")
                   : block.type === "image"
-                    ? "应用图片"
-                    : "MCP 应用附件";
+                    ? t("mcp.attachments.image")
+                    : t("mcp.attachments.fallback");
         return (
           <AttachmentCard
             image={block.type === "image"}
@@ -83,7 +86,7 @@ export function McpComposerAttachments({
                 <PopoverTrigger
                   render={<AttachmentCard.Open />}
                   disabled={disabled}
-                  aria-label={`预览图片 ${name}`}
+                  aria-label={t("mcp.attachments.preview", { name })}
                 >
                   <img alt={name} src={`data:${block.mimeType};base64,${block.data}`} />
                 </PopoverTrigger>
@@ -94,13 +97,16 @@ export function McpComposerAttachments({
                   </AttachmentCard.Icon>
                   <AttachmentCard.Text>
                     <span title={name}>{name}</span>
-                    <PopoverTrigger disabled={disabled} aria-label={`查看应用附件 ${name}`}>
-                      查看附件 ›
+                    <PopoverTrigger
+                      disabled={disabled}
+                      aria-label={t("mcp.attachments.open", { name })}
+                    >
+                      {t("mcp.attachments.view")} ›
                     </PopoverTrigger>
                   </AttachmentCard.Text>
                 </>
               )}
-              <PopoverContent side="top" aria-label={`应用附件 ${name}`}>
+              <PopoverContent side="top" aria-label={t("mcp.attachments.named", { name })}>
                 {block.type === "image" ? (
                   <img
                     alt={name}
@@ -114,7 +120,7 @@ export function McpComposerAttachments({
             </Popover>
             <AttachmentCard.Remove
               disabled={disabled}
-              aria-label={`移除应用附件 ${name}`}
+              aria-label={t("mcp.attachments.remove", { name })}
               onClick={() => removeMcpDraft(draftKey, entry.id)}
             >
               <CloseIcon size={12} />

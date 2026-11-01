@@ -1,12 +1,11 @@
 export const remoteMessages = {
   "settings.relayService.reconfigure": {
-    "zh-CN": "已确认原服务器的程序、服务和数据均已移除，可修改服务器信息重新部署。",
-    en: "The previous server's program, service and data are confirmed removed. You can change the server details and deploy again.",
+    "zh-CN": "原服务器程序、服务及数据已移除，可修改信息重新部署。",
+    en: "The previous program, service and data are removed. Edit the server details to deploy again.",
   },
   "settings.relayService.correctAddress": {
-    "zh-CN":
-      "可修正此服务器的 HTTPS 地址后重新部署。更换 SSH 目标前，请先移除服务及数据并检查服务器状态。",
-    en: "Correct this server's HTTPS origin and deploy again. To change the SSH target, first remove the service and data, then check the server status.",
+    "zh-CN": "可修正 HTTPS 地址。更换 SSH 目标前，先移除服务及数据并检查状态。",
+    en: "Correct the HTTPS origin. Before changing the SSH target, remove the service and data and check its status.",
   },
   "settings.relayService.targetPlaceholder": {
     "zh-CN": "root@relay.example.com",
@@ -46,9 +45,8 @@ export const remoteMessages = {
   },
   "settings.relayService.ssh": { "zh-CN": "部署到 Linux 服务器", en: "Deploy to a Linux server" },
   "settings.relayService.sshDescription": {
-    "zh-CN":
-      "使用本机已有 SSH 配置与已信任的主机密钥。服务器需要 root 或免密 sudo，以及指向服务器的域名和可达的 80/443 端口。服务会自动续期 HTTPS 证书。",
-    en: "Uses your existing SSH configuration and trusted host keys. The server needs root or passwordless sudo, a domain pointing to it, and reachable ports 80 and 443. HTTPS certificates renew automatically.",
+    "zh-CN": "沿用本机 SSH 信任配置；需 root/免密 sudo、域名及 80/443 端口。",
+    en: "Uses local SSH trust settings. Requires root or passwordless sudo, a domain, and reachable ports 80 and 443.",
   },
   "settings.relayService.target": { "zh-CN": "SSH 目标", en: "SSH target" },
   "settings.relayService.port": { "zh-CN": "SSH 端口", en: "SSH port" },

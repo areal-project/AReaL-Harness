@@ -41,6 +41,11 @@ Linux 宿主常规检查使用 `make verify CARGO_TEST_ARGS='--exclude areal-run
 
 原生 Side 验收还在运行时通过 `CARGO_MANIFEST_DIR` 启动 MCP fixture。镜像必须复制该文件到对应源码路径；离线合同从测试源码提取路径并核对镜像的 COPY 映射，Docker 构建再检查文件可读性。编译通过不能证明运行时 fixture 已随镜像交付。
 
+
+截图 IPC 的注册与窗口归属复核由 `app/src/core/snapshots/host.cjs` 负责；健康检查只统计受控源码，不重复统计其 `snapshots/build/` 生成包。GUI 类型检查先生成截图原生模块，支持干净 checkout。Cloud 上传回归打包真实 Composer 上传与状态模块，保留部分批次失败后复用已接收回执的断言。
+
+图表文件预览通过动态导入复用消息图表组件，Mermaid 不进入首屏静态依赖。PDF 预览及独立 worker 按新增模块实测值加 5% 计入总量预算；新增 PDF 和图表懒加载 chunk、重分块后的 KaTeX、截图桌面契约及共享 Remote 入口分别登记有界预算。`index.html` 首屏上限与所有首屏禁载模块继续由原预算检查约束；预算变更须在 PR 中列明来源供审查。
+
 ## 可重复故障、本地快检与缓存验收
 
 从仓库根选择与改动相关的入口：

@@ -365,12 +365,12 @@ try {
       options: { permissionPreset: "fullAccess" },
     });
   await selectConversation(page, threadId);
-  await page.keyboard.press("Meta+t");
-  await page.locator(".preview-panel").waitFor();
   await app.evaluate(({ app, BrowserWindow }) => {
     app.focus({ steal: true });
     BrowserWindow.getAllWindows()[0].focus();
   });
+  await page.keyboard.press("Meta+t");
+  await page.locator(".preview-panel").waitFor();
   if (faultMode === "navigation") {
     // 完全访问夹具不触发本地站点授权弹框；截图仍要求真实窗口可见。
     await until(

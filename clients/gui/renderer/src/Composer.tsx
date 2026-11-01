@@ -1,4 +1,4 @@
-import { Camera } from "lucide-react";
+import { snapShotCommandEntries } from "./snapshots/shortcut.js";
 import { useSnapShotCapture } from "./snapshots/captureContext.js";
 import { useSnapShotDraft } from "./snapshots/activeDraft.js";
 import { consumeSnapShotFiles } from "./snapshots/drafts.js";
@@ -699,22 +699,7 @@ export function Composer({
           },
         ]
       : []),
-    ...(snapshotCapture
-      ? [
-          {
-            value: "snapshot",
-            label: t("snapshots.capture"),
-            description: t("snapshots.shortcutDescription"),
-            icon: <Camera size={16} />,
-            group: "功能" as const,
-            run: () => {
-              void snapshotCapture
-                .captureSnapShot()
-                .catch((cause: Error) => setDeliveryError(cause.message));
-            },
-          },
-        ]
-      : []),
+    ...snapShotCommandEntries(snapshotCapture, t, setDeliveryError),
     {
       value: "upload",
       label: "上传文件",

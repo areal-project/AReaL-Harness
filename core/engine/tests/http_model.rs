@@ -168,7 +168,14 @@ async fn sampling_parameters_reach_solve_and_summary_http_requests_without_dropp
         assert_eq!(audit["stopReason"], "stop");
         assert_eq!(audit["httpAttempts"], 1);
         assert_eq!(audit["bodySha256"].as_str().unwrap().len(), 64);
-        for private in ["hello", "fixture-secret", "127.0.0.1"] {
+        assert!(
+            audit["endpoint"]["origin"]
+                .as_str()
+                .unwrap()
+                .starts_with("http://127.0.0.1:")
+        );
+        assert_eq!(audit["endpoint"]["route"], "[redacted]");
+        for private in ["hello", "fixture-secret"] {
             assert!(!audit_text.contains(private));
         }
     }

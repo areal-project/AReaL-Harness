@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createRequire } from "node:module";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import vm from "node:vm";
@@ -331,4 +331,59 @@ test("destroyed WebContents releases shortcut recording and permits application 
   assert.equal(fixture.registered.size, 1);
   assert.doesNotThrow(() => fixture.owner.close());
   assert.equal(fixture.registered.size, 0);
+});
+
+test("SnapShot IPC rejects an expired owner before dispatch and after an asynchronous capture", async () => {
+  const handlers = new Map();
+  const source = await readFile(join(gui, "app/src/core/snapshots/host.cjs"), "utf8");
+  let allowed = true,
+    captures = 0,
+    finish;
+  const gate = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const instance = {
+    captureSnapShot: () => {
+      captures++;
+      return gate;
+    },
+  };
+  const module = { exports: {} };
+  vm.runInNewContext(source, {
+    module,
+    __dirname: join(gui, "app/src/core/snapshots"),
+    process,
+    require: (id) => {
+      if (id === "electron") return { app: { getPath: () => tmpdir(), on() {} } };
+      if (id === "../desktop-ipc.cjs")
+        return { handleDesktopIpc: (name, handler) => handlers.set(name, handler) };
+      if (id === "./build/DesktopSnapShots.cjs")
+        return {
+          DesktopSnapShots: class {
+            constructor() {
+              return instance;
+            }
+          },
+        };
+      if (id === "@areal/workbench/desktop-contract/snapshots") return contract;
+      return require(id);
+    },
+  });
+  module.exports.startSnapShots({
+    window: () => null,
+    revealWindow() {},
+    trusted() {
+      if (!allowed) throw new Error("expired owner");
+    },
+  });
+  const capture = handlers.get("areal-core:snap-shot-capture");
+  allowed = false;
+  await assert.rejects(capture({}), /expired owner/);
+  assert.equal(captures, 0);
+  allowed = true;
+  const result = capture({});
+  assert.equal(captures, 1);
+  allowed = false;
+  finish({ id: "capture" });
+  await assert.rejects(result, /expired owner/);
 });

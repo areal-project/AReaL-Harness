@@ -470,4 +470,30 @@ function terminalTheme(theme) {
   };
 }
 
-module.exports = { loadThemes, validate, engineCss, panelCss, terminalTheme, REQUIRED };
+/** @param {ReturnType<typeof loadThemes>} themes @param {string} themeId @param {boolean} dark */
+function desktopTheme(themes, themeId, dark) {
+  const id = themeId === "system" ? (dark ? "data-dense" : "soft-glass") : themeId;
+  const selected = themes.find((item) => item.id === id) ?? themes[0];
+  return {
+    platform: process.platform,
+    id: themeId,
+    dark: selected.dark,
+    css: engineCss(selected) + panelCss(selected),
+    options: themes.map((item) => ({
+      id: item.id,
+      name: item.name,
+      author: item.author,
+      swatch: [item.colors.bg, item.colors.bgRaised, item.colors.accent],
+    })),
+  };
+}
+
+module.exports = {
+  desktopTheme,
+  loadThemes,
+  validate,
+  engineCss,
+  panelCss,
+  terminalTheme,
+  REQUIRED,
+};

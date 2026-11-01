@@ -276,7 +276,24 @@ function isNotificationContent(value) {
     (value.silent === undefined || typeof value.silent === "boolean")
   );
 }
+/** @param {unknown} target @returns {import('@areal/workbench/desktop-contract').NotificationTarget|null} */
+function readNotificationTarget(target) {
+  if (!modelRecord(target) || typeof target.projectId !== "string") return null;
+  if ("taskId" in target && typeof target.taskId === "string") {
+    const runId = "runId" in target ? target.runId : undefined;
+    const questionId = "questionId" in target ? target.questionId : undefined;
+    if (
+      (runId !== undefined && typeof runId !== "string") ||
+      (questionId !== undefined && typeof questionId !== "string")
+    )
+      return null;
+    return { projectId: target.projectId, taskId: target.taskId, runId, questionId };
+  }
+  if (!("threadId" in target) || typeof target.threadId !== "string") return null;
+  return { projectId: target.projectId, threadId: target.threadId };
+}
 module.exports = {
+  readNotificationTarget,
   CoreNotifications,
   TaskNotificationMonitor,
   showCoreNotification,

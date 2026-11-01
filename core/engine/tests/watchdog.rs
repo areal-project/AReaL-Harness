@@ -949,11 +949,18 @@ async fn goal_http_rejections_preserve_the_cause_and_safe_audit() {
                 "private-url",
                 "private-key",
                 "private-prompt",
-                "127.0.0.1",
             ] {
                 assert!(!audit_text.contains(private), "{private}");
                 assert!(!error.contains(private), "{private}");
             }
+            assert!(
+                audit["endpoint"]["origin"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("http://127.0.0.1:")
+            );
+            assert_eq!(audit["endpoint"]["route"], "[redacted]");
+            assert!(!error.contains("127.0.0.1"));
             engine.shutdown().await;
             server.abort();
             let _ = server.await;

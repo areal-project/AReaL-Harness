@@ -1,12 +1,9 @@
-import { SnapShotCaptureContext } from "./snapshots/captureContext.js";
-import { SnapShotCoordinator } from "./snapshots/SnapShotCoordinator.js";
-import { readSnapShotSettings } from "@areal/workbench/desktop-contract/snapshots";
+import { WorkbenchProviders } from "./app-shell/WorkbenchProviders.js";
 import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { WorkSurface, WorkbenchShell } from "./app-shell/WorkbenchShell.js";
 import { BackendStatusNotice } from "./BackendStatusNotice.js";
 import { Button } from "./components/ui/button.js";
 import { sending, subscribeSending } from "./Composer.js";
-import { ComputerControlContext } from "./ComputerControlEntry.js";
 import { GenUiWorkspace } from "./GenUiWorkspace.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { Inbox } from "./Inbox.js";
@@ -378,23 +375,6 @@ function AppContent({ services }: { services: PlatformServices }) {
     contextReturn,
   );
   const { setTerminalOpen, showFiles, openTerminal, hidePanel, showPanel } = panelNavigation;
-  const snapShotResumeChecked = React.useRef(false);
-  useEffect(() => {
-    if (
-      snapShotResumeChecked.current ||
-      !startupReady ||
-      snapshot.connection?.state !== "ready" ||
-      !services.snapShots
-    )
-      return;
-    snapShotResumeChecked.current = true;
-    const settings = readSnapShotSettings(library.settings?.snapShot);
-    if (!settings.snapShotEnabled || !settings.setupStep || settings.setupStep === "complete")
-      return;
-    setSettingsTab("SnapShots");
-    showPanel("设置");
-  }, [startupReady, snapshot.connection?.state, library.settings?.snapShot, services.snapShots]);
-
   useEffect(panelNavigation.subscribeNarrowLayout, [panel, workspaceView]);
   useEffect(panelNavigation.subscribeShortcuts, [
     initialReleased,
@@ -492,14 +472,14 @@ function AppContent({ services }: { services: PlatformServices }) {
       panelBody={panelBody}
     />
   );
-  const workbench = (
-    <ComputerControlContext.Provider
-      value={{
-        visible: library.settings?.computerControlShowEntry === true,
-        open: () => {
-          setSettingsTab("电脑控制");
-          showPanel("设置");
-        },
+  return (
+    <WorkbenchProviders
+      bridge={services.snapShots}
+      settings={library.settings}
+      ready={startupReady && snapshot.connection?.state === "ready"}
+      openSettings={(tab) => {
+        setSettingsTab(tab);
+        showPanel("设置");
       }}
     >
       <WorkbenchShell
@@ -519,10 +499,6 @@ function AppContent({ services }: { services: PlatformServices }) {
         data-shell-ready={shellReady}
       >
         <ToastHost />
-        <SnapShotCoordinator
-          bridge={services.snapShots}
-          settings={readSnapShotSettings(library.settings?.snapShot)}
-        />
         {snapshot.computerControl?.active === true && (
           <div
             role="status"
@@ -789,17 +765,6 @@ function AppContent({ services }: { services: PlatformServices }) {
           </>
         )}
       </WorkbenchShell>
-    </ComputerControlContext.Provider>
-  );
-  return (
-    <SnapShotCaptureContext.Provider
-      value={
-        readSnapShotSettings(library.settings?.snapShot).snapShotEnabled
-          ? services.snapShots
-          : undefined
-      }
-    >
-      {workbench}
-    </SnapShotCaptureContext.Provider>
+    </WorkbenchProviders>
   );
 }
