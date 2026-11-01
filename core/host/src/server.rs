@@ -348,6 +348,9 @@ impl Host {
         if let Some(receipt) = self.journal.operation(id)? {
             return Ok(Some(receipt));
         }
+        if let Some(receipt) = self.migration.vault.operation(id, &self.migration)? {
+            return Ok(Some(receipt));
+        }
         self.remote.operation(id, &self.migration)
     }
     fn client_state(
@@ -468,6 +471,12 @@ impl Host {
                 }
                 self.journal.dispatch(method, params, &connection.id)
             }
+            "vault.read" | "vault.replace" => self.migration.vault.dispatch(
+                method,
+                params,
+                &self.identity.generation,
+                &self.migration,
+            ),
             "remote.read" | "remote.replace" | "remote.acquire" => self.remote.dispatch(
                 method,
                 params,
@@ -651,6 +660,7 @@ impl Host {
     ) -> Result<Value> {
         if method.starts_with("gui.")
             || method.starts_with("journal.")
+            || method.starts_with("vault.")
             || method.starts_with("remote.")
         {
             return self.client_state(method, params, connection);
@@ -936,17 +946,30 @@ impl Host {
                 .all(|k| inputs.credential_names.contains(k)),
             "invalidRequest: credentials must be named by launch inputs"
         );
+        let imported_source = self
+            .migration
+            .credential_source(&input.project_id)?
+            .is_some();
         let mut imported_credentials = BTreeMap::new();
         for name in &inputs.credential_names {
-            if let Some(value) = self.migration.credential(&input.project_id, name)? {
-                imported_credentials.insert(name.clone(), value);
+            if imported_source && name.starts_with("AREAL_CREDENTIAL_") {
+                imported_credentials.insert(
+                    name.clone(),
+                    self.migration.credential(&input.project_id, name)?,
+                );
             }
         }
         let credentials = {
             let mut slots = self.slots.borrow_mut();
             let slot = slots.get_mut(&input.project_id).unwrap();
-            slot.credentials.extend(imported_credentials);
             slot.credentials.extend(input.credentials.clone());
+            for (name, value) in imported_credentials {
+                if let Some(value) = value {
+                    slot.credentials.insert(name, value);
+                } else {
+                    slot.credentials.remove(&name);
+                }
+            }
             slot.credentials.clone()
         };
         let (mut spec, _) =
@@ -1703,8 +1726,8 @@ mod tests {
     use super::*;
     use crate::Client;
 
-    #[test]
-    fn unpublished_cli_import_blocks_journal_read_prepare_and_bound_commit() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn unpublished_cli_import_blocks_journal_read_prepare_and_bound_commit() {
         use std::os::fd::AsRawFd;
         let root = tempfile::tempdir().unwrap();
         let base = root.path().canonicalize().unwrap();
@@ -1747,6 +1770,8 @@ mod tests {
         let lock = storage::open_private(&data.join("owner.lock"), true).unwrap();
         lock.try_lock_exclusive().unwrap();
         let (changes, _) = watch::channel(0);
+        let mut migration = crate::migration::Migration::new(&home).unwrap();
+        migration.vault = crate::vault::Vault::isolated_files(&home);
         let host = Rc::new(Host {
             home: home.clone(),
             bin: base.clone(),
@@ -1768,7 +1793,7 @@ mod tests {
             host_stop_gate: Mutex::new(()),
             changes,
             exit: Notify::new(),
-            migration: crate::migration::Migration::new(&home).unwrap(),
+            migration,
             journal,
             remote: crate::remote_state::RemoteState::new(&home),
         });
@@ -1797,6 +1822,95 @@ mod tests {
                 "{method}: {error:#}"
             );
         }
+        drop(lock);
+        let ready = host.client_state("gui.import", json!({"requestId":result["requestId"],"expectedGeneration":"generation","source":source}), &connection).unwrap();
+        assert_eq!(ready["kind"], "ready");
+        let vault_slot =
+            json!({"kind":"subscriptionTransport","sourceId":ready["receipt"]["sourceId"]});
+        assert_eq!(
+            host.client_state("vault.read", json!({"slot":vault_slot}), &connection)
+                .unwrap(),
+            json!({"revision":0,"value":null})
+        );
+        let vault_id = uuid::Uuid::new_v4().to_string();
+        let receipt = host.client_state("vault.replace",json!({"requestId":vault_id,"expectedGeneration":"generation","slot":vault_slot,"expectedRevision":0,"value":{"token":"isolated-dummy","port":1234}}),&connection).unwrap();
+        assert_eq!(receipt["state"], "completed");
+        assert_eq!(host.client_operation(&vault_id).unwrap().unwrap(), receipt);
+        assert!(
+            host.client_state(
+                "remote.replace",
+                json!({"requestId":vault_id,"expectedGeneration":"generation"}),
+                &connection
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("requestConflict")
+        );
+        assert!(host.client_state("vault.replace",json!({"requestId":result["requestId"],"expectedGeneration":"generation","slot":vault_slot,"expectedRevision":1,"value":null}),&connection).unwrap_err().to_string().contains("requestConflict"));
+        let reference = "AREAL_CREDENTIAL_key";
+        let credential_slot = json!({"kind":"providerCredential","sourceId":ready["receipt"]["sourceId"],"reference":reference});
+        host.client_state("vault.replace",json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":"generation","slot":credential_slot,"expectedRevision":0,"value":"vault-secret"}),&connection).unwrap();
+        let config_home = base.join("config");
+        storage::private_dir(&config_home).unwrap();
+        for name in [
+            "areal",
+            "areal-runtime",
+            "areal-runtime-fs",
+            "areal-runtime-reaper",
+        ] {
+            std::fs::write(base.join(name), "fixture").unwrap();
+        }
+        let input = Ensure {
+            request_id: uuid::Uuid::new_v4().to_string(),
+            expected_generation: "generation".into(),
+            project_id: project.clone(),
+            no_auto_restart: false,
+            launch_inputs: Some(LaunchInputs {
+                workspace: workspace.clone(),
+                cwd: workspace,
+                config_home,
+                homedir: Some(base.join("isolated-home")),
+                config_path: None,
+                deployment_path: None,
+                environment: BTreeMap::new(),
+                credential_names: vec![reference.into(), "OPENAI_API_KEY".into()],
+                options: areal_local_service::LocalArgs {
+                    api_key_env: Some(reference.into()),
+                    ..Default::default()
+                },
+            }),
+            credentials: BTreeMap::from([
+                (reference.into(), "stale-client-secret".into()),
+                ("OPENAI_API_KEY".into(), "run-scoped-secret".into()),
+            ]),
+        };
+        let first = host.ensure_inner(&input).await.unwrap_err();
+        assert!(
+            first.to_string().contains("missing activation receipt"),
+            "{first:#}"
+        );
+        assert_eq!(
+            host.slots.borrow()[&project].credentials[reference],
+            "vault-secret"
+        );
+        host.client_state("vault.replace",json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":"generation","slot":credential_slot,"expectedRevision":1,"value":null}),&connection).unwrap();
+        assert!(
+            host.ensure_inner(&input)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("credentialsRequired")
+        );
+        assert!(
+            !host.slots.borrow()[&project]
+                .credentials
+                .contains_key(reference),
+            "revoked secret must be removed from the same Host cache"
+        );
+        assert_eq!(
+            host.slots.borrow()[&project].credentials["OPENAI_API_KEY"],
+            "run-scoped-secret"
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]

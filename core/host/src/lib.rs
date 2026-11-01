@@ -24,6 +24,7 @@ pub const CAPABILITIES: &[&str] = &[
     "legacyMigration",
     "guiImport",
     "submissionJournal",
+    "credentialVault",
     "remoteState",
 ];
 

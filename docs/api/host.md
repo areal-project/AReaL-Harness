@@ -2,7 +2,7 @@
 
 # 共享 Host 协议
 
-本文包含已实现接口与后续目标契约。Host 提供认证后的项目管理、停止回执、订阅、旧服务迁移，以及 H2 的来源导入、提交 journal 和 Remote 状态接口。`hello` 声明 `projects`、`stopOperations`、`subscriptions`、`legacyMigration`、`guiImport`、`submissionJournal` 和 `remoteState`，尚不提供 `updates` 或通用 `credentialVault`。普通 GUI 消费者与生命周期切换、旧密文退役、Remote 执行和服务管理器交付仍未完成。协议定义不代表运行或安装包验收通过。另见[实施规格](../development/shared-host-spec.md)、[所有权决策](../adr/0016-shared-host.md)与[每项目服务契约](local-service.md)。
+本文包含已实现接口与后续目标契约。Host 提供认证后的项目管理、停止回执、订阅、旧服务迁移，以及 H2 的来源导入、提交 journal、固定凭据槽与 Remote 状态接口。`hello` 声明 `projects`、`stopOperations`、`subscriptions`、`legacyMigration`、`guiImport`、`submissionJournal`、`credentialVault` 和 `remoteState`，尚不提供 `updates`。普通 GUI 消费者与生命周期切换、旧密文退役、Remote 执行和服务管理器交付仍未完成。协议定义不代表运行或安装包验收通过。另见[实施规格](../development/shared-host-spec.md)、[所有权决策](../adr/0016-shared-host.md)与[每项目服务契约](local-service.md)。
 
 ## 传输与认证
 
@@ -106,7 +106,22 @@ GUI 根目录中的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` �
 
 journal 快照为 `{version:1,pending:object[],outcomes:object}`，保留条目内的未知字段。固定文件槽位承载大于 1 MiB 的快照，控制帧仍受传输上限约束。prepare 或 commit 的 CAS 冲突通过 `result.state:"blocked"` 与 `result.error.code:"revisionConflict"` 表达，不是顶层 RPC error。只有该明确冲突允许重读并重新计算修改。断连、超时或未决 commit 只允许查询原 requestId，不重新执行修改 closure 或 Core 派发。
 
-在线 `host.operation` 也查询来源导入、秘密写入、journal 与 Remote 替换回执。离线 CLI 查询目前只覆盖生命周期回执，不能把离线缺失当作这些 H2 操作未受理。Remote 状态写入中断后依据原稳定 vault entry 与 revision 核查，不使用新 requestId 重放。
+在线 `host.operation` 也查询来源导入、秘密写入、journal、vault 与 Remote 替换回执。离线 CLI 查询目前只覆盖生命周期回执，不能把离线缺失当作这些 H2 操作未受理。Remote 状态写入中断后依据原稳定 vault entry 与 revision 核查，不使用新 requestId 重放。
+
+## 固定凭据槽
+
+`credentialVault` 只服务已发布 GUI 来源。槽位为 `{kind:"providerCredential",sourceId,reference}`、`{kind:"subscriptionAccount",sourceId,providerId}` 或 `{kind:"subscriptionTransport",sourceId}`。`reference` 使用原 `AREAL_CREDENTIAL_*` 名称。不同来源的同名引用独立。Remote 身份仍归 `remote.read/replace`；通过 vault 访问 `remoteIdentity` 返回 `remoteStateRequired`。
+
+| 方法            | 请求 params                                                  | result                                                                                                          |
+| --------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `vault.read`    | `{slot}`                                                     | `{revision,value}`。已发布来源中尚无值的槽返回 revision 0 与 null。                                             |
+| `vault.replace` | `{requestId,expectedGeneration,slot,expectedRevision,value}` | 原写入回执，包含 `requestId`、`method`、`slot`、`previousRevision`、`entryId`、`state`，完成时包含 `revision`。 |
+
+provider 值是非空字符串或 null；subscription 值是完整记录对象或 null。null 是持久撤销值，并增加 revision。原导入回执只初始化尚不存在的槽，不覆盖后续替换或撤销。过期 expectedRevision 在写入前返回顶层 `revisionConflict` 错误，客户端不得重做远端 OAuth refresh。
+
+写入先保存非秘密 acceptedPending 回执，再保存稳定 vault entry 并读回验证，最后原子提交槽版本和 completed 回执。恢复根据原 entry 与版本结算；系统存储锁定仍返回 `storageLocked`，不推断为缺失。明确缺失的 entry 可结算为 `blocked/storageWriteNotApplied`。操作回执不含秘密值或秘密的普通哈希。丢失响应只查询原 requestId。
+
+每次激活已导入项目时，Host 从当前 vault 获取固定 provider 引用。撤销会移除 Host 的旧缓存值，客户端提交的旧值不能覆盖 vault。普通 CLI 项目与非固定引用沿用既有按启动输入提供凭据的方式。此接口尚未替换 GUI 的设置与订阅消费者，也不宣称撤销已注入运行中 Core 的凭据。
 
 ## 退出与服务管理器契约
 

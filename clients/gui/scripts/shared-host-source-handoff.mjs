@@ -68,6 +68,15 @@ async function unit() {
     loseCommit = false;
   const slots = new Map(),
     operations = new Map();
+  const credentialSlot = {
+    kind: "subscriptionAccount",
+    sourceId: randomUUID(),
+    providerId: "openai",
+  };
+  let credentialRevision = 1,
+    credentialValue = { token: "dummy-original" },
+    credentialWrites = 0,
+    loseCredentialReply = false;
   const server = createServer((socket) => {
     let bytes = "";
     async function respond(request) {
@@ -79,13 +88,46 @@ async function unit() {
           version: 1,
           hostId,
           generation,
-          capabilities: ["guiImport", "submissionJournal"],
+          capabilities: ["guiImport", "submissionJournal", "credentialVault"],
         };
       } else if (request.method === "host.operation") {
-        result = operations.get(params.requestId) ?? {
+        result = { operation: operations.get(params.requestId) ?? null };
+      } else if (request.method === "vault.read") {
+        assert.deepEqual(params.slot, credentialSlot);
+        result = { revision: credentialRevision, value: credentialValue };
+      } else if (request.method === "vault.replace") {
+        assert.deepEqual(params.slot, credentialSlot);
+        assert.equal(params.expectedGeneration, generation);
+        credentialWrites++;
+        if (params.expectedRevision !== credentialRevision) {
+          socket.write(
+            JSON.stringify({
+              version: 1,
+              id: request.id,
+              error: { code: "revisionConflict", message: "vault revision changed" },
+            }) + "\n",
+          );
+          return;
+        }
+        result = {
           requestId: params.requestId,
-          state: "completed",
+          method: "vault.replace",
+          slot: credentialSlot,
+          previousRevision: params.expectedRevision,
         };
+        credentialValue = params.value;
+        credentialRevision++;
+        result = {
+          ...result,
+          state: "completed",
+          revision: credentialRevision,
+          entryId: randomUUID(),
+        };
+        operations.set(params.requestId, result);
+        if (loseCredentialReply) {
+          socket.destroy();
+          return;
+        }
       } else if (request.method === "journal.read") {
         const snapshotPath = join(storage, randomUUID() + ".snapshot");
         const content = Buffer.from(JSON.stringify(snapshot));
@@ -183,7 +225,34 @@ async function unit() {
   try {
     await client.connect(hostHome);
     const requestId = randomUUID();
-    assert.equal((await client.operation(requestId)).requestId, requestId);
+    assert.equal((await client.operation(requestId)).operation, null);
+    assert.deepEqual(await client.vaultRead(credentialSlot), {
+      revision: 1,
+      value: { token: "dummy-original" },
+    });
+    const logout = await client.vaultReplace(randomUUID(), credentialSlot, 1, null);
+    assert.equal(logout.state, "completed");
+    assert.equal(logout.revision, 2);
+    await assert.rejects(
+      client.vaultReplace(randomUUID(), credentialSlot, 1, { token: "dummy-stale-refresh" }),
+      (error) => error.code === "revisionConflict",
+    );
+    assert.equal(credentialWrites, 2, "SDK must not retry a stale refresh");
+    assert.equal((await client.vaultRead(credentialSlot)).value, null);
+    loseCredentialReply = true;
+    const lostCredentialId = randomUUID();
+    await assert.rejects(
+      client.vaultReplace(lostCredentialId, credentialSlot, 2, { token: "dummy-new-login" }),
+      (error) => error.requestId === lostCredentialId && error.operation === "vault.replace",
+    );
+    client.close();
+    await client.connect(hostHome);
+    const recoveredCredential = (await client.operation(lostCredentialId)).operation;
+    assert.equal(recoveredCredential.state, "completed");
+    assert.equal(recoveredCredential.requestId, lostCredentialId);
+    assert.equal(credentialWrites, 3, "lost response must not replay a credential write");
+    assert.equal(JSON.stringify(recoveredCredential).includes("dummy-new-login"), false);
+    loseCredentialReply = false;
     await assert.rejects(
       client.request("oversized", { value: "x".repeat(1024 * 1024) }),
       /exceeds 1 MiB/,
@@ -225,7 +294,7 @@ async function unit() {
     const recovered = new HostClient();
     try {
       await recovered.connect(hostHome);
-      assert.equal((await recovered.operation(lostId)).state, "completed");
+      assert.equal((await recovered.operation(lostId)).operation.state, "completed");
     } finally {
       recovered.close();
     }
@@ -291,6 +360,9 @@ async function unit() {
     checks: [
       "private discovery and authenticated fragmented hello",
       "bounded frames",
+      "missing operation remains null",
+      "credential CAS conflict is returned without refresh retry",
+      "lost credential response retains original requestId without replay",
       "journal snapshot larger than 1 MiB preserved",
       "CAS conflict retries closure from latest snapshot",
       "lost commit response queries original operation without replay",

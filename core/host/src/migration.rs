@@ -1198,21 +1198,35 @@ impl Migration {
         }
         Ok(None)
     }
-    pub fn credential(&self, project: &str, reference: &str) -> Result<Option<String>> {
+    pub fn vault_seed(&self, slot: &vault::Slot) -> Result<Option<vault::Receipt>> {
+        let source = slot.source_id()?;
+        for record in self.records()? {
+            if record.source_id == source && self.committed(&record)?.is_some() {
+                return Ok(record
+                    .vault_receipts
+                    .into_iter()
+                    .find(|receipt| receipt.slot == *slot && receipt.state == "completed"));
+            }
+        }
+        Err(error("sourceNotFound", "vault source is not published"))
+    }
+    pub fn credential_source(&self, project: &str) -> Result<Option<String>> {
         for r in self.records()? {
             if self.committed(&r)?.is_some() && r.bindings.iter().any(|b| b.project_id == project) {
-                for receipt in &r.vault_receipts {
-                    if matches!(&receipt.slot,vault::Slot::ProviderCredential{reference:r,..} if r==reference)
-                    {
-                        return Ok(self
-                            .vault
-                            .read(&receipt.entry_id)?
-                            .and_then(|v| v.as_str().map(str::to_owned)));
-                    }
-                }
+                return Ok(Some(r.source_id));
             }
         }
         Ok(None)
+    }
+    pub fn credential(&self, project: &str, reference: &str) -> Result<Option<String>> {
+        if !reference.starts_with("AREAL_CREDENTIAL_") {
+            return Ok(None);
+        }
+        let Some(source_id) = self.credential_source(project)? else {
+            return Ok(None);
+        };
+        let result = self.vault.dispatch("vault.read", json!({"slot":vault::Slot::ProviderCredential {source_id, reference:reference.to_owned()}}), "", self)?;
+        Ok(result["value"].as_str().map(str::to_owned))
     }
 }
 fn legacy_id(id: &str) -> bool {
@@ -1688,6 +1702,84 @@ mod tests {
             "completed"
         );
         assert_eq!(f.import().unwrap()["kind"], "ready");
+    }
+
+    #[test]
+    fn published_vault_seed_never_resets_replacement_or_revocation() {
+        let f = Fixture::new();
+        storage::write(
+            &f.source.core_home.join("provider-credentials.json"),
+            &json!({"keys":{"AREAL_CREDENTIAL_key":"dummy-cipher"}}),
+        )
+        .unwrap();
+        f.attach();
+        f.import().unwrap();
+        let record = f.migration.read(&f.request).unwrap();
+        let slot = record.secrets[0].slot.clone();
+        assert!(
+            f.migration
+                .vault
+                .dispatch("vault.read", json!({"slot":slot}), "fixture", &f.migration)
+                .unwrap_err()
+                .to_string()
+                .contains("sourceNotFound")
+        );
+        f.migration
+            .import_secret(
+                ImportSecret {
+                    request_id: uuid::Uuid::new_v4().to_string(),
+                    expected_generation: "fixture".into(),
+                    migration_id: f.request.clone(),
+                    slot: slot.clone(),
+                    source_digest: record.secrets[0].source_digest.clone(),
+                    value: json!("imported-secret"),
+                },
+                "connection",
+            )
+            .unwrap();
+        assert!(
+            f.migration
+                .vault
+                .dispatch("vault.read", json!({"slot":slot}), "fixture", &f.migration)
+                .is_err(),
+            "secret receipt alone does not publish the source"
+        );
+        assert_eq!(f.import().unwrap()["kind"], "ready");
+        assert_eq!(
+            f.migration
+                .vault
+                .dispatch("vault.read", json!({"slot":slot}), "fixture", &f.migration)
+                .unwrap(),
+            json!({"revision":1,"value":"imported-secret"})
+        );
+        for (revision, value) in [(1, json!("replacement-secret")), (2, Value::Null)] {
+            let receipt = f.migration.vault.dispatch("vault.replace",json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":"fixture","slot":slot,"expectedRevision":revision,"value":value}),"fixture",&f.migration).unwrap();
+            assert_eq!(receipt["revision"], revision + 1);
+        }
+        let mut restarted = Migration::new(&f.migration.home).unwrap();
+        restarted.vault = vault::Vault::isolated_files(&f.migration.home);
+        assert_eq!(
+            restarted
+                .vault
+                .dispatch("vault.read", json!({"slot":slot}), "fixture", &restarted)
+                .unwrap(),
+            json!({"revision":3,"value":null})
+        );
+        assert_eq!(
+            restarted
+                .credential(&f.ids[0], "AREAL_CREDENTIAL_key")
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            restarted.credential(&f.ids[0], "OPENAI_API_KEY").unwrap(),
+            None
+        );
+        assert_eq!(
+            restarted.vault.read(&record.secrets[0].entry_id).unwrap(),
+            Some(json!("imported-secret")),
+            "immutable import evidence remains separate from current revision"
+        );
     }
 
     #[test]

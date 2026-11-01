@@ -7,6 +7,8 @@ const { connect } = require("node:net");
 const { join, isAbsolute, relative, sep } = require("node:path");
 const MAX_FRAME = 1024 * 1024;
 
+/** @typedef {{kind:"providerCredential",sourceId:string,reference:string}|{kind:"subscriptionAccount",sourceId:string,providerId:string}|{kind:"subscriptionTransport",sourceId:string}} VaultSlot */
+
 /** @param {string} path */
 async function privateJson(path) {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -179,6 +181,29 @@ class HostClient {
   /** @param {string} requestId */
   operation(requestId) {
     return this.request("host.operation", { requestId });
+  }
+  /** @param {VaultSlot} slot */
+  vaultRead(slot) {
+    this.requireCapability("credentialVault");
+    return this.request("vault.read", { slot });
+  }
+  /** @param {string} requestId @param {VaultSlot} slot @param {number} expectedRevision @param {unknown} value */
+  async vaultReplace(requestId, slot, expectedRevision, value) {
+    this.requireCapability("credentialVault");
+    try {
+      return await this.request("vault.replace", {
+        requestId,
+        expectedGeneration: this.generation,
+        slot,
+        expectedRevision,
+        value,
+      });
+    } catch (error) {
+      throw Object.assign(error instanceof Error ? error : new Error("Host vault write failed"), {
+        requestId,
+        operation: "vault.replace",
+      });
+    }
   }
   /** @param {string} projectId */
   journal(projectId) {

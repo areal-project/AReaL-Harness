@@ -2,7 +2,7 @@
 
 # Shared Host protocol
 
-The protocol includes implemented interfaces and later target contracts. Host provides authenticated project management, stop receipts, subscriptions, legacy service migration, and the H2 source-import, submission-journal, and Remote-state interfaces. `hello` advertises `projects`, `stopOperations`, `subscriptions`, `legacyMigration`, `guiImport`, `submissionJournal`, and `remoteState`. Neither `updates` nor general `credentialVault` access is available. Ordinary GUI consumers and lifecycle migration, old ciphertext retirement, Remote execution, and service-manager delivery remain incomplete. These definitions do not establish runtime or package acceptance. See the [implementation spec](../development/shared-host-spec.en.md), [ownership decision](../adr/0016-shared-host.en.md), and [per-project service contract](local-service.en.md).
+The protocol includes implemented interfaces and later target contracts. Host provides authenticated project management, stop receipts, subscriptions, legacy service migration, and the H2 source-import, submission-journal, fixed credential-slot, and Remote-state interfaces. `hello` advertises `projects`, `stopOperations`, `subscriptions`, `legacyMigration`, `guiImport`, `submissionJournal`, `credentialVault`, and `remoteState`. `updates` is unavailable. Ordinary GUI consumers and lifecycle migration, old ciphertext retirement, Remote execution, and service-manager delivery remain incomplete. These definitions do not establish runtime or package acceptance. See the [implementation spec](../development/shared-host-spec.en.md), [ownership decision](../adr/0016-shared-host.en.md), and [per-project service contract](local-service.en.md).
 
 ## Transport and authentication
 
@@ -106,7 +106,22 @@ Import first saves a fixed manifest and original-byte backups, then secrets and 
 
 A journal snapshot is `{version:1,pending:object[],outcomes:object}` and preserves unknown fields within entries. Fixed file slots carry snapshots larger than 1 MiB; control frames retain the transport limit. Prepare and commit CAS conflicts use `result.state:"blocked"` and `result.error.code:"revisionConflict"`, not a top-level RPC error. Only that explicit conflict permits rereading and recomputing a change. Disconnect, timeout, or an unresolved commit permits only querying the original requestId, not rerunning the mutation closure or dispatching to Core again.
 
-Online `host.operation` also queries source imports, secret writes, journals, and Remote replacement receipts. Offline CLI queries currently cover lifecycle receipts only; an absent offline result does not prove an H2 operation was not admitted. Interrupted Remote writes reconcile the original stable vault entry and revision rather than replaying with a new requestId.
+Online `host.operation` also queries source imports, secret writes, journals, vault writes, and Remote replacement receipts. Offline CLI queries currently cover lifecycle receipts only; an absent offline result does not prove an H2 operation was not admitted. Interrupted Remote writes reconcile the original stable vault entry and revision rather than replaying with a new requestId.
+
+## Fixed credential slots
+
+`credentialVault` serves published GUI sources only. Slots are `{kind:"providerCredential",sourceId,reference}`, `{kind:"subscriptionAccount",sourceId,providerId}`, or `{kind:"subscriptionTransport",sourceId}`. `reference` retains the original `AREAL_CREDENTIAL_*` name. Identical references from different sources remain separate. Remote identity still belongs to `remote.read/replace`; vault access to `remoteIdentity` returns `remoteStateRequired`.
+
+| Method          | Request params                                               | result                                                                                                                                            |
+| --------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vault.read`    | `{slot}`                                                     | `{revision,value}`. An unset slot in a published source returns revision 0 and null.                                                              |
+| `vault.replace` | `{requestId,expectedGeneration,slot,expectedRevision,value}` | The original write receipt, containing `requestId`, `method`, `slot`, `previousRevision`, `entryId`, and `state`, plus `revision` when completed. |
+
+Provider values are nonempty strings or null; subscription values are complete record objects or null. Null is a durable revocation and increments the revision. Original import receipts initialize absent slots only; they never overwrite later replacements or revocations. A stale expectedRevision returns a top-level `revisionConflict` error before writing. Clients must not repeat a remote OAuth refresh.
+
+A write first saves a non-secret acceptedPending receipt, then stores and verifies a stable vault entry, and finally atomically commits the slot version and completed receipt. Recovery reconciles the original entry and revision. Locked system storage still returns `storageLocked`, not evidence of absence. A confirmed missing entry can settle as `blocked/storageWriteNotApplied`. Operation receipts contain neither secret values nor ordinary hashes of secrets. A lost response permits querying the original requestId only.
+
+On each imported-project activation, Host reads fixed provider references from the current vault. Revocation removes the old Host cache value; stale client values cannot override the vault. Ordinary CLI projects and non-fixed references retain the existing launch-input credential behavior. These interfaces do not yet replace GUI settings or subscription consumers, and do not claim to revoke credentials already injected into a running Core.
 
 ## Exit and service-manager contract
 
