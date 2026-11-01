@@ -826,3 +826,179 @@ test("same-document unchanged URL invalidates observations without revoking curr
   assert.equal(human.page.control, "human");
   assert.equal(human.page.controlEpoch, 3);
 });
+
+test("local Ref clicks bind exact link destinations without restricting ordinary buttons", async () => {
+  const { ApprovedActions } = require("../app/src/core/preview-native/actions.cjs");
+  const { viewportFacts } = require("../app/src/core/preview-native/read-session.cjs");
+  for (const scenario of [
+    { origin: "http://127.0.0.1:8123", path: "/start#section" },
+    { origin: "http://localhost:8123", path: "/details?q=one#section" },
+    { origin: "http://[::1]:8123", path: "/details" },
+    { origin: "http://127.0.0.1:8123", path: "/start#section", changed: true },
+    { origin: "http://127.0.0.1:8123", path: null },
+    { origin: "http://127.0.0.1:8123", path: "/details", denied: true },
+  ]) {
+    const origin = scenario.origin;
+    let destination = scenario.path ? origin + scenario.path : null;
+    const identity = JSON.stringify([1, 1, 3, "main", 22]);
+    const inputs = [],
+      checkedUrls = [];
+    const viewport = { width: 500, height: 300, scrollX: 0, scrollY: 0, deviceScaleFactor: 1 };
+    const c = Object.assign(new EventEmitter(), {
+      isDestroyed: () => false,
+      isFocused: () => false,
+      getURL: () => origin + "/start",
+      getZoomFactor: () => 1,
+      debugger: Object.assign(new EventEmitter(), {
+        isAttached: () => true,
+        sendCommand: async (method, params) => {
+          if (method === "Page.getFrameTree") return { frameTree: { frame: { id: "main" } } };
+          if (method === "Page.createIsolatedWorld") {
+            assert.equal(params.frameId, "main");
+            return { executionContextId: 7 };
+          }
+          if (method === "DOM.resolveNode") {
+            assert.equal(params.backendNodeId, 22);
+            assert.equal(params.executionContextId, 7);
+            return { object: { objectId: "target" } };
+          }
+          if (method === "Accessibility.getPartialAXTree")
+            return {
+              nodes: [
+                {
+                  backendDOMNodeId: 22,
+                  role: { value: scenario.path ? "link" : "button" },
+                  name: { value: "Continue" },
+                },
+              ],
+            };
+          if (method === "DOM.describeNode")
+            return { node: { nodeName: scenario.path ? "A" : "BUTTON" } };
+          if (method === "DOM.getContentQuads")
+            return { quads: [[10, 10, 110, 10, 110, 40, 10, 40]] };
+          if (method === "DOM.getNodeForLocation") return { backendNodeId: 22 };
+          if (method === "Runtime.evaluate") return { result: { value: viewport } };
+          if (method === "Runtime.callFunctionOn")
+            return {
+              result: {
+                value: require("node:vm")
+                  .runInNewContext("(" + params.functionDeclaration + ")", {
+                    document: { characterSet: "UTF-8" },
+                    TextEncoder,
+                  })
+                  .apply(
+                    {
+                      tagName: scenario.path ? "A" : "BUTTON",
+                      type: scenario.path ? "" : "button",
+                      getAttribute: () => null,
+                      closest: (selector) =>
+                        selector === "a[href]" && destination ? { href: destination } : null,
+                    },
+                    params.arguments.map((argument) => argument.value),
+                  ),
+              },
+            };
+          if (method === "Runtime.releaseObject") return {};
+          assert.fail(`Unexpected CDP method ${method}`);
+        },
+      }),
+    });
+    const page = {
+      id: "page",
+      coreInstanceId: "core",
+      projectId: "project",
+      threadId: "thread",
+      control: "agent",
+      pageGeneration: 1,
+      documentGeneration: 1,
+      controlEpoch: 3,
+      refs: new Map([[identity, "r2"]]),
+      plans: new Map(),
+      needsObservation: false,
+      lastObservation: "snapshot",
+      lastObservationTurnId: "turn",
+      viewportRevision: 1,
+      inputPending: new Map(),
+      heldButtons: new Set(),
+      heldKeys: new Set(),
+      diagnosticsReady: true,
+      nativeControls: new Map(),
+      view: {
+        webContents: c,
+        setVisible() {},
+        getBounds: () => ({ x: 0, y: 0, width: 500, height: 300 }),
+      },
+      networkPolicy: {
+        canAuthorize(url) {
+          checkedUrls.push(url);
+          return !scenario.denied;
+        },
+      },
+    };
+    const window = { isFocused: () => false, webContents: { getZoomFactor: () => 1 } };
+    page.viewportKey = page.observedViewportKey = viewportFacts(window, page, viewport).key;
+    const targets = new NativePageTargets();
+    const actions = new ApprovedActions(
+      {
+        dispatchInput: async (_page, _method, parameters) => {
+          inputs.push(parameters.type);
+        },
+      },
+      {},
+      targets,
+      { window },
+      {},
+      {
+        actionPage: () => ({ page, c }),
+        workspaceOutstanding: () => 0,
+        pageStillOwned: () => true,
+        browserHostId: "host",
+        hostGeneration: 1,
+      },
+    );
+    const request = {
+      operation: "act",
+      parameters: { snapshotId: "snapshot", action: { kind: "click", ref: "r2" } },
+      pageId: "page",
+      pageGeneration: 1,
+      controlEpoch: 3,
+      coreInstanceId: "core",
+      coreGeneration: 1,
+      projectId: "project",
+      threadId: "thread",
+      turnId: "turn",
+      callId: "call",
+      browserHostId: "host",
+      hostGeneration: 1,
+      requestId: "request",
+    };
+    if (scenario.denied) {
+      await assert.rejects(actions.prepare(request), /human_takeover_required/);
+      assert.deepEqual(inputs, []);
+      continue;
+    }
+    const { plan } = await actions.prepare(request);
+    assert.equal(plan.localDevelopment, true);
+    assert.equal(plan.target.semantics?.targetUrl ?? null, destination);
+    if (scenario.changed) destination = origin + "/unapproved";
+    const execute = () => actions.execute({ ...request, browserApproval: { plan } });
+    if (scenario.changed) {
+      await assert.rejects(execute, /plan_stale/);
+      assert.deepEqual(inputs, []);
+      assert.equal(page.approvedActionNavigation, undefined);
+      continue;
+    }
+    const receipt = await execute();
+    assert.equal(receipt.dispatch, "confirmed");
+    assert.equal(receipt.inputConfirmed, true);
+    assert.deepEqual(inputs, ["mousePressed", "mouseReleased"]);
+    if (!destination) {
+      assert.equal(page.approvedActionNavigation, null);
+      assert.deepEqual(checkedUrls, []);
+      continue;
+    }
+    assert.deepEqual(checkedUrls, [destination, destination]);
+    assert.equal(targets.acceptActionNavigation(page, destination), true);
+    assert.equal(targets.acceptActionNavigation(page, destination), false);
+  }
+});

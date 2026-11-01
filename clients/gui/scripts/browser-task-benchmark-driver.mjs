@@ -31,6 +31,28 @@ const atomicJSON = async (path, value) => {
   await rename(temporary, path);
 };
 
+function browserObservation(value, pageId) {
+  if (typeof value === "string") {
+    try {
+      return browserObservation(JSON.parse(value), pageId);
+    } catch {
+      return null;
+    }
+  }
+  if (!value || typeof value !== "object") return null;
+  if (
+    value.pageId === pageId &&
+    typeof value.observationId === "string" &&
+    Array.isArray(value.nodes)
+  )
+    return value;
+  return (
+    Object.values(value)
+      .map((item) => browserObservation(item, pageId))
+      .find(Boolean) ?? null
+  );
+}
+
 export const taskCreateRequest = (projectId, taskId) => ({
   projectId,
   browserEnabled: true,
@@ -223,6 +245,15 @@ export async function prepareTaskBenchmark(path, workspace) {
   const configuration = JSON.parse(await readFile(path, "utf8"));
   assert.ok(["fixture", "real"].includes(configuration.mode));
   assert.ok(
+    configuration.fixtureRefLinkClicks === undefined ||
+      typeof configuration.fixtureRefLinkClicks === "boolean",
+    "fixtureRefLinkClicks must be a boolean",
+  );
+  assert.ok(
+    !configuration.fixtureRefLinkClicks || configuration.mode === "fixture",
+    "Ref link scripting is fixture-only",
+  );
+  assert.ok(
     SINGLE_TASK_CATALOG.some((task) => task.id === configuration.taskId) ||
       PAIRED_TASK_CATALOG.some((task) => task.id === configuration.taskId),
   );
@@ -287,8 +318,17 @@ export async function prepareTaskBenchmark(path, workspace) {
     operation: "command",
     parameters: { pageId, command: { method: "playwright", action: { name: "domSnapshot" } } },
   });
-  const fixtureSteps = () =>
-    external
+  const refLinkName = configuration.fixtureRefLinkClicks
+    ? { "todomvc/active": "Active", information: `Details for ${fixture.expected.name}` }[
+        fixture.id
+      ]
+    : null;
+  const refLinkSelector =
+    fixture.id === "todomvc/active"
+      ? '.filters a[href="#/active"]'
+      : `internal:role=link[name=${JSON.stringify(refLinkName)}s]`;
+  const fixtureSteps = () => {
+    const steps = external
       ? externalFixtureSteps(fixture.id, { pageId, origin: fixture.origin, initialSnapshot })
       : {
           "generated-local-html": [
@@ -330,6 +370,20 @@ export async function prepareTaskBenchmark(path, workspace) {
             ),
           ],
         }[fixture.id];
+    if (!refLinkName) return steps;
+    return steps.flatMap((step) =>
+      step.operation === "command" &&
+      step.parameters.command.action?.name === "locator" &&
+      step.parameters.command.action.selector === refLinkSelector &&
+      step.parameters.command.action.operation === "click"
+        ? [
+            { operation: "observe", parameters: { pageId } },
+            { fixtureRefClick: refLinkName },
+            { operation: "observe", parameters: { pageId } },
+          ]
+        : [step],
+    );
+  };
   return {
     fixture,
     configuration,
@@ -404,7 +458,28 @@ export async function prepareTaskBenchmark(path, workspace) {
         ),
       ];
       if (stage < steps.length) {
-        const step = steps[stage++];
+        const scripted = steps[stage++];
+        let step = scripted;
+        if (scripted.fixtureRefClick) {
+          assert.equal(steps[stage - 2]?.operation, "observe");
+          const observation = browserObservation(last?.content, pageId);
+          assert.ok(observation, "Ref click requires the immediately preceding observe receipt");
+          const matches = observation.nodes.filter(
+            (node) =>
+              node.role === "link" &&
+              node.name === scripted.fixtureRefClick &&
+              typeof node.ref === "string",
+          );
+          assert.equal(matches.length, 1, "Ref click requires one exact observed link");
+          step = {
+            operation: "act",
+            parameters: {
+              pageId,
+              snapshotId: observation.observationId,
+              action: { kind: "click", ref: matches[0].ref },
+            },
+          };
+        }
         if (step.operation !== "describe" && step.tool !== "fs_create")
           assert.ok(pageId, "next browser operation requires the actual describe receipt page ID");
         send(

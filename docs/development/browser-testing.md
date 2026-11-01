@@ -197,3 +197,5 @@ Core 入口沿用 `automation-core-smoke.mjs` 的隔离 home、真实 Core、审
 
 
 `pnpm --dir clients/gui run test:browser-navigation-recovery` 单独验证真实 command 导航：永久慢图片和重定向下本次文档可读，后续 locator 输入与点击产生真实 DOM 效果，截图尺寸按实际 DPR 位图及已知背景像素核对。未提交文档的实际接管和默认超时均保留 UNKNOWN，停止加载后控制转为 human，导航请求不重放。该入口直接经过 CorePreview，不经过真实 Core；完整 Core 门另由 `bench:browser-core` 验证。
+
+确定性任务配置可设置 `fixtureRefLinkClicks: true`，并经 `automation-core-smoke.mjs --suite browser --task-benchmark-config <配置文件>` 运行。该选项只用于 fixture 模式，将 TodoMVC Active 筛选与 information 详情链接的最后一次 locator 点击替换为新 observe、精确 role/name 对应的 Ref click、再 observe。Ref 和 snapshotId 仅取自紧邻的本次工具回执；缺失、歧义或其他页面的观察使夹具失败。其他控件、任务、评分与预算沿用原定义；真实模型模式拒绝该选项。

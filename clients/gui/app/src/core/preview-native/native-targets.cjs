@@ -91,6 +91,29 @@ function publicNativeControl(page, record) {
     }),
   };
 }
+/**
+ * @param {import("./model.js").Page} page
+ * @param {string} url
+ * @returns {Extract<import("./model.js").PublicSemantics,{kind:"link_navigation"}>}
+ */
+function linkNavigationIntent(page, url) {
+  let destination;
+  try {
+    destination = new URL(webUrl(url));
+  } catch {
+    throw new Error("human_takeover_required");
+  }
+  if (!page.networkPolicy.canAuthorize(destination.href))
+    throw new Error("human_takeover_required");
+  return {
+    kind: "link_navigation",
+    method: "GET",
+    targetOrigin: destination.origin,
+    targetPath: destination.pathname,
+    targetUrl: destination.href,
+  };
+}
+
 class NativePageTargets {
   /**
    */
@@ -249,14 +272,11 @@ class NativePageTargets {
   }
 
   /**
-   * @param {import('./model.js').Page} page
    * @param {import('./model.js').WebContents} c
    * @param {Pick<import('./model.js').NativeTarget,'backendNodeId'>} target
    * @param {Pick<import('./model.js').Action,'kind'|'key'>} action
-   * @param {boolean} requireQueryField
-   * @returns {Promise<import("./model.js").PublicSemantics>}
    */
-  async publicActionSemantics(page, c, target, action, requireQueryField = false) {
+  async actionFacts(c, target, action) {
     const frames = await c.debugger.sendCommand("Page.getFrameTree");
     const world = await c.debugger.sendCommand("Page.createIsolatedWorld", {
       frameId: frames.frameTree.frame.id,
@@ -335,6 +355,33 @@ class NativePageTargets {
     } finally {
       await c.debugger.sendCommand("Runtime.releaseObject", { objectId }).catch(() => {});
     }
+    return facts;
+  }
+
+  /**
+   * @param {import('./model.js').Page} page
+   * @param {import('./model.js').WebContents} c
+   * @param {Pick<import('./model.js').NativeTarget,'backendNodeId'>} target
+   * @param {Pick<import('./model.js').Action,'kind'|'key'>} action
+   * @returns {Promise<Extract<import("./model.js").PublicSemantics,{kind:"link_navigation"}>|null>}
+   */
+  async linkNavigationSemantics(page, c, target, action) {
+    if (action.kind !== "click") return null;
+    const facts = await this.actionFacts(c, target, action);
+    if (!facts?.link || facts.download) return null;
+    return linkNavigationIntent(page, facts.destination);
+  }
+
+  /**
+   * @param {import('./model.js').Page} page
+   * @param {import('./model.js').WebContents} c
+   * @param {Pick<import('./model.js').NativeTarget,'backendNodeId'>} target
+   * @param {Pick<import('./model.js').Action,'kind'|'key'>} action
+   * @param {boolean} requireQueryField
+   * @returns {Promise<import("./model.js").PublicSemantics>}
+   */
+  async publicActionSemantics(page, c, target, action, requireQueryField = false) {
+    const facts = await this.actionFacts(c, target, action);
     if (!facts || facts.sensitive || (requireQueryField && !facts.queryField))
       throw new Error("human_takeover_required");
     if (action.kind === "fill" && facts.field && /^(text|search|textarea)$/.test(facts.type))
@@ -353,7 +400,9 @@ class NativePageTargets {
         typeof facts.queryName !== "string")
     )
       throw new Error("human_takeover_required");
-    if (searchSubmit || (action.kind === "click" && facts.link && !facts.download)) {
+    if (!searchSubmit && action.kind === "click" && facts.link && !facts.download)
+      return linkNavigationIntent(page, facts.destination);
+    if (searchSubmit) {
       let destination;
       try {
         destination = new URL(webUrl(facts.destination));
@@ -362,24 +411,16 @@ class NativePageTargets {
       }
       if (!page.networkPolicy.canAuthorize(destination.href))
         throw new Error("human_takeover_required");
-      return searchSubmit
-        ? {
-            kind: "public_search",
-            method: "GET",
-            targetOrigin: destination.origin,
-            targetPath: destination.pathname,
-            query: facts.query,
-            queryName: facts.queryName,
-            submittedFields: facts.submittedFields,
-            encodedQuery: new URLSearchParams(facts.submittedFields).toString(),
-          }
-        : {
-            kind: "link_navigation",
-            method: "GET",
-            targetOrigin: destination.origin,
-            targetPath: destination.pathname,
-            targetUrl: destination.href,
-          };
+      return {
+        kind: "public_search",
+        method: "GET",
+        targetOrigin: destination.origin,
+        targetPath: destination.pathname,
+        query: facts.query,
+        queryName: facts.queryName,
+        submittedFields: facts.submittedFields,
+        encodedQuery: new URLSearchParams(facts.submittedFields).toString(),
+      };
     }
     if (action.kind === "click" && facts.field) return { kind: "focus_field" };
     throw new Error("human_takeover_required");

@@ -835,3 +835,140 @@ test("stop request metadata survives an unconfirmed stop acknowledgement", async
     await rm(directory, { recursive: true });
   }
 });
+
+test("fixture Ref link clicks use only the fresh observe receipt and preserve other controls", async () => {
+  const { validToolInput } = createRequire(import.meta.url)("../app/src/core/browser-tool.cjs");
+  const golden = JSON.parse(
+    await readFile(
+      new URL("./fixtures/browser-task-describe-receipt.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const pageId = browserDescription(golden.messages).controlPermit.pageId;
+  for (const scenario of [
+    { taskId: "todomvc/active" },
+    { taskId: "information" },
+    { taskId: "information", invalid: "missing-link" },
+    { taskId: "information", invalid: "duplicate-link" },
+    { taskId: "information", invalid: "wrong-page" },
+    { taskId: "information", invalid: "old-call" },
+  ]) {
+    const directory = await mkdtemp(join(tmpdir(), "browser-task-ref-link-"));
+    const configPath = join(directory, "config.json");
+    await writeFile(
+      configPath,
+      JSON.stringify({ mode: "fixture", taskId: scenario.taskId, fixtureRefLinkClicks: true }),
+    );
+    const driver = await prepareTaskBenchmark(configPath, directory);
+    const ask = async (messages) => {
+      let wire = "";
+      await driver.fixtureModel(Readable.from([JSON.stringify({ messages })]), {
+        writeHead() {},
+        write(chunk) {
+          wire += chunk;
+        },
+        end(chunk = "") {
+          wire += chunk;
+        },
+      });
+      const event = wire.split("\n").find((line) => line.startsWith("data: {"));
+      return JSON.parse(event.slice(6)).choices[0].delta.tool_calls?.[0];
+    };
+    try {
+      const inputs = [];
+      const linkName =
+        scenario.taskId === "todomvc/active"
+          ? "Active"
+          : `Details for ${driver.fixture.expected.name}`;
+      const snapshotId = "11111111-1111-4111-8111-111111111111";
+      let call = await ask([{ role: "user", content: "Run fixture" }]);
+      let refused = false;
+      for (let index = 0; call && index < 30; index++) {
+        const input = JSON.parse(call.function.arguments);
+        inputs.push(input);
+        assert.equal(validToolInput(input), true);
+        if (input.operation === "describe") {
+          call = await ask(golden.messages);
+          continue;
+        }
+        const nodes = [{ role: "link", name: "Other link", ref: "r1" }];
+        if (scenario.invalid !== "missing-link")
+          nodes.push({ role: "link", name: linkName, ref: "r91" });
+        if (scenario.invalid === "duplicate-link")
+          nodes.push({ role: "link", name: linkName, ref: "r92" });
+        const receipt =
+          input.operation === "observe"
+            ? [
+                {
+                  type: "inputText",
+                  text: JSON.stringify({
+                    pageId: scenario.invalid === "wrong-page" ? "other-page" : pageId,
+                    observationId: snapshotId,
+                    nodes,
+                  }),
+                },
+              ]
+            : {};
+        const next = () =>
+          ask([
+            {
+              role: "tool",
+              tool_call_id:
+                scenario.invalid === "old-call" && input.operation === "observe"
+                  ? "pipeline-old"
+                  : call.id,
+              content: JSON.stringify(receipt),
+            },
+          ]);
+        if (input.operation === "observe" && scenario.invalid) {
+          await assert.rejects(next, /immediately preceding observe|one exact observed link/);
+          refused = true;
+          break;
+        }
+        call = await next();
+      }
+      assert.equal(refused, !!scenario.invalid);
+      const actions = inputs.filter((input) => input.operation === "act");
+      if (scenario.invalid) {
+        assert.equal(actions.length, 0);
+        continue;
+      }
+      assert.equal(call, undefined);
+      assert.equal(actions.length, 1);
+      assert.deepEqual(actions[0].parameters, {
+        pageId,
+        snapshotId,
+        action: { kind: "click", ref: "r91" },
+      });
+      const clickIndex = inputs.indexOf(actions[0]);
+      assert.equal(inputs[clickIndex - 1].operation, "observe");
+      assert.equal(inputs[clickIndex + 1].operation, "observe");
+      const commands = inputs
+        .filter((input) => input.operation === "command")
+        .map((input) => input.parameters.command.action);
+      if (scenario.taskId === "todomvc/active") {
+        assert.equal(commands.filter((action) => action.operation === "fill").length, 3);
+        assert.equal(commands.filter((action) => action.operation === "press").length, 3);
+        assert.equal(commands.filter((action) => action.operation === "setChecked").length, 1);
+      }
+      assert.equal(commands.filter((action) => action.operation === "click").length, 0);
+    } finally {
+      await driver.fixture.close();
+      await rm(directory, { recursive: true });
+    }
+  }
+});
+
+test("Ref link fixture option rejects real-model configurations", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "browser-task-ref-config-"));
+  try {
+    const configPath = join(directory, "config.json");
+    await writeFile(
+      configPath,
+      JSON.stringify({ mode: "real", taskId: "information", fixtureRefLinkClicks: true }),
+    );
+    await assert.rejects(prepareTaskBenchmark(configPath, directory), /fixture-only/);
+  } finally {
+    await rm(directory, { recursive: true });
+  }
+});
