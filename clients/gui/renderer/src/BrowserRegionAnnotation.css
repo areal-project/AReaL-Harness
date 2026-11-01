@@ -54,10 +54,6 @@
 .browser-region-coordinates input {
   width: 100%;
 }
-.browser-region-annotation textarea {
-  min-height: 70px;
-  resize: vertical;
-}
 .browser-region-actions {
   display: flex;
   gap: 8px;

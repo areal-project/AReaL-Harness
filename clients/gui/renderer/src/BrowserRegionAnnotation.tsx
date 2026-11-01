@@ -279,7 +279,7 @@ export function BrowserRegionAnnotation({
                     4,
                     Math.min(
                       anchor.y * scale + (editorBelow ? 16 : -20),
-                      size.height - (details ? 300 : 110),
+                      size.height - (details ? 300 : 44),
                     ),
                   ),
                 }}
