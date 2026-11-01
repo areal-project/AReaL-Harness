@@ -105,6 +105,8 @@ GUI 只支持 macOS arm64 更新，检查和下载由 Electron 持有，后台�
 
 `pnpm --dir clients/gui run test:update` 通过真实 Electron preload/IPC 验证下载错误可见与重试进度。设置 `AREAL_GUI_EXECUTABLE` 为候选包入口，并设置 `AREAL_GUI_UPDATE_BASELINE` 为较旧已签名 GUI 的入口，可额外验证候选包的原生配置、公开 ZIP 下载与 SHA-512 校验、Squirrel 原生准备和安全停止 Core。脚本只启动旧基线的隔离副本，借用候选配置，不修改签名资源；截获最终安装调用后退出，核对 Squirrel 自动替换的副本版本，不触碰原基线或用户安装。证据目录由脚本输出。
 
+发布前可同时设置 `AREAL_GUI_UPDATE_ASSETS` 为候选附件目录，在回环地址提供相同清单与 ZIP；仅重定向隔离旧包的传输请求，仍执行摘要校验、Squirrel 签名验证、替换及重开版本核对。该验收不代表公共下载已通过，发布后仍需单独验证公开 URL。
+
 ## 构建身份与 GUI 兼容
 
 `areal build-info` 查询二进制内嵌的 Core revision、dirty 状态和 Rust/Cargo/schema 输入哈希，以及 API/Store 版本。打包先核对输入哈希和 revision；旧二进制不能以新 checkout 身份进入 manifest。格式 2 manifest 保存 coreBuild 和各输入组件的真实字节哈希，sourceRevision 专指 Core 构建身份，不单独声称每个 Runtime 二进制的编译来源。GUI 兼容已有格式 1 包；格式 2 同时要求 coreBuild 与 manifest 的 API、Store 和 revision 一致。GUI 要求 areal.core.v1、匹配平台及支持的持久版本，Store 仍由 Core 读取；源码输入变化后须重新构建再打包。三份 schema 通过 `make desktop-schema-check` 临时生成规范化比较，`make desktop-schemas` 全部生成成功后原子替换。

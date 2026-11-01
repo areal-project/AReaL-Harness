@@ -6,6 +6,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { createServer } from "node:http";
+import { createReadStream } from "node:fs";
 
 // 真实 IPC 验证按钮反馈；可选的已签名旧包验证公开下载与原生安装准备。
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -73,6 +75,7 @@ async function openUpdate(page) {
   if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
 }
 let instance;
+let candidateServer;
 try {
   instance = await launch(process.env.AREAL_GUI_EXECUTABLE, "feedback");
   const { app, page } = instance;
@@ -432,6 +435,42 @@ try {
       true,
       "Use a lower formal baseline and a higher formal candidate",
     );
+    const candidateAssets = process.env.AREAL_GUI_UPDATE_ASSETS;
+    const transportRequests = [];
+    let candidatePort;
+    if (candidateAssets) {
+      const manifest = await readFile(join(candidateAssets, "latest-mac.yml"));
+      const info = read("yaml").parse(manifest.toString());
+      read("../app/src/update/config.cjs").validateUpdate(info, githubFeedUrl, {
+        engine: "electron",
+      });
+      assert.equal(info.version, expectedVersion);
+      const archive = join(candidateAssets, `AReaLHarness-${expectedVersion}-macos-arm64.zip`);
+      const bytes = await readFile(archive);
+      assert.equal(bytes.length, info.files[0].size);
+      assert.equal(createHash("sha512").update(bytes).digest("base64"), info.files[0].sha512);
+      candidateServer = createServer((request, response) => {
+        const path = new URL(request.url, "http://127.0.0.1").pathname;
+        transportRequests.push(path);
+        if (path === "/latest-mac.yml") {
+          response.writeHead(200, { "Content-Length": manifest.length });
+          response.end(manifest);
+          return;
+        }
+        if (path === "/candidate.zip") {
+          response.writeHead(200, {
+            "Content-Type": "application/zip",
+            "Content-Length": bytes.length,
+          });
+          createReadStream(archive).pipe(response);
+          return;
+        }
+        response.writeHead(404);
+        response.end();
+      });
+      await new Promise((resolve) => candidateServer.listen(0, "127.0.0.1", resolve));
+      candidatePort = candidateServer.address().port;
+    }
     const copiedApp = join(scratch, "baseline.app");
     execFileSync("/usr/bin/ditto", [baselineApp, copiedApp]);
     const copiedExecutable = join(copiedApp, "Contents/MacOS", baseline.split("/").at(-1));
@@ -450,6 +489,32 @@ try {
         const { autoUpdater } = read(app.getAppPath() + "/node_modules/electron-updater");
         // 已发布旧包缺配置，借用候选包的真实配置验证原生传输，不修改任何签名资源。
         autoUpdater.updateConfigPath = options.nativePath;
+        if (options.candidatePort) {
+          const executor = autoUpdater.httpExecutor;
+          const createRequest = executor.createRequest.bind(executor);
+          // 仅替换隔离测试的传输端点，保留正式清单、摘要与原生签名验证。
+          executor.createRequest = (request, callback) => {
+            const url = new URL(request.path, `${request.protocol}//${request.hostname}`);
+            const localPath =
+              url.href.split("?")[0] === options.feedUrl + "latest-mac.yml"
+                ? "/latest-mac.yml"
+                : url.href === options.assetUrl
+                  ? "/candidate.zip"
+                  : null;
+            if (!localPath) return createRequest(request, callback);
+            return createRequest(
+              {
+                ...request,
+                protocol: "http:",
+                hostname: "127.0.0.1",
+                host: "127.0.0.1",
+                port: options.candidatePort,
+                path: localPath,
+              },
+              callback,
+            );
+          };
+        }
         autoUpdater.autoRunAppAfterInstall = false;
         Object.defineProperty(autoUpdater.app, "baseCachePath", { get: () => options.cache });
         // 验证原生准备和 Core 安全停止；不触发用户安装替换。
@@ -460,7 +525,13 @@ try {
           .items[0].submenu.items.find((item) => item.label === "检查更新…")
           .click();
       },
-      { nativePath, cache: join(scratch, "native-cache") },
+      {
+        nativePath,
+        cache: join(scratch, "native-cache"),
+        candidatePort,
+        feedUrl: githubFeedUrl,
+        assetUrl: `https://github.com/areal-project/AReaL-Harness/releases/download/gui-v${expectedVersion}/AReaLHarness-${expectedVersion}-macos-arm64.zip`,
+      },
     );
     await page.getByTestId("areal-update-status").waitFor({ timeout: 30000 });
     // 旧版签名基线仍使用直接下载按钮，新版候选使用状态浮层。
@@ -505,7 +576,19 @@ try {
     assert.ok(trace.some((state) => state.status === "downloading" && state.percent > 0));
     assert.ok(trace.some((state) => state.status === "validating"));
     checks.push(
-      "real public ZIP download, SHA-512 verification, Squirrel signed update staging and safe Core shutdown; final install intercepted",
+      `${candidateAssets ? "local candidate" : "public"} ZIP download, SHA-512 verification, Squirrel signed update staging and safe Core shutdown; final install intercepted`,
+    );
+    await writeFile(
+      join(scratch, "update-transport.json"),
+      JSON.stringify(
+        {
+          transport: candidateAssets ? "local-candidate" : "public-github",
+          requests: transportRequests,
+          version: expectedVersion,
+        },
+        null,
+        2,
+      ),
     );
     const target = trace.find((state) => state.status === "available").version;
     assert.equal(
@@ -533,7 +616,7 @@ try {
       JSON.stringify({ target, installed, copiedApp }, null, 2),
     );
     checks.push(
-      "Squirrel replaces only the isolated baseline copy with the expected public version after exit",
+      "Squirrel replaces only the isolated baseline copy with the expected candidate version after exit",
     );
     instance = await launch(copiedExecutable, "native", true);
     assert.equal(await instance.app.evaluate(({ app }) => app.getVersion()), target);
@@ -564,4 +647,5 @@ try {
   throw error;
 } finally {
   if (instance) await close(instance);
+  if (candidateServer) await new Promise((resolve) => candidateServer.close(resolve));
 }

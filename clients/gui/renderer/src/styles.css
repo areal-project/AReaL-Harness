@@ -901,22 +901,7 @@ body {
   border-radius: var(--radius-sm);
 }
 
-.areal-update-indicator {
-  display: inline-flex;
-  flex-shrink: 0;
-}
 .areal-update-trigger {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  border: 0;
-  border-radius: var(--radius-navigation);
-  background: transparent;
-  color: var(--color-foreground);
   cursor: var(--interactive-cursor, pointer);
   transition:
     background-color var(--motion-fast),
@@ -935,20 +920,6 @@ body {
 }
 .areal-update-trigger[data-state="error"] {
   color: var(--color-destructive);
-}
-.areal-update-dot {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 5px;
-  height: 5px;
-  border-radius: var(--radius-pill);
-  background: var(--color-brand);
-}
-.areal-update-percent {
-  font-size: var(--text-ui-xs);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
 }
 .areal-update-ring {
   position: absolute;
@@ -976,62 +947,6 @@ body {
   padding: 16px;
   gap: 14px;
 }
-.areal-update-panel-heading {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-inline);
-}
-.areal-update-state-icon {
-  display: inline-flex;
-  flex-shrink: 0;
-  color: var(--color-muted-foreground);
-}
-.areal-update-state-icon[data-state="error"] {
-  color: var(--color-destructive);
-}
-.areal-update-version {
-  margin: 3px 0 0;
-  color: var(--color-muted-foreground);
-  font-size: var(--text-ui-sm);
-  font-variant-numeric: tabular-nums;
-}
-.areal-update-description,
-.areal-update-detail {
-  margin: 0;
-  font-size: var(--text-ui-sm);
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-.areal-update-description {
-  color: var(--color-foreground);
-}
-.areal-update-detail {
-  color: var(--color-muted-foreground);
-}
-.areal-update-error-detail {
-  color: var(--color-destructive);
-}
-.areal-update-progress-section {
-  display: grid;
-  gap: var(--spacing-inline);
-}
-.areal-update-progress-caption {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--spacing-inline);
-  color: var(--color-muted-foreground);
-  font-size: var(--text-ui-sm);
-}
-.areal-update-progress-number {
-  color: var(--color-foreground);
-  font-variant-numeric: tabular-nums;
-}
-.areal-update-progress {
-  height: 4px;
-  overflow: hidden;
-  border-radius: var(--radius-pill);
-  background: var(--color-secondary);
-}
 .areal-update-progress > span {
   display: block;
   width: 100%;
@@ -1044,9 +959,6 @@ body {
 .areal-update-progress[data-indeterminate="true"] > span {
   width: 35%;
   animation: areal-update-scan 1.4s ease-in-out infinite;
-}
-.areal-update-primary {
-  width: 100%;
 }
 @keyframes areal-update-rotate {
   to {

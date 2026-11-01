@@ -92,7 +92,7 @@ export function UpdateIndicator({ services }: { services: PlatformServices }) {
     );
   return (
     <div
-      className="areal-update-indicator"
+      className="inline-flex shrink-0"
       data-testid="areal-update-status"
       data-state={update.status}
     >
@@ -106,7 +106,7 @@ export function UpdateIndicator({ services }: { services: PlatformServices }) {
               unstyled
               data-slot={undefined}
               type="button"
-              className="areal-update-trigger"
+              className="areal-update-trigger relative inline-flex items-center justify-center size-9 shrink-0 border-0 rounded-navigation bg-transparent text-foreground"
               data-testid="areal-update-trigger"
               data-state={update.status}
               aria-label={label}
@@ -134,12 +134,15 @@ export function UpdateIndicator({ services }: { services: PlatformServices }) {
             </svg>
           )}
           {downloading && percent !== null ? (
-            <span className="areal-update-percent">{percent}%</span>
+            <span className="text-ui-xs font-medium tabular-nums">{percent}%</span>
           ) : (
             icon
           )}
           {update.status === "available" && (
-            <span className="areal-update-dot" aria-hidden="true" />
+            <span
+              className="absolute top-1 right-1 size-[5px] rounded-pill bg-brand"
+              aria-hidden="true"
+            />
           )}
         </PopoverTrigger>
         <PopoverContent
@@ -149,36 +152,40 @@ export function UpdateIndicator({ services }: { services: PlatformServices }) {
           className="areal-update-panel"
           aria-label={t("common.update.panel")}
         >
-          <div className="areal-update-panel-heading">
-            <span className="areal-update-state-icon" data-state={update.status} aria-hidden="true">
+          <div className="flex items-center gap-inline">
+            <span
+              className="inline-flex shrink-0 text-muted-foreground data-[state=error]:text-destructive"
+              data-state={update.status}
+              aria-hidden="true"
+            >
               {icon}
             </span>
             <div>
               <PopoverTitle>{title}</PopoverTitle>
               {update.version && (
-                <p className="areal-update-version">
+                <p className="mt-[3px] text-muted-foreground text-ui-sm tabular-nums">
                   {t("common.update.version", { version: update.version })}
                 </p>
               )}
             </div>
           </div>
-          <PopoverDescription className="areal-update-description">
+          <PopoverDescription className="m-0 text-ui-sm leading-normal wrap-anywhere text-foreground">
             {t(descriptions[update.status])}
           </PopoverDescription>
           {downloading && (
-            <div className="areal-update-progress-section">
-              <div className="areal-update-progress-caption">
+            <div className="grid gap-inline">
+              <div className="flex justify-between gap-inline text-muted-foreground text-ui-sm">
                 <span>
                   {percent === null
                     ? t("common.update.progressUnknown")
                     : t("common.update.progress")}
                 </span>
                 {percent !== null && (
-                  <span className="areal-update-progress-number">{percent}%</span>
+                  <span className="text-foreground tabular-nums">{percent}%</span>
                 )}
               </div>
               <div
-                className="areal-update-progress"
+                className="areal-update-progress h-1 overflow-hidden rounded-pill bg-secondary"
                 data-testid="areal-update-progress"
                 role="progressbar"
                 aria-label={t("common.update.progress")}
@@ -194,17 +201,22 @@ export function UpdateIndicator({ services }: { services: PlatformServices }) {
             </div>
           )}
           {update.status === "deferred" && update.detail && (
-            <p className="areal-update-detail">{update.detail}</p>
+            <p className="m-0 text-ui-sm leading-normal wrap-anywhere text-muted-foreground">
+              {update.detail}
+            </p>
           )}
           {update.status === "error" && errorDetail && (
-            <p className="areal-update-detail areal-update-error-detail" role="alert">
+            <p
+              className="m-0 text-ui-sm leading-normal wrap-anywhere text-destructive"
+              role="alert"
+            >
               {errorDetail}
             </p>
           )}
           {canDownload && services.downloadUpdate ? (
             <Button
               size="sm"
-              className="areal-update-primary"
+              className="w-full"
               data-testid="areal-update-download"
               aria-label={
                 update.version
@@ -227,7 +239,7 @@ export function UpdateIndicator({ services }: { services: PlatformServices }) {
           ) : needsResources && services.recoverUpdateResources ? (
             <Button
               size="sm"
-              className="areal-update-primary"
+              className="w-full"
               data-testid="areal-update-recover"
               aria-label={t("common.update.recoverLabel")}
               onClick={() => {
