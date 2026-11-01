@@ -164,7 +164,9 @@ jobs:
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             io.areal.verification-input=${{ needs.plan.outputs.input_hash }}
-          cache-from: type=gha,scope=areal-runtime
+          cache-from: |
+            type=gha,scope=areal-runtime-tests
+            type=gha,scope=areal-runtime
           cache-to: type=gha,scope=areal-runtime,mode=min
       - name: Build native backend tests
         if: ${{ !cancelled() }}
