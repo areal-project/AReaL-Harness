@@ -109,7 +109,23 @@ try {
     await messages.focus();
     await page.waitForFunction(() => {
       const reader = document.querySelector(".messages");
-      return document.activeElement === reader && reader.scrollTop === 0;
+      const saved = JSON.parse(sessionStorage.getItem("areal-gui:reading-views:v1") ?? "null");
+      const anchor = saved?.views?.[0]?.position?.anchor;
+      const item = [...reader.querySelectorAll("[data-side-item-id]")].find(
+        (node) => node.dataset.sideItemId === anchor?.itemId,
+      );
+      const block =
+        anchor?.blockIndex == null
+          ? item
+          : item?.querySelector(".conversation-markdown")?.children[anchor.blockIndex];
+      return (
+        document.activeElement === reader &&
+        reader.scrollTop === 0 &&
+        block &&
+        Math.abs(
+          block.getBoundingClientRect().top - reader.getBoundingClientRect().top - anchor.offset,
+        ) <= 2
+      );
     });
     await page.keyboard.press("PageUp");
     await page.locator(`[data-side-item-id="answer-${n}"]`).waitFor({ state: "attached" });
@@ -302,24 +318,161 @@ try {
   report.checks.push("manual nested disclosures survive renderer reload");
   await page.getByRole("button", { name: "Reobserve", exact: true }).click();
   await checkAnchor("old page is present before cancellation scenario");
-  await page.getByRole("button", { name: "Delay pages", exact: true }).click();
+  const holdResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/__reading/control") &&
+      response.request().postDataJSON().operation === "hold",
+  );
+  await page.getByRole("button", { name: "Hold pages", exact: true }).click();
+  assert.ok((await holdResponse).ok());
+  const releaseView = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/__reading/history") &&
+      response.request().postDataJSON().operation === "release",
+  );
   await page.getByRole("button", { name: "Leave conversation", exact: true }).click();
+  assert.equal((await (await releaseView).json()).released, true);
+  await page.waitForFunction(() => {
+    const history = JSON.parse(
+      document.querySelector("[data-fixture-history]")?.getAttribute("data-fixture-history") ??
+        "null",
+    );
+    return (
+      history &&
+      !(history.pageTopology ?? []).some((page) =>
+        page.items.some((item) => item.itemId === "answer-5"),
+      )
+    );
+  });
+  const ensureRequest = page.waitForRequest(
+    (request) =>
+      request.url().endsWith("/__reading/history") &&
+      request.postDataJSON().operation === "ensureAnchor",
+  );
   await page.getByRole("button", { name: "Return to conversation", exact: true }).click();
+  const ensureHttp = await ensureRequest;
+  const ensure = ensureHttp.postDataJSON();
   await page.waitForFunction(
-    async () => (await (await fetch("/__reading/state")).json()).pending > 0,
+    async () => (await (await fetch("/__reading/state")).json()).held.length > 0,
   );
+  report.heldRestore = fixture.snapshot().held;
   await page.locator(".messages").hover();
+  const retainedResponse = page
+    .waitForResponse((response) => {
+      if (!response.url().endsWith("/__reading/history")) return false;
+      const request = response.request().postDataJSON();
+      return (
+        request.operation === "retain" &&
+        request.viewId === ensure.viewId &&
+        request.revision > ensure.revision
+      );
+    })
+    .catch((error) => error);
+  const beforeWheel = await messages.evaluate((reader) => {
+    reader.dataset.fixtureWheelEnd = "pending";
+    reader.addEventListener(
+      "wheel",
+      (event) => {
+        reader.dataset.fixtureWheelDelta = String(event.deltaY);
+      },
+      { once: true },
+    );
+    reader.addEventListener(
+      "scrollend",
+      () => {
+        reader.dataset.fixtureWheelEnd = "settled";
+      },
+      { once: true },
+    );
+    return reader.scrollTop;
+  });
+  const olderRequests = [];
+  const captureOlder = (request) => {
+    if (
+      request.url().endsWith("/__reading/history") &&
+      request.postDataJSON().operation === "loadOlder"
+    )
+      olderRequests.push(request);
+  };
+  page.on("request", captureOlder);
   await page.mouse.wheel(0, -200);
+  await page.locator('.messages[data-fixture-wheel-delta="-200"]').waitFor();
+  await page.locator('.messages[data-fixture-wheel-end="settled"]').waitFor();
+  const retained = await retainedResponse;
+  if (retained instanceof Error) throw retained;
+  const retainedResult = await retained.json();
+  assert.equal(retainedResult.retained, true);
   await frames();
-  const cancelledTop = await page.locator(".messages").evaluate((node) => node.scrollTop);
-  await page.waitForFunction(
-    async () => (await (await fetch("/__reading/state")).json()).pending === 0,
+  const cancelledAnchor = await messages.evaluate((reader, beforeWheel) => {
+    const viewport = reader.getBoundingClientRect();
+    for (const item of reader.querySelectorAll("[data-side-item-id]")) {
+      const blocks = [...(item.querySelector(".conversation-markdown")?.children ?? [])];
+      const index = blocks.findIndex(
+        (block) =>
+          block.getBoundingClientRect().bottom > viewport.top &&
+          block.getBoundingClientRect().top < viewport.bottom,
+      );
+      const block = blocks[index] ?? item;
+      const rect = block.getBoundingClientRect();
+      if (rect.bottom > viewport.top && rect.top < viewport.bottom)
+        return {
+          itemId: item.dataset.sideItemId,
+          index,
+          text: block.textContent,
+          offset: rect.top - viewport.top,
+          top: reader.scrollTop,
+          beforeWheel,
+        };
+    }
+    throw Error("No visible reading anchor after user scroll");
+  }, beforeWheel);
+  report.cancelledAnchor = {
+    ...cancelledAnchor,
+    ensure,
+    retained: retained.request().postDataJSON(),
+    retainedResult,
+  };
+  await page.evaluate(() =>
+    fetch("/__reading/control", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operation: "release" }),
+    }),
   );
+  const response = await ensureHttp.response();
+  assert.ok(response);
+  const result = await response.json();
+  report.cancelledRestore = result;
+  assert.equal(result.kind, "cancelled");
   await frames();
+  for (const request of olderRequests) {
+    const response = await request.response();
+    assert.ok(response);
+    await response.finished();
+  }
+  page.off("request", captureOlder);
+  await historyReady();
+  await frames();
+  const afterCancellation = await messages.evaluate((reader, anchor) => {
+    const item = [...reader.querySelectorAll("[data-side-item-id]")].find(
+      (entry) => entry.dataset.sideItemId === anchor.itemId,
+    );
+    const block =
+      anchor.index < 0
+        ? item
+        : item?.querySelector(".conversation-markdown")?.children[anchor.index];
+    return {
+      top: reader.scrollTop,
+      text: block?.textContent,
+      offset: block && block.getBoundingClientRect().top - reader.getBoundingClientRect().top,
+    };
+  }, cancelledAnchor);
+  report.afterCancellation = afterCancellation;
+  assert.equal(afterCancellation.text, cancelledAnchor.text);
   assert.ok(
-    Math.abs((await page.locator(".messages").evaluate((node) => node.scrollTop)) - cancelledTop) <=
-      2,
-    "late restore must not override user scroll",
+    afterCancellation.offset !== undefined &&
+      Math.abs(afterCancellation.offset - cancelledAnchor.offset) <= 2,
+    `late restore must not override user scroll: ${JSON.stringify({ before: cancelledAnchor, after: afterCancellation })}`,
   );
   report.checks.push("user scroll cancels delayed restoration");
   assert.deepEqual(report.errors, []);
@@ -330,6 +483,7 @@ try {
   report.history = {
     calls: snapshot.calls,
     pending: snapshot.pending,
+    views: snapshot.views,
     displayHistory: snapshot.thread?.displayHistory,
     view: await page
       ?.evaluate(() => {

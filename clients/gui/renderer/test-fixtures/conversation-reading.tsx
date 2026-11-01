@@ -7,10 +7,11 @@ import type { Action, Data } from "../src/services";
 import "../src/styles.css";
 import "../src/workbench.css";
 
+const clientId = crypto.randomUUID();
 const post = async (path: string, value: unknown) => {
   const response = await fetch(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "x-reading-client": clientId },
     body: JSON.stringify(value),
   });
   const result = await response.json();
@@ -38,7 +39,7 @@ function Fixture() {
   const [dark, setDark] = useState(false);
   const [narrow, setNarrow] = useState(false);
   useEffect(() => {
-    const stream = new EventSource("/__reading/events");
+    const stream = new EventSource(`/__reading/events?clientId=${clientId}`);
     stream.onmessage = (event) => setState(JSON.parse(event.data));
     return () => stream.close();
   }, []);
@@ -79,10 +80,8 @@ function Fixture() {
             </button>
             <button onClick={() => setNarrow((value) => !value)}>Toggle width</button>
             <button onClick={() => setDark((value) => !value)}>Toggle theme</button>
-            <button
-              onClick={() => void post("/__reading/control", { operation: "delay", value: 400 })}
-            >
-              Delay pages
+            <button onClick={() => void post("/__reading/control", { operation: "hold" })}>
+              Hold pages
             </button>
             <output>History reads {state?.calls ?? 0}</output>
           </header>

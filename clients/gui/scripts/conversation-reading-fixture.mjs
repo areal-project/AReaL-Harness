@@ -9,6 +9,7 @@ import { CoreTaskModel } from "../packages/workbench/client/core-model.js";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { DesktopService } = require("../app/src/core/service-protocol.cjs");
 const {
   validateCommand,
   validateCommandResponse,
@@ -95,10 +96,14 @@ export async function createReadingFixture() {
     onChange() {},
   });
   const calls = [];
-  const clients = new Set();
-  let delay = 0;
+  const clients = new Map();
+  const historyService = {
+    backend: { command: (_name, request) => backend.historyCommand(project, request) },
+  };
   let failNext = false;
   let pending = 0;
+  let hold = false;
+  const held = [];
   project.client = {
     ready: true,
     closed: false,
@@ -110,9 +115,10 @@ export async function createReadingFixture() {
         failNext = false;
         throw Error("Injected history unavailability");
       }
-      if (delay) {
+      if (hold) {
+        hold = false;
         pending++;
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        await new Promise((resolve) => held.push({ resolve, cursor: params.cursor }));
         pending--;
       }
       const n = Number(params.cursor.split(":")[1]);
@@ -138,11 +144,14 @@ export async function createReadingFixture() {
     thread: model.state.threads["reading-thread"],
     calls: calls.length,
     pending,
+    held: held.map(({ cursor }) => ({ cursor })),
+    views: [...(backend.historyWindow(project, "reading-thread")?.views ?? [])],
     revision,
     scope: "production Messages and Desktop history; deterministic Core RPC fixture",
   });
   const unsubscribe = model.subscribe(() => {
-    for (const response of clients) response.write(`data: ${JSON.stringify(snapshot())}\n\n`);
+    for (const { response } of clients.values())
+      response.write(`data: ${JSON.stringify(snapshot())}\n\n`);
   });
   const workbench = JSON.parse(
     await readFile(join(gui, "packages/workbench/package.json"), "utf8"),
@@ -172,13 +181,26 @@ export async function createReadingFixture() {
               return;
             }
             if (path === "/__reading/events") {
+              const clientId = new URL(request.url, "http://localhost").searchParams.get(
+                "clientId",
+              );
+              if (!clientId || clients.has(clientId)) {
+                response.writeHead(400);
+                response.end();
+                return;
+              }
               response.writeHead(200, {
                 "Content-Type": "text/event-stream",
                 "Cache-Control": "no-cache",
               });
-              clients.add(response);
+              const socket = { readyState: 1, historyViews: new Map() };
+              clients.set(clientId, { response, socket });
               response.write(`data: ${JSON.stringify(snapshot())}\n\n`);
-              request.on("close", () => clients.delete(response));
+              request.on("close", () => {
+                socket.readyState = 3;
+                clients.delete(clientId);
+                DesktopService.prototype.releaseHistoryViews.call(historyService, socket);
+              });
               return;
             }
             if (!path.startsWith("/__reading/")) return next();
@@ -193,7 +215,13 @@ export async function createReadingFixture() {
               const input = JSON.parse(body || "{}");
               if (path === "/__reading/history") {
                 validateCommand("history", { ...input, projectId: project.id });
-                const result = await backend.historyCommand(project, input);
+                const client = clients.get(request.headers["x-reading-client"]);
+                if (!client) throw Error("Reading client is disconnected");
+                const result = await DesktopService.prototype.historyCommand.call(
+                  historyService,
+                  client.socket,
+                  input,
+                );
                 validateCommandResponse("history", input, result);
                 response.end(JSON.stringify(result));
                 return;
@@ -206,8 +234,11 @@ export async function createReadingFixture() {
                   itemId: "live-answer",
                   delta: " More live output.",
                 });
-              else if (input.operation === "delay") delay = input.value;
-              else if (input.operation === "failNext") failNext = true;
+              else if (input.operation === "hold") hold = true;
+              else if (input.operation === "release") {
+                hold = false;
+                for (const entry of held.splice(0)) entry.resolve();
+              } else if (input.operation === "failNext") failNext = true;
               else throw Error("Unknown fixture operation");
               response.end(JSON.stringify(snapshot()));
             } catch (error) {
@@ -223,8 +254,9 @@ export async function createReadingFixture() {
   return {
     url: `http://127.0.0.1:${vite.httpServer.address().port}/__reading.html`,
     close: async () => {
+      for (const entry of held.splice(0)) entry.resolve();
       unsubscribe();
-      for (const response of clients) response.end();
+      for (const { response } of clients.values()) response.end();
       await vite.close();
     },
     snapshot,
