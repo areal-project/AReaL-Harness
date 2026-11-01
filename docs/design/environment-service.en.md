@@ -2,6 +2,8 @@
 
 # Independent development environment service
 
+> Superseded by the [shared Host implementation spec](../development/shared-host-spec.en.md): the dual "GUI-owned / background-owned" modes and transition receipts are dropped. The authority boundaries, Host identity, explicit project start, stop intent and no-replay rules here are carried into the new spec.
+
 Status: target design, not implemented. This document defines how Desktop Service evolves; it does not claim independent startup, execution after GUI exit, or a complete mobile development workflow has shipped. See the [implementation plan](../development/environment-service-plan.en.md) for stages and evidence gates. The current [local service](../api/local-service.en.md), [Desktop API](../api/desktop.en.md), and [Remote API](../api/remote-control.en.md) remain authoritative. New capabilities require updates to those contracts before activation.
 
 ## 1. Goal and scope
