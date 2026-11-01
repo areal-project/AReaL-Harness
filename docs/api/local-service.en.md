@@ -2,6 +2,8 @@
 
 # Shared local services
 
+The shared Host is a [target design, in progress](host.en.md). This page describes existing per-project service-hosts; their Host name does not imply the per-user shared Host. Client exit independence applies only to Host-owned generations after controlled restart migration. `legacyPending` retains the old lifecycle.
+
 TUI, the Web launcher and trusted Desktop Main use `areal service`. An independent `areal service-host` owns one Core/Runtime pair; windows own connections. Platform support follows the [Runtime boundary](../guides/runtime.en.md). This is not a system-wide, multi-user or remote daemon.
 
 ## Public entry points

@@ -2,9 +2,9 @@
 
 # Remote Control architecture
 
-This document specifies planned Remote v2 behavior, not shipped capability. See [architecture and layout](architecture.en.md) for module ownership and the [test plan](../development/remote-control-testing.en.md) for verification entry points.
+The shared Host is a [target design, in progress](../development/shared-host-spec.en.md), with ownership defined by [ADR 0016](../adr/0016-shared-host.en.md). The current Gateway remains in Desktop Service under the GUI lifecycle. Remote after full GUI quit requires H3 migration and acceptance of Gateway, grants, the submission journal outside Store, scheduled activation, and provider subscription transports. Host supervision identity is separate from Remote Noise peer identity; distinct Noise identities from multiple profiles cannot overwrite each other.
 
-The follow-on [independent environment design](environment-service.en.md) and [implementation plan](../development/environment-service-plan.en.md) refine Desktop Service ownership and login-service evolution while retaining Gateway/Core/Runtime/Relay responsibilities. This page includes early slices and target behavior; the [Remote API](../api/remote-control.en.md) and source define current methods, and lifecycle acceptance establishes survival after GUI exit.
+This document specifies planned Remote v2 behavior, not shipped capability. See [architecture and layout](architecture.en.md) for module ownership and the [test plan](../development/remote-control-testing.en.md) for verification entry points.
 
 ## RC-01 implementation scope
 
@@ -50,7 +50,7 @@ Web `BrowserState` supplies IndexedDB, BroadcastChannel and sessionStorage adapt
 
 A Host aggregates saved, explicitly granted projects, each bound to a discovered Core service identity and generation. Host identity, Gateway process generation, Core service generation, Runtime epoch and tool-host generation are distinct.
 
-Closing a page or GUI window releases observations, not accepted Core work. The existing independent adapter continues Remote and tool-host duties. Remote subscription cleanup must not close subscriptions still used by the GUI. Stopping Gateway does not cancel accepted work. Sleep, logout, power loss or explicitly stopped services have no availability guarantee.
+Closing a page or GUI window releases observations. The current adapter maintains Remote and tool-host duties while the application remains running. Full GUI quit currently ends the GUI-owned supervision chain; the shared Host target retains Gateway after H3 migration. Remote subscription cleanup must not close subscriptions used by other clients. Stopping Gateway does not cancel accepted work. Sleep, logout, power loss, and explicitly stopped services have no availability guarantee.
 
 Passive recovery only discovers compatible running services; it does not start stopped projects, restart services or widen permission. One unavailable project does not make the whole Host unavailable.
 

@@ -2,9 +2,9 @@
 
 # Architecture and repository
 
-AReaL-Harness follows **Clients → Core → Runtime**. Core exclusively owns sessions, Turns, model loops and agent state. Runtime handles execution permissions, operation facts and resource lifecycles. Clients project the authoritative history rather than maintaining another one.
+The shared Host [target design and stages](../development/shared-host-spec.en.md) are fixed by [ADR 0016](../adr/0016-shared-host.en.md) and the [Host API](../api/host.en.md). One Rust Host per user owns service supervision, registrations, credentials, and Gateway; Core retains execution and history authority. The source ownership below describes the pre-migration implementation. Report Host-owned and `legacyPending` separately. Remote, schedules, and provider subscriptions after GUI exit require H3 acceptance.
 
-See the [environment service design](environment-service.en.md) and [implementation plan](../development/environment-service-plan.en.md) for the proposed independent Desktop Service lifecycle. Both are unimplemented plans, retaining current Core/Runtime authority and API contracts; independent owners, login services, and continuation after GUI exit require separate acceptance.
+AReaL-Harness follows **Clients → Core → Runtime**. Core exclusively owns sessions, Turns, model loops and agent state. Runtime handles execution permissions, operation facts and resource lifecycles. Clients project the authoritative history rather than maintaining another one.
 
 ![Architecture](diagrams/architecture.svg)
 

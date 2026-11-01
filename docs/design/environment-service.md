@@ -2,6 +2,8 @@
 
 # 独立开发环境服务设计
 
+> 已被[共享 Host 实施规格](../development/shared-host-spec.md)取代：不再采用“GUI 托管 / 后台托管”双模式；受控重启、提交 journal 单 writer 切换和迁移回执改由新规格定义。本文的权威边界、Host 身份、显式启动项目、停止意图和不重放规则仍由新规格沿用。
+
 状态：目标设计，待实施。本文确定 Desktop Service 的演进边界，不表示后台独立启动、GUI 退出后继续执行或手机完整开发路径已经交付。分阶段交付与证据门槛见[实施计划](../development/environment-service-plan.md)。现行协议仍以[本地服务](../api/local-service.md)、[桌面 API](../api/desktop.md)和 [Remote API](../api/remote-control.md)为准；新增能力须在对应阶段更新契约后才能启用。
 
 ## 1. 目标与范围

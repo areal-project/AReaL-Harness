@@ -2,6 +2,8 @@
 
 # 共享本地服务
 
+共享 Host 是[目标设计，实施中](host.md)。本页描述现有每项目 service-host，不能将其名称中的 Host 等同于每用户共享 Host。共享 Host 仅对经受控重启迁移后的 Host-owned generation 提供客户端退出不影响执行的保证；`legacyPending` 保留旧生命周期。
+
 TUI、Web 启动入口和可信 Desktop Main 共用 `areal service`，由独立 `areal service-host` 托管一组 Core/Runtime。窗口只拥有连接。运行平台沿用[Runtime 边界](../guides/runtime.md)，不是系统级、多用户或远程 daemon。
 
 ## 公共入口

@@ -2,9 +2,9 @@
 
 # Remote Control 架构
 
-本文定义计划中的 Remote v2。本页不把设计写成已实现能力；当前模块职责见[架构与目录](architecture.md)，验证入口见[测试计划](../development/remote-control-testing.md)。
+共享 Host 是[目标设计，实施中](../development/shared-host-spec.md)，所有权以 [ADR 0016](../adr/0016-shared-host.md)为准。当前 Gateway 仍在受 GUI 生命周期约束的 Desktop Service。H3 迁移 Gateway、授权、Store 外提交 journal、定时激活及 provider subscription transport 后，才验收 GUI 完全退出的 Remote 路径。Host 监督身份与 Remote Noise peer 独立，多 profile 的不同 Noise 身份不能覆盖。
 
-后续[独立环境服务设计](environment-service.md)和[实施计划](../development/environment-service-plan.md)细化 Desktop Service 的 owner 与登录后台演进，复用本页 Gateway/Core/Runtime/Relay 分工。以下包含早期切片和目标描述；当前方法范围以 [Remote API](../api/remote-control.md)及源码为准，GUI 退出存活能力以实际生命周期验收为准。
+本文定义计划中的 Remote v2。本页不把设计写成已实现能力；当前模块职责见[架构与目录](architecture.md)，验证入口见[测试计划](../development/remote-control-testing.md)。
 
 ## RC-01 实现范围
 
@@ -58,7 +58,7 @@ Host 与 Client 均向组织 Relay 建立出站 WSS。Relay 关联 room/channel 
 
 一台 Host 可聚合多个已保存项目，每个项目绑定已发现的 Core serviceId/generation。Host 身份、Gateway 进程代际、Core 服务代际、Runtime epoch 和工具 Host generation 分开处理。
 
-关闭页面或 GUI 窗口只释放观察连接。现有独立桌面适配器继续维持 Remote 与 Core 工具宿主；Remote 订阅释放不能关闭 GUI 仍在使用的订阅。停止 Gateway 不隐含取消 Core 已受理的工作。系统休眠、注销、断电、显式停止服务时不承诺在线或任务继续。
+关闭页面或 GUI 窗口只释放观察连接，现有桌面适配器在应用仍运行时维持 Remote 与 Core 工具宿主。完整退出 GUI 当前会结束 GUI-owned 监督链；共享 Host 的目标是在 H3 迁移后保持 Gateway 在线。Remote 订阅释放不能关闭其他客户端仍在使用的订阅。停止 Gateway 不隐含取消 Core 已受理的工作。系统休眠、注销、断电、显式停止服务时不承诺在线或任务继续。
 
 被动重连只发现兼容运行中的 Core；不启动已停止项目，不触发安全重启，不提升权限。Project 不可用显示其具体状态；Host 的其他项目继续工作。
 

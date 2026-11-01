@@ -2,9 +2,9 @@
 
 # 架构与目录
 
-AReaL-Harness 采用 **Clients → Core → Runtime** 分层。Core 是会话、Turn、模型循环与 Agent 状态的唯一所有者；Runtime 只处理执行权限、操作事实和资源生命周期。客户端不维护另一套权威历史。
+共享 Host 的[目标设计与阶段](../development/shared-host-spec.md)由 [ADR 0016](../adr/0016-shared-host.md)确定，契约见 [Host API](../api/host.md)。目标是每用户一个 Rust Host 持有服务监督、项目登记、凭据与 Gateway；Core 保留执行和历史权威。以下源码职责描述迁移前实现，Host-owned 与 `legacyPending` 必须分别报告；H3 验收前不承诺 GUI 退出后的 Remote、定时任务与 provider subscription 可用。
 
-Desktop Service 演进为独立后台的目标设计见[开发环境服务](environment-service.md)，交付顺序见[实施计划](../development/environment-service-plan.md)。两篇均为待实施方案，不改变本页现行 Core/Runtime 权威与 API 契约；独立 owner、登录服务及 GUI 退出后接续须分别验收。
+AReaL-Harness 采用 **Clients → Core → Runtime** 分层。Core 是会话、Turn、模型循环与 Agent 状态的唯一所有者；Runtime 只处理执行权限、操作事实和资源生命周期。客户端不维护另一套权威历史。
 
 ![架构](diagrams/architecture.svg)
 
