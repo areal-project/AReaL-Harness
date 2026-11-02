@@ -141,3 +141,11 @@ test("a deferred result cannot silently fall back to unsupported full-history re
     ["acquire", "release"],
   );
 });
+
+test("inline records from a different Thread cannot bypass owner validation", async () => {
+  const { options, calls } = fixture({ deferred: false });
+  const readThread = options.readThread;
+  options.readThread = async () => ({ ...(await readThread()), id: "foreign-thread" });
+  await assert.rejects(readTurnToolDetails(options), /original Thread/);
+  assert.deepEqual(calls, []);
+});
