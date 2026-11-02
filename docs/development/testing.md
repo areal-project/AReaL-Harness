@@ -440,6 +440,14 @@ TUI 与共享服务 PTY 检查共用终端画面解析器，处理增量重绘�
 
 桌面 soak 与 GUI 包校验接受不含独立 tools/rg 的内置搜索布局；soak 同时核对平台所需的 Runtime 组件及 manifest 文件摘要。
 
+## Remote Rust wire 对照
+
+先运行 `cargo build --locked -p areal-host --example remote-wire-fixture`，再运行 `cargo test --locked -p areal-host gateway::` 和 `node --test clients/gui/scripts/remote-rust-noise.test.mjs`。测试专用 runner 从 stdin 读取非敏感测试身份，复用 `core/host/src/gateway/` 源码，验证原 Ed25519 protobuf/PeerId、Relay codec 差分、双向 Noise、拆分字节、消息限额、pin、prologue 及损坏数据。`AREAL_REMOTE_RUST_WIRE_BINARY` 可指定同一 example 的已构建路径；缺少 runner 或异常退出会失败。
+
+`AREAL_REMOTE_WIRE=rust node --test clients/gui/scripts/remote-relay-transport-contract.mjs` 在原测试 helper 中仅替换 Host 的 secureChannel。客户端、Relay 服务、Gateway 业务和原断言均沿用现有实现。该对照覆盖真实隔离 HTTPS/WSS、配对、授权、关闭、撤权、代际和流量预算，证明 Rust wire 与现有 JS Gateway 互通。该 wire 模块尚未在生产 Host 启用；测试桥不证明 Rust Gateway 已接管，也不替代 GUI 退出、真实供应商、真机或安装包验收。
+
+`cargo build --locked -p areal-host --example remote-relay-fixture` 后运行 `node --test clients/gui/scripts/remote-rust-relay.test.mjs`，验证 Rust 自行连接真实隔离 Relay WSS，使用同一 Noise/framing 与原 JS 客户端完成仅限测试的 echo/read。它检查真实根证书、主机名和过期验证，包含自动 pong 的滑动窗口帧数与字节数、持续大响应时另一台设备读取、排空关闭、撤销丢弃队列、重连代际、服务恢复和 Host 替换，以及进程退出和监听端口清理。`AREAL_REMOTE_RUST_RELAY_BINARY` 可指定同一 example 的已构建路径；缺少 runner 或异常退出会失败。Rust 单测补充本机 Relay authority、推送授权重新检查和背压中的停止。该原生传输尚未在生产 Host 启用，echo/read 夹具不证明 Gateway 授权、观察或命令业务已迁移。
+
 ## Remote GUI 退出连续性
 
 构建 Core 与 GUI 后，运行 `pnpm -C clients/gui test:remote-gui-quit`。可通过 `AREAL_CORE_BIN` 指定已构建的 Core；`AREAL_GUI_EXECUTABLE` 选择包内 Electron/Core，`AREAL_CHROME_EXECUTABLE` 选择本机 Chrome。此独立原生用例创建隔离目录和本地确定性模型，启动生产 GUI 及其独立后台适配器，经桌面界面配对 PWA Operator，在原始文件审批待处理时正常退出 GUI，再由 PWA 允许一次。它核对同一适配器 PID/身份、独占服务注册记录的 Core generation、原 Thread/Turn/交互、一次文件工具结果、持久 Remote 受理记录以及两个正常模型阶段；重新打开 GUI 不得增加模型请求。随后通过公开 `stopService` 和正常确认对话框验证停止意图、描述文件删除、PID 退出、Remote 断连及再次打开 GUI 不自动启动。

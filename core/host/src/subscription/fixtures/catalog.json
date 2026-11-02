@@ -1,0 +1,90 @@
+{
+  "access": "fixture-access",
+  "input": {
+    "models": [
+      {
+        "slug": "b",
+        "visibility": "list",
+        "display_name": "B",
+        "context_window": 500000,
+        "max_context_window": 872000,
+        "supported_reasoning_levels": [
+          {
+            "effort": "low"
+          },
+          {
+            "effort": "max"
+          },
+          {
+            "effort": "max"
+          },
+          {
+            "effort": "private-unknown"
+          }
+        ],
+        "use_responses_lite": true,
+        "support_verbosity": true,
+        "default_verbosity": "low"
+      },
+      {
+        "slug": "hidden",
+        "visibility": "hide"
+      },
+      {
+        "slug": "a",
+        "visibility": "list",
+        "context_window": -1
+      },
+      {
+        "slug": "b",
+        "visibility": "list"
+      },
+      {
+        "slug": "fixture-access",
+        "visibility": "list"
+      },
+      {
+        "slug": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+        "visibility": "list"
+      },
+      {
+        "slug": "bounded",
+        "visibility": "list",
+        "context_window": 2000001,
+        "display_name": "fixture-access"
+      }
+    ]
+  },
+  "output": [
+    {
+      "id": "b",
+      "name": "B",
+      "source": "account",
+      "reasoningEffortOptions": [
+        "low",
+        "max"
+      ],
+      "parameters": {
+        "contextWindowTokens": 500000
+      }
+    },
+    {
+      "id": "a",
+      "name": "a",
+      "source": "account"
+    },
+    {
+      "id": "bounded",
+      "name": "bounded",
+      "source": "account"
+    }
+  ],
+  "hints": {
+    "b": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "a": {},
+    "bounded": {}
+  }
+}

@@ -215,8 +215,9 @@ GUI 不再启动 Desktop Service 管项目生命周期，而是连 Host；⌘Q �
 
 ### 现状
 
-- Gateway：`clients/gui/app/src/core/remote*.cjs`；Noise 与线格式：`clients/gui/packages/remote`（`channel.mjs`、`wire.mjs`、`relay-codec.mjs`）。
-- 定时激活：`schedule-owner-activation.cjs`；Core 侧触发不变。
+- Gateway：`core/host/src/gateway/`、`remote_state.rs` 与 `journal.rs`；原 JS 行为对照位于 `clients/gui/app/src/core/remote*.cjs`，Noise 与线格式对照位于 `clients/gui/packages/remote`（`channel.mjs`、`wire.mjs`、`relay-codec.mjs`）。
+- 定时激活与准备：`core/host/src/schedules.rs`、`schedule_connection.rs`、`schedule_admission.rs` 与 `schedule_resources.rs`；Core 侧触发不变。
+- 订阅来源 owner：`core/host/src/subscription/`；原账号与传输行为对照位于 `clients/gui/packages/chatgpt-provider/`。
 - 现有端到端测试：`pnpm --dir clients/gui test:remote-relay`、`test:remote-command-e2e`、`test:remote-interaction`、`test:remote-review`、`test:mobile-command`、`test:mobile-workspace-state`、`test:remote-gui-quit`、`test:schedule-reliability-lifecycle`。
 
 ### 要做的

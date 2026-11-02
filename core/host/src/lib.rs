@@ -1,6 +1,7 @@
 //! 每用户共享 Host。客户端发现与项目激活不承载 Core 执行或生命期。
 mod activity;
 mod client;
+mod gateway;
 mod journal;
 mod launch;
 mod migration;
@@ -8,6 +9,7 @@ mod remote_state;
 mod schedule_admission;
 mod schedule_resources;
 mod server;
+mod subscription;
 mod vault;
 mod wire;
 use areal_local_service::LocalArgs;
@@ -30,6 +32,7 @@ pub const CAPABILITIES: &[&str] = &[
     "submissionJournal",
     "credentialVault",
     "remoteState",
+    "subscriptionOwnerV1",
     "activity",
     "scheduledActivation",
     "scheduledPreparation",

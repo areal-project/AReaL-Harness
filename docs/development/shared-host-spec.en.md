@@ -215,8 +215,9 @@ The phone and scheduled tasks no longer depend on the GUI. Desktop Service is re
 
 ### Current state
 
-- Gateway: `clients/gui/app/src/core/remote*.cjs`; Noise and wire format: `clients/gui/packages/remote` (`channel.mjs`, `wire.mjs`, `relay-codec.mjs`).
-- Scheduled activation: `schedule-owner-activation.cjs`; triggering inside Core is unchanged.
+- Gateway: `core/host/src/gateway/`, `remote_state.rs`, and `journal.rs`; the original JS behavioral reference is in `clients/gui/app/src/core/remote*.cjs`, with Noise and wire references in `clients/gui/packages/remote` (`channel.mjs`, `wire.mjs`, `relay-codec.mjs`).
+- Scheduled activation and preparation: `core/host/src/schedules.rs`, `schedule_connection.rs`, `schedule_admission.rs`, and `schedule_resources.rs`; triggering inside Core is unchanged.
+- Subscription source owner: `core/host/src/subscription/`; original account and transport behavioral references remain in `clients/gui/packages/chatgpt-provider/`.
 - Existing end-to-end tests: `pnpm --dir clients/gui test:remote-relay`, `test:remote-command-e2e`, `test:remote-interaction`, `test:remote-review`, `test:mobile-command`, `test:mobile-workspace-state`, `test:remote-gui-quit`, `test:schedule-reliability-lifecycle`.
 
 ### Work

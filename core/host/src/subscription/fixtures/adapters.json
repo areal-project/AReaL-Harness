@@ -1,0 +1,552 @@
+[
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": []
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "output": {
+      "model": "fixture",
+      "input": [],
+      "instructions": "You are a helpful assistant.",
+      "stream": true,
+      "store": false,
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "reasoning": {
+        "context": "all_turns"
+      },
+      "text": {
+        "verbosity": "low"
+      }
+    }
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [
+        {
+          "role": "system",
+          "content": "System"
+        },
+        {
+          "type": "function_call",
+          "name": "run",
+          "call_id": "call_fixture",
+          "arguments": "{}"
+        },
+        {
+          "type": "function_call_output",
+          "call_id": "call_fixture",
+          "output": "fixture"
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "name": "run",
+          "parameters": {}
+        }
+      ],
+      "tool_choice": {
+        "type": "function",
+        "name": "run"
+      },
+      "reasoning": {
+        "effort": "low"
+      },
+      "parallel_tool_calls": true
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "output": {
+      "model": "fixture",
+      "input": [
+        {
+          "type": "function_call",
+          "name": "run",
+          "call_id": "call_fixture",
+          "arguments": "{}",
+          "namespace": "areal"
+        },
+        {
+          "type": "function_call_output",
+          "call_id": "call_fixture",
+          "output": "fixture"
+        }
+      ],
+      "instructions": "System",
+      "stream": true,
+      "store": false,
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "tools": [
+        {
+          "type": "namespace",
+          "name": "areal",
+          "description": "AReaL Runtime tools",
+          "tools": [
+            {
+              "type": "function",
+              "name": "run",
+              "parameters": {}
+            }
+          ]
+        }
+      ],
+      "parallel_tool_calls": true,
+      "tool_choice": {
+        "type": "function",
+        "name": "run",
+        "namespace": "areal"
+      },
+      "reasoning": {
+        "effort": "low",
+        "context": "all_turns"
+      },
+      "text": {
+        "verbosity": "low"
+      }
+    }
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [
+        {
+          "role": "system",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "A"
+            },
+            {
+              "text": "B"
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": "hello"
+        }
+      ],
+      "instructions": "First",
+      "service_tier": "fast",
+      "max_output_tokens": 123
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "output": {
+      "model": "fixture",
+      "input": [
+        {
+          "role": "user",
+          "content": "hello"
+        }
+      ],
+      "instructions": "First\n\nA\nB",
+      "stream": true,
+      "store": false,
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "service_tier": "priority",
+      "reasoning": {
+        "context": "all_turns"
+      },
+      "text": {
+        "verbosity": "low"
+      }
+    }
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "reasoning": {
+        "context": null
+      },
+      "text": {
+        "verbosity": null
+      }
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "output": {
+      "model": "fixture",
+      "input": [],
+      "instructions": "You are a helpful assistant.",
+      "stream": true,
+      "store": false,
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "reasoning": {
+        "context": null
+      },
+      "text": {
+        "verbosity": null
+      }
+    }
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "reasoning": {
+        "context": "current_turn"
+      },
+      "text": {
+        "verbosity": "high"
+      },
+      "parallel_tool_calls": false
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "output": {
+      "model": "fixture",
+      "input": [],
+      "instructions": "You are a helpful assistant.",
+      "stream": true,
+      "store": false,
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "parallel_tool_calls": false,
+      "reasoning": {
+        "context": "current_turn"
+      },
+      "text": {
+        "verbosity": "high"
+      }
+    }
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "background": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "conversation": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "metadata": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "moderation": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "multi_agent": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "prompt": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "prompt_cache_retention": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "safety_identifier": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "temperature": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "top_logprobs": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "top_p": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "min_p": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "top_k": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "presence_penalty": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "repetition_penalty": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "truncation": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "user": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "previous_response_id": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "max_tool_calls": 0
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "text": []
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [
+        {
+          "role": "system",
+          "content": [
+            {
+              "text": 1
+            }
+          ]
+        }
+      ]
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": true,
+      "input": [],
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  },
+  {
+    "input": {
+      "model": "fixture",
+      "stream": false,
+      "input": []
+    },
+    "hints": {
+      "reasoningContext": "all_turns",
+      "verbosity": "low"
+    },
+    "error": true
+  }
+]

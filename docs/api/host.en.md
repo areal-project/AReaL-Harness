@@ -132,7 +132,7 @@ These interfaces serve authenticated local clients only. `GuiSource` contains ca
 | `journal.read`     | `{projectId}`                                                                 | `{projectId,revision,sha256,byteLength,snapshotPath}`. The complete snapshot occupies a fixed private slot.                             |
 | `journal.prepare`  | `{requestId,expectedGeneration,projectId,expectedRevision,sha256,byteLength}` | `{requestId,state:"prepared",slotId,writePath}` or a blocked receipt.                                                                   |
 | `journal.commit`   | `{requestId,expectedGeneration,slotId}`                                       | The original commit's completed or blocked receipt. It requires the prepare connection and requestId.                                   |
-| `remote.read`      | `{}`                                                                          | `{revision,sourceId,config}`. Secret-bearing configuration is returned only to trusted local connections.                               |
+| `remote.read`      | `{}`                                                                          | `{revision,sourceId,config,owner?}`. `owner` is `legacy` or `native`; secret-bearing configuration is returned only to trusted local connections. |
 | `remote.acquire`   | `{sourceId}`                                                                  | `{leaseId,sourceId}`. The execution lease belongs to this connection and ends on disconnect.                                            |
 | `remote.replace`   | `{requestId,expectedGeneration,expectedRevision,sourceId,config}`             | A durable replacement receipt with revision-based conflict detection. The execution lease does not restrict local configuration writes. |
 
@@ -155,6 +155,22 @@ Prepare requires a committed import, a valid source guard, and completed receipt
 Recovery reads the original plan and derivative files without parsing retired ciphertext again. If rename succeeds before confirm, Host records progress from the derivative digest. After disconnect, attach the source again and use the original requestId returned by status. A different requestId cannot recreate the same plan. Status and offline operation queries neither access secure storage nor advance retirement. Original manifest digests still describe historical bytes. A retired backup is a derivative recorded in the separate plan. Old backups outside the current committed manifest are outside this plan.
 
 Without an imported or newly created Remote configuration, remote.read returns {revision:0,sourceId:null,config:null} without accessing secure storage. A published source can create its first configuration with expectedRevision:0. Once a Noise identity exists, replacements cannot change it. A pending first write also reserves its source against another import. Grant scopes use original source aliases, new GUI registrations, and stable local aliases for other Host projects. GUI Gateway uses a separate lease connection; losing it closes the endpoints, including a late Direct listener.
+
+### Rust Gateway handoff
+
+The native Gateway reuses the same Noise identity, grants, Remote revision, and Host journal. The old executor closes its endpoints, drains accepted work, and releases its lease before handoff. The existing Host state owner atomically checks the source, revision, and absence of a lease and saves the original receipt. After durable handoff, `remote.acquire` and generic `remote.replace` return `nativeGatewayOwned`; settings writes go through the native owner. Native startup failure reports unavailability without restoring the JS executor. Clients select the native GUI facade through capability `remoteGatewayV1`, never a version-number inference.
+
+| Method | Parameters | Result |
+| --- | --- | --- |
+| `remote.gateway.handoff` | `{requestId,expectedGeneration,sourceId,expectedRevision,assetRoot?}` | A `completed` handoff receipt containing the original `hostId`, `generation`, `sourceId`, and `revision`. |
+| `remote.gateway.status` | `{}` | Native-owner connection and availability state without secrets. |
+| `remote.gateway.state` | `{sourceId}` | The existing GUI `RemoteStatus` projection, without private keys, Relay capability, or push tokens. |
+| `remote.gateway.control` | `{requestId,expectedGeneration,sourceId,request,assetRoot?}` | The existing local `RemoteRequest` and response shapes; GUI Main generates pairing QR images. |
+| `remote.gateway.replace` | `{requestId,expectedGeneration,expectedRevision,sourceId,config}` | The existing durable `remote.replace` receipt and CAS semantics. |
+
+The trusted local producer supplies `assetRoot`, pointing to the source Renderer build or packaged `areal-gui` directory. It is neither a phone request field nor a new user setting. Direct serves only the Remote closure described by `remote-assets.json` with matching checksums, retaining the existing Host, Origin, CSP, worker, and cache rules. Migration resolves the selected source's original GUI aliases; other Host projects use stable Host aliases. Reusing an old ID in another profile cannot broaden authorization.
+
+Control requests reuse the existing Remote receipt directory and bind the original settings request through `controlDigest`. It uses the existing Host-generation auth token as an HMAC key, separates method, source, and requestId domains, and binds canonical request bytes. The auth key stays in Host and authenticated local Main clients, outside Renderer and without another key store. Temporary pairing receipts have `ephemeral:true` and the original Host identity and exclude invitation secrets; lookup never recreates an invitation after restart, consumption, or cancellation. GUI persists unresolved request references and queries only the original ID. `null` never permits replay. The native `requestId` for Remote `interaction.respond` is the interaction domain identifier; its journal UUID neither replaces that ID nor creates a separate `areal/request/read` admission proof. An uncertain response retains journal UNKNOWN. Current interaction state remains a separate observation and cannot establish this command's admission. Other submission methods with native request receipts still query their original IDs.
 
 ### Journal and operation receipts
 
@@ -182,6 +198,26 @@ Provider values are nonempty strings or null; subscription values are complete r
 A write first saves a non-secret acceptedPending receipt, then stores and verifies a stable vault entry, and finally atomically commits the slot version and completed receipt. Recovery reconciles the original entry and revision. Locked system storage still returns `storageLocked`, not evidence of absence. A confirmed missing entry can settle as `blocked/storageWriteNotApplied`. Operation receipts contain neither secret values nor ordinary hashes of secrets. A lost response permits querying the original requestId only.
 
 On each activation of an imported project or a new GUI project from a committed source, Host reads fixed provider references from that source's current vault. Revocation removes the old Host cache value; stale client values cannot override the vault. Missing or ambiguous GUI sources fail without falling back to stale client values. Ordinary CLI projects and non-fixed references retain the existing launch-input credential behavior. GUI settings and subscription consumers read and write through these slots. The reserved `AREAL_CREDENTIAL_areal_openai` reference resolves to the source subscriptionTransport token. Other environment credentials travel separately in `project.ensure.credentials`, not the saved launch environment. Revocation does not automatically remove credentials already injected into a running Core.
+
+## Native subscription source owner
+
+`subscriptionOwnerV1` isolates accounts, OAuth, refresh, and local streaming transport by published GUI source. Core remains authoritative for model execution; GUI consumes safe state and login URLs. `accountEpoch` identifies account lifetime independently of vault revision. Normal token rotation or saving a new inactive account does not cancel the active account's stream. Selection and logout revoke the old epoch; late refresh or callback results cannot restore the old account.
+
+| Method | Parameters | Result |
+| --- | --- | --- |
+| `subscription.read` | `{sourceId}` | Source owner, safe account state, directory, model catalog, and transport endpoint, without OAuth or loopback Bearer tokens. |
+| `subscription.handoff` | `{requestId,expectedGeneration,sourceId,migrationId,expectedAccountRevision,expectedTransportRevision,network}` | The original handoff receipt. Durable takeover follows verification of the exact committed and retired source, both slot revisions, and binding the original port. |
+| `subscription.command` | `{requestId,expectedGeneration,sourceId,expectedAccountEpoch,action}` | The original command receipt; query the original ID for background completion. |
+
+`subscription.read.owner` is `legacy` or `nativeV1`, with `sourceId`, `generation`, `accountRevision`, and `transportRevision` always present. Native state adds `accountEpoch`, existing account status, `accounts`, `catalog`, and `endpoint`. Login state `{loginId,authUrl}` lets the local UI open authorization. `applied` records `{accountEpoch,serviceId,generation,connectionId,providerRevision}` by Host projectId. Source readiness does not establish that every Core has applied it.
+
+Actions are `begin` (`target:{kind:"current"|"newAccount"|"saved",accountId?}`), `cancel` (`loginId`), `select` (`accountId`), `logout`, `forget`, `refreshCatalog` (`force?`), `probe` (`model`), and `configureNetwork` (`network,expectedTransportRevision`). A new authorization can be saved inactive while Core is busy, preserving the original stream. Selection and logout retain live idle checks against each original Core without promising an atomic reservation across Cores.
+
+`network` is `{proxies,extraCaPem,proxyUnavailable}`. `proxies` accepts only `HTTP_PROXY`, `http_proxy`, `HTTPS_PROXY`, `https_proxy`, `ALL_PROXY`, `all_proxy`, `NO_PROXY`, `no_proxy`, and `AREAL_CHATGPT_SYSTEM_PROXY`. These source network inputs reside only in the encrypted transport slot, outside status and ordinary operation logs. Subscription intents use the same domain-separated HMAC with the current Host auth key; operation files do not retain ordinary SHA digests of inputs containing secrets such as proxy passwords. OAuth and catalog calls have request deadlines. Inference SSE follows Core, source, and account-epoch cancellation, without a short global deadline covering the whole inference.
+
+Before handoff, drain old-source active streams, refresh, and original slot writes. Host retains the original token and port for existing Core transport references. Host resolves new Cores' reserved credential references from the exact source; GUI does not return stale secrets. After takeover, generic `vault.replace` returns `subscriptionOwnerRequired` for the source account and transport slots, but accepted original receipts are returned before the fence. Native private CAS retains the existing vault revision, immutable entry, and request ID without another credential ledger.
+
+Handoff and command receipts have method `subscription.handoff` or `subscription.command` and state `acceptedPending`, `completed`, or `blocked`. Terminal receipts carry `result` or `error:{code,message}`. A lost response permits only an original `host.operation` lookup, never another OAuth exchange, inference POST, or uncertain Core submission.
 
 ## Exit and service-manager contract
 

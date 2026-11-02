@@ -132,7 +132,7 @@ GUI 根目录中的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` �
 | `journal.read`     | `{projectId}`                                                                 | `{projectId,revision,sha256,byteLength,snapshotPath}`。固定私有槽位中的完整快照。 |
 | `journal.prepare`  | `{requestId,expectedGeneration,projectId,expectedRevision,sha256,byteLength}` | `{requestId,state:"prepared",slotId,writePath}` 或 blocked 回执。                 |
 | `journal.commit`   | `{requestId,expectedGeneration,slotId}`                                       | 原提交的 completed 或 blocked 回执。必须使用 prepare 的连接与 requestId。         |
-| `remote.read`      | `{}`                                                                          | `{revision,sourceId,config}`。包含秘密的配置只返回可信本机连接。                  |
+| `remote.read`      | `{}`                                                                          | `{revision,sourceId,config,owner?}`。`owner` 为 `legacy` 或 `native`；包含秘密的配置只返回可信本机连接。 |
 | `remote.acquire`   | `{sourceId}`                                                                  | `{leaseId,sourceId}`。执行租约绑定当前连接，断连释放。                            |
 | `remote.replace`   | `{requestId,expectedGeneration,expectedRevision,sourceId,config}`             | 持久替换回执，以 revision 校验写入冲突。执行租约不限制本机配置写入。              |
 
@@ -155,6 +155,22 @@ prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每�
 中断恢复读取原计划与派生文件，不再解析已退役的密文。rename 完成而 confirm 未完成时，Host 根据派生摘要记录进度。连接断开后重新绑定来源，并使用 status 返回的原 requestId。同一计划不能换 requestId 重建。status 和离线操作查询不访问密钥库，不推进退役。原 manifest 的摘要仍描述历史原字节；已退役的备份是由独立计划记录的派生副本。未被当前 committed manifest 引用的旧备份不在本计划内。
 
 没有已导入或新建 Remote 配置时，`remote.read` 返回 `{revision:0,sourceId:null,config:null}`，不访问密钥库。已发布来源可用 `expectedRevision:0` 首次写入；一旦存在 Noise identity，后续替换不能改变它。待完成的首次写入也保留来源选择，不能由另一来源导入覆盖。授权范围包含该来源的原别名、新 GUI 登记和其他 Host 项目的稳定本地别名。GUI 的 Gateway 使用独立租约连接，连接失效关闭入口，迟到的 Direct listener 也会关闭。
+
+### Rust Gateway 交接
+
+原生 Gateway 复用同一 Noise 身份、grants、Remote revision 与 Host journal。旧执行者先关闭入口、排空已接受的工作并释放租约，再提交交接；Host 在现有状态所有者中原子核对来源、revision 和无租约条件并保存原回执。持久交接后，`remote.acquire` 与通用 `remote.replace` 返回 `nativeGatewayOwned`；设置写入只经过原生 owner。原生入口启动失败时报告不可用，不恢复旧 JS 执行者。客户端以 `remoteGatewayV1` 能力决定是否使用原生 GUI 门面，不能按版本号推断。
+
+| 方法 | 参数 | 结果 |
+| --- | --- | --- |
+| `remote.gateway.handoff` | `{requestId,expectedGeneration,sourceId,expectedRevision,assetRoot?}` | 包含原 `hostId`、`generation`、`sourceId`、`revision` 的 `completed` 交接回执。 |
+| `remote.gateway.status` | `{}` | 原生 owner 的连接与可用状态，不含秘密。 |
+| `remote.gateway.state` | `{sourceId}` | 既有 GUI `RemoteStatus` 投影，不返回私钥、Relay capability 或 push token。 |
+| `remote.gateway.control` | `{requestId,expectedGeneration,sourceId,request,assetRoot?}` | 沿用本机 `RemoteRequest` 与响应形状；配对二维码由 GUI Main 生成。 |
+| `remote.gateway.replace` | `{requestId,expectedGeneration,expectedRevision,sourceId,config}` | 沿用 `remote.replace` 的持久回执与 CAS 语义。 |
+
+`assetRoot` 由可信本机 producer 提供，指向源码 Renderer 构建目录或安装包的 `areal-gui` 目录，不是手机请求字段或新增用户设置。Direct 只发布 `remote-assets.json` 描述且摘要匹配的 Remote 闭包，保留原 Host、Origin、CSP、worker 与缓存约束。来源的原 GUI 别名由 Migration 映射解析；其他 Host 项目使用稳定 Host 别名，不因另一个 profile 复用旧 ID 而扩大授权。
+
+控制请求复用原 Remote 回执目录，以 `controlDigest` 绑定原设置请求。该值使用当前 Host generation 的既有认证 token 做 HMAC，按方法、来源与 requestId 分域，并绑定规范化请求字节；认证 key 只留在 Host 与已认证本机 Main 客户端，不返回 Renderer 或另建密钥存储。临时配对操作的回执标记 `ephemeral:true` 并绑定原 Host 身份，不保存邀请秘密；重启、消费或取消后的查询不重建邀请。GUI 持久保留未确认请求引用，只核查原 ID。`null` 不允许重放。Remote `interaction.respond` 的原生 `requestId` 是交互领域标识；其日志 UUID 不替换该 ID，也不产生独立的 `areal/request/read` 受理证明。回复不确定时保留 journal UNKNOWN，交互当前状态作为单独观察，不据此推定本命令受理。支持原生请求回执的其他提交方法仍按原 ID 核查。
 
 ### journal 与操作回执
 
@@ -182,6 +198,26 @@ provider 值是非空字符串或 null；subscription 值是完整记录对象�
 写入先保存非秘密 acceptedPending 回执，再保存稳定 vault entry 并读回验证，最后原子提交槽版本和 completed 回执。恢复根据原 entry 与版本结算；系统存储锁定仍返回 `storageLocked`，不推断为缺失。明确缺失的 entry 可结算为 `blocked/storageWriteNotApplied`。操作回执不含秘密值或秘密的普通哈希。丢失响应只查询原 requestId。
 
 每次激活已导入项目或已提交来源的新 GUI 项目时，Host 从该来源的当前 vault 获取固定 provider 引用。撤销会移除 Host 的旧缓存值，客户端提交的旧值不能覆盖 vault。缺失或歧义 GUI 来源返回错误，不回退到客户端旧值。普通 CLI 项目与非固定引用沿用既有按启动输入提供凭据的方式。GUI 设置与订阅消费者通过这些槽位读取和保存凭据。固定引用 `AREAL_CREDENTIAL_areal_openai` 取该来源 `subscriptionTransport` 的 token；其他环境凭据通过独立的 `project.ensure.credentials` 传入，不写进启动环境快照。撤销不会自动移除已注入运行中 Core 的凭据。
+
+## 原生订阅来源 owner
+
+`subscriptionOwnerV1` 提供按已发布 GUI 来源隔离的账号、OAuth、刷新与本机流式传输。Core 保留模型执行权威，GUI 只消费安全状态与登录 URL。`accountEpoch` 标识账户生存期，独立于 vault revision；普通 token 刷新或保存未激活的新账户不会取消当前账户的流。切换或注销撤销旧 epoch，迟到的刷新和回调不能恢复旧账户。
+
+| 方法 | 参数 | 结果 |
+| --- | --- | --- |
+| `subscription.read` | `{sourceId}` | 来源 owner、安全账户状态、目录、模型 catalog 与传输 endpoint，不含 OAuth 或 loopback Bearer token。 |
+| `subscription.handoff` | `{requestId,expectedGeneration,sourceId,migrationId,expectedAccountRevision,expectedTransportRevision,network}` | 原交接操作回执。校验同一已提交且已退役来源、两个槽 revision 和原端口可绑定后才持久接管。 |
+| `subscription.command` | `{requestId,expectedGeneration,sourceId,expectedAccountEpoch,action}` | 原命令回执；后台完成后按原 ID 查询。 |
+
+`subscription.read.owner` 为 `legacy` 或 `nativeV1`，始终包含 `sourceId`、`generation`、`accountRevision` 与 `transportRevision`。原生状态另含 `accountEpoch`、既有账户状态、`accounts`、`catalog` 与 `endpoint`。`login` 中的 `{loginId,authUrl}` 供本机 UI 打开授权流程。`applied` 按 Host projectId 记录 `{accountEpoch,serviceId,generation,connectionId,providerRevision}`；来源已就绪不表示每个 Core 已应用成功。
+
+action 为 `begin`（`target:{kind:"current"|"newAccount"|"saved",accountId?}`）、`cancel`（`loginId`）、`select`（`accountId`）、`logout`、`forget`、`refreshCatalog`（`force?`）、`probe`（`model`）或 `configureNetwork`（`network,expectedTransportRevision`）。新账号授权可在 Core 忙碌时保存为未激活账户，保留原流。切换与注销沿用每个原 Core 的实时空闲检查，不承诺跨 Core 原子预留。
+
+`network` 为 `{proxies,extraCaPem,proxyUnavailable}`。`proxies` 仅接收 `HTTP_PROXY`、`http_proxy`、`HTTPS_PROXY`、`https_proxy`、`ALL_PROXY`、`all_proxy`、`NO_PROXY`、`no_proxy` 与 `AREAL_CHATGPT_SYSTEM_PROXY`。这些来源网络输入只保存在加密 transport 槽，不进入状态或普通操作日志。订阅意图同样使用当前 Host 认证 key 的分域 HMAC，操作文件不保存带代理密码等秘密的普通 SHA 摘要。OAuth 和模型目录有请求期限，推理 SSE 沿 Core、来源与账户 epoch 取消，没有覆盖整个推理的全局短时限。
+
+交接前先排空旧来源的活动流、刷新与原槽写入。Host 复用原 token 和端口以保持已有 Core 的 transport 引用；新 Core 的保留凭据引用由 Host 从精确来源解析，GUI 不传回旧秘密。接管后通用 `vault.replace` 对该来源的账户与 transport 槽返回 `subscriptionOwnerRequired`，已受理的原回执仍先于 fence 返回。原生私有 CAS 继续使用原 vault revision、immutable entry 与请求 ID，不另建凭据账本。
+
+交接和命令回执的 `method` 为 `subscription.handoff` 或 `subscription.command`，状态为 `acceptedPending`、`completed` 或 `blocked`，终态带 `result` 或 `error:{code,message}`。丢回复只查询原 `host.operation`；不重做 OAuth exchange、推理 POST 或不确定的 Core 提交。
 
 ## 退出与服务管理器契约
 

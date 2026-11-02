@@ -8,8 +8,8 @@ const { parseRemoteConfig } = require("./remote-config.cjs");
 /** @typedef {{requestId:string,sourceId:string,expectedRevision:number}} PendingWrite */
 
 class HostRemote {
-  /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend @param {()=>void} disconnected */
-  constructor(backend, disconnected) {
+  /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend @param {()=>void} disconnected @param {{native?:boolean}} [options] */
+  constructor(backend, disconnected, { native = false } = {}) {
     this.backend = backend;
     this.disconnected = disconnected;
     this.client = new HostClient();
@@ -17,6 +17,8 @@ class HostRemote {
     this.revision = 0;
     this.leased = false;
     this.closed = false;
+    this.native = native;
+    this.nativeOwned = false;
     /** @type {Promise<void>|undefined} */ this.persistence = undefined;
     /** @type {PendingWrite|null} */ this.pending = null;
     /** @type {Promise<unknown>} */ this.chain = Promise.resolve();
@@ -49,14 +51,14 @@ class HostRemote {
       this.disconnected();
     });
     this.client.requireCapability("remoteState");
-    await this.client.request("remote.acquire", { sourceId: this.sourceId });
+    if (!this.native) await this.client.request("remote.acquire", { sourceId: this.sourceId });
     this.requireOpen();
-    this.leased = true;
+    this.leased = !this.native;
     await this.settle();
     return this.read();
   }
   available() {
-    return !this.closed && this.leased && !this.client.socket?.destroyed;
+    return !this.closed && (this.leased || this.native) && !this.client.socket?.destroyed;
   }
   persist() {
     const result = this.backend.save("host-remote-operation.json", {
@@ -72,6 +74,7 @@ class HostRemote {
     if (value.sourceId !== null && value.sourceId !== this.sourceId)
       throw new Error("Remote 配置属于其他来源");
     this.revision = value.revision;
+    this.nativeOwned = value.owner === "native";
     return parseRemoteConfig(value.config);
   }
   /** @param {Record<string,unknown>|null|undefined} receipt @param {PendingWrite} item */
@@ -117,11 +120,14 @@ class HostRemote {
       await this.persist();
       let receipt;
       try {
-        receipt = await this.client.request("remote.replace", {
-          ...item,
-          expectedGeneration: this.client.generation,
-          config,
-        });
+        receipt = await this.client.request(
+          this.native && this.nativeOwned ? "remote.gateway.replace" : "remote.replace",
+          {
+            ...item,
+            expectedGeneration: this.client.generation,
+            config,
+          },
+        );
       } catch (error) {
         if (
           error instanceof Error &&

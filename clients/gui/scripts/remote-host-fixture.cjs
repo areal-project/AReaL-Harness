@@ -5,9 +5,15 @@ const { parseRemoteConfig } = require("../app/src/core/remote-config.cjs");
 
 function attachRemoteHostFixture(remote, encryption) {
   let connected = true;
+  let rustWire;
   remote.storage = {
     async init() {
       connected = true;
+      if (process.env.AREAL_REMOTE_WIRE === "rust") {
+        const { rustWireFixture } = await import("./remote-rust-wire-fixture.mjs");
+        rustWire ??= rustWireFixture();
+        remote.crypto = { ...remote.crypto, secureChannel: rustWire.secureChannel };
+      }
       try {
         const saved = JSON.parse(
           await readFile(join(remote.backend.home, "remote-host-fixture.json"), "utf8"),
@@ -28,9 +34,12 @@ function attachRemoteHostFixture(remote, encryption) {
       });
       return config;
     },
-    async drained() {},
+    async drained() {
+      await rustWire?.drained();
+    },
     close() {
       connected = false;
+      rustWire?.close();
     },
   };
 }

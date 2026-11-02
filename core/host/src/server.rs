@@ -1,7 +1,11 @@
+#[path = "gateway/owner.rs"]
+mod gateway_owner;
 #[path = "schedule_connection.rs"]
 mod schedule_connection;
 #[path = "schedules.rs"]
 mod schedules;
+#[path = "subscription/host.rs"]
+mod subscriptions;
 use crate::{
     Activity, CAPABILITIES, HostIdentity, HostStatus, LaunchInputs, OpenResult, ProjectActivity,
     ProjectRegistration, ProjectStatus, StopStrategy, VERSION, launch,
@@ -77,9 +81,11 @@ struct Host {
     host_stop_gate: Mutex<()>,
     changes: watch::Sender<u64>,
     exit: Notify,
-    migration: crate::migration::Migration,
+    migration: Rc<crate::migration::Migration>,
     journal: crate::journal::Journal,
     remote: crate::remote_state::RemoteState,
+    gateway: gateway_owner::Gateway,
+    subscriptions: subscriptions::Subscriptions,
     schedules: schedules::Schedules,
 }
 impl Slot {
@@ -279,9 +285,11 @@ async fn run_local(options: RunOptions) -> Result<HostExit> {
         host_stop_gate: Mutex::new(()),
         changes,
         exit: Notify::new(),
-        migration,
+        migration: migration.into(),
         journal,
         remote,
+        gateway: gateway_owner::Gateway::default(),
+        subscriptions: subscriptions::Subscriptions::default(),
     });
     host.schedules.import(
         &host.migration,
@@ -306,19 +314,27 @@ async fn run_local(options: RunOptions) -> Result<HostExit> {
             )?;
         }
     }
+    host.restore_subscriptions().await?;
     storage::write(&directory.join("host.json"), &host.identity)?;
     let scheduler = schedules::run(host.clone());
     tokio::pin!(scheduler);
     let connections = schedule_connection::run(host.clone());
     tokio::pin!(connections);
+    let gateway = gateway_owner::run(host.clone());
+    tokio::pin!(gateway);
+    let subscriptions = host.run_subscriptions();
+    tokio::pin!(subscriptions);
     loop {
         tokio::select! {
             _=host.exit.notified()=>break,
             _=&mut scheduler=>unreachable!("scheduler lifetime is the Host lifetime"),
             _=&mut connections=>unreachable!("schedule connections live with the Host"),
+            _=&mut gateway=>unreachable!("Gateway lives with the Host"),
+            _=&mut subscriptions=>unreachable!("subscription owners live with the Host"),
             connection=listener.accept()=> {let (stream,_)=connection?;let host=host.clone();tokio::task::spawn_local(async move {let _=connection_loop(host,stream).await;});}
         }
     }
+    host.close_subscriptions().await;
     std::fs::remove_file(socket)?;
     drop(lock);
     Ok(HostExit::Stopped)
@@ -386,6 +402,30 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
     }
 }
 impl Host {
+    fn intent_digest(
+        &self,
+        method: &str,
+        source_id: &str,
+        request_id: &str,
+        value: &Value,
+    ) -> Result<String> {
+        use hmac::{Hmac, Mac};
+        let mut mac = Hmac::<sha2::Sha256>::new_from_slice(self.token.as_bytes())?;
+        mac.update(&serde_json::to_vec(&json!([
+            "areal.host.intent.v1",
+            method,
+            source_id,
+            request_id
+        ]))?);
+        mac.update(&[0]);
+        mac.update(&serde_json::to_vec(value)?);
+        Ok(mac
+            .finalize()
+            .into_bytes()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect())
+    }
     fn client_operation(&self, id: &str) -> Result<Option<Value>> {
         if let Some(receipt) = self.migration.operation(id)? {
             return Ok(Some(receipt));
@@ -396,7 +436,10 @@ impl Host {
         if let Some(receipt) = self.migration.vault.operation(id, &self.migration)? {
             return Ok(Some(receipt));
         }
-        self.remote.operation(id, &self.migration)
+        if let Some(receipt) = self.remote.operation(id, &self.migration)? {
+            return Ok(Some(receipt));
+        }
+        self.subscription_operation(id)
     }
     fn client_state(
         &self,
@@ -568,7 +611,21 @@ impl Host {
                 &self.identity.generation,
                 &self.migration,
             ),
-            "remote.read" | "remote.replace" | "remote.acquire" => {
+            "remote.gateway.state" => {
+                let source = params["sourceId"]
+                    .as_str()
+                    .context("missing Remote source")?;
+                self.gateway_state(source)
+            }
+            "remote.gateway.control" => self.gateway_control(params),
+            "remote.gateway.status" => {
+                ensure!(params == json!({}), "invalid gateway status parameters");
+                Ok(self.gateway.status())
+            }
+            "remote.gateway.handoff" => {
+                self.remote.handoff(params, &self.identity, &self.migration)
+            }
+            "remote.read" | "remote.replace" | "remote.gateway.replace" | "remote.acquire" => {
                 let projects = if method == "remote.read" {
                     Vec::new()
                 } else {
@@ -583,14 +640,19 @@ impl Host {
                         .collect();
                     self.migration.remote_projects(source, &current)?
                 };
-                self.remote.dispatch(
+                let result = self.remote.dispatch(
                     method,
                     params,
                     &connection.id,
                     &self.identity.generation,
                     &self.migration,
                     &projects,
-                )
+                )?;
+                if method == "remote.gateway.replace" {
+                    let snapshot = self.remote.snapshot(&self.migration)?;
+                    self.gateway.refresh_config(&snapshot["config"]);
+                }
+                Ok(result)
             }
             _ => Err(error("methodNotFound", "unknown Host client-state method")),
         }
@@ -849,6 +911,9 @@ impl Host {
         params: Value,
         connection: &ConnectionGuard,
     ) -> Result<Value> {
+        if method.starts_with("subscription.") {
+            return self.subscription_dispatch(method, params, connection).await;
+        }
         if method.starts_with("gui.")
             || method.starts_with("journal.")
             || method.starts_with("vault.")
@@ -1185,7 +1250,7 @@ impl Host {
             .join("host/launch")
             .join(storage::digest(input.project_id.as_bytes()))
             .join("inputs.json");
-        let inputs = match &input.launch_inputs {
+        let mut inputs = match &input.launch_inputs {
             Some(v) => v.clone(),
             None => storage::read_optional(&saved_path)?.ok_or_else(|| {
                 error(
@@ -1194,6 +1259,18 @@ impl Host {
                 )
             })?,
         };
+        if let Some(source) = self.migration.credential_source(&registration)? {
+            if self.migration.vault.subscription_owner(&source)?.is_some()
+                && !inputs
+                    .credential_names
+                    .iter()
+                    .any(|name| name == "AREAL_CREDENTIAL_areal_openai")
+            {
+                inputs
+                    .credential_names
+                    .push("AREAL_CREDENTIAL_areal_openai".into());
+            }
+        }
         launch::validate(&inputs, &registration)?;
         ensure!(
             input
@@ -2159,9 +2236,11 @@ mod tests {
             host_stop_gate: Mutex::new(()),
             changes,
             exit: Notify::new(),
-            migration,
+            migration: migration.into(),
             journal,
             remote: crate::remote_state::RemoteState::new(&home),
+            gateway: gateway_owner::Gateway::default(),
+            subscriptions: subscriptions::Subscriptions::default(),
             schedules: schedules::Schedules::load(&home).unwrap(),
         });
         let (socket, _peer) = std::os::unix::net::UnixStream::pair().unwrap();
@@ -2755,7 +2834,7 @@ mod tests {
             let workspace=root.path().join("workspace");std::fs::create_dir(&workspace).unwrap();let workspace=workspace.canonicalize().unwrap();
             let mut slots=BTreeMap::new();
             for id in ["a","b","c"] {slots.insert(id.into(),Slot {registration:ProjectRegistration {project_id:id.into(),workspace:workspace.clone(),data_dir:home.join(id),source:ProjectSource::Cli,default_binding:false},gate:Arc::new(Mutex::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new()});}
-            let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
+            let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
             let registration=host.slots.borrow()["b"].registration.clone();storage::private_dir(&registration.data_dir).unwrap();let instance=Host::service_id(&registration);let directory=storage::registry(&home,&instance).unwrap();storage::private_dir(&directory).unwrap();
             let service:Service=serde_json::from_value(json!({"protocolVersion":1,"serviceId":instance,"generation":uuid::Uuid::new_v4().to_string(),"workspace":workspace,"dataDir":registration.data_dir,"configFingerprint":"fixture","owner":host.owner(),"endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1","authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),"hostPid":1,"corePid":1,"state":"stopped"})).unwrap();storage::write(&directory.join("service.json"),&service).unwrap();storage::write(&directory.join("crash.json"),&storage::CrashReceipt {version:1,unexpected_core_exit:true,identity:service.identity.clone(),owner:service.owner.clone(),components:BTreeMap::new(),cleanup_confirmed:true}).unwrap();
             let activation=uuid::Uuid::new_v4().to_string();let record=Operation {digest:"fixture".into(),receipt:json!({"version":1,"requestId":activation,"method":"project.ensure","projectId":"b","state":"acceptedPending"}),evidence:json!({"serviceId":instance,"fingerprint":"fixture","owner":host.owner(),"registration":registration,"previousService":null})};storage::write(&wire::operation_path(&home,&activation),&record).unwrap();

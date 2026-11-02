@@ -196,6 +196,32 @@ impl Journal {
         }
     }
 
+    pub(crate) fn native_snapshot(&self, project_id: &str) -> Result<(u64, Value)> {
+        self.ensure_empty(project_id)?;
+        let record = self.load(project_id)?;
+        Ok((record.revision, serde_json::to_value(record.snapshot)?))
+    }
+    pub(crate) fn native_replace(
+        &self,
+        project_id: &str,
+        expected_revision: u64,
+        snapshot: Value,
+    ) -> Result<()> {
+        let mut record = self.load(project_id)?;
+        ensure!(
+            record.revision == expected_revision,
+            error("revisionConflict", "journal revision changed")
+        );
+        let next = Snapshot::parse(snapshot)?;
+        preserve_pending_identity(&record.snapshot, &next)?;
+        record.snapshot = next;
+        record.revision = record
+            .revision
+            .checked_add(1)
+            .context("journal revision exhausted")?;
+        storage::write(&self.record_path(project_id)?, &record)
+    }
+
     pub(crate) fn dispatch(
         &self,
         method: &str,

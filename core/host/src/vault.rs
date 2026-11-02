@@ -292,6 +292,14 @@ impl Vault {
         if input.expected_generation != generation {
             return Err(error("generationMismatch", "Host generation changed"));
         }
+        self.replace(input, migration, false)
+    }
+    fn replace(
+        &self,
+        input: Replace,
+        migration: &Migration,
+        native_subscription: bool,
+    ) -> Result<Value> {
         let mut state = self.state(&input.slot, migration)?;
         self.recover(&mut state)?;
         if let Some(previous) = self.operation(&input.request_id, migration)? {
@@ -320,6 +328,24 @@ impl Vault {
                 ));
             }
             return Ok(previous);
+        }
+        if !native_subscription {
+            let source = match &input.slot {
+                Slot::SubscriptionAccount {
+                    source_id,
+                    provider_id,
+                } if provider_id == "openai" => Some(source_id),
+                Slot::SubscriptionTransport { source_id } => Some(source_id),
+                _ => None,
+            };
+            if let Some(source) = source {
+                if self.subscription_owner(source)?.is_some() {
+                    return Err(error(
+                        "subscriptionOwnerRequired",
+                        "subscription credentials are owned by the Host",
+                    ));
+                }
+            }
         }
         if state.revision != input.expected_revision {
             return Err(error("revisionConflict", "vault revision changed"));
@@ -352,6 +378,125 @@ impl Vault {
         self.save_state(&state)?;
         self.save_operation(&receipt)?;
         Ok(receipt)
+    }
+    pub(crate) fn subscription_account(
+        &self,
+        source: &str,
+        migration: &Migration,
+    ) -> Result<(u64, Value)> {
+        self.subscription_slot(
+            &Slot::SubscriptionAccount {
+                source_id: source.to_owned(),
+                provider_id: "openai".into(),
+            },
+            migration,
+        )
+    }
+    fn subscription_slot(&self, slot: &Slot, migration: &Migration) -> Result<(u64, Value)> {
+        let mut state = self.state(slot, migration)?;
+        self.recover(&mut state)?;
+        let value = match state.entry_id {
+            Some(id) => self
+                .read(&id)?
+                .ok_or_else(|| error("storageMissing", "current vault entry is missing"))?,
+            None => Value::Null,
+        };
+        Ok((state.revision, value))
+    }
+    pub(crate) fn subscription_transport(
+        &self,
+        source: &str,
+        migration: &Migration,
+    ) -> Result<(u64, Value)> {
+        self.subscription_slot(
+            &Slot::SubscriptionTransport {
+                source_id: source.to_owned(),
+            },
+            migration,
+        )
+    }
+    pub(crate) fn replace_subscription_transport(
+        &self,
+        source: &str,
+        request_id: &str,
+        expected_revision: u64,
+        value: Value,
+        migration: &Migration,
+    ) -> Result<Value> {
+        wire::request_id(request_id)?;
+        self.replace(
+            Replace {
+                request_id: request_id.to_owned(),
+                expected_generation: String::new(),
+                slot: Slot::SubscriptionTransport {
+                    source_id: source.to_owned(),
+                },
+                expected_revision,
+                value,
+            },
+            migration,
+            true,
+        )
+    }
+    pub(crate) fn replace_subscription_account(
+        &self,
+        source: &str,
+        request_id: &str,
+        expected_revision: u64,
+        value: Value,
+        migration: &Migration,
+    ) -> Result<Value> {
+        wire::request_id(request_id)?;
+        self.replace(
+            Replace {
+                request_id: request_id.to_owned(),
+                expected_generation: String::new(),
+                slot: Slot::SubscriptionAccount {
+                    source_id: source.to_owned(),
+                    provider_id: "openai".into(),
+                },
+                expected_revision,
+                value,
+            },
+            migration,
+            true,
+        )
+    }
+    pub(crate) fn subscription_owner(&self, source: &str) -> Result<Option<Value>> {
+        wire::request_id(source)?;
+        crate::migration::read_optional(
+            &self
+                .home
+                .join("host/subscription-owners")
+                .join(format!("{source}.json")),
+        )
+    }
+    pub(crate) fn claim_subscription(
+        &self,
+        source: &str,
+        request_id: &str,
+        account_revision: u64,
+        transport_revision: u64,
+        migration: &Migration,
+    ) -> Result<()> {
+        wire::request_id(source)?;
+        wire::request_id(request_id)?;
+        let (current_account, _) = self.subscription_account(source, migration)?;
+        let (current_transport, _) = self.subscription_transport(source, migration)?;
+        if current_account != account_revision || current_transport != transport_revision {
+            return Err(error(
+                "revisionConflict",
+                "subscription changed during handoff",
+            ));
+        }
+        storage::private_dir(&self.home.join("host/subscription-owners"))?;
+        storage::write(
+            &self
+                .home
+                .join("host/subscription-owners")
+                .join(format!("{source}.json")),
+            &json!({"owner":"nativeV1","sourceId":source,"requestId":request_id,"accountRevision":account_revision,"transportRevision":transport_revision}),
+        )
     }
     pub fn new(home: &Path) -> Self {
         Self {

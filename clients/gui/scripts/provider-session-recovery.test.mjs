@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { OpenAIAccount } from "../packages/chatgpt-provider/openai.js";
 import { AppProviders } from "../app/src/core/providers.cjs";
+import { legacyOpenAI } from "./fixtures/legacy-subscription-owner.cjs";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -250,7 +251,7 @@ test("new authorization saved during an old-account Core request never aborts th
   const providers = new AppProviders(backend);
   providers.transport = { port: 0 };
   providers.openaiToken = "fixture-transport";
-  const service = await providers.openai();
+  const service = await legacyOpenAI.call(providers);
   try {
     await service.account.directory.view().modifyRecord("", () => grant("old"));
     service.account.oauth = async (_action, { onAuth }) => {

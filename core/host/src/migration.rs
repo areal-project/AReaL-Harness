@@ -1374,11 +1374,38 @@ impl Migration {
         }
         Ok(())
     }
+    pub(crate) fn subscription_retired(&self, source_id: &str, migration_id: &str) -> Result<()> {
+        wire::request_id(source_id)?;
+        let record = self.read(migration_id)?;
+        ensure!(
+            record.source_id == source_id && self.committed(&record)?.is_some(),
+            error(
+                "sourceNotFound",
+                "subscription source does not match committed migration"
+            )
+        );
+        ensure!(
+            self.retirement_status(migration_id)?["state"] == "completed",
+            error("legacyPending", "legacy source retirement is incomplete")
+        );
+        Ok(())
+    }
     pub fn remote_projects(
         &self,
         source_id: &str,
         current: &[ProjectRegistration],
     ) -> Result<Vec<String>> {
+        Ok(self
+            .remote_bindings(source_id, current)?
+            .into_iter()
+            .map(|(_, alias)| alias)
+            .collect())
+    }
+    pub(crate) fn remote_bindings(
+        &self,
+        source_id: &str,
+        current: &[ProjectRegistration],
+    ) -> Result<Vec<(String, String)>> {
         let mut selected = None;
         for record in self.records()? {
             if record.source_id == source_id && self.committed(&record)?.is_some() {
@@ -1423,10 +1450,11 @@ impl Migration {
                     [..24]
                     .to_owned();
                 ensure!(!aliases.contains(&alias), "Host project alias collision");
-                aliases.push(alias);
+                aliases.push(alias.clone());
+                bindings.push((registration.project_id.clone(), alias));
             }
         }
-        Ok(aliases)
+        Ok(bindings)
     }
     pub fn remote_seed(&self) -> Result<Option<(String, String, Vec<String>)>> {
         for r in self.records()? {

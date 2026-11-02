@@ -281,6 +281,35 @@ export async function hostFixture(t, { config, commands = false } = {}) {
       savedWrites.push(name);
       return save(name, value);
     };
+    // native-shaped Core 夹具的日志边界仍写原测试文件，保留持久化和写入失败断言。
+    backend.host.journal = (id) => {
+      const read = async () => {
+        const field = async (name, empty) => {
+          try {
+            return JSON.parse(await readFile(join(home, `${id}-${name}.json`), "utf8"));
+          } catch (error) {
+            if (error.code === "ENOENT") return empty;
+            throw error;
+          }
+        };
+        return {
+          snapshot: {
+            version: 1,
+            pending: await field("pending", []),
+            outcomes: await field("outcomes", {}),
+          },
+        };
+      };
+      return {
+        read,
+        async change(mutate) {
+          const snapshot = await mutate((await read()).snapshot);
+          await backend.save(`${id}-pending.json`, snapshot.pending);
+          await backend.save(`${id}-outcomes.json`, snapshot.outcomes);
+          return { state: "completed" };
+        },
+      };
+    };
     backend.start =
       backend.launch =
       backend.connect =
@@ -303,7 +332,10 @@ export async function hostFixture(t, { config, commands = false } = {}) {
     return remote;
   };
   t.after(async () => {
-    for (const remote of instances) remote.close();
+    await Promise.all(instances.map((remote) => remote.close()));
+    if (commands)
+      for (const project of service.backend.projects.values())
+        service.backend.stopReconciliation(project);
     await rm(home, { recursive: true, force: true });
   });
   return {

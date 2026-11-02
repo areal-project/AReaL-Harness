@@ -3,9 +3,68 @@ use crate::schedule_admission::{self, AdmissionProject, AdmissionRpc};
 use crate::schedule_resources::{self, PreparedResources};
 use futures_util::{SinkExt, StreamExt};
 use std::cell::Cell;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::task::{AbortHandle, JoinSet};
 use tokio_tungstenite::tungstenite::{Message, client::IntoClientRequest};
+
+#[derive(Debug)]
+pub(super) struct RpcFailure(pub Value);
+impl std::fmt::Display for RpcFailure {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        output.write_str("Core request failed")
+    }
+}
+impl std::error::Error for RpcFailure {}
+
+#[derive(Clone)]
+pub(super) struct CoreEvent {
+    pub sequence: u64,
+    pub value: Value,
+}
+struct CoreReply {
+    value: Value,
+    sequence: u64,
+}
+pub(super) struct CoreObservation {
+    pub events: broadcast::Receiver<CoreEvent>,
+    session: Rc<CoreSession>,
+    thread_id: String,
+}
+impl CoreObservation {
+    pub fn current(&self, host: &Host) -> bool {
+        self.session.shared_current(host)
+    }
+    pub fn features(&self) -> Value {
+        self.session.capabilities.borrow()["features"].clone()
+    }
+    pub async fn snapshot(&self, host: &Host) -> Result<(Value, u64)> {
+        ensure!(self.session.shared_current(host), unavailable());
+        let reply = self
+            .session
+            .request_with_barrier("areal/thread/observe", json!({"threadId":self.thread_id}))
+            .await?;
+        ensure!(self.session.shared_current(host), unavailable());
+        Ok((reply.value, reply.sequence))
+    }
+}
+impl Drop for CoreObservation {
+    fn drop(&mut self) {
+        let mut observed = self.session.observed.borrow_mut();
+        let Some(count) = observed.get_mut(&self.thread_id) else {
+            return;
+        };
+        *count -= 1;
+        if *count != 0 {
+            return;
+        }
+        observed.remove(&self.thread_id);
+        let sequence = self.session.sequence.get() + 1;
+        self.session.sequence.set(sequence);
+        if self.session.outgoing.try_send(json!({"id":format!("host-{sequence}"),"method":"areal/subscription/remove","params":{"threadIds":[self.thread_id]}})).is_err() {
+            self.session.close();
+        }
+    }
+}
 
 const MAX_PENDING: usize = 64;
 
@@ -22,6 +81,89 @@ impl Default for Connections {
     }
 }
 impl Connections {
+    pub(super) fn shared_identity(
+        &self,
+        host: &Host,
+        id: &str,
+    ) -> Result<(String, String, String)> {
+        let session = self
+            .sessions
+            .borrow()
+            .get(id)
+            .cloned()
+            .ok_or_else(unavailable)?;
+        ensure!(session.shared_current(host), unavailable());
+        Ok((
+            session.service.identity.service_id.clone(),
+            session.service.identity.generation.clone(),
+            session.connection_id.clone(),
+        ))
+    }
+    pub(super) async fn remote_request(
+        &self,
+        host: &Host,
+        id: &str,
+        service_id: &str,
+        generation: &str,
+        connection_id: &str,
+        method: &str,
+        params: Value,
+    ) -> Result<Value> {
+        let session = self
+            .sessions
+            .borrow()
+            .get(id)
+            .cloned()
+            .ok_or_else(unavailable)?;
+        ensure!(
+            session.shared_current(host)
+                && session.service.identity.service_id == service_id
+                && session.service.identity.generation == generation
+                && session.connection_id == connection_id,
+            unavailable()
+        );
+        let result = session.request(method, params).await?;
+        ensure!(session.shared_current(host), unavailable());
+        ensure!(
+            session.service.identity.generation == generation,
+            unavailable()
+        );
+        Ok(result)
+    }
+    pub(super) async fn remote_observe(
+        &self,
+        host: &Host,
+        id: &str,
+        generation: &str,
+        thread_id: &str,
+    ) -> Result<(Value, u64, CoreObservation)> {
+        let session = self
+            .sessions
+            .borrow()
+            .get(id)
+            .cloned()
+            .ok_or_else(unavailable)?;
+        ensure!(
+            session.shared_current(host) && session.service.identity.generation == generation,
+            unavailable()
+        );
+        let events = session.events.subscribe();
+        *session
+            .observed
+            .borrow_mut()
+            .entry(thread_id.into())
+            .or_default() += 1;
+        let observation = CoreObservation {
+            events,
+            session: session.clone(),
+            thread_id: thread_id.into(),
+        };
+        let reply = session
+            .request_with_barrier("areal/thread/observe", json!({"threadId":thread_id}))
+            .await?;
+        ensure!(session.shared_current(host), unavailable());
+        Ok((reply.value, reply.sequence, observation))
+    }
     pub async fn ready(&self, host: &Host, id: &str, generation: &str) -> Result<()> {
         tokio::time::timeout(Duration::from_secs(15), async {
             loop {
@@ -61,22 +203,30 @@ fn unavailable() -> anyhow::Error {
 
 struct CoreSession {
     project_id: String,
+    connection_id: String,
     service: Service,
     outgoing: mpsc::Sender<Value>,
-    pending: RefCell<BTreeMap<String, oneshot::Sender<Result<Value>>>>,
+    pending: RefCell<BTreeMap<String, oneshot::Sender<Result<CoreReply>>>>,
     sequence: Cell<u64>,
     closed: Cell<bool>,
     ready: Cell<bool>,
+    events: broadcast::Sender<CoreEvent>,
+    event_sequence: Cell<u64>,
+    observed: RefCell<BTreeMap<String, usize>>,
+    capabilities: RefCell<Value>,
     refresh: Notify,
     refresh_requested: Cell<bool>,
     driver: RefCell<Option<AbortHandle>>,
 }
 impl CoreSession {
     fn current(&self, host: &Host) -> bool {
-        !self.closed.get()
-            && host.admission().is_ok()
+        self.shared_current(host)
             && !host.schedules.suppressed(&self.project_id)
             && !host.schedules.import_blocked(&self.project_id)
+    }
+    fn shared_current(&self, host: &Host) -> bool {
+        !self.closed.get()
+            && host.admission().is_ok()
             && host
                 .slots
                 .borrow()
@@ -94,7 +244,15 @@ impl CoreSession {
         Ok(())
     }
     fn invalidate(&self) {
-        self.closed.set(true);
+        if self.closed.replace(true) {
+            return;
+        }
+        let sequence = self.event_sequence.get() + 1;
+        self.event_sequence.set(sequence);
+        let _ = self.events.send(CoreEvent {
+            sequence,
+            value: json!({"method":"host/connectionClosed","params":{}}),
+        });
         self.ready.set(false);
         for (_, reply) in std::mem::take(&mut *self.pending.borrow_mut()) {
             let _ = reply.send(Err(unavailable()));
@@ -108,6 +266,9 @@ impl CoreSession {
         }
     }
     async fn request(&self, method: &str, params: Value) -> Result<Value> {
+        Ok(self.request_with_barrier(method, params).await?.value)
+    }
+    async fn request_with_barrier(&self, method: &str, params: Value) -> Result<CoreReply> {
         ensure!(
             !self.closed.get() && self.pending.borrow().len() < MAX_PENDING,
             unavailable()
@@ -123,8 +284,7 @@ impl CoreSession {
         };
         tokio::time::timeout(Duration::from_secs(62), async {
             self.outgoing
-                .send(json!({"id":id,"method":method,"params":params}))
-                .await
+                .try_send(json!({"id":id,"method":method,"params":params}))
                 .map_err(|_| unavailable())?;
             receiver.await.map_err(|_| unavailable())?
         })
@@ -180,12 +340,17 @@ async fn connect(host: Rc<Host>, id: &str, service: Service) -> Result<Rc<CoreSe
     let (outgoing, mut messages) = mpsc::channel::<Value>(MAX_PENDING);
     let session = Rc::new(CoreSession {
         project_id: id.into(),
+        connection_id: uuid::Uuid::new_v4().to_string(),
         service,
         outgoing,
         pending: RefCell::new(BTreeMap::new()),
         sequence: Cell::new(0),
         closed: Cell::new(false),
         ready: Cell::new(false),
+        events: broadcast::channel(16).0,
+        event_sequence: Cell::new(0),
+        observed: RefCell::new(BTreeMap::new()),
+        capabilities: RefCell::new(Value::Null),
         refresh: Notify::new(),
         refresh_requested: Cell::new(false),
         driver: RefCell::new(None),
@@ -207,7 +372,7 @@ async fn connect(host: Rc<Host>, id: &str, service: Service) -> Result<Rc<CoreSe
                         Message::Text(text) => {
                             let Ok(value) = serde_json::from_str::<Value>(&text) else { break; };
                             if let Some(method) = value["method"].as_str() {
-                                if value.get("id").is_none() { continue; }
+                                if value.get("id").is_none() { let sequence = connection.event_sequence.get() + 1; connection.event_sequence.set(sequence); let _ = connection.events.send(CoreEvent { sequence, value }); continue; }
                                 if callbacks.len() >= MAX_PENDING { break; }
                                 let host = host.clone();
                                 let connection = connection.clone();
@@ -222,7 +387,7 @@ async fn connect(host: Rc<Host>, id: &str, service: Service) -> Result<Rc<CoreSe
                                 });
                             } else if let Some(id) = value["id"].as_str() {
                                 if let Some(reply) = connection.pending.borrow_mut().remove(id) {
-                                    let result = if value.get("error").is_some() { Err(unavailable()) } else { value.get("result").cloned().ok_or_else(unavailable) };
+                                    let result = if let Some(error) = value.get("error") { Err(RpcFailure(error.clone()).into()) } else { value.get("result").cloned().map(|value| CoreReply { value, sequence: connection.event_sequence.get() }).ok_or_else(unavailable) };
                                     let _ = reply.send(result);
                                 }
                             }
@@ -238,9 +403,12 @@ async fn connect(host: Rc<Host>, id: &str, service: Service) -> Result<Rc<CoreSe
     });
     *session.driver.borrow_mut() = Some(driver.abort_handle());
     let initialized = session.request("initialize", json!({"clientInfo":{"name":"areal_host_scheduler","version":env!("CARGO_PKG_VERSION")}})).await;
-    if let Err(cause) = initialized {
-        session.close();
-        return Err(cause);
+    match initialized {
+        Ok(value) => *session.capabilities.borrow_mut() = value["capabilities"].clone(),
+        Err(cause) => {
+            session.close();
+            return Err(cause);
+        }
     }
     session
         .outgoing
@@ -644,9 +812,11 @@ async fn restore(host: &Host, session: &CoreSession, refresh: &mut Refresh) -> R
 }
 
 async fn project(host: Rc<Host>, id: String) -> Result<()> {
+    let preparation = !host.schedules.suppressed(&id) && !host.schedules.import_blocked(&id);
     let registration = host.slots.borrow()[&id].registration.clone();
     ensure!(
-        matches!(registration.source, crate::ProjectSource::Cli)
+        !preparation
+            || matches!(registration.source, crate::ProjectSource::Cli)
             || inputs(&host, &id)?.schedule_preparation.is_some(),
         error(
             "configurationConflict",
@@ -655,18 +825,41 @@ async fn project(host: Rc<Host>, id: String) -> Result<()> {
     );
     let mut refresh: Option<Refresh> = storage::read_optional(&refresh_path(&host, &id))?;
     loop {
-        if let Some(refresh) = &mut refresh {
-            restart(&host, &id, refresh).await?;
+        if preparation {
+            if let Some(refresh) = &mut refresh {
+                restart(&host, &id, refresh).await?;
+            }
         }
         host.admission()?;
         ensure!(
-            !host.schedules.suppressed(&id) && !host.schedules.import_blocked(&id),
+            preparation == (!host.schedules.suppressed(&id) && !host.schedules.import_blocked(&id)),
             unavailable()
         );
         let status = host.project_status(&id).await;
         let service = status.service.context("scheduled Core unavailable")?;
         let session = connect(host.clone(), &id, service).await?;
         let _guard = SessionGuard(session.clone());
+        if !preparation {
+            host.schedules
+                .connections
+                .sessions
+                .borrow_mut()
+                .insert(id.clone(), session.clone());
+            host.schedules.connections.changed.notify_waiters();
+            let mut changes = host.changes.subscribe();
+            loop {
+                ensure!(
+                    session.shared_current(&host)
+                        && (host.schedules.suppressed(&id) || host.schedules.import_blocked(&id)),
+                    unavailable()
+                );
+                tokio::select! {
+                    _ = session.refresh.notified() => {},
+                    _ = changes.changed() => {},
+                    _ = tokio::time::sleep(Duration::from_secs(1)) => {},
+                }
+            }
+        }
         if let Some(refresh) = &mut refresh {
             restore(&host, &session, refresh).await?;
             session.require_current(&host)?;
@@ -720,8 +913,6 @@ pub(super) async fn run(host: Rc<Host>) {
                     && retry
                         .get(*id)
                         .is_none_or(|deadline| std::time::Instant::now() >= *deadline)
-                    && !host.schedules.suppressed(id)
-                    && !host.schedules.import_blocked(id)
             })
             .map(|(id, _)| id.clone())
             .collect::<Vec<_>>();

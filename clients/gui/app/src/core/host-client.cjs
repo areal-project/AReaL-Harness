@@ -1,6 +1,6 @@
 // @ts-check
 "use strict";
-const { randomUUID, createHash } = require("node:crypto");
+const { randomUUID, createHash, createHmac } = require("node:crypto");
 const { constants } = require("node:fs");
 const { open, lstat, realpath } = require("node:fs/promises");
 const { connect } = require("node:net");
@@ -28,6 +28,7 @@ async function privateJson(path) {
 
 // 断连不重放写入。调用者必须凭原 requestId 查询持久回执。
 class HostClient {
+  #intentKey = "";
   constructor() {
     /** @type {Map<string,{resolve:(value:any)=>void,reject:(error:Error)=>void}>} */
     this.pending = new Map();
@@ -84,6 +85,7 @@ class HostClient {
     this.hostId = hello.hostId;
     this.generation = hello.generation;
     this.capabilities = hello.capabilities;
+    this.#intentKey = token;
     return hello;
   }
   /** @param {string} home @param {string} binary */
@@ -198,6 +200,7 @@ class HostClient {
   }
   /** @param {Error} error */
   fail(error) {
+    this.#intentKey = "";
     for (const request of this.pending.values()) request.reject(error);
     this.pending.clear();
     this.socket?.destroy();
@@ -233,6 +236,16 @@ class HostClient {
   requireCapability(capability) {
     if (!this.capabilities.includes(capability))
       throw new Error(`Host does not support ${capability}`);
+  }
+  /** @param {string} method @param {string} sourceId @param {string} requestId @param {string} canonicalJson */
+  intentDigest(method, sourceId, requestId, canonicalJson) {
+    if (!this.#intentKey || !this.socket || this.socket.destroyed)
+      throw new Error("Host is disconnected");
+    return createHmac("sha256", this.#intentKey)
+      .update(JSON.stringify(["areal.host.intent.v1", method, sourceId, requestId]))
+      .update("\0")
+      .update(canonicalJson)
+      .digest("hex");
   }
   /** @param {unknown} source */
   attachSource(source) {
