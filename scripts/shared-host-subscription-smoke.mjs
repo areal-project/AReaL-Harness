@@ -5,7 +5,16 @@ import { createServer } from "node:http";
 import { createServer as httpsServer } from "node:https";
 import { connect as tcpConnect } from "node:net";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, open, readFile, readdir, realpath, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  readdir,
+  realpath,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { connect } from "../examples/desktop-api/client.mjs";
 import { CoreSubscription } from "../clients/gui/packages/chatgpt-provider/core.js";
@@ -75,7 +84,9 @@ let hostChild,
   authNonce,
   authClient;
 const requests = [],
+  networkRequests = [],
   refreshes = [],
+  recoverySources = [],
   sockets = new Set();
 const chunk = (value) => `data: ${JSON.stringify(value)}\n\n`;
 const completed = (text) =>
@@ -185,6 +196,7 @@ const jwk = {
 const upstream = httpsServer(
   { key: await readFile(tlsKeyPath), cert: await readFile(tlsCertPath) },
   async (request, response) => {
+    networkRequests.push({ method: request.method, path: request.url, at: Date.now() });
     try {
       let raw = "";
       for await (const part of request) raw += part;
@@ -382,6 +394,91 @@ async function stopHost() {
   assert.equal(receipt.state, "completed");
   await until(() => hostChild.exitCode !== null, "Host process exit");
   host.close();
+}
+async function transportState(sourceId) {
+  for (const file of await readdir(join(home, "host/vault-slots"))) {
+    const state = JSON.parse(await readFile(join(home, "host/vault-slots", file), "utf8"));
+    if (state.slot.kind === "subscriptionTransport" && state.slot.sourceId === sourceId)
+      return state;
+  }
+  assert.fail("missing original subscription transport slot");
+}
+async function recoverySource(name, zero) {
+  const projects = new GuiHostProjects({
+    binary,
+    home,
+    singletonHeld: true,
+    source: {
+      profile: join(root, name, "profile"),
+      coreHome: join(root, name, "core"),
+      legacyServiceHome: join(root, name, "legacy"),
+    },
+    encryption: source.options.encryption,
+  });
+  const row = { name, zero, projects, legacy: null, native: null };
+  recoverySources.push(row);
+  await mkdir(projects.source.coreHome, { recursive: true, mode: 0o700 });
+  await writeFile(join(projects.source.coreHome, "projects.json"), "[]", { mode: 0o600 });
+  await writeFile(
+    join(projects.source.coreHome, "subscription-transport.json"),
+    JSON.stringify({ token: "8".repeat(64), port: 0 }),
+    { mode: 0o600 },
+  );
+  await projects.init();
+  const backend = {
+    host: projects,
+    home: projects.source.coreHome,
+    hooks: { environment: () => ({}) },
+    save: (name, value) =>
+      writeFile(join(projects.source.coreHome, name), JSON.stringify(value), { mode: 0o600 }),
+  };
+  const vault = new HostVault(backend);
+  await vault.init();
+  const slot = { kind: "subscriptionTransport", sourceId: projects.sourceId };
+  if (!zero) {
+    let saved = await vault.read(slot);
+    row.legacy = new CoreSubscription({
+      store: new SubscriptionStore(backend, vault),
+      token: saved.value.token,
+      port: 0,
+      kind: "openai",
+      onListen: async (port) => {
+        saved = await vault.replace(slot, saved.revision, { ...saved.value, port });
+      },
+    });
+    await row.legacy.ready();
+    await row.legacy.close();
+    row.legacy = null;
+  }
+  row.native = await NativeSubscription.connect(backend, vault);
+  const markerPath = join(home, "host/subscription-owners", `${projects.sourceId}.json`);
+  const marker = JSON.parse(await readFile(markerPath, "utf8"));
+  const path = join(home, "host/subscription-operations", `${marker.requestId}.json`);
+  const record = JSON.parse(await readFile(path, "utf8"));
+  assert.equal(record.context.migrationId, projects.migrationId);
+  const transport = (await host.operation(record.context.transportRequestId)).operation;
+  assert.equal(transport.state, "completed");
+  const port = (await host.operation(record.context.portRequestId)).operation;
+  if (zero) {
+    assert.equal(port.state, "completed");
+    assert.equal(port.previousRevision, transport.revision);
+  } else assert.equal(port, null);
+  const before = await host.request("subscription.read", { sourceId: projects.sourceId });
+  const current = await transportState(projects.sourceId);
+  assert.equal(current.entryId, (zero ? port : transport).entryId);
+  assert.equal(current.revision, (zero ? port : transport).revision);
+  Object.assign(row, { path, markerPath, record, before, current, transport, port });
+  await writeFile(join(root, `before-${name}-recovery.json`), JSON.stringify(record), {
+    mode: 0o600,
+  });
+  record.receipt = record.acceptedReceipt;
+  await writeFile(path, JSON.stringify(record), { mode: 0o600 });
+  row.native.pending = [{ requestId: marker.requestId, method: "subscription.handoff" }];
+  await row.native.save();
+  await row.native.settle();
+  assert.equal(row.native.outcomeUnknown, true);
+  assert.match((await row.native.read()).error, /效果尚未确认/);
+  return row;
 }
 const primaryExpires = Date.now() + 90_000;
 const grant = (client, subject, expires) => ({
@@ -758,11 +855,18 @@ try {
     await readFile(join(home, "host/subscription-owners", `${source.sourceId}.json`), "utf8"),
   );
   const logout = evidence.commands.find((row) => row.kind === "logout");
+  const requestsBeforeRecovery = networkRequests.length;
+  await recoverySource("original-nonzero-port", false);
+  await recoverySource("original-zero-port", true);
   await core.close();
   core = null;
   await coreTwo.close();
   coreTwo = null;
   await stopHost();
+  for (const row of recoverySources) {
+    row.projects.close();
+    await unlink(row.markerPath);
+  }
   evidence.recoveryInjection = {
     kind: "original accepted receipt restored after orderly process stop, before next process start",
     oldHost: hostIdentity,
@@ -797,6 +901,51 @@ try {
   assert.equal(restored.transportRevision, signedOut.transportRevision);
   assert.equal(restored.endpoint, state.endpoint);
   assert.equal(refreshes.length, 1);
+  for (const row of recoverySources) {
+    await row.projects.client.connect(home);
+    const operations = await readdir(join(home, "host/subscription-operations"));
+    const observed = await row.native.refresh();
+    assert.equal(observed.state, "signed_out");
+    assert.equal(observed.error, null);
+    assert.equal(row.native.outcomeUnknown, false);
+    assert.deepEqual(row.native.pending, []);
+    const restored = await host.request("subscription.read", { sourceId: row.projects.sourceId });
+    assert.equal(restored.owner, "nativeV1");
+    assert.equal(restored.endpoint, row.before.endpoint);
+    assert.equal(restored.accountRevision, row.before.accountRevision);
+    assert.equal(restored.transportRevision, row.before.transportRevision);
+    const current = await transportState(row.projects.sourceId);
+    assert.deepEqual(current, row.current);
+    assert.deepEqual(
+      (await host.operation(row.record.context.transportRequestId)).operation,
+      row.transport,
+    );
+    assert.deepEqual((await host.operation(row.record.context.portRequestId)).operation, row.port);
+    assert.deepEqual(await readdir(join(home, "host/subscription-operations")), operations);
+    const original = JSON.parse(await readFile(row.path, "utf8"));
+    assert.equal(original.receipt.requestId, row.record.acceptedReceipt.requestId);
+    assert.equal(original.receipt.state, "completed");
+    assert.equal(original.recovery.outcome, "originalHandoffResumed");
+    const marker = JSON.parse(await readFile(row.markerPath, "utf8"));
+    assert.equal(marker.requestId, original.receipt.requestId);
+    evidence.checks.push({
+      name: `no-marker ${row.name} resumes original local handoff and same facade becomes readable without extra mutation`,
+      sourceId: row.projects.sourceId,
+      requestId: original.receipt.requestId,
+      originalTransportReceipt: row.transport,
+      originalPortReceipt: row.port,
+      currentEntryId: current.entryId,
+      currentRevision: current.revision,
+      passed: true,
+    });
+  }
+  assert.equal(requests.length, 3);
+  assert.equal(refreshes.length, 1);
+  assert.equal(
+    networkRequests.length,
+    requestsBeforeRecovery,
+    "local handoff recovery sends no upstream HTTP",
+  );
   const recoveryBackend = {
     ...backend,
     host: { client: host, sourceId: source.sourceId },
@@ -831,6 +980,11 @@ try {
 } catch (error) {
   failure = error.stack;
 } finally {
+  for (const row of recoverySources) {
+    await row.legacy?.close().catch((error) => (failure ??= error.stack));
+    await row.native?.close().catch((error) => (failure ??= error.stack));
+    row.projects.close();
+  }
   await legacy?.close().catch((error) => (failure ??= error.stack));
   await native?.close().catch((error) => (failure ??= error.stack));
   source.close();
@@ -897,6 +1051,7 @@ try {
     }
   }
   evidence.requests = requests;
+  evidence.networkRequests = networkRequests;
   evidence.refreshes = refreshes;
   evidence.coreModelRequests = [];
   for (const service of [evidence.service, evidence.freshService].filter(Boolean)) {

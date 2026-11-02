@@ -415,6 +415,20 @@ impl Vault {
             migration,
         )
     }
+    pub(crate) fn subscription_transport_is_current(
+        &self,
+        source: &str,
+        revision: u64,
+        entry: &str,
+        migration: &Migration,
+    ) -> Result<bool> {
+        let slot = Slot::SubscriptionTransport {
+            source_id: source.to_owned(),
+        };
+        let mut state = self.state(&slot, migration)?;
+        self.recover(&mut state)?;
+        Ok(state.revision == revision && state.entry_id.as_deref() == Some(entry))
+    }
     pub(crate) fn replace_subscription_transport(
         &self,
         source: &str,

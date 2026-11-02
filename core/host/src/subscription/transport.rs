@@ -192,7 +192,10 @@ pub(super) struct Listener {
     pub(super) endpoint: String,
     pub(super) port: u16,
 }
-pub(super) async fn listen(source: Rc<SourceSubscription>) -> Result<Listener> {
+pub(super) async fn listen(
+    source: Rc<SourceSubscription>,
+    port_request: Option<&str>,
+) -> Result<Listener> {
     let (revision, mut saved) = source
         .migration
         .vault
@@ -214,12 +217,15 @@ pub(super) async fn listen(source: Rc<SourceSubscription>) -> Result<Listener> {
     let port = listener.local_addr().unwrap().port();
     if port != requested_port {
         saved["port"] = json!(port);
+        let request = port_request
+            .map(str::to_owned)
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let receipt = source
             .migration
             .vault
             .replace_subscription_transport(
                 &source.source,
-                &uuid::Uuid::new_v4().to_string(),
+                &request,
                 revision,
                 saved,
                 &source.migration,

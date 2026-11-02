@@ -37,12 +37,24 @@ impl SourceSubscription {
         Ok(value)
     }
     pub(crate) async fn start(self: &Rc<Self>) -> network::Result<()> {
+        self.start_with_port_request(None).await
+    }
+    pub(crate) async fn start_with_port_request(
+        self: &Rc<Self>,
+        request: Option<&str>,
+    ) -> network::Result<()> {
         if self.listener.borrow().is_some() {
             return Ok(());
         }
-        let listener = transport::listen(self.clone()).await?;
+        let listener = transport::listen(self.clone(), request).await?;
         *self.listener.borrow_mut() = Some(listener);
         Ok(())
+    }
+    pub(crate) fn bound_port(&self) -> Option<u16> {
+        self.listener
+            .borrow()
+            .as_ref()
+            .map(|listener| listener.port)
     }
     pub(crate) async fn refresh_catalog(self: &Rc<Self>, force: bool) -> network::Result<()> {
         if !self

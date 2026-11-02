@@ -148,11 +148,12 @@ class NativeSubscription {
     return write;
   }
   async settle() {
+    let outcomeUnknown = false;
     for (const item of this.pending) {
       const result = await this.backend.host.client.operation(item.requestId);
       const receipt = result?.operation;
       if (!receipt) {
-        this.outcomeUnknown = true;
+        outcomeUnknown = true;
         continue;
       }
       if (receipt.requestId !== item.requestId)
@@ -161,7 +162,7 @@ class NativeSubscription {
         (receipt.state === "blocked" && receipt.error?.code === "outcomeUnknown") ||
         (receipt.state === "acceptedPending" && item.method === "subscription.handoff")
       ) {
-        this.outcomeUnknown = true;
+        outcomeUnknown = true;
         continue;
       }
       if (receipt.state === "acceptedPending" && item.method === "subscription.command") continue;
@@ -170,6 +171,7 @@ class NativeSubscription {
       this.pending = this.pending.filter((entry) => entry.requestId !== item.requestId);
       await this.save();
     }
+    this.outcomeUnknown = outcomeUnknown;
   }
   /** @param {string} method @param {Record<string,unknown>} parameters */
   async submit(method, parameters) {
@@ -300,10 +302,12 @@ class NativeSubscription {
     return this.accept(state);
   }
   refresh() {
-    if (this.outcomeUnknown) return this.read();
     if (this.refreshing) return this.refreshing;
     const work = (async () => {
-      await this.read();
+      const recovering = this.pending.length > 0;
+      await this.settle();
+      const snapshot = await this.read();
+      if (recovering || this.outcomeUnknown) return snapshot;
       await this.action({ kind: "refreshCatalog", force: false });
       return this.read();
     })().finally(() => {

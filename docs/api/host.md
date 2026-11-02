@@ -225,7 +225,9 @@ action 为 `begin`（`target:{kind:"current"|"newAccount"|"saved",accountId?}`�
 
 交接和命令回执的 `method` 为 `subscription.handoff` 或 `subscription.command`，状态为 `acceptedPending`、`completed` 或 `blocked`，终态带 `result` 或 `error:{code,message}`。丢回复只查询原 `host.operation`；不重做 OAuth exchange、推理 POST 或不确定的 Core 提交。
 
-重启恢复只在原交接 marker 的请求 ID 匹配且来源恢复成功时确认交接完成。丢失后台任务的原命令以 `blocked/outcomeUnknown` 表示历史效果未知，保留原 `acceptedPending` 回执、身份与恢复证据；它不表示未执行。GUI 保留原请求并展示未知结果，连接与账号读取仍可用，当前状态不能证明旧动作的受理或效果。存在未知请求时不自动交接、配置网络或重发该来源命令，刷新只读当前状态。没有匹配 marker、且无法结算原 Vault 回执的中断交接维持未知及不可用的只读来源投影。
+重启恢复在原交接 marker 的请求 ID 匹配且来源恢复成功时确认交接完成。交接受理前持久关联 `migrationId`、原 transport CAS 请求 ID 与原端口 CAS 请求 ID。缺少 marker 时，Host 只有核验原 Vault 回执、精确槽 revision 和 immutable entry、旧来源退役及原端口绑定后，才继续同一原交接的本地步骤；端口最初为零时同时核验原端口写入链，不重做 OAuth exchange 或推理 POST。证据不全的旧记录继续保留未知及不可用的只读来源投影。
+
+丢失后台任务的原命令以 `blocked/outcomeUnknown` 表示历史效果未知，保留原 `acceptedPending` 回执、身份与恢复证据；它不表示未执行。GUI 保留原请求并展示未知结果，连接与账号读取仍可用，当前状态不能证明旧动作的受理或效果。存在未知请求时不自动交接、配置网络或重发该来源命令。刷新重新查询原操作；已获证明的终态可以解除对应限制，当次只读取来源状态，不附带目录刷新、网络配置或旧动作提交。
 
 ## 退出与服务管理器契约
 

@@ -295,7 +295,7 @@ impl Rig {
             network::Network::fixture(NetworkInput::default(), server.route.clone()).unwrap();
         let source =
             SourceSubscription::load(migration.clone(), sources[0].clone(), network).unwrap();
-        let transport = transport::listen(source.clone()).await.unwrap();
+        let transport = transport::listen(source.clone(), None).await.unwrap();
         Self {
             _root: root,
             migration,

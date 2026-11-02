@@ -4,7 +4,7 @@ use crate::subscription::{
     network::{Network, NetworkInput},
 };
 use areal_protocol::desktop::Provider;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub(super) struct Subscriptions {
@@ -28,6 +28,23 @@ struct Handoff {
     expected_account_revision: u64,
     expected_transport_revision: u64,
     network: NetworkInput,
+}
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HandoffContext {
+    source_id: String,
+    migration_id: String,
+    generation: String,
+    transport_request_id: String,
+    port_request_id: String,
+    expected_account_revision: u64,
+    expected_transport_revision: u64,
+}
+
+struct TransportProof {
+    revision: u64,
+    entry: String,
+    record: Value,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -187,16 +204,24 @@ impl Host {
                     transport = json!({"token":format!("{}{}",uuid::Uuid::new_v4().simple(),uuid::Uuid::new_v4().simple()),"port":0});
                 }
                 transport["network"] = serde_json::to_value(input.network)?;
-                let transport_request = uuid::Uuid::new_v4().to_string();
+                let context = HandoffContext {
+                    source_id: input.source_id.clone(),
+                    migration_id: input.migration_id,
+                    generation: self.identity.generation.clone(),
+                    transport_request_id: uuid::Uuid::new_v4().to_string(),
+                    port_request_id: uuid::Uuid::new_v4().to_string(),
+                    expected_account_revision: account_revision,
+                    expected_transport_revision: transport_revision,
+                };
                 self.subscription_accept_operation(
                     &input.request_id,
                     &digest,
                     method,
-                    json!({"sourceId":input.source_id,"generation":self.identity.generation,"transportRequestId":transport_request,"expectedAccountRevision":account_revision,"expectedTransportRevision":transport_revision}),
+                    serde_json::to_value(&context)?,
                 )?;
                 let saved = self.migration.vault.replace_subscription_transport(
                     &input.source_id,
-                    &transport_request,
+                    &context.transport_request_id,
                     transport_revision,
                     transport,
                     &self.migration,
@@ -210,21 +235,16 @@ impl Host {
                     input.source_id.clone(),
                     network,
                 )?;
-                if let Err(error) = source.start().await {
+                if let Err(error) = source
+                    .start_with_port_request(Some(&context.port_request_id))
+                    .await
+                {
                     source.close().await;
                     return self.subscription_save_operation(&input.request_id,&digest,json!({"requestId":input.request_id,"method":method,"state":"blocked","error":{"code":"subscriptionUnavailable","message":error.to_string()}}));
                 }
-                let (current_transport, _) = self
-                    .migration
-                    .vault
-                    .subscription_transport(&input.source_id, &self.migration)?;
-                if let Err(error) = self.migration.vault.claim_subscription(
-                    &input.source_id,
-                    &input.request_id,
-                    account_revision,
-                    current_transport,
-                    &self.migration,
-                ) {
+                if let Err(error) =
+                    self.subscription_claim_handoff(&input.request_id, &context, &source)
+                {
                     source.close().await;
                     return Err(error);
                 }
@@ -487,6 +507,142 @@ impl Host {
             )
             .collect()
     }
+    fn subscription_transport_proof(&self, context: &HandoffContext) -> Result<TransportProof> {
+        let read = |request: &str, previous: u64| -> Result<TransportProof> {
+            let receipt = self
+                .migration
+                .vault
+                .operation(request, &self.migration)?
+                .context("original subscription transport outcome is unknown")?;
+            let revision = previous
+                .checked_add(1)
+                .context("vault revision exhausted")?;
+            ensure!(
+                receipt["requestId"] == request
+                    && receipt["method"] == "vault.replace"
+                    && receipt["state"] == "completed"
+                    && receipt["slot"]
+                        == json!({"kind":"subscriptionTransport","sourceId":context.source_id})
+                    && receipt["previousRevision"] == previous
+                    && receipt["revision"] == revision,
+                "original subscription transport receipt does not prove the expected write"
+            );
+            let entry = receipt["entryId"]
+                .as_str()
+                .context("missing transport entry")?;
+            let record = self
+                .migration
+                .vault
+                .read(entry)?
+                .context("missing transport entry")?;
+            Ok(TransportProof {
+                revision,
+                entry: entry.into(),
+                record,
+            })
+        };
+        let first = read(
+            &context.transport_request_id,
+            context.expected_transport_revision,
+        )?;
+        if first.record["port"] != 0 {
+            ensure!(
+                first.record["port"]
+                    .as_u64()
+                    .is_some_and(|port| port > 0 && port <= u16::MAX as u64),
+                "invalid original subscription port"
+            );
+            return Ok(first);
+        }
+        let bound = read(&context.port_request_id, first.revision)?;
+        let mut expected = first.record;
+        expected["port"] = bound.record["port"].clone();
+        ensure!(
+            expected == bound.record
+                && bound.record["port"]
+                    .as_u64()
+                    .is_some_and(|port| port > 0 && port <= u16::MAX as u64),
+            "original port write changed the subscription transport"
+        );
+        Ok(bound)
+    }
+    fn subscription_handoff_current(
+        &self,
+        context: &HandoffContext,
+        proof: &TransportProof,
+    ) -> Result<()> {
+        self.migration
+            .subscription_retired(&context.source_id, &context.migration_id)?;
+        ensure!(
+            self.migration
+                .vault
+                .subscription_owner(&context.source_id)?
+                .is_none(),
+            "subscription source already has an owner"
+        );
+        let (account, _) = self
+            .migration
+            .vault
+            .subscription_account(&context.source_id, &self.migration)?;
+        ensure!(
+            account == context.expected_account_revision
+                && self.migration.vault.subscription_transport_is_current(
+                    &context.source_id,
+                    proof.revision,
+                    &proof.entry,
+                    &self.migration
+                )?,
+            "original subscription revisions or immutable entry changed"
+        );
+        Ok(())
+    }
+    fn subscription_claim_handoff(
+        &self,
+        request: &str,
+        context: &HandoffContext,
+        source: &SourceSubscription,
+    ) -> Result<()> {
+        let proof = self.subscription_transport_proof(context)?;
+        self.subscription_handoff_current(context, &proof)?;
+        ensure!(
+            source.bound_port().map(u64::from) == proof.record["port"].as_u64(),
+            "bound subscription port differs from the original receipt"
+        );
+        // 同一 LocalSet actor 在最后核验和认领间不让出执行权，旧 writer 不能夹入新版本。
+        self.migration.vault.claim_subscription(
+            &context.source_id,
+            request,
+            context.expected_account_revision,
+            proof.revision,
+            &self.migration,
+        )
+    }
+    async fn resume_subscription_handoff(
+        &self,
+        request: &str,
+        context: &HandoffContext,
+    ) -> Result<Value> {
+        let proof = self.subscription_transport_proof(context)?;
+        self.subscription_handoff_current(context, &proof)?;
+        let network = Network::new(serde_json::from_value(proof.record["network"].clone())?)?;
+        let source =
+            SourceSubscription::load(self.migration.clone(), context.source_id.clone(), network)?;
+        let restored = async {
+            source.start().await?;
+            self.subscription_claim_handoff(request, context, &source)?;
+            Ok::<_, anyhow::Error>(())
+        }
+        .await;
+        if let Err(error) = restored {
+            source.close().await;
+            return Err(error);
+        }
+        self.subscriptions
+            .sources
+            .borrow_mut()
+            .insert(context.source_id.clone(), source);
+        self.subscription_snapshot(&context.source_id)
+    }
     pub(super) async fn restore_subscriptions(&self) -> Result<()> {
         let directory = self.home.join("host/subscription-owners");
         let mut owners = BTreeMap::new();
@@ -531,10 +687,13 @@ impl Host {
                 }
             }
         }
-        self.recover_subscription_operations(&owners)?;
+        self.recover_subscription_operations(&owners).await?;
         Ok(())
     }
-    fn recover_subscription_operations(&self, owners: &BTreeMap<String, String>) -> Result<()> {
+    async fn recover_subscription_operations(
+        &self,
+        owners: &BTreeMap<String, String>,
+    ) -> Result<()> {
         let directory = self.home.join("host/subscription-operations");
         if !directory.exists() {
             return Ok(());
@@ -542,10 +701,16 @@ impl Host {
         for entry in std::fs::read_dir(directory)? {
             let path = entry?.path();
             let mut record: Value = storage::read(&path)?;
-            if record["receipt"]["state"] != "acceptedPending" {
+            if record["receipt"]["state"] != "acceptedPending"
+                && !(record["receipt"]["method"] == "subscription.handoff"
+                    && record["receipt"]["error"]["code"] == "outcomeUnknown")
+            {
                 continue;
             }
-            let original = record["receipt"].clone();
+            let original = record
+                .get("acceptedReceipt")
+                .unwrap_or(&record["receipt"])
+                .clone();
             let id = original["requestId"]
                 .as_str()
                 .context("missing subscription request")?;
@@ -566,6 +731,28 @@ impl Host {
                     evidence["ownerRequestId"] = json!(id);
                     Some(self.subscription_snapshot(source)?)
                 } else {
+                    if let Ok(context) =
+                        serde_json::from_value::<HandoffContext>(record["context"].clone())
+                    {
+                        match self.resume_subscription_handoff(id, &context).await {
+                            Ok(snapshot) => {
+                                evidence["transportRequestId"] =
+                                    json!(context.transport_request_id);
+                                evidence["portRequestId"] = json!(context.port_request_id);
+                                evidence["outcome"] = json!("originalHandoffResumed");
+                                record["acceptedReceipt"] = original.clone();
+                                record["recovery"] = evidence;
+                                record["receipt"] = json!({"requestId":id,"method":method,"state":"completed","result":snapshot});
+                                storage::write(&path, &record)?;
+                            }
+                            Err(_) => {
+                                evidence["outcome"] = json!("unknown");
+                                record["recovery"] = evidence;
+                                storage::write(&path, &record)?;
+                            }
+                        }
+                        continue;
+                    }
                     if let Some(request) = record["context"]["transportRequestId"].as_str() {
                         let receipt = self.migration.vault.operation(request, &self.migration);
                         match receipt {
