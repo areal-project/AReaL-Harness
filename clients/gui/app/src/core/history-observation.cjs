@@ -590,31 +590,19 @@ class HistoryObservation {
     if (resume && bounded && client.capabilities?.features?.boundedResume !== true)
       throw historyFailure("当前 Core 无法按页恢复浏览器连接，请更新 Core 后重试。");
     const method = resume ? "thread/resume" : "areal/thread/observe";
-    for (const maxBytes of bounded ? [historyPageBytes, historyMaxBytes] : [undefined]) {
-      try {
-        return await client.request(
-          method,
-          { threadId, ...(bounded ? { mode: "bounded", maxBytes } : {}) },
-          {
-            decode: readObservationResult,
-            timeoutMs,
-            ...(bounded ? { maxResponseBytes: maxBytes } : {}),
-            onResult: (result) => {
-              if (current() && result.thread?.id === threadId && install)
-                this.installObservation(project, result, client);
-            },
-          },
-        );
-      } catch (error) {
-        if (
-          !bounded ||
-          maxBytes === historyMaxBytes ||
-          historyReason(error) !== "HISTORY_BUDGET_TOO_SMALL"
-        )
-          throw error;
-      }
-    }
-    throw historyFailure("历史读取预算不可用。");
+    return client.request(
+      method,
+      { threadId, ...(bounded ? { mode: "bounded", maxBytes: historyMaxBytes } : {}) },
+      {
+        decode: readObservationResult,
+        timeoutMs,
+        ...(bounded ? { maxResponseBytes: historyMaxBytes } : {}),
+        onResult: (result) => {
+          if (current() && result.thread?.id === threadId && install)
+            this.installObservation(project, result, client);
+        },
+      },
+    );
   }
 
   /** @param {import('./project-state.cjs').CoreProject} project @param {import('./history-state.cjs').HistoryWindow} window @returns {Promise<void>} */

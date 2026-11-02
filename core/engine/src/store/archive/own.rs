@@ -101,7 +101,7 @@ fn projected(
     newest_first: &[Value],
     next: Option<String>,
 ) -> Value {
-    let data: Vec<Value> = newest_first.iter().rev().cloned().collect();
+    let mut data: Vec<Value> = newest_first.iter().rev().cloned().collect();
     let window = json!({"snapshotId":snapshot,"nextCursor":next,"complete":next.is_none()});
     if let Some(ref mut result) = template {
         let mut turns: Vec<Value> = Vec::new();
@@ -132,6 +132,14 @@ fn projected(
         result["history"] = window;
         template.unwrap()
     } else {
+        let mut previous_turn = None;
+        for entry in &mut data {
+            let turn_id = entry["sourceTurnId"].clone();
+            if previous_turn.as_ref() == Some(&turn_id) {
+                entry["turn"] = json!({"id":turn_id,"status":entry["sourceTurnStatus"]});
+            }
+            previous_turn = Some(turn_id);
+        }
         json!({"snapshotId":snapshot,"data":data,"nextCursor":next,"complete":next.is_none()})
     }
 }
@@ -300,6 +308,11 @@ impl Store {
                         if fits(middle) { fitted = middle; } else { overflow = middle; }
                     }
                     if fitted == 0 || !checkpoints[overflow - 1].1 { return Err(failure(&thread,"HISTORY_BUDGET_TOO_SMALL",None)); }
+                    if let Some(boundary) = (1..=fitted).rev().find(|&count| {
+                        data.get(count).is_some_and(|older| data[count - 1]["sourceTurnId"] != older["sourceTurnId"])
+                    }) {
+                        fitted = boundary;
+                    }
                     data.truncate(fitted);
                     next = checkpoints[fitted - 1].0.clone();
                     return Ok(true);

@@ -177,6 +177,15 @@ try {
       const record = JSON.parse(bytes);
       assert.equal(record.thread.id, name.slice(0, -5), "History filename and thread ID differ");
       assertIdle(record);
+      if (
+        fixtureMode &&
+        profiles.profiles.find((profile) => profile.id === "paged-history")?.threadId ===
+          record.thread.id
+      ) {
+        for (const turn of record.thread.turns)
+          for (const item of turn.items)
+            if (item.type === "agentMessage") item.text = item.text.repeat(4);
+      }
       records.set(record.thread.id, record.thread);
       if (fixtureMode) originals.set(record.thread.id, structuredClone(record));
       // 受控样本的占位工作区只在副本中填充；私有历史保留全部原始字节及 cwd。
@@ -330,7 +339,7 @@ try {
         id: turn.id,
         status: turn.status,
         error: turn.error ?? null,
-        items: turn.items.map(({ id, type, text }) => ({ id, type, text })),
+        items: turn.items.map(({ id, type, text, content }) => ({ id, type, text, content })),
       }));
     assert.deepEqual(
       content(thread),
@@ -344,6 +353,48 @@ try {
     if (profile.visibleText) {
       await selectConversation(page, profile.threadId);
       await page.getByText(profile.visibleText, { exact: false }).last().waitFor();
+    }
+    if (profile.id === "paged-history") {
+      for (const suffix of ["39", "00", "39"]) {
+        const user = page.locator(`[data-side-item-id="paged-user-${suffix}"]`);
+        const answer = page.locator(`[data-side-item-id="paged-item-${suffix}"]`);
+        if (suffix === "00") {
+          for (let attempt = 0; attempt < 10 && !(await user.count()); attempt++) {
+            const before = await read();
+            const first = before.turns[0]?.items[0]?.id;
+            await page.locator(".messages").hover();
+            await page.mouse.wheel(0, -1000000);
+            await page.waitForFunction(
+              async ({ projectId, threadId, first }) => {
+                const thread = (await window.arealDesktop.snapshot()).projects.find(
+                  (value) => value.id === projectId,
+                )?.state.threads[threadId];
+                return (
+                  thread &&
+                  !thread.displayHistory.loadingOlder &&
+                  (thread.displayHistory.complete || thread.turns[0]?.items[0]?.id !== first)
+                );
+              },
+              { ...request, first },
+              { timeout: 30000 },
+            );
+          }
+        }
+        await user.scrollIntoViewIfNeeded();
+        await user.getByText(`HISTORY_QUESTION_${suffix}`).waitFor();
+        await answer.getByText(`HISTORY_PAGE_${suffix}`, { exact: false }).waitFor();
+        assert.equal(
+          await user.evaluate((node, answerId) => {
+            const answerNode = document.querySelector(`[data-side-item-id="${answerId}"]`);
+            return Boolean(
+              answerNode &&
+              node.compareDocumentPosition(answerNode) & Node.DOCUMENT_POSITION_FOLLOWING,
+            );
+          }, `paged-item-${suffix}`),
+          true,
+          `Question and answer order changed for turn ${suffix}`,
+        );
+      }
     }
     await call("history", { ...request, operation: "release" });
     checks.push({ profile: profile.id, turns: thread.turns.length, olderPages: pages });

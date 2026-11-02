@@ -48,20 +48,6 @@ export function turnSections(element: HTMLElement) {
     ...element.querySelectorAll<HTMLElement>(":scope > .message-column > section[data-turn-id]"),
   ];
 }
-/**
- * 屏外轮次跳过排版（content-visibility），占位用首次实测高度；之后浏览器自己记住
- * 最近一次真实高度。未测量前不开启，避免用估算高度占位导致回看位置跳动。
- */
-export function measureTurns(element: HTMLElement) {
-  const fresh = element.querySelectorAll<HTMLElement>(
-    ":scope > .message-column > section[data-turn-id]:not([data-measured])",
-  );
-  const heights = Array.from(fresh, (section) => section.offsetHeight);
-  fresh.forEach((section, index) => {
-    section.style.setProperty("--turn-height", `${heights[index]}px`);
-    section.dataset.measured = "";
-  });
-}
 /** 第一个底边低于 y 的轮次下标；轮次纵向依次排列，可二分，滚动时不必逐条量位置。 */
 export function firstTurnBelow(sections: readonly HTMLElement[], y: number) {
   let low = 0,

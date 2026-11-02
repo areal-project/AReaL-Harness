@@ -828,7 +828,6 @@ export function Messages({
   }, [owner, latestTurnId, latestUserId, turnStartRequest, reserveResponseSpace]);
   useLayoutEffect(() => {
     layoutReading.current();
-    if (container.current) readingDom.measureTurns(container.current);
   });
   useLayoutEffect(() => {
     return () => {
