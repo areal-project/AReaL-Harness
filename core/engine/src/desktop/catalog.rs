@@ -631,7 +631,15 @@ impl Engine {
             });
         let provider = model
             .as_ref()
-            .map(|m| self.provider(&m.provider_id))
+            .map(|m| {
+                self.provider(&m.provider_id).map_err(|error| match error {
+                    Error::NotFound => invalid(format!(
+                        "MODEL_NOT_CONFIGURED: provider '{}' is unavailable in this Core; select a configured API model or connect to a Core with this provider available",
+                        m.provider_id
+                    )),
+                    error => error,
+                })
+            })
             .transpose()?;
         let defaults = match (&model, &provider) {
             (Some(model), Some(provider)) => self.model_parameters(model, provider),
@@ -1336,6 +1344,55 @@ pub(crate) fn merge_model_parameters(
 mod request_audit_tests {
     use super::*;
     use futures_util::StreamExt;
+
+    #[tokio::test]
+    async fn unavailable_default_provider_reports_model_configuration_error() {
+        let data = tempfile::tempdir().unwrap();
+        let model = Arc::new(
+            model::ChatModel::new("http://127.0.0.1:9".into(), "fixture".into(), None).unwrap(),
+        );
+        let engine = Engine::open(data.path(), model, Limits::default()).unwrap();
+        engine
+            .install_configured_models(ConfiguredModels {
+                providers: vec![
+                    serde_json::from_value(json!({
+                        "id":"arena","revision":0,"endpoint":"http://127.0.0.1:9",
+                        "protocol":"responses","models":["terra"]
+                    }))
+                    .unwrap(),
+                ],
+                provider_ids: BTreeSet::from(["arena".into()]),
+                default_model: Some(ModelRef {
+                    provider_id: "areal_openai".into(),
+                    model_id: "terra".into(),
+                }),
+                ..Default::default()
+            })
+            .unwrap();
+        let error = engine
+            .resolve_config(None, None, Default::default(), 1)
+            .unwrap_err();
+        assert!(matches!(error, Error::Invalid(_)), "{error}");
+        assert!(
+            error
+                .to_string()
+                .contains("MODEL_NOT_CONFIGURED: provider 'areal_openai'")
+        );
+        assert!(!error.to_string().contains("thread not found"));
+        let selected = engine
+            .resolve_config(
+                None,
+                Some(ModelRef {
+                    provider_id: "arena".into(),
+                    model_id: "terra".into(),
+                }),
+                Default::default(),
+                1,
+            )
+            .unwrap();
+        assert_eq!(selected.provider.unwrap().id, "arena");
+        engine.shutdown().await;
+    }
 
     #[tokio::test]
     async fn selected_provider_requests_keep_private_errors_and_owner_correlation() {
