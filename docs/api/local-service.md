@@ -76,7 +76,7 @@ areal service task-catalog --workspace /absolute/workspace \
 
 `status` 在原实例仍持锁但控制端点已关闭或断开时报告 `unavailable`，不将 socket 消失或响应丢失当作停止；协议、权限和超时错误仍显式失败。`ensure` 不接管这类仍有 owner 的实例。Store 启动仅为派生进程继承描述符的短暂交接等待约 100 ms，未取得独占锁前不清理临时写入，仍拒绝持续持锁的 owner。
 
-可信 GUI 使用 `service ensure --no-auto-restart`：相同 GUI 应用 owner 的兼容实例可以复用，不存在时可以在原有锁下启动；需要替换运行实例时返回冲突，不能在 ensure 内隐式停止。普通 CLI ensure 和 TUI 重连仍可为空闲服务应用同一二进制的配置变化，但二进制摘要变化必须显式 `service restart` 或通过 GUI 生命周期更新激活，不能隐式升级或降级。
+当前 GUI 使用共享 [Host API](host.md) 注册和激活项目，关闭 GUI 只释放连接与本机工具 provider。旧 GUI 应用 owner 的兼容入口仍使用 `service ensure --no-auto-restart`：只复用同 owner 的兼容实例，替换运行实例须显式生命周期操作。普通 CLI ensure 由 Host 处理配置；TUI 重连只读已有 ready 服务。二进制更新遵循 Host 的受控重启契约。
 
 ```sh
 areal service capabilities --instance INSTANCE --expected-generation GENERATION --json
@@ -85,6 +85,8 @@ areal service operation --instance INSTANCE --expected-generation GENERATION --r
 ```
 
 能力查询返回 `{version:1,stopOperations:1}`；不支持时停止新写入，不用 Stop 探测。带 request-id 的 stop 返回 `{version:1,requestId,serviceId,generation,cancel,state,message?,lifecycle?}`。operation 返回 `{operation:<原回执或null>}`。同一 ID 永远绑定同一目标代际和 cancel 策略，参数变化拒绝。当前 CLI 省略 request-id 时也创建持久停止操作，确认原实例退出后仍返回 Service 描述；失败保留原 request-id 和 generation 供查询。新 Host 拒绝旧控制协议中的无回执 `Stop`，不 drain 或取消任务，避免已运行的旧 TUI 在重连时停止新版后台。0.1.5 Host 支持持久停止操作；0.1.4 等不支持该能力的 Host 须先用原版本 CLI 显式停止，再启动新版，不因能力查询失败自动回退到旧 Stop。
+
+`service stop` 按已发现的服务 owner 分流，不以调用进程是否携带 GUI 环境判断。GUI-owned 及无 owner 的旧服务使用原本地控制与回执存储，不启动或登记另一个共享 Host；Host-owned 服务要求认证的既有 Host 身份和原项目登记，由 Host 保存项目停止意图。旧 Host generation 不能授权新控制，应按原 ID 核查。`service restart` 在连接 Host 前拒绝已解析的 GUI-owned 目标。`service operation` 不启动服务，并在当前 owner 换代后继续读取原回执；仅将具备版本、原 service/generation 和停止策略的项目停止回执转换为 CLI stop 形状，ensure 回执不能冒充停止。Host 查询失败或对应其他操作时，精确匹配的原本地回执仍可读取。
 
 Host 在 drain 前原子保存并 fsync 回执，目录位于私有 registry 的 `operations/`，不随 generation 清理。状态为 `acceptedPending`、`blocked`、`admissionUnknown`、`settlementIncomplete` 或 `completed`。已知忙碌拒绝与已受理但未结算分开；查询不重新 drain 或 cancel，null 不证明原请求未受理。显式新意图可以在已知拒绝或结算不完整后重新观察并使用新 ID；受理未知必须先核对。
 
@@ -95,7 +97,7 @@ Host 在 drain 前原子保存并 fsync 回执，目录位于私有 registry 的
 
 模型配置默认共用 `~/.areal/config.toml`，共享文件不代表共享执行实例、历史或全部认证状态。不带 `--endpoint` 的 `areal exec` 为每个 run 使用 `<home>/cli/runs/<runId>/state`，会话映射位于 `<home>/cli/sessions/`，`--resume` 复用原 run；其中 home 为 `AREAL_HARNESS_HOME` 或 `~/.areal`。直接使用独占 `serve`／launcher 时，通用配置的数据默认值才是配置 home 的 `state/`。公共 `areal service` 默认 registry 为 `~/.areal`（可由 `AREAL_HARNESS_SERVICE_HOME` 选择），默认 dataDir 为 `<registry>/instances/<workspace-hash>/state`，已有 bind 映射及显式配置优先。
 
-GUI 的 registry 默认是 `~/.areal/gui/<GUI Core home 摘要>`，每项目 dataDir 是 `<GUI Core home>/<projectId>/state`。GUI Core home 默认为 GUI userData 下的 `areal-core`；开发 userData 按源码工作树隔离，安装版、显式 profile/worktree 可有不同数据目录。每次 GUI 应用运行以 `{kind:"gui", appRunId, profile}` 标记 owner，`profile` 是规范绝对 userData 路径。服务描述的可选 `owner` 字段记录这个身份；独立 CLI 持久服务没有 GUI owner。GUI 退出／停止只处理这个 owner 已登记并核实身份的全部实例，包括已隐藏、断连项目和启动尚未完成的实例。恢复的历史项目沿用项目索引中的 ID；所属服务匹配同时核对已登记工作区与数据目录，不按路径重新散列替换原 ID。不停止默认 CLI registry 或其他 profile。旧版独立 Desktop 和其他 appRunId 不能被新 GUI 静默认领，须先核对原代际并显式安全迁移。
+当前 GUI 按配置连接共享 Host registry；项目和 dataDir 归持久 ProjectRegistration，GUI profile 和旧项目别名保留在 source 绑定中，Core 服务 owner 为 `{kind:"host",hostId,generation}`。GUI 退出不停止这些后台项目。旧 GUI 的独立 registry 默认路径是 `~/.areal/gui/<GUI Core home 摘要>`，每项目 dataDir 为 `<GUI Core home>/<projectId>/state`，描述符 owner 为 `{kind:"gui",appRunId,profile}`，其中 profile 是规范绝对 userData 路径。该 owner 仅用于旧应用兼容和显式迁移；新的 GUI 不静默认领旧 Desktop 或其他 appRunId。恢复保留原项目 ID、工作区及 dataDir，不按路径替换历史身份。
 
 显式连接同一服务（例如 CLI 的 `--endpoint` 和 `--auth-file`）才共享该实例的执行与历史；仅使用相同模型配置、同一源码目录，甚至仅指定相同 registry 都不等价。同一 dataDir 的 Store 单写锁始终有效，不能以另一个进程或入口绕过。不同 dataDir 也不会隔离同一源码工作区的文件修改：多个入口仍可读到彼此修改，写入需要协调，或选择不同 Git worktree。
 
@@ -158,7 +160,7 @@ Store 当前写入版本、`areal/server/status.stateVersion` 与发行 `manifes
 
 服务没有闲置退出计时器。模型文件更新保持 generation 和连接；其他 TOML 更新需在后台工作结算后显式重新打开或重启。Web 等客户端可运行 `areal service ensure` 或 `restart`；浏览器不拥有进程生命周期。默认 stop 检查 `restartSafe`、`activeGoals`、`pendingQueueItems`、`activeTasks`，再通过 `drain(strategy="ifIdle")` 在 Core 准入锁内复查；有工作或资源时拒绝且不暂停任务。仅等待触发的定时安排不阻止安全重启，安排保持启用。GUI 对旧后台同时检查显式任务、目标和队列计数；旧后台将空闲安排计为忙碌时，显式停止或更新恢复可在用户再次确认后暂停这些安排，保留历史，重启后需手动恢复。`--cancel` 通过 Core drain 取消并结算。历史工具/Hook UNKNOWN 保留在 `lifecycle.executionOutcomes.uninspectedUnknown` 与 `unresolvedTools` 中，仍阻止原 Thread 继续，但不阻止已完成物理结算的服务停止。Runtime 观察失败、活跃进程、Hook task scope 不确定及未确认清理仍会阻止成功。受理停止后禁止新工作；清理失败应查日志/权威状态，不能推断任务未发生。状态检查和 drain 之间新受理的工作遵循 drain 的等待/暂停规则。
 
-宿主控制 Core/Runtime 的启动和关闭；Rust launcher 持有独立进程与私有管道，Linux 不依赖 Python；macOS 使用可执行的 `/usr/bin/python3` 作为 service-host、launcher、Core 和 Runtime 的实际父进程。可信服务链只转交明确的租约/生命周期描述符，记录实际子 PID，并核对 wait/reap 退出回执；没有回执不会报告成功清理。PID 握手限时 10 秒，握手失败或取消清退本次独立组。握手后常规信号发给实际子进程；受监督桥在原宿主死亡时发送 TERM，45 秒后仍未退出则 KILL 并回收，覆盖 launcher 的 Core/Runtime 清理时间。独立 CLI 的持久 service-host 脱离首次客户端，不因 CLI 退出而停止。GUI Main 独占 Desktop 生命期管道写端，Desktop 独占每个 GUI Host 的写端。短命管理 CLI 只转交读端，Host 在启动前和服务期间监视 EOF。读端在非可信子进程创建前恢复 CLOEXEC，GUI owner 环境不传给 Core、Runtime 或模型工具。Main 或 Desktop 被强退时，EOF 启动已有有界清理链；中断和 UNKNOWN 不标成成功。配置预检也使用可信启动与退出回执，stdin 关闭，stdout/stderr 并发读取且每路最多 2 MiB，总时限 15 秒；超时、输出超限或调用取消后继续有界回收临时进程，取消清理等待者不会撤销回收。Runtime 保留原独立进程组超时清理。启动前检查解释器可用性；缺失时安装 Xcode Command Line Tools 后重试。Core 生命周期管道在 launcher 死亡后收到 EOF，Runtime 沿私有管道执行清理。宿主死亡由 launcher 的父进程检查触发清理；launcher 继承并持有实例锁，但不让 Core/Runtime 继承锁，即使宿主被强杀也会保持到 Core/Runtime 清理结束。旧 Core 锁未释放时不启动替代实例。`service.json` 是发现线索，客户端同时验证持锁状态、控制 socket 和经过认证的 Core 身份，不信任历史 PID 或端口。
+宿主控制 Core/Runtime 的启动和关闭；Rust launcher 持有独立进程与私有管道，Linux 不依赖 Python；macOS 使用可执行的 `/usr/bin/python3` 作为 service-host、launcher、Core 和 Runtime 的实际父进程。可信服务链只转交明确的租约/生命周期描述符，记录实际子 PID，并核对 wait/reap 退出回执；没有回执不会报告成功清理。PID 握手限时 10 秒，握手失败或取消清退本次独立组。握手后常规信号发给实际子进程；受监督桥在原宿主死亡时发送 TERM，45 秒后仍未退出则 KILL 并回收，覆盖 launcher 的 Core/Runtime 清理时间。独立 CLI 的持久 service-host 脱离首次客户端，不因 CLI 退出而停止。当前 GUI Main 不持有共享 Host 的生命期写端；Host 独立持有 Core/Runtime 的监督链。旧 GUI 兼容入口仍使用原应用生命期管道，短命管理 CLI 只转交读端，原服务在启动前和服务期间监视 EOF。读端在非可信子进程创建前恢复 CLOEXEC，GUI owner 环境不传给 Core、Runtime 或模型工具。旧 GUI Main 或旧 Desktop 被强退时，EOF 启动其已有有界清理链；中断和 UNKNOWN 不标成成功。配置预检也使用可信启动与退出回执，stdin 关闭，stdout/stderr 并发读取且每路最多 2 MiB，总时限 15 秒；超时、输出超限或调用取消后继续有界回收临时进程，取消清理等待者不会撤销回收。Runtime 保留原独立进程组超时清理。启动前检查解释器可用性；缺失时安装 Xcode Command Line Tools 后重试。Core 生命周期管道在 launcher 死亡后收到 EOF，Runtime 沿私有管道执行清理。宿主死亡由 launcher 的父进程检查触发清理；launcher 继承并持有实例锁，但不让 Core/Runtime 继承锁，即使宿主被强杀也会保持到 Core/Runtime 清理结束。旧 Core 锁未释放时不启动替代实例。`service.json` 是发现线索，客户端同时验证持锁状态、控制 socket 和经过认证的 Core 身份，不信任历史 PID 或端口。
 
 TUI 重连只读取共享 Host 状态，并连接已有 ready 服务；不启动新 Host 或 Core generation，不清除停止意图，也不应用配置变更。新开客户端或显式 ensure 可激活项目。恢复使用权威 thread/resume 快照，不重放请求；Goal 重启后暂停，工具 UNKNOWN 保持原有检查要求。
 

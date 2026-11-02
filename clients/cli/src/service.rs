@@ -252,30 +252,35 @@ pub async fn execute(command: ServiceCommand) -> Result<()> {
             request_id,
             ..
         } => {
-            if owner.is_none() {
-                let operation = match areal_host::Client::connect().await {
-                    Ok(client) => client.operation(&request_id).await?,
-                    Err(_) => areal_host::operation_offline(&root, &request_id)?,
-                };
-                if let Some(operation) = operation {
-                    ensure!(
-                        operation["serviceId"] == target.resolve(&root).await?
-                            && operation["serviceGeneration"] == expected_generation,
-                        "operation does not match the requested service generation"
-                    );
-                    println!(
-                        "{}",
-                        serde_json::to_string_pretty(
-                            &serde_json::json!({"operation":service_stop_receipt(operation)})
-                        )?
-                    );
-                    return Ok(());
-                }
+            let id = target.resolve(&root).await?;
+            let hosted = match areal_host::Client::connect().await {
+                Ok(client) => client.operation(&request_id).await,
+                Err(_) => areal_host::operation_offline(&root, &request_id),
             }
-            serde_json::json!({"operation": areal_local_service::operation(
-                &root, &target.resolve(&root).await?, &expected_generation, &request_id,
-            ).await?})
+            .and_then(|receipt| receipt.map(service_stop_receipt).transpose());
+            if let Ok(Some(operation)) = &hosted
+                && operation["requestId"] == request_id
+                && operation["serviceId"] == id
+                && operation["generation"] == expected_generation
+            {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({"operation":operation}))?
+                );
+                return Ok(());
+            }
+            let local =
+                areal_local_service::operation(&root, &id, &expected_generation, &request_id)
+                    .await?;
+            if local.is_none() {
+                ensure!(
+                    hosted?.is_none(),
+                    "operation does not match the requested service generation"
+                );
+            }
+            serde_json::json!({"operation":local})
         }
+
         ServiceCommand::Stop {
             target,
             cancel,
@@ -284,19 +289,40 @@ pub async fn execute(command: ServiceCommand) -> Result<()> {
             ..
         } => {
             let id = target.resolve(&root).await?;
-            if owner.is_none() {
-                let service = areal_local_service::status(&root, &id).await?;
-                let client = areal_host::Client::connect_or_start().await?;
-                let project = registered_service(&client, &service).await?;
+            let service = areal_local_service::status(&root, &id).await?;
+            if let Some(owner) = &owner {
+                gui_owner::check(Some(owner), service.owner.as_ref())?;
+            }
+            let generation = expected_generation
+                .as_deref()
+                .unwrap_or(&service.identity.generation);
+            if let Some(areal_protocol::service::Owner::Host {
+                host_id,
+                generation: host_generation,
+            }) = &service.owner
+            {
+                let client = areal_host::Client::connect().await?;
+                ensure!(
+                    client.identity().host_id == *host_id
+                        && client.identity().generation == *host_generation,
+                    "service Host owner changed; query the original operation before stopping"
+                );
+                let project = client
+                    .list()
+                    .await?
+                    .into_iter()
+                    .find(|project| {
+                        project.data_dir == service.identity.data_dir
+                            && project.workspace == service.identity.workspace
+                    })
+                    .context("Host-owned service registration is unavailable")?;
                 let receipt = client
                     .stop_project(
                         request_id
                             .as_deref()
                             .unwrap_or(&uuid::Uuid::new_v4().to_string()),
                         &project.project_id,
-                        expected_generation
-                            .as_deref()
-                            .unwrap_or(&service.identity.generation),
+                        generation,
                         if cancel {
                             areal_host::StopStrategy::Cancel
                         } else {
@@ -305,7 +331,7 @@ pub async fn execute(command: ServiceCommand) -> Result<()> {
                     )
                     .await?;
                 let value = if request_id.is_some() {
-                    service_stop_receipt(receipt)
+                    service_stop_receipt(receipt)?
                 } else {
                     ensure!(
                         receipt["state"] == "completed",
@@ -321,19 +347,16 @@ pub async fn execute(command: ServiceCommand) -> Result<()> {
                     areal_local_service::stop_operation(
                         &root,
                         &id,
-                        expected_generation.as_deref().unwrap(),
+                        generation,
                         &request_id,
                         cancel,
                     )
                     .await?,
                 )?
             } else {
-                let service = if let Some(generation) = expected_generation {
-                    areal_local_service::stop_with_generation(&root, &id, cancel, &generation)
-                        .await?
-                } else {
-                    areal_local_service::stop(&root, &id, cancel).await?
-                };
+                let service =
+                    areal_local_service::stop_with_generation(&root, &id, cancel, generation)
+                        .await?;
                 serde_json::to_value(service)?
             }
         }
@@ -342,6 +365,17 @@ pub async fn execute(command: ServiceCommand) -> Result<()> {
                 anyhow::bail!("GUI restart requires its generation-bound lifecycle operation");
             }
             let input = areal_host::ResolveProject::from_local_args(&local)?;
+            let existing = areal_local_service::list(&root)
+                .await?
+                .into_iter()
+                .find(|service| service.identity.data_dir == input.registration.data_dir);
+            ensure!(
+                !existing.as_ref().is_some_and(|service| matches!(
+                    service.owner,
+                    Some(areal_protocol::service::Owner::Gui { .. })
+                )),
+                "GUI restart requires its generation-bound lifecycle operation"
+            );
             let client = areal_host::Client::connect_or_start().await?;
             let opened = client
                 .restart(
@@ -422,33 +456,19 @@ pub async fn web(local: LocalArgs, json: bool) -> Result<()> {
     Ok(())
 }
 
-async fn registered_service(
-    client: &areal_host::Client,
-    service: &areal_protocol::service::Service,
-) -> Result<areal_host::ProjectRegistration> {
-    if let Some(project) = client
-        .list()
-        .await?
-        .into_iter()
-        .find(|p| p.data_dir == service.identity.data_dir)
-    {
-        return Ok(project);
-    }
-    client
-        .register(
-            &uuid::Uuid::new_v4().to_string(),
-            areal_host::ProjectRegistration {
-                project_id: uuid::Uuid::new_v4().to_string(),
-                workspace: service.identity.workspace.clone(),
-                data_dir: service.identity.data_dir.clone(),
-                source: areal_host::ProjectSource::Cli,
-                default_binding: false,
-            },
-        )
-        .await
-}
-
-fn service_stop_receipt(receipt: serde_json::Value) -> serde_json::Value {
+fn service_stop_receipt(receipt: serde_json::Value) -> Result<serde_json::Value> {
+    ensure!(
+        receipt.get("method").is_none() || receipt["method"] == "project.stop",
+        "Host operation is not a service stop"
+    );
+    ensure!(
+        receipt["version"] == areal_host::VERSION
+            && ["requestId", "projectId", "serviceId", "serviceGeneration"]
+                .iter()
+                .all(|key| receipt[*key].as_str().is_some_and(|id| !id.is_empty()))
+            && matches!(receipt["strategy"].as_str(), Some("ifIdle" | "cancel")),
+        "Host service stop receipt is incomplete or unsupported"
+    );
     let mut result = serde_json::json!({
         "version":1, "requestId":receipt["requestId"], "serviceId":receipt["serviceId"],
         "generation":receipt["serviceGeneration"], "cancel":receipt["strategy"]=="cancel",
@@ -459,5 +479,6 @@ fn service_stop_receipt(receipt: serde_json::Value) -> serde_json::Value {
             result[name] = value.clone();
         }
     }
-    result
+    let operation: areal_protocol::service::StopOperation = serde_json::from_value(result)?;
+    Ok(serde_json::to_value(operation)?)
 }
