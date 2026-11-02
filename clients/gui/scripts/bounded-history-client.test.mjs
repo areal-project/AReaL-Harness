@@ -631,6 +631,18 @@ test("a requested loaded tool can be reviewed while an unrelated tool remains de
   await assert.rejects(workspaceCommand(f.backend, request), /完整工具内容/);
 });
 
+test("conversation reading mode is negotiated only when Core advertises it", async () => {
+  for (const supported of [false, true]) {
+    const f = fixture(async (method, params) => {
+      assert.equal(method, "areal/thread/observe");
+      assert.equal(params.mode, supported ? "conversation" : "bounded");
+      return baseline();
+    });
+    f.project.client.capabilities.features.conversationObservation = supported;
+    await f.backend.openThread(f.project, "thread");
+  }
+});
+
 for (const archived of [false, true])
   test(`bounded baseline is negotiated before synchronous install (archived=${archived})`, async () => {
     const f = fixture(
@@ -746,6 +758,71 @@ test("explicit item loading validates UTF8 fragments and release does not discar
   assert.deepEqual(f.project.model.state.threads.thread.turns.at(-1).items[0], value.item);
   await f.history("release", { viewId: "view-b" });
   assert.equal(f.project.model.state.threads.thread.turns.at(-1).items[0].type, "historyDeferred");
+});
+
+test("basic conversation remains published while a tool detail read is blocked", async () => {
+  const tool = { id: "tool", type: "dynamicToolCall", tool: "shell", status: "completed" };
+  const complete = entry("ordinary", tool);
+  const serialized = JSON.stringify(complete);
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const deferred = {
+    id: "tool",
+    type: "historyDeferred",
+    originalType: "dynamicToolCall",
+    cursor: "detail",
+    version: "v1",
+    totalBytes: Buffer.byteLength(serialized),
+  };
+  const f = fixture(async (method) => {
+    if (method === "areal/thread/observe") {
+      const value = baseline();
+      value.thread.turns = [
+        turn("ordinary", [
+          { id: "prompt", type: "userMessage", content: [{ type: "text", text: "question" }] },
+          deferred,
+          item("reply", "answer"),
+        ]),
+      ];
+      value.history = { snapshotId: "snapshot", nextCursor: null, complete: true };
+      return value;
+    }
+    await gate;
+    return {
+      snapshotId: "snapshot",
+      complete: true,
+      nextCursor: null,
+      data: [
+        {
+          sourceThreadId: "thread",
+          sourceTurnId: "ordinary",
+          sourceItemId: "tool",
+          sourceTurnStatus: "completed",
+          fragment: {
+            text: serialized,
+            offsetUtf8: 0,
+            nextOffsetUtf8: Buffer.byteLength(serialized),
+            totalBytes: Buffer.byteLength(serialized),
+            version: "v1",
+          },
+        },
+      ],
+    };
+  });
+  f.project.client.capabilities.features.conversationObservation = true;
+  await f.backend.openThread(f.project, "thread");
+  await f.history("acquire");
+  assert.equal(f.calls.length, 1, "basic reading does not fetch tool details");
+  const detail = f.history("loadItem", { itemId: "tool" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(ids(f), ["prompt", "tool", "reply"]);
+  assert.deepEqual(f.project.model.state.threads.thread.turns[0].items[1], deferred);
+  release();
+  await detail;
+  assert.deepEqual(ids(f), ["prompt", "tool", "reply"]);
+  assert.equal(f.project.model.state.threads.thread.turns[0].items[1].type, "dynamicToolCall");
 });
 
 test("ordinary observation uses the supported maximum budget on its first request", async () => {

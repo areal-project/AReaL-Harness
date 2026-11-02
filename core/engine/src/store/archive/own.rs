@@ -12,6 +12,8 @@ struct Cursor {
     item: Option<String>,
     offset: usize,
     version: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    conversation: bool,
 }
 impl Cursor {
     fn encoded(&self) -> String {
@@ -20,7 +22,10 @@ impl Cursor {
     fn snapshot(&self) -> String {
         format!(
             "{:x}",
-            Sha256::digest(serde_json::to_vec(&(&self.scope, &self.fence, &self.upper)).unwrap())
+            Sha256::digest(
+                serde_json::to_vec(&(&self.scope, &self.fence, &self.upper, self.conversation))
+                    .unwrap()
+            )
         )
     }
 }
@@ -181,6 +186,7 @@ fn serialized_entry(
 }
 
 impl Store {
+    #[allow(clippy::too_many_arguments)] // 观察外壳和显示模式共用既有分页器，避免复制游标与字节预算逻辑。
     pub(crate) async fn own_history_page(
         &self,
         thread: Thread,
@@ -189,6 +195,7 @@ impl Store {
         max_bytes: usize,
         template: Option<Value>,
         empty_active_turn: Option<Turn>,
+        conversation: bool,
     ) -> crate::Result<Value> {
         let permit = self
             .fork_reads
@@ -222,7 +229,7 @@ impl Store {
                     if upper.is_none() && sealed_item(turn, item) { upper = Some(item.id().to_owned()); }
                     Ok(fence.is_some() && upper.is_some())
                 })?;
-                Cursor { scope, fence, upper, before: None, item: None, offset: 0, version: None }
+                Cursor { scope, fence, upper, before: None, item: None, offset: 0, version: None, conversation }
             };
             let snapshot = cursor.snapshot();
             if cursor.item.is_some() {
@@ -265,6 +272,7 @@ impl Store {
                 if !sealed { sealed = cursor.upper.as_deref() == Some(item.id()); }
                 if !observing && !sealed { return Ok(false); }
                 if !found { found = cursor.before.as_deref() == Some(item.id()); return Ok(false); }
+                if cursor.conversation && matches!(item, Item::ModelContext { .. }) { return Ok(false); }
                 let mut value = entry(&thread, turn, item);
                 let mut after = cursor.clone();
                 after.before = sealed.then(|| item.id().into());
@@ -287,7 +295,24 @@ impl Store {
                     bytes(&projected(template.clone(), empty_active_turn.as_ref(), &snapshot, std::slice::from_ref(&value), candidate_next.clone()))
                 };
                 if at_segment_end { singleton_overhead = None; }
-                if single_bytes > max_bytes {
+                let deferred_detail = cursor.conversation && turn.status != TurnStatus::InProgress && matches!(item,
+                    Item::DynamicToolCall { tool, status: ToolStatus::Completed, success: Some(true), execution, .. } if execution.outcome == areal_protocol::ToolOutcome::Succeeded && !matches!(tool.as_str(),
+                        "ask_user_question" | "agent_spawn" | "agent_spawn_configured" | "agent_wait" | "agent_wait_any" | "agent_wait_all"));
+                if single_bytes > max_bytes || deferred_detail {
+                    let preview = if deferred_detail && matches!(item, Item::DynamicToolCall { tool, .. } if matches!(tool.as_str(), "run_command" | "verify_command" | "read_process" | "terminate_process")) {
+                        let mut preview = value["item"].clone();
+                        if let Some(parts) = preview["contentItems"].as_array_mut() {
+                            for part in parts {
+                                if let Some(text) = part["text"].as_str()
+                                    && let Ok(Value::Object(mut result)) = serde_json::from_str::<Value>(text) {
+                                    result.remove("stdout");
+                                    result.remove("stderr");
+                                    part["text"] = json!(serde_json::to_string(&result).unwrap());
+                                }
+                            }
+                        }
+                        (bytes(&preview) < max_bytes / 4).then_some(preview)
+                    } else { None };
                     let serialized = serde_json::to_vec(&value).unwrap();
                     let version = format!("{:x}", Sha256::digest(&serialized));
                     let mut fragment = cursor.clone();
@@ -296,6 +321,7 @@ impl Store {
                     fragment.version = Some(version.clone());
                     fragment.offset = 0;
                     value["item"] = json!({"type":"historyDeferred","id":item.id(),"originalType":value["item"]["type"],"cursor":fragment.encoded(),"version":version,"totalBytes":serialized.len()});
+                    if let Some(preview) = preview { value["item"]["preview"] = preview; }
                 }
                 data.push(value);
                 checkpoints.push((candidate_next, sealed));

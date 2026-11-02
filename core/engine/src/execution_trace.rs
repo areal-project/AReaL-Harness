@@ -362,6 +362,7 @@ impl Engine {
                 262144,
                 None,
                 None,
+                false,
             )
             .await?;
         let executions = if isolated {

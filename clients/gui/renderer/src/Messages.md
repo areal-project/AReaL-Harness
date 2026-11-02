@@ -24,6 +24,10 @@
 
 ## TurnProgress
 
+延期命令的 `preview` 通过既有进程投影呈现状态，预览不包含 stdout/stderr。合并到同一进程的每条延期记录仍各有完整内容入口，避免只加载启动记录却无法加载后续读取。原文加载后替换原条目，保留进程及过程组身份。
+
+支持 `conversationObservation` 的 Core 在对话观察中把已结算的普通工具详情延后读取。`historyDeferred` 的 `originalType` 为 `dynamicToolCall` 时，仍留在原有过程分组中，展开完整内容后沿用同一条目和分组身份。基本问答无需等待用户展开工具详情；工具错误、未结算状态和问答、Agent 交接记录仍按 Core 的完整语义呈现。
+
 `R-MESSAGES-007` [TurnProgress.tsx](TurnProgress.tsx) 由 Messages 使用，接收有序子项与摘要事实。未结算时默认展开，结算后可收敛。读者明确选择后，不再自动改变展开状态。没有可用摘要时保持展开。原生摘要按钮可通过键盘到达，并提供 expanded/controls 关系。子项保持挂载，查看历史不会重置详情或重放工作。失败与未完成提示来自调用方事实，不合成为成功状态。
 
 ## TurnExecution

@@ -592,7 +592,18 @@ class HistoryObservation {
     const method = resume ? "thread/resume" : "areal/thread/observe";
     return client.request(
       method,
-      { threadId, ...(bounded ? { mode: "bounded", maxBytes: historyMaxBytes } : {}) },
+      {
+        threadId,
+        ...(bounded
+          ? {
+              mode:
+                client.capabilities?.features?.conversationObservation === true
+                  ? "conversation"
+                  : "bounded",
+              maxBytes: historyMaxBytes,
+            }
+          : {}),
+      },
       {
         decode: readObservationResult,
         timeoutMs,

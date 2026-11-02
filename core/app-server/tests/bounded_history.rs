@@ -547,6 +547,93 @@ async fn bounded_pages_prefer_whole_turns_and_preserve_oversized_turn_progress()
 }
 
 #[tokio::test]
+async fn conversation_observation_keeps_basic_messages_independent_of_tool_body_size() {
+    for archived in [false, true] {
+        for body_size in [20_000, 80_000, 8] {
+            let dir = tempfile::tempdir().unwrap();
+            let (id, _) = fixture(dir.path(), archived).await;
+            let path = dir.path().join(format!("{id}.json"));
+            let mut record: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            let turns: Vec<_> = (0..3).map(|n| {
+                let mut value = turn(n, format!("answer {n}"));
+                let tools = (0..8).map(|k| json!({
+                    "id":format!("tool-{n}-{k}"),"type":"dynamicToolCall","tool":if k == 0 {"run_command"} else {"shell"},
+                    "arguments":{"command":"echo fixture"},"status":"completed","success":true,
+                    "callId":format!("call-{n}-{k}"),"execution":{"runtimeEpoch":"fixture","scopeId":"fixture","operationId":"fixture","outcome":"succeeded"},
+                    "contentItems":[{"type":"text","text":if k == 0 {json!({"processId":format!("p-{n}"),"state":"exited","commandStatus":"succeeded","outputReadComplete":true,"stdout":"x".repeat(body_size),"stderr":""}).to_string()} else {"x".repeat(body_size)}}]
+                }));
+                value["items"].as_array_mut().unwrap().splice(1..1, tools);
+                value["items"].as_array_mut().unwrap().insert(2, json!({"id":format!("opaque-{n}"),"type":"modelContext","value":"opaque".repeat(20000)}));
+                value
+            }).collect();
+            record["thread"]["turns"] = json!(turns);
+            record["thread"]["historyArchive"] = Value::Null;
+            std::fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+            let mut running = Running::open(dir.path()).await;
+            if body_size == 20_000 {
+                let legacy = running
+                    .call(
+                        "areal/thread/observe",
+                        json!({
+                            "threadId":id,"mode":"bounded","maxBytes":65536
+                        }),
+                        Some(65536),
+                    )
+                    .await;
+                assert_eq!(
+                    legacy["result"]["history"]["complete"], false,
+                    "the control keeps basic messages fixed while tool bodies exhaust the legacy budget"
+                );
+            }
+            let reply = running
+                .call(
+                    "areal/thread/observe",
+                    json!({
+                        "threadId":id,"mode":"conversation","maxBytes":65536
+                    }),
+                    Some(65536),
+                )
+                .await;
+            assert!(reply.get("error").is_none(), "{reply}");
+            assert_eq!(reply["result"]["history"]["complete"], true);
+            let observed = reply["result"]["thread"]["turns"].as_array().unwrap();
+            assert_eq!(observed.len(), 3);
+            for (n, value) in observed.iter().enumerate() {
+                let items = value["items"].as_array().unwrap();
+                assert_eq!(items.first().unwrap()["id"], format!("user-{n}"));
+                assert_eq!(items.last().unwrap()["text"], format!("answer {n}"));
+                assert_eq!(
+                    items.len(),
+                    10,
+                    "provider context is not conversation content"
+                );
+                assert!(
+                    items[1..9]
+                        .iter()
+                        .all(|item| item["type"] == "historyDeferred")
+                );
+                let preview = &items[1]["preview"];
+                assert_eq!(preview["tool"], "run_command");
+                let status: Value =
+                    serde_json::from_str(preview["contentItems"][0]["text"].as_str().unwrap())
+                        .unwrap();
+                assert_eq!(status["commandStatus"], "succeeded");
+                assert!(status.get("stdout").is_none());
+            }
+            let detail = running.call("areal/conversation/history", json!({
+                "threadId":id,"view":"own","cursor":observed[0]["items"][1]["cursor"],"maxBytes":1048576
+            }), Some(1048576)).await;
+            let fragment = detail["result"]["data"][0]["fragment"]["text"]
+                .as_str()
+                .unwrap();
+            let restored: Value = serde_json::from_str(fragment).unwrap();
+            assert_eq!(restored["item"], item_map(&turns)["tool-0-0"]);
+            running.close().await;
+        }
+    }
+}
+
+#[tokio::test]
 async fn bounded_mode_is_negotiated_and_rejects_metadata_that_cannot_fit() {
     let dir = tempfile::tempdir().unwrap();
     let (id, _) = fixture(dir.path(), false).await;

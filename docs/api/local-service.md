@@ -97,6 +97,12 @@ GUI 的 registry 默认是 `~/.areal/gui/<GUI Core home 摘要>`，每项目 dat
 
 ## 实例、兼容性与历史
 
+`mode:"conversation"` 在阅读分页预算前排除 `modelContext`。这些 provider 私有续接记录从未作为对话正文呈现，不应挤占基本消息的传输预算；完整历史、引用和执行轨迹的读取仍保留它们。模式不修改持久 Thread，也不改变模型续接上下文。
+
+延期命令条目可带 `preview`，其类型为原始 Core `Item`，ID 与原条目相同。预览只去除命令结果 JSON 的 `stdout`、`stderr`，保留进程身份、退出码、运行状态、输出完整性和读取游标等语义；预览自身需小于当前响应预算的四分之一。Desktop 在历史响应边界校验预览身份与类型，Renderer 沿既有进程分组合并状态，并为组成该进程的每条延期记录保留详情读取入口。预览不算已加载的原文，也不用于执行或模型回放。
+
+Core 的 `conversationObservation` 能力允许 `areal/thread/observe` 和 `thread/resume` 使用 `mode:"conversation"`。Desktop 协商后优先使用此模式；旧 Core 继续使用 `mode:"bounded"`。两种模式均遵守 `maxBytes`，并保留相同的观察与订阅原子性。对话模式把已结束轮次中成功且已结算的普通工具记录投影为 `historyDeferred`，通过现有单条分片读取展开详情。用户消息、Agent 回复、错误及未结算工具保持原始语义；问答和 Agent 交接工具保留原文供语义投影。分页游标携带读取模式，后续页延续同一模式。详情游标仍返回完整原始条目，不改变持久记录、模型上下文或执行轨迹读取。对话正文自身超过预算时仍需分页，不承诺任意大小会话一次读完。
+
 Desktop 打开会话时，使用有界 `areal/thread/observe` 并请求现有的 1 MiB 响应上限。Core 的观察窗口和 `areal/conversation/history {view:"own"}` 旧页在预算足以容纳最近一轮时优先停在轮次边界，避免把更旧轮次的回复与提问分到两页。单轮超过预算时仍按条目分页，超大条目沿用 `historyDeferred` 与 UTF-8 分片。
 
 own 历史页的 `data` 按时间顺序排列。同一页每轮的首个条目在 `turn` 中携带完整展示元数据，后续条目的 `turn` 只含 `id` 和 `status`；配置和轨迹不会随每个条目重复传输。消费者按轮次合并展示元数据，不用后续精简对象替换已有对象。每页独立携带本页各轮的完整元数据，条目分片仍重组为完整条目 JSON。游标格式和失效规则沿用原契约，持久记录格式不变。

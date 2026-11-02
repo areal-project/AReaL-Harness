@@ -513,7 +513,14 @@ export function processItems(items: Data[], turnStatus?: string): Data[] {
 export function executionSegments(items: Data[], turnStatus: string): Data[] {
   const result: Data[] = [];
   let group: Data | undefined;
-  for (const item of processItems(items, turnStatus)) {
+  for (const item of processItems(
+    items.map((item) =>
+      item.type === "historyDeferred" && item.preview
+        ? { ...item.preview, deferredHistory: item }
+        : item,
+    ),
+    turnStatus,
+  )) {
     if (item.type === "historyPageGap" && item.topologyKnown) {
       if (group) group.items.push(item);
       else result.push(item);
@@ -529,7 +536,7 @@ export function executionSegments(items: Data[], turnStatus: string): Data[] {
       item.type === "userMessage" ||
       item.type === "agentMessage" ||
       item.type === "agentMedia" ||
-      item.type === "historyDeferred" ||
+      (item.type === "historyDeferred" && item.originalType !== "dynamicToolCall") ||
       item.type === "historyPageGap" ||
       item.type === "questionAnswer"
     ) {

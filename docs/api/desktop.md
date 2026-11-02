@@ -219,7 +219,7 @@ options.readOnly 收窄 Scope 写根和网络；toolAllowlist 收窄 Profile；p
 
 Desktop 在同步观察结果内一次安装会话内容、`thread.desktop.configuration`、队列与交互。显式模型不再重复读取三项元数据；历史隐式默认模型仍按其保存 revision 查询展示名称与有效参数。最新轮多页补全先累积页面，结束时合并到当时的实时模型，保留期间到达的增量，再发布内容。输入区加载占位沿用消息区和底部 Composer 的布局，提交与偏好提示不参与消息视口高度计算。
 
-GUI 协商 `boundedObservation` 与 `boundedHistory` 后，普通、Side 和归档聊天统一使用 `areal/thread/observe {mode:"bounded",maxBytes:262144}` 建立显示基线。Core 明确返回 `HISTORY_BUDGET_TOO_SMALL` 时，仅增大一次到 1 MiB；仍失败则保留当前聊天的读取错误。`CoreClient` 对该次完整响应独立执行同样的字节上限，安装基线仍在同步 `onResult` 中完成。浏览器宿主恢复另须 `boundedResume`；不以附加工具替代原有宿主绑定。缺少新能力的 Core 保留完整历史兼容路径，不能提供分页容量保证。
+GUI 协商 `boundedObservation` 与 `boundedHistory` 后，普通、Side 和归档聊天统一使用 1 MiB 上限建立显示基线。Core 同时声明 `conversationObservation` 时使用 `areal/thread/observe {mode:"conversation",maxBytes:1048576}`，否则使用 `mode:"bounded"`。对话模式的已结算普通工具详情通过现有 `loadItem` 按需展开，仍属于原来的过程分组；模式及分页语义见[本地服务契约](local-service.md#实例兼容性与历史)。超出预算的错误保留在当前聊天。`CoreClient` 对完整响应独立执行同样的字节上限，安装基线仍在同步 `onResult` 中完成。浏览器宿主恢复另须 `boundedResume`；不以附加工具替代原有宿主绑定。缺少有界能力的 Core 保留完整历史兼容路径，不能提供分页容量保证。
 
 Desktop 的只读 `history` 命令接受 `{projectId,threadId,viewId,operation:"acquire"|"loadOlder"|"loadItem"|"retain"|"ensureAnchor"|"release",itemId?,pageId?,revision?,anchor?}`。`loadItem` 接受 `itemId`，`loadOlder` 可用 `pageId` 回读缺口；游标、预算与 Core 身份由 Desktop 持有。Messages 为每个阅读视图获取并释放独立 `viewId`，主聊天、Side 和子对话复用同一入口。加载旧页按 Turn/Item ID 合并到当前显示投影，保留读取期间的新事件。Fork 继承历史和 Side 参考快照继续保留原有来源契约。
 
