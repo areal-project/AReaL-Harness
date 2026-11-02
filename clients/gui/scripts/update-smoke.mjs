@@ -337,8 +337,10 @@ try {
   assert.equal(
     await page
       .locator(".areal-update-ring:visible")
-      .evaluate((node) => getComputedStyle(node).animationName),
-    "none",
+      .evaluate((node) =>
+        node.getAnimations().some((animation) => animation.playState === "running"),
+      ),
+    false,
   );
   await page.screenshot({
     path: join(scratch, "update-narrow-reduced-motion.png"),

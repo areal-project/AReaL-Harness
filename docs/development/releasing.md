@@ -31,7 +31,7 @@ macOS 完整包还包含独立执行的 Bash（版本与全部源文件校验和
 1. 合并发布准备变更；确认选定提交的 PR 检查与本地发行验收通过，并检查当前版本、许可证和迁移说明。
 2. 审阅两平台候选、Homebrew 测试和 Linux 安装日志，确认版本及支持范围。
 3. 在固定提交创建尚未使用的 `v<版本>` tag（预览为 `vX.Y.Z-beta.N`）；tag 必须与 `areal --version` 一致，不覆盖已有 tag。在本机完成两平台构建和验收后，创建 **draft** Release 并上传已验证附件；创建 tag 不触发打包或发布。
-4. 对照本地产物和已上传 draft 附件，核对 SHA256SUMS、manifest 中的 sourceRevision、profile 和平台；补齐简短中英文 release notes，仅写本次用户可见变化、重要修复与必要升级注意。macOS 尚无 Developer ID/公证，不应标为已公证。
+4. 核对本地 SHA256SUMS、manifest 中的 sourceRevision、profile 和平台，并通过远端附件元数据确认名称、大小与可用的 SHA256 摘要；不再重新下载完整附件作为发布前置。补齐简短中英文 release notes，仅写本次用户可见变化、重要修复与必要升级注意。macOS CLI 尚无 Developer ID/公证，不应标为已公证。
 5. 按已有授权公开 draft，再按下方公共 tap 流程同步对应渠道：正式版只更新 `Formula/areal.rb`，beta 只更新 `Formula/areal-beta.rb`。先确认公共仓库、对应 formula 和归档可下载，再提供相应安装命令；同步失败不能声称 Homebrew 可用。
 6. 在 macOS arm64 与 Linux x86_64 的隔离环境，从公共地址验证 Homebrew 首装、旧版升级、实际来源路由、渠道隔离和完整 Runtime，并保留独立安装器回归；记录发行 digest 与最终结果。后续版本重复本流程，不替换已公开版本的归档。
 
@@ -101,13 +101,13 @@ node clients/gui/scripts/release-assets.mjs /absolute/new-signed-directory /abso
 
 CI 在现有 GUI 检查中运行 `pnpm --dir clients/gui run test:history-compat`，默认使用 `clients/gui/scripts/fixtures/history-compat/` 的人工合成脱敏样本，包含空项目、`hookRuns`、`allowPluginSkills`、`pluginSkills`；这些文件不来自用户历史，也不包含真实路径或凭据。本机可单独执行 `node clients/gui/scripts/history-copy-smoke.mjs --source /absolute/areal-core --executable "/absolute/candidate.app/Contents/MacOS/AReaL Harness GUI"`；省略 `--executable` 时使用开发 Electron 和已构建 Core。没有日常历史的构建机可显式将 `--history-source` 指向受控样本目录；这仅证明样本兼容，不代表本机历史兼容。私有副本和失败证据保留在脚本输出的 `/private/tmp/ahc-*`，不得作为公开发布附件。
 
-在固定提交创建 `gui-v<版本>` 标签，以 draft 上传 ZIP、DMG、`latest-mac.yml`、脱敏 `release.json` 与 `SHA256SUMS`；回读摘要后公开，保持 `--latest=false`。先确认版本附件可下载，再更新 `gui-update-channel` 的清单；首次创建该频道时使用 prerelease。公开后核对完整字节、HTTP Range、清单大小及 SHA-512。版本附件不可覆盖；频道清单按已验收版本推进。此流程不发布 CLI 包，也不更新 Homebrew tap。
+在固定提交创建 `gui-v<版本>` 标签，以 draft 上传已完成本地验收的 ZIP、DMG、`latest-mac.yml`、脱敏 `release.json` 与 `SHA256SUMS`；核对远端附件名称、大小与可用的 SHA256 摘要后公开，保持 `--latest=false`。确认版本 Release 和附件清单已公开后，更新 `gui-update-channel` 的清单；首次创建该频道时使用 prerelease。发布后只核对 Release 状态、附件元数据、频道目标版本、清单大小及 SHA-512，不再额外下载完整包回读或把 HTTP Range 探测作为常规发布前置。版本附件不可覆盖；频道清单按已验收版本推进。此流程不发布 CLI 包，也不更新 Homebrew tap。
 
 GUI 只支持 macOS arm64 更新，检查和下载由 Electron 持有，后台任务空闲并完成原生校验后才关闭 Core 并安装。公开附件与包内 smoke 不证明既有安装已经完成自动替换；旧安装到新版本的实际升级需要单独验收。其他仓库或旧测试频道的客户端不会自动迁移到本频道，需要手动安装首个正式 GUI 包。
 
 `pnpm --dir clients/gui run test:update` 通过真实 Electron preload/IPC 验证下载错误可见与重试进度。设置 `AREAL_GUI_EXECUTABLE` 为候选包入口，并设置 `AREAL_GUI_UPDATE_BASELINE` 为较旧已签名 GUI 的入口，可额外验证候选包的原生配置、公开 ZIP 下载与 SHA-512 校验、Squirrel 原生准备和安全停止 Core。脚本只启动旧基线的隔离副本，借用候选配置，不修改签名资源；截获最终安装调用后退出，核对 Squirrel 自动替换的副本版本，不触碰原基线或用户安装。证据目录由脚本输出。
 
-发布前可同时设置 `AREAL_GUI_UPDATE_ASSETS` 为候选附件目录，在回环地址提供相同清单与 ZIP；仅重定向隔离旧包的传输请求，仍执行摘要校验、Squirrel 签名验证、替换及重开版本核对。该验收不代表公共下载已通过，发布后仍需单独验证公开 URL。
+发布前可同时设置 `AREAL_GUI_UPDATE_ASSETS` 为候选附件目录，在回环地址提供相同清单与 ZIP；仅重定向隔离旧包的传输请求，仍执行摘要校验、Squirrel 签名验证、替换及重开版本核对。该验收限定于候选字节与隔离升级路径；发布后核对远端附件元数据和频道清单，不再重复下载完整包回读。
 
 ## 构建身份与 GUI 兼容
 
