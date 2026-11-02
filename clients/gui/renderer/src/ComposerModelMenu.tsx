@@ -17,7 +17,7 @@ const effortMessages = {
   xhigh: "chat.composer.effort.xhigh",
   max: "chat.composer.effort.max",
 } as const;
-const efforts = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+const defaultEfforts = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export interface ComposerModelOption {
   value: string;
   label: string;
@@ -80,11 +80,17 @@ export function ComposerModelMenu({
     : label;
   const fast = serviceTier === "fast";
   const fastAction = t(fast ? "chat.composer.disableFast" : "chat.composer.enableFast");
+  const efforts =
+    model?.reasoning === false
+      ? []
+      : model?.effortsKnown || model?.efforts?.length
+        ? (model.efforts ?? [])
+        : defaultEfforts;
   const selectedEffort = effort && effort !== "default" ? effort : undefined;
   const index = efforts.findIndex((item) => item === selectedEffort);
   const sliderIndex = pointerIndex ?? index;
   const effortName = (item: string) => {
-    const known = efforts.find((known) => known === item);
+    const known = defaultEfforts.find((known) => known === item);
     return known ? t(effortMessages[known]) : item;
   };
   const activeProvider = providers.has(provider) ? provider : (providers.keys().next().value ?? "");
@@ -315,137 +321,139 @@ export function ComposerModelMenu({
               <strong>{effortLabel}</strong>
               <div className="composer-model-source">{identityLabel}</div>
             </div>
-            <div
-              className="composer-slider-shell"
-              role="group"
-              aria-label={t("chat.composer.chooseEffort")}
-            >
-              <div className="composer-slider-track" aria-hidden="true">
-                {sliderIndex >= 0 && <div style={{ width: sliderPosition(sliderIndex) }} />}
-                {efforts.map((item, i) => (
-                  <i
-                    key={item}
-                    data-selected={sliderIndex >= i}
-                    style={{ left: sliderPosition(i) }}
-                  />
-                ))}
-              </div>
-              {index >= 0 ? (
-                <Tooltip open={feedbackIndex >= 0}>
-                  <TooltipTrigger
-                    render={
-                      <Input
-                        unstyled
-                        data-slot={undefined}
-                        type="range"
-                        disabled={disabled}
-                        aria-disabled={pending || undefined}
-                        onKeyDown={(event) => {
-                          if (
-                            pending &&
-                            [
-                              "ArrowLeft",
-                              "ArrowRight",
-                              "ArrowUp",
-                              "ArrowDown",
-                              "Home",
-                              "End",
-                              "PageUp",
-                              "PageDown",
-                            ].includes(event.key)
-                          )
-                            event.preventDefault();
-                        }}
-                        aria-label={t("chat.composer.chooseEffort")}
-                        aria-valuetext={effortName(efforts[sliderIndex])}
-                        min={0}
-                        max={efforts.length - 1}
-                        step={1}
-                        value={sliderIndex}
-                        onFocus={() => setSliderFocused(true)}
-                        onBlur={() => {
-                          setSliderFocused(false);
-                          setHoveredIndex(null);
-                          setPointerIndex(null);
-                          pointerActive.current = false;
-                        }}
-                        onPointerDown={(event) => {
-                          if (pending) {
-                            event.preventDefault();
-                            return;
-                          }
-                          pointerActive.current = true;
-                          setPointerIndex(index);
-                          event.currentTarget.setPointerCapture(event.pointerId);
-                        }}
-                        onPointerUp={(event) => {
-                          if (!pointerActive.current) return;
-                          pointerActive.current = false;
-                          const next = Number(event.currentTarget.value);
-                          if (next !== index) void commitEffort(next);
-                          else setPointerIndex(null);
-                        }}
-                        onPointerCancel={() => {
-                          pointerActive.current = false;
-                          setPointerIndex(null);
-                          setHoveredIndex(null);
-                        }}
-                        onLostPointerCapture={() => {
-                          if (pointerActive.current) {
-                            pointerActive.current = false;
-                            setPointerIndex(null);
-                          }
-                        }}
-                        onPointerMove={(event) => {
-                          const bounds = event.currentTarget.getBoundingClientRect();
-                          const fraction =
-                            (event.clientX - bounds.left - 14) / Math.max(1, bounds.width - 28);
-                          setHoveredIndex(
-                            Math.round(Math.max(0, Math.min(1, fraction)) * (efforts.length - 1)),
-                          );
-                        }}
-                        onPointerLeave={() => setHoveredIndex(null)}
-                        onChange={(event) => {
-                          if (pending) return;
-                          const next = Number(event.target.value);
-                          setHoveredIndex(next);
-                          if (pointerActive.current) setPointerIndex(next);
-                          else void commitEffort(next);
-                        }}
-                      />
-                    }
-                  />
-                  <TooltipContent role="tooltip" sideOffset={8}>
-                    {effortName(efforts[feedbackIndex])}
-                  </TooltipContent>
-                </Tooltip>
-              ) : (
-                efforts.map((item, i) => (
-                  <Tooltip key={item}>
+            {efforts.length > 0 && (
+              <div
+                className="composer-slider-shell"
+                role="group"
+                aria-label={t("chat.composer.chooseEffort")}
+              >
+                <div className="composer-slider-track" aria-hidden="true">
+                  {sliderIndex >= 0 && <div style={{ width: sliderPosition(sliderIndex) }} />}
+                  {efforts.map((item, i) => (
+                    <i
+                      key={item}
+                      data-selected={sliderIndex >= i}
+                      style={{ left: sliderPosition(i) }}
+                    />
+                  ))}
+                </div>
+                {index >= 0 ? (
+                  <Tooltip open={feedbackIndex >= 0}>
                     <TooltipTrigger
                       render={
-                        <Button
-                          type="button"
-                          disabled={disabled || pending}
-                          variant="ghost"
-                          size="icon"
-                          className="composer-slider-option"
-                          style={{ left: sliderPosition(i) }}
-                          aria-label={effortName(item)}
-                          aria-pressed={false}
-                          onClick={() => {
-                            void commitEffort(i);
+                        <Input
+                          unstyled
+                          data-slot={undefined}
+                          type="range"
+                          disabled={disabled}
+                          aria-disabled={pending || undefined}
+                          onKeyDown={(event) => {
+                            if (
+                              pending &&
+                              [
+                                "ArrowLeft",
+                                "ArrowRight",
+                                "ArrowUp",
+                                "ArrowDown",
+                                "Home",
+                                "End",
+                                "PageUp",
+                                "PageDown",
+                              ].includes(event.key)
+                            )
+                              event.preventDefault();
+                          }}
+                          aria-label={t("chat.composer.chooseEffort")}
+                          aria-valuetext={effortName(efforts[sliderIndex])}
+                          min={0}
+                          max={efforts.length - 1}
+                          step={1}
+                          value={sliderIndex}
+                          onFocus={() => setSliderFocused(true)}
+                          onBlur={() => {
+                            setSliderFocused(false);
+                            setHoveredIndex(null);
+                            setPointerIndex(null);
+                            pointerActive.current = false;
+                          }}
+                          onPointerDown={(event) => {
+                            if (pending) {
+                              event.preventDefault();
+                              return;
+                            }
+                            pointerActive.current = true;
+                            setPointerIndex(index);
+                            event.currentTarget.setPointerCapture(event.pointerId);
+                          }}
+                          onPointerUp={(event) => {
+                            if (!pointerActive.current) return;
+                            pointerActive.current = false;
+                            const next = Number(event.currentTarget.value);
+                            if (next !== index) void commitEffort(next);
+                            else setPointerIndex(null);
+                          }}
+                          onPointerCancel={() => {
+                            pointerActive.current = false;
+                            setPointerIndex(null);
+                            setHoveredIndex(null);
+                          }}
+                          onLostPointerCapture={() => {
+                            if (pointerActive.current) {
+                              pointerActive.current = false;
+                              setPointerIndex(null);
+                            }
+                          }}
+                          onPointerMove={(event) => {
+                            const bounds = event.currentTarget.getBoundingClientRect();
+                            const fraction =
+                              (event.clientX - bounds.left - 14) / Math.max(1, bounds.width - 28);
+                            setHoveredIndex(
+                              Math.round(Math.max(0, Math.min(1, fraction)) * (efforts.length - 1)),
+                            );
+                          }}
+                          onPointerLeave={() => setHoveredIndex(null)}
+                          onChange={(event) => {
+                            if (pending) return;
+                            const next = Number(event.target.value);
+                            setHoveredIndex(next);
+                            if (pointerActive.current) setPointerIndex(next);
+                            else void commitEffort(next);
                           }}
                         />
                       }
                     />
                     <TooltipContent role="tooltip" sideOffset={8}>
-                      {effortName(item)}
+                      {effortName(efforts[feedbackIndex])}
                     </TooltipContent>
                   </Tooltip>
-                ))
-              )}
-            </div>
+                ) : (
+                  efforts.map((item, i) => (
+                    <Tooltip key={item}>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            type="button"
+                            disabled={disabled || pending}
+                            variant="ghost"
+                            size="icon"
+                            className="composer-slider-option"
+                            style={{ left: sliderPosition(i) }}
+                            aria-label={effortName(item)}
+                            aria-pressed={false}
+                            onClick={() => {
+                              void commitEffort(i);
+                            }}
+                          />
+                        }
+                      />
+                      <TooltipContent role="tooltip" sideOffset={8}>
+                        {effortName(item)}
+                      </TooltipContent>
+                    </Tooltip>
+                  ))
+                )}
+              </div>
+            )}
             <Button
               type="button"
               variant="ghost"
