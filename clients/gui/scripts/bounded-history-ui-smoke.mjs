@@ -184,6 +184,7 @@ try {
         Object.assign(thread, value);
         publish();
       };
+      window.isLoadingOlder = () => thread.displayHistory.loadingOlder === true;
       window.setModelAvailability = (availability) => {
         project.configurations[threadId] = {
           model: { providerId: "areal_openai", modelId: "remembered-model" },
@@ -386,12 +387,10 @@ try {
     positions.push(await historyPosition());
     assert.equal(await older.count(), 0, "history states never expose an ordinary page button");
     const status = page.locator(".message-history-controls [role=status]");
-    if (displayHistory.loadingLatest || displayHistory.loadingOlder) {
-      assert.equal(
-        await status.textContent(),
-        displayHistory.loadingLatest ? labels.latestLoading : labels.olderLoading,
-      );
-    } else assert.equal(await status.count(), 0, "idle history has no loading status");
+    if (displayHistory.loadingLatest) {
+      assert.equal(await status.textContent(), labels.latestLoading);
+    } else assert.equal(await status.count(), 0, "older-page loading and idle history stay silent");
+    assert.equal(await page.getByText(labels.olderLoading, { exact: true }).count(), 0);
   }
   await page.screenshot({ path: join(scratch, "00-history-controls.png"), animations: "disabled" });
   await writeFile(join(scratch, "history-positions.json"), JSON.stringify(positions, null, 2));
@@ -722,7 +721,8 @@ try {
   assert.equal(pageReads, 0, "layout/programmatic scroll does not authorize pagination");
   const anchorTop = () =>
     page
-      .locator('[data-side-item-id="head-item"]')
+      .locator('[data-side-item-id="head-item"] p')
+      .nth(5)
       .evaluate((node) => node.getBoundingClientRect().top);
   const anchorBefore = await anchorTop();
   const composerBefore = (await page.locator(".composer-dock").boundingBox()).y;
@@ -738,12 +738,41 @@ try {
       return selection.toString();
     });
   await page.locator(".messages").hover();
+  let releaseConcurrentPage;
+  pageGate = new Promise((resolve) => {
+    releaseConcurrentPage = resolve;
+  });
   await page.mouse.wheel(0, -1);
+  await page.waitForFunction(() => window.isLoadingOlder());
+  await page.evaluate(() => {
+    window.originalHistoryRaf = window.requestAnimationFrame;
+    window.pendingHistoryFrames = [];
+    window.requestAnimationFrame = (callback) => {
+      window.pendingHistoryFrames.push(callback);
+      return 1000000 + window.pendingHistoryFrames.length;
+    };
+    const element = document.querySelector(".messages");
+    element.scrollTop += 120;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  const anchorAfterWheel = await anchorTop();
+  releaseConcurrentPage();
+  pageGate = undefined;
   await page.getByText("OLDER_0_PARAGRAPH_0", { exact: true }).waitFor();
+  await page.evaluate(() => {
+    window.requestAnimationFrame = window.originalHistoryRaf;
+    for (const callback of window.pendingHistoryFrames) window.requestAnimationFrame(callback);
+  });
   await page.waitForTimeout(150);
+  console.log(
+    JSON.stringify({
+      concurrentPrepend: { anchorBefore, anchorAfterWheel, anchorAfterPage: await anchorTop() },
+    }),
+  );
+  await page.screenshot({ path: join(scratch, "concurrent-prepend.png"), animations: "disabled" });
   assert.ok(
-    Math.abs((await anchorTop()) - anchorBefore - 1) <= 2,
-    "prepend preserves reading anchor",
+    Math.abs((await anchorTop()) - anchorAfterWheel) <= 2,
+    "prepend preserves the reading anchor after concurrent scrolling stops",
   );
   assert.equal(pageReads, 1, "one gesture cannot cascade through pages");
   assert.equal(
@@ -757,7 +786,7 @@ try {
     "prepend preserves composer position",
   );
   await page.evaluate(() => window.getSelection()?.removeAllRanges());
-  for (let n = 1; n < 6; n++) {
+  for (let n = 1; n < 20; n++) {
     await page.locator(".messages").evaluate((element) => {
       element.scrollTop = 40;
     });
@@ -766,9 +795,14 @@ try {
     await page.waitForTimeout(80);
   }
   const gap = page.locator("[data-history-page-id]").last();
+  const beforeGapReads = pageReads;
   await gap.getByRole("button").click();
-  await page.getByText("OLDER_1_PARAGRAPH_0", { exact: true }).waitFor();
-  assert.ok(backend.historyWindow(project, "history-thread").pages.length <= 4);
+  await page.waitForTimeout(100);
+  assert.equal(pageReads, beforeGapReads + 1, "gap reload reads its page");
+  await page
+    .getByText(`OLDER_${pageCursors.at(-1).split(":")[1]}_PARAGRAPH_0`, { exact: true })
+    .waitFor();
+  assert.ok(backend.historyWindow(project, "history-thread").pages.length <= 16);
   assert.equal(await page.getByText("TAIL_SENTINEL", { exact: true }).count(), 1);
   await page.screenshot({ path: join(scratch, "04-paging-gap.png"), animations: "disabled" });
   const beforeCancelledTouch = pageReads;
@@ -891,31 +925,42 @@ try {
     releasePage = resolve;
   });
   await page.mouse.wheel(0, -1);
-  await page
-    .locator(".message-history-controls [role=status]")
-    .filter({ hasText: labels.olderLoading })
-    .waitFor();
+  await page.waitForFunction(() => window.isLoadingOlder());
+  await projection;
+  assert.equal(model.state.threads["history-thread"].displayHistory.loadingOlder, true);
+  assert.equal(await page.locator(".message-history-controls [role=status]").count(), 0);
+  assert.equal(await page.getByText(labels.olderLoading, { exact: true }).count(), 0);
+  await page.screenshot({ path: join(scratch, "older-page-loading.png"), animations: "disabled" });
   for (let n = 0; n < 3; n++) await page.mouse.wheel(0, -1);
-  await page.locator(".messages").focus();
-  await page.keyboard.press("PageUp");
-  await touch(1, "touchcancel");
   assert.equal(pageReads, shortBefore + 5, "busy input does not start concurrent reads");
   releasePage();
   pageGate = undefined;
-  await page.getByText("OLDER_4_PARAGRAPH_0", { exact: true }).waitFor();
+  await page.getByText("OLDER_5_PARAGRAPH_0", { exact: true }).waitFor();
   await page.waitForTimeout(350);
   assert.equal(
     pageReads,
-    shortBefore + 5,
-    "busy wheel, keyboard and touch inputs do not queue another page",
+    shortBefore + 6,
+    "upward input while loading at the boundary queues exactly one page",
   );
   assert.equal(await page.locator(".message-history-controls [role=status]").count(), 0);
   await touch(1);
-  await page.getByText("OLDER_5_PARAGRAPH_0", { exact: true }).waitFor();
+  await page.getByText("OLDER_6_PARAGRAPH_0", { exact: true }).waitFor();
   await page.waitForTimeout(150);
-  assert.equal(pageReads, shortBefore + 6, "a new touch after cancellation can read again");
+  assert.equal(pageReads, shortBefore + 7, "a new touch can read again");
+  pageGate = new Promise((resolve) => {
+    releasePage = resolve;
+  });
+  await page.mouse.wheel(0, -1);
+  await page.waitForFunction(() => window.isLoadingOlder());
+  await page.mouse.wheel(0, -1);
+  await page.mouse.wheel(0, 100);
+  releasePage();
+  pageGate = undefined;
+  await page.getByText("OLDER_7_PARAGRAPH_0", { exact: true }).waitFor();
+  await page.waitForTimeout(350);
+  assert.equal(pageReads, shortBefore + 8, "downward input cancels queued upward intent");
   assert.equal(await older.count(), 0);
-  assert.ok(backend.historyWindow(project, "history-thread").pages.length <= 4);
+  assert.ok(backend.historyWindow(project, "history-thread").pages.length <= 16);
   assert.equal(
     (await page.evaluate(() => window.calls)).some((call) =>
       ["send", "continue", "steer"].includes(call.name),
@@ -925,7 +970,50 @@ try {
   );
   await page.screenshot({ path: join(scratch, "05-short-history.png"), animations: "disabled" });
   checks.push(
-    "fresh wheel, keyboard and touch input reads one page without a normal pagination button; short history continues beyond two pages; idle and busy inputs do not cascade; explicit Retry, paragraph and selection anchors, composer position, gap reload and four-page budget remain covered",
+    "fresh wheel, keyboard and touch input reads one page without a normal pagination button; busy upward input queues at most one page and downward input cancels it; explicit Retry, paragraph and selection anchors, composer position, gap reload and sixteen-page budget remain covered",
+  );
+  backend.installObservation(project, {
+    thread: {
+      id: "history-thread",
+      status: "idle",
+      turns: Array.from({ length: 30 }, (_, n) => ({
+        id: `ordinary-turn-${n}`,
+        status: "completed",
+        items: [
+          {
+            id: `ordinary-user-${n}`,
+            type: "userMessage",
+            content: [{ type: "text", text: `ORDINARY_USER_${n}_SENTINEL` }],
+          },
+          {
+            id: `ordinary-item-${n}`,
+            type: "agentMessage",
+            phase: "final_answer",
+            text: `ORDINARY_${n}_SENTINEL\n\n` + "Reading paragraph.\n\n".repeat(4),
+          },
+        ],
+      })),
+    },
+    history: { snapshotId: "ordinary-snapshot", nextCursor: null, complete: true },
+  });
+  await projection;
+  await page.getByText("ORDINARY_29_SENTINEL", { exact: true }).waitFor();
+  await page.locator(".messages").hover();
+  for (const delta of [-500, 500]) {
+    for (let n = 0; n < 20; n++) {
+      await page.mouse.wheel(0, delta);
+      assert.equal(await page.getByText(labels.olderLoading, { exact: true }).count(), 0);
+      assert.equal(await page.getByText(labels.latestLoading, { exact: true }).count(), 0);
+    }
+    assert.equal(await page.locator('[data-side-item-id^="ordinary-item-"]').count(), 30);
+    assert.equal(await page.locator('[data-side-item-id^="ordinary-user-"]').count(), 30);
+  }
+  await page.screenshot({
+    path: join(scratch, "ordinary-history-roundtrip.png"),
+    animations: "disabled",
+  });
+  checks.push(
+    "30 user messages and answers remain present and silent during 20 upward and 20 downward wheel inputs",
   );
   await projection;
   assert.deepEqual(errors, []);

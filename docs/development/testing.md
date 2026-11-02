@@ -110,6 +110,8 @@ AREAL_CORE_BIN=/absolute/verified/bin/areal pnpm --dir clients/gui test:history-
 
 `test:conversation-reading` 使用生产 Messages、Desktop 历史窗口与确定性 Core RPC fixture，组合验证旧页淘汰、离开返回、重观察、后台增量、宽度变化和 Renderer 重载。该短场景登记为常规 ciSmoke；它不启动真实 Core 或 Electron，不证明供应商、安装包或物理输入验收。历史窗口的多视图保护、有限扫描、取消及预算失败由 bounded-history-client 行为检查覆盖。
 
+`node clients/gui/scripts/bounded-history-ui-smoke.mjs` 在生产 Renderer 和 Desktop 历史所有者上使用受控 Core 响应。上滑分页应静默加载；场景在请求挂起时检查无分页加载文字，完成后检查旧消息出现，并验证正文与输入框位置、失败重试，以及读取期间上滑只续读一次、向下取消续读。场景延迟滚动后的动画帧，在该帧前合入历史页，验证同一可见段落的偏移不超过 2 像素；另检查 30 轮完整快照的上下滚轮浏览，以及超过 16 页后的淘汰和缺页重读。`AREAL_HISTORY_UI_LOCALE=en` 可复验英文。该场景不代表真实 Core 或安装包验收。
+
 `test:navigation-cache` 使用生产 React App、真实 Chrome 和 fixture PlatformServices，记录无关 UI 操作的派生计算次数，检查名称、未读、运行、排序和新快照刷新，并保存源码身份及截图。它不启动 Core/Electron，也不验证安装包或感知延迟。`readingViews` 单测覆盖 32 项内存边界、最近访问淘汰、存储不可用和语义锚点重载；真实主题与布局连续性仍需 Renderer 场景。旧 `conversation-flow` 场景在 `.tool-summary-row .tool-failed` 定位器超时；生产折叠失败状态由 `ActivityRowStatus` 的 `data-tone="failed"` 表达。该 markup 与 `readingViews` 容量裁剪属于不同边界，本专项未修改旧 runner，完整对话流未计为通过。
 
 ## 本地验证产物与启动诊断

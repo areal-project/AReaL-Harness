@@ -28,7 +28,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const historyPageBytes = 256 * 1024,
   historyMaxBytes = 1024 * 1024;
 const historyViewLimit = 8,
-  historyPageLimit = 4,
+  historyPageLimit = 16,
   historyTopologyBytes = 64 * 1024;
 /** @param {unknown} error */
 const historyReason = (error) =>

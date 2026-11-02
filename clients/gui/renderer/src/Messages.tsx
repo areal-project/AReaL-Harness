@@ -373,7 +373,13 @@ export function Messages({
       if (reading.current.owner !== owner) return;
       await history.load(undefined, pageId);
     } finally {
-      if (olderInFlight.current === request) olderInFlight.current = undefined;
+      if (olderInFlight.current === request) {
+        olderInFlight.current = undefined;
+        // 读取期间继续上滑的意图留到投影提交后检查，不要求用户再滑一次。
+        requestAnimationFrame(() => {
+          if (reading.current.owner === owner) autoLoadCurrent.current();
+        });
+      }
     }
   };
   const autoLoadOlder = () => {
@@ -426,22 +432,17 @@ export function Messages({
     localThread.displayHistory?.viewGeneration,
   ]);
   const scheduleReading = () => {
+    // 在分页或流式更新改变 DOM 前记录用户位置；下一帧只调度历史读取。
+    updateReading();
     if (readingFrame.current !== undefined) return;
     readingFrame.current = requestAnimationFrame(() => {
       readingFrame.current = undefined;
       if (activeOwner.current !== owner) return;
-      updateReading();
       autoLoadCurrent.current();
     });
   };
   const requestOlderFromInput = () => {
-    if (
-      olderInFlight.current ||
-      localThread.displayHistory?.loadingOlder ||
-      localThread.displayHistory?.loadingLatest ||
-      history.failure
-    )
-      return;
+    if (history.failure) return;
     autoOlderIntent.current = true;
     if (reading.current.kind === "following")
       reading.current = changeReadingIntent(reading.current, { kind: "holding" });
@@ -714,11 +715,6 @@ export function Messages({
         space.contentHeight = contentHeight;
         spacer.style.height = `${space.height}px`;
       } else spacer.style.height = "0px";
-      if (readingFrame.current !== undefined) {
-        cancelAnimationFrame(readingFrame.current);
-        readingFrame.current = undefined;
-        updateReading();
-      }
       const state = reading.current;
       const disclosure = state.kind === "holding" ? state.disclosure : undefined;
       if (disclosure && element.contains(disclosure.control)) {
@@ -1007,8 +1003,6 @@ export function Messages({
             <div ref={olderSentinel} className="message-history-controls" aria-live="polite">
               {localThread.displayHistory.loadingLatest ? (
                 <span role="status">{t("chat.history.loadingLatest")}</span>
-              ) : localThread.displayHistory.loadingOlder ? (
-                <span role="status">{t("chat.history.loadingOlder")}</span>
               ) : null}
             </div>
           )}
