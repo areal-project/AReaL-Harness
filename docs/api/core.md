@@ -468,7 +468,7 @@ Harness 使用 `service.name=areal-core` 标明自身，并通过 `service.insta
 
 采集内容受共享预算约束，丢失时标记 `areal.capture.truncated`；完整 JSON 未展开只标记 `areal.capture.json_fallback`。接收端可保留不完整轨迹用于排障；文本 SFT 转换还需校验完整性、成功且被接受的请求、工具链、不可变来源摘要与独立质量验收。多模态外部 URI/本地文件不保证可重取，协议不包含 token logits，不能宣称支持精确多模态重放、soft-logit 蒸馏或 RL rollout。具体配置见[持久轨迹导出](../guides/configuration.md#持久轨迹导出)。
 
-工具执行记录新增可选 `originalArguments`，旧记录可继续读取。参数语义未被 hook 改写时，历史保留原始 JSON 字节。Responses `function_call` 原始 item 作为 `modelContext` 保存，匹配未改写调用时保留其 item ID 与原始字段；Chat 投影不发送 Responses 元数据。上下文压缩将请求快照和关联输出作为同一保留单元，压缩后重新建立缓存前缀。
+工具执行记录包含可选 `originalArguments`，旧记录可继续读取。参数语义未被 hook 改写时，历史保留原始 JSON 字节。Responses 完成响应按终态 `output` 顺序保存为内部 `modelContext`，保留 reasoning、助手消息的原始 `phase`、消息 ID 和工具调用字段；不根据展示阶段推测或补写供应商未提供的 `phase`。流式展示文字与该完成输出关联，后续请求不重复正文。匹配未改写调用时保留原始 item；hook 改写仍回放实际模型参数，未派发的调用不制造工具结果。Chat 投影保留可见文字及执行调用，不发送 Responses 元数据。旧历史保持原有兼容投影。终态校验失败不释放工具；完成输出的正文和兼容包装不重复计入上下文估算。上下文压缩将请求快照和关联输出作为同一保留单元，压缩后重新建立缓存前缀。
 
 Chat Completions 的 HTTP 适配会把所有纯文本 system 消息按原有相对顺序合并到请求开头，以兼容只接受首条 system 的聊天模板。非 system 消息的先后顺序保持不变；这不会修改持久历史，也不会改变 Responses 的消息及 encrypted reasoning 回放。动态状态变化因此可能降低 Chat 协议的缓存前缀复用率。
 

@@ -257,6 +257,13 @@ pub(crate) fn message_bytes(messages: &[Message]) -> usize {
     messages
         .iter()
         .map(|message| {
+            if let Some(output) = message.responses_output() {
+                return output
+                    .iter()
+                    .map(|item| item.to_string().len())
+                    .sum::<usize>()
+                    + 64;
+            }
             message.text_content().len()
                 + message
                     .content
@@ -290,6 +297,13 @@ pub(crate) fn estimate_tokens(messages: &[Message]) -> usize {
     messages
         .iter()
         .map(|m| {
+            if let Some(output) = m.responses_output() {
+                return output
+                    .iter()
+                    .map(|item| text_tokens(&item.to_string()))
+                    .sum::<usize>()
+                    + 16;
+            }
             text_tokens(&m.text_content())
                 + 16
                 + m.tool_calls

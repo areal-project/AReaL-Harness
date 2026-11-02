@@ -822,6 +822,7 @@ impl Engine {
                 let model_span = operation.span.clone();
                 let output_before = (text_output_bytes, media_output_bytes);
                 let mut response_bytes = 0usize;
+                let mut visible_response_bytes = 0usize;
                 let mut request_trace = self
                     .trace_begin(cell, "model", model.name(), None, Some(&logical_request_id))
                     .await?;
@@ -1546,7 +1547,9 @@ impl Engine {
                     let added = match &delta {
                         ModelEvent::TextDelta(text)
                         | ModelEvent::ReasoningDelta { delta: text, .. } => text.len(),
-                        ModelEvent::ProviderContext(value) => serde_json::to_vec(value)?.len(),
+                        ModelEvent::ProviderContext(value) => {
+                            model::provider_context_added_bytes(value, visible_response_bytes)?
+                        }
                         ModelEvent::Binary { data, .. } => data.len(),
                         _ => 0,
                     };
@@ -1559,9 +1562,8 @@ impl Engine {
                     operation.observe(&delta);
                     match delta {
                         ModelEvent::Activity => continue,
-                        ModelEvent::ProviderContext(value) => {
-                            let bytes = serde_json::to_vec(&value)?.len();
-                            text_output_bytes += bytes;
+                        ModelEvent::ProviderContext(mut value) => {
+                            text_output_bytes += added;
                             anyhow::ensure!(
                                 self.limits.max_output_bytes == 0
                                     || text_output_bytes <= self.limits.max_output_bytes,
@@ -1569,6 +1571,14 @@ impl Engine {
                             );
                             let mut state = cell.state.lock().await;
                             let turn = state.thread.turns.last_mut().unwrap();
+                            if value["type"] == "areal_response_output"
+                                && value["items"].as_array().is_some_and(|items| {
+                                    items.iter().any(|item| item["type"] == "message")
+                                })
+                            {
+                                // 仅将本次完成的展示项与其原始输出关联，避免历史重复回放文字。
+                                value["visibleMessageId"] = json!(item_id);
+                            }
                             let context_id = id();
                             completion_items.insert(context_id.clone());
                             turn.items.push(Item::ModelContext {
@@ -1661,6 +1671,7 @@ impl Engine {
                         }
                         ModelEvent::TextDelta(delta) => {
                             visible_output |= !delta.trim().is_empty();
+                            visible_response_bytes += delta.len();
                             text_output_bytes += delta.len();
                             anyhow::ensure!(
                                 self.limits.max_output_bytes == 0

@@ -448,8 +448,70 @@ pub struct Message {
     pub content: Vec<ContentPart>,
     pub tool_calls: Vec<Value>,
     pub tool_call_id: Option<String>,
-    /// Opaque provider context (e.g. encrypted Responses reasoning), not user text.
+    /// 原始供应商输出（含有序 Responses 完成输出），不是新增用户输入。
     pub provider_context: Option<Value>,
+}
+
+// 展示流和 Chat 兼容投影使用可见文字；Responses 回放使用完整原始 item。
+pub(crate) fn response_message_text(items: &[Value]) -> String {
+    items
+        .iter()
+        .filter(|item| item["type"] == "message")
+        .filter_map(|item| item["content"].as_array())
+        .flatten()
+        .filter_map(|part| match part["type"].as_str() {
+            Some("output_text") => part["text"].as_str(),
+            Some("refusal") => part["refusal"].as_str(),
+            _ => None,
+        })
+        .collect()
+}
+
+pub(crate) fn provider_context_added_bytes(value: &Value, visible_bytes: usize) -> Result<usize> {
+    let duplicate = if value["type"] == "areal_response_output" {
+        value["items"].as_array().map_or(0, |items| {
+            response_message_text(items).len().min(visible_bytes)
+        })
+    } else {
+        0
+    };
+    // 字节门禁保留全部元数据，只扣除本响应已按 TextDelta 计费的可见正文。
+    Ok(serde_json::to_vec(value)?.len().saturating_sub(duplicate))
+}
+
+fn response_function_item(call: &Value) -> Value {
+    call.get("_responsesItem").cloned().unwrap_or_else(|| {
+        json!({
+            "type":"function_call", "call_id":call["id"],
+            "name":call["function"]["name"], "arguments":call["function"]["arguments"]
+        })
+    })
+}
+
+impl Message {
+    pub(crate) fn responses_output(&self) -> Option<Vec<Value>> {
+        let context = self.provider_context.as_ref()?;
+        if context["type"] != "areal_response_output" {
+            return None;
+        }
+        Some(
+            context["items"]
+                .as_array()?
+                .iter()
+                .filter_map(|item| {
+                    if item["type"] == "function_call" {
+                        // 只回放有持久执行记录的调用；hook 改写仍以实际模型参数为准。
+                        self.tool_calls
+                            .iter()
+                            .find(|call| call["id"] == item["call_id"])
+                            .map(response_function_item)
+                    } else {
+                        Some(item.clone())
+                    }
+                })
+                .collect(),
+        )
+    }
 }
 
 impl Message {
@@ -1012,7 +1074,7 @@ impl HttpModel {
                 let mut system_text = Vec::new();
                 let has_runtime_context = messages.iter().any(|m| m.role == "areal_context");
                 for message in messages {
-                    if message.provider_context.is_some() {
+                    if message.provider_context.is_some() && message.responses_output().is_none() {
                         continue;
                     }
                     let role = if message.role == "areal_context" {
@@ -1777,6 +1839,9 @@ async fn responses_items(
     }
 
     if let Some(context) = &message.provider_context {
+        if let Some(items) = message.responses_output() {
+            return Ok(items);
+        }
         if context["type"] == "chat_reasoning" {
             return Ok(Vec::new());
         }
@@ -1845,11 +1910,7 @@ async fn responses_items(
     }
     push_response_message(&mut items, &message.role, &mut content);
     for call in message.tool_calls {
-        if let Some(original) = call.get("_responsesItem") {
-            items.push(original.clone());
-            continue;
-        }
-        items.push(json!({"type":"function_call", "call_id":call["id"], "name":call["function"]["name"], "arguments":call["function"]["arguments"]}));
+        items.push(response_function_item(&call));
     }
     Ok(items)
 }

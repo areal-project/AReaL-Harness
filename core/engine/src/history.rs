@@ -631,6 +631,19 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
     let mut assistant_index: Option<usize> = None;
     let mut visuals = Vec::new();
     let mut response_calls = BTreeMap::<String, Value>::new();
+    let canonical_messages: HashSet<_> = items
+        .iter()
+        .skip(start)
+        .filter_map(|item| {
+            if let Item::ModelContext { value, .. } = item
+                && value["type"] == "areal_response_output"
+            {
+                value["visibleMessageId"].as_str()
+            } else {
+                None
+            }
+        })
+        .collect();
     for item in items.into_iter().skip(start) {
         if matches!(
             item,
@@ -652,6 +665,24 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
             },
             Item::Reasoning { .. } => continue,
             Item::ModelContext { value, .. } => {
+                if value["type"] == "areal_response_output" {
+                    messages.append(&mut visuals);
+                    let output = value["items"]
+                        .as_array()
+                        .context("invalid Responses output context")?;
+                    for call in output.iter().filter(|item| item["type"] == "function_call") {
+                        let call_id = call["call_id"]
+                            .as_str()
+                            .context("missing retained call ID")?;
+                        response_calls.insert(call_id.to_owned(), call.clone());
+                    }
+                    let mut message =
+                        Message::text("assistant", model::response_message_text(output));
+                    message.provider_context = Some(value.clone());
+                    assistant_index = Some(messages.len());
+                    messages.push(message);
+                    continue;
+                }
                 if value["type"] == "areal_request_context" {
                     messages.append(&mut visuals);
                     assistant_index = None;
@@ -688,6 +719,7 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
                 message.provider_context = Some(value.clone());
                 message
             }
+            Item::AgentMessage { id, .. } if canonical_messages.contains(id.as_str()) => continue,
             Item::AgentMessage { text, .. } if !text.is_empty() => {
                 assistant_index = Some(messages.len());
                 Message::text("assistant", text.clone())
