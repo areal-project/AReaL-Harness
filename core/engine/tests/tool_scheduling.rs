@@ -24,8 +24,12 @@ use tokio_util::sync::CancellationToken;
 
 struct BatchModel {
     calls: Vec<ToolCall>,
+    sequential: bool,
     requests: AtomicUsize,
+    input_bytes: AtomicUsize,
     expected_results: AtomicUsize,
+    received: Mutex<Vec<Message>>,
+    declarations: Mutex<Vec<Value>>,
 }
 
 #[async_trait]
@@ -38,15 +42,45 @@ impl Model for BatchModel {
         unreachable!()
     }
 
-    async fn chat(&self, messages: Vec<Message>, _: Vec<Value>) -> anyhow::Result<ModelStream> {
-        if self.requests.fetch_add(1, Ordering::SeqCst) == 0 {
+    async fn chat(
+        &self,
+        messages: Vec<Message>,
+        definitions: Vec<Value>,
+    ) -> anyhow::Result<ModelStream> {
+        let logical_messages: Vec<_> = messages
+            .iter()
+            .map(|m| {
+                json!({
+                    "role":m.role,"content":m.text_content(),"toolCalls":m.tool_calls,
+                    "toolCallId":m.tool_call_id,"providerContext":m.provider_context,
+                })
+            })
+            .collect();
+        self.input_bytes.fetch_add(
+            serde_json::to_vec(&json!({"messages":logical_messages,"tools":definitions}))?.len(),
+            Ordering::SeqCst,
+        );
+        *self.received.lock().await = messages.clone();
+        *self.declarations.lock().await = definitions;
+        let round = self.requests.fetch_add(1, Ordering::SeqCst);
+        if round == 0 {
             return Ok(Box::pin(futures_util::stream::iter(
                 self.calls
                     .clone()
                     .into_iter()
+                    .take(if self.sequential { 1 } else { self.calls.len() })
                     .map(ModelEvent::ToolCall)
                     .map(Ok),
             )));
+        }
+        if self.sequential && round == 1 {
+            let observed = messages.iter().find(|m| m.role == "tool").unwrap();
+            let data: Value = serde_json::from_str(&observed.text_content())?;
+            let mut next = self.calls[1].clone();
+            next.arguments = json!({"path":data["text"]}).to_string();
+            return Ok(Box::pin(futures_util::stream::iter([Ok(
+                ModelEvent::ToolCall(next),
+            )])));
         }
         let expected = self.expected_results.load(Ordering::SeqCst);
         let results: Vec<_> = messages.iter().filter(|m| m.role == "tool").collect();
@@ -56,6 +90,9 @@ impl Model for BatchModel {
         for ((call, advertised), result) in self.calls.iter().zip(advertised).zip(results) {
             assert_eq!(advertised["id"], call.id);
             assert_eq!(result.tool_call_id.as_deref(), Some(call.id.as_str()));
+            if call.name == "tool_program" {
+                continue;
+            }
             let value: Value = serde_json::from_str(&result.text_content())?;
             let arguments: Value = serde_json::from_str(&call.arguments)?;
             assert_eq!(value["path"], arguments["path"]);
@@ -271,14 +308,28 @@ async fn open(
     limits: Limits,
     extensions: ToolExtensions,
 ) -> (Arc<Engine>, Arc<BatchModel>, Runtime, String, String) {
+    open_with_mode(dir, calls, limits, extensions, false).await
+}
+
+async fn open_with_mode(
+    dir: &Path,
+    calls: Vec<ToolCall>,
+    limits: Limits,
+    extensions: ToolExtensions,
+    sequential: bool,
+) -> (Arc<Engine>, Arc<BatchModel>, Runtime, String, String) {
     let data = dir.join("data");
     let workspace = dir.join("workspace");
     std::fs::create_dir(&workspace).unwrap();
     let runtime = runtime(&data).await;
     let model = Arc::new(BatchModel {
         expected_results: AtomicUsize::new(calls.len()),
+        received: Mutex::new(Vec::new()),
+        declarations: Mutex::new(Vec::new()),
         calls,
+        sequential,
         requests: AtomicUsize::new(0),
+        input_bytes: AtomicUsize::new(0),
     });
     let engine = Engine::open_with_extensions(
         &data,
@@ -626,6 +677,285 @@ async fn cancellation_settles_all_parallel_reads_before_scope_cleanup_without_re
         assert_eq!(outcomes, [ToolOutcome::Unknown, ToolOutcome::Unknown]);
         assert_eq!(runtime.closed.load(Ordering::SeqCst), 1);
         assert_eq!(model.requests.load(Ordering::SeqCst), 1);
+        assert!(runtime.seen.try_recv().is_err());
+        close(engine, runtime).await;
+    }
+}
+
+fn program(code: &str) -> ToolCall {
+    ToolCall {
+        id: "program-parent".into(),
+        name: "tool_program".into(),
+        arguments: json!({"code":code}).to_string(),
+    }
+}
+fn program_policy() -> ToolExtensions {
+    ToolExtensions {
+        policy: ToolPolicy {
+            programmatic_tools: true,
+            programmatic_tools_only: true,
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn dependent_program_removes_a_model_round_with_identical_native_work_and_budget() {
+    let mut costs = Vec::new();
+    let mut operations = Vec::new();
+    for composed in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let calls = if composed {
+            vec![program(
+                "const a=await tools.fs_read({path:'workspace://repo/a'}); const b=await tools.fs_stat({path:a.data.text}); text(b);",
+            )]
+        } else {
+            vec![
+                ToolCall {
+                    id: "read-a".into(),
+                    name: "fs_read".into(),
+                    arguments: json!({"path":"workspace://repo/a"}).to_string(),
+                },
+                ToolCall {
+                    id: "stat-a".into(),
+                    name: "fs_stat".into(),
+                    arguments: json!({"path":"workspace://repo/a"}).to_string(),
+                },
+            ]
+        };
+        let extensions = ToolExtensions {
+            policy: ToolPolicy {
+                programmatic_tools: composed,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let (engine, model, mut runtime, thread, _) =
+            open_with_mode(dir.path(), calls, Limits::default(), extensions, !composed).await;
+        for _ in 0..2 {
+            runtime.next().await.succeed();
+        }
+        let done = bounded(engine.wait(&thread)).await.unwrap();
+        assert_eq!(
+            done.turns[0].status,
+            TurnStatus::Completed,
+            "{:?}",
+            done.turns[0].error
+        );
+        assert!(runtime.seen.try_recv().is_err());
+        operations.push(
+            done.turns[0]
+                .items
+                .iter()
+                .filter_map(|i| match i {
+                    Item::DynamicToolCall {
+                        tool,
+                        arguments,
+                        success,
+                        ..
+                    } if tool != "tool_program" => {
+                        Some((tool.clone(), arguments.clone(), *success))
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>(),
+        );
+        costs.push((
+            model.requests.load(Ordering::SeqCst),
+            model.input_bytes.load(Ordering::SeqCst),
+        ));
+        close(engine, runtime).await;
+    }
+    assert_eq!(operations[0], operations[1]);
+    assert_eq!(costs[0].0, 3);
+    assert_eq!(costs[1].0, 2);
+    assert!(
+        costs[1].1 < costs[0].1,
+        "include program schema/code overhead in the comparison: {costs:?}"
+    );
+    eprintln!(
+        "same two native operations: sequential requests/inputBytes={:?}; composed={:?}; byte counts are not provider tokens",
+        costs[0], costs[1]
+    );
+}
+
+#[tokio::test]
+async fn default_program_archives_large_output_and_finishes_the_same_native_steps_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let code = "const a=await tools.fs_stat({path:'workspace://repo/a'}); text('evidence '.repeat(4000)); const b=await tools.fs_stat({path:'workspace://repo/b'});text(b);";
+    let (engine, model, mut runtime, thread, _) = open(
+        dir.path(),
+        vec![program(code)],
+        Limits::default(),
+        ToolExtensions::default(),
+    )
+    .await;
+    let a = runtime.next().await;
+    assert!(a.path().ends_with("/a"));
+    a.succeed();
+    let b = runtime.next().await;
+    assert!(b.path().ends_with("/b"));
+    b.succeed();
+    let done = bounded(engine.wait(&thread)).await.unwrap();
+    assert_eq!(
+        done.turns[0].status,
+        TurnStatus::Completed,
+        "{:?}",
+        done.turns[0].error
+    );
+    assert_eq!(model.requests.load(Ordering::SeqCst), 2);
+    let calls: Vec<_> = done.turns[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::DynamicToolCall {
+                tool,
+                success,
+                execution,
+                ..
+            } => Some((tool, success, execution)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(calls.len(), 3);
+    assert!(calls.iter().all(|(_, success, _)| **success == Some(true)));
+    assert!(
+        calls
+            .iter()
+            .find(|(name, _, _)| *name == "tool_program")
+            .unwrap()
+            .2
+            .result_snapshot
+            .is_some()
+    );
+    assert!(runtime.seen.try_recv().is_err());
+    let messages = model.received.lock().await;
+    let result = messages
+        .iter()
+        .find(|m| m.role == "tool")
+        .unwrap()
+        .text_content();
+    assert!(result.contains("selectedOutputTruncated"));
+    assert!(result.contains("read_tool_result"));
+    assert!(
+        result.len() < 20000,
+        "preview must actually reach the model: {}",
+        result.len()
+    );
+    drop(messages);
+    let definitions = model.declarations.lock().await;
+    assert!(
+        definitions
+            .iter()
+            .any(|d| d["function"]["name"] == "fs_stat")
+    );
+    let description = definitions
+        .iter()
+        .find(|d| d["function"]["name"] == "tool_program")
+        .unwrap()["function"]["description"]
+        .as_str()
+        .unwrap();
+    assert!(description.contains("fs_stat"));
+    assert!(
+        !description.contains("\"parameters\""),
+        "default catalog must not duplicate schemas"
+    );
+    drop(definitions);
+    close(engine, runtime).await;
+}
+
+#[tokio::test]
+async fn program_composes_return_values_keeps_journals_and_projects_only_selected_observations() {
+    let dir = tempfile::tempdir().unwrap();
+    let (engine,model,mut runtime,thread,_)=open(dir.path(),vec![program("const a=await tools.fs_read({path:'workspace://repo/a'}); const b=await tools.fs_stat({path:a.data.text}); text({selected:b.data.size});")],Limits::default(),program_policy()).await;
+    let a = runtime.next().await;
+    assert!(a.path().ends_with("/a"));
+    a.succeed();
+    let b = runtime.next().await;
+    assert!(b.path().ends_with("/a"));
+    b.succeed();
+    let done = bounded(engine.wait(&thread)).await.unwrap();
+    assert_eq!(done.turns[0].status, TurnStatus::Completed);
+    assert_eq!(model.requests.load(Ordering::SeqCst), 2);
+    let children:Vec<_>=done.turns[0].items.iter().filter(|i|matches!(i,Item::DynamicToolCall{execution,..} if execution.parent_call_id.as_deref()==Some("program-parent"))).collect();
+    assert_eq!(children.len(), 2);
+    let messages = model.received.lock().await;
+    let results: Vec<_> = messages.iter().filter(|m| m.role == "tool").collect();
+    assert_eq!(results.len(), 1);
+    assert!(results[0].text_content().contains("selected"));
+    assert!(!results[0].text_content().contains("workspace://repo/a"));
+    drop(messages);
+    let definitions = model.declarations.lock().await;
+    assert!(
+        definitions
+            .iter()
+            .any(|d| d["function"]["name"] == "tool_program")
+    );
+    assert!(
+        !definitions
+            .iter()
+            .any(|d| d["function"]["name"] == "fs_read")
+    );
+    drop(definitions);
+    close(engine, runtime).await;
+}
+
+#[tokio::test]
+async fn program_unknown_cannot_be_caught_to_submit_another_effect() {
+    let dir = tempfile::tempdir().unwrap();
+    let (engine,model,mut runtime,thread,_)=open(dir.path(),vec![program("try {await tools.fs_stat({path:'workspace://repo/a'});} catch(e) {} await tools.fs_create({path:'workspace://repo/must-not-exist',text:'x'});")],Limits::default(),program_policy()).await;
+    runtime.next().await.unknown();
+    let done = bounded(engine.wait(&thread)).await.unwrap();
+    assert_eq!(done.turns[0].status, TurnStatus::Failed);
+    assert_eq!(model.requests.load(Ordering::SeqCst), 1);
+    let outcomes: Vec<_> = done.turns[0]
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            Item::DynamicToolCall { execution, .. } => Some(&execution.outcome),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(outcomes, vec![&ToolOutcome::Unknown, &ToolOutcome::Unknown]);
+    assert!(runtime.seen.try_recv().is_err());
+    close(engine, runtime).await;
+}
+
+#[tokio::test]
+async fn program_cancel_settles_children_and_does_not_replay_tail() {
+    let dir = tempfile::tempdir().unwrap();
+    let (engine,_,mut runtime,thread,turn)=open(dir.path(),vec![program("await tools.fs_stat({path:'workspace://repo/a'});await tools.fs_create({path:'workspace://repo/tail',text:'x'});")],Limits::default(),program_policy()).await;
+    let _pending = runtime.next().await;
+    engine.interrupt(&thread, &turn).await.unwrap();
+    let done = bounded(engine.wait(&thread)).await.unwrap();
+    assert_ne!(done.turns[0].status, TurnStatus::Completed);
+    assert!(runtime.seen.try_recv().is_err());
+    assert_eq!(runtime.closed.load(Ordering::SeqCst), 1);
+    close(engine, runtime).await;
+}
+
+#[tokio::test]
+async fn program_children_share_tool_budget_and_invalid_arguments_never_dispatch() {
+    for invalid in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let code = if invalid {
+            "const a=await tools.fs_stat({unexpected:true});text(a);"
+        } else {
+            "await tools.fs_stat({path:'workspace://repo/a'});await tools.fs_stat({path:'workspace://repo/b'});"
+        };
+        let limits = Limits {
+            max_tool_calls: 2,
+            ..Limits::default()
+        };
+        let (engine, _, mut runtime, thread, _) =
+            open(dir.path(), vec![program(code)], limits, program_policy()).await;
+        if !invalid {
+            runtime.next().await.succeed();
+        }
+        let done = bounded(engine.wait(&thread)).await.unwrap();
+        let children=done.turns[0].items.iter().filter(|i|matches!(i,Item::DynamicToolCall{execution,..} if execution.parent_call_id.is_some())).count();
+        assert_eq!(children, 1);
         assert!(runtime.seen.try_recv().is_err());
         close(engine, runtime).await;
     }

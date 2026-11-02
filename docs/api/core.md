@@ -553,3 +553,7 @@ Rust `ToolPolicy` 的穷举结构体字面量调用方需要补上 `parallel_rea
 Turn 的 `trace` 增加 `startedAtMs`、`queuedAtMs`、`queueDurationMs` 和 `activities`。活动记录用 `afterItemId` 保留稳定显示锚点，并包含种类、逻辑调用、实际尝试、可选工具 `callId`、起止时间、实测 `durationMs`、`firstContentMs`、可选用量、状态和错误。流建立前的 HTTP 内部重试分别保留尝试及等待。原有 `generation.durationMs` 保留用于生成速率的较窄含义。工具执行增加 `startedAtMs`，队列条目增加 `queuedAtMs`。执行投影提供可用的 `durationMs`、`startedAtMs` 或实时 `elapsedMs`；交付回执版本排除会变化的经过时间。
 
 读取旧历史时新增字段缺省。恢复时将未完成活动标记未知，不补造结束时间。隔离 worker 的旧活动快照不证明其仍在运行；`stateConfirmed: false` 保留最后已知记录并停止延长计时。本地记录属于权威会话历史，独立于 OTLP 导出设置。使用方式见[轨迹排查](../guides/execution-trace.md)。
+
+`ToolExecution.parentCallId` 是可选子调用关联字段，旧记录缺省为无父调用。程序化工具共享原生执行链及预算；子调用保留事实，模型历史只投影父调用，见[程序工具契约](../guides/programmatic-tools.md)。
+
+完整请求预检与自动压缩共享有效 usage 校准；Responses 摘要可保留原前缀及工具 schema，但工具执行预算始终为零。新增默认返回 false 的 `Model::supports_prefix_summary()`；自定义适配器仅在支持尾部维护指令与禁用工具协议时声明 true。审计和回退条件见[上下文管理](../design/context-management.md)。

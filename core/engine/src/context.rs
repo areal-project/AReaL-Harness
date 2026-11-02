@@ -1,6 +1,9 @@
 use super::*;
 use std::collections::HashMap;
 
+mod calibration;
+pub(crate) use calibration::{ContextRequest, UsageCalibration};
+
 const SUMMARY_LIMIT: usize = 16 * 1024;
 
 const PROJECT_INSTRUCTION_LIMIT: usize = 32 * 1024;
@@ -417,6 +420,36 @@ fn fit_summary_input(input: &mut [Message], input_limit: usize) -> anyhow::Resul
     Ok(())
 }
 
+fn prefix_summary_input(
+    history: &[Message],
+    request: &ContextRequest<'_>,
+    instruction: &str,
+    input_limit: Option<usize>,
+) -> anyhow::Result<Option<(Vec<Message>, usize, usize)>> {
+    if history.is_empty() {
+        return Ok(None);
+    }
+    // 只复用真正将要发送的相同前缀，不为缓存重新排序历史或恢复已折叠的观察。
+    let Some(start) = request
+        .messages
+        .windows(history.len())
+        .position(|part| part == history)
+    else {
+        return Ok(None);
+    };
+    let end = start + history.len();
+    let prefix = &request.messages[..end];
+    let tokens = request.prefix_tokens(prefix)?;
+    let maintenance = Message::text("developer", instruction);
+    let estimate = tokens.saturating_add(estimate_tokens(std::slice::from_ref(&maintenance)));
+    if input_limit.is_some_and(|limit| estimate > limit) {
+        return Ok(None);
+    }
+    let mut input = prefix.to_vec();
+    input.push(maintenance);
+    Ok(Some((input, end, tokens)))
+}
+
 impl Engine {
     pub(crate) fn request_prefix(
         &self,
@@ -754,18 +787,11 @@ impl Engine {
         cell: &Arc<Cell>,
         cancel: &CancellationToken,
         overhead_tokens: usize,
-        previous_usage: Option<(usize, u64)>,
+        request: Option<&ContextRequest<'_>>,
         force: bool,
     ) -> anyhow::Result<()> {
-        self.compact_context_with_trigger(
-            cell,
-            cancel,
-            overhead_tokens,
-            previous_usage,
-            force,
-            "auto",
-        )
-        .await
+        self.compact_context_with_trigger(cell, cancel, overhead_tokens, request, force, "auto")
+            .await
     }
 
     pub(crate) async fn compact_context_with_trigger(
@@ -773,7 +799,7 @@ impl Engine {
         cell: &Arc<Cell>,
         cancel: &CancellationToken,
         overhead_tokens: usize,
-        previous_usage: Option<(usize, u64)>,
+        request: Option<&ContextRequest<'_>>,
         force: bool,
         hook_trigger: &str,
     ) -> anyhow::Result<()> {
@@ -793,9 +819,9 @@ impl Engine {
             observations::project(&snapshot, &self.store, &self.limits, model.as_ref())?;
         let before_bytes = message_bytes(&messages);
         let raw_estimate = estimate_tokens(&messages).saturating_add(overhead_tokens);
-        // 最终请求预检使用保守原始估算；较小的历史 usage 不能让压缩跳过同一道硬门禁。
-        // 较大的实际用量仍提前触发压缩，避免低估真实 tokenizer。
-        let estimated_tokens = raw_estimate.max(calibrated(raw_estimate, previous_usage));
+        // 与最终请求预检共享同一校准；历史快照或工具变化后不借用旧 usage。
+        let current_request = request.filter(|request| request.raw_tokens == raw_estimate);
+        let estimated_tokens = current_request.map_or(raw_estimate, |r| r.estimated_tokens);
         let token_trigger = budget.window > 0 && estimated_tokens >= budget.input_limit;
         let byte_trigger =
             self.limits.context_window_bytes > 0 && before_bytes > self.limits.context_window_bytes;
@@ -1055,10 +1081,25 @@ impl Engine {
                 turn.items.truncate(take);
                 left -= take;
             }
-            let mut input = summary_input(&history(&prefix, &self.store)?);
+            let summary_history = history(&prefix, &self.store)?;
+            let mut input = summary_input(&summary_history);
             if writing_target < 8000 {
                 // 这是写作目标而非硬截断；原有净缩减验证仍决定能否保存摘要。
                 input[0] = Message::text("system", format!("{}\nSummary writing target: {writing_target} UTF-8 bytes. Compress completed background into one sentence; prioritize binding user constraints, current state, unresolved failures and the next action. Core may separately retain selected original user messages and file receipts; do not assume every older requirement will be replayed. This tighter target supersedes the general length guidance above.", include_str!("summary-instructions.md")));
+            }
+            let summary_instructions = input[0].text_content();
+            let summary_output = model.capabilities().summary_output_tokens.unwrap_or(budget.reserve);
+            anyhow::ensure!(budget.window == 0 || summary_output < budget.window, "summary output reserve exceeds model context window");
+            let summary_limit = (budget.window > 0).then(|| budget.window - summary_output);
+            let mut summary_tools = Vec::new();
+            let mut preserved_prefix = None;
+            if model.supports_prefix_summary()
+                && let Some(request) = current_request
+                && let Some((messages, count, tokens)) = prefix_summary_input(&summary_history, request, &summary_instructions, summary_limit)?
+            {
+                input = messages;
+                summary_tools = request.tools.to_vec();
+                preserved_prefix = Some((count, tokens));
             }
             trajectory::record_messages(&tracing::Span::current(), "gen_ai.input.messages", &input);
             let started = tokio::time::Instant::now();
@@ -1126,10 +1167,19 @@ impl Engine {
                 let response: anyhow::Result<()> = async {
                     // 摘要也使用同一容量；失败后先归还名额再退避。
                     let permit = self.trace_model_permit(cell, cancel).await?;
-                    if budget.window > 0 {
-                        let output = model.capabilities().summary_output_tokens.unwrap_or(budget.reserve);
-                        anyhow::ensure!(output < budget.window, "summary output reserve exceeds model context window");
-                        fit_summary_input(&mut input, budget.window - output)?;
+                    if let Some(limit) = summary_limit {
+                        if preserved_prefix.is_some_and(|(count, tokens)| tokens.saturating_add(estimate_tokens(&input[count..])) > limit) {
+                            // 维护指令也占窗口。装不下时在发送前退回有界引用摘要，不多发一次请求。
+                            let retry_instructions: Vec<_> = input.iter().skip(preserved_prefix.unwrap().0 + 1).map(|message| Message::text("system", message.text_content())).collect();
+                            input = summary_input(&summary_history);
+                            input[0] = Message::text("system", &summary_instructions);
+                            input.extend(retry_instructions);
+                            summary_tools.clear();
+                            preserved_prefix = None;
+                        }
+                        if preserved_prefix.is_none() {
+                            fit_summary_input(&mut input, limit)?;
+                        }
                     }
                     self.reserve_agent_model_request(cell)?;
                     let engine = self.clone();
@@ -1140,12 +1190,12 @@ impl Engine {
                     trajectory::record_messages(&tracing::Span::current(), "gen_ai.input.messages", &input);
                     if cell.state.lock().await.active.is_some() {
                         let configuration = self.context_configuration(&snapshot, true);
-                        self.publish_context_usage(cell, &input, &[], &configuration, model.as_ref()).await?;
+                        self.publish_context_usage(cell, &input, &summary_tools, &configuration, model.as_ref()).await?;
                     }
                     let mut response_deadline = watchdog::ResponseDeadline::new(self.limits.model_request_timeout, self.limits.stream_idle_timeout);
                     let pending = tokio::time::timeout_at(response_deadline.deadline(), model::REQUEST_OWNER.scope((snapshot.id.clone(), snapshot.turns.last().map_or_else(String::new, |t| t.id.clone())), permit.scope(async {
                         let meter = crate::request_meter::RequestMeter::new(generation.clone());
-                        crate::execution_trace::REQUEST_TRACE.scope(trace_context.clone(), model.chat_with_limits(input.clone(), Vec::new(), model::RequestPurpose::Summary, model::ToolCallLimits { require_call: false, max_calls: 0, max_buffer_bytes: self.limits.max_tool_buffer_bytes }, None)).await.map(|stream| meter.wrap(stream))
+                        crate::execution_trace::REQUEST_TRACE.scope(trace_context.clone(), model.chat_with_limits(input.clone(), summary_tools.clone(), model::RequestPurpose::Summary, model::ToolCallLimits { require_call: false, max_calls: 0, max_buffer_bytes: self.limits.max_tool_buffer_bytes }, None)).await.map(|stream| meter.wrap(stream))
                     })));
                     tokio::pin!(pending);
                     let mut stream = tokio::select! {
@@ -1206,7 +1256,7 @@ impl Engine {
                 request.finish(response.as_ref().err().map(|_| "model_request_failed"));
                 drop(request);
                 usage.add_assign(&attempt_usage);
-                self.store.save_audit(json!({"kind":"contextSummary","threadId":snapshot.id,"attempt":attempt+1,"networkRetries":network_retries,"beforeBytes":before_bytes,"estimatedInputTokens":estimated_tokens,"tokenWindow":budget.window,"outputReserveTokens":budget.reserve,"response":summary,"rejectedTools":rejected_tools,"usage":attempt_usage,"error":response.as_ref().err().map(|e|e.to_string()),"cancelled":cancel.is_cancelled()})).await?;
+                self.store.save_audit(json!({"kind":"contextSummary","threadId":snapshot.id,"attempt":attempt+1,"networkRetries":network_retries,"beforeBytes":before_bytes,"estimatedInputTokens":estimated_tokens,"tokenWindow":budget.window,"outputReserveTokens":budget.reserve,"inputMode":if preserved_prefix.is_some(){"preservedPrefix"}else{"quotedEvidence"},"prefixMessages":preserved_prefix.map(|(count,_)|count),"response":summary,"rejectedTools":rejected_tools,"usage":attempt_usage,"error":response.as_ref().err().map(|e|e.to_string()),"cancelled":cancel.is_cancelled()})).await?;
                 anyhow::ensure!(!cancel.is_cancelled(), "cancelled");
                 let error = match response {
                     Ok(()) => {
@@ -1248,7 +1298,7 @@ impl Engine {
                 }
                 attempt += 1;
                 network_retries = 0;
-                input.push(Message::text("system", "Internal compaction retry, not a user task. The summary was rejected. Return only a shorter checkpoint, without tool calls or executable markup. Use fewer than 500 words and 4000 UTF-8 bytes. Prioritize exact interfaces, remaining work and observed validation over narrative. Keep unfinished work and verification status explicit."));
+                input.push(Message::text(if preserved_prefix.is_some() { "developer" } else { "system" }, "Internal compaction retry, not a user task. The summary was rejected. Return only a shorter checkpoint, without tool calls or executable markup. Use fewer than 500 words and 4000 UTF-8 bytes. Prioritize exact interfaces, remaining work and observed validation over narrative. Keep unfinished work and verification status explicit."));
             }
             let generated_summary_bytes = accepted.as_ref().map(String::len);
             let degradation_reason = storage_only.then_some("storage_archive");
@@ -1304,7 +1354,8 @@ impl Engine {
             audit["throughItemId"] = json!(candidate.context_checkpoint.as_ref().map(|c| &c.through_item_id));
             audit["overheadEstimatedTokens"] = json!(overhead_tokens);
             audit["retainedItems"] = json!(items.len() - cut);
-            audit["previousUsageCalibration"] = json!(previous_usage);
+            audit["previousUsageCalibration"] = json!(current_request.and_then(|r| r.previous_usage));
+            audit["rawEstimatedInputTokens"] = json!(raw_estimate);
             self.store.save_audit(audit).await?;
             let local_cut = cut.saturating_sub(inherited_items + archived_local_items);
             if local_cut > 0 { self.store.archive_prefix(&mut candidate, local_cut).await?; }

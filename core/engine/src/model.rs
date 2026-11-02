@@ -671,6 +671,10 @@ pub trait Model: Send + Sync {
     fn replay_protocol(&self) -> Option<ModelProtocol> {
         None
     }
+    /// 保留原前缀作摘要时，适配器必须支持尾部维护指令及保留 schema 但禁用工具执行。
+    fn supports_prefix_summary(&self) -> bool {
+        false
+    }
     async fn stream(&self, messages: Vec<Message>) -> Result<ModelStream>;
     async fn chat(
         &self,
@@ -1150,6 +1154,9 @@ impl HttpModel {
 
 #[async_trait]
 impl Model for HttpModel {
+    fn supports_prefix_summary(&self) -> bool {
+        self.protocol == ModelProtocol::Responses
+    }
     fn check_work(&self) -> Result<()> {
         let capabilities = resolved_capabilities(
             &self.endpoint,
@@ -1315,7 +1322,11 @@ impl Model for HttpModel {
             limits.max_buffer_bytes > 0,
             "tool buffer budget must be positive"
         );
-        if purpose != RequestPurpose::Solve
+        if purpose != RequestPurpose::Solve {
+            limits.max_calls = 0;
+        }
+        if (purpose != RequestPurpose::Solve
+            && !(purpose == RequestPurpose::Summary && self.supports_prefix_summary()))
             || self
                 .options
                 .capabilities

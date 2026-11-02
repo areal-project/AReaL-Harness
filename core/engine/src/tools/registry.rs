@@ -7,6 +7,10 @@ pub const MAX_ARGUMENT_BYTES: usize = crate::model::MAX_TOOL_ARGUMENT_BYTES;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields, default)]
 pub struct ToolPolicy {
+    /// 在无宿主 I/O 的 JavaScript 上下文中编排原生工具；原生单工具入口保持兼容。
+    pub programmatic_tools: bool,
+    /// 仅收窄模型展示；所有叶子调用仍走原始执行与权限入口。
+    pub programmatic_tools_only: bool,
     /// 显式实验，只延迟模型 schema 投影，保留宿主发现与执行预算。
     pub lazy_mcp_schemas: bool,
     /// 已知内置只读调用的并发上限；1 保留串行执行。
@@ -30,6 +34,8 @@ pub struct ToolPolicy {
 impl Default for ToolPolicy {
     fn default() -> Self {
         Self {
+            programmatic_tools: true,
+            programmatic_tools_only: false,
             lazy_mcp_schemas: false,
             parallel_read_calls: 1,
             completion_focus: false,
@@ -312,6 +318,10 @@ impl Registry {
 
     pub fn new(runtime: bool, extensions: &ToolExtensions) -> anyhow::Result<Self> {
         anyhow::ensure!(
+            !extensions.policy.programmatic_tools_only || extensions.policy.programmatic_tools,
+            "programmaticToolsOnly requires programmaticTools"
+        );
+        anyhow::ensure!(
             (1..=4).contains(&extensions.policy.parallel_read_calls),
             "parallelReadCalls must be 1..4"
         );
@@ -357,6 +367,9 @@ impl Registry {
             output_schema: None,
         }, Backend::Core)?;
         if runtime {
+            if extensions.policy.programmatic_tools {
+                registry.insert(super::program::definition(), Backend::Core)?;
+            }
             for definition in super::definitions_with_policy(&extensions.policy) {
                 let f = &definition["function"];
                 registry.insert(

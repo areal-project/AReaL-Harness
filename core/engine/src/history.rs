@@ -732,6 +732,11 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
                 execution,
                 ..
             } => {
+                // 子调用没有独立的模型 function_call；父回执包含选择后的观察和完整子调用索引。
+                // 不改持久化事实，避免给 Responses 回放伪造调用或重复图像。
+                if execution.parent_call_id.is_some() {
+                    continue;
+                }
                 // Keep the same aliases the model received in tool results.
                 // Resolved Runtime IDs remain in effective_arguments for audit,
                 // but replaying them would undo the short-handle interface.

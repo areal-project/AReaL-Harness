@@ -41,6 +41,11 @@ impl Model for DelegatedHistory {
                 "Completed reference reads remain in the archive. Continue the original task.",
             ))])));
         }
+        // 此用例验证真实窗口压力下的压缩和失败恢复，不能用恒定的极低 usage 伪造压力。
+        let input_tokens = messages
+            .iter()
+            .map(|m| m.text_content().len().div_ceil(3) as u64 + 16)
+            .sum();
         let prompt = messages
             .iter()
             .find(|m| m.role == "user")
@@ -93,7 +98,7 @@ impl Model for DelegatedHistory {
                 ModelEvent::text(format!("{prompt} confirmed all references"))
             }),
             Ok(ModelEvent::Usage(ModelUsage {
-                input_tokens: 100,
+                input_tokens,
                 cached_input_tokens: 20,
                 output_tokens: 10,
             })),
@@ -239,6 +244,131 @@ impl Model for CalibratedHistory {
 
 struct References;
 
+type CapturedRequest = (RequestPurpose, Vec<Message>, Vec<Value>);
+struct PrefixHistory {
+    requests: Mutex<Vec<CapturedRequest>>,
+}
+
+#[async_trait]
+impl Model for PrefixHistory {
+    fn name(&self) -> &str {
+        "prefix-history-fixture"
+    }
+    fn supports_prefix_summary(&self) -> bool {
+        true
+    }
+    async fn stream(&self, _: Vec<Message>) -> anyhow::Result<ModelStream> {
+        unreachable!()
+    }
+    async fn chat_with_limits(
+        &self,
+        messages: Vec<Message>,
+        tools: Vec<Value>,
+        purpose: RequestPurpose,
+        limits: areal_engine::model::ToolCallLimits,
+        _: Option<u64>,
+    ) -> anyhow::Result<ModelStream> {
+        let n = {
+            let mut requests = self.requests.lock().unwrap();
+            let n = requests
+                .iter()
+                .filter(|(p, _, _)| *p == RequestPurpose::Solve)
+                .count();
+            requests.push((purpose, messages, tools));
+            n
+        };
+        let event = if purpose == RequestPurpose::Summary {
+            assert_eq!(limits.max_calls, 0);
+            ModelEvent::text(
+                "Completed reference reads are recorded. Continue the binding original contract, preserve remaining work and avoid replaying completed operations.",
+            )
+        } else if n < 8 {
+            ModelEvent::ToolCall(ToolCall {
+                id: format!("prefix-reference-{n}"),
+                name: "read_reference".into(),
+                arguments: json!({"index":n}).to_string(),
+            })
+        } else {
+            ModelEvent::text("Verified all eight references")
+        };
+        Ok(Box::pin(stream::iter([Ok(event)])))
+    }
+}
+
+#[tokio::test]
+async fn automatic_summary_reuses_the_real_solve_prefix_without_replaying_work() {
+    let data = tempfile::tempdir().unwrap();
+    let model = Arc::new(PrefixHistory {
+        requests: Mutex::new(vec![]),
+    });
+    let engine = Engine::open(
+        data.path(),
+        model.clone(),
+        Limits {
+            context_window_tokens: 32000,
+            context_output_reserve_tokens: 2000,
+            context_window_bytes: 13000,
+            context_recent_bytes: 3000,
+            max_children_per_turn: 0,
+            max_agent_depth: 0,
+            ..Limits::default()
+        },
+    )
+    .unwrap();
+    let thread = engine.create_with_tools("/workspace".into(), vec![ToolDefinition {
+        name:"read_reference".into(), description:"Read one reference".into(),
+        input_schema:json!({"type":"object","properties":{"index":{"type":"integer"}},"required":["index"]}), output_schema:None,
+    }], Arc::new(References)).await.unwrap();
+    engine
+        .start(
+            &thread.id,
+            vec![Input::text(
+                "Binding original contract: inspect all eight references.",
+            )],
+        )
+        .await
+        .unwrap();
+    let done = tokio::time::timeout(std::time::Duration::from_secs(10), engine.wait(&thread.id))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        done.turns[0].status,
+        TurnStatus::Completed,
+        "{:?}",
+        done.turns[0].error
+    );
+    assert!(done.context_checkpoint.is_some());
+    let full = engine.read(&thread.id, true).await.unwrap();
+    let calls: Vec<_> = full
+        .turns
+        .iter()
+        .flat_map(|t| &t.items)
+        .filter_map(|item| match item {
+            areal_protocol::Item::DynamicToolCall {
+                tool,
+                arguments,
+                success,
+                ..
+            } if tool == "read_reference" => Some((arguments["index"].as_u64().unwrap(), *success)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(calls, (0..8).map(|n| (n, Some(true))).collect::<Vec<_>>());
+    {
+        let requests = model.requests.lock().unwrap();
+        let summary = requests
+            .iter()
+            .find(|(p, _, _)| *p == RequestPurpose::Summary)
+            .unwrap();
+        assert!(summary.1.starts_with(&requests[0].1));
+        assert_eq!(summary.1.last().unwrap().role, "developer");
+        assert_eq!(summary.2, requests[0].2);
+        assert!(!summary.2.is_empty());
+    }
+    engine.shutdown().await;
+}
+
 #[async_trait]
 impl DynamicToolHost for References {
     fn id(&self) -> &str {
@@ -268,7 +398,7 @@ impl DynamicToolHost for References {
 }
 
 #[tokio::test]
-async fn calibrated_usage_cannot_skip_the_full_request_compaction_gate() {
+async fn settled_usage_avoids_redundant_summaries_without_skipping_any_reference() {
     let data = tempfile::tempdir().unwrap();
     let model = Arc::new(CalibratedHistory {
         requests: Mutex::new(vec![]),
@@ -312,7 +442,7 @@ async fn calibrated_usage_cannot_skip_the_full_request_compaction_gate() {
         "{:?}",
         result.turns[0].error
     );
-    assert!(result.context_checkpoint.as_ref().unwrap().compactions > 0);
+    assert!(result.context_checkpoint.is_none());
     let requests = model.requests.lock().unwrap();
     assert_eq!(
         requests
@@ -321,7 +451,7 @@ async fn calibrated_usage_cannot_skip_the_full_request_compaction_gate() {
             .count(),
         33
     );
-    assert!(requests.iter().any(|(p, _)| *p == RequestPurpose::Summary));
+    assert!(!requests.iter().any(|(p, _)| *p == RequestPurpose::Summary));
     assert_eq!(
         result.turns[0].usage.as_ref().unwrap().input_tokens,
         requests.len() as u64 * 100

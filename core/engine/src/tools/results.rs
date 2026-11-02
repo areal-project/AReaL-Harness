@@ -11,6 +11,13 @@ pub(super) struct Prepared {
     pub metrics: Value,
 }
 
+#[derive(Clone, Copy)]
+enum ProjectionKind {
+    Ordinary,
+    Coordination,
+    Program,
+}
+
 impl Engine {
     pub(crate) async fn read_history(&self, cell: &Cell, args: &Value) -> anyhow::Result<Value> {
         let thread = cell.state.lock().await.thread.clone();
@@ -50,7 +57,7 @@ impl Engine {
         raw: &Value,
         argv: Option<&[String]>,
     ) -> anyhow::Result<Prepared> {
-        self.prepare_tool_result_inner(cell, item_id, name, raw, argv, false)
+        self.prepare_tool_result_inner(cell, item_id, name, raw, argv, ProjectionKind::Ordinary)
             .await
     }
 
@@ -61,8 +68,25 @@ impl Engine {
         name: &str,
         raw: &Value,
     ) -> anyhow::Result<Prepared> {
-        self.prepare_tool_result_inner(cell, item_id, name, raw, None, true)
+        self.prepare_tool_result_inner(cell, item_id, name, raw, None, ProjectionKind::Coordination)
             .await
+    }
+
+    pub(super) async fn prepare_program_result(
+        &self,
+        cell: &Cell,
+        item_id: &str,
+        raw: &Value,
+    ) -> anyhow::Result<Prepared> {
+        self.prepare_tool_result_inner(
+            cell,
+            item_id,
+            "tool_program",
+            raw,
+            None,
+            ProjectionKind::Program,
+        )
+        .await
     }
 
     async fn prepare_tool_result_inner(
@@ -72,8 +96,10 @@ impl Engine {
         name: &str,
         raw: &Value,
         argv: Option<&[String]>,
-        coordination: bool,
+        projection: ProjectionKind,
     ) -> anyhow::Result<Prepared> {
+        let coordination = matches!(projection, ProjectionKind::Coordination);
+        let program = matches!(projection, ProjectionKind::Program);
         let started = std::time::Instant::now();
         let bytes = serde_json::to_vec(raw)?;
         let policy = &self.extensions.policy.result_views;
@@ -162,6 +188,7 @@ impl Engine {
         // 观察候选需要留存原文，但未变且未超限的结果无需增加模型侧回取包装。
         // 候选随后与实际发送的基线比较，不能靠先扩大基线满足净节省门槛。
         if (value != *raw || bytes.len() > MAX_RESULT || raw.get("mcpResult").is_some())
+            && !program
             && let Some(reference) = &reference
         {
             if !value.is_object() {
@@ -219,10 +246,24 @@ impl Engine {
             kind = "coordination-v2-preview-v1";
             reason = "pagedHandoffPreview";
         }
-        if value.to_string().len() > MAX_RESULT {
+        if value.to_string().len() > MAX_RESULT && !program {
             // 先装入可信回取引用，再分配头尾预算；不能让通用截断删掉回取入口。
             let full = value.to_string();
-            value = bounded_snapshot(&full, reference);
+            value = bounded_snapshot(&full, reference.clone());
+        }
+        if program {
+            // 解释器选择输出与强制回执各有独立上限，父子文本都计入同一总预算。
+            // 不能用普通头尾截断删除中间子调用的 UNKNOWN 或未完成进程事实。
+            if let Some(reference) = &reference
+                && let Some(preview) = program_preview(&value, reference)
+            {
+                value = preview;
+                kind = "native-program-preview-v2";
+                reason = "archivedSelectedOutput";
+            } else {
+                kind = "native-program-selected-v1";
+                reason = "boundedSelectedOutputAndReceipts";
+            }
         }
         let displayed_bytes = value.to_string().len();
         let displayed_tokens = context::text_tokens(&value.to_string());
@@ -286,6 +327,48 @@ impl Engine {
         anyhow::ensure!((4..=8192).contains(&max_bytes), "maxBytes must be 4..8192");
         result_page(result_id, &text, offset, max_bytes)
     }
+}
+
+fn program_preview(raw: &Value, reference: &Value) -> Option<Value> {
+    let parts = raw["contentItems"].as_array()?;
+    let selected_bytes: usize = parts
+        .iter()
+        .skip(1)
+        .filter_map(|part| part["text"].as_str())
+        .map(str::len)
+        .sum();
+    if selected_bytes <= MAX_RESULT {
+        return None;
+    }
+    let mut remaining = MAX_RESULT;
+    let mut preview = Vec::new();
+    for (index, part) in parts.iter().enumerate() {
+        // 第一项是 Core 的完整子操作回执；真实图片和状态不能随文本展示一起截断。
+        let Some(text) = part["text"].as_str().filter(|_| index > 0) else {
+            preview.push(part.clone());
+            continue;
+        };
+        if remaining == 0 {
+            continue;
+        }
+        let mut selected = part.clone();
+        if text.len() > remaining {
+            let head = super::prefix(text, remaining * 3 / 4);
+            let tail = super::suffix(text, remaining / 4);
+            selected["text"] = json!(format!("{head}\n[preview shortened]\n{tail}"));
+            remaining = 0;
+        } else {
+            remaining -= text.len();
+        }
+        preview.push(selected);
+    }
+    preview.push(json!({"type":"inputText","text":json!({
+        "selectedOutputTruncated":true,"selectedOutputBytes":selected_bytes,"rawResult":reference,
+        "note":"Execution completed as recorded above. Full selected output is saved; use read_tool_result with this resultId if needed. Do not repeat completed effects to recover output."
+    }).to_string()}));
+    let mut value = raw.clone();
+    value["contentItems"] = json!(preview);
+    Some(value)
 }
 
 fn coordination_handoff_preview(value: &Value) -> Option<Value> {
@@ -606,6 +689,74 @@ mod tests {
             );
         }
         std::fs::write(output, serde_json::to_vec_pretty(&measurements).unwrap()).unwrap();
+        engine.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn program_preview_retains_all_child_facts_images_and_exact_original_readback() {
+        let directory = tempfile::tempdir().unwrap();
+        let engine = Engine::open(directory.path(), Arc::new(NoModel), Limits::default()).unwrap();
+        let thread = engine.create("/fixture".into()).await.unwrap();
+        let cell = engine.cell(&thread.id).await.unwrap();
+        let receipts = json!({"children":[
+            {"itemId":"one","outcome":"succeeded"},
+            {"itemId":"middle","outcome":"unknown","processId":"process","commandStatus":"running","outputReadComplete":false},
+            {"itemId":"last","outcome":"failed"}
+        ]});
+        let raw = json!({"contentItems":[
+            {"type":"inputText","text":receipts.to_string()},
+            {"type":"inputText","text":"原始观察😀".repeat(6000)},
+            {"type":"inputImage","imageUrl":"data:image/png;base64,evidence"},
+            {"type":"inputText","text":"last selected evidence"}
+        ]});
+        let prepared = engine
+            .prepare_program_result(&cell, "program-item", &raw)
+            .await
+            .unwrap();
+        assert_eq!(prepared.value["contentItems"][0], raw["contentItems"][0]);
+        assert_eq!(prepared.value["contentItems"][2], raw["contentItems"][2]);
+        assert!(prepared.value.to_string().len() < 20000);
+        assert!(
+            prepared
+                .value
+                .to_string()
+                .contains("selectedOutputTruncated")
+        );
+        assert_eq!(prepared.metrics["transform"], "native-program-preview-v2");
+        let turn: Turn = serde_json::from_value(json!({"id":"turn","status":"completed","items":[{
+            "type":"dynamicToolCall","id":"program-item","tool":"tool_program","callId":"parent","arguments":{},"status":"completed","success":false,
+            "contentItems":prepared.value["contentItems"],
+            "execution":{"runtimeEpoch":"epoch","scopeId":"scope","operationId":"op","outcome":"failed","resultSnapshot":prepared.snapshot}
+        }]})).unwrap();
+        cell.state.lock().await.thread.turns.push(turn);
+        let mut args = json!({"resultId":"program-item","maxBytes":997});
+        let mut full = String::new();
+        loop {
+            let page = engine.read_tool_result(&cell, &args).await.unwrap();
+            full.push_str(page["text"].as_str().unwrap());
+            if page["eof"] == true {
+                break;
+            }
+            args["after"] = page["nextCursor"].clone();
+        }
+        assert_eq!(serde_json::from_str::<Value>(&full).unwrap(), raw);
+        // 禁止回取时不创建一个无法兑现的缩略引用，也不伪造重新执行。
+        cell.state
+            .lock()
+            .await
+            .thread
+            .turns
+            .last_mut()
+            .unwrap()
+            .configuration
+            .get_or_insert_with(Default::default)
+            .tool_allowlist = Some(vec!["tool_program".into(), "fs_stat".into()]);
+        let unshortened = engine
+            .prepare_program_result(&cell, "unretrievable", &raw)
+            .await
+            .unwrap();
+        assert_eq!(unshortened.value, raw);
+        assert!(unshortened.snapshot.is_none());
         engine.shutdown().await;
     }
 

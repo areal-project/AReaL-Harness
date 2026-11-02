@@ -16,6 +16,8 @@ pub(super) struct Invocation<'a> {
     pub turn_id: &'a str,
     pub host: Option<Arc<dyn DynamicToolHost>>,
     pub entry: Arc<RegisteredTool>,
+    pub remaining_output: usize,
+    pub nested_output_bytes: &'a std::sync::atomic::AtomicUsize,
 }
 
 #[derive(Deserialize)]
@@ -161,6 +163,7 @@ impl Invocation<'_> {
                     "cancelled before dispatch",
                 ));
             }
+            // Core 编排负责收齐已准入叶子；取消不能在外层丢弃解释器与结算 future。
             let (success, value) = self.invoke(&arguments, None).await?;
             return self.codex_post(&arguments, success, value).await;
         }
@@ -679,6 +682,9 @@ impl Invocation<'_> {
                     .map_err(invalid);
             }
             Backend::Core => {
+                if self.call.name == "tool_program" {
+                    return self.engine.tool_program(self, args).await;
+                }
                 return self
                     .engine
                     .core_tool(

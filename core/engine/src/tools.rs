@@ -333,7 +333,9 @@ pub mod plugins;
 pub(crate) mod registry;
 mod results;
 pub(crate) use registry::Backend;
+mod program;
 mod scheduling;
+pub(crate) use program::recovered_program_content;
 mod verification;
 pub(crate) use registry::Registry;
 pub use registry::{
@@ -794,7 +796,7 @@ impl Engine {
         call: ToolCall,
         remaining: usize,
     ) -> anyhow::Result<usize> {
-        self.start_tool(cell, cancel, call, remaining, None)
+        self.start_tool(cell, cancel, call, remaining, None, None)
             .await?
             .await?
     }
@@ -805,6 +807,7 @@ impl Engine {
         call: ToolCall,
         remaining: usize,
         started: Option<tokio::sync::oneshot::Sender<()>>,
+        parent_call_id: Option<String>,
     ) -> anyhow::Result<tokio::sync::oneshot::Receiver<anyhow::Result<usize>>> {
         anyhow::ensure!(
             remaining >= self.tool_output_budget(cell, &call).await,
@@ -825,6 +828,8 @@ impl Engine {
                         &token,
                         call,
                         started,
+                        remaining,
+                        parent_call_id,
                     ))
                     .catch_unwind()
                     .await
@@ -846,6 +851,8 @@ impl Engine {
         cancel: &CancellationToken,
         call: ToolCall,
         ready: Option<tokio::sync::oneshot::Sender<()>>,
+        remaining_output: usize,
+        parent_call_id: Option<String>,
     ) -> anyhow::Result<usize> {
         let (session_id, turn_id, turn_number) = {
             let state = cell.state.lock().await;
@@ -897,7 +904,7 @@ impl Engine {
         let span = operation.span.clone();
         let result = async {
             tracing::event!(target: trajectory::TARGET, tracing::Level::INFO, { "event.name" = "areal.tool.call" });
-            self.tool_inner(cell, cancel, call, ready).await
+            self.tool_inner(cell, cancel, call, ready, remaining_output, parent_call_id).await
         }
         .instrument(span)
         .await;
@@ -917,6 +924,8 @@ impl Engine {
         cancel: &CancellationToken,
         call: ToolCall,
         ready: Option<tokio::sync::oneshot::Sender<()>>,
+        remaining_output: usize,
+        parent_call_id: Option<String>,
     ) -> anyhow::Result<usize> {
         let blocked_by_workspace_conflict = cell
             .state
@@ -1184,6 +1193,7 @@ impl Engine {
             content_items: None,
             call_id: call.id.clone(),
             execution: Box::new(ToolExecution {
+                parent_call_id: parent_call_id.clone(),
                 started_at_ms: Some(crate::execution_trace::now_ms()),
                 permission_review: None,
                 permission_scopes: Vec::new(),
@@ -1271,6 +1281,7 @@ impl Engine {
         let intent_ms = started.elapsed().as_secs_f64() * 1000.0;
         let invocation_started = std::time::Instant::now();
         let submitted = !cancel.is_cancelled() && rejection.is_none();
+        let nested_output_bytes = std::sync::atomic::AtomicUsize::new(0);
         let mut post_hook_failed = false;
         let result = if let Some(error) = rejection {
             Err(error)
@@ -1293,6 +1304,8 @@ impl Engine {
                 turn_id: &turn_id,
                 host: bindings.host,
                 entry: entry.unwrap(),
+                remaining_output,
+                nested_output_bytes: &nested_output_bytes,
             })
             .run(&mut post_hook_failed)
             .await
@@ -1330,6 +1343,9 @@ impl Engine {
                 (outcome, false, json!({"error":error}))
             }
         };
+        if call.name == "tool_program" && result.get("contentItems").is_none() {
+            self.program_failure_receipt(cell, &call, &mut result).await;
+        }
         {
             let state = cell.state.lock().await;
             if let Some(Item::DynamicToolCall {
@@ -1510,6 +1526,8 @@ impl Engine {
         let prepared = if coordination && call.name == "agent_wait_any" {
             self.prepare_coordination_result(cell, &item_id, &call.name, &result)
                 .await?
+        } else if call.name == "tool_program" {
+            self.prepare_program_result(cell, &item_id, &result).await?
         } else {
             self.prepare_tool_result(cell, &item_id, &call.name, &result, output_argv.as_deref())
                 .await?
@@ -1519,7 +1537,10 @@ impl Engine {
             "areal.tool.result.projected",
             &prepared.value,
         );
-        if prepared.value != model_result
+        if call.name == "tool_program" {
+            // 程序投影同时保留真实图片和强制回执；采用保存原文后的有界文本视图。
+            custom_content = Some(extensions::content_items(&prepared.value));
+        } else if prepared.value != model_result
             && custom_content
                 .as_ref()
                 .is_some_and(|items| items.iter().all(|v| v["type"] == "inputText"))
@@ -1615,7 +1636,7 @@ impl Engine {
             !post_hook_failed,
             "post-tool hook failed; tool result is retained; automatic replay is disabled"
         );
-        Ok(bytes)
+        Ok(bytes.saturating_add(nested_output_bytes.load(Ordering::Relaxed)))
     }
 }
 
