@@ -55,13 +55,29 @@ impl Host {
     }
     fn subscription_save_operation(&self, id: &str, digest: &str, receipt: Value) -> Result<Value> {
         storage::private_dir(&self.home.join("host/subscription-operations"))?;
+        let path = self.subscription_path(id)?;
+        let mut record = storage::read_optional::<Value>(&path)?.unwrap_or_else(|| json!({}));
         let mut stored = receipt.clone();
         if stored["result"]["login"].is_object() {
             stored["result"]["login"] = Value::Null;
         }
+        record["digest"] = json!(digest);
+        record["receipt"] = stored;
+        storage::write(&path, &record)?;
+        Ok(receipt)
+    }
+    fn subscription_accept_operation(
+        &self,
+        id: &str,
+        digest: &str,
+        method: &str,
+        context: Value,
+    ) -> Result<Value> {
+        let receipt = json!({"requestId":id,"method":method,"state":"acceptedPending"});
+        storage::private_dir(&self.home.join("host/subscription-operations"))?;
         storage::write(
             &self.subscription_path(id)?,
-            &json!({"digest":digest,"receipt":stored}),
+            &json!({"digest":digest,"receipt":receipt,"acceptedReceipt":receipt,"context":context}),
         )?;
         Ok(receipt)
     }
@@ -99,10 +115,13 @@ impl Host {
             .vault
             .subscription_transport(id, &self.migration)?;
         let owner = self.migration.vault.subscription_owner(id)?;
-        let mut snapshot = if owner.is_some() {
-            self.native_subscription(id)?.snapshot()?
+        let source = self.subscriptions.sources.borrow().get(id).cloned();
+        let mut snapshot = if let Some(source) = source {
+            source.snapshot()?
         } else {
-            json!({})
+            let mut value = SourceSubscription::stored_accounts(&self.migration, id)?;
+            value.as_object_mut().unwrap().extend(json!({"accountEpoch":0,"authenticated":false,"state":"storage_locked","availability":"unavailable","refreshing":false,"email":null,"planType":null,"models":[],"modelError":null,"diagnostic":null,"login":null,"error":null,"billing":"subscription","catalog":null,"endpoint":null}).as_object().unwrap().clone());
+            value
         };
         snapshot["owner"] = json!(if owner.is_some() {
             "nativeV1"
@@ -168,14 +187,16 @@ impl Host {
                     transport = json!({"token":format!("{}{}",uuid::Uuid::new_v4().simple(),uuid::Uuid::new_v4().simple()),"port":0});
                 }
                 transport["network"] = serde_json::to_value(input.network)?;
-                self.subscription_save_operation(
+                let transport_request = uuid::Uuid::new_v4().to_string();
+                self.subscription_accept_operation(
                     &input.request_id,
                     &digest,
-                    json!({"requestId":input.request_id,"method":method,"state":"acceptedPending"}),
+                    method,
+                    json!({"sourceId":input.source_id,"generation":self.identity.generation,"transportRequestId":transport_request,"expectedAccountRevision":account_revision,"expectedTransportRevision":transport_revision}),
                 )?;
                 let saved = self.migration.vault.replace_subscription_transport(
                     &input.source_id,
-                    &uuid::Uuid::new_v4().to_string(),
+                    &transport_request,
                     transport_revision,
                     transport,
                     &self.migration,
@@ -231,10 +252,11 @@ impl Host {
                     source.account_epoch() == input.expected_account_epoch,
                     error("accountChanged", "subscription account changed")
                 );
-                let receipt = self.subscription_save_operation(
+                let receipt = self.subscription_accept_operation(
                     &input.request_id,
                     &digest,
-                    json!({"requestId":input.request_id,"method":method,"state":"acceptedPending"}),
+                    method,
+                    json!({"sourceId":input.source_id,"generation":self.identity.generation,"expectedAccountEpoch":input.expected_account_epoch,"action":input.action["kind"]}),
                 )?;
                 let host = connection.host.clone();
                 tokio::task::spawn_local(async move {
@@ -467,43 +489,123 @@ impl Host {
     }
     pub(super) async fn restore_subscriptions(&self) -> Result<()> {
         let directory = self.home.join("host/subscription-owners");
+        let mut owners = BTreeMap::new();
+        if directory.exists() {
+            for entry in std::fs::read_dir(directory)? {
+                let marker: Value = storage::read(&entry?.path())?;
+                let id = marker["sourceId"]
+                    .as_str()
+                    .context("invalid subscription owner source")?;
+                wire::request_id(id)?;
+                if let Some(request) = marker["requestId"].as_str() {
+                    owners.insert(request.to_owned(), id.to_owned());
+                }
+                let restored = async {
+                    let (_, record) = self
+                        .migration
+                        .vault
+                        .subscription_transport(id, &self.migration)?;
+                    let network = Network::new(serde_json::from_value(record["network"].clone())?)?;
+                    let source =
+                        SourceSubscription::load(self.migration.clone(), id.into(), network)?;
+                    source.start().await?;
+                    Ok::<_, anyhow::Error>(source)
+                }
+                .await;
+                match restored {
+                    Ok(source) => {
+                        self.subscriptions
+                            .sources
+                            .borrow_mut()
+                            .insert(id.into(), source.clone());
+                        tokio::task::spawn_local(async move {
+                            let _ = source.refresh_catalog(false).await;
+                        });
+                    }
+                    Err(error) => {
+                        self.subscriptions
+                            .unavailable
+                            .borrow_mut()
+                            .insert(id.into(), error.to_string());
+                    }
+                }
+            }
+        }
+        self.recover_subscription_operations(&owners)?;
+        Ok(())
+    }
+    fn recover_subscription_operations(&self, owners: &BTreeMap<String, String>) -> Result<()> {
+        let directory = self.home.join("host/subscription-operations");
         if !directory.exists() {
             return Ok(());
         }
         for entry in std::fs::read_dir(directory)? {
-            let marker: Value = storage::read(&entry?.path())?;
-            let id = marker["sourceId"]
+            let path = entry?.path();
+            let mut record: Value = storage::read(&path)?;
+            if record["receipt"]["state"] != "acceptedPending" {
+                continue;
+            }
+            let original = record["receipt"].clone();
+            let id = original["requestId"]
                 .as_str()
-                .context("invalid subscription owner source")?;
-            wire::request_id(id)?;
-            let restored = async {
-                let (_, record) = self
-                    .migration
-                    .vault
-                    .subscription_transport(id, &self.migration)?;
-                let network = Network::new(serde_json::from_value(record["network"].clone())?)?;
-                let source = SourceSubscription::load(self.migration.clone(), id.into(), network)?;
-                source.start().await?;
-                Ok::<_, anyhow::Error>(source)
-            }
-            .await;
-            match restored {
-                Ok(source) => {
-                    self.subscriptions
-                        .sources
-                        .borrow_mut()
-                        .insert(id.into(), source.clone());
-                    tokio::task::spawn_local(async move {
-                        let _ = source.refresh_catalog(false).await;
-                    });
+                .context("missing subscription request")?;
+            let expected_path = self.subscription_path(id)?;
+            ensure!(path == expected_path, "invalid subscription operation path");
+            let method = original["method"]
+                .as_str()
+                .context("missing subscription method")?;
+            let source = record["context"]["sourceId"]
+                .as_str()
+                .or_else(|| owners.get(id).map(String::as_str));
+            let mut evidence = json!({"generation":self.identity.generation});
+            let result = if method == "subscription.handoff" {
+                if let Some(source) = source.filter(|source| {
+                    owners.get(id).map(String::as_str) == Some(*source)
+                        && self.subscriptions.sources.borrow().contains_key(*source)
+                }) {
+                    evidence["ownerRequestId"] = json!(id);
+                    Some(self.subscription_snapshot(source)?)
+                } else {
+                    if let Some(request) = record["context"]["transportRequestId"].as_str() {
+                        let receipt = self.migration.vault.operation(request, &self.migration);
+                        match receipt {
+                            Ok(Some(receipt)) if receipt["state"] != "acceptedPending" => {
+                                evidence["transportReceipt"] = receipt;
+                            }
+                            _ => {
+                                evidence["outcome"] = json!("unknown");
+                                record["recovery"] = evidence;
+                                storage::write(&path, &record)?;
+                                continue;
+                            }
+                        }
+                    } else {
+                        evidence["outcome"] = json!("unknown");
+                        record["recovery"] = evidence;
+                        storage::write(&path, &record)?;
+                        continue;
+                    }
+                    None
                 }
-                Err(error) => {
-                    self.subscriptions
-                        .unavailable
-                        .borrow_mut()
-                        .insert(id.into(), error.to_string());
+            } else {
+                ensure!(
+                    method == "subscription.command",
+                    "invalid subscription method"
+                );
+                None
+            };
+            // 重启只能确认已落盘的交接；当前快照不能证明旧命令是否产生过效果。
+            record["acceptedReceipt"] = original.clone();
+            record["recovery"] = evidence;
+            record["receipt"] = match result {
+                Some(result) => {
+                    json!({"requestId":id,"method":method,"state":"completed","result":result})
                 }
-            }
+                None => {
+                    json!({"requestId":id,"method":method,"state":"blocked","error":{"code":"outcomeUnknown","message":"Host restarted before the original subscription outcome was confirmed; inspect the current state without replaying the request"}})
+                }
+            };
+            storage::write(&path, &record)?;
         }
         Ok(())
     }

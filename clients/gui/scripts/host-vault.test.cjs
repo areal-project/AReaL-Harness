@@ -158,13 +158,46 @@ test("new configuration migration preserves exact legacy authentication and nons
   );
 });
 
-test("fresh profile stores provider credentials and subscription transport only in Host", async (t) => {
+test("GUI leaves subscription transport with Host and stores ordinary provider credentials", async (t) => {
   const f = await fixture(t);
+  const native = {
+    owner: "nativeV1",
+    generation: "fixture-generation",
+    accountEpoch: 0,
+    transportRevision: 1,
+    endpoint: "http://127.0.0.1:12345/responses",
+    authenticated: false,
+    availability: "unavailable",
+    refreshing: false,
+    state: "signed_out",
+    email: null,
+    planType: null,
+    modelError: null,
+    models: [],
+    diagnostic: null,
+    login: null,
+    error: null,
+    billing: "subscription",
+    catalog: null,
+  };
+  const calls = [];
+  f.backend.host.client.requireCapability = (name) => assert.equal(name, "subscriptionOwnerV1");
+  f.backend.host.client.request = async (method, params) => {
+    calls.push({ method, params });
+    assert.equal(params.sourceId, f.state.sourceId);
+    if (method === "subscription.read") return structuredClone(native);
+    assert.equal(method, "subscription.command");
+    assert.equal(params.action.kind, "configureNetwork");
+    return { requestId: params.requestId, state: "completed", result: structuredClone(native) };
+  };
   const app = new AppProviders(f.backend);
   f.backend.providers = app;
   await app.init();
   t.after(() => app.close());
-  assert.match(app.openaiToken, /^[a-f0-9]{64}$/);
+  assert.equal(app.openaiToken, "");
+  assert.equal(app.transport, undefined);
+  assert.equal((await app.openai()).endpoint, native.endpoint);
+  assert(calls.some((call) => call.method === "subscription.command"));
   const reference = await app.config.credential("synthetic-api-key");
   assert.equal(app.key({ apiKeyEnv: reference }), "synthetic-api-key");
   const reopened = new ModelConfiguration(f.backend, f.vault);
@@ -172,8 +205,12 @@ test("fresh profile stores provider credentials and subscription transport only 
   assert.equal(reopened.key({ apiKeyEnv: reference }), "synthetic-api-key");
   const metadata = await readFile(join(f.home, "host-vault-operations.json"), "utf8");
   assert(!metadata.includes("synthetic-api-key"));
-  assert(!metadata.includes(app.openaiToken));
-  assert.equal(f.writes.length, 2);
+  assert.equal(f.writes.length, 1);
+  assert.equal(f.writes[0].slot.kind, "providerCredential");
+  assert.deepEqual(
+    [...f.values.values()].map((slot) => slot.value),
+    ["synthetic-api-key"],
+  );
 });
 
 test("subscription refresh loses CAS to logout without rerunning the callback", async (t) => {

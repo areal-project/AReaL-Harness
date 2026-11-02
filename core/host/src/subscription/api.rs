@@ -2,6 +2,9 @@ use super::*;
 use serde_json::json;
 
 impl SourceSubscription {
+    pub(crate) fn stored_accounts(migration: &Migration, source: &str) -> Result<Value> {
+        Ok(SourceAccounts::read(&migration.vault, source, migration)?.public())
+    }
     pub(crate) fn source_id(&self) -> &str {
         &self.source
     }
@@ -42,6 +45,14 @@ impl SourceSubscription {
         Ok(())
     }
     pub(crate) async fn refresh_catalog(self: &Rc<Self>, force: bool) -> network::Result<()> {
+        if !self
+            .accounts()?
+            .directory
+            .as_ref()
+            .is_some_and(|directory| directory.active().authenticated())
+        {
+            return Ok(());
+        }
         self.discover(force).await.map(|_| ())
     }
     pub(crate) async fn sign_out(&self) -> network::Result<()> {

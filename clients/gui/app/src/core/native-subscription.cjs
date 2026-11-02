@@ -78,6 +78,7 @@ class NativeSubscription {
       [];
     /** @type {any} */ this.latest = null;
     /** @type {{requestId:string,method:string}[]} */ this.pending = [];
+    this.outcomeUnknown = false;
     /** @type {Promise<unknown>} */ this.writes = Promise.resolve();
     /** @type {Promise<import('@areal/workbench/desktop-contract/provider').ChatGPTStatus>|undefined} */ this.refreshing =
       undefined;
@@ -111,6 +112,10 @@ class NativeSubscription {
     await service.settle();
     const sourceId = backend.host.sourceId;
     let state = await backend.host.client.request("subscription.read", { sourceId });
+    if (service.outcomeUnknown) {
+      service.accept(state);
+      return service;
+    }
     const network = await networkInput(backend.hooks.environment());
     if (state.owner !== "nativeV1") {
       // 原 Vault 回执必须先结算；Host 还会核对旧版本和真实端口释放。
@@ -146,8 +151,19 @@ class NativeSubscription {
     for (const item of this.pending) {
       const result = await this.backend.host.client.operation(item.requestId);
       const receipt = result?.operation;
-      if (!receipt || receipt.requestId !== item.requestId)
+      if (!receipt) {
+        this.outcomeUnknown = true;
+        continue;
+      }
+      if (receipt.requestId !== item.requestId)
         throw new Error("原订阅操作结果尚未确认，请恢复 Host 连接后重试");
+      if (
+        (receipt.state === "blocked" && receipt.error?.code === "outcomeUnknown") ||
+        (receipt.state === "acceptedPending" && item.method === "subscription.handoff")
+      ) {
+        this.outcomeUnknown = true;
+        continue;
+      }
       if (receipt.state === "acceptedPending" && item.method === "subscription.command") continue;
       if (!["completed", "blocked"].includes(receipt.state))
         throw new Error("原订阅交接尚未确认，请恢复 Host 连接后重试");
@@ -211,6 +227,12 @@ class NativeSubscription {
     }
     if (!["completed", "blocked"].includes(receipt.state))
       throw new Error("订阅操作仍在 Host 后台执行");
+    if (receipt.state === "blocked" && receipt.error?.code === "outcomeUnknown") {
+      this.outcomeUnknown = true;
+      throw new Error(
+        "Host 已重启，原订阅操作的效果尚未确认。请检查当前账号状态，不要重复原操作。",
+      );
+    }
     this.pending = this.pending.filter((entry) => entry.requestId !== requestId);
     await this.save();
     if (receipt.state === "blocked") throw new Error(receipt.error?.message ?? "订阅操作未完成");
@@ -218,6 +240,10 @@ class NativeSubscription {
   }
   /** @param {Record<string,unknown>} action */
   action(action) {
+    if (this.outcomeUnknown)
+      return Promise.reject(
+        new Error("原订阅操作的效果尚未确认，请先检查当前账号状态，不要重复操作。"),
+      );
     return this.submit("subscription.command", {
       sourceId: this.backend.host.sourceId,
       expectedGeneration: this.latest?.generation,
@@ -227,7 +253,10 @@ class NativeSubscription {
   }
   /** @param {any} state */
   accept(state) {
-    if (state.owner !== "nativeV1" || !Number.isSafeInteger(state.accountEpoch))
+    if (
+      !(state.owner === "nativeV1" || (state.owner === "legacy" && this.outcomeUnknown)) ||
+      !Number.isSafeInteger(state.accountEpoch)
+    )
       throw new Error("Host 订阅来源不可用");
     const status = contract.accountStatus(state);
     if (
@@ -242,7 +271,9 @@ class NativeSubscription {
     this.models = status.models;
     this.endpoint = state.endpoint ?? "";
     this.account.login = status.login;
-    this.account.error = status.error;
+    this.account.error = this.outcomeUnknown
+      ? "Host 已重启，原订阅操作的效果尚未确认。当前账号状态可查看，原操作不会自动重发。"
+      : status.error;
     this.account.refreshing = state.refreshing;
     this.account.failure = state.diagnostic
       ? {
@@ -253,6 +284,7 @@ class NativeSubscription {
       : null;
     return {
       ...status,
+      error: this.account.error,
       activeAccountId: state.activeAccountId,
       accounts: state.accounts,
       catalog: state.catalog,
@@ -268,6 +300,7 @@ class NativeSubscription {
     return this.accept(state);
   }
   refresh() {
+    if (this.outcomeUnknown) return this.read();
     if (this.refreshing) return this.refreshing;
     const work = (async () => {
       await this.read();

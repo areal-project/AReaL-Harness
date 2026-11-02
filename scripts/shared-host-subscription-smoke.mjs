@@ -41,6 +41,7 @@ const evidence = {
   scriptSha256: hash(await readFile(new URL(import.meta.url))),
   commit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim(),
   checks: [],
+  commands: [],
   cleanup: [],
   excluded: ["actual Electron GUI exit", "real provider", "installed package"],
 };
@@ -256,7 +257,12 @@ const upstream = httpsServer(
         const body = JSON.parse(raw);
         assert.equal(body.stream, true);
         const text = JSON.stringify(body.input);
-        if (text.includes("Generate a concise semantic session title")) {
+        if (
+          `${body.instructions ?? ""}\n${text}`.includes(
+            "Generate a concise semantic session title",
+          )
+        ) {
+          requests.push({ purpose: "summary", at: Date.now() });
           response.setHeader("content-type", "text/event-stream");
           return response.end(completed("Fixture session"));
         }
@@ -348,7 +354,34 @@ async function command(action) {
     return ["completed", "blocked"].includes(row?.state) && row;
   }, `native ${action.kind}`);
   assert.equal(receipt.state, "completed", JSON.stringify(receipt));
+  evidence.commands.push({ kind: action.kind, requestId: id });
   return receipt.result;
+}
+async function startHost() {
+  const log = await open(join(home, "host.log"), "a", 0o600);
+  hostChild = spawn(binary, ["host", "run"], {
+    env: { ...process.env, AREAL_HARNESS_HOME: home, AREAL_HARNESS_SERVICE_HOME: home },
+    stdio: ["ignore", "ignore", log.fd],
+  });
+  await log.close();
+  await until(async () => {
+    assert.equal(hostChild.exitCode, null, "Host startup");
+    try {
+      await host.connect(home);
+      return true;
+    } catch {
+      host.close();
+      return false;
+    }
+  }, "native Host startup");
+  hostIdentity = JSON.parse(await readFile(join(home, "host/host.json"), "utf8"));
+}
+async function stopHost() {
+  const receipt = await host.stop(randomUUID(), host.generation, "cancel");
+  evidence.cleanup.push({ kind: "Host stop", receipt });
+  assert.equal(receipt.state, "completed");
+  await until(() => hostChild.exitCode !== null, "Host process exit");
+  host.close();
 }
 const primaryExpires = Date.now() + 90_000;
 const grant = (client, subject, expires) => ({
@@ -402,23 +435,7 @@ try {
     JSON.stringify({ token: "9".repeat(64), port: 0 }),
     { mode: 0o600 },
   );
-  const log = await open(join(home, "host.log"), "a", 0o600);
-  hostChild = spawn(binary, ["host", "run"], {
-    env: { ...process.env, AREAL_HARNESS_HOME: home, AREAL_HARNESS_SERVICE_HOME: home },
-    stdio: ["ignore", "ignore", log.fd],
-  });
-  await log.close();
-  await until(async () => {
-    assert.equal(hostChild.exitCode, null, "Host startup");
-    try {
-      await host.connect(home);
-      return true;
-    } catch {
-      host.close();
-      return false;
-    }
-  }, "native Host startup");
-  hostIdentity = JSON.parse(await readFile(join(home, "host/host.json"), "utf8"));
+  await startHost();
   evidence.host = hostIdentity;
   host.requireCapability("subscriptionOwnerV1");
   await source.init();
@@ -691,6 +708,10 @@ try {
     );
   }, "original Core Turn completed after source client closed");
   assert.ok(JSON.stringify(finished).includes("HOST_SUB_NATIVE_DONE"));
+  await until(async () => {
+    const records = await readModelRequests(ensured.service);
+    return records.some((row) => row.purpose === "Summary" && row.outcome === "completed");
+  }, "independent session title request completed");
   assert.equal(requests.filter((row) => row.purpose === "original").length, 1);
   evidence.checks.push({
     name: "actual Host refresh after source client close; SIWC new account saved inactive; original Core SSE Turn completes once",
@@ -733,6 +754,80 @@ try {
     name: "native account select then logout aborts old HTTP body and removes Core provider without POST replay",
     passed: true,
   });
+  const marker = JSON.parse(
+    await readFile(join(home, "host/subscription-owners", `${source.sourceId}.json`), "utf8"),
+  );
+  const logout = evidence.commands.find((row) => row.kind === "logout");
+  await core.close();
+  core = null;
+  await coreTwo.close();
+  coreTwo = null;
+  await stopHost();
+  evidence.recoveryInjection = {
+    kind: "original accepted receipt restored after orderly process stop, before next process start",
+    oldHost: hostIdentity,
+    operations: [],
+  };
+  for (const id of [marker.requestId, logout.requestId]) {
+    const path = join(home, "host/subscription-operations", `${id}.json`);
+    const record = JSON.parse(await readFile(path, "utf8"));
+    assert.equal(record.receipt.state, "completed");
+    assert.equal(record.acceptedReceipt.requestId, id);
+    assert.equal(record.acceptedReceipt.state, "acceptedPending");
+    await writeFile(join(root, `before-recovery-${id}.json`), JSON.stringify(record), {
+      mode: 0o600,
+    });
+    record.receipt = record.acceptedReceipt;
+    await writeFile(path, JSON.stringify(record), { mode: 0o600 });
+    evidence.recoveryInjection.operations.push({ requestId: id, method: record.receipt.method });
+  }
+  await startHost();
+  evidence.restartedHost = hostIdentity;
+  assert.notEqual(host.generation, evidence.recoveryInjection.oldHost.generation);
+  const recoveredHandoff = (await host.operation(marker.requestId)).operation;
+  assert.equal(recoveredHandoff.requestId, marker.requestId);
+  assert.equal(recoveredHandoff.state, "completed");
+  const recoveredLogout = (await host.operation(logout.requestId)).operation;
+  assert.equal(recoveredLogout.requestId, logout.requestId);
+  assert.equal(recoveredLogout.state, "blocked");
+  assert.equal(recoveredLogout.error.code, "outcomeUnknown");
+  const restored = await host.request("subscription.read", { sourceId: source.sourceId });
+  assert.equal(restored.state, "signed_out");
+  assert.equal(restored.accountRevision, signedOut.accountRevision);
+  assert.equal(restored.transportRevision, signedOut.transportRevision);
+  assert.equal(restored.endpoint, state.endpoint);
+  assert.equal(refreshes.length, 1);
+  const recoveryBackend = {
+    ...backend,
+    host: { client: host, sourceId: source.sourceId },
+  };
+  await backend.save("subscription-operations.json", {
+    version: 1,
+    pending: [{ requestId: logout.requestId, method: "subscription.command" }],
+  });
+  const operationsBefore = await readdir(join(home, "host/subscription-operations"));
+  const consumer = await NativeSubscription.connect(recoveryBackend, vault);
+  const observed = await consumer.read();
+  assert.equal(observed.state, "signed_out");
+  assert.match(observed.error, /效果尚未确认/);
+  assert.equal(consumer.pending[0].requestId, logout.requestId);
+  await assert.rejects(consumer.action({ kind: "logout" }), /效果尚未确认/);
+  await consumer.refresh();
+  assert.deepEqual(await readdir(join(home, "host/subscription-operations")), operationsBefore);
+  await consumer.close();
+  const recoveredRecord = JSON.parse(
+    await readFile(join(home, "host/subscription-operations", `${logout.requestId}.json`), "utf8"),
+  );
+  assert.equal(recoveredRecord.acceptedReceipt.state, "acceptedPending");
+  assert.equal(recoveredRecord.context.sourceId, source.sourceId);
+  assert.equal(recoveredRecord.context.generation, evidence.recoveryInjection.oldHost.generation);
+  assert.equal(recoveredRecord.recovery.generation, host.generation);
+  evidence.checks.push({
+    name: "new Host settles original committed handoff, retains interrupted command outcomeUnknown and GUI pending, without replay or revision change",
+    handoffRequestId: marker.requestId,
+    commandRequestId: logout.requestId,
+    passed: true,
+  });
 } catch (error) {
   failure = error.stack;
 } finally {
@@ -752,10 +847,7 @@ try {
   }
   if (hostIdentity) {
     try {
-      const receipt = await host.stop(randomUUID(), host.generation, "cancel");
-      evidence.cleanup.push({ kind: "Host stop", receipt });
-      assert.equal(receipt.state, "completed");
-      await until(() => hostChild.exitCode !== null, "Host process exit");
+      await stopHost();
     } catch (error) {
       failure ??= error.stack;
     }
@@ -806,6 +898,27 @@ try {
   }
   evidence.requests = requests;
   evidence.refreshes = refreshes;
+  evidence.coreModelRequests = [];
+  for (const service of [evidence.service, evidence.freshService].filter(Boolean)) {
+    const records = await readModelRequests(service);
+    evidence.coreModelRequests.push(...records);
+  }
+  if (!failure) {
+    const solve = evidence.coreModelRequests.filter((row) => row.purpose === "Solve");
+    try {
+      assert.equal(solve.length, 1, "final Core Solve count after all asynchronous work stopped");
+      assert.equal(solve[0].httpAttempts, 1);
+      assert.equal(solve[0].outcome, "completed");
+      assert.equal(requests.filter((row) => row.purpose === "original").length, 1);
+      assert(
+        evidence.coreModelRequests
+          .filter((row) => row.purpose === "Summary")
+          .every((row) => row.outcome === "completed"),
+      );
+    } catch (error) {
+      failure = error.stack;
+    }
+  }
   evidence.failure = failure;
   evidence.fixtureFailure = fixtureFailure?.stack;
   evidence.passed = !failure && !fixtureFailure;
@@ -819,4 +932,28 @@ try {
     ),
   );
   if (!evidence.passed) process.exitCode = 1;
+}
+
+async function readModelRequests(service) {
+  const text = await readFile(join(service.dataDir, "model-requests/requests.jsonl"), "utf8").catch(
+    (error) => {
+      if (error.code === "ENOENT") return "";
+      throw error;
+    },
+  );
+  return text
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const row = JSON.parse(line);
+      return {
+        serviceId: service.serviceId,
+        requestId: row.requestId,
+        threadId: row.threadId,
+        turnId: row.turnId,
+        purpose: row.purpose,
+        httpAttempts: row.httpAttempts,
+        outcome: row.outcome,
+      };
+    });
 }

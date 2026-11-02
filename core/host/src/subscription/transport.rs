@@ -203,28 +203,31 @@ pub(super) async fn listen(source: Rc<SourceSubscription>) -> Result<Listener> {
         .filter(|token| !token.is_empty())
         .ok_or_else(|| Failure::new("credential_invalid", "transport"))?
         .to_owned();
-    let port = saved["port"]
+    let requested_port = saved["port"]
         .as_u64()
         .filter(|port| *port <= u16::MAX as u64)
-        .ok_or_else(|| Failure::new("credential_invalid", "transport"))? as u16;
-    let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
+        .ok_or_else(|| Failure::new("credential_invalid", "transport"))?
+        as u16;
+    let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, requested_port))
         .await
         .map_err(|_| Failure::new("network_error", "transport"))?;
     let port = listener.local_addr().unwrap().port();
-    saved["port"] = json!(port);
-    let receipt = source
-        .migration
-        .vault
-        .replace_subscription_transport(
-            &source.source,
-            &uuid::Uuid::new_v4().to_string(),
-            revision,
-            saved,
-            &source.migration,
-        )
-        .map_err(Failure::storage)?;
-    if receipt["state"] != "completed" {
-        return Err(Failure::new("storage_locked", "transport"));
+    if port != requested_port {
+        saved["port"] = json!(port);
+        let receipt = source
+            .migration
+            .vault
+            .replace_subscription_transport(
+                &source.source,
+                &uuid::Uuid::new_v4().to_string(),
+                revision,
+                saved,
+                &source.migration,
+            )
+            .map_err(Failure::storage)?;
+        if receipt["state"] != "completed" {
+            return Err(Failure::new("storage_locked", "transport"));
+        }
     }
     let owner = source.clone();
     source.track(tokio::task::spawn_local(async move {

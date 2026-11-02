@@ -219,6 +219,8 @@ action 为 `begin`（`target:{kind:"current"|"newAccount"|"saved",accountId?}`�
 
 交接和命令回执的 `method` 为 `subscription.handoff` 或 `subscription.command`，状态为 `acceptedPending`、`completed` 或 `blocked`，终态带 `result` 或 `error:{code,message}`。丢回复只查询原 `host.operation`；不重做 OAuth exchange、推理 POST 或不确定的 Core 提交。
 
+重启恢复只在原交接 marker 的请求 ID 匹配且来源恢复成功时确认交接完成。丢失后台任务的原命令以 `blocked/outcomeUnknown` 表示历史效果未知，保留原 `acceptedPending` 回执、身份与恢复证据；它不表示未执行。GUI 保留原请求并展示未知结果，连接与账号读取仍可用，当前状态不能证明旧动作的受理或效果。存在未知请求时不自动交接、配置网络或重发该来源命令，刷新只读当前状态。没有匹配 marker、且无法结算原 Vault 回执的中断交接维持未知及不可用的只读来源投影。
+
 ## 退出与服务管理器契约
 
 `areal host run` 全生命周期持有 `host.lock`。并发竞争的输家在 macOS 退出 0，在 Linux 退出 73，systemd 配置 `RestartPreventExitStatus=73`。正常显式停止退出 0；异常失败退出非零并消耗有界重启预算。macOS 使用 `KeepAlive.SuccessfulExit=false`。持久显式停止意图禁止自动重启，新的显式本机启动可清除它。五分钟最多自动重启五次，退避 1、2、4、8、16 秒；用尽后持久化 `crashLoopStopped`。
