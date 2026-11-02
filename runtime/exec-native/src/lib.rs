@@ -14,6 +14,7 @@ use std::{
     collections::HashMap,
     io,
     os::unix::process::ExitStatusExt,
+    path::PathBuf,
     process::{ExitStatus, Stdio},
     sync::{Arc, Mutex},
     time::Duration,
@@ -208,6 +209,54 @@ struct State {
     closed: bool,
     processes: HashMap<String, Arc<Process>>,
     failure: Option<Error>,
+    // 别名跨命令保留，已有临时文件的绝对路径在 Runtime 关闭前仍可使用。
+    temporary_aliases: HashMap<PathBuf, tempfile::TempDir>,
+}
+
+fn prepare_temporary_alias(
+    execution: &mut Execution,
+    profile: SandboxProfile,
+    aliases: &mut HashMap<PathBuf, tempfile::TempDir>,
+) -> Result<()> {
+    // 仅处理已有完整宿主授权且不创建 OS 沙箱的执行；不为受限 Scope 增加路径。
+    if profile != SandboxProfile::FullAccess
+        || execution.network != areal_runtime_protocol::NetworkRequest::Inherit
+    {
+        return Ok(());
+    }
+    let Some(original) = execution
+        .env
+        .get("TMPDIR")
+        .filter(|path| path.len() > 48 && std::path::Path::new(path).is_absolute())
+    else {
+        return Ok(());
+    };
+    let Ok(target) = std::fs::canonicalize(original) else {
+        return Ok(());
+    };
+    if !target.is_dir() {
+        return Ok(());
+    }
+    if !aliases.contains_key(&target) {
+        // 使用短的私有目录，为 AF_UNIX 客户端自行追加的 socket 名保留空间。
+        let directory = tempfile::Builder::new()
+            .prefix(".ar-tmp-")
+            .tempdir_in("/tmp")
+            .map_err(spawn_error)?;
+        std::os::unix::fs::symlink(&target, directory.path().join("t")).map_err(spawn_error)?;
+        aliases.insert(target.clone(), directory);
+    }
+    let alias = aliases[&target].path().join("t");
+    if std::fs::read_link(&alias).ok().as_ref() != Some(&target) {
+        return Err(Error::new(
+            ErrorCode::Conflict,
+            "Runtime temporary directory alias was removed or redirected",
+        ));
+    }
+    execution
+        .env
+        .insert("TMPDIR".into(), alias.to_string_lossy().into_owned());
+    Ok(())
 }
 pub struct NativeBackend {
     profile: SandboxProfile,
@@ -312,6 +361,13 @@ impl Backend for NativeBackend {
             execution.scope_access,
             !execution.read_only_paths.is_empty(),
         );
+        {
+            let mut state = self.state.lock().unwrap();
+            if state.closed || self.stop.is_cancelled() {
+                return Err(Error::new(ErrorCode::ScopeClosed, "backend is closed"));
+            }
+            prepare_temporary_alias(&mut execution, effective, &mut state.temporary_aliases)?;
+        }
         #[cfg(target_os = "macos")]
         if effective != SandboxProfile::FullAccess {
             prepare_system_git(&mut execution);
@@ -573,12 +629,13 @@ impl Backend for NativeBackend {
         .await
         .map_err(|_| cleanup_error("process cleanup deadline exceeded"))?;
         result?;
-        self.state
-            .lock()
-            .unwrap()
-            .failure
-            .clone()
-            .map_or(Ok(()), Err)
+        let mut state = self.state.lock().unwrap();
+        if let Some(error) = &state.failure {
+            return Err(error.clone());
+        }
+        // 已确认全部子进程清理后，仅移除私有别名；原 scratch 与文件不受影响。
+        state.temporary_aliases.clear();
+        Ok(())
     }
 }
 
