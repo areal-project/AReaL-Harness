@@ -78,6 +78,25 @@ function startDesktop() {
     app.exit(0);
     return;
   }
+  if (process.argv.some((value) => value.startsWith("--areal-host-import-source="))) {
+    const options = serviceOptions(app);
+    void require("./gui-source.cjs")
+      .prepareGuiSource({
+        app,
+        guiUserData: applicationOwner.profile,
+        coreHome: options.home,
+        legacyServiceHome: options.harnessHome,
+        encryption: require("electron").safeStorage,
+      })
+      .then(
+        (result) => app.exit(result?.kind === "ready" ? 0 : 2),
+        (error) => {
+          console.error(error);
+          app.exit(1);
+        },
+      );
+    return;
+  }
   const diagnosticsRoots = {
     mainRoot: join(applicationOwner.profile, "diagnostics", "main"),
     desktopRoot: join(serviceHome(app), "diagnostics", "desktop"),
@@ -362,14 +381,14 @@ function startDesktop() {
       } else {
         recordQuitStage(attempt, "reconcile");
         await backend.checkLifecycle();
-        if (backend.foreignOwner && (intent === "install" || backend.desktopLifetimes.size))
+        if (backend.foreignOwner)
           throw Object.assign(new Error(nativeText("lifecycle.foreignOwner")), {
             code: "APPLICATION_OWNER_MISMATCH",
           });
         if (
           !backend.foreignOwner &&
           !backend.serviceExited &&
-          (backend.status.connected || backend.metadata || backend.desktopLifetimes.size)
+          (backend.status.connected || backend.metadata)
         ) {
           recordQuitStage(attempt, "stop");
           const result = await recoverConnectedService({
@@ -685,13 +704,17 @@ function startDesktop() {
           backend.status.browserCore?.[projectId] ??
           null,
         () =>
-          [backend.metadata?.endpoint, ...(backend.status.browserControlEndpoints ?? [])].filter(
-            (value) => typeof value === "string",
-          ),
+          [
+            backend.metadata && "endpoint" in backend.metadata
+              ? backend.metadata.endpoint
+              : undefined,
+            ...(backend.status.browserControlEndpoints ?? []),
+          ].filter((value) => typeof value === "string"),
         async ({ origin, page, fence, kind }) => {
           const current = () =>
             !quitting &&
-            !!backend.metadata?.endpoint &&
+            backend.status.connected === true &&
+            backend.computerHostOwned === true &&
             createdWindow &&
             !createdWindow.isDestroyed() &&
             createdWindow.isVisible() &&

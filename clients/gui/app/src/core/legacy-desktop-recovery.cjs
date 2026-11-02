@@ -81,6 +81,7 @@ async function sourcePacket(backend, source) {
   if (
     !record(metadata) ||
     !backend.metadata ||
+    !("token" in backend.metadata) ||
     !backend.connection ||
     !sameDesktop(metadata, source) ||
     !sameDesktop(backend.metadata, source) ||
@@ -188,8 +189,10 @@ async function inspect(backend) {
   let journal = control?.legacyRecovery
     ? validateJournal(control.legacyRecovery, backend)
     : undefined;
-  const source = journal?.source ?? backend.metadata;
-  if (!source) throw fail("原 Desktop 身份不可用");
+  const selected = journal?.source ?? backend.metadata;
+  if (!selected || !("endpoint" in selected) || typeof selected.endpoint !== "string")
+    throw fail("原外部 Desktop 身份不可用");
+  const source = { pid: selected.pid, identity: selected.identity, endpoint: selected.endpoint };
   const projects = [],
     blockers = [];
   let packet;

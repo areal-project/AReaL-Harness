@@ -65,7 +65,70 @@ class ServiceConnection {
     this.pending = new Map();
     /** @type {import("ws")|undefined} */
     this.socket = undefined;
+    /** @type {ReturnType<InstanceType<typeof import('./service-protocol.cjs').DesktopService>['connectMain']>|undefined} */
+    this.direct = undefined;
     this.nextId = 0;
+  }
+  /** @param {InstanceType<typeof import('./service-protocol.cjs').DesktopService>} adapter */
+  connectMain(adapter) {
+    if (this.socket || this.direct) throw new Error("GUI 连接已建立");
+    const direct = adapter.connectMain(
+      (value) => {
+        if (this.direct !== direct) return;
+        const message = structuredClone(value);
+        const handlers = {
+          state: this.onState,
+          notification: this.onNotification,
+          notificationOpen: this.onNotificationOpen,
+          browserCancel: this.onBrowserCancel,
+          mcpAppNotification: this.onMcpAppNotification,
+          mcpPageToolNotice: this.onMcpPageToolNotice,
+          mcpPageToolsRevoked: this.onMcpPageToolsRevoked,
+        };
+        const method = message.method;
+        if (typeof method !== "string") return;
+        if (method !== "browserRequest" && method !== "terminalRequest") {
+          handlers[/** @type {keyof typeof handlers} */ (method)]?.(message.params);
+          return;
+        }
+        const request = message.params;
+        if (!browserRequest(request)) throw new Error("GUI 工具请求身份无效");
+        const handle = method === "browserRequest" ? this.onBrowserRequest : this.onTerminalRequest;
+        const reply = method === "browserRequest" ? "browserResult" : "terminalResult";
+        void Promise.resolve()
+          .then(() => {
+            if (this.direct !== direct || !handle) throw new Error("GUI 工具所有者已断开");
+            return handle(request);
+          })
+          .then(
+            (result) => {
+              if (this.direct === direct)
+                void direct
+                  .request(reply, { requestId: request.requestId, result })
+                  .catch(() => {});
+            },
+            (error) => {
+              if (this.direct === direct)
+                void direct
+                  .request(reply, {
+                    requestId: request.requestId,
+                    error:
+                      reply === "terminalResult"
+                        ? require("@areal/workbench/desktop-contract").desktopError(error)
+                        : "host_failed",
+                  })
+                  .catch(() => {});
+            },
+          );
+      },
+      () => {
+        if (this.direct !== direct) return;
+        this.direct = undefined;
+        this.onClose();
+      },
+    );
+    this.direct = direct;
+    return direct.metadata;
   }
   /** @param {unknown} metadata @returns {Promise<ServiceMetadata>} */
   async connect(metadata) {
@@ -275,6 +338,10 @@ class ServiceConnection {
   }
   /** @param {string} method @param {Record<string,unknown>} [params] @param {boolean} [mutation] @returns {Promise<unknown>} */
   request(method, params, mutation = false) {
+    if (this.direct)
+      return this.direct
+        .request(method, structuredClone(params))
+        .then((value) => structuredClone(value));
     const socket = this.socket;
     if (socket?.readyState !== WebSocket.OPEN)
       return Promise.reject(
@@ -321,6 +388,9 @@ class ServiceConnection {
     });
   }
   close() {
+    const direct = this.direct;
+    this.direct = undefined;
+    direct?.close();
     this.socket?.close();
   }
 }

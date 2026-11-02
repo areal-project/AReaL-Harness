@@ -45,7 +45,14 @@ const {
 /** @typedef {{kind:'packet',packet:ReturnType<InstanceType<typeof DesktopService>['packet']>,header:{method:'state'}|{id:number},full:boolean,bytes:number}} PacketEntry */
 /** @typedef {PacketEntry|{kind:'message',value:Fields,bytes:number}} OutboundEntry */
 /** @typedef {{queue:OutboundEntry[],bytes:number,active:boolean,state:PacketEntry|null,closed:boolean,timer?:NodeJS.Timeout}} Outbound */
-/** @typedef {import('ws') & {outbound?:Outbound,projection?:InstanceType<typeof ProjectionEncoder>|null,notifications?:boolean,activity?:{time:number,windowFocused:boolean,focused:boolean},lastFocused?:number,historyViews?:Map<string,Fields & {viewId:string}>,mcpPageOwnerId?:string}} ServiceSocket */
+/** @typedef {import('ws') & {outbound?:Outbound,projection?:InstanceType<typeof ProjectionEncoder>|null,notifications?:boolean,activity?:{time:number,windowFocused:boolean,focused:boolean},lastFocused?:number,historyViews?:Map<string,Fields & {viewId:string}>,mcpPageOwnerId?:string}} RemoteServiceSocket */
+/** @typedef {Pick<RemoteServiceSocket,'notifications'|'activity'|'lastFocused'|'historyViews'|'mcpPageOwnerId'> & {kind:'main',closed:boolean,onMessage:(message:Fields)=>void,onClose:()=>void}} MainClient */
+/** @typedef {RemoteServiceSocket|MainClient} ServiceSocket */
+/** @param {ServiceSocket|null|undefined} client @returns {client is MainClient} */
+const mainClient = (client) => !!client && "kind" in client && client.kind === "main";
+/** @param {ServiceSocket|null|undefined} client @returns {client is ServiceSocket} */
+const connected = (client) =>
+  !!client && (mainClient(client) ? !client.closed : client.readyState === 1);
 /** @typedef {{pageId:string,pageGeneration:number,controlEpoch:number}} PageClaim */
 /** @typedef {{socket:ServiceSocket,coreInstanceId:string,coreGeneration:string,browserHostId:string,hostGeneration:number,pages:Map<string,PageClaim>,revokedPages:Set<string>}} BrowserClaim */
 /** @typedef {{turnId?:string,queueItemId?:string}|null} AcceptedEntry */
@@ -139,7 +146,7 @@ class DesktopService {
       undefined;
     /** @type {ServiceSocket|null|undefined} */ this.computerSocket = undefined;
     backend.desktopToolOwner = () =>
-      !this.closed && this.computerSocket?.readyState === 1 ? this.computerSocket : null;
+      !this.closed && connected(this.computerSocket) ? this.computerSocket : null;
     /** @type {NodeJS.Timeout|null|undefined} */ this.timer = undefined;
     /** @type {NodeJS.Timeout|undefined} */ this.mcpPageExpiryTimer = undefined;
     /** @type {NodeJS.Timeout|undefined} */ this.activityTimer = undefined;
@@ -217,7 +224,7 @@ class DesktopService {
     if (
       this.closed ||
       !this.clients.has(socket) ||
-      socket.readyState !== 1 ||
+      !connected(socket) ||
       project.client !== client ||
       !client.ready ||
       (previous && (previous.socket !== socket || previous.client !== client || previous.revoked))
@@ -265,7 +272,7 @@ class DesktopService {
       lease.client === lease.project.client &&
       lease.client.ready &&
       this.clients.has(socket) &&
-      socket.readyState === 1 &&
+      connected(socket) &&
       !this.closed;
     if (
       !lease ||
@@ -386,7 +393,7 @@ class DesktopService {
           lease.client === event.client &&
           lease.project?.client === event.client &&
           lease.client?.ready &&
-          lease.socket?.readyState === 1 &&
+          connected(lease.socket) &&
           this.clients.has(lease.socket) &&
           lease.threadId === params.threadId &&
           lease.ownerId === params.ownerId &&
@@ -541,15 +548,24 @@ class DesktopService {
   }
   /** @param {ServiceSocket} socket @param {Fields} value */
   send(socket, value) {
+    if (mainClient(socket)) {
+      if (!socket.closed) socket.onMessage(value);
+      return;
+    }
     this.enqueue(socket, { kind: "message", value, bytes: 0 });
   }
   /** @param {ServiceSocket} socket @param {PacketEntry['packet']} packet @param {PacketEntry['header']} header @param {boolean} [full] */
   sendPacket(socket, packet, header, full = false) {
+    if (mainClient(socket)) {
+      if (!socket.closed) socket.onMessage({ method: "state", params: packet });
+      return;
+    }
     this.enqueue(socket, { kind: "packet", packet, header, full, bytes: 0 });
   }
   /** @param {ServiceSocket} socket @param {OutboundEntry} entry */
   enqueue(socket, entry) {
-    if (socket.readyState !== 1) return;
+    if (mainClient(socket)) return;
+    if (!connected(socket)) return;
     const outbound = (socket.outbound ??= {
       queue: [],
       bytes: 0,
@@ -578,6 +594,7 @@ class DesktopService {
   }
   /** @param {ServiceSocket} socket */
   stopSending(socket) {
+    if (mainClient(socket)) return;
     const outbound = socket.outbound;
     if (!outbound) return;
     clearTimeout(outbound.timer);
@@ -588,8 +605,9 @@ class DesktopService {
   }
   /** @param {ServiceSocket} socket @param {OutboundEntry} entry */
   sendFrame(socket, entry) {
+    if (mainClient(socket)) return;
     const outbound = socket.outbound;
-    if (!outbound || outbound.closed || socket.readyState !== 1) {
+    if (!outbound || outbound.closed || !connected(socket)) {
       this.stopSending(socket);
       return;
     }
@@ -653,11 +671,11 @@ class DesktopService {
         if (views.get(key) === view) views.delete(key);
         throw error;
       } finally {
-        if (socket.readyState !== 1 || views.get(key) !== view)
+        if (!connected(socket) || views.get(key) !== view)
           await this.backend.command("history", { ...view, operation: "release" }).catch(() => {});
       }
     }
-    if (!view || socket.readyState !== 1) throw new Error("历史视图已关闭，请重新打开聊天。");
+    if (!view || !connected(socket)) throw new Error("历史视图已关闭，请重新打开聊天。");
     return this.backend.command("history", { ...request, viewId: view.viewId });
   }
   /** @param {ServiceSocket} socket */
@@ -667,7 +685,7 @@ class DesktopService {
     socket.historyViews?.clear();
   }
   schedule() {
-    void this.power?.refresh();
+    void this.power?.refresh().catch(() => {});
     if (!this.timer)
       this.timer = setTimeout(() => {
         this.timer = null;
@@ -684,7 +702,7 @@ class DesktopService {
     /** @type {Fields} */
     const settings = this.backend.library.value.settings;
     if (settings.taskNotifications === false) return;
-    const clients = [...this.clients].filter((s) => s.notifications && s.readyState === 1);
+    const clients = [...this.clients].filter((s) => s.notifications && connected(s));
     if (notice.kind === "completion") {
       const policy = settings.turnNotifications ?? "unfocused";
       if (policy === "never") return;
@@ -711,7 +729,7 @@ class DesktopService {
   /** @param {unknown} target */
   openNotification(target) {
     const clients = [...this.clients]
-      .filter((s) => s.notifications && s.readyState === 1)
+      .filter((s) => s.notifications && connected(s))
       .sort((a, b) => (b.lastFocused ?? 0) - (a.lastFocused ?? 0));
     if (clients.length) {
       this.send(clients[0], { method: "notificationOpen", params: target });
@@ -727,6 +745,97 @@ class DesktopService {
         this.backend.providers.redact(`通知打开界面失败：${desktopError(error).message}`),
       );
     }
+  }
+  /** @param {ServiceSocket} socket */
+  disconnectClient(socket) {
+    if (mainClient(socket)) {
+      if (socket.closed) return;
+      socket.closed = true;
+    }
+    for (const [requestId, pending] of this.terminalPending)
+      if (pending.socket === socket) {
+        clearTimeout(pending.timer);
+        this.terminalPending.delete(requestId);
+        pending.reject(new Error("GUI terminal owner disconnected; outcome may be unknown"));
+      }
+    this.revokeMcpPageTools((lease) => lease.socket === socket);
+    this.stopSending(socket);
+    this.releaseHistoryViews(socket);
+    if (this.computerSocket === socket) {
+      this.computerSocket = null;
+      this.backend.connections.revokeDesktopToolHost(socket);
+    }
+    for (const [key, claim] of this.browserClaims)
+      if (claim.socket === socket) this.browserClaims.delete(key);
+    for (const [id, record] of this.browserDiscoveryPlans)
+      if (record.socket === socket) this.browserDiscoveryPlans.delete(id);
+    for (const [key, entries] of this.browserEntrypoints)
+      for (const entry of entries)
+        if (entry.socket === socket) this.forgetBrowserEntrypoint(key, entry);
+    for (const [key, attempt] of this.browserClaimAttempts)
+      if (attempt.socket === socket) {
+        attempt.cancelled = true;
+        this.browserClaimAttempts.delete(key);
+      }
+    for (const [id, pending] of this.browserPending)
+      if (pending.socket === socket) {
+        this.browserPending.delete(id);
+        clearTimeout(pending.timer);
+        pending.reject(new Error("Browser host disconnected after dispatch"));
+      }
+    this.sampleActivity();
+    if (this.clients.delete(socket) && !this.clients.size) this.idleSince = Date.now();
+    this.sampleActivity();
+    this.schedule();
+    if (mainClient(socket)) socket.onClose();
+  }
+  /** @param {(message:Fields)=>void} onMessage @param {()=>void} onClose */
+  connectMain(onMessage, onClose) {
+    /** @type {MainClient} */
+    const owner = { kind: "main", closed: false, onMessage, onClose };
+    return {
+      metadata: {
+        protocol: PROTOCOL,
+        identity: this.identity,
+        pid: process.pid,
+        applicationOwner: this.backend.applicationOwner,
+        desktopGeneration: this.lifecycle?.generation,
+        local: /** @type {const} */ (true),
+      },
+      request: (/** @type {string} */ method, /** @type {Fields} */ params = {}) => {
+        if (owner.closed || this.closed)
+          return Promise.reject(
+            Object.assign(new Error("GUI 连接已关闭"), {
+              code: "DISCONNECTED",
+              submissionUnknown: false,
+            }),
+          );
+        return this.execute(owner, method, params);
+      },
+      close: () => this.disconnectClient(owner),
+    };
+  }
+  async startMain() {
+    await this.lifecycle?.init();
+    await this.lifecycle?.reconcileLoaded();
+    this.backend.host.client.requireCapability("remoteGatewayV1");
+    await this.initRemote();
+    this.startObservers();
+  }
+  startObservers() {
+    if (this.activityTimer) return;
+    this.activityTimer = setInterval(() => {
+      this.sampleActivity();
+      void this.backend.host
+        .refreshScheduling()
+        .then((changed) => {
+          if (changed) this.backend.onChange();
+        })
+        .catch(() => {});
+    }, 5000);
+    this.flushTimer = setInterval(() => {
+      void this.backend.analytics.flush();
+    }, 30000);
   }
   async listen() {
     await this.lifecycle?.init();
@@ -753,43 +862,7 @@ class DesktopService {
       socket.on("message", (bytes) => {
         void this.receive(socket, bytes);
       });
-      socket.on("close", () => {
-        for (const [requestId, pending] of this.terminalPending)
-          if (pending.socket === socket) {
-            clearTimeout(pending.timer);
-            this.terminalPending.delete(requestId);
-            pending.reject(new Error("GUI terminal owner disconnected; outcome may be unknown"));
-          }
-        this.revokeMcpPageTools((lease) => lease.socket === socket);
-        this.stopSending(socket);
-        this.releaseHistoryViews(socket);
-        if (this.computerSocket === socket) {
-          this.computerSocket = null;
-          this.backend.connections.revokeDesktopToolHost(socket);
-        }
-        for (const [key, claim] of this.browserClaims)
-          if (claim.socket === socket) this.browserClaims.delete(key);
-        for (const [id, record] of this.browserDiscoveryPlans)
-          if (record.socket === socket) this.browserDiscoveryPlans.delete(id);
-        for (const [key, entries] of this.browserEntrypoints)
-          for (const entry of entries)
-            if (entry.socket === socket) this.forgetBrowserEntrypoint(key, entry);
-        for (const [key, attempt] of this.browserClaimAttempts)
-          if (attempt.socket === socket) {
-            attempt.cancelled = true;
-            this.browserClaimAttempts.delete(key);
-          }
-        for (const [id, pending] of this.browserPending)
-          if (pending.socket === socket) {
-            this.browserPending.delete(id);
-            clearTimeout(pending.timer);
-            pending.reject(new Error("Browser host disconnected after dispatch"));
-          }
-        this.sampleActivity();
-        if (this.clients.delete(socket) && !this.clients.size) this.idleSince = Date.now();
-        this.sampleActivity();
-        this.schedule();
-      });
+      socket.on("close", () => this.disconnectClient(socket));
     });
     await new Promise((resolve, reject) => {
       server.once("listening", resolve);
@@ -798,18 +871,7 @@ class DesktopService {
     const address = server.address();
     if (!address || typeof address === "string")
       throw new Error("Desktop service listener unavailable");
-    this.activityTimer = setInterval(() => {
-      this.sampleActivity();
-      void this.backend.host
-        .refreshScheduling()
-        .then((changed) => {
-          if (changed) this.backend.onChange();
-        })
-        .catch(() => {});
-    }, 5000);
-    this.flushTimer = setInterval(() => {
-      void this.backend.analytics.flush();
-    }, 30000);
+    this.startObservers();
     return {
       ...(this.backend.applicationOwner ? { applicationOwner: this.backend.applicationOwner } : {}),
       protocol: PROTOCOL,
@@ -853,7 +915,7 @@ class DesktopService {
     this.exitRequested = true;
     setImmediate(() => this.onStop());
   }
-  /** @param {ServiceSocket} socket @param {import("ws").RawData} bytes */
+  /** @param {RemoteServiceSocket} socket @param {import("ws").RawData} bytes */
   async receive(socket, bytes) {
     /** @type {unknown} */ let message;
     try {
@@ -866,27 +928,47 @@ class DesktopService {
       socket.close(1008);
       return;
     }
-    const { id, method: wireMethod } = message;
+    try {
+      const result = await this.execute(
+        socket,
+        message.method,
+        record(message.params) ? message.params : {},
+      );
+      if (message.method === "hello" || message.method === "snapshot")
+        this.sendPacket(
+          socket,
+          /** @type {PacketEntry['packet']} */ (result),
+          { id: message.id },
+          true,
+        );
+      else this.send(socket, { id: message.id, result });
+    } catch (error) {
+      this.send(socket, { id: message.id, error: desktopError(error) });
+    }
+  }
+  /** @param {ServiceSocket} socket @param {string} wireMethod @param {Fields} params */
+  async execute(socket, wireMethod, params = {}) {
+    /** @type {unknown} */ let response;
     const guiTerminalCommand = wireMethod === "guiTerminalCommand";
     const method = guiTerminalCommand ? "command" : wireMethod;
-    const params = record(message.params) ? message.params : {};
     try {
       if (method === "hello") {
         if (params?.protocol !== PROTOCOL || params?.identity !== this.identity)
           throw Object.assign(new Error("后台服务版本或启动配置不兼容。请先安全停止旧后台服务。"), {
             code: "SERVICE_INCOMPATIBLE",
           });
-        socket.projection =
-          record(params.capabilities) && params.capabilities.projection === 1
-            ? (socket.projection ?? new ProjectionEncoder(randomUUID()))
-            : null;
+        if (!mainClient(socket))
+          socket.projection =
+            record(params.capabilities) && params.capabilities.projection === 1
+              ? (socket.projection ?? new ProjectionEncoder(randomUUID()))
+              : null;
         socket.notifications = params.notifications === true;
         if (
           record(params.capabilities) &&
           params.capabilities.computerHost === 1 &&
           (!this.computerSocket ||
             this.computerSocket === socket ||
-            this.computerSocket.readyState !== 1)
+            !connected(this.computerSocket))
         ) {
           if (this.computerSocket !== socket) {
             if (this.computerSocket)
@@ -898,13 +980,13 @@ class DesktopService {
         this.clients.add(socket);
         this.idleSince = null;
         const packet = { ...this.packet(), computerHostOwned: this.computerSocket === socket };
-        this.sendPacket(socket, packet, { id }, true);
+        response = packet;
         if (socket.notifications && this.pendingNotificationTarget) {
           this.send(socket, { method: "notificationOpen", params: this.pendingNotificationTarget });
           this.pendingNotificationTarget = null;
         }
         this.schedule();
-        return;
+        return response;
       }
       // Explicit local stop also works after a source upgrade, without attaching
       // an incompatible GUI. Possession of the private token is still mandatory.
@@ -925,18 +1007,18 @@ class DesktopService {
           expectedDesktopGeneration: params.expectedDesktopGeneration ?? this.lifecycle.generation,
           expectedTargets: params.expectedTargets ?? this.lifecycle.targets(),
         });
-        this.send(socket, { id, result });
+        response = result;
         this.requestExit(result);
-        return;
+        return response;
       }
       if (!this.clients.has(socket)) throw new Error("请先完成后台服务握手");
       if (method === "hostReconnect") {
         if (params.protocol !== PROTOCOL || this.computerSocket !== socket)
           throw new Error("Host reconnect requires the current local Main owner");
         const result = await this.reconnectHost();
-        this.send(socket, { id, result });
+        response = result;
         this.schedule();
-        return;
+        return response;
       }
       if (["lifecycleRequest", "lifecycleRead", "lifecycleReconcile"].includes(method)) {
         if (!this.lifecycle)
@@ -951,10 +1033,10 @@ class DesktopService {
             : method === "lifecycleRead"
               ? await this.lifecycle.read(params.requestId)
               : await this.lifecycle.reconcile(params.requestId);
-        this.send(socket, { id, result });
+        response = result;
         if (method === "lifecycleRequest") this.requestExit(result);
         this.schedule();
-        return;
+        return response;
       }
       if (method === "terminalResult") {
         const pending =
@@ -968,8 +1050,8 @@ class DesktopService {
           pending.reject(Object.assign(new Error(params.error.message), params.error));
         else if (Object.hasOwn(params, "result")) pending.resolve(params.result);
         else pending.reject(new Error("GUI terminal response is incomplete"));
-        this.send(socket, { id, result: null });
-        return;
+        response = null;
+        return response;
       }
       if (this.recovering && !["snapshot", "activity"].includes(method))
         throw blocked("正在处理后台资源，请稍后重试");
@@ -1028,7 +1110,7 @@ class DesktopService {
         if (claimedCoreId !== coreInstanceId) throw new Error("浏览页面属于旧 Core 部署");
         const key = browserKey(projectId, threadId);
         const previous = this.browserClaims.get(key);
-        if (previous && previous.socket !== socket && previous.socket.readyState === 1)
+        if (previous && previous.socket !== socket && connected(previous.socket))
           throw new Error("浏览页面已由其他桌面窗口认领");
         if (this.browserClaimAttempts.has(key)) throw new Error("浏览页面正在认领，请稍后重试");
         const attempt = { socket, pageId, cancelled: false };
@@ -1061,7 +1143,7 @@ class DesktopService {
             !this.backend.currentConnection(project, coreClient) ||
             project.service?.serviceId !== coreInstanceId ||
             project.service?.generation !== coreGeneration ||
-            socket.readyState !== 1
+            !connected(socket)
           ) {
             throw new Error("认领期间页面、Core 或桌面连接已换代，请重新操作");
           }
@@ -1085,8 +1167,8 @@ class DesktopService {
           claim.revokedPages.delete(pageId);
           claim.pages.set(pageId, { pageId, pageGeneration, controlEpoch });
           this.browserClaims.set(key, claim);
-          this.send(socket, { id, result: { claimed: true } });
-          return;
+          response = { claimed: true };
+          return response;
         } finally {
           if (this.browserClaimAttempts.get(key) === attempt) this.browserClaimAttempts.delete(key);
         }
@@ -1121,8 +1203,8 @@ class DesktopService {
           } else claim.pages.clear();
           if (claim.pages.size === 0) this.browserClaims.delete(key);
         }
-        this.send(socket, { id, result: { revoked: true } });
-        return;
+        response = { revoked: true };
+        return response;
       }
       if (method === "browserResult") {
         if (!integer(params.requestId)) throw new Error("无效浏览器回执");
@@ -1132,35 +1214,32 @@ class DesktopService {
         clearTimeout(pending.timer);
         if (params?.error) pending.reject(new Error("Browser host failed after dispatch"));
         else pending.resolve(params?.result);
-        this.send(socket, { id, result: null });
-        return;
+        response = null;
+        return response;
       }
       if (method === "remoteControl") {
         if (!this.remote) throw new Error("手机连接未初始化");
         this.inflight++;
         try {
-          this.send(socket, { id, result: await this.remote.control(params) });
+          response = await this.remote.control(params);
         } finally {
           this.inflight--;
           this.schedule();
         }
-        return;
+        return response;
       }
       if (method === "resources") {
         if (params?.operation === "inspect") {
           this.inflight++;
           try {
-            this.send(socket, {
-              id,
-              result: await inspectResources(this.backend, {
-                includeTasks: params.includeTasks === true,
-                purpose: params.purpose === "quit" ? "quit" : undefined,
-              }),
+            response = await inspectResources(this.backend, {
+              includeTasks: params.includeTasks === true,
+              purpose: params.purpose === "quit" ? "quit" : undefined,
             });
           } finally {
             this.inflight--;
           }
-          return;
+          return response;
         }
         if (
           (params.operation !== "terminate" && params.operation !== "acknowledge") ||
@@ -1181,32 +1260,29 @@ class DesktopService {
         this.inflight++;
         this.recovering = true;
         try {
-          this.send(socket, {
-            id,
-            result: await recoverResource(this.backend, {
-              projectId: params.projectId,
-              threadId: params.threadId,
-              id: params.id,
-              epoch: params.epoch,
-              operation: params.operation,
-              confirmed: params.confirmed,
-            }),
+          response = await recoverResource(this.backend, {
+            projectId: params.projectId,
+            threadId: params.threadId,
+            id: params.id,
+            epoch: params.epoch,
+            operation: params.operation,
+            confirmed: params.confirmed,
           });
         } finally {
           this.inflight--;
           this.recovering = false;
           this.schedule();
         }
-        return;
+        return response;
       }
       if (method === "mcpPageTools") {
-        this.send(socket, { id, result: await this.mcpPageTools(socket, params) });
-        return;
+        response = await this.mcpPageTools(socket, params);
+        return response;
       }
       if (method === "snapshot") {
         const packet = this.packet();
-        this.sendPacket(socket, packet, { id }, true);
-        return;
+        response = packet;
+        return response;
       }
       if (method === "activity") {
         this.sampleActivity();
@@ -1223,8 +1299,8 @@ class DesktopService {
             params.idleSeconds <= 300,
         };
         this.sampleActivity();
-        this.send(socket, { id, result: null });
-        return;
+        response = null;
+        return response;
       }
       if (method !== "addProject" && method !== "command") throw new Error("不支持的后台服务操作");
       const name = typeof params.name === "string" ? params.name : "";
@@ -1344,8 +1420,15 @@ class DesktopService {
             this.retireMcpPageOwner(lease, true);
         }
         if (method === "command" && name === "media") result = encodeMedia(result);
+        if (
+          method === "command" &&
+          name === "library" &&
+          request.operation === "settings" &&
+          request.key === "preventSleep"
+        )
+          await this.power?.refresh();
         this.publish();
-        this.send(socket, { id, result });
+        response = result;
       } finally {
         this.inflight--;
         this.schedule();
@@ -1356,27 +1439,26 @@ class DesktopService {
         details.code === "SIDEBAR_SAVE_FAILED"
           ? "侧栏整理未能保存，原有布局已保留。请检查存储位置和写入权限后重试。"
           : details.message;
-      this.send(socket, {
-        id,
-        error: {
-          ...details,
-          ...(record(error) && error.lifecycle ? { lifecycle: error.lifecycle } : {}),
-          message:
-            method === "command" &&
-            params?.name === "providers" &&
-            record(params.request) &&
-            params.request.operation === "revealKey"
-              ? "无法显示 API Key，请刷新配置或解锁系统安全存储后重试。"
-              : this.backend.providers.redact(message),
-        },
-      });
+      const failure = {
+        ...details,
+        ...(record(error) && error.lifecycle ? { lifecycle: error.lifecycle } : {}),
+        message:
+          method === "command" &&
+          params?.name === "providers" &&
+          record(params.request) &&
+          params.request.operation === "revealKey"
+            ? "无法显示 API Key，请刷新配置或解锁系统安全存储后重试。"
+            : this.backend.providers.redact(message),
+      };
+      throw Object.assign(new Error(failure.message), failure);
     }
+    return response;
   }
   /** @param {ServiceSocket} socket @param {unknown} projectId @param {string} method @param {Fields} params */
   terminalRead(socket, projectId, method, params) {
     if (
       this.closed ||
-      socket.readyState !== 1 ||
+      !connected(socket) ||
       !this.clients.has(socket) ||
       !terminalMethods.has(method) ||
       typeof projectId !== "string"
@@ -1410,6 +1492,8 @@ class DesktopService {
     });
   }
   async initRemote() {
+    if (this.remote instanceof NativeRemote)
+      this.backend.host.client.requireCapability("remoteGatewayV1");
     await this.remote?.close();
     if (this.closed || this.exitRequested || this.backend.closing)
       throw new Error("Desktop is closing");
@@ -1485,6 +1569,7 @@ class DesktopService {
     clearTimeout(this.timer ?? undefined);
     clearInterval(this.activityTimer);
     clearInterval(this.flushTimer);
+    for (const owner of this.clients) if (mainClient(owner)) this.disconnectClient(owner);
     for (const socket of this.server?.clients ?? []) {
       this.stopSending(socket);
       this.releaseHistoryViews(socket);
@@ -1524,7 +1609,7 @@ class DesktopService {
       const accepted = await entry.ready;
       const current = () =>
         this.browserEntrypoints.get(key)?.has(entry) &&
-        entry.socket.readyState === 1 &&
+        connected(entry.socket) &&
         this.projectForThread(request.projectId, request.threadId) === entry.project &&
         this.backend.currentConnection(entry.project, entry.client) &&
         entry.project.service?.serviceId === request.coreInstanceId &&
@@ -1568,7 +1653,7 @@ class DesktopService {
   }
   /** @param {ToolRequest} request @param {string} key @param {ServiceSocket} socket @param {"prepare"|"execute"} phase @param {ToolRequest["browserApproval"]} [browserApproval] @returns {Promise<unknown>} */
   async dispatchBrowserDiscovery(request, key, socket, phase, browserApproval) {
-    if (request.signal?.aborted || socket.readyState !== 1 || this.browserPending.size >= 8)
+    if (request.signal?.aborted || !connected(socket) || this.browserPending.size >= 8)
       throw new Error("Browser entry unavailable");
     const requestId = ++this.nextBrowserId;
     return new Promise((resolve, reject) => {
@@ -1624,13 +1709,13 @@ class DesktopService {
   /** @param {ToolRequest} request @param {string} key @param {BrowserClaim|undefined} claim */
   async prepareBrowserDiscovery(request, key, claim) {
     for (const [id, record] of this.browserDiscoveryPlans)
-      if (record.plan.expiresAt <= Date.now() || record.socket.readyState !== 1)
+      if (record.plan.expiresAt <= Date.now() || !connected(record.socket))
         this.browserDiscoveryPlans.delete(id);
     if (this.browserDiscoveryPlans.size >= 128) return { error: "host_busy", dispatch: "not_sent" };
     const entry = await this.browserEntrypoint(request, key);
     const socket = claim?.socket ?? entry?.socket;
     const current = () =>
-      socket?.readyState === 1 &&
+      connected(socket) &&
       !request.signal?.aborted &&
       claim === this.browserClaims.get(key) &&
       (!entry || this.browserEntrypoints.get(key)?.has(entry)) &&
@@ -1695,7 +1780,7 @@ class DesktopService {
       record.key !== key ||
       !isDeepStrictEqual(record.plan, plan) ||
       record.plan.expiresAt <= Date.now() ||
-      record.socket.readyState !== 1 ||
+      !connected(record.socket) ||
       record.claim !== claim ||
       request.signal?.aborted ||
       this.projectForThread(request.projectId, request.threadId)?.service?.serviceId !==
@@ -1823,7 +1908,7 @@ class DesktopService {
       !this.closed &&
       this.computerSocket === socket &&
       this.clients.has(socket) &&
-      socket.readyState === 1 &&
+      connected(socket) &&
       (phase === "revokeProject" ||
         (!!project &&
           this.backend.projects.get(projectId) === project &&
@@ -1910,7 +1995,7 @@ class DesktopService {
       !this.closed &&
       this.computerSocket === socket &&
       this.clients.has(socket) &&
-      socket.readyState === 1 &&
+      connected(socket) &&
       !!project &&
       this.backend.projects.get(projectId) === project &&
       this.backend.currentConnection(project, client) &&
@@ -2096,7 +2181,7 @@ class DesktopService {
       claim = this.browserClaims.get(key);
     }
     // 已批准计划在派发前失去授权时，必须重新授权和观察；普通读取仍报告宿主不可用。
-    if (!claim || claim.socket.readyState !== 1)
+    if (!claim || !connected(claim.socket))
       return action && phase === "execute"
         ? browserFailure(
             "plan_stale",
@@ -2412,7 +2497,7 @@ class DesktopService {
           const project = this.projectForThread(projectId, threadId);
           return (
             this.browserClaims.get(key) === claim &&
-            claim.socket.readyState === 1 &&
+            connected(claim.socket) &&
             ((!image &&
               (closedPageIds.includes(pageClaim.pageId) ||
                 revokedPageIds.includes(pageClaim.pageId))) ||
@@ -2453,7 +2538,7 @@ class DesktopService {
         signal?.aborted ||
         this.browserClaims.get(key) !== claim ||
         claim.pages.get(pageClaim.pageId) !== pageClaim ||
-        claim.socket.readyState !== 1
+        !connected(claim.socket)
       )
         return browserFailure("human_control", "Browser authorization was revoked during capture");
       if (
@@ -2493,7 +2578,7 @@ class DesktopService {
         signal?.aborted ||
         this.browserClaims.get(key) !== claim ||
         claim.pages.get(pageClaim.pageId) !== pageClaim ||
-        claim.socket.readyState !== 1
+        !connected(claim.socket)
       )
         return browserFailure("human_control", "Browser authorization was revoked during capture");
       const current = this.projectForThread(projectId, threadId);
@@ -2528,7 +2613,7 @@ function livePageOwner(lease) {
   return !!lease.socket && !!lease.client && !!lease.project;
 }
 
-/** @param {OutboundEntry} entry @param {ServiceSocket['projection']} [projection] */
+/** @param {OutboundEntry} entry @param {RemoteServiceSocket['projection']} [projection] */
 function outboundMessage(entry, projection) {
   if (entry.kind === "message") return entry.value;
   const key = "method" in entry.header ? "params" : "result";

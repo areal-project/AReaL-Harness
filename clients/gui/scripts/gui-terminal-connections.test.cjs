@@ -32,6 +32,62 @@ function service() {
   value.schedule = () => {};
   return value;
 }
+test("same Main dispatch preserves terminal ownership without a Desktop socket", async () => {
+  const { ServiceConnection } = require("../app/src/core/service-connection.cjs");
+  const { PROTOCOL } = require("../app/src/core/service-protocol.cjs");
+  const f = service();
+  f.backend.connections = { revokeDesktopToolHost() {} };
+  const library = {};
+  f.backend.snapshot = () => ({ library, projects: [] });
+  let closed = 0;
+  const connection = new ServiceConnection(
+    undefined,
+    () => closed++,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    async (request) => {
+      assert.equal(request.method, "areal/process/read");
+      assert.equal(request.params.id, "terminal");
+      return { chunks: [{ dataBase64: "ZGF0YQ==" }] };
+    },
+  );
+  try {
+    const metadata = connection.connectMain(f);
+    assert.equal(metadata.pid, process.pid);
+    assert.equal(Object.hasOwn(metadata, "endpoint"), false);
+    assert.equal(Object.hasOwn(metadata, "token"), false);
+    assert.equal(connection.socket, undefined);
+    const hello = await connection.request("hello", {
+      protocol: PROTOCOL,
+      identity: "test",
+      capabilities: { computerHost: 1 },
+    });
+    assert.equal(hello.computerHostOwned, true);
+    hello.snapshot.library.changed = true;
+    assert.deepEqual(library, {});
+    const owner = f.backend.desktopToolOwner();
+    assert.equal(owner.kind, "main");
+    assert.equal(Object.hasOwn(owner, "readyState"), false);
+    assert.equal(Object.hasOwn(owner, "send"), false);
+    assert.deepEqual(
+      await f.terminalRead(owner, "project", "areal/process/read", { id: "terminal" }),
+      {
+        chunks: [{ dataBase64: "ZGF0YQ==" }],
+      },
+    );
+    f.disconnectClient(owner);
+    assert.equal(closed, 1);
+    await assert.rejects(connection.request("snapshot"), { code: "DISCONNECTED" });
+  } finally {
+    connection.close();
+    f.close();
+  }
+});
 test("terminal replies are bound to the original authenticated Main socket", async () => {
   const f = service(),
     a = socket(),

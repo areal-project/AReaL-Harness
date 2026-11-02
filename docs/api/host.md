@@ -231,6 +231,14 @@ action 为 `begin`（`target:{kind:"current"|"newAccount"|"saved",accountId?}`�
 
 丢失后台任务的原命令以 `blocked/outcomeUnknown` 表示历史效果未知，保留原 `acceptedPending` 回执、身份与恢复证据；它不表示未执行。GUI 保留原请求并展示未知结果，连接与账号读取仍可用，当前状态不能证明旧动作的受理或效果。存在未知请求时不自动交接、配置网络或重发该来源命令。刷新重新查询原操作；已获证明的终态可以解除对应限制，当次只读取来源状态，不附带目录刷新、网络配置或旧动作提交。
 
+## Host 休眠保护
+
+`powerV1` 提供只读 `host.power({sourceId})`，返回 `{enabled,active,error}`。来源必须已提交。Host 读取该来源原 `core_home/library.json` 的 `settings.preventSleep`，默认启用；保存的 `false` 在 GUI 退出后继续生效。GUI 保存原 library 设置后读取此接口确认；不提交任务活动布尔值，也不创建第二份偏好。
+
+Host 仅通过已存在的共享 Core 连接读取 `areal/server/status`。活动 Turn、Goal、上下文压缩或 `running` workgroup 需要保护；未来定时 Task、队列项与持久终端本身不算活动。已有服务的状态暂不可用时保留保护并报告诊断，读取不会启动或重新激活项目。来源偏好按既有项目绑定生效，未绑定 GUI 来源的 CLI 项目使用默认启用策略。
+
+macOS 由 Host 持有 `caffeinate -i -w <HostPID>`，Linux 使用 `systemd-inhibit` 与随 Host 关闭的标准输入租约。没有受保护活动或来源关闭该选项时释放对应保护；正常 Host 停止关闭并等待 helper，Host 崩溃时通过进程或管道生命期释放。helper 不可用只更新保护诊断，不停止 Core 业务。GUI 的通知仍仅在 GUI 在线时通过 Main 显示；此接口不负责手机推送。
+
 ## 退出与服务管理器契约
 
 `areal host run` 全生命周期持有 `host.lock`。并发竞争的输家在 macOS 退出 0，在 Linux 退出 73，systemd 配置 `RestartPreventExitStatus=73`。正常显式停止退出 0；异常失败退出非零并消耗有界重启预算。macOS 使用 `KeepAlive.SuccessfulExit=false`。持久显式停止意图禁止自动重启，新的显式本机启动可清除它。五分钟最多自动重启五次，退避 1、2、4、8、16 秒；用尽后持久化 `crashLoopStopped`。

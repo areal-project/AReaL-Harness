@@ -1690,6 +1690,15 @@ impl Migration {
         }
         Ok(None)
     }
+    pub fn power_sources(&self) -> Result<BTreeMap<String, PathBuf>> {
+        let mut sources = BTreeMap::new();
+        for record in self.records()? {
+            if self.committed(&record)?.is_some() {
+                sources.insert(record.source_id, record.source.core_home);
+            }
+        }
+        Ok(sources)
+    }
     pub fn credential(
         &self,
         project: &ProjectRegistration,

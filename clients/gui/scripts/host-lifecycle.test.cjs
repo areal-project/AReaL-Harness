@@ -627,7 +627,7 @@ test("failed explicit reconnect keeps the original Host reference durable", asyn
     requestId,
   );
 });
-test("retained Desktop identity failure preserves explicit Host recovery intent", async (t) => {
+test("missing Core executable preserves the original explicit Host recovery intent", async (t) => {
   const f = await fixture(t);
   const requestId = randomUUID();
   f.operations.set(requestId, f.receipt(requestId));
@@ -657,8 +657,12 @@ test("retained Desktop identity failure preserves explicit Host recovery intent"
     JSON.parse(await readFile(f.backend.controlPath, "utf8")).references[0].requestId,
     requestId,
   );
-  await f.backend.initialize();
-  assert.equal(f.backend.backendUpdate.state, "failed");
+  await assert.rejects(f.backend.initialize(), /Core 程序路径不可用/);
+  assert.equal(f.backend.hostReferences.has(requestId), true);
+  assert.equal(
+    JSON.parse(await readFile(f.backend.controlPath, "utf8")).references[0].requestId,
+    requestId,
+  );
   assert.equal(reconnects, 0);
 });
 test("explicit reconnect rejects a simultaneous new stop before any dispatch", async (t) => {

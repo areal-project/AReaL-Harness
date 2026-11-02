@@ -231,6 +231,14 @@ Restart recovery confirms a handoff when its original marker request ID matches 
 
 A command whose background task was lost becomes `blocked/outcomeUnknown`, preserving its original `acceptedPending` receipt, identity, and recovery evidence. This means its historical effect is unknown, not that it did not execute. GUI retains the original request and shows the uncertainty while connection and account reads remain available. Current state cannot establish the old action's admission or effect. Unresolved requests prevent automatic handoff, network configuration, or new source commands. Refresh queries the original operations again; proven terminal outcomes can release their corresponding restrictions. That refresh reads source state only, without catalog refresh, network configuration, or old-action submission.
 
+## Host sleep protection
+
+`powerV1` provides read-only `host.power({sourceId})`, returning `{enabled,active,error}` for a committed source. Host reads the source's original `core_home/library.json` setting `settings.preventSleep`, enabled by default. A saved `false` remains effective after GUI exit. After saving the original library setting, GUI reads this endpoint to confirm it. GUI does not submit activity booleans or create another preference copy.
+
+Host reads `areal/server/status` only over existing shared Core connections. Active Turns, Goals, compactions, or `running` workgroups require protection. Future scheduled Tasks, queue items, and persistent terminals alone do not. Temporarily unavailable state for an existing service retains protection and reports a diagnostic. Reads never start or reactivate projects. Preferences follow existing source/project bindings; CLI projects without a GUI source retain the enabled default.
+
+On macOS, Host holds `caffeinate -i -w <HostPID>`. Linux uses `systemd-inhibit` and a standard-input lease that closes with Host. Protection is released when no protected work remains or the corresponding source disables it. Normal Host stop closes and waits for the helper; Host crash releases it through process or pipe lifetime. Helper failure updates protection diagnostics without stopping Core work. GUI notifications remain a Main responsibility while GUI is online; this endpoint does not provide phone push.
+
 ## Exit and service-manager contract
 
 `areal host run` holds `host.lock` for its entire lifetime. A losing concurrent process exits 0 on macOS and 73 on Linux; systemd uses `RestartPreventExitStatus=73`. Normal requested stop exits 0. Unexpected failure exits nonzero and consumes the bounded restart budget. macOS uses `KeepAlive.SuccessfulExit=false`. Durable explicit stop intent suppresses automatic restart, but a fresh explicit local start may clear it. At most five automatic restarts occur within five minutes, with delays of 1, 2, 4, 8, and 16 seconds; exhaustion records `crashLoopStopped`.

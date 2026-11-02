@@ -1,5 +1,7 @@
 #[path = "gateway/owner.rs"]
 mod gateway_owner;
+#[path = "power.rs"]
+mod power;
 #[path = "schedule_connection.rs"]
 mod schedule_connection;
 #[path = "schedules.rs"]
@@ -87,6 +89,7 @@ struct Host {
     gateway: gateway_owner::Gateway,
     subscriptions: subscriptions::Subscriptions,
     schedules: schedules::Schedules,
+    power: power::Power,
 }
 impl Slot {
     fn imported(registration: ProjectRegistration) -> Self {
@@ -290,6 +293,7 @@ async fn run_local(options: RunOptions) -> Result<HostExit> {
         remote,
         gateway: gateway_owner::Gateway::default(),
         subscriptions: subscriptions::Subscriptions::default(),
+        power: power::Power::default(),
     });
     host.schedules.import(
         &host.migration,
@@ -324,6 +328,8 @@ async fn run_local(options: RunOptions) -> Result<HostExit> {
     tokio::pin!(gateway);
     let subscriptions = host.run_subscriptions();
     tokio::pin!(subscriptions);
+    let power = power::run(host.clone());
+    tokio::pin!(power);
     loop {
         tokio::select! {
             _=host.exit.notified()=>break,
@@ -331,10 +337,12 @@ async fn run_local(options: RunOptions) -> Result<HostExit> {
             _=&mut connections=>unreachable!("schedule connections live with the Host"),
             _=&mut gateway=>unreachable!("Gateway lives with the Host"),
             _=&mut subscriptions=>unreachable!("subscription owners live with the Host"),
+            _=&mut power=>unreachable!("power protection lives with the Host"),
             connection=listener.accept()=> {let (stream,_)=connection?;let host=host.clone();tokio::task::spawn_local(async move {let _=connection_loop(host,stream).await;});}
         }
     }
     host.close_subscriptions().await;
+    host.power.close().await;
     std::fs::remove_file(socket)?;
     std::fs::remove_file(directory.join("host.json"))?;
     drop(lock);
@@ -957,6 +965,11 @@ impl Host {
             "host.activity" => {
                 serde_json::from_value::<Empty>(params)?;
                 Ok(serde_json::to_value(self.activity().await)?)
+            }
+            "host.power" => {
+                let query: power::Query = serde_json::from_value(params)?;
+                self.refresh_power().await?;
+                serde_json::to_value(self.power.view(&query.source_id)?).map_err(Into::into)
             }
             "projects.list" => {
                 serde_json::from_value::<Empty>(params)?;
@@ -2266,6 +2279,7 @@ mod tests {
             remote: crate::remote_state::RemoteState::new(&home),
             gateway: gateway_owner::Gateway::default(),
             subscriptions: subscriptions::Subscriptions::default(),
+            power: power::Power::default(),
             schedules: schedules::Schedules::load(&home).unwrap(),
         });
         let (socket, _peer) = std::os::unix::net::UnixStream::pair().unwrap();
@@ -2861,7 +2875,7 @@ mod tests {
             let workspace=root.path().join("workspace");std::fs::create_dir(&workspace).unwrap();let workspace=workspace.canonicalize().unwrap();
             let mut slots=BTreeMap::new();
             for id in ["a","b","c"] {slots.insert(id.into(),Slot {registration:ProjectRegistration {project_id:id.into(),workspace:workspace.clone(),data_dir:home.join(id),source:ProjectSource::Cli,default_binding:false},gate:Arc::new(Mutex::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new()});}
-            let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
+            let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),power:power::Power::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
             let registration=host.slots.borrow()["b"].registration.clone();storage::private_dir(&registration.data_dir).unwrap();let instance=Host::service_id(&registration);let directory=storage::registry(&home,&instance).unwrap();storage::private_dir(&directory).unwrap();
             let service:Service=serde_json::from_value(json!({"protocolVersion":1,"serviceId":instance,"generation":uuid::Uuid::new_v4().to_string(),"workspace":workspace,"dataDir":registration.data_dir,"configFingerprint":"fixture","owner":host.owner(),"endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1","authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),"hostPid":1,"corePid":1,"state":"stopped"})).unwrap();storage::write(&directory.join("service.json"),&service).unwrap();storage::write(&directory.join("crash.json"),&storage::CrashReceipt {version:1,unexpected_core_exit:true,identity:service.identity.clone(),owner:service.owner.clone(),components:BTreeMap::new(),cleanup_confirmed:true}).unwrap();
             let activation=uuid::Uuid::new_v4().to_string();let record=Operation {digest:"fixture".into(),receipt:json!({"version":1,"requestId":activation,"method":"project.ensure","projectId":"b","state":"acceptedPending"}),evidence:json!({"serviceId":instance,"fingerprint":"fixture","owner":host.owner(),"registration":registration,"previousService":null})};storage::write(&wire::operation_path(&home,&activation),&record).unwrap();

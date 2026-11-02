@@ -338,7 +338,7 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
     report.visualEvidence.push({ name, png, aria });
     delete report.visualCapturePending;
   };
-  const launch = async () => {
+  const launch = async (expectedReady = true) => {
     app = await electron.launch({
       executablePath,
       args: isMac ? [] : [fixture.path],
@@ -356,6 +356,43 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
     });
     await page.reload();
     await page.locator("[data-testid=areal-workbench]").waitFor({ timeout: 120000 });
+    const actual = await app.evaluate(({ app, BrowserWindow }) => {
+      const preferences = BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();
+      return {
+        pid: process.pid,
+        electron: process.versions.electron,
+        userData: app.getPath("userData"),
+        sandbox: preferences.sandbox,
+        contextIsolation: preferences.contextIsolation,
+        nodeIntegration: preferences.nodeIntegration,
+        desktopLifetime: process.env.AREAL_GUI_DESKTOP_LIFETIME_FD,
+      };
+    });
+    assert.equal(actual.pid, child.pid);
+    assert.equal(actual.electron, require("electron/package.json").version);
+    assert.equal(actual.userData, env.AREAL_GUI_USER_DATA);
+    assert.equal(actual.sandbox, true);
+    assert.equal(actual.contextIsolation, true);
+    assert.equal(actual.nodeIntegration, false);
+    assert.equal(actual.desktopLifetime, undefined);
+    if (expectedReady) {
+      await until(async () => (await state()).connection?.state === "ready", "Main instance ready");
+      const client = new HostClient();
+      try {
+        await client.connect(env.AREAL_HARNESS_SERVICE_HOME);
+        actual.host = { hostId: client.hostId, generation: client.generation };
+        const status = await client.status();
+        assert.equal(status.hostId, client.hostId);
+        assert.equal(status.generation, client.generation);
+      } finally {
+        client.close();
+      }
+    } else
+      assert.equal(await exists(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json")), false);
+    await noDesktopProcess(`Main launch ${child.pid}`);
+    report.instanceDoctors ??= [];
+    report.instanceDoctors.push(actual);
+    await writeFile(join(scratch, `doctor-${child.pid}.json`), JSON.stringify(actual, null, 2));
   };
   const quit = async () => {
     const pid = child.pid;
@@ -401,6 +438,60 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
     return records[0].generation;
   };
   const descriptorPath = join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json");
+  const processes = () =>
+    execFileSync("/bin/ps", ["-axo", "pid=,ppid=,command="], { encoding: "utf8" })
+      .split("\n")
+      .flatMap((line) => {
+        const row = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/);
+        return row ? [{ pid: Number(row[1]), ppid: Number(row[2]), command: row[3] }] : [];
+      });
+  const noDesktopProcess = async (phase) => {
+    assert.equal(await exists(join(env.AREAL_CORE_HOME, "service.json")), false);
+    const legacy = processes().filter(
+      (row) => row.command.includes(scratch) && row.command.includes("--areal-desktop-service"),
+    );
+    assert.deepEqual(legacy, []);
+    report.mainOnly ??= [];
+    report.mainOnly.push({ phase, desktopDescriptorAbsent: true, desktopProcesses: legacy });
+  };
+  let powerSource;
+  const powerRead = async () => {
+    const client = new HostClient();
+    try {
+      await client.connect(env.AREAL_HARNESS_SERVICE_HOME);
+      client.requireCapability("powerV1");
+      powerSource ??= (await client.request("remote.read", {})).sourceId;
+      assert.equal(typeof powerSource, "string");
+      return await client.request("host.power", { sourceId: powerSource });
+    } finally {
+      client.close();
+    }
+  };
+  const powerActive = async (phase) => {
+    const proof = await until(async () => {
+      const state = await powerRead();
+      if (!state.enabled || !state.active || state.error) return false;
+      const helper = processes().find(
+        (row) =>
+          row.ppid === adapter.pid &&
+          (isMac
+            ? row.command === `/usr/bin/caffeinate -i -w ${adapter.pid}`
+            : row.command.includes("/usr/bin/systemd-inhibit")),
+      );
+      if (!helper) return false;
+      const assertions = isMac
+        ? execFileSync("/usr/bin/pmset", ["-g", "assertions"], { encoding: "utf8" })
+            .split("\n")
+            .filter((line) => line.includes(`pid ${helper.pid}(`))
+        : [];
+      if (isMac && !assertions.some((line) => line.includes("PreventUserIdleSystemSleep")))
+        return false;
+      return { phase, state, helper, assertions };
+    }, `Host sleep protection ${phase}`);
+    report.power ??= [];
+    report.power.push(proof);
+    return proof;
+  };
   const sameOwner = async () => {
     const current = await json(descriptorPath);
     assert.equal(current.pid, adapter.pid);
@@ -499,6 +590,21 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
     report.hostId = adapter.hostId;
     report.hostGeneration = adapter.generation;
     report.coreGeneration = await generation();
+    await noDesktopProcess("GUI active");
+    assert.equal(await app.evaluate(() => process.env.AREAL_GUI_DESKTOP_LIFETIME_FD), undefined);
+    const firstPower = await powerActive("original approval pending");
+    await call("library", { operation: "settings", key: "preventSleep", value: false });
+    await until(async () => {
+      const power = await powerRead();
+      return !power.enabled && !power.active && !alive(firstPower.helper.pid);
+    }, "saved source opt-out releases the actual helper");
+    report.power.push({
+      phase: "saved source opt-out",
+      state: await powerRead(),
+      exitedPid: firstPower.helper.pid,
+    });
+    await call("library", { operation: "settings", key: "preventSleep", value: true });
+    const headlessPower = await powerActive("source protection restored");
     const projectButton = remote.getByRole("button", { name: "workspace", exact: true });
     if ((await projectButton.getAttribute("aria-expanded")) === "true") await projectButton.click();
     await projectButton.click();
@@ -524,6 +630,9 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
     await dump(remote, "before-quit-reviewed-approval-pwa");
     await quit();
     await sameOwner();
+    await noDesktopProcess("GUI exited");
+    const keptPower = await powerActive("GUI exited with original approval pending");
+    assert.equal(keptPower.helper.pid, headlessPower.helper.pid);
     checks.push(
       "normal GUI exit preserves production Host identity and generation and original Core generation with approval pending",
     );
@@ -547,6 +656,15 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
     assert.deepEqual(stages, ["approval", "completion"]);
     assert.deepEqual(modelErrors, []);
     await sameOwner();
+    await until(async () => {
+      const power = await powerRead();
+      return power.enabled && !power.active && !power.error && !alive(headlessPower.helper.pid);
+    }, "original completion releases the actual Host sleep helper");
+    report.power.push({
+      phase: "original Core work completed",
+      state: await powerRead(),
+      exitedPid: headlessPower.helper.pid,
+    });
     checks.push("PWA allowOnce after GUI exit completes the original turn and filesystem effect");
     await dump(remote, "after-quit-original-completed-pwa");
     await launch();
@@ -635,6 +753,12 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
     const stopReceipt = await readOfflineHostReceipt(env.AREAL_CORE_BIN, references[0]);
     assert.equal(stopReceipt?.state, "completed");
     report.stopIntent = { reference: references[0], receipt: stopReceipt };
+    for (const proof of report.power.filter((entry) => entry.helper))
+      assert.equal(
+        alive(proof.helper.pid),
+        false,
+        "tracked Host power helper no longer alive at normal Host stop",
+      );
     await until(
       async () => !(await exists(descriptorPath)) && !alive(adapter.pid),
       "Host stopped and descriptor removed",
@@ -644,7 +768,7 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
       .getByText(/已断开|不可用/)
       .waitFor();
     await quit();
-    await launch();
+    await launch(false);
     report.stoppedSnapshot = await until(async () => {
       const snapshot = await state();
       return (

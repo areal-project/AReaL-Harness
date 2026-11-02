@@ -1,11 +1,9 @@
 // @ts-check
 "use strict";
 const { requiresCurrentCommands } = require("./service-command-compatibility.cjs");
-const diagnostics = require("./diagnostics.cjs");
 const { operationCore, observedOperation } = require("./receipt-contract.cjs");
 const { commandSemantics, desktopError } = require("@areal/workbench/desktop-contract");
 const { startupTrace } = require("./startup-timing.cjs");
-const { spawn } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 const { mkdir, readFile, realpath, open, writeFile, rename, rm } = require("node:fs/promises");
 const { join } = require("node:path");
@@ -27,11 +25,8 @@ const {
 } = require("./gui-resource-contract.cjs");
 const { readReferences, readLifecycleResponse } = require("./service-control.cjs");
 const { PROTOCOL, COMMAND_CONTRACT, encodeMedia, decodeMedia } = require("./service-protocol.cjs");
-const { serviceIdentity } = require("./service-config.cjs");
 const { genUiScope, createGenUiState } = require("./gen-ui-state.cjs");
 const { inspectCoreCapabilities } = require("./core-capabilities.cjs");
-const { desktopExecutables } = require("./desktop-executables.cjs");
-const { sameOwner, scrubOwnerEnvironment } = require("./application-owner.cjs");
 const { checkHostPrerequisites } = require("./host-prerequisites.cjs");
 /** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -110,7 +105,7 @@ async function waitForProcessExit(pid) {
   }
 }
 
-/** @typedef {import('./service-connection.cjs').ServiceMetadata} Metadata */
+/** @typedef {import('./service-connection.cjs').ServiceMetadata|ReturnType<InstanceType<typeof import('./service-protocol.cjs').DesktopService>['connectMain']>['metadata']} Metadata */
 /** @typedef {import('./service-control.cjs').LifecycleReference} Reference */
 /** @typedef {import('./service-control.cjs').LifecycleResponse} Receipt */
 /** @typedef {import('./lifecycle.cjs').RecoveryObservation} Observation */
@@ -137,6 +132,8 @@ class SharedCoreBackend {
   }) {
     /** @type {InstanceType<typeof ServiceConnection>|null|undefined} */
     this.connection = undefined;
+    /** @type {Awaited<ReturnType<typeof import('./service-main.cjs').createMainDesktop>>|undefined} */
+    this.mainDesktop = undefined;
     /** @type {Metadata|undefined} */
     this.metadata = undefined;
     /** @type {Metadata|null|undefined} */
@@ -198,8 +195,6 @@ class SharedCoreBackend {
     this.app = app;
     this.options = options;
     this.applicationOwner = options.applicationOwner;
-    /** @type {Set<import("node:stream").Readable|import("node:stream").Writable>} */
-    this.desktopLifetimes = new Set();
     this.home = options.home;
     this.onChange = onChange;
     this.genUiState = createGenUiState(this.home);
@@ -388,7 +383,12 @@ class SharedCoreBackend {
     );
   }
   scheduleReconnect() {
-    if (!(this.metadata?.identity ?? this.identity) || !this.canReconnect() || this.reconnectTimer)
+    if (
+      this.metadata?.local === true ||
+      !(this.metadata?.identity ?? this.identity) ||
+      !this.canReconnect() ||
+      this.reconnectTimer
+    )
       return;
     this.connectionState = { state: "connecting" };
     const delay = Math.min(30000, 500 * 2 ** Math.min(this.reconnectAttempts ?? 0, 6));
@@ -441,23 +441,15 @@ class SharedCoreBackend {
     }, delay);
     this.reconnectTimer.unref?.();
   }
-  /** @param {{expectedIdentity?:string,passive?:boolean}} [options] */
-  async attach({ expectedIdentity, passive = false } = {}) {
-    /** @type {unknown} */
-    let candidate;
-    try {
-      candidate = JSON.parse(await readFile(join(this.home, "service.json"), "utf8"));
-    } catch (e) {
-      if (desktopError(e).code === "ENOENT") return false;
-      throw e;
-    }
+  /** @param {unknown} [candidate] */
+  createConnection(candidate) {
     this.terminalConnections.close();
     this.terminalConnections = new GuiTerminalConnections();
     const connection = new ServiceConnection(
       (packet) => {
         if (this.connection !== connection) return;
         try {
-          this.accept(packet, candidate);
+          this.accept(packet, candidate ?? this.metadata);
         } catch {
           this.connection = null;
           connection.close();
@@ -499,6 +491,19 @@ class SharedCoreBackend {
         return this.terminalConnections.request(request);
       },
     );
+    return connection;
+  }
+  /** @param {{expectedIdentity?:string,passive?:boolean}} [options] */
+  async attach({ expectedIdentity, passive = false } = {}) {
+    /** @type {unknown} */
+    let candidate;
+    try {
+      candidate = JSON.parse(await readFile(join(this.home, "service.json"), "utf8"));
+    } catch (e) {
+      if (desktopError(e).code === "ENOENT") return false;
+      throw e;
+    }
+    const connection = this.createConnection(candidate);
     /** @type {import("./service-connection.cjs").ServiceMetadata} */
     let metadata;
     try {
@@ -508,10 +513,7 @@ class SharedCoreBackend {
       if (desktopError(e).code === "DISCONNECTED") return false;
       throw e;
     }
-    this.foreignOwner =
-      this.applicationOwner && !sameOwner(metadata.applicationOwner, this.applicationOwner)
-        ? metadata
-        : null;
+    this.foreignOwner = metadata;
     const identity =
       expectedIdentity ??
       (passive ? (this.metadata?.identity ?? this.identity) : metadata.identity);
@@ -536,8 +538,8 @@ class SharedCoreBackend {
           const packet = await connection.request("hello", {
             protocol: PROTOCOL,
             identity,
-            notifications: !!this.onNotification,
-            capabilities: { computerHost: 1 },
+            notifications: false,
+            capabilities: {},
           });
           if (this.connection !== connection)
             throw Object.assign(new Error("后台服务连接已变化，请重新连接"), {
@@ -736,138 +738,66 @@ class SharedCoreBackend {
   /** @param {boolean} [_automatic] @param {{reconnectHost?:boolean}} [options] @returns {Promise<void>} */
   async initialize(_automatic = false, { reconnectHost = false } = {}) {
     const trace = startupTrace("service.initialize");
-    trace.advance("home");
     try {
       await mkdir(this.home, { recursive: true, mode: 0o700 });
       this.home = await realpath(this.home);
       if (this.disposed) throw new Error("GUI 连接已关闭");
-      trace.advance("attach");
-      const retained = await this.attach();
-      if (this.disposed) throw new Error("GUI 连接已关闭");
-      if (!retained) {
-        trace.advance("prerequisites");
-        await this.prerequisiteCheck({ app: { isPackaged: this.app.isPackaged === true } });
-        if (this.disposed) throw new Error("GUI 连接已关闭");
-      }
-      trace.advance("identity");
-      try {
-        if (!this.options.binary) throw new Error("Core 程序路径不可用");
-        this.identity = await serviceIdentity({ ...this.options, binary: this.options.binary });
-      } catch (error) {
-        if (reconnectHost || !retained || !this.status.connected) throw error;
-        this.backendUpdate = { state: "failed", message: desktopError(error).message };
-        this.onChange();
-        return;
-      }
-      if (this.disposed) throw new Error("GUI 连接已关闭");
-      if (retained) {
-        if (reconnectHost) {
-          this.assertApplicationWrite();
-          await this.requireConnection().request("hostReconnect", { protocol: PROTOCOL }, true);
-        }
-        if (!this.foreignOwner)
-          this.backendUpdate =
-            this.identity === this.metadata?.identity ? undefined : { state: "pending" };
-        this.onChange();
-        return;
-      }
-      // Explain a known binary incompatibility through this connection attempt's
-      // error channel; never expose shared or stale service log contents to GUI.
-      trace.advance("capabilities");
-      if (!this.options.binary) throw new Error("Core 程序路径不可用");
-      if (!retained) await inspectCoreCapabilities(this.options.binary);
-      trace.advance("spawn_wait");
-      /** @type {NodeJS.ProcessEnv} */
-      const env = {
-        ...scrubOwnerEnvironment(),
-        AREAL_BACKEND: "areal",
-        AREAL_CORE_HOME: this.home,
-        ...(this.applicationOwner
-          ? {
-              AREAL_GUI_OWNER: JSON.stringify(this.applicationOwner),
-              AREAL_GUI_DESKTOP_LIFETIME_FD: "3",
-            }
-          : {}),
-      };
-      delete env.ELECTRON_RUN_AS_NODE;
-      const appPath = this.app.isPackaged ? undefined : this.app.getAppPath?.();
-      if (!this.app.isPackaged && appPath === undefined) throw new Error("桌面启动路径不可用");
-      const args =
-        appPath === undefined ? ["--areal-core-service"] : [appPath, "--areal-core-service"];
-      const executable = desktopExecutables({ packaged: this.app.isPackaged }).service;
-      const log = await open(join(this.home, "service.log"), "a", 0o600);
-      try {
-        /** @type {unknown} */
-        let launchError;
-        let retryLaunch = false;
-        const launch = () => {
-          if (this.disposed) throw new Error("GUI 连接已关闭");
-          retryLaunch = false;
-          /** @type {import("node:child_process").StdioOptions} */
-          const stdio = [
-            "ignore",
-            log.fd,
-            log.fd,
-            ...(this.applicationOwner ? [/** @type {const} */ ("pipe")] : []),
-          ];
-          const child = spawn(executable, args, {
-            detached: true,
-            stdio,
-            env,
-            windowsHide: true,
-          });
-          child.once("spawn", () => {
-            if (child.pid !== undefined)
-              diagnostics.record({ type: "desktop-spawn", pid: child.pid });
-          });
-          child.once(
-            "exit",
-            (exitCode, signal) =>
-              child.pid !== undefined &&
-              diagnostics.record({ type: "desktop-exit", pid: child.pid, exitCode, signal }),
-          );
-          if (this.applicationOwner) {
-            const lifetime = child.stdio[3];
-            if (!lifetime) throw new Error("GUI 应用生命期管道不可用");
-            this.desktopLifetimes.add(lifetime);
-            lifetime.on("error", () => {});
-            child.once("exit", () => {
-              lifetime.destroy();
-              this.desktopLifetimes.delete(lifetime);
-            });
-          }
-          child.once("error", (e) => {
-            diagnostics.record({ type: "desktop-spawn-error", code: desktopError(e).code });
-            launchError = e;
-          });
-          child.once("exit", (code) => {
-            retryLaunch = code === 0;
-          });
-          child.unref();
-        };
-        launch();
-        const deadline = Date.now() + 20000;
-        while (Date.now() < deadline) {
-          if (this.disposed) throw new Error("GUI 连接已关闭");
-          if (launchError) throw launchError;
-          if (await this.attach({ expectedIdentity: this.identity })) {
-            this.backendUpdate = undefined;
-            return;
-          }
-          if (retryLaunch) launch();
-          await sleep(100);
-        }
-        throw Object.assign(new Error(`后台服务未就绪；请检查 ${join(this.home, "service.log")}`), {
-          code: "SERVICE_NOT_READY",
+      if (!this.mainDesktop || this.mainDesktop.closed) {
+        const legacy = await readFile(join(this.home, "service.json"), "utf8").catch((error) => {
+          if (desktopError(error).code === "ENOENT") return null;
+          throw error;
         });
-      } finally {
-        await log.close();
+        if (legacy !== null) {
+          if (await this.attach()) return;
+          throw Object.assign(
+            new Error("原 Desktop 连接不可用，请先检查原后台及清理回执，不能直接接管。"),
+            { code: "SERVICE_NOT_READY" },
+          );
+        }
+        await this.prerequisiteCheck({ app: { isPackaged: this.app.isPackaged === true } });
+        const binary = this.options.binary;
+        if (!binary) throw new Error("Core 程序路径不可用");
+        const desktop = await require("./service-main.cjs").createMainDesktop({
+          ...this.options,
+          binary,
+          home: this.home,
+        });
+        if (this.disposed) {
+          await desktop.close();
+          throw new Error("GUI 连接已关闭");
+        }
+        this.mainDesktop = desktop;
       }
+      if (reconnectHost) await this.mainDesktop.adapter.reconnectHost();
+      const connection = this.createConnection();
+      const metadata = connection.connectMain(this.mainDesktop.adapter);
+      this.connection?.close();
+      this.connection = connection;
+      this.metadata = metadata;
+      this.identity = metadata.identity;
+      this.foreignOwner = null;
+      this.sequence = -1;
+      this.exitConfirmation = null;
+      try {
+        const packet = await connection.request("hello", {
+          protocol: PROTOCOL,
+          identity: metadata.identity,
+          notifications: !!this.onNotification,
+          capabilities: { computerHost: 1 },
+        });
+        this.computerHostOwned = record(packet) && packet.computerHostOwned === true;
+        this.accept(packet, metadata);
+        if (this.lastActivity) await connection.request("activity", this.lastActivity);
+        this.backendUpdate = undefined;
+      } catch (error) {
+        this.connection = null;
+        connection.close();
+        throw error;
+      }
+      trace.finish("ok");
     } catch (error) {
       trace.finish("error", error);
       throw error;
-    } finally {
-      trace.finish("ok");
     }
   }
   /** @param {string} path @returns {Promise<unknown>} */
@@ -1583,22 +1513,31 @@ class SharedCoreBackend {
       receipt.targets.every((target) => target.phase === "completed")
     ) {
       let exited = false;
-      try {
-        process.kill(reference.desktop.pid, 0);
-      } catch (error) {
-        if (desktopError(error).code === "ESRCH") exited = true;
-        else throw error;
-      }
-      if (!exited && receipt.desktopExit === "requested") {
+      const local =
+        this.metadata?.local === true &&
+        reference.desktop.pid === process.pid &&
+        this.mainDesktop?.adapter.lifecycle?.generation === reference.desktopGeneration;
+      if (local && receipt.desktopExit === "requested") {
+        await this.mainDesktop?.close();
+        exited = this.mainDesktop?.closed === true;
+      } else {
         try {
-          await waitForProcessExit(reference.desktop.pid);
-          exited = true;
+          process.kill(reference.desktop.pid, 0);
         } catch (error) {
-          operation = {
-            ...receipt,
-            phase: "acceptedPending",
-            message: desktopError(error).message,
-          };
+          if (desktopError(error).code === "ESRCH") exited = true;
+          else throw error;
+        }
+        if (!exited && receipt.desktopExit === "requested") {
+          try {
+            await waitForProcessExit(reference.desktop.pid);
+            exited = true;
+          } catch (error) {
+            operation = {
+              ...receipt,
+              phase: "acceptedPending",
+              message: desktopError(error).message,
+            };
+          }
         }
       }
       if (exited) {
@@ -2072,6 +2011,7 @@ class SharedCoreBackend {
       } finally {
         this.terminalConnections.close();
         this.connection?.close();
+        await this.mainDesktop?.close();
       }
     })());
   }

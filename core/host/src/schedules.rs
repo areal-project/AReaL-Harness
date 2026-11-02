@@ -449,6 +449,7 @@ pub(super) mod tests {
             migration: crate::migration::Migration::new(&home).unwrap().into(),
             gateway: super::gateway_owner::Gateway::default(),
             subscriptions: super::subscriptions::Subscriptions::default(),
+            power: super::power::Power::default(),
             journal: crate::journal::Journal::new(&home).unwrap(),
             remote: crate::remote_state::RemoteState::new(&home),
             schedules: Schedules::load(&home).unwrap(),

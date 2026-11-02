@@ -154,7 +154,7 @@ Store 当前写入版本、`areal/server/status.stateVersion` 与发行 `manifes
 
 ## 生命周期与恢复
 
-H1 保留独立的旧 GUI 生命周期。关闭窗口不结束 GUI 应用会话，活动 Turn/Goal 可继续，多个窗口可订阅同一 Thread。退出应用或 ⌘Q 则停止本应用全部 Desktop、Host、Core 和 Runtime；活动任务需要确认停止或取消退出，结算未完成时 Main 保持恢复入口。相同 Thread 的并发写入仍遵循 Core 的准入、CAS、队列及 requestId 规则。显式取消与关闭窗口是不同操作。
+普通 GUI 的 Main 是共享 Rust Host 的客户端，不持有 Core 生命期管道。关闭窗口保留 GUI 应用会话；退出应用或 ⌘Q 关闭本地适配和该 GUI 的工具连接，保留 Host、Core 与已受理工作。需要停止后台时使用原 Host 停止接口，按原 requestId、代际与资源结算证明查询。只有显式停止或旧后台恢复才执行停止流程。相同 Thread 的并发写入仍遵循 Core 准入、CAS、队列及 requestId 规则；GUI 不重放未知提交。
 
 服务没有闲置退出计时器。模型文件更新保持 generation 和连接；其他 TOML 更新需在后台工作结算后显式重新打开或重启。Web 等客户端可运行 `areal service ensure` 或 `restart`；浏览器不拥有进程生命周期。默认 stop 检查 `restartSafe`、`activeGoals`、`pendingQueueItems`、`activeTasks`，再通过 `drain(strategy="ifIdle")` 在 Core 准入锁内复查；有工作或资源时拒绝且不暂停任务。仅等待触发的定时安排不阻止安全重启，安排保持启用。GUI 对旧后台同时检查显式任务、目标和队列计数；旧后台将空闲安排计为忙碌时，显式停止或更新恢复可在用户再次确认后暂停这些安排，保留历史，重启后需手动恢复。`--cancel` 通过 Core drain 取消并结算。历史工具/Hook UNKNOWN 保留在 `lifecycle.executionOutcomes.uninspectedUnknown` 与 `unresolvedTools` 中，仍阻止原 Thread 继续，但不阻止已完成物理结算的服务停止。Runtime 观察失败、活跃进程、Hook task scope 不确定及未确认清理仍会阻止成功。受理停止后禁止新工作；清理失败应查日志/权威状态，不能推断任务未发生。状态检查和 drain 之间新受理的工作遵循 drain 的等待/暂停规则。
 

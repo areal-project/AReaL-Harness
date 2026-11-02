@@ -198,7 +198,7 @@ function supportedLifecycle(lifecycle, kind) {
   );
 }
 class DesktopLifecycle {
-  /** @param {{connection:InstanceType<typeof import('./service-connection.cjs').ServiceConnection>,metadata?:import('./service-connection.cjs').ServiceMetadata,home:string,forUpdate?:boolean,purpose?:string}} options */
+  /** @param {{connection:InstanceType<typeof import('./service-connection.cjs').ServiceConnection>,metadata?:InstanceType<typeof import('./service-client.cjs').SharedCoreBackend>['metadata'],home:string,forUpdate?:boolean,purpose?:string}} options */
   constructor({ connection, metadata, home, forUpdate = true, purpose = "manage" }) {
     this.connection = connection;
     this.metadata = metadata;

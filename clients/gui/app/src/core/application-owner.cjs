@@ -2,7 +2,6 @@
 "use strict";
 const { randomUUID } = require("node:crypto");
 const { mkdirSync, realpathSync } = require("node:fs");
-const { Socket } = require("node:net");
 const { isAbsolute, resolve } = require("node:path");
 const { isDeepStrictEqual } = require("node:util");
 
@@ -40,27 +39,9 @@ function scrubOwnerEnvironment(environment = process.env) {
   delete env.AREAL_GUI_DESKTOP_LIFETIME_FD;
   return env;
 }
-/** @param {()=>void} onEnd */
-function watchApplicationLifetime(onEnd) {
-  if (process.env.AREAL_GUI_DESKTOP_LIFETIME_FD !== "3")
-    throw new Error("Desktop 必须由 GUI 应用生命期管道启动");
-  const stream = new Socket({ fd: 3, readable: true, writable: false });
-  let ended = false;
-  const finish = () => {
-    if (!ended) {
-      ended = true;
-      onEnd();
-    }
-  };
-  stream.once("data", finish);
-  stream.once("end", finish);
-  stream.once("error", finish);
-  return stream;
-}
 module.exports = {
   parseOwner,
   createOwner,
   sameOwner,
   scrubOwnerEnvironment,
-  watchApplicationLifetime,
 };

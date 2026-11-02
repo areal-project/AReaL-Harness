@@ -2,7 +2,7 @@
 
 # 架构与目录
 
-共享 Host 的[目标设计与阶段](../development/shared-host-spec.md)由 [ADR 0016](../adr/0016-shared-host.md)确定，契约见 [Host API](../api/host.md)。目标是每用户一个 Rust Host 持有服务监督、项目登记、凭据与 Gateway；Core 保留执行和历史权威。`core/host` 已承载认证本机控制、项目登记和 CLI/TUI/Web 的服务生命期，客户端断开后原任务继续。GUI 的项目连接也经 Host 获取 Core 描述。Host 保存提交 journal、凭据和 Remote 配置；Desktop 保留投影、偏好及暂未迁移的 Gateway 执行。GUI 不再持有 Core 生命期管道，普通退出保留 Host，连接资源随 Main 断连撤销。Host-owned 与 `legacyPending` 必须分别报告；Host 已承接定时项目扫描与激活；任务执行准备、Remote 与 provider subscription 的执行 owner 仍待 H3 后续迁移。
+共享 Host 的[目标设计与阶段](../development/shared-host-spec.md)由 [ADR 0016](../adr/0016-shared-host.md)确定，契约见 [Host API](../api/host.md)。每用户 Rust Host 持有认证控制、项目监督、凭据、提交 journal、定时激活与执行准备，以及已实现的 Remote Gateway 和 provider subscription 传输；Core 保留执行和历史权威。GUI Main 在同一进程中装配可重建投影、偏好、原生 Browser/Computer 适配与在线通知，不再启动独立 Desktop Service 进程。普通 GUI 退出保留 Host 与 Core，撤销该 Main 的连接资源。Host 按来源保存的休眠偏好保护真实运行中的工作。Host-owned 与 `legacyPending` 分别报告；旧后台仅经显式恢复路径检查和退役。Remote 方法按实际能力协商，不因入口可连接而推断所有客户端方法已受支持。
 
 AReaL-Harness 采用 **Clients → Core → Runtime** 分层。Core 是会话、Turn、模型循环与 Agent 状态的唯一所有者；Runtime 只处理执行权限、操作事实和资源生命周期。客户端不维护另一套权威历史。
 
