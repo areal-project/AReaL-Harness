@@ -497,6 +497,10 @@ button.composer-project:hover > svg,
 .message-column > section + section {
   margin-top: var(--spacing-section);
 }
+.message-column > section[data-measured] {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto var(--turn-height);
+}
 .messages-embedded,
 .messages-embedded-content {
   min-width: 0;
