@@ -1355,22 +1355,13 @@ check("after-load");
   } finally {
     legacyConnection.close();
     recoveryCore?.close();
-    if (recoveryHost) {
-      try {
-        const stopped = await recoveryHost.stop(randomUUID(), recoveryHost.generation, "cancel");
-        assert.equal(stopped.state, "completed", "recovered Core/Runtime stop completes");
-        cleanup.hostStop = stopped;
-      } catch (error) {
-        cleanup.errors.push({ operation: "host.stop", message: error.message });
-      }
-      recoveryHost.close();
-    }
+    recoveryHost?.close();
     if (recoveryBackend) {
       recoveryBackend.closing = true;
       for (const project of recoveryBackend.projects.values())
         clearTimeout(project.reconciliation?.timer);
     }
-    for (const { name, process } of processes) {
+    for (const { name, process } of processes.filter((item) => item.name !== "host")) {
       try {
         if (process.child.exitCode == null && process.child.signalCode == null) {
           process.child.stdio[3]?.destroy();
@@ -1383,6 +1374,61 @@ check("after-load");
           }
         } else {
           await process.finish();
+        }
+        cleanup.processes.push({ name, pid: process.child.pid, ...(await process.finish()) });
+      } catch (error) {
+        cleanup.errors.push({ process: name, message: error.message });
+      }
+    }
+    cleanup.hosts = [];
+    for (const home of [legacyServiceHome, hostHome]) {
+      try {
+        const bytes = await optional(join(home, "host/host.json"));
+        if (!bytes) continue;
+        const descriptor = JSON.parse(bytes);
+        assert.equal(descriptor.socketPath, join(home, "host/control.sock"));
+        assert(Number.isInteger(descriptor.pid) && descriptor.pid > 0);
+        const host = new HostClient();
+        try {
+          await host.connect(home);
+          assert.equal(host.hostId, descriptor.hostId);
+          assert.equal(host.generation, descriptor.generation);
+          const stopped = await host.stop(randomUUID(), descriptor.generation, "cancel");
+          assert.equal(stopped.state, "completed", "test Host stop completes");
+          await until(() => {
+            try {
+              process.kill(descriptor.pid, 0);
+              return false;
+            } catch (error) {
+              if (error.code === "ESRCH") return true;
+              throw error;
+            }
+          }, "test Host PID exit");
+          cleanup.hosts.push({
+            home,
+            pid: descriptor.pid,
+            hostId: descriptor.hostId,
+            generation: descriptor.generation,
+            stopped,
+            pidExited: true,
+          });
+        } finally {
+          host.close();
+        }
+      } catch (error) {
+        cleanup.errors.push({ operation: "host.stop", home, message: error.message });
+      }
+    }
+    for (const { name, process } of processes.filter((item) => item.name === "host")) {
+      try {
+        if (process.child.exitCode == null && process.child.signalCode == null) {
+          process.child.kill("SIGTERM");
+          const force = setTimeout(() => process.child.kill("SIGKILL"), 5000);
+          try {
+            await process.finish();
+          } finally {
+            clearTimeout(force);
+          }
         }
         cleanup.processes.push({ name, pid: process.child.pid, ...(await process.finish()) });
       } catch (error) {
