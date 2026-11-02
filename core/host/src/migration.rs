@@ -157,6 +157,12 @@ struct SourceGuard {
     socket: Option<std::os::fd::RawFd>,
 }
 
+pub(crate) struct SchedulingImport {
+    pub source_id: String,
+    pub projects: BTreeSet<String>,
+    pub suppressed: Result<BTreeSet<String>>,
+}
+
 pub(crate) struct Migration {
     home: PathBuf,
     guards: RefCell<BTreeMap<PathBuf, SourceGuard>>,
@@ -846,6 +852,7 @@ impl Migration {
             ("worktreeRequest", "worktree-requests"),
             ("threadOwners", "thread-owners"),
             ("taskOwners", "task-owners"),
+            ("lifecycleOperation", "lifecycle-operations"),
         ] {
             let path = source.core_home.join(directory);
             if !path.exists() {
@@ -867,7 +874,7 @@ impl Migration {
                 }
                 let id = &name[..name.len() - 5];
                 ensure!(
-                    if role == "worktreeRequest" {
+                    if role == "worktreeRequest" || role == "lifecycleOperation" {
                         uuid::Uuid::parse_str(id).is_ok()
                     } else {
                         legacy_id(id)
@@ -1454,6 +1461,192 @@ impl Migration {
         }
         Err(error("sourceNotFound", "vault source is not published"))
     }
+    pub fn scheduling_metadata(
+        &self,
+        project: &ProjectRegistration,
+    ) -> Result<Option<(PathBuf, String)>> {
+        let mut owner = None;
+        for record in self.records()? {
+            if self.committed(&record)?.is_none() {
+                continue;
+            }
+            if let Some(binding) = record
+                .bindings
+                .iter()
+                .find(|binding| binding.project_id == project.project_id)
+            {
+                owner = Some((
+                    record.source.core_home,
+                    binding.alias.legacy_project_id.clone(),
+                ));
+                break;
+            }
+            if let ProjectSource::Gui {
+                profile,
+                legacy_project_id,
+            } = &project.source
+            {
+                if *profile == record.source.profile {
+                    owner = Some((record.source.core_home, legacy_project_id.clone()));
+                }
+            }
+        }
+        ensure!(
+            owner.is_some() || matches!(project.source, ProjectSource::Cli),
+            error("migrationBlocked", "GUI scheduling source is not published")
+        );
+        Ok(owner)
+    }
+    pub fn assert_scheduling_available(&self, project: &ProjectRegistration) -> Result<()> {
+        let Some((home, alias)) = self.scheduling_metadata(project)? else {
+            return Ok(());
+        };
+        let directory = home.join("worktree-requests");
+        if !directory.try_exists()? {
+            return Ok(());
+        }
+        let metadata = std::fs::symlink_metadata(&directory)?;
+        ensure!(
+            metadata.is_dir()
+                && !metadata.file_type().is_symlink()
+                && metadata.uid() == unsafe { libc::geteuid() },
+            "invalid worktree metadata directory"
+        );
+        for entry in std::fs::read_dir(directory)? {
+            let path = entry?.path();
+            if path.extension().is_none_or(|extension| extension != "json") {
+                continue;
+            }
+            let value: Value = read_optional(&path)?.context("worktree metadata disappeared")?;
+            let id = value["executionProjectId"].as_str();
+            if id != Some(alias.as_str()) && id != Some(project.project_id.as_str()) {
+                continue;
+            }
+            if value["deleted"] == true
+                || matches!(
+                    value["deletion"]["status"].as_str(),
+                    Some("running" | "unknown")
+                )
+            {
+                return Err(error(
+                    "scheduleWorktreeUnavailable",
+                    "scheduled worktree is deleted or deletion is unresolved",
+                ));
+            }
+        }
+        Ok(())
+    }
+    pub fn scheduling_suppressed(
+        &self,
+        imported: &BTreeSet<String>,
+        current: &[ProjectRegistration],
+    ) -> Result<Vec<SchedulingImport>> {
+        let mut sources = Vec::new();
+        for record in self.records()? {
+            if imported.contains(&record.source_id) || self.committed(&record)?.is_none() {
+                continue;
+            }
+            let mut source_projects = record
+                .bindings
+                .iter()
+                .map(|binding| binding.project_id.clone())
+                .collect::<BTreeSet<_>>();
+            source_projects.extend(
+                current
+                    .iter()
+                    .filter(|project| match &project.source {
+                        ProjectSource::Gui { profile, .. } => *profile == record.source.profile,
+                        _ => false,
+                    })
+                    .map(|project| project.project_id.clone()),
+            );
+            let suppressed = (|| -> Result<BTreeSet<String>> {
+                let mut operations = Vec::new();
+                let originals = record
+                    .originals
+                    .iter()
+                    .filter(|file| file.role == "lifecycleOperation")
+                    .collect::<Vec<_>>();
+                if !originals.is_empty() {
+                    for file in originals {
+                        if let Some(value) = self.original_json(&record, &file.relative_name)? {
+                            operations.push(value);
+                        }
+                    }
+                } else {
+                    // H2 已提交来源的旧 manifest 没有 lifecycle 角色，只读取一次现存的停止意图。
+                    let directory = record.source.core_home.join("lifecycle-operations");
+                    if directory.try_exists()? {
+                        let metadata = std::fs::symlink_metadata(&directory)?;
+                        ensure!(
+                            metadata.is_dir()
+                                && !metadata.file_type().is_symlink()
+                                && metadata.uid() == unsafe { libc::geteuid() },
+                            "invalid lifecycle directory"
+                        );
+                        for entry in std::fs::read_dir(directory)? {
+                            let entry = entry?;
+                            let name = entry.file_name();
+                            let Some(name) = name.to_str() else {
+                                return Err(error("invalidSource", "invalid lifecycle filename"));
+                            };
+                            if !name.ends_with(".json") {
+                                continue;
+                            }
+                            wire::request_id(&name[..name.len() - 5])?;
+                            if let Some(bytes) = read_bytes(&entry.path())? {
+                                operations.push(serde_json::from_slice(&bytes)?);
+                            }
+                        }
+                    }
+                }
+                let mut projects = BTreeSet::new();
+                for operation in operations {
+                    ensure!(
+                        operation["version"] == 1,
+                        "unsupported lifecycle operation version"
+                    );
+                    let targets = operation["targets"]
+                        .as_array()
+                        .context("invalid lifecycle targets")?;
+                    for target in targets {
+                        if target["scheduleActivationSuppressed"] != true {
+                            continue;
+                        }
+                        let id = target["projectId"]
+                            .as_str()
+                            .context("invalid lifecycle project identity")?;
+                        if let Some(binding) = record.bindings.iter().find(|binding| {
+                            binding.alias.legacy_project_id == id || binding.project_id == id
+                        }) {
+                            projects.insert(binding.project_id.clone());
+                            continue;
+                        }
+                        let project = current.iter().find(|project| match &project.source {
+                            ProjectSource::Gui {
+                                profile,
+                                legacy_project_id,
+                            } => {
+                                *profile == record.source.profile
+                                    && (legacy_project_id == id || project.project_id == id)
+                            }
+                            _ => false,
+                        });
+                        if let Some(project) = project {
+                            projects.insert(project.project_id.clone());
+                        }
+                    }
+                }
+                Ok(projects)
+            })();
+            sources.push(SchedulingImport {
+                source_id: record.source_id,
+                projects: source_projects,
+                suppressed,
+            });
+        }
+        Ok(sources)
+    }
     pub fn credential_source(&self, project: &ProjectRegistration) -> Result<Option<String>> {
         for r in self.records()? {
             if self.committed(&r)?.is_some()
@@ -1604,6 +1797,106 @@ mod tests {
                 .unwrap();
         }
     }
+    #[test]
+    fn legacy_schedule_stop_import_uses_preserved_manifest_and_project_aliases() {
+        let f = Fixture::new();
+        let directory = f.source.core_home.join("lifecycle-operations");
+        storage::private_dir(&directory).unwrap();
+        let path = directory.join(format!("{}.json", uuid::Uuid::new_v4()));
+        storage::write(&path,&json!({"version":1,"kind":"stopProject","targets":[{"projectId":f.ids[0],"scheduleActivationSuppressed":true},{"projectId":f.ids[1],"scheduleActivationSuppressed":false}]})).unwrap();
+        f.attach();
+        assert_eq!(f.import().unwrap()["kind"], "ready");
+        storage::write(&path, &json!({"version":1,"targets":[]})).unwrap();
+        let sources = f
+            .migration
+            .scheduling_suppressed(&BTreeSet::new(), &[])
+            .unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(
+            *sources[0].suppressed.as_ref().unwrap(),
+            BTreeSet::from([f.ids[0].clone()])
+        );
+        assert!(
+            f.migration
+                .scheduling_suppressed(&BTreeSet::from([sources[0].source_id.clone()]), &[])
+                .unwrap()
+                .is_empty()
+        );
+    }
+    #[test]
+    fn existing_h2_source_reads_legacy_schedule_stop_before_one_time_source_marker() {
+        let f = Fixture::new();
+        f.attach();
+        assert_eq!(f.import().unwrap()["kind"], "ready");
+        let directory = f.source.core_home.join("lifecycle-operations");
+        storage::private_dir(&directory).unwrap();
+        let path = directory.join(format!("{}.json", uuid::Uuid::new_v4()));
+        storage::write(&path,&json!({"version":1,"kind":"stopProject","targets":[{"projectId":f.ids[1],"scheduleActivationSuppressed":true}]})).unwrap();
+        let sources = f
+            .migration
+            .scheduling_suppressed(&BTreeSet::new(), &[])
+            .unwrap();
+        assert_eq!(
+            *sources[0].suppressed.as_ref().unwrap(),
+            BTreeSet::from([f.ids[1].clone()])
+        );
+        assert!(
+            f.migration
+                .scheduling_suppressed(&BTreeSet::from([sources[0].source_id.clone()]), &[])
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn scheduling_guards_current_source_aliases_and_live_worktree_deletion_state() {
+        let f = Fixture::new();
+        f.attach();
+        assert_eq!(f.import().unwrap()["kind"], "ready");
+        let mut project = f.migration.published().unwrap()[0].clone();
+        project.project_id = "new-host-project".into();
+        project.source = ProjectSource::Gui {
+            profile: f.source.profile.clone(),
+            legacy_project_id: "c".repeat(24),
+        };
+        let directory = f.source.core_home.join("lifecycle-operations");
+        storage::private_dir(&directory).unwrap();
+        storage::write(&directory.join(format!("{}.json",uuid::Uuid::new_v4())),&json!({"version":1,"targets":[{"projectId":"c".repeat(24),"scheduleActivationSuppressed":true}]})).unwrap();
+        let sources = f
+            .migration
+            .scheduling_suppressed(&BTreeSet::new(), std::slice::from_ref(&project))
+            .unwrap();
+        assert_eq!(
+            *sources[0].suppressed.as_ref().unwrap(),
+            BTreeSet::from([project.project_id.clone()])
+        );
+        let directory = f.source.core_home.join("worktree-requests");
+        storage::private_dir(&directory).unwrap();
+        let path = directory.join(format!("{}.json", uuid::Uuid::new_v4()));
+        for value in [
+            json!({"executionProjectId":"c".repeat(24),"deletion":{"status":"running"}}),
+            json!({"executionProjectId":"c".repeat(24),"deletion":{"status":"unknown"}}),
+            json!({"executionProjectId":"c".repeat(24),"deleted":true}),
+        ] {
+            storage::write(&path, &value).unwrap();
+            assert_eq!(
+                f.migration
+                    .assert_scheduling_available(&project)
+                    .unwrap_err()
+                    .downcast_ref::<wire::Error>()
+                    .unwrap()
+                    .code,
+                "scheduleWorktreeUnavailable"
+            );
+        }
+        storage::write(
+            &path,
+            &json!({"executionProjectId":"c".repeat(24),"deletion":{"status":"failed"}}),
+        )
+        .unwrap();
+        assert!(f.migration.assert_scheduling_available(&project).is_ok());
+    }
+
     #[test]
     fn remote_scopes_include_new_gui_aliases_and_stable_other_project_aliases() {
         let f = Fixture::new();

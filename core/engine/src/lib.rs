@@ -486,6 +486,7 @@ fn restore_sessions(
                     registry.with_dynamic(&thread.dynamic_tools)?
                 },
                 host: None,
+                schedule_host: None,
             };
             let root_session = thread.parent_thread_id.is_none();
             let parent_scratch = thread

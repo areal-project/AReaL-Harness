@@ -38,7 +38,7 @@ const snapshotSchema: z.ZodType<Snapshot> = z.object({
     .object({
       state: z.enum(["connecting", "ready", "unavailable"]),
       message: z.string().optional(),
-      recovery: z.literal("check").optional(),
+      recovery: z.enum(["check", "reconnect"]).optional(),
       prerequisite: z
         .object({
           kind: z.literal("macos-command-line-tools"),

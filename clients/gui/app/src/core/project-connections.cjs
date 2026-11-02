@@ -16,7 +16,7 @@ const { modelRecord, isCoreTask } = require("@areal/workbench/core-model-contrac
 /** @typedef {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'applicationOwner'|'worktrees'|'lifecycleOperations'|'providers'|'resources'|'scheduleAdmission'|'hooks'|'defaultProfile'|'analytics'|'saved'> & {
  * closing:boolean,providerUpdating:boolean|undefined,resourcesUpdating:boolean|undefined,
  * starting:Map<string,Promise<Project>>,projects:Map<string,Project>,
- * startProject:(id:string)=>Promise<Project>,stopReconciliation:(project:Project)=>void,
+ * startProject:(id:string,options?:{resumeScheduling?:boolean})=>Promise<Project>,stopReconciliation:(project:Project)=>void,
  * scheduleReconciliation:(project:Project)=>void,onChange:()=>void,
  * connectExisting:(project:Project,service:Service)=>Promise<ServiceConnection>,
  * prepareServiceLaunch:(project:Project,trace:ReturnType<typeof startupTrace>)=>Promise<Launch>,
@@ -60,6 +60,31 @@ class ProjectConnections {
     );
   }
 
+  /** @param {Project} project @param {Client|null|undefined} client @param {object|null} owner */
+  async publishScheduleTools(project, client, owner) {
+    if (
+      !client ||
+      !this.currentDesktopToolHost(project, client, owner) ||
+      !client.capabilities?.methods?.includes("areal/task/tools/ready")
+    )
+      return;
+    const bundles = this.host.providers.manages(project)
+      ? this.host
+          .desktopTools(project)
+          .flatMap((tool) =>
+            !modelRecord(tool)
+              ? []
+              : tool.name === "browser_v1"
+                ? ["areal.browser.v1"]
+                : tool.name === "computer_v1"
+                  ? ["areal.computer.v1"]
+                  : [],
+          )
+      : [];
+    await client.request("areal/task/tools/ready", { bundles });
+    this.requireConnection(project, client);
+  }
+
   /** @param {object|null} owner */
   revokeDesktopToolHost(owner) {
     for (const project of this.host.projects.values()) {
@@ -68,13 +93,13 @@ class ProjectConnections {
     }
   }
 
-  /** @param {string} id @param {{threadId?:string}} [options] @returns {Promise<Project>} */
-  start(id, { threadId } = {}) {
+  /** @param {string} id @param {{threadId?:string,resumeScheduling?:boolean}} [options] @returns {Promise<Project>} */
+  start(id, { threadId, resumeScheduling = false } = {}) {
     if (threadId) this.selectedThreads.set(id, threadId);
     try {
       this.host.worktrees?.assertAvailable(id);
       this.host.lifecycleOperations.assertProject(id);
-      if (this.host.lifecycleOperations.schedulingSuppressed(id))
+      if (!resumeScheduling && this.host.lifecycleOperations.schedulingSuppressed(id))
         throw Object.assign(new Error("后台已由用户停止，请明确启动后继续"), {
           code: "CORE_STOPPED",
         });
@@ -83,14 +108,19 @@ class ProjectConnections {
     }
     if (this.host.closing) return Promise.reject(new Error("应用正在退出"));
     const starting = this.host.starting.get(id);
-    if (starting) return starting;
+    if (starting)
+      return resumeScheduling
+        ? starting.then(() => this.host.startProject(id, { resumeScheduling: true }))
+        : starting;
     const project = this.host.projects.get(id);
     if (project) {
       clearTimeout(project.reconnectTimer ?? undefined);
       project.reconnectTimer = null;
       project.reconnectBlocked = false;
     }
-    const task = this.host.startProject(id).finally(() => this.host.starting.delete(id));
+    const task = this.host
+      .startProject(id, { resumeScheduling })
+      .finally(() => this.host.starting.delete(id));
     this.host.starting.set(id, task);
     return task;
   }
@@ -337,24 +367,6 @@ class ProjectConnections {
       },
       onServerRequest: async (method, params, context) => {
         if (!modelRecord(params)) throw new Error("Invalid Core tool host request");
-        if (method === "areal/task/prepare") {
-          this.requireConnection(project, client);
-          await this.host.scheduleAdmission.prepare(project, params);
-          this.requireConnection(project, client);
-          if (params.intent === "resume" || !this.host.providers.manages(project)) return {};
-          await this.host.resources.beforeCreate(project);
-          this.requireConnection(project, client);
-          const model = this.host.providers.value.defaultModel;
-          const profile = project.resourceProfile ?? this.host.defaultProfile;
-          return {
-            ...(model ? { model } : {}),
-            ...(profile ? { agentProfile: profile } : {}),
-            ...(this.currentDesktopToolHost(project, client) &&
-            this.host.desktopTools(project).length
-              ? { dynamicTools: this.host.desktopTools(project) }
-              : {}),
-          };
-        }
         if (
           method === "areal/cua/turnEnded" ||
           (method === "item/tool/call" && ["js", "js_reset"].includes(String(params.tool)))
@@ -571,11 +583,9 @@ class ProjectConnections {
         throw Object.assign(new Error("后台已由用户停止，请明确启动后继续"), {
           code: "CORE_STOPPED",
         });
-      trace.advance("host_ready");
-      if (client.capabilities?.methods?.includes("areal/task/host/ready")) {
-        await client.request("areal/task/host/ready", {});
-        this.requireConnection(project, client);
-      }
+      trace.advance("desktop_tools_ready");
+      if (this.host.providers.manages(project))
+        await this.publishScheduleTools(project, client, owner);
       project.taskNotificationMonitor?.ready();
       this.requireConnection(project, client);
       trace.advance("connected");

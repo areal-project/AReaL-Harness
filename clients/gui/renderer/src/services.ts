@@ -57,7 +57,7 @@ export interface Snapshot {
   connection?: {
     state: "connecting" | "ready" | "unavailable";
     message?: string;
-    recovery?: "check";
+    recovery?: "check" | "reconnect";
     prerequisite?: HostPrerequisite;
   };
   serviceSummary?: { state: "running" | "stopped" | "unknown"; busy: boolean };

@@ -550,6 +550,7 @@ impl Engine {
                         .clone()
                         .side_only(request.workspace_access == "readOnly"),
                     host: None,
+                    schedule_host: None,
                 },
                 None,
             );
@@ -801,7 +802,11 @@ impl Engine {
             let cell = Cell::new(
                 thread.clone(),
                 0,
-                crate::tools::Bindings { registry, host },
+                crate::tools::Bindings {
+                    registry,
+                    host,
+                    schedule_host: None,
+                },
                 None,
             );
             let _creation = engine.thread_creation.lock().await;

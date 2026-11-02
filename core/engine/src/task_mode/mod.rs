@@ -56,6 +56,12 @@ struct Snapshot {
     fault: Arc<std::sync::Mutex<Option<TaskCommitFault>>>,
 }
 
+#[derive(Clone)]
+struct DesktopScheduleTools {
+    host: Arc<dyn tools::DynamicToolHost>,
+    definitions: Vec<areal_protocol::ToolDefinition>,
+}
+
 pub(crate) struct Tasks {
     state: Mutex<Snapshot>,
     pub(crate) directory: directory::OwnerDirectory,
@@ -66,6 +72,7 @@ pub(crate) struct Tasks {
     clock: std::sync::atomic::AtomicI64,
     frozen: AtomicBool,
     hosts: Mutex<BTreeMap<String, Arc<dyn tools::DynamicToolHost>>>,
+    desktop_tools: Mutex<BTreeMap<String, DesktopScheduleTools>>,
     dispatching: Arc<std::sync::Mutex<HashSet<String>>>,
 }
 
@@ -81,6 +88,7 @@ impl Tasks {
         Ok(Self {
             directory,
             hosts: Mutex::new(BTreeMap::new()),
+            desktop_tools: Mutex::new(BTreeMap::new()),
             dispatching: Arc::new(std::sync::Mutex::new(HashSet::new())),
             state: Mutex::new(state),
             events: broadcast::channel(256).0,
@@ -886,7 +894,7 @@ impl Engine {
                 .bindings
                 .read()
                 .await
-                .host
+                .schedule_host
                 .clone()
                 .ok_or(Error::Conflict)?;
             if !self.host_current(&host).await {
@@ -1000,7 +1008,7 @@ impl Engine {
         let Ok(cell) = self.raw_cell(&thread.id).await else {
             return Ok(false);
         };
-        let Some(host) = cell.bindings.read().await.host.clone() else {
+        let Some(host) = cell.bindings.read().await.schedule_host.clone() else {
             return Ok(false);
         };
         drop(state);
@@ -1152,7 +1160,7 @@ impl Engine {
         let Ok(cell) = self.raw_cell(thread).await else {
             return Ok(false);
         };
-        let Some(host) = cell.bindings.read().await.host.clone() else {
+        let Some(host) = cell.bindings.read().await.schedule_host.clone() else {
             return Ok(false);
         };
         drop(state);

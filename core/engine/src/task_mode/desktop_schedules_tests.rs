@@ -44,6 +44,476 @@ impl tools::DynamicToolHost for Host {
         anyhow::bail!("unexpected tool")
     }
 }
+
+struct ScheduleConnection {
+    id: &'static str,
+    owner: &'static str,
+    closed: AtomicBool,
+    preparations: std::sync::atomic::AtomicUsize,
+}
+impl ScheduleConnection {
+    fn new(id: &'static str, owner: &'static str) -> Arc<Self> {
+        Arc::new(Self {
+            id,
+            owner,
+            closed: AtomicBool::new(false),
+            preparations: std::sync::atomic::AtomicUsize::new(0),
+        })
+    }
+}
+#[async_trait::async_trait]
+impl tools::DynamicToolHost for ScheduleConnection {
+    fn id(&self) -> &str {
+        self.id
+    }
+    fn identity(&self) -> &str {
+        self.owner
+    }
+    fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::Acquire)
+    }
+    async fn prepare_schedule(&self, _: Value, _: CancellationToken) -> anyhow::Result<Value> {
+        self.preparations.fetch_add(1, Ordering::AcqRel);
+        Ok(json!({}))
+    }
+    async fn call(
+        &self,
+        _: Value,
+        _: CancellationToken,
+    ) -> anyhow::Result<areal_protocol::DynamicToolResponse> {
+        anyhow::bail!("unexpected tool")
+    }
+}
+
+#[tokio::test]
+async fn desktop_provider_registration_is_connection_scoped_and_revocable() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    let first = ScheduleConnection::new("first", "owner");
+    let successor = ScheduleConnection::new("successor", "owner");
+    let browser = || TaskToolsReady {
+        bundles: vec![DesktopToolBundle::Browser],
+    };
+    engine
+        .register_schedule_tools(browser(), first.clone())
+        .await
+        .unwrap();
+    engine
+        .register_schedule_tools(browser(), first.clone())
+        .await
+        .unwrap();
+    assert!(matches!(
+        engine
+            .register_schedule_tools(browser(), successor.clone())
+            .await,
+        Err(Error::Conflict)
+    ));
+    assert!(
+        engine
+            .register_schedule_tools(
+                TaskToolsReady {
+                    bundles: vec![DesktopToolBundle::Browser, DesktopToolBundle::Browser]
+                },
+                first.clone()
+            )
+            .await
+            .is_err()
+    );
+    engine
+        .register_schedule_tools(TaskToolsReady { bundles: vec![] }, successor.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        engine.schedule_tools("owner").await.unwrap().host.id(),
+        "first"
+    );
+    assert!(engine.schedule_tools("foreign").await.is_none());
+    first.closed.store(true, Ordering::Release);
+    assert!(engine.schedule_tools("owner").await.is_none());
+    engine
+        .register_schedule_tools(browser(), successor.clone())
+        .await
+        .unwrap();
+    assert!(matches!(
+        engine.register_schedule_tools(browser(), first).await,
+        Err(Error::Closed)
+    ));
+    engine
+        .register_schedule_tools(TaskToolsReady { bundles: vec![] }, successor)
+        .await
+        .unwrap();
+    assert!(engine.schedule_tools("owner").await.is_none());
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn scheduled_run_keeps_scheduler_when_gui_disconnects_without_adopting_successor() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    let scheduler = ScheduleConnection::new("scheduler", "owner");
+    let gui = ScheduleConnection::new("gui", "owner");
+    engine
+        .register_schedule_host(scheduler.clone())
+        .await
+        .unwrap();
+    engine
+        .register_schedule_tools(
+            TaskToolsReady {
+                bundles: vec![DesktopToolBundle::Browser, DesktopToolBundle::Computer],
+            },
+            gui.clone(),
+        )
+        .await
+        .unwrap();
+    let anchor = engine.create("/workspace".into()).await.unwrap();
+    let task = engine.task_create("owner".into(), serde_json::from_value(json!({"requestId":"split", "mode":"scheduled", "objective":"inspect", "threadId":anchor.id,"schedule":{"at":now()-1}})).unwrap()).await.unwrap();
+    let task_id = task["id"].as_str().unwrap();
+    engine.advance_task(task_id).await.unwrap();
+    let run = engine.task_read(task_id).await.unwrap().runs[0].clone();
+    let thread_id = run.thread_id.as_ref().unwrap();
+    let cell = engine.cell(thread_id).await.unwrap();
+    let thread = engine.read(thread_id, false).await.unwrap();
+    let visible = engine
+        .visible_tools(&cell, &Default::default(), true, &thread)
+        .await;
+    for name in ["browser_v1", "computer_v1"] {
+        assert!(visible.iter().any(|tool| tool["function"]["name"] == name));
+    }
+    let ordinary = engine.create_configured("owner".into(), serde_json::from_value(json!({"requestId":"ordinary-tools","cwd":"/workspace","dynamicTools":[areal_protocol::desktop::browser_v1_tool()]})).unwrap(), gui.clone()).await.unwrap();
+    gui.closed.store(true, Ordering::Release);
+    let successor = ScheduleConnection::new("successor", "owner");
+    engine
+        .register_schedule_tools(
+            TaskToolsReady {
+                bundles: vec![DesktopToolBundle::Browser, DesktopToolBundle::Computer],
+            },
+            successor,
+        )
+        .await
+        .unwrap();
+    engine.advance_task(task_id).await.unwrap();
+    assert_eq!(
+        engine.goal_get(thread_id).await.unwrap()["goal"]["status"],
+        "active"
+    );
+    let current = engine.task_read(task_id).await.unwrap();
+    assert_eq!(current.runs[0].id, run.id);
+    assert_ne!(current.runs[0].reason.as_deref(), Some("hostUnavailable"));
+    let visible = engine
+        .visible_tools(&cell, &Default::default(), true, &thread)
+        .await;
+    assert!(!visible.iter().any(|tool| matches!(
+        tool["function"]["name"].as_str(),
+        Some("browser_v1" | "computer_v1")
+    )));
+    let bindings = cell.bindings.read().await;
+    assert_eq!(bindings.host.as_ref().unwrap().id(), "gui");
+    assert_eq!(bindings.schedule_host.as_ref().unwrap().id(), "scheduler");
+    drop(bindings);
+    assert!(matches!(
+        engine
+            .start(&ordinary.id, vec![Input::text("continue")])
+            .await,
+        Err(Error::Invalid(_))
+    ));
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn prepared_schedule_restart_preserves_catalog_and_only_binds_compatible_provider() {
+    for compatible in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(
+            dir.path(),
+            Arc::new(Pending),
+            Limits {
+                max_active_turns: 1,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        engine.task_modes.started.store(true, Ordering::Release);
+        let scheduler = ScheduleConnection::new("scheduler", "owner");
+        engine
+            .register_schedule_host(scheduler.clone())
+            .await
+            .unwrap();
+        engine
+            .register_schedule_tools(
+                TaskToolsReady {
+                    bundles: vec![DesktopToolBundle::Browser, DesktopToolBundle::Computer],
+                },
+                ScheduleConnection::new("old-gui", "owner"),
+            )
+            .await
+            .unwrap();
+        let anchor = engine.create("/workspace".into()).await.unwrap();
+        let occupied = engine.reserve_active_turn().unwrap();
+        let task = engine.task_create("owner".into(), serde_json::from_value(json!({"requestId":"prepared", "mode":"scheduled", "objective":"inspect", "threadId":anchor.id,"schedule":{"at":now()-1}})).unwrap()).await.unwrap();
+        let task_id = task["id"].as_str().unwrap();
+        engine.advance_task(task_id).await.unwrap();
+        let run = engine.task_read(task_id).await.unwrap().runs[0].clone();
+        assert_eq!(run.status, RunStatus::Queued);
+        assert!(run.goal_id.is_none());
+        assert_eq!(scheduler.preparations.load(Ordering::Acquire), 1);
+        engine.shutdown().await;
+        drop(occupied);
+        drop(engine);
+        let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+        engine.task_modes.started.store(true, Ordering::Release);
+        let scheduler = ScheduleConnection::new("new-scheduler", "owner");
+        engine
+            .register_schedule_host(scheduler.clone())
+            .await
+            .unwrap();
+        let bundles = if compatible {
+            vec![DesktopToolBundle::Browser, DesktopToolBundle::Computer]
+        } else {
+            vec![DesktopToolBundle::Browser]
+        };
+        engine
+            .register_schedule_tools(
+                TaskToolsReady { bundles },
+                ScheduleConnection::new("new-gui", "owner"),
+            )
+            .await
+            .unwrap();
+        engine.advance_task(task_id).await.unwrap();
+        let current = engine.task_read(task_id).await.unwrap();
+        assert_eq!(current.runs[0].id, run.id);
+        assert_eq!(current.runs[0].thread_id, run.thread_id);
+        assert!(current.runs[0].goal_id.is_some());
+        assert_eq!(scheduler.preparations.load(Ordering::Acquire), 0);
+        let thread_id = run.thread_id.as_ref().unwrap();
+        let thread = engine.read(thread_id, false).await.unwrap();
+        assert_eq!(
+            thread
+                .dynamic_tools
+                .iter()
+                .map(|tool| tool.name.as_str())
+                .collect::<Vec<_>>(),
+            ["browser_v1", "computer_v1"]
+        );
+        let cell = engine.cell(thread_id).await.unwrap();
+        let bindings = cell.bindings.read().await;
+        assert_eq!(
+            bindings.host.as_ref().map(|host| host.id()),
+            compatible.then_some("new-gui")
+        );
+        assert_eq!(
+            bindings.schedule_host.as_ref().unwrap().id(),
+            "new-scheduler"
+        );
+        drop(bindings);
+        engine.shutdown().await;
+    }
+}
+
+async fn schedule_conversation(engine: &Arc<Engine>, host: Arc<ScheduleConnection>) -> Thread {
+    engine
+        .create_configured(
+            host.owner.into(),
+            serde_json::from_value(json!({"requestId":host.id,"cwd":"/workspace"})).unwrap(),
+            host,
+        )
+        .await
+        .unwrap()
+}
+
+fn sourced_schedule(source: &Thread, anchor: &Thread) -> TaskCreate {
+    serde_json::from_value(json!({
+        "requestId":"sourced-schedule", "mode":"scheduled", "objective":"inspect",
+        "sourceThreadId":source.id, "threadId":anchor.id, "schedule":{"at":now()+3600}
+    }))
+    .unwrap()
+}
+
+#[tokio::test]
+async fn schedule_tool_uses_registered_scheduler_for_a_distinct_gui_connection() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    let gui = ScheduleConnection::new("gui", "owner");
+    let scheduler = ScheduleConnection::new("scheduler", "owner");
+    engine
+        .register_schedule_host(scheduler.clone())
+        .await
+        .unwrap();
+    let source = schedule_conversation(&engine, gui.clone()).await;
+    let turn = engine
+        .start(&source.id, vec![Input::text("schedule")])
+        .await
+        .unwrap();
+    let cell = engine.cell(&source.id).await.unwrap();
+    assert!(
+        engine
+            .schedule_tools_available(&cell, &Default::default(), &source)
+            .await
+    );
+    let result = engine.scheduled_task_tool(&cell, &turn.id, "create", "scheduled_task_create", &json!({
+        "objective":"inspect", "scheduleV2":{"version":1,"rule":{"kind":"once","at":now()+3600},"misfire":{"kind":"skip","maxLatenessSeconds":300},"overlap":"skip"}
+    })).await;
+    assert!(result.get("error").is_none(), "{result}");
+    let task = engine
+        .task_read(result["task"]["id"].as_str().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(task.owner, "owner");
+    assert_eq!(task.source_thread_id.as_deref(), Some(source.id.as_str()));
+    let anchor = engine
+        .cell(task.thread_id.as_deref().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        anchor.bindings.read().await.host.as_ref().unwrap().id(),
+        scheduler.id
+    );
+    assert_eq!(
+        cell.bindings.read().await.host.as_ref().unwrap().id(),
+        gui.id
+    );
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn sourced_schedule_denies_disconnected_and_foreign_principals() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    let gui = ScheduleConnection::new("gui", "owner");
+    let scheduler = ScheduleConnection::new("scheduler", "owner");
+    engine
+        .register_schedule_host(scheduler.clone())
+        .await
+        .unwrap();
+    let source = schedule_conversation(&engine, gui.clone()).await;
+    let anchor = schedule_conversation(&engine, scheduler.clone()).await;
+    let request = sourced_schedule(&source, &anchor);
+    assert!(
+        engine
+            .validate_schedule_source("owner", &request)
+            .await
+            .is_ok()
+    );
+    assert!(
+        engine
+            .validate_schedule_source("foreign", &request)
+            .await
+            .is_err()
+    );
+    gui.closed.store(true, Ordering::Release);
+    assert!(
+        engine
+            .validate_schedule_source("owner", &request)
+            .await
+            .is_err()
+    );
+    gui.closed.store(false, Ordering::Release);
+    scheduler.closed.store(true, Ordering::Release);
+    assert!(
+        engine
+            .validate_schedule_source("owner", &request)
+            .await
+            .is_err()
+    );
+    let replacement = ScheduleConnection::new("replacement", "owner");
+    engine.register_schedule_host(replacement).await.unwrap();
+    assert!(
+        engine
+            .validate_schedule_source("owner", &request)
+            .await
+            .is_err()
+    );
+    let foreign_host = ScheduleConnection::new("foreign", "foreign");
+    engine
+        .register_schedule_host(foreign_host.clone())
+        .await
+        .unwrap();
+    let foreign = schedule_conversation(&engine, foreign_host).await;
+    assert!(
+        engine
+            .validate_schedule_source("owner", &sourced_schedule(&foreign, &anchor))
+            .await
+            .is_err()
+    );
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn sourced_schedule_accepts_its_live_source_anchor_without_rebinding_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    let gui = ScheduleConnection::new("gui", "owner");
+    let scheduler = ScheduleConnection::new("scheduler", "owner");
+    engine.register_schedule_host(scheduler).await.unwrap();
+    let source = schedule_conversation(&engine, gui.clone()).await;
+    let anchor = engine
+        .create_configured(
+            "owner".into(),
+            serde_json::from_value(json!({"requestId":"gui-anchor","cwd":"/workspace"})).unwrap(),
+            gui.clone(),
+        )
+        .await
+        .unwrap();
+    let created = engine
+        .task_create("owner".into(), sourced_schedule(&source, &anchor))
+        .await
+        .unwrap();
+    assert_eq!(created["sourceThreadId"], source.id);
+    assert_eq!(created["threadId"], anchor.id);
+    assert_eq!(
+        engine
+            .cell(&anchor.id)
+            .await
+            .unwrap()
+            .bindings
+            .read()
+            .await
+            .host
+            .as_ref()
+            .unwrap()
+            .id(),
+        gui.id
+    );
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn sourced_schedule_does_not_take_over_a_live_foreign_anchor() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    let scheduler = ScheduleConnection::new("scheduler", "owner");
+    engine.register_schedule_host(scheduler).await.unwrap();
+    let source = schedule_conversation(&engine, ScheduleConnection::new("gui", "owner")).await;
+    let foreign = ScheduleConnection::new("foreign", "foreign");
+    let anchor = schedule_conversation(&engine, foreign.clone()).await;
+    assert!(
+        engine
+            .task_create("owner".into(), sourced_schedule(&source, &anchor))
+            .await
+            .is_err()
+    );
+    assert!(engine.task_list_for_threads(None).await.unwrap().is_empty());
+    assert_eq!(
+        engine
+            .cell(&anchor.id)
+            .await
+            .unwrap()
+            .bindings
+            .read()
+            .await
+            .host
+            .as_ref()
+            .unwrap()
+            .id(),
+        foreign.id
+    );
+    engine.shutdown().await;
+}
+
 #[tokio::test]
 async fn desktop_schedule_requires_host_skips_busy_and_pauses_only_future_runs() {
     let dir = tempfile::tempdir().unwrap();
@@ -178,6 +648,15 @@ async fn interrupted_schedule_explicit_resume_keeps_run_and_thread_with_a_fresh_
     let dir = tempfile::tempdir().unwrap();
     let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
     engine.task_modes.started.store(true, Ordering::Release);
+    engine
+        .register_schedule_tools(
+            TaskToolsReady {
+                bundles: vec![DesktopToolBundle::Browser],
+            },
+            ScheduleConnection::new("old-gui", "fixture"),
+        )
+        .await
+        .unwrap();
     let anchor = engine.create("/workspace".into()).await.unwrap();
     let value = engine.task_create("fixture".into(), serde_json::from_value(json!({"requestId":"manual-restart", "mode":"scheduled", "objective":"inspect", "threadId":anchor.id,"schedule":{"at":now()-1,"intervalSeconds":3600}})).unwrap()).await.unwrap();
     let id = value["id"].as_str().unwrap().to_string();
@@ -209,6 +688,15 @@ async fn interrupted_schedule_explicit_resume_keeps_run_and_thread_with_a_fresh_
     engine.task_modes.started.store(true, Ordering::Release);
     let before = engine.read(&thread_id, true).await.unwrap();
     engine
+        .register_schedule_tools(
+            TaskToolsReady {
+                bundles: vec![DesktopToolBundle::Browser],
+            },
+            ScheduleConnection::new("resumed-gui", "fixture"),
+        )
+        .await
+        .unwrap();
+    engine
         .register_schedule_host(Arc::new(Host {
             closed: AtomicBool::new(false),
         }))
@@ -218,6 +706,17 @@ async fn interrupted_schedule_explicit_resume_keeps_run_and_thread_with_a_fresh_
     let task = engine.task_read(&id).await.unwrap();
     assert_eq!(task.runs[0].status, RunStatus::Paused);
     assert!(task.runs[0].completed_at.is_none());
+    assert!(
+        engine
+            .cell(&thread_id)
+            .await
+            .unwrap()
+            .bindings
+            .read()
+            .await
+            .host
+            .is_none()
+    );
     assert_eq!(
         engine.read(&thread_id, true).await.unwrap().turns.len(),
         before.turns.len()
@@ -256,6 +755,20 @@ async fn interrupted_schedule_explicit_resume_keeps_run_and_thread_with_a_fresh_
         before.turns.last().unwrap().id
     );
     assert_eq!(task.runs[0].status, RunStatus::Running);
+    assert_eq!(
+        engine
+            .cell(&thread_id)
+            .await
+            .unwrap()
+            .bindings
+            .read()
+            .await
+            .host
+            .as_ref()
+            .unwrap()
+            .id(),
+        "resumed-gui"
+    );
     engine.shutdown().await;
 }
 

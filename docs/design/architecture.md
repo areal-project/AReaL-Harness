@@ -2,7 +2,7 @@
 
 # 架构与目录
 
-共享 Host 的[目标设计与阶段](../development/shared-host-spec.md)由 [ADR 0016](../adr/0016-shared-host.md)确定，契约见 [Host API](../api/host.md)。目标是每用户一个 Rust Host 持有服务监督、项目登记、凭据与 Gateway；Core 保留执行和历史权威。`core/host` 已承载认证本机控制、项目登记和 CLI/TUI/Web 的服务生命期，客户端断开后原任务继续。GUI 的项目连接也经 Host 获取 Core 描述。Host 保存提交 journal、凭据和 Remote 配置；Desktop 保留投影、偏好及暂未迁移的 Gateway 执行。GUI 不再持有 Core 生命期管道，完整退出和连接资源撤销仍在实施。Host-owned 与 `legacyPending` 必须分别报告；H3 验收前不承诺 GUI 退出后的 Remote、定时任务与 provider subscription 可用。
+共享 Host 的[目标设计与阶段](../development/shared-host-spec.md)由 [ADR 0016](../adr/0016-shared-host.md)确定，契约见 [Host API](../api/host.md)。目标是每用户一个 Rust Host 持有服务监督、项目登记、凭据与 Gateway；Core 保留执行和历史权威。`core/host` 已承载认证本机控制、项目登记和 CLI/TUI/Web 的服务生命期，客户端断开后原任务继续。GUI 的项目连接也经 Host 获取 Core 描述。Host 保存提交 journal、凭据和 Remote 配置；Desktop 保留投影、偏好及暂未迁移的 Gateway 执行。GUI 不再持有 Core 生命期管道，普通退出保留 Host，连接资源随 Main 断连撤销。Host-owned 与 `legacyPending` 必须分别报告；Host 已承接定时项目扫描与激活；任务执行准备、Remote 与 provider subscription 的执行 owner 仍待 H3 后续迁移。
 
 AReaL-Harness 采用 **Clients → Core → Runtime** 分层。Core 是会话、Turn、模型循环与 Agent 状态的唯一所有者；Runtime 只处理执行权限、操作事实和资源生命周期。客户端不维护另一套权威历史。
 
@@ -104,7 +104,7 @@ Task Mode 由 `core/engine/src/task_mode` 管理 Task/TaskRun、定时触发、�
 
 Task 持久化的唯一提交点为版本 6 的 `desktop/task-mode.json`。紧凑根引用不可变热 Task、按 Task 链接的历史与固定桶头的压缩 radix 收据/归属索引，索引深度受 256 位键宽限制，终止叶最多 64 行、普通打包 128 KiB，合法大单条仍受 256 MiB 硬上限约束。控制不触发历史扫描，只发布变更 Task、原始收据与根；普通保留检查有界，无法确认的历史继续留热。冷 Run 用量与计数同根提交，旧 Goal 身份不因归档变成普通 Goal。完整 Task 与历史读取继续在捕获快照上完成授权和投影；可信 Desktop 的轻量目录单独读取最近成功发布的有界视图，不等待 Task 写锁或克隆完整 Snapshot。文件先同步，根最后原子替换并同步目录；结果不明时冻结写入，重启校验、同步全部可达引用后再恢复。版本 1 至 5 的原字节先备份，原根引用的不可变文件保留；版本 6 阻止旧二进制忽略新摘要约束，迁移不依赖孤儿扫描。
 
-可信本机的任务目录预览由 Core 读取一次原子发布根及其不可变定时摘要包，不打开 Store 或执行恢复。摘要与 Task、收据和归属索引同根提交，不另设可变索引。版本 5 保留原可信读取路径，用于升级前展示和发现启用安排，Core 合法启动后原子迁移。预览不证明实时运行状态或未知提交结果，也不能提供控制修订。Desktop 每个执行 owner 只维护一个目录缓存和 watch，任务中心、来源侧栏与通知共同消费；缺号、换代和背压后保留旧展示并重建基线。执行激活由现有共享 Desktop 后端独立协调，Core 仍独占触发、漏执行与重叠准入。App 退出后不再调度；显式停止抑制自动激活，普通窗口关闭沿用后台生命周期。边界见[本地服务 API](../api/local-service.md#已发布任务目录预览)与[Task API](../api/tasks.md#轻量目录与-owner-更新)。
+可信本机的任务目录预览由 Core 读取一次原子发布根及其不可变定时摘要包，不打开 Store 或执行恢复。摘要与 Task、收据和归属索引同根提交，不另设可变索引。版本 5 保留原可信读取路径，用于升级前展示和发现启用安排，Core 合法启动后原子迁移。预览不证明实时运行状态或未知提交结果，也不能提供控制修订。Desktop 每个执行 owner 只维护一个目录缓存和 watch，任务中心、来源侧栏与通知共同消费；缺号、换代和背压后保留旧展示并重建基线。执行激活归 Rust Host，Core 仍独占触发、漏执行与重叠准入。Host 仅激活已发布目录中含启用任务且保存了启动输入的项目。Host 常驻认证连接负责 `areal/task/host/ready` 与 `areal/task/prepare`，校验运行目录并准备当前模型和资源 profile。资源变化沿原生命周期路径受控重启，保留原 Run 身份及历史资源版本。项目停止抑制持久化于 Host，只有显式恢复定时执行才解除。Desktop 只投影抑制及激活错误。边界见[本地服务 API](../api/local-service.md#已发布任务目录预览)与[Task API](../api/tasks.md#轻量目录与-owner-更新)。
 
 普通可写桌面会话通过 Core 的 `scheduled_task_*` 工具创建和管理定时任务。工具上下文绑定当前已注册 Host 的身份与连接、来源 Thread 及 cwd，冻结的权限和工具 allowlist 继续生效。`sourceThreadId` 仅负责来源关联，`threadId` 保留独立执行锚点，每次 Run 另建 Thread。写入键来自持久 tool-call 身份，回执核对保留 UNKNOWN，修订冲突不能静默覆盖。`deletedAt` 墓碑复用取消与停止结算路径，保留历史、回执和容量占用。来源对话中的持久任务卡、右上角列表和全局中心读取同一 Task。新建独立任务也使用普通会话工具链路，不依赖 Renderer 轮询确认。
 

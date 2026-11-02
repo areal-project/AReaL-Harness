@@ -799,6 +799,12 @@ class DesktopService {
       throw new Error("Desktop service listener unavailable");
     this.activityTimer = setInterval(() => {
       this.sampleActivity();
+      void this.backend.host
+        .refreshScheduling()
+        .then((changed) => {
+          if (changed) this.backend.onChange();
+        })
+        .catch(() => {});
     }, 5000);
     this.flushTimer = setInterval(() => {
       void this.backend.analytics.flush();

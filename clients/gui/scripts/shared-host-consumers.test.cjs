@@ -76,7 +76,7 @@ test("foreign CLI launch and thread creation retain Core configuration ownership
     refreshAfterAdmission: async () => {},
   };
   await CoreBackend.prototype.launch.call(backend, project);
-  assert.deepEqual(ensured.slice(1), ["cli", undefined, undefined]);
+  assert.deepEqual(ensured.slice(1), ["cli", undefined, undefined, false]);
   assert.equal(project.service, descriptor);
   assert.equal(
     (await CoreBackend.prototype.createThreadInProject.call(backend, project, {})).threadId,
@@ -109,6 +109,7 @@ test("Host discovery schedules only ready foreign projects for passive observati
     projects,
     host: {
       sourceId,
+      rememberStatus() {},
       list: async () => entries.map(({ id }) => ({ id, root: `/fixture/${id}` })),
       resolve: (id) => ({
         projectId: id,
@@ -166,6 +167,7 @@ test("rediscovering the same Core generation preserves an in-flight observer ide
     projects: new Map([[project.id, project]]),
     host: {
       sourceId: "gui-source",
+      rememberStatus() {},
       list: async () => [{ id: project.id, root: "/fixture/cli" }],
       resolve: () => ({ projectId: project.id }),
       client: {
@@ -232,7 +234,7 @@ test("foreign project snapshot exposes only Core profiles and models", () => {
     projects: new Map([[project.id, project]]),
     providers,
     ownerTasks: { revision: () => 0 },
-    lifecycleOperations: { schedulingSuppressed: () => false },
+    host: { scheduling: () => ({ suppressed: false, activationError: null }) },
     cloudConversations: {
       mergeSnapshot: (_id, state) => state,
       projection: () => ({ summaries: [] }),

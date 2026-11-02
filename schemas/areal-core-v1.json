@@ -26670,6 +26670,31 @@
       "title": "TaskTarget",
       "type": "object"
     },
+    "areal/task/tools/ready": {
+      "$defs": {
+        "DesktopToolBundle": {
+          "enum": [
+            "areal.browser.v1",
+            "areal.computer.v1"
+          ],
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "bundles": {
+          "items": {
+            "$ref": "#/$defs/DesktopToolBundle"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "bundles"
+      ],
+      "title": "TaskToolsReady",
+      "type": "object"
+    },
     "areal/task/unsubscribe": {
       "additionalProperties": false,
       "properties": {
@@ -102713,6 +102738,18 @@
         "pendingQuestions"
       ],
       "title": "Task",
+      "type": "object"
+    },
+    "areal/task/tools/ready": {
+      "additionalProperties": true,
+      "properties": {
+        "ready": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ready"
+      ],
       "type": "object"
     },
     "areal/task/unsubscribe": {

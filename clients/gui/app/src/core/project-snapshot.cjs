@@ -4,7 +4,7 @@ const { isAwaitingResponse } = require("./project-state.cjs");
 const { isRemoteControl } = require("./submission-recovery.cjs");
 const { projectCoreCapabilities } = require("./core-capabilities.cjs");
 const { isTaskDraftConfiguration, displayTaskDraftThread } = require("./task-draft.cjs");
-/** @param {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'projects'|'cloudConversations'|'binary'|'ownerTasks'|'awaitingResponses'|'providers'|'defaultProfile'|'lifecycleOperations'|'scheduleOwners'>} backend @param {import('./project-index.cjs').SavedProject} project @param {Set<string>} taskHistoryOwners */
+/** @param {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'projects'|'cloudConversations'|'binary'|'ownerTasks'|'awaitingResponses'|'providers'|'defaultProfile'|'host'>} backend @param {import('./project-index.cjs').SavedProject} project @param {Set<string>} taskHistoryOwners */
 function snapshotProject(backend, project, taskHistoryOwners) {
   const live = backend.projects.get(project.id);
   const snapshot = live?.model.getSnapshot() ?? null;
@@ -34,10 +34,7 @@ function snapshotProject(backend, project, taskHistoryOwners) {
       connectionGeneration: live?.connectionGeneration ?? 0,
       taskDirectoryRevision: backend.ownerTasks.revision(project.id),
     },
-    scheduling: {
-      suppressed: backend.lifecycleOperations.schedulingSuppressed(project.id),
-      activationError: backend.scheduleOwners?.error(project.id) ?? null,
-    },
+    scheduling: backend.host.scheduling(project.id),
     state: backend.cloudConversations.mergeSnapshot(
       project.id,
       state && live?.resourceInitializing ? { ...state, connected: false } : state,

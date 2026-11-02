@@ -53,7 +53,14 @@ async function fixture(t) {
               version: 1,
               hostId,
               generation,
-              capabilities: ["activity", "stopOperations", "guiImport", "projects"],
+              capabilities: [
+                "activity",
+                "stopOperations",
+                "guiImport",
+                "projects",
+                "scheduledActivation",
+                "scheduledPreparation",
+              ],
             };
           } else if (handler) result = await handler(request, socket);
           else result = { operation: operations.get(request.params.requestId) ?? null };

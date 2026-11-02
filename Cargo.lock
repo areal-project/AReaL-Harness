@@ -240,12 +240,16 @@ dependencies = [
  "areal-local-service",
  "areal-protocol",
  "fs2",
+ "futures-util",
  "libc",
  "security-framework",
  "serde",
  "serde_json",
+ "serde_yaml_ng",
  "tempfile",
  "tokio",
+ "tokio-tungstenite",
+ "unsafe-libyaml",
  "uuid",
 ]
 

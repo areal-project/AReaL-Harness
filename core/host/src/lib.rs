@@ -5,6 +5,8 @@ mod journal;
 mod launch;
 mod migration;
 mod remote_state;
+mod schedule_admission;
+mod schedule_resources;
 mod server;
 mod vault;
 mod wire;
@@ -12,6 +14,7 @@ use areal_local_service::LocalArgs;
 use areal_protocol::service::Service;
 pub use client::{Client, Subscription};
 pub use launch::ResolveProject;
+pub use schedule_resources::SchedulePreparation;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 pub use server::{HostExit, RunOptions, run};
@@ -28,6 +31,8 @@ pub const CAPABILITIES: &[&str] = &[
     "credentialVault",
     "remoteState",
     "activity",
+    "scheduledActivation",
+    "scheduledPreparation",
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -97,6 +102,10 @@ pub struct ProjectRegistration {
 pub struct ProjectStatus {
     pub registration: ProjectRegistration,
     pub state: String,
+    #[serde(default)]
+    pub schedule_activation_suppressed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schedule_activation_error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub service: Option<Service>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -141,6 +150,8 @@ pub struct LaunchInputs {
     pub config_path: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deployment_path: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schedule_preparation: Option<SchedulePreparation>,
     #[serde(default)]
     pub environment: BTreeMap<String, String>,
     #[serde(default)]

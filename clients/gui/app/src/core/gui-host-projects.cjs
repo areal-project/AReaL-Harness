@@ -3,10 +3,13 @@
 const { createHash } = require("node:crypto");
 const { mkdir, readFile } = require("node:fs/promises");
 const { join } = require("node:path");
+const { isDeepStrictEqual } = require("node:util");
 const { HostClient } = require("./host-client.cjs");
 const { canonicalSource, GuiSourceAdapter } = require("./gui-source.cjs");
 /** @typedef {import('./project-index.cjs').SavedProject} SavedProject */
 /** @typedef {{alias:{profile:string,legacyProjectId:string},projectId:string,workspace:string,dataDir:string,scratchDir:string,sourceId?:string,logicalAlias?:{profile:string,legacyProjectId:string},worktreeRequestId?:string,projectlessRequestId?:string}} Binding */
+/** @typedef {{suppressed:boolean,activationError:string|null}} Scheduling */
+/** @typedef {{registration:{projectId:string},scheduleActivationSuppressed:boolean,scheduleActivationError?:string}} SchedulingStatus */
 /** @param {string} value */
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 /** @param {string} value */
@@ -30,12 +33,18 @@ class GuiHostProjects {
     this.bindings = new Map();
     /** @type {SavedProject[]} */
     this.metadata = [];
+    /** @type {Map<string,Scheduling>} */
+    this.schedules = new Map();
+    /** @type {Promise<boolean>|undefined} */
+    this.scheduleRefresh = undefined;
   }
   async init() {
     for (const path of Object.values(this.source))
       await mkdir(path, { recursive: true, mode: 0o700 });
     this.source = await canonicalSource(this.source);
     await this.client.connectOrStart(this.home, this.options.binary);
+    this.client.requireCapability("scheduledActivation");
+    this.client.requireCapability("scheduledPreparation");
     let state = await this.client.sourceState(this.source);
     if (!state) {
       if (!this.options.singletonHeld)
@@ -76,6 +85,8 @@ class GuiHostProjects {
     if (!this.sourceId) throw new Error("Host GUI source has not been initialized");
     this.client.close();
     await this.client.connectOrStart(this.home, this.options.binary);
+    this.client.requireCapability("scheduledActivation");
+    this.client.requireCapability("scheduledPreparation");
     const state = await this.client.sourceState(this.source);
     if (!state || state.sourceId !== this.sourceId) throw new Error("Host GUI source changed");
     return this.list();
@@ -134,6 +145,39 @@ class GuiHostProjects {
     if (!binding) throw new Error(`Host project alias is unavailable: ${id}`);
     return binding;
   }
+  /** @param {SchedulingStatus} project */
+  rememberScheduling(project) {
+    this.schedules.set(project.registration.projectId, {
+      suppressed: project.scheduleActivationSuppressed === true,
+      activationError: project.scheduleActivationError ?? null,
+    });
+  }
+  /** @param {{projects:SchedulingStatus[]}} status */
+  rememberStatus(status) {
+    this.schedules.clear();
+    for (const project of status.projects) this.rememberScheduling(project);
+  }
+  /** @param {string} id @returns {Scheduling} */
+  scheduling(id) {
+    const projectId = this.bindings.get(id)?.projectId;
+    return (
+      (projectId && this.schedules.get(projectId)) || { suppressed: false, activationError: null }
+    );
+  }
+  refreshScheduling() {
+    if (this.scheduleRefresh) return this.scheduleRefresh;
+    const before = new Map(this.schedules);
+    this.scheduleRefresh = this.client
+      .status()
+      .then((status) => {
+        this.rememberStatus(status);
+        return !isDeepStrictEqual(this.schedules, before);
+      })
+      .finally(() => {
+        this.scheduleRefresh = undefined;
+      });
+    return this.scheduleRefresh;
+  }
   /** @param {string} requestId @param {SavedProject} project */
   async register(requestId, project) {
     await this.list();
@@ -166,15 +210,17 @@ class GuiHostProjects {
   journal(id) {
     return this.client.journal(this.resolve(id).projectId);
   }
-  /** @param {string} requestId @param {string} id @param {unknown} launchInputs @param {Record<string,string>} [credentials] */
-  async ensure(requestId, id, launchInputs, credentials) {
+  /** @param {string} requestId @param {string} id @param {unknown} launchInputs @param {Record<string,string>} [credentials] @param {boolean} [resumeScheduling] */
+  async ensure(requestId, id, launchInputs, credentials, resumeScheduling = false) {
     const binding = this.resolve(id);
     const result = await this.client.ensureProject(
       requestId,
       binding.projectId,
       binding.sourceId === this.sourceId ? launchInputs : undefined,
       binding.sourceId === this.sourceId ? credentials : undefined,
+      resumeScheduling,
     );
+    this.rememberScheduling(result.project);
     if (result.project.state !== "ready" || !result.service)
       throw Object.assign(new Error(`Host project is ${result.project.state}`), {
         code: "CORE_STOPPED",
@@ -195,6 +241,7 @@ class GuiHostProjects {
   async status(id) {
     const projectId = this.resolve(id).projectId;
     const status = await this.client.status();
+    this.rememberStatus(status);
     const project = status.projects.find(
       /** @param {{registration:{projectId:string}}} item */ (item) =>
         item.registration.projectId === projectId,
@@ -202,14 +249,17 @@ class GuiHostProjects {
     if (!project) throw new Error("Host project registration disappeared");
     return project;
   }
-  /** @param {string} requestId @param {string} id @param {string} serviceGeneration @param {'ifIdle'|'cancel'} strategy */
-  stop(requestId, id, serviceGeneration, strategy) {
-    return this.client.stopProject(
+  /** @param {string} requestId @param {string} id @param {string} serviceGeneration @param {'ifIdle'|'cancel'} strategy @param {boolean} [suppressScheduling] */
+  async stop(requestId, id, serviceGeneration, strategy, suppressScheduling = true) {
+    const result = await this.client.stopProject(
       requestId,
       this.resolve(id).projectId,
       serviceGeneration,
       strategy,
+      suppressScheduling,
     );
+    await this.refreshScheduling().catch(() => {});
+    return result;
   }
   /** @param {string} requestId */
   async operation(requestId) {

@@ -183,8 +183,8 @@ async function lifecycleCapabilities(backend, target) {
   return value;
 }
 
-/** @param {ServiceReader} backend @param {StopTarget} target @param {boolean} cancel */
-async function requestStop(backend, target, cancel) {
+/** @param {ServiceReader} backend @param {StopTarget} target @param {boolean} cancel @param {boolean} [suppressScheduling] */
+async function requestStop(backend, target, cancel, suppressScheduling = true) {
   if (backend.host)
     return hostStopOperation(
       await backend.host.stop(
@@ -192,6 +192,7 @@ async function requestStop(backend, target, cancel) {
         target.projectId,
         target.generation,
         cancel ? "cancel" : "ifIdle",
+        suppressScheduling,
       ),
       target,
       backend.host.resolve(target.projectId).projectId,

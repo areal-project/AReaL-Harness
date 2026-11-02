@@ -459,6 +459,7 @@ mod tests {
                 homedir: None,
                 config_path: None,
                 deployment_path: None,
+                schedule_preparation: None,
                 environment: BTreeMap::new(),
                 credential_names: Vec::new(),
                 options: areal_local_service::LocalArgs::default(),

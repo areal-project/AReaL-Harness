@@ -65,6 +65,7 @@ async function setup(t, { gitRepo = true } = {}) {
     };
     b.host = {
       sourceId: "fixture",
+      scheduling: () => ({ suppressed: false, activationError: null }),
       resolve: () => ({ sourceId: "fixture" }),
       async register(_requestId, project) {
         const persisted = JSON.parse(await readFile(join(home, "projects.json"), "utf8"));

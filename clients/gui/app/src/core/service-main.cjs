@@ -306,7 +306,6 @@ async function start() {
   await writeFile(temporary, JSON.stringify(descriptor), { mode: 0o600 });
   await rename(temporary, join(home, "service.json"));
   startupTraceService.finish("ok");
-  void backend.scheduleOwners.start();
 }
 app.on("window-all-closed", () => {});
 app.on("before-quit", (event) => {

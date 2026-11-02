@@ -1,5 +1,31 @@
 import { describe, expect, it } from "vite-plus/test";
-import { readFileOpenResult } from "./desktop-response.js";
+import { readFileOpenResult, readSnapshot } from "./desktop-response.js";
+
+describe("desktop Host recovery snapshots", () => {
+  it.each([
+    { recovery: "check", phase: "admissionUnconfirmed" },
+    { recovery: "reconnect", phase: "completed" },
+  ])("preserves $recovery for a $phase Host stop", ({ recovery, phase }) => {
+    const snapshot = {
+      projects: [],
+      connection: { state: "unavailable", recovery },
+      lifecycle: {
+        supported: false,
+        kind: "stopHost",
+        phase,
+        operations: [{ requestId: "original-stop", kind: "stopHost", phase, targets: [] }],
+      },
+    };
+
+    expect(readSnapshot(snapshot)).toMatchObject(snapshot);
+  });
+
+  it("rejects an unknown recovery action", () => {
+    expect(() =>
+      readSnapshot({ projects: [], connection: { state: "unavailable", recovery: "restart" } }),
+    ).toThrow();
+  });
+});
 
 describe("desktop file-open responses", () => {
   it("accepts PDF bytes returned for the in-app viewer", () => {

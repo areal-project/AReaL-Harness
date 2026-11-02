@@ -1102,6 +1102,24 @@ impl Connection {
                 .map(|page| json!(page))
                 .map_err(map_error);
         }
+        if method == "areal/task/tools/ready" {
+            let request: areal_protocol::tasks::TaskToolsReady = parse(params)?;
+            if self.principal.thread_ids.is_some()
+                || !self.principal.allows(auth::Permission::Manage)
+                || !self.principal.allows(auth::Permission::Tools)
+            {
+                return Err(RpcError {
+                    code: -32003,
+                    message: "unrestricted desktop host permission required".into(),
+                    data: None,
+                });
+            }
+            engine
+                .register_schedule_tools(request, self.tool_host.clone())
+                .await
+                .map_err(map_error)?;
+            return Ok(json!({"ready":true}));
+        }
         if method == "areal/task/host/ready" {
             if !params.as_object().is_some_and(|p| p.is_empty()) {
                 return Err(RpcError::invalid("expected empty host readiness request"));
@@ -1657,6 +1675,7 @@ mod additional_methods {
     areal_protocol::method_catalog! {
         "areal/work/overview" => Read;
         "areal/task/host/ready" => Subscription;
+        "areal/task/tools/ready" => Subscription;
         "areal/workgroup/policy" => Read;
         "areal/workgroup/start" => Mutation;
         "areal/workgroup/list" => Read;

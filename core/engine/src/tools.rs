@@ -345,6 +345,15 @@ pub use registry::{
 pub(crate) struct Bindings {
     pub registry: Registry,
     pub host: Option<Arc<dyn DynamicToolHost>>,
+    pub schedule_host: Option<Arc<dyn DynamicToolHost>>,
+}
+
+impl Bindings {
+    pub(crate) fn can_start_without_tool_host(&self) -> bool {
+        self.schedule_host
+            .as_ref()
+            .is_some_and(|host| !host.is_closed())
+    }
 }
 pub struct RuntimeConfig {
     pub client: Arc<Client>,

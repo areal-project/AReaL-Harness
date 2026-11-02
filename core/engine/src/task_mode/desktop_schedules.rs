@@ -3,6 +3,61 @@ use super::*;
 use areal_protocol::desktop::ThreadStart;
 
 impl Engine {
+    pub async fn register_schedule_tools(
+        &self,
+        request: TaskToolsReady,
+        host: Arc<dyn tools::DynamicToolHost>,
+    ) -> Result<()> {
+        if host.is_closed() {
+            return Err(Error::Closed);
+        }
+        let mut definitions = Vec::new();
+        for bundle in request.bundles {
+            let definition = match bundle {
+                DesktopToolBundle::Browser => areal_protocol::desktop::browser_v1_tool(),
+                DesktopToolBundle::Computer => areal_protocol::desktop::computer_v1_tool(),
+            };
+            if definitions
+                .iter()
+                .any(|tool: &areal_protocol::ToolDefinition| tool.name == definition.name)
+            {
+                return Err(invalid("duplicate desktop tool bundle"));
+            }
+            definitions.push(definition);
+        }
+        let mut providers = self.task_modes.desktop_tools.lock().await;
+        if definitions.is_empty() {
+            if providers
+                .get(host.identity())
+                .is_some_and(|old| old.host.id() == host.id())
+            {
+                providers.remove(host.identity());
+            }
+            return Ok(());
+        }
+        if providers
+            .get(host.identity())
+            .is_some_and(|old| old.host.id() != host.id() && !old.host.is_closed())
+        {
+            return Err(Error::Conflict);
+        }
+        providers.insert(
+            host.identity().into(),
+            DesktopScheduleTools { host, definitions },
+        );
+        Ok(())
+    }
+
+    pub(super) async fn schedule_tools(&self, owner: &str) -> Option<DesktopScheduleTools> {
+        self.task_modes
+            .desktop_tools
+            .lock()
+            .await
+            .get(owner)
+            .filter(|provider| !provider.host.is_closed())
+            .cloned()
+    }
+
     pub async fn register_schedule_host(
         self: &Arc<Self>,
         host: Arc<dyn tools::DynamicToolHost>,
@@ -84,7 +139,7 @@ impl Engine {
                 let goal: Goal = serde_json::from_value(view["goal"].clone()).map_err(invalid)?;
                 let stop = task.cancelled || run.reason.as_deref() == Some("stopRequested");
                 let cell = self.cell(thread_id).await?;
-                let bound = cell.bindings.read().await.host.clone();
+                let bound = cell.bindings.read().await.schedule_host.clone();
                 let online = bound.as_ref().is_some_and(|h| !h.is_closed());
                 if goal.status == GoalStatus::Active && (stop || !online) {
                     if !stop {
@@ -121,7 +176,7 @@ impl Engine {
                     if !self.host_current(&host).await {
                         return Ok(());
                     }
-                    // 空工具集也绑定 Host，执行不能因没有浏览器工具而变成脱离桌面的任务。
+                    let provider = self.schedule_tools(&task.owner).await;
                     {
                         let state = cell.state.lock().await;
                         if state.active.is_some() {
@@ -129,13 +184,18 @@ impl Engine {
                         }
                         let mut bindings = cell.bindings.write().await;
                         if bindings
-                            .host
+                            .schedule_host
                             .as_ref()
                             .is_some_and(|old| !old.is_closed() && old.id() != host.id())
                         {
                             return Err(Error::Conflict);
                         }
-                        bindings.host = Some(host);
+                        bindings.schedule_host = Some(host);
+                        if bindings.host.as_ref().is_none_or(|old| old.is_closed()) {
+                            bindings.host = provider.and_then(|provider| {
+                                provider.for_tools(&state.thread.dynamic_tools)
+                            });
+                        }
                     }
                     self.control_goal_from_task(&task, run, "resume", &view)
                         .await?;
@@ -280,6 +340,7 @@ impl Engine {
         let Some(host) = host else {
             return Ok(());
         };
+        let provider = self.schedule_tools(&task.owner).await;
         let prepared = self
             .task_modes
             .state
@@ -312,7 +373,11 @@ impl Engine {
             );
             object.insert("cwd".into(), json!(anchor.cwd));
             object.insert("admissionGuard".into(), json!({"ordinarySession":true}));
-            let p: ThreadStart = serde_json::from_value(value).map_err(invalid)?;
+            let mut p: ThreadStart = serde_json::from_value(value).map_err(invalid)?;
+            p.dynamic_tools = provider
+                .as_ref()
+                .map(|provider| provider.definitions.clone())
+                .unwrap_or_default();
             let mut state = self.task_modes.state.lock().await;
             let mut candidate = state.clone();
             let current = candidate.tasks.get(task_id).ok_or(Error::NotFound)?;
@@ -332,11 +397,16 @@ impl Engine {
         if !self.host_current(&host).await {
             return Ok(());
         }
+        let tool_host = provider.and_then(|provider| provider.for_tools(&request.dynamic_tools));
         let thread = if let Some(thread) = &run.thread_id {
             self.read(thread, false).await?
         } else {
-            self.create_configured(task.owner.clone(), request, host.clone())
-                .await?
+            self.create_configured(
+                task.owner.clone(),
+                request,
+                tool_host.clone().unwrap_or_else(|| host.clone()),
+            )
+            .await?
         };
         self.edit_task(task_id, |t| {
             let r = t.runs.last_mut().unwrap();
@@ -357,13 +427,18 @@ impl Engine {
             }
             let mut bindings = cell.bindings.write().await;
             if bindings
-                .host
+                .schedule_host
                 .as_ref()
                 .is_some_and(|h| !h.is_closed() && h.id() != host.id())
             {
                 return Err(Error::Conflict);
             }
-            bindings.host = Some(host);
+            bindings.schedule_host = Some(host);
+            if bindings.host.as_ref().is_none_or(|old| {
+                old.is_closed() || old.id() == bindings.schedule_host.as_ref().unwrap().id()
+            }) {
+                bindings.host = tool_host;
+            }
         }
         {
             let cell = self.cell(&thread.id).await?;
@@ -419,5 +494,27 @@ impl Engine {
             }
             Err(error) => Err(error),
         }
+    }
+}
+
+impl DesktopScheduleTools {
+    fn for_tools(
+        self,
+        definitions: &[areal_protocol::ToolDefinition],
+    ) -> Option<Arc<dyn tools::DynamicToolHost>> {
+        if self.host.is_closed()
+            || definitions.is_empty()
+            || definitions.iter().any(|tool| {
+                !self.definitions.iter().any(|known| {
+                    tool.name == known.name
+                        && tool.description == known.description
+                        && tool.input_schema == known.input_schema
+                        && tool.output_schema == known.output_schema
+                })
+            })
+        {
+            return None;
+        }
+        Some(self.host)
     }
 }

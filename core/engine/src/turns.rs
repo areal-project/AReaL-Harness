@@ -62,15 +62,11 @@ impl Engine {
             self.check_side_capacity(&origin.source_thread_id, Some(&state.thread.id))
                 .await?;
         }
-        if !state.thread.dynamic_tools.is_empty()
-            && cell
-                .bindings
-                .read()
-                .await
-                .host
-                .as_ref()
-                .is_none_or(|host| host.is_closed())
-        {
+        if !state.thread.dynamic_tools.is_empty() && {
+            let bindings = cell.bindings.read().await;
+            !bindings.can_start_without_tool_host()
+                && bindings.host.as_ref().is_none_or(|host| host.is_closed())
+        } {
             return Err(Error::Invalid(
                 "dynamic tools require a connected owner; resume this thread to attach a client"
                     .into(),

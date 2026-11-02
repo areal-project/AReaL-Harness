@@ -1,3 +1,7 @@
+#[path = "schedule_connection.rs"]
+mod schedule_connection;
+#[path = "schedules.rs"]
+mod schedules;
 use crate::{
     Activity, CAPABILITIES, HostIdentity, HostStatus, LaunchInputs, OpenResult, ProjectActivity,
     ProjectRegistration, ProjectStatus, StopStrategy, VERSION, launch,
@@ -76,6 +80,7 @@ struct Host {
     migration: crate::migration::Migration,
     journal: crate::journal::Journal,
     remote: crate::remote_state::RemoteState,
+    schedules: schedules::Schedules,
 }
 impl Slot {
     fn imported(registration: ProjectRegistration) -> Self {
@@ -133,6 +138,8 @@ struct Register {
 struct Ensure {
     #[serde(default)]
     no_auto_restart: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    resume_scheduling: bool,
     request_id: String,
     expected_generation: String,
     project_id: String,
@@ -147,10 +154,18 @@ struct Stop {
     request_id: String,
     expected_generation: String,
     strategy: StopStrategy,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    suppress_scheduling: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     project_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     service_generation: Option<String>,
+}
+fn default_true() -> bool {
+    true
+}
+fn is_true(value: &bool) -> bool {
+    *value
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -254,6 +269,7 @@ async fn run_local(options: RunOptions) -> Result<HostExit> {
     let stop = stop.filter(|v| v["state"] != "completed" && !settled_refusal(v));
     let (changes, _) = watch::channel(0);
     let host = Rc::new(Host {
+        schedules: schedules::Schedules::load(&home)?,
         home,
         bin: options.bin_dir.canonicalize()?,
         identity,
@@ -267,10 +283,39 @@ async fn run_local(options: RunOptions) -> Result<HostExit> {
         journal,
         remote,
     });
+    host.schedules.import(
+        &host.migration,
+        &host
+            .slots
+            .borrow()
+            .values()
+            .map(|slot| slot.registration.clone())
+            .collect::<Vec<_>>(),
+    )?;
+    for entry in std::fs::read_dir(directory.join("operations"))? {
+        let path = entry?.path();
+        if path.extension().is_none_or(|extension| extension != "json") {
+            continue;
+        }
+        let record: Operation = storage::read(&path)?;
+        if record.evidence["schedulingIntentPending"] == true {
+            host.apply_scheduling_intent(
+                record.receipt["requestId"]
+                    .as_str()
+                    .context("missing scheduling request identity")?,
+            )?;
+        }
+    }
     storage::write(&directory.join("host.json"), &host.identity)?;
+    let scheduler = schedules::run(host.clone());
+    tokio::pin!(scheduler);
+    let connections = schedule_connection::run(host.clone());
+    tokio::pin!(connections);
     loop {
         tokio::select! {
             _=host.exit.notified()=>break,
+            _=&mut scheduler=>unreachable!("scheduler lifetime is the Host lifetime"),
+            _=&mut connections=>unreachable!("schedule connections live with the Host"),
             connection=listener.accept()=> {let (stream,_)=connection?;let host=host.clone();tokio::task::spawn_local(async move {let _=connection_loop(host,stream).await;});}
         }
     }
@@ -442,6 +487,16 @@ impl Host {
                         .entry(registration.project_id.clone())
                         .or_insert_with(|| Slot::imported(registration));
                 }
+                self.schedules.import(
+                    &self.migration,
+                    &self
+                        .slots
+                        .borrow()
+                        .values()
+                        .map(|slot| slot.registration.clone())
+                        .collect::<Vec<_>>(),
+                )?;
+                self.schedules.wake.notify_one();
                 self.changed();
                 Ok(result)
             }
@@ -540,6 +595,21 @@ impl Host {
             _ => Err(error("methodNotFound", "unknown Host client-state method")),
         }
     }
+    fn apply_scheduling_intent(&self, id: &str) -> Result<()> {
+        let mut record = self.receipt(id)?.context("missing scheduling operation")?;
+        if record.evidence["schedulingIntentPending"] != true {
+            return Ok(());
+        }
+        let project = record.receipt["projectId"]
+            .as_str()
+            .context("missing scheduling project")?;
+        let suppressed = record.evidence["scheduleActivationSuppressed"]
+            .as_bool()
+            .context("missing scheduling intent")?;
+        self.schedules.suppress(project, suppressed)?;
+        record.evidence["schedulingIntentPending"] = json!(false);
+        storage::write(&wire::operation_path(&self.home, id), &record)
+    }
     fn changed(&self) {
         self.changes.send_modify(|sequence| *sequence += 1);
     }
@@ -625,6 +695,12 @@ impl Host {
         let evidence = if method == "projects.register" {
             let value = serde_json::to_value(params)?;
             json!({"registration":value["registration"],"created":!self.slots.borrow().contains_key(project_id),"bindExisting":value["bindExisting"]})
+        } else if (method == "project.stop"
+            && serde_json::to_value(params)?["suppressScheduling"] != false)
+            || (method == "project.ensure"
+                && serde_json::to_value(params)?["resumeScheduling"] == true)
+        {
+            json!({"schedulingIntentPending":true,"scheduleActivationSuppressed":method=="project.stop"})
         } else {
             Value::Null
         };
@@ -765,7 +841,7 @@ impl Host {
         }
         let slots = self.slots.borrow();
         let slot = &slots[id];
-        ProjectStatus {registration,state:slot.state.clone(),service:slot.service.clone().filter(|s|s.owner.as_ref()==Some(&self.owner()) && slot.writer.is_some() && slot.state=="ready"),migration:slot.migration.clone().or_else(||slot.service.as_ref().filter(|s|s.owner.is_none() && s.state==State::Ready).map(|s|json!({"serviceId":s.identity.service_id,"generation":s.identity.generation,"phase":"legacyPending"})))}
+        ProjectStatus {schedule_activation_suppressed:self.schedules.suppressed(id),schedule_activation_error:self.schedules.error(id),registration,state:slot.state.clone(),service:slot.service.clone().filter(|s|s.owner.as_ref()==Some(&self.owner()) && slot.writer.is_some() && slot.state=="ready"),migration:slot.migration.clone().or_else(||slot.service.as_ref().filter(|s|s.owner.is_none() && s.state==State::Ready).map(|s|json!({"serviceId":s.identity.service_id,"generation":s.identity.generation,"phase":"legacyPending"})))}
     }
     async fn dispatch_connection(
         &self,
@@ -972,7 +1048,9 @@ impl Host {
             );
             Ok(json!({"registration":r,"created":created}))
         })();
-        self.finish_mutation(&input.request_id, &digest, outcome)
+        let result = self.finish_mutation(&input.request_id, &digest, outcome);
+        self.schedules.wake.notify_one();
+        result
     }
     fn finish_mutation(&self, id: &str, digest: &str, outcome: Result<Value>) -> Result<Value> {
         let mut receipt = self
@@ -1012,11 +1090,61 @@ impl Host {
         }
     }
     async fn ensure(&self, input: Ensure) -> Result<Value> {
+        let id = input.project_id.clone();
+        let result = self.ensure_cause(input, false).await?;
+        if let Some(generation) = result["service"]["generation"].as_str()
+            && !self.schedules.suppressed(&id)
+            && !self.schedules.import_blocked(&id)
+        {
+            self.schedules
+                .connections
+                .ready(self, &id, generation)
+                .await?;
+        }
+        Ok(result)
+    }
+    async fn ensure_cause(&self, input: Ensure, scheduled: bool) -> Result<Value> {
+        self.ensure_generation(input, scheduled, None).await
+    }
+    async fn ensure_generation(
+        &self,
+        input: Ensure,
+        scheduled: bool,
+        service_generation: Option<&str>,
+    ) -> Result<Value> {
         self.generation(&input.expected_generation)?;
         self.admission()?;
         let gate = self.gate(&input.project_id)?;
         let _guard = gate.lock().await;
         self.admission()?;
+        if let Some(generation) = service_generation {
+            let instance = Self::service_id(&self.slots.borrow()[&input.project_id].registration);
+            let service = areal_local_service::status(&self.home, &instance).await?;
+            ensure!(
+                service.identity.generation == generation && service.state == State::Stopped,
+                error(
+                    "scheduleResourcesChanged",
+                    "original Core must be stopped before schedule resources are applied"
+                )
+            );
+        }
+        if scheduled && self.schedules.suppressed(&input.project_id) {
+            return Err(error(
+                "schedulingSuppressed",
+                "project scheduling was stopped",
+            ));
+        }
+        if scheduled && self.schedules.import_blocked(&input.project_id) {
+            return Err(error(
+                "scheduleImportUnavailable",
+                "legacy scheduling import is unresolved",
+            ));
+        }
+        if scheduled {
+            self.migration.assert_scheduling_available(
+                &self.slots.borrow()[&input.project_id].registration,
+            )?;
+        }
         self.check_pending(&input.project_id, &input.request_id)
             .await?;
         let (digest, previous) = self.accepted(
@@ -1026,8 +1154,10 @@ impl Host {
             &input.project_id,
         )?;
         if let Some(previous) = previous {
+            self.apply_scheduling_intent(&input.request_id)?;
             return previous_result(previous);
         }
+        self.apply_scheduling_intent(&input.request_id)?;
         let result = self.ensure_inner(&input).await;
         if result.is_err() {
             self.slots
@@ -1036,7 +1166,11 @@ impl Host {
                 .unwrap()
                 .state = "unavailable".into();
         }
-        self.finish_mutation(&input.request_id, &digest, result)
+        let result = self.finish_mutation(&input.request_id, &digest, result);
+        if !scheduled && input.launch_inputs.is_some() {
+            self.schedules.wake.notify_one();
+        }
+        result
     }
     async fn ensure_inner(&self, input: &Ensure) -> Result<Value> {
         if self.migration.unpublished_reserved(&input.project_id)? {
@@ -1180,6 +1314,10 @@ impl Host {
                     let slot = &slots[&input.project_id];
                     return Ok(serde_json::to_value(OpenResult {
                         project: ProjectStatus {
+                            schedule_activation_suppressed: self
+                                .schedules
+                                .suppressed(&input.project_id),
+                            schedule_activation_error: self.schedules.error(&input.project_id),
                             registration: registration.clone(),
                             state: "legacyPending".into(),
                             service: None,
@@ -1243,6 +1381,8 @@ impl Host {
             "invalid Host owner after launch"
         );
         let project = ProjectStatus {
+            schedule_activation_suppressed: self.schedules.suppressed(&input.project_id),
+            schedule_activation_error: self.schedules.error(&input.project_id),
             registration,
             state: "ready".into(),
             service: Some(service.clone()),
@@ -1434,6 +1574,7 @@ impl Host {
         let _guard = gate.lock().await;
         if self.receipt(&input.request_id)?.is_some() {
             self.accepted(&input.request_id, "project.stop", &input, id)?;
+            self.apply_scheduling_intent(&input.request_id)?;
             drop(_guard);
             return self
                 .reconcile(&input.request_id)
@@ -1448,12 +1589,35 @@ impl Host {
             return Err(error("generationMismatch", "service generation changed"));
         }
         self.admission()?;
+        let already_stopped = !input.suppress_scheduling
+            && service.state == State::Stopped
+            && areal_local_service::operation(
+                &self.home,
+                &service.identity.service_id,
+                &service.identity.generation,
+                &input.request_id,
+            )
+            .await?
+            .is_none();
+        if already_stopped {
+            self.cleanup_proof(&service).await?;
+        }
         let (digest, _) = self.accepted(&input.request_id, "project.stop", &input, id)?;
+        self.apply_scheduling_intent(&input.request_id)?;
         let pending = json!({"version":VERSION,"requestId":input.request_id,"projectId":id,"serviceId":service.identity.service_id,"serviceGeneration":service.identity.generation,"strategy":input.strategy,"state":"acceptedPending"});
         self.save(&input.request_id, &digest, &pending)?;
-        let receipt = self
-            .stop_target(id, &service, &input.request_id, input.strategy)
-            .await;
+        let receipt = if already_stopped {
+            let mut slots = self.slots.borrow_mut();
+            let slot = slots.get_mut(id).unwrap();
+            slot.writer = None;
+            slot.lifetime = None;
+            slot.service = None;
+            slot.state = "stopped".into();
+            json!({"version":VERSION,"requestId":input.request_id,"projectId":id,"serviceId":service.identity.service_id,"serviceGeneration":service.identity.generation,"strategy":input.strategy,"state":"completed"})
+        } else {
+            self.stop_target(id, &service, &input.request_id, input.strategy)
+                .await
+        };
         self.save(&input.request_id, &digest, &receipt)?;
         Ok(receipt)
     }
@@ -1679,6 +1843,12 @@ impl Host {
                                 record.receipt["state"] = json!("completed");
                                 record.receipt["result"] = serde_json::to_value(OpenResult {
                                     project: ProjectStatus {
+                                        schedule_activation_suppressed: self
+                                            .schedules
+                                            .suppressed(&registration.project_id),
+                                        schedule_activation_error: self
+                                            .schedules
+                                            .error(&registration.project_id),
                                         registration,
                                         state: "ready".into(),
                                         service: Some(service.clone()),
@@ -1992,6 +2162,7 @@ mod tests {
             migration,
             journal,
             remote: crate::remote_state::RemoteState::new(&home),
+            schedules: schedules::Schedules::load(&home).unwrap(),
         });
         let (socket, _peer) = std::os::unix::net::UnixStream::pair().unwrap();
         let connection = ConnectionGuard {
@@ -2228,6 +2399,7 @@ mod tests {
             expected_generation: "generation".into(),
             project_id: project.clone(),
             no_auto_restart: false,
+            resume_scheduling: false,
             launch_inputs: Some(LaunchInputs {
                 workspace: workspace.clone(),
                 cwd: workspace,
@@ -2235,6 +2407,7 @@ mod tests {
                 homedir: Some(base.join("isolated-home")),
                 config_path: None,
                 deployment_path: None,
+                schedule_preparation: None,
                 environment: BTreeMap::new(),
                 credential_names: vec![reference.into(), "OPENAI_API_KEY".into()],
                 options: areal_local_service::LocalArgs {
@@ -2326,7 +2499,7 @@ mod tests {
             storage::private_dir(&directory).unwrap();
             let service: Service = serde_json::from_value(json!({"protocolVersion":0,"serviceId":instance,"generation":uuid::Uuid::new_v4().to_string(),"workspace":workspace,"dataDir":registration.data_dir,"configFingerprint":"fixture","endpoint":"ws://127.0.0.1:1","webUrl":"http://127.0.0.1:1","authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),"hostPid":1,"corePid":1,"state":"ready"})).unwrap();
             storage::write(&directory.join("service.json"), &service).unwrap();
-            let inputs = LaunchInputs { config_home: home.clone(), workspace: workspace.clone(), cwd: workspace, homedir: None, config_path: None, deployment_path: None, environment: BTreeMap::new(), credential_names: vec![], options: Default::default() };
+            let inputs = LaunchInputs { config_home: home.clone(), workspace: workspace.clone(), cwd: workspace, homedir: None, config_path: None, deployment_path: None, schedule_preparation: None, environment: BTreeMap::new(), credential_names: vec![], options: Default::default() };
             let request = uuid::Uuid::new_v4().to_string();
             let error = client.ensure(&request, &registration.project_id, Some(inputs), BTreeMap::new()).await.unwrap_err();
             assert!(format!("{error:#}").contains("cannot inspect existing service"), "{error:#}");
@@ -2582,7 +2755,7 @@ mod tests {
             let workspace=root.path().join("workspace");std::fs::create_dir(&workspace).unwrap();let workspace=workspace.canonicalize().unwrap();
             let mut slots=BTreeMap::new();
             for id in ["a","b","c"] {slots.insert(id.into(),Slot {registration:ProjectRegistration {project_id:id.into(),workspace:workspace.clone(),data_dir:home.join(id),source:ProjectSource::Cli,default_binding:false},gate:Arc::new(Mutex::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new()});}
-            let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home)});
+            let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
             let registration=host.slots.borrow()["b"].registration.clone();storage::private_dir(&registration.data_dir).unwrap();let instance=Host::service_id(&registration);let directory=storage::registry(&home,&instance).unwrap();storage::private_dir(&directory).unwrap();
             let service:Service=serde_json::from_value(json!({"protocolVersion":1,"serviceId":instance,"generation":uuid::Uuid::new_v4().to_string(),"workspace":workspace,"dataDir":registration.data_dir,"configFingerprint":"fixture","owner":host.owner(),"endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1","authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),"hostPid":1,"corePid":1,"state":"stopped"})).unwrap();storage::write(&directory.join("service.json"),&service).unwrap();storage::write(&directory.join("crash.json"),&storage::CrashReceipt {version:1,unexpected_core_exit:true,identity:service.identity.clone(),owner:service.owner.clone(),components:BTreeMap::new(),cleanup_confirmed:true}).unwrap();
             let activation=uuid::Uuid::new_v4().to_string();let record=Operation {digest:"fixture".into(),receipt:json!({"version":1,"requestId":activation,"method":"project.ensure","projectId":"b","state":"acceptedPending"}),evidence:json!({"serviceId":instance,"fingerprint":"fixture","owner":host.owner(),"registration":registration,"previousService":null})};storage::write(&wire::operation_path(&home,&activation),&record).unwrap();
@@ -2590,14 +2763,14 @@ mod tests {
             assert_eq!(host.reconcile(&activation).await.unwrap().unwrap()["state"],"acceptedPending");assert_eq!(host.receipt(&activation).unwrap().unwrap().receipt["state"],"acceptedPending");drop(held_b);
             assert_eq!(host.reconcile(&activation).await.unwrap().unwrap()["state"],"blocked");
             let held_a=host.gate("a").unwrap().lock_owned().await;let startup=storage::open_private(&directory.join("start.lock"),true).unwrap();startup.try_lock_exclusive().unwrap();
-            let project_request=uuid::Uuid::new_v4().to_string();let project_host=host.clone();let project_input=Stop {request_id:project_request.clone(),expected_generation:host.identity.generation.clone(),strategy:StopStrategy::Cancel,project_id:Some("b".into()),service_generation:Some(service.identity.generation.clone())};
+            let project_request=uuid::Uuid::new_v4().to_string();let project_host=host.clone();let project_input=Stop {suppress_scheduling:true,request_id:project_request.clone(),expected_generation:host.identity.generation.clone(),strategy:StopStrategy::Cancel,project_id:Some("b".into()),service_generation:Some(service.identity.generation.clone())};
             let stopping_project=tokio::task::spawn_local(async move {project_host.stop_project(project_input).await});
             loop {if host.gate("b").unwrap().try_lock().is_err(){break;}tokio::task::yield_now().await;}
-            let host_request=uuid::Uuid::new_v4().to_string();let stopping_host=host.clone();let host_input=Stop {request_id:host_request.clone(),expected_generation:host.identity.generation.clone(),strategy:StopStrategy::Cancel,project_id:None,service_generation:None};
+            let host_request=uuid::Uuid::new_v4().to_string();let stopping_host=host.clone();let host_input=Stop {suppress_scheduling:true,request_id:host_request.clone(),expected_generation:host.identity.generation.clone(),strategy:StopStrategy::Cancel,project_id:None,service_generation:None};
             let stopping=tokio::task::spawn_local(async move {stopping_host.stop_host(host_input).await});
             loop {if host.stop.borrow().is_some(){break;}tokio::task::yield_now().await;}
             let original=host.receipt(&host_request).unwrap().unwrap().receipt;assert_eq!(host.reconcile(&host_request).await.unwrap().unwrap(),original);
-            let request=uuid::Uuid::new_v4().to_string();let error=host.stop_project(Stop {request_id:request.clone(),expected_generation:host.identity.generation.clone(),strategy:StopStrategy::Cancel,project_id:Some("c".into()),service_generation:Some("unused".into())}).await.unwrap_err();assert!(error.to_string().contains("stopInProgress"));assert!(host.receipt(&request).unwrap().is_none());
+            let request=uuid::Uuid::new_v4().to_string();let error=host.stop_project(Stop {suppress_scheduling:true,request_id:request.clone(),expected_generation:host.identity.generation.clone(),strategy:StopStrategy::Cancel,project_id:Some("c".into()),service_generation:Some("unused".into())}).await.unwrap_err();assert!(error.to_string().contains("stopInProgress"));assert!(host.receipt(&request).unwrap().is_none());
             drop(startup);assert!(stopping_project.await.unwrap().unwrap_err().to_string().contains("stopInProgress"));assert!(host.receipt(&project_request).unwrap().is_none());drop(held_a);
             assert_eq!(stopping.await.unwrap().unwrap()["state"],"completed");
         }).await;
@@ -2629,15 +2802,28 @@ mod tests {
                 let registration=ProjectRegistration {project_id:"new-project".into(),workspace:workspace.canonicalize().unwrap(),data_dir:home.join("new-data"),source:ProjectSource::Cli,default_binding:false};
                 let bin=std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
                 let task=tokio::task::spawn_local(run_local(RunOptions {home:home.clone(),bin_dir:bin.clone()}));
-                let client=loop {if let Ok(client)=Client::connect_at(home.clone()).await {break client;}tokio::task::yield_now().await;};
+                let client=loop {if let Ok(client)=Client::connect_at(home.clone()).await {break client;}if task.is_finished(){panic!("Host exited before connection: {:?}",task.await.unwrap().err());}tokio::task::yield_now().await;};
                 assert!(client.status().await.unwrap().stop_intent);
                 assert!(client.register(&uuid::Uuid::new_v4().to_string(),registration.clone()).await.is_err());
                 let observed=client.operation(&request).await.unwrap().unwrap();assert_eq!(observed["state"],expected);
                 assert_eq!(client.status().await.unwrap().stop_intent,!released);
                 assert_eq!(client.register(&uuid::Uuid::new_v4().to_string(),registration.clone()).await.is_ok(),released);
                 task.abort();assert!(task.await.is_err_and(|error|error.is_cancelled()));
+                // 并行用例的 fork 可能短暂继承 CLOEXEC 锁，重启前先证明锁已实际释放。
+                let lock=storage::open_private(&home.join("host.lock"),false).unwrap();
+                let deadline=tokio::time::Instant::now()+Duration::from_secs(2);
+                loop {
+                    match lock.try_lock_exclusive() {
+                        Ok(())=>{FileExt::unlock(&lock).unwrap();break;},
+                        Err(error) if error.kind()==std::io::ErrorKind::WouldBlock=>{},
+                        Err(error)=>panic!("Host lock inspection failed: {error}"),
+                    }
+                    assert!(tokio::time::Instant::now()<deadline,"Host lock remained held after owner exit");
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+                drop(lock);
                 let task=tokio::task::spawn_local(run_local(RunOptions {home:home.clone(),bin_dir:bin}));
-                let client=loop {if let Ok(client)=Client::connect_at(home.clone()).await {break client;}tokio::task::yield_now().await;};
+                let client=loop {if let Ok(client)=Client::connect_at(home.clone()).await {break client;}if task.is_finished(){panic!("Host exited before connection: {:?}",task.await.unwrap().err());}tokio::task::yield_now().await;};
                 assert_eq!(client.status().await.unwrap().stop_intent,!released);
                 assert_eq!(client.operation(&request).await.unwrap().unwrap()["state"],expected);
                 assert_eq!(client.register(&uuid::Uuid::new_v4().to_string(),registration).await.is_ok(),released);

@@ -374,7 +374,9 @@ test("a rebuilt journal retains only this project's live submission and settles 
   };
   f.backend.ownerTasks = { revision: () => 0 };
   f.backend.lifecycleOperations.schedulingSuppressed = () => false;
+  f.backend.host.scheduling = () => ({ suppressed: false, activationError: null });
   f.backend.providers.catalog = (models) => models;
+  f.backend.providers.manages = () => false;
   f.project.model.getSnapshot = () => null;
   const snapshot = (project) => snapshotProject(f.backend, project, new Set());
   try {

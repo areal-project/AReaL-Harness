@@ -57,7 +57,7 @@ pub(crate) fn definitions() -> Vec<ToolDefinition> {
     vec![
         definition(
             "scheduled_task_list",
-            "Read schedules created in this ordinary conversation, including deleted history. Pass taskId to refresh one exact task and its current revision before changing it. Do not infer creation or current state from assistant prose. Schedule controls affect future triggers separately from the current Run. Execution requires Core and this desktop Host to be online.",
+            "Read schedules created in this ordinary conversation, including deleted history. Pass taskId to refresh one exact task and its current revision before changing it. Do not infer creation or current state from assistant prose. Schedule controls affect future triggers separately from the current Run. Execution requires Core and the registered schedule Host to be online.",
             json!({"type":"object","properties":{"taskId":{"type":"string"}},"additionalProperties":false}),
         ),
         definition(
@@ -141,10 +141,12 @@ impl Engine {
             .host
             .clone()
             .ok_or_else(|| invalid("TASK_PERMISSION_DENIED"))?;
-        if !self.host_current(&host).await {
+        if host.is_closed() {
             return Err(invalid("TASK_PERMISSION_DENIED"));
         }
-        Ok(host)
+        self.schedule_host(host.identity())
+            .await
+            .ok_or_else(|| invalid("TASK_PERMISSION_DENIED"))
     }
 
     pub(super) async fn validate_schedule_source(
@@ -187,7 +189,15 @@ impl Engine {
             .host
             .clone()
             .ok_or_else(|| invalid("TASK_PERMISSION_DENIED"))?;
-        if anchor_host.id() != host.id() || !self.host_current(&anchor_host).await {
+        let source_host = source.bindings.read().await.host.clone();
+        let same_source = source_host
+            .as_ref()
+            .is_some_and(|source| !source.is_closed() && source.id() == anchor_host.id());
+        if anchor_host.is_closed()
+            || anchor_host.identity() != owner
+            || (!same_source && anchor_host.id() != host.id())
+            || !self.host_current(&host).await
+        {
             return Err(invalid("TASK_PERMISSION_DENIED"));
         }
         Ok(())

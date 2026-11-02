@@ -150,6 +150,295 @@ fn plan(task: &Value) -> Value {
 }
 
 #[tokio::test]
+async fn desktop_tool_readiness_requires_unrestricted_manage_and_tools_and_fixed_bundles() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = open(dir.path());
+    let owner = auth::Principal::embedded();
+    let request = json!({"bundles":["areal.browser.v1","areal.computer.v1"]});
+    for denied in [auth::Permission::Manage, auth::Permission::Tools] {
+        let mut principal = (*owner).clone();
+        principal.permissions.remove(&denied);
+        let (mut conn, _rx) = connect(Arc::new(principal));
+        assert_eq!(
+            conn.dispatch(&engine, "areal/task/tools/ready", request.clone())
+                .await
+                .unwrap_err()
+                .code,
+            -32003
+        );
+        conn.stop.cancel();
+    }
+    let (mut scoped, _rx) = connect(Arc::new(auth::Principal {
+        thread_ids: Some(Default::default()),
+        ..(*owner).clone()
+    }));
+    assert_eq!(
+        scoped
+            .dispatch(&engine, "areal/task/tools/ready", request.clone())
+            .await
+            .unwrap_err()
+            .code,
+        -32003
+    );
+    scoped.stop.cancel();
+    let (mut conn, _rx) = connect(owner.clone());
+    for invalid in [
+        json!({}),
+        json!({"bundles":["other"]}),
+        json!({"bundles":[],"hostId":"forged"}),
+        json!({"bundles":["areal.browser.v1","areal.browser.v1"]}),
+    ] {
+        assert_eq!(
+            conn.dispatch(&engine, "areal/task/tools/ready", invalid)
+                .await
+                .unwrap_err()
+                .code,
+            -32602
+        );
+    }
+    assert_eq!(
+        conn.dispatch(&engine, "areal/task/tools/ready", request.clone())
+            .await
+            .unwrap(),
+        json!({"ready":true})
+    );
+    assert_eq!(
+        conn.dispatch(&engine, "areal/task/tools/ready", request.clone())
+            .await
+            .unwrap(),
+        json!({"ready":true})
+    );
+    let (mut successor, _rx) = connect(owner);
+    assert_eq!(
+        successor
+            .dispatch(&engine, "areal/task/tools/ready", request.clone())
+            .await
+            .unwrap_err()
+            .code,
+        -32009
+    );
+    conn.stop.cancel();
+    assert_eq!(
+        successor
+            .dispatch(&engine, "areal/task/tools/ready", request)
+            .await
+            .unwrap(),
+        json!({"ready":true})
+    );
+    assert_eq!(
+        successor
+            .dispatch(&engine, "areal/task/tools/ready", json!({"bundles":[]}))
+            .await
+            .unwrap(),
+        json!({"ready":true})
+    );
+    successor.stop.cancel();
+    engine.shutdown().await;
+}
+
+struct DesktopCalls {
+    tool: &'static str,
+    requests: std::sync::atomic::AtomicUsize,
+}
+#[async_trait::async_trait]
+impl Model for DesktopCalls {
+    fn name(&self) -> &str {
+        "scheduled-desktop-callback-fixture"
+    }
+    async fn stream(&self, _: Vec<Message>) -> anyhow::Result<ModelStream> {
+        Ok(Box::pin(futures_util::stream::pending()))
+    }
+    async fn chat_limited(
+        &self,
+        _: Vec<Message>,
+        tools: Vec<Value>,
+        _: RequestPurpose,
+        _: Option<u64>,
+    ) -> anyhow::Result<ModelStream> {
+        let request = self
+            .requests
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        if request >= 2 {
+            return self.stream(vec![]).await;
+        }
+        assert!(
+            tools
+                .iter()
+                .any(|tool| tool["function"]["name"] == self.tool)
+        );
+        Ok(Box::pin(futures_util::stream::iter(vec![
+            Ok(ModelEvent::ToolCall(ToolCall {
+                id: format!("desktop-{request}"),
+                name: self.tool.into(),
+                arguments: json!({"operation":"observe","parameters":{}}).to_string(),
+            })),
+            Ok(ModelEvent::Usage(areal_protocol::ModelUsage {
+                input_tokens: 100,
+                cached_input_tokens: 0,
+                output_tokens: 20,
+            })),
+        ])))
+    }
+}
+
+async fn callback(
+    engine: &Arc<Engine>,
+    task: &Value,
+    rx: &mut mpsc::Receiver<Outbound>,
+    method: &str,
+) -> Value {
+    let result = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let Outbound::Message(value) = rx.recv().await.unwrap() else {
+                continue;
+            };
+            if value["method"] == method {
+                return value;
+            }
+        }
+    })
+    .await;
+    match result {
+        Ok(value) => value,
+        Err(_) => {
+            let task = engine
+                .task_read(task["id"].as_str().unwrap())
+                .await
+                .unwrap();
+            let thread = engine
+                .read(task.runs[0].thread_id.as_ref().unwrap(), true)
+                .await
+                .unwrap();
+            panic!(
+                "waiting for {method}: {}",
+                json!({"goal":thread.goals,"turnError":thread.turns.last().and_then(|turn| turn.error.as_ref())})
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn scheduled_desktop_callbacks_use_gui_connection_and_never_replay_to_successor() {
+    for (tool, bundle, prepare_method) in [
+        ("browser_v1", "areal.browser.v1", "areal/browser/prepare"),
+        ("computer_v1", "areal.computer.v1", "areal/computer/prepare"),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(
+            dir.path(),
+            Arc::new(DesktopCalls {
+                tool,
+                requests: Default::default(),
+            }),
+            Default::default(),
+        )
+        .unwrap();
+        let principal = auth::Principal::embedded();
+        let (mut scheduler, mut scheduler_rx) = connect(principal.clone());
+        let (mut gui, mut gui_rx) = connect(principal.clone());
+        scheduler
+            .dispatch(&engine, "areal/task/host/ready", json!({}))
+            .await
+            .unwrap();
+        gui.dispatch(
+            &engine,
+            "areal/task/tools/ready",
+            json!({"bundles":[bundle]}),
+        )
+        .await
+        .unwrap();
+        let task = create(&engine, &mut scheduler, tool, now(), None, None).await;
+        let preparation = prepare(&mut scheduler_rx).await;
+        scheduler.tool_host.respond(
+            json!({"id":preparation["id"],"result":{"options":{"approvalTools":["browser_v1","computer_v1"]}}}),
+        );
+        let mut calls = Vec::new();
+        for index in 0..2 {
+            let plan = callback(&engine, &task, &mut gui_rx, prepare_method).await;
+            gui.tool_host.respond(json!({"id":plan["id"],"result":{"preparedActionId":format!("plan-{index}"),"operation":"observe","parameters":{},"origin":"fixture","fingerprint":"fixture"}}));
+            let thread_id = plan["params"]["threadId"].as_str().unwrap();
+            let approval = tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    let interactions = engine.interactions(thread_id).await.unwrap();
+                    if let Some(pending) = interactions["data"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|interaction| interaction["status"] == "pending")
+                    {
+                        break pending.clone();
+                    }
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .unwrap();
+            gui.dispatch(&engine, "areal/interaction/respond", json!({"requestId":approval["requestId"],"threadId":thread_id,"turnId":approval["turnId"],"argumentsDigest":approval["argumentsDigest"],"decision":"allowOnce"})).await.unwrap();
+            let call = callback(&engine, &task, &mut gui_rx, "item/tool/call").await;
+            assert_eq!(call["params"]["tool"], tool);
+            assert_eq!(call["params"]["callId"], format!("desktop-{index}"));
+            assert_eq!(
+                call["params"]["hostGeneration"],
+                areal_engine::tools::DynamicToolHost::id(gui.tool_host.as_ref())
+            );
+            if index == 0 {
+                gui.tool_host.respond(json!({"id":call["id"],"result":{"success":true,"contentItems":[{"type":"inputText","text":"desktop callback succeeded"}]}}));
+            }
+            calls.push(call);
+        }
+        gui.stop.cancel();
+        let (mut successor, mut successor_rx) = connect(principal);
+        successor
+            .dispatch(
+                &engine,
+                "areal/task/tools/ready",
+                json!({"bundles":[bundle]}),
+            )
+            .await
+            .unwrap();
+        let thread_id = calls[0]["params"]["threadId"].as_str().unwrap();
+        tokio::time::timeout(Duration::from_secs(10), engine.wait(thread_id))
+            .await
+            .unwrap()
+            .unwrap();
+        let thread = engine.read(thread_id, true).await.unwrap();
+        let outcomes = thread
+            .turns
+            .iter()
+            .flat_map(|turn| &turn.items)
+            .filter_map(|item| match item {
+                areal_protocol::Item::DynamicToolCall { execution, .. } => {
+                    Some(execution.outcome.clone())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            outcomes,
+            [
+                areal_protocol::ToolOutcome::Succeeded,
+                areal_protocol::ToolOutcome::Unknown
+            ]
+        );
+        assert!(successor_rx.try_recv().is_err());
+        while let Ok(Outbound::Message(value)) = scheduler_rx.try_recv() {
+            assert_ne!(value["method"], "item/tool/call");
+        }
+        let current = read(&engine, &mut scheduler, &task).await;
+        assert_eq!(current["runCount"], 1);
+        assert!(
+            engine
+                .start(thread_id, vec![areal_protocol::Input::text("continue")])
+                .await
+                .is_err()
+        );
+        successor.stop.cancel();
+        scheduler.stop.cancel();
+        engine.shutdown().await;
+    }
+}
+
+#[tokio::test]
 async fn manual_run_admission_precedes_prepare_and_receipts_survive_restart() {
     let dir = tempfile::tempdir().unwrap();
     let engine = open(dir.path());

@@ -185,7 +185,10 @@ pub fn projections() -> (Value, Value) {
         schema::<areal_protocol::tasks::OwnerWatch>(),
     );
     insert(&["owner/unwatch"], object(json!({"removed":boolean})));
-    insert(&["task/host/ready"], object(json!({"ready":boolean})));
+    insert(
+        &["task/host/ready", "task/tools/ready"],
+        object(json!({"ready":boolean})),
+    );
     insert(&["task/unsubscribe"], object(json!({"removed":boolean})));
     insert(
         &["task/list"],

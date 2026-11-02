@@ -339,15 +339,11 @@ impl Engine {
                 "thread requires restart after persistence or cleanup failure".into(),
             ));
         }
-        if !state.thread.dynamic_tools.is_empty()
-            && cell
-                .bindings
-                .read()
-                .await
-                .host
-                .as_ref()
-                .is_none_or(|host| host.is_closed())
-        {
+        if !state.thread.dynamic_tools.is_empty() && {
+            let bindings = cell.bindings.read().await;
+            !bindings.can_start_without_tool_host()
+                && bindings.host.as_ref().is_none_or(|host| host.is_closed())
+        } {
             return Err(invalid(
                 "tool host unavailable; resume with its owner before dispatch",
             ));

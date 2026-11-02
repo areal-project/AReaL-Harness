@@ -140,25 +140,28 @@ class HostClient {
     this.requireCapability("stopOperations");
     return this.request("host.stop", { requestId, expectedGeneration: generation, strategy });
   }
-  /** @param {string} requestId @param {string} projectId @param {unknown} launchInputs @param {Record<string,string>} [credentials] */
-  ensureProject(requestId, projectId, launchInputs, credentials) {
+  /** @param {string} requestId @param {string} projectId @param {unknown} launchInputs @param {Record<string,string>} [credentials] @param {boolean} [resumeScheduling] */
+  ensureProject(requestId, projectId, launchInputs, credentials, resumeScheduling = false) {
+    this.requireCapability("scheduledActivation");
     return this.request("project.ensure", {
       requestId,
       expectedGeneration: this.generation,
       projectId,
       ...(launchInputs ? { launchInputs } : {}),
       ...(credentials ? { credentials } : {}),
+      ...(resumeScheduling ? { resumeScheduling: true } : {}),
       noAutoRestart: true,
     });
   }
-  /** @param {string} requestId @param {string} projectId @param {string} serviceGeneration @param {'ifIdle'|'cancel'} strategy */
-  stopProject(requestId, projectId, serviceGeneration, strategy) {
+  /** @param {string} requestId @param {string} projectId @param {string} serviceGeneration @param {'ifIdle'|'cancel'} strategy @param {boolean} [suppressScheduling] */
+  stopProject(requestId, projectId, serviceGeneration, strategy, suppressScheduling = true) {
     return this.request("project.stop", {
       requestId,
       expectedGeneration: this.generation,
       projectId,
       serviceGeneration,
       strategy,
+      ...(suppressScheduling ? {} : { suppressScheduling: false }),
     });
   }
   /** @param {Buffer} bytes */

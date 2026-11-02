@@ -3,6 +3,20 @@ use crate::{desktop::Question, goals::GoalUsage};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub enum DesktopToolBundle {
+    #[serde(rename = "areal.browser.v1")]
+    Browser,
+    #[serde(rename = "areal.computer.v1")]
+    Computer,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TaskToolsReady {
+    pub bundles: Vec<DesktopToolBundle>,
+}
+
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
 )]

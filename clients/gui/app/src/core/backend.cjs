@@ -9,7 +9,6 @@ const { startupTrace } = require("./startup-timing.cjs");
 
 const { GuiHostProjects, requestIdFor } = require("./gui-host-projects.cjs");
 const { LifecycleOperations } = require("./lifecycle-operations.cjs");
-const { ScheduledOwnerActivation } = require("./schedule-owner-activation.cjs");
 const { randomUUID, createHash } = require("node:crypto");
 const { isDeepStrictEqual } = require("node:util");
 const { mkdir, writeFile, rename, realpath } = require("node:fs/promises");
@@ -150,7 +149,6 @@ class CoreBackend {
     this._submissions = undefined;
     this.closing = false;
     this.ownerTasks = new OwnerTasks(this);
-    this.scheduleOwners = new ScheduledOwnerActivation(this);
     this.library = new CoreLibrary(this);
     this.worktrees = new CoreWorktrees(this);
     this.worktreeAdmission = new WorktreeAdmission(this);
@@ -494,8 +492,8 @@ class CoreBackend {
     return this.submissions.loadProjectJournal(...args);
   }
 
-  /** @param {string} id */
-  async startProject(id) {
+  /** @param {string} id @param {{resumeScheduling?:boolean}} [options] */
+  async startProject(id, { resumeScheduling = false } = {}) {
     const current = this.projects.get(id);
     const trace =
       current?.client?.ready && !current.resourceInitializing
@@ -505,6 +503,7 @@ class CoreBackend {
     try {
       const project = await this.loadProjectJournal(id);
       if (project.client?.ready && !project.resourceInitializing) {
+        if (resumeScheduling) await this.launch(project, { resumeScheduling: true });
         trace?.finish("skipped");
         return project;
       }
@@ -513,7 +512,8 @@ class CoreBackend {
         trace?.advance("worktree_prepare");
         await this.resources.worktrees.prepare(project);
         trace?.advance("launch");
-        if (!project.client?.ready) await this.launch(project);
+        if (!project.client?.ready || resumeScheduling)
+          await this.launch(project, { resumeScheduling });
         trace?.advance("connect");
         if (!project.client?.ready) await this.connect(project);
         trace?.advance("reconcile");
@@ -597,6 +597,17 @@ class CoreBackend {
       homedir: this.userHome || require("node:os").homedir(),
       configPath: this.config,
       deploymentPath: resourceDeployment.path || undefined,
+      schedulePreparation:
+        this.desktopConfig === join(__dirname, "desktop-profile.json")
+          ? {
+              kind: "managed",
+              resourceStatePath: join(this.home, "resources.json"),
+              userManagedSkillsRoot: join(this.home, "resources", "user", "skills"),
+              projectManagedSkillsRoot: join(this.home, "resources", project.id, "skills"),
+              projectResourceScope: project.id,
+              defaultProfile: this.defaultProfile,
+            }
+          : { kind: "external", defaultProfile: this.defaultProfile },
       environment,
       credentialNames: [
         ...Object.keys(providerEnvironment).filter((name) => providerEnvironment[name]),
@@ -623,20 +634,22 @@ class CoreBackend {
     return { launchInputs, credentials, dataDir, hookDeployment };
   }
 
-  /** @param {Project} project */
-  async launch(project) {
+  /** @param {Project} project @param {{resumeScheduling?:boolean}} [options] */
+  async launch(project, { resumeScheduling = false } = {}) {
     const trace = startupTrace("core.launch", { projectId: project.id });
     trace.advance("directories");
     try {
-      const launch = this.providers.manages(project)
-        ? await this.prepareServiceLaunch(project, trace)
-        : undefined;
+      const launch =
+        this.providers.manages(project) && !(resumeScheduling && project.client?.ready)
+          ? await this.prepareServiceLaunch(project, trace)
+          : undefined;
       trace.advance("service_ensure");
       const { descriptor, token } = await this.host.ensure(
         randomUUID(),
         project.id,
         launch?.launchInputs,
         launch?.credentials,
+        resumeScheduling,
       );
       project.service = descriptor;
       project.endpoint = descriptor.endpoint;
@@ -660,6 +673,7 @@ class CoreBackend {
   async refreshHostProjects({ observeForeign = false } = {}) {
     this.saved = await this.host.list();
     const status = await this.host.client.status();
+    this.host.rememberStatus(status);
     for (const saved of this.saved) {
       const binding = this.host.resolve(saved.id);
       const state = status.projects.find(
@@ -1613,7 +1627,21 @@ class CoreBackend {
     if (name === "feedback") return this.feedback.command(request);
     if (name === "tasks") return taskCatalog(this, request);
     if (name === "projectless") return this.projectless.command(request);
-    if (name === "library") return this.library.command(request);
+    if (name === "library") {
+      const owner = this.desktopToolOwner?.() ?? null;
+      const result = await this.library.command(request);
+      if (
+        owner &&
+        request.operation === "settings" &&
+        ["computerControlEnabled", "computerControlProvider"].includes(request.key ?? "")
+      )
+        await Promise.all(
+          [...this.projects.values()].map((project) =>
+            this.connections.publishScheduleTools(project, project.client, owner),
+          ),
+        );
+      return result;
+    }
     if (!(name === "workspace" && request.operation.startsWith("worktree")) && name !== "create") {
       if (projectId !== undefined && typeof projectId !== "string") throw new Error("无效项目标识");
       this.worktrees.assertAvailable(projectId);
@@ -2227,7 +2255,6 @@ class CoreBackend {
     this.closing = true;
     this.cloudConversations.close();
     this.ownerTasks.stop();
-    this.scheduleOwners?.stop();
     for (const project of this.projects.values()) {
       if (project.reconnectTimer) clearTimeout(project.reconnectTimer);
       project.reconnectTimer = null;

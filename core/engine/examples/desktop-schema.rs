@@ -232,6 +232,10 @@ fn desktop_schema() -> Value {
     add!("areal/turn/enqueue", TurnStart);
     add!("areal/turn/submit", TurnSubmit);
     add!("areal/queue/steer", QueueSteer);
+    add!(
+        "areal/task/tools/ready",
+        areal_protocol::tasks::TaskToolsReady
+    );
     add!("areal/plan/update", PlanUpdate);
     add!("areal/interaction/respond", Respond);
     add!("areal/process/start", ProcessStart);

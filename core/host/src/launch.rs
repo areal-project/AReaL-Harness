@@ -82,6 +82,7 @@ impl ResolveProject {
                 homedir: context.homedir.clone(),
                 config_path: spec.args.config.clone(),
                 deployment_path: spec.args.desktop_config.clone(),
+                schedule_preparation: None,
                 environment,
                 credential_names: names,
                 options: spec.args,
@@ -189,22 +190,47 @@ pub(crate) fn prepare(
         .join(storage::digest(registration.project_id.as_bytes()));
     storage::private_dir(&directory)?;
     if let Some(source) = &inputs.deployment_path {
-        let mut value: serde_json::Value = serde_json::from_slice(&std::fs::read(source)?)?;
-        if let Some(skills) = value
-            .get_mut("skills")
-            .and_then(serde_json::Value::as_array_mut)
-        {
-            for skill in skills {
-                let path = skill
-                    .get_mut("root")
-                    .context("deployment skill root missing")?;
-                let original = Path::new(
-                    path.as_str()
-                        .context("deployment skill root must be string")?,
-                );
-                let root = source.parent().unwrap().join(original).canonicalize()?;
-                *path = serde_json::json!(snapshot_skill(&root, &directory)?);
+        let mut value = snapshot_deployment(source, &directory)?;
+        if matches!(
+            inputs.schedule_preparation,
+            Some(crate::SchedulePreparation::Managed { .. })
+        ) {
+            let previous = storage::read_optional::<LaunchInputs>(&directory.join("inputs.json"))?;
+            let previous_deployment = match previous {
+                Some(previous)
+                    if matches!(
+                        previous.schedule_preparation,
+                        Some(crate::SchedulePreparation::Managed { .. })
+                    ) =>
+                {
+                    let source = previous
+                        .deployment_path
+                        .context("saved managed launch deployment missing")?;
+                    Some(snapshot_deployment(&source, &directory)?)
+                }
+                _ => None,
+            };
+            let mut retained = BTreeMap::new();
+            for deployment in std::iter::once(&value).chain(previous_deployment.as_ref()) {
+                for skill in deployment
+                    .get("skills")
+                    .and_then(serde_json::Value::as_array)
+                    .context("managed deployment skills missing")?
+                {
+                    let id = skill["id"]
+                        .as_str()
+                        .context("deployment skill id missing")?;
+                    let revision = skill["revision"]
+                        .as_str()
+                        .context("deployment skill revision missing")?;
+                    retained.insert((id.to_owned(), revision.to_owned()), skill.clone());
+                }
             }
+            ensure!(
+                retained.len() <= 512,
+                "skill deployment exceeds 512 retained versions"
+            );
+            value["skills"] = serde_json::to_value(retained.into_values().collect::<Vec<_>>())?;
         }
         let digest = storage::digest(&serde_json::to_vec(&value)?);
         let target = directory.join(format!("deployment-{digest}.json"));
@@ -264,6 +290,27 @@ pub(crate) fn prepare(
     let spec = LaunchSpec::in_context(&args, bin.to_path_buf(), &context)?;
     storage::write(&directory.join("inputs.json"), &saved)?;
     Ok((spec, saved))
+}
+
+fn snapshot_deployment(source: &Path, directory: &Path) -> Result<serde_json::Value> {
+    let mut value: serde_json::Value = serde_json::from_slice(&std::fs::read(source)?)?;
+    if let Some(skills) = value
+        .get_mut("skills")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for skill in skills {
+            let path = skill
+                .get_mut("root")
+                .context("deployment skill root missing")?;
+            let original = Path::new(
+                path.as_str()
+                    .context("deployment skill root must be string")?,
+            );
+            let root = source.parent().unwrap().join(original).canonicalize()?;
+            *path = serde_json::json!(snapshot_skill(&root, directory)?);
+        }
+    }
+    Ok(value)
 }
 
 fn snapshot_skill(source: &Path, directory: &Path) -> Result<std::path::PathBuf> {
@@ -327,6 +374,229 @@ fn snapshot_skill(source: &Path, directory: &Path) -> Result<std::path::PathBuf>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct ManagedLaunchFixture {
+        temporary: tempfile::TempDir,
+        home: std::path::PathBuf,
+        bin: std::path::PathBuf,
+        registration: ProjectRegistration,
+        inputs: LaunchInputs,
+    }
+
+    fn managed_launch_fixture() -> ManagedLaunchFixture {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().canonicalize().unwrap();
+        let home = root.join("services");
+        let workspace = root.join("workspace");
+        let bin = root.join("bin");
+        for path in [&workspace, &bin] {
+            std::fs::create_dir(path).unwrap();
+        }
+        for name in [
+            "areal",
+            "areal-runtime",
+            "areal-runtime-fs",
+            "areal-runtime-reaper",
+        ] {
+            std::fs::write(bin.join(name), "fixture").unwrap();
+        }
+        let registration = ProjectRegistration {
+            project_id: "retained-skills".into(),
+            workspace: workspace.clone(),
+            data_dir: root.join("data"),
+            source: ProjectSource::Gui {
+                profile: "fixture".into(),
+                legacy_project_id: "retained-skills".into(),
+            },
+            default_binding: false,
+        };
+        let inputs = LaunchInputs {
+            workspace: workspace.clone(),
+            cwd: workspace.clone(),
+            config_home: root.join("configuration"),
+            homedir: Some(root.clone()),
+            config_path: None,
+            deployment_path: None,
+            schedule_preparation: Some(crate::SchedulePreparation::Managed {
+                resource_state_path: root.join("resource-state.json"),
+                user_managed_skills_root: root.join("user-skills"),
+                project_managed_skills_root: workspace.join(".agents/skills"),
+                project_resource_scope: "retained-skills".into(),
+                default_profile: serde_json::json!({"id": "default", "revision": "v1"}),
+            }),
+            environment: BTreeMap::new(),
+            credential_names: vec![],
+            options: LocalArgs::default(),
+        };
+        ManagedLaunchFixture {
+            temporary,
+            home,
+            bin,
+            registration,
+            inputs,
+        }
+    }
+
+    #[test]
+    fn managed_launch_retains_skill_revisions_across_gui_and_host_deployments() {
+        let ManagedLaunchFixture {
+            temporary,
+            home,
+            bin,
+            registration,
+            mut inputs,
+        } = managed_launch_fixture();
+        let root = temporary.path().canonicalize().unwrap();
+        let mut snapshots = BTreeMap::new();
+        for (generation, revision) in [("gui-v1", "v1"), ("host-v2", "v2"), ("gui-v3", "v3")] {
+            let source = tempfile::tempdir_in(&root).unwrap();
+            let skill_root = source.path().join("skill");
+            std::fs::create_dir(&skill_root).unwrap();
+            std::fs::write(skill_root.join("SKILL.md"), generation).unwrap();
+            let deployment_path = source.path().join("deployment.json");
+            storage::write(&deployment_path, &serde_json::json!({
+                "profiles": [{"id": "default", "revision": generation, "skills": [{"id": "managed-skill", "revision": revision}]}],
+                "skills": [{
+                    "id": "managed-skill", "revision": revision, "root": "skill"
+                }]
+            })).unwrap();
+            inputs.deployment_path = Some(deployment_path);
+            let (_, saved) =
+                prepare(&home, &bin, &registration, &inputs, &BTreeMap::new()).unwrap();
+            let deployment: serde_json::Value =
+                storage::read(saved.deployment_path.as_ref().unwrap()).unwrap();
+            let skills = deployment["skills"].as_array().unwrap();
+            assert_eq!(skills.len(), snapshots.len() + 1, "{generation}");
+            for skill in skills {
+                let revision = skill["revision"].as_str().unwrap().to_owned();
+                let snapshot = std::path::PathBuf::from(skill["root"].as_str().unwrap());
+                if let Some(previous) = snapshots.get(&revision) {
+                    assert_eq!(&snapshot, previous);
+                } else {
+                    snapshots.insert(revision, snapshot);
+                }
+            }
+            drop(source);
+            for (revision, snapshot) in &snapshots {
+                assert_eq!(
+                    std::fs::read_to_string(snapshot.join("SKILL.md")).unwrap(),
+                    format!(
+                        "{}-{revision}",
+                        if revision == "v2" { "host" } else { "gui" }
+                    )
+                );
+                assert_eq!(
+                    std::fs::metadata(snapshot).unwrap().permissions().mode() & 0o077,
+                    0
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn managed_launch_rejects_corrupt_saved_inputs_or_deployment() {
+        let ManagedLaunchFixture {
+            temporary,
+            home,
+            bin,
+            registration,
+            mut inputs,
+        } = managed_launch_fixture();
+        let source = temporary.path().join("deployment.json");
+        storage::write(&source, &serde_json::json!({"skills": []})).unwrap();
+        inputs.deployment_path = Some(source);
+        let (_, saved) = prepare(&home, &bin, &registration, &inputs, &BTreeMap::new()).unwrap();
+        let saved_inputs = home
+            .join("host/launch")
+            .join(storage::digest(registration.project_id.as_bytes()))
+            .join("inputs.json");
+        std::fs::write(&saved_inputs, "invalid json").unwrap();
+        assert!(prepare(&home, &bin, &registration, &inputs, &BTreeMap::new()).is_err());
+        assert_eq!(
+            std::fs::read_to_string(&saved_inputs).unwrap(),
+            "invalid json"
+        );
+        storage::write(&saved_inputs, &saved).unwrap();
+        let previous_deployment = saved.deployment_path.unwrap();
+        for corrupt in ["invalid json", "{}", "{\"skills\":{}}"] {
+            std::fs::write(&previous_deployment, corrupt).unwrap();
+            assert!(prepare(&home, &bin, &registration, &inputs, &BTreeMap::new()).is_err());
+        }
+        std::fs::remove_file(previous_deployment).unwrap();
+        assert!(prepare(&home, &bin, &registration, &inputs, &BTreeMap::new()).is_err());
+    }
+
+    #[test]
+    fn managed_launch_unions_skill_identities_with_immutable_snapshots_and_a_capacity_limit() {
+        let ManagedLaunchFixture {
+            temporary,
+            home,
+            bin,
+            registration,
+            mut inputs,
+        } = managed_launch_fixture();
+        let source_root = temporary.path().join("skill");
+        std::fs::create_dir(&source_root).unwrap();
+        std::fs::write(source_root.join("SKILL.md"), "original").unwrap();
+        let source = temporary.path().join("deployment.json");
+        inputs.deployment_path = Some(source.clone());
+        storage::write(
+            &source,
+            &serde_json::json!({"skills": [{"id": "managed", "revision": "v1", "root": "skill"}]}),
+        )
+        .unwrap();
+        let (_, saved) = prepare(&home, &bin, &registration, &inputs, &BTreeMap::new()).unwrap();
+        let first: serde_json::Value =
+            storage::read(saved.deployment_path.as_ref().unwrap()).unwrap();
+        std::fs::write(source_root.join("SKILL.md"), "changed").unwrap();
+        let skills: Vec<_> = (1..=512).map(|version| serde_json::json!({"id": "managed", "revision": format!("v{version}"), "root": "skill"})).collect();
+        storage::write(&source, &serde_json::json!({"skills": skills})).unwrap();
+        let (_, saved) = prepare(&home, &bin, &registration, &inputs, &BTreeMap::new()).unwrap();
+        let deployment: serde_json::Value =
+            storage::read(saved.deployment_path.as_ref().unwrap()).unwrap();
+        assert_eq!(deployment["skills"].as_array().unwrap().len(), 512);
+        assert_eq!(
+            deployment["skills"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|skill| skill["revision"] == "v1")
+                .unwrap(),
+            &first["skills"][0]
+        );
+        storage::write(&source, &serde_json::json!({"skills": [{"id": "managed", "revision": "v513", "root": "skill"}]})).unwrap();
+        let cause = prepare(&home, &bin, &registration, &inputs, &BTreeMap::new())
+            .err()
+            .unwrap();
+        assert!(cause.to_string().contains("512 retained versions"));
+    }
+
+    #[test]
+    fn external_launch_replaces_the_deployment_without_reading_managed_history() {
+        let ManagedLaunchFixture {
+            temporary,
+            home,
+            bin,
+            registration,
+            mut inputs,
+        } = managed_launch_fixture();
+        let source = temporary.path().join("deployment.json");
+        storage::write(&source, &serde_json::json!({"skills": []})).unwrap();
+        inputs.deployment_path = Some(source.clone());
+        prepare(&home, &bin, &registration, &inputs, &BTreeMap::new()).unwrap();
+        let saved_inputs = home
+            .join("host/launch")
+            .join(storage::digest(registration.project_id.as_bytes()))
+            .join("inputs.json");
+        std::fs::write(saved_inputs, "invalid json").unwrap();
+        inputs.schedule_preparation = Some(crate::SchedulePreparation::External {
+            default_profile: None,
+        });
+        let (_, saved) = prepare(&home, &bin, &registration, &inputs, &BTreeMap::new()).unwrap();
+        let deployment: serde_json::Value =
+            storage::read(saved.deployment_path.as_ref().unwrap()).unwrap();
+        assert_eq!(deployment["skills"], serde_json::json!([]));
+    }
     #[test]
     fn launch_preserves_configuration_home_separate_from_service_registry() {
         let root = tempfile::tempdir().unwrap();
@@ -360,6 +630,7 @@ mod tests {
             homedir: None,
             config_path: None,
             deployment_path: None,
+            schedule_preparation: None,
             environment: BTreeMap::new(),
             credential_names: vec![],
             options: LocalArgs::default(),

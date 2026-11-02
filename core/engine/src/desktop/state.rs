@@ -276,6 +276,7 @@ impl Engine {
                 crate::tools::Bindings {
                     registry: engine.registry.clone(),
                     host: None,
+                    schedule_host: None,
                 },
                 None,
             );
@@ -1154,6 +1155,12 @@ impl Engine {
             .collect();
         definitions.retain(|d| {
             let name = d["function"]["name"].as_str().unwrap_or("");
+            if bindings.schedule_host.is_some()
+                && bindings.host.as_ref().is_none_or(|host| host.is_closed())
+                && bindings.registry.get(name).is_ok_and(|entry| matches!(entry.backend, crate::tools::Backend::Client))
+            {
+                return false;
+            }
             let native_research = bindings.registry.get(name).is_ok_and(|entry| {
                 matches!(entry.backend, crate::tools::Backend::Agent)
             });

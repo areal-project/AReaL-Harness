@@ -443,11 +443,7 @@ class LifecycleOperations {
 
   /** @param {string} projectId */
   schedulingSuppressed(projectId) {
-    return [...this.records.values()].some((record) =>
-      record.targets.some(
-        (target) => target.projectId === projectId && target.scheduleActivationSuppressed === true,
-      ),
-    );
+    return this.backend.host.scheduling(projectId).suppressed;
   }
 
   /** @param {string} projectId */
@@ -456,18 +452,9 @@ class LifecycleOperations {
       .catch(() => {})
       .then(async () => {
         this.assertProject(projectId);
-        for (const previous of this.records.values()) {
-          if (
-            !previous.targets.some(
-              (target) => target.projectId === projectId && target.scheduleActivationSuppressed,
-            )
-          )
-            continue;
-          const record = structuredClone(previous);
-          for (const target of record.targets)
-            if (target.projectId === projectId) delete target.scheduleActivationSuppressed;
-          await this.store(record);
-        }
+        await this.backend.start(projectId, {
+          resumeScheduling: true,
+        });
       });
     this.tail = write.catch(() => {});
     return write;
@@ -621,7 +608,6 @@ class LifecycleOperations {
         dataDir: this.backend.host.resolve(target.projectId).dataDir,
         requestId: randomUUID(),
         phase: "notAttempted",
-        ...(request.kind === "stopProject" ? { scheduleActivationSuppressed: true } : {}),
       })),
       phase: "acceptedPending",
       desktopExit: "notRequested",
@@ -709,7 +695,12 @@ class LifecycleOperations {
       this.applyHost(
         record,
         target,
-        await requestStop(this.backend, target, record.mode === "cancel"),
+        await requestStop(
+          this.backend,
+          target,
+          record.mode === "cancel",
+          record.kind === "stopProject",
+        ),
       );
       const deadline = Date.now() + 15000;
       while (target.phase === "acceptedPending" && Date.now() < deadline) {
