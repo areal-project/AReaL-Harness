@@ -2,7 +2,7 @@
 
 # CLI 与 TUI 使用指南
 
-本指南基于上游 `main` 的 `1f6cc627a1754b32c32a5c396a9e58c8dd727deb`。安装部分使用 GitHub 公开稳定版的 Homebrew 渠道；公开版可能落后于主干，下文功能、参数和服务生命周期请以所安装版本的 `areal --help` 与文档为准。这里介绍终端交互、脚本执行和恢复；Web 及更多客户端功能见[客户端指南](clients.md)。
+本指南适用于 GitHub 公开稳定版 [v0.1.7](https://github.com/areal-project/AReaL-Harness/releases/tag/v0.1.7)，对应源码提交 `3dca3434a3cd8b6d1a2ce6f68e0f043a35b62d12`。这里介绍终端交互、脚本执行和恢复；Web 及更多客户端功能见[客户端指南](https://github.com/areal-project/AReaL-Harness/blob/v0.1.7/docs/guides/clients.md)。
 
 ## 1. 下载安装与升级
 
@@ -23,7 +23,7 @@ Homebrew 自动下载和校验完整包，并安装 CLI、TUI 和 Runtime。确�
 
 ### 升级
 
-先备份 `~/.areal` 和自定义数据目录。完成任务后，用 `areal service list` 查看共享服务，并使用启动时的工作区和配置参数逐个停止。忙碌服务默认拒绝停止；先等待任务完成或暂停。
+先备份 `~/.areal` 和自定义数据目录。完成任务后，用 `areal service list` 查看共享服务，并按工作区逐个停止。忙碌服务默认拒绝停止；先等待任务完成或暂停。
 
 ```sh
 areal service list
@@ -34,7 +34,7 @@ brew test areal-project/tap/areal
 areal --version
 ```
 
-将示例路径替换为实际工作区，并对每个共享服务执行停止命令。Homebrew 可能清理旧版本，因此升级前需停服；升级不会自动停止任务或服务。`areal upgrade --check` 可检查本机 tap 中的版本，需先运行 `brew update` 获取最新定义。其他安装渠道及完整平台要求见[安装指南](installation.md)。
+将示例路径替换为实际工作区，并对每个共享服务执行停止命令。使用自定义数据目录时，可加 `--data-dir /absolute/core-data`；也可改用 `--instance INSTANCE_ID` 精确选择列表中的实例，但不能与 `--workspace` 或 `--data-dir` 混用。`service stop/status` 不接受 `--config` 等启动参数。Homebrew 可能清理旧版本，因此升级前需停服；升级不会自动停止任务或服务。`areal upgrade --check` 可检查本机 tap 中的版本，需先运行 `brew update` 获取最新定义。其他安装渠道及完整平台要求见[安装指南](https://github.com/areal-project/AReaL-Harness/blob/v0.1.7/docs/guides/installation.md)。
 
 ### 配置模型
 
@@ -51,9 +51,9 @@ export AREAL_API_KEY
 areal config validate
 ```
 
-无认证的本地模型可省略密钥相关设置。不要将密钥值放入命令参数或 TOML；模型配置、Responses 和供应商配置见[配置指南](configuration.md)。GUI 保存的密钥不会自动传给独立终端启动的 Core。
+无认证的本地模型可省略密钥相关设置。不要将密钥值放入命令参数或 TOML；模型配置、Responses 和供应商配置见[配置指南](https://github.com/areal-project/AReaL-Harness/blob/v0.1.7/docs/guides/configuration.md)。GUI 保存的密钥不会自动传给独立终端启动的 Core。
 
-本地主干默认采用 YOLO 权限，允许工作区外写入和工具联网。需要工具审批时，在启动服务前设置 `export ASK_PERMISSIONS=1`，或按[权限配置](configuration.md#permissions)设置。无交互应答通道的任务无法等待人工审批；需要人工参与时使用交互式 TUI。
+v0.1.7 本地启动默认采用 YOLO 权限，允许工作区外写入和工具联网。需要工具审批时，在启动服务前设置 `export ASK_PERMISSIONS=1`，或按[权限配置](https://github.com/areal-project/AReaL-Harness/blob/v0.1.7/docs/guides/configuration.md#permissions)设置。无交互应答通道的任务无法等待人工审批；需要人工参与时使用交互式 TUI。
 
 ## 2. 交互式 TUI
 
@@ -104,9 +104,9 @@ areal exec --resume SESSION_ID '继续刚才的任务'
 
 `text` 是默认输出；`json` 输出最终结果，`stream-json` 输出逐事件记录。日志写入 stderr；成功退出码为 0，失败为非零。恢复时使用返回的 session ID；缺失会话或存在未确认结果时不会静默创建新会话。`areal -p` 是兼容入口，参数与 `exec` 对应。
 
-常用选项包括 `--model`、`--effort`、`--max-turns`、`--permission-mode`、`--tools` 和 `--no-session-name`。`--permission-mode` 不能扩大服务端或 Runtime 授权。输入格式、双向 stream-json、工具过滤及限制见 [CLI 契约](../api/claude-cli.md)，可运行 `areal exec --help` 查看选项。
+常用选项包括 `--model`、`--effort`、`--max-turns`、`--permission-mode`、`--tools` 和 `--no-session-name`。`--permission-mode` 不能扩大服务端或 Runtime 授权。输入格式、双向 stream-json、工具过滤及限制见 [CLI 契约](https://github.com/areal-project/AReaL-Harness/blob/v0.1.7/docs/api/claude-cli.md)，可运行 `areal exec --help` 查看选项。
 
-本地主干的 `exec` 拥有独立 Core/Runtime 生命周期，退出时等待清理；外部 endpoint 的服务不由 CLI 关闭。非交互模式没有双向应答通道时，用户问题不可用，必须人工批准的工具会被拒绝；模型可以继续其他工作或报告阻碍。
+v0.1.7 本地 `exec` 拥有独立 Core/Runtime 生命周期，退出时等待清理；外部 endpoint 的服务不由 CLI 关闭。非交互模式没有双向应答通道时，用户问题不可用，必须人工批准的工具会被拒绝；模型可以继续其他工作或报告阻碍。
 
 ## 4. Headless TUI 与媒体
 
@@ -123,7 +123,7 @@ areal --workspace /absolute/path/to/project --goal '完成迁移并运行测试'
 [{"type":"text","text":"Describe this image"},{"type":"localImage","path":"/absolute/path/to/image.png"}]
 ```
 
-将数组写入文件后运行 `areal --input-file /absolute/path/to/input.json`。`--prompt`、`--goal` 和 `--input-file` 默认使用 owned 本地服务并在退出时清理；`--local-mode shared` 可使用共享服务。完整媒体字段见 [Core API](../api/core.md)。
+将数组写入文件后运行 `areal --input-file /absolute/path/to/input.json`。`--prompt`、`--goal` 和 `--input-file` 默认使用 owned 本地服务并在退出时清理；`--local-mode shared` 可使用共享服务。完整媒体字段见 [Core API](https://github.com/areal-project/AReaL-Harness/blob/v0.1.7/docs/api/core.md)。
 
 ## 5. 连接与恢复
 
@@ -131,7 +131,7 @@ areal --workspace /absolute/path/to/project --goal '完成迁移并运行测试'
 # 使用服务数据目录中的认证文件；替换地址和路径。
 areal --endpoint ws://127.0.0.1:4500 --auth-file /absolute/core-data/security/auth.json
 areal exec --endpoint ws://127.0.0.1:4500 --auth-file /absolute/core-data/security/auth.json '检查工作区'
-# 管理本地共享服务；使用与启动时相同的工作区及配置。
+# 查询按工作区定位服务；restart 使用与启动时相同的配置和部署参数。
 areal service list --json
 areal service status --workspace /absolute/path/to/project --json
 areal service restart --workspace /absolute/path/to/project --json
@@ -139,4 +139,4 @@ areal service restart --workspace /absolute/path/to/project --json
 
 `--endpoint`（TUI 别名 `--remote`）连接现有服务，不能与本地部署参数混用；远程 Core 的凭据和权限由其启动环境决定。认证文件使用 Core `security/auth.json` 格式，不要提交或公开。
 
-断线后先重连并检查服务端快照，不要自动重发未确认的提交。若重启后工具结果为 UNKNOWN，检查实际文件和进程，再按 [Core API](../api/core.md) 记录核查；这不会重放工具。共享服务、旧数据迁移和停止命令的详细行为见[本地服务契约](../api/local-service.md)。
+断线后先重连并检查服务端快照，不要自动重发未确认的提交。若重启后工具结果为 UNKNOWN，检查实际文件和进程，再按 [Core API](https://github.com/areal-project/AReaL-Harness/blob/v0.1.7/docs/api/core.md) 记录核查；这不会重放工具。共享服务、旧数据迁移和停止命令的详细行为见[本地服务契约](https://github.com/areal-project/AReaL-Harness/blob/v0.1.7/docs/api/local-service.md)。
