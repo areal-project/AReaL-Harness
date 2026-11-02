@@ -1,3 +1,5 @@
+#[path = "create.rs"]
+mod create;
 #[path = "observer.rs"]
 mod observer;
 #[path = "overview.rs"]
@@ -18,6 +20,7 @@ use std::{
 };
 
 const METHODS: &[&str] = &[
+    "session.create",
     "host.describe",
     "project.list",
     "task.read",
@@ -351,7 +354,10 @@ impl Session {
             reads += 1;
             let result = if reads > 20 {
                 Err(fail("LIMIT_EXCEEDED"))
-            } else if request["method"] == "interaction.respond" {
+            } else if matches!(
+                request["method"].as_str(),
+                Some("interaction.respond" | "session.create")
+            ) {
                 writes = (writes + refilled.elapsed().as_secs_f64() * 5.0).min(10.0);
                 refilled = Instant::now();
                 if writes < 1.0 {
@@ -376,6 +382,7 @@ impl Session {
                         | "TARGET_CHANGED"
                         | "COMMAND_CONFLICT"
                         | "RESOURCE_UNAVAILABLE"
+                        | "CORE_INCOMPATIBLE"
                         | "LIMIT_EXCEEDED" => message.as_str(),
                         _ => "CORE_UNAVAILABLE",
                     };
@@ -759,6 +766,7 @@ impl Session {
                 )
             }
             "attention.read" => self.attention_read(&project, &generation, params).await,
+            "session.create" => self.create_session(&project, &generation, request).await,
             "interaction.respond" => self.respond(&project, &generation, request).await,
             "review.read" => self.review(&project, &generation, params).await,
             _ => Err(fail("INVALID_PARAMS")),
@@ -835,6 +843,9 @@ impl Session {
             return json!({"commandId":command,"admissionState":"notFound","submissionUnknown":true});
         };
         let mut result = json!({"commandId":command,"method":record["remote"]["method"],"target":record["remote"]["target"],"operationId":record["operationId"],"admissionState":record.get("admissionState").cloned().unwrap_or(json!("unknown")),"submissionUnknown":record.get("admissionState").is_none()});
+        if record["remote"]["method"] == "session.create" {
+            result["nativeRequestId"] = record["operationId"].clone();
+        }
         for key in ["threadId", "turnId", "receipt"] {
             if let Some(value) = record.get(key) {
                 result[key] = value.clone();
@@ -875,6 +886,15 @@ impl Session {
         record: Option<&Value>,
         command: &str,
     ) -> Result<Value> {
+        let recovered;
+        let record = if let Some(record) =
+            record.filter(|record| record["remote"]["method"] == "session.create")
+        {
+            recovered = self.reconcile_creation(project, record).await?;
+            Some(&recovered)
+        } else {
+            record
+        };
         let mut result = Self::command_view(record, command);
         if let Some(record) = record {
             if record["remote"]["method"] == "interaction.respond" {
@@ -971,6 +991,13 @@ impl Session {
             "RESYNC_REQUIRED"
         );
         let item = self.interaction(project, generation, params).await?;
+        if let Some(record) = self.command_record(project, &command)? {
+            ensure!(
+                record["remote"]["semanticDigest"] == digest,
+                "COMMAND_CONFLICT"
+            );
+            return self.command_result(project, Some(&record), &command).await;
+        }
         ensure!(
             item["status"] == "pending"
                 && item["expiresAt"].as_i64().is_some_and(|at| at

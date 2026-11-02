@@ -3,12 +3,12 @@ import { test } from "node:test";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { execFile, execFileSync } from "node:child_process";
-import { rm, readFile, mkdtemp, readdir } from "node:fs/promises";
+import { rm, readFile, mkdtemp, readdir, mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createIdentity, identityId, secureChannel } from "../packages/remote/src/channel.mjs";
 const require = createRequire(new URL("../app/package.json", import.meta.url));
 const WebSocket = require("ws");
-import { nativeHostFixture } from "./remote-native-host-fixture.mjs";
+import { nativeHostFixture, nativeCoreProject } from "./remote-native-host-fixture.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -45,6 +45,7 @@ async function device(
     inviteSecret,
     apiVersion = "areal.remote.v2",
     coalesceClose = false,
+    projects = ["project"],
   } = {},
 ) {
   const { createRemoteWire } = await import("../packages/remote/src/wire.mjs");
@@ -55,7 +56,7 @@ async function device(
     invite = new URLSearchParams(
       new URL((await remote.control({ operation: "pair", transport })).payload).hash.slice(1),
     ).get("invite");
-  const origin = transport === "relay" ? saved.relay : remote.direct.origin;
+  const origin = transport === "relay" ? saved.relay : remote.state().directUrl;
   const socket = new WebSocket(origin.replace(/^http/, "ws") + "/remote/socket", { origin });
   t.after(() => socket.terminate());
   let holdUntilClose = false;
@@ -100,7 +101,7 @@ async function device(
     await remote.control({
       operation: "approve",
       id: identityId(identity),
-      projects: ["project"],
+      projects,
       preset,
     });
     active = (await next(messages)).value;
@@ -169,18 +170,42 @@ if (!process.env.RC12_TLS_HOME) {
   });
 } else {
   for (const transport of ["direct", "relay"]) {
-    async function budgetFixture(t) {
-      const f = await enrolledHost(t, {}, { commands: true });
-      const native = await nativeProject(t, f, { commands: true });
+    async function budgetFixture(t, nativeOwner = false, approval = false) {
+      let f, native;
+      if (nativeOwner) {
+        const relay = await relayFixture(t);
+        f = await nativeHostFixture(t);
+        f.relay = relay;
+        f.evidence.relay = relay.resources;
+        native = await nativeCoreProject(t, f, { approval });
+        await f.remote.control({
+          operation: "enable",
+          relay: relay.origin,
+          code: relay.admin("enrollment").code,
+          confirmed: true,
+        });
+        await waitFor(() => f.remote.state().connected);
+      } else {
+        f = await enrolledHost(t, {}, { commands: true });
+        native = await nativeProject(t, f, { commands: true });
+      }
       await f.remote.control({ operation: "enableDirect" });
-      t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
-      t.after(() => t.mock.timers.reset());
-      const client = await device(t, f.remote, { pair: true, transport, preset: "Operator" });
+      if (!approval) {
+        t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+        t.after(() => t.mock.timers.reset());
+      }
+      const projectId = nativeOwner ? native.alias : "project";
+      const client = await device(t, f.remote, {
+        pair: true,
+        transport,
+        preset: "Operator",
+        projects: [projectId],
+      });
       const context = (client) => ({
-        projectId: "project",
+        projectId,
         gatewayGeneration: client.active.gatewayGeneration,
         grantRevision: client.active.grantRevision,
-        serviceGeneration: "generation-1",
+        serviceGeneration: nativeOwner ? native.service.generation : "generation-1",
       });
       async function rpc(client, request) {
         const id = randomUUID();
@@ -200,7 +225,7 @@ if (!process.env.RC12_TLS_HOME) {
       const read = (client, commandId = randomUUID()) =>
         rpc(client, {
           method: "command.read",
-          context: { projectId: "project" },
+          context: { projectId },
           params: { commandId },
         });
       const accepted = (response) =>
@@ -210,11 +235,115 @@ if (!process.env.RC12_TLS_HOME) {
         assert.equal(response.error.message, "命令超过允许的预算");
         assert.equal(response.error.submissionUnknown, false);
       };
-      const starts = () => native.calls.filter((method) => method === "areal/thread/start").length;
-      return { f, client, rpc, write, read, accepted, limited, starts };
+      const starts = nativeOwner
+        ? native.starts
+        : () => native.calls.filter((method) => method === "areal/thread/start").length;
+      return { f, native, client, rpc, write, read, accepted, limited, starts };
     }
+    test(`same peer overlapping session.create preserves one original command (${transport})`, async (t) => {
+      const { f, native, client, write, read, starts } = await budgetFixture(t, true);
+      const second = await device(t, f.remote, { identity: client.identity, transport });
+      const commandId = randomUUID();
+      const responses = await Promise.all([
+        write(client, "session.create", {}, { commandId }),
+        write(second, "session.create", {}, { commandId }),
+      ]);
+      const journal = await f.client.journal(native.projectId).read();
+      const snapshot = journal.snapshot;
+      const records = [...snapshot.pending, ...Object.values(snapshot.outcomes)].filter(
+        (record) => record.remote?.commandId === commandId,
+      );
+      f.evidence.overlap = {
+        commandId,
+        peer: client.peer,
+        responses,
+        receipt: await read(client, commandId),
+        records,
+        starts: await starts(),
+      };
+      assert.equal(f.evidence.overlap.starts, 1, JSON.stringify(f.evidence.overlap));
+      assert.equal(records.length, 1, JSON.stringify(f.evidence.overlap));
+      for (const response of responses)
+        assert.equal(response.result?.operationId, records[0].operationId);
+    });
+    test(`same peer overlapping interaction.respond preserves one original command (${transport})`, async (t) => {
+      const { f, native, client, rpc, write } = await budgetFixture(t, true, true);
+      const second = await device(t, f.remote, { identity: client.identity, transport });
+      const created = await native.core.call("areal/thread/start", {
+        requestId: randomUUID(),
+        cwd: native.workspace,
+        agentProfile: { id: "fixture", revision: "v1" },
+      });
+      const threadId = created.thread.id;
+      const started = await native.core.call("areal/turn/start", {
+        requestId: randomUUID(),
+        threadId,
+        input: [{ type: "text", text: "Create approved.txt with approved once, then finish." }],
+        expectedConfigRevision: 1,
+      });
+      let interaction;
+      await waitFor(async () => {
+        interaction = (await native.core.call("areal/interaction/list", { threadId })).data.find(
+          (item) => item.turnId === started.turn.id && item.status === "pending",
+        );
+        return interaction;
+      });
+      const target = { threadId, turnId: started.turn.id, interactionId: interaction.requestId };
+      let detail = (
+        await rpc(client, {
+          method: "attention.read",
+          context: { projectId: native.alias },
+          params: target,
+        })
+      ).result;
+      while (detail.nextCursor)
+        detail = (
+          await rpc(client, {
+            method: "attention.read",
+            context: { projectId: native.alias },
+            params: { ...target, cursor: detail.nextCursor },
+          })
+        ).result;
+      assert.equal(detail.complete, true);
+      const params = {
+        ...target,
+        argumentsDigest: interaction.argumentsDigest,
+        decision: "allowOnce",
+        reviewToken: detail.reviewToken,
+      };
+      const commandId = randomUUID();
+      const responses = await Promise.all([
+        write(client, "interaction.respond", params, { commandId }),
+        write(second, "interaction.respond", params, { commandId }),
+      ]);
+      const { snapshot } = await f.client.journal(native.projectId).read();
+      const records = [...snapshot.pending, ...Object.values(snapshot.outcomes)].filter(
+        (record) => record.remote?.commandId === commandId,
+      );
+      f.evidence.responseOverlap = { commandId, responses, records };
+      assert.equal(records.length, 1, JSON.stringify(f.evidence.responseOverlap));
+      for (const response of responses)
+        assert.equal(
+          response.result?.operationId,
+          records[0].operationId,
+          JSON.stringify(response),
+        );
+      await waitFor(async () => {
+        try {
+          return (
+            (await readFile(join(native.workspace, "approved.txt"), "utf8")) === "approved once"
+          );
+        } catch (error) {
+          if (error.code === "ENOENT") return false;
+          throw error;
+        }
+      });
+    });
     test(`connection write burst refuses the eleventh command before journal and RPC (${transport})`, async (t) => {
-      const { f, client, rpc, write, read, accepted, limited, starts } = await budgetFixture(t);
+      const { f, client, rpc, write, read, accepted, limited, starts } = await budgetFixture(
+        t,
+        true,
+      );
       assert.equal(client.active.limits.writeRequestsPerSecond, 5);
       assert.equal(client.active.limits.writeBurst, 10);
       for (let n = 0; n < 10; n++) accepted(await write(client));
@@ -379,7 +508,12 @@ if (!process.env.RC12_TLS_HOME) {
   test("production Relay client wire pairs with pinned Host and reads through the common v2 application", async (t) => {
     const { createRemoteWire } = await import("../packages/remote/src/wire.mjs");
     const relay = await relayFixture(t),
-      f = await hostFixture(t);
+      f = await nativeHostFixture(t);
+    f.evidence.relay = relay.resources;
+    const workspace = join(f.evidence.root, "Project");
+    await mkdir(workspace);
+    const projectId = randomUUID().replaceAll("-", "").slice(0, 24);
+    await f.source.register(randomUUID(), { id: projectId, root: workspace });
     await f.remote.control({
       operation: "enable",
       relay: relay.origin,
@@ -414,7 +548,7 @@ if (!process.env.RC12_TLS_HOME) {
     await f.remote.control({
       operation: "approve",
       id: identityId(identity),
-      projects: ["project"],
+      projects: [projectId],
       preset: "Observer",
     });
     const active = (await messages.next()).value;
@@ -426,7 +560,7 @@ if (!process.env.RC12_TLS_HOME) {
       result: {
         projects: [
           {
-            projectId: "project",
+            projectId,
             name: "Project",
             connectionState: "offline",
             serviceGeneration: null,
