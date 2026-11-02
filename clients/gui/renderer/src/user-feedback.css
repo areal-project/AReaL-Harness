@@ -131,7 +131,7 @@
   width: 30%;
   height: 2px;
   background: var(--color-brand);
-  animation: feedback-progress 1.6s ease-in-out infinite;
+  animation: feedback-progress 1.6s ease-in-out var(--motion-loop);
 }
 @keyframes feedback-arrive {
   from {
@@ -152,8 +152,7 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .user-feedback-panel,
-  .feedback-progress > span {
+  .user-feedback-panel {
     animation: none;
   }
 }

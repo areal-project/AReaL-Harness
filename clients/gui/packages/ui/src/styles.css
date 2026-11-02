@@ -8,23 +8,15 @@
   transition-duration: var(--motion-fast);
   transition-timing-function: var(--ease-standard);
 }
-/* 与 observeVisibleAnimation 配合：未登记或屏外时暂停。减少动效时 Tailwind 的 motion-reduce 照常生效。 */
+/* 与 observeVisibleAnimation 配合：未登记或屏外时暂停。 */
 .areal-visible-spin {
-  animation: areal-visible-spin 1s linear infinite;
+  animation: areal-visible-spin 1s linear var(--motion-loop);
   animation-play-state: var(--visible-animation-state, paused);
 }
 @keyframes areal-visible-spin {
   to {
     rotate: 360deg;
   }
-}
-@media (prefers-reduced-motion: reduce) {
-  :root:not([data-reduced-motion="false"]) .areal-visible-spin {
-    animation: none;
-  }
-}
-:root[data-reduced-motion="true"] .areal-visible-spin {
-  animation: none;
 }
 :root[data-theme-switching] *,
 :root[data-theme-switching] *::before,

@@ -142,6 +142,7 @@
 | `--motion-fast` | `100ms` | 悬停、按下等即时反馈的过渡时长；减少动效时为 0 |
 | `--motion-normal` | `160ms` | 展开、切换、浮层出现等常规过渡时长；减少动效时为 0 |
 | `--motion-slow` | `240ms` | 面板、大区域位移等较长过渡时长；减少动效时为 0 |
+| `--motion-loop` | `infinite` | 常驻循环动画的次数；减少动效时为 0，动画不再播放 |
 | `--ease-standard` | `cubic-bezier(.2, 0, 0, 1)` | 所有过渡的默认缓动曲线 |
 | `--layer-dialog` | `50` | 对话框层级 |
 | `--layer-popover` | `60` | 菜单、Popover 层级，高于对话框 |

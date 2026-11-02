@@ -102,7 +102,7 @@
       "title": "生产组件的键盘路径在设计 smoke 和 Electron 交互 smoke 中核对",
       "owner": "clients/gui/design-system/accessibility.md#键盘与动效",
       "strength": "default",
-      "textSha256": "c593dea4071c5484373cf4f2cac3be65f13fbeb762d96f17c83e92d863c884c1"
+      "textSha256": "5facf45eabc042826cb8b2499b1ed9826a415ab85ec662ebb6252ec402c0c632"
     },
     {
       "id": "R-ACCESSIBILITY-005",
@@ -6710,6 +6710,14 @@
       "owner": "clients/gui/packages/ui/src/components/tooltip/tooltip.md#状态",
       "strength": "default",
       "textSha256": "7d0814a72a86dd8f3aa100bea4b514dd6974c909746b65e09983025decbb4b7a"
+    },
+    {
+      "id": "R-CHECK-021",
+      "title": "提示用 TitleTooltip，不写原生 title",
+      "owner": "clients/gui/design-system/automation.md#仓库内-lint-规则",
+      "strength": "default",
+      "textSha256": "d82273b63fed2a527029a9292a9ac1abb9225363cf73a7d67d56f9d23d58d6b8",
+      "check": "clients/gui/scripts/motion-lint.mjs"
     }
   ]
 }
