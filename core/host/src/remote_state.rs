@@ -213,6 +213,65 @@ impl RemoteState {
         migration: &Migration,
         projects: &[String],
     ) -> Result<Value> {
+        self.dispatch_inner(
+            method, params, connection, generation, migration, projects, false,
+        )
+    }
+    pub(crate) fn begin_enrollment(
+        &self,
+        id: &str,
+        source: &str,
+        identity: &crate::HostIdentity,
+        digest: &str,
+        revision: u64,
+    ) -> Result<()> {
+        wire::request_id(id)?;
+        self.save_receipt(&json!({"requestId":id,"method":"remote.gateway.control","ephemeral":true,"sourceId":source,"hostId":identity.host_id,"generation":identity.generation,"previousRevision":revision,"controlDigest":digest,"state":"outcomeUnknown"}))
+    }
+    pub(crate) fn reject_enrollment(&self, id: &str) -> Result<()> {
+        wire::request_id(id)?;
+        let mut receipt: Value = storage::read(
+            &self
+                .home
+                .join("host/remote-operations")
+                .join(format!("{id}.json")),
+        )?;
+        ensure!(
+            receipt["method"] == "remote.gateway.control" && receipt["state"] == "outcomeUnknown",
+            "invalid enrollment intent"
+        );
+        receipt["state"] = json!("blocked");
+        receipt["error"] =
+            json!({"code":"enrollment-failed","message":"Relay rejected enrollment"});
+        self.save_receipt(&receipt)
+    }
+    pub(crate) fn commit_enrollment(
+        &self,
+        params: Value,
+        generation: &str,
+        migration: &Migration,
+        projects: &[String],
+    ) -> Result<Value> {
+        self.dispatch_inner(
+            "remote.gateway.replace",
+            params,
+            "native-gateway-control",
+            generation,
+            migration,
+            projects,
+            true,
+        )
+    }
+    fn dispatch_inner(
+        &self,
+        method: &str,
+        params: Value,
+        connection: &str,
+        generation: &str,
+        migration: &Migration,
+        projects: &[String],
+        enrollment: bool,
+    ) -> Result<Value> {
         let native = self.native_owner()?.is_some();
         if method == "remote.gateway.replace" && !native {
             return Err(error(
@@ -282,18 +341,50 @@ impl RemoteState {
                     return Err(error("generationMismatch", "Host generation changed"));
                 }
                 if let Some(previous) = self.operation(&input.request_id, migration)? {
-                    ensure!(
-                        previous["method"] == "remote.replace",
-                        error("requestConflict", "Remote operation method differs")
-                    );
-                    ensure!(
-                        previous.get("controlDigest").and_then(Value::as_str)
-                            == input.control_digest.as_deref(),
-                        error("requestConflict", "Remote operation control differs")
-                    );
-                    if previous["state"] != "completed" {
+                    if enrollment {
+                        ensure!(
+                            previous["method"] == "remote.gateway.control"
+                                && previous["state"] == "outcomeUnknown"
+                                && previous["ephemeral"] == true
+                                && previous["generation"] == generation
+                                && previous["sourceId"] == input.source_id
+                                && previous["previousRevision"] == input.expected_revision
+                                && previous["controlDigest"].as_str()
+                                    == input.control_digest.as_deref(),
+                            error("requestConflict", "original enrollment intent differs")
+                        );
+                    } else {
+                        ensure!(
+                            previous["method"] == "remote.replace",
+                            error("requestConflict", "Remote operation method differs")
+                        );
+                        ensure!(
+                            previous.get("controlDigest").and_then(Value::as_str)
+                                == input.control_digest.as_deref(),
+                            error("requestConflict", "Remote operation control differs")
+                        );
+                        if previous["state"] != "completed" {
+                            if previous["sourceId"] != input.source_id
+                                || previous["previousRevision"] != input.expected_revision
+                            {
+                                return Err(error(
+                                    "requestConflict",
+                                    "Remote operation parameters differ",
+                                ));
+                            }
+                            return Ok(previous);
+                        }
                         if previous["sourceId"] != input.source_id
                             || previous["previousRevision"] != input.expected_revision
+                            || migration
+                                .vault
+                                .read(
+                                    previous["entryId"]
+                                        .as_str()
+                                        .context("missing operation entry")?,
+                                )?
+                                .as_ref()
+                                != Some(&input.config)
                         {
                             return Err(error(
                                 "requestConflict",
@@ -302,24 +393,11 @@ impl RemoteState {
                         }
                         return Ok(previous);
                     }
-                    if previous["sourceId"] != input.source_id
-                        || previous["previousRevision"] != input.expected_revision
-                        || migration
-                            .vault
-                            .read(
-                                previous["entryId"]
-                                    .as_str()
-                                    .context("missing operation entry")?,
-                            )?
-                            .as_ref()
-                            != Some(&input.config)
-                    {
-                        return Err(error(
-                            "requestConflict",
-                            "Remote operation parameters differ",
-                        ));
-                    }
-                    return Ok(previous);
+                } else {
+                    ensure!(
+                        !enrollment,
+                        error("requestConflict", "original enrollment intent is missing")
+                    );
                 }
                 let mut state = state.unwrap_or_else(|| State {
                     source_id: input.source_id.clone(),

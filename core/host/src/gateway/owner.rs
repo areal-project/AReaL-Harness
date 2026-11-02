@@ -6,6 +6,8 @@ use crate::gateway::{
 use tokio::task::JoinSet;
 #[path = "control.rs"]
 mod control;
+#[path = "enrollment.rs"]
+mod enrollment;
 #[path = "session.rs"]
 mod session;
 

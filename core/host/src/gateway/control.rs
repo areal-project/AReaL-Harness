@@ -106,7 +106,7 @@ impl Host {
                 String::new()
             };
         Ok(
-            json!({"enabled":config["enabled"]==true,"connected":status["connected"]==true,"relay":relay,"relayError":if config["enabled"]==true && status["state"]=="unavailable"{"远程入口暂不可用"}else{""},"relayUrl":relay_url,"directEnabled":config["directEnabled"]==true,"directUrl":self.gateway.direct.borrow().as_ref().map(|handle|handle.origin().to_owned()).unwrap_or_default(),"directHostId":if config["directEnabled"]==true{host_peer.as_str()}else{""},"directError":self.gateway.direct_error.borrow().as_str(),"migrationError":"","pushSupported":false,"deviceGrants":grants,"devices":[],"pending":self.gateway.pairs.borrow().iter().filter(|(_,pair)|pair.expires_at>now() && pair.rejected.get().is_none()).map(|(peer,pair)|{let mut value=json!({"id":peer,"name":pair.name,"fingerprint":peer,"expiresAt":pair.expires_at});if let Some(kind)=&pair.client_kind{value["clientKind"]=json!(kind);}value}).collect::<Vec<_>>(),"network":{"kind":config["network"].get("kind").cloned().unwrap_or(Value::Null),"scope":config["network"].get("visibility").cloned().unwrap_or(Value::Null),"reconciliation":null,"publicOrigin":"","diagnostic":"","policy":"unknown","phoneAccess":"unknown","inspection":null}}),
+            json!({"enabled":config["enabled"]==true,"connected":config["enabled"]==true && status["connected"]==true,"relay":relay,"relayError":if config["enabled"]==true && status["state"]=="unavailable"{"远程入口暂不可用"}else{""},"relayUrl":relay_url,"directEnabled":config["directEnabled"]==true,"directUrl":self.gateway.direct.borrow().as_ref().map(|handle|handle.origin().to_owned()).unwrap_or_default(),"directHostId":if config["directEnabled"]==true{host_peer.as_str()}else{""},"directError":self.gateway.direct_error.borrow().as_str(),"migrationError":"","pushSupported":false,"deviceGrants":grants,"devices":[],"pending":self.gateway.pairs.borrow().iter().filter(|(_,pair)|pair.expires_at>now() && pair.rejected.get().is_none()).map(|(peer,pair)|{let mut value=json!({"id":peer,"name":pair.name,"fingerprint":peer,"expiresAt":pair.expires_at});if let Some(kind)=&pair.client_kind{value["clientKind"]=json!(kind);}value}).collect::<Vec<_>>(),"network":{"kind":config["network"].get("kind").cloned().unwrap_or(Value::Null),"scope":config["network"].get("visibility").cloned().unwrap_or(Value::Null),"reconciliation":null,"publicOrigin":"","diagnostic":"","policy":"unknown","phoneAccess":"unknown","inspection":null}}),
         )
     }
     pub(in crate::server) async fn gateway_control(
@@ -192,6 +192,7 @@ impl Host {
             return self.gateway_state(&input.source_id);
         }
         let mut prepared = None;
+        let mut enrolled = false;
         let mut config = snapshot["config"].clone();
         let operation = input.request["operation"]
             .as_str()
@@ -370,17 +371,56 @@ impl Host {
                     input.request["confirmed"] == true,
                     error("invalidRequest", "Relay confirmation is required")
                 );
-                ensure!(
-                    input.request.get("code").is_none(),
-                    error("unsupportedCapability", "Relay enrollment is unavailable")
-                );
-                ensure!(
-                    input.request["relay"] == config["relay"]
-                        && config["relayProtocol"] == "areal.remote.v2"
-                        && config["room"].is_string()
-                        && config["capability"].is_string(),
-                    error("invalidRequest", "Relay registration is required")
-                );
+                let relay = enrollment::origin(&input.request["relay"])?;
+                if let Some(value) = input.request.get("code") {
+                    let code = enrollment::code(value)?;
+                    self.remote.begin_enrollment(
+                        &input.request_id,
+                        &input.source_id,
+                        &self.identity,
+                        &digest,
+                        snapshot["revision"]
+                            .as_u64()
+                            .context("missing Remote revision")?,
+                    )?;
+                    match enrollment::register(relay, code).await {
+                        Ok(enrollment::Outcome::Registered(registration)) => {
+                            config["room"] = registration["room"].clone();
+                            config["capability"] = registration["capability"].clone();
+                        }
+                        Ok(enrollment::Outcome::Rejected) => {
+                            self.remote.reject_enrollment(&input.request_id)?;
+                            return Err(error(
+                                "enrollment-failed",
+                                "Relay 登记失败，请检查 HTTPS 和登记码",
+                            ));
+                        }
+                        Err(_) => {
+                            return Err(error(
+                                "enrollment-failed",
+                                "Relay 登记结果未知，请核查原请求；不会重复消费登记码",
+                            ));
+                        }
+                    }
+                    let mut profiles = config["relayProfiles"]
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default();
+                    profiles.retain(|profile| profile["origin"] != relay);
+                    profiles.push(json!({"origin":relay,"kind":"external","room":config["room"],"capability":config["capability"]}));
+                    config["relayProfiles"] = json!(profiles);
+                    config["relay"] = json!(relay);
+                    config["relayProtocol"] = json!("areal.remote.v2");
+                    enrolled = true;
+                } else {
+                    ensure!(
+                        input.request["relay"] == config["relay"]
+                            && config["relayProtocol"] == "areal.remote.v2"
+                            && config["room"].is_string()
+                            && config["capability"].is_string(),
+                        error("enrollment-required", "请使用管理员登记码登记此 Relay")
+                    );
+                }
                 config["enabled"] = json!(true);
             }
             "revoke" | "renameDevice" | "updateGrant" => {
@@ -479,7 +519,25 @@ impl Host {
             .map(|slot| slot.registration.clone())
             .collect::<Vec<_>>();
         let projects = self.migration.remote_projects(&input.source_id, &current)?;
-        self.remote.dispatch("remote.gateway.replace",json!({"requestId":input.request_id,"expectedGeneration":input.expected_generation,"expectedRevision":snapshot["revision"],"sourceId":input.source_id,"config":config,"controlDigest":digest}),"native-gateway-control",&self.identity.generation,&self.migration,&projects)?;
+        let replacement = json!({"requestId":input.request_id,"expectedGeneration":input.expected_generation,"expectedRevision":snapshot["revision"],"sourceId":input.source_id,"config":config,"controlDigest":digest});
+        if enrolled {
+            self.remote.commit_enrollment(
+                replacement,
+                &self.identity.generation,
+                &self.migration,
+                &projects,
+            )?;
+        } else {
+            self.remote.dispatch(
+                "remote.gateway.replace",
+                replacement,
+                "native-gateway-control",
+                &self.identity.generation,
+                &self.migration,
+                &projects,
+            )?;
+        }
+
         if let Some(next) = prepared {
             *self.gateway.direct.borrow_mut() = Some(next.handle.clone());
             *self.gateway.prepared_direct.borrow_mut() = Some(next);

@@ -3,11 +3,12 @@ import { test } from "node:test";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { execFile, execFileSync } from "node:child_process";
-import { rm, readFile, mkdtemp } from "node:fs/promises";
+import { rm, readFile, mkdtemp, readdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createIdentity, identityId, secureChannel } from "../packages/remote/src/channel.mjs";
 const require = createRequire(new URL("../app/package.json", import.meta.url));
 const WebSocket = require("ws");
+import { nativeHostFixture } from "./remote-native-host-fixture.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -344,14 +345,22 @@ if (!process.env.RC12_TLS_HOME) {
   }
   test("real CLI enrollment persists encrypted capability before outbound Host registration", async (t) => {
     const relay = await relayFixture(t),
-      f = await hostFixture(t);
+      f = await nativeHostFixture(t);
+    f.evidence.relay = relay.resources;
     const { code } = relay.admin("enrollment");
     await f.remote.control({ operation: "enable", relay: relay.origin, code, confirmed: true });
     await waitFor(() => f.remote.state().connected);
     const saved = await f.persisted();
     assert.equal(saved.relay, relay.origin);
     assert.match(saved.room, /^[a-f0-9]{64}$/);
-    const disk = await readFile(join(f.home, "remote-host-fixture.json"), "utf8");
+    const disk = JSON.stringify({
+      state: JSON.parse(await readFile(join(f.home, "host/remote-state.json"), "utf8")),
+      operations: await Promise.all(
+        (await readdir(join(f.home, "host/remote-operations"))).map(async (name) =>
+          JSON.parse(await readFile(join(f.home, "host/remote-operations", name), "utf8")),
+        ),
+      ),
+    });
     for (const secret of [code, saved.capability]) {
       assert.ok(!disk.includes(secret));
       assert.ok(!JSON.stringify(f.remote.state()).includes(secret));

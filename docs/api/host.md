@@ -178,6 +178,8 @@ prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每�
 
 控制请求复用原 Remote 回执目录，以 `controlDigest` 绑定原设置请求。该值使用当前 Host generation 的既有认证 token 做 HMAC，按方法、来源与 requestId 分域，并绑定规范化请求字节；认证 key 只留在 Host 与已认证本机 Main 客户端，不返回 Renderer 或另建密钥存储。临时配对操作的回执标记 `ephemeral:true` 并绑定原 Host 身份，不保存邀请秘密；重启、消费或取消后的查询不重建邀请。GUI 持久保留未确认请求引用，只核查原 ID。`null` 不允许重放。Remote `interaction.respond` 的原生 `requestId` 是交互领域标识；其日志 UUID 不替换该 ID，也不产生独立的 `areal/request/read` 受理证明。回复不确定时保留 journal UNKNOWN，交互当前状态作为单独观察，不据此推定本命令受理。支持原生请求回执的其他提交方法仍按原 ID 核查。
 
+`enable` 沿用原 Relay origin、一次性 `code` 与 `confirmed` 输入。非法 origin、无效 code 或缺少必要登记信息在受理前返回 `invalid-origin`、`invalid-code` 或 `enrollment-required`。Host 在唯一 HTTPS `/enroll` POST 前持久化原 `remote.gateway.control` 的 `outcomeUnknown` 回执，绑定来源、Host 身份、代际、原 revision 与 HMAC，不保存登记码。禁用客户端重试和重定向。仅可证明拒绝授权的 403/429 响应结算为原 `blocked` 回执；断流、超时、异常状态或无法解析的成功响应保持 UNKNOWN。确定成功后，只有当前内存延续可以将同一原 ID 转入既有 Remote CAS/Vault 提交链；不从 UNKNOWN 查询触发另一次登记。GUI 仅按原 ID 核查已确认拒绝；未知结果保留原引用。
+
 ### journal 与操作回执
 
 journal 快照为 `{version:1,pending:object[],outcomes:object}`，保留条目内的未知字段。固定文件槽位承载大于 1 MiB 的快照，控制帧仍受传输上限约束。prepare 或 commit 的 CAS 冲突通过 `result.state:"blocked"` 与 `result.error.code:"revisionConflict"` 表达，不是顶层 RPC error。只有该明确冲突允许重读并重新计算修改。断连、超时或未决 commit 只允许查询原 requestId，不重新执行修改 closure 或 Core 派发。

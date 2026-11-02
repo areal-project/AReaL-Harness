@@ -22,6 +22,9 @@ const notAdmitted = new Set([
   "revisionConflict",
   "sourceNotFound",
   "remoteBusy",
+  "invalid-origin",
+  "invalid-code",
+  "enrollment-required",
 ]);
 class NativeRemote {
   /** @param {{backend:InstanceType<typeof import('./backend.cjs').CoreBackend>,schedule:()=>void}} service */
@@ -200,6 +203,13 @@ class NativeRemote {
       if (error instanceof Error && "code" in error && notAdmitted.has(String(error.code))) {
         this.pending = null;
         await this.persist();
+      } else if (error instanceof Error && "code" in error && error.code === "enrollment-failed") {
+        try {
+          await this.settle();
+        } catch (lookupError) {
+          if (this.pending)
+            throw new AggregateError([error, lookupError], "原远程注册请求结果待核查");
+        }
       }
       throw error;
     }
