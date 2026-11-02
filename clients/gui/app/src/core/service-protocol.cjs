@@ -136,6 +136,8 @@ class DesktopService {
     /** @type {InstanceType<typeof import('./remote.cjs').RemoteControl>|undefined} */ this.remote =
       undefined;
     /** @type {ServiceSocket|null|undefined} */ this.computerSocket = undefined;
+    backend.desktopToolOwner = () =>
+      !this.closed && this.computerSocket?.readyState === 1 ? this.computerSocket : null;
     /** @type {NodeJS.Timeout|null|undefined} */ this.timer = undefined;
     /** @type {NodeJS.Timeout|undefined} */ this.mcpPageExpiryTimer = undefined;
     /** @type {NodeJS.Timeout|undefined} */ this.activityTimer = undefined;
@@ -757,7 +759,10 @@ class DesktopService {
         this.revokeMcpPageTools((lease) => lease.socket === socket);
         this.stopSending(socket);
         this.releaseHistoryViews(socket);
-        if (this.computerSocket === socket) this.computerSocket = null;
+        if (this.computerSocket === socket) {
+          this.computerSocket = null;
+          this.backend.connections.revokeDesktopToolHost(socket);
+        }
         for (const [key, claim] of this.browserClaims)
           if (claim.socket === socket) this.browserClaims.delete(key);
         for (const [id, record] of this.browserDiscoveryPlans)
@@ -872,8 +877,14 @@ class DesktopService {
           (!this.computerSocket ||
             this.computerSocket === socket ||
             this.computerSocket.readyState !== 1)
-        )
+        ) {
+          if (this.computerSocket !== socket) {
+            if (this.computerSocket)
+              this.backend.connections.revokeDesktopToolHost(this.computerSocket);
+            this.backend.connections.revokeDesktopToolHost(null);
+          }
           this.computerSocket = socket;
+        }
         this.clients.add(socket);
         this.idleSince = null;
         const packet = { ...this.packet(), computerHostOwned: this.computerSocket === socket };
@@ -945,6 +956,7 @@ class DesktopService {
       if (this.recovering && !["snapshot", "activity"].includes(method))
         throw blocked("正在处理后台资源，请稍后重试");
       if (method === "browserClaim") {
+        if (this.computerSocket !== socket) throw new Error("Desktop tool owner is unavailable");
         const {
           coreInstanceId: claimedCoreId,
           projectId,

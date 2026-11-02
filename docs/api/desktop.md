@@ -318,6 +318,10 @@ features.goals=true 表示服务支持 Goal，无需单独配置开关；Goal �
 
 ### Desktop 适配器生命周期
 
+Desktop 的动态工具连接归属已认证并声明 `computerHost:1` 的 Main socket。Main 断开时，Desktop 关闭该归属的 Core 连接，使 Core 撤销 ToolHost；共享 Core 与正在执行的 Turn 继续运行。普通观察客户端断开不撤销 Main 的工具。
+
+Desktop 自动重连只恢复观察，不恢复活动 Turn 的工具归属。没有 Main 时，新会话与定时准备不声明浏览器、Computer Use 或外部 CUA 工具。后继 Main 接入时先撤销旧观察连接，避免旧连接的工具重新可用；空闲会话通过显式发送、页面认领或应用打开重新绑定。连接丢失后的未知调用沿原 journal 核查，不向后继 Main 重发。
+
 这是 GUI 适配器协议，独立于 `areal.core.v1`。认证 snapshot 的 `service.lifecycle` 声明 `{version:2,desktopGeneration,capabilities:{request,read,reconcile,kinds},activeRequestId}`，支持 stopDesktop、updateDesktop、stopProject、updateProject、interruptTurn。
 
 `lifecycleRequest` 携带 `{protocol,requestId,kind,mode,expectedDesktopGeneration,expectedTargets,threadId?,turnId?}`；mode 为 ifIdle 或 cancel；targets 每项绑定 projectId/serviceId/generation。interruptTurn 必须指定原 threadId/turnId。`lifecycleRead` 与 `lifecycleReconcile` 只携带 protocol/requestId，后者仅核查原 Host 或原轮次，不调用 ensure、drain 或 cancel。

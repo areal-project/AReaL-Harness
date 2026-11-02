@@ -256,6 +256,117 @@ test("bound client may answer a browser tool request while ordinary clients reje
   assert.equal(replies.at(-1).result.contentItems[0].text, "fixture sentinel");
 });
 
+test("only the Main owner disconnect revokes its Core tool connection and successor drops ownerless hosts", async (t) => {
+  const { once } = await import("node:events");
+  const WebSocket = require("ws");
+  const { CoreBackend } = require("../app/src/core/backend.cjs");
+  const { ProjectConnections } = require("../app/src/core/project-connections.cjs");
+  const project = { id: "project", model: { state: { threads: {} } } };
+  const backend = Object.assign(Object.create(CoreBackend.prototype), {
+    projects: new Map([[project.id, project]]),
+    starting: new Map(),
+    providers: { redact: (value) => value },
+    analytics: { sample() {} },
+    snapshot: () => ({}),
+    hasWork: () => false,
+  });
+  backend._connections = new ProjectConnections(backend);
+  const service = new DesktopService(backend, "owner-fixture");
+  service.schedule = () => {};
+  const descriptor = await service.listen();
+  t.after(() => service.close());
+  const sockets = [];
+  t.after(() => {
+    for (const socket of sockets) socket.terminate();
+  });
+  const main = async (owns = true) => {
+    const socket = new WebSocket(descriptor.endpoint, {
+      headers: { Authorization: `Bearer ${descriptor.token}` },
+    });
+    sockets.push(socket);
+    await once(socket, "open");
+    const packet = once(socket, "message");
+    socket.send(
+      JSON.stringify({
+        id: 1,
+        method: "hello",
+        params: {
+          protocol: PROTOCOL,
+          identity: "owner-fixture",
+          capabilities: owns ? { computerHost: 1 } : {},
+        },
+      }),
+    );
+    await packet;
+    return socket;
+  };
+  const observer = await main(false);
+  const owner = await main();
+  const lease = backend.desktopToolOwner();
+  const core = {
+    closed: false,
+    close() {
+      this.closed = true;
+    },
+  };
+  project.client = core;
+  backend.connections.claimDesktopToolHost(project, core);
+  const observerClosed = once(
+    [...service.clients].find((socket) => socket !== lease),
+    "close",
+  );
+  observer.close();
+  await observerClosed;
+  assert.equal(core.closed, false);
+  const ownerClosed = once(lease, "close");
+  owner.close();
+  await ownerClosed;
+  assert.equal(service.closed, false);
+  assert.equal(backend.desktopToolOwner(), null);
+  assert.equal(core.closed, true);
+
+  const ownerless = {
+    closed: false,
+    close() {
+      this.closed = true;
+    },
+  };
+  project.client = ownerless;
+  await main();
+  assert.equal(ownerless.closed, true, "successor cannot adopt an active ownerless task host");
+  const successor = {
+    closed: false,
+    close() {
+      this.closed = true;
+    },
+  };
+  project.client = successor;
+  backend.connections.claimDesktopToolHost(project, successor);
+  backend.connections.revokeDesktopToolHost(lease);
+  assert.equal(
+    successor.closed,
+    false,
+    "late old owner cleanup cannot close successor Core connection",
+  );
+  const closingOwner = backend.desktopToolOwner();
+  closingOwner._readyState = WebSocket.CLOSING;
+  assert.equal(backend.desktopToolOwner(), null);
+  const closingObserver = {
+    closed: false,
+    close() {
+      this.closed = true;
+    },
+  };
+  project.client = closingObserver;
+  await main();
+  assert.equal(
+    closingObserver.closed,
+    true,
+    "successor also retires observers created during old owner's close handshake",
+  );
+  closingOwner._readyState = WebSocket.OPEN;
+});
+
 test("an authenticated owner claim refuses a request from another Core generation", async () => {
   const pageId = "00000000-0000-4000-8000-000000000001";
   const sent = [];
@@ -278,13 +389,18 @@ test("an authenticated owner claim refuses a request from another Core generatio
     snapshot: () => ({}),
     hasWork: () => false,
     providers: { redact: (value) => value },
+    connections: { revokeDesktopToolHost() {} },
     bindBrowserHostForClaim: async () => {},
     currentConnection: (current, client) => current.client === client && !client.closed,
   };
   const service = new DesktopService(backend, "fixture-identity");
   const receive = (id, method, params) =>
     service.receive(owner, Buffer.from(JSON.stringify({ id, method, params })));
-  await receive(1, "hello", { protocol: PROTOCOL, identity: "fixture-identity" });
+  await receive(1, "hello", {
+    protocol: PROTOCOL,
+    identity: "fixture-identity",
+    capabilities: { computerHost: 1 },
+  });
   await receive(2, "browserClaim", {
     protocol: "areal.browser.host.v1",
     operations: [
@@ -361,6 +477,7 @@ test("revoked or competing claim cannot publish after the Core bind awaits", asy
     hasWork: () => false,
     providers: { redact: (value) => value },
     bindBrowserHostForClaim: () => new Promise((resolve) => binds.push(resolve)),
+    connections: { revokeDesktopToolHost() {} },
     currentConnection: (current, client) => current.client === client && !client.closed,
   };
   const service = new DesktopService(backend, "fixture-identity");
@@ -391,7 +508,11 @@ test("revoked or competing claim cannot publish after the Core bind awaits", asy
     pageGeneration: 1,
     controlEpoch: epoch,
   });
-  await receive(owner, 1, "hello", { protocol: PROTOCOL, identity: "fixture-identity" });
+  await receive(owner, 1, "hello", {
+    protocol: PROTOCOL,
+    identity: "fixture-identity",
+    capabilities: { computerHost: 1 },
+  });
   await receive(other, 2, "hello", { protocol: PROTOCOL, identity: "fixture-identity" });
 
   const revoked = receive(owner, 3, "browserClaim", claim("host-1"));

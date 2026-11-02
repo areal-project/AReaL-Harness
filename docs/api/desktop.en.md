@@ -320,6 +320,10 @@ Shared services expose `server/status.configuration` as `{modelRevision,applied,
 
 ### Desktop adapter lifecycle
 
+Desktop dynamic-tool connections belong to the authenticated Main socket that declares `computerHost:1`. When Main disconnects, Desktop closes that owner's Core connections so Core withdraws the ToolHost. Shared Core services and active Turns continue. Disconnecting an ordinary observer does not withdraw Main's tools.
+
+Automatic Desktop reconnection restores observation without rebinding an active Turn's tools. Without Main, new threads and schedule preparation declare no browser, Computer Use, or external CUA tools. A successor Main first retires the previous observation connections so their tools cannot become available again. An explicit send, page claim, or app open can rebind an idle thread. Unknown calls retain their original journal recovery and are not resent to the successor Main.
+
 This GUI adapter protocol is separate from `areal.core.v1`. Authenticated snapshots advertise `service.lifecycle={version:2,desktopGeneration,capabilities:{request,read,reconcile,kinds},activeRequestId}` with stopDesktop, updateDesktop, stopProject, updateProject and interruptTurn.
 
 `lifecycleRequest` carries `{protocol,requestId,kind,mode,expectedDesktopGeneration,expectedTargets,threadId?,turnId?}`. Mode is ifIdle or cancel; each target binds projectId/serviceId/generation. interruptTurn requires the original threadId/turnId. `lifecycleRead` and `lifecycleReconcile` accept protocol/requestId; reconciliation only reads the original Host or Turn, never ensure, drain or cancel.

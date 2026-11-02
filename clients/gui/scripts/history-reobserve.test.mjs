@@ -247,6 +247,7 @@ test(
         activeTargets: new Set(),
       },
       providers: {
+        manages: () => true,
         async reconcileProject() {
           // 两个 WebSocket 帧可能分属不同事件循环；等待可观察事件，不假设帧与 RPC 同步到达。
           await liveDelta;
@@ -299,5 +300,144 @@ test(
     assert.ok(calls.indexOf("areal/task/host/ready") < calls.indexOf("thread/list"));
     for (const finish of held) finish();
     await project.summaryReads;
+  },
+);
+
+test(
+  "ownerless Core observation withholds desktop tools and a late connection cannot inherit a successor",
+  { timeout: 5000 },
+  async (t) => {
+    const { once } = await import("node:events");
+    const { WebSocketServer } = require("ws");
+    const { ProjectConnections } = require("../app/src/core/project-connections.cjs");
+    const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    await once(server, "listening");
+    t.after(async () => {
+      for (const socket of server.clients) socket.terminate();
+      await new Promise((resolve) => server.close(resolve));
+    });
+    const calls = [],
+      responses = new Map();
+    let socket,
+      requestId = 0;
+    server.on("connection", (connected) => {
+      socket = connected;
+      connected.on("message", (raw) => {
+        const message = JSON.parse(raw);
+        if (!message.method) {
+          responses.get(message.id)?.(message);
+          responses.delete(message.id);
+          return;
+        }
+        if (message.id === undefined) return;
+        calls.push(message.method);
+        const result =
+          message.method === "areal/capabilities"
+            ? {
+                methods: [
+                  "areal/thread/observe",
+                  "areal/thread/tools/attach",
+                  "areal/task/host/ready",
+                ],
+                features: { browserToolAttachment: true },
+                browserToolBundles: [{ bundleId: "areal.browser.v1" }],
+              }
+            : ["areal/model/list", "areal/profile/list"].includes(message.method)
+              ? { data: [] }
+              : {};
+        connected.send(JSON.stringify({ id: message.id, result }));
+      });
+    });
+    const call = (method, params) =>
+      new Promise((resolve) => {
+        const id = `server-${++requestId}`;
+        responses.set(id, resolve);
+        socket.send(JSON.stringify({ id, method, params }));
+      });
+    let owner = {};
+    const project = {
+      id: "project",
+      root: "/tmp",
+      model: new CoreTaskModel(),
+      endpoint: `ws://127.0.0.1:${server.address().port}`,
+      token: "fixture",
+    };
+    let catalogReads = 0;
+    const host = Object.assign(Object.create(CoreBackend.prototype), {
+      projects: new Map([[project.id, project]]),
+      starting: new Map(),
+      saved: [project],
+      closing: false,
+      desktopToolOwner: () => owner,
+      providers: {
+        manages: () => true,
+        value: { defaultModel: "fixture-model" },
+        async reconcileProject() {},
+        async acceptModelSelection() {},
+        async refreshSubscription() {},
+      },
+      resources: { async beforeCreate() {} },
+      scheduleAdmission: { async prepare() {} },
+      library: {
+        value: { settings: { computerControlEnabled: true, computerControlProvider: "lcu" } },
+      },
+      browserRead: async () => {
+        catalogReads++;
+        return { success: true, contentItems: [] };
+      },
+      lifecycleOperations: { assertProject() {}, schedulingSuppressed: () => false },
+      onChange() {},
+      stopReconciliation() {},
+      scheduleReconciliation() {},
+      async startTaskMonitor() {},
+      async listThreads() {},
+      async openThread() {},
+    });
+    host._connections = new ProjectConnections(host);
+    t.after(() => {
+      host.closing = true;
+      project.client?.close();
+    });
+    await host.connections.connect(project, { observeOnly: true });
+    const firstOwner = owner,
+      firstClient = project.client;
+    const tool = {
+      tool: "browser_v1",
+      threadId: "thread",
+      arguments: { operation: "describe", parameters: {} },
+    };
+    assert.equal((await call("item/tool/call", tool)).result.success, true);
+    assert.equal(catalogReads, 1);
+    const prepared = await call("areal/task/prepare", { intent: "start" });
+    assert.equal(prepared.result.dynamicTools[0].name, "browser_v1");
+
+    owner = null;
+    host.connections.revokeDesktopToolHost(firstOwner);
+    assert.equal(firstClient.closed, true);
+    await host.connections.connect(project, { observeOnly: true });
+    const observer = project.client;
+    const noMain = await call("areal/task/prepare", { intent: "start" });
+    assert.equal(noMain.result.model, "fixture-model");
+    assert.equal(noMain.result.dynamicTools, undefined);
+    assert.deepEqual(host.desktopTools(project), []);
+    assert.equal((await call("item/tool/call", tool)).result.success, false);
+    assert.equal(catalogReads, 1);
+
+    owner = {};
+    host.connections.revokeDesktopToolHost(null);
+    assert.equal(observer.closed, true);
+    await host.connections.connect(project, { observeOnly: true });
+    const successor = project.client;
+    host.connections.revokeDesktopToolHost(firstOwner);
+    assert.equal(successor.closed, false);
+    const late = host.connections.connect(project, { observeOnly: true });
+    owner = {};
+    await assert.rejects(late, /owner changed/);
+    assert.equal(project.client, successor);
+    assert.equal(successor.closed, false);
+    assert.equal(
+      calls.some((method) => method.includes("resume") || method.includes("attach")),
+      false,
+    );
   },
 );

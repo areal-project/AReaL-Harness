@@ -379,7 +379,10 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
     if (operation === "pluginAuth") params.operation = request.authOperation;
     const client = current;
     if (operation === "mcpAppOpen") {
-      // Manual opens execute a tool turn, so bind the existing tools before submitting it.
+      const observed = await backend.readObservation(project, requireThread(request), { client });
+      if (!modelRecord(observed.thread.status) || observed.thread.status.type !== "idle")
+        throw new Error("聊天正在执行，请等待结束后打开应用");
+      backend.connections.claimDesktopToolHost(project, client);
       await backend.readObservation(project, requireThread(request), { client, resume: true });
       backend.requireConnection(project, client);
     }

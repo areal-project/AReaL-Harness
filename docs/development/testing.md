@@ -396,6 +396,8 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 
 `node clients/gui/scripts/gui-terminal-connection-smoke.mjs` 使用同一固定产物，在独立 Node 客户端中运行生产 Main 终端连接适配器。场景覆盖显式 Profile 权限、真实 PTY 输入/输出/resize、强杀客户端后的定向 Runtime 清理、原请求恢复及普通 thread 资源继续。它不启动 Electron，不验证 Desktop 提交 journal 桥接或退出界面。
 
+`node clients/gui/scripts/gui-toolhost-connection-smoke.mjs` 使用真实 Host/Core、DesktopService 与 ProjectConnections。Main socket 断开后 Desktop 保持运行，原 Turn 继续，动态工具报告不可用；后继 Main 只能观察活动 Turn，空闲后显式动作才重绑。另覆盖普通观察客户端断开不撤销 Main 工具。模型由本地 HTTP/SSE fixture 提供，不启动 Electron 或真实浏览器，也不证明供应商和安装包可用。
+
 故障清理时，控制 socket 或 Core 的本机 HTTP 端点可先关闭而实例锁仍由清理进程持有；故障状态轮询只等待明确的连接拒绝过渡，仍须在原有期限内读到预期的 `stopped` 或 `unavailable`。其它错误立即失败，正常状态查询不放宽。`AREAL_TEST_EVIDENCE` 可指定 JSON 回执位置，记录阶段和状态轮询；CI 将其保存在 `target/ci/local-service.json`，失败时与日志一起上传。
 
 `cargo test --locked -p areal-app-server --test browser_auth` 验证可信客户端到真实 HTTP/WebSocket 的自动登录、并发单次兑换、Origin 校验、实例隔离、权限继承、手动登录与会话到期断连；该 crate 单元测试使用虚拟时间检查登录码/会话过期和容量上限。`node --test scripts/web-progress.test.mjs` 检查兑换前清除 URL 片段、成功后连接、失败时手动登录兜底和普通刷新。

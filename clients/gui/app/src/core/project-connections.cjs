@@ -21,7 +21,7 @@ const { modelRecord, isCoreTask } = require("@areal/workbench/core-model-contrac
  * connectExisting:(project:Project,service:Service)=>Promise<ServiceConnection>,
  * prepareServiceLaunch:(project:Project,trace:ReturnType<typeof startupTrace>)=>Promise<Launch>,
  * reconcile:(project:Project,options:{observeOnly:boolean})=>Promise<unknown>,
- * desktopTools:(project:Project)=>unknown[],supportsBrowser:(project:Project)=>boolean|undefined,supportsComputer:(project:Project)=>boolean|undefined,
+ * desktopToolOwner:()=>object|null,desktopTools:(project:Project)=>unknown[],supportsBrowser:(project:Project)=>boolean|undefined,supportsComputer:(project:Project)=>boolean|undefined,
  * cuaRead:(request:Record<string,unknown>)=>Promise<unknown>|undefined,computerRead:(request:Record<string,unknown>)=>Promise<unknown>|undefined,browserRead?:(request:Record<string,unknown>)=>Promise<unknown>|undefined,
  * observeNotification:(project:Project,client:Client,method:string,params:unknown)=>void,onMcpPageToolsDisconnected?:(client:Client)=>void,
  * listThreads:(project:Project)=>Promise<unknown>,openThread:(project:Project,threadId:string)=>Promise<unknown>,startTaskMonitor:(project:Project,client:Client)=>Promise<void>
@@ -37,6 +37,35 @@ class ProjectConnections {
     this.readWaiters = new WeakMap();
     /** @type {Map<string,string>} */
     this.selectedThreads = new Map();
+    /** @type {WeakMap<Client,object>} */
+    this.desktopOwners = new WeakMap();
+  }
+
+  /** @param {Project} project @param {Client|null|undefined} client */
+  claimDesktopToolHost(project, client) {
+    this.requireConnection(project, client);
+    const owner = this.host.desktopToolOwner?.();
+    if (!owner) throw new Error("Desktop tool host is unavailable");
+    this.desktopOwners.set(client, owner);
+    return owner;
+  }
+
+  /** @param {Project} project @param {Client|null|undefined} client @param {object|null|undefined} [owner] */
+  currentDesktopToolHost(project, client, owner = client && this.desktopOwners.get(client)) {
+    return (
+      !!owner &&
+      this.host.desktopToolOwner?.() === owner &&
+      this.currentConnection(project, client) &&
+      this.desktopOwners.get(client) === owner
+    );
+  }
+
+  /** @param {object|null} owner */
+  revokeDesktopToolHost(owner) {
+    for (const project of this.host.projects.values()) {
+      const client = project.client;
+      if (client && (this.desktopOwners.get(client) ?? null) === owner) client.close();
+    }
   }
 
   /** @param {string} id @param {{threadId?:string}} [options] @returns {Promise<Project>} */
@@ -255,8 +284,11 @@ class ProjectConnections {
   /** @param {Project} project @param {{observeOnly?:boolean}} [options] */
   async connect(project, { observeOnly = false } = {}) {
     const startup = this.host.starting.get(project.id);
+    const owner = this.host.desktopToolOwner?.() ?? null;
     const { CoreClient, MAX_RESPONSE_BYTES } = await import("@areal/runtime-client/core");
     if (this.host.closing) throw new Error("应用正在退出");
+    if ((this.host.desktopToolOwner?.() ?? null) !== owner)
+      throw new Error("Desktop tool owner changed during connection startup");
     project.taskNotificationMonitor?.stop();
     const previous = project.client;
     this.host.stopReconciliation(project);
@@ -317,7 +349,8 @@ class ProjectConnections {
           return {
             ...(model ? { model } : {}),
             ...(profile ? { agentProfile: profile } : {}),
-            ...(this.host.desktopTools(project).length
+            ...(this.currentDesktopToolHost(project, client) &&
+            this.host.desktopTools(project).length
               ? { dynamicTools: this.host.desktopTools(project) }
               : {}),
           };
@@ -327,6 +360,8 @@ class ProjectConnections {
           (method === "item/tool/call" && ["js", "js_reset"].includes(String(params.tool)))
         ) {
           this.requireConnection(project, client);
+          if (!this.currentDesktopToolHost(project, client))
+            throw new Error("Desktop tool host is unavailable");
           cuaHostGeneration = params.hostGeneration;
           const result = await this.host.cuaRead({
             ...params,
@@ -351,6 +386,8 @@ class ProjectConnections {
           ["item/tool/call", "areal/computer/prepare"].includes(method)
         ) {
           this.requireConnection(project, client);
+          if (!this.currentDesktopToolHost(project, client))
+            throw new Error("Desktop tool host is unavailable");
           if (!this.host.supportsComputer(project))
             throw new Error("Computer tool capability unavailable");
           return this.host.computerRead({
@@ -374,7 +411,7 @@ class ProjectConnections {
           params?.tool !== "browser_v1"
         )
           throw new Error("Unsupported client tool");
-        const connected = this.currentConnection(project, client);
+        const connected = this.currentDesktopToolHost(project, client);
         // Core invokes only tools bound to this connection. The local Thread
         // projection can lag the committed attachment until its event arrives.
         const result = connected
@@ -404,6 +441,7 @@ class ProjectConnections {
         return result;
       },
     });
+    if (owner) this.desktopOwners.set(client, owner);
     project.client = client;
     project.connectionGeneration = (project.connectionGeneration ?? 0) + 1;
     const correlation = {

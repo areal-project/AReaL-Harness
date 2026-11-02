@@ -113,6 +113,8 @@ class CoreBackend {
     this.userHome = userHome;
     this.desktopConfig = desktopConfig;
     this.onChange = onChange;
+    /** @type {()=>object|null} */
+    this.desktopToolOwner = () => null;
     /** @type {((notice:Record<string,unknown>)=>void)|undefined} */
     this.onNotification = undefined;
     /** @type {((input:import('./service-transport-contract.cjs').ToolHostInput)=>Promise<unknown>)|undefined} */
@@ -202,6 +204,7 @@ class CoreBackend {
         computerRead: (...args) => backend.computerRead?.(...args),
         cuaRead: (...args) => backend.cuaRead?.(...args),
         desktopTools: (...args) => backend.desktopTools(...args),
+        desktopToolOwner: () => backend.desktopToolOwner?.() ?? null,
         get closing() {
           return backend.closing;
         },
@@ -877,6 +880,7 @@ class CoreBackend {
 
   /** @param {Project} project */
   desktopTools(project) {
+    if (!this.desktopToolOwner?.()) return [];
     return [
       ...(this.supportsBrowser(project) ? [browserTool] : []),
       ...(this.supportsComputer(project) &&
@@ -905,11 +909,19 @@ class CoreBackend {
         thread.status.type !== "idle"
       )
         return;
-      await this.submit(project, "areal/thread/tools/attach", {
-        threadId,
-        expectedToolsetRevision: thread.toolsetRevision ?? 0,
-        bundleId,
-      });
+      const owner = this.connections.claimDesktopToolHost(project, client);
+      await this.submit(
+        project,
+        "areal/thread/tools/attach",
+        {
+          threadId,
+          expectedToolsetRevision: thread.toolsetRevision ?? 0,
+          bundleId,
+        },
+        {
+          preDispatch: () => this.connections.currentDesktopToolHost(project, client, owner),
+        },
+      );
     }
     await this.readObservation(project, threadId, { client });
     this.requireConnection(project, client);
@@ -937,6 +949,7 @@ class CoreBackend {
     ) {
       throw new Error("聊天正在执行或浏览器未启用，请刷新后再认领页面");
     }
+    this.connections.claimDesktopToolHost(project, client);
     await this.readObservation(project, threadId, { client, resume: true });
     this.requireConnection(project, client);
   }
@@ -1493,7 +1506,9 @@ class CoreBackend {
     let options = { permissionPreset: "ask", ...request.options };
     /** @type {unknown[]} */
     let tools = this.desktopTools(project);
+    const owner = this.desktopToolOwner?.();
     if (
+      owner &&
       this.library.value.settings.computerControlEnabled === true &&
       this.library.value.settings.computerControlProvider === "lcu"
     ) {
@@ -1509,6 +1524,8 @@ class CoreBackend {
         coreInstanceId: project.service?.serviceId,
         coreGeneration: project.service?.generation,
       });
+      if (this.desktopToolOwner?.() !== owner)
+        throw new Error("External CUA desktop host disconnected");
       if (
         !modelRecord(catalog) ||
         typeof catalog.instructions !== "string" ||
@@ -1528,6 +1545,8 @@ class CoreBackend {
       (this.providers.manages(project)
         ? (project.resourceProfile ?? this.defaultProfile)
         : undefined);
+    const client = project.client;
+    if (tools.length) this.connections.claimDesktopToolHost(project, client);
     const { thread } = readThreadAdmission(
       await this.submit(
         project,
@@ -1540,7 +1559,12 @@ class CoreBackend {
           ...(request.model ? { model: request.model } : {}),
           ...(profile ? { agentProfile: profile } : {}),
         },
-        { requestId: request.requestId },
+        {
+          requestId: request.requestId,
+          ...(tools.length
+            ? { preDispatch: () => this.connections.currentDesktopToolHost(project, client, owner) }
+            : {}),
+        },
       ),
     );
     await this.refreshAfterAdmission(
