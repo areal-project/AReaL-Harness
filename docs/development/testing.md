@@ -65,11 +65,11 @@ pnpm --dir clients/gui test:conversation-reading
 
 PR 工作流按 PR 编号取消旧运行；Verify/GUI 的 main 与手动运行按 run ID 独立分组，避免共享并发组替换等待中的 main 提交。纯说明文档保留轻量格式、合同和链接门禁，不下载 Cargo 依赖或恢复 Rust 构建缓存，也不运行依赖审计；内置 Skill Markdown 等产品输入仍按代码处理。工作流本身不使用 paths 跳过必需检查，最终门禁继续验证明确的不适用结果。Linux GUI 安装使用 setup-node 的 pnpm store 缓存，Relay 使用独立 Node 版本和 npm 锁文件缓存；依赖审计下载固定版本与 SHA-256 校验的官方 cargo-audit 二进制。
 
-GUI 的产物 job 完成必要构建与 RPC 校验后即可发布同一源码的输入包；Core 合同按 manifest 稳定分成两片，构建后的独立原生/设计校验另占一条 macOS lane。三条 lane 共用同一 run/attempt 的依赖报告，各自产生唯一结果；原有 `macOS Core contracts` 检查名作为严格汇总保留。桌面模块、截图模块和既有 Core/renderer/原生 helper 产物一起冻结，消费者不再重复 `build:desktop`。最终门禁仍核对检查 ID、子测试全集、平台、源码、计划、run 和 attempt，拒绝漏项、重复、失败或过期输入。
+GUI 的产物 job 完成必要构建与 RPC 校验后即可发布同一源码的输入包；Core 合同按 manifest 稳定分成两片，独立原生/设计校验复用第二个分片的准备，保留单独的执行步骤与结果目录，合同失败后仍继续收集。两条 lane 共用同一 run/attempt 的依赖报告，各自产生唯一结果；原有 `macOS Core contracts` 检查名作为严格汇总保留。桌面模块、截图模块和既有 Core/renderer/原生 helper 产物一起冻结，消费者不再重复 `build:desktop`。最终门禁仍核对检查 ID、子测试全集、平台、源码、计划、run 和 attempt，拒绝漏项、重复、失败或过期输入。
 
-容器使用固定版本和摘要的官方 cargo-chef 二进制，从清单与锁文件生成依赖配方；依赖编译层位于真实源码 COPY 之前。源码变动只重建工作区代码；新增 target、清单或锁文件变化仍会更新配方。运行镜像仅导出最终层缓存，测试镜像保留完整构建层，避免两套完整依赖缓存重复占用空间；macOS 原生与 GUI 构建共用同一环境键的 Rust 依赖缓存。验收结果及失败报告从不作为缓存通过证据。
+容器使用固定版本和摘要的官方 cargo-chef 二进制，从清单与锁文件生成依赖配方；依赖编译层位于真实源码 COPY 之前。源码变动只重建工作区代码；新增 target、清单或锁文件变化仍会更新配方。运行镜像仅导出最终层缓存，测试镜像保留完整构建层，避免两套完整依赖缓存重复占用空间。测试目标只导入自己的完整缓存图，作为隔离最终镜像 min 图与测试构建图的候选措施。本地 OCI 缓存/native snapshotter 的结构实验支持这一选择；托管 GHA 缓存/overlayfs 仍待验证，尚未证明线上缓存失效的根因或耗时收益。macOS 原生与 GUI 构建共用同一环境键的 Rust 依赖缓存。macOS 私有 Bash 只缓存当前身份目录；锁文件、构建脚本、架构、编译器、SDK、系统或 runner 镜像变化都会换键。恢复后仍核对二进制、对应源码包与许可证摘要，不保存其他身份或下载目录。验收结果及失败报告从不作为缓存通过证据。
 
-用 `python3 scripts/ci-timing.py --collect areal-project/AReaL-Harness --limit 50 --output target/ci/timing` 保存 gh 原始数据并生成逐 job/step CSV；离线重放使用 `--input <snapshot.json>`。分析保留取消、失败、重跑 attempt 和 runner 信息；依赖等待只作估计，机器排队只报告可识别下界。包含安装/编译的复合 step 独立列为 mixed，不能全算测试耗时。缺少日志或子报告时缓存冷热及精确测试拆分保持 unknown；只比较覆盖相同的成功运行，并同时查看墙钟关键路径和累计 runner minutes。
+用 `python3 scripts/ci-timing.py --collect areal-project/AReaL-Harness --limit 50 --output target/ci/timing` 保存 gh 原始数据并生成逐 job/step CSV；离线重放使用 `--input <snapshot.json>`。采集最近 50 个 run 的全部 attempt，逐轮读取对应 jobs；分析使用各轮 run_started_at，避免把重跑前的等待或前一轮 runner minutes 计入本轮。分析保留取消、失败、重跑 attempt 和 runner 信息；依赖等待只作估计，机器排队只报告可识别下界。包含安装/编译的复合 step 独立列为 mixed，不能全算测试耗时。缺少日志或子报告时缓存冷热及精确测试拆分保持 unknown；只比较覆盖相同的成功运行，并同时查看墙钟关键路径和累计 runner minutes。
 
 `scripts/ci-scope.py` 是本地与 CI 共用的检查计划所有者；`check-changed` 解析一次 merge-base，合并暂存、未暂存与未跟踪路径，重命名两侧均纳入，部分暂存相互抵消也保留选检。计划登记命令、依赖、环境能力、平台和 manifest 子测试全集，并绑定 base/source/head 与输入摘要。共享 Rust、schema、锁文件、构建与 CI 变化扩大范围，未知代码保守扩大；比较基准不可用时不得放行。
 
@@ -461,7 +461,7 @@ PR #111 在初始 G0 快照后整合历史恢复与定时任务所有权。以�
 
 `pnpm --dir clients/gui test:macos-dmg` 在 macOS 上独立通过真实 `codesign` 和 `hdiutil` 验证签名 framework 暂存。它需要允许磁盘映像设备访问的环境；受限 Agent 沙箱可能返回 `Device not configured`。应记录环境失败，并在允许的宿主环境重跑相同测试，不跳过断言，也不据此宣称安装包验收通过。macOS GUI job 显式执行该检查；可移植 `verify` 不创建磁盘映像。
 
-GUI CI 只构建一次 Core 和 Renderer。构建 job 完成后，10 项原生 Core 合同与 GUI smoke 并行消费同一份产物，分别校验源码 SHA 和可执行组件；`GUI gate` 同时等待两组结果，失败、取消或意外跳过都不能通过。Core 合同的日志、报告和隔离临时目录单独归档。历史兼容、迁移、Composer、模型选择、队列、对话派生和 Side chat 按清单选择后拆成独立隔离的 matrix job（最多六个并发，`fail-fast: false`）。同轮 artifact 以 tar 保留可执行权限，并记录精确 checkout SHA；smoke 拒绝不匹配的源码。锁定的 pnpm/Electron/FFmpeg 下载使用缓存；构建成功即可保存构建缓存，不再因后续 smoke 失败丢失缓存。报告与跨 job 产物绑定 workflow attempt；需要重跑时执行完整 workflow，旧 attempt 的通过记录或产物不能满足新一轮门禁。缺失产物、失败、取消或意外跳过仍使 gate 失败，不使用 `continue-on-error`。
+GUI CI 只构建一次 Core 和 Renderer。构建 job 完成后，10 项原生 Core 合同与 GUI smoke 并行消费同一份产物，分别校验源码 SHA 和可执行组件；`GUI gate` 同时等待两组结果，失败、取消或意外跳过都不能通过。Core 合同的日志、报告和隔离临时目录单独归档。历史兼容、迁移、Composer、模型选择、队列、对话派生和 Side chat 按清单选择后拆成独立隔离的 matrix job（最多四个并发，`fail-fast: false`；各 workflow 仍共享 macOS 配额）。同轮 artifact 以 tar 保留可执行权限，并记录精确 checkout SHA；smoke 拒绝不匹配的源码。锁定的 pnpm/Electron/FFmpeg 下载使用缓存；构建成功即可保存构建缓存，不再因后续 smoke 失败丢失缓存。报告与跨 job 产物绑定 workflow attempt；需要重跑时执行完整 workflow，旧 attempt 的通过记录或产物不能满足新一轮门禁。缺失产物、失败、取消或意外跳过仍使 gate 失败，不使用 `continue-on-error`。
 
 恢复去重的归属包含项目、聊天和 Core 连接代际；适配器重建后不能复用旧代际的完成/失败尝试。`thread-restoration-ui-smoke.mjs` 使用真实构建的 Renderer 及受控 Desktop 投影复现此边界，同时保持未知提交不重发。
 
