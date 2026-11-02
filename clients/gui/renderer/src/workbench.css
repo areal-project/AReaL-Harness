@@ -4545,21 +4545,8 @@ button[aria-label="停止"] {
   min-width: 0;
   margin-block: var(--conversation-gap) 0;
 }
-.turn-retry-notice {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  color: var(--color-foreground-subtle);
-  font-size: var(--text-conversation);
-  line-height: var(--conversation-line);
-  overflow-wrap: anywhere;
-}
 .turn-retry-attention {
   color: var(--color-status-attention);
-}
-.turn-retry-notice > svg {
-  flex: none;
 }
 .conversation-event {
   display: flex;
