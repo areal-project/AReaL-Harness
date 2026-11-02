@@ -4548,7 +4548,7 @@
       "title": "TurnProgress.tsx 由 Messages 使用，接收有序子项与摘要事实",
       "owner": "clients/gui/renderer/src/Messages.md#turnprogress",
       "strength": "default",
-      "textSha256": "22ed93e55a57e5e51a70944d04806e3b68fb8fe49bc82721b8f796b69a9855c6"
+      "textSha256": "449657528b7c550d50d3386883d4c73e392f1b1ebeab7549cc1d89946e5d308d"
     },
     {
       "id": "R-MESSAGES-008",
@@ -4668,7 +4668,7 @@
       "title": "跟随最新时，新内容可推进视口",
       "owner": "clients/gui/renderer/src/Messages.md#对话信息流",
       "strength": "default",
-      "textSha256": "62a5903587098565d30c916355d98f4e3e2c4c832b674f0df5a5cac12997baa5"
+      "textSha256": "d326f9b23ee7271ef54c416a0f014a6c7ceb8c76295e32b3d881ce8670a76ed4"
     },
     {
       "id": "CONV-RESOURCE-01",
@@ -6667,14 +6667,14 @@
       "title": "Core 消息的可选 createdAt 通过消息内时间控件显示",
       "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
       "strength": "default",
-      "textSha256": "75cb31589683c4a4cfd70310cf3e7b4087fa9ecfcffe92191607f4781abb0afe"
+      "textSha256": "7b2a59fca62693873d1d462cb074efb1a8aea5f9665f98029067e77399a342fe"
     },
     {
       "id": "R-MESSAGES-011",
       "title": "中断分隔行位于轮次边界，使用持久 interruption 区分用户暂停与 Core 恢复，无工具轮次也显示",
       "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
       "strength": "default",
-      "textSha256": "5805c887484a411fc654e093e60c649e14b96e2619bd247c79f6abb81f053761"
+      "textSha256": "b7bea27d647d28aadd4605e97a05a4c5831a5ea99c56aff2c22b18bde2b42c91"
     },
     {
       "id": "R-MESSAGES-012",
