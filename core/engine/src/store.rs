@@ -46,7 +46,7 @@ pub(crate) fn fit_history_fragment(
 }
 
 // 持久化版本与服务状态必须一致，避免客户端误判可恢复的数据格式。
-pub(crate) const STATE_VERSION: u32 = 16;
+pub(crate) const STATE_VERSION: u32 = 17;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Record {
@@ -982,6 +982,40 @@ mod tests {
         drop(owner);
         let _replacement = Store::open(directory.path()).unwrap();
         assert!(!pending.exists());
+    }
+
+    #[test]
+    fn connection_owner_format_reads_previous_versions_and_writes_v17() {
+        for version in 1..=STATE_VERSION {
+            let directory = tempfile::tempdir().unwrap();
+            let id = uuid::Uuid::new_v4().to_string();
+            let mut process = serde_json::json!({"id":"process","runtimeEpoch":"epoch","scopeOperationId":"scope-op","scopeId":"scope","operationId":"start-op","processId":"native","lifetime":"thread","turnId":null,"owner":"fixture","argv":["shell"],"state":"closed","cleanupConfirmed":true,"error":null,"inputs":[]});
+            if version == 17 {
+                process["lifetime"] = serde_json::json!("connection");
+                process["connectionId"] = serde_json::json!("server-generated");
+            }
+            let mut desktop =
+                serde_json::to_value(areal_protocol::desktop::DesktopState::default()).unwrap();
+            desktop["processes"] = serde_json::json!([process]);
+            let thread = serde_json::json!({"id":id,"sessionId":id,"parentThreadId":null,"preview":"resource","modelProvider":"test","createdAt":0,"updatedAt":0,"status":{"type":"idle"},"cwd":"/tmp","cliVersion":"test","source":"appServer","ephemeral":false,"turns":[],"desktop":desktop});
+            let path = directory.path().join(format!("{id}.json"));
+            std::fs::write(
+                &path,
+                serde_json::to_vec(&serde_json::json!({"version":version,"thread":thread}))
+                    .unwrap(),
+            )
+            .unwrap();
+            let store = Store::open(directory.path()).unwrap();
+            let threads = store.load(10, 1024 * 1024).unwrap();
+            let process = &threads[0].desktop.as_ref().unwrap().processes[0];
+            assert_eq!(
+                process.connection_id.as_deref(),
+                (version == 17).then_some("server-generated")
+            );
+            let encoded: serde_json::Value =
+                serde_json::from_slice(&encode(&threads[0]).unwrap()).unwrap();
+            assert_eq!(encoded["version"], 17);
+        }
     }
 
     #[test]

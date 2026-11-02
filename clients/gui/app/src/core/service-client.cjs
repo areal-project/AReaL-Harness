@@ -9,6 +9,7 @@ const { spawn } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 const { mkdir, readFile, realpath, open, writeFile, rename, rm } = require("node:fs/promises");
 const { join } = require("node:path");
+const { GuiTerminalConnections } = require("./gui-terminal-connections.cjs");
 const { ServiceConnection } = require("./service-connection.cjs");
 const { readServicePacket } = require("./service-state.cjs");
 const {
@@ -216,6 +217,7 @@ class SharedCoreBackend {
     this.initializing = false;
     /** @type {Map<string,GuiTerminal>} */
     this.guiTerminals = new Map();
+    this.terminalConnections = new GuiTerminalConnections();
     /** @type {Set<Promise<unknown>>} */
     this.guiTerminalStarts = new Set();
     /** @type {Map<string,GuiSideChat>} */
@@ -335,6 +337,7 @@ class SharedCoreBackend {
     this.onChange();
   }
   disconnected() {
+    this.terminalConnections.close();
     this.computerHostOwned = false;
     this.onBrowserDisconnected?.();
     this.onMcpPageToolsDisconnected?.();
@@ -431,6 +434,8 @@ class SharedCoreBackend {
       if (desktopError(e).code === "ENOENT") return false;
       throw e;
     }
+    this.terminalConnections.close();
+    this.terminalConnections = new GuiTerminalConnections();
     const connection = new ServiceConnection(
       (packet) => {
         if (this.connection !== connection) return;
@@ -470,6 +475,11 @@ class SharedCoreBackend {
       (event) => {
         if (this.connection === connection && !this.disposed)
           this.onMcpPageToolsDisconnected?.(event);
+      },
+      (request) => {
+        if (this.connection !== connection || this.disposed)
+          throw new Error("GUI terminal owner disconnected");
+        return this.terminalConnections.request(request);
       },
     );
     /** @type {import("./service-connection.cjs").ServiceMetadata} */
@@ -958,9 +968,17 @@ class SharedCoreBackend {
       params,
     );
     const connection = this.requireConnection();
+    const ownedTerminal =
+      ownedStart ||
+      ownedRecovery ||
+      (name === "manage" &&
+        typeof params.operation === "string" &&
+        params.operation.startsWith("process") &&
+        typeof params.id === "string" &&
+        this.guiTerminals.has(params.id));
     const pending = connection
       .request(
-        "command",
+        ownedTerminal ? "guiTerminalCommand" : "command",
         { name, request: name === "media" ? encodeMedia(params) : params },
         semantics.effect === "mutation",
       )
@@ -993,12 +1011,6 @@ class SharedCoreBackend {
           if (response.confirmed)
             this.guiTerminals.set(response.id, { ...ownedScope, id: response.id });
         }
-        if (
-          name === "manage" &&
-          request.operation === "processTerminate" &&
-          typeof request.id === "string"
-        )
-          this.guiTerminals.delete(request.id);
         return name === "media" ? decodeMedia(value) : value;
       });
     if (ownedStart || ownedRecovery) this.guiTerminalStarts.add(pending);
@@ -1748,7 +1760,7 @@ class SharedCoreBackend {
         /** @param {string} operation @param {boolean} [mutation] */
         const call = (operation, mutation = false) =>
           this.requireConnection().request(
-            "command",
+            "guiTerminalCommand",
             { name: "manage", request: { ...terminal, operation } },
             mutation,
           );
@@ -1814,6 +1826,7 @@ class SharedCoreBackend {
             .request("activity", { focused: false, idleSeconds: 0 })
             .catch(() => {});
       } finally {
+        this.terminalConnections.close();
         this.connection?.close();
       }
     })());

@@ -37,7 +37,8 @@ class ServiceConnection {
    * @param {((value:Record<string,unknown>&{requestId:number})=>unknown)|null} [onBrowserRequest]
    * @param {((value:unknown)=>void)|null} [onBrowserCancel]
    * @param {(value:unknown)=>void} [onMcpAppNotification] @param {(value:unknown)=>void} [onMcpPageToolNotice]
-   * @param {(value:unknown)=>void} [onMcpPageToolsRevoked] */
+   * @param {(value:unknown)=>void} [onMcpPageToolsRevoked]
+   * @param {((value:unknown)=>Promise<unknown>)|null} [onTerminalRequest] */
   constructor(
     onState = () => {},
     onClose = () => {},
@@ -48,7 +49,9 @@ class ServiceConnection {
     onMcpAppNotification = () => {},
     onMcpPageToolNotice = () => {},
     onMcpPageToolsRevoked = () => {},
+    onTerminalRequest = null,
   ) {
+    this.onTerminalRequest = onTerminalRequest;
     this.onNotification = onNotification;
     this.onNotificationOpen = onNotificationOpen;
     this.onBrowserRequest = onBrowserRequest;
@@ -156,6 +159,35 @@ class ServiceConnection {
       }
       if (message.method === "browserCancel") {
         this.onBrowserCancel?.(message.params);
+        return;
+      }
+      if (message.method === "terminalRequest") {
+        const request = message.params;
+        if (!browserRequest(request) || !this.onTerminalRequest) {
+          socket.terminate();
+          return;
+        }
+        const requestId = request.requestId;
+        const onTerminalRequest = this.onTerminalRequest;
+        void Promise.resolve()
+          .then(() => onTerminalRequest(request))
+          .then(
+            (result) => {
+              if (this.socket === socket && socket.readyState === WebSocket.OPEN)
+                void this.request("terminalResult", { requestId, result }, true).catch(() => {});
+            },
+            (error) => {
+              if (this.socket === socket && socket.readyState === WebSocket.OPEN)
+                void this.request(
+                  "terminalResult",
+                  {
+                    requestId,
+                    error: require("@areal/workbench/desktop-contract").desktopError(error),
+                  },
+                  true,
+                ).catch(() => {});
+            },
+          );
         return;
       }
       if (message.method === "browserRequest") {

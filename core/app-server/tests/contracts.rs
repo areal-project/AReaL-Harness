@@ -579,6 +579,7 @@ async fn ordinary_admission_capabilities_and_rpc_errors_are_explicit() {
         "taskRequestReceipts",
         "atomicConfigureReceipt",
         "automaticSessionName",
+        "connectionProcesses",
     ] {
         assert_eq!(caps["result"]["features"][feature], true, "{caps}");
     }
@@ -592,6 +593,24 @@ async fn ordinary_admission_capabilities_and_rpc_errors_are_explicit() {
     assert_eq!(semantics["areal/plugin/read"]["effect"], "read");
     assert_eq!(semantics["areal/task/subscribe"]["effect"], "subscription");
     assert_eq!(semantics["areal/thread/configure"]["receipt"], "thread");
+    let (owner_override, _) = call(
+        &mut socket,
+        199,
+        "areal/process/start",
+        json!({
+            "requestId":"client-owner-override", "threadId":"not-created", "lifetime":"connection",
+            "connectionId":"client-selected-owner", "argv":["shell"]
+        }),
+    )
+    .await;
+    assert_eq!(owner_override["error"]["code"], -32602, "{owner_override}");
+    assert!(
+        owner_override["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("connectionId")
+    );
+
     for (request_id, configuration) in [
         (
             "missing-profile",

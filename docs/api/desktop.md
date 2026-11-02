@@ -288,6 +288,12 @@ contentItems 按顺序保存 inputText 或 arealMedia，实际字节进入模型
 
 ## 进程与保留
 
+`features.connectionProcesses=true` 表示支持 `lifetime="connection"`。该生命周期要求有效 Profile 显式设置 `allowConnectionProcesses=true`，缺省为 false；写资源仍要求部署允许并发写入。Core 从已认证 WebSocket 生成连接身份，拒绝客户端传入 `connectionId`。连接进程继承原 command/task Scope 的权限与预算，不使用 thread 服务的祖先时长提升。
+
+Main 为 GUI 终端持有专用 Core 连接。Desktop 仍负责 Host 提交 journal、登录 shell 参数及原回执恢复；启动、输出、输入、resize、停止和恢复经原 Main 连接执行。Core 描述与凭据只在特权进程间传递。Main 断连会撤销对应连接资源，已受理启动与清理共用资源门，Runtime 的 `cleanupConfirmed` 继续作为结算证据。其它连接及普通 thread/turn 进程不随之结束。重连只读取原请求和进程，不重新创建终端。
+
+新的标准桌面 Profile v2 显式开启连接进程。旧 Profile 与已有会话不自动获得该权限；未授权时终端启动明确拒绝。`ManagedProcess.connectionId` 仅在连接资源中出现，普通资源和旧记录省略该字段。
+
 process/start 默认 lifetime=turn；thread 生命周期需 Profile allowThreadProcesses，写服务还需部署 allow-concurrent-writes。根 Thread 的受管服务使用 Runtime 已授予的桌面进程时长，普通 Turn 进程保留命令时长限制；只有可信命令 Scope 与 Runtime 根权限及其他预算一致时才分离两种时长。子任务、hooks 的任务 Scope 及额外收窄的 Scope 保留原祖先，不通过服务接口扩大授权。GUI 终端与手动启动的 GUI 进程默认继承父 Runtime 限额；显式 `timeoutMs` 只能收窄相应父限额，已知超额在持久受理前拒绝，不生成未知启动回执。受理后的 UNKNOWN 仍查询原记录，不自动重放。输入归因到认证身份，输出游标与清理沿用 Runtime。PTY resize 为实际 ioctl；pipe EOF 关闭 FD，canonical PTY 使用 VEOF，raw mode 不支持。
 
 GUI 终端选择账户中可执行的登录 shell，缺失时依次尝试 `SHELL` 和 `/bin/sh`。桌面适配器提交交互登录会话的具体 argv，并通过字面 `/usr/bin/env` 参数设置 `SHELL`、`USER`、`LOGNAME` 和 `TERM=xterm-256color`。登录和交互初始化文件负责建立用户工具链环境。Runtime 保留现有环境过滤与权限。恢复读取原托管进程 argv。运行中的终端隐藏常规清理诊断，已退出或状态不确定的进程继续显示退出与清理事实。

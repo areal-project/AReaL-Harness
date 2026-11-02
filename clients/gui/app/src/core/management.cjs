@@ -256,7 +256,7 @@ const pick = (value, keys) =>
   Object.fromEntries(
     keys.filter((key) => value[key] !== undefined).map((key) => [key, value[key]]),
   );
-/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {import("@areal/workbench/desktop-contract/management").ManagementRequest} rawRequest @param {{onMcpAppOpened?:(project:Project,client:import("@areal/runtime-client/core").CoreClient,request:Record<string,unknown>,result:unknown)=>void}} [context] @returns {Promise<unknown>} */
+/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {import("@areal/workbench/desktop-contract/management").ManagementRequest} rawRequest @param {{guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>,onMcpAppOpened?:(project:Project,client:import("@areal/runtime-client/core").CoreClient,request:Record<string,unknown>,result:unknown)=>void}} [context] @returns {Promise<unknown>} */
 async function executeManagement(backend, project, rawRequest, context = {}) {
   if (typeof rawRequest.operation === "string" && taskOperations.has(rawRequest.operation))
     return manageTask(backend, project, rawRequest);
@@ -264,6 +264,7 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
   const current = project.client;
   if (!current) throw new Error("Core 未连接");
   const { operation } = request;
+  const terminalRequest = context.guiTerminalRequest;
   if (operation === "mcpFormResourceSubmission") {
     const method = "areal/mcp/form/resource/stage";
     if (typeof request.requestId !== "string" || !request.requestId.trim())
@@ -525,6 +526,7 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
       project,
       request.threadId,
       request.requestId,
+      terminalRequest,
     );
     if (!result) return { confirmed: false };
     const presentation = await resolveTerminalPresentation(
@@ -585,7 +587,10 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
   }
   if (reads[operation]) {
     const [method, keys] = reads[operation];
-    const result = await current.request(method, pick(request, keys));
+    const result = await (terminalRequest ?? current.request.bind(current))(
+      method,
+      pick(request, keys),
+    );
     if (operation === "goal") project.model.setGoal(requireThread(request), readGoals(result));
     if (operation === "plan") project.model.setPlan(requireThread(request), readPlan(result));
     if (operation === "interactions")
@@ -737,8 +742,15 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
     result = await backend.submit(
       project,
       method,
-      { ...pick(request, fields[operation]), ...(terminal ? { argv: terminal.argv } : {}) },
-      { requestId: request.requestId },
+      {
+        ...pick(request, fields[operation]),
+        ...(terminal ? { argv: terminal.argv } : {}),
+        ...(terminalRequest && operation === "processStart" ? { lifetime: "connection" } : {}),
+      },
+      {
+        requestId: request.requestId,
+        ...(terminalRequest ? { requestCore: terminalRequest } : {}),
+      },
     );
   } catch (error) {
     if (threadMutationMethods.has(method)) {
@@ -815,7 +827,7 @@ function readPlan(value) {
   if (!isCorePlan(value)) throw new Error("Core 计划结构无效");
   return value;
 }
-/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {Record<string,unknown>} rawRequest @param {{onMcpAppOpened?:(project:Project,client:import("@areal/runtime-client/core").CoreClient,request:Record<string,unknown>,result:unknown)=>void}} [context] */
+/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {Record<string,unknown>} rawRequest @param {{guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>,onMcpAppOpened?:(project:Project,client:import("@areal/runtime-client/core").CoreClient,request:Record<string,unknown>,result:unknown)=>void}} [context] */
 async function manage(backend, project, rawRequest, context = {}) {
   const request = readManagementRequest(rawRequest);
   const result = await executeManagement(backend, project, request, context);

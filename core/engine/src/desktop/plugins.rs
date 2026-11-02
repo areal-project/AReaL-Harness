@@ -156,6 +156,7 @@ impl Engine {
             read_only: agent.read_only,
             approval_tools: agent.approval_tools.clone(),
             allow_thread_processes: false,
+            allow_connection_processes: false,
             workflow: None,
         };
         let key = format!("{}/{}", profile.id, profile.revision);

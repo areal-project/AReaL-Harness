@@ -468,6 +468,8 @@ pub struct AgentProfile {
     pub approval_tools: Vec<String>,
     #[serde(default)]
     pub allow_thread_processes: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_connection_processes: bool,
     #[serde(default)]
     pub workflow: Option<VersionRef>,
 }
@@ -991,6 +993,8 @@ pub struct ManagedProcess {
     pub process_id: Option<String>,
     pub lifetime: String,
     pub turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection_id: Option<String>,
     pub owner: String,
     pub argv: Vec<String>,
     pub state: String,

@@ -26,6 +26,7 @@ use super::*;
 use areal_protocol::desktop::*;
 pub use catalog::{ConfiguredModels, Deployment};
 pub use model_configuration::PreparedModelConfiguration;
+pub use processes::ProcessConnection;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 pub use skills::{SkillLocation, SkillMetadata};

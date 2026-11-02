@@ -25,6 +25,26 @@ struct Fixture {
 
 impl Fixture {
     async fn new(uncertain_start: bool) -> Self {
+        Self::with_start_barrier(uncertain_start, None).await
+    }
+    async fn with_start_barrier(
+        uncertain_start: bool,
+        start_barrier: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
+    ) -> Self {
+        Self::with_rpc_barrier(
+            uncertain_start,
+            start_barrier.map(|(entered, release)| ("process.start", entered, release)),
+        )
+        .await
+    }
+    async fn with_rpc_barrier(
+        uncertain_start: bool,
+        rpc_barrier: Option<(
+            &'static str,
+            Arc<tokio::sync::Notify>,
+            Arc<tokio::sync::Notify>,
+        )>,
+    ) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let epoch = uuid::Uuid::new_v4().to_string();
         let root: rt::ScopeInfo = serde_json::from_value(json!({
@@ -62,6 +82,12 @@ impl Fixture {
                 observed.lock().unwrap().push(request.clone());
                 let params = &request["params"];
                 let method = request["method"].as_str().unwrap();
+                if let Some((target, entered, release)) = &rpc_barrier {
+                    if method == *target {
+                        entered.notify_one();
+                        release.notified().await;
+                    }
+                }
                 let result = match method {
                     "connection.open" => {
                         json!({"protocolVersion":"areal.runtime.v0","runtimeEpoch":epoch,
@@ -131,7 +157,7 @@ impl Fixture {
             &deployment,
             serde_json::to_vec(
                 &json!({"profiles":[{"id":"services","revision":"v1","displayName":"Services",
-            "instructions":"","allowThreadProcesses":true}]}),
+            "instructions":"","allowThreadProcesses":true,"allowConnectionProcesses":true}]}),
             )
             .unwrap(),
         )
@@ -330,4 +356,274 @@ fn command_scope_with_additional_restrictions_cannot_be_bypassed() {
     narrowed = command.clone();
     narrowed.parent_scope_id = Some("another-task".into());
     assert!(!command_budget_only(&narrowed, &root));
+}
+
+#[tokio::test]
+async fn connection_process_requires_context_profile_and_original_budget() {
+    let fixture = Fixture::new(false).await;
+    let thread = fixture.thread().await;
+    let mut request = request(&thread, 60000);
+    request.lifetime = "connection".into();
+    assert!(
+        fixture
+            .engine
+            .process_start("fixture".into(), request.clone())
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("authenticated connection")
+    );
+    let connection = ProcessConnection::new(CancellationToken::new());
+    let cell = fixture.engine.cell(&thread.id).await.unwrap();
+    cell.state
+        .lock()
+        .await
+        .thread
+        .desktop
+        .as_mut()
+        .unwrap()
+        .configuration
+        .profile
+        .as_mut()
+        .unwrap()
+        .allow_connection_processes = false;
+    assert!(
+        fixture
+            .engine
+            .process_start_on_connection("fixture".into(), request.clone(), connection.clone())
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("profile does not authorize connection")
+    );
+    cell.state
+        .lock()
+        .await
+        .thread
+        .desktop
+        .as_mut()
+        .unwrap()
+        .configuration
+        .profile
+        .as_mut()
+        .unwrap()
+        .allow_connection_processes = true;
+    request.timeout_ms = Some(60001);
+    assert!(
+        fixture
+            .engine
+            .process_start_on_connection("fixture".into(), request.clone(), connection.clone())
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("exceeds connection process parent")
+    );
+    assert!(
+        desktop(&fixture.engine.read(&thread.id, false).await.unwrap())
+            .processes
+            .is_empty()
+    );
+    request.timeout_ms = Some(60000);
+    let started = fixture
+        .engine
+        .process_start_on_connection("fixture".into(), request.clone(), connection.clone())
+        .await
+        .unwrap();
+    fixture
+        .engine
+        .close_connection_processes(connection)
+        .await
+        .unwrap();
+    let successor = ProcessConnection::new(CancellationToken::new());
+    let original = fixture
+        .engine
+        .process_start_on_connection("fixture".into(), request, successor.clone())
+        .await
+        .unwrap();
+    assert_eq!(original, started);
+    let record = desktop(&fixture.engine.read(&thread.id, false).await.unwrap())
+        .processes
+        .pop()
+        .unwrap();
+    assert_eq!(record.state, "closed");
+    assert!(record.cleanup_confirmed);
+    assert_ne!(record.connection_id.as_deref(), Some(successor.id.as_str()));
+    assert_eq!(
+        fixture
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|call| call["method"] == "process.start")
+            .count(),
+        1
+    );
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn disconnected_connection_cannot_admit_queued_process() {
+    let fixture = Fixture::new(false).await;
+    let thread = fixture.thread().await;
+    let workspace = fixture.engine.workspace_gate.clone().write_owned().await;
+    let token = CancellationToken::new();
+    let connection = ProcessConnection::new(token.clone());
+    let engine = fixture.engine.clone();
+    let mut request = request(&thread, 60000);
+    request.lifetime = "connection".into();
+    let lease = connection.clone();
+    let start = tokio::spawn(async move {
+        engine
+            .process_start_on_connection("fixture".into(), request, lease)
+            .await
+    });
+    fixture
+        .engine
+        .close_connection_processes(connection)
+        .await
+        .unwrap();
+    drop(workspace);
+    assert!(matches!(start.await.unwrap(), Err(Error::Closed)));
+    assert!(
+        desktop(&fixture.engine.read(&thread.id, false).await.unwrap())
+            .processes
+            .is_empty()
+    );
+    assert!(
+        !fixture
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|call| call["method"] == "process.start")
+    );
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn disconnect_waits_for_accepted_start_and_preserves_thread_process() {
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let fixture =
+        Fixture::with_start_barrier(false, Some((entered.clone(), release.clone()))).await;
+    let thread = fixture.thread().await;
+    let token = CancellationToken::new();
+    let connection = ProcessConnection::new(token.clone());
+    let engine = fixture.engine.clone();
+    let mut connected = request(&thread, 60000);
+    connected.lifetime = "connection".into();
+    let lease = connection.clone();
+    let start = tokio::spawn(async move {
+        engine
+            .process_start_on_connection("fixture".into(), connected, lease)
+            .await
+    });
+    entered.notified().await;
+    start.abort();
+    assert!(start.await.unwrap_err().is_cancelled());
+    token.cancel();
+    let engine = fixture.engine.clone();
+    let cleanup = tokio::spawn(async move { engine.close_connection_processes(connection).await });
+    release.notify_one();
+    tokio::time::timeout(std::time::Duration::from_secs(5), cleanup)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let records = desktop(&fixture.engine.read(&thread.id, false).await.unwrap()).processes;
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].state, "closed");
+    assert!(records[0].cleanup_confirmed);
+    let engine = fixture.engine.clone();
+    let mut ordinary = request(&thread, 60000);
+    ordinary.request_id = "ordinary-thread-process".into();
+    let start = tokio::spawn(async move { engine.process_start("fixture".into(), ordinary).await });
+    entered.notified().await;
+    release.notify_one();
+    let ordinary = start.await.unwrap().unwrap();
+    fixture
+        .engine
+        .close_connection_processes(ProcessConnection::new(CancellationToken::new()))
+        .await
+        .unwrap();
+    let records = desktop(&fixture.engine.read(&thread.id, false).await.unwrap()).processes;
+    let record = records
+        .iter()
+        .find(|record| Some(record.id.as_str()) == ordinary["id"].as_str())
+        .unwrap();
+    assert_eq!(record.lifetime, "thread");
+    assert!(!record.cleanup_confirmed);
+    fixture.close().await;
+}
+
+#[test]
+fn old_managed_process_and_profile_keep_default_connection_permissions() {
+    let mut profile: Value = serde_json::to_value(AgentProfile {
+        allow_plugin_skills: false,
+        id: "old".into(),
+        revision: "v1".into(),
+        display_name: "Old".into(),
+        instructions: String::new(),
+        skills: vec![],
+        tool_allowlist: None,
+        model: None,
+        required_modalities: vec![],
+        read_only: false,
+        approval_tools: vec![],
+        allow_thread_processes: true,
+        allow_connection_processes: false,
+        workflow: None,
+    })
+    .unwrap();
+    assert!(profile.get("allowConnectionProcesses").is_none());
+    let decoded: AgentProfile = serde_json::from_value(profile.take()).unwrap();
+    assert!(!decoded.allow_connection_processes);
+    let old:ManagedProcess=serde_json::from_value(json!({"id":"old","runtimeEpoch":"epoch","scopeOperationId":"scope-op","scopeId":null,"operationId":"start-op","processId":null,"lifetime":"thread","turnId":null,"owner":"fixture","argv":["old"],"state":"unknown","cleanupConfirmed":false,"error":null,"inputs":[]})).unwrap();
+    assert_eq!(old.connection_id, None);
+    assert!(
+        serde_json::to_value(old)
+            .unwrap()
+            .get("connectionId")
+            .is_none()
+    );
+    assert!(serde_json::from_value::<ProcessStart>(json!({"threadId":"thread","requestId":"request","lifetime":"connection","connectionId":"client-chosen","argv":["shell"]})).is_err());
+}
+
+#[tokio::test]
+async fn disconnect_during_parent_resolution_rejects_before_persistent_admission() {
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let fixture =
+        Fixture::with_rpc_barrier(false, Some(("scope.get", entered.clone(), release.clone())))
+            .await;
+    let thread = fixture.thread().await;
+    let token = CancellationToken::new();
+    let connection = ProcessConnection::new(token.clone());
+    let engine = fixture.engine.clone();
+    let mut request = request(&thread, 60000);
+    request.lifetime = "connection".into();
+    let lease = connection.clone();
+    let start = tokio::spawn(async move {
+        engine
+            .process_start_on_connection("fixture".into(), request, lease)
+            .await
+    });
+    entered.notified().await;
+    token.cancel();
+    let engine = fixture.engine.clone();
+    let cleanup = tokio::spawn(async move { engine.close_connection_processes(connection).await });
+    release.notify_one();
+    assert!(matches!(start.await.unwrap(), Err(Error::Closed)));
+    cleanup.await.unwrap().unwrap();
+    let data = desktop(&fixture.engine.read(&thread.id, false).await.unwrap());
+    assert!(data.processes.is_empty() && data.receipts.is_empty());
+    assert!(
+        !fixture
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|call| call["method"] == "scope.create" || call["method"] == "process.start")
+    );
+    fixture.close().await;
 }

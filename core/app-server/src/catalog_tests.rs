@@ -17,6 +17,7 @@ pub(super) fn connection(principal: Arc<auth::Principal>) -> Connection {
         subscriptions: HashMap::new(),
         suppressed: HashSet::new(),
         tx,
+        process_connection: areal_engine::desktop::ProcessConnection::new(stop.clone()),
         stop,
         tasks: TaskTracker::new(),
         delivery: Arc::new(Mutex::new(())),

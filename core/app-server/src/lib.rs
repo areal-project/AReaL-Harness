@@ -304,6 +304,7 @@ struct Connection {
     suppressed: HashSet<String>,
     tx: mpsc::Sender<Outbound>,
     stop: CancellationToken,
+    process_connection: areal_engine::desktop::ProcessConnection,
     tasks: TaskTracker,
     delivery: Arc<Mutex<()>>,
     rpc_permits: Arc<tokio::sync::Semaphore>,
@@ -446,6 +447,7 @@ async fn connection(
         suppressed: HashSet::new(),
         tx,
         stop: stop.clone(),
+        process_connection: areal_engine::desktop::ProcessConnection::new(stop.clone()),
         tasks: TaskTracker::new(),
         delivery: Arc::new(Mutex::new(())),
         rpc_permits: Arc::new(tokio::sync::Semaphore::new(16)),
@@ -701,6 +703,7 @@ async fn connection(
             let engine = engine.clone();
             let tx = conn.tx.clone();
             let stop = conn.stop.clone();
+            let process_connection = conn.process_connection.clone();
             let id = id.unwrap();
             conn.tasks.spawn(async move {
                 let _permit = permit;
@@ -734,7 +737,8 @@ async fn connection(
                     } else if delegations::METHODS.contains(&method.as_str()) {
                         delegations::dispatch(&engine, &method, params).await
                     } else if processes::METHODS.contains(&method.as_str()) {
-                        processes::dispatch(&engine, &identity, &method, params).await
+                        processes::dispatch(&engine, &identity, process_connection, &method, params)
+                            .await
                     } else if desktop::METHODS.contains(&method.as_str()) {
                         desktop::dispatch_with_budget(
                             &engine,
@@ -811,6 +815,12 @@ async fn connection(
     stop.cancel();
     conn.tasks.close();
     conn.tasks.wait().await;
+    if let Err(error) = engine
+        .close_connection_processes(conn.process_connection)
+        .await
+    {
+        tracing::warn!(%error, "connection process cleanup remains unconfirmed");
+    }
     let _ = writer.await;
 }
 
@@ -1369,6 +1379,7 @@ impl Connection {
                     "runtime":engine.runtime_capabilities()});
                 capabilities["features"]["threadCreationJournal"] = json!({"version":1,"binding":engine.creation_admission(&self.principal.id).await});
                 capabilities["features"]["sideExecutableV2"] = json!(true);
+                capabilities["features"]["connectionProcesses"] = json!(true);
                 capabilities["desktopToolBundles"] = if can_attach_browser {
                     json!([{ "bundleId":areal_protocol::desktop::COMPUTER_V1_BUNDLE,
                         "definition":areal_protocol::desktop::computer_v1_tool() }])
@@ -1884,6 +1895,7 @@ mod tests {
             subscriptions: HashMap::new(),
             suppressed: HashSet::new(),
             tx,
+            process_connection: areal_engine::desktop::ProcessConnection::new(stop.clone()),
             stop,
             tasks: TaskTracker::new(),
             delivery: Arc::new(Mutex::new(())),
@@ -1923,6 +1935,7 @@ mod tests {
             suppressed: HashSet::new(),
             tx,
             stop: stop.clone(),
+            process_connection: areal_engine::desktop::ProcessConnection::new(stop.clone()),
             tasks: TaskTracker::new(),
             delivery: Arc::new(Mutex::new(())),
             rpc_permits: Arc::new(tokio::sync::Semaphore::new(16)),
@@ -1965,6 +1978,7 @@ mod tests {
                 .collect(),
             suppressed: HashSet::new(),
             tx,
+            process_connection: areal_engine::desktop::ProcessConnection::new(stop.clone()),
             stop,
             tasks: TaskTracker::new(),
             delivery: Arc::new(Mutex::new(())),

@@ -379,7 +379,7 @@ function isLifecycleProjection(value) {
     (value.recovery === undefined || isRecoveryView(value.recovery))
   );
 }
-/** @typedef {{id:string,revision:string,displayName:string,instructions:string,skills: Array<{id:string,revision:string}>,toolAllowlist:string[]|null,model:import('./provider.cjs').ModelRef|null,requiredModalities:string[],readOnly:boolean,approvalTools:string[],allowThreadProcesses:boolean,workflow:{id:string,revision:string}|null,allowPluginSkills?:boolean}} AgentProfile */
+/** @typedef {{id:string,revision:string,displayName:string,instructions:string,skills: Array<{id:string,revision:string}>,toolAllowlist:string[]|null,model:import('./provider.cjs').ModelRef|null,requiredModalities:string[],readOnly:boolean,approvalTools:string[],allowThreadProcesses:boolean,allowConnectionProcesses?:boolean,workflow:{id:string,revision:string}|null,allowPluginSkills?:boolean}} AgentProfile */
 /** @param {unknown} value @returns {value is AgentProfile} */
 function agentProfile(value) {
   const provider = require("./provider.cjs");
@@ -396,6 +396,8 @@ function agentProfile(value) {
     typeof value.readOnly === "boolean" &&
     provider.strings(value.approvalTools) &&
     typeof value.allowThreadProcesses === "boolean" &&
+    (value.allowConnectionProcesses === undefined ||
+      typeof value.allowConnectionProcesses === "boolean") &&
     (value.workflow === null || resourceRef(value.workflow)) &&
     (value.allowPluginSkills === undefined || typeof value.allowPluginSkills === "boolean")
   );

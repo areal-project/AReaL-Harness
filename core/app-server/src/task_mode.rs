@@ -474,6 +474,7 @@ mod tests {
             suppressed: HashSet::new(),
             tx,
             stop: stop.clone(),
+            process_connection: areal_engine::desktop::ProcessConnection::new(stop.clone()),
             tasks: TaskTracker::new(),
             delivery: Arc::new(Mutex::new(())),
             rpc_permits: Arc::new(tokio::sync::Semaphore::new(16)),

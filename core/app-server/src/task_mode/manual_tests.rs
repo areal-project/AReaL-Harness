@@ -60,6 +60,7 @@ fn connect(principal: Arc<auth::Principal>) -> (Connection, mpsc::Receiver<Outbo
             subscriptions: HashMap::new(),
             suppressed: HashSet::new(),
             tx,
+            process_connection: areal_engine::desktop::ProcessConnection::new(stop.clone()),
             stop,
             tasks: TaskTracker::new(),
             delivery: Arc::new(Mutex::new(())),

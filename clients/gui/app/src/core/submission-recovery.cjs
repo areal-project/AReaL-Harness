@@ -28,6 +28,7 @@ const { taskMutationMethods } = require("./tasks.cjs");
 /** @typedef {import('./project-state.cjs').RemoteAssociation} RemoteAssociation */
 /** @typedef {import('./receipt-contract.cjs').Receipt} Receipt */
 /** @typedef {{version:1,pending:Pending[],outcomes:Record<string,Outcome>}} JournalSnapshot */
+/** @typedef {(method:string,params:Params,options?:{timeoutMs?:number})=>Promise<unknown>} CoreRequest */
 /** @typedef {{client?:Client|null,generation?:number,deadline?:number,observeOnly?:boolean}} ReconcileOptions */
 /** @typedef {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'worktrees'|'lifecycleOperations'|'providers'> & {
  * host:Pick<InstanceType<typeof import("./host-client.cjs").HostClient>,"journal">,closing:boolean,saved:import('./project-index.cjs').SavedProject[],projects:Map<string,Project>,awaitingResponses:Set<string>,onChange:()=>void,
@@ -217,8 +218,13 @@ class SubmissionRecovery {
     return receipt;
   }
 
-  /** @param {Project} project @param {string} threadId @param {string} requestId */
-  async recoverProcessSubmission(project, threadId, requestId) {
+  /** @param {Project} project @param {string} threadId @param {string} requestId @param {CoreRequest} [requestCore] */
+  async recoverProcessSubmission(
+    project,
+    threadId,
+    requestId,
+    requestCore = project.client?.request.bind(project.client),
+  ) {
     await this.refreshProjectJournal(project);
     const entry = project.pending.find((item) => item.params.requestId === requestId);
     if (
@@ -229,8 +235,8 @@ class SubmissionRecovery {
     )
       return null;
     const client = project.client;
-    if (!client) throw new Error("Core 连接尚未就绪");
-    const value = readReceipts(await client.request("areal/request/read", { threadId, requestId }));
+    if (!client || !requestCore) throw new Error("Core 连接尚未就绪");
+    const value = readReceipts(await requestCore("areal/request/read", { threadId, requestId }));
     const receipt = matchingReceipt(
       entry ?? { method: "areal/process/start", params: { threadId, requestId } },
       value.data,
@@ -239,9 +245,7 @@ class SubmissionRecovery {
     const result = modelRecord(receipt?.result) ? receipt.result : undefined;
     if (typeof result?.id !== "string") return null;
     if (!project.client) throw new Error("Core 连接尚未就绪");
-    const processes = readProcesses(
-      await project.client.request("areal/process/list", { threadId }),
-    );
+    const processes = readProcesses(await requestCore("areal/process/list", { threadId }));
     const process = processes.data.find((item) => item.id === result.id);
     // A durable acceptance can precede actual process startup. Only attach once
     // it has a Runtime process, or confirmed cleanup proves it has ended.
@@ -250,7 +254,7 @@ class SubmissionRecovery {
     // Runtime handle; an old/unavailable handle must not become an attached PTY.
     if (!process.cleanupConfirmed) {
       if (!project.client) throw new Error("Core 连接尚未就绪");
-      await project.client.request("areal/process/get", { threadId, id: process.id });
+      await requestCore("areal/process/get", { threadId, id: process.id });
     }
     if (entry)
       await this.changePending(project, (pending) =>
@@ -587,8 +591,13 @@ class SubmissionRecovery {
     }
   }
 
-  /** @param {Project} project @param {string} method @param {Params} parameters @param {{requestId?:string,remote?:RemoteAssociation,dispatch?:(entry:RemotePending)=>Promise<unknown>,preDispatch?:()=>boolean}} [options] */
-  async submit(project, method, parameters, { requestId, remote, dispatch, preDispatch } = {}) {
+  /** @param {Project} project @param {string} method @param {Params} parameters @param {{requestId?:string,remote?:RemoteAssociation,dispatch?:(entry:RemotePending)=>Promise<unknown>,requestCore?:CoreRequest,preDispatch?:()=>boolean}} [options] */
+  async submit(
+    project,
+    method,
+    parameters,
+    { requestId, remote, dispatch, requestCore, preDispatch } = {},
+  ) {
     const observationError = project.observationErrors?.[parameters.threadId ?? ""];
     if (
       observationError &&
@@ -693,7 +702,7 @@ class SubmissionRecovery {
         if (preDispatch && !preDispatch())
           throw Object.assign(new Error("订阅模型同步目标已变化"), { submissionUnknown: false });
         dispatchStarted = true;
-        result = await this.requestSubmission(project, method, params);
+        result = await this.requestSubmission(project, method, params, requestCore);
       } catch (cause) {
         const error = submissionError(cause);
         if (!dispatchStarted || explicitRejection(error)) {
@@ -767,14 +776,18 @@ class SubmissionRecovery {
     }
   }
 
-  /** @param {Project} project @param {Params} params @param {unknown} result @param {unknown} [cause] */
-  async processControlOutcome(project, params, result, cause) {
+  /** @param {Project} project @param {Params} params @param {unknown} result @param {unknown} [cause] @param {CoreRequest} [requestCore] */
+  async processControlOutcome(
+    project,
+    params,
+    result,
+    cause,
+    requestCore = project.client?.request.bind(project.client),
+  ) {
     let value;
     try {
-      if (!project.client) throw new Error("Core 连接尚未就绪");
-      value = readProcesses(
-        await project.client.request("areal/process/list", { threadId: params.threadId }),
-      );
+      if (!requestCore) throw new Error("Core 连接尚未就绪");
+      value = readProcesses(await requestCore("areal/process/list", { threadId: params.threadId }));
     } catch {
       throw Object.assign(new Error("无法核对终端执行结果；不会重发输入"), {
         submissionUnknown: true,
@@ -797,10 +810,15 @@ class SubmissionRecovery {
     });
   }
 
-  /** @param {Project} project @param {string} method @param {Params} params @returns {Promise<unknown>} */
-  async requestSubmission(project, method, params) {
+  /** @param {Project} project @param {string} method @param {Params} params @param {CoreRequest} [requestCore] @returns {Promise<unknown>} */
+  async requestSubmission(
+    project,
+    method,
+    params,
+    requestCore = project.client?.request.bind(project.client),
+  ) {
     const client = project.client;
-    if (!client) throw new Error("Core 连接尚未就绪");
+    if (!client || !requestCore) throw new Error("Core 连接尚未就绪");
     if (method === "areal/blob/release") {
       let current;
       try {
@@ -829,7 +847,7 @@ class SubmissionRecovery {
     if (!project.client) throw new Error("Core 连接尚未就绪");
     const durableSteer = project.client.capabilities?.methods?.includes("areal/plugin/hooks/list");
     try {
-      return await project.client.request(
+      return await requestCore(
         method,
         method === "areal/agent/spawn"
           ? spawn
@@ -848,12 +866,12 @@ class SubmissionRecovery {
       const client = project.client;
       let receipt;
       try {
-        receipt = await this.readReceipt(project, entry, client);
+        receipt = await this.readReceipt(project, entry, client, 2500, requestCore);
       } catch {}
       if (receipt && receiptStatus(receipt) === "completed") {
         const result = receiptResult(receipt);
         if (processControls.has(method))
-          return this.processControlOutcome(project, params, result, error);
+          return this.processControlOutcome(project, params, result, error, requestCore);
         if (creationTargets.get(method) === "thread" && (!modelRecord(result) || !result.thread)) {
           const id = receipt.threadId ?? (modelRecord(result) ? result.threadId : undefined);
           if (id) return { thread: { id }, requestId };
@@ -883,9 +901,15 @@ class SubmissionRecovery {
     }
   }
 
-  /** @param {Project} project @param {Pending} entry @param {Client|null|undefined} client @param {number} [timeoutMs] @returns {Promise<Receipt|undefined>} */
-  async readReceipt(project, entry, client, timeoutMs = 2500) {
-    if (!client) throw new Error("Core 连接尚未就绪");
+  /** @param {Project} project @param {Pending} entry @param {Client|null|undefined} client @param {number} [timeoutMs] @param {CoreRequest} [requestCore] @returns {Promise<Receipt|undefined>} */
+  async readReceipt(
+    project,
+    entry,
+    client,
+    timeoutMs = 2500,
+    requestCore = client?.request.bind(client),
+  ) {
+    if (!client || !requestCore) throw new Error("Core 连接尚未就绪");
     const family = client.capabilities?.methodSemantics?.[entry.method]?.receipt;
     const scopedThreadId =
       entry.params.threadId &&
@@ -895,7 +919,7 @@ class SubmissionRecovery {
         ? entry.params.threadId
         : undefined;
     const result = readReceipts(
-      await client.request(
+      await requestCore(
         "areal/request/read",
         {
           requestId: entry.params.requestId,

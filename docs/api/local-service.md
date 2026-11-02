@@ -134,7 +134,7 @@ target/debug/areal service bind --workspace /absolute/workspace \
 
 实验插件构建写入的 `hookRuns`、`allowPluginSkills` 和 `pluginSkills` 仅作为不执行的历史字段保留。读取空闲会话不会为兼容处理改写文件；后续正常保存保留这些字段的值，不恢复 Hook、加载插件 Skill 或授予插件权限。其他未知字段继续严格校验。
 
-Store 当前写入版本、`areal/server/status.stateVersion` 与发行 `manifest.json.stateVersion` 均为 16；API 仍为 `areal.core.v1`，服务发现协议仍为 1。版本 16 增加持久执行计时与排队时间戳，保留版本 15 的主会话最后受理模型偏好，继续读取版本 1–15 的旧记录；旧 Core 不保证读取新记录，回退应恢复升级前备份。无派生元数据的旧记录可读取并在下一次写入升级；Fork/Side 记录必须具有受支持的会话版本和版本 14 的权限语义，不能仅降低记录版本来交给旧二进制。服务重启不重放创建或首问，结果不确定时先查 `areal/request/read`。能力声明不替代各平台原生权限验证、安装包或真实供应商的独立验收。
+Store 当前写入版本、`areal/server/status.stateVersion` 与发行 `manifest.json.stateVersion` 均为 17；API 仍为 `areal.core.v1`，服务发现协议仍为 1。版本 17 增加连接资源归属与显式 Profile 权限，保留持久执行计时、排队时间戳和主会话最后受理模型偏好，继续读取版本 1–16 的旧记录；旧 Core 不保证读取新记录，回退应恢复升级前备份。无派生元数据的旧记录可读取并在下一次写入升级；Fork/Side 记录必须具有受支持的会话版本和版本 14 的权限语义，不能仅降低记录版本来交给旧二进制。服务重启不重放创建或首问，结果不确定时先查 `areal/request/read`。能力声明不替代各平台原生权限验证、安装包或真实供应商的独立验收。
 
 交互式与无界面本地 TUI 都使用共享 Host，包括兼容选项 `--local-mode owned`。客户端退出后 Host-owned 服务继续运行。直接 `serve --tui` 仍由 launcher 管理，并沿用既有终端交接。
 

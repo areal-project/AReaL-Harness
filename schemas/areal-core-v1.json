@@ -5,6 +5,9 @@
       "AgentProfile": {
         "additionalProperties": false,
         "properties": {
+          "allowConnectionProcesses": {
+            "type": "boolean"
+          },
           "allowPluginSkills": {
             "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
             "type": "boolean"
@@ -2965,6 +2968,12 @@
             "cleanupConfirmed": {
               "type": "boolean"
             },
+            "connectionId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "error": {
               "type": [
                 "string",
@@ -3050,6 +3059,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -4922,6 +4934,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -5629,6 +5644,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -7537,6 +7555,12 @@
                 },
                 "cleanupConfirmed": {
                   "type": "boolean"
+                },
+                "connectionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "error": {
                   "type": [
@@ -11272,6 +11296,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -13181,6 +13208,12 @@
                 "cleanupConfirmed": {
                   "type": "boolean"
                 },
+                "connectionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "error": {
                   "type": [
                     "string",
@@ -14912,6 +14945,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -16767,6 +16803,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -18679,6 +18718,12 @@
       "cleanupConfirmed": {
         "type": "boolean"
       },
+      "connectionId": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
       "error": {
         "type": [
           "string",
@@ -18792,6 +18837,9 @@
     },
     "additionalProperties": false,
     "properties": {
+      "allowConnectionProcesses": {
+        "type": "boolean"
+      },
       "allowPluginSkills": {
         "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
         "type": "boolean"
@@ -19043,6 +19091,9 @@
       "AgentProfile": {
         "additionalProperties": false,
         "properties": {
+          "allowConnectionProcesses": {
+            "type": "boolean"
+          },
           "allowPluginSkills": {
             "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
             "type": "boolean"
@@ -30751,6 +30802,9 @@
               "AgentProfile": {
                 "additionalProperties": false,
                 "properties": {
+                  "allowConnectionProcesses": {
+                    "type": "boolean"
+                  },
                   "allowPluginSkills": {
                     "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                     "type": "boolean"
@@ -32660,6 +32714,12 @@
                   "cleanupConfirmed": {
                     "type": "boolean"
                   },
+                  "connectionId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "error": {
                     "type": [
                       "string",
@@ -34448,6 +34508,9 @@
                 "AgentProfile": {
                   "additionalProperties": false,
                   "properties": {
+                    "allowConnectionProcesses": {
+                      "type": "boolean"
+                    },
                     "allowPluginSkills": {
                       "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                       "type": "boolean"
@@ -36357,6 +36420,12 @@
                     "cleanupConfirmed": {
                       "type": "boolean"
                     },
+                    "connectionId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "error": {
                       "type": [
                         "string",
@@ -38079,6 +38148,9 @@
                 "AgentProfile": {
                   "additionalProperties": false,
                   "properties": {
+                    "allowConnectionProcesses": {
+                      "type": "boolean"
+                    },
                     "allowPluginSkills": {
                       "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                       "type": "boolean"
@@ -42432,6 +42504,9 @@
               "AgentProfile": {
                 "additionalProperties": false,
                 "properties": {
+                  "allowConnectionProcesses": {
+                    "type": "boolean"
+                  },
                   "allowPluginSkills": {
                     "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                     "type": "boolean"
@@ -44340,6 +44415,12 @@
                   },
                   "cleanupConfirmed": {
                     "type": "boolean"
+                  },
+                  "connectionId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "error": {
                     "type": [
@@ -47235,6 +47316,9 @@
                 "AgentProfile": {
                   "additionalProperties": false,
                   "properties": {
+                    "allowConnectionProcesses": {
+                      "type": "boolean"
+                    },
                     "allowPluginSkills": {
                       "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                       "type": "boolean"
@@ -49419,6 +49503,9 @@
                 "AgentProfile": {
                   "additionalProperties": false,
                   "properties": {
+                    "allowConnectionProcesses": {
+                      "type": "boolean"
+                    },
                     "allowPluginSkills": {
                       "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                       "type": "boolean"
@@ -64473,6 +64560,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -66382,6 +66472,12 @@
                 "cleanupConfirmed": {
                   "type": "boolean"
                 },
+                "connectionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "error": {
                   "type": [
                     "string",
@@ -68101,6 +68197,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -71417,6 +71516,12 @@
             "cleanupConfirmed": {
               "type": "boolean"
             },
+            "connectionId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "error": {
               "type": [
                 "string",
@@ -71647,6 +71752,12 @@
               },
               "cleanupConfirmed": {
                 "type": "boolean"
+              },
+              "connectionId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "error": {
                 "type": [
@@ -72000,6 +72111,9 @@
             },
             "additionalProperties": false,
             "properties": {
+              "allowConnectionProcesses": {
+                "type": "boolean"
+              },
               "allowPluginSkills": {
                 "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                 "type": "boolean"
@@ -72141,6 +72255,9 @@
       },
       "additionalProperties": false,
       "properties": {
+        "allowConnectionProcesses": {
+          "type": "boolean"
+        },
         "allowPluginSkills": {
           "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
           "type": "boolean"
@@ -72868,6 +72985,9 @@
         "AgentProfile": {
           "additionalProperties": false,
           "properties": {
+            "allowConnectionProcesses": {
+              "type": "boolean"
+            },
             "allowPluginSkills": {
               "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
               "type": "boolean"
@@ -73697,6 +73817,9 @@
         "AgentProfile": {
           "additionalProperties": false,
           "properties": {
+            "allowConnectionProcesses": {
+              "type": "boolean"
+            },
             "allowPluginSkills": {
               "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
               "type": "boolean"
@@ -74526,6 +74649,9 @@
         "AgentProfile": {
           "additionalProperties": false,
           "properties": {
+            "allowConnectionProcesses": {
+              "type": "boolean"
+            },
             "allowPluginSkills": {
               "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
               "type": "boolean"
@@ -75355,6 +75481,9 @@
         "AgentProfile": {
           "additionalProperties": false,
           "properties": {
+            "allowConnectionProcesses": {
+              "type": "boolean"
+            },
             "allowPluginSkills": {
               "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
               "type": "boolean"
@@ -76184,6 +76313,9 @@
         "AgentProfile": {
           "additionalProperties": false,
           "properties": {
+            "allowConnectionProcesses": {
+              "type": "boolean"
+            },
             "allowPluginSkills": {
               "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
               "type": "boolean"
@@ -77038,6 +77170,9 @@
         "AgentProfile": {
           "additionalProperties": false,
           "properties": {
+            "allowConnectionProcesses": {
+              "type": "boolean"
+            },
             "allowPluginSkills": {
               "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
               "type": "boolean"
@@ -79513,6 +79648,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -81422,6 +81560,12 @@
                 "cleanupConfirmed": {
                   "type": "boolean"
                 },
+                "connectionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "error": {
                   "type": [
                     "string",
@@ -83143,6 +83287,9 @@
                 "AgentProfile": {
                   "additionalProperties": false,
                   "properties": {
+                    "allowConnectionProcesses": {
+                      "type": "boolean"
+                    },
                     "allowPluginSkills": {
                       "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                       "type": "boolean"
@@ -85039,6 +85186,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -86948,6 +87098,12 @@
                 "cleanupConfirmed": {
                   "type": "boolean"
                 },
+                "connectionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "error": {
                   "type": [
                     "string",
@@ -88667,6 +88823,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -103514,6 +103673,9 @@
         "AgentProfile": {
           "additionalProperties": false,
           "properties": {
+            "allowConnectionProcesses": {
+              "type": "boolean"
+            },
             "allowPluginSkills": {
               "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
               "type": "boolean"
@@ -104156,6 +104318,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -106065,6 +106230,12 @@
                 "cleanupConfirmed": {
                   "type": "boolean"
                 },
+                "connectionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "error": {
                   "type": [
                     "string",
@@ -107797,6 +107968,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -108914,6 +109088,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -110862,6 +111039,12 @@
                 "cleanupConfirmed": {
                   "type": "boolean"
                 },
+                "connectionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "error": {
                   "type": [
                     "string",
@@ -112716,6 +112899,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -114625,6 +114811,12 @@
                 "cleanupConfirmed": {
                   "type": "boolean"
                 },
+                "connectionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "error": {
                   "type": [
                     "string",
@@ -116402,6 +116594,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -118255,6 +118450,9 @@
                 "AgentProfile": {
                   "additionalProperties": false,
                   "properties": {
+                    "allowConnectionProcesses": {
+                      "type": "boolean"
+                    },
                     "allowPluginSkills": {
                       "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                       "type": "boolean"
@@ -129986,6 +130184,9 @@
               "AgentProfile": {
                 "additionalProperties": false,
                 "properties": {
+                  "allowConnectionProcesses": {
+                    "type": "boolean"
+                  },
                   "allowPluginSkills": {
                     "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                     "type": "boolean"
@@ -131895,6 +132096,12 @@
                   "cleanupConfirmed": {
                     "type": "boolean"
                   },
+                  "connectionId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "error": {
                     "type": [
                       "string",
@@ -133671,6 +133878,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -135580,6 +135790,12 @@
                 "cleanupConfirmed": {
                   "type": "boolean"
                 },
+                "connectionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "error": {
                   "type": [
                     "string",
@@ -137448,6 +137664,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -139396,6 +139615,12 @@
                 "cleanupConfirmed": {
                   "type": "boolean"
                 },
+                "connectionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "error": {
                   "type": [
                     "string",
@@ -141201,6 +141426,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -143110,6 +143338,12 @@
                 "cleanupConfirmed": {
                   "type": "boolean"
                 },
+                "connectionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "error": {
                   "type": [
                     "string",
@@ -144852,6 +145086,9 @@
             "AgentProfile": {
               "additionalProperties": false,
               "properties": {
+                "allowConnectionProcesses": {
+                  "type": "boolean"
+                },
                 "allowPluginSkills": {
                   "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
                   "type": "boolean"
@@ -147051,6 +147288,9 @@
       "AgentProfile": {
         "additionalProperties": false,
         "properties": {
+          "allowConnectionProcesses": {
+            "type": "boolean"
+          },
           "allowPluginSkills": {
             "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
             "type": "boolean"
@@ -148960,6 +149200,12 @@
           "cleanupConfirmed": {
             "type": "boolean"
           },
+          "connectionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "error": {
             "type": [
               "string",
@@ -150679,6 +150925,9 @@
       "AgentProfile": {
         "additionalProperties": false,
         "properties": {
+          "allowConnectionProcesses": {
+            "type": "boolean"
+          },
           "allowPluginSkills": {
             "description": "显式 Profile 默认不继承插件；此项仍受父任务范围与逐定义信任约束。",
             "type": "boolean"

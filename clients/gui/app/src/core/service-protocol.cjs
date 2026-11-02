@@ -4,6 +4,7 @@ const { randomBytes, randomUUID, timingSafeEqual } = require("node:crypto");
 const { isDeepStrictEqual } = require("node:util");
 const { appendFileSync } = require("node:fs");
 const { WebSocketServer } = require("ws");
+const { METHODS: terminalMethods } = require("./gui-terminal-connections.cjs");
 const {
   desktopError,
   validateMcpPageDeclaration,
@@ -121,6 +122,9 @@ class DesktopService {
     /** @type {Map<string,DiscoveryRecord>} */ this.browserDiscoveryPlans = new Map();
     /** @type {Map<number,BrowserPending>} */ this.browserPending = new Map();
     this.nextBrowserId = 0;
+    /** @type {Map<number,{socket:ServiceSocket,resolve:(value:unknown)=>void,reject:(error:Error)=>void,timer:NodeJS.Timeout}>} */
+    this.terminalPending = new Map();
+    this.nextTerminalId = 0;
     this.browserTestTrace = process.env.AREAL_BROWSER_READ_TEST_TRACE;
     backend.browserRead = (request) => this.browserRead(request);
     backend.computerRead = (request) => this.computerRead(request);
@@ -744,6 +748,12 @@ class DesktopService {
         void this.receive(socket, bytes);
       });
       socket.on("close", () => {
+        for (const [requestId, pending] of this.terminalPending)
+          if (pending.socket === socket) {
+            clearTimeout(pending.timer);
+            this.terminalPending.delete(requestId);
+            pending.reject(new Error("GUI terminal owner disconnected; outcome may be unknown"));
+          }
         this.revokeMcpPageTools((lease) => lease.socket === socket);
         this.stopSending(socket);
         this.releaseHistoryViews(socket);
@@ -841,7 +851,9 @@ class DesktopService {
       socket.close(1008);
       return;
     }
-    const { id, method } = message;
+    const { id, method: wireMethod } = message;
+    const guiTerminalCommand = wireMethod === "guiTerminalCommand";
+    const method = guiTerminalCommand ? "command" : wireMethod;
     const params = record(message.params) ? message.params : {};
     try {
       if (method === "hello") {
@@ -913,6 +925,21 @@ class DesktopService {
         this.send(socket, { id, result });
         if (method === "lifecycleRequest") this.requestExit(result);
         this.schedule();
+        return;
+      }
+      if (method === "terminalResult") {
+        const pending =
+          typeof params.requestId === "number"
+            ? this.terminalPending.get(params.requestId)
+            : undefined;
+        if (!pending || pending.socket !== socket) throw new Error("Invalid GUI terminal response");
+        this.terminalPending.delete(/** @type {number} */ (params.requestId));
+        clearTimeout(pending.timer);
+        if (record(params.error) && typeof params.error.message === "string")
+          pending.reject(Object.assign(new Error(params.error.message), params.error));
+        else if (Object.hasOwn(params, "result")) pending.resolve(params.result);
+        else pending.reject(new Error("GUI terminal response is incomplete"));
+        this.send(socket, { id, result: null });
         return;
       }
       if (this.recovering && !["snapshot", "activity"].includes(method))
@@ -1178,6 +1205,23 @@ class DesktopService {
         : {};
       if (method === "command") {
         validateCommand(name, name === "media" ? request : params.request);
+        if (
+          guiTerminalCommand &&
+          (name !== "manage" ||
+            ![
+              "processStart",
+              "processSubmission",
+              "processes",
+              "process",
+              "processOutput",
+              "processWait",
+              "processWrite",
+              "processResize",
+              "processCloseStdin",
+              "processTerminate",
+            ].includes(String(request.operation)))
+        )
+          throw new Error("Unsupported GUI terminal command");
         if (computerSetting(name, request) && this.computerSocket !== socket)
           throw new Error("Computer provider settings belong to the local computer control host");
       } else if (typeof params.path !== "string") throw new Error("无效工作区路径");
@@ -1234,6 +1278,12 @@ class DesktopService {
               ? await this.historyCommand(socket, request)
               : method === "command"
                 ? await this.backend.command(name, request, {
+                    ...(guiTerminalCommand
+                      ? {
+                          guiTerminalRequest: (method, params) =>
+                            this.terminalRead(socket, request.projectId, method, params),
+                        }
+                      : {}),
                     onMcpAppOpened: (project, client, request, result) =>
                       this.bindMcpPageOwner(socket, project, client, request, result),
                     onBrowserTurnStarted: (turnId) => entry?.resolve({ turnId }),
@@ -1292,8 +1342,50 @@ class DesktopService {
       });
     }
   }
+  /** @param {ServiceSocket} socket @param {unknown} projectId @param {string} method @param {Fields} params */
+  terminalRead(socket, projectId, method, params) {
+    if (
+      this.closed ||
+      socket.readyState !== 1 ||
+      !this.clients.has(socket) ||
+      !terminalMethods.has(method) ||
+      typeof projectId !== "string"
+    )
+      return Promise.reject(new Error("GUI terminal owner is unavailable"));
+    const project = this.backend.projects.get(projectId);
+    if (!project?.service || !project.endpoint || !project.token || this.terminalPending.size >= 64)
+      return Promise.reject(new Error("GUI terminal Core is unavailable"));
+    const { serviceId, generation } = project.service;
+    const { endpoint, token } = project;
+    const requestId = ++this.nextTerminalId;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.terminalPending.delete(requestId);
+        reject(new Error("GUI terminal dispatch timed out; outcome may be unknown"));
+      }, 30000);
+      this.terminalPending.set(requestId, { socket, resolve, reject, timer });
+      this.send(socket, {
+        method: "terminalRequest",
+        params: {
+          requestId,
+          projectId,
+          serviceId,
+          generation,
+          endpoint,
+          token,
+          method,
+          params,
+        },
+      });
+    });
+  }
   close() {
     this.closed = true;
+    for (const pending of this.terminalPending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error("GUI terminal service closed; outcome may be unknown"));
+    }
+    this.terminalPending.clear();
     this.revokeMcpPageTools(() => true);
     clearTimeout(this.mcpPageExpiryTimer);
     this.mcpPageOwners.clear();
