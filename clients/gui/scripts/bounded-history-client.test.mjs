@@ -12,6 +12,10 @@ const {
   commandSemantics,
 } = require("../packages/workbench/client/desktop-contract.cjs");
 const { workspaceCommand } = require("../app/src/core/workspace.cjs");
+const {
+  readObservationResult,
+  readThreadMetadata,
+} = require("../packages/workbench/client/desktop-contract/conversation-history.cjs");
 
 const item = (id, text = id) => ({ id, type: "agentMessage", text });
 const turn = (id, items, status = "completed") => ({ id, items, status });
@@ -37,6 +41,25 @@ const baseline = (archived = false) => ({
     },
   },
   history: { snapshotId: "snapshot", nextCursor: "older", complete: false },
+});
+
+test("history reads accept the Core automatic session name option without accepting malformed options", () => {
+  for (const automaticSessionName of [true, false]) {
+    const response = baseline();
+    response.thread.desktop.configuration.options = { automaticSessionName };
+    assert.equal(readObservationResult(response), response);
+    assert.equal(readThreadMetadata(response).thread, response.thread);
+  }
+  for (const options of [
+    { automaticSessionName: "false" },
+    { automaticSessionName: null },
+    { automaticSessionName: false, unsupported: true },
+  ]) {
+    const response = baseline();
+    response.thread.desktop.configuration.options = options;
+    assert.throws(() => readObservationResult(response), { code: "HISTORY_VIEW_UNAVAILABLE" });
+    assert.throws(() => readThreadMetadata(response), { code: "HISTORY_VIEW_UNAVAILABLE" });
+  }
 });
 function fixture(
   read,

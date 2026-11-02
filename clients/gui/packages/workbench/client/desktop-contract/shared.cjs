@@ -586,13 +586,14 @@ function readDesktopSnapshot(value) {
   if (!isDesktopSnapshot(value)) throw new Error("Invalid Desktop snapshot envelope");
   return value;
 }
-/** @typedef {{externalCua?:boolean,permissionPreset?:'ask'|'autoReview'|'fullAccess'|null,interactionMode?:'interactive'|'asynchronous'|'headless',readOnly?:boolean,systemPrompt?:string|null,appendInstructions?:string,toolAllowlist?:string[]|null,approvalTools?:string[],preapprovedTools?:string[],maxModelRounds?:number|null}} ClientOptions */
+/** @typedef {{automaticSessionName?:boolean,externalCua?:boolean,permissionPreset?:'ask'|'autoReview'|'fullAccess'|null,interactionMode?:'interactive'|'asynchronous'|'headless',readOnly?:boolean,systemPrompt?:string|null,appendInstructions?:string,toolAllowlist?:string[]|null,approvalTools?:string[],preapprovedTools?:string[],maxModelRounds?:number|null}} ClientOptions */
 /** @param {unknown} value @returns {value is ClientOptions} */
 function clientOptions(value) {
   return (
     modelRecord(value) &&
     Object.keys(value).every((key) =>
       [
+        "automaticSessionName",
         "externalCua",
         "permissionPreset",
         "interactionMode",
@@ -605,7 +606,7 @@ function clientOptions(value) {
         "maxModelRounds",
       ].includes(key),
     ) &&
-    ["externalCua", "readOnly"].every(
+    ["automaticSessionName", "externalCua", "readOnly"].every(
       (key) => value[key] === undefined || typeof value[key] === "boolean",
     ) &&
     (value.permissionPreset == null ||
