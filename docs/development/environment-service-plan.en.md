@@ -2,6 +2,8 @@
 
 # Independent environment service implementation plan
 
+> Superseded by the [shared Host implementation spec](shared-host-spec.en.md); stages E0–E4 are replaced by H0–H4. Kept for historical reference only.
+
 Status: not implemented. This plan and the [design](../design/environment-service.en.md) define delivery order; committing these documents does not pass any stage or acceptance item. Existing protocols remain effective. New methods, owners, and installation entry points require synchronized contracts, types, and consumers during implementation.
 
 ## 1. Delivery principles and dependencies
