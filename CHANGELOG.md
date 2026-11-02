@@ -2,7 +2,7 @@
 
 # 更新日志
 
-## GUI 0.1.18（未发布）
+## GUI 0.1.18
 
 ### 修复与改进
 
@@ -12,7 +12,9 @@
 - 思考强度菜单按模型配置显示可用档位，Fast 可独立切换。
 - 本轮结束后统一显示复制、分支及时间；暂停、重试恢复、模型切换与压缩提示使用居中分隔行。统一控件提示、焦点和动效反馈。
 
-本版本仅完成源码准备，安装包与更新频道尚未发布。
+### 安装与升级
+
+macOS Apple Silicon 用户可通过应用内正式更新频道升级，或从[下载页面](https://github.com/areal-project/AReaL-Harness/releases/tag/gui-v0.1.18)获取已签名、公证的 DMG 手动安装。已验证 0.1.17 到 0.1.18 的隔离原生更新。升级前备份配置与历史，等待后台空闲后安装；手动替换前安全停止后台并退出应用，重开后在“关于”核对 0.1.18。0.1.13/0.1.14 若被旧安装检查拦截，请使用 DMG 一次性升级。
 
 ## GUI 0.1.17
 
@@ -61,14 +63,28 @@ macOS Apple Silicon 用户可通过应用内正式更新频道升级，或下载
 
 Side 面板很窄时，模型控件可能超出面板；遇到此情况可加宽面板。
 
-## CLI / TUI 0.1.8（未发布）
+## CLI / TUI 0.1.8
 
 ### 变化
 
 - 同步升级 CLI、TUI 与配套 Core、Runtime 的源码版本。
 - CLI 在新建会话前应用显式 `--model`，避免默认供应商不可用时仍误报“找不到会话”；未装配的默认供应商改为明确的模型配置错误。
 
-本版本尚未发布安装包或更新 Homebrew 渠道；安装步骤仍以已公开版本为准。
+### 安装与升级
+
+[下载 0.1.8](https://github.com/areal-project/AReaL-Harness/releases/tag/v0.1.8) 中的当前平台完整包、安装器与 SHA256 校验清单。支持 macOS Apple Silicon（macOS 15+）及 Linux x86_64（glibc 2.35+，受限执行需 `/usr/bin/bwrap` 和可用 user namespaces）；macOS CLI 保留 ad-hoc 签名，未经 Developer ID 分发签名或 Apple 公证。
+
+两平台均可通过公开 Homebrew tap 安装：
+
+```sh
+brew tap areal-project/tap
+brew install areal-project/tap/areal
+brew test areal-project/tap/areal
+areal --version
+areal
+```
+
+版本应为 `areal 0.1.8`，`areal` 启动 TUI。已有 Homebrew 安装先完成任务并安全停止相关后台，再执行 `brew update` 和 `brew upgrade --formula areal-project/tap/areal`。独立安装与升级步骤见[安装指南](docs/guides/installation.md)；入口更新保留完整旧包与运行中的任务，后台空闲后显式交接。新版保存历史格式 16，升级前备份配置与历史，回退旧 Core 时可能需要恢复兼容备份。
 
 ## CLI / TUI 0.1.7
 
