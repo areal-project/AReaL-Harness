@@ -135,14 +135,9 @@ function CodeThemeSample({ theme }: { theme: CodePreviewTheme }) {
     };
   }, [theme]);
   const current = sample?.theme === theme ? sample : undefined;
+  const unavailable = t("settings.displaySettings.previewTemporarilyUnavailable");
   return (
-    <TitleTooltip
-      title={
-        current && !current.style
-          ? t("settings.displaySettings.previewTemporarilyUnavailable")
-          : undefined
-      }
-    >
+    <TitleTooltip title={current && !current.style ? unavailable : undefined}>
       <span
         className="appearance-aa"
         aria-hidden="true"

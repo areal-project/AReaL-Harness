@@ -157,12 +157,6 @@
     animation: none;
   }
 }
-@scope (:root[data-reduced-motion="true"]) {
-  .user-feedback-panel,
-  .feedback-progress > span {
-    animation: none;
-  }
-}
 @media (max-width: 640px) {
   .user-feedback-panel textarea {
     font-size: var(--text-mobile-input-safe);

@@ -257,11 +257,6 @@
     animation: none;
   }
 }
-@scope (:root[data-reduced-motion="true"]) {
-  .task-resource-status[data-running]::before {
-    animation: none;
-  }
-}
 
 .agent-spawn-link:focus-visible {
   outline: var(--focus-width) solid var(--color-ring);
