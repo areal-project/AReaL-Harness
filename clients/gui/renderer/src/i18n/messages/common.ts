@@ -518,6 +518,12 @@ export const commonMessages = {
   "chat.history.loadingLatest": { "zh-CN": "正在恢复本轮消息…", en: "Restoring current turn…" },
   "chat.history.loadingOlder": { "zh-CN": "正在加载更早的消息…", en: "Loading older messages…" },
   "chat.history.loadFull": { "zh-CN": "加载完整内容", en: "Load full content" },
+  "chat.timeline.compaction.completed": { "zh-CN": "上下文已压缩", en: "Context compacted" },
+  "chat.timeline.compaction.running": { "zh-CN": "正在压缩上下文…", en: "Compacting context…" },
+  "chat.timeline.compaction.failed": {
+    "zh-CN": "上下文压缩未完成",
+    en: "Context compaction did not complete",
+  },
   "chat.history.loadingDetails": { "zh-CN": "正在读取工具详情…", en: "Reading tool details…" },
   "chat.history.detailsFailed": {
     "zh-CN": "暂时无法读取详情，请重试。",

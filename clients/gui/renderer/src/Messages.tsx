@@ -1,7 +1,13 @@
 import { commandResourceLabel } from "./conversationPresentation.js";
 import { useTranscriptSelection } from "./useTranscriptSelection.js";
 import * as readingDom from "./conversationReadingDom.js";
-import { MessageTime, ModelChanges, TurnRetries } from "./ConversationTimeline.js";
+import {
+  MessageTime,
+  ModelChanges,
+  TurnRetries,
+  TimelineNotice,
+  CompactionNotices,
+} from "./ConversationTimeline.js";
 import {
   beginReadingRestore,
   changeReadingIntent,
@@ -606,9 +612,10 @@ export function Messages({
             )
           }
         />
-        <MessageTime createdAt={entry.createdAt} />
         {!deferActions && entry.phase !== "commentary" && turn.status !== "inProgress" && (
-          <MessageActions text={conversationContentToText(blocks)} />
+          <MessageActions text={conversationContentToText(blocks)}>
+            <MessageTime createdAt={entry.createdAt} />
+          </MessageActions>
         )}
       </div>
     );
@@ -1152,21 +1159,16 @@ export function Messages({
                     turn.status === "interrupted" ||
                     (turn.status === "failed" && !!turn.interruption);
                   const stopHeading = (
-                    <div className="turn-stop-heading turn-progress-heading">
-                      <div className="turn-progress-label">
-                        <span className="turn-status turn-progress-summary" role="status">
-                          {t(
-                            turn.interruption === "userPause"
-                              ? "chat.timeline.interruption.userPause"
-                              : turn.interruption === "coreRecovery"
-                                ? "chat.timeline.interruption.coreRecovery"
-                                : "chat.timeline.interruption.other",
-                          )}
-                          {turn.error ? `：${turnFailureMessage(turn)}` : ""}
-                        </span>
-                      </div>
-                      <div className="turn-progress-divider" />
-                    </div>
+                    <TimelineNotice className="turn-stop-heading" role="status">
+                      {t(
+                        turn.interruption === "userPause"
+                          ? "chat.timeline.interruption.userPause"
+                          : turn.interruption === "coreRecovery"
+                            ? "chat.timeline.interruption.coreRecovery"
+                            : "chat.timeline.interruption.other",
+                      )}
+                      {turn.error ? `：${turnFailureMessage(turn)}` : ""}
+                    </TimelineNotice>
                   );
                   return (
                     <section
@@ -1176,11 +1178,13 @@ export function Messages({
                       data-latest-turn={turn.id === latestTurnId}
                     >
                       {stopAccepted && (
-                        <p role="status">
+                        <TimelineNotice role="status">
                           {ordinary ? "暂停已受理，等待执行结算" : "停止已受理，等待执行结算"}
-                        </p>
+                        </TimelineNotice>
                       )}
-                      {resourceLabel && <p role="status">{resourceLabel}</p>}
+                      {resourceLabel && (
+                        <TimelineNotice role="status">{resourceLabel}</TimelineNotice>
+                      )}
                       {groups.map((group, groupIndex) => {
                         const outcome = executionOutcome(
                           group.entries.flatMap(({ item }) => item.items ?? []),
@@ -1246,11 +1250,7 @@ export function Messages({
                               item.id ===
                                 turn.items?.find((entry: Data) => entry.type === "userMessage")?.id
                             ) {
-                              return (
-                                <div className="turn-status" key={item.id}>
-                                  {continuation}
-                                </div>
-                              );
+                              return <TimelineNotice key={item.id}>{continuation}</TimelineNotice>;
                             }
                             return (
                               <Fragment key={item.id}>
@@ -1453,6 +1453,7 @@ export function Messages({
                         );
                       })}
                       {hasInterruption && stopHeading}
+                      <CompactionNotices turn={turn} />
                       <TurnRetries turn={turn} />
                       {!isInherited &&
                         (turn.items ?? [])
@@ -1500,7 +1501,10 @@ export function Messages({
                             action={action}
                             inherited={isInherited}
                           />
-                          {forkControls}
+                          <span className="message-branch-meta">
+                            {forkControls}
+                            <MessageTime createdAt={responseMessage.createdAt} />
+                          </span>
                           {live.responseActions?.(responseMessage)}
                           {!isInherited && !readOnly && (
                             <UserFeedback
@@ -1522,7 +1526,15 @@ export function Messages({
                             action={action}
                             inherited={isInherited}
                           />
-                          {forkControls}
+                          <span className="message-branch-meta">
+                            {forkControls}
+                            <MessageTime
+                              createdAt={
+                                turn.items?.findLast((item: Data) => item.type === "agentMessage")
+                                  ?.createdAt
+                              }
+                            />
+                          </span>
                         </div>
                       )}
                       <ModelChanges changes={thread.desktop?.modelChanges} afterTurnId={turn.id} />
@@ -1537,7 +1549,7 @@ export function Messages({
                         </p>
                       )}
                       {showTurnStatus(turn, hasInterruption, hasReadingSummary) && (
-                        <div className="turn-status">
+                        <TimelineNotice>
                           {(
                             {
                               completed: "已完成",
@@ -1546,7 +1558,7 @@ export function Messages({
                             } as Data
                           )[turn.status] ?? turn.status}
                           {turn.error ? `：${turnFailureMessage(turn)}` : ""}
-                        </div>
+                        </TimelineNotice>
                       )}
                       {!finalMessage &&
                         turn.status !== "inProgress" &&
