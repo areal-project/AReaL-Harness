@@ -10,6 +10,8 @@ const { join, isAbsolute, relative, sep } = require("node:path");
 const MAX_FRAME = 1024 * 1024;
 
 /** @typedef {{kind:"providerCredential",sourceId:string,reference:string}|{kind:"subscriptionAccount",sourceId:string,providerId:string}|{kind:"subscriptionTransport",sourceId:string}} VaultSlot */
+/** @typedef {{projectId:string,state:"observed",activeTasks:number,activeTurns:number,activeGoals:number,pendingQueueItems:number,idleAllowed:boolean}|{projectId:string,state:"unavailable"}} ProjectActivity */
+/** @typedef {{complete:boolean,projects:ProjectActivity[],totalActiveTasks:number}} HostActivity */
 
 /** @param {string} path */
 async function privateJson(path) {
@@ -127,6 +129,11 @@ class HostClient {
   }
   status() {
     return this.request("host.status", {});
+  }
+  /** @returns {Promise<HostActivity>} */
+  activity() {
+    this.requireCapability("activity");
+    return this.request("host.activity", {});
   }
   /** @param {string} requestId @param {string} projectId @param {unknown} launchInputs @param {Record<string,string>} [credentials] */
   ensureProject(requestId, projectId, launchInputs, credentials) {

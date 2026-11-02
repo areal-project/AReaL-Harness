@@ -1,4 +1,5 @@
 //! 每用户共享 Host。客户端发现与项目激活不承载 Core 执行或生命期。
+mod activity;
 mod client;
 mod journal;
 mod launch;
@@ -26,7 +27,39 @@ pub const CAPABILITIES: &[&str] = &[
     "submissionJournal",
     "credentialVault",
     "remoteState",
+    "activity",
 ];
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Activity {
+    pub complete: bool,
+    pub projects: Vec<ProjectActivity>,
+    pub total_active_tasks: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "state", rename_all = "camelCase", deny_unknown_fields)]
+pub enum ProjectActivity {
+    Observed {
+        #[serde(rename = "projectId")]
+        project_id: String,
+        #[serde(rename = "activeTasks")]
+        active_tasks: u64,
+        #[serde(rename = "activeTurns")]
+        active_turns: u64,
+        #[serde(rename = "activeGoals")]
+        active_goals: u64,
+        #[serde(rename = "pendingQueueItems")]
+        pending_queue_items: u64,
+        #[serde(rename = "idleAllowed")]
+        idle_allowed: bool,
+    },
+    Unavailable {
+        #[serde(rename = "projectId")]
+        project_id: String,
+    },
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

@@ -1,6 +1,6 @@
 use crate::{
-    HostIdentity, HostStatus, LaunchInputs, OpenResult, ProjectRegistration, ResolveProject,
-    StopStrategy, VERSION, wire,
+    Activity, HostIdentity, HostStatus, LaunchInputs, OpenResult, ProjectRegistration,
+    ResolveProject, StopStrategy, VERSION, wire,
 };
 use anyhow::{Context, Result, ensure};
 use areal_local_service::{native_process::TrustedCommand, storage};
@@ -139,6 +139,9 @@ impl Client {
     }
     pub async fn status(&self) -> Result<HostStatus> {
         self.call("host.status", json!({})).await
+    }
+    pub async fn activity(&self) -> Result<Activity> {
+        self.call("host.activity", json!({})).await
     }
     pub async fn list(&self) -> Result<Vec<ProjectRegistration>> {
         let result: Value = self.call("projects.list", json!({})).await?;

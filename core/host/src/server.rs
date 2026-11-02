@@ -1,6 +1,6 @@
 use crate::{
-    CAPABILITIES, HostIdentity, HostStatus, LaunchInputs, OpenResult, ProjectRegistration,
-    ProjectStatus, StopStrategy, VERSION, launch,
+    Activity, CAPABILITIES, HostIdentity, HostStatus, LaunchInputs, OpenResult, ProjectActivity,
+    ProjectRegistration, ProjectStatus, StopStrategy, VERSION, launch,
     wire::{self, error},
 };
 use anyhow::{Context, Result, ensure};
@@ -662,6 +662,68 @@ impl Host {
             capabilities: CAPABILITIES.iter().map(|s| (*s).into()).collect(),
         }
     }
+    async fn activity(&self) -> Activity {
+        let ids: Vec<_> = self.slots.borrow().keys().cloned().collect();
+        let mut result = Activity {
+            complete: true,
+            projects: Vec::new(),
+            total_active_tasks: 0,
+        };
+        for id in ids {
+            let (registration, gate, supervised, known_service) = {
+                let slots = self.slots.borrow();
+                let slot = &slots[&id];
+                (
+                    slot.registration.clone(),
+                    slot.gate.clone(),
+                    slot.writer.is_some(),
+                    slot.service.clone(),
+                )
+            };
+            let observed = match gate.try_lock() {
+                Ok(_guard) => {
+                    let stable = {
+                        let slots = self.slots.borrow();
+                        !slots[&id].uncertain_start && slots[&id].migration.is_none()
+                    };
+                    if stable {
+                        tokio::time::timeout(
+                            Duration::from_secs(3),
+                            crate::activity::observe(
+                                &self.home,
+                                &registration,
+                                &self.owner(),
+                                supervised,
+                                known_service.as_ref(),
+                            ),
+                        )
+                        .await
+                        .ok()
+                        .and_then(Result::ok)
+                    } else {
+                        None
+                    }
+                }
+                Err(_) => None,
+            };
+            let observed = observed.filter(|activity| {
+                let ProjectActivity::Observed { active_tasks, .. } = activity else {
+                    return false;
+                };
+                if let Some(total) = result.total_active_tasks.checked_add(*active_tasks) {
+                    result.total_active_tasks = total;
+                    true
+                } else {
+                    false
+                }
+            });
+            result.complete &= observed.is_some();
+            result
+                .projects
+                .push(observed.unwrap_or(ProjectActivity::Unavailable { project_id: id }));
+        }
+        result
+    }
     async fn project_status(&self, id: &str) -> ProjectStatus {
         let (registration, gate) = {
             let slots = self.slots.borrow();
@@ -725,6 +787,10 @@ impl Host {
             "host.status" => {
                 serde_json::from_value::<Empty>(params)?;
                 Ok(serde_json::to_value(self.status().await)?)
+            }
+            "host.activity" => {
+                serde_json::from_value::<Empty>(params)?;
+                Ok(serde_json::to_value(self.activity().await)?)
             }
             "projects.list" => {
                 serde_json::from_value::<Empty>(params)?;
@@ -1778,6 +1844,82 @@ fn aggregate(receipt: &Value) -> &'static str {
 mod tests {
     use super::*;
     use crate::{Client, ProjectSource};
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn authenticated_activity_is_read_only_and_keeps_unknown_projects_incomplete() {
+        tokio::task::LocalSet::new().run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let base = root.path().canonicalize().unwrap();
+            let home = base.join("home");
+            let workspace = base.join("workspace");
+            std::fs::create_dir(&workspace).unwrap();
+            let task = tokio::task::spawn_local(run_local(RunOptions { home: home.clone(), bin_dir: base.clone() }));
+            let client = loop {
+                if let Ok(client) = Client::connect_at(home.clone()).await { break client; }
+                tokio::task::yield_now().await;
+            };
+            assert!(client.status().await.unwrap().capabilities.iter().any(|capability| capability == "activity"));
+            assert_eq!(client.activity().await.unwrap(), Activity { complete: true, projects: vec![], total_active_tasks: 0 });
+            let registration = ProjectRegistration { project_id: "cli-project".into(), workspace: workspace.clone(), data_dir: base.join("unstarted-data"), source: ProjectSource::Cli, default_binding: false };
+            client.register(&uuid::Uuid::new_v4().to_string(), registration.clone()).await.unwrap();
+            let directory = storage::registry(&home, &Host::service_id(&registration)).unwrap();
+            assert!(!directory.exists());
+            assert!(!registration.data_dir.exists());
+            let idle = ProjectActivity::Observed { project_id: registration.project_id.clone(), active_tasks: 0, active_turns: 0, active_goals: 0, pending_queue_items: 0, idle_allowed: true };
+            assert_eq!(client.activity().await.unwrap(), Activity { complete: true, projects: vec![idle.clone()], total_active_tasks: 0 });
+            assert!(!directory.exists());
+            assert!(!registration.data_dir.exists());
+            storage::private_dir(&registration.data_dir).unwrap();
+            let locked = storage::open_private(&registration.data_dir.join("owner.lock"), true).unwrap();
+            locked.try_lock_exclusive().unwrap();
+            let unavailable = Activity { complete: false, projects: vec![ProjectActivity::Unavailable { project_id: registration.project_id.clone() }], total_active_tasks: 0 };
+            assert_eq!(client.activity().await.unwrap(), unavailable);
+            assert!(!directory.exists());
+            assert!(!registration.data_dir.join("service.lock").exists());
+            drop(locked);
+            storage::private_dir(&directory).unwrap();
+            let service: Service = serde_json::from_value(json!({"protocolVersion":1,"serviceId":Host::service_id(&registration),"generation":uuid::Uuid::new_v4().to_string(),"workspace":workspace,"dataDir":registration.data_dir,"configFingerprint":"fixture","endpoint":"ws://127.0.0.1:1","webUrl":"http://127.0.0.1:1","authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),"hostPid":1,"corePid":1,"state":"stopped"})).unwrap();
+            storage::write(&directory.join("service.json"), &service).unwrap();
+            let original = std::fs::read(directory.join("service.json")).unwrap();
+            assert_eq!(client.activity().await.unwrap(), unavailable);
+            let mut cleanup = storage::CleanupReceipt { version: 1, identity: service.identity.clone(), owner: service.owner.clone(), components: BTreeMap::new(), cleanup_confirmed: true };
+            cleanup.identity.generation = "other-generation".into();
+            storage::write(&directory.join("cleanup.json"), &cleanup).unwrap();
+            assert_eq!(client.activity().await.unwrap(), unavailable);
+            cleanup.identity = service.identity.clone();
+            storage::write(&directory.join("cleanup.json"), &cleanup).unwrap();
+            assert_eq!(client.activity().await.unwrap(), Activity { complete: true, projects: vec![idle], total_active_tasks: 0 });
+            assert_eq!(std::fs::read(directory.join("service.json")).unwrap(), original);
+            assert!(!directory.join("start.lock").exists());
+            assert!(!registration.data_dir.join("service.lock").exists());
+            let mut connection = BufReader::new(UnixStream::connect(&client.identity().socket_path).await.unwrap());
+            let token: String = storage::read(&client.identity().auth_file).unwrap();
+            wire::write(connection.get_mut(), &json!({"version":1,"id":"hello","method":"hello","params":{"protocolVersions":[1],"capabilities":["activity"],"authToken":token}})).await.unwrap();
+            assert!(wire::read(&mut connection).await.unwrap().unwrap().get("result").is_some());
+            wire::write(connection.get_mut(), &json!({"version":1,"id":"invalid","method":"host.activity","params":{"projectId":"cli-project"}})).await.unwrap();
+            assert!(wire::read(&mut connection).await.unwrap().unwrap().get("error").is_some());
+            drop(connection);
+            let other = ProjectRegistration { project_id: "other-project".into(), workspace: registration.workspace.clone(), data_dir: base.join("other-data"), source: ProjectSource::Cli, default_binding: false };
+            client.register(&uuid::Uuid::new_v4().to_string(), other.clone()).await.unwrap();
+            assert_eq!(client.activity().await.unwrap().projects.len(), 2);
+            storage::private_dir(&other.data_dir).unwrap();
+            let locked = storage::open_private(&other.data_dir.join("owner.lock"), true).unwrap();
+            locked.try_lock_exclusive().unwrap();
+            let partial = client.activity().await.unwrap();
+            assert!(!partial.complete);
+            assert_eq!(partial.total_active_tasks, 0);
+            assert!(matches!(&partial.projects[0], ProjectActivity::Observed { project_id, idle_allowed: true, .. } if project_id == &registration.project_id));
+            assert_eq!(partial.projects[1], ProjectActivity::Unavailable { project_id: other.project_id.clone() });
+            assert!(!other.data_dir.join("service.lock").exists());
+            drop(locked);
+            let launch_inputs = home.join("host/launch").join(storage::digest(other.project_id.as_bytes())).join("inputs.json");
+            storage::private_dir(launch_inputs.parent().unwrap()).unwrap();
+            storage::write(&launch_inputs, &json!({"previousActivation":true})).unwrap();
+            assert_eq!(client.activity().await.unwrap(), partial);
+            task.abort();
+            assert!(matches!(task.await, Err(error) if error.is_cancelled()));
+        }).await;
+    }
 
     #[tokio::test(flavor = "current_thread")]
     async fn unpublished_cli_import_blocks_journal_read_prepare_and_bound_commit() {

@@ -48,6 +48,7 @@
 | ------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `hello`             | `protocolVersions:number[]`、`capabilities:string[]`、`authToken:string`                                         | `{version,hostId,generation,capabilities,executableVersion}`                                                | `versionMismatch`                                                                     | 只读握手。重连后重做，不按可执行版本推断能力。                                                                                                                                                       |
 | `host.status`       | `{}`                                                                                                             | `{hostId,generation,state,projects:ProjectStatus[],restartPending,stopIntent,capabilities}`                 | 无                                                                                    | 只读快照，不激活项目。                                                                                                                                                                               |
+| `host.activity` | `{}` | `{complete,projects:ProjectActivity[],totalActiveTasks}` | 无 | 需要 `activity` 能力。只读观察全部登记项目，不启动或停止 Core。 |
 | `projects.list`     | `{}`                                                                                                             | `{projects:ProjectRegistration[]}`                                                                          | 无                                                                                    | 只读持久登记，包含已停止项目。                                                                                                                                                                       |
 | `projects.register` | `{requestId,expectedGeneration,registration:ProjectRegistration,bindExisting?:boolean}`                          | `{registration,created:boolean}`                                                                            | `projectConflict`、`dataDirConflict`、`defaultBindingConflict`、`migrationConflict`、`aliasConflict`、`sourceNotFound`、`sourceConflict`   | 在 Host 锁下持久化键、规范参数与结果。同键同参数返回原结果，参数变化返回 `requestConflict`。仅本机。                                                                                                 |
 | `project.ensure`    | `{requestId,expectedGeneration,projectId,launchInputs?:LaunchInputs,credentials?:object,noAutoRestart?:boolean}` | `{project:ProjectStatus,service?:Service}`                                                                  | `projectNotFound`、`configurationConflict`、`migrationBlocked`、`credentialsRequired` | 显式用户激活，可清除该项目已结算的停止意图。同键返回原受理或结果。同一绑定的并发 ensure 收敛到一个服务。只有核验后的 ready Host-owned 服务返回 `service`。`legacyPending` 只返回状态，不声称已接管。 |
@@ -57,11 +58,22 @@
 | `host.subscribe`    | `{}`                                                                                                             | `{subscriptionId,generation,sequence:0,status:<host.status result>}`                                        | 无                                                                                    | 每次请求在当前连接建立观察，断连释放，不停止工作。                                                                                                                                                   |
 | `host.update`       | `{requestId,expectedGeneration,action:"prepare"\|"apply",targetVersion,strategy?:"ifIdle"\|"cancel"}`            | `UpdateReceipt`                                                                                             | `updateUnavailable`、`invalidUpdateTarget`、`requestConflict`、`generationMismatch`   | `prepare` 登记已在本机安装且验证的目标。`apply` 必须携带 strategy，且目标与准备记录匹配，排空前持久化。回复丢失后只查询。不下载或执行客户端任意路径。                                                |
 
-`host.status.state` 为 `running`、`stopping`、`stopped` 或 `crashLoopStopped`。`restartPending` 与 `stopIntent` 均为布尔值。能力是可加性的字符串，包括 `projects`、`stopOperations`、`subscriptions`、`updates`、`legacyMigration`，只声明已实现的契约。缺少 `updates` 的 Host 在副作用前拒绝 `host.update`。Host socket 关闭后，本机发现层通过 `areal host operation` 读取持久终态回执，不启动或恢复停止操作。
+`host.status.state` 为 `running`、`stopping`、`stopped` 或 `crashLoopStopped`。`restartPending` 与 `stopIntent` 均为布尔值。能力是可加性的字符串，包括 `projects`、`activity`、`stopOperations`、`subscriptions`、`updates`、`legacyMigration`，只声明已实现的契约。缺少 `updates` 的 Host 在副作用前拒绝 `host.update`。Host socket 关闭后，本机发现层通过 `areal host operation` 读取持久终态回执，不启动或恢复停止操作。
 
 状态事件为 `{version:1,method:"host.statusChanged",params:{subscriptionId,generation,sequence,status}}`，不带 RPC `id`。sequence 在单订阅内严格递增，每个事件都包含完整快照。代际变化、序号缺口或断流后重新握手并订阅，不持久重放事件，不自动重试写操作。
 
 自动重连只读取 `host.status` 中经验证的现存服务描述，不调用 `project.ensure`，不清除停止意图。需要重新激活时由用户显式打开项目。`ProjectMutationReceipt` 包含 `version:1`、`requestId`、`method:"projects.register"|"project.ensure"`、`hostId`、`generation`、`projectId`、`state`，以及可选 `result` 与 `error`。状态为 `acceptedPending`、`blocked`、`admissionUnknown` 或 `completed`。查询返回原操作结果；旧 ready 结果不证明该服务当前存活，连接前仍核验实时身份。回执不包含凭据值。
+
+## 全局活动
+
+`host.activity` 返回全部已登记项目，包括由 CLI 或 TUI 启动且 GUI 尚未连接的项目。`ProjectActivity` 是以下两种结果之一：
+
+- `{projectId,state:"observed",activeTasks,activeTurns,activeGoals,pendingQueueItems,idleAllowed}`。计数来自认证 Core 的 `areal/server/status`。`idleAllowed` 使用 Core 的 `lifecycle.ifIdle.allowed`，不能仅根据任务数推断。
+- `{projectId,state:"unavailable"}`。正在迁移或启动、身份不匹配、无法核查锁或清理回执、状态查询失败均保留为不可用，不填零。
+
+尚未启动且没有服务记录、生命期不确定性或占用锁的项目返回空闲零计数。已停止项目还必须有匹配原代际的清理回执及释放的服务与 Store 锁。查询不创建锁文件、Store 或服务记录，也不清除停止意图。
+
+`complete` 仅在每个项目都可观察时为 true。`totalActiveTasks` 只合计已观察项目的 `activeTasks`，不叠加轮次、目标或队列；不完整时只是已知任务数。结果是逐项目观察，不是跨项目原子快照，不能作为后续停止操作的授权。停止仍由 `host.stop` 在执行时核查。
 
 ## 停止回执与部分结算
 
