@@ -612,11 +612,6 @@ export function Messages({
             )
           }
         />
-        {!deferActions && entry.phase !== "commentary" && turn.status !== "inProgress" && (
-          <MessageActions text={conversationContentToText(blocks)}>
-            <MessageTime createdAt={entry.createdAt} />
-          </MessageActions>
-        )}
       </div>
     );
   };
@@ -1136,7 +1131,12 @@ export function Messages({
                     !pendingInput
                       ? tail
                       : undefined;
-                  const responseMessage = finalMessage ?? legacyReply;
+                  const responseMessage =
+                    finalMessage ??
+                    legacyReply ??
+                    segments.findLast(
+                      (item: Data) => item.type === "agentMessage" && item.text?.trim(),
+                    );
                   const hasReadingSummary = hasFinal || !!legacyReply;
                   // 带phase与旧快照共用同一过程总组；从运行期起保留挂载，
                   // 完成收敛只隐藏内容，不重置工具详情或改变历史顺序。
@@ -1452,9 +1452,6 @@ export function Messages({
                           </Fragment>
                         );
                       })}
-                      {hasInterruption && stopHeading}
-                      <CompactionNotices turn={turn} />
-                      <TurnRetries turn={turn} />
                       {!isInherited &&
                         (turn.items ?? [])
                           .filter((item: Data) => item.type === "dynamicToolCall")
@@ -1517,8 +1514,9 @@ export function Messages({
                             />
                           )}
                         </MessageActions>
-                      ) : (
+                      ) : turn.status !== "inProgress" ? (
                         <div className="message-actions">
+                          <TurnHookStats turn={turn} />
                           <TurnUsage
                             project={project}
                             thread={localThread}
@@ -1536,7 +1534,10 @@ export function Messages({
                             />
                           </span>
                         </div>
-                      )}
+                      ) : null}
+                      {hasInterruption && stopHeading}
+                      <CompactionNotices turn={turn} />
+                      <TurnRetries turn={turn} />
                       <ModelChanges changes={thread.desktop?.modelChanges} afterTurnId={turn.id} />
                       {canFork && forkReason && turn.status !== "inProgress" && (
                         <p id={`fork-reason-${turn.id}`} className="notice">
@@ -1560,16 +1561,6 @@ export function Messages({
                           {turn.error ? `：${turnFailureMessage(turn)}` : ""}
                         </TimelineNotice>
                       )}
-                      {!finalMessage &&
-                        turn.status !== "inProgress" &&
-                        turn.items?.some(
-                          (item: Data) =>
-                            item.type === "dynamicToolCall" && item.execution?.hooks?.length,
-                        ) && (
-                          <div className="message-actions">
-                            <TurnHookStats turn={turn} />
-                          </div>
-                        )}
                       <TurnActivity
                         turn={turn}
                         project={project}
