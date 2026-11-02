@@ -59,6 +59,8 @@ Homebrew formula 安装 `bin`、`libexec`、LICENSE 和 manifest，避免改变 
 
 ## GUI 发布
 
+准备版本号和 PR 前，先按[并行修改与终验](README.md#并行修改与终验)选定任务独占 worktree；不等到打包或推送检查发现并发修改后才隔离。版本准备在该目录完成，正式构建继续使用已合并的固定提交和独占输出目录。
+
 本机无需新增签名时可使用 `AREAL_GUI_UNSIGNED_LOCAL=1 AREAL_GUI_PACKAGE_DIR=/绝对路径/新目录 pnpm --dir clients/gui package`，CLI bundle 对应 `python3 scripts/package.py --unsigned-local --profile debug --output /绝对路径/新目录`。该显式模式跳过 Core 副本和整个 app 的签名，builder 继续使用 `identity: null`；保留输入字节及已有签名，记录真实 bundle 签名核验结果，不移除签名或改变系统策略。它与 `AREAL_GUI_RELEASE=1` 互斥；默认流程仍创建本机 ad-hoc 签名。已生成 ZIP 不证明能启动，须从 ZIP 复制到新隔离目录验收，系统拒绝时保留首次失败并停止该启动路径。
 
 默认本机 ad-hoc 打包输出 `.app`、`AReaL-Harness-GUI-mac-arm64.zip` 和同名 `.dmg`。只需要 DMG 时，使用 `AREAL_GUI_RELEASE=0 AREAL_GUI_UNSIGNED_LOCAL=0 pnpm --dir clients/gui package --dmg-only`；保留签名后的 `.app` 中间产物，不生成 ZIP。该选项不能与正式模式或无新增签名模式组合。`package-evidence.json` 记录 DMG 路径、压缩大小、SHA-256 和框架硬链接核验数量。`AREAL_GUI_UNSIGNED_LOCAL=1` 与正式签名前的 `AREAL_GUI_RELEASE=1` 仍只导出 ZIP。

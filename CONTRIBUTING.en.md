@@ -2,6 +2,8 @@
 
 # Contributing
 
+Before editing or dispatching concurrent writers, select an isolated worktree using the [development guide](docs/development/README.en.md#concurrent-changes-and-final-acceptance). Use the [PR head gate](docs/development/README.en.md#pr-head-identity) to verify the published commit before creation and check the resulting receipt.
+
 Read the [quickstart](docs/guides/quickstart.en.md), [architecture](docs/design/architecture.en.md) and [repository instructions](AGENTS.md), then run `make setup` and `make verify` as described in [development](docs/development/README.en.md). Changes to native Runtime, plugins or Workgroups also require the relevant [integration tests](docs/development/testing.en.md).
 
 Bug reports should include commit, platform, a minimal reproduction and expected behavior. Follow the [private reporting process](SECURITY.en.md) for security issues. Use synthetic data; do not commit credentials, session data, personal configuration or machine-specific absolute paths.

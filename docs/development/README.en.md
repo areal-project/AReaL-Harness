@@ -10,7 +10,35 @@ The [T3 Code quality design](t3code-quality-design.en.md) describes implemented 
 
 Before editing, check `git status --short`, the current branch, and ownership of existing worktrees. If another writing task is active in the checkout, reuse this task's isolated worktree or create a `codex/` worktree from an explicit committed base. The owning task must commit or explicitly hand off uncommitted changes; a momentarily clean checkout does not establish that no writer is active.
 
+Establish isolation before editing versions, preparing a PR, or dispatching writers. A new branch is not a new working directory: independent concurrent writing tasks use separate worktrees. Subtasks within one task may share its directory when they own non-overlapping files and the parent coordinates commits and builds. Every assignment specifies the absolute directory, baseline commit and file ownership; writers check `git rev-parse --show-toplevel` and the branch before editing. Read-only reviews also identify their worktree and revision.
+
+Use Git's existing entry points rather than another task registry:
+
+```sh
+git worktree list --porcelain
+git worktree add -b codex/task-name /absolute/task-worktree <committed-base>
+git -C /absolute/task-worktree status --short
+git -C /absolute/task-worktree rev-parse --show-toplevel HEAD
+```
+
+All subsequent edits, builds and commits use that worktree as cwd. Unexpected changes still require stopping to establish ownership; isolation does not replace that protection. Existing dirty files in the shared checkout need not be stashed or moved.
+
 Build in the selected worktree before final acceptance. Keep the instance's sources, dependencies, and output fixed until it exits; use another worktree for further development or builds. Browser acceptance should consume private static artifacts. Measurements that require Vite development mode run serially in an isolated, frozen worktree so type generation or builds cannot trigger HMR. See [verification artifacts and startup diagnostics](testing.en.md#local-verification-artifacts-and-startup-diagnostics) for commands and evidence.
+
+## PR head identity
+
+After obtaining push and PR creation authorization, finish pushing the source branch and run this command from the clean task worktree. Specify both repositories and branches explicitly rather than inferring the destination from remote names:
+
+```sh
+python3 scripts/pr-create.py --repo upstream-owner/repository \
+  --head-repo fork-owner/repository --branch codex/task-name --base main \
+  --expected-head <full-commit-sha> --title 'fix(scope): describe the change' \
+  --body-file /absolute/pr-body.md
+```
+
+The script uses `gh` to require the published SHA, local HEAD, current branch and clean checkout to agree, then checks for an open PR with the same source and base. Only then does it create and read back the PR state, `headRefOid`, source repository, source branch and base. Success emits JSON; failure exits nonzero. It never pushes, merges or automatically retries creation. Tests run through `make script-test` using temporary Git repositories and a synthetic `gh` only.
+
+A lost creation response is UNKNOWN: first inspect open, closed and merged PRs for that source with `gh pr list --state all`. If a URL was returned but verification fails, the error preserves that URL; reconcile that PR rather than creating another. The remote can change after preflight, so failed readback does not mean nothing was created. Recheck the head after later PR updates. Merging requires separate authorization and `gh pr merge <number> --repo <owner/repository> --match-head-commit <verified-full-sha>` to constrain the actual merged head. CI and source review requirements still apply.
 
 ## Environment
 
