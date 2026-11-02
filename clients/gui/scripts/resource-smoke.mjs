@@ -1,3 +1,4 @@
+import { readTurnToolDetails } from "./support/tool-history.mjs";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -52,7 +53,22 @@ export async function verifyResourceSlice({
     (thread) => thread.turns?.length,
   );
   setThread(thread.id);
-  const turn = thread.turns.at(-1);
+  const readDetails = (turnId) =>
+    readTurnToolDetails({
+      command: async (name, params) => {
+        const result = await page.evaluate(
+          ({ name, params }) => window.arealDesktop.command(name, params),
+          { name, params },
+        );
+        assert.equal(result.ok, true, JSON.stringify(result));
+        return result.value;
+      },
+      readThread: async () => project(await state()).state.threads[thread.id],
+      projectId: project(completed).id,
+      threadId: thread.id,
+      turnId,
+    });
+  const turn = await readDetails(thread.turns.at(-1).id);
   const receipts = turn.items.filter(
     (item) => item.type === "dynamicToolCall" && item.tool === "fs_create",
   );
@@ -175,7 +191,7 @@ export async function verifyResourceSlice({
       "resource navigation creates no turn",
     );
     assert.equal(
-      project(snapshot).state.threads[thread.id].turns[0].items.filter(
+      (await readDetails(turn.id)).items.filter(
         (item) => item.type === "dynamicToolCall" && item.tool === "fs_create",
       ).length,
       1,

@@ -19,6 +19,8 @@ Model-selection smoke uses the efforts explicitly configured by its fixtures. Fo
 
 Browser terminal results, Worktree and scheduled-task contracts use the existing `history.loadItem` operation to read deferred successful-tool records before checking execution results and files written in the owning directory. A conversation summary without the full record does not prove that a tool failed to run; a summary alone also does not prove success. Migration smoke opens results through the current tool summary control and retains child-conversation and main-draft isolation assertions.
 
+Tool-fact acceptance uses `scripts/support/tool-history.mjs`: acquire/loadItem only for deferred tool records in the target Turn, reread the snapshot by its original Turn/item identity, then release the temporary view. Inline records retain the full-history compatibility path; original failed, interrupted and UNKNOWN assertions remain active. Read failures or changed identity fail directly without retries or skips. Presentation acceptance still exercises the visible summary disclosure; RPC acceptance checks formal responses, error categories, notifications, threads and request receipts directly. When both Profile and provider references are missing, Profile resolution errors take precedence, keeping model configuration from masking the resource-reference contract.
+
 | Entry point | Coverage |
 |---|---|
 | `make verify` | Cordis pin, formatting, static checks, Rust workspace, both SDKs, Python, documentation, TUI and unified delegation smoke |

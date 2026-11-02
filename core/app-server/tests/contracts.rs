@@ -603,6 +603,11 @@ async fn ordinary_admission_capabilities_and_rpc_errors_are_explicit() {
             json!({"model":{"providerId":"missing","modelId":"test"}}),
             -32602,
         ),
+        (
+            "missing-profile-and-provider",
+            json!({"agentProfile":{"id":"missing","revision":"1"},"model":{"providerId":"missing","modelId":"test"}}),
+            -32004,
+        ),
     ] {
         let mut request = configuration;
         request["requestId"] = json!(request_id);

@@ -17,6 +17,8 @@ Side Chat 的 Esc 回退测试等待任务资源外层弹层完全退出布局�
 
 浏览器终态结果、Worktree 与定时任务合同通过现有 `history.loadItem` 读取成功工具的延期原文，再核对真实执行结果与所属目录中的落盘文件；不能把对话摘要缺少原文判为工具未执行，也不能仅凭摘要宣称执行成功。迁移 smoke 通过当前工具摘要的展开控件查看结果，保留子对话与主草稿隔离断言。
 
+工具事实验收使用 `scripts/support/tool-history.mjs`：只对目标 Turn 的延期工具记录 acquire/loadItem，再按原 Turn/item 身份重读快照，最后释放临时 view。原文已内联时沿用完整历史兼容路径；failed、interrupted 与 UNKNOWN 的原断言不变。读取失败或身份变化直接失败，不自动重试或跳过。界面展示验收继续通过可见摘要展开控件验证加载；RPC 协议验收直接检查正式响应、错误分类、通知、线程及请求收据。缺失 Profile 与缺失 provider 同时出现时先验证 Profile 解析错误，避免默认模型配置掩盖资源引用契约。
+
 | 入口 | 范围 |
 |---|---|
 | `make verify` | Cordis pin、格式、静态检查、Rust workspace、两套 SDK、Python、文档、TUI 与统一委派 smoke |

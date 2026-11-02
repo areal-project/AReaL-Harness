@@ -1,3 +1,4 @@
+import { readTurnToolDetails } from "./support/tool-history.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -251,13 +252,20 @@ async function currentThread() {
   ];
 }
 async function terminalTurn(previous) {
-  return until(async () => {
+  const turn = await until(async () => {
     const turns = (await currentThread())?.turns ?? [];
     const last = turns.at(-1);
     return turns.length > previous && ["completed", "failed", "interrupted"].includes(last?.status)
       ? last
       : null;
   }, `terminal turn after ${mode}`);
+  return readTurnToolDetails({
+    command,
+    readThread: currentThread,
+    projectId,
+    threadId,
+    turnId: turn.id,
+  });
 }
 function toolResult(turn) {
   const item = turn.items.find(

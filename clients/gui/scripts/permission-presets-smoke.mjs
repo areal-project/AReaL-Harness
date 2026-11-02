@@ -1,3 +1,4 @@
+import { readTurnToolDetails } from "./support/tool-history.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -734,9 +735,23 @@ try {
   browser.release = null;
   const browserHistory = await completed(browserThread);
   await page.getByText("PERMISSION_BROWSER_OK", { exact: true }).waitFor();
-  const calls = browserHistory.turns
-    .at(-1)
-    .items.filter((item) => item.type === "dynamicToolCall" && item.tool === "browser_v1");
+  const browserTurn = await readTurnToolDetails({
+    command: async (name, params) => {
+      const result = await page.evaluate(
+        ({ name, params }) => window.arealDesktop.command(name, params),
+        { name, params },
+      );
+      assert.equal(result.ok, true, JSON.stringify(result));
+      return result.value;
+    },
+    readThread: async () => project(await state()).state.threads[browserThread],
+    projectId,
+    threadId: browserThread,
+    turnId: browserHistory.turns.at(-1).id,
+  });
+  const calls = browserTurn.items.filter(
+    (item) => item.type === "dynamicToolCall" && item.tool === "browser_v1",
+  );
   for (const id of [
     "browser-describe",
     "browser-navigate",

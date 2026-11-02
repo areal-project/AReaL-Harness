@@ -1,3 +1,4 @@
+import { readTurnToolDetails } from "./support/tool-history.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { appearanceReply, verifyAppearanceSlice } from "./appearance-smoke.mjs";
@@ -624,7 +625,13 @@ async function assertDecision(request, decision, filename) {
   );
   assert.equal(responses.length, 1, "original request has one authoritative interaction");
   assert.equal(responses[0].response.decision, decision);
-  const turn = current(snapshot).turns.find((item) => item.id === request.turnId);
+  const turn = await readTurnToolDetails({
+    command: call,
+    readThread: async () => current(await state()),
+    projectId: pid,
+    threadId: tid,
+    turnId: request.turnId,
+  });
   const calls = turn.items.filter(
     (item) => item.type === "dynamicToolCall" && item.tool === "fs_create",
   );
@@ -1206,9 +1213,16 @@ try {
       await shot("07-browser-approval");
       await button("允许一次").click();
       await done();
-      const browserCall = current(await state())
-        .turns.at(-1)
-        .items.find((i) => i.type === "dynamicToolCall" && i.tool === "browser_v1");
+      const browserTurn = await readTurnToolDetails({
+        command: call,
+        readThread: async () => current(await state()),
+        projectId: pid,
+        threadId: tid,
+        turnId: current(await state()).turns.at(-1).id,
+      });
+      const browserCall = browserTurn.items.find(
+        (i) => i.type === "dynamicToolCall" && i.tool === "browser_v1",
+      );
       assert.equal(
         browserCall.success,
         true,
