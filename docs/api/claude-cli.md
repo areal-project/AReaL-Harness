@@ -30,6 +30,8 @@ target/debug/areal -p 'Continue' --resume SESSION_ID --output-format json
 
 工具别名 AskUserQuestion/Bash/Read/Write/Edit/TodoWrite/Task 对应 ask_user_question/run_command/fs_read/fs_create/fs_apply_patches/plan_update/agent_spawn。shell 模式规则、任意 Claude settings/hooks、插件市场和交互 Claude TUI 不支持，未知选项拒绝。
 
+`--model` 在创建会话前解析模型目录，并将显式供应商模型随 `areal/thread/start` 提交；默认供应商不可用时仍可选择已配置的 API 模型。模型名必须唯一，存在重名时使用 `供应商ID:模型ID`；无匹配或歧义在创建前拒绝。恢复时仍在原会话应用所选模型。缺少供应商装配返回 `MODEL_NOT_CONFIGURED`，不报告为会话缺失。需要桌面传输的账号模型应连接已有该传输的 Core；`--endpoint` 与 `--auth-file` 复用其凭据和工作区，不在 CLI 复制密钥。
+
 `--no-session-name` 通过 Core 的 `options.automaticSessionName=false` 生效，先核对 `features.automaticSessionName`；旧服务不支持时在创建会话或提交任务前拒绝，不静默忽略。它不把会话改为临时会话，不改变任务请求与预算，也不补记或清除已有用量。新会话省略此参数时沿用自动命名；`--resume` 省略时保留该会话已有选择。
 
 `--permissions YOLO|ASK_PERMISSIONS` 与 `--scratch` 配置本地部署；`--permission-mode` 默认 inherit，继承全局策略。显式 default/acceptEdits/dontAsk/plan/bypassPermissions 保留客户端限制，不能削弱全局 ask/deny 或 Profile。默认本地启动 full-access，无需 --allow-write/--allow-network；已有远端 endpoint 使用自己的策略。
