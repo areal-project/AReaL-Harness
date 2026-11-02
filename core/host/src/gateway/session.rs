@@ -857,15 +857,15 @@ impl Session {
     fn command_record(&self, project: &str, command: &str) -> Result<Option<Value>> {
         let id = self.project_id(project)?;
         let (_, snapshot) = self.host.journal.native_snapshot(&id)?;
-        let entries = snapshot["pending"]
-            .as_array()
+        let entries = snapshot["outcomes"]
+            .as_object()
             .context("RESOURCE_UNAVAILABLE")?
-            .iter()
+            .values()
             .chain(
-                snapshot["outcomes"]
-                    .as_object()
+                snapshot["pending"]
+                    .as_array()
                     .context("RESOURCE_UNAVAILABLE")?
-                    .values(),
+                    .iter(),
             );
         Ok(entries
             .filter(|entry| {
@@ -951,7 +951,13 @@ impl Session {
         let record = if let Some(record) =
             record.filter(|record| record["remote"]["method"] == "session.send")
         {
-            sent = self.reconcile_send(project, record).await?;
+            sent = if gateway_owner::legacy::is_legacy(record) {
+                let id = self.project_id(project)?;
+                gateway_owner::legacy::recover(&self.host, &self.source_id, &id, project, record)
+                    .await
+            } else {
+                self.reconcile_send(project, record).await?
+            };
             Some(&sent)
         } else {
             record

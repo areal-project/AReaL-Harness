@@ -8,6 +8,8 @@ use tokio::task::JoinSet;
 mod control;
 #[path = "enrollment.rs"]
 mod enrollment;
+#[path = "legacy.rs"]
+mod legacy;
 #[path = "push.rs"]
 mod push;
 #[path = "session.rs"]
@@ -348,7 +350,6 @@ async fn run_relay(host: Rc<Host>) {
                 && !running.scanning.get()
                 && running.last_scan.elapsed() >= Duration::from_secs(5)
             {
-                push::historical(&host);
                 running.last_scan = std::time::Instant::now();
                 running.scanning.set(true);
                 let slot = push::ScanSlot(running.scanning.clone());
@@ -359,6 +360,7 @@ async fn run_relay(host: Rc<Host>) {
                 let generation = host.gateway.generation.borrow().clone();
                 running.tasks.spawn_local(async move {
                     let _slot = slot;
+                    push::historical(&host).await;
                     if attention
                         .lock()
                         .await

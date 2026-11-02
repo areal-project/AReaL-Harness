@@ -33,7 +33,7 @@ async function until(read, label) {
 }
 
 // 只提供真实 Host 的本地配置生产者；Remote 请求仍由原客户端进入 Rust owner。
-export async function nativeHostFixture(t, { config } = {}) {
+export async function nativeHostFixture(t, { config, deferNative = false } = {}) {
   assert.ok(
     process.platform !== "darwin" || process.env.AREAL_TEST_HOST_KEYCHAIN === "1",
     "Requires isolated synthetic Host vault authorization",
@@ -224,7 +224,7 @@ export async function nativeHostFixture(t, { config } = {}) {
     return remote;
   };
   return {
-    remote: await make(),
+    remote: deferNative ? null : await make(),
     make,
     home,
     source,
@@ -235,7 +235,11 @@ export async function nativeHostFixture(t, { config } = {}) {
 }
 
 // 原限额用例需要真实 Core 的 Thread 身份；此客户端只做本地种子和权威读取。
-export async function nativeCoreProject(t, fixture, { approval = false, holdModel = false } = {}) {
+export async function nativeCoreProject(
+  t,
+  fixture,
+  { approval = false, holdModel = false, effectModel = false } = {},
+) {
   const { createServer } = await import("node:http");
   const { connect } = await import("../../../examples/desktop-api/client.mjs");
   const { respondToSessionName } = await import("../../../scripts/model-fixture.mjs");
@@ -245,6 +249,7 @@ export async function nativeCoreProject(t, fixture, { approval = false, holdMode
     scratch = join(root, "scratch");
   for (const directory of [workspace, user, scratch])
     await mkdir(directory, { recursive: true, mode: 0o700 });
+  if (effectModel) await mkdir(join(workspace, "effects"), { mode: 0o700 });
   const projectId = randomUUID();
   const alias = digest(`host:${projectId}`).slice(0, 24);
   const binding = { projectId, dataDir: join(root, "state") };
@@ -266,32 +271,52 @@ export async function nativeCoreProject(t, fixture, { approval = false, holdMode
       roles: (body.messages ?? []).map((message) => message.role),
     });
     if (respondToSessionName(body, response)) return;
+    const messages = body.messages ?? [];
+    const currentMessages = messages.slice(
+      messages.findLastIndex((message) => message.role === "user"),
+    );
+    const input = JSON.stringify(currentMessages[0]?.content ?? null);
+    const effect = effectModel && input.match(/RC05_EFFECT:([a-f0-9-]{36})/);
+    const hasTool = currentMessages.some((message) => message.role === "tool");
     const delta =
-      approval && !(body.messages ?? []).some((message) => message.role === "tool")
+      effect && !hasTool
         ? {
             tool_calls: [
               {
                 index: 0,
-                id: "native-overlap-write",
+                id: "rc05-tool",
                 type: "function",
                 function: {
-                  name: "fs_create",
-                  arguments: JSON.stringify({ path: "approved.txt", text: "approved once" }),
+                  name: "run_command",
+                  arguments: JSON.stringify({
+                    command: `printf x >> '${join(workspace, "effects", effect[1])}'`,
+                  }),
                 },
               },
             ],
           }
-        : { content: "NATIVE_REMOTE_FIXTURE" };
+        : approval && !messages.some((message) => message.role === "tool")
+          ? {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "native-overlap-write",
+                  type: "function",
+                  function: {
+                    name: "fs_create",
+                    arguments: JSON.stringify({ path: "approved.txt", text: "approved once" }),
+                  },
+                },
+              ],
+            }
+          : { content: "NATIVE_REMOTE_FIXTURE" };
     const release = () => {
       response.writeHead(200, { "content-type": "text/event-stream" });
       response.end(
         `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: delta.tool_calls ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`,
       );
     };
-    if (!holdModel) return release();
-    const input = JSON.stringify(
-      (body.messages ?? []).findLast((message) => message.role === "user")?.content ?? null,
-    );
+    if (!holdModel || (effect && hasTool)) return release();
     const held = {
       inputSha256: digest(input),
       released: false,

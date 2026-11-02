@@ -434,11 +434,18 @@ impl Route {
         }
     }
 }
+pub(super) struct CompletionSeed {
+    pub native: Value,
+    pub barrier: u64,
+    pub observation: crate::server::schedule_connection::CoreObservation,
+    pub scope: (String, String, String),
+}
 pub(super) struct Completion {
     project: String,
     alias: String,
     record: Value,
     baseline: bool,
+    seed: Option<CompletionSeed>,
 }
 fn completion_key(record: &Value) -> String {
     serde_json::to_string(&json!([
@@ -472,6 +479,16 @@ pub(super) fn awaiting(host: &Host, record: &Value) -> bool {
         .contains(&completion_key(record))
 }
 pub(super) fn track(host: &Host, project: &str, alias: &str, record: &Value, baseline: bool) {
+    track_seed(host, project, alias, record, baseline, None);
+}
+pub(super) fn track_seed(
+    host: &Host,
+    project: &str,
+    alias: &str,
+    record: &Value,
+    baseline: bool,
+    seed: Option<CompletionSeed>,
+) {
     if !host.gateway.push_supported.get()
         || record["admissionState"] != "accepted"
         || record["remote"]["method"] != "session.send"
@@ -483,6 +500,9 @@ pub(super) fn track(host: &Host, project: &str, alias: &str, record: &Value, bas
     let mut pending = host.gateway.completions.borrow_mut();
     if let Some(previous) = pending.get_mut(&key) {
         previous.baseline &= baseline;
+        if previous.seed.is_none() {
+            previous.seed = seed;
+        }
         return;
     }
     if pending.len() >= 8192 {
@@ -496,11 +516,12 @@ pub(super) fn track(host: &Host, project: &str, alias: &str, record: &Value, bas
             alias: alias.into(),
             record: record.clone(),
             baseline,
+            seed,
         },
     );
     host.gateway.completion_changed.notify_one();
 }
-pub(super) fn historical(host: &Host) {
+pub(super) async fn historical(host: &Rc<Host>) {
     let Ok(snapshot) = host.remote.snapshot(&host.migration) else {
         return;
     };
@@ -541,7 +562,16 @@ pub(super) fn historical(host: &Host) {
             .into_iter()
             .flat_map(|rows| rows.values())
         {
-            track(host, &project, &alias, record, true);
+            let record = if legacy::is_legacy(record) {
+                legacy::recover(host, source, &project, &alias, record).await
+            } else {
+                record.clone()
+            };
+            if !legacy::is_legacy(&record)
+                || legacy::observed_store(host, source, &project, &alias, &record).is_ok()
+            {
+                track(host, &project, &alias, &record, true);
+            }
         }
     }
 }
@@ -660,7 +690,7 @@ impl Completion {
         }
     }
     async fn run(
-        self,
+        mut self,
         host: Rc<Host>,
         handle: RelayHandle,
         route: Route,
@@ -673,11 +703,18 @@ impl Completion {
             .as_str()
             .context("missing original peer")?;
         let mut changes = host.changes.subscribe();
-        let (mut native, mut barrier, mut observation) = host
-            .schedules
-            .connections
-            .remote_observe(&host, &self.project, &route.epoch.1, thread)
-            .await?;
+        let (mut native, mut barrier, mut observation) = if let Some(seed) = self.seed.take() {
+            ensure!(
+                seed.scope == route.epoch && seed.observation.current(&host),
+                "RESYNC_REQUIRED"
+            );
+            (seed.native, seed.barrier, seed.observation)
+        } else {
+            host.schedules
+                .connections
+                .remote_observe(&host, &self.project, &route.epoch.1, thread)
+                .await?
+        };
         let capabilities = host
             .schedules
             .connections
@@ -692,15 +729,31 @@ impl Completion {
             )
             .await?;
         let binding = &capabilities["features"]["threadCreationJournal"]["binding"];
-        let original = &self.record["coreScope"]["storeBinding"];
-        ensure!(
-            self.record["coreScope"]["serviceId"] == route.epoch.0
-                && original["identity"].is_string()
-                && original["journalEpoch"].is_string()
-                && binding["identity"] == original["identity"]
-                && binding["journalEpoch"] == original["journalEpoch"],
-            "RESYNC_REQUIRED"
-        );
+        if legacy::is_legacy(&self.record) {
+            let store = legacy::observed_store(
+                &host,
+                &route.source,
+                &self.project,
+                &self.alias,
+                &self.record,
+            )?;
+            ensure!(
+                store.service_id == route.epoch.0
+                    && binding["identity"] == store.identity
+                    && binding["journalEpoch"] == store.journal_epoch,
+                "RESYNC_REQUIRED"
+            );
+        } else {
+            let original = &self.record["coreScope"]["storeBinding"];
+            ensure!(
+                self.record["coreScope"]["serviceId"] == route.epoch.0
+                    && original["identity"].is_string()
+                    && original["journalEpoch"].is_string()
+                    && binding["identity"] == original["identity"]
+                    && binding["journalEpoch"] == original["journalEpoch"],
+                "RESYNC_REQUIRED"
+            );
+        }
         let mut initial = true;
         loop {
             ensure!(

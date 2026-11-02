@@ -65,6 +65,15 @@ pub(crate) struct Alias {
     pub profile: PathBuf,
     pub legacy_project_id: String,
 }
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct JournalSource {
+    pub source_id: String,
+    pub migration_id: String,
+    pub manifest_digest: String,
+    pub project_id: String,
+    pub data_dir: PathBuf,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 enum Original {
@@ -1455,6 +1464,43 @@ impl Migration {
             }
         }
         Ok(bindings)
+    }
+    pub(crate) fn journal_source(
+        &self,
+        source: &str,
+        project: &str,
+        alias: &str,
+        current: &[ProjectRegistration],
+    ) -> Result<JournalSource> {
+        ensure!(
+            self.remote_bindings(source, current)?
+                .iter()
+                .any(|binding| binding.0 == project && binding.1 == alias),
+            "Remote journal source binding differs"
+        );
+        let registration = current
+            .iter()
+            .find(|p| p.project_id == project)
+            .context("Remote journal project is unavailable")?;
+        for record in self.records()? {
+            if record.source_id != source || self.committed(&record)?.is_none() {
+                continue;
+            }
+            if let Some(binding) = record.bindings.iter().find(|b| b.project_id == project) {
+                ensure!(
+                    binding.registration == *registration,
+                    "imported journal project changed"
+                );
+            }
+            return Ok(JournalSource {
+                source_id: source.into(),
+                migration_id: record.request_id,
+                manifest_digest: record.manifest_digest,
+                project_id: project.into(),
+                data_dir: registration.data_dir.clone(),
+            });
+        }
+        anyhow::bail!("Remote journal source is unavailable")
     }
     pub fn remote_seed(&self) -> Result<Option<(String, String, Vec<String>)>> {
         for r in self.records()? {

@@ -1,4 +1,5 @@
 import { attachRemoteHostFixture } from "./remote-host-fixture.cjs";
+import { recoverSentEffect } from "./remote-send-recovery-scenario.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 // 原生 T18–T34：真实 DesktopService/Core/Runtime/Noise；本机安全存储用显式 fixture。
 import assert from "node:assert/strict";
@@ -1205,23 +1206,13 @@ if (process.argv[2] === "--host-worker") {
           assert.equal(duplicate.threadId, recovered.threadId);
           assert.equal(duplicate.operationId, recovered.operationId);
           const threadId = recovered.threadId;
-          const effect = randomUUID(),
-            sendId = randomUUID(),
-            params = { threadId, expectedConfigRevision: 1, text: `RC05_EFFECT:${effect}` };
-          await control("fault", "lost-native-response");
-          assert.equal(
-            (await a.rpc("session.send", params, sendId)).result.admissionState,
-            "unknown",
-          );
-          const receipt = (await a.rpc("command.read", { commandId: sendId })).result;
-          assert.equal(receipt.admissionState, "accepted");
-          assert.equal((await a.rpc("session.send", params, sendId)).result.turnId, receipt.turnId);
-          await settled(threadId);
-          assert.equal(await readFile(join(workspace, "effects", effect), "utf8"), "x");
-          assert.equal(
-            (await a.rpc("session.send", { ...params, text: "changed" }, sendId)).error.code,
-            "COMMAND_CONFLICT",
-          );
+          const { sendId, params, receipt } = await recoverSentEffect({
+            a,
+            threadId,
+            control,
+            settled,
+            workspace,
+          });
           const independent = (
             await b.rpc("session.send", { ...params, text: "independent" }, sendId)
           ).result;

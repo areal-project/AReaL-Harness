@@ -343,6 +343,10 @@ export async function runWithIsolatedCA(filename) {
         timeout: 300000,
       }),
     );
+  } catch (error) {
+    if (error.stdout) process.stdout.write(error.stdout);
+    if (error.stderr) process.stderr.write(error.stderr);
+    throw error;
   } finally {
     await rm(home, { recursive: true, force: true });
   }
