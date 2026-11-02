@@ -817,7 +817,7 @@ body {
     color-mix(in oklab, var(--color-primary-foreground) 62%, transparent),
     transparent
   );
-  animation: zcode-update-charge-sweep 1.15s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  animation: zcode-update-charge-sweep 1.15s cubic-bezier(0.65, 0, 0.35, 1) var(--motion-loop);
   transform: translateX(-120%);
 }
 
@@ -834,14 +834,6 @@ body {
   100% {
     opacity: 0.35;
     transform: translateX(260%);
-  }
-}
-
-@scope (:root[data-reduced-motion="true"]) {
-  .areal-update-charge-progress [data-slot="progress-indicator"]::after {
-    animation: none;
-    opacity: 0.2;
-    transform: none;
   }
 }
 
@@ -939,7 +931,7 @@ body {
   transition: stroke-dashoffset var(--motion-normal) ease-out;
 }
 .areal-update-ring[data-indeterminate="true"] {
-  animation: areal-update-rotate 1.2s linear infinite;
+  animation: areal-update-rotate 1.2s linear var(--motion-loop);
 }
 .areal-update-panel {
   width: 304px;
@@ -958,7 +950,7 @@ body {
 }
 .areal-update-progress[data-indeterminate="true"] > span {
   width: 35%;
-  animation: areal-update-scan 1.4s ease-in-out infinite;
+  animation: areal-update-scan 1.4s ease-in-out var(--motion-loop);
 }
 @keyframes areal-update-rotate {
   to {
@@ -972,26 +964,6 @@ body {
   }
   50% {
     transform: translateX(185%);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .areal-update-ring[data-indeterminate="true"],
-  .areal-update-progress[data-indeterminate="true"] > span {
-    animation: none;
-  }
-  .areal-update-ring-value,
-  .areal-update-progress > span {
-    transition: none;
-  }
-}
-@scope (:root[data-reduced-motion="true"]) {
-  .areal-update-ring[data-indeterminate="true"],
-  .areal-update-progress[data-indeterminate="true"] > span {
-    animation: none;
-  }
-  .areal-update-ring-value,
-  .areal-update-progress > span {
-    transition: none;
   }
 }
 

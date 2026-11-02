@@ -1,5 +1,6 @@
 import { projectedTurns } from "./session-projection.js";
 import { ComposerActionButton } from "@areal/ui/experimental";
+import { DelayedVisible } from "@areal/ui";
 import { ApplicationIntlProvider } from "../i18n/IntlProvider.js";
 import { createRoot } from "react-dom/client";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -340,7 +341,9 @@ function Session({ view, api }: { view: View; api: API }) {
       </header>
       <h2 className="remote-chat-title">{s.title || "会话"}</h2>
       {view.error && <p role="alert">{view.error}</p>}
-      {view.bodyLoading && <p role="status">正在同步完整正文…</p>}
+      <DelayedVisible active={!!view.bodyLoading}>
+        <p role="status">正在同步完整正文…</p>
+      </DelayedVisible>
       {view.bodyError && (
         <p role="alert">
           {view.bodyError}

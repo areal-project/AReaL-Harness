@@ -1,3 +1,4 @@
+import { TitleTooltip } from "../../components/tooltip/tooltip.js";
 import { useState, type ReactNode } from "react";
 function CommandText({
   text,
@@ -72,9 +73,9 @@ export function CommandDetails({
         {metadata}
       </div>
       {directory && (
-        <div className="command-directory" title={directory}>
-          工作目录：{directory}
-        </div>
+        <TitleTooltip title={directory}>
+          <div className="command-directory">工作目录：{directory}</div>
+        </TitleTooltip>
       )}
       {command && <CommandText kind="命令" text={command} copy={commandCopy} />}
       <CommandText kind="输出" text={output} placeholder={placeholder} copy={outputCopy} />

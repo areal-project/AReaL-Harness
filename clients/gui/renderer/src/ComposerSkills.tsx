@@ -1,3 +1,4 @@
+import { DelayedVisible } from "@areal/ui";
 import { Button } from "@areal/ui";
 import { composerDraftStorage } from "./composerDraftStorage.js";
 import { useEffect, useState } from "react";
@@ -324,7 +325,9 @@ function ComposerSkillTag({
           <small>{skill.source}</small>
           <p>{skill.description}</p>
           {loading ? (
-            <p>正在读取内容…</p>
+            <DelayedVisible active>
+              <p>正在读取内容…</p>
+            </DelayedVisible>
           ) : error ? (
             <p role="alert">{error}</p>
           ) : (

@@ -40,7 +40,7 @@ related: ["button", "activity-group", "image-disclosure"]
 
 ## 规则
 
-`R-DISCLOSURE-007` 沿 reduced motion 偏好。实验入口只用于已授权场景，不通过目录登记自动升级为稳定。
+`R-DISCLOSURE-007` 展开收起过渡面板高度，时长用 `--motion-normal`，沿 reduced motion 偏好；入口按下不缩放。实验入口只用于已授权场景，不通过目录登记自动升级为稳定。
 
 ## 示例
 

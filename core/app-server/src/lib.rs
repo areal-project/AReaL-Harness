@@ -1416,6 +1416,7 @@ impl Connection {
                 capabilities["features"]["taskRunHistory"] = json!(true);
                 capabilities["features"]["automaticSessionName"] = json!(true);
                 capabilities["features"]["boundedObservation"] = json!(true);
+                capabilities["features"]["conversationObservation"] = json!(true);
                 capabilities["features"]["boundedResume"] = json!(true);
                 capabilities["features"]["boundedHistory"] = json!(true);
                 Ok(capabilities)
@@ -1474,9 +1475,10 @@ impl Connection {
             "thread/resume" => {
                 let p: areal_protocol::desktop::ObserveThread = parse(params)?;
                 let budget = match p.mode {
-                    Some(areal_protocol::desktop::ObservationMode::Bounded) => {
-                        Some(bounded_history_budget(p.max_bytes, response_overhead)?)
-                    }
+                    Some(
+                        areal_protocol::desktop::ObservationMode::Bounded
+                        | areal_protocol::desktop::ObservationMode::Conversation,
+                    ) => Some(bounded_history_budget(p.max_bytes, response_overhead)?),
                     None if p.max_bytes.is_some() => {
                         return Err(RpcError::invalid("maxBytes requires mode bounded"));
                     }
@@ -1504,6 +1506,7 @@ impl Connection {
                             self.principal.thread_ids.as_ref(),
                             budget,
                             thread_metadata(engine, ""),
+                            p.mode == Some(areal_protocol::desktop::ObservationMode::Conversation),
                         )
                         .await
                         .map_err(map_error)?;
@@ -1527,7 +1530,7 @@ impl Connection {
                         data: None,
                     });
                 }
-                if p.mode == Some(areal_protocol::desktop::ObservationMode::Bounded) {
+                if p.mode.is_some() {
                     let budget = bounded_history_budget(p.max_bytes, response_overhead)?;
                     let (result, events) = engine
                         .snapshot_and_subscribe_bounded(
@@ -1536,6 +1539,7 @@ impl Connection {
                             self.principal.thread_ids.as_ref(),
                             budget,
                             thread_metadata(engine, ""),
+                            p.mode == Some(areal_protocol::desktop::ObservationMode::Conversation),
                         )
                         .await
                         .map_err(map_error)?;

@@ -33,6 +33,11 @@ export default defineConfig({
         ],
         rules: { "areal/no-raw-disclosure": "error" },
       },
+      {
+        // R-CHECK-021：悬停提示走共享 Tooltip；过渡只列具体属性。
+        files: ["renderer/src/**/*.{jsx,tsx}", "packages/*/src/**/*.{js,jsx,ts,tsx}"],
+        rules: { "areal/no-native-title": "error", "areal/no-transition-all": "error" },
+      },
     ],
     settings: {
       "jsx-a11y": {
@@ -168,10 +173,11 @@ export default defineConfig({
       "design-suite": {
         command: [
           "pnpm --filter @areal/ui check",
-          "node --test scripts/design-system-catalog.test.mjs scripts/design-system-changes.test.mjs scripts/design-system-accessibility.test.mjs scripts/a11y-lint.test.mjs scripts/popup-anchor-lint.test.mjs scripts/design-system-baseline.test.mjs scripts/design-verified.test.mjs scripts/activity-runs.test.mjs",
+          "node --test scripts/design-system-catalog.test.mjs scripts/design-system-changes.test.mjs scripts/design-system-accessibility.test.mjs scripts/a11y-lint.test.mjs scripts/popup-anchor-lint.test.mjs scripts/design-system-baseline.test.mjs scripts/design-verified.test.mjs scripts/activity-runs.test.mjs scripts/motion-lint.test.mjs",
           "node scripts/design-system-audit.mjs",
           "node scripts/a11y-lint.mjs",
           "node scripts/popup-anchor-lint.mjs",
+          "node scripts/motion-lint.mjs",
           "node scripts/design-rules.mjs",
           "node scripts/design-generated.mjs",
           "node scripts/design-verified.mjs",

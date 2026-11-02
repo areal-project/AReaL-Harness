@@ -222,7 +222,7 @@
 .scheduled-status[data-state="running"]::before {
   background: var(--color-success);
   opacity: 1;
-  animation: scheduled-pulse 1.6s ease-in-out infinite;
+  animation: scheduled-pulse 1.6s ease-in-out var(--motion-loop);
 }
 .scheduled-status[data-state="attention"] {
   color: var(--color-foreground);
@@ -234,10 +234,5 @@
 @keyframes scheduled-pulse {
   50% {
     opacity: 0.35;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .scheduled-status[data-state="running"]::before {
-    animation: none;
   }
 }

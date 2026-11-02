@@ -2,6 +2,7 @@ import type { ComponentProps, ComponentType } from "react";
 import { LoaderCircle, type LucideProps } from "lucide-react";
 import { Button } from "../button/button.js";
 import { cn } from "../../lib/utils.js";
+import { observeVisibleAnimation } from "../../lib/visible-animation.js";
 
 type ActionButtonProps = Omit<ComponentProps<typeof Button>, "children"> & {
   icon?: ComponentType<LucideProps>;
@@ -10,11 +11,36 @@ type ActionButtonProps = Omit<ComponentProps<typeof Button>, "children"> & {
 };
 
 /** Compact settings actions; icons are optional and labels stay readable while pending. */
-export function ActionButton({ icon: Icon, children, pending = false, disabled, className, variant = "secondary", size = "sm", ...props }: ActionButtonProps) {
-  return <Button {...props} variant={variant} size={size} disabled={disabled || pending}
-    aria-busy={pending || undefined} className={cn("gap-1.5", className)}>
-    {pending ? <LoaderCircle aria-hidden="true" strokeWidth={1.5} className="size-3 animate-spin motion-reduce:animate-none" />
-      : Icon ? <Icon aria-hidden="true" strokeWidth={1.5} className="size-3" /> : null}
-    {children}
-  </Button>;
+export function ActionButton({
+  icon: Icon,
+  children,
+  pending = false,
+  disabled,
+  className,
+  variant = "secondary",
+  size = "sm",
+  ...props
+}: ActionButtonProps) {
+  return (
+    <Button
+      {...props}
+      variant={variant}
+      size={size}
+      disabled={disabled || pending}
+      aria-busy={pending || undefined}
+      className={cn("gap-1.5", className)}
+    >
+      {pending ? (
+        <LoaderCircle
+          ref={observeVisibleAnimation}
+          aria-hidden="true"
+          strokeWidth={1.5}
+          className="size-3 areal-visible-spin"
+        />
+      ) : Icon ? (
+        <Icon aria-hidden="true" strokeWidth={1.5} className="size-3" />
+      ) : null}
+      {children}
+    </Button>
+  );
 }

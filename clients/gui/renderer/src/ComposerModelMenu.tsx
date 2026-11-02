@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { Input } from "@areal/ui";
 import { Zap } from "lucide-react";
 import { useId, useRef, useState } from "react";
@@ -154,13 +155,14 @@ export function ComposerModelMenu({
   );
   if (!availableOptions.length && !model)
     return (
-      <span
-        className="composer-model-trigger composer-model-empty text-foreground-subtle text-ui-sm"
-        title={emptyGuidance}
-        aria-label={emptyGuidance}
-      >
-        {t("chat.composer.noModels")}
-      </span>
+      <TitleTooltip title={emptyGuidance}>
+        <span
+          className="composer-model-trigger composer-model-empty text-foreground-subtle text-ui-sm"
+          aria-label={emptyGuidance}
+        >
+          {t("chat.composer.noModels")}
+        </span>
+      </TitleTooltip>
     );
   return (
     <div className="composer-model-controls">
@@ -194,13 +196,11 @@ export function ComposerModelMenu({
         >
           <span className="composer-model-name">{label}</span>
           {model?.unavailableReason && (
-            <span
-              className="text-destructive"
-              title={model.unavailableReason}
-              aria-label={model.unavailableReason}
-            >
-              !
-            </span>
+            <TitleTooltip title={model.unavailableReason}>
+              <span className="text-destructive" aria-label={model.unavailableReason}>
+                !
+              </span>
+            </TitleTooltip>
           )}
           <MenuChevronIcon size={14} aria-hidden="true" />
         </PopoverTrigger>

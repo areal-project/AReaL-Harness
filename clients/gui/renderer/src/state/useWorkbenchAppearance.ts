@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { applyThemeWithoutTransitions } from "@areal/ui/theme";
 import type { PlatformServices } from "../services.js";
 import { useAppearance } from "../settings/applicationPreferences.js";
 
@@ -88,9 +89,12 @@ export function useWorkbenchAppearance(
 }
 
 function applyTheme(theme: Awaited<ReturnType<PlatformServices["theme"]>>) {
-  document.documentElement.classList.toggle("platform-mac-desktop", theme.platform === "darwin");
-  document.documentElement.classList.toggle("dark", theme.dark);
-  document.documentElement.classList.toggle("theme-areal-light", !theme.dark);
-  document.documentElement.classList.toggle("theme-areal-dark", theme.dark);
-  document.documentElement.style.colorScheme = theme.dark ? "dark" : "light";
+  const root = document.documentElement;
+  root.classList.toggle("platform-mac-desktop", theme.platform === "darwin");
+  applyThemeWithoutTransitions(root, () => {
+    root.classList.toggle("dark", theme.dark);
+    root.classList.toggle("theme-areal-light", !theme.dark);
+    root.classList.toggle("theme-areal-dark", theme.dark);
+    root.style.colorScheme = theme.dark ? "dark" : "light";
+  });
 }

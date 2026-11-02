@@ -1,3 +1,4 @@
+import { TitleTooltip } from "../../components/tooltip/tooltip.js";
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "../../lib/utils.js";
 function Root({ className, ...props }: ComponentProps<"div">) {
@@ -18,15 +19,12 @@ function Item({
   ...props
 }: Omit<ComponentProps<"button">, "title"> & { title: string; description: string }) {
   return (
-    <button
-      type="button"
-      {...props}
-      className={cn("scheduled-item", className)}
-      title={`${title} · ${description}`}
-    >
-      <span>{title}</span>
-      <small>{description}</small>
-    </button>
+    <TitleTooltip title={`${title} · ${description}`}>
+      <button type="button" {...props} className={cn("scheduled-item", className)}>
+        <span>{title}</span>
+        <small>{description}</small>
+      </button>
+    </TitleTooltip>
   );
 }
 function Welcome({
@@ -130,19 +128,20 @@ function TaskRow({
       data-state={state}
     >
       {onOpen ? (
-        <button
-          type="button"
-          className="scheduled-row-main"
-          aria-description={openLabel}
-          title={`${title} · ${summary}`}
-          onClick={onOpen}
-        >
-          {body}
-        </button>
+        <TitleTooltip title={`${title} · ${summary}`}>
+          <button
+            type="button"
+            className="scheduled-row-main"
+            aria-description={openLabel}
+            onClick={onOpen}
+          >
+            {body}
+          </button>
+        </TitleTooltip>
       ) : (
-        <div className="scheduled-row-main" title={`${title} · ${summary}`}>
-          {body}
-        </div>
+        <TitleTooltip title={`${title} · ${summary}`}>
+          <div className="scheduled-row-main">{body}</div>
+        </TitleTooltip>
       )}
       {(variant === "card" || state !== "enabled") && <Status state={state} label={stateLabel} />}
       {actions && <span className="scheduled-row-actions">{actions}</span>}

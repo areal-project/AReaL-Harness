@@ -1,11 +1,27 @@
 @import "./generated/foundation.css";
 @import "./generated/tailwind.css";
 @import "./components/disclosure/disclosure.css";
+@import "./components/skeleton/skeleton.css";
 @source "./**/*.js";
 
 .ui-control {
   transition-duration: var(--motion-fast);
   transition-timing-function: var(--ease-standard);
+}
+/* 与 observeVisibleAnimation 配合：未登记或屏外时暂停。 */
+.areal-visible-spin {
+  animation: areal-visible-spin 1s linear var(--motion-loop);
+  animation-play-state: var(--visible-animation-state, paused);
+}
+@keyframes areal-visible-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+:root[data-theme-switching] *,
+:root[data-theme-switching] *::before,
+:root[data-theme-switching] *::after {
+  transition: none !important;
 }
 @import "./settings/settings-segmented-tabs/settings-segmented-tabs.css";
 @import "./components/settings-disclosure/settings-disclosure.css";

@@ -210,7 +210,10 @@ function readReceipts(value) {
     throw Object.assign(new Error("Invalid creation admission result"), {
       code: "RECEIPT_INVALID",
     });
-  return { data: value.data, ...(admission !== undefined ? { creationAdmission: admission } : {}) };
+  return {
+    data: value.data,
+    ...(admission !== undefined ? { creationAdmission: admission } : {}),
+  };
 }
 
 /** @param {unknown} value @returns {value is CreationAdmissionResult} */

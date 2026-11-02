@@ -26,7 +26,7 @@ related: ["disclosure"]
 
 ## 状态
 
-`R-BUTTON-003` 默认、hover、focus-visible、disabled、aria-invalid；业务控制等待或忙碌时能否点击。样式并不证明命令已被受理。
+`R-BUTTON-003` 默认、hover、按下、focus-visible、disabled、aria-invalid；业务控制等待或忙碌时能否点击。按下时缩放到 0.97 作即时反馈，带 `aria-haspopup` 的菜单触发器不缩放。样式并不证明命令已被受理。
 
 ## 行为
 
@@ -34,7 +34,7 @@ related: ["disclosure"]
 
 ## 内容
 
-`R-BUTTON-005` 可见文字命名动作；纯图标按钮提供 aria-label。普通动作使用原有限变体，不用 className 补齐基本外观。
+`R-BUTTON-005` 可见文字命名动作；纯图标按钮提供 aria-label。`title` 渲染为共享提示而不是浏览器原生提示，不承担可访问名称。普通动作使用原有限变体，不用 className 补齐基本外观。
 
 ## 可访问性
 

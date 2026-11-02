@@ -2,6 +2,8 @@
 
 # 参与开发
 
+并行写任务在编辑和派发前按[开发指南](docs/development/README.md#并行修改与终验)选择独立 worktree。创建 PR 使用[提交身份门禁](docs/development/README.md#pr-提交身份)，先确认已推送的目标提交，再创建并核对回执。
+
 先阅读[快速开始](docs/guides/quickstart.md)、[架构](docs/design/architecture.md)和[开发规范](AGENTS.md)，再按[开发指南](docs/development/README.md)运行 `make setup` 与 `make verify`。原生 Runtime、插件和 Workgroup 修改还需对应[集成测试](docs/development/testing.md)。
 
 涉及 GUI 页面、组件、样式、动效或 UI 文案时，编辑前先读[设计系统开工顺序](clients/gui/design-system/README.md#开工顺序)，交付遵循[设计完成条件](clients/gui/design-system/governance.md#完成条件)。

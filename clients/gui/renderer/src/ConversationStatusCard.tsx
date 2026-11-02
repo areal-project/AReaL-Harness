@@ -1,5 +1,6 @@
 import { useI18n } from "./i18n/IntlProvider.js";
 import { TaskContext } from "@areal/ui/experimental";
+import { DelayedVisible } from "@areal/ui";
 import "@areal/ui/conversation.css";
 import { Button } from "./components/ui/button.js";
 import { useEffect, useRef, useState } from "react";
@@ -220,11 +221,11 @@ export function ConversationStatusCard({
             工作区改动读取失败：{git.error}
           </p>
         )}
-        {git.loading && !git.review && (
+        <DelayedVisible active={git.loading && !git.review}>
           <p role="status" className="task-resource-note">
             {t("chat.context.readingChanges")}
           </p>
-        )}
+        </DelayedVisible>
         {git.review && (
           <TaskContext.Section label="工作区变更">
             <TaskContext.Item

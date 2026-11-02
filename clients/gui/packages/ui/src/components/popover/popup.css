@@ -1,5 +1,18 @@
-
-
-.ui-popup { transform-origin: var(--transform-origin); transition: opacity var(--motion-normal) var(--ease-standard), scale var(--motion-normal) var(--ease-standard); }
-.ui-popup[data-starting-style], .ui-popup[data-ending-style] { opacity: 0; scale: .98; }
-:root[data-reduced-motion="true"] .ui-popup { transition: none; }
+.ui-popup {
+  transform-origin: var(--transform-origin);
+  transition:
+    opacity var(--motion-normal) var(--ease-standard),
+    scale var(--motion-normal) var(--ease-standard);
+}
+.ui-popup[data-starting-style],
+.ui-popup[data-ending-style] {
+  opacity: 0;
+  scale: 0.98;
+}
+/* 提示在分组内切换到相邻触发器时立即出现，不重播入场。 */
+.ui-popup[data-instant] {
+  transition-duration: 0ms;
+}
+:root[data-reduced-motion="true"] .ui-popup {
+  transition: none;
+}

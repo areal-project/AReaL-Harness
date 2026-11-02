@@ -435,6 +435,14 @@ function Patterns({ id }: { id: string }) {
         <UI.Spinner label="包内加载中" />
       </>
     );
+  if (id === "skeleton")
+    return (
+      <div className="grid w-64 gap-2">
+        <UI.Skeleton className="w-3/4" />
+        <UI.Skeleton />
+        <UI.Skeleton shape="block" className="h-16" />
+      </div>
+    );
   if (id === "input-group")
     return (
       <UI.InputGroup>

@@ -70,17 +70,32 @@ def fetch(asset, cache):
     raise RuntimeError(f"cannot fetch pinned source: {asset['name']}")
 
 
-def prepare(root, output):
+def build_identity(root):
     lock_path = root / "runtime/host-tools/bash.lock.json"
     lock = json.loads(lock_path.read_text())
-    identity = {
+    return {
         "lockSha256": digest(lock_path),
         "builderSha256": digest(Path(__file__)),
         "machine": platform.machine(),
         "version": lock["version"],
         "minimumMacOSVersion": lock["minimumMacOSVersion"],
+        # 编译器、SDK 或 runner 镜像变化时，不能复用旧的原生程序。
+        "compiler": subprocess.check_output(["/usr/bin/clang", "--version"], text=True).strip(),
+        "sdk": subprocess.check_output(["/usr/bin/xcrun", "--show-sdk-version"], text=True).strip(),
+        "macOS": platform.mac_ver()[0],
+        "runnerImage": [os.environ.get("ImageOS", ""), os.environ.get("ImageVersion", "")],
     }
-    key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:20]
+
+
+def cache_key(identity):
+    return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:20]
+
+
+def prepare(root, output):
+    lock_path = root / "runtime/host-tools/bash.lock.json"
+    lock = json.loads(lock_path.read_text())
+    identity = build_identity(root)
+    key = cache_key(identity)
     cache = root / "target/runtime-shell"
     cache.mkdir(parents=True, exist_ok=True)
     # debug/release 与多个验收入口共享构建缓存，禁止同时覆盖同一组制品。
@@ -96,6 +111,7 @@ def prepare(root, output):
             if (
                 digest(binary) != previous["binarySha256"]
                 or digest(sources) != previous["sourceSha256"]
+                or digest(build / "COPYING") != previous["licenseSha256"]
             ):
                 raise ValueError("cached shell artifact checksum mismatch")
         else:
@@ -189,6 +205,7 @@ def prepare(root, output):
                     configure=flags,
                     binarySha256=digest(binary),
                     sourceSha256=digest(sources),
+                    licenseSha256=digest(build / "COPYING"),
                     license="GPL-3.0-or-later",
                 )
                 metadata.write_text(json.dumps(identity, indent=2) + "\n")
@@ -205,10 +222,14 @@ def prepare(root, output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=["debug", "release"], default="debug")
+    parser.add_argument("--cache-key", action="store_true", help="输出当前原生工具链的精确缓存键")
     arguments = parser.parse_args()
     if platform.system() != "Darwin":
         return
     root = Path(__file__).resolve().parents[1]
+    if arguments.cache_key:
+        print(cache_key(build_identity(root)))
+        return
     prepare(root, root / "target" / arguments.profile / "shells")
 
 

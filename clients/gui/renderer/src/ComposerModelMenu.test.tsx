@@ -76,10 +76,10 @@ describe("composer model provider identity", () => {
   });
 
   it.each(["direct", "relay"])(
-    "shows only the model name for %s while keeping its configured provider name in the title",
+    "shows only the model name for %s while keeping its configured provider name in the description",
     (provider) => {
       const markup = render(`${provider}/family/shared-model`);
-      expect(markup).toContain(`title="Shared model · Configured ${provider}"`);
+      expect(markup).toContain(`aria-description="Shared model · Configured ${provider}"`);
       expect(markup.replace(/<[^>]*>/g, "")).toBe("Shared model");
     },
   );
@@ -97,7 +97,7 @@ describe("composer model provider identity", () => {
     );
     expect(markup).toContain('aria-label="chat.composer.chooseModel"');
     expect(markup).toContain('aria-label="chat.composer.chooseEffort"');
-    expect(markup).toContain('title="custom-effort"');
+    expect(markup).toContain('aria-description="custom-effort"');
   });
 
   it("does not invent a provider for an implicit legacy default", () => {

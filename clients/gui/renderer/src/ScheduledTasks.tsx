@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ScheduledWorkspace } from "@areal/ui/experimental";
+import { DelayedVisible } from "@areal/ui";
 import { Button } from "./components/ui/button.js";
 import {
   DropdownMenu,
@@ -304,7 +305,9 @@ export function ScheduledTaskRow({
           />
         }
       />
-      {editorLoading && <p role="status">{t("common.loading")}</p>}
+      <DelayedVisible active={editorLoading}>
+        <p role="status">{t("common.loading")}</p>
+      </DelayedVisible>
       {editorError && (
         <p role="alert" className="scheduled-task-error">
           {editorError}

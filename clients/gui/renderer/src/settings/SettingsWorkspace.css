@@ -47,8 +47,8 @@
   background-position: right 8px center;
   background-size: 12px 12px;
   transition:
-    border-color 0.15s ease,
-    background-color 0.15s ease;
+    border-color var(--motion-normal) var(--ease-standard),
+    background-color var(--motion-normal) var(--ease-standard);
 }
 
 .settings-workspace select:hover:not(:disabled) {

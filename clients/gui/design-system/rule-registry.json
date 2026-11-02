@@ -102,7 +102,7 @@
       "title": "生产组件的键盘路径在设计 smoke 和 Electron 交互 smoke 中核对",
       "owner": "clients/gui/design-system/accessibility.md#键盘与动效",
       "strength": "default",
-      "textSha256": "c593dea4071c5484373cf4f2cac3be65f13fbeb762d96f17c83e92d863c884c1"
+      "textSha256": "5facf45eabc042826cb8b2499b1ed9826a415ab85ec662ebb6252ec402c0c632"
     },
     {
       "id": "R-ACCESSIBILITY-005",
@@ -2566,10 +2566,10 @@
     },
     {
       "id": "R-BUTTON-003",
-      "title": "默认、hover、focus-visible、disabled、aria-invalid",
+      "title": "默认、hover、按下、focus-visible、disabled、aria-invalid",
       "owner": "clients/gui/packages/ui/src/components/button/button.md#状态",
       "strength": "default",
-      "textSha256": "90e38e26dad7d56f02ce8c4e89ac16032bc6281b6f6b5afae15d8b1e2f3b1bdc"
+      "textSha256": "7635e6899f98d7ceaa4c182cf1fd8407336e8a389b5d6c18f390dac47dce67a8"
     },
     {
       "id": "R-BUTTON-004",
@@ -2583,7 +2583,7 @@
       "title": "可见文字命名动作",
       "owner": "clients/gui/packages/ui/src/components/button/button.md#内容",
       "strength": "default",
-      "textSha256": "b1d9539ec48139e9938db2f80bbacfb4b517d6a3a859a8e900e033581735a115"
+      "textSha256": "003ea652700a4d4450966ed064451adb12ffd0ad4f0bd3b0cd645f3489458e50"
     },
     {
       "id": "R-BUTTON-006",
@@ -2727,10 +2727,10 @@
     },
     {
       "id": "R-DISCLOSURE-007",
-      "title": "沿 reduced motion 偏好",
+      "title": "展开收起过渡面板高度，时长用 --motion-normal，沿 reduced motion 偏好",
       "owner": "clients/gui/packages/ui/src/components/disclosure/disclosure.md#规则",
       "strength": "default",
-      "textSha256": "20e6bbaa08743de7f83bfa30f7e271a690bf51b83e142ebc47656abb4d7b8367"
+      "textSha256": "52479cb5251dc20b46aac36e5e89a0745b1cfcfb352388cd28976c5bf1edf287"
     },
     {
       "id": "R-DROPDOWNMENU-001",
@@ -2849,7 +2849,7 @@
       "title": "默认尺寸、宿主className、局部加载",
       "owner": "clients/gui/packages/ui/src/components/spinner/spinner.md#状态",
       "strength": "default",
-      "textSha256": "2e7cecfdf6c8fd3d4a16f33a7aeb99743f8a2672237b6bee1faab2570c13604a"
+      "textSha256": "ae980251645ef9c54e0b7b9c4945725fe092fff9dbadd3466ef751d38fa20dda"
     },
     {
       "id": "R-SPINNER-003",
@@ -4548,7 +4548,7 @@
       "title": "TurnProgress.tsx 由 Messages 使用，接收有序子项与摘要事实",
       "owner": "clients/gui/renderer/src/Messages.md#turnprogress",
       "strength": "default",
-      "textSha256": "22ed93e55a57e5e51a70944d04806e3b68fb8fe49bc82721b8f796b69a9855c6"
+      "textSha256": "449657528b7c550d50d3386883d4c73e392f1b1ebeab7549cc1d89946e5d308d"
     },
     {
       "id": "R-MESSAGES-008",
@@ -4668,7 +4668,7 @@
       "title": "跟随最新时，新内容可推进视口",
       "owner": "clients/gui/renderer/src/Messages.md#对话信息流",
       "strength": "default",
-      "textSha256": "62a5903587098565d30c916355d98f4e3e2c4c832b674f0df5a5cac12997baa5"
+      "textSha256": "d326f9b23ee7271ef54c416a0f014a6c7ceb8c76295e32b3d881ce8670a76ed4"
     },
     {
       "id": "CONV-RESOURCE-01",
@@ -6667,21 +6667,57 @@
       "title": "Core 消息的可选 createdAt 通过消息内时间控件显示",
       "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
       "strength": "default",
-      "textSha256": "75cb31589683c4a4cfd70310cf3e7b4087fa9ecfcffe92191607f4781abb0afe"
+      "textSha256": "7b2a59fca62693873d1d462cb074efb1a8aea5f9665f98029067e77399a342fe"
     },
     {
       "id": "R-MESSAGES-011",
       "title": "中断分隔行位于轮次边界，使用持久 interruption 区分用户暂停与 Core 恢复，无工具轮次也显示",
       "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
       "strength": "default",
-      "textSha256": "5805c887484a411fc654e093e60c649e14b96e2619bd247c79f6abb81f053761"
+      "textSha256": "b7bea27d647d28aadd4605e97a05a4c5831a5ea99c56aff2c22b18bde2b42c91"
     },
     {
       "id": "R-MESSAGES-012",
-      "title": "本地点击发送在现有 ReadingView 登记临时阅读意图",
+      "title": "本地点击发送在现有 ReadingView 登记临时阅读意图，并立即把本地待发消息定位到阅读区域上沿",
       "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
       "strength": "default",
-      "textSha256": "8031a268b55291f53f3c83ce0557cf1a3da0ea3d91ff9b9e87e190c1f6f1893a"
+      "textSha256": "35925dec638f4901f836b26a08827caf8e717b308fd34c003c2249dda4bb5aa0"
+    },
+    {
+      "id": "R-SKELETON-001",
+      "title": "列表、卡片等有固定形状的内容在加载时用占位条保持版面",
+      "owner": "clients/gui/packages/ui/src/components/skeleton/skeleton.md#何时使用",
+      "strength": "default",
+      "textSha256": "0749ec10af30761982bb820f2f2972fb75d51a3b36ec02e14b9c757d75e05c2c"
+    },
+    {
+      "id": "R-SKELETON-002",
+      "title": "宿主用 useDelayedVisible(loading) 决定是否显示占位或 Spinner：加载持续 400ms ",
+      "owner": "clients/gui/packages/ui/src/components/skeleton/skeleton.md#状态",
+      "strength": "default",
+      "textSha256": "8af2936c4061f8cb95baeeac622dc885619b9524e28e34f066421d6babc82d92"
+    },
+    {
+      "id": "R-SKELETON-003",
+      "title": "全部占位条共用一次分步呼吸",
+      "owner": "clients/gui/packages/ui/src/components/skeleton/skeleton.md#行为",
+      "strength": "default",
+      "textSha256": "c899d56042dfde6c3e4d78836e666584d83bdc23e6a13188fe5201375a3c687f"
+    },
+    {
+      "id": "R-TOOLTIP-002",
+      "title": "延迟、打开、四向定位、触发器聚焦",
+      "owner": "clients/gui/packages/ui/src/components/tooltip/tooltip.md#状态",
+      "strength": "default",
+      "textSha256": "7d0814a72a86dd8f3aa100bea4b514dd6974c909746b65e09983025decbb4b7a"
+    },
+    {
+      "id": "R-CHECK-021",
+      "title": "提示用 TitleTooltip，不写原生 title",
+      "owner": "clients/gui/design-system/automation.md#仓库内-lint-规则",
+      "strength": "default",
+      "textSha256": "d82273b63fed2a527029a9292a9ac1abb9225363cf73a7d67d56f9d23d58d6b8",
+      "check": "clients/gui/scripts/motion-lint.mjs"
     }
   ]
 }

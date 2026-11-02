@@ -204,6 +204,7 @@ pub struct ObserveThread {
 #[serde(rename_all = "camelCase")]
 pub enum ObservationMode {
     Bounded,
+    Conversation,
 }
 
 pub const DEFAULT_HISTORY_PAGE_BYTES: usize = 256 * 1024;
@@ -219,6 +220,8 @@ pub struct DeferredHistoryItem {
     pub cursor: String,
     pub version: String,
     pub total_bytes: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview: Option<super::Item>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
