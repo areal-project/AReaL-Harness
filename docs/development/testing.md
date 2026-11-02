@@ -400,6 +400,8 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 
 `pnpm --dir clients/gui run test:host-handoff` 使用隔离 Electron、真实 TUI PTY 和固定 `.local/shared-host-bin` 产物。GUI 提交停在审批后强退 Main，TUI 连接原 Core 完成原 Turn，Runtime 文件副作用恰好一次。GUI 重开后核对原 Turn、同项目 TUI 新会话和独立 CLI 项目的历史。脚本检查源码、构建与产物身份，并将截图、终端输出、注册记录和清理结果保存在 `.scratch/shared-host/h2-gui-tui-handoff/`。模型仅使用本地确定性 fixture，目录选择器由测试注入；该场景不覆盖凭据迁移、真实供应商或安装包。
 
+`node clients/gui/scripts/shared-host-source-handoff.mjs --unit` 检查迁移适配器的 journal CAS、凭据版本和丢回复核查。真实迁移使用同一脚本，传入 `--legacy-app=<冻结旧版 app 目录>` 和 `--host-bin=<固定 areal 产物>`，并要求旧目录旁的 `source-manifest.json` 校验通过。macOS 运行须先取得隔离 Keychain 读写与测试条目清理授权，再设置 `AREAL_TEST_HOST_KEYCHAIN=1`。脚本使用随机应用身份的 Electron 副本和独立 Host home，先核对原生 safeStorage 条目身份，再测试凭据持久化和 journal 接管后的两次强杀恢复。旧入口真实创建请求的回复在 CoreClient 收到前被截断；新入口只能核查原回执，并断言没有再次创建且仅有一个会话。证据目录保留 `result.json`、中断与恢复记录、`keychain-cleanup.json`；清理仅针对记录的测试 service/account 和本次进程。脚本通过且正常退出才算验收完成。此项不证明发行签名身份、真实凭据或供应商可用。
+
 macOS 上即使 GUI 配置为空，启动也会生成订阅传输 token 并写入 Keychain。运行前须取得测试 Keychain 读写授权，再设置 `AREAL_TEST_HOST_KEYCHAIN=1`；未设置时脚本在创建测试状态或启动进程前退出。系统授权可能需要用户手动确认。超时且回执为 `acceptedPending` 时保留原隔离目录和请求 ID，先核查原操作；不能视为未写入后重新提交。
 
 故障清理时，控制 socket 或 Core 的本机 HTTP 端点可先关闭而实例锁仍由清理进程持有；故障状态轮询只等待明确的连接拒绝过渡，仍须在原有期限内读到预期的 `stopped` 或 `unavailable`。其它错误立即失败，正常状态查询不放宽。`AREAL_TEST_EVIDENCE` 可指定 JSON 回执位置，记录阶段和状态轮询；CI 将其保存在 `target/ci/local-service.json`，失败时与日志一起上传。

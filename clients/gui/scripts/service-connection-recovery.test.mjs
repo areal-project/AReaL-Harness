@@ -90,72 +90,130 @@ test("disposal during control read prevents initialization", async (t) => {
   assert.equal(f.backend.connecting, null);
 });
 
-test("application shutdown preserves registered historical project identity and rejects crossed bindings", async () => {
+test("historical project aliases authenticate Host ownership and explicit stop receipts", async (t) => {
   const local = require("../app/src/core/local-service.cjs");
-  const original = local.serviceRequest;
-  const owner = {
-    kind: "gui",
-    appRunId: "5c450fa8-b0af-492c-9c7b-2233736efbed",
-    profile: "/fixture/profile",
+  const home = await realpath(await mkdtemp(join(tmpdir(), "areal-host-ownership-")));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const id = "111111111111111111111111";
+  const root = join(home, "restored-workspace"),
+    dataDir = join(home, id, "state"),
+    authFile = join(dataDir, "auth.json");
+  await mkdir(root);
+  await mkdir(dataDir, { recursive: true });
+  await writeFile(
+    authFile,
+    JSON.stringify({
+      principals: [{ token: "fixture-token", permissions: ["observe", "interact", "manage"] }],
+    }),
+  );
+  const backend = new CoreBackend({ binary: process.execPath, home });
+  const host = backend.host;
+  host.client.hostId = "fixture-host";
+  host.client.generation = "fixture-host-generation";
+  const binding = {
+    alias: { profile: host.source.profile, legacyProjectId: id },
+    projectId: "fixture-host-project",
+    workspace: root,
+    dataDir,
+    scratchDir: join(home, id, "scratch"),
   };
-  const home = "/fixture/core",
-    id = "111111111111111111111111",
-    root = "/fixture/restored-workspace";
-  const project = { id, root };
+  host.bindings.set(id, binding);
   const descriptor = {
-    owner,
-    serviceId: "instance",
-    generation: "generation",
+    protocolVersion: 1,
+    owner: { kind: "host", hostId: host.client.hostId, generation: host.client.generation },
+    serviceId: "222222222222222222222222",
+    generation: "fixture-core-generation",
     configFingerprint: "fixture",
     workspace: root,
-    dataDir: join(home, id, "state"),
-    state: "running",
+    dataDir,
+    state: "ready",
+    endpoint: "ws://127.0.0.1:1",
+    authFile,
   };
-  let descriptors = [descriptor];
-  local.serviceRequest = async () => descriptors;
-  const backend = Object.assign(Object.create(CoreBackend.prototype), {
-    home,
-    applicationOwner: owner,
-    saved: [project],
-    projects: new Map([[id, project]]),
-    ownedEngines: new Map(),
-    starting: new Map(),
+  assert.deepEqual(await local.authenticateService(host, id, descriptor), {
+    descriptor,
+    token: "fixture-token",
   });
-  try {
-    await backend.refreshOwnedEngines();
+  for (const changed of [
+    { dataDir: join(home, "another-project", "state") },
+    { workspace: join(home, "another-workspace") },
+  ]) {
+    await assert.rejects(local.authenticateService(host, id, { ...descriptor, ...changed }), {
+      code: "CORE_INCOMPATIBLE",
+    });
     assert.equal(
-      backend.ownedEngines.get(id).service,
-      descriptor,
-      "the registered ID owns its original data",
+      host.resolve(id),
+      binding,
+      "invalid descriptors cannot replace historical ownership",
     );
-    assert.equal(backend.ownedEngines.size, 1);
-    for (const changed of [
-      { dataDir: join(home, "another-project", "state") },
-      { workspace: "/fixture/other-workspace" },
-    ]) {
-      descriptors = [{ ...descriptor, ...changed }];
-      await assert.rejects(backend.refreshOwnedEngines(), /数据目录与登记不匹配/);
-      assert.equal(
-        backend.ownedEngines.get(id).service,
-        descriptor,
-        "invalid binding cannot replace the original generation",
-      );
-    }
-    descriptors = [{ ...descriptor, generation: "replacement" }];
-    await assert.rejects(backend.refreshOwnedEngines(), { code: "CONFIRMATION_STALE" });
-    assert.equal(backend.ownedEngines.get(id).service, descriptor);
-    descriptors = [
-      {
-        ...descriptor,
-        owner: { ...owner, appRunId: "another-app" },
-        dataDir: "/another-profile/state",
-      },
-    ];
-    await backend.refreshOwnedEngines();
-    assert.equal(backend.ownedEngines.size, 1, "another application remains outside this owner");
-  } finally {
-    local.serviceRequest = original;
   }
+  for (const owner of [
+    { ...descriptor.owner, hostId: "another-host" },
+    { ...descriptor.owner, generation: "replacement-host-generation" },
+  ])
+    await assert.rejects(local.authenticateService(host, id, { ...descriptor, owner }), {
+      code: "CORE_OWNER_MISMATCH",
+    });
+  const target = {
+    projectId: id,
+    serviceId: descriptor.serviceId,
+    generation: descriptor.generation,
+    requestId: "5c450fa8-b0af-492c-9c7b-2233736efbed",
+  };
+  let receipt = {
+    version: 1,
+    requestId: target.requestId,
+    projectId: binding.projectId,
+    serviceId: target.serviceId,
+    serviceGeneration: target.generation,
+    strategy: "ifIdle",
+    state: "completed",
+  };
+  host.client.request = async (method, params) => {
+    assert.equal(method, "project.stop");
+    assert.deepEqual(params, {
+      requestId: target.requestId,
+      expectedGeneration: host.client.generation,
+      projectId: binding.projectId,
+      serviceGeneration: target.generation,
+      strategy: "ifIdle",
+    });
+    return receipt;
+  };
+  assert.deepEqual(await local.requestStop(backend, target, false), {
+    ...receipt,
+    generation: target.generation,
+    cancel: false,
+  });
+  for (const changed of [
+    { projectId: "another-host-project" },
+    { serviceId: "333333333333333333333333" },
+    { serviceGeneration: "replacement-core-generation" },
+  ]) {
+    const original = receipt;
+    receipt = { ...original, ...changed };
+    await assert.rejects(local.requestStop(backend, target, false), {
+      code: "LIFECYCLE_RECEIPT_INVALID",
+    });
+    receipt = original;
+  }
+});
+
+test("application shutdown leaves Host-owned Core services running", async (t) => {
+  const f = await fixture(t);
+  await f.publish();
+  await f.backend.attach();
+  await f.backend.prepareQuit();
+  await f.backend.completeApplicationQuit({ keepBackground: true });
+  await f.backend.shutdown();
+  assert.deepEqual(JSON.parse(await readFile(join(f.home, "service.json"), "utf8")), f.metadata);
+  assert.equal(
+    f.calls.some((call) =>
+      ["lifecycleRequest", "stopService", "host.stop", "project.stop"].includes(call.method),
+    ),
+    false,
+    "closing the GUI never submits a Core or Host stop",
+  );
 });
 
 test("completed original shutdown clears GUI terminals after the transport disconnects", async (t) => {
@@ -512,9 +570,32 @@ async function journalFixture(t) {
   const home = await realpath(await mkdtemp(join(tmpdir(), "areal-correlated-receipt-")));
   t.after(() => rm(home, { recursive: true, force: true }));
   const calls = [];
+  const journalPath = join(home, "host-journal-fixture.json");
+  await writeFile(journalPath, JSON.stringify({ version: 1, pending: [], outcomes: {} }));
   const reload = async () => {
     const backend = new CoreBackend({ binary: process.execPath, home });
     backend.saved = [{ id: "p", root: home }];
+    const journal = {
+      read: async () => ({ snapshot: JSON.parse(await readFile(journalPath, "utf8")) }),
+      change: async (mutate) => {
+        const { snapshot } = await journal.read();
+        await writeFile(journalPath, JSON.stringify(await mutate(snapshot)));
+        return { state: "completed" };
+      },
+    };
+    backend.host.sourceId = "fixture-source";
+    backend.host.bindings.set("p", {
+      alias: { profile: backend.host.source.profile, legacyProjectId: "p" },
+      sourceId: backend.host.sourceId,
+      projectId: "fixture-project",
+      workspace: home,
+      dataDir: join(home, "p", "state"),
+      scratchDir: join(home, "p", "scratch"),
+    });
+    backend.host.client.journal = (id) => {
+      assert.equal(id, "fixture-project");
+      return journal;
+    };
     const project = await backend.loadProjectJournal("p");
     project.client = {
       ready: true,
@@ -528,7 +609,7 @@ async function journalFixture(t) {
         return { turn: { id: "accepted-turn" } };
       },
     };
-    return { backend, project };
+    return { backend, project, journal };
   };
   return { home, calls, reload, ...(await reload()) };
 }
@@ -553,10 +634,10 @@ for (const method of ["areal/turn/start", "areal/turn/enqueue"]) {
       turnId: "accepted-turn",
       operation: { method, requestId, target: { kind: "thread", threadId: "t" } },
     };
-    assert.deepEqual(JSON.parse(await readFile(join(f.home, "p-outcomes.json"), "utf8")), {
+    assert.deepEqual((await f.journal.read()).snapshot.outcomes, {
       [requestId]: expectedOutcome,
     });
-    assert.deepEqual(JSON.parse(await readFile(join(f.home, "p-pending.json"), "utf8")), []);
+    assert.deepEqual((await f.journal.read()).snapshot.pending, []);
     const recovered = await f.reload();
     assert.deepEqual(await recovered.backend.command("reconcile", { projectId: "p" }), {
       outcomes: { [requestId]: expectedOutcome },
@@ -571,7 +652,13 @@ for (const method of ["areal/turn/start", "areal/turn/enqueue"]) {
     const f = await journalFixture(t);
     const requestId = "f12a0dbc-3375-43f8-a3f1-36f204ed4e8a";
     const parameters = { threadId: "t", input: [{ type: "text", text: "send once" }] };
-    await mkdir(join(f.home, "p-outcomes.json"));
+    const change = f.journal.change;
+    f.journal.change = async (mutate) => {
+      const { snapshot } = await f.journal.read();
+      const next = await mutate(snapshot);
+      if (Object.keys(next.outcomes).length) throw new Error("fixture: outcome disk unavailable");
+      return change(() => next);
+    };
     assert.deepEqual(await f.backend.submit(f.project, method, parameters, { requestId }), {
       turn: { id: "accepted-turn" },
     });
@@ -579,7 +666,7 @@ for (const method of ["areal/turn/start", "areal/turn/enqueue"]) {
     assert.equal(new Date(createdAt).toISOString(), createdAt);
     assert.equal(f.project.refreshErrors[requestId].refreshPending, true);
     assert.equal(f.project.refreshErrors[requestId].operation.requestId, requestId);
-    assert.deepEqual(JSON.parse(await readFile(join(f.home, "p-pending.json"), "utf8")), [
+    assert.deepEqual((await f.journal.read()).snapshot.pending, [
       {
         method,
         createdAt,
@@ -587,12 +674,12 @@ for (const method of ["areal/turn/start", "areal/turn/enqueue"]) {
         operation: { method, requestId, target: { kind: "thread", threadId: "t" } },
       },
     ]);
-    await rm(join(f.home, "p-outcomes.json"), { recursive: true });
+    f.journal.change = change;
     const recovered = await f.reload();
     assert.deepEqual(await recovered.backend.command("reconcile", { projectId: "p" }), {
       outcomes: {},
     });
-    assert.deepEqual(JSON.parse(await readFile(join(f.home, "p-pending.json"), "utf8")), [
+    assert.deepEqual((await f.journal.read()).snapshot.pending, [
       {
         method,
         createdAt,
@@ -613,8 +700,8 @@ for (const method of ["areal/turn/start", "areal/turn/enqueue"]) {
     assert.deepEqual(await f.backend.submit(f.project, method, parameters), {
       turn: { id: "accepted-turn" },
     });
-    assert.deepEqual(JSON.parse(await readFile(join(f.home, "p-pending.json"), "utf8")), []);
-    await assert.rejects(readFile(join(f.home, "p-outcomes.json"), "utf8"), { code: "ENOENT" });
+    assert.deepEqual((await f.journal.read()).snapshot.pending, []);
+    assert.deepEqual((await f.journal.read()).snapshot.outcomes, {});
     assert.equal(f.calls.length, 1);
     assert.equal(f.calls[0].method, method);
     assert.deepEqual(f.calls[0].params.input, [{ type: "text", text: "send once" }]);
@@ -709,9 +796,7 @@ test("subscription refresh unknown retains only its dispatched provider request 
     [providerRequest],
     "only the dispatched provider request needs recovery",
   );
-  assert.deepEqual(JSON.parse(await readFile(join(f.home, "p-pending.json"), "utf8")), [
-    providerRequest,
-  ]);
+  assert.deepEqual((await f.journal.read()).snapshot.pending, [providerRequest]);
   assert.deepEqual(f.project.outcomes, {}, "an unknown refresh cannot fabricate acceptance");
 
   recovered = true;
@@ -719,7 +804,7 @@ test("subscription refresh unknown retains only its dispatched provider request 
   restored.project.client.request = transport;
   await restored.backend.reconcile(restored.project);
   assert.deepEqual(restored.project.pending, []);
-  assert.deepEqual(JSON.parse(await readFile(join(f.home, "p-pending.json"), "utf8")), []);
+  assert.deepEqual((await f.journal.read()).snapshot.pending, []);
   assert.equal(
     f.calls.filter((call) => call.method === "areal/provider/upsert").length,
     1,
@@ -786,7 +871,7 @@ test("subscription-selected turn submission uses its original receipt without re
     { method: "areal/turn/submit", params: { ...parameters, requestId } },
   ]);
   assert.deepEqual(f.project.pending, []);
-  assert.deepEqual(JSON.parse(await readFile(join(f.home, "p-pending.json"), "utf8")), []);
+  assert.deepEqual((await f.journal.read()).snapshot.pending, []);
   assert.deepEqual(f.project.outcomes[requestId], {
     accepted: true,
     status: "completed",
