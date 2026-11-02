@@ -23,6 +23,8 @@ Tool-fact acceptance uses `scripts/support/tool-history.mjs`: acquire/loadItem o
 
 When a new history view acquires an already invalidated window, it rebuilds the baseline once before bounded hydration; registering the same view again does not trigger recovery loops. Connection/window changes, renewed invalidation, or release of all views during the read still fail explicitly. Concurrent readers share hydration, and closing one reader does not cancel another live view.
 
+The GUI `workflow_dispatch` input `smoke_parallel` explicitly compares the scheduling candidates 4/5. The default and ordinary PR/main runs stay at 4; shared resource usage is not raised automatically. Only the smoke matrix limit changes: tests, gates, timeouts and real artifact dependencies remain intact. After cache population for one successful ref/SHA, run both values serially with the same `comparison_base` and `qualification=none`, recording actual cache hits, concurrent workflows, first failure feedback, total feedback and accumulated runner time. Do not compare an observation overlapping queued/running main work as an isolated result. Gaps in matrix/shared execution do not turn created-to-started time into proof of insufficient capacity; ordering and five-way parallelism remain falsifiable candidates, not established remedies for long waits.
+
 | Entry point | Coverage |
 |---|---|
 | `make verify` | Cordis pin, formatting, static checks, Rust workspace, both SDKs, Python, documentation, TUI and unified delegation smoke |

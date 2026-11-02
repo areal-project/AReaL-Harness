@@ -21,6 +21,8 @@ Side Chat 的 Esc 回退测试等待任务资源外层弹层完全退出布局�
 
 新的 history view 在 acquire 时若发现既有窗口已失效，只重建一次基线后按原预算补全；已有 view 的重复注册不触发恢复循环。读取期间连接或窗口换代、再次失效或全部 view 被释放仍返回真实失败。并发读取者共享补全，关闭一个读取者不取消其他仍存活的 view。
 
+调度候选通过 GUI 的 `workflow_dispatch` 输入 `smoke_parallel` 显式比较 4/5；默认值和普通 PR/main 固定为 4，不自动提高共享资源占用。该开关只改变 smoke 矩阵上限，不改变测试、门禁、超时或真实产物依赖。完成同一成功 ref/SHA 的缓存预热后，以同一个 `comparison_base` 和 `qualification=none` 串行运行两个值，记录真实缓存命中、同期工作流、首次失败反馈、总反馈和累计 runner 时间；若有 main 等待或重叠运行，应先结束本次对照再比较。矩阵与共享池空档不能据 created→started 自动解释为容量不足；排序或五并发仅是待证伪候选，不宣称能消除长等待。
+
 | 入口 | 范围 |
 |---|---|
 | `make verify` | Cordis pin、格式、静态检查、Rust workspace、两套 SDK、Python、文档、TUI 与统一委派 smoke |

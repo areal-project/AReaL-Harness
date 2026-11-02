@@ -13,6 +13,12 @@ on:
         type: choice
         options: [none, linux-feasibility, macos-baseline]
         default: none
+      smoke_parallel:
+        description: Isolated scheduling comparison; ordinary PR/main runs remain at four
+        required: false
+        type: choice
+        options: ['4', '5']
+        default: '4'
   pull_request:
   push:
     branches: [main]
@@ -45,6 +51,7 @@ jobs:
       release: ${{ steps.scope.outputs.release }}
       smoke_matrix: ${{ steps.scope.outputs.smoke_matrix }}
       core_matrix: ${{ steps.scope.outputs.core_matrix }}
+      smoke_parallel: ${{ steps.scheduling.outputs.parallel }}
       gui_health: ${{ steps.scope.outputs.gui_health }}
       gui_portable: ${{ steps.scope.outputs.gui_portable }}
       relay: ${{ steps.scope.outputs.relay }}
@@ -63,6 +70,21 @@ jobs:
         run: python3 scripts/check-workflows.py
       - id: scope
         run: python3 scripts/ci-scope.py
+      - name: Select measured smoke scheduling limit
+        id: scheduling
+        env:
+          SMOKE_PARALLEL_INPUT: ${{ inputs.smoke_parallel }}
+        run: |
+          parallel=4
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            parallel="${SMOKE_PARALLEL_INPUT:-4}"
+          fi
+          case "$parallel" in
+            4|5) ;;
+            *) echo "unsupported smoke scheduling limit" >&2; exit 1 ;;
+          esac
+          echo "parallel=$parallel" >> "$GITHUB_OUTPUT"
+          echo "smoke max-parallel=$parallel event=$GITHUB_EVENT_NAME"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '24.22.1'
@@ -527,7 +549,7 @@ jobs:
     strategy:
       fail-fast: false
       # 限制本矩阵并发；其他 workflow 仍共同竞争账户的 macOS 配额。
-      max-parallel: 4
+      max-parallel: ${{ fromJSON(needs.scope.outputs.smoke_parallel) }}
       matrix: ${{ fromJSON(needs.scope.outputs.smoke_matrix) }}
     steps:
       - name: Prepare isolated smoke temporary root

@@ -511,6 +511,44 @@ class CiContracts(unittest.TestCase):
         ]
         self.assertEqual(timing.predecessors(jobs[-1], jobs), jobs[1:3])
 
+    def test_scheduling_experiment_cannot_raise_pr_or_main_parallelism(self):
+        workflow = (ROOT / ".github/workflows/gui.yml").read_text()
+        step = workflow.split("- name: Select measured smoke scheduling limit", 1)[1].split(
+            "      - uses:", 1
+        )[0]
+        command = textwrap.dedent(step.split("run: |\n", 1)[1])
+        self.assertIn("max-parallel: ${{ fromJSON(needs.scope.outputs.smoke_parallel) }}", workflow)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "output"
+            for event, requested, expected in [
+                ("pull_request", "5", "4"),
+                ("push", "5", "4"),
+                ("workflow_dispatch", "", "4"),
+                ("workflow_dispatch", "4", "4"),
+                ("workflow_dispatch", "5", "5"),
+                ("workflow_dispatch", "6", None),
+                ("workflow_dispatch", "5; exit 0", None),
+            ]:
+                with self.subTest(event=event, requested=requested):
+                    output.unlink(missing_ok=True)
+                    result = subprocess.run(
+                        ["bash", "-e", "-o", "pipefail", "-c", command],
+                        env={
+                            **os.environ,
+                            "GITHUB_EVENT_NAME": event,
+                            "SMOKE_PARALLEL_INPUT": requested,
+                            "GITHUB_OUTPUT": str(output),
+                        },
+                        capture_output=True,
+                        text=True,
+                    )
+                    if expected is None:
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertFalse(output.exists())
+                    else:
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertEqual(output.read_text(), f"parallel={expected}\n")
+
     def test_main_runs_cannot_replace_each_other_and_prs_cancel_superseded_runs(self):
         for name in ("ci", "gui", "workflow-lint", "provider-config"):
             workflow = (ROOT / f".github/workflows/{name}.yml").read_text()
