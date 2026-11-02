@@ -1179,7 +1179,8 @@ try {
         "folding the duration retains the reader's tool expansion",
       );
       await activityToggle.click();
-      assert.equal(await activity.isVisible(), false);
+      // 折叠面板有收起过渡，等过渡结束后再判断。
+      await activity.waitFor({ state: "hidden" });
       await activityToggle.click();
       await timeline.getByRole("button", { name: "显示执行中", exact: true }).click();
       assert.equal(

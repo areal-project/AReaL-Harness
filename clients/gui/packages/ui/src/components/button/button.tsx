@@ -5,9 +5,10 @@ import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cn } from "../../lib/utils.js";
 
 // 大会话窗口 resize trace 显示基础按钮的 transition-all 会批量启动
-// scrollbar-color/尺寸等非合成动画，放大主线程 style/layout 压力；按钮只需要颜色过渡。
+// scrollbar-color/尺寸等非合成动画，放大主线程 style/layout 压力；只过渡颜色和合成层的 scale。
+// 按下缩放给出即时反馈；菜单触发器跳过，避免与弹出的菜单同时变形。
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-button border border-transparent bg-clip-padding text-ui-caption/relaxed whitespace-nowrap ui-control transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/40 select-none disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center rounded-button border border-transparent bg-clip-padding text-ui-caption/relaxed whitespace-nowrap ui-control transition-[color,background-color,border-color,box-shadow,scale] [&:active:not([aria-haspopup])]:scale-[0.97] outline-none focus-visible:ring-2 focus-visible:ring-ring/40 select-none disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
