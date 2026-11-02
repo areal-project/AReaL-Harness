@@ -3,6 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 
 import { cn } from "../../lib/utils.js";
+import { TitleTooltip } from "../tooltip/tooltip.js";
 
 // 大会话窗口 resize trace 显示基础按钮的 transition-all 会批量启动
 // scrollbar-color/尺寸等非合成动画，放大主线程 style/layout 压力；只过渡颜色和合成层的 scale。
@@ -51,6 +52,7 @@ function Button({
   variant = "default",
   size = "default",
   unstyled = false,
+  title,
   ...props
 }: Omit<React.ComponentProps<typeof ButtonPrimitive>, "className"> &
   VariantProps<typeof buttonVariants> & {
@@ -58,7 +60,7 @@ function Button({
     /** Retain Base UI behavior when an existing composition owns all appearance. */
     unstyled?: boolean;
   }) {
-  return (
+  const button = (
     <ButtonPrimitive
       data-slot="button"
       data-variant={unstyled ? undefined : variant}
@@ -67,6 +69,8 @@ function Button({
       {...props}
     />
   );
+  // 原生 title 的延迟、外观和位置都与应用提示不同；title 统一渲染为共享提示。
+  return <TitleTooltip title={title}>{button}</TitleTooltip>;
 }
 
 export { Button, buttonVariants };

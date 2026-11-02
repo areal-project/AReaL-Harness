@@ -106,4 +106,33 @@ function TooltipContent({
     </TooltipPrimitive.Portal>
   );
 }
-export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger };
+/**
+ * 代替浏览器原生 title：延迟、外观和位置与应用提示一致。title 为空时原样返回元素。
+ * 元素本身成为触发器，不额外包一层 DOM。文字 title 同时写入 aria-description，
+ * 保留原生 title 给辅助技术的说明；与 aria-label 相同时不重复。
+ */
+function TitleTooltip({
+  title,
+  children,
+}: {
+  title?: React.ReactNode;
+  children: React.ReactElement<{ "aria-label"?: string }>;
+}) {
+  if (title === undefined || title === null || title === false || title === "") return children;
+  const description =
+    typeof title === "string" && children.props["aria-label"] !== title ? title : undefined;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={children} aria-description={description} />
+      <TooltipContent
+        sideOffset={2}
+        className="max-w-[min(28rem,calc(100vw-1rem))] px-2.5 py-1 text-left"
+      >
+        <span className="text-ui-sm font-medium whitespace-pre-line break-words text-tooltip-foreground">
+          {title}
+        </span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, TitleTooltip };

@@ -53,8 +53,6 @@ export {
 } from "./components/command/command.js";
 
 export { Spinner } from "./components/spinner/spinner.js";
-export { Skeleton } from "./components/skeleton/skeleton.js";
-export { useDelayedVisible } from "./lib/delayed-visibility.js";
 export { HoverActions } from "./components/hover-actions/hover-actions.js";
 export {
   SettingsLockedValue,

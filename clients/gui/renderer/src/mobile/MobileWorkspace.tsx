@@ -1,3 +1,5 @@
+import { DelayedVisible } from "@areal/ui";
+import { TitleTooltip } from "@areal/ui";
 import { useCallback, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@areal/ui";
 import { ChevronLeft, ChevronRight, Monitor, RotateCw, SquarePen } from "lucide-react";
@@ -168,8 +170,12 @@ export function MobileWorkspaceView({
               </Button>
               {page.kind !== "work" && (
                 <div className="mobile-navigation-copy flex-1 min-w-0 [&_h2]:block [&_h2]:min-w-0 [&_h2]:max-w-full [&_h2]:truncate [&_p]:block [&_p]:min-w-0 [&_p]:max-w-full [&_p]:truncate [&_h2]:text-fixed-emphasis [&_p]:text-fixed-caption [&_p]:text-foreground-subtle">
-                  <h2 title={title}>{page.kind === "new" ? t("mobile.newConversation") : title}</h2>
-                  <p title={project?.name}>{project?.name}</p>
+                  <TitleTooltip title={title}>
+                    <h2>{page.kind === "new" ? t("mobile.newConversation") : title}</h2>
+                  </TitleTooltip>
+                  <TitleTooltip title={project?.name}>
+                    <p>{project?.name}</p>
+                  </TitleTooltip>
                 </div>
               )}
               {page.kind === "work" && (
@@ -188,7 +194,9 @@ export function MobileWorkspaceView({
             </div>
             {page.kind === "work" && (
               <div className="mobile-page-heading shrink-0 [&_p]:mt-inline! [&_h2]:block [&_h2]:min-w-0 [&_h2]:max-w-full [&_h2]:truncate [&_h2]:text-fixed-page-title [&_p]:text-fixed-body [&_p]:text-foreground-subtle">
-                <h2 title={title}>{title}</h2>
+                <TitleTooltip title={title}>
+                  <h2>{title}</h2>
+                </TitleTooltip>
                 <p>{t("mobile.runsOnComputer")}</p>
               </div>
             )}
@@ -203,11 +211,11 @@ export function MobileWorkspaceView({
             {t("mobile.readFailed")}
           </p>
         )}
-        {view.loading && (
+        <DelayedVisible active={view.loading}>
           <span className="sr-only" role="status">
             {t("mobile.loading")}
           </span>
-        )}
+        </DelayedVisible>
         {page.kind === "projects" && (
           <div className="mobile-stack flex flex-col gap-field">
             {!view.projects.length && !view.loading && <p>{t("mobile.noProjects")}</p>}
@@ -238,9 +246,9 @@ export function MobileWorkspaceView({
                     <ProjectFolderIcon />
                   </span>
                   <span className="mobile-card-copy gap-[calc(var(--spacing-inline)/2)] [&>span:first-child]:block [&>span:first-child]:w-full [&>span:first-child]:min-w-0 [&>span:first-child]:max-w-full [&>span:first-child]:truncate [&_>_span:first-child]:text-fixed-control [&_>_span:first-child]:font-semibold [&_>_span:first-child]:[line-height:1.4] [&_>_span:not(:first-child)]:text-fixed-caption [&_>_span:not(:first-child)]:[line-height:1.4] [&_>_span:not(:first-child)]:text-foreground-subtle flex flex-1 min-w-0 flex-col items-start">
-                    <span className="text-fixed-emphasis" title={project.name}>
-                      {project.name}
-                    </span>
+                    <TitleTooltip title={project.name}>
+                      <span className="text-fixed-emphasis">{project.name}</span>
+                    </TitleTooltip>
                     <span className="text-fixed-caption text-foreground-subtle">
                       {project.connectionState === "online"
                         ? running || attention
@@ -301,10 +309,12 @@ export function MobileWorkspaceView({
                   }
                 >
                   <span className="mobile-card-copy gap-[calc(var(--spacing-inline)/2)] [&>span:first-child]:block [&>span:first-child]:w-full [&>span:first-child]:min-w-0 [&>span:first-child]:max-w-full [&>span:first-child]:truncate [&_>_span:first-child]:text-fixed-control [&_>_span:first-child]:font-semibold [&_>_span:first-child]:[line-height:1.4] [&_>_span:not(:first-child)]:text-fixed-caption [&_>_span:not(:first-child)]:[line-height:1.4] [&_>_span:not(:first-child)]:text-foreground-subtle flex flex-1 min-w-0 flex-col items-start">
-                    <span className="text-fixed-control" title={row.title || t("mobile.untitled")}>
-                      {row.kind === "taskRun" && `${t("mobile.task")} · `}
-                      {row.title || t("mobile.untitled")}
-                    </span>
+                    <TitleTooltip title={row.title || t("mobile.untitled")}>
+                      <span className="text-fixed-control">
+                        {row.kind === "taskRun" && `${t("mobile.task")} · `}
+                        {row.title || t("mobile.untitled")}
+                      </span>
+                    </TitleTooltip>
                     <span className="mobile-work-meta flex items-center flex-wrap gap-[calc(var(--spacing-inline)/2)]">
                       <Status row={row} />
                       <span aria-hidden="true">·</span>

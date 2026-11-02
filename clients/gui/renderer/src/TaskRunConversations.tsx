@@ -1,3 +1,5 @@
+import { DelayedVisible } from "@areal/ui";
+import { TitleTooltip } from "@areal/ui";
 import { describeMoment } from "./scheduleText.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useEffect, useRef, useState } from "react";
@@ -158,14 +160,16 @@ export function TaskRunConversations({
             data-task-run-id={run.id}
             className="grid min-w-0 gap-2 border-t border-border pt-4"
           >
-            <header className="flex flex-wrap justify-between gap-2" title={run.id}>
-              <h4>
-                {run.scheduledAt == null
-                  ? "—"
-                  : describeMoment(run.scheduledAt, t, runZone(run, task))}
-              </h4>
-              <span role="status">{statuses[run.status] ?? run.status}</span>
-            </header>
+            <TitleTooltip title={run.id}>
+              <header className="flex flex-wrap justify-between gap-2">
+                <h4>
+                  {run.scheduledAt == null
+                    ? "—"
+                    : describeMoment(run.scheduledAt, t, runZone(run, task))}
+                </h4>
+                <span role="status">{statuses[run.status] ?? run.status}</span>
+              </header>
+            </TitleTooltip>
             <p className="text-foreground-subtle" data-run-trigger={run.trigger ?? "scheduled"}>
               {run.trigger === "manual"
                 ? t("operations.manual")
@@ -183,9 +187,9 @@ export function TaskRunConversations({
                 {!connected && (
                   <p role="status">连接中断，显示上次读取的执行记录；恢复连接后会重新读取。</p>
                 )}
-                {connected && (!read || read.status === "loading") && (
+                <DelayedVisible active={connected && (!read || read.status === "loading")}>
                   <p role="status">正在读取执行会话…</p>
-                )}
+                </DelayedVisible>
                 {(read?.status === "error" || (read?.status === "ready" && !thread)) && (
                   <p role="alert">
                     执行会话读取失败：{read.error ?? "未收到执行会话投影"}。运行状态仍保留。

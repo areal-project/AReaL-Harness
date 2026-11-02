@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 // Adapted from ZCode WorkspaceFileTreeRowView: row composition and drag contract.
 // Platform actions are supplied by AReaL; no ZCode service/store is imported.
 import type { CSSProperties, KeyboardEvent } from "react";
@@ -64,69 +65,73 @@ export function WorkspaceFileTreeRowView({
     void navigator.clipboard.writeText(path).catch((e) => onError(e.message));
   return (
     <ContextMenu>
-      <ContextMenuTrigger
-        render={
-          <div
-            role="treeitem"
-            aria-label={row.path}
-            aria-selected={selected}
-            aria-expanded={row.dir ? row.expanded : undefined}
-            tabIndex={0}
-            draggable
-            title={row.path}
-            data-file-path={row.path}
-            style={{ "--workspace-file-tree-depth": row.depth } as CSSProperties}
-            className="workspace-file-tree-row review-file-tree-row cursor-pointer"
-            onClick={(e) => {
-              if (e.detail > 1) return;
-              row.dir ? onToggle(row.path) : row.status !== "D" && onOpen(row.path);
-            }}
-            onKeyDown={(e) => onKeyDown(e, row)}
-            onDragStart={(event) => {
-              event.dataTransfer.effectAllowed = "copy";
-              event.dataTransfer.setData(
-                WORKSPACE_FILE_DRAG_MIME,
-                serializeWorkspaceFileDragPayload(payload),
-              );
-              event.dataTransfer.setData(
-                "text/plain",
-                buildFileMentionMarkdown(row.path, row.name, payload.type),
-              );
-              dispatchWorkspaceFileDragState(true);
-            }}
-            onDragEnd={() => dispatchWorkspaceFileDragState(false)}
-          >
-            {row.dir && <span className="flex size-4 shrink-0 items-center justify-center text-foreground-subtle"><WorkspaceDirectoryChevron expanded={row.expanded} /></span>}
-            <span className="flex min-w-0 flex-1 items-center gap-1.5">
-              {!row.dir && (
-                <WorkspaceFileIcon path={row.path} />
+      <TitleTooltip title={row.path}>
+        <ContextMenuTrigger
+          render={
+            <div
+              role="treeitem"
+              aria-label={row.path}
+              aria-selected={selected}
+              aria-expanded={row.dir ? row.expanded : undefined}
+              tabIndex={0}
+              draggable
+              data-file-path={row.path}
+              style={{ "--workspace-file-tree-depth": row.depth } as CSSProperties}
+              className="workspace-file-tree-row review-file-tree-row cursor-pointer"
+              onClick={(e) => {
+                if (e.detail > 1) return;
+                if (row.dir) onToggle(row.path);
+                else if (row.status !== "D") onOpen(row.path);
+              }}
+              onKeyDown={(e) => onKeyDown(e, row)}
+              onDragStart={(event) => {
+                event.dataTransfer.effectAllowed = "copy";
+                event.dataTransfer.setData(
+                  WORKSPACE_FILE_DRAG_MIME,
+                  serializeWorkspaceFileDragPayload(payload),
+                );
+                event.dataTransfer.setData(
+                  "text/plain",
+                  buildFileMentionMarkdown(row.path, row.name, payload.type),
+                );
+                dispatchWorkspaceFileDragState(true);
+              }}
+              onDragEnd={() => dispatchWorkspaceFileDragState(false)}
+            >
+              {row.dir && (
+                <span className="flex size-4 shrink-0 items-center justify-center text-foreground-subtle">
+                  <WorkspaceDirectoryChevron expanded={row.expanded} />
+                </span>
               )}
-              <WorkspaceFileTreeRowName
-                name={row.name}
-                className="min-w-0 flex-1 truncate"
-                slashClassName="mx-1 text-foreground-subtlest"
-              />
-            </span>
-            {row.status && (
-              <span
-                className={cn("shrink-0 font-mono text-ui-base font-bold", statusColor)}
-                aria-label={
-                  {
-                    A: "新增",
-                    M: "已修改",
-                    D: "已删除",
-                    R: "已重命名",
-                    U: "未跟踪",
-                    C: "存在冲突",
-                  }[row.status]
-                }
-              >
-                {row.dir ? "●" : row.status}
+              <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                {!row.dir && <WorkspaceFileIcon path={row.path} />}
+                <WorkspaceFileTreeRowName
+                  name={row.name}
+                  className="min-w-0 flex-1 truncate"
+                  slashClassName="mx-1 text-foreground-subtlest"
+                />
               </span>
-            )}
-          </div>
-        }
-      />
+              {row.status && (
+                <span
+                  className={cn("shrink-0 font-mono text-ui-base font-bold", statusColor)}
+                  aria-label={
+                    {
+                      A: "新增",
+                      M: "已修改",
+                      D: "已删除",
+                      R: "已重命名",
+                      U: "未跟踪",
+                      C: "存在冲突",
+                    }[row.status]
+                  }
+                >
+                  {row.dir ? "●" : row.status}
+                </span>
+              )}
+            </div>
+          }
+        />
+      </TitleTooltip>
       <ContextMenuContent className="w-56">
         <ContextMenuItem onClick={() => copy(payload.path)}>
           <Copy className="size-4" />

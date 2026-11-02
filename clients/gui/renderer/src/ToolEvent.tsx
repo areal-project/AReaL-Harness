@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { useI18n } from "./i18n/IntlProvider.js";
 // Adapted from ZCode ToolSummaryRow / ToolLayout; Codex reference guides presentation.
 // Core owns all outcomes.
@@ -305,9 +306,11 @@ export function ToolEvent({
             </Button>
           )}
           {current?.error && (
-            <span title={current.error}>
-              <ActivityRowStatus>本次改动无法验证</ActivityRowStatus>
-            </span>
+            <TitleTooltip title={current.error}>
+              <span>
+                <ActivityRowStatus>本次改动无法验证</ActivityRowStatus>
+              </span>
+            </TitleTooltip>
           )}
           <Button
             variant="ghost"

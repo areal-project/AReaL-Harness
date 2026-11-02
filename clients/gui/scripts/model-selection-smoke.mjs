@@ -261,7 +261,7 @@ async function assertComposerActions() {
 async function assertEmptyModelIndicator() {
   const indicator = page.getByText("暂无可用模型", { exact: true });
   await indicator.waitFor();
-  assert.match(await indicator.getAttribute("title"), /暂无可用模型，请前往设置 > 模型设置/);
+  assert.match(await indicator.getAttribute("aria-label"), /暂无可用模型，请前往设置 > 模型设置/);
   const bounds = await indicator.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const toolbar =

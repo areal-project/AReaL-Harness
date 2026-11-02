@@ -1,3 +1,5 @@
+import { DelayedVisible } from "@areal/ui";
+import { TitleTooltip } from "@areal/ui";
 import { observeResize } from "@areal/ui/observe-resize";
 import { Input } from "@areal/ui";
 import { recoveredOutcome, recoveryMessage, type RecoveryFailure } from "./recoveryPresentation.js";
@@ -1728,13 +1730,12 @@ export function TaskCenter({
             >
               <div className="flex flex-wrap justify-between gap-1">
                 <span>{statusLabels[run.status] ? t(statusLabels[run.status]) : run.status}</span>
-                <span
-                  className="text-foreground-subtle"
-                  title={date(run.startedAt, runZone(run, task))}
-                >
-                  {run.trigger === "manual" ? t("operations.manual") : t("operations.scheduled")}：
-                  {describeMoment(run.scheduledAt ?? run.startedAt, t, runZone(run, task))}
-                </span>
+                <TitleTooltip title={date(run.startedAt, runZone(run, task))}>
+                  <span className="text-foreground-subtle">
+                    {run.trigger === "manual" ? t("operations.manual") : t("operations.scheduled")}
+                    ：{describeMoment(run.scheduledAt ?? run.startedAt, t, runZone(run, task))}
+                  </span>
+                </TitleTooltip>
               </div>
               {run.objective && run.objective !== task.objective && (
                 <p className="whitespace-pre-wrap">任务内容：{run.objective}</p>
@@ -1995,9 +1996,9 @@ export function TaskCenter({
                 />
               );
             })}
-            {initialLoading && !listed.length && (
+            <DelayedVisible active={initialLoading && !listed.length}>
               <p role="status">{t("operations.schedules.readingCatalog")}</p>
-            )}
+            </DelayedVisible>
             {(
               [
                 [
@@ -2145,7 +2146,9 @@ export function TaskCenter({
             data-task-id={task.id}
           >
             <header>
-              <h2 title={task.objective}>{scheduledTaskName(task)}</h2>
+              <TitleTooltip title={task.objective}>
+                <h2>{scheduledTaskName(task)}</h2>
+              </TitleTooltip>
               <Button size="sm" variant="ghost" onClick={closeDetails}>
                 {t("operations.schedules.closeDetails")}
               </Button>
@@ -2267,11 +2270,15 @@ function ScheduledTaskConversation({
       data-task-id={task.id}
     >
       <header className="scheduled-task-header">
-        <h2 title={task.objective}>{scheduledTaskName(task)}</h2>
+        <TitleTooltip title={task.objective}>
+          <h2>{scheduledTaskName(task)}</h2>
+        </TitleTooltip>
         <ScheduledWorkspace.Status state={state.kind} label={scheduledTaskStateLabel(state, t)} />
-        <span className="scheduled-task-header-summary" title={project.root}>
-          {state.kind === "attention" ? state.reason : scheduledTaskSummary(task, t)}
-        </span>
+        <TitleTooltip title={project.root}>
+          <span className="scheduled-task-header-summary">
+            {state.kind === "attention" ? state.reason : scheduledTaskSummary(task, t)}
+          </span>
+        </TitleTooltip>
         <Button
           size="sm"
           variant="ghost"

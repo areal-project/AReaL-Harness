@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { Textarea } from "@areal/ui";
 import { MessageSquare, Trash2 } from "lucide-react";
 import { Button } from "./components/ui/button.js";
@@ -63,7 +64,9 @@ export function BrowserAnnotationAttachments({
                       onChange([...files]);
                     }}
                   />
-                  <small title={note.url}>{note.url}</small>
+                  <TitleTooltip title={note.url}>
+                    <small>{note.url}</small>
+                  </TitleTooltip>
                 </div>
                 <Button
                   type="button"
@@ -126,7 +129,9 @@ export function SentBrowserAnnotations({
                   {index + 1}. {note.label}
                 </strong>
                 <p>{note.comment}</p>
-                <small title={note.url}>{note.url}</small>
+                <TitleTooltip title={note.url}>
+                  <small>{note.url}</small>
+                </TitleTooltip>
                 <SettingsDisclosure title="截图来源">
                   <p>{note.capturedAt}</p>
                   <pre>{note.evidence}</pre>

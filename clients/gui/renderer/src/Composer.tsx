@@ -1422,7 +1422,6 @@ export function Composer({
                   aria-label="发送"
                   data-testid={submitTestId}
                   aria-describedby={desktopUnsupported ? compatibilityDescription : undefined}
-                  title={desktopUnsupported ? t("backend.updateRequired") : undefined}
                   disabled={
                     disabled ||
                     desktopUnsupported ||
@@ -1451,7 +1450,6 @@ export function Composer({
                   aria-label="继续执行"
                   data-testid="chat-continue-button"
                   aria-describedby={desktopUnsupported ? compatibilityDescription : undefined}
-                  title={desktopUnsupported ? t("backend.updateRequired") : undefined}
                   disabled={disabled || desktopUnsupported}
                   className="composer-primary-action"
                   onClick={() => void continueExecution()}

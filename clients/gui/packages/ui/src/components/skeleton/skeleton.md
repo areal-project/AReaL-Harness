@@ -2,13 +2,13 @@
 id: skeleton
 title: Skeleton
 summary: 加载较久时的内容占位，快请求不出现。
-status: experimental
-entry: experimental
+status: stable
+entry: index
 layer: core
 category: control
 aliases: ["占位条", "骨架屏"]
 related: ["spinner"]
-exports: ["Skeleton", "useDelayedVisible"]
+exports: ["Skeleton", "DelayedVisible", "useDelayedVisible"]
 ---
 
 # Skeleton 占位条
@@ -19,7 +19,7 @@ exports: ["Skeleton", "useDelayedVisible"]
 
 ## 组成
 
-本合同覆盖 Skeleton 与 `useDelayedVisible`。`shape` 取 `line`、`block`、`pill`，宽高由宿主布局决定。
+本合同覆盖 Skeleton、`DelayedVisible` 与 `useDelayedVisible`。`DelayedVisible` 是同一规则的组件写法，需保持挂载才能保证最短停留。`shape` 取 `line`、`block`、`pill`，宽高由宿主布局决定。
 
 ## 状态
 
