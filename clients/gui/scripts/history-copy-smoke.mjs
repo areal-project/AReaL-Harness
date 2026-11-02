@@ -472,9 +472,10 @@ try {
         { projectId: project.id, threadId, ids: expected.map((item) => item.id) },
       );
       await selectConversation(page, threadId);
-      await page.waitForFunction(() =>
-        Boolean(document.querySelector(".messages [data-side-item-id]")),
-      );
+      if (expected.length)
+        await page.waitForFunction(() =>
+          Boolean(document.querySelector(".messages [data-side-item-id]")),
+        );
       const projection = await page.evaluate(
         async ({ projectId, threadId }) => {
           const thread = (await window.arealDesktop.snapshot()).projects.find(
