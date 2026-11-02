@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { turnContextStamp, withHistoryTopology } from "./conversationTurns.js";
 
 const page = () => [{ items: [{ turnId: "t1", itemId: "old", type: "agentMessage" }] }];

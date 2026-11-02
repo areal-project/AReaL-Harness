@@ -13,6 +13,7 @@ import { UserMessageBody } from "./UserMessageBody.js";
 import { MessageTime } from "./ConversationTimeline.js";
 import { MessageActions } from "./MessageActions.js";
 import { UserPromptEdit } from "./UserPromptEdit.js";
+import { useI18n } from "./i18n/IntlProvider.js";
 
 /** 时间线里已发送的用户消息：附件、批注、折叠正文与编辑入口。 */
 export function SentUserMessage({
@@ -38,6 +39,7 @@ export function SentUserMessage({
   onFile?: (path: string, line?: number) => void;
   onExpand: () => void;
 }) {
+  const { t } = useI18n();
   const content = item.content ?? [];
   const imageParts = content.filter((part: Data) => part.type === "image");
   const decorations = content
@@ -66,7 +68,7 @@ export function SentUserMessage({
       <div className="user-message-content">
         <SentReviewComments comments={feedback.comments} />
         {appContent.length > 0 && (
-          <div className="user-attachments" aria-label="应用内容">
+          <div className="user-attachments" aria-label={t("chat.sent.appContent")}>
             {appContent.map((part: Data, index: number) => (
               <McpContentLabel key={index} block={part.mcpContent} />
             ))}
