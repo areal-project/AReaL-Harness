@@ -117,7 +117,9 @@ class NativeRemote {
     }
     if (this.config.identity && !this.storage.nativeOwned)
       await this.submit("remote.gateway.handoff", {});
-    await this.refresh();
+    await this.storage.client.subscribeGateway(this.storage.sourceId, (state) =>
+      this.accept(state),
+    );
   }
   persist() {
     return this.backend.save("host-remote-gateway-operation.json", {
@@ -220,7 +222,12 @@ class NativeRemote {
     const value = await this.storage.client.request("remote.gateway.state", {
       sourceId: this.storage.sourceId,
     });
+    return this.accept(value);
+  }
+  /** @param {unknown} value */
+  accept(value) {
     if (!isRemoteStatus(value)) throw new Error("Host Remote Gateway 状态无效");
+    if (this.closed) return value;
     this.view = value;
     this.service.schedule();
     return value;

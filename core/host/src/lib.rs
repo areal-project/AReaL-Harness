@@ -32,6 +32,7 @@ pub const CAPABILITIES: &[&str] = &[
     "submissionJournal",
     "credentialVault",
     "remoteState",
+    "remoteGatewayV1",
     "subscriptionOwnerV1",
     "activity",
     "scheduledActivation",

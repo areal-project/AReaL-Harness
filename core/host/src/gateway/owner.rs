@@ -19,6 +19,9 @@ pub(super) struct Gateway {
     invite: RefCell<Option<Invite>>,
     pairs: RefCell<BTreeMap<String, PendingPair>>,
     counters: Arc<crate::gateway::relay::Counters>,
+    direct: RefCell<Option<crate::gateway::direct::DirectHandle>>,
+    prepared_direct: RefCell<Option<DirectRunning>>,
+    direct_error: RefCell<String>,
 }
 struct Invite {
     request_id: String,
@@ -215,11 +218,12 @@ impl Drop for Running {
         self.tasks.abort_all();
     }
 }
-pub(super) async fn run(host: Rc<Host>) {
+async fn run_relay(host: Rc<Host>) {
     let mut running: Option<Running> = None;
     let mut terminal_transport = None;
     let mut observed_revision = None;
     loop {
+        let previous_status = host.gateway.status();
         let snapshot = host.remote.snapshot(&host.migration);
         let desired = snapshot
             .as_ref()
@@ -308,8 +312,157 @@ pub(super) async fn run(host: Rc<Host>) {
             },
             _=tokio::time::sleep(Duration::from_millis(250))=>{},
         }
+        if host.gateway.status() != previous_status {
+            host.changed();
+        }
         if let Some(running) = &mut running {
             while running.tasks.try_join_next().is_some() {}
         }
     }
+}
+
+struct DirectRunning {
+    owner: Option<crate::gateway::direct::DirectOwner>,
+    handle: crate::gateway::direct::DirectHandle,
+    events: tokio::sync::mpsc::Receiver<crate::gateway::direct::DirectEvent>,
+    identity: Rc<wire::Identity>,
+    transport: String,
+    tasks: JoinSet<()>,
+}
+impl Drop for DirectRunning {
+    fn drop(&mut self) {
+        self.handle.stop();
+        self.tasks.abort_all();
+    }
+}
+async fn prepare_direct(
+    host: Rc<Host>,
+    config: &Value,
+    root: &std::path::Path,
+) -> Result<DirectRunning> {
+    use crate::gateway::direct::{Assets, DirectOwner};
+    let assets = Rc::new(Assets::load(root)?);
+    let port = config
+        .get("directPort")
+        .map(|port| {
+            port.as_u64()
+                .filter(|port| *port <= 65535)
+                .context("invalid Direct port")
+        })
+        .transpose()?
+        .unwrap_or(0) as u16;
+    let identity = Rc::new(wire::Identity::from_base64(
+        config["identity"]
+            .as_str()
+            .context("Remote identity missing")?,
+    )?);
+    let external = if config["network"]["kind"] == "organization" {
+        config["network"]["publicOrigin"]
+            .as_str()
+            .map(str::to_owned)
+    } else {
+        None
+    };
+    let weak = Rc::downgrade(&host);
+    let admit = Rc::new(move || {
+        weak.upgrade().is_some_and(|host| {
+            host.admission().is_ok()
+                && host.gateway.pending.get() < 8
+                && host.gateway.pending.get() + host.gateway.active.borrow().len() < 16
+        })
+    });
+    let (owner, handle, events) =
+        DirectOwner::bind(port, assets, external, host.gateway.counters.clone(), admit).await?;
+    Ok(DirectRunning {
+        owner: Some(owner),
+        handle,
+        events,
+        identity,
+        transport: transport_key(config, TransportKind::Direct),
+        tasks: JoinSet::new(),
+    })
+}
+fn asset_root(host: &Host) -> Result<PathBuf> {
+    host.remote
+        .native_owner()?
+        .and_then(|receipt| receipt["assetRoot"].as_str().map(PathBuf::from))
+        .context("Remote assets are missing")
+}
+async fn run_direct(host: Rc<Host>) {
+    let mut running: Option<DirectRunning> = None;
+    let mut attempted = None;
+    loop {
+        let snapshot = host
+            .remote
+            .snapshot(&host.migration)
+            .ok()
+            .filter(|_| host.remote.native_owner().ok().flatten().is_some());
+        let desired = snapshot
+            .as_ref()
+            .filter(|snapshot| snapshot["config"]["directEnabled"] == true);
+        let transport =
+            desired.map(|snapshot| transport_key(&snapshot["config"], TransportKind::Direct));
+        if running
+            .as_ref()
+            .is_some_and(|running| Some(&running.transport) != transport.as_ref())
+        {
+            if let Some(mut previous) = running.take() {
+                previous.handle.stop();
+                previous.tasks.abort_all();
+                while previous.tasks.join_next().await.is_some() {}
+            }
+            *host.gateway.direct.borrow_mut() = None;
+            host.changed();
+        }
+        let prepared = host.gateway.prepared_direct.borrow_mut().take();
+        if let Some(prepared) = prepared {
+            if Some(&prepared.transport) == transport.as_ref() {
+                running = Some(prepared);
+                attempted = transport.clone();
+            }
+        }
+        if running.is_none() && attempted != transport {
+            attempted = transport.clone();
+            if let Some(snapshot) = desired {
+                let next = match asset_root(&host) {
+                    Ok(root) => prepare_direct(host.clone(), &snapshot["config"], &root).await,
+                    Err(error) => Err(error),
+                };
+                match next {
+                    Ok(next) => {
+                        running = Some(next);
+                        host.gateway.direct_error.borrow_mut().clear();
+                    }
+                    Err(_) => {
+                        *host.gateway.direct_error.borrow_mut() = "本机入口暂不可用".into();
+                        host.changed();
+                    }
+                }
+            }
+        }
+        if let Some(current) = &mut running {
+            if let Some(owner) = current.owner.take() {
+                *host.gateway.direct.borrow_mut() = Some(current.handle.clone());
+                host.gateway.direct_error.borrow_mut().clear();
+                current.tasks.spawn_local(owner.run());
+                host.changed();
+            }
+        }
+        tokio::select! {
+            event = async { match &mut running { Some(current) => current.events.recv().await, None => std::future::pending().await } } => {
+                let Some(crate::gateway::direct::DirectEvent::Channel {stream,close}) = event else { running=None; *host.gateway.direct.borrow_mut()=None;host.changed();continue; };
+                let current = running.as_mut().unwrap();
+                let admission = Admission { generation:host.gateway.generation.borrow().clone(),kind:TransportKind::Direct,transport:current.transport.clone(),close };
+                let host=host.clone();let identity=current.identity.clone();
+                current.tasks.spawn_local(async move { let _=session::Session::run(host,stream,identity,admission).await; });
+            },
+            _ = tokio::time::sleep(Duration::from_millis(250)) => {},
+        }
+        if let Some(current) = &mut running {
+            while current.tasks.try_join_next().is_some() {}
+        }
+    }
+}
+pub(super) async fn run(host: Rc<Host>) {
+    tokio::join!(run_relay(host.clone()), run_direct(host));
 }

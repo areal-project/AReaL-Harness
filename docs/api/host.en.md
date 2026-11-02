@@ -10,6 +10,9 @@ One Host owns the exclusive `host.lock` in the canonical service home. H1 resolv
 
 The local transport is a Unix domain socket with newline-delimited UTF-8 JSON, one request per frame. Maximum frame size is 1 MiB. Before dispatch, the server verifies peer UID against its UID and verifies the current auth file secret supplied in `hello.params.authToken`. Authentication failure closes the connection. Tokens never enter arguments, URLs, logs, status events, or Remote responses. `hello` is the only pre-authentication method. Reconnect requires a new handshake. The auth token rotates with the Host generation. The contract grants trusted local-user access, not isolation between processes of that user.
 
+
+Normal stop removes the current generation’s `host/host.json` discovery descriptor and socket before releasing `host.lock`. Stable `host/identity.json` and original operation receipts remain.
+
 ## Envelope and common types
 
 Requests use a dedicated envelope, separate from the existing service control protocol. Struct fields use camelCase; tagged enum values use their literal wire strings. Rust serde can represent requests as an envelope plus a method-tagged payload. Version 1 rejects unknown fields and invalid combinations. Optional fields are omitted rather than serialized as null unless stated below.
@@ -165,8 +168,11 @@ The native Gateway reuses the same Noise identity, grants, Remote revision, and 
 | `remote.gateway.handoff` | `{requestId,expectedGeneration,sourceId,expectedRevision,assetRoot?}` | A `completed` handoff receipt containing the original `hostId`, `generation`, `sourceId`, and `revision`. |
 | `remote.gateway.status` | `{}` | Native-owner connection and availability state without secrets. |
 | `remote.gateway.state` | `{sourceId}` | The existing GUI `RemoteStatus` projection, without private keys, Relay capability, or push tokens. |
+| `remote.gateway.subscribe` | `{sourceId}` | `{subscriptionId,generation,sequence:0,state:RemoteStatus}`; subscribes to source state on the same authenticated connection. |
 | `remote.gateway.control` | `{requestId,expectedGeneration,sourceId,request,assetRoot?}` | The existing local `RemoteRequest` and response shapes; GUI Main generates pairing QR images. |
 | `remote.gateway.replace` | `{requestId,expectedGeneration,expectedRevision,sourceId,config}` | The existing durable `remote.replace` receipt and CAS semantics. |
+
+`remote.gateway.subscribe` requires `remoteGatewayV1`. The initial snapshot and subscription are established on one connection. Subsequent `remote.gateway.stateChanged` notifications use `{version:1,method,params:{subscriptionId,generation,sequence,state}}` and report actual state changes. Clients replace the projection after checking the original subscription ID, Host generation, and consecutive sequence. A gap or identity change closes the original connection and requires a fresh snapshot. Disconnecting revokes the subscription; the old view cannot consume events from a new connection. Pairing requests and connection state update the GUI through this channel. Notifications contain no secrets.
 
 The trusted local producer supplies `assetRoot`, pointing to the source Renderer build or packaged `areal-gui` directory. It is neither a phone request field nor a new user setting. Direct serves only the Remote closure described by `remote-assets.json` with matching checksums, retaining the existing Host, Origin, CSP, worker, and cache rules. Migration resolves the selected source's original GUI aliases; other Host projects use stable Host aliases. Reusing an old ID in another profile cannot broaden authorization.
 

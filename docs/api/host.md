@@ -10,6 +10,9 @@
 
 本机 Unix domain socket 使用逐行 UTF-8 JSON，每帧一个请求，最大 1 MiB。分发前校验 peer UID 与 Host UID 相同，并核对 `hello.params.authToken` 与当前认证文件秘密。认证失败关闭连接。token 不进入命令行参数、URL、日志、状态事件或 Remote 响应。认证前只接受 `hello`，重连重新握手。认证 token 随 Host generation 轮换。本契约授予可信本机用户访问权，不隔离该用户自己的进程。
 
+
+正常停止在释放 `host.lock` 前移除本代运行描述 `host/host.json` 与 socket；稳定 `host/identity.json` 和原操作回执继续保留。
+
 ## 消息封装与公共类型
 
 请求使用独立 envelope，与现有 service 控制协议分开。结构字段使用 camelCase，tagged enum 值使用本文的 wire 字符串。Rust serde 可用 envelope 加按 method 标记的 payload 表达。版本 1 拒绝未知字段与无效组合。除非特别注明，可选字段省略，不写 null。
@@ -165,8 +168,11 @@ prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每�
 | `remote.gateway.handoff` | `{requestId,expectedGeneration,sourceId,expectedRevision,assetRoot?}` | 包含原 `hostId`、`generation`、`sourceId`、`revision` 的 `completed` 交接回执。 |
 | `remote.gateway.status` | `{}` | 原生 owner 的连接与可用状态，不含秘密。 |
 | `remote.gateway.state` | `{sourceId}` | 既有 GUI `RemoteStatus` 投影，不返回私钥、Relay capability 或 push token。 |
+| `remote.gateway.subscribe` | `{sourceId}` | `{subscriptionId,generation,sequence:0,state:RemoteStatus}`；在同一认证连接上建立来源状态订阅。 |
 | `remote.gateway.control` | `{requestId,expectedGeneration,sourceId,request,assetRoot?}` | 沿用本机 `RemoteRequest` 与响应形状；配对二维码由 GUI Main 生成。 |
 | `remote.gateway.replace` | `{requestId,expectedGeneration,expectedRevision,sourceId,config}` | 沿用 `remote.replace` 的持久回执与 CAS 语义。 |
+
+`remote.gateway.subscribe` 需要 `remoteGatewayV1`。初始快照与订阅在同一连接中建立，后续 `remote.gateway.stateChanged` 通知使用 `{version:1,method,params:{subscriptionId,generation,sequence,state}}`，只发送实际状态变化。客户端核对原订阅 ID、Host generation 和连续递增序号后替换投影；缺口或身份变化关闭原连接并重新读取快照。断连即撤销订阅，旧投影不能接收新连接的事件。配对请求和在线状态通过该通道更新 GUI，秘密不进入通知。
 
 `assetRoot` 由可信本机 producer 提供，指向源码 Renderer 构建目录或安装包的 `areal-gui` 目录，不是手机请求字段或新增用户设置。Direct 只发布 `remote-assets.json` 描述且摘要匹配的 Remote 闭包，保留原 Host、Origin、CSP、worker 与缓存约束。来源的原 GUI 别名由 Migration 映射解析；其他 Host 项目使用稳定 Host 别名，不因另一个 profile 复用旧 ID 而扩大授权。
 

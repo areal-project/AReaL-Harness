@@ -336,6 +336,7 @@ async fn run_local(options: RunOptions) -> Result<HostExit> {
     }
     host.close_subscriptions().await;
     std::fs::remove_file(socket)?;
+    std::fs::remove_file(directory.join("host.json"))?;
     drop(lock);
     Ok(HostExit::Stopped)
 }
@@ -376,20 +377,34 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
     let mut changes = host.changes.subscribe();
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     let mut previous = Value::Null;
+    let mut gateway_subscription: Option<(String, String, u64, Value)> = None;
     let mut frame_bytes = Vec::new();
     loop {
         tokio::select! {
             value=wire::read_buffered(&mut reader,&mut frame_bytes)=> {
                 let Some(value)=value? else {return Ok(());};
                 let request:wire::Request=serde_json::from_value(value)?;
-                let result=if request.version!=VERSION {Err(error("unsupportedVersion","Host requires version 1"))} else if request.id.is_empty() {Err(error("invalidRequest","id must be nonempty"))} else if request.method=="host.subscribe" {serde_json::from_value::<Empty>(request.params).map_err(anyhow::Error::from)?;let id=uuid::Uuid::new_v4().to_string();subscription=Some((id.clone(),0));let status=host.status().await;previous=serde_json::to_value(&status)?;Ok(json!({"subscriptionId":id,"generation":host.identity.generation,"sequence":0,"status":status}))} else {host.dispatch_connection(&request.method,request.params,&connection).await};
+                let result=if request.version!=VERSION {Err(error("unsupportedVersion","Host requires version 1"))} else if request.id.is_empty() {Err(error("invalidRequest","id must be nonempty"))} else if request.method=="host.subscribe" {serde_json::from_value::<Empty>(request.params).map_err(anyhow::Error::from)?;let id=uuid::Uuid::new_v4().to_string();subscription=Some((id.clone(),0));let status=host.status().await;previous=serde_json::to_value(&status)?;Ok(json!({"subscriptionId":id,"generation":host.identity.generation,"sequence":0,"status":status}))} else if request.method=="remote.gateway.subscribe" {
+                    #[derive(Deserialize)]
+                    #[serde(rename_all="camelCase",deny_unknown_fields)]
+                    struct Query { source_id:String }
+                    let input:Query=serde_json::from_value(request.params)?;
+                    let result=(|| -> Result<Value> {
+                        ensure!(gateway_subscription.as_ref().is_none_or(|(source,_,_,_)|source==&input.source_id),error("sourceNotFound","connection already subscribes to another Remote source"));
+                        let state=host.gateway_state(&input.source_id)?;
+                        let id=uuid::Uuid::new_v4().to_string();
+                        gateway_subscription=Some((input.source_id,id.clone(),0,state.clone()));
+                        Ok(json!({"subscriptionId":id,"generation":host.identity.generation,"sequence":0,"state":state}))
+                    })();
+                    result
+                } else {host.dispatch_connection(&request.method,request.params,&connection).await};
                 let response=match result {Ok(value)=>json!({"version":VERSION,"id":request.id,"result":value}),Err(e)=>{let code=e.downcast_ref::<wire::Error>().map(|e|e.code).unwrap_or(if e.downcast_ref::<serde_json::Error>().is_some(){"invalidRequest"}else{"internalError"});json!({"version":VERSION,"id":request.id,"error":{"code":code,"message":e.to_string()}})}};
                 let sent=wire::write(&mut writer,&response).await;
                 if host.stop.borrow().as_ref().is_some_and(|v|v["state"]=="completed") {host.exit.notify_one();}
                 sent?;
             },
-            _=changes.changed(),if subscription.is_some()=>{},
-            _=tick.tick(),if subscription.is_some()=>{}
+            _=changes.changed(),if subscription.is_some() || gateway_subscription.is_some()=>{},
+            _=tick.tick(),if subscription.is_some() || gateway_subscription.is_some()=>{}
         }
         if let Some((id, sequence)) = &mut subscription {
             let status = serde_json::to_value(host.status().await)?;
@@ -397,6 +412,14 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
                 *sequence += 1;
                 wire::write(&mut writer,&json!({"version":VERSION,"method":"host.statusChanged","params":{"subscriptionId":id,"generation":host.identity.generation,"sequence":sequence,"status":status}})).await?;
                 previous = status;
+            }
+        }
+        if let Some((source, id, sequence, previous)) = &mut gateway_subscription {
+            let state = host.gateway_state(source)?;
+            if state != *previous {
+                *sequence += 1;
+                wire::write(&mut writer,&json!({"version":VERSION,"method":"remote.gateway.stateChanged","params":{"subscriptionId":id,"generation":host.identity.generation,"sequence":sequence,"state":state}})).await?;
+                *previous = state;
             }
         }
     }
@@ -617,7 +640,6 @@ impl Host {
                     .context("missing Remote source")?;
                 self.gateway_state(source)
             }
-            "remote.gateway.control" => self.gateway_control(params),
             "remote.gateway.status" => {
                 ensure!(params == json!({}), "invalid gateway status parameters");
                 Ok(self.gateway.status())
@@ -911,6 +933,9 @@ impl Host {
         params: Value,
         connection: &ConnectionGuard,
     ) -> Result<Value> {
+        if method == "remote.gateway.control" {
+            return connection.host.gateway_control(params).await;
+        }
         if method.starts_with("subscription.") {
             return self.subscription_dispatch(method, params, connection).await;
         }
@@ -2648,6 +2673,8 @@ mod tests {
             let mapping=home.join("workspaces").join(format!("{}.json",storage::digest(registration.workspace.as_os_str().as_encoded_bytes())));assert_eq!(storage::read::<PathBuf>(&mapping).unwrap(),registration.data_dir);
 
             let stop_id=uuid::Uuid::new_v4().to_string();let stop=client.stop(&stop_id,&identity.generation,StopStrategy::IfIdle).await.unwrap();assert_eq!(stop["state"],"completed");assert!(matches!(task.await.unwrap().unwrap(),HostExit::Stopped));
+            assert!(!home.join("host/host.json").exists());
+            assert_eq!(storage::read::<String>(&home.join("host/identity.json")).unwrap(),identity.host_id);
             assert_eq!(crate::operation_offline(&home,&id).unwrap().unwrap(),receipt);
             let restarted=tokio::task::spawn_local(run_local(RunOptions {home:home.clone(),bin_dir:bin}));
             let next=loop {if let Ok(client)=Client::connect_at(home.clone()).await {break client;}tokio::task::yield_now().await;};

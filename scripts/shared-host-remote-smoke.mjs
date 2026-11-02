@@ -26,6 +26,7 @@ const require = createRequire(join(repository, "clients/gui/app/package.json"));
 const { HostClient } = require("../app/src/core/host-client.cjs");
 const { GuiHostProjects } = require("../app/src/core/gui-host-projects.cjs");
 const { HostRemote } = require("../app/src/core/host-remote.cjs");
+const { NativeRemote } = require("../app/src/core/native-remote.cjs");
 const WebSocket = require("ws");
 const root = await realpath(await mkdtemp("/tmp/ah-host-remote-"));
 const home = join(root, "host"),
@@ -43,7 +44,7 @@ const evidence = {
   commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8", cwd: repository }).trim(),
   checks: [],
   cleanup: [],
-  excluded: ["Electron GUI exit", "physical phone", "real provider", "Direct", "installed package"],
+  excluded: ["Electron GUI exit", "physical phone", "real provider", "installed package"],
 };
 const host = new HostClient();
 const source = new GuiHostProjects({
@@ -63,7 +64,18 @@ const source = new GuiHostProjects({
   },
 });
 const actions = [];
-let core, storage, secure, socket, hostChild, hostIdentity, failure, modelFailure;
+let core,
+  storage,
+  native,
+  directSocket,
+  directSecure,
+  directRpc,
+  secure,
+  socket,
+  hostChild,
+  hostIdentity,
+  failure,
+  modelFailure;
 const modelRequests = [];
 const model = createServer(async (request, response) => {
   try {
@@ -268,19 +280,73 @@ try {
   await storage.drained();
   storage.close();
   storage = null;
-  source.close();
-  const handoff = {
-    requestId: randomUUID(),
-    expectedGeneration: host.generation,
-    sourceId: before.sourceId,
-    expectedRevision: before.revision,
-  };
-  evidence.handoff = { ...handoff };
-  evidence.handoff.receipt = await host.request("remote.gateway.handoff", handoff);
+  let stateEvents = 0;
+  native = new NativeRemote({ backend, schedule: () => stateEvents++ });
+  await native.init();
+  evidence.handoff = JSON.parse(await readFile(join(home, "host/remote-gateway.json"), "utf8"));
+  assert.equal(evidence.handoff.sourceId, before.sourceId);
+  assert.equal(evidence.handoff.revision, before.revision);
+  assert.equal(evidence.handoff.state, "completed");
+  await until(() => native.state().connected, "native Relay ready through Main subscription");
+  await native.control({ operation: "enableDirect" });
+  const directState = native.state();
+  evidence.direct = { origin: directState.directUrl, hostId: directState.directHostId };
+  assert.match(directState.directUrl, /^http:\/\/127\.0\.0\.1:\d+$/);
+  assert.equal(directState.directHostId, identityId(identity));
+  const health = await fetch(`${directState.directUrl}/health`);
+  assert.equal(health.status, 200);
+  assert.deepEqual(await health.json(), { status: "ready" });
+  assert.equal((await fetch(`${directState.directUrl}/remote.html`)).status, 200);
+  assert.equal((await fetch(`${directState.directUrl}/index.html`)).status, 404);
+  const invitation = await native.control({ operation: "pair", transport: "direct" });
+  const pairingDevice = await createIdentity();
+  directSocket = new WebSocket(directState.directUrl.replace("http:", "ws:") + "/remote/socket", {
+    origin: directState.directUrl,
+  });
+  const directWire = createRemoteWire(directSocket);
+  await directWire.ready;
+  directSecure = await secureChannel(directWire.wire, pairingDevice, identityId(identity));
+  const directMessages = directSecure.messages();
+  await directSecure.send({
+    method: "hello",
+    apiVersion: "areal.remote.v2",
+    clientVersion: "host-production-smoke",
+    displayName: "Native Direct pairing",
+    inviteSecret: new URLSearchParams(new URL(invitation.payload).hash.slice(1)).get("invite"),
+  });
+  assert.equal((await directMessages.next()).value.event, "pairing");
   await until(
-    async () => (await host.request("remote.gateway.status", {}))?.connected,
-    "native Relay ready",
+    () => native.state().pending.some((pair) => pair.id === identityId(pairingDevice)),
+    "Host pending notification reaches unchanged Main consumer",
   );
+  await native.control({
+    operation: "approve",
+    id: identityId(pairingDevice),
+    projects: [alias],
+    preset: "Observer",
+  });
+  assert.equal((await directMessages.next()).value.event, "ready");
+  let directSequence = 0;
+  directRpc = async (method, params) => {
+    const id = String(++directSequence);
+    await directSecure.send({ id, method, context: { projectId: alias }, params });
+    const reply = await directMessages.next();
+    assert.equal(reply.done, false);
+    assert.equal(reply.value.id, id);
+    assert.equal(reply.value.error, undefined, JSON.stringify(reply.value.error));
+    return reply.value.result;
+  };
+  assert.ok(
+    (await directRpc("project.list", {})).projects.some((project) => project.projectId === alias),
+  );
+  evidence.checks.push({
+    name: "native Direct assets and one-use pairing with Main push state",
+    passed: true,
+    stateEvents,
+  });
+  await native.close();
+  native = null;
+  source.close();
   const original = await core.call("areal/thread/start", {
     requestId: randomUUID(),
     cwd: workspace,
@@ -374,6 +440,13 @@ try {
   const readTask = await rpc("task.read", { taskId: task.id });
   assert.equal(readTask.taskId, task.id);
   assert.equal(readTask.taskPaused, true);
+  const directTask = await directRpc("task.read", { taskId: task.id });
+  assert.equal(directTask.taskId, task.id);
+  assert.equal(directTask.taskPaused, true);
+  evidence.checks.push({
+    name: "native Direct reads paused Task after Main facade closes",
+    passed: true,
+  });
   evidence.checks.push({
     name: "native Relay reads paused Task without active scheduling",
     passed: true,
@@ -473,6 +546,9 @@ try {
   await core?.close().catch((error) => (failure ??= error.stack));
   secure?.close();
   socket?.terminate();
+  directSecure?.close();
+  directSocket?.terminate();
+  await native?.close().catch((error) => (failure ??= error.stack));
   await storage?.drained().catch((error) => (failure ??= error.stack));
   storage?.close();
   source.close();
@@ -526,7 +602,8 @@ try {
   await new Promise((done) => model.close(done));
   evidence.modelRequests = modelRequests;
   evidence.failure = failure;
-  evidence.passed = !failure && evidence.checks.length === 3;
+  evidence.passed =
+    !failure && evidence.checks.length === 5 && evidence.checks.every((check) => check.passed);
   await writeFile(join(root, "result.json"), JSON.stringify(evidence, null, 2));
   console.log(
     JSON.stringify(

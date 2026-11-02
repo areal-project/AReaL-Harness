@@ -29,6 +29,8 @@ async function privateJson(path) {
 // 断连不重放写入。调用者必须凭原 requestId 查询持久回执。
 class HostClient {
   #intentKey = "";
+  /** @type {{id:string,generation:string,sequence:number,onState:(state:unknown)=>void}|null} */
+  #gatewaySubscription = null;
   constructor() {
     /** @type {Map<string,{resolve:(value:any)=>void,reject:(error:Error)=>void}>} */
     this.pending = new Map();
@@ -180,8 +182,12 @@ class HostClient {
       this.bytes = this.bytes.subarray(newline + 1);
       try {
         const response = JSON.parse(frame.toString("utf8"));
-        if (response.version !== 1 || typeof response.id !== "string")
-          throw new Error("Invalid Host response");
+        if (response.version !== 1) throw new Error("Invalid Host response");
+        if (response.method === "remote.gateway.stateChanged") {
+          this.gatewayState(response.params, false);
+          continue;
+        }
+        if (typeof response.id !== "string") throw new Error("Invalid Host response");
         const request = this.pending.get(response.id);
         if (!request) throw new Error("Unexpected Host response");
         this.pending.delete(response.id);
@@ -201,6 +207,7 @@ class HostClient {
   /** @param {Error} error */
   fail(error) {
     this.#intentKey = "";
+    this.#gatewaySubscription = null;
     for (const request of this.pending.values()) request.reject(error);
     this.pending.clear();
     this.socket?.destroy();
@@ -220,6 +227,17 @@ class HostClient {
       this.pending.set(id, {
         resolve: (value) => {
           clearTimeout(timeout);
+          if (method === "remote.gateway.subscribe") {
+            try {
+              this.gatewayState(value, true);
+            } catch (error) {
+              const failure =
+                error instanceof Error ? error : new Error("Invalid Gateway snapshot");
+              reject(failure);
+              this.fail(failure);
+              return;
+            }
+          }
           resolve(value);
         },
         reject: (error) => {
@@ -236,6 +254,49 @@ class HostClient {
   requireCapability(capability) {
     if (!this.capabilities.includes(capability))
       throw new Error(`Host does not support ${capability}`);
+  }
+  /** @param {string} sourceId @param {(state:unknown)=>void} onState */
+  async subscribeGateway(sourceId, onState) {
+    this.requireCapability("remoteGatewayV1");
+    if (this.#gatewaySubscription) throw new Error("Gateway subscription already exists");
+    const subscription = {
+      id: "",
+      generation: this.generation,
+      sequence: 0,
+      onState,
+    };
+    this.#gatewaySubscription = subscription;
+    try {
+      await this.request("remote.gateway.subscribe", { sourceId });
+    } catch (error) {
+      if (this.#gatewaySubscription === subscription) this.#gatewaySubscription = null;
+      throw error;
+    }
+  }
+  /** @param {unknown} value @param {boolean} initial */
+  gatewayState(value, initial) {
+    const subscription = this.#gatewaySubscription;
+    if (
+      !subscription ||
+      !value ||
+      typeof value !== "object" ||
+      !("subscriptionId" in value) ||
+      typeof value.subscriptionId !== "string" ||
+      !value.subscriptionId ||
+      !("generation" in value) ||
+      value.generation !== subscription.generation ||
+      !("sequence" in value) ||
+      typeof value.sequence !== "number" ||
+      !Number.isSafeInteger(value.sequence) ||
+      !("state" in value) ||
+      (initial
+        ? subscription.id !== "" || value.sequence !== 0
+        : value.subscriptionId !== subscription.id || value.sequence !== subscription.sequence + 1)
+    )
+      throw new Error("Gateway subscription identity or sequence changed");
+    subscription.onState(value.state);
+    subscription.id = value.subscriptionId;
+    subscription.sequence = value.sequence;
   }
   /** @param {string} method @param {string} sourceId @param {string} requestId @param {string} canonicalJson */
   intentDigest(method, sourceId, requestId, canonicalJson) {

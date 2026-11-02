@@ -62,6 +62,7 @@ impl Drop for SessionSlot {
         }
         if let Some(connection) = &self.connection {
             self.host.gateway.active.borrow_mut().remove(connection);
+            self.host.changed();
         }
         if let Some(peer) = &self.peer {
             let mut peers = self.host.gateway.peers.borrow_mut();
@@ -99,6 +100,7 @@ impl Drop for PairSlot {
             .is_some_and(|pair| pair.id == self.id)
         {
             self.host.gateway.pairs.borrow_mut().remove(&self.peer);
+            self.host.changed();
         }
     }
 }
@@ -232,6 +234,7 @@ impl Session {
                     return Self::reject_hello(&mut writer, limits, &error.to_string()).await;
                 }
             };
+            host.changed();
             let _pair_slot = PairSlot {
                 host: host.clone(),
                 peer: peer.clone(),
@@ -303,6 +306,7 @@ impl Session {
                 close: admission.close,
             },
         );
+        session.host.changed();
         let ready = session.describe(true);
         wire::write_json(&mut writer, &serde_json::to_vec(&ready)?, limits).await?;
         let mut window = Instant::now();

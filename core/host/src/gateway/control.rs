@@ -28,7 +28,7 @@ fn grant_projects(request: &Value) -> Result<Vec<String>> {
     }
     Ok(projects)
 }
-fn pair_payload(config: &Value, invite: &Invite) -> Result<Value> {
+fn pair_payload(host: &Host, config: &Value, invite: &Invite) -> Result<Value> {
     let identity = wire::Identity::from_base64(
         config["identity"]
             .as_str()
@@ -46,11 +46,14 @@ fn pair_payload(config: &Value, invite: &Invite) -> Result<Value> {
         config["relay"]
             .as_str()
             .context("Relay origin is missing")?
+            .to_owned()
     } else {
-        return Err(error(
-            "unsupportedCapability",
-            "Direct pairing is unavailable",
-        ));
+        host.gateway
+            .direct
+            .borrow()
+            .as_ref()
+            .map(|handle| handle.origin().to_owned())
+            .context("Direct is unavailable")?
     };
     Ok(json!({"payload":format!("{origin}/#{}", fragment.finish()),"expiresAt":invite.expires_at}))
 }
@@ -103,10 +106,13 @@ impl Host {
                 String::new()
             };
         Ok(
-            json!({"enabled":config["enabled"]==true,"connected":status["connected"]==true,"relay":relay,"relayError":if config["enabled"]==true && status["state"]=="unavailable"{"远程入口暂不可用"}else{""},"relayUrl":relay_url,"directEnabled":config["directEnabled"]==true,"directUrl":"","directHostId":"","directError":if config["directEnabled"]==true{"本机入口尚未就绪"}else{""},"migrationError":"","pushSupported":false,"deviceGrants":grants,"devices":[],"pending":self.gateway.pairs.borrow().iter().filter(|(_,pair)|pair.expires_at>now() && pair.rejected.get().is_none()).map(|(peer,pair)|{let mut value=json!({"id":peer,"name":pair.name,"fingerprint":peer,"expiresAt":pair.expires_at});if let Some(kind)=&pair.client_kind{value["clientKind"]=json!(kind);}value}).collect::<Vec<_>>(),"network":{"kind":config["network"].get("kind").cloned().unwrap_or(Value::Null),"scope":config["network"].get("visibility").cloned().unwrap_or(Value::Null),"reconciliation":null,"publicOrigin":"","diagnostic":"","policy":"unknown","phoneAccess":"unknown","inspection":null}}),
+            json!({"enabled":config["enabled"]==true,"connected":status["connected"]==true,"relay":relay,"relayError":if config["enabled"]==true && status["state"]=="unavailable"{"远程入口暂不可用"}else{""},"relayUrl":relay_url,"directEnabled":config["directEnabled"]==true,"directUrl":self.gateway.direct.borrow().as_ref().map(|handle|handle.origin().to_owned()).unwrap_or_default(),"directHostId":if config["directEnabled"]==true{host_peer.as_str()}else{""},"directError":self.gateway.direct_error.borrow().as_str(),"migrationError":"","pushSupported":false,"deviceGrants":grants,"devices":[],"pending":self.gateway.pairs.borrow().iter().filter(|(_,pair)|pair.expires_at>now() && pair.rejected.get().is_none()).map(|(peer,pair)|{let mut value=json!({"id":peer,"name":pair.name,"fingerprint":peer,"expiresAt":pair.expires_at});if let Some(kind)=&pair.client_kind{value["clientKind"]=json!(kind);}value}).collect::<Vec<_>>(),"network":{"kind":config["network"].get("kind").cloned().unwrap_or(Value::Null),"scope":config["network"].get("visibility").cloned().unwrap_or(Value::Null),"reconciliation":null,"publicOrigin":"","diagnostic":"","policy":"unknown","phoneAccess":"unknown","inspection":null}}),
         )
     }
-    pub(in crate::server) fn gateway_control(&self, params: Value) -> Result<Value> {
+    pub(in crate::server) async fn gateway_control(
+        self: &Rc<Self>,
+        params: Value,
+    ) -> Result<Value> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase", deny_unknown_fields)]
         struct Control {
@@ -118,6 +124,7 @@ impl Host {
             asset_root: Option<PathBuf>,
         }
         let input: Control = serde_json::from_value(params)?;
+        self.admission()?;
         crate::wire::request_id(&input.request_id)?;
         ensure!(
             input.expected_generation == self.identity.generation,
@@ -127,6 +134,24 @@ impl Host {
             self.remote.native_owner()?.is_some(),
             error("nativeGatewayRequired", "Gateway handoff is required")
         );
+        ensure!(
+            self.receipt(&input.request_id)?.is_none(),
+            error(
+                "requestConflict",
+                "requestId belongs to a Host lifecycle operation"
+            )
+        );
+        if self.client_operation(&input.request_id)?.is_some()
+            && self
+                .remote
+                .operation(&input.request_id, &self.migration)?
+                .is_none()
+        {
+            return Err(error(
+                "requestConflict",
+                "requestId belongs to another domain operation",
+            ));
+        }
         let snapshot = source(self, &input.source_id)?;
         let digest = self.intent_digest(
             "remote.gateway.control",
@@ -162,19 +187,18 @@ impl Host {
                             "Original pairing invitation is no longer available",
                         )
                     })?;
-                return pair_payload(&snapshot["config"], invite);
+                return pair_payload(self, &snapshot["config"], invite);
             }
             return self.gateway_state(&input.source_id);
         }
-        let _asset_root = input.asset_root;
+        let mut prepared = None;
         let mut config = snapshot["config"].clone();
         let operation = input.request["operation"]
             .as_str()
             .context("invalid Remote operation")?;
         let fields: &[&str] = match operation {
-            "status" | "disable" | "disableDirect" | "forgetRevoked" | "cancelPair" => {
-                &["operation"]
-            }
+            "status" | "disable" | "enableDirect" | "disableDirect" | "forgetRevoked"
+            | "cancelPair" => &["operation"],
             "pair" => &["operation", "transport"],
             "enable" => &["operation", "relay", "code", "confirmed"],
             "revoke" | "reject" => &["operation", "id"],
@@ -203,12 +227,16 @@ impl Host {
                     .transpose()?
                     .unwrap_or("direct");
                 ensure!(
-                    transport == "relay",
-                    error("unsupportedCapability", "Direct pairing is unavailable")
+                    matches!(transport, "relay" | "direct"),
+                    error("invalidRequest", "invalid pairing transport")
                 );
                 ensure!(
-                    config["enabled"] == true && self.gateway.status()["connected"] == true,
-                    error("invalidRequest", "Connect Relay before pairing")
+                    if transport == "relay" {
+                        config["enabled"] == true && self.gateway.status()["connected"] == true
+                    } else {
+                        config["directEnabled"] == true && self.gateway.direct.borrow().is_some()
+                    },
+                    error("invalidRequest", "Connect transport before pairing")
                 );
                 self.gateway.cancel_pair();
                 let mut random = [0; 32];
@@ -220,7 +248,7 @@ impl Host {
                     expires_at: now() + 120_000,
                     transport: transport.into(),
                 };
-                let result = pair_payload(&config, &invite)?;
+                let result = pair_payload(self, &config, &invite)?;
                 self.remote.save_control_receipt(
                     &input.request_id,
                     &input.source_id,
@@ -228,6 +256,7 @@ impl Host {
                     &digest,
                 )?;
                 *self.gateway.invite.borrow_mut() = Some(invite);
+                self.changed();
                 return Ok(result);
             }
             "cancelPair" | "reject" => {
@@ -246,6 +275,7 @@ impl Host {
                     &self.identity,
                     &digest,
                 )?;
+                self.changed();
                 return self.gateway_state(&input.source_id);
             }
             "approve" => {
@@ -314,6 +344,27 @@ impl Host {
             "status" => return self.gateway_state(&input.source_id),
             "disable" => config["enabled"] = json!(false),
             "disableDirect" => config["directEnabled"] = json!(false),
+            "enableDirect" => {
+                config["directEnabled"] = json!(true);
+                if self.gateway.direct.borrow().is_none() {
+                    let root = input
+                        .asset_root
+                        .map(Ok)
+                        .unwrap_or_else(|| asset_root(self))?;
+                    let mut next =
+                        prepare_direct(self.clone(), &config, &root)
+                            .await
+                            .map_err(|_| {
+                                error(
+                                    "invalidRequest",
+                                    "Direct assets or listener are unavailable",
+                                )
+                            })?;
+                    config["directPort"] = json!(next.handle.port());
+                    next.transport = transport_key(&config, TransportKind::Direct);
+                    prepared = Some(next);
+                }
+            }
             "enable" => {
                 ensure!(
                     input.request["confirmed"] == true,
@@ -420,6 +471,7 @@ impl Host {
                 ));
             }
         }
+        self.admission()?;
         let current = self
             .slots
             .borrow()
@@ -428,6 +480,17 @@ impl Host {
             .collect::<Vec<_>>();
         let projects = self.migration.remote_projects(&input.source_id, &current)?;
         self.remote.dispatch("remote.gateway.replace",json!({"requestId":input.request_id,"expectedGeneration":input.expected_generation,"expectedRevision":snapshot["revision"],"sourceId":input.source_id,"config":config,"controlDigest":digest}),"native-gateway-control",&self.identity.generation,&self.migration,&projects)?;
+        if let Some(next) = prepared {
+            *self.gateway.direct.borrow_mut() = Some(next.handle.clone());
+            *self.gateway.prepared_direct.borrow_mut() = Some(next);
+        }
+        if operation == "disableDirect" {
+            self.gateway.direct_error.borrow_mut().clear();
+            if let Some(handle) = self.gateway.direct.borrow_mut().take() {
+                handle.stop();
+            }
+        }
+        self.changed();
         if operation == "approve" {
             if let Some(id) = input.request["id"].as_str() {
                 if let Some(pair) = self.gateway.pairs.borrow_mut().remove(id) {
