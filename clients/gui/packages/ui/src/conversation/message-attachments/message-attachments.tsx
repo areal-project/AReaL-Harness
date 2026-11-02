@@ -44,7 +44,12 @@ export type AttachmentData = {
 };
 
 export type AttachmentMediaCategory =
-  "image" | "video" | "audio" | "document" | "source" | "unknown";
+  | "image"
+  | "video"
+  | "audio"
+  | "document"
+  | "source"
+  | "unknown";
 
 export type AttachmentVariant = "grid" | "inline" | "list";
 
@@ -257,7 +262,7 @@ export const Attachment = ({
           variant === "inline" && [
             "flex h-8 select-none items-center gap-0.5",
             "overflow-hidden rounded-md border border-border p-1 pr-2.5",
-            "font-medium text-ui-base transition-all",
+            "font-medium text-ui-base transition-colors",
             "bg-background",
             "[--attachment-bg:var(--color-background)]",
           ],

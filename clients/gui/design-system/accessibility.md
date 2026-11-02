@@ -10,7 +10,7 @@
 
 ## 键盘与动效
 
-`R-ACCESSIBILITY-004` 生产组件的键盘路径在设计 smoke 和 Electron 交互 smoke 中核对。输入与发送、审批、提问、Esc 归属和设置页按真实组件执行。不要把程序调用 `click()` 作为键盘验证。动效生成器从全部 duration 类型的 `motion-*` Token 生成零时长覆盖。系统减弱动效适用于没有明确选择关闭的页面，显式设置由宿主的 `data-reduced-motion` 控制。
+`R-ACCESSIBILITY-004` 生产组件的键盘路径在设计 smoke 和 Electron 交互 smoke 中核对。输入与发送、审批、提问、Esc 归属和设置页按真实组件执行。不要把程序调用 `click()` 作为键盘验证。减少动效时全部 `motion-*` Token 归零；系统偏好生效，除非宿主的 `data-reduced-motion` 另有设置。
 
 ## VoiceOver 抽查
 

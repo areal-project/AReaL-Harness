@@ -10,7 +10,7 @@ Theme settings warn when the selected foreground against the background falls be
 
 ## Keyboard and motion
 
-Design and Electron interaction smoke checks exercise production components for sending, decisions, questions, Escape ownership and settings navigation. Calling `click()` alone does not establish keyboard access. All duration tokens named `motion-*` receive zero-duration reduced-motion overrides. The operating system preference applies unless the user explicitly disables reduced motion; the host controls explicit preferences through `data-reduced-motion`.
+Design and Electron interaction smoke checks exercise production components for sending, decisions, questions, Escape ownership and settings navigation. Calling `click()` alone does not establish keyboard access. Reduced motion (system, unless the host's `data-reduced-motion` overrides it) zeroes every `motion-*` token.
 
 ## VoiceOver review
 

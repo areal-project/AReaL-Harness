@@ -93,8 +93,12 @@ export function renderFoundations(tokens) {
     }),
   );
   const reducedMotion = Object.entries(tokens.foundation)
-    .filter(([name, token]) => name.startsWith("motion-") && token.$type === "duration")
-    .map(([name]) => `--${extension(tokens.foundation[name]).name ?? name}: 0ms;`)
+    .filter(([name]) => name.startsWith("motion-"))
+    .map(([name, token]) => {
+      const value = extension(token).reducedMotion ?? (token.$type === "duration" ? "0ms" : null);
+      assert.ok(value !== null, `missing reduced motion value: ${name}`);
+      return `--${extension(token).name ?? name}: ${value};`;
+    })
     .join(" ");
   return {
     themes,

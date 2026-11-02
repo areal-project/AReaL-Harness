@@ -4,7 +4,7 @@
   height: 1em;
   border-radius: var(--radius-micro);
   background: var(--color-muted);
-  animation: areal-skeleton 2.4s infinite;
+  animation: areal-skeleton 2.4s var(--motion-loop);
 }
 .areal-skeleton[data-shape="block"] {
   height: auto;
@@ -24,12 +24,4 @@
     opacity: 0.5;
     animation-timing-function: steps(4);
   }
-}
-@media (prefers-reduced-motion: reduce) {
-  :root:not([data-reduced-motion="false"]) .areal-skeleton {
-    animation: none;
-  }
-}
-:root[data-reduced-motion="true"] .areal-skeleton {
-  animation: none;
 }
