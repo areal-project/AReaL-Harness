@@ -187,11 +187,17 @@ prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每�
 
 `session.create` 只创建普通 `ask` 会话，将原手机命令绑定到 Core 的 `areal/thread/start`、原 `creationAdmission` 与创建受理回执；结果不确定时只核查该原请求。同一 peer 的两个连接重叠提交同一个 `commandId`，在最后一次前置异步读取后重新核对 journal，复用同一原操作。`interaction.respond` 同样在读取当前交互后核对原操作，副本不另行提交审批。
 
+`session.send` 沿用 `{threadId,expectedConfigRevision,text,enqueue?,expectedTurnId?}`，使用当前项目、Gateway、grant 与 Core 代际的写入 `context`。文本非空且最多 64 KiB；可选字段显式 `null` 非法，省略 `enqueue` 与显式 `false` 的命令语义摘要不同。Host 先核对普通会话所有权、配置 revision、活动 Turn 与队列，再由 Core 的 `ordinarySession` 准入 guard 原子核对。直接发送只允许 idle 且无待处理队列；排队必须绑定确切的原活动 `expectedTurnId`。忙碌、目标变化与不支持的 Workflow profile 分别保留 `TURN_BUSY`、`TARGET_CHANGED`、`UNSUPPORTED_PROFILE` 语义。
+
+Host journal 在派发前保存原 `operationId`、typed Core 请求摘要、来源项目/设备/手机 `commandId` 与 Core 存储绑定。同设备并发副本在最后一次前置异步读取后核对原关联，只派发一次；错误分支也以已存在的原关联为准。直接发送的受理结果保留原 `threadId`/`turnId`；排队结果保留原 `receipt.queueItemId`，不猜测将来的 Turn。`command.read` 在项目离线时仍能读取原日志；UNKNOWN 恢复只读原 `areal/request/read`，核对请求、方法、typed 摘要、目标与原存储身份。相同 serviceId、principal identity 与持久 journalEpoch 可跨 Core 代际查询原回执；存储不符、没有回执或证据不完整继续 UNKNOWN，不重新派发。同一会话还有未结算的非控制提交且无对应 outcome 时，即使 Core 当前 idle，新命令也返回 `SUBMISSION_UNKNOWN` 与 `submissionUnknown:true`；精确停止/交互控制按原关联识别，已结算 outcome 优先。原发送仍在等待回复时，只读查询可显示 `pending`；进程退出不将这项临时等待状态当作受理证明。
+
+原生发送的恢复与完成观察要求记录中保留原 typed 请求摘要和 Core 存储绑定。旧 JS 导入记录没有这些字段时，不从当前会话或新连接伪造绑定：未结算提交继续 UNKNOWN，已受理记录仍可读取原日志结果。旧记录的准入恢复及进行中完成推送，还需要来源 import manifest 与原存储身份的可核对证明；本接口不将它们视为已完成迁移。
+
 `enable` 沿用原 Relay origin、一次性 `code` 与 `confirmed` 输入。非法 origin、无效 code 或缺少必要登记信息在受理前返回 `invalid-origin`、`invalid-code` 或 `enrollment-required`。Host 在唯一 HTTPS `/enroll` POST 前持久化原 `remote.gateway.control` 的 `outcomeUnknown` 回执，绑定来源、Host 身份、代际、原 revision 与 HMAC，不保存登记码。禁用客户端重试和重定向。仅可证明拒绝授权的 403/429 响应结算为原 `blocked` 回执；断流、超时、异常状态或无法解析的成功响应保持 UNKNOWN。确定成功后，只有当前内存延续可以将同一原 ID 转入既有 Remote CAS/Vault 提交链；不从 UNKNOWN 查询触发另一次登记。GUI 仅按原 ID 核查已确认拒绝；未知结果保留原引用。
 
 `device.push.register` 与 `device.push.unregister` 是无项目 `context` 的设备命令，仍需有效 `observe` 授权，并共用写入速率预算。登记参数为 `{platform:"apns",token,environment:"production"|"development"}`；token 为 64–200 位十六进制，保存为小写。注销参数为空对象。原 `commandId` 是 UUID；加密 Remote 配置中的 `pushCommands` 按设备保存原语义摘要与 `{registered}` 回执，同 ID 不同参数返回 `COMMAND_CONFLICT`，容量为 4096 条。token 更新不改变 grant revision。内部保存操作另按来源、设备与原命令 ID 关联；保存结果未知时返回 `submissionUnknown:true`，只查询原命令，不重新提交。无项目 `context` 的 `command.read({commandId})` 即使项目离线也可返回原设备回执；找不到时为 `notFound` 且 `submissionUnknown:true`。公开快照和错误不包含 token 或内部存储路径。
 
-Relay 的实际 `Ready.push` 决定 `pushSupported` 与连接描述中的 `push` 能力。Host 使用既有 Core 连接扫描审批和问题提醒，完整分页及摘要就绪后建立基线；Core 连接代际改变时重新建立基线。在线设备的提醒被抑制且计入已观察集合，离线后不补发这些历史提醒。离线提醒经原 Relay 通道发送，并在实际出队前重新核对 grant、token、项目映射、Core 连接与 Gateway 代际；帧只含不透明定位 ID、类别、计数和合并 ID，不含正文。Relay 注销通知只移除当前仍匹配的 token，保留轮换后的新 token 和原命令回执。此能力目前覆盖审批和问题提醒；`session.send` 的任务完成与排队任务推送尚未迁入原生 owner。
+Relay 的实际 `Ready.push` 决定 `pushSupported` 与连接描述中的 `push` 能力。Host 使用既有 Core 连接扫描审批和问题提醒，完整分页及摘要就绪后建立基线；Core 连接代际改变时重新建立基线。在线设备的提醒被抑制且计入已观察集合，离线后不补发这些历史提醒。离线提醒经原 Relay 通道发送，并在实际出队前重新核对 grant、token、项目映射、Core 连接与 Gateway 代际；帧只含不透明定位 ID、类别、计数和合并 ID，不含正文。Relay 注销通知只移除当前仍匹配的 token，保留轮换后的新 token 和原命令回执。完成提醒绑定原 `session.send` 的受理结果：直接发送只观察原 Turn，排队只从原 queueItemId 的权威条目解析 Turn。新受理后的首份快照已终结时仍发送提醒；历史受理恢复的首份终态快照不补发。观察归现有 Host Core 连接，浏览器关闭不释放该观察；完成提醒只要求 `observe`，审批提醒仍要求 `answer`。终态为 completed 时发送 `turnCompleted`，failed、interrupted、cancelled 时发送 `turnFailed`，每条原命令只有一个固定合并 ID。
 
 ### journal 与操作回执
 

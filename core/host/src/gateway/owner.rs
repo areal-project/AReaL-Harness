@@ -28,6 +28,9 @@ pub(super) struct Gateway {
     direct_error: RefCell<String>,
     push_supported: std::cell::Cell<bool>,
     push_diagnostic: RefCell<String>,
+    completions: RefCell<BTreeMap<String, push::Completion>>,
+    completion_changed: Notify,
+    sending: Rc<RefCell<std::collections::BTreeSet<String>>>,
 }
 struct Invite {
     request_id: String,
@@ -228,6 +231,7 @@ struct Running {
     attention: Rc<Mutex<push::Attention>>,
     scanning: Rc<std::cell::Cell<bool>>,
     last_scan: std::time::Instant,
+    commands: std::collections::BTreeSet<String>,
 }
 impl Drop for Running {
     fn drop(&mut self) {
@@ -293,6 +297,7 @@ async fn run_relay(host: Rc<Host>) {
                         attention: Rc::new(Mutex::new(push::Attention::default())),
                         scanning: Rc::new(std::cell::Cell::new(false)),
                         last_scan: std::time::Instant::now() - Duration::from_secs(5),
+                        commands: std::collections::BTreeSet::new(),
                     }))
                 })();
                 match startup {
@@ -333,6 +338,7 @@ async fn run_relay(host: Rc<Host>) {
                 }
             },
             _=tokio::time::sleep(Duration::from_millis(250))=>{},
+            _=host.gateway.completion_changed.notified()=>{},
         }
         if host.gateway.status() != previous_status {
             host.changed();
@@ -342,6 +348,7 @@ async fn run_relay(host: Rc<Host>) {
                 && !running.scanning.get()
                 && running.last_scan.elapsed() >= Duration::from_secs(5)
             {
+                push::historical(&host);
                 running.last_scan = std::time::Instant::now();
                 running.scanning.set(true);
                 let slot = push::ScanSlot(running.scanning.clone());
@@ -363,6 +370,7 @@ async fn run_relay(host: Rc<Host>) {
                     }
                 });
             }
+            push::start_completions(&host, running);
             while running.tasks.try_join_next().is_some() {}
         }
     }

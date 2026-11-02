@@ -147,14 +147,14 @@ impl Session {
                 settled["error"] = rejected.0.clone();
             }
         }
-        let settled = self.settle_creation(&id, settled)?;
+        let settled = self.settle_command(&id, settled)?;
         self.authorize(Some(project), "submit")?;
         Ok(Self::command_view(Some(&settled), &command))
     }
     fn creation_receipt(operation: &str, thread: &str) -> Value {
         json!({"requestId":operation,"method":"areal/thread/start","status":"completed","accepted":true,"threadId":thread,"result":{"threadId":thread},"operation":{"requestId":operation,"method":"areal/thread/start","target":{"kind":"thread","threadId":thread}}})
     }
-    fn settle_creation(&self, id: &str, mut record: Value) -> Result<Value> {
+    pub(super) fn settle_command(&self, id: &str, mut record: Value) -> Result<Value> {
         let operation = record["operationId"]
             .as_str()
             .context("RESOURCE_UNAVAILABLE")?
@@ -245,6 +245,6 @@ impl Session {
         settled["threadId"] = json!(thread);
         settled["receipt"] = Self::creation_receipt(operation, thread);
         settled["admissionState"] = json!("accepted");
-        self.settle_creation(&id, settled)
+        self.settle_command(&id, settled)
     }
 }

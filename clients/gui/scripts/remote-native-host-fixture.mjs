@@ -235,7 +235,7 @@ export async function nativeHostFixture(t, { config } = {}) {
 }
 
 // 原限额用例需要真实 Core 的 Thread 身份；此客户端只做本地种子和权威读取。
-export async function nativeCoreProject(t, fixture, { approval = false } = {}) {
+export async function nativeCoreProject(t, fixture, { approval = false, holdModel = false } = {}) {
   const { createServer } = await import("node:http");
   const { connect } = await import("../../../examples/desktop-api/client.mjs");
   const { respondToSessionName } = await import("../../../scripts/model-fixture.mjs");
@@ -255,7 +255,8 @@ export async function nativeCoreProject(t, fixture, { approval = false } = {}) {
     source: { kind: "cli" },
     defaultBinding: false,
   });
-  const modelRequests = [];
+  const modelRequests = [],
+    heldResponses = [];
   const model = createServer(async (request, response) => {
     let raw = "";
     for await (const chunk of request) raw += chunk;
@@ -281,10 +282,28 @@ export async function nativeCoreProject(t, fixture, { approval = false } = {}) {
             ],
           }
         : { content: "NATIVE_REMOTE_FIXTURE" };
-    response.writeHead(200, { "content-type": "text/event-stream" });
-    response.end(
-      `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: delta.tool_calls ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`,
+    const release = () => {
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end(
+        `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: delta.tool_calls ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`,
+      );
+    };
+    if (!holdModel) return release();
+    const input = JSON.stringify(
+      (body.messages ?? []).findLast((message) => message.role === "user")?.content ?? null,
     );
+    const held = {
+      inputSha256: digest(input),
+      released: false,
+      matches: (text) => input.includes(text),
+      release() {
+        assert.equal(this.released, false, "the original model response is released once");
+        assert.equal(response.destroyed, false, "the original Core model request remains open");
+        this.released = true;
+        release();
+      },
+    };
+    heldResponses.push(held);
   });
   await new Promise((done) => model.listen(0, "127.0.0.1", done));
   t.after(async () => {
@@ -356,6 +375,20 @@ export async function nativeCoreProject(t, fixture, { approval = false } = {}) {
     service: ensured.service,
     core,
     modelRequests,
+    async waitForModel(text) {
+      assert.equal(holdModel, true, "the fixture must explicitly hold model responses");
+      let held;
+      await until(
+        () => (held = heldResponses.find((entry) => entry.matches(text))),
+        "the exact original Core model request",
+      );
+      return { inputSha256: held.inputSha256, release: () => held.release() };
+    },
+    modelResponseEvidence: () =>
+      heldResponses.map(({ inputSha256, released }) => ({
+        inputSha256,
+        released,
+      })),
     async readAttention() {
       const refs = [];
       let cursor;

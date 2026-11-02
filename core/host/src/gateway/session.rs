@@ -6,6 +6,8 @@ mod observer;
 pub(super) mod overview;
 #[path = "projection.rs"]
 mod projection;
+#[path = "send.rs"]
+mod send;
 use super::wire;
 use crate::server::{Host, gateway_owner};
 use anyhow::{Context, Result, ensure};
@@ -21,6 +23,7 @@ use std::{
 
 const METHODS: &[&str] = &[
     "session.create",
+    "session.send",
     "device.push.register",
     "device.push.unregister",
     "host.describe",
@@ -361,6 +364,7 @@ impl Session {
                 Some(
                     "interaction.respond"
                         | "session.create"
+                        | "session.send"
                         | "device.push.register"
                         | "device.push.unregister"
                 )
@@ -391,7 +395,10 @@ impl Session {
                         | "RESOURCE_UNAVAILABLE"
                         | "CORE_INCOMPATIBLE"
                         | "LIMIT_EXCEEDED"
-                        | "CAPACITY_EXCEEDED" => message.as_str(),
+                        | "CAPACITY_EXCEEDED"
+                        | "TURN_BUSY"
+                        | "TASK_CONTROL_REQUIRED"
+                        | "SUBMISSION_UNKNOWN" => message.as_str(),
                         _ => "CORE_UNAVAILABLE",
                     };
                     let mut response = json!({"id":request["id"],"error":{"code":code,"message":"请求暂不可用，请重新读取原状态"}});
@@ -399,13 +406,15 @@ impl Session {
                         request["method"].as_str(),
                         Some(
                             "session.create"
+                                | "session.send"
                                 | "interaction.respond"
                                 | "device.push.register"
                                 | "device.push.unregister"
                                 | "command.read"
                         )
                     ) {
-                        response["error"]["submissionUnknown"] = json!(code == "CORE_UNAVAILABLE");
+                        response["error"]["submissionUnknown"] =
+                            json!(matches!(code, "CORE_UNAVAILABLE" | "SUBMISSION_UNKNOWN"));
                         if let Some(id) = request
                             .get("commandId")
                             .or_else(|| request["params"].get("commandId"))
@@ -798,6 +807,7 @@ impl Session {
             }
             "attention.read" => self.attention_read(&project, &generation, params).await,
             "session.create" => self.create_session(&project, &generation, request).await,
+            "session.send" => self.send_session(&project, &generation, request).await,
             "interaction.respond" => self.respond(&project, &generation, request).await,
             "review.read" => self.review(&project, &generation, params).await,
             _ => Err(fail("INVALID_PARAMS")),
@@ -874,7 +884,10 @@ impl Session {
             return json!({"commandId":command,"admissionState":"notFound","submissionUnknown":true});
         };
         let mut result = json!({"commandId":command,"method":record["remote"]["method"],"target":record["remote"]["target"],"operationId":record["operationId"],"admissionState":record.get("admissionState").cloned().unwrap_or(json!("unknown")),"submissionUnknown":record.get("admissionState").is_none()});
-        if record["remote"]["method"] == "session.create" {
+        if matches!(
+            record["remote"]["method"].as_str(),
+            Some("session.create" | "session.send")
+        ) {
             result["nativeRequestId"] = record["operationId"].clone();
         }
         for key in ["threadId", "turnId", "receipt"] {
@@ -883,12 +896,20 @@ impl Session {
             }
         }
         if let Some(error) = record.get("error") {
-            let core = error["code"].as_i64();
-            let code = match core {
-                Some(-32009) => "TARGET_CHANGED",
-                Some(-32001) => "CAPACITY_EXCEEDED",
-                Some(-32602) => "INVALID_PARAMS",
-                _ => "CORE_UNAVAILABLE",
+            let core = error["coreCode"]
+                .as_i64()
+                .or_else(|| error["code"].as_i64());
+            let code = if record["remote"]["method"] == "session.send"
+                && error["code"] == "UNSUPPORTED_PROFILE"
+            {
+                "UNSUPPORTED_PROFILE"
+            } else {
+                match core {
+                    Some(-32009) => "TARGET_CHANGED",
+                    Some(-32001) => "CAPACITY_EXCEEDED",
+                    Some(-32602) => "INVALID_PARAMS",
+                    _ => "CORE_UNAVAILABLE",
+                }
             };
             result["error"] = json!({"code":code,"message":"命令未受理，请刷新状态后检查草稿"});
             if let Some(core) = core {
@@ -926,7 +947,23 @@ impl Session {
         } else {
             record
         };
+        let sent;
+        let record = if let Some(record) =
+            record.filter(|record| record["remote"]["method"] == "session.send")
+        {
+            sent = self.reconcile_send(project, record).await?;
+            Some(&sent)
+        } else {
+            record
+        };
         let mut result = Self::command_view(record, command);
+        if record.is_some_and(|record| {
+            record["remote"]["method"] == "session.send"
+                && record.get("admissionState").is_none()
+                && gateway_owner::push::awaiting(&self.host, record)
+        }) {
+            result["admissionState"] = json!("pending");
+        }
         if let Some(record) = record {
             if record["remote"]["method"] == "interaction.respond" {
                 let target = &record["remote"]["target"];

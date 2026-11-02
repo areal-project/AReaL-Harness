@@ -223,6 +223,7 @@ fn eligible(
     peer: &str,
     revision: &Value,
     push: &Value,
+    capability: &str,
 ) -> bool {
     host.gateway.push_supported.get()
         && grant(&snapshot["config"], peer).is_some_and(|grant| {
@@ -233,7 +234,7 @@ fn eligible(
                     .is_some_and(|ids| ids.iter().any(|id| id == alias))
                 && grant["capabilities"]
                     .as_array()
-                    .is_some_and(|caps| caps.iter().any(|cap| cap == "answer"))
+                    .is_some_and(|caps| caps.iter().any(|cap| cap == capability))
                 && !host.gateway.active.borrow().values().any(|active| {
                     active.peer == peer
                         && active.revision == *revision
@@ -319,20 +320,12 @@ impl Attention {
                         if state.window.as_ref().is_none_or(|window|window.0.elapsed()>=Duration::from_secs(30)) {state.window=Some((Instant::now(),uuid::Uuid::new_v4().to_string(),0));}
                         let window=state.window.as_mut().unwrap();window.2+=1;
                         for grant in &grants {
-                            let peer=grant["devicePeerId"].as_str().context("invalid peer")?.to_owned();
-                            let revision=grant["revision"].clone();let push=grant["push"].clone();
+                            let push=&grant["push"];
                             let mut target=json!({"projectId":alias,"attentionRef":reference});
                             if let Some(thread)=row["threadId"].as_str() {target["threadId"]=json!(thread);}
                             let message=json!({"type":"push","token":push["token"],"environment":push["environment"],"collapseId":window.1,"kind":"attention","count":window.2,"target":target});
-                            let weak=Rc::downgrade(&host);let source=source.clone();let project=project.clone();let alias=alias.clone();let epoch=epoch.clone();let transport=transport.clone();let generation=generation.clone();
-                            let authorized=Rc::new(move || weak.upgrade().is_some_and(|host| {
-                                host.gateway.current(&generation)
-                                && host.schedules.connections.shared_identity(&host,&project).ok().as_ref()==Some(&epoch)
-                                && host.remote.snapshot(&host.migration).ok().is_some_and(|snapshot|snapshot["sourceId"]==source && transport_key(&snapshot["config"],TransportKind::Relay)==transport
-                                    && bindings(&host,&source).ok().is_some_and(|bindings|bindings.iter().any(|binding|binding==&(project.clone(),alias.clone())))
-                                    && eligible(&host,&snapshot,&alias,&peer,&revision,&push))
-                            }));
-                            if !handle.try_push(message,authorized) { *host.gateway.push_diagnostic.borrow_mut()="push-unavailable".into(); }
+                            let route=Route {source:source.clone(),project:project.clone(),alias:alias.clone(),epoch:epoch.clone(),transport:transport.clone(),generation:generation.clone()};
+                            route.publish(&host,&handle,grant,message,"answer");
                         }
                     }
                     state.cursor=page["nextCursor"].as_str().map(str::to_owned);
@@ -349,5 +342,415 @@ impl Attention {
         }
         self.projects.retain(|project, _| active.contains(project));
         Ok(())
+    }
+}
+
+#[derive(Clone)]
+struct Route {
+    source: String,
+    project: String,
+    alias: String,
+    epoch: (String, String, String),
+    transport: String,
+    generation: String,
+}
+impl Route {
+    fn recipient(&self, host: &Host, peer: &str) -> Result<Option<Value>> {
+        ensure!(
+            host.gateway.current(&self.generation)
+                && host
+                    .schedules
+                    .connections
+                    .shared_identity(host, &self.project)?
+                    == self.epoch,
+            "RESYNC_REQUIRED"
+        );
+        let snapshot = host.remote.snapshot(&host.migration)?;
+        ensure!(
+            snapshot["sourceId"] == self.source
+                && transport_key(&snapshot["config"], TransportKind::Relay) == self.transport
+                && bindings(host, &self.source)?
+                    .iter()
+                    .any(|binding| binding == &(self.project.clone(), self.alias.clone())),
+            "RESYNC_REQUIRED"
+        );
+        Ok(grant(&snapshot["config"], peer).filter(|grant| {
+            grant["push"].is_object()
+                && grant["projectIds"]
+                    .as_array()
+                    .is_some_and(|ids| ids.iter().any(|id| id == &self.alias))
+        }))
+    }
+    fn publish(
+        &self,
+        host: &Rc<Host>,
+        handle: &RelayHandle,
+        grant: &Value,
+        message: Value,
+        capability: &'static str,
+    ) {
+        let weak = Rc::downgrade(host);
+        let route = self.clone();
+        let peer = grant["devicePeerId"].as_str().unwrap().to_owned();
+        let revision = grant["revision"].clone();
+        let push = grant["push"].clone();
+        let authorized = Rc::new(move || {
+            weak.upgrade().is_some_and(|host| {
+                host.gateway.current(&route.generation)
+                    && host
+                        .schedules
+                        .connections
+                        .shared_identity(&host, &route.project)
+                        .ok()
+                        .as_ref()
+                        == Some(&route.epoch)
+                    && host
+                        .remote
+                        .snapshot(&host.migration)
+                        .ok()
+                        .is_some_and(|snapshot| {
+                            snapshot["sourceId"] == route.source
+                                && transport_key(&snapshot["config"], TransportKind::Relay)
+                                    == route.transport
+                                && bindings(&host, &route.source).ok().is_some_and(|bindings| {
+                                    bindings.iter().any(|binding| {
+                                        binding == &(route.project.clone(), route.alias.clone())
+                                    })
+                                })
+                                && eligible(
+                                    &host,
+                                    &snapshot,
+                                    &route.alias,
+                                    &peer,
+                                    &revision,
+                                    &push,
+                                    capability,
+                                )
+                        })
+            })
+        });
+        if authorized() && !handle.try_push(message, authorized) {
+            *host.gateway.push_diagnostic.borrow_mut() = "push-unavailable".into();
+        }
+    }
+}
+pub(super) struct Completion {
+    project: String,
+    alias: String,
+    record: Value,
+    baseline: bool,
+}
+fn completion_key(record: &Value) -> String {
+    serde_json::to_string(&json!([
+        record["remote"]["projectId"],
+        record["remote"]["devicePeerId"],
+        record["remote"]["commandId"]
+    ]))
+    .unwrap()
+}
+pub(super) struct Sending {
+    keys: Rc<RefCell<BTreeSet<String>>>,
+    key: String,
+}
+impl Drop for Sending {
+    fn drop(&mut self) {
+        self.keys.borrow_mut().remove(&self.key);
+    }
+}
+pub(super) fn sending(host: &Host, record: &Value) -> Sending {
+    let key = completion_key(record);
+    host.gateway.sending.borrow_mut().insert(key.clone());
+    Sending {
+        keys: host.gateway.sending.clone(),
+        key,
+    }
+}
+pub(super) fn awaiting(host: &Host, record: &Value) -> bool {
+    host.gateway
+        .sending
+        .borrow()
+        .contains(&completion_key(record))
+}
+pub(super) fn track(host: &Host, project: &str, alias: &str, record: &Value, baseline: bool) {
+    if !host.gateway.push_supported.get()
+        || record["admissionState"] != "accepted"
+        || record["remote"]["method"] != "session.send"
+    {
+        return;
+    }
+    let key = completion_key(record);
+    let baseline = baseline && !awaiting(host, record);
+    let mut pending = host.gateway.completions.borrow_mut();
+    if let Some(previous) = pending.get_mut(&key) {
+        previous.baseline &= baseline;
+        return;
+    }
+    if pending.len() >= 8192 {
+        *host.gateway.push_diagnostic.borrow_mut() = "push-watch-capacity".into();
+        return;
+    }
+    pending.insert(
+        key,
+        Completion {
+            project: project.into(),
+            alias: alias.into(),
+            record: record.clone(),
+            baseline,
+        },
+    );
+    host.gateway.completion_changed.notify_one();
+}
+pub(super) fn historical(host: &Host) {
+    let Ok(snapshot) = host.remote.snapshot(&host.migration) else {
+        return;
+    };
+    let Some(source) = snapshot["sourceId"].as_str() else {
+        return;
+    };
+    let Ok(bindings) = bindings(host, source) else {
+        return;
+    };
+    for (project, alias) in bindings {
+        if host
+            .schedules
+            .connections
+            .shared_identity(host, &project)
+            .is_err()
+            || !snapshot["config"]["deviceGrants"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|grant| {
+                    grant["status"] == "active"
+                        && grant["push"].is_object()
+                        && grant["projectIds"]
+                            .as_array()
+                            .is_some_and(|ids| ids.iter().any(|id| id == &alias))
+                        && grant["capabilities"]
+                            .as_array()
+                            .is_some_and(|caps| caps.iter().any(|cap| cap == "observe"))
+                })
+        {
+            continue;
+        }
+        let Ok((_, journal)) = host.journal.native_snapshot(&project) else {
+            continue;
+        };
+        for record in journal["outcomes"]
+            .as_object()
+            .into_iter()
+            .flat_map(|rows| rows.values())
+        {
+            track(host, &project, &alias, record, true);
+        }
+    }
+}
+pub(super) fn start_completions(host: &Rc<Host>, running: &mut Running) {
+    let pending = std::mem::take(&mut *host.gateway.completions.borrow_mut());
+    for (key, completion) in pending {
+        if running.commands.contains(&key) {
+            continue;
+        }
+        if running.commands.len() >= 8192 {
+            *host.gateway.push_diagnostic.borrow_mut() = "push-watch-capacity".into();
+            continue;
+        }
+        let Ok(snapshot) = host.remote.snapshot(&host.migration) else {
+            continue;
+        };
+        let Some(peer) = completion.record["remote"]["devicePeerId"].as_str() else {
+            continue;
+        };
+        let Some(grant) = grant(&snapshot["config"], peer) else {
+            continue;
+        };
+        if !grant["push"].is_object()
+            || completion.record["remote"]["hostId"] != running.identity.peer().to_string()
+            || completion.record["remote"]["projectId"] != completion.alias
+            || !grant["projectIds"]
+                .as_array()
+                .is_some_and(|ids| ids.iter().any(|id| id == &completion.alias))
+        {
+            continue;
+        }
+        let Ok(epoch) = host
+            .schedules
+            .connections
+            .shared_identity(host, &completion.project)
+        else {
+            continue;
+        };
+        let Some(source) = snapshot["sourceId"].as_str() else {
+            continue;
+        };
+        let route = Route {
+            source: source.into(),
+            project: completion.project.clone(),
+            alias: completion.alias.clone(),
+            epoch,
+            transport: running.transport.clone(),
+            generation: host.gateway.generation.borrow().clone(),
+        };
+        running.commands.insert(key.clone());
+        let host = host.clone();
+        let handle = running.handle.clone();
+        running.tasks.spawn_local(async move {
+            if completion
+                .run(host.clone(), handle, route, key)
+                .await
+                .is_err()
+            {
+                *host.gateway.push_diagnostic.borrow_mut() = "push-watch-unavailable".into();
+            }
+        });
+    }
+}
+enum CompletionState {
+    Pending,
+    Terminal(String),
+    Unavailable,
+}
+impl Completion {
+    fn state(&self, native: &Value) -> CompletionState {
+        let thread = &native["thread"];
+        if thread["id"] != self.record["threadId"] {
+            return CompletionState::Unavailable;
+        }
+        let mut turn = self.record["turnId"].as_str();
+        if let Some(queue) = self.record["receipt"]["queueItemId"].as_str() {
+            let Some(item) = thread["desktop"]["queue"]["items"]
+                .as_array()
+                .and_then(|items| items.iter().find(|item| item["id"] == queue))
+            else {
+                return CompletionState::Unavailable;
+            };
+            turn = item["turnId"].as_str();
+            if turn.is_none()
+                && matches!(
+                    item["status"].as_str(),
+                    Some("removed" | "failed" | "cancelled")
+                )
+            {
+                return CompletionState::Unavailable;
+            }
+            if turn.is_none() {
+                return CompletionState::Pending;
+            }
+            if matches!(
+                item["status"].as_str(),
+                Some("completed" | "failed" | "interrupted" | "cancelled")
+            ) {
+                return CompletionState::Terminal(item["status"].as_str().unwrap().into());
+            }
+        }
+        let Some(turn) = turn else {
+            return CompletionState::Unavailable;
+        };
+        let Some(turn) = thread["turns"]
+            .as_array()
+            .and_then(|turns| turns.iter().find(|item| item["id"] == turn))
+        else {
+            return CompletionState::Unavailable;
+        };
+        match turn["status"].as_str() {
+            Some(status @ ("completed" | "failed" | "interrupted" | "cancelled")) => {
+                CompletionState::Terminal(status.into())
+            }
+            _ => CompletionState::Pending,
+        }
+    }
+    async fn run(
+        self,
+        host: Rc<Host>,
+        handle: RelayHandle,
+        route: Route,
+        key: String,
+    ) -> Result<()> {
+        let thread = self.record["threadId"]
+            .as_str()
+            .context("missing original thread")?;
+        let peer = self.record["remote"]["devicePeerId"]
+            .as_str()
+            .context("missing original peer")?;
+        let mut changes = host.changes.subscribe();
+        let (mut native, mut barrier, mut observation) = host
+            .schedules
+            .connections
+            .remote_observe(&host, &self.project, &route.epoch.1, thread)
+            .await?;
+        let capabilities = host
+            .schedules
+            .connections
+            .remote_request(
+                &host,
+                &self.project,
+                &route.epoch.0,
+                &route.epoch.1,
+                &route.epoch.2,
+                "areal/capabilities",
+                json!({}),
+            )
+            .await?;
+        let binding = &capabilities["features"]["threadCreationJournal"]["binding"];
+        let original = &self.record["coreScope"]["storeBinding"];
+        ensure!(
+            self.record["coreScope"]["serviceId"] == route.epoch.0
+                && original["identity"].is_string()
+                && original["journalEpoch"].is_string()
+                && binding["identity"] == original["identity"]
+                && binding["journalEpoch"] == original["journalEpoch"],
+            "RESYNC_REQUIRED"
+        );
+        let mut initial = true;
+        loop {
+            ensure!(
+                observation.current(&host) && host.gateway.current(&route.generation),
+                "RESYNC_REQUIRED"
+            );
+            let Some(grant) = route.recipient(&host, peer)? else {
+                return Ok(());
+            };
+            match self.state(&native) {
+                CompletionState::Terminal(status) => {
+                    if initial && self.baseline {
+                        return Ok(());
+                    }
+                    let push = &grant["push"];
+                    let message = json!({"type":"push","token":push["token"],"environment":push["environment"],"collapseId":storage::digest(key.as_bytes()),"kind":if status=="completed" {"turnCompleted"} else {"turnFailed"},"count":1,"target":{"projectId":self.alias,"threadId":thread}});
+                    route.publish(&host, &handle, &grant, message, "observe");
+                    return Ok(());
+                }
+                CompletionState::Unavailable => {
+                    *host.gateway.push_diagnostic.borrow_mut() = "push-turn-unavailable".into();
+                    return Ok(());
+                }
+                CompletionState::Pending => {}
+            }
+            loop {
+                let event = tokio::select! {
+                    event=observation.events.recv()=>event?,
+                    changed=changes.changed()=> {
+                        changed?;
+                        if route.recipient(&host,peer)?.is_none() {return Ok(());}
+                        continue;
+                    }
+                };
+                if event.sequence <= barrier {
+                    continue;
+                }
+                let params = &event.value["params"];
+                if params
+                    .get("threadId")
+                    .or_else(|| params["thread"].get("id"))
+                    .or_else(|| params["interaction"].get("threadId"))
+                    .and_then(Value::as_str)
+                    == Some(thread)
+                {
+                    break;
+                }
+            }
+            (native, barrier) = observation.snapshot(&host).await?;
+            initial = false;
+        }
     }
 }
