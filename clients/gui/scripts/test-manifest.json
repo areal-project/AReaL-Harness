@@ -219,6 +219,15 @@
     "notes": "Isolated shared Host quit and reconnect. Remote identity recovery is opt-in and requires authorization for test Keychain writes on macOS."
   },
   {
+    "script": "test:host-handoff",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Uses the macOS fixed Core bundle, /private/tmp and the system Python PTY runner.",
+    "areas": ["lifecycle", "conversation"],
+    "requires": ["electron", "core-binary", "native-runtime", "gui-build", "git", "python3"],
+    "notes": "Isolated GUI-to-TUI approval handoff and shared history through a real PTY and local model. On macOS, requires authorized test Keychain writes and AREAL_TEST_HOST_KEYCHAIN=1, including for empty GUI configuration."
+  },
+  {
     "script": "test:legacy-recovery",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],

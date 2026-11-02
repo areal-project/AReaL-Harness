@@ -47,6 +47,7 @@
     "test:quit-draft": "node scripts/quit-draft-smoke.mjs",
     "test:quit-progress": "node scripts/quit-progress-smoke.mjs",
     "test:host-quit": "node scripts/gui-host-quit-smoke.mjs",
+    "test:host-handoff": "node scripts/gui-host-handoff-smoke.mjs",
     "test:legacy-recovery": "node scripts/legacy-desktop-recovery-smoke.mjs",
     "test:lifecycle:legacy": "node scripts/legacy-lifecycle-smoke.mjs",
     "test:queue": "node scripts/queue-smoke.mjs",

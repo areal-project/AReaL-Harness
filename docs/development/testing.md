@@ -398,6 +398,10 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 
 `node clients/gui/scripts/gui-toolhost-connection-smoke.mjs` 使用真实 Host/Core、DesktopService 与 ProjectConnections。Main socket 断开后 Desktop 保持运行，原 Turn 继续，动态工具报告不可用；后继 Main 只能观察活动 Turn，空闲后显式动作才重绑。另覆盖普通观察客户端断开不撤销 Main 工具。模型由本地 HTTP/SSE fixture 提供，不启动 Electron 或真实浏览器，也不证明供应商和安装包可用。
 
+`pnpm --dir clients/gui run test:host-handoff` 使用隔离 Electron、真实 TUI PTY 和固定 `.local/shared-host-bin` 产物。GUI 提交停在审批后强退 Main，TUI 连接原 Core 完成原 Turn，Runtime 文件副作用恰好一次。GUI 重开后核对原 Turn、同项目 TUI 新会话和独立 CLI 项目的历史。脚本检查源码、构建与产物身份，并将截图、终端输出、注册记录和清理结果保存在 `.scratch/shared-host/h2-gui-tui-handoff/`。模型仅使用本地确定性 fixture，目录选择器由测试注入；该场景不覆盖凭据迁移、真实供应商或安装包。
+
+macOS 上即使 GUI 配置为空，启动也会生成订阅传输 token 并写入 Keychain。运行前须取得测试 Keychain 读写授权，再设置 `AREAL_TEST_HOST_KEYCHAIN=1`；未设置时脚本在创建测试状态或启动进程前退出。系统授权可能需要用户手动确认。超时且回执为 `acceptedPending` 时保留原隔离目录和请求 ID，先核查原操作；不能视为未写入后重新提交。
+
 故障清理时，控制 socket 或 Core 的本机 HTTP 端点可先关闭而实例锁仍由清理进程持有；故障状态轮询只等待明确的连接拒绝过渡，仍须在原有期限内读到预期的 `stopped` 或 `unavailable`。其它错误立即失败，正常状态查询不放宽。`AREAL_TEST_EVIDENCE` 可指定 JSON 回执位置，记录阶段和状态轮询；CI 将其保存在 `target/ci/local-service.json`，失败时与日志一起上传。
 
 `cargo test --locked -p areal-app-server --test browser_auth` 验证可信客户端到真实 HTTP/WebSocket 的自动登录、并发单次兑换、Origin 校验、实例隔离、权限继承、手动登录与会话到期断连；该 crate 单元测试使用虚拟时间检查登录码/会话过期和容量上限。`node --test scripts/web-progress.test.mjs` 检查兑换前清除 URL 片段、成功后连接、失败时手动登录兜底和普通刷新。
