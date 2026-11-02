@@ -83,7 +83,7 @@ function assertIdle(record) {
   );
   assert.ok(
     (desktop?.queue?.items ?? []).every((item) =>
-      ["completed", "failed", "steered", "cancelled"].includes(item.status),
+      ["completed", "failed", "steered", "cancelled", "removed"].includes(item.status),
     ),
     "History contains queued work",
   );
@@ -472,9 +472,10 @@ try {
         { projectId: project.id, threadId, ids: expected.map((item) => item.id) },
       );
       await selectConversation(page, threadId);
-      await page.waitForFunction(() =>
-        Boolean(document.querySelector(".messages [data-side-item-id]")),
-      );
+      if (expected.length)
+        await page.waitForFunction(() =>
+          Boolean(document.querySelector(".messages [data-side-item-id]")),
+        );
       const projection = await page.evaluate(
         async ({ projectId, threadId }) => {
           const thread = (await window.arealDesktop.snapshot()).projects.find(

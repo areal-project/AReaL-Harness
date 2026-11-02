@@ -40,7 +40,7 @@ test("history preflight accepts settled queue history and rejects executable or 
   const record = (status) => ({
     thread: { status: { type: "idle" }, turns: [], desktop: { queue: { items: [{ status }] } } },
   });
-  for (const status of ["completed", "failed", "steered", "cancelled"])
+  for (const status of ["completed", "failed", "steered", "cancelled", "removed"])
     assert.doesNotThrow(() => assertIdle(record(status)));
   for (const status of ["pending", "running", "unknown"])
     assert.throws(() => assertIdle(record(status)), /History contains queued work/);
