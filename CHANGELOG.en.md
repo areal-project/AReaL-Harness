@@ -65,6 +65,7 @@ In very narrow Side panels, model controls can extend beyond the panel. Widen th
 ### Changes
 
 - Advance the shared source version for CLI, TUI and their bundled Core and Runtime.
+- Apply an explicit CLI `--model` before creating a session, so an unavailable default provider no longer causes a misleading “thread not found” error. Missing default providers report a model configuration error.
 
 Installation packages and Homebrew updates have not been published; installation instructions still refer to publicly available versions.
 
