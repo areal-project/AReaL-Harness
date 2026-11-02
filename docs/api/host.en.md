@@ -124,6 +124,8 @@ Import first saves a fixed manifest and original-byte backups, then secrets and 
 
 `gui.source` queries the complete canonical `GuiSource` and returns only committed sources. If a profile has multiple committed sources, it returns `sourceConflict` rather than mixing newly registered aliases. It does not acquire a source guard, start an import, read credentials, or create directories. `bindings` retains imported aliases for reused CLI projects and adds new GUI registrations for this profile. New bindings use scratch path `<coreHome>/<legacyProjectId>/scratch`. Host rebuilds the result from original import receipts and current project registrations after restart.
 
+GUI initialization and Host reconnection attach read-only observers to ready foreign projects and load their conversation catalogs. Discovery does not start stopped Cores or overwrite CLI configuration. Rediscovery of the same generation preserves an in-flight observer. History configuration decoding accepts Core's `automaticSessionName` field without expanding the fields accepted by GUI creation commands.
+
 `credentials` contains non-secret migration metadata only. `references` combines imported provider references with later vault slots owned by the source, including revoked references; `vault.read` remains authoritative for values. `migratedConfigPaths` retains original configuration migration markers. `legacyProviders` removes ciphertext and adds `apiKeyEnv` only for entries with secrets in the original providers manifest. Reads verify original backup digests or retirement-plan derivative digests and never read the fenced credential source file.
 
 ### Legacy secret retirement

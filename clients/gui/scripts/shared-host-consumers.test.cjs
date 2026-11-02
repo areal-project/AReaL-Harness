@@ -89,6 +89,117 @@ test("foreign CLI launch and thread creation retain Core configuration ownership
   assert.deepEqual(submitted.params.agentProfile, explicit);
 });
 
+test("Host discovery schedules only ready foreign projects for passive observation", async (t) => {
+  const sourceId = "gui-source";
+  const entries = [
+    { id: "cli", state: "ready" },
+    { id: "gui", state: "ready", sourceId },
+    { id: "stopped", state: "stopped" },
+    { id: "stopping", state: "stopping" },
+    { id: "unavailable", state: "unavailable" },
+    { id: "pending", state: "pending" },
+    { id: "without-service", state: "ready", noService: true },
+    { id: "user-stopped", state: "ready" },
+  ];
+  const loaded = [];
+  const projects = new Map();
+  const backend = Object.assign(Object.create(CoreBackend.prototype), {
+    closing: false,
+    starting: new Map(),
+    projects,
+    host: {
+      sourceId,
+      list: async () => entries.map(({ id }) => ({ id, root: `/fixture/${id}` })),
+      resolve: (id) => ({
+        projectId: id,
+        sourceId: entries.find((entry) => entry.id === id).sourceId,
+      }),
+      client: {
+        status: async () => ({
+          projects: entries.map(({ id, state, noService }) => ({
+            registration: { projectId: id },
+            state,
+            ...(noService ? {} : { service: { generation: "original" } }),
+          })),
+        }),
+      },
+      ensure: () => assert.fail("discovery must not start a Core"),
+    },
+    lifecycleOperations: { schedulingSuppressed: (id) => id === "user-stopped" },
+    loadProjectJournal: async (id) => {
+      loaded.push(id);
+      const project = { id };
+      projects.set(id, project);
+      return project;
+    },
+  });
+  t.after(() => {
+    for (const project of projects.values()) clearTimeout(project.reconnectTimer);
+  });
+  await backend.refreshHostProjects();
+  assert.deepEqual(loaded, ["cli", "gui", "user-stopped"]);
+  assert.equal(projects.get("cli").reconnectTimer, undefined);
+  loaded.length = 0;
+  await backend.refreshHostProjects({ observeForeign: true });
+  assert.deepEqual(loaded, ["cli", "gui", "user-stopped"]);
+  assert.ok(projects.get("cli").reconnectTimer);
+  assert.equal(projects.get("gui").reconnectTimer, undefined);
+  assert.equal(projects.get("user-stopped").reconnectTimer, undefined);
+});
+
+test("rediscovering the same Core generation preserves an in-flight observer identity", async (t) => {
+  const previous = {
+    generation: "original",
+    serviceId: "cli-core",
+    configFingerprint: "cli-config",
+  };
+  const project = { id: "cli", service: previous, client: null };
+  let descriptor = { ...previous, endpoint: "ws://fixture" };
+  let finishObservation;
+  const observation = new Promise((resolve) => {
+    finishObservation = resolve;
+  });
+  const connections = [];
+  const backend = Object.assign(Object.create(CoreBackend.prototype), {
+    closing: false,
+    starting: new Map(),
+    projects: new Map([[project.id, project]]),
+    host: {
+      sourceId: "gui-source",
+      list: async () => [{ id: project.id, root: "/fixture/cli" }],
+      resolve: () => ({ projectId: project.id }),
+      client: {
+        status: async () => ({
+          projects: [
+            { registration: { projectId: project.id }, state: "ready", service: descriptor },
+          ],
+        }),
+      },
+      observe: () => observation,
+    },
+    lifecycleOperations: { assertProject() {}, schedulingSuppressed: () => false },
+    loadProjectJournal: async () => project,
+    reconcile: async () => {},
+  });
+  backend.connections.connect = async (owner, options) => connections.push({ owner, options });
+  t.after(() => clearTimeout(project.reconnectTimer));
+  const reconnecting = backend.reconnectProject(project);
+  await backend.refreshHostProjects();
+  assert.equal(project.service, previous);
+  finishObservation({ descriptor, token: "fixture" });
+  assert.equal(await reconnecting, project);
+  assert.deepEqual(connections, [{ owner: project, options: { observeOnly: true } }]);
+  assert.equal(project.endpoint, descriptor.endpoint);
+
+  let closed = 0;
+  project.client = { close: () => closed++ };
+  descriptor = { ...descriptor, generation: "replacement" };
+  await backend.refreshHostProjects();
+  assert.equal(closed, 1);
+  assert.equal(project.client, null);
+  assert.equal(project.service, descriptor);
+});
+
 test("foreign project snapshot exposes only Core profiles and models", () => {
   const project = {
     id: "cli",

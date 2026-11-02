@@ -12,6 +12,37 @@ const {
   commandSemantics,
 } = require("../packages/workbench/client/desktop-contract.cjs");
 const { workspaceCommand } = require("../app/src/core/workspace.cjs");
+const { readThreadList } = require("../app/src/core/history-contract.cjs");
+
+test("CLI naming configuration is readable without widening desktop create input", () => {
+  for (const automaticSessionName of [false, true, null]) {
+    const thread = {
+      id: "cli-thread",
+      turns: [],
+      desktop: { configuration: { options: { automaticSessionName } } },
+    };
+    assert.deepEqual(readThreadList({ data: [thread] }).data, [thread]);
+  }
+  assert.throws(() =>
+    readThreadList({
+      data: [
+        {
+          id: "cli-thread",
+          desktop: { configuration: { options: { automaticSessionName: "false" } } },
+        },
+      ],
+    }),
+  );
+  assert.throws(
+    () =>
+      validateCommand("create", {
+        projectId: "project",
+        text: "hello",
+        options: { automaticSessionName: false },
+      }),
+    { code: "INVALID_DESKTOP_REQUEST" },
+  );
+});
 
 const item = (id, text = id) => ({ id, type: "agentMessage", text });
 const turn = (id, items, status = "completed") => ({ id, items, status });

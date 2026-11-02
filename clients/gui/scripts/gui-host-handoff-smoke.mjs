@@ -56,7 +56,6 @@ const env = { ...process.env };
 for (const key of Object.keys(env))
   if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
 Object.assign(env, {
-  HOME: join(state, "user"),
   AREAL_CORE_BIN: binary,
   AREAL_CORE_CONFIG: join(state, "config.toml"),
   AREAL_CORE_HOME: join(state, "core"),
@@ -70,6 +69,7 @@ Object.assign(env, {
   no_proxy: "127.0.0.1,localhost,::1",
   LANG: "zh_CN.UTF-8",
 });
+const clientEnv = { ...env, HOME: env.AREAL_CORE_USER_HOME };
 const checks = [],
   requests = [],
   errors = [],
@@ -192,7 +192,7 @@ async function startPty(args) {
   const child = spawn(
     "/usr/bin/python3",
     ["-I", "-S", join(root, "scripts/shared-host-client-pty.py"), binary, ...args],
-    { env, cwd: workspace, stdio: ["pipe", "pipe", "pipe"] },
+    { env: clientEnv, cwd: workspace, stdio: ["pipe", "pipe", "pipe"] },
   );
   processes.push({ kind: "pty-wrapper", pid: child.pid });
   child.stderr.on(
@@ -242,7 +242,7 @@ try {
   await verificationDoctor({ root, binary, evidence });
   await mkdir(workspace);
   await mkdir(cliWorkspace);
-  await mkdir(env.HOME);
+  await mkdir(env.AREAL_CORE_USER_HOME);
   await mkdir(env.XDG_CONFIG_HOME);
   execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
   await new Promise((r) => model.listen(0, "127.0.0.1", r));
@@ -337,22 +337,22 @@ try {
     "--mouse=false",
   ]);
   await pty.call("expect", "Permission required");
-  await pty.call("expect", "HANDOFF_GUI_INPUT");
   assert.equal(requests.length, requestCount, "attach does not replay model");
   await pty.call("expect", "> Deny");
   await pty.call("send", "\u001b[B");
   await pty.call("expect", "> Allow once");
   await pty.call("send", "\r");
+  await pty.call("expect", "HANDOFF_GUI_INPUT");
   await pty.call("expect", "HANDOFF_GUI_COMPLETE");
   await pty.call("expect", "Completed");
   assert.equal(await readFile(join(workspace, "proof.txt"), "utf8"), "HANDOFF_ONCE\n");
   assert.equal(requests.length, requestCount + 1);
   checks.push("TUI observes GUI history and approves original turn; Runtime appends once");
   await pty.call("send", "/new\r");
-  await until(async () => {
+  const tuiPrefix = await until(async () => {
     const view = await pty.call("send", "");
     const selected = view.screen.match(/Conversation\s*·\s*([a-f0-9]{8})/i)?.[1];
-    return selected && selected !== tid.slice(0, 8);
+    return selected && selected !== tid.slice(0, 8) ? selected : null;
   }, "new TUI thread selected");
   await pty.call("send", "HANDOFF_TUI_INPUT\r");
   await pty.call("expect", "HANDOFF_TUI_COMPLETE");
@@ -364,7 +364,7 @@ try {
   await new Promise((r) => pty.child.once("exit", r));
   pty = null;
   assert.equal(requests.length, requestCount + 2);
-  const cli = await exec(
+  const cliRun = exec(
     binary,
     [
       "exec",
@@ -380,8 +380,10 @@ try {
       "--permissions",
       "YOLO",
     ],
-    { cwd: cliWorkspace, env, timeout: 120000 },
+    { cwd: cliWorkspace, env: clientEnv, timeout: 120000 },
   );
+  cliRun.child.stdin.end();
+  const cli = await cliRun;
   const cliResult = JSON.parse(cli.stdout);
   assert.equal(cliResult.is_error, false);
   assert.match(JSON.stringify(cliResult), /HANDOFF_TUI_COMPLETE/);
@@ -413,25 +415,27 @@ try {
   const reopened = project(await snapshot()).state.threads[tid];
   assert.equal(reopened.turns.at(-1).id, turnId);
   assert.equal(reopened.turns.at(-1).status, "completed");
-  const tuiThread = await until(
-    async () =>
-      Object.values(project(await snapshot()).state.threads).find(
-        (t) => t.id !== tid && JSON.stringify(t).includes("HANDOFF_TUI_INPUT"),
-      ),
-    "TUI thread in GUI project",
-  );
-  await page.getByTestId(`task-item-${tuiThread.id}`).click();
+  const tuiItem = page.locator(`[data-testid^="task-item-${tuiPrefix}"]`);
+  await tuiItem.waitFor();
+  assert.equal(await tuiItem.count(), 1);
+  const tuiId = (await tuiItem.getAttribute("data-testid")).slice("task-item-".length);
+  await tuiItem.click();
   await page.getByText("HANDOFF_TUI_COMPLETE", { exact: true }).waitFor();
+  const tuiThread = project(await snapshot()).state.threads[tuiId];
+  assert.ok(JSON.stringify(tuiThread).includes("HANDOFF_TUI_INPUT"));
+  assert.equal(tuiThread.turns.at(-1).status, "completed");
   const cliGuiProject = await until(
     async () => (await snapshot()).projects.find((p) => p.root === cliWorkspace),
     "CLI registered project visible in GUI",
   );
-  await page.getByRole("button", { name: "cli-workspace", exact: true }).click();
   await until(
     async () =>
       (await snapshot()).projects.find((p) => p.id === cliGuiProject.id)?.state?.connected,
     "CLI project connected",
   );
+  const cliProjectButton = page.getByRole("button", { name: "cli-workspace", exact: true });
+  if ((await cliProjectButton.getAttribute("aria-expanded")) !== "true")
+    await cliProjectButton.click();
   await page.getByTestId(`task-item-${cliId}`).click();
   await page.getByText("HANDOFF_TUI_COMPLETE", { exact: true }).waitFor();
   const other = (await snapshot()).projects.find((p) => p.id === cliGuiProject.id).state.threads[

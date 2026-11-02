@@ -376,6 +376,7 @@ class CoreBackend {
       trace.advance("resources");
       await this.resources.init();
       await this.lifecycleOperations.reconcileLoaded();
+      await this.refreshHostProjects({ observeForeign: true });
       void this.worktrees.autoCleanup().catch(() => {});
       trace.finish("ok");
     } catch (error) {
@@ -386,7 +387,8 @@ class CoreBackend {
 
   async reconnectHost() {
     if (this.closing) throw new Error("应用正在退出");
-    this.saved = await this.host.reconnect();
+    await this.host.reconnect();
+    await this.refreshHostProjects({ observeForeign: true });
     this.onChange();
     return { hostId: this.host.client.hostId, generation: this.host.client.generation };
   }
@@ -654,7 +656,8 @@ class CoreBackend {
     }
   }
 
-  async refreshHostProjects() {
+  /** @param {{observeForeign?:boolean}} [options] */
+  async refreshHostProjects({ observeForeign = false } = {}) {
     this.saved = await this.host.list();
     const status = await this.host.client.status();
     for (const saved of this.saved) {
@@ -663,13 +666,21 @@ class CoreBackend {
         /** @param {{registration:{projectId:string}}} item */ (item) =>
           item.registration.projectId === binding.projectId,
       );
-      if (!state?.service || state.state === "stopped") continue;
+      if (!state?.service || state.state !== "ready") continue;
       const project = await this.loadProjectJournal(saved.id);
-      if (project.service && project.service.generation !== state.service.generation) {
-        project.client?.close();
-        project.client = null;
+      if (!project.service || project.service.generation !== state.service.generation) {
+        if (project.service) {
+          project.client?.close();
+          project.client = null;
+        }
+        project.service = state.service;
       }
-      project.service = state.service;
+      if (
+        observeForeign &&
+        binding.sourceId !== this.host.sourceId &&
+        !this.lifecycleOperations.schedulingSuppressed(project.id)
+      )
+        this.scheduleReconnect(project);
     }
   }
 

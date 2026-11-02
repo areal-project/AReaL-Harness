@@ -8,7 +8,7 @@ const {
   isCoreInteractions,
 } = require("../core-model-contract.js");
 /** The consumed part of protocol::desktop::EffectiveConfig; extensions stay unknown. */
-/** @typedef {Record<string,unknown> & {revision?:number,model?:({providerId:string,modelId:string,[key:string]:unknown})|null,options?:ClientOptions,defaultModelRevision?:string|null,modelName?:string|null,provider?:(Record<string,unknown>&{endpoint?:string})|null,parameters?:import('./provider.cjs').ModelParameters}} Configuration */
+/** @typedef {Record<string,unknown> & {revision?:number,model?:({providerId:string,modelId:string,[key:string]:unknown})|null,options?:ClientOptions & {automaticSessionName?:boolean|null},defaultModelRevision?:string|null,modelName?:string|null,provider?:(Record<string,unknown>&{endpoint?:string})|null,parameters?:import('./provider.cjs').ModelParameters}} Configuration */
 /** @typedef {Record<string,unknown> & {configuration:Configuration & {revision:number},activeTurnId?:string|null,modelName?:string|null,resolvedParameters?:import('./provider.cjs').ModelParameters|null}} Inspection */
 /** @param {unknown} value @returns {value is Configuration} */
 function isConfiguration(value) {
@@ -20,13 +20,22 @@ function isConfiguration(value) {
       (modelRecord(value.model) &&
         typeof value.model.providerId === "string" &&
         typeof value.model.modelId === "string")) &&
-    (value.options === undefined || clientOptions(value.options)) &&
+    (value.options === undefined || configurationOptions(value.options)) &&
     (value.modelName == null || typeof value.modelName === "string") &&
     (value.defaultModelRevision == null || typeof value.defaultModelRevision === "string") &&
     (value.provider == null ||
       (modelRecord(value.provider) &&
         (value.provider.endpoint === undefined || typeof value.provider.endpoint === "string"))) &&
     (value.parameters === undefined || require("./provider.cjs").parameters(value.parameters))
+  );
+}
+/** @param {unknown} value @returns {value is ClientOptions & {automaticSessionName?:boolean|null}} */
+function configurationOptions(value) {
+  if (!modelRecord(value)) return false;
+  const { automaticSessionName, ...options } = value;
+  return (
+    (automaticSessionName == null || typeof automaticSessionName === "boolean") &&
+    clientOptions(options)
   );
 }
 /** @param {unknown} value @returns {Inspection} */

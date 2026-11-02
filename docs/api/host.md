@@ -124,6 +124,8 @@ GUI 根目录中的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` �
 
 `gui.source` 按规范化的完整 `GuiSource` 查询，仅返回已提交来源。同一 profile 对应多个已提交来源时返回 `sourceConflict`，不混合新登记的别名。查询不取得来源 guard，不启动导入，不读取凭据，也不创建目录。`bindings` 中保留导入时复用的 CLI 项目别名，并加入该 profile 的新 GUI 登记。新绑定的 scratch 路径为 `<coreHome>/<legacyProjectId>/scratch`。Host 重启后从原导入回执和现有项目登记重建结果。
 
+GUI 初始化或重连 Host 后，为 `ready` 的外来项目建立只观察连接并加载会话目录。发现项目不启动已停止的 Core，也不覆盖 CLI 的配置。同代际重发现保留正在建立的观察连接。历史配置解码接受 Core 的 `automaticSessionName` 字段；GUI 创建命令的输入字段限制不因此扩展。
+
 `credentials` 仅含非秘密迁移元数据。`references` 合并原 provider 引用与该来源后续创建的 vault 槽，保留已撤销引用；值仍由 `vault.read` 决定。`migratedConfigPaths` 保留原配置迁移标记。`legacyProviders` 去除密文，仅对原 providers manifest 中有秘密的条目附加 `apiKeyEnv`。读取会核对原备份摘要或退役计划的派生摘要，不读取已封存的凭据源文件。
 
 ### 旧秘密退役

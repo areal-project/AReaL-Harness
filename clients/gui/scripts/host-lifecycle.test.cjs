@@ -517,6 +517,7 @@ test("in-place project reconnect refreshes source bindings through an existing H
   };
   f.setHandler(async (request) => {
     if (request.method === "gui.source") return { sourceId, bindings: [] };
+    if (request.method === "host.status") return { projects: [] };
     assert.equal(request.method, "projects.list");
     return { projects: [registration] };
   });
@@ -547,7 +548,7 @@ test("in-place project reconnect refreshes source bindings through an existing H
   assert.equal(changes, 1);
   assert.deepEqual(
     f.calls.filter((request) => request.method !== "hello").map((request) => request.method),
-    ["gui.source", "gui.source", "projects.list"],
+    ["gui.source", "gui.source", "projects.list", "gui.source", "projects.list", "host.status"],
   );
   owner.close();
 });
