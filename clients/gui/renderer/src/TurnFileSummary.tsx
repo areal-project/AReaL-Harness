@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { FileChanges } from "./interfaceIcons.js";
 import { useEffect, useId, useState } from "react";
 import { Button } from "./components/ui/button.js";
@@ -178,13 +179,11 @@ export function TurnFileSummary({
             </span>
           )}
           {current.kind !== "ready" && (
-            <span
-              className="turn-file-summary-meta"
-              role="status"
-              title={current.kind === "unavailable" ? current.error : undefined}
-            >
-              {current.kind === "loading" ? "统计中" : "行数不可用"}
-            </span>
+            <TitleTooltip title={current.kind === "unavailable" ? current.error : undefined}>
+              <span className="turn-file-summary-meta" role="status">
+                {current.kind === "loading" ? "统计中" : "行数不可用"}
+              </span>
+            </TitleTooltip>
           )}
         </div>
         <Button
@@ -232,15 +231,16 @@ export function TurnFileSummary({
                   <span className="deleted">-{totals.deletions}</span>
                 </span>
               ) : (
-                <span
-                  className="turn-file-summary-meta"
+                <TitleTooltip
                   title={
                     unavailable?.get(file.path) ??
                     (current.kind === "unavailable" ? current.error : undefined)
                   }
                 >
-                  {current.kind === "loading" ? "统计中" : t("chat.files.unavailable")}
-                </span>
+                  <span className="turn-file-summary-meta">
+                    {current.kind === "loading" ? "统计中" : t("chat.files.unavailable")}
+                  </span>
+                </TitleTooltip>
               )}
             </Button>
           );

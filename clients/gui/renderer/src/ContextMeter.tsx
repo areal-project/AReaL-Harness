@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useState } from "react";
 import { Button } from "./components/ui/button.js";
@@ -222,12 +223,15 @@ export function ContextMeter({
             </div>
             <div className="context-composition" aria-label={t("chat.context.categories")}>
               {estimate.parts.map((part) => (
-                <span
+                <TitleTooltip
                   key={part.kind}
-                  className={`context-color-${part.kind}`}
-                  style={{ flexGrow: part.estimatedTokens }}
                   title={`${contextLabels[part.kind]} · ≈${tokenCount(part.estimatedTokens)}`}
-                />
+                >
+                  <span
+                    className={`context-color-${part.kind}`}
+                    style={{ flexGrow: part.estimatedTokens }}
+                  />
+                </TitleTooltip>
               ))}
             </div>
             <div className="context-categories">

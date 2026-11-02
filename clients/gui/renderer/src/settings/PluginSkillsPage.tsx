@@ -1,3 +1,5 @@
+import { DelayedVisible } from "@areal/ui";
+import { TitleTooltip } from "@areal/ui";
 import { useI18n, UiMessageError, type UiMessage, formatUiMessage } from "../i18n/IntlProvider.js";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { BookOpen, Check, MoreHorizontal } from "lucide-react";
@@ -385,9 +387,9 @@ export function PluginSkillsPage({
         {selected.scope === "plugin" && !selected.enabled && (
           <p role="status">{t("settings.pluginSkillsPage.enableTheOwningPluginToReadThe")}</p>
         )}
-        {contentLoading && (
+        <DelayedVisible active={contentLoading}>
           <p role="status">{t("settings.pluginSkillsPage.loadingSkillContent")}</p>
-        )}
+        </DelayedVisible>
         <div className="plugin-skill-content">
           <MessageResponse>{content}</MessageResponse>
         </div>
@@ -445,7 +447,9 @@ export function PluginSkillsPage({
           </svg>
         </span>
         <span>
-          <strong title={`${item.name} · ${sourceLabel(item)}`}>{item.name}</strong>
+          <TitleTooltip title={`${item.name} · ${sourceLabel(item)}`}>
+            <strong>{item.name}</strong>
+          </TitleTooltip>
           <small className={compact ? undefined : "sr-only"}>{sourceLabel(item)}</small>
           <small>{item.error || item.description || item.id}</small>
         </span>

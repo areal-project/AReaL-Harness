@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import type { ResourceRequest, Scope } from "@areal/workbench/desktop-contract/resource";
 import { Textarea } from "@areal/ui";
 import { ResourceScope as ScopeView, CatalogEmpty as EmptyView } from "@areal/ui/experimental";
@@ -229,11 +230,13 @@ export function ScopedSkillsSettings({
                 <span>
                   <strong>{item.name}</strong>
                   <small>{source}</small>
-                  <small title={item.description || item.error}>
-                    {item.error ||
-                      item.description ||
-                      t("settings.scopedSkillsSettings.viewSkillContent")}
-                  </small>
+                  <TitleTooltip title={item.description || item.error}>
+                    <small>
+                      {item.error ||
+                        item.description ||
+                        t("settings.scopedSkillsSettings.viewSkillContent")}
+                    </small>
+                  </TitleTooltip>
                 </span>
               </Button>
               {item.overridden && (
@@ -278,7 +281,9 @@ export function ScopedSkillsSettings({
               <span>
                 <strong>{item.name}</strong>
                 <small>{pluginSourceLabel(item.owner, t)}</small>
-                <small title={item.description}>{item.description || item.id}</small>
+                <TitleTooltip title={item.description}>
+                  <small>{item.description || item.id}</small>
+                </TitleTooltip>
               </span>
             </div>
             <SettingsBadge>

@@ -13,6 +13,7 @@ import { SettingsSwitch } from "./SettingsPageParts.js";
 import { SettingsSegmentedTabs } from "./SettingsSegmentedTabs.js";
 import { useDraftBlocker, useGuardedNavigation } from "./UnsavedChanges.js";
 import { WorktreeDirectory, WorktreeSettings } from "@areal/ui/experimental";
+import { DelayedVisible } from "@areal/ui";
 import "./WorktreesSettings.css";
 
 type Platform = "default" | "macos" | "linux";
@@ -525,11 +526,11 @@ export function WorktreesSettings({
           {error}
         </p>
       )}
-      {loading && (
+      <DelayedVisible active={loading}>
         <p role="status" className="settings-section-desc">
           {t("worktree.loading")}
         </p>
-      )}
+      </DelayedVisible>
       {!routeId ? (
         <SettingsSection
           description={t("worktree.noProjects")}

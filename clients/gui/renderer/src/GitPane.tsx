@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { JumpToFileIcon } from "./GitPaneChangeCard.js";
 import {
   views,
@@ -775,135 +776,135 @@ export function GitPane({
       data-review-source={scope === "last-turn" || scope === "turn" ? "history" : "git"}
     >
       <div className="panel-toolbar review-toolbar">
-        <div
-          className="review-toolbar-source"
-          role="group"
-          aria-label="审查来源"
-          aria-describedby={shownRoot ? workspaceContextId : undefined}
-          title={shownRoot}
-        >
-          {shownRoot && (
-            <span
-              id={workspaceContextId}
-              className={shownRoot === root ? "sr-only" : "review-workspace-context"}
-              aria-label="审查工作区"
-              title={shownRoot}
-            >
-              {shownRoot.split(/[/\\]/).filter(Boolean).at(-1) ?? shownRoot}
-            </span>
-          )}
-          <DropdownMenu open={scopeOpen} onOpenChange={setScopeOpen}>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  aria-label="改动范围"
-                  title={
-                    scope === "turn" ? selectedTurnId : scope === "commit" ? applied : undefined
-                  }
-                  className="review-scope-trigger min-w-0 max-w-full"
-                />
-              }
-            >
-              <span className="truncate">
-                {scope === "turn" && selectedTurnId === turnId
-                  ? t("common.review.lastTurn")
-                  : availableScopes.find((item) => item.value === scope)?.label}
-              </span>
-              <ChevronDown />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="min-w-[200px]">
-              {availableScopes.map(({ value, label }) => (
-                <DropdownMenuGroup key={value}>
-                  {["uncommitted", "commit", "task"].includes(value) && <DropdownMenuSeparator />}
-                  {value === "commit" ? (
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger>{label}</DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent className="max-w-[min(520px,var(--available-width))]">
-                        {commitsError ? (
-                          <DropdownMenuLabel
-                            role="alert"
-                            className="max-w-72 whitespace-normal font-normal"
-                          >
-                            {commitsError}
-                          </DropdownMenuLabel>
-                        ) : commits === undefined ? (
-                          <DropdownMenuLabel role="status">正在读取提交…</DropdownMenuLabel>
-                        ) : !commits.length ? (
-                          <DropdownMenuLabel>当前分支没有提交</DropdownMenuLabel>
-                        ) : (
-                          commits.map((commit) => (
-                            <DropdownMenuItem
-                              key={commit.id}
-                              title={commit.id}
-                              onClick={() => {
-                                setRef(commit.id);
-                                setApplied(commit.id);
-                                setManualRef(false);
-                                setScope("commit");
-                              }}
+        <TitleTooltip title={shownRoot}>
+          <div
+            className="review-toolbar-source"
+            role="group"
+            aria-label="审查来源"
+            aria-describedby={shownRoot ? workspaceContextId : undefined}
+          >
+            {shownRoot && (
+              <TitleTooltip title={shownRoot}>
+                <span
+                  id={workspaceContextId}
+                  className={shownRoot === root ? "sr-only" : "review-workspace-context"}
+                  aria-label="审查工作区"
+                >
+                  {shownRoot.split(/[/\\]/).filter(Boolean).at(-1) ?? shownRoot}
+                </span>
+              </TitleTooltip>
+            )}
+            <DropdownMenu open={scopeOpen} onOpenChange={setScopeOpen}>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    aria-label="改动范围"
+                    title={
+                      scope === "turn" ? selectedTurnId : scope === "commit" ? applied : undefined
+                    }
+                    className="review-scope-trigger min-w-0 max-w-full"
+                  />
+                }
+              >
+                <span className="truncate">
+                  {scope === "turn" && selectedTurnId === turnId
+                    ? t("common.review.lastTurn")
+                    : availableScopes.find((item) => item.value === scope)?.label}
+                </span>
+                <ChevronDown />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="min-w-[200px]">
+                {availableScopes.map(({ value, label }) => (
+                  <DropdownMenuGroup key={value}>
+                    {["uncommitted", "commit", "task"].includes(value) && <DropdownMenuSeparator />}
+                    {value === "commit" ? (
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>{label}</DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="max-w-[min(520px,var(--available-width))]">
+                          {commitsError ? (
+                            <DropdownMenuLabel
+                              role="alert"
+                              className="max-w-72 whitespace-normal font-normal"
                             >
-                              <span className="min-w-0 truncate">
-                                {commit.subject || commit.id.slice(0, 7)}
-                              </span>
-                              <span className="shrink-0 text-ui-sm text-foreground-subtle">
-                                {commitAge(commit.committedAt)}
-                              </span>
-                              {scope === "commit" && applied === commit.id && (
-                                <Check className="ml-auto size-4" />
-                              )}
-                            </DropdownMenuItem>
-                          ))
-                        )}
-                        {commitsTruncated && (
-                          <DropdownMenuLabel>仅显示最近100个提交</DropdownMenuLabel>
-                        )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setManualRef(true);
-                            setScope("commit");
-                          }}
-                        >
-                          输入提交…
-                        </DropdownMenuItem>
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
-                  ) : (
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setManualRef(false);
-                        setScope(value);
-                      }}
-                    >
-                      {label}
-                      {scope === value && <Check className="ml-auto size-4" />}
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuGroup>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {scope === "commit" && shownReference && (
-            <span
-              className="review-reference-context"
-              data-testid="review-reference-context"
-              title={shownReference.id}
-            >
-              {shownReference.label}
-            </span>
-          )}
-          {!busy && !error && !!files.length && (
-            <span className="review-totals" aria-label="改动行数">
-              <span className="text-success">
-                +{files.reduce((total, file) => total + file.added, 0)}
+                              {commitsError}
+                            </DropdownMenuLabel>
+                          ) : commits === undefined ? (
+                            <DropdownMenuLabel role="status">正在读取提交…</DropdownMenuLabel>
+                          ) : !commits.length ? (
+                            <DropdownMenuLabel>当前分支没有提交</DropdownMenuLabel>
+                          ) : (
+                            commits.map((commit) => (
+                              <DropdownMenuItem
+                                key={commit.id}
+                                title={commit.id}
+                                onClick={() => {
+                                  setRef(commit.id);
+                                  setApplied(commit.id);
+                                  setManualRef(false);
+                                  setScope("commit");
+                                }}
+                              >
+                                <span className="min-w-0 truncate">
+                                  {commit.subject || commit.id.slice(0, 7)}
+                                </span>
+                                <span className="shrink-0 text-ui-sm text-foreground-subtle">
+                                  {commitAge(commit.committedAt)}
+                                </span>
+                                {scope === "commit" && applied === commit.id && (
+                                  <Check className="ml-auto size-4" />
+                                )}
+                              </DropdownMenuItem>
+                            ))
+                          )}
+                          {commitsTruncated && (
+                            <DropdownMenuLabel>仅显示最近100个提交</DropdownMenuLabel>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setManualRef(true);
+                              setScope("commit");
+                            }}
+                          >
+                            输入提交…
+                          </DropdownMenuItem>
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    ) : (
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setManualRef(false);
+                          setScope(value);
+                        }}
+                      >
+                        {label}
+                        {scope === value && <Check className="ml-auto size-4" />}
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuGroup>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {scope === "commit" && shownReference && (
+              <TitleTooltip title={shownReference.id}>
+                <span className="review-reference-context" data-testid="review-reference-context">
+                  {shownReference.label}
+                </span>
+              </TitleTooltip>
+            )}
+            {!busy && !error && !!files.length && (
+              <span className="review-totals" aria-label="改动行数">
+                <span className="text-success">
+                  +{files.reduce((total, file) => total + file.added, 0)}
+                </span>
+                <span className="text-destructive">
+                  -{files.reduce((total, file) => total + file.removed, 0)}
+                </span>
               </span>
-              <span className="text-destructive">
-                -{files.reduce((total, file) => total + file.removed, 0)}
-              </span>
-            </span>
-          )}
-        </div>
+            )}
+          </div>
+        </TitleTooltip>
         <div className="review-toolbar-actions" role="group" aria-label="审查操作">
           <GitActions
             key={projectId}
@@ -1063,13 +1064,11 @@ export function GitPane({
       {scope === "branch" && (
         <div className="review-branch-row" role="group" aria-label="分支比较版本">
           <div className="review-toolbar-source">
-            <span
-              className="review-current-branch"
-              data-testid="review-current-branch"
-              title={shownReference?.branch}
-            >
-              {shownReference?.branch ?? (busy ? "正在读取…" : "")}
-            </span>
+            <TitleTooltip title={shownReference?.branch}>
+              <span className="review-current-branch" data-testid="review-current-branch">
+                {shownReference?.branch ?? (busy ? "正在读取…" : "")}
+              </span>
+            </TitleTooltip>
             <ArrowRight className="size-3 shrink-0 text-foreground-subtle" />
             <Popover open={branchOpen} onOpenChange={setBranchOpen}>
               <PopoverTrigger

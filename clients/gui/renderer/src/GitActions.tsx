@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { GitCommitHorizontal, Minus, Plus, RefreshCw } from "lucide-react";
@@ -235,11 +236,13 @@ export function GitActions({
             <DialogDescription>审查并提交当前仓库的改动，然后选择推送目标。</DialogDescription>
           </DialogHeader>
           <div className="flex items-center justify-between gap-3 text-ui-sm">
-            <span className="min-w-0 truncate" title={state?.root}>
-              {state
-                ? `${state.branch || "分离的 HEAD"} · ${state.head ? state.head.slice(0, 8) : "尚无提交"}`
-                : "正在读取仓库…"}
-            </span>
+            <TitleTooltip title={state?.root}>
+              <span className="min-w-0 truncate">
+                {state
+                  ? `${state.branch || "分离的 HEAD"} · ${state.head ? state.head.slice(0, 8) : "尚无提交"}`
+                  : "正在读取仓库…"}
+              </span>
+            </TitleTooltip>
             <Button variant="ghost" size="sm" disabled={busy} onClick={() => void refresh()}>
               <RefreshCw className="size-3.5" />
               刷新 Git 状态
@@ -271,9 +274,9 @@ export function GitActions({
                     </h3>
                     <ul className="max-h-28 overflow-auto text-ui-sm text-foreground-subtle">
                       {paths.map((path) => (
-                        <li key={path} className="truncate" title={path}>
-                          {path}
-                        </li>
+                        <TitleTooltip key={path} title={path}>
+                          <li className="truncate">{path}</li>
+                        </TitleTooltip>
                       ))}
                     </ul>
                     {!paths.length && <p className="text-ui-sm text-foreground-subtle">没有改动</p>}

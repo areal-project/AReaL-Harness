@@ -1,4 +1,5 @@
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
+import { applyThemeWithoutTransitions } from "@areal/ui/theme";
 import { TaskContextPreview } from "./TaskContextPreview.js";
 import { ContentSystemPreview } from "./ContentSystemPreview.js";
 import { ToastHost } from "../ToastHost.js";
@@ -205,10 +206,12 @@ function Preview() {
   }, []);
   useLayoutEffect(() => {
     const root = document.documentElement;
-    root.classList.toggle("dark", dark);
-    root.classList.toggle("theme-areal-light", !dark);
-    root.classList.toggle("theme-areal-dark", dark);
-    root.style.colorScheme = dark ? "dark" : "light";
+    applyThemeWithoutTransitions(root, () => {
+      root.classList.toggle("dark", dark);
+      root.classList.toggle("theme-areal-light", !dark);
+      root.classList.toggle("theme-areal-dark", dark);
+      root.style.colorScheme = dark ? "dark" : "light";
+    });
     root.style.setProperty("--ui-font-size", `${fontSize}px`);
     const css = getComputedStyle(root);
     setValues(

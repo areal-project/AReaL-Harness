@@ -24,7 +24,9 @@ function DialogClose({ ...props }: React.ComponentProps<typeof DialogPrimitive.C
 function DialogOverlay({
   className,
   ...props
-}: Omit<React.ComponentProps<typeof DialogPrimitive.Backdrop>, "className"> & { className?: string }) {
+}: Omit<React.ComponentProps<typeof DialogPrimitive.Backdrop>, "className"> & {
+  className?: string;
+}) {
   return (
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
@@ -63,7 +65,7 @@ function DialogContent({
         className={cn(
           // Electron 自绘标题栏下，弹窗可能会落进窗口顶部的 drag 区域。
           // 如果不把弹窗内容整体标成 no-drag，右上角关闭按钮这类交互会被窗口拖拽命中吞掉。
-          "fixed top-1/2 left-1/2 z-(--layer-dialog) grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-field rounded-dialog border border-popover-border bg-popover p-panel text-ui-base/relaxed text-foreground shadow-dialog duration-(--motion-normal) outline-none ui-popup data-[starting-style]:opacity-0 data-[starting-style]:scale-95 data-[ending-style]:opacity-0 data-[ending-style]:scale-95 [app-region:no-drag]",
+          "fixed top-1/2 left-1/2 z-(--layer-dialog) grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-field rounded-dialog border border-popover-border bg-popover p-panel text-ui-base/relaxed text-foreground shadow-dialog duration-(--motion-normal) outline-none ui-popup [app-region:no-drag]",
           className,
         )}
         {...props}
@@ -72,12 +74,14 @@ function DialogContent({
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            render={<Button
-              type="button"
-              variant="ghost"
-              className="absolute top-4 right-4 z-20 hover:bg-surface-hover [app-region:no-drag]"
-              size="icon-sm"
-            />}
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                className="absolute top-4 right-4 z-20 hover:bg-surface-hover [app-region:no-drag]"
+                size="icon-sm"
+              />
+            }
           >
             <XIcon />
             <span className="sr-only">{closeLabel}</span>
@@ -112,13 +116,18 @@ function DialogFooter({
     >
       {children}
       {showCloseButton && (
-        <DialogPrimitive.Close render={<Button variant="outline" />}>{closeLabel}</DialogPrimitive.Close>
+        <DialogPrimitive.Close render={<Button variant="outline" />}>
+          {closeLabel}
+        </DialogPrimitive.Close>
       )}
     </div>
   );
 }
 
-function DialogTitle({ className, ...props }: Omit<React.ComponentProps<typeof DialogPrimitive.Title>, "className"> & { className?: string }) {
+function DialogTitle({
+  className,
+  ...props
+}: Omit<React.ComponentProps<typeof DialogPrimitive.Title>, "className"> & { className?: string }) {
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
@@ -131,7 +140,9 @@ function DialogTitle({ className, ...props }: Omit<React.ComponentProps<typeof D
 function DialogDescription({
   className,
   ...props
-}: Omit<React.ComponentProps<typeof DialogPrimitive.Description>, "className"> & { className?: string }) {
+}: Omit<React.ComponentProps<typeof DialogPrimitive.Description>, "className"> & {
+  className?: string;
+}) {
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"
