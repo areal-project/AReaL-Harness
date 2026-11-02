@@ -14,6 +14,39 @@ const nativeMessages = {
   "common.back": { "zh-CN": "返回", en: "Back" },
   "common.quit": { "zh-CN": "退出", en: "Quit" },
   "quit.question": { "zh-CN": "退出 AReaL Harness？", en: "Quit AReaL Harness?" },
+  "host.keepAndQuit": { "zh-CN": "保持后台运行并退出", en: "Keep running and quit" },
+  "host.stopAndQuit": { "zh-CN": "停止任务并退出", en: "Stop tasks and quit" },
+  "host.stopMenu": { "zh-CN": "停止后台…", en: "Stop background…" },
+  "host.stopQuestion": {
+    "zh-CN": "停止所有项目的后台任务？",
+    en: "Stop background tasks in all projects?",
+  },
+  "host.stopImpact": {
+    "zh-CN":
+      "将取消此 Host 中所有项目的活动执行，包括从终端启动的任务，并停止共享 Core。历史与待发送输入保留。只有资源清理得到确认后才显示停止完成。",
+    en: "This cancels active work in every project managed by this Host, including tasks started from a terminal, and stops shared Core services. History and queued input are retained. Stopping completes only after resource cleanup is confirmed.",
+  },
+  "host.keepImpact": {
+    "zh-CN":
+      "保持后台运行会让 Core 继续执行已受理的任务。当前版本的手机连接、定时激活和订阅传输仍随应用关闭。",
+    en: "Keeping the backend running lets Core continue admitted tasks. Mobile connections, schedule activation, and subscription transport still close with the app in this version.",
+  },
+  "host.tasks": {
+    "zh-CN": ({ count }) => `后台运行中，${count} 个任务`,
+    en: ({ count }) => `Background running, ${count} ${count === 1 ? "task" : "tasks"}`,
+  },
+  "host.turns": {
+    "zh-CN": ({ count }) => `后台运行中，${count} 个对话轮次`,
+    en: ({ count }) =>
+      `Background running, ${count} conversation ${count === 1 ? "turn" : "turns"}`,
+  },
+  "host.idle": { "zh-CN": "后台空闲", en: "Background idle" },
+  "host.active": { "zh-CN": "后台仍有活动资源", en: "Background resources active" },
+  "host.unknown": { "zh-CN": "后台状态暂时无法核查", en: "Background status unavailable" },
+  "host.unknownWithTasks": {
+    "zh-CN": ({ count }) => `后台至少有 ${count} 个任务，部分状态未知`,
+    en: ({ count }) => `At least ${count} background tasks, some status unknown`,
+  },
   "quit.interfaceDetail": {
     "zh-CN": "退出将关闭当前应用界面。历史与草稿保留。",
     en: "Quitting closes the current application interface. History and drafts are retained.",

@@ -135,6 +135,11 @@ class HostClient {
     this.requireCapability("activity");
     return this.request("host.activity", {});
   }
+  /** @param {string} requestId @param {string} generation @param {'ifIdle'|'cancel'} strategy */
+  stop(requestId, generation, strategy) {
+    this.requireCapability("stopOperations");
+    return this.request("host.stop", { requestId, expectedGeneration: generation, strategy });
+  }
   /** @param {string} requestId @param {string} projectId @param {unknown} launchInputs @param {Record<string,string>} [credentials] */
   ensureProject(requestId, projectId, launchInputs, credentials) {
     return this.request("project.ensure", {

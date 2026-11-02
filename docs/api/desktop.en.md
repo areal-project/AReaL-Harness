@@ -320,6 +320,14 @@ Shared services expose `server/status.configuration` as `{modelRevision,applied,
 
 ### Desktop adapter lifecycle
 
+Ordinary quit reads shared Host `host.activity`. A complete idle observation allows GUI to exit directly. Active or unknown work defaults to keeping the backend running, with a second confirmation required to stop every Host project. Installation quit retains the Desktop update and package-user checks.
+
+Main writes Host-wide stop intent as a `kind="stopHost"` reference in the existing `service-control.json` v3 alongside old Desktop references. It binds home, hostId, generation, requestId, and strategy, and synchronizes the file and directory before dispatch. Recovery only queries `host.operation` or offline `areal host operation`. Missing, partial, and cleanup-unconfirmed outcomes retain the original ID. A completed request does not prove that a successor generation stopped; a new explicit stop checks the current authenticated Host. The interface receives receipt projections without Host credentials or paths. Keeping the backend running retains unresolved references.
+
+A completed or explicitly blocked Host stop allows the user to reconnect explicitly; an unknown request only allows inspection. If Desktop is still alive, Main restores its Host client through the fixed `hostReconnect` request, which accepts only the current Main socket. Reconnection verifies the original sourceId and reads project bindings without reimporting legacy data, starting project Core services, or replaying submissions. Verified control references are removed only after reconnection succeeds.
+
+Host disconnection closes Desktop's separate Remote Gateway. Explicit reconnection waits for the old Gateway's persistence work and local listeners to close before creating a replacement. The replacement acquires the Host execution lease, checks the original Remote write receipt, and then reads the identity, grants, and configuration. A healthy Gateway is retained. An unknown request, persistence failure, or occupied lease makes recovery fail and retains the original control references.
+
 Desktop dynamic-tool connections belong to the authenticated Main socket that declares `computerHost:1`. When Main disconnects, Desktop closes that owner's Core connections so Core withdraws the ToolHost. Shared Core services and active Turns continue. Disconnecting an ordinary observer does not withdraw Main's tools.
 
 Automatic Desktop reconnection restores observation without rebinding an active Turn's tools. Without Main, new threads and schedule preparation declare no browser, Computer Use, or external CUA tools. A successor Main first retires the previous observation connections so their tools cannot become available again. An explicit send, page claim, or app open can rebind an idle thread. Unknown calls retain their original journal recovery and are not resent to the successor Main.

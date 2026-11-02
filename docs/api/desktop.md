@@ -318,6 +318,14 @@ features.goals=true 表示服务支持 Goal，无需单独配置开关；Goal �
 
 ### Desktop 适配器生命周期
 
+普通退出查询共享 Host 的 `host.activity`。完整空闲观察允许直接退出 GUI；活动或未知时默认保持后台，也可二次确认后停止全部 Host 项目。安装退出继续走 Desktop 更新与安装包占用检查。
+
+Main 把全 Host 停止意图作为 `kind="stopHost"` 引用写入原 `service-control.json` v3，与旧 Desktop 引用并存。引用绑定 home、hostId、generation、requestId 和 strategy，文件与目录同步后才分发。恢复只查询 `host.operation` 或离线 `areal host operation`；缺失、部分、清理未确认均保留原 ID。已完成请求不证明后继代际已停止，新明确停止意图须核对当前认证 Host。界面只展示回执投影，不接收 Host 凭据或路径。保持后台退出保留未决引用。
+
+已完成或明确阻止的 Host 停止允许用户显式重新连接；未知请求只允许核查。若 Desktop 仍存活，Main 通过固定 `hostReconnect` 请求恢复其 Host 客户端；该请求仅接受当前 Main socket。重连核对原 sourceId 并读取项目绑定，不重新导入旧数据、不启动项目 Core、不重放提交。重连成功后才移除已核查的控制引用。
+
+Host 断连会关闭 Desktop 的独立 Remote Gateway。显式重连等待旧 Gateway 的持久写入和本地监听资源关闭，再创建新实例。新实例先取得 Host execution lease，核查原 Remote 写入回执，再读取身份、grants 和配置。健康 Gateway 不替换；原请求未知、持久化失败或 lease 被占用时，恢复返回错误并保留原控制引用。
+
 Desktop 的动态工具连接归属已认证并声明 `computerHost:1` 的 Main socket。Main 断开时，Desktop 关闭该归属的 Core 连接，使 Core 撤销 ToolHost；共享 Core 与正在执行的 Turn 继续运行。普通观察客户端断开不撤销 Main 的工具。
 
 Desktop 自动重连只恢复观察，不恢复活动 Turn 的工具归属。没有 Main 时，新会话与定时准备不声明浏览器、Computer Use 或外部 CUA 工具。后继 Main 接入时先撤销旧观察连接，避免旧连接的工具重新可用；空闲会话通过显式发送、页面认领或应用打开重新绑定。连接丢失后的未知调用沿原 journal 核查，不向后继 Main 重发。

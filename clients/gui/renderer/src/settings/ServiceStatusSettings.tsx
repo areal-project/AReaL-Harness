@@ -208,7 +208,7 @@ export function ServiceStatusSettings({
           />
           <SettingsRow
             label={t("settings.serviceStatusSettings.quitApplication")}
-            description={t("settings.serviceStatusSettings.stopsAllBackgroundServicesForThisApp")}
+            description={t("settings.serviceStatusSettings.keepsBackgroundRunningByDefault")}
             control={
               <ActionButton disabled={busy} onClick={() => void run("quitInterface")}>
                 {t("settings.serviceStatusSettings.quitAReaLHarness")}

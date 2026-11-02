@@ -73,6 +73,10 @@ class RelayService {
   /** @type {InstanceType<typeof import('./relay-deployment.cjs').RelayDeployment>|null} */ deployment =
     null;
   closed = false;
+  /** @type {Promise<void>|undefined} */ starting;
+  /** @type {Promise<void>|undefined} */ deploymentTask;
+  /** @type {Promise<unknown>|undefined} */ serverClosing;
+  /** @type {Promise<void>|undefined} */ closing;
   /** @param {InstanceType<typeof import('./remote.cjs').RemoteControl>} remote @param {{interfaces?:typeof networkInterfaces,resources?:typeof prepareRelayResources,modules?:typeof loadRelayModules}} [options] */
   constructor(
     remote,
@@ -111,7 +115,22 @@ class RelayService {
     };
   }
   /** @param {boolean} [activate] */
-  async startLocal(activate = true) {
+  startLocal(activate = true) {
+    if (this.starting) return this.starting;
+    const task = this.startLocalOnce(activate);
+    this.starting = task;
+    void task.then(
+      () => {
+        this.starting = undefined;
+      },
+      () => {
+        this.starting = undefined;
+      },
+    );
+    return task;
+  }
+  /** @param {boolean} activate */
+  async startLocalOnce(activate) {
     if (this.closed) throw new Error("Relay 服务已关闭");
     if (this.server) {
       if (activate) await this.remote.useRelayProfile(this.local.address);
@@ -161,6 +180,7 @@ class RelayService {
           }),
           { mode: 0o600 },
         );
+        if (this.closed) throw new Error("Relay 服务已关闭");
         const config = readConfig(file);
         store ??= openStore(config);
         this.store = store;
@@ -168,7 +188,8 @@ class RelayService {
         try {
           const server = await serve(config, store);
           if (this.closed) {
-            await server.close();
+            this.serverClosing = server.close();
+            await this.serverClosing;
             throw new Error("Relay 服务已关闭");
           }
           this.server = server;
@@ -183,7 +204,10 @@ class RelayService {
       }
       throw new Error("本机 Relay 端口不可用");
     } catch (error) {
-      await this.server?.close();
+      if (this.server) {
+        this.serverClosing = this.server.close();
+        await this.serverClosing;
+      }
       this.server = null;
       this.store?.close();
       this.store = null;
@@ -261,7 +285,7 @@ class RelayService {
     parseTarget(config);
     this.job = { operation, phase: "running", error: "" };
     this.remote.service.schedule();
-    void this.runDeployment(operation, config, request.removeData === true);
+    this.deploymentTask = this.runDeployment(operation, config, request.removeData === true);
   }
   /** @param {'deploy'|'upgrade'|'inspect'|'remove'} operation @param {DeploymentConfig} config @param {boolean} removeData */
   async runDeployment(operation, config, removeData) {
@@ -359,13 +383,28 @@ class RelayService {
     }
   }
   close() {
+    if (this.closing) return this.closing;
     this.closed = true;
-    void this.server?.close().finally(() => {
-      this.store?.close();
-      this.store = null;
-    });
+    const server = this.server;
+    const store = this.store;
     this.server = null;
-    this.deployment?.close();
+    this.store = null;
+    if (server) this.serverClosing = server.close();
+    const resourcesClosing = Promise.all([this.serverClosing, this.deployment?.close()]);
+    void resourcesClosing.catch(() => {});
+    this.closing = (async () => {
+      try {
+        await Promise.allSettled([this.starting, this.deploymentTask]);
+        await resourcesClosing;
+        await this.serverClosing;
+      } finally {
+        store?.close();
+        this.store?.close();
+        this.store = null;
+      }
+    })();
+    void this.closing.catch(() => {});
+    return this.closing;
   }
 }
 module.exports = { RelayService, localAddress, privateAddress };

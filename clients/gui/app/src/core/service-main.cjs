@@ -31,7 +31,6 @@ const { SharedPowerMonitor } = require("./power.cjs");
 const { resolveDesktopNetwork } = require("./desktop-network.cjs");
 const { readLibraryStartupSettings } = require("./library.cjs");
 const { proxyRelay } = require("./proxy-relay.cjs");
-const { RemoteControl } = require("./remote.cjs");
 const { desktopExecutables } = require("./desktop-executables.cjs");
 const { desktopError } = require("@areal/workbench/desktop-contract");
 const { readServicePacket } = require("./service-state.cjs");
@@ -297,9 +296,8 @@ async function start() {
     notifications,
     power,
   );
-  service.remote = new RemoteControl(service);
   startupTraceService.advance("remote_init");
-  await service.remote.init();
+  await service.initRemote();
   power.start();
   startupTraceService.advance("listen");
   descriptor = await service.listen();

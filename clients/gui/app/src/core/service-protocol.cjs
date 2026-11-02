@@ -4,6 +4,7 @@ const { randomBytes, randomUUID, timingSafeEqual } = require("node:crypto");
 const { isDeepStrictEqual } = require("node:util");
 const { appendFileSync } = require("node:fs");
 const { WebSocketServer } = require("ws");
+const { RemoteControl } = require("./remote.cjs");
 const { METHODS: terminalMethods } = require("./gui-terminal-connections.cjs");
 const {
   desktopError,
@@ -143,6 +144,8 @@ class DesktopService {
     /** @type {NodeJS.Timeout|undefined} */ this.activityTimer = undefined;
     /** @type {NodeJS.Timeout|undefined} */ this.flushTimer = undefined;
     /** @type {import('ws').WebSocketServer|undefined} */ this.server = undefined;
+    /** @type {Promise<{hostId:string,generation:string}>|undefined} */ this.hostReconnection =
+      undefined;
     this.exitRequested = false;
     this.recovering = false;
     backend.onChange = () => this.schedule();
@@ -920,6 +923,14 @@ class DesktopService {
         return;
       }
       if (!this.clients.has(socket)) throw new Error("请先完成后台服务握手");
+      if (method === "hostReconnect") {
+        if (params.protocol !== PROTOCOL || this.computerSocket !== socket)
+          throw new Error("Host reconnect requires the current local Main owner");
+        const result = await this.reconnectHost();
+        this.send(socket, { id, result });
+        this.schedule();
+        return;
+      }
       if (["lifecycleRequest", "lifecycleRead", "lifecycleReconcile"].includes(method)) {
         if (!this.lifecycle)
           throw Object.assign(new Error("后台未声明持久生命周期能力"), {
@@ -1390,6 +1401,50 @@ class DesktopService {
         },
       });
     });
+  }
+  async initRemote() {
+    await this.remote?.close();
+    if (this.closed || this.exitRequested || this.backend.closing)
+      throw new Error("Desktop is closing");
+    const remote = new RemoteControl(this);
+    this.remote = remote;
+    try {
+      await remote.init();
+    } catch (error) {
+      await remote.close();
+      throw error;
+    }
+    if (this.closed || this.exitRequested || this.backend.closing) {
+      await remote.close();
+      throw new Error("Desktop is closing");
+    }
+    return remote;
+  }
+  reconnectHost() {
+    if (this.hostReconnection) return this.hostReconnection;
+    const task = (async () => {
+      if (this.closed || this.exitRequested || this.backend.closing)
+        throw new Error("Desktop is closing");
+      const result = await this.backend.reconnectHost();
+      if (this.closed || this.exitRequested || this.backend.closing)
+        throw new Error("Desktop is closing");
+      if (this.remote?.closed) {
+        const remote = await this.initRemote();
+        if (remote.closed || !remote.storageAvailable())
+          throw new Error(remote.directError || remote.relayError || "Remote recovery failed");
+      }
+      return result;
+    })();
+    this.hostReconnection = task;
+    void task.then(
+      () => {
+        this.hostReconnection = undefined;
+      },
+      () => {
+        this.hostReconnection = undefined;
+      },
+    );
+    return task;
   }
   close() {
     this.closed = true;

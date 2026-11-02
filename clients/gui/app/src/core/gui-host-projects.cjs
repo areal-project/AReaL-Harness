@@ -72,6 +72,14 @@ class GuiHostProjects {
         await this.register(requestIdFor(`${this.sourceId}:register:${project.id}`), project);
     }
   }
+  async reconnect() {
+    if (!this.sourceId) throw new Error("Host GUI source has not been initialized");
+    this.client.close();
+    await this.client.connectOrStart(this.home, this.options.binary);
+    const state = await this.client.sourceState(this.source);
+    if (!state || state.sourceId !== this.sourceId) throw new Error("Host GUI source changed");
+    return this.list();
+  }
   /** @returns {Promise<SavedProject[]>} */
   async list() {
     const state = await this.client.sourceState(this.source);

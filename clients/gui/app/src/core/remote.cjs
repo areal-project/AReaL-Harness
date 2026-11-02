@@ -53,6 +53,9 @@ class RemoteControl {
   /** @type {{secret:string,expiresAt:number}|null} */ invite = null;
   /** @type {Promise<unknown>|undefined} */ writes;
   closed = false;
+  /** @type {Promise<void>|undefined} */ initialization;
+  /** @type {Promise<void>|undefined} */ closing;
+  /** @type {Promise<void>|undefined} */ directClosing;
   /** @param {RemoteService} service @param {{networkAdapterFactory?:typeof createRemoteNetworkAdapter}} [options] */
   constructor(service, { networkAdapterFactory = createRemoteNetworkAdapter } = {}) {
     this.service = service;
@@ -74,7 +77,21 @@ class RemoteControl {
     this.push = new RemotePush(this);
     this.relayService = new RelayService(this);
   }
-  async init() {
+  init() {
+    if (this.initialization) return this.initialization;
+    const task = this.initialize();
+    this.initialization = task;
+    void task.then(
+      () => {
+        this.initialization = undefined;
+      },
+      () => {
+        this.initialization = undefined;
+      },
+    );
+    return task;
+  }
+  async initialize() {
     this.transportModule = await import("@areal/remote");
     try {
       this.config = await this.storage.init();
@@ -211,10 +228,12 @@ class RemoteControl {
   control(request) {
     if (!isRemoteRequest(request)) throw new Error("无效手机设置参数");
     if (request.operation === "status") return Promise.resolve(this.state());
+    if (this.closed) throw new Error("Remote execution lease is closed");
     // Pairing and revocation are serialized with durable configuration writes.
     const task = (this.writes ?? Promise.resolve())
       .catch(() => {})
       .then(async () => {
+        if (this.closed) throw new Error("Remote execution lease is closed");
         this.config = await this.storage.refresh();
         return this.controlOnce(request);
       });
@@ -926,19 +945,25 @@ class RemoteControl {
     if (this.direct) return { origin: this.direct.origin, ws: this.direct.ws };
     const direct = await startDirect(this);
     if (this.closed) {
-      direct.close();
+      this.direct = direct;
+      await this.closeDirect();
       throw new Error("Remote execution lease closed during startup");
     }
     this.direct = direct;
     return { origin: this.direct.origin, ws: this.direct.ws };
   }
   closeDirect() {
-    this.direct?.close();
+    const direct = this.direct;
     this.direct = null;
+    if (direct) {
+      this.directClosing = Promise.all([this.directClosing, direct.close()]).then(() => {});
+      void this.directClosing.catch(() => {});
+    }
+    return this.directClosing;
   }
   // 进程退出同步关闭入口并保留映射；下次启动先复核所有权，绝不异步遗弃 CLI 清理。
   close() {
-    if (this.closed) return;
+    if (this.closing) return this.closing;
     this.closed = true;
     this.storage.close();
     this.changeNetworkOrigin(null);
@@ -947,7 +972,15 @@ class RemoteControl {
     this.sessions.close();
     this.push.close();
     this.closeDirect();
-    this.relayService.close();
+    const relayClosing = this.relayService.close();
+    this.closing = (async () => {
+      await Promise.allSettled([this.initialization, this.writes]);
+      await relayClosing;
+      await this.directClosing;
+      await this.storage.drained();
+    })();
+    void this.closing.catch(() => {});
+    return this.closing;
   }
 }
 /** @typedef {Record<string,unknown>} RemoteSettingsFields */

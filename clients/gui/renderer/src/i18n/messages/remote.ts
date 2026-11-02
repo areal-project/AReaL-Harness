@@ -1172,17 +1172,17 @@ export const remoteMessages = {
     "zh-CN": "退出应用",
     en: "Quit application",
   },
-  "settings.serviceStatusSettings.stopsAllBackgroundServicesForThisApp": {
-    "zh-CN": "停止本应用的所有后台服务。有活动任务时先确认，清理完成后退出。",
-    en: "Stops all background services for this app. Active tasks require confirmation. The app quits after cleanup.",
+  "settings.serviceStatusSettings.keepsBackgroundRunningByDefault": {
+    "zh-CN": "默认保持共享后台运行。有活动任务时可选择停止任务并退出，停止需要再次确认。",
+    en: "Keeps the shared backend running by default. When tasks are active, you can choose to stop them and quit after a second confirmation.",
   },
   "settings.serviceStatusSettings.quitAReaLHarness": {
     "zh-CN": "退出 AReaL Harness",
     en: "Quit AReaL Harness",
   },
   "settings.serviceStatusSettings.quitRequirements": {
-    "zh-CN": "退出条件",
-    en: "Quit requirements",
+    "zh-CN": "桌面服务停止条件",
+    en: "Desktop service stop requirements",
   },
   "settings.serviceStatusSettings.theBackgroundServiceIsConfirmedStopped": {
     "zh-CN": "后台已确认停止。",

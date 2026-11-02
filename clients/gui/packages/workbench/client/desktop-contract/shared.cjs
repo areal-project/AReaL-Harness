@@ -317,9 +317,9 @@ function readLifecycleReceipt(value) {
   return value;
 }
 /** @typedef {{projectId:string,phase:string,message?:string}} LifecycleViewTarget */
-/** @typedef {{requestId:string,kind:LifecycleKind,phase:string,targets:LifecycleViewTarget[],threadId?:string,turnId?:string,desktopExit?:'notRequested'|'requested',message?:string}} LifecycleViewOperation */
+/** @typedef {{requestId:string,kind:LifecycleKind|'stopHost',phase:string,targets:LifecycleViewTarget[],threadId?:string,turnId?:string,desktopExit?:'notRequested'|'requested',message?:string}} LifecycleViewOperation */
 /** @typedef {{canRecover:boolean,message:string,projects:Array<{projectId:string,root:string,state:string,message:string}>}} RecoveryView */
-/** @typedef {{supported:boolean,operations:LifecycleViewOperation[],phase?:string,message?:string,error?:string,requestId?:string,kind?:LifecycleKind,desktopExit?:'notRequested'|'requested',targets?:LifecycleViewTarget[],recovery?:RecoveryView}} LifecycleProjection */
+/** @typedef {{supported:boolean,operations:LifecycleViewOperation[],phase?:string,message?:string,error?:string,requestId?:string,kind?:LifecycleKind|'stopHost',desktopExit?:'notRequested'|'requested',targets?:LifecycleViewTarget[],recovery?:RecoveryView}} LifecycleProjection */
 /** @param {unknown} value @returns {value is LifecycleViewTarget} */
 function lifecycleViewTarget(value) {
   return (
@@ -334,7 +334,7 @@ function lifecycleViewOperation(value) {
   return (
     modelRecord(value) &&
     typeof value.requestId === "string" &&
-    KINDS.some((kind) => value.kind === kind) &&
+    (value.kind === "stopHost" || KINDS.some((kind) => value.kind === kind)) &&
     typeof value.phase === "string" &&
     ["threadId", "turnId", "message"].every(
       (key) => value[key] === undefined || typeof value[key] === "string",
@@ -370,7 +370,9 @@ function isLifecycleProjection(value) {
     ["phase", "message", "error", "requestId"].every(
       (key) => value[key] === undefined || typeof value[key] === "string",
     ) &&
-    (value.kind === undefined || KINDS.some((kind) => value.kind === kind)) &&
+    (value.kind === undefined ||
+      value.kind === "stopHost" ||
+      KINDS.some((kind) => value.kind === kind)) &&
     (value.desktopExit === undefined ||
       value.desktopExit === "requested" ||
       value.desktopExit === "notRequested") &&
@@ -404,7 +406,7 @@ function agentProfile(value) {
 }
 /** @typedef {import('../core-model-contract.js').CoreThread & {executionCore?:{instanceId:string|null,[key:string]:unknown}|null}} ServiceThread */
 /** @typedef {{binary:string,apiVersion:string|null,runtimeEpoch:string|null,runtimeAvailable:boolean|null,features:Record<string,boolean>|null,instanceId:string|null,connectionGeneration:number}} ProjectCapabilities */
-/** @typedef {{state:'connecting'|'ready'|'unavailable',message?:string,recovery?:'check',prerequisite?:{kind:'macos-command-line-tools',reason:'developer-tools-unavailable'|'python-unavailable',title:string,detail:string,installLabel:string,retryLabel:string,requestedMessage:string}}} DesktopConnection */
+/** @typedef {{state:'connecting'|'ready'|'unavailable',message?:string,recovery?:'check'|'reconnect',prerequisite?:{kind:'macos-command-line-tools',reason:'developer-tools-unavailable'|'python-unavailable',title:string,detail:string,installLabel:string,retryLabel:string,requestedMessage:string}}} DesktopConnection */
 /** @typedef {{id:string,root:string,state:null|{threads:Record<string,ServiceThread>,connected?:boolean,error?:string|null,queues?:Record<string,Queue>,interactions?:Record<string,import('../core-model-contract.js').CoreInteractions>,[key:string]:unknown},logicalProjectId?:string,worktreeRequestId?:string,worktreeResources?:string,projectless?:boolean,projectlessRequestId?:string,hasTaskHistory?:boolean,backend?:'areal',core?:ProjectCapabilities,pending?:Array<PendingSubmission & {awaitingResponse:boolean}>,outcomes?:Record<string,SubmissionOutcome>,models?:import('./provider.cjs').ModelCatalogEntry[],profiles?:AgentProfile[],lastAcceptedModel?:import('./provider.cjs').AcceptedModel|null,defaultProfile?:{id:string,revision:string}|null,configurations?:Record<string,Configuration|undefined>,summaries?:import('../core-model-contract.js').CoreThread[],summariesLoaded?:boolean,observationErrors?:Record<string,{message:string,retryable:boolean,code:unknown,threadId?:string,projectId?:string,connectionGeneration?:number,[key:string]:unknown}>,refreshErrors?:Record<string,{id:string,projectId:string,message:string,refreshPending:boolean,threadId?:string,[key:string]:unknown}>,error?:string|null,desktopCapabilities?:{currentCommands:boolean},[key:string]:unknown}} ServiceProject */
 /** @typedef {{projects:ServiceProject[],subscription?:import('./provider.cjs').ChatGPTStatus,library:import('./library-media.cjs').LibraryState,projectless?:{directory:string},power?:{enabled:boolean,active:boolean,error:string|null}|null,menuBar?:{supported:boolean,active:boolean,error:string|null}|null,revision?:number,desktopCapabilities?:{currentCommands:boolean},serviceSummary?:{state:'running'|'stopped'|'unknown',busy:boolean},connection?:DesktopConnection,backendUpdate?:{state:'applying'|'pending'|'failed',message?:string},lifecycle?:LifecycleProjection,computerControl?:import('./desktop-control.cjs').ComputerStatus|null,[key:string]:unknown}} DesktopSnapshot */
 /** @param {unknown} value @returns {value is ServiceThread} */
@@ -520,7 +522,9 @@ function desktopConnection(value) {
     modelRecord(value) &&
     ["connecting", "ready", "unavailable"].some((state) => value.state === state) &&
     (value.message === undefined || typeof value.message === "string") &&
-    (value.recovery === undefined || value.recovery === "check") &&
+    (value.recovery === undefined ||
+      value.recovery === "check" ||
+      value.recovery === "reconnect") &&
     (value.prerequisite === undefined ||
       (modelRecord(value.prerequisite) &&
         value.prerequisite.kind === "macos-command-line-tools" &&

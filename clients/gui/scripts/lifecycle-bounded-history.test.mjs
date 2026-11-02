@@ -171,6 +171,8 @@ test("history reads execute against the original Core while interruption still b
     status: { lifecycle: { version: 2 } },
     lifecycleReferences: new Map([[f.record.requestId, f.record]]),
     lifecycleReceipts: new Map(),
+    hostReferences: new Map(),
+    hostReceipts: new Map(),
   });
   for (const [operation, expected] of [
     ["acquire", "supported"],

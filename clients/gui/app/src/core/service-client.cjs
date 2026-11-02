@@ -9,6 +9,13 @@ const { spawn } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 const { mkdir, readFile, realpath, open, writeFile, rename, rm } = require("node:fs/promises");
 const { join } = require("node:path");
+const { HostClient } = require("./host-client.cjs");
+const {
+  hostReference,
+  readHostReceipt,
+  projectHostReceipt,
+  readOfflineHostReceipt,
+} = require("./host-lifecycle.cjs");
 const { GuiTerminalConnections } = require("./gui-terminal-connections.cjs");
 const { ServiceConnection } = require("./service-connection.cjs");
 const { readServicePacket } = require("./service-state.cjs");
@@ -113,6 +120,7 @@ async function waitForProcessExit(pid) {
 /** @typedef {{focused:boolean,idleSeconds:number,suspended?:boolean}} Activity */
 /** @typedef {{kind:import('./lifecycle-operations.cjs').LifecycleKind,mode?:import('./lifecycle-operations.cjs').LifecycleMode,observed?:Observation,projectId?:string,threadId?:string,turnId?:string,requestId?:string,migration?:unknown}} LifecycleOptions */
 /** @typedef {{stopped:boolean,operation:Receipt,kind?:string}} LifecycleResult */
+/** @typedef {{stopped:boolean,operation:import('@areal/workbench/desktop-contract/shared').LifecycleViewOperation,receipt?:import('./host-lifecycle.cjs').HostReceipt}} HostLifecycleResult */
 // GUI-local connection/projection only. Control intent lives in GUI userData;
 // shared Core history and execution state remain owned by the service.
 /** @typedef {Omit<Partial<import('./backend.cjs').CoreBackendOptions>,'home'|'onChange'> & {home:string,configHome?:string,app:Pick<Electron.App,'getPath'> & Partial<Pick<Electron.App,'isPackaged'|'getAppPath'>>,onChange?:()=>void,onNotification?:(value:unknown)=>void,onNotificationOpen?:(value:unknown)=>void,onRecoveryAttention?:(value:unknown)=>void,prerequisiteCheck?:typeof checkHostPrerequisites}} SharedBackendOptions */
@@ -227,6 +235,14 @@ class SharedCoreBackend {
     this.guiWindowClosed = false;
     /** @type {Map<string,Reference>} */
     this.lifecycleReferences = new Map();
+    /** @type {Map<string,import('./host-lifecycle.cjs').HostReference>} */
+    this.hostReferences = new Map();
+    /** @type {Map<string,import('./host-lifecycle.cjs').HostReceipt>} */
+    this.hostReceipts = new Map();
+    /** @type {Map<string,InstanceType<typeof GuiTerminalConnections>>} */
+    this.hostStopResources = new Map();
+    /** @type {Promise<HostLifecycleResult>|undefined} */
+    this.hostStopInFlight = undefined;
     /** @type {Map<string,Receipt>} */
     this.lifecycleReceipts = new Map();
     this.analytics = {
@@ -364,6 +380,7 @@ class SharedCoreBackend {
     return (
       !this.disposed &&
       !this.reconnectBlocked &&
+      !this.hostReferences.size &&
       !this.status.connected &&
       !this.serviceExited &&
       !["stopped", "unconfirmed"].some((state) => state === this.controlState) &&
@@ -604,6 +621,10 @@ class SharedCoreBackend {
   /** @param {{automatic?:boolean}} [options] @returns {Promise<void>} */
   async init({ automatic = false } = {}) {
     if (this.disposed) throw new Error("GUI 连接已关闭");
+    if (this.hostStopInFlight)
+      throw Object.assign(new Error("Host 停止操作仍在处理中，请完成后重新连接"), {
+        code: "LIFECYCLE_BLOCKED",
+      });
     if (this.connecting) return this.connecting;
     // 控制文件读取也属于同一次连接尝试；首次 await 前建立共享门闩，避免并发调用互相关闭连接或重复启动后台。
     this.connecting = (async () => {
@@ -615,11 +636,34 @@ class SharedCoreBackend {
         this.onChange();
         return;
       }
-      if (this.status.connected && !this.lifecycleReferences.size && !this.legacyControl) return;
+      if (
+        this.status.connected &&
+        !this.lifecycleReferences.size &&
+        !this.hostReferences.size &&
+        !this.legacyControl
+      )
+        return;
       this.clearReconnect();
       this.initializing = true;
       this.connectionState = { state: "connecting" };
       this.onChange();
+      let reconnectHost = false;
+      if (this.hostReferences.size) {
+        for (const reference of this.hostReferences.values()) await this.readHostStop(reference);
+        if (
+          automatic ||
+          [...this.hostReferences.values()].some(
+            (reference) =>
+              !["completed", "blocked"].includes(
+                this.hostReceipts.get(reference.requestId)?.state ?? "admissionUnknown",
+              ),
+          )
+        ) {
+          this.connectionState = this.hostRecoveryState();
+          return;
+        }
+        reconnectHost = true;
+      }
       if (this.lifecycleReferences.size || this.legacyControl) {
         await this.checkLifecycle();
         const completedStop =
@@ -655,7 +699,13 @@ class SharedCoreBackend {
         }
       }
       this.reconnectBlocked = false;
-      await this.initialize(automatic);
+      await this.initialize(automatic, { reconnectHost });
+      if (reconnectHost) {
+        this.hostReferences.clear();
+        this.hostReceipts.clear();
+        this.hostStopResources.clear();
+        await this.persistReferences();
+      }
       if (!this.lifecycleReferences.size) {
         await rm(this.controlPath, { force: true });
         this.controlState = null;
@@ -683,8 +733,8 @@ class SharedCoreBackend {
       });
     return this.connecting;
   }
-  /** @param {boolean} [_automatic] @returns {Promise<void>} */
-  async initialize(_automatic = false) {
+  /** @param {boolean} [_automatic] @param {{reconnectHost?:boolean}} [options] @returns {Promise<void>} */
+  async initialize(_automatic = false, { reconnectHost = false } = {}) {
     const trace = startupTrace("service.initialize");
     trace.advance("home");
     try {
@@ -704,13 +754,17 @@ class SharedCoreBackend {
         if (!this.options.binary) throw new Error("Core 程序路径不可用");
         this.identity = await serviceIdentity({ ...this.options, binary: this.options.binary });
       } catch (error) {
-        if (!retained || !this.status.connected) throw error;
+        if (reconnectHost || !retained || !this.status.connected) throw error;
         this.backendUpdate = { state: "failed", message: desktopError(error).message };
         this.onChange();
         return;
       }
       if (this.disposed) throw new Error("GUI 连接已关闭");
       if (retained) {
+        if (reconnectHost) {
+          this.assertApplicationWrite();
+          await this.requireConnection().request("hostReconnect", { protocol: PROTOCOL }, true);
+        }
         if (!this.foreignOwner)
           this.backendUpdate =
             this.identity === this.metadata?.identity ? undefined : { state: "pending" };
@@ -1191,6 +1245,7 @@ class SharedCoreBackend {
     const visible = new Map(this.lifecycleReceipts);
     for (const [requestId, reference] of this.lifecycleReferences)
       visible.set(requestId, reference);
+    /** @type {import('@areal/workbench/desktop-contract/shared').LifecycleViewOperation[]} */
     const operations = [...visible.values()].map((reference) => {
       const receipt = this.lifecycleReceipts.get(reference.requestId);
       return {
@@ -1217,6 +1272,8 @@ class SharedCoreBackend {
           lifecycleMessage(receipt?.phase ?? "admissionUnconfirmed"),
       };
     });
+    for (const reference of this.hostReferences.values())
+      operations.push(projectHostReceipt(reference, this.hostReceipts.get(reference.requestId)));
     const latest = operations.at(-1);
     const legacy =
       this.legacyControl || (this.status.stopReport && this.status.lifecycle?.version !== 2);
@@ -1256,10 +1313,165 @@ class SharedCoreBackend {
     this.lifecycleError = desktopError(error).message;
     this.onChange();
   }
+  hostRecoveryState() {
+    const settled = [...this.hostReferences.values()].every((reference) =>
+      ["completed", "blocked"].includes(
+        this.hostReceipts.get(reference.requestId)?.state ?? "admissionUnknown",
+      ),
+    );
+    return {
+      state: "unavailable",
+      recovery: settled ? "reconnect" : "check",
+      message: settled
+        ? "原 Host 停止操作已核查，可明确重新连接后台。"
+        : "原 Host 停止操作尚未结算，请检查原请求；不会自动启动或重发。",
+    };
+  }
+  /** @returns {Promise<import('./host-client.cjs').HostActivity>} */
+  async readHostActivity() {
+    const client = new HostClient();
+    try {
+      if (!this.options.hostHome) throw new Error("Host home 尚未配置");
+      await client.connect(this.options.hostHome);
+      return await client.activity();
+    } finally {
+      client.close();
+    }
+  }
+  /** @param {import('./host-lifecycle.cjs').HostReference} reference @param {unknown} value @returns {Promise<HostLifecycleResult>} */
+  async acceptHostStop(reference, value) {
+    const receipt = readHostReceipt(reference, value);
+    this.hostReceipts.set(reference.requestId, receipt);
+    if (
+      receipt.state === "completed" &&
+      this.hostStopResources.get(reference.requestId) === this.terminalConnections
+    ) {
+      const connections = this.terminalConnections;
+      await Promise.allSettled(this.guiTerminalStarts);
+      connections.close();
+      if (this.terminalConnections === connections) this.guiTerminals.clear();
+    }
+    if (receipt.state === "completed" || receipt.state === "blocked")
+      this.hostStopResources.delete(reference.requestId);
+    this.lifecycleError = null;
+    this.onChange();
+    return {
+      stopped: receipt.state === "completed",
+      operation: projectHostReceipt(reference, receipt),
+      receipt,
+    };
+  }
+  /** @param {import('./host-lifecycle.cjs').HostReference} reference @returns {Promise<HostLifecycleResult>} */
+  async readHostStop(reference) {
+    const client = new HostClient();
+    let value;
+    try {
+      await client.connect(reference.home);
+      if (client.hostId !== reference.hostId) throw new Error("Host identity changed");
+      value = (await client.operation(reference.requestId)).operation;
+    } catch {
+      if (this.options.binary) value = await readOfflineHostReceipt(this.options.binary, reference);
+    } finally {
+      client.close();
+    }
+    if (value != null) return this.acceptHostStop(reference, value);
+    const known = this.hostReceipts.get(reference.requestId);
+    if (known)
+      return {
+        stopped: known.state === "completed",
+        operation: projectHostReceipt(reference, known),
+        receipt: known,
+      };
+    this.onChange();
+    return { stopped: false, operation: projectHostReceipt(reference) };
+  }
+  /** @param {{strategy:'ifIdle'|'cancel',requestId?:string}} options @returns {Promise<HostLifecycleResult>} */
+  async requestHostStop({ strategy, requestId }) {
+    if (this.initializing || this.connecting)
+      throw Object.assign(new Error("后台连接仍在处理中，请完成后停止 Host"), {
+        code: "LIFECYCLE_BLOCKED",
+      });
+    if (strategy !== "ifIdle" && strategy !== "cancel") throw new Error("Host 停止策略无效");
+    if (this.hostStopInFlight) return this.hostStopInFlight;
+    return (this.hostStopInFlight = this.submitHostStop(strategy, requestId).finally(() => {
+      this.hostStopInFlight = undefined;
+    }));
+  }
+  /** @param {'ifIdle'|'cancel'} strategy @param {string} [requestId] @returns {Promise<HostLifecycleResult>} */
+  async submitHostStop(strategy, requestId) {
+    this.loadReferences(await this.readControl());
+    if (requestId && !uuid(requestId)) throw new Error("Host 请求身份无效");
+    const latest = [...this.hostReferences.values()].at(-1);
+    const original = requestId
+      ? this.hostReferences.get(requestId)
+      : latest && this.hostReceipts.get(latest.requestId)?.state !== "blocked"
+        ? latest
+        : undefined;
+    if (original) {
+      if (requestId && original.strategy !== strategy)
+        throw Object.assign(new Error("原 Host 请求不能更换策略"), {
+          code: "LIFECYCLE_REQUEST_CONFLICT",
+        });
+      const result = await this.readHostStop(original);
+      if (requestId || !result.stopped) return result;
+      const current = new HostClient();
+      try {
+        await current.connect(this.options.hostHome ?? original.home);
+        if (current.hostId === original.hostId && current.generation === original.generation)
+          return result;
+      } catch (error) {
+        if (["ENOENT", "ECONNREFUSED"].includes(String(desktopError(error).code))) return result;
+        throw error;
+      } finally {
+        current.close();
+      }
+    }
+    if (
+      requestId &&
+      (this.lifecycleReferences.has(requestId) || this.lifecycleReceipts.has(requestId))
+    )
+      throw Object.assign(new Error("原请求身份属于其他生命周期操作"), {
+        code: "LIFECYCLE_REQUEST_CONFLICT",
+      });
+    const client = new HostClient();
+    try {
+      if (!this.options.hostHome) throw new Error("Host home 尚未配置");
+      await client.connect(this.options.hostHome);
+      client.requireCapability("stopOperations");
+      const reference = {
+        kind: /** @type {const} */ ("stopHost"),
+        requestId: requestId ?? randomUUID(),
+        home: client.home,
+        hostId: client.hostId,
+        generation: client.generation,
+        strategy,
+      };
+      this.hostReferences.set(reference.requestId, reference);
+      try {
+        await this.persistReferences();
+      } catch (error) {
+        this.hostReferences.delete(reference.requestId);
+        throw error;
+      }
+      this.hostStopResources.set(reference.requestId, this.terminalConnections);
+      this.clearReconnect();
+      this.onChange();
+      try {
+        return this.acceptHostStop(
+          reference,
+          await client.stop(reference.requestId, reference.generation, strategy),
+        );
+      } catch {
+        return this.readHostStop(reference);
+      }
+    } finally {
+      client.close();
+    }
+  }
   async persistReferences() {
     const write = async () => {
       await mkdir(this.app.getPath("userData"), { recursive: true, mode: 0o700 });
-      if (!this.lifecycleReferences.size) {
+      if (!this.lifecycleReferences.size && !this.hostReferences.size) {
         await rm(this.controlPath, { force: true });
         return;
       }
@@ -1269,9 +1481,9 @@ class SharedCoreBackend {
         try {
           await file.writeFile(
             JSON.stringify({
-              version: 2,
+              version: 3,
               home: this.home,
-              references: [...this.lifecycleReferences.values()],
+              references: [...this.lifecycleReferences.values(), ...this.hostReferences.values()],
             }),
           );
           await file.sync();
@@ -1297,9 +1509,11 @@ class SharedCoreBackend {
   }
   /** @param {Record<string,unknown>|null} control */
   loadReferences(control) {
-    if (control?.version === 2) {
-      for (const reference of readReferences(control.references))
-        this.lifecycleReferences.set(reference.requestId, reference);
+    if (control?.version === 2 || control?.version === 3) {
+      for (const reference of readReferences(control.references)) {
+        if (hostReference(reference)) this.hostReferences.set(reference.requestId, reference);
+        else this.lifecycleReferences.set(reference.requestId, reference);
+      }
       this.controlState = null;
     } else if (control?.state === "unconfirmed") {
       this.legacyControl = control;
@@ -1488,6 +1702,12 @@ class SharedCoreBackend {
       if (this.legacyControl || (this.status.stopReport && this.status.lifecycle?.version !== 2))
         return require("./legacy-desktop-recovery.cjs").recover(this, notify);
       const pending = [...this.lifecycleReferences.values()];
+      if (!pending.length && this.hostReferences.size) {
+        if (this.hostRecoveryState().recovery === "check")
+          throw new Error("原 Host 操作仍待确认，请继续检查原请求；不会重发");
+        await this.init();
+        return { recovered: true };
+      }
       if (!pending.length) return { recovered: false };
       if (
         pending.some((reference) =>
@@ -1522,7 +1742,16 @@ class SharedCoreBackend {
   async checkLifecycle() {
     this.loadReferences(await this.readControl());
     this.clearReconnect();
-    if (!this.status.connected) await this.attach();
+    if (!this.status.connected && (this.lifecycleReferences.size || !this.hostReferences.size))
+      await this.attach();
+    for (const reference of Array.from(this.hostReferences.values()))
+      await this.readHostStop(reference);
+    if (
+      this.hostReferences.size &&
+      !this.lifecycleReferences.size &&
+      (!this.status.connected || this.connectionState.recovery)
+    )
+      this.connectionState = this.hostRecoveryState();
     for (const reference of Array.from(this.lifecycleReferences.values()))
       await this.readLifecycle(reference);
     if (this.legacyControl || (this.status.stopReport && this.status.lifecycle?.version !== 2)) {
@@ -1558,6 +1787,13 @@ class SharedCoreBackend {
       throw Object.assign(new Error("请先检查并恢复原后台，再继续工作。输入和历史已保留。"), {
         code: "LIFECYCLE_INCOMPLETE",
       });
+    for (const reference of this.hostReferences.values()) {
+      if (this.hostReceipts.get(reference.requestId)?.state === "blocked") continue;
+      throw Object.assign(new Error("原 Host 停止操作尚未恢复，请检查原请求或明确重新连接"), {
+        code: "LIFECYCLE_INCOMPLETE",
+        requestId: reference.requestId,
+      });
+    }
     for (const reference of this.lifecycleReferences.values()) {
       const operation = this.lifecycleReceipts.get(reference.requestId);
       if (["blocked", "completed"].some((phase) => phase === operation?.phase)) continue;
@@ -1783,7 +2019,15 @@ class SharedCoreBackend {
     const failed = [...starts, ...results].find((result) => result.status === "rejected");
     if (failed) throw failed.reason;
   }
-  async completeApplicationQuit() {
+  /** @param {{keepBackground?:boolean}} [options] */
+  async completeApplicationQuit({ keepBackground = false } = {}) {
+    if (keepBackground) return;
+    for (const reference of this.hostReferences.values()) {
+      if (this.hostReceipts.get(reference.requestId)?.state !== "completed")
+        throw Object.assign(new Error("原 Host 停止请求尚未完成"), {
+          code: "LIFECYCLE_INCOMPLETE",
+        });
+    }
     for (const reference of this.lifecycleReferences.values()) {
       if (this.lifecycleReceipts.get(reference.requestId)?.phase !== "completed")
         throw Object.assign(new Error("原生命周期请求尚未完成，不能结束应用会话"), {

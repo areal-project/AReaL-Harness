@@ -211,6 +211,14 @@
     "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
+    "script": "test:host-quit",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["lifecycle", "desktop", "remote"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
+    "notes": "Isolated shared Host quit and reconnect. Remote identity recovery is opt-in and requires authorization for test Keychain writes on macOS."
+  },
+  {
     "script": "test:legacy-recovery",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],

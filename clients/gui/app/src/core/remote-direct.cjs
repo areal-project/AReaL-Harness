@@ -149,15 +149,22 @@ async function startDirect(remote) {
     },
   );
   const port = /** @type {import("node:net").AddressInfo} */ (server.address()).port;
+  /** @type {Promise<void>|undefined} */
+  let closing;
   return {
     server,
     sockets,
     origin: `http://127.0.0.1:${port}`,
     ws: `ws://127.0.0.1:${port}/remote/socket`,
     close() {
+      if (closing) return closing;
       for (const socket of sockets) socket.terminate();
       wss.close();
-      server.close();
+      closing = new Promise((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+      void closing.catch(() => {});
+      return closing;
     },
   };
 }

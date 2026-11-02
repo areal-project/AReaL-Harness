@@ -16,10 +16,13 @@ class HostRemote {
     this.sourceId = "";
     this.revision = 0;
     this.leased = false;
+    this.closed = false;
+    /** @type {Promise<void>|undefined} */ this.persistence = undefined;
     /** @type {PendingWrite|null} */ this.pending = null;
     /** @type {Promise<unknown>} */ this.chain = Promise.resolve();
   }
   async init() {
+    this.requireOpen();
     this.sourceId = this.backend.host.sourceId;
     try {
       const record = JSON.parse(
@@ -38,22 +41,31 @@ class HostRemote {
     } catch (error) {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
+    this.requireOpen();
     await this.client.connect(this.backend.host.home);
+    this.requireOpen();
     this.client.socket?.once("close", () => {
       this.leased = false;
       this.disconnected();
     });
     this.client.requireCapability("remoteState");
     await this.client.request("remote.acquire", { sourceId: this.sourceId });
+    this.requireOpen();
     this.leased = true;
     await this.settle();
     return this.read();
   }
   available() {
-    return this.leased && !this.client.socket?.destroyed;
+    return !this.closed && this.leased && !this.client.socket?.destroyed;
   }
   persist() {
-    return this.backend.save("host-remote-operation.json", { version: 1, pending: this.pending });
+    const result = this.backend.save("host-remote-operation.json", {
+      version: 1,
+      pending: this.pending,
+    });
+    this.persistence = result;
+    void result.catch(() => {});
+    return result;
   }
   async read() {
     const value = await this.client.request("remote.read", {});
@@ -147,7 +159,17 @@ class HostRemote {
     this.chain = result.catch(() => {});
     return result;
   }
+  requireOpen() {
+    if (!this.closed) return;
+    this.client.close();
+    throw new Error("Host Remote connection is closed");
+  }
+  async drained() {
+    await this.chain;
+    await this.persistence;
+  }
   close() {
+    this.closed = true;
     this.leased = false;
     this.client.close();
   }

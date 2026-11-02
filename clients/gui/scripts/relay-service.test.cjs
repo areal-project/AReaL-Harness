@@ -480,3 +480,92 @@ process.stdin.on('end', () => console.log(JSON.stringify({ownerId, installed:tru
   assert.equal(mutations[1].phase, "pending");
   assert.equal(mutations[1].ownerId, original.ownerId);
 });
+
+test("Relay close waits for its listener before releasing the store and preserves close errors", async () => {
+  const remote = { config: {}, service: { schedule() {} } };
+  const relay = new RelayService(remote);
+  const released = Promise.withResolvers();
+  let storeClosed = 0;
+  relay.server = { close: () => released.promise };
+  relay.store = {
+    close: () => {
+      storeClosed++;
+    },
+  };
+  const closing = relay.close();
+  assert.equal(relay.close(), closing);
+  assert.equal(storeClosed, 0);
+  released.resolve();
+  await closing;
+  assert.equal(storeClosed, 1);
+  const failed = new RelayService(remote);
+  failed.server = {
+    close: async () => {
+      throw new Error("listener close failed");
+    },
+  };
+  failed.store = {
+    close: () => {
+      storeClosed++;
+    },
+  };
+  await assert.rejects(failed.close(), /listener close failed/);
+  assert.equal(storeClosed, 2);
+});
+
+test("Relay close owns a listener and store arriving during startLocal", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "relay-close-start-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const serving = Promise.withResolvers();
+  const served = Promise.withResolvers();
+  const listenerClosing = Promise.withResolvers();
+  const listenerClosed = Promise.withResolvers();
+  let storeClosed = 0;
+  const remote = {
+    config: { identity: "fixture-identity" },
+    service: { schedule() {} },
+    backend: { home },
+    async save(config) {
+      this.config = config;
+    },
+  };
+  const relay = new RelayService(remote, {
+    interfaces,
+    resources: async () => ({ bundleDir: home, version: "fixture" }),
+    modules: async () => ({
+      readConfig: () => ({}),
+      openStore: () => ({
+        provision() {},
+        close() {
+          storeClosed++;
+        },
+      }),
+      serve: () => {
+        serving.resolve();
+        return served.promise;
+      },
+    }),
+  });
+  const starting = relay.startLocal(false);
+  await serving.promise;
+  let done = false;
+  const closing = relay.close().then(() => {
+    done = true;
+  });
+  served.resolve({
+    close: () => {
+      listenerClosing.resolve();
+      return listenerClosed.promise;
+    },
+  });
+  await listenerClosing.promise;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(done, false);
+  assert.equal(storeClosed, 0);
+  listenerClosed.resolve();
+  await assert.rejects(starting, /已关闭/);
+  await closing;
+  assert.equal(storeClosed, 1);
+  assert.equal(relay.server, null);
+  assert.equal(relay.store, null);
+});

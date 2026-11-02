@@ -48,6 +48,7 @@ const { applyDesktopSessionNetworkPolicy } = require("./desktop-network.cjs");
 const { SharedCoreBackend } = require("./service-client.cjs");
 const { recoverConnectedService } = require("./startup-recovery.cjs");
 const { setNativeLocale, nativeText } = require("./native-i18n.cjs");
+const { confirmHostQuit, confirmHostStop, hostActivityLabel } = require("./host-quit.cjs");
 const { loadThemes, desktopTheme } = require("../themes");
 
 startDesktop();
@@ -185,7 +186,7 @@ function startDesktop() {
   let startupPresentation = "requested",
     startupPainted = false,
     startupReady = false;
-  /** @typedef {import('./service-client.cjs').LifecycleResult|{kind?:string,canceled:boolean}|{stopped:true,quitting:true}} QuitResult */
+  /** @typedef {import('./service-client.cjs').LifecycleResult|{kind?:string,canceled:boolean}|{stopped:boolean,quitting:true}} QuitResult */
   /** @typedef {{id:number,intent:string,owner:Electron.WebContents|null,frame:Electron.WebFrameMain|null,decide:((allowed:boolean)=>void)|null,approved:boolean,phase:'checking'|'stopping'|'finishing'|null,startedAt:number,promise:Promise<QuitResult>|null}} QuitAttempt */
   let focusRequested = false,
     quitRequestSequence = 0;
@@ -325,10 +326,6 @@ function startDesktop() {
       const answer = await (process.platform === "darwin" && intent !== "install"
         ? dialog.showMessageBox(options)
         : showMessageBox(options));
-      if (answer.response === 1) {
-        beginQuit("stopping");
-        recordQuitStage(attempt, "stop");
-      }
       return answer;
     };
     /** @returns {Promise<QuitResult>} */
@@ -349,46 +346,54 @@ function startDesktop() {
       }
       recordQuitStage(attempt, "readiness");
       await backend.waitForApplicationReady();
-      recordQuitStage(attempt, "reconcile");
-      await backend.checkLifecycle();
-      if (backend.foreignOwner && (intent === "install" || backend.desktopLifetimes.size))
-        throw Object.assign(new Error(nativeText("lifecycle.foreignOwner")), {
-          code: "APPLICATION_OWNER_MISMATCH",
+      let stopped = intent === "install";
+      if (intent !== "install") {
+        const confirm = intent === "stop" ? confirmHostStop : confirmHostQuit;
+        const decision = await confirm(backend, notify, () => {
+          beginQuit("stopping");
+          recordQuitStage(attempt, "stop");
         });
-      if (
-        !backend.foreignOwner &&
-        !backend.serviceExited &&
-        (backend.status.connected || backend.metadata || backend.desktopLifetimes.size)
-      ) {
-        recordQuitStage(attempt, "stop");
-        const result = await recoverConnectedService({
-          backend,
-          notify,
-          purpose: intent === "install" ? "update" : "quit",
-          forUpdate: intent === "install",
-        });
-        if (!("stopped" in result) || result.stopped !== true) {
-          recordQuitStage(
-            attempt,
-            "canceled" in result && result.canceled ? "canceled" : "incomplete",
-          );
-          if (!("canceled" in result) || !result.canceled)
-            backend.reportLifecycleError(new Error(nativeText("lifecycle.stopIncomplete")));
-          return result;
-        }
-      } else if (intent !== "install") {
-        const answer = await notify({
-          type: "question",
-          message: nativeText("quit.question"),
-          detail: nativeText("quit.interfaceDetail"),
-          buttons: [nativeText("common.cancel"), nativeText("common.quit")],
-          defaultId: 1,
-          cancelId: 0,
-          noLink: true,
-        });
-        if (answer.response !== 1) {
+        if ("canceled" in decision) {
           recordQuitStage(attempt, "canceled");
           return { canceled: true };
+        }
+        stopped = "stopped" in decision && decision.stopped === true;
+        beginQuit("finishing");
+      } else {
+        recordQuitStage(attempt, "reconcile");
+        await backend.checkLifecycle();
+        if (backend.foreignOwner && (intent === "install" || backend.desktopLifetimes.size))
+          throw Object.assign(new Error(nativeText("lifecycle.foreignOwner")), {
+            code: "APPLICATION_OWNER_MISMATCH",
+          });
+        if (
+          !backend.foreignOwner &&
+          !backend.serviceExited &&
+          (backend.status.connected || backend.metadata || backend.desktopLifetimes.size)
+        ) {
+          recordQuitStage(attempt, "stop");
+          const result = await recoverConnectedService({
+            backend,
+            notify: async (options) => {
+              const answer = await notify(options);
+              if (answer.response === 1) {
+                beginQuit("stopping");
+                recordQuitStage(attempt, "stop");
+              }
+              return answer;
+            },
+            purpose: intent === "install" ? "update" : "quit",
+            forUpdate: intent === "install",
+          });
+          if (!("stopped" in result) || result.stopped !== true) {
+            recordQuitStage(
+              attempt,
+              "canceled" in result && result.canceled ? "canceled" : "incomplete",
+            );
+            if (!("canceled" in result) || !result.canceled)
+              backend.reportLifecycleError(new Error(nativeText("lifecycle.stopIncomplete")));
+            return result;
+          }
         }
       }
       setQuitProgress(attempt, "finishing");
@@ -401,7 +406,8 @@ function startDesktop() {
           home: backend.home,
         });
       recordQuitStage(attempt, "finalizing");
-      if (!backend.foreignOwner) await backend.completeApplicationQuit();
+      if (!backend.foreignOwner)
+        await backend.completeApplicationQuit({ keepBackground: intent !== "install" });
       recordQuitStage(attempt, "disconnect");
       await backend.shutdown();
       await preview?.dispose();
@@ -409,7 +415,7 @@ function startDesktop() {
       exitReady = true;
       recordQuitStage(attempt, "exit-ready");
       if (intent !== "install") setImmediate(() => app.quit());
-      return { stopped: true, quitting: true };
+      return { stopped, quitting: true };
     };
     attempt.promise = runQuit()
       .catch((error) => {
@@ -528,7 +534,32 @@ function startDesktop() {
     return desktopTheme(themes, themeId, nativeTheme.shouldUseDarkColors);
   }
   let publishPending = false;
+  let hostActivityPending = false;
+  let hostActivityRefreshedAt = 0;
+  function refreshHostMenu() {
+    const item = Menu.getApplicationMenu()?.getMenuItemById("shared-host-activity");
+    if (
+      !backend ||
+      !item ||
+      quitting ||
+      hostActivityPending ||
+      Date.now() - hostActivityRefreshedAt < 5000
+    )
+      return;
+    hostActivityPending = true;
+    void backend
+      .readHostActivity()
+      .catch(() => null)
+      .then((activity) => {
+        item.label = hostActivityLabel(activity);
+      })
+      .finally(() => {
+        hostActivityPending = false;
+        hostActivityRefreshedAt = Date.now();
+      });
+  }
   function publish() {
+    refreshHostMenu();
     preview?.releaseInvalidOwners();
     mcpApps?.revokeInvalid();
     if (publishPending) return;
@@ -1747,11 +1778,7 @@ function startDesktop() {
         return updater.state();
       });
       const requestStopService = () =>
-        recoverConnectedService({
-          backend: serviceBackend,
-          notify: (options) => showMessageBox(options),
-          purpose: "stop",
-        });
+        confirmHostStop(serviceBackend, (options) => showMessageBox(options));
 
       Menu.setApplicationMenu(
         Menu.buildFromTemplate([
@@ -1787,10 +1814,17 @@ function startDesktop() {
                 },
               },
               {
-                label: "停止后台 Core 服务…",
+                id: "shared-host-activity",
+                label: nativeText("host.unknown"),
+                enabled: false,
+              },
+              {
+                label: nativeText("host.stopMenu"),
                 click: async () => {
                   try {
                     await requestStopService();
+                    hostActivityRefreshedAt = 0;
+                    refreshHostMenu();
                   } catch (error) {
                     serviceBackend.reportLifecycleError(error);
                   }
@@ -1823,7 +1857,8 @@ function startDesktop() {
       })();
       await windowLoaded;
       const activityPauses = new Set();
-      const sampleActivity = () =>
+      const sampleActivity = () => {
+        refreshHostMenu();
         serviceBackend.analytics.sample({
           focused:
             !!window &&
@@ -1834,6 +1869,7 @@ function startDesktop() {
           idleSeconds: powerMonitor.getSystemIdleTime(),
           suspended: activityPauses.size > 0,
         });
+      };
       const activityTimer = setInterval(sampleActivity, 5000);
       const saveTimer = setInterval(() => {
         void serviceBackend.analytics.flush();

@@ -1,5 +1,6 @@
 // @ts-check
 "use strict";
+const { hostReference } = require("./host-lifecycle.cjs");
 const { isDeepStrictEqual } = require("node:util");
 const { KINDS, isLifecycleReceipt } = require("@areal/workbench/desktop-contract/shared");
 /** @typedef {import('./lifecycle-operations.cjs').LifecycleKind} Kind */
@@ -66,9 +67,9 @@ function reference(value) {
       (typeof value.threadId === "string" && typeof value.turnId === "string"))
   );
 }
-/** @param {unknown} value @returns {LifecycleReference[]} */
+/** @param {unknown} value @returns {(LifecycleReference|import("./host-lifecycle.cjs").HostReference)[]} */
 function readReferences(value) {
-  if (!Array.isArray(value) || !value.every(reference))
+  if (!Array.isArray(value) || !value.every((item) => reference(item) || hostReference(item)))
     throw Object.assign(new Error("后台操作引用损坏，请保留记录并检查原后台"), {
       code: "LIFECYCLE_REFERENCE_INVALID",
     });

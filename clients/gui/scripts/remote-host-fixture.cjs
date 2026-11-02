@@ -28,6 +28,7 @@ function attachRemoteHostFixture(remote, encryption) {
       });
       return config;
     },
+    async drained() {},
     close() {
       connected = false;
     },

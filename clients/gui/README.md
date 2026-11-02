@@ -233,15 +233,17 @@ App 运行期间，共享 Desktop 后端独立发现启用安排，并连接其�
 
 Host 持有每项目 Core 的生命期管道。强退 GUI 不结束 Host-owned Core；重新打开通过原 Host 描述连接，不重放输入。`gui-host-lifecycle-smoke.mjs` 验证客户端断开、原停止回执、被动观察不重启和显式重新打开。真实 GUI/TUI 审批交接、桌面工具撤销与安装包需要各自验收。
 
-关闭窗口只隐藏界面，GUI 仍持有单实例锁；再次启动或从 Dock 激活会唤回原窗口。应用菜单、菜单栏和后台设置共用现有退出流程。Core 的生命周期归共享 Host。当前退出流程仍显示原生确认并停止目标项目；规格要求的空闲直接退出、保持后台运行与取消任务后退出尚未完成。部分停止与未知结果保留原请求供核查。Gateway 和定时激活仍在 Desktop 中执行，退出后不可用。
+关闭窗口只隐藏界面，GUI 仍持有单实例锁；再次启动或从 Dock 激活会唤回原窗口。普通退出保留共享 Host 和 Core。空闲时直接退出；存在活动执行或状态未知时，默认选择“保持后台运行并退出”，也可选择“停止任务并退出”并再次确认。菜单显示全 Host 的活动任务或对话轮次，并提供同一“停止后台”入口，包含终端启动的项目。部分停止与未知结果保留原请求供核查。Gateway、定时激活和订阅传输仍在 Desktop 中执行，退出后不可用。
 
-普通退出先通过未保存修改检查，再显示原生确认。只有确认退出后，才显示带持续动画的进度弹窗，直到窗口真正退出。弹窗显示停止后台与完成退出，不显示百分比或预计时间；等待期间关闭窗口不会隐藏弹窗。取消原生确认或退出失败后恢复界面，原请求与未知结果仍由现有恢复入口核查。原生浏览器视图在确认退出后暂时隐藏，退出失败后恢复原页面。取消确认保留界面与原生页面的正常操作。`AREAL_CORE_BIN=/absolute/fixed-slot/areal pnpm --dir clients/gui run test:quit-progress` 使用隔离 Electron/Core 验证发送、暂停、退出反馈、取消、失败恢复、重复退出与实际进程清理；原生确认由 fixture 应答，不证明物理快捷键或安装包通过。
+普通退出先通过未保存修改检查。批准退出后显示进度，区分停止后台与完成退出，不显示百分比或预计时间。等待期间关闭窗口不隐藏进度；取消或失败恢复界面与原生页面。保持后台退出不丢弃未决生命周期引用。安装退出继续核对旧生命周期与安装包占用，不提供绕过检查的保持后台选项。`AREAL_CORE_BIN=/absolute/fixed-slot/areal pnpm --dir clients/gui test:host-quit` 使用隔离 Electron、真实 Host/Core 与本地 SSE 模型覆盖空闲退出、草稿取消、保持同一 Turn 执行，以及二次确认后的全 Host 停止。原生对话框由 fixture 应答，不证明物理快捷键或原生确认框的视觉验收。
+
+该测试默认不配置 Remote。增加 `AREAL_TEST_REMOTE_KEYCHAIN=1` 可验证停止后显式重连恢复同一 Direct 身份与授权，并完成认证只读请求。此模式在 macOS 系统 Keychain 中写入隔离 Host home 对应的虚构测试凭据，需要事先授权；系统可能要求人工确认，测试条目不会自动删除。默认测试通过不表示此模式通过。
 
 `AREAL_CORE_BIN=/absolute/fixed-slot/areal pnpm --dir clients/gui run test:desktop-exit` 在隔离 Electron/Core/Runtime 中核对窗口重开、普通退出的取消与确认、隐藏项目引擎清理、独立 CLI 和其他 GUI profile、Main/Desktop 强退及 runner 清理。目录选择和原生确认由 fixture 应答。指定 `AREAL_GUI_EXECUTABLE` 可使用私有安装包，runner 强退夹具仍限源码入口；这不替代物理快捷键或 Finder 安装验收。
 
 `AREAL_CORE_BIN=/absolute/path/to/private/.local/dev-bin/<slot>/areal node clients/gui/scripts/application-owner-smoke.mjs` 从仓库根验证真实 Host 尚未发布描述时丢失启动响应、原代际恢复、项目投影移除、同/异 profile 旧 owner 的只读边界及原回执清理。测试专用 CLI guard 仅管理隔离 registry 的原实例，runner 结束后通过公共 CLI 回收独立持久服务。
 
-设置存在未保存修改时，退出先复用“保存并继续／放弃修改并继续／继续编辑”确认。取消退出保留草稿、后台连接和正常操作；保存失败保留确认框与错误，成功保存或放弃修改后才清理资源并退出。`AREAL_CORE_BIN=/absolute/fixed-slot/areal pnpm --dir clients/gui run test:quit-draft` 使用隔离 Electron/Core 验证取消后编辑与保存、停止并退出的取消、保存失败恢复，以及保存或放弃后的配置内容和 GUI 进程退出；通过应用菜单回调触发退出，不代表物理快捷键或安装包验收。
+设置存在未保存修改时，退出先复用“保存并继续／放弃修改并继续／继续编辑”确认。取消退出保留草稿、后台连接和正常操作；保存失败保留确认框与错误，成功保存或放弃修改后才清理 GUI 资源并退出。旧 `test:quit-draft` 和 `test:quit-progress` 的停止式退出夹具保留为迁移对照，共享 Host 退出语义以 `test:host-quit` 为准。
 
 普通会话运行时的主要停止操作显示为“暂停执行”。暂停结算后，完整草稿为空时显示播放图标和“继续执行”；文本、附件、Skill、MCP 或评论草稿存在时显示普通发送。发送将输入作为新的用户消息追加到原会话。继续使用已保存历史和当前工作区，不复活旧模型调用或进程。重开 GUI、Core 或电脑后仅恢复历史，必须手动继续。排队输入保留并按现有顺序优先执行；正常回复完成后等待下一次用户输入，不自动创建 Goal。
 
