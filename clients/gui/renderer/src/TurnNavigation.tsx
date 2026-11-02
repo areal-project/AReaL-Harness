@@ -4,6 +4,8 @@ import { createPortal } from "react-dom";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { Data } from "./services.js";
 import { goalContinuationLabel } from "./conversationPresentation.js";
+import { lastTurnAbove, turnSections } from "./conversationReadingDom.js";
+import { observeResize } from "@areal/ui/observe-resize";
 
 type Preview = { turnId: string; source: "pointer" | "keyboard" };
 type WaveTarget = { turnId: string; offset: number };
@@ -220,16 +222,17 @@ export function TurnNavigation({
   useEffect(() => {
     const element = container.current;
     if (!element) return;
+    let frame: number | undefined;
     const update = () => {
+      frame = undefined;
       const top = element.getBoundingClientRect().top + 72;
-      const sections = [...element.querySelectorAll<HTMLElement>("[data-turn-id]")];
+      const sections = turnSections(element);
       const atBottom =
         element.scrollHeight > element.clientHeight &&
         element.scrollHeight - element.clientHeight - element.scrollTop <= 2;
       const current = atBottom
         ? sections.at(-1)
-        : (sections.findLast((section) => section.getBoundingClientRect().top <= top) ??
-          sections[0]);
+        : (sections[lastTurnAbove(sections, top)] ?? sections[0]);
       const next = current?.dataset.turnId;
       if (latest.current.activeId !== next) {
         latest.current.activeId = next;
@@ -238,18 +241,21 @@ export function TurnNavigation({
       releaseRail();
     };
     const scroll = () => {
-      update();
+      // 一帧内的多次 scroll 只量一次位置。
+      frame ??= requestAnimationFrame(update);
       if (latest.current.preview?.source === "keyboard") measurePreview();
       else selectPreview(null);
     };
     update();
     element.addEventListener("scroll", scroll, { passive: true });
-    const resize = new ResizeObserver(update);
-    resize.observe(element);
-    if (element.firstElementChild) resize.observe(element.firstElementChild);
+    const stopObserving = observeResize(
+      element.firstElementChild ? [element, element.firstElementChild] : element,
+      () => update(),
+    );
     return () => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
       element.removeEventListener("scroll", scroll);
-      resize.disconnect();
+      stopObserving();
     };
   }, [container, identity]);
 
@@ -272,14 +278,14 @@ export function TurnNavigation({
   });
   useLayoutEffect(() => {
     if (!preview) return;
-    const resize = new ResizeObserver(measurePreview);
     const shell = container.current?.closest<HTMLElement>(".messages-shell");
-    if (shell) resize.observe(shell);
-    if (rail.current) resize.observe(rail.current);
-    if (tooltip.current) resize.observe(tooltip.current);
+    const stopObserving = observeResize(
+      [shell, rail.current, tooltip.current].filter((target) => !!target),
+      () => measurePreview(),
+    );
     window.addEventListener("resize", measurePreview);
     return () => {
-      resize.disconnect();
+      stopObserving();
       window.removeEventListener("resize", measurePreview);
     };
   }, [preview?.turnId, preview?.source, container]);

@@ -868,13 +868,16 @@ try {
         );
         const animations = await status.evaluate(
           (el) =>
-            el
-              .getAnimations({ subtree: true })
-              .filter(
-                (animation) =>
-                  animation.animationName === "areal-thinking-sweep" &&
-                  animation.playState === "running",
-              ).length,
+            new Set(
+              el
+                .getAnimations({ subtree: true })
+                .filter(
+                  (animation) =>
+                    animation.animationName === "areal-thinking-sweep" &&
+                    animation.playState === "running",
+                )
+                .map((animation) => animation.effect.target.closest(".areal-thinking")),
+            ).size,
         );
         assert.equal(
           animations,
@@ -1501,35 +1504,44 @@ try {
           () =>
             document
               .querySelector('[aria-label="聊天动效预览"] .areal-thinking-sweep')
-              ?.getAnimations().length > 0,
+              ?.getAnimations({ subtree: true }).length > 0,
         );
         const animations = await waiting.evaluate((element) => {
-          // app/node_modules/playwright-core/lib/server/screenshotter.js replays canceled infinite effects; sample a fresh stylesheet animation.
-          const inlineAnimation = element.style.animation;
-          element.getAnimations().forEach((animation) => animation.cancel());
-          element.style.animation = "none";
-          void getComputedStyle(element).animationName;
-          element.style.animation = inlineAnimation;
-          void getComputedStyle(element).animationName;
-          return element.getAnimations().map((animation) => ({
+          // app/node_modules/playwright-core/lib/server/screenshotter.js replays canceled infinite effects; sample fresh stylesheet animations.
+          const layers = [
+            ...element.querySelectorAll(".areal-thinking-band, .areal-thinking-band > span"),
+          ];
+          for (const layer of layers) {
+            const inlineAnimation = layer.style.animation;
+            layer.getAnimations().forEach((animation) => animation.cancel());
+            layer.style.animation = "none";
+            void getComputedStyle(layer).animationName;
+            layer.style.animation = inlineAnimation;
+            void getComputedStyle(layer).animationName;
+          }
+          return element.getAnimations({ subtree: true }).map((animation) => ({
             name: animation.animationName,
             duration: Number(animation.effect.getTiming().duration),
           }));
         });
         assert.deepEqual(
           animations,
-          [{ name: "areal-thinking-sweep", duration: 1800 }],
-          "phase sampling controls one fresh stylesheet sweep after screenshot replay cleanup",
+          [
+            { name: "areal-thinking-sweep", duration: 1800 },
+            { name: "areal-thinking-sweep", duration: 1800 },
+          ],
+          "phase sampling controls the band and its counter-moving text after screenshot replay cleanup",
         );
-        await waiting.evaluate((element) => {
-          const animation = element.getAnimations()[0];
-          animation.pause();
-        });
+        await waiting.evaluate((element) =>
+          element.getAnimations({ subtree: true }).forEach((animation) => animation.pause()),
+        );
         const sweep = [],
           frames = [];
         for (const fraction of [0, 0.1, 0.25, 0.5, 0.75, 0.9, 0.999999, 1]) {
           await waiting.evaluate((element, time) => {
-            element.getAnimations()[0].currentTime = time;
+            element
+              .getAnimations({ subtree: true })
+              .forEach((animation) => (animation.currentTime = time));
           }, animations[0].duration * fraction);
           const frame = await waiting.screenshot({
             animations: "allow",
@@ -1538,7 +1550,11 @@ try {
           frames.push(frame.toString("base64"));
           sweep.push({
             fraction,
-            position: await waiting.evaluate((el) => parseFloat(getComputedStyle(el).maskPosition)),
+            position: await waiting.evaluate(
+              (el) =>
+                new DOMMatrix(getComputedStyle(el.querySelector(".areal-thinking-band")).transform)
+                  .m41,
+            ),
             sha256: createHash("sha256").update(frame).digest("hex"),
           });
         }
@@ -1550,8 +1566,8 @@ try {
             "waiting highlight remains visibly moving throughout the cycle",
           );
         assert.ok(
-          sweep[0].position > sweep[2].position && sweep[2].position > sweep[3].position,
-          "the oversized highlight background moves from a negative offset toward zero, sweeping left to right",
+          sweep[0].position < sweep[2].position && sweep[2].position < sweep[3].position,
+          "the highlight band translates left to right",
         );
         // 背景定位的小数舍入可影响抗锯齿，逐字节哈希不能稳定比较两帧；按平均像素差判断。
         const frameDifference = (first, last) =>
@@ -1588,7 +1604,9 @@ try {
           path: join(scratch, `${theme}-chat-motion.png`),
           animations: "allow",
         });
-        await waiting.evaluate((element) => element.getAnimations()[0].play());
+        await waiting.evaluate((element) =>
+          element.getAnimations({ subtree: true }).forEach((animation) => animation.play()),
+        );
         samples.push({ theme, streamedText, appearance, sweep, seamDifference });
       }
       checks.push(

@@ -536,6 +536,7 @@ export const commonMessages = {
       "{kind, select, userMessage {这条消息} dynamicToolCall {这条工具记录} other {这段历史内容}}较大（{size, number} MiB），可按需加载完整内容。",
     en: "{kind, select, userMessage {This message} dynamicToolCall {This tool record} other {This historical content}} is large ({size, number} MiB). Load the full content when needed.",
   },
+  "chat.sent.appContent": { "zh-CN": "应用内容", en: "App content" },
   "chat.history.reloadPage": {
     "zh-CN": "加载此处历史消息",
     en: "Load messages in this gap",
