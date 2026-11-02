@@ -368,7 +368,8 @@ class CiContracts(unittest.TestCase):
         result = timing.analyze([{"run": run, "jobs": jobs}])
         smoke = result["jobs"][1]
         self.assertEqual(smoke["dag_wait_estimate_s"], 300)
-        self.assertEqual(smoke["runner_wait_lower_bound_s"], 10)
+        self.assertEqual(smoke["post_dependency_delay_estimate_s"], 10)
+        self.assertIsNone(smoke["runner_wait_lower_bound_s"])
         self.assertEqual(smoke["unattributed_wait_s"], 0)
         self.assertEqual(result["runs"][0]["wall_s"], 360)
         self.assertEqual(
@@ -377,6 +378,25 @@ class CiContracts(unittest.TestCase):
         )
         self.assertEqual(timing.phase("Run actions/upload-artifact@revision"), "upload_cleanup")
         self.assertEqual(timing.phase("Build native backend tests"), "preparation")
+        self.assertIsNone(result["runs"][0]["first_failure_feedback_s"])
+        jobs[0]["steps"] = [
+            {
+                "name": "Test fixture prints failed result JSON",
+                "conclusion": "success",
+                "started_at": "2026-01-01T00:01:00Z",
+                "completed_at": "2026-01-01T00:02:00Z",
+            },
+            {
+                "name": "Run smoke",
+                "conclusion": "failure",
+                "started_at": "2026-01-01T00:02:00Z",
+                "completed_at": "2026-01-01T00:03:00Z",
+            },
+        ]
+        result = timing.analyze([{"run": run, "jobs": jobs}])
+        self.assertEqual(result["runs"][0]["first_failure_feedback_s"], 180)
+        self.assertEqual(result["runs"][0]["first_failure"]["step"], "Run smoke")
+        self.assertEqual(result["runs"][0]["first_failure"]["phase"], "validation")
 
     def test_markdown_runtime_inputs_are_not_documentation_only(self):
         for path in (
