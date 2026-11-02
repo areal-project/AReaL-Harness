@@ -515,8 +515,16 @@ export function executionSegments(items: Data[], turnStatus: string): Data[] {
   let group: Data | undefined;
   for (const item of processItems(
     items.map((item) =>
-      item.type === "historyDeferred" && item.preview
-        ? { ...item.preview, deferredHistory: item }
+      item.type === "historyDeferred" && item.originalType === "dynamicToolCall"
+        ? {
+            ...(item.preview ?? {
+              id: item.id,
+              type: "dynamicToolCall",
+              tool: "tool",
+              arguments: {},
+            }),
+            deferredHistory: item,
+          }
         : item,
     ),
     turnStatus,

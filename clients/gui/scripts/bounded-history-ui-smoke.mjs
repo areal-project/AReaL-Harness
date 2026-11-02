@@ -203,7 +203,28 @@ try {
       window.activeHistory = false;
       window.setDeferredType = (type) => {
         thread.turns[0].items[1].originalType = type;
+        thread.turns[0].items[1].preview =
+          type === "dynamicToolCall"
+            ? {
+                id: "huge",
+                type,
+                tool: "fs_read",
+                arguments: { path: "fixture.txt" },
+                status: "completed",
+                success: true,
+                contentItems: [],
+              }
+            : undefined;
         publish();
+      };
+      window.completeTool = () => {
+        delete thread.displayHistory.loadingItems;
+        thread.turns[0].items[1] = {
+          ...thread.turns[0].items[1].preview,
+          contentItems: [{ type: "inputText", text: "COMPLETE_TOOL_SENTINEL" }],
+        };
+        publish();
+        completeLoad?.({ ok: true, value: { loaded: true, itemId: "huge" } });
       };
       window.completeItem = () => {
         thread.turns.at(-1).items[1] = {
@@ -425,8 +446,45 @@ try {
   await page.evaluate(() => window.setDeferredType("userMessage"));
   await page.getByText(labels.user, { exact: false }).waitFor();
   await page.evaluate(() => window.setDeferredType("dynamicToolCall"));
-  await page.getByText(labels.tool, { exact: false }).waitFor();
-  await page.evaluate(() => window.setDeferredType("agentMessage"));
+  const toolGroup = page.locator(".turn-progress-summary").first();
+  if ((await toolGroup.getAttribute("aria-expanded")) !== "true") await toolGroup.click();
+  const tool = page.locator('[data-tool-id="huge"]');
+  await tool.locator(".tool-summary-row").click();
+  await page.waitForFunction(() =>
+    window.calls.some(
+      (call) =>
+        call.name === "history" &&
+        call.params.operation === "loadItem" &&
+        call.params.itemId === "huge",
+    ),
+  );
+  await page.evaluate(() => window.completeTool());
+  await tool.getByText("COMPLETE_TOOL_SENTINEL", { exact: false }).waitFor();
+  await page.evaluate(() => {
+    window.installActiveHistory({
+      turns: [
+        {
+          id: "latest",
+          status: "completed",
+          items: [
+            {
+              id: "latest-user",
+              type: "userMessage",
+              content: [{ type: "text", text: "LATEST_USER_SENTINEL" }],
+            },
+            {
+              id: "huge",
+              type: "historyDeferred",
+              originalType: "agentMessage",
+              cursor: "private-core-cursor",
+              version: "fixture-v1",
+              totalBytes: 70 * 1048576,
+            },
+          ],
+        },
+      ],
+    });
+  });
   await page.getByRole("button", { name: labels.full, exact: true }).click();
   await page.getByText(labels.loading, { exact: false }).waitFor();
   assert.equal(await page.getByText("COMPLETE_UNICODE_雪🙂_SENTINEL", { exact: true }).count(), 0);

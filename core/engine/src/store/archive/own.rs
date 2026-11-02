@@ -299,9 +299,16 @@ impl Store {
                     Item::DynamicToolCall { tool, status: ToolStatus::Completed, success: Some(true), execution, .. } if execution.outcome == areal_protocol::ToolOutcome::Succeeded && !matches!(tool.as_str(),
                         "ask_user_question" | "agent_spawn" | "agent_spawn_configured" | "agent_wait" | "agent_wait_any" | "agent_wait_all"));
                 if single_bytes > max_bytes || deferred_detail {
-                    let preview = if deferred_detail && matches!(item, Item::DynamicToolCall { tool, .. } if matches!(tool.as_str(), "run_command" | "verify_command" | "read_process" | "terminate_process")) {
+                    let preview = if deferred_detail {
                         let mut preview = value["item"].clone();
-                        if let Some(parts) = preview["contentItems"].as_array_mut() {
+                        if let Some(arguments) = preview["arguments"].as_object_mut() {
+                            arguments.retain(|key, value| matches!(key.as_str(), "path" | "file_path" | "command" | "argv" | "cwd" | "query" | "pattern" | "processId" | "skill" | "resource" | "operation" | "url") && bytes(value) <= 4096);
+                        }
+                        if let Some(execution) = preview["execution"].as_object_mut() {
+                            execution.retain(|key, _| matches!(key.as_str(), "runtimeEpoch" | "scopeId" | "operationId" | "outcome" | "startedAtMs" | "durationMs" | "backend" | "interactiveResult"));
+                        }
+                        if matches!(item, Item::DynamicToolCall { tool, .. } if matches!(tool.as_str(), "run_command" | "verify_command" | "read_process" | "terminate_process")) {
+                          if let Some(parts) = preview["contentItems"].as_array_mut() {
                             for part in parts {
                                 if let Some(text) = part["text"].as_str()
                                     && let Ok(Value::Object(mut result)) = serde_json::from_str::<Value>(text) {
@@ -310,6 +317,9 @@ impl Store {
                                     part["text"] = json!(serde_json::to_string(&result).unwrap());
                                 }
                             }
+                          }
+                        } else {
+                            preview["contentItems"] = Value::Null;
                         }
                         (bytes(&preview) < max_bytes / 4).then_some(preview)
                     } else { None };

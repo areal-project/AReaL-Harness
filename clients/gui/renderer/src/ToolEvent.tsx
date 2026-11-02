@@ -1,9 +1,9 @@
-import { TitleTooltip } from "@areal/ui";
+import { DelayedVisible, Skeleton, TitleTooltip } from "@areal/ui";
 import { useI18n } from "./i18n/IntlProvider.js";
 // Adapted from ZCode ToolSummaryRow / ToolLayout; Codex reference guides presentation.
 // Core owns all outcomes.
 import { readingDisclosure, rememberDisclosure } from "./conversationReading.js";
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   ActivityRow,
   ActivityRowButton,
@@ -45,7 +45,13 @@ export function ToolEvent({
   threadId,
   onOpenResult,
   resultState,
+  onLoadDetails,
+  detailsLoading,
+  detailsError,
 }: {
+  onLoadDetails?: () => Promise<void>;
+  detailsLoading?: boolean;
+  detailsError?: string;
   onOpenResult?: (source: McpResultSource) => Promise<void>;
   resultState?: McpResultState;
   /** Accepted for host compatibility; running rows stay static (CONV-STATUS-01). */
@@ -64,7 +70,39 @@ export function ToolEvent({
   const { t } = useI18n();
   const readingKey = JSON.stringify([projectId, threadId, turnId, item.id, "tool"]);
   const [open, setOpen] = useState(() => readingDisclosure(readingKey) ?? false);
+  const [hasOpened, setHasOpened] = useState(open);
+  const [fetching, setFetching] = useState(false);
+  const [readFailed, setReadFailed] = useState(false);
+  const loader = useRef(onLoadDetails);
+  loader.current = onLoadDetails;
+  const busy = useRef(false);
+  const attempted = useRef(false);
+  const pending = !!onLoadDetails;
+  const requestDetails = useCallback(async () => {
+    if (busy.current || !loader.current) return;
+    busy.current = true;
+    setFetching(true);
+    setReadFailed(false);
+    try {
+      await loader.current();
+    } catch {
+      setReadFailed(true);
+    } finally {
+      busy.current = false;
+      setFetching(false);
+    }
+  }, []);
+  useEffect(() => {
+    if (!open || !pending) {
+      attempted.current = false;
+      return;
+    }
+    if (attempted.current) return;
+    attempted.current = true;
+    void requestDetails();
+  }, [open, pending, requestDetails]);
   const toggle = () => {
+    setHasOpened(true);
     rememberDisclosure(readingKey, !open);
     setOpen(!open);
   };
@@ -157,7 +195,10 @@ export function ToolEvent({
     };
   }, [turnId, item.id, file?.path, readOnly, readTurnReview]);
   useEffect(() => {
-    if (resultState?.message) setOpen(true);
+    if (resultState?.message) {
+      setHasOpened(true);
+      setOpen(true);
+    }
   }, [resultState?.message]);
   const eligibleResult =
     onOpenResult &&
@@ -411,42 +452,67 @@ export function ToolEvent({
         </div>
       )}
       <Collapsible.Panel keepMounted className="conversation-disclosure command-motion-panel">
-        {isCommand ? (
-          <CommandDetails item={item} />
-        ) : (
-          <div
-            className="tool-event-body"
-            id={recordId}
-            role={file ? "region" : undefined}
-            aria-label={file ? "工具原始记录" : undefined}
-          >
-            <div className="tool-event-heading tool-record-heading">
-              <span>{item.tool}</span>
-              <ToolCallDuration item={item} />
+        {(open || hasOpened) &&
+          (pending ? (
+            <div className="tool-event-body min-h-12" aria-busy={fetching || !!detailsLoading}>
+              {detailsError || readFailed ? (
+                <div>
+                  <p role="alert">{t("chat.history.detailsFailed")}</p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={fetching || detailsLoading}
+                    onClick={() => void requestDetails()}
+                  >
+                    {t("chat.history.retryDetails")}
+                  </Button>
+                </div>
+              ) : (
+                <div role="status" aria-label={t("chat.history.loadingDetails")}>
+                  <DelayedVisible active={fetching || !!detailsLoading}>
+                    <Skeleton className="mb-2 h-3 w-2/3" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </DelayedVisible>
+                  <span className="sr-only">{t("chat.history.loadingDetails")}</span>
+                </div>
+              )}
             </div>
-            <pre aria-label="工具参数">{JSON.stringify(item.arguments, null, 2)}</pre>
-            <pre aria-label="工具结果">
-              {(item.contentItems ?? []).map((c: Data) => c.text ?? "").join("\n") ||
-                (view.running ? "等待工具输出…" : "无文本输出")}
-            </pre>
-            {!images.length &&
-              action &&
-              projectId &&
-              threadId &&
-              (item.contentItems ?? [])
-                .filter((c: Data) => c.type === "arealMedia" && c.modality === "image")
-                .map((c: Data) => (
-                  <SentAttachment
-                    key={c.media.uri}
-                    part={{ type: "image", uri: c.media.uri, name: "页面截图" }}
-                    projectId={projectId}
-                    threadId={threadId}
-                    action={action}
-                  />
-                ))}
-            {item.execution?.exitCode != null && <small>退出码 {item.execution.exitCode}</small>}
-          </div>
-        )}
+          ) : isCommand ? (
+            <CommandDetails item={item} />
+          ) : (
+            <div
+              className="tool-event-body"
+              id={recordId}
+              role={file ? "region" : undefined}
+              aria-label={file ? "工具原始记录" : undefined}
+            >
+              <div className="tool-event-heading tool-record-heading">
+                <span>{item.tool}</span>
+                <ToolCallDuration item={item} />
+              </div>
+              <pre aria-label="工具参数">{JSON.stringify(item.arguments, null, 2)}</pre>
+              <pre aria-label="工具结果">
+                {(item.contentItems ?? []).map((c: Data) => c.text ?? "").join("\n") ||
+                  (view.running ? "等待工具输出…" : "无文本输出")}
+              </pre>
+              {!images.length &&
+                action &&
+                projectId &&
+                threadId &&
+                (item.contentItems ?? [])
+                  .filter((c: Data) => c.type === "arealMedia" && c.modality === "image")
+                  .map((c: Data) => (
+                    <SentAttachment
+                      key={c.media.uri}
+                      part={{ type: "image", uri: c.media.uri, name: "页面截图" }}
+                      projectId={projectId}
+                      threadId={threadId}
+                      action={action}
+                    />
+                  ))}
+              {item.execution?.exitCode != null && <small>退出码 {item.execution.exitCode}</small>}
+            </div>
+          ))}
       </Collapsible.Panel>
       {open && action && projectId && threadId && item.execution?.resultSnapshot?.uri && (
         <SentAttachment

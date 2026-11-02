@@ -1317,23 +1317,6 @@ export function Messages({
                               project={project}
                               threadId={thread.id}
                               renderItem={(entry: Data, disclosure) => {
-                                if (entry.type === "historyDeferred")
-                                  return (
-                                    <DeferredHistoryItem
-                                      key={entry.id}
-                                      item={entry}
-                                      loading={localThread.displayHistory?.loadingItems?.[entry.id]}
-                                      error={
-                                        history.failure?.itemId === entry.id
-                                          ? history.failure?.message
-                                          : undefined
-                                      }
-                                      onLoad={() => {
-                                        live.readHere?.();
-                                        void live.loadHistory?.(entry.id);
-                                      }}
-                                    />
-                                  );
                                 if (entry.type === "historyPageGap")
                                   return (
                                     <Button
@@ -1351,6 +1334,34 @@ export function Messages({
                                     <div data-side-item-id={entry.id} key={entry.id}>
                                       <ToolEvent
                                         item={entry}
+                                        onLoadDetails={
+                                          (entry.processRecords ?? [entry]).some(
+                                            (record: Data) => record.deferredHistory,
+                                          )
+                                            ? async () => {
+                                                for (const record of entry.processRecords ?? [
+                                                  entry,
+                                                ]) {
+                                                  if (
+                                                    record.deferredHistory &&
+                                                    !(await live.loadHistory?.(record.id))
+                                                  )
+                                                    throw Error("Tool detail read failed");
+                                                }
+                                              }
+                                            : undefined
+                                        }
+                                        detailsLoading={(entry.processRecords ?? [entry]).some(
+                                          (record: Data) =>
+                                            localThread.displayHistory?.loadingItems?.[record.id],
+                                        )}
+                                        detailsError={
+                                          (entry.processRecords ?? [entry]).some(
+                                            (record: Data) => record.id === history.failure?.itemId,
+                                          )
+                                            ? history.failure?.message
+                                            : undefined
+                                        }
                                         {...disclosure}
                                         onOpenResult={
                                           (ordinary ||
@@ -1386,26 +1397,6 @@ export function Messages({
                                             : undefined
                                         }
                                       />
-                                      {(entry.processRecords ?? [entry])
-                                        .filter((record: Data) => record.deferredHistory)
-                                        .map((record: Data) => (
-                                          <DeferredHistoryItem
-                                            key={record.id}
-                                            item={record.deferredHistory}
-                                            loading={
-                                              localThread.displayHistory?.loadingItems?.[record.id]
-                                            }
-                                            error={
-                                              history.failure?.itemId === record.id
-                                                ? history.failure?.message
-                                                : undefined
-                                            }
-                                            onLoad={() => {
-                                              live.readHere?.();
-                                              void live.loadHistory?.(record.id);
-                                            }}
-                                          />
-                                        ))}
                                     </div>
                                   );
                                 if (entry.type === "modelContext") return null;

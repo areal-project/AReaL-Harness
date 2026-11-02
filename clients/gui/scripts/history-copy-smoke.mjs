@@ -539,17 +539,38 @@ try {
     const threadId = sessions.get(project.id)[0];
     await selectConversation(page, threadId);
     const group = page.locator("[data-turn-id] .turn-progress").first();
-    await group.locator(".turn-progress-summary").click();
-    const deferred = group.locator("[data-history-item-id]").first();
+    const groupSummary = group.locator(".turn-progress-summary");
+    if ((await groupSummary.getAttribute("aria-expanded")) !== "true") await groupSummary.click();
+    const deferred = group.locator("[data-tool-id]").first();
+    const activity = deferred
+      .locator(
+        'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " areal-activity-group ")][1]',
+      )
+      .locator(".areal-disclosure-trigger")
+      .first();
+    if ((await activity.getAttribute("aria-expanded")) !== "true") await activity.click();
     await deferred.waitFor();
-    const itemId = await deferred.getAttribute("data-history-item-id");
+    const itemId = await deferred.getAttribute("data-tool-id");
     await group.evaluate((node) => {
       node.dataset.historyProbe = "same-group";
     });
-    await deferred.locator("button").click();
-    await page
-      .locator(`[data-history-item-id="${itemId}"]`)
-      .waitFor({ state: "detached", timeout: 30000 });
+    await deferred.locator(".tool-summary-row").click();
+    await page.waitForFunction(
+      async ({ projectId, threadId, itemId }) => {
+        const snapshot = await window.arealDesktop.snapshot();
+        const thread = snapshot.projects.find((value) => value.id === projectId)?.state.threads[
+          threadId
+        ];
+        return (
+          thread?.turns.flatMap((turn) => turn.items).find((item) => item.id === itemId)?.type ===
+          "dynamicToolCall"
+        );
+      },
+      { projectId: project.id, threadId, itemId },
+      { timeout: 30000 },
+    );
+    assert.equal(await deferred.getByRole("alert").count(), 0);
+    assert.equal(await deferred.locator('[aria-expanded="true"]').count(), 1);
     assert.equal(
       await group.getAttribute("data-history-probe"),
       "same-group",

@@ -619,6 +619,12 @@ async fn conversation_observation_keeps_basic_messages_independent_of_tool_body_
                         .unwrap();
                 assert_eq!(status["commandStatus"], "succeeded");
                 assert!(status.get("stdout").is_none());
+                for detail in &items[2..9] {
+                    assert_eq!(detail["preview"]["tool"], "shell");
+                    assert_eq!(detail["preview"]["arguments"]["command"], "echo fixture");
+                    assert!(detail["preview"]["contentItems"].is_null());
+                    assert!(serde_json::to_vec(&detail["preview"]).unwrap().len() < 1024);
+                }
             }
             let detail = running.call("areal/conversation/history", json!({
                 "threadId":id,"view":"own","cursor":observed[0]["items"][1]["cursor"],"maxBytes":1048576

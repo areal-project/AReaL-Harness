@@ -518,6 +518,12 @@ export const commonMessages = {
   "chat.history.loadingLatest": { "zh-CN": "正在恢复本轮消息…", en: "Restoring current turn…" },
   "chat.history.loadingOlder": { "zh-CN": "正在加载更早的消息…", en: "Loading older messages…" },
   "chat.history.loadFull": { "zh-CN": "加载完整内容", en: "Load full content" },
+  "chat.history.loadingDetails": { "zh-CN": "正在读取工具详情…", en: "Reading tool details…" },
+  "chat.history.detailsFailed": {
+    "zh-CN": "暂时无法读取详情，请重试。",
+    en: "Details could not be read. Please try again.",
+  },
+  "chat.history.retryDetails": { "zh-CN": "重试", en: "Retry" },
   "chat.history.loadingFull": {
     "zh-CN": "正在加载完整内容… {progress, number}%",
     en: "Loading full content… {progress, number}%",
