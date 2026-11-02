@@ -6,12 +6,14 @@ import { mkdtemp, mkdir, readFile, writeFile, readdir, realpath, chmod } from "n
 import { createServer } from "node:net";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { legacySendModel, directLegacyPhone } from "./shared-host-legacy-send-fixture.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { HostClient } = require("../app/src/core/host-client.cjs");
 const { CoreBackend } = require("../app/src/core/backend.cjs");
 const { GuiSourceAdapter, assertLegacySourceWritable } = require("../app/src/core/gui-source.cjs");
+const { readHostReceipt, readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
 const WebSocket = require("ws");
 const { CoreClient } = await import(join(gui, "packages/runtime-client/core.js"));
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -447,11 +449,6 @@ async function integration() {
     await mkdir(path, { mode: 0o700 });
   const source = { profile, coreHome, legacyServiceHome };
   const config = join(configHome, "config.toml");
-  await writeFile(
-    config,
-    'schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:1/v1/chat/completions"\n',
-    { mode: 0o600 },
-  );
   const env = {
     PATH: process.env.PATH ?? "/usr/bin:/bin:/usr/sbin:/sbin",
     LANG: "C.UTF-8",
@@ -525,6 +522,14 @@ if (target.hook?.kind === "legacy-response-loss") {
   const send = WebSocket.prototype.send;
   const emit = WebSocket.prototype.emit;
   const requests = new WeakMap();
+  const sendSockets = new WeakSet();
+  let legacySendOperation, legacySendThread;
+  function tracePath(socket, request) {
+    if (request?.params?.cwd === target.hook.sendWorkspace ||
+        legacySendThread && request?.params?.threadId === legacySendThread)
+      sendSockets.add(socket);
+    return sendSockets.has(socket) ? target.hook.sendTrace : target.hook.trace;
+  }
   WebSocket.prototype.send = function (data, ...args) {
     let frame;
     try { frame = JSON.parse(data.toString()); } catch {}
@@ -533,8 +538,18 @@ if (target.hook?.kind === "legacy-response-loss") {
       requests.set(this, entries);
       entries.set(frame.id, frame);
       if (frame.method.startsWith("areal/") || frame.method === "thread/list")
-        appendFileSync(target.hook.trace, JSON.stringify({ direction: "request", method: frame.method,
+        appendFileSync(tracePath(this, frame), JSON.stringify({ direction: "request", method: frame.method,
           id: frame.id, requestId: frame.params?.requestId }) + "\\n", { mode: 0o600 });
+      if (frame.method === "areal/turn/start" && frame.params?.input?.some((part) =>
+          part.type === "text" && part.text === target.hook.sendMarker))
+        legacySendOperation = frame.params.requestId;
+      if (frame.method === "areal/request/read" &&
+          typeof legacySendOperation === "string" && legacySendOperation.length &&
+          frame.params?.requestId === legacySendOperation) {
+        appendFileSync(tracePath(this, frame), JSON.stringify({ direction: "suppressed-request",
+          method: frame.method, requestId: frame.params.requestId }) + "\\n", { mode: 0o600 });
+        throw new Error("isolated old writer original receipt response unavailable");
+      }
     }
     return send.call(this, data, ...args);
   };
@@ -543,6 +558,21 @@ if (target.hook?.kind === "legacy-response-loss") {
       let frame;
       try { frame = JSON.parse(args[0].toString()); } catch {}
       const request = requests.get(this)?.get(frame?.id);
+      if (request?.method === "areal/thread/start" &&
+          request.params?.cwd === target.hook.sendWorkspace && frame.result?.thread?.id)
+        legacySendThread = frame.result.thread.id;
+      if (request?.method === "areal/turn/start" && frame.error)
+        writeFileSync(target.hook.coreError, JSON.stringify(frame.error) + "\\n", { mode: 0o600 });
+      if (request?.method === "areal/turn/start" &&
+          request.params?.requestId === legacySendOperation && frame.result) {
+        writeFileSync(target.hook.sendBarrier, JSON.stringify({ pid: process.pid,
+          boundary: "ws-message-before-CoreClient", request, result: frame.result }) + "\\n", { mode: 0o600 });
+        appendFileSync(tracePath(this, request), JSON.stringify({ direction: "suppressed-response",
+          method: request.method, requestId: request.params.requestId,
+          hasResult: true, hasError: false }) + "\\n", { mode: 0o600 });
+        this.terminate();
+        return true;
+      }
       if (request?.params?.requestId === target.hook.requestId &&
           ["areal/thread/start", "areal/request/read"].includes(request.method)) {
         appendFileSync(target.hook.trace, JSON.stringify({ direction: "suppressed-response",
@@ -552,7 +582,7 @@ if (target.hook?.kind === "legacy-response-loss") {
         if (request.method === "areal/thread/start" && frame.result)
           writeFileSync(target.hook.barrier, JSON.stringify({ pid: process.pid,
             boundary: "ws-message-before-CoreClient", request, result: frame.result }) + "\\n", { mode: 0o600 });
-        this.terminate();
+        if (request.method === "areal/thread/start") this.terminate();
         return true;
       }
     }
@@ -593,6 +623,7 @@ check("after-load");
   const installedBundle = resolve(installedElectron, "../../..");
   const electron = join(electronBundle, "Contents/MacOS/Electron");
   const plist = join(electronBundle, "Contents/Info.plist");
+  const remoteAssets = { sourceRoot: await realpath(join(gui, "renderer/dist")), files: {} };
   for (const [name, executable, args] of [
     ["electron-copy", "/usr/bin/ditto", [installedBundle, electronBundle]],
     ["electron-name", "/usr/libexec/PlistBuddy", ["-c", `Set :CFBundleName ${appName}`, plist]],
@@ -627,6 +658,26 @@ check("after-load");
         join(appDirectory, "main.cjs"),
         `try { require(${JSON.stringify(bootstrap)}); } catch (error) { console.error(error.stack); require("electron").app.exit(1); }\n`,
       );
+      const descriptorBytes = await readFile(join(remoteAssets.sourceRoot, "remote-assets.json"));
+      const descriptor = JSON.parse(descriptorBytes);
+      assert.equal(descriptor.schema, 1);
+      assert.equal(descriptor.entry, "remote.html");
+      assert(Array.isArray(descriptor.assets));
+      assert.equal(descriptor.worker.path, "remote-sw.js");
+      const destination = join(electronBundle, "Contents/Resources/areal-gui");
+      await mkdir(destination, { recursive: true });
+      for (const asset of [...descriptor.assets, descriptor.worker]) {
+        assert(/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_.-]+)*\.[A-Za-z0-9]+$/.test(asset.path));
+        assert(asset.path.split("/").every((part) => ![".", ".."].includes(part)));
+        const bytes = await readFile(join(remoteAssets.sourceRoot, asset.path));
+        assert.equal(sha(bytes), asset.sha256);
+        await mkdir(dirname(join(destination, asset.path)), { recursive: true });
+        await writeFile(join(destination, asset.path), bytes);
+        remoteAssets.files[asset.path] = sha(bytes);
+      }
+      await writeFile(join(destination, "remote-assets.json"), descriptorBytes);
+      remoteAssets.files["remote-assets.json"] = sha(descriptorBytes);
+      await save(join(root, "legacy-direct-assets.json"), remoteAssets);
     }
   }
   identity.electronBundle = electronBundle;
@@ -668,6 +719,12 @@ check("after-load");
     const item = { service, account, state: "pending" };
     cleanup.entries.push(item);
     await save(cleanupPath, cleanup);
+    if (cleanup.unsettledHostHomes?.length) {
+      item.state = "retained";
+      item.reason = "Original Host stop remains unconfirmed; preserve synthetic recovery entries";
+      await save(cleanupPath, cleanup);
+      return;
+    }
     const found = await security(["find-generic-password", "-s", service, "-a", account]);
     item.findExit = found.code;
     if (missing(found)) {
@@ -712,9 +769,36 @@ check("after-load");
   const originalRequestId = randomUUID();
   const legacyBarrierPath = join(root, "legacy-create-lost-response.json");
   const legacyTracePath = join(root, "legacy-core-rpc.jsonl");
+  const legacySendTracePath = join(root, "legacy-send-core-rpc.jsonl");
+  const legacySendBarrierPath = join(root, "legacy-send-lost-response.json");
   const crashEvidence = [];
   let pending, outcomes, legacyAccepted, safeStorageKeychain, passedResult;
-  let recoveryCore, recoveryHost;
+  let recoveryCore,
+    recoverySendCore,
+    recoveryHost,
+    sendModel,
+    legacyPhone,
+    legacySendCore,
+    nativeRemote,
+    nativeSource,
+    nativePhone;
+  let legacySends;
+  let remoteResponseSequence = 0;
+  const captureRemoteResponse = async (packet) => {
+    const sanitized = JSON.parse(
+      JSON.stringify(packet, (key, value) =>
+        /^(?:token|authToken|authorization|invite|inviteSecret|privateKey|identity|capability|enrollmentCode)$/i.test(
+          key,
+        )
+          ? "[redacted]"
+          : value,
+      ),
+    );
+    await save(
+      join(root, `remote-rpc-${String(++remoteResponseSequence).padStart(3, "0")}.json`),
+      sanitized,
+    );
+  };
   let originalThreadIds;
   let recoveryBackend;
   await save(join(coreHome, "cloud.json"), { syntheticClientOnly: true });
@@ -723,6 +807,12 @@ check("after-load");
   let safeStorageStarted = false;
   const legacyConnection = new ServiceConnection();
   try {
+    sendModel = await legacySendModel();
+    await writeFile(
+      config,
+      `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="${sendModel.endpoint}"\n`,
+      { mode: 0o600 },
+    );
     const identityEntry = join(root, "identity-only.cjs");
     const identityResult = join(root, "identity-only.json");
     await writeFile(
@@ -781,6 +871,11 @@ check("after-load");
       requestId: originalRequestId,
       barrier: legacyBarrierPath,
       trace: legacyTracePath,
+      sendTrace: legacySendTracePath,
+      sendWorkspace: projects[1].root,
+      sendMarker: sendModel.pendingMarker,
+      sendBarrier: legacySendBarrierPath,
+      coreError: join(root, "legacy-core-error.json"),
     });
     const metadata = await until(async () => {
       const bytes = await optional(join(coreHome, "service.json"));
@@ -871,6 +966,250 @@ check("after-load");
       "suppressed response never becomes known outcome",
     );
     await save(join(root, "legacy-create-unknown.json"), { pending, outcomes, createReply });
+    const originalPendingBytes = await readFile(join(coreHome, ids[0] + "-pending.json"));
+    const sendProjectId = ids[1];
+    const sendService = originalServices[1].descriptor;
+    const sendAuth = JSON.parse(await readFile(sendService.authFile, "utf8"));
+    legacySendCore = new CoreClient({
+      createSocket: () =>
+        new WebSocket(sendService.endpoint, {
+          headers: { Authorization: `Bearer ${sendAuth.principals[0].token}` },
+        }),
+    });
+    await legacySendCore.connect();
+    const legacyControl = (request) => legacyConnection.request("remoteControl", request, true);
+    await legacyControl({ operation: "enableDirect" });
+    const pairing = await legacyControl({ operation: "pair", transport: "direct" });
+    const invitation = new URL(pairing.payload);
+    const invitationParams = new URLSearchParams(invitation.hash.slice(1));
+    const legacyHostPeer = invitationParams.get("host");
+    assert(legacyHostPeer);
+    legacyPhone = await directLegacyPhone({
+      origin: invitation.origin,
+      hostPeer: legacyHostPeer,
+      invite: invitationParams.get("invite"),
+      approve: (peer) =>
+        legacyControl({
+          operation: "approve",
+          id: peer,
+          projects: [sendProjectId],
+          preset: "Operator",
+        }),
+      onResponse: captureRemoteResponse,
+    });
+    const writeContext = {
+      projectId: sendProjectId,
+      gatewayGeneration: legacyPhone.active.gatewayGeneration,
+      grantRevision: legacyPhone.active.grantRevision,
+      serviceGeneration: sendService.generation,
+    };
+    const remoteCreate = await legacyPhone.rpc("session.create", {}, writeContext, randomUUID());
+    assert.equal(remoteCreate.result?.admissionState, "accepted");
+    const oldThreadId = remoteCreate.result.threadId;
+    assert.equal(typeof oldThreadId, "string");
+    const readLegacyThread = async () =>
+      (
+        await legacySendCore.request("thread/read", {
+          threadId: oldThreadId,
+          includeTurns: true,
+        })
+      ).thread;
+    const acceptedSendId = randomUUID();
+    const acceptedSend = await legacyPhone.rpc(
+      "session.send",
+      {
+        threadId: oldThreadId,
+        expectedConfigRevision: (await readLegacyThread()).desktop.configuration.revision,
+        text: sendModel.acceptedMarker,
+      },
+      writeContext,
+      acceptedSendId,
+    );
+    assert.equal(acceptedSend.result?.admissionState, "accepted");
+    await until(
+      async () =>
+        (await readLegacyThread()).turns.find((turn) => turn.id === acceptedSend.result.turnId)
+          ?.status === "completed",
+      "the original JS accepted send completes against the local model",
+    );
+    const pendingSendId = randomUUID();
+    const pendingReply = legacyPhone
+      .rpc(
+        "session.send",
+        {
+          threadId: oldThreadId,
+          expectedConfigRevision: (await readLegacyThread()).desktop.configuration.revision,
+          text: sendModel.pendingMarker,
+        },
+        writeContext,
+        pendingSendId,
+      )
+      .then(
+        (response) => ({ response }),
+        (error) => ({ error: { code: error.code ?? "unavailable", submissionUnknown: true } }),
+      );
+    const pendingAccepted = await until(async () => {
+      const bytes = await optional(legacySendBarrierPath);
+      return bytes && JSON.parse(bytes);
+    }, "the original JS send loses its real Core response before CoreClient");
+    assert.equal(pendingAccepted.boundary, "ws-message-before-CoreClient");
+    assert.equal(pendingAccepted.request.method, "areal/turn/start");
+    const oldSendReply = await pendingReply;
+    assert.notEqual(oldSendReply.response?.result?.admissionState, "accepted");
+    await until(
+      () => sendModel.requests.some((request) => request.kind === "pending"),
+      "the original pending send reaches the real local model",
+    );
+    const sendPendingBytes = await readFile(join(coreHome, sendProjectId + "-pending.json"));
+    const sendOutcomeBytes = await readFile(join(coreHome, sendProjectId + "-outcomes.json"));
+    const sendPending = JSON.parse(sendPendingBytes);
+    const sendOutcomes = JSON.parse(sendOutcomeBytes);
+    assert.equal(sendPending.length, 1);
+    assert.equal(
+      (await readFile(join(coreHome, ids[0] + "-pending.json"))).equals(originalPendingBytes),
+      true,
+      "second-project sends preserve the original create UNKNOWN bytes",
+    );
+    const pendingSend = sendPending.find((entry) => entry.remote?.commandId === pendingSendId);
+    const acceptedOutcome = Object.values(sendOutcomes).find(
+      (entry) => entry.remote?.commandId === acceptedSendId,
+    );
+    assert(pendingSend && acceptedOutcome);
+    assert.deepEqual(pendingSend.params, pendingAccepted.request.params);
+    assert.equal(pendingSend.params.requestId, pendingSend.operationId);
+    assert.equal(pendingSend.admissionState, undefined);
+    assert.equal(acceptedOutcome.admissionState, "accepted");
+    assert.equal(acceptedOutcome.params, undefined);
+    for (const record of [pendingSend, acceptedOutcome]) {
+      assert.equal(record.nativeDigest, undefined);
+      assert.equal(record.coreScope, undefined);
+      assert.equal(record.legacyReceiptProof, undefined);
+      assert.equal(record.remote.hostId, legacyHostPeer);
+      assert.equal(record.remote.devicePeerId, legacyPhone.peer);
+      assert.equal(record.remote.projectId, sendProjectId);
+    }
+    const sendReceipts = [];
+    for (const record of [pendingSend, acceptedOutcome]) {
+      const read = await legacySendCore.request("areal/request/read", {
+        threadId: oldThreadId,
+        requestId: record.operationId,
+      });
+      const rows = read.data.filter(
+        (receipt) =>
+          receipt.method === "areal/turn/start" && receipt.requestId === record.operationId,
+      );
+      assert.equal(rows.length, 1);
+      assert.equal(
+        rows[0].result.turn.id,
+        record === pendingSend ? pendingAccepted.result.turn.id : acceptedOutcome.turnId,
+      );
+      sendReceipts.push({
+        requestId: rows[0].requestId,
+        method: rows[0].method,
+        digest: rows[0].digest,
+        identity: rows[0].identity,
+        turnId: rows[0].result.turn.id,
+      });
+    }
+    legacySends = {
+      projectId: sendProjectId,
+      service: sendService,
+      snapshot: { pending: sendPending, outcomes: sendOutcomes },
+      pendingBytes: sendPendingBytes,
+      outcomeBytes: sendOutcomeBytes,
+      hostPeer: legacyHostPeer,
+      identity: legacyPhone.identity,
+      peer: legacyPhone.peer,
+      threadId: oldThreadId,
+      creation: remoteCreate.result,
+      pending: pendingSend,
+      accepted: acceptedOutcome,
+      originalReceipts: sendReceipts,
+    };
+    await save(join(root, "legacy-send-before-import.json"), {
+      boundary:
+        "original frozen JS writer; real Core reply loss and accepted send before source import",
+      projectId: sendProjectId,
+      hostPeer: legacyHostPeer,
+      peer: legacyPhone.peer,
+      threadId: oldThreadId,
+      creation: legacySends.creation,
+      pendingFileSha256: sha(sendPendingBytes),
+      outcomesFileSha256: sha(sendOutcomeBytes),
+      pending: pendingSend,
+      accepted: acceptedOutcome,
+      originalReceipts: sendReceipts,
+      reply: {
+        admissionState: oldSendReply.response?.result?.admissionState ?? "unknown",
+        errorCode: oldSendReply.response?.error?.code ?? oldSendReply.error?.code ?? null,
+      },
+    });
+    legacyPhone.close();
+    sendModel.release();
+    const completedBeforeStop = await until(async () => {
+      const turn = (await readLegacyThread()).turns.find(
+        (entry) => entry.id === pendingAccepted.result.turn.id,
+      );
+      const status = await legacySendCore.request("areal/server/status");
+      return turn?.status === "completed" && status.lifecycle?.ifIdle?.allowed === true
+        ? { turnId: turn.id, status: turn.status, lifecycle: status.lifecycle }
+        : null;
+    }, "the original held Turn completes and its Core allows an idle stop");
+    await save(join(root, "legacy-send-natural-completion.json"), {
+      turnId: completedBeforeStop.turnId,
+      status: completedBeforeStop.status,
+      ifIdle: completedBeforeStop.lifecycle.ifIdle.allowed,
+      boundary: "the same held model HTTP response completes before source stop and import",
+    });
+    legacySendCore.close();
+    const stopReady = await until(async () => {
+      const packet = await legacyConnection.request("hello", {
+        protocol: metadata.protocol,
+        identity: metadata.identity,
+      });
+      const project = packet.snapshot.projects.find((entry) => entry.id === ids[1]);
+      return packet.service.starting === 0 &&
+        packet.service.providerUpdating === false &&
+        packet.service.activeCommands === 0 &&
+        project?.state?.connected === true
+        ? { service: packet.service, project }
+        : null;
+    }, "original Desktop finishes second-project reconnect before its one stop");
+    const stopService = JSON.parse(
+      await readFile(join(originalServices[1].directory, "service.json"), "utf8"),
+    );
+    assert.equal(stopService.serviceId, sendService.serviceId);
+    assert.equal(stopService.generation, sendService.generation);
+    assert(Number.isSafeInteger(sendService.corePid) && sendService.corePid > 1);
+    assert.equal(stopService.corePid, sendService.corePid);
+    assert.equal(stopReady.project.core.instanceId, sendService.serviceId);
+    assert.equal(
+      (await readFile(join(coreHome, ids[0] + "-pending.json"))).equals(originalPendingBytes),
+      true,
+    );
+    assert.equal(
+      (await readFile(join(coreHome, ids[1] + "-pending.json"))).equals(sendPendingBytes),
+      true,
+    );
+    assert.equal(
+      (await readFile(join(coreHome, ids[1] + "-outcomes.json"))).equals(sendOutcomeBytes),
+      true,
+    );
+    await save(join(root, "legacy-stop-readiness.json"), {
+      starting: stopReady.service.starting,
+      providerUpdating: stopReady.service.providerUpdating,
+      activeCommands: stopReady.service.activeCommands,
+      busy: stopReady.service.busy,
+      projectId: ids[1],
+      connected: stopReady.project.state.connected,
+      connectionGeneration: stopReady.project.core.connectionGeneration,
+      serviceId: stopService.serviceId,
+      serviceGeneration: stopService.generation,
+      corePid: stopService.corePid,
+      originalCreatePendingSha256: sha(originalPendingBytes),
+      pendingSha256: sha(sendPendingBytes),
+      outcomesSha256: sha(sendOutcomeBytes),
+    });
     legacyConnection.close();
     stopper = desktop(legacyApp, ["--areal-core-service-stop"], "legacy-stop");
     assert.equal(
@@ -881,32 +1220,64 @@ check("after-load");
     assert.equal((await old.finish()).code, 0);
     for (const { directory, descriptor } of originalServices) {
       const receipts = await Promise.all(
-        (await readdir(join(directory, "operations"))).map(async (name) => ({
-          service: JSON.parse(await readFile(join(directory, "operations", name), "utf8")),
-          host: JSON.parse(await readFile(join(legacyServiceHome, "host/operations", name), "utf8"))
-            .receipt,
-        })),
-      );
-      assert(
-        receipts.some(
-          ({ service, host }) =>
-            host.state === "completed" &&
-            host.requestId === service.operation.requestId &&
-            host.serviceGeneration === descriptor.generation &&
-            host.serviceId === descriptor.serviceId &&
-            service.operation.generation === descriptor.generation &&
-            service.operation.serviceId === descriptor.serviceId &&
-            service.cleanupConfirmed === true &&
-            service.service.owner.appRunId === descriptor.owner.appRunId,
+        (await readdir(join(directory, "operations"))).map(async (name) =>
+          JSON.parse(await readFile(join(directory, "operations", name), "utf8")),
         ),
-        "original owner persisted exact completed Runtime cleanup proof",
       );
+      const receipt = receipts.find(
+        (receipt) =>
+          receipt.operation.generation === descriptor.generation &&
+          receipt.operation.serviceId === descriptor.serviceId &&
+          receipt.service.generation === descriptor.generation &&
+          receipt.cleanupConfirmed === true &&
+          receipt.service.owner.appRunId === descriptor.owner.appRunId,
+      );
+      assert(receipt, "original GUI owner persisted exact completed Runtime cleanup proof");
+      const query = start(
+        binary,
+        [
+          "service",
+          "operation",
+          "--instance",
+          descriptor.serviceId,
+          "--expected-generation",
+          descriptor.generation,
+          "--request-id",
+          receipt.operation.requestId,
+          "--json",
+        ],
+        { ...env, AREAL_GUI_DESKTOP_LIFETIME_FD: undefined },
+        `legacy-stop-operation-${descriptor.serviceId}`,
+      );
+      assert.equal((await query.finish()).code, 0, "read the original local stop operation");
+      const { operation } = JSON.parse(query.output().stdout);
+      assert.equal(operation.requestId, receipt.operation.requestId);
+      assert.equal(operation.serviceId, descriptor.serviceId);
+      assert.equal(operation.generation, descriptor.generation);
+      assert.equal(operation.state, "completed");
+      await save(join(root, `legacy-stop-receipt-${descriptor.serviceId}.json`), {
+        raw: receipt,
+        operation,
+      });
     }
+    assert.equal(
+      await optional(join(legacyServiceHome, "host/host.json")),
+      null,
+      "legacy GUI stop does not create another shared Host",
+    );
     await save(join(root, "original-services.json"), originalServices);
     assert.deepEqual(
       JSON.parse(await readFile(join(coreHome, ids[0] + "-pending.json"), "utf8")),
       pending,
       "legacy shutdown retains actual UNKNOWN without a runner journal write",
+    );
+    assert.equal(
+      (await readFile(join(coreHome, ids[1] + "-pending.json"))).equals(legacySends.pendingBytes),
+      true,
+    );
+    assert.equal(
+      (await readFile(join(coreHome, ids[1] + "-outcomes.json"))).equals(legacySends.outcomeBytes),
+      true,
     );
     const original = await tree(coreHome);
     await save(join(root, "original-authority.json"), original);
@@ -1104,6 +1475,48 @@ check("after-load");
         outcomes,
         "actual legacy outcome snapshot retained",
       );
+      const sendBinding = result.receipt.bindings.find(
+        (entry) => entry.alias.legacyProjectId === ids[1],
+      );
+      assert(sendBinding);
+      const sendImported = await hostClient.journal(sendBinding.projectId).read();
+      assert.deepEqual(sendImported.snapshot.pending, legacySends.snapshot.pending);
+      assert.deepEqual(sendImported.snapshot.outcomes, legacySends.snapshot.outcomes);
+      const rawJournalProof = [];
+      for (const [suffix, bytes] of [
+        ["pending", legacySends.pendingBytes],
+        ["outcomes", legacySends.outcomeBytes],
+      ]) {
+        const name = ids[1] + "-" + suffix + ".json";
+        const original = finalReceipt.originals.find((entry) => entry.relativeName === name);
+        assert.equal(original.original.kind, "bytes");
+        assert.equal(original.original.sha256, sha(bytes));
+        assert.equal(original.original.byteLength, bytes.length);
+        const backup = await readFile(
+          join(
+            hostHome,
+            "host/imports",
+            requestId,
+            "backups",
+            original.original.backupId + ".bytes",
+          ),
+        );
+        assert.equal(backup.equals(bytes), true, "second-project raw journal bytes survive import");
+        rawJournalProof.push({
+          name,
+          sha256: sha(bytes),
+          byteLength: bytes.length,
+          backupId: original.original.backupId,
+        });
+      }
+      await save(join(root, "legacy-send-imported-journal.json"), {
+        projectId: sendBinding.projectId,
+        alias: ids[1],
+        migrationId: result.migrationId,
+        rawJournalProof,
+        pendingCount: sendImported.snapshot.pending.length,
+        outcomeCount: Object.keys(sendImported.snapshot.outcomes).length,
+      });
       await journal.change((snapshot) => {
         snapshot.pending.push({
           method: "thread/create",
@@ -1171,6 +1584,7 @@ check("after-load");
       configPath: config,
       environment: {},
       credentialNames: [],
+      schedulePreparation: { kind: "external" },
       options: {
         allow_write: false,
         allow_network: false,
@@ -1287,6 +1701,161 @@ check("after-load");
       oldCreateDispatches: 1,
       newCreateDispatches: 0,
     });
+    const sendBinding = result.receipt.bindings.find(
+      (entry) => entry.alias.legacyProjectId === ids[1],
+    );
+    assert(sendBinding);
+    const ensuredSend = await recoveryHost.ensureProject(randomUUID(), sendBinding.projectId, {
+      workspace: projects[1].root,
+      cwd: projects[1].root,
+      configHome,
+      homedir: env.AREAL_CORE_USER_HOME,
+      configPath: config,
+      environment: {},
+      credentialNames: [],
+      schedulePreparation: { kind: "external" },
+      options: {
+        allow_write: false,
+        allow_network: false,
+        allow_concurrent_writes: false,
+        read_only_path: [],
+        task_credential_command: [],
+        no_deployment_mcp: false,
+      },
+    });
+    assert(ensuredSend.service);
+    const restoredSendAuth = JSON.parse(await readFile(ensuredSend.service.authFile, "utf8"));
+    recoverySendCore = new CoreClient({
+      createSocket: () =>
+        new WebSocket(ensuredSend.service.endpoint, {
+          headers: { Authorization: `Bearer ${restoredSendAuth.principals[0].token}` },
+        }),
+    });
+    await recoverySendCore.connect();
+    const { GuiHostProjects } = require("../app/src/core/gui-host-projects.cjs");
+    const { NativeRemote } = require("../app/src/core/native-remote.cjs");
+    nativeSource = new GuiHostProjects({ binary, home: hostHome, source, singletonHeld: true });
+    await nativeSource.init();
+    nativeRemote = new NativeRemote({
+      backend: {
+        host: nativeSource,
+        home: coreHome,
+        save: (name, value) => save(join(coreHome, name), value),
+      },
+      schedule() {},
+    });
+    await nativeRemote.init();
+    const nativeDirect = await until(async () => {
+      const state = await nativeRemote.refresh();
+      return state.directEnabled && state.directUrl ? state : null;
+    }, "the imported Remote identity opens its native Direct endpoint");
+    nativePhone = await directLegacyPhone({
+      origin: new URL(nativeDirect.directUrl).origin,
+      hostPeer: legacySends.hostPeer,
+      identity: legacySends.identity,
+      onResponse: captureRemoteResponse,
+    });
+    assert.equal(nativePhone.peer, legacySends.peer);
+    const recoveredSends = [];
+    for (const record of [legacySends.pending, legacySends.accepted]) {
+      const response = await nativePhone.rpc(
+        "command.read",
+        {
+          commandId: record.remote.commandId,
+        },
+        { projectId: ids[1] },
+      );
+      assert.equal(response.error, undefined);
+      assert.equal(response.result.admissionState, "accepted");
+      assert.equal(response.result.operationId, record.operationId);
+      const originalReceipt = legacySends.originalReceipts.find(
+        (entry) => entry.requestId === record.operationId,
+      );
+      assert.equal(response.result.turnId, originalReceipt.turnId);
+      const read = await recoverySendCore.request("areal/request/read", {
+        threadId: legacySends.threadId,
+        requestId: record.operationId,
+      });
+      const rows = read.data.filter(
+        (receipt) =>
+          receipt.method === "areal/turn/start" && receipt.requestId === record.operationId,
+      );
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].digest, originalReceipt.digest);
+      assert.equal(rows[0].identity, originalReceipt.identity);
+      assert.equal(rows[0].result.turn.id, originalReceipt.turnId);
+      const { snapshot } = await recoveryHost.journal(sendBinding.projectId).read();
+      const settled = snapshot.outcomes[record.operationId];
+      assert.equal(settled.admissionState, "accepted");
+      assert.equal(settled.legacyReceiptProof.version, 1);
+      assert.equal(settled.nativeDigest, undefined);
+      assert.equal(settled.coreScope, undefined);
+      recoveredSends.push({
+        commandId: record.remote.commandId,
+        operationId: record.operationId,
+        turnId: response.result.turnId,
+        receiptDigest: rows[0].digest,
+        proofSha256: sha(JSON.stringify(settled.legacyReceiptProof)),
+      });
+    }
+    const importedThread = (
+      await recoverySendCore.request("thread/read", {
+        threadId: legacySends.threadId,
+        includeTurns: true,
+      })
+    ).thread;
+    assert.equal(importedThread.turns.length, 2);
+    assert.equal(
+      importedThread.turns.find((turn) => turn.id === legacySends.accepted.turnId)?.status,
+      "completed",
+    );
+    const originalPendingTurn = legacySends.originalReceipts.find(
+      (receipt) => receipt.requestId === legacySends.pending.operationId,
+    ).turnId;
+    const stoppedTurn = importedThread.turns.find((turn) => turn.id === originalPendingTurn);
+    assert(stoppedTurn);
+    assert.notEqual(stoppedTurn.status, "inProgress", "source import requires old Core cleanup");
+    assert.equal(sendModel.requests.filter((request) => request.kind === "accepted").length, 1);
+    assert.equal(sendModel.requests.filter((request) => request.kind === "pending").length, 1);
+    assert.equal(sendModel.requests.find((request) => request.kind === "pending").closed, true);
+    const sendTrace = (await readFile(legacySendTracePath, "utf8"))
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    assert.equal(
+      sendTrace.filter(
+        (entry) => entry.direction === "request" && entry.method === "areal/thread/start",
+      ).length,
+      1,
+    );
+    for (const record of [legacySends.pending, legacySends.accepted])
+      assert.equal(
+        sendTrace.filter(
+          (entry) =>
+            entry.direction === "request" &&
+            entry.method === "areal/turn/start" &&
+            entry.requestId === record.operationId,
+        ).length,
+        1,
+      );
+    await save(join(root, "legacy-send-recovery.json"), {
+      boundary:
+        "original old JS files imported after old Core/Runtime cleanup; read-only native receipt recovery",
+      sourceId: nativeSource.sourceId,
+      migrationId: nativeSource.migrationId,
+      projectId: sendBinding.projectId,
+      alias: ids[1],
+      creation: legacySends.creation,
+      originalServiceGeneration: legacySends.service.generation,
+      currentServiceGeneration: ensuredSend.service.generation,
+      recovered: recoveredSends,
+      pendingTurnStatusAfterStop: stoppedTurn.status,
+      originalNativeSendDispatches: 2,
+      importedTurnCount: importedThread.turns.length,
+      modelRequests: sendModel.requests,
+      nativePhoneMethods: ["command.read", "command.read"],
+      excluded: ["uninterrupted task handoff", "push notification", "real provider"],
+    });
     for (const item of electronEvidence) {
       const records = (await readFile(item.evidence, "utf8")).trim().split("\n").map(JSON.parse);
       assert(records.some((record) => record.phase === "before-load"));
@@ -1310,6 +1879,10 @@ check("after-load");
         backend: sha(await readFile(join(gui, "app/src/core/backend.cjs"))),
         coreClient: sha(await readFile(join(gui, "packages/runtime-client/core.js"))),
         handoffScript: sha(await readFile(fileURLToPath(import.meta.url))),
+        legacySendHelper: sha(
+          await readFile(join(gui, "scripts/shared-host-legacy-send-fixture.mjs")),
+        ),
+        directAssets: join(root, "legacy-direct-assets.json"),
       },
       source,
       hostHome,
@@ -1332,12 +1905,16 @@ check("after-load");
         "registry and Store bytes retained",
         "journal fences cover absent files",
         "actual old creation UNKNOWN and original admission identity retained",
+        "original frozen JS RemoteControl writes real send UNKNOWN and accepted records before initial import",
+        "native original command reads prove both old send receipts without replay after old Core cleanup",
+        "old writer uses the current verified static Remote asset closure without browser execution",
         "new Host journal writer commits over 1 MiB alongside imported UNKNOWN",
         "actual old Desktop rejects fences without authority changes",
       ],
       interruptionEvidence: join(root, "migration-interruptions.json"),
       credentialRecovery: join(root, "credential-recovery.json"),
       acceptedCreateRecovery: join(root, "accepted-create-recovery.json"),
+      legacySendRecovery: join(root, "legacy-send-recovery.json"),
       excluded: [
         "real credentials",
         "signed package/Keychain identity",
@@ -1353,8 +1930,18 @@ check("after-load");
     });
     throw error;
   } finally {
+    legacyPhone?.close();
+    legacySendCore?.close();
+    nativePhone?.close();
+    try {
+      await nativeRemote?.close();
+    } catch (error) {
+      cleanup.errors.push({ operation: "native Remote close", message: error.message });
+    }
+    nativeSource?.close();
     legacyConnection.close();
     recoveryCore?.close();
+    recoverySendCore?.close();
     recoveryHost?.close();
     if (recoveryBackend) {
       recoveryBackend.closing = true;
@@ -1381,19 +1968,62 @@ check("after-load");
       }
     }
     cleanup.hosts = [];
+    cleanup.unsettledHostHomes = [];
     for (const home of [legacyServiceHome, hostHome]) {
       try {
         const bytes = await optional(join(home, "host/host.json"));
         if (!bytes) continue;
         const descriptor = JSON.parse(bytes);
-        assert.equal(descriptor.socketPath, join(home, "host/control.sock"));
+        assert(typeof descriptor.socketPath === "string" && descriptor.socketPath.startsWith("/"));
         assert(Number.isInteger(descriptor.pid) && descriptor.pid > 0);
         const host = new HostClient();
         try {
           await host.connect(home);
           assert.equal(host.hostId, descriptor.hostId);
           assert.equal(host.generation, descriptor.generation);
-          const stopped = await host.stop(randomUUID(), descriptor.generation, "cancel");
+          const reference = {
+            kind: "stopHost",
+            requestId: randomUUID(),
+            home,
+            hostId: descriptor.hostId,
+            generation: descriptor.generation,
+            strategy: "cancel",
+          };
+          const observation = {
+            home,
+            pid: descriptor.pid,
+            hostId: descriptor.hostId,
+            generation: descriptor.generation,
+            socketPath: descriptor.socketPath,
+            reference,
+            stopped: null,
+            pidExited: false,
+          };
+          cleanup.hosts.push(observation);
+          await save(cleanupPath, cleanup);
+          let stopped;
+          try {
+            stopped = readHostReceipt(
+              reference,
+              await host.stop(reference.requestId, reference.generation, reference.strategy),
+            );
+          } catch (error) {
+            observation.replyError = { code: error.code ?? "unavailable" };
+            host.close();
+            stopped = await readOfflineHostReceipt(binary, reference);
+          }
+          observation.stopped = stopped;
+          await save(cleanupPath, cleanup);
+          if (!stopped || !["completed", "blocked"].includes(stopped.state)) {
+            stopped = await until(async () => {
+              const original = await readOfflineHostReceipt(binary, reference);
+              observation.stopped = original;
+              await save(cleanupPath, cleanup);
+              return original && ["completed", "blocked"].includes(original.state)
+                ? original
+                : null;
+            }, `original Host stop ${reference.requestId} settlement without replay`);
+          }
           assert.equal(stopped.state, "completed", "test Host stop completes");
           await until(() => {
             try {
@@ -1404,24 +2034,30 @@ check("after-load");
               throw error;
             }
           }, "test Host PID exit");
-          cleanup.hosts.push({
-            home,
-            pid: descriptor.pid,
-            hostId: descriptor.hostId,
-            generation: descriptor.generation,
-            stopped,
-            pidExited: true,
-          });
+          observation.stopped = stopped;
+          observation.pidExited = true;
+          await save(cleanupPath, cleanup);
         } finally {
           host.close();
         }
       } catch (error) {
+        cleanup.unsettledHostHomes.push(home);
         cleanup.errors.push({ operation: "host.stop", home, message: error.message });
       }
     }
     for (const { name, process } of processes.filter((item) => item.name === "host")) {
       try {
         if (process.child.exitCode == null && process.child.signalCode == null) {
+          if (cleanup.unsettledHostHomes.includes(hostHome)) {
+            process.child.unref();
+            cleanup.processes.push({
+              name,
+              pid: process.child.pid,
+              state: "retained",
+              reason: "Original Host stop is unconfirmed",
+            });
+            continue;
+          }
           process.child.kill("SIGTERM");
           const force = setTimeout(() => process.child.kill("SIGKILL"), 5000);
           try {
@@ -1435,6 +2071,7 @@ check("after-load");
         cleanup.errors.push({ process: name, message: error.message });
       }
     }
+    if (!cleanup.unsettledHostHomes.length) await sendModel?.close();
     try {
       const database = join(coreHome, "diagnostics/desktop-crashes");
       const rows = execFileSync("/bin/ps", ["-axo", "pid=,command="], { encoding: "utf8" });
