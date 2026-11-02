@@ -748,12 +748,27 @@ test("explicit item loading validates UTF8 fragments and release does not discar
   assert.equal(f.project.model.state.threads.thread.turns.at(-1).items[0].type, "historyDeferred");
 });
 
-test("metadata budget retries exactly once at the supported maximum", async () => {
+test("ordinary observation uses the supported maximum budget on its first request", async () => {
+  const f = fixture(async (method, params, options) => {
+    assert.equal(method, "areal/thread/observe");
+    assert.equal(params.maxBytes, 1048576);
+    assert.equal(options.maxResponseBytes, 1048576);
+    const value = baseline();
+    value.thread.turns = [turn("ordinary", [item("user-sized", "x".repeat(300000))])];
+    value.history = { snapshotId: "snapshot", nextCursor: null, complete: true };
+    return value;
+  });
+  await f.backend.openThread(f.project, "thread");
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.project.model.state.threads.thread.turns[0].items[0].text.length, 300000);
+});
+
+test("metadata exceeding the supported maximum fails without repeating the observation", async () => {
   let observations = 0;
   const f = fixture(async (method, params) => {
     assert.equal(method, "areal/thread/observe");
     observations++;
-    assert.equal(params.maxBytes, observations === 1 ? 262144 : 1048576);
+    assert.equal(params.maxBytes, 1048576);
     throw Object.assign(new Error("metadata too large"), {
       code: -32012,
       reason: "HISTORY_BUDGET_TOO_SMALL",
@@ -761,7 +776,7 @@ test("metadata budget retries exactly once at the supported maximum", async () =
     });
   });
   await assert.rejects(f.backend.openThread(f.project, "thread"), /metadata too large/);
-  assert.equal(observations, 2);
+  assert.equal(observations, 1);
 });
 
 test("stale old page resets its display window without retrying a mutation", async () => {
