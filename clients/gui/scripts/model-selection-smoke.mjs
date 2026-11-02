@@ -202,7 +202,7 @@ async function captureModelThemes(name, menu = false) {
       const slider = page.getByRole("slider", { name: "选择思考强度", exact: true });
       const selected = await slider.getAttribute("aria-valuetext");
       await slider.hover({ position: { x: 14, y: 14 } });
-      await page.getByRole("tooltip").filter({ hasText: /^无$/ }).waitFor();
+      await page.getByRole("tooltip").filter({ hasText: /^低$/ }).waitFor();
       await page.waitForFunction(() => {
         const tooltip = document.querySelector('[role="tooltip"]');
         return tooltip && getComputedStyle(tooltip).opacity === "1";
@@ -531,6 +531,7 @@ async function closeGui() {
   app = undefined;
 }
 async function verifyModelCapabilities() {
+  const previous = await call("providers", { operation: "list" });
   await page.waitForFunction(async () => {
     const reply = await window.arealDesktop.command("serviceStatus", {});
     return (
@@ -541,7 +542,6 @@ async function verifyModelCapabilities() {
       !reply.value.providerUpdating
     );
   });
-  const previous = await call("providers", { operation: "list" });
   const seeded = await call("providers", {
     operation: "saveAndApply",
     expectedRevision: previous.revision,
@@ -658,6 +658,14 @@ async function verifyModelCapabilities() {
     0,
     "a newly selected custom model keeps effort unspecified until explicit selection",
   );
+  assert.deepEqual(
+    await page
+      .getByRole("group", { name: "选择思考强度", exact: true })
+      .getByRole("button")
+      .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label"))),
+    ["低", "中", "高", "极高"],
+    "the custom model offers exactly its configured strengths",
+  );
   await page.getByRole("button", { name: "中", exact: true }).click();
   await page.keyboard.press("Escape");
   await captureModelThemes("composer-selection", true);
@@ -684,7 +692,7 @@ async function verifyModelCapabilities() {
   await button("选择思考强度").click();
   assert.equal(
     await page.getByRole("slider", { name: "选择思考强度", exact: true }).getAttribute("max"),
-    "6",
+    "3",
   );
   await assertComposerActions();
   assert.equal(
@@ -710,19 +718,19 @@ async function verifyModelCapabilities() {
   );
   const dragBounds = await dragSlider.boundingBox();
   assert.ok(dragBounds);
-  const dragX = (index) => dragBounds.x + 14 + ((dragBounds.width - 28) * index) / 6;
-  await page.mouse.move(dragX(5), dragBounds.y + 14);
+  const dragX = (index) => dragBounds.x + 14 + ((dragBounds.width - 28) * index) / 3;
+  await page.mouse.move(dragX(3), dragBounds.y + 14);
   await page.mouse.down();
-  await page.mouse.move(dragX(2), dragBounds.y + 14, { steps: 8 });
+  await page.mouse.move(dragX(0), dragBounds.y + 14, { steps: 8 });
   await page.mouse.up();
   await waitForSavedEffort("低");
   await page.waitForFunction(
     () =>
       document.querySelector('input[type=range][aria-label="选择思考强度"]')?.disabled === false,
   );
-  await page.mouse.move(dragX(2), dragBounds.y + 14);
+  await page.mouse.move(dragX(0), dragBounds.y + 14);
   await page.mouse.down();
-  await page.mouse.move(dragX(5), dragBounds.y + 14, { steps: 8 });
+  await page.mouse.move(dragX(3), dragBounds.y + 14, { steps: 8 });
   await page.mouse.up();
   await waitForSavedEffort("极高");
   await page.keyboard.press("Escape");
@@ -789,9 +797,15 @@ async function verifyModelCapabilities() {
   await page.getByTestId("chat-input").fill("");
   await button("选择思考强度").click();
   const slider = page.getByRole("slider", { name: "选择思考强度", exact: true });
-  assert.equal(await slider.getAttribute("max"), "6");
-  await slider.fill("2");
-  await waitForSavedEffort("低");
+  assert.equal(await slider.count(), 0, "an unsupported historical strength has no slider value");
+  assert.deepEqual(
+    await page
+      .getByRole("group", { name: "选择思考强度", exact: true })
+      .getByRole("button")
+      .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label"))),
+    ["低", "高"],
+  );
+  await chooseEffort("低");
   await page.keyboard.press("Escape");
   await send("Configured lower effort reaches provider", {
     model: "capability-model",
@@ -799,8 +813,8 @@ async function verifyModelCapabilities() {
     hasEffort: true,
   });
   await button("选择思考强度").click();
-  await slider.fill("4");
-  await waitForSavedEffort("高");
+  assert.equal(await slider.getAttribute("max"), "1");
+  await chooseEffort("高", "ArrowRight");
   await page.keyboard.press("Escape");
   await send("Configured upper effort reaches provider", {
     model: "capability-model",
@@ -840,7 +854,7 @@ async function verifyModelCapabilities() {
   await button("返回应用").click();
   await button("选择思考强度").click();
   assert.equal(await page.getByRole("slider", { name: "选择思考强度", exact: true }).count(), 0);
-  assert.equal(await page.getByRole("group", { name: "选择思考强度", exact: true }).count(), 1);
+  assert.equal(await page.getByRole("group", { name: "选择思考强度", exact: true }).count(), 0);
   await page.screenshot({
     path: join(scratch, "custom-model-effort-empty.png"),
     animations: "disabled",
@@ -1659,7 +1673,11 @@ async function verifyComposerFast() {
   await button("选择思考强度").getByText(/Fast/).waitFor();
   const thread = await send("Fast high draft", "beta-model", "high", "fast");
   menu = await openEffort();
-  await menu.getByRole("slider", { name: "选择思考强度", exact: true }).fill("2");
+  assert.equal(
+    await menu.getByRole("slider", { name: "选择思考强度", exact: true }).getAttribute("max"),
+    "1",
+  );
+  await menu.getByRole("slider", { name: "选择思考强度", exact: true }).fill("0");
   await page.keyboard.press("Escape");
   await send("Fast low existing thread", "beta-model", "low", "fast");
   await chooseModel("alpha");

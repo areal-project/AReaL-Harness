@@ -291,6 +291,17 @@ try {
         threads.map(({ threadId }, index) => complete(threadId, `${kind} ${index}`)),
       );
       for (let index = 0; index < threads.length; index++) {
+        const history = { projectId, threadId: threads[index].threadId, viewId: randomUUID() };
+        await backend.command("history", { ...history, operation: "acquire" });
+        const turn = projection().state.threads[threads[index].threadId].turns.at(-1);
+        for (const item of turn.items) {
+          if (item.type === "historyDeferred" && item.originalType === "dynamicToolCall")
+            await backend.command("history", {
+              ...history,
+              operation: "loadItem",
+              itemId: item.id,
+            });
+        }
         const items = projection().state.threads[threads[index].threadId].turns.at(-1).items;
         const toolSucceeded = items.some(
           (item) => item.type === "dynamicToolCall" && item.success === true,
@@ -314,6 +325,7 @@ try {
             (await readFile(join(directories[index], "shell-cwd.txt"), "utf8")).trim(),
             directories[index],
           );
+        await backend.command("history", { ...history, operation: "release" });
       }
       checks.push(
         `real Core/Runtime ${kind} tools mutate matching relative paths only in their owning default checkout`,
@@ -375,6 +387,17 @@ try {
       before.worktreeEvents.some((event) => event.state === "ready"),
       "ready host event follows binding",
     );
+    const nonGitTargets = backend.lifecycleOperations
+      .targets()
+      .filter((target) => target.projectId === nonGitId);
+    assert.equal(nonGitTargets.length, 1);
+    await backend.lifecycleOperations.request({
+      requestId: randomUUID(),
+      kind: "stopProject",
+      mode: "ifIdle",
+      expectedDesktopGeneration: backend.lifecycleOperations.generation,
+      expectedTargets: nonGitTargets,
+    });
     await backend.disconnect();
     backend = new CoreBackend(options);
     await backend.init();

@@ -15,6 +15,10 @@ The release smoke fixture handles auxiliary session titles separately from solve
 
 Install dependencies using the [development guide](README.en.md). Regular tests use temporary directories, dynamic loopback ports and deterministic models without real model credentials.
 
+Model-selection smoke uses the efforts explicitly configured by its fixtures. Four-option, two-option and empty lists cover choices, slider bounds, keyboard/drag input, correction of invalid historical values and service default. Fast request and cold-reopen assertions use the same restricted options. Reading the provider catalog can settle pending configuration, so seed saves check idle status after that read.
+
+Worktree and scheduled-task contracts use the existing `history.loadItem` operation to read deferred successful-tool records before checking execution results and files written in the owning directory. A conversation summary without the full record does not prove that a tool failed to run; a summary alone also does not prove success. Migration smoke opens results through the current tool summary control and retains child-conversation and main-draft isolation assertions.
+
 | Entry point | Coverage |
 |---|---|
 | `make verify` | Cordis pin, formatting, static checks, Rust workspace, both SDKs, Python, documentation, TUI and unified delegation smoke |
