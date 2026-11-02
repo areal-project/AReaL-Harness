@@ -83,7 +83,7 @@ function assertIdle(record) {
   );
   assert.ok(
     (desktop?.queue?.items ?? []).every((item) =>
-      ["completed", "failed", "steered", "cancelled"].includes(item.status),
+      ["completed", "failed", "steered", "cancelled", "removed"].includes(item.status),
     ),
     "History contains queued work",
   );
