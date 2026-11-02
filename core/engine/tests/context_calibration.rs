@@ -247,6 +247,8 @@ struct References;
 type CapturedRequest = (RequestPurpose, Vec<Message>, Vec<Value>);
 struct PrefixHistory {
     requests: Mutex<Vec<CapturedRequest>>,
+    invalid_summaries: usize,
+    invalid_summary: &'static str,
 }
 
 #[async_trait]
@@ -268,20 +270,26 @@ impl Model for PrefixHistory {
         limits: areal_engine::model::ToolCallLimits,
         _: Option<u64>,
     ) -> anyhow::Result<ModelStream> {
-        let n = {
+        let (n, summaries) = {
             let mut requests = self.requests.lock().unwrap();
             let n = requests
                 .iter()
                 .filter(|(p, _, _)| *p == RequestPurpose::Solve)
                 .count();
+            let summaries = requests
+                .iter()
+                .filter(|(p, _, _)| *p == RequestPurpose::Summary)
+                .count();
             requests.push((purpose, messages, tools));
-            n
+            (n, summaries)
         };
         let event = if purpose == RequestPurpose::Summary {
             assert_eq!(limits.max_calls, 0);
-            ModelEvent::text(
-                "Completed reference reads are recorded. Continue the binding original contract, preserve remaining work and avoid replaying completed operations.",
-            )
+            ModelEvent::text(if summaries < self.invalid_summaries {
+                self.invalid_summary
+            } else {
+                "Completed reference reads are recorded. Continue the binding original contract, preserve remaining work and avoid replaying completed operations."
+            })
         } else if n < 8 {
             ModelEvent::ToolCall(ToolCall {
                 id: format!("prefix-reference-{n}"),
@@ -291,7 +299,15 @@ impl Model for PrefixHistory {
         } else {
             ModelEvent::text("Verified all eight references")
         };
-        Ok(Box::pin(stream::iter([Ok(event)])))
+        let mut events = vec![Ok(event)];
+        if purpose == RequestPurpose::Summary {
+            events.push(Ok(ModelEvent::Usage(ModelUsage {
+                input_tokens: 20,
+                cached_input_tokens: 4,
+                output_tokens: 3,
+            })));
+        }
+        Ok(Box::pin(stream::iter(events)))
     }
 }
 
@@ -300,6 +316,8 @@ async fn automatic_summary_reuses_the_real_solve_prefix_without_replaying_work()
     let data = tempfile::tempdir().unwrap();
     let model = Arc::new(PrefixHistory {
         requests: Mutex::new(vec![]),
+        invalid_summaries: 0,
+        invalid_summary: "",
     });
     let engine = Engine::open(
         data.path(),
@@ -319,6 +337,17 @@ async fn automatic_summary_reuses_the_real_solve_prefix_without_replaying_work()
         name:"read_reference".into(), description:"Read one reference".into(),
         input_schema:json!({"type":"object","properties":{"index":{"type":"integer"}},"required":["index"]}), output_schema:None,
     }], Arc::new(References)).await.unwrap();
+    // 标题生成也使用 Summary purpose；本用例只统计压缩请求，与评测关闭命名的配置一致。
+    engine
+        .configure_thread(
+            serde_json::from_value(json!({
+                "threadId":thread.id,"expectedRevision":1,
+                "options":{"automaticSessionName":false}
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
     engine
         .start(
             &thread.id,
@@ -367,6 +396,130 @@ async fn automatic_summary_reuses_the_real_solve_prefix_without_replaying_work()
         assert!(!summary.2.is_empty());
     }
     engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn invalid_prefix_summary_uses_existing_retry_for_quoted_evidence() {
+    const TOOL_TEXT: &str = "<tool_call><function=read_reference><parameter=index>999</parameter></function></tool_call>";
+    for (invalid_summary, invalid_summaries) in [(TOOL_TEXT, 1), ("", 1), (TOOL_TEXT, usize::MAX)] {
+        let data = tempfile::tempdir().unwrap();
+        let model = Arc::new(PrefixHistory {
+            requests: Mutex::new(vec![]),
+            invalid_summaries,
+            invalid_summary,
+        });
+        let engine = Engine::open(
+            data.path(),
+            model.clone(),
+            Limits {
+                context_window_tokens: 32000,
+                context_output_reserve_tokens: 2000,
+                context_window_bytes: 13000,
+                context_recent_bytes: 3000,
+                max_children_per_turn: 0,
+                max_agent_depth: 0,
+                ..Limits::default()
+            },
+        )
+        .unwrap();
+        let thread = engine.create_with_tools("/workspace".into(), vec![ToolDefinition {
+            name:"read_reference".into(), description:"Read one reference".into(),
+            input_schema:json!({"type":"object","properties":{"index":{"type":"integer"}},"required":["index"]}), output_schema:None,
+        }], Arc::new(References)).await.unwrap();
+        // 标题生成也使用 Summary purpose；本用例只统计压缩请求，与评测关闭命名的配置一致。
+        engine
+            .configure_thread(
+                serde_json::from_value(json!({
+                    "threadId":thread.id,"expectedRevision":1,
+                    "options":{"automaticSessionName":false}
+                }))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        engine
+            .start(
+                &thread.id,
+                vec![Input::text(
+                    "Binding original contract: inspect all eight references.",
+                )],
+            )
+            .await
+            .unwrap();
+        let done =
+            tokio::time::timeout(std::time::Duration::from_secs(10), engine.wait(&thread.id))
+                .await
+                .unwrap()
+                .unwrap();
+        assert_eq!(
+            done.turns[0].status,
+            TurnStatus::Completed,
+            "{:?}",
+            done.turns[0].error
+        );
+        assert_eq!(
+            done.context_checkpoint.is_some(),
+            invalid_summaries != usize::MAX
+        );
+        let full = engine.read(&thread.id, true).await.unwrap();
+        let calls: Vec<_> = full
+            .turns
+            .iter()
+            .flat_map(|t| &t.items)
+            .filter_map(|item| match item {
+                areal_protocol::Item::DynamicToolCall {
+                    tool,
+                    arguments,
+                    success,
+                    ..
+                } if tool == "read_reference" => {
+                    Some((arguments["index"].as_u64().unwrap(), *success))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            calls,
+            (0..8).map(|n| (n, Some(true))).collect::<Vec<_>>(),
+            "摘要里的伪工具不得执行，已完成读取不得重放"
+        );
+        {
+            let requests = model.requests.lock().unwrap();
+            let mut consecutive = 0;
+            let mut retries = 0;
+            let mut summaries = 0;
+            for (purpose, messages, tools) in requests.iter() {
+                if *purpose != RequestPurpose::Summary {
+                    consecutive = 0;
+                    continue;
+                }
+                consecutive += 1;
+                summaries += 1;
+                assert!(consecutive <= 2, "不增加现有摘要验证次数");
+                if consecutive == 2 {
+                    retries += 1;
+                    assert!(tools.is_empty());
+                    assert_eq!(messages[0].role, "system");
+                    assert_eq!(messages[1].role, "user");
+                    assert!(messages[1].text_content().contains("historical evidence"));
+                    assert!(messages[1].text_content().contains("historicalToolCalls"));
+                    assert!(messages.iter().all(|m| m.tool_calls.is_empty()
+                        && m.provider_context.is_none()
+                        && matches!(m.role.as_str(), "system" | "user")));
+                }
+            }
+            assert!(retries > 0);
+            let usage = full.turns[0].usage.as_ref().unwrap();
+            assert_eq!(
+                usage.input_tokens,
+                summaries * 20,
+                "invalid={invalid_summary:?}, count={invalid_summaries}"
+            );
+            assert_eq!(usage.cached_input_tokens, summaries * 4);
+            assert_eq!(usage.output_tokens, summaries * 3);
+        }
+        engine.shutdown().await;
+    }
 }
 
 #[async_trait]

@@ -1319,7 +1319,13 @@ impl Engine {
                 }
                 attempt += 1;
                 network_retries = 0;
-                input.push(Message::text(if preserved_prefix.is_some() { "developer" } else { "system" }, "Internal compaction retry, not a user task. The summary was rejected. Return only a shorter checkpoint, without tool calls or executable markup. Use fewer than 500 words and 4000 UTF-8 bytes. Prioritize exact interfaces, remaining work and observed validation over narrative. Keep unfinished work and verification status explicit."));
+                if preserved_prefix.take().is_some() {
+                    // 已观察到前缀摘要格式失效；在原有第二次额度内改用引用证据，避免继续诱发历史工具调用。
+                    input = summary_input(&summary_history);
+                    input[0] = Message::text("system", &summary_instructions);
+                    summary_tools.clear();
+                }
+                input.push(Message::text("system", "Internal compaction retry, not a user task. The summary was rejected. Return only a shorter checkpoint, without tool calls or executable markup. Use fewer than 500 words and 4000 UTF-8 bytes. Prioritize exact interfaces, remaining work and observed validation over narrative. Keep unfinished work and verification status explicit."));
             }
             let generated_summary_bytes = accepted.as_ref().map(String::len);
             let degradation_reason = storage_only.then_some("storage_archive");
