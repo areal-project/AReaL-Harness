@@ -28,17 +28,18 @@ def collect(repository, limit):
         runs += api(f"repos/{repository}/actions/runs?per_page=100&page={page}")["workflow_runs"]
     snapshot = []
     for run in runs[:limit]:
-        jobs = []
-        page = 1
-        while True:
-            batch = api(
-                f"repos/{repository}/actions/runs/{run['id']}/jobs?filter=all&per_page=100&page={page}"
-            )["jobs"]
-            jobs += batch
-            if len(batch) < 100:
-                break
-            page += 1
-        snapshot.append({"run": run, "jobs": jobs})
+        for attempt in range(1, run.get("run_attempt", 1) + 1):
+            endpoint = f"repos/{repository}/actions/runs/{run['id']}/attempts/{attempt}"
+            attempt_run = api(endpoint) if run.get("run_attempt", 1) > 1 else run
+            jobs = []
+            page = 1
+            while True:
+                batch = api(f"{endpoint}/jobs?per_page=100&page={page}")["jobs"]
+                jobs += batch
+                if len(batch) < 100:
+                    break
+                page += 1
+            snapshot.append({"run": attempt_run, "jobs": jobs})
     return snapshot
 
 
@@ -62,7 +63,7 @@ def phase(name):
         # 这些复合 step 包含构建或安装；没有子报告不能全计作测试。
         return "mixed_work"
     if re.search(
-        r"setup-|checkout@|rust-cache@|actions/cache@|download-artifact@|set up job|prepare|install|build |restore|locate|retain .*runtime|select .*baseline",
+        r"setup-|checkout@|rust-cache@|actions/cache@|download-artifact@|set up job|prepare|install|build |restore|locate|identify .*cache|retain .*runtime|select .*baseline",
         value,
     ):
         return "preparation"
@@ -90,6 +91,10 @@ def predecessors(job, jobs):
     name = job["name"]
     if name in ("GUI gate", "Linux checks and container Runtime", "Release gate"):
         return [entry for entry in jobs if entry["id"] != job["id"]]
+    if name == "macOS Core contracts":
+        shards = [entry for entry in jobs if entry["name"].startswith("macOS Core contracts (")]
+        if shards:
+            return shards
     if name.startswith("macOS GUI smoke (") or name.startswith("macOS Core contracts"):
         return [entry for entry in jobs if entry["name"] == "macOS GUI build and contracts"]
     if name == "Native Linuxbrew install and upgrade":
@@ -107,6 +112,11 @@ def analyze(snapshot):
     rows, steps, runs = [], [], []
     for entry in snapshot:
         run, jobs = entry["run"], entry["jobs"]
+        attempt = run.get("run_attempt", 1)
+        if any(job.get("run_attempt", attempt) != attempt for job in jobs):
+            raise ValueError("Snapshot mixes workflow attempts; collect attempt-specific jobs")
+        started = run.get("run_started_at") or run["created_at"]
+        row_start = len(rows)
         full = any(job["name"] == "macOS native Harness" and job.get("steps") for job in jobs)
         layout = (
             "shared-plan"
@@ -126,7 +136,7 @@ def analyze(snapshot):
                     {
                         "run_id": run["id"],
                         "job_id": job["id"],
-                        "attempt": job.get("run_attempt"),
+                        "attempt": job.get("run_attempt", attempt),
                         "step": step["name"],
                         "phase": category,
                         "seconds": duration,
@@ -134,17 +144,16 @@ def analyze(snapshot):
                     }
                 )
             wall = seconds(job.get("started_at"), job.get("completed_at"))
-            wait = seconds(run["created_at"], job.get("started_at"))
+            wait = seconds(started, job.get("started_at"))
             deps = [
                 dep["completed_at"]
                 for dep in predecessors(job, jobs)
                 if dep.get("completed_at")
                 and dep.get("conclusion") != "skipped"
-                and instant(dep["completed_at"])
-                <= instant(job.get("started_at") or run["created_at"])
+                and instant(dep["completed_at"]) <= instant(job.get("started_at") or started)
             ]
-            ready = max(deps, key=instant) if deps else run["created_at"]
-            dag = min(wait or 0, seconds(run["created_at"], ready) or 0)
+            ready = max(deps, key=instant) if deps else started
+            dag = min(wait or 0, seconds(started, ready) or 0)
             created = job.get("created_at") or ready
             runner_wait = seconds(max((created, ready), key=instant), job.get("started_at"))
             labels = job.get("labels", [])
@@ -166,7 +175,7 @@ def analyze(snapshot):
                     "verify_scope": "native-and-portable" if full else "other",
                     "job_id": job["id"],
                     "job": job["name"],
-                    "attempt": job.get("run_attempt"),
+                    "attempt": job.get("run_attempt", attempt),
                     "conclusion": job.get("conclusion"),
                     "os": os_name,
                     "runner": job.get("runner_name"),
@@ -192,18 +201,16 @@ def analyze(snapshot):
             {
                 "workflow": run["name"],
                 "run_id": run["id"],
+                "attempt": attempt,
                 "sha": run["head_sha"],
                 "event": run["event"],
                 "conclusion": run.get("conclusion"),
                 "layout": layout,
                 "verify_scope": "native-and-portable" if full else "other",
-                "wall_s": seconds(run["created_at"], max(ended, key=instant))
+                "wall_s": seconds(started, max(ended, key=instant))
                 if completed and ended
                 else None,
-                "runner_minutes": sum(
-                    row["wall_s"] or 0 for row in rows if row["run_id"] == run["id"]
-                )
-                / 60,
+                "runner_minutes": sum(row["wall_s"] or 0 for row in rows[row_start:]) / 60,
             }
         )
     grouped = defaultdict(list)
@@ -254,6 +261,7 @@ def analyze(snapshot):
             "Mixed steps include compilation/installation and validation; do not count them as pure test time. Child reports or logs are needed for an exact split.",
             "Cache state is unknown without cache logs. Compare successful runs with the same coverage, platform and cache state; cancelled/failed/incomplete runs are retained separately.",
             "Runner minutes are accumulated observed job wall time, not a billing estimate. Incomplete jobs have no complete duration.",
+            "Each attempt uses its own run_started_at and jobs; the original run creation time is retained in raw data, not counted as rerun queue time.",
         ],
         "runs": runs,
         "jobs": rows,

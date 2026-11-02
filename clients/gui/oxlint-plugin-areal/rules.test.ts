@@ -99,3 +99,43 @@ describe("no-raw-disclosure", () => {
     expect(lint("no-raw-disclosure", source).status).toBe(0);
   });
 });
+
+describe("no-native-title", () => {
+  test.each([
+    'const a = <span title="Path">x</span>;',
+    "const a = <button title={label}>x</button>;",
+    'const a = <svg><g title="x" /></svg>;',
+  ])("rejects %s", (source) => {
+    const result = lint("no-native-title", source);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("R-CHECK-021");
+  });
+  test.each([
+    'const a = <TitleTooltip title="Path"><span>x</span></TitleTooltip>;',
+    'const a = <Button title="Stop">x</Button>;',
+    'const a = <iframe title="Preview" src="a.html" />;',
+    "const a = <svg><title>Logo</title></svg>;",
+  ])("accepts %s", (source) => {
+    expect(lint("no-native-title", source).status).toBe(0);
+  });
+});
+
+describe("no-transition-all", () => {
+  test.each([
+    'const a = <div className="font-medium transition-all" />;',
+    'const a = cn("transition-all duration-150", b);',
+    "const a = `hover:bg-muted transition-all ${b}`;",
+    'const a = "motion-safe:transition-all";',
+  ])("rejects %s", (source) => {
+    const result = lint("no-transition-all", source);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("R-CHECK-021");
+  });
+  test.each([
+    'const a = <div className="transition-colors" />;',
+    'const a = "transition-[color,background-color]";',
+    "// transition-all would animate layout\nconst a = 1;",
+  ])("accepts %s", (source) => {
+    expect(lint("no-transition-all", source).status).toBe(0);
+  });
+});

@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { SnapShotAttachment } from "./snapshots/SnapShotAttachment.js";
 import { snapShotFile } from "./snapshots/source.js";
 import { Button } from "@areal/ui";
@@ -141,7 +142,9 @@ export function ComposerAttachment({
             <ScanText size={22} />
           </AttachmentCard.Icon>
           <AttachmentCard.Text>
-            <span title={name}>{name}</span>
+            <TitleTooltip title={name}>
+              <span>{name}</span>
+            </TitleTooltip>
             {!actualFile || isText(actualFile) ? (
               <Button
                 unstyled

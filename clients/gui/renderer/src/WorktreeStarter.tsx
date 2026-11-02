@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { useEffect, useRef, useState } from "react";
 import { GitBranch, GitFork, LoaderCircle, Settings } from "lucide-react";
 import { Button } from "./components/ui/button.js";
@@ -7,6 +8,7 @@ import { SettingsSwitch } from "./settings/SettingsPageParts.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import type { Action, Data } from "./services.js";
 import { WorktreePicker } from "@areal/ui/experimental";
+import { DelayedVisible } from "@areal/ui";
 import "./Worktree.css";
 
 export type WorktreeSelection = {
@@ -157,12 +159,12 @@ export function WorktreeStarter({
             <>
               <p className="worktree-picker-heading flex items-center gap-2">
                 {t("worktree.configureLocal")}
-                {loading && (
+                <DelayedVisible active={loading}>
                   <LoaderCircle
                     className="size-3 shrink-0 animate-spin motion-reduce:animate-none"
                     aria-hidden="true"
                   />
-                )}
+                </DelayedVisible>
               </p>
               <WorktreePicker.Row
                 icon={<GitFork aria-hidden="true" />}
@@ -189,11 +191,13 @@ export function WorktreeStarter({
                 icon={<GitBranch aria-hidden="true" />}
                 label={t("worktree.branchLabel")}
                 value={
-                  <span
+                  <TitleTooltip
                     title={selected.ref === "HEAD" ? (sourceBranch ?? undefined) : selected.ref}
                   >
-                    {selected.ref === "HEAD" ? (sourceBranch ?? selected.ref) : selected.ref}
-                  </span>
+                    <span>
+                      {selected.ref === "HEAD" ? (sourceBranch ?? selected.ref) : selected.ref}
+                    </span>
+                  </TitleTooltip>
                 }
                 disabled={busy}
                 aria-label={`${t("worktree.startBranch")} ${t("worktree.branchLabel")} ${selected.ref === "HEAD" ? (sourceBranch ?? selected.ref) : selected.ref}`}
@@ -307,11 +311,11 @@ export function WorktreeStarter({
               </WorktreePicker.Page>
             </>
           )}
-          {loading && (
+          <DelayedVisible active={loading}>
             <p role="status" className="sr-only">
               {t("worktree.loading")}
             </p>
-          )}
+          </DelayedVisible>
           {error && (
             <div className="worktree-picker-feedback">
               <p role="alert">{error}</p>

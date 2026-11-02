@@ -40,7 +40,9 @@ export function ThinkingStatus({
       <span key={text} className="areal-thinking-message">
         <span>{text}</span>
         <span className="areal-thinking-sweep" aria-hidden="true">
-          {text}
+          <span className="areal-thinking-band">
+            <span>{text}</span>
+          </span>
         </span>
       </span>
     </span>

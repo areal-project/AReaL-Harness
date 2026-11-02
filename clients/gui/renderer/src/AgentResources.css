@@ -245,16 +245,11 @@
   border: 1px solid currentColor;
   border-right-color: transparent;
   border-radius: 50%;
-  animation: task-resource-spin 1s linear infinite;
+  animation: task-resource-spin 1s linear var(--motion-loop);
 }
 @keyframes task-resource-spin {
   to {
     transform: rotate(360deg);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .task-resource-status[data-running]::before {
-    animation: none;
   }
 }
 

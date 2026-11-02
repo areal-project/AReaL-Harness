@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { Popover, PopoverContent, PopoverTrigger } from "@areal/ui";
 import { AttachmentCard } from "@areal/ui/experimental";
 import { useEffect, useState } from "react";
@@ -96,7 +97,9 @@ export function McpComposerAttachments({
                     <FileText size={22} />
                   </AttachmentCard.Icon>
                   <AttachmentCard.Text>
-                    <span title={name}>{name}</span>
+                    <TitleTooltip title={name}>
+                      <span>{name}</span>
+                    </TitleTooltip>
                     <PopoverTrigger
                       disabled={disabled}
                       aria-label={t("mcp.attachments.open", { name })}

@@ -16,7 +16,12 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const { values } = parseArgs({
-  options: { source: { type: "string" }, executable: { type: "string" } },
+  options: {
+    source: { type: "string" },
+    executable: { type: "string" },
+    "measure-return": { type: "boolean" },
+    "check-detail": { type: "boolean" },
+  },
 });
 const source = resolve(values.source || join(gui, "scripts/fixtures/history-compat"));
 const fixtureMode = source === join(gui, "scripts/fixtures/history-compat");
@@ -177,8 +182,17 @@ try {
       const record = JSON.parse(bytes);
       assert.equal(record.thread.id, name.slice(0, -5), "History filename and thread ID differ");
       assertIdle(record);
+      if (
+        fixtureMode &&
+        profiles.profiles.find((profile) => profile.id === "paged-history")?.threadId ===
+          record.thread.id
+      ) {
+        for (const turn of record.thread.turns)
+          for (const item of turn.items)
+            if (item.type === "agentMessage") item.text = item.text.repeat(4);
+      }
       records.set(record.thread.id, record.thread);
-      if (fixtureMode) originals.set(record.thread.id, structuredClone(record));
+      originals.set(record.thread.id, structuredClone(record));
       // 受控样本的占位工作区只在副本中填充；私有历史保留全部原始字节及 cwd。
       let copied = bytes;
       if (fixtureMode) {
@@ -330,7 +344,7 @@ try {
         id: turn.id,
         status: turn.status,
         error: turn.error ?? null,
-        items: turn.items.map(({ id, type, text }) => ({ id, type, text })),
+        items: turn.items.map(({ id, type, text, content }) => ({ id, type, text, content })),
       }));
     assert.deepEqual(
       content(thread),
@@ -345,8 +359,261 @@ try {
       await selectConversation(page, profile.threadId);
       await page.getByText(profile.visibleText, { exact: false }).last().waitFor();
     }
+    if (profile.id === "paged-history") {
+      for (const suffix of ["39", "00", "39"]) {
+        const user = page.locator(`[data-side-item-id="paged-user-${suffix}"]`);
+        const answer = page.locator(`[data-side-item-id="paged-item-${suffix}"]`);
+        if (suffix === "00") {
+          for (let attempt = 0; attempt < 10 && !(await user.count()); attempt++) {
+            const before = await read();
+            const first = before.turns[0]?.items[0]?.id;
+            await page.locator(".messages").hover();
+            await page.mouse.wheel(0, -1000000);
+            await page.waitForFunction(
+              async ({ projectId, threadId, first }) => {
+                const thread = (await window.arealDesktop.snapshot()).projects.find(
+                  (value) => value.id === projectId,
+                )?.state.threads[threadId];
+                return (
+                  thread &&
+                  !thread.displayHistory.loadingOlder &&
+                  (thread.displayHistory.complete || thread.turns[0]?.items[0]?.id !== first)
+                );
+              },
+              { ...request, first },
+              { timeout: 30000 },
+            );
+          }
+        }
+        await user.scrollIntoViewIfNeeded();
+        await user.getByText(`HISTORY_QUESTION_${suffix}`).waitFor();
+        await answer.getByText(`HISTORY_PAGE_${suffix}`, { exact: false }).waitFor();
+        assert.equal(
+          await user.evaluate((node, answerId) => {
+            const answerNode = document.querySelector(`[data-side-item-id="${answerId}"]`);
+            return Boolean(
+              answerNode &&
+              node.compareDocumentPosition(answerNode) & Node.DOCUMENT_POSITION_FOLLOWING,
+            );
+          }, `paged-item-${suffix}`),
+          true,
+          `Question and answer order changed for turn ${suffix}`,
+        );
+      }
+    }
     await call("history", { ...request, operation: "release" });
     checks.push({ profile: profile.id, turns: thread.turns.length, olderPages: pages });
+  }
+  // 对独立源记录建立期望，记录切换过程中每次 DOM 变更时已挂载和视口内的基本消息。
+  const observations = [];
+  for (const project of isolatedProjects) {
+    for (const threadId of sessions.get(project.id)) {
+      if (!(await page.getByTestId(`task-item-${threadId}`).count())) {
+        observations.push({
+          projectId: project.id,
+          threadId,
+          skipped: "not in conversation list",
+          missingContext: [],
+          orderErrors: [],
+        });
+        continue;
+      }
+      const original = originals.get(threadId).thread;
+      const expected = original.turns.flatMap((turn) =>
+        turn.items
+          .filter((item) => item.type === "userMessage" || item.type === "agentMessage")
+          .map((item) => ({ id: item.id, turnId: turn.id, type: item.type })),
+      );
+      await page.evaluate(
+        ({ projectId, threadId, ids }) => {
+          window.__historyObservation?.observer.disconnect();
+          const samples = [];
+          const pending = [];
+          const sample = () => {
+            const workbench = document.querySelector('[data-testid="areal-workbench"]');
+            if (workbench?.dataset.threadId !== threadId) return;
+            const reader = document.querySelector(".messages");
+            if (!reader) return;
+            const bounds = reader.getBoundingClientRect();
+            const nodes = [...reader.querySelectorAll("[data-side-item-id]")].filter((node) =>
+              ids.includes(node.dataset.sideItemId),
+            );
+            const entry = {
+              at: performance.now(),
+              mounted: nodes.map((node) => node.dataset.sideItemId),
+              visible: nodes
+                .filter((node) => {
+                  const rect = node.getBoundingClientRect();
+                  return rect.bottom > bounds.top && rect.top < bounds.bottom;
+                })
+                .map((node) => node.dataset.sideItemId),
+            };
+            samples.push(entry);
+            pending.push(
+              window.arealDesktop.snapshot().then((snapshot) => {
+                const thread = snapshot.projects.find((value) => value.id === projectId)?.state
+                  .threads[threadId];
+                entry.projectionAt = performance.now();
+                entry.projection =
+                  thread?.turns.flatMap((turn) => turn.items.map((item) => item.id)) ?? [];
+              }),
+            );
+          };
+          const observer = new MutationObserver(sample);
+          observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+          window.__historyObservation = {
+            observer,
+            samples,
+            sample,
+            pending,
+            start: performance.now(),
+          };
+        },
+        { projectId: project.id, threadId, ids: expected.map((item) => item.id) },
+      );
+      await selectConversation(page, threadId);
+      await page.waitForFunction(() =>
+        Boolean(document.querySelector(".messages [data-side-item-id]")),
+      );
+      const projection = await page.evaluate(
+        async ({ projectId, threadId }) => {
+          const thread = (await window.arealDesktop.snapshot()).projects.find(
+            (value) => value.id === projectId,
+          )?.state.threads[threadId];
+          return thread?.turns.flatMap((turn) => turn.items.map((item) => item.id)) ?? [];
+        },
+        { projectId: project.id, threadId },
+      );
+      const captured = await page.evaluate(async () => {
+        const observation = window.__historyObservation;
+        observation.sample();
+        observation.observer.disconnect();
+        await Promise.all(observation.pending);
+        return { start: observation.start, samples: observation.samples };
+      });
+      const precedingUser = new Map();
+      for (const turn of original.turns) {
+        let user;
+        for (const item of turn.items) {
+          if (item.type === "userMessage") user = item.id;
+          if (item.type === "agentMessage" && user) precedingUser.set(item.id, user);
+        }
+      }
+      const missingContext = captured.samples.flatMap((sample) =>
+        sample.mounted.flatMap((id) => {
+          const user = precedingUser.get(id);
+          return user && !sample.mounted.includes(user)
+            ? [{ at: sample.at, response: id, user }]
+            : [];
+        }),
+      );
+      const orderErrors = captured.samples.filter((sample) => {
+        const indexes = sample.mounted.map((id) => expected.findIndex((item) => item.id === id));
+        return indexes.some((index, position) => position > 0 && index <= indexes[position - 1]);
+      });
+      observations.push({
+        projectId: project.id,
+        threadId,
+        expected,
+        projection,
+        missingContext,
+        orderErrors,
+        ...captured,
+      });
+    }
+  }
+  await writeFile(
+    join(scratch, "reading-observations.json"),
+    JSON.stringify(observations, null, 2),
+    { mode: 0o600 },
+  );
+  assert.ok(
+    observations.every(
+      (observation) =>
+        observation.missingContext.length === 0 && observation.orderErrors.length === 0,
+    ),
+    "A sampled DOM had a response without its user context or changed basic message order",
+  );
+  if (values["check-detail"]) {
+    const project = isolatedProjects.find((value) => sessions.get(value.id).length);
+    const threadId = sessions.get(project.id)[0];
+    await selectConversation(page, threadId);
+    const group = page.locator("[data-turn-id] .turn-progress").first();
+    const groupSummary = group.locator(".turn-progress-summary");
+    if ((await groupSummary.getAttribute("aria-expanded")) !== "true") await groupSummary.click();
+    const deferred = group.locator("[data-tool-id]").first();
+    const activity = deferred
+      .locator(
+        'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " areal-activity-group ")][1]',
+      )
+      .locator(".areal-disclosure-trigger")
+      .first();
+    if ((await activity.getAttribute("aria-expanded")) !== "true") await activity.click();
+    await deferred.waitFor();
+    const itemId = await deferred.getAttribute("data-tool-id");
+    await group.evaluate((node) => {
+      node.dataset.historyProbe = "same-group";
+    });
+    await deferred.locator(".tool-summary-row").click();
+    await page.waitForFunction(
+      async ({ projectId, threadId, itemId }) => {
+        const snapshot = await window.arealDesktop.snapshot();
+        const thread = snapshot.projects.find((value) => value.id === projectId)?.state.threads[
+          threadId
+        ];
+        return (
+          thread?.turns.flatMap((turn) => turn.items).find((item) => item.id === itemId)?.type ===
+          "dynamicToolCall"
+        );
+      },
+      { projectId: project.id, threadId, itemId },
+      { timeout: 30000 },
+    );
+    assert.equal(await deferred.getByRole("alert").count(), 0);
+    assert.equal(await deferred.locator('[aria-expanded="true"]').count(), 1);
+    assert.equal(
+      await group.getAttribute("data-history-probe"),
+      "same-group",
+      "Loading detail replaced its process group",
+    );
+    checks.push({ detailItem: itemId, processGroupPreserved: true });
+  }
+  if (values["measure-return"]) {
+    const project = isolatedProjects.find((value) => sessions.get(value.id).length >= 2);
+    assert.ok(project, "Return timing requires two conversations in one project");
+    const [target, other] = sessions.get(project.id);
+    const items = originals.get(target).thread.turns.at(-1).items;
+    const user = items.find((item) => item.type === "userMessage")?.id;
+    const answer = items.findLast((item) => item.type === "agentMessage")?.id;
+    assert.ok(user && answer, "Return timing requires a user and answer");
+    const elapsed = [];
+    for (let n = 0; n < 20; n++) {
+      await selectConversation(page, other);
+      const start = performance.now();
+      await selectConversation(page, target);
+      await page.waitForFunction(
+        ({ user, answer }) =>
+          Boolean(
+            document.querySelector(`[data-side-item-id="${user}"]`) &&
+            document.querySelector(`[data-side-item-id="${answer}"]`),
+          ),
+        { user, answer },
+      );
+      elapsed.push(performance.now() - start);
+    }
+    const sorted = [...elapsed].sort((a, b) => a - b);
+    const timing = {
+      scope: "preobserved, selection to mounted pair",
+      elapsed,
+      count: elapsed.length,
+      p50: sorted[9],
+      p95: sorted[18],
+      max: sorted.at(-1),
+      failures: 0,
+    };
+    await writeFile(join(scratch, "return-timing.json"), JSON.stringify(timing, null, 2), {
+      mode: 0o600,
+    });
   }
   copyUnchangedWhileOpen = await unchanged(join(scratch, "core"), copyHashes);
   assert.equal(

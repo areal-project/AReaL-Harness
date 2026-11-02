@@ -225,9 +225,22 @@ const rejectedSchedule = (error) =>
     error.outcome?.kind === "noMutation");
 const readThread = async (projectId, threadId) => {
   await backend.command("open", { projectId, threadId });
-  return backend.snapshot().projects.find((project) => project.id === projectId)?.state?.threads?.[
-    threadId
-  ];
+  const history = { projectId, threadId, viewId: randomUUID() };
+  await backend.command("history", { ...history, operation: "acquire" });
+  const thread = backend.snapshot().projects.find((project) => project.id === projectId)?.state
+    ?.threads?.[threadId];
+  for (const item of thread?.turns?.flatMap((turn) => turn.items ?? []) ?? []) {
+    if (item.type === "historyDeferred" && item.originalType === "dynamicToolCall")
+      await backend.command("history", {
+        ...history,
+        operation: "loadItem",
+        itemId: item.id,
+      });
+  }
+  const loaded = backend.snapshot().projects.find((project) => project.id === projectId)?.state
+    ?.threads?.[threadId];
+  await backend.command("history", { ...history, operation: "release" });
+  return loaded;
 };
 const interaction = async (projectId, threadId, kind) => {
   await backend.command("open", { projectId, threadId });

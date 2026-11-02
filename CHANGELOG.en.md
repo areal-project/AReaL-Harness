@@ -2,6 +2,17 @@
 
 # Changelog
 
+## GUI 0.1.18 (Unreleased)
+
+### Fixed and changed
+
+- Prioritize complete user prompts and Agent replies to reduce waiting and missing messages in tool-heavy histories. Preserve the reading position when loading older history.
+- Keep compact tool summaries and automatically fetch details on expansion, removing repeated notices that large records need manual loading.
+- Show reasoning efforts allowed by the model configuration while keeping Fast independently selectable.
+- Show copy, branch and time together after a turn ends. Center pause, retry recovery, model change and compaction notices between separator lines. Align control tooltips, focus and motion feedback.
+
+Source preparation only; installation packages and update channels have not been published.
+
 ## GUI 0.1.17
 
 ### Fixed and changed
@@ -48,6 +59,15 @@ The previous installation checks in 0.1.13 and 0.1.14 can block automatic upgrad
 This macOS Apple Silicon release is distributed as a Developer ID-signed, Apple-notarized DMG for manual installation. Back up configuration and history before upgrading; older apps may not read data saved by this version. Finish running tasks and safely stop their backend before quitting and replacing the application. After launching the replacement, verify 0.1.13 in About AReaL Harness. The existing automatic-update channel is managed separately.
 
 In very narrow Side panels, model controls can extend beyond the panel. Widen the panel if this occurs.
+
+## CLI / TUI 0.1.8 (Unreleased)
+
+### Changes
+
+- Advance the shared source version for CLI, TUI and their bundled Core and Runtime.
+- Apply an explicit CLI `--model` before creating a session, so an unavailable default provider no longer causes a misleading “thread not found” error. Missing default providers report a model configuration error.
+
+Installation packages and Homebrew updates have not been published; installation instructions still refer to publicly available versions.
 
 ## CLI / TUI 0.1.7
 

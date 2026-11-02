@@ -1,3 +1,4 @@
+import { DelayedVisible } from "@areal/ui";
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
 import { BackendServiceStatus, type BackendStatusProps } from "../BackendStatusNotice.js";
 import { useI18n, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.js";
@@ -241,11 +242,11 @@ export function ServiceStatusSettings({
             }
           />
         </SettingsGroupCard>
-        {(busy || (reading && refreshing)) && (
+        <DelayedVisible active={busy || (reading && refreshing)}>
           <p role="status" className="settings-section-desc">
             {t("settings.serviceStatusSettings.processing")}
           </p>
-        )}
+        </DelayedVisible>
         {notice && <p role="status">{formatUiMessage(t, notice)}</p>}
         {readError && (
           <p role="alert" className="text-destructive">

@@ -39,3 +39,14 @@ function relativeLuminance(background: string) {
 export function paletteVariables(p: Palette, dark = false): Record<string, string> {
   return derivePaletteVariables(p, dark, readableForeground);
 }
+
+/**
+ * 切换主题时暂停全部过渡：否则背景瞬间变色，而带颜色过渡的控件慢半拍跟上。
+ * 先应用主题并强制一次样式计算，再在下一帧恢复过渡。
+ */
+export function applyThemeWithoutTransitions(root: HTMLElement, apply: () => void) {
+  root.setAttribute("data-theme-switching", "");
+  apply();
+  void getComputedStyle(root).color;
+  requestAnimationFrame(() => root.removeAttribute("data-theme-switching"));
+}

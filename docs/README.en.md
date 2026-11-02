@@ -24,6 +24,8 @@ Maintained pages pair a Chinese `.md` file with an English `.en.md` file in the 
 
 Remote v2 design and implementation boundaries: [architecture](design/remote-control.en.md) · [API](api/remote-control.en.md) · [connectivity and deployment](guides/remote-control.en.md) · [acceptance plan](development/remote-control-testing.en.md) · [Host ownership](adr/0008-remote-host-ownership.en.md) · [iOS v1 implementation spec](development/ios-remote-v1-spec.en.md). Each page distinguishes implemented slices from future design; these documents do not claim full P0 delivery.
 
+Shared Host (not implemented): [implementation spec](development/shared-host-spec.en.md). One Host per OS user, with CLI, TUI, GUI, Web and the phone as clients; supersedes the earlier [independent environment service design](design/environment-service.en.md) and [phased plan](development/environment-service-plan.en.md).
+
 Client UI implementation and design constraints: internal [design rules v1](../clients/gui/design-system/README.md) and [@areal/ui components and tokens](../clients/gui/packages/ui/README.en.md).
 
 - [Answer feedback](guides/user-feedback.en.md)

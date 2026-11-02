@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { useEffect, useState } from "react";
 import { Button } from "./components/ui/button.js";
 import {
@@ -194,7 +195,9 @@ export function WorkspaceFileCard({
     >
       <FileReference size={24} />
       <span className="conversation-web-preview-info">
-        <strong title={path.replace(/^\.\//, "")}>{name}</strong>
+        <TitleTooltip title={path.replace(/^\.\//, "")}>
+          <strong>{name}</strong>
+        </TitleTooltip>
         <small role={message || notice ? "status" : undefined}>
           {message || notice || (label && label !== name ? label : type)}
         </small>

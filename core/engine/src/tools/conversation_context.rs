@@ -154,6 +154,7 @@ impl Engine {
                 max_bytes - metadata_bytes,
                 None,
                 None,
+                false,
             )
             .await
             .map_err(|error| match error {

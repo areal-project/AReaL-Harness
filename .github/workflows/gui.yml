@@ -333,6 +333,17 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           shared-key: host-debug-${{ runner.os }}
+      - name: Identify private Bash cache
+        id: runtime-shell
+        run: |
+          key="$(python3 scripts/prepare-runtime-shell.py --cache-key)"
+          test -n "$key"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+      - name: Restore verified private Bash build
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: target/runtime-shell/${{ steps.runtime-shell.outputs.key }}
+          key: runtime-shell-${{ runner.os }}-${{ runner.arch }}-${{ steps.runtime-shell.outputs.key }}
       - name: Locate GUI dependency cache
         id: tools
         run: |
@@ -412,7 +423,7 @@ jobs:
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 2
       matrix: ${{ fromJSON(needs.scope.outputs.core_matrix) }}
     steps:
       - name: Prepare isolated contract temporary root
@@ -457,7 +468,7 @@ jobs:
           test -x target/debug/areal-runtime
           test -x target/debug/areal-runtime-fs
           test -x target/debug/areal-runtime-reaper
-      - name: Verify registered Core-dependent contracts and native checks
+      - name: Verify registered Core-dependent contracts
         env:
           AREAL_CORE_BIN: ${{ github.workspace }}/target/debug/areal
           CHECK_GROUP: ${{ matrix.group }}
@@ -466,12 +477,18 @@ jobs:
           args=()
           if [ -n "$CHECK_ITEM" ]; then args+=(--item "$CHECK_ITEM"); fi
           python3 scripts/ci-preflight.py --groups "$CHECK_GROUP" "${args[@]}" --dependencies target/ci/checks/gui-build/report.json --output "target/ci/checks/core-${{ matrix.lane }}" 2>&1 | tee target/ci/gui/core-contracts.log
+      - name: Verify independent native and design checks
+        if: ${{ !cancelled() && matrix.native }}
+        env:
+          AREAL_CORE_BIN: ${{ github.workspace }}/target/debug/areal
+        run: python3 scripts/ci-preflight.py --groups gui-native-checks --dependencies target/ci/checks/gui-build/report.json --output target/ci/checks/core-native-checks 2>&1 | tee target/ci/gui/native-checks.log
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
           name: macos-core-contracts-${{ matrix.lane }}-evidence
           path: |
             target/ci/gui/core-contracts.log
+            target/ci/gui/native-checks.log
             target/ci/gui/core-contracts/**/report.json
             ${{ runner.temp }}/gui-core-contracts/
           retention-days: 7
@@ -479,12 +496,14 @@ jobs:
         if: always()
         with:
           name: ci-checks-${{ github.run_id }}-${{ github.run_attempt }}-core-${{ matrix.lane }}
-          path: target/ci/checks/core-${{ matrix.lane }}/
+          path: |
+            target/ci/checks/core-${{ matrix.lane }}/
+            target/ci/checks/core-native-checks/
           if-no-files-found: warn
           retention-days: 7
 
 
-  # 保留原检查名；三条 macOS lane 全部通过才能发布成功状态。
+  # 保留原检查名；两条 macOS lane 及各自的独立检查必须全部通过。
   core-contracts:
     name: macOS Core contracts
     needs: [scope, core-contract-shards]
@@ -507,7 +526,7 @@ jobs:
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      # 为共享 macOS 资源中的原生合同/Harness 留出调度空间。
+      # 限制本矩阵并发；其他 workflow 仍共同竞争账户的 macOS 配额。
       max-parallel: 4
       matrix: ${{ fromJSON(needs.scope.outputs.smoke_matrix) }}
     steps:

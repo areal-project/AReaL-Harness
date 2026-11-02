@@ -17,6 +17,56 @@ const intl = createIntl({ locale: "zh-CN", messages: catalogs["zh-CN"] });
 const t: Translate = (id, values) => intl.formatMessage({ id }, values);
 
 describe("history group identity", () => {
+  it("keeps process settlement and all detail handles when command output is deferred", () => {
+    const command = (id: string, tool: string, state: string, commandStatus: string) => ({
+      id,
+      type: "dynamicToolCall",
+      tool,
+      arguments: { processId: "p" },
+      status: "completed",
+      success: true,
+      contentItems: [
+        {
+          type: "text",
+          text: JSON.stringify({ processId: "p", state, commandStatus, outputReadComplete: true }),
+        },
+      ],
+    });
+    const source = [
+      command("start", "run_command", "running", "running"),
+      command("end", "read_process", "exited", "succeeded"),
+    ];
+    const deferred = source.map((preview) => ({
+      id: preview.id,
+      type: "historyDeferred",
+      originalType: "dynamicToolCall",
+      preview,
+    }));
+    const grouped = executionSegments(deferred, "completed")[0].items[0];
+    expect(grouped.processResult.commandStatus).toBe("succeeded");
+    expect(grouped.processRecords.map((item: Data) => item.deferredHistory.id)).toEqual([
+      "start",
+      "end",
+    ]);
+    expect(toolPresentation(grouped).running).toBe(false);
+  });
+  it("keeps deferred tool details inside the same process group after loading", () => {
+    const before = [read("a"), read("b")];
+    const deferred = before.map((item) => ({
+      id: item.id,
+      type: "historyDeferred",
+      originalType: "dynamicToolCall",
+    }));
+    const groups = (items: Data[]) => progressGroups(executionSegments(items, "completed"), "t");
+    expect(groups(deferred).map((group) => group.id)).toEqual(
+      groups(before).map((group) => group.id),
+    );
+    expect(groups(deferred)[0].progress).toBe(true);
+    expect(executionSegments(deferred, "completed")[0].items.map((item: Data) => item.id)).toEqual([
+      "a",
+      "b",
+    ]);
+  });
   it("keeps a reasoning disclosure and ordered reload slot across a known page gap", () => {
     const first = { id: "r1", type: "reasoning", summary: ["first"] };
     const last = { id: "r2", type: "reasoning", summary: ["last"] };

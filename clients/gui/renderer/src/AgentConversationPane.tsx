@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { Button } from "@areal/ui";
 import { useCallback, useEffect, useState } from "react";
 import { Messages } from "./Messages.js";
@@ -80,7 +81,9 @@ export function AgentConversationPane({
         <AgentAvatar id={childId} />
         <div className="agent-conversation-title">
           <span>{t("chat.agent.conversation")}</span>
-          <strong title={title}>{title}</strong>
+          <TitleTooltip title={title}>
+            <strong>{title}</strong>
+          </TitleTooltip>
         </div>
         <span role="status">{agentStatus(owned ? thread.turns?.at(-1)?.status : undefined)}</span>
       </div>

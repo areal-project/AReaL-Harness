@@ -409,6 +409,7 @@ impl Engine {
         allowed: Option<&std::collections::BTreeSet<String>>,
         max_bytes: usize,
         mut envelope: Value,
+        conversation: bool,
     ) -> Result<(Value, broadcast::Receiver<Value>)> {
         let cell = self.raw_cell(thread_id).await?;
         let state = cell.state.lock().await;
@@ -446,6 +447,7 @@ impl Engine {
                 max_bytes,
                 Some(envelope),
                 empty_active_turn,
+                conversation,
             )
             .await?;
         Ok((result, cell.events.subscribe()))
@@ -470,7 +472,15 @@ impl Engine {
             state.thread.clone()
         };
         self.store
-            .own_history_page(thread, identity.into(), cursor, max_bytes, None, None)
+            .own_history_page(
+                thread,
+                identity.into(),
+                cursor,
+                max_bytes,
+                None,
+                None,
+                false,
+            )
             .await
     }
 

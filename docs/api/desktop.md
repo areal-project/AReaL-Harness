@@ -219,13 +219,13 @@ options.readOnly 收窄 Scope 写根和网络；toolAllowlist 收窄 Profile；p
 
 Desktop 在同步观察结果内一次安装会话内容、`thread.desktop.configuration`、队列与交互。显式模型不再重复读取三项元数据；历史隐式默认模型仍按其保存 revision 查询展示名称与有效参数。最新轮多页补全先累积页面，结束时合并到当时的实时模型，保留期间到达的增量，再发布内容。输入区加载占位沿用消息区和底部 Composer 的布局，提交与偏好提示不参与消息视口高度计算。
 
-GUI 协商 `boundedObservation` 与 `boundedHistory` 后，普通、Side 和归档聊天统一使用 `areal/thread/observe {mode:"bounded",maxBytes:262144}` 建立显示基线。Core 明确返回 `HISTORY_BUDGET_TOO_SMALL` 时，仅增大一次到 1 MiB；仍失败则保留当前聊天的读取错误。`CoreClient` 对该次完整响应独立执行同样的字节上限，安装基线仍在同步 `onResult` 中完成。浏览器宿主恢复另须 `boundedResume`；不以附加工具替代原有宿主绑定。缺少新能力的 Core 保留完整历史兼容路径，不能提供分页容量保证。
+GUI 协商 `boundedObservation` 与 `boundedHistory` 后，普通、Side 和归档聊天统一使用 1 MiB 上限建立显示基线。Core 同时声明 `conversationObservation` 时使用 `areal/thread/observe {mode:"conversation",maxBytes:1048576}`，否则使用 `mode:"bounded"`。对话模式的已结算普通工具详情通过现有 `loadItem` 按需展开，仍属于原来的过程分组；模式及分页语义见[本地服务契约](local-service.md#实例兼容性与历史)。超出预算的错误保留在当前聊天。`CoreClient` 对完整响应独立执行同样的字节上限，安装基线仍在同步 `onResult` 中完成。浏览器宿主恢复另须 `boundedResume`；不以附加工具替代原有宿主绑定。缺少有界能力的 Core 保留完整历史兼容路径，不能提供分页容量保证。
 
 Desktop 的只读 `history` 命令接受 `{projectId,threadId,viewId,operation:"acquire"|"loadOlder"|"loadItem"|"retain"|"ensureAnchor"|"release",itemId?,pageId?,revision?,anchor?}`。`loadItem` 接受 `itemId`，`loadOlder` 可用 `pageId` 回读缺口；游标、预算与 Core 身份由 Desktop 持有。Messages 为每个阅读视图获取并释放独立 `viewId`，主聊天、Side 和子对话复用同一入口。加载旧页按 Turn/Item ID 合并到当前显示投影，保留读取期间的新事件。Fork 继承历史和 Side 参考快照继续保留原有来源契约。
 
 `retain {revision,anchor:{turnId,itemId}|null}` 登记该视图的阅读目标，null 释放目标。`ensureAnchor {revision,anchor:{turnId,itemId}}` 保证目标正文可用，返回 `{supported:true,revision,viewGeneration,kind}`。kind 为 `ready`、`missing`、`cancelled` 或 `limited`；limited 的 reason 为 `scanBudget`、`cacheBudget`、`deferred` 或 `unavailable`。revision 只能递增，相同 revision 只能重复相同目标。retain 的结果为 `{supported:true,retained,revision,viewGeneration}`，retained=false 表示拒绝过期目标。新目标、释放视图或窗口代际变化使旧恢复结果失效。恢复每次最多读取 32 页或 8 MiB，不自动展开大型条目；达到预算保留可重试状态。旧 Core 返回 supported=false。此新增 Desktop 命令不改变 Core RPC。
 
-显示缓存最多保留 8 个聊天窗口，每个保留最新基线和 4 个已加载旧页；更深翻页淘汰非阅读目标页，并在消息流明确标出省略区间。所有视图的目标页共同受保护；四页预算无法容纳新页时读取失败，既有目标正文保留。当前快照的轻量拓扑最多 64 KiB，记录内容身份与语义边界，不保存正文。已知拓扑的缺口不改变既有分组身份，未知缺口仍分隔分组。最后一个阅读视图释放时删除旧页和显式展开内容；另一个 GUI 的同一聊天视图仍存在时不释放其内容，也不取消 Core 执行或删除持久历史。完整条目及正在拼接的条目共享 128 MiB 序列化字节预算。打开聊天不自动展开大型 `historyDeferred` 条目；用户点击“加载完整内容”后，Desktop 才按不超过 1 MiB 的响应分片校验 UTF-8 偏移、总长度和版本，完成后替换原占位项。显式展开会增加该条目的可见内存，预算不代表进程峰值内存上限。
+显示缓存最多保留 8 个聊天窗口，每个保留最新基线和 16 个已加载旧页（普通旧页正文预算合计约 4 MiB），减少常规会话上下往返时的淘汰与重读；更深翻页淘汰非阅读目标页，并在消息流明确标出省略区间。所有视图的目标页共同受保护；十六页预算无法容纳新页时读取失败，既有目标正文保留。当前快照的轻量拓扑最多 64 KiB，记录内容身份与语义边界，不保存正文。已知拓扑的缺口不改变既有分组身份，未知缺口仍分隔分组。最后一个阅读视图释放时删除旧页和显式展开内容；另一个 GUI 的同一聊天视图仍存在时不释放其内容，也不取消 Core 执行或删除持久历史。完整条目及正在拼接的条目共享 128 MiB 序列化字节预算。打开聊天不自动展开大型 `historyDeferred` 条目；用户点击“加载完整内容”后，Desktop 才按不超过 1 MiB 的响应分片校验 UTF-8 偏移、总长度和版本，完成后替换原占位项。显式展开会增加该条目的可见内存，预算不代表进程峰值内存上限。
 
 旧页游标失效只重建对应聊天基线；条目版本变化丢弃已读片段并至多从 Core 提供的 `restartCursor` 重读一次。加载中保留真实占位项和进度，错误不伪装为 Agent 消息。自动文件变更摘要只读取已加载显示内容；大型工具记录尚未加载时明确提示先展开，不通过完整 `thread/read` 绕过预算。所有历史读取均不重放提交。
 

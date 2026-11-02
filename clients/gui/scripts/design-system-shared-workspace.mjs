@@ -129,7 +129,7 @@ export async function runSharedWorkspace(page, scratch, report, baseline) {
     await alternate.click();
     await page.locator('[data-model-value="preview-alternate/shared"]').getByRole("radio").click();
     await modelMenu.waitFor({ state: "detached" });
-    assert.match(await mainModel.getAttribute("title"), /preview-alternate/);
+    assert.match(await mainModel.getAttribute("aria-description"), /preview-alternate/);
     await mainModel.click();
     assert.equal(
       await page

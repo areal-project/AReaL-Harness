@@ -138,9 +138,9 @@ test("late loadOlder deduplicates a cursor committed by ensureAnchor without rev
 });
 
 test("loadOlder cache refusal leaves cursor and topology untouched", async () => {
-  const f = anchorFixture();
+  const f = anchorFixture(20);
   await f.backend.openThread(f.project, "thread");
-  for (let n = 0; n < 4; n++) {
+  for (let n = 0; n < 16; n++) {
     const viewId = `pin-${n}`;
     await f.history("acquire", { viewId });
     await f.history("ensureAnchor", { viewId, revision: 1, anchor: target(n) });
@@ -283,7 +283,7 @@ test("page topology stays bounded while pinned bodies and evicted cursors remain
   const window = f.backend.historyWindow(f.project, "thread");
   const history = f.project.model.state.threads.thread.displayHistory;
   assert.ok(Buffer.byteLength(JSON.stringify(history.pageTopology)) <= 64 * 1024);
-  assert.ok(window.pages.length + window.stalePages.length <= 4);
+  assert.ok(window.pages.length + window.stalePages.length <= 16);
   assert.ok(
     history.pageTopology.some((record) => record.items.some((item) => item.itemId === "0-0")),
   );
@@ -392,17 +392,17 @@ test("two view pins survive paging and releasing one view frees only its pin", a
   assert.deepEqual(ids(f), ["i2"]);
 });
 
-test("full pinned cache returns limited without evicting a reader or exceeding four pages", async () => {
-  const f = anchorFixture();
+test("full pinned cache returns limited without evicting a reader or exceeding sixteen pages", async () => {
+  const f = anchorFixture(20);
   await f.backend.openThread(f.project, "thread");
-  for (let n = 0; n < 5; n++) {
+  for (let n = 0; n < 17; n++) {
     const viewId = `view-${n}`;
     await f.history("acquire", { viewId });
     const result = await f.history("ensureAnchor", { viewId, revision: 1, anchor: target(n) });
-    assert.equal(result.kind, n === 4 ? "limited" : "ready");
+    assert.equal(result.kind, n === 16 ? "limited" : "ready");
   }
-  assert.equal(f.backend.historyWindow(f.project, "thread").pages.length, 4);
-  for (let n = 0; n < 4; n++) assert.ok(ids(f).includes(`anchor-${n}`));
+  assert.equal(f.backend.historyWindow(f.project, "thread").pages.length, 16);
+  for (let n = 0; n < 16; n++) assert.ok(ids(f).includes(`anchor-${n}`));
 });
 
 test("new intent and generation cancel late anchor reads without publication", async () => {
@@ -631,6 +631,18 @@ test("a requested loaded tool can be reviewed while an unrelated tool remains de
   await assert.rejects(workspaceCommand(f.backend, request), /完整工具内容/);
 });
 
+test("conversation reading mode is negotiated only when Core advertises it", async () => {
+  for (const supported of [false, true]) {
+    const f = fixture(async (method, params) => {
+      assert.equal(method, "areal/thread/observe");
+      assert.equal(params.mode, supported ? "conversation" : "bounded");
+      return baseline();
+    });
+    f.project.client.capabilities.features.conversationObservation = supported;
+    await f.backend.openThread(f.project, "thread");
+  }
+});
+
 for (const archived of [false, true])
   test(`bounded baseline is negotiated before synchronous install (archived=${archived})`, async () => {
     const f = fixture(
@@ -748,12 +760,92 @@ test("explicit item loading validates UTF8 fragments and release does not discar
   assert.equal(f.project.model.state.threads.thread.turns.at(-1).items[0].type, "historyDeferred");
 });
 
-test("metadata budget retries exactly once at the supported maximum", async () => {
+test("basic conversation remains published while a tool detail read is blocked", async () => {
+  const tool = { id: "tool", type: "dynamicToolCall", tool: "shell", status: "completed" };
+  const complete = entry("ordinary", tool);
+  const serialized = JSON.stringify(complete);
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const deferred = {
+    id: "tool",
+    type: "historyDeferred",
+    originalType: "dynamicToolCall",
+    cursor: "detail",
+    version: "v1",
+    totalBytes: Buffer.byteLength(serialized),
+  };
+  const f = fixture(async (method) => {
+    if (method === "areal/thread/observe") {
+      const value = baseline();
+      value.thread.turns = [
+        turn("ordinary", [
+          { id: "prompt", type: "userMessage", content: [{ type: "text", text: "question" }] },
+          deferred,
+          item("reply", "answer"),
+        ]),
+      ];
+      value.history = { snapshotId: "snapshot", nextCursor: null, complete: true };
+      return value;
+    }
+    await gate;
+    return {
+      snapshotId: "snapshot",
+      complete: true,
+      nextCursor: null,
+      data: [
+        {
+          sourceThreadId: "thread",
+          sourceTurnId: "ordinary",
+          sourceItemId: "tool",
+          sourceTurnStatus: "completed",
+          fragment: {
+            text: serialized,
+            offsetUtf8: 0,
+            nextOffsetUtf8: Buffer.byteLength(serialized),
+            totalBytes: Buffer.byteLength(serialized),
+            version: "v1",
+          },
+        },
+      ],
+    };
+  });
+  f.project.client.capabilities.features.conversationObservation = true;
+  await f.backend.openThread(f.project, "thread");
+  await f.history("acquire");
+  assert.equal(f.calls.length, 1, "basic reading does not fetch tool details");
+  const detail = f.history("loadItem", { itemId: "tool" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(ids(f), ["prompt", "tool", "reply"]);
+  assert.deepEqual(f.project.model.state.threads.thread.turns[0].items[1], deferred);
+  release();
+  await detail;
+  assert.deepEqual(ids(f), ["prompt", "tool", "reply"]);
+  assert.equal(f.project.model.state.threads.thread.turns[0].items[1].type, "dynamicToolCall");
+});
+
+test("ordinary observation uses the supported maximum budget on its first request", async () => {
+  const f = fixture(async (method, params, options) => {
+    assert.equal(method, "areal/thread/observe");
+    assert.equal(params.maxBytes, 1048576);
+    assert.equal(options.maxResponseBytes, 1048576);
+    const value = baseline();
+    value.thread.turns = [turn("ordinary", [item("user-sized", "x".repeat(300000))])];
+    value.history = { snapshotId: "snapshot", nextCursor: null, complete: true };
+    return value;
+  });
+  await f.backend.openThread(f.project, "thread");
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.project.model.state.threads.thread.turns[0].items[0].text.length, 300000);
+});
+
+test("metadata exceeding the supported maximum fails without repeating the observation", async () => {
   let observations = 0;
   const f = fixture(async (method, params) => {
     assert.equal(method, "areal/thread/observe");
     observations++;
-    assert.equal(params.maxBytes, observations === 1 ? 262144 : 1048576);
+    assert.equal(params.maxBytes, 1048576);
     throw Object.assign(new Error("metadata too large"), {
       code: -32012,
       reason: "HISTORY_BUDGET_TOO_SMALL",
@@ -761,7 +853,7 @@ test("metadata budget retries exactly once at the supported maximum", async () =
     });
   });
   await assert.rejects(f.backend.openThread(f.project, "thread"), /metadata too large/);
-  assert.equal(observations, 2);
+  assert.equal(observations, 1);
 });
 
 test("stale old page resets its display window without retrying a mutation", async () => {
@@ -849,6 +941,44 @@ test("changed item restarts once and never mixes two serialized versions", async
   assert.deepEqual(f.project.model.state.threads.thread.turns.at(-1).items[0], value.item);
 });
 
+test("ordinary history keeps loaded prompts and replies resident on return visits", async () => {
+  let reads = 0;
+  const f = fixture(async (method, params) => {
+    if (method === "areal/thread/observe") return baseline();
+    const n = params.cursor === "older" ? 0 : Number(params.cursor.slice(5));
+    reads++;
+    return page(
+      [
+        entry(`turn-${n}`, {
+          id: `user-${n}`,
+          type: "userMessage",
+          content: [{ type: "text", text: `Question ${n}` }],
+        }),
+        entry(`turn-${n}`, item(`answer-${n}`)),
+      ],
+      n < 11 ? `page:${n + 1}` : null,
+    );
+  });
+  await f.backend.openThread(f.project, "thread");
+  await f.history("acquire");
+  for (let n = 0; n < 12; n++) await f.history("loadOlder");
+  for (const [index, n] of [0, 11, 1, 10, 5, 0].entries()) {
+    const result = await f.history("ensureAnchor", {
+      revision: index + 1,
+      anchor: { turnId: `turn-${n}`, itemId: `user-${n}` },
+    });
+    assert.equal(result.kind, "ready");
+  }
+  assert.equal(reads, 12, "returning to loaded messages does not fetch them again");
+  const thread = f.project.model.state.threads.thread;
+  assert.equal(thread.displayHistory.omitted, false);
+  assert.deepEqual(thread.displayHistory.gaps, []);
+  for (let n = 0; n < 12; n++) {
+    assert.ok(ids(f).includes(`user-${n}`));
+    assert.ok(ids(f).includes(`answer-${n}`));
+  }
+});
+
 test("retained old-page window stays finite and reports its omitted interval", async () => {
   let reads = 0;
   const f = fixture(async (method) => {
@@ -863,9 +993,9 @@ test("retained old-page window stays finite and reports its omitted interval", a
   });
   await f.backend.openThread(f.project, "thread");
   await f.history("acquire");
-  for (let n = 0; n < 12; n++) await f.history("loadOlder");
+  for (let n = 0; n < 20; n++) await f.history("loadOlder");
   const thread = f.project.model.state.threads.thread;
-  assert.ok(Buffer.byteLength(JSON.stringify(thread)) < 5 * 262144);
+  assert.ok(Buffer.byteLength(JSON.stringify(thread)) < 17 * 262144);
   assert.equal(thread.displayHistory.omitted, true);
   assert.equal(thread.turns.at(-1).items[0].id, "i2", "latest live window remains visible");
   await f.history("release");
@@ -876,7 +1006,7 @@ test("retained old-page window stays finite and reports its omitted interval", a
 });
 
 // Failure modes: restoring an evicted page must use its original cursor, keep
-// chronological order, and retain only four page bodies, including same-turn pages.
+// chronological order, and retain only sixteen page bodies, including same-turn pages.
 test("evicted pages can be revisited in both directions without losing the live tail", async () => {
   const cursors = [];
   const f = fixture(async (method, params) => {
@@ -886,19 +1016,19 @@ test("evicted pages can be revisited in both directions without losing the live 
     return {
       snapshotId: "snapshot",
       data: [entry("shared", item(`page-item-${n}`))],
-      nextCursor: n === 9 ? null : `page:${n + 1}`,
-      complete: n === 9,
+      nextCursor: n === 19 ? null : `page:${n + 1}`,
+      complete: n === 19,
     };
   });
   await f.backend.openThread(f.project, "thread");
   await f.history("acquire");
-  for (let n = 0; n < 10; n++) await f.history("loadOlder");
+  for (let n = 0; n < 20; n++) await f.history("loadOlder");
   const state = () => f.project.model.state.threads.thread;
   assert.ok(state().displayHistory.gaps.length);
   const gap = state().displayHistory.gaps[0];
   await f.history("loadOlder", { pageId: gap.id });
-  assert.equal(cursors.at(-1), "page:5");
-  for (let n = 0; n < 5; n++) {
+  assert.equal(cursors.at(-1), "page:3");
+  for (let n = 0; n < 3; n++) {
     const gap = state().displayHistory.gaps.find((gap) => gap.beforeItemId === "i2");
     await f.history("loadOlder", { pageId: gap.id });
   }
@@ -910,10 +1040,10 @@ test("evicted pages can be revisited in both directions without losing the live 
   await f.history("loadOlder");
   assert.equal(
     cursors.at(-1),
-    "page:4",
+    "page:16",
     "top navigation revisits known older pages before frontier",
   );
-  assert.ok(f.backend.historyWindow(f.project, "thread").pages.length <= 4);
+  assert.ok(f.backend.historyWindow(f.project, "thread").pages.length <= 16);
   const values = state()
     .turns.find((t) => t.id === "shared")
     .items.map((i) => Number(i.id.slice(10)));

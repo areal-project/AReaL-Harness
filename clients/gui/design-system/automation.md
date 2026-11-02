@@ -80,3 +80,5 @@ pnpm --dir clients/gui verify:design
 `R-CHECK-019` 折叠只由共享组件拥有（依据 P6）：高级与详情分组用 SettingsDisclosure，默认收起；长正文用 CollapsibleText；对话过程行用 Disclosure 的右侧箭头；同类记录直接列出。renderer 与 UI 包不写原生 details/summary，不直接引入 Base UI Collapsible；例外路径由 `vite.config.mts` 列出。**检查：** `clients/gui/oxlint-plugin-areal/rules/no-raw-disclosure.ts`
 
 `R-CHECK-020` 界面文案每条至多 30 个汉字，确认类（键名含 confirm）至多 50 个；i18n 中文与 renderer 里的中文字面量都计入，交给模型的多行证据文本除外。超出时先删实现机制，确有必要再链接帮助文档。**检查：** `clients/gui/scripts/copy-budget.mjs`
+
+`R-CHECK-021` 提示用 TitleTooltip，不写原生 title；不用 transition-all；时长用 `--motion-*`，循环用 `var(--motion-loop)`。**检查：** `clients/gui/scripts/motion-lint.mjs` 与 areal lint
