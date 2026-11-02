@@ -2,11 +2,41 @@
 
 # CLI 与 TUI 使用指南
 
-本指南基于上游 `main` 的 `1f6cc627a1754b32c32a5c396a9e58c8dd727deb`。其他分支或发行版本的参数、权限和服务生命周期可能不同，请以对应版本的 `areal --help` 与文档为准。这里介绍终端交互、脚本执行和恢复；Web 及更多客户端功能见[客户端指南](clients.md)。
+本指南基于上游 `main` 的 `1f6cc627a1754b32c32a5c396a9e58c8dd727deb`。安装部分使用 GitHub 公开稳定版的 Homebrew 渠道；公开版可能落后于主干，下文功能、参数和服务生命周期请以所安装版本的 `areal --help` 与文档为准。这里介绍终端交互、脚本执行和恢复；Web 及更多客户端功能见[客户端指南](clients.md)。
 
-## 1. 安装与配置
+## 1. 下载安装与升级
 
-使用完整发行包，或在源码仓库执行 `make setup` 和 `make build`。发行包安装方法和平台要求见[安装指南](installation.md)；源码构建后的命令为 `target/debug/areal`。下文假设完整发行包的 `areal` 已加入 PATH；从仓库运行时可将其替换为 `target/debug/areal`。
+GitHub 最新公开稳定版为 `v0.1.7`，Homebrew stable formula 使用同一 Release 的完整包。支持 macOS arm64（macOS 15+、Xcode Command Line Tools）和 Linux x86_64（兼容 glibc 2.35+）。Linux 还需 `/usr/bin/bwrap`（Ubuntu 可安装 `bubblewrap`）；macOS 运行时需要可用的 `/usr/bin/python3`。不提供 Windows、Intel macOS、Linux arm64 或 musl 包。
+
+### 安装
+
+先安装 [Homebrew](https://brew.sh/)，然后执行：
+
+```sh
+brew tap areal-project/tap
+brew install areal-project/tap/areal
+brew test areal-project/tap/areal
+areal --version
+```
+
+Homebrew 自动下载和校验完整包，并安装 CLI、TUI 和 Runtime。确认命令入口可用后，即可配置模型。Beta 使用独立的 `areal-project/tap/areal-beta` formula，不自动替换稳定版。
+
+### 升级
+
+先备份 `~/.areal` 和自定义数据目录。完成任务后，用 `areal service list` 查看共享服务，并使用启动时的工作区和配置参数逐个停止。忙碌服务默认拒绝停止；先等待任务完成或暂停。
+
+```sh
+areal service list
+areal service stop --workspace /absolute/path/to/project
+brew update
+brew upgrade --formula areal-project/tap/areal
+brew test areal-project/tap/areal
+areal --version
+```
+
+将示例路径替换为实际工作区，并对每个共享服务执行停止命令。Homebrew 可能清理旧版本，因此升级前需停服；升级不会自动停止任务或服务。`areal upgrade --check` 可检查本机 tap 中的版本，需先运行 `brew update` 获取最新定义。其他安装渠道及完整平台要求见[安装指南](installation.md)。
+
+### 配置模型
 
 配置支持 SSE 和 function tools 的模型服务。例如，Chat Completions endpoint 是完整请求 URL：
 

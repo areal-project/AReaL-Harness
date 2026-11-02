@@ -2,11 +2,41 @@
 
 # CLI and TUI guide
 
-This guide describes upstream `main` at `1f6cc627a1754b32c32a5c396a9e58c8dd727deb`. Options, permissions, and service lifetimes can differ on other branches or releases; consult that version's `areal --help` and documentation. For Web and other client features, see the [client guide](clients.en.md).
+This guide describes upstream `main` at `1f6cc627a1754b32c32a5c396a9e58c8dd727deb`. Installation uses the Homebrew channel for the public stable release, which may lag behind main. For the features, options, and service lifetimes below, consult the installed version's `areal --help` and documentation. For Web and other client features, see the [client guide](clients.en.md).
 
-## 1. Install and configure
+## 1. Download, install, and upgrade
 
-Install the complete distribution or run `make setup` and `make build` in the source repository. See the [installation guide](installation.en.md) for packages and platform requirements. The source build produces `target/debug/areal`. The examples assume the complete distribution's `areal` is on PATH; in the repository, substitute `target/debug/areal`.
+The latest public stable GitHub release is `v0.1.7`, and the Homebrew stable formula uses its complete bundle. Supported platforms are macOS arm64 (macOS 15+ and Xcode Command Line Tools) and Linux x86_64 (compatible glibc 2.35+). Linux also requires `/usr/bin/bwrap` (install `bubblewrap` on Ubuntu); macOS needs an executable `/usr/bin/python3` at runtime. There are no Windows, Intel macOS, Linux arm64, or musl bundles.
+
+### Install
+
+Install [Homebrew](https://brew.sh/) first, then run:
+
+```sh
+brew tap areal-project/tap
+brew install areal-project/tap/areal
+brew test areal-project/tap/areal
+areal --version
+```
+
+Homebrew downloads and verifies the complete bundle and installs the CLI, TUI, and Runtime. Once the command is available, configure a model. Beta uses the separate `areal-project/tap/areal-beta` formula and does not automatically replace stable.
+
+### Upgrade
+
+First back up `~/.areal` and any custom data directories. After finishing tasks, inspect shared services with `areal service list` and stop each using its original workspace and configuration arguments. Busy services refuse to stop by default; wait for tasks to finish or pause them first.
+
+```sh
+areal service list
+areal service stop --workspace /absolute/path/to/project
+brew update
+brew upgrade --formula areal-project/tap/areal
+brew test areal-project/tap/areal
+areal --version
+```
+
+Replace the example path with the actual workspace and stop each shared service. Homebrew can remove old versions, so stop services before upgrading; the upgrade does not automatically stop tasks or services. `areal upgrade --check` checks the local tap; run `brew update` first to refresh it. See the [installation guide](installation.en.md) for other channels and full platform requirements.
+
+### Configure a model
 
 Configure a model service that supports SSE and function tools. For example, a Chat Completions endpoint is the full request URL:
 
