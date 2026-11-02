@@ -60,6 +60,7 @@
 | `host.operation`    | `{requestId}`                                                                                                    | `{operation:ProjectMutationReceipt\|StopReceipt\|HostStopReceipt\|UpdateReceipt\|ClientStateReceipt\|null}` | 无                                                                                    | 跨 Host 重启只读核查。`null` 是缺少证据，不授权重放。                                                                                                                                                |
 | `host.subscribe`    | `{}`                                                                                                             | `{subscriptionId,generation,sequence:0,status:<host.status result>}`                                        | 无                                                                                    | 每次请求在当前连接建立观察，断连释放，不停止工作。                                                                                                                                                   |
 | `host.update`       | `{requestId,expectedGeneration,action:"prepare"\|"apply",targetVersion,strategy?:"ifIdle"\|"cancel"}`            | `UpdateReceipt`                                                                                             | `updateUnavailable`、`invalidUpdateTarget`、`requestConflict`、`generationMismatch`   | `prepare` 登记已在本机安装且验证的目标。`apply` 必须携带 strategy，且目标与准备记录匹配，排空前持久化。回复丢失后只查询。不下载或执行客户端任意路径。                                                |
+| `host.updateStatus` | `{}` | `{restartPending,targetVersion,prepareRequestId,operation:UpdateReceipt\|null}` | 无 | 只读当前准备记录与原升级回执；不重新提交排空或重启。 |
 
 `host.status.state` 为 `running`、`stopping`、`stopped` 或 `crashLoopStopped`。`restartPending` 与 `stopIntent` 均为布尔值。能力是可加性的字符串，包括 `projects`、`activity`、`stopOperations`、`subscriptions`、`updates`、`legacyMigration`，只声明已实现的契约。缺少 `updates` 的 Host 在副作用前拒绝 `host.update`。Host socket 关闭后，本机发现层通过 `areal host operation` 读取持久终态回执，不启动或恢复停止操作。
 
@@ -105,6 +106,12 @@ Host 在排空前保存并 fsync 汇总目标集合与各子操作身份。停�
 完成要求现有 Runtime 清理证明以及服务锁和 Store 锁释放，或在这些锁下核验后继代际。PID 退出和 socket 消失不足以证明。回执位于私有 home 中，不随代际清理。已知拒绝或已结算的不完整操作后可显式发起新意图；不能靠重发解决前次受理未知。
 
 `UpdateReceipt` 包含 `version:1`、`requestId`、`hostId`、`generation`、`targetVersion`、`action`、`state`，以及可选 `stopRequestId`、`message`。状态为 `prepared`、`acceptedPending`、`blocked`、`partial`、`admissionUnknown`、`settlementIncomplete` 或 `completed`。apply 沿用逐项目停止回执与证明要求。新 Host 保留稳定 `hostId`、更新 `generation`，并暴露原升级回执。运行中的 Turn 不原地切换二进制。
+
+受控更新只识别当前安装器的版本目录与 Homebrew 同 formula、同 tap/channel 的已安装目标。安装器稳定入口或 `opt/<formula>/bin/areal` 必须已经指向目标，完整 manifest、平台、文件清单、摘要和实际版本均校验通过；开发构建布局返回 `updateUnavailable`。执行前再次校验目标字节，按保存的规范路径执行，避免入口改变后执行另一份文件。
+
+准备登记写入中断后，只查询原准备 ID 补齐本地登记；存在另一个准备指针时，尚未完成的原请求结算为 `blocked`，历史 `prepared` 不回退。未派发停止的 apply 在原调用退出后按原 ID 结算为 `blocked`，不重新执行停止。新 Host 必须完成必要恢复并发布可连接描述符后，才将原 apply 结算为 `completed`。
+
+`apply` 在排空前保存原升级回执、唯一 `stopRequestId` 及派发阶段。只有该原停止请求的 `completed` 证明、当前停止意图及目标身份全部匹配才进行同 PID 受控 exec，保留受管身份与崩溃预算；新 Host 按原请求结算。忙碌的 `ifIdle` 在停止受理前返回 `blocked`。GUI 当前提供 `ifIdle`。CLI 的 `cancel` 需要显式 `--confirm-cancel`，并先核对原 `prepared` 回执、目标版本及代际；不以旧失败的 apply 重放取消。GUI 将原升级请求身份写入现有控制引用；回复丢失后只按同 `hostId`、原 ID 与原代际核查，`null` 保持 UNKNOWN。登录开关读取真实安装状态；卸载先结算原停止，再以 `--stopped-only` 注销，遇到新启动的 Host 则拒绝。
 
 ## 项目登记与迁移
 

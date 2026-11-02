@@ -145,6 +145,8 @@ const commandDefinitions = Object.freeze({
     "app",
     { check: read, ...operations(mutation, "update stop recover quitInterface stopAndQuit") },
   ],
+  hostInstallation: ["main", "app", { status: read, install: mutation, uninstall: mutation }],
+  hostUpdate: ["main", "app", { status: read, check: read, prepare: mutation, apply: mutation }],
   serviceStatus: ["main", "app", read],
   stopService: ["main", "app", mutation],
   recoverResources: ["main", "app", mutation],

@@ -1,6 +1,39 @@
 use anyhow::Result;
 use areal_host::{Client, ResolveProject, StopStrategy};
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
+#[derive(Clone, Copy, ValueEnum)]
+#[value(rename_all = "camelCase")]
+pub enum UpdateStrategy {
+    IfIdle,
+    Cancel,
+}
+#[derive(Subcommand)]
+pub enum UpdateCommand {
+    Prepare {
+        #[arg(long)]
+        target_version: String,
+        #[arg(long)]
+        request_id: Option<String>,
+        #[arg(long)]
+        expected_generation: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    Apply {
+        #[arg(long)]
+        target_version: String,
+        #[arg(long)]
+        strategy: UpdateStrategy,
+        #[arg(long)]
+        confirm_cancel: bool,
+        #[arg(long)]
+        request_id: Option<String>,
+        #[arg(long)]
+        expected_generation: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+}
 #[derive(Subcommand)]
 pub enum HostCommand {
     Run {
@@ -8,7 +41,22 @@ pub enum HostCommand {
         managed: bool,
     },
     Install,
-    Uninstall,
+    Uninstall {
+        #[arg(long)]
+        stopped_only: bool,
+    },
+    ServiceStatus {
+        #[arg(long)]
+        json: bool,
+    },
+    UpdateStatus {
+        #[arg(long)]
+        json: bool,
+    },
+    Update {
+        #[command(subcommand)]
+        action: UpdateCommand,
+    },
     Status {
         #[arg(long)]
         json: bool,
@@ -65,11 +113,87 @@ pub async fn execute(command: HostCommand) -> Result<()> {
             installation.install()?;
             serde_json::to_value(installation)?
         }
-        HostCommand::Uninstall => serde_json::to_value(
-            areal_host::ServiceInstallation::uninstall(&areal_local_service::home()?).await?,
-        )?,
+        HostCommand::Uninstall { stopped_only } => {
+            let home = areal_local_service::home()?;
+            serde_json::to_value(if stopped_only {
+                areal_host::ServiceInstallation::uninstall_stopped(&home).await?
+            } else {
+                areal_host::ServiceInstallation::uninstall(&home).await?
+            })?
+        }
+        HostCommand::ServiceStatus { .. } => {
+            areal_host::ServiceInstallation::status(&areal_local_service::home()?)?
+        }
+        HostCommand::UpdateStatus { .. } => Client::connect().await?.update_status().await?,
+        HostCommand::Update { action } => {
+            let client = Client::connect().await?;
+            match action {
+                UpdateCommand::Prepare {
+                    target_version,
+                    request_id,
+                    expected_generation,
+                    ..
+                } => {
+                    let request_id = request_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                    eprintln!("Host update prepare requestId: {request_id}");
+                    client
+                        .prepare_update(
+                            &request_id,
+                            &expected_generation
+                                .unwrap_or_else(|| client.identity().generation.clone()),
+                            &target_version,
+                        )
+                        .await?
+                }
+                UpdateCommand::Apply {
+                    target_version,
+                    strategy,
+                    confirm_cancel,
+                    request_id,
+                    expected_generation,
+                    ..
+                } => {
+                    if matches!(strategy, UpdateStrategy::Cancel) {
+                        anyhow::ensure!(
+                            confirm_cancel,
+                            "cancel requires --confirm-cancel and the exact prepared --target-version"
+                        );
+                        let prepared = client.update_status().await?;
+                        let prepare_id = prepared["prepareRequestId"].as_str().ok_or_else(|| anyhow::anyhow!("no original prepared update; inspect update status before confirming cancellation"))?;
+                        let original = client.operation(prepare_id).await?.ok_or_else(|| anyhow::anyhow!("original preparation is unavailable; cancellation was not submitted"))?;
+                        anyhow::ensure!(
+                            prepared["restartPending"] == true
+                                && prepared["targetVersion"] == target_version
+                                && original["state"] == "prepared"
+                                && original["targetVersion"] == target_version
+                                && original["generation"] == client.identity().generation,
+                            "prepared target or Host generation changed; inspect the original update before confirming cancellation"
+                        );
+                    }
+                    let request_id = request_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                    eprintln!("Host update apply requestId: {request_id}");
+                    client
+                        .apply_update(
+                            &request_id,
+                            &expected_generation
+                                .unwrap_or_else(|| client.identity().generation.clone()),
+                            &target_version,
+                            match strategy {
+                                UpdateStrategy::IfIdle => StopStrategy::IfIdle,
+                                UpdateStrategy::Cancel => StopStrategy::Cancel,
+                            },
+                        )
+                        .await?
+                }
+            }
+        }
         HostCommand::Status { .. } => match Client::connect().await {
-            Ok(client) => serde_json::to_value(client.status().await?)?,
+            Ok(client) => {
+                let mut value = serde_json::to_value(client.status().await?)?;
+                value["executableVersion"] =
+                    serde_json::json!(client.identity().executable_version);
+                value
+            }
             Err(_) => areal_host::offline_service_status(&areal_local_service::home()?)?,
         },
         HostCommand::List { .. } => {

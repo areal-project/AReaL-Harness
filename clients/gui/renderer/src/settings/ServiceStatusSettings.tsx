@@ -7,6 +7,7 @@ import { ActionButton } from "../components/ui/action-button.js";
 import { Button } from "../components/ui/button.js";
 import { SettingsSwitch } from "./SettingsPageParts.js";
 import { SpaceReclamation } from "./SpaceReclamation.js";
+import { HostServiceSettings } from "./HostServiceSettings.js";
 import type { Action, CommandResponse, Snapshot } from "../services.js";
 
 type Status = CommandResponse<"serviceStatus">;
@@ -176,6 +177,7 @@ export function ServiceStatusSettings({
         }
       >
         {backendStatus && <BackendServiceStatus {...backendStatus} />}
+        <HostServiceSettings action={action} connected={connected} />
         <SettingsGroupCard>
           <SettingsRow
             label={t("settings.serviceStatusSettings.backgroundService")}

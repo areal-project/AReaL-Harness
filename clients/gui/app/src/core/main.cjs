@@ -1630,6 +1630,14 @@ function startDesktop() {
           }
           if (name === "serviceStatus")
             return { ok: true, value: await serviceBackend.serviceStatus() };
+          if (name === "hostUpdate")
+            return { ok: true, value: await serviceBackend.hostUpdate(params) };
+          if (name === "hostInstallation") {
+            return {
+              ok: true,
+              value: await serviceBackend.hostInstallation(params.operation, requestStopService),
+            };
+          }
           if (name === "stopService") return { ok: true, value: await requestStopService() };
           if (name === "recoverResources")
             return {

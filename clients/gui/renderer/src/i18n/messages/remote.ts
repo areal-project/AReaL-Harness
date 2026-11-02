@@ -1136,6 +1136,32 @@ export const remoteMessages = {
     "zh-CN": "后台服务管理",
     en: "Background service management",
   },
+  "settings.host.login": { "zh-CN": "登录后运行后台", en: "Run background service at login" },
+  "settings.host.loginDescription": {
+    "zh-CN": "从系统服务状态读取。开启前请先完成工作并明确停止当前后台。",
+    en: "Shows the system service state. Finish your work and explicitly stop the current service before enabling.",
+  },
+  "settings.host.update": { "zh-CN": "后台更新", en: "Background service update" },
+  "settings.host.updateDescription": {
+    "zh-CN": "应用本机已安装的版本。",
+    en: "Apply a version already installed on this computer.",
+  },
+  "settings.host.restartPending": {
+    "zh-CN": "版本 {value0} 等待后台重启。",
+    en: "Version {value0} is waiting for the background service to restart.",
+  },
+  "settings.host.checkUpdate": { "zh-CN": "检查原请求", en: "Check original request" },
+  "settings.host.targetVersion": { "zh-CN": "目标版本", en: "Target version" },
+  "settings.host.prepareUpdate": { "zh-CN": "准备更新", en: "Prepare update" },
+  "settings.host.applyUpdate": { "zh-CN": "空闲时重启并更新", en: "Restart and update when idle" },
+  "settings.host.idleUpdate": {
+    "zh-CN": "后台忙碌时会拒绝此次重启，可稍后检查状态。",
+    en: "A busy service rejects this restart. You can check its state later.",
+  },
+  "settings.host.originalUpdatePending": {
+    "zh-CN": "原升级请求尚未结算，请检查原请求。",
+    en: "The original update request is unsettled. Check that request.",
+  },
   "settings.serviceStatusSettings.sharedBackgroundService": {
     "zh-CN": "共享后台",
     en: "Shared background service",

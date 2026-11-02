@@ -378,7 +378,7 @@ async fn connect(host: Rc<Host>, id: &str, service: Service) -> Result<Rc<CoreSe
                                 let connection = connection.clone();
                                 let method = method.to_owned();
                                 callbacks.spawn_local(async move {
-                                    let result = callback(&host, &connection, &method, &value["params"]).await.and_then(|result| { connection.require_current(&host)?; Ok(result) });
+                                    let result = callback(&host, &connection, &method, &value["params"]).await.and_then(|result| { if method == "areal/host/status" { ensure!(connection.shared_current(&host), unavailable()); } else { connection.require_current(&host)?; } Ok(result) });
                                     let response = match result {
                                         Ok(result) => json!({"id":value["id"],"result":result}),
                                         Err(_) => json!({"id":value["id"],"error":{"code":-32001,"message":"Host scheduled preparation or desktop tool unavailable"}}),
@@ -464,6 +464,24 @@ async fn callback(
     method: &str,
     params: &Value,
 ) -> Result<Value> {
+    if method == "areal/host/status" {
+        ensure!(connection.shared_current(host), unavailable());
+        ensure!(
+            params.as_object().is_some_and(|p| p.is_empty()),
+            "expected empty Host status request"
+        );
+        let status = host.update_status()?;
+        return Ok(serde_json::to_value(
+            areal_protocol::desktop::HostUpdateStatus {
+                host_id: host.identity.host_id.clone(),
+                generation: host.identity.generation.clone(),
+                executable_version: host.identity.executable_version.clone(),
+                capabilities: vec!["updates".into()],
+                restart_pending: status["restartPending"] == true,
+                target_version: status["targetVersion"].as_str().map(str::to_owned),
+            },
+        )?);
+    }
     connection.require_current(host)?;
     ensure!(method == "areal/task/prepare", unavailable());
     let registrations = host

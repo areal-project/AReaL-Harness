@@ -259,6 +259,7 @@ fn desktop_schema() -> Value {
     let empty = json!({"type":"object","properties":{},"additionalProperties":false});
     for method in [
         "areal/task/host/ready",
+        "areal/host/status",
         "areal/model/list",
         "areal/profile/list",
         "areal/provider/list",
@@ -641,7 +642,8 @@ fn desktop_schema() -> Value {
         json!({"taskId":string,"runId":string,"threadId":string,"scheduledAt":integer,"intent":{"enum":["start","resume"]}}),
         vec!["taskId", "runId", "threadId", "scheduledAt", "intent"],
     );
-    output["serverResponses"] = json!({"item/tool/call":schemars::schema_for!(areal_protocol::DynamicToolResponse),"areal/browser/prepare":{"type":"object"},"areal/task/prepare":{"type":"object"}});
+    output["serverRequests"]["areal/host/status"] = empty.clone();
+    output["serverResponses"] = json!({"item/tool/call":schemars::schema_for!(areal_protocol::DynamicToolResponse),"areal/browser/prepare":{"type":"object"},"areal/task/prepare":{"type":"object"},"areal/host/status":{"anyOf":[schemars::schema_for!(HostUpdateStatus),{"type":"null"}]}});
     output["serverResponses"]["areal/computer/prepare"] = json!({"type":"object"});
     output["serverResponses"]["areal/cua/turnEnded"] = empty;
     for method in SERVER_REQUESTS {

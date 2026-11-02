@@ -8,6 +8,8 @@ const { randomUUID } = require("node:crypto");
 const { mkdir, readFile, realpath, open, writeFile, rename, rm } = require("node:fs/promises");
 const { join } = require("node:path");
 const { HostClient } = require("./host-client.cjs");
+const { executeCore } = require("./core-process.cjs");
+const { hostUpdateReceipt } = require("@areal/workbench/desktop-contract/desktop-control");
 const {
   hostReference,
   readHostReceipt,
@@ -232,6 +234,9 @@ class SharedCoreBackend {
     this.lifecycleReferences = new Map();
     /** @type {Map<string,import('./host-lifecycle.cjs').HostReference>} */
     this.hostReferences = new Map();
+    /** @type {{requestId:string,hostId:string,generation:string,action:'prepare'|'apply',targetVersion:string}|null} */
+    this.hostUpdateReference = null;
+    this.hostUpdateInFlight = false;
     /** @type {Map<string,import('./host-lifecycle.cjs').HostReceipt>} */
     this.hostReceipts = new Map();
     /** @type {Map<string,InstanceType<typeof GuiTerminalConnections>>} */
@@ -708,7 +713,7 @@ class SharedCoreBackend {
         this.hostStopResources.clear();
         await this.persistReferences();
       }
-      if (!this.lifecycleReferences.size) {
+      if (!this.lifecycleReferences.size && !this.hostUpdateReference) {
         await rm(this.controlPath, { force: true });
         this.controlState = null;
       }
@@ -1154,6 +1159,173 @@ class SharedCoreBackend {
       })),
     };
   }
+  /** @param {'status'|'install'|'uninstall'} operation @param {()=>Promise<unknown>} [stop] @returns {Promise<import('@areal/workbench/desktop-contract/desktop-control').HostInstallation>} */
+  async hostInstallation(operation, stop) {
+    if (!this.options.binary || !this.options.hostHome) throw new Error("Host 程序尚未配置");
+    if (operation !== "status") {
+      this.assertApplicationWrite();
+      if (!this.hostUpdateReference) this.loadReferences(await this.readControl());
+      if (this.hostUpdateInFlight || this.hostUpdateReference)
+        throw new Error("请先核查原升级请求，再更改登录自启");
+      for (const reference of this.hostReferences.values()) {
+        await this.readHostStop(reference);
+        if (
+          !["completed", "blocked"].includes(
+            this.hostReceipts.get(reference.requestId)?.state ?? "",
+          )
+        )
+          throw new Error("请先核查并完成原后台停止请求，再更改登录自启");
+      }
+      if (operation === "uninstall" && this.status.connected) {
+        const result = await stop?.();
+        if (!record(result) || result.stopped !== true)
+          throw new Error("请先完成后台停止，再关闭登录自启");
+      }
+    }
+    const { stdout } = await executeCore(
+      this.options.binary,
+      operation === "status"
+        ? ["host", "service-status", "--json"]
+        : operation === "uninstall"
+          ? ["host", "uninstall", "--stopped-only"]
+          : ["host", "install"],
+      { env: { ...process.env, AREAL_HARNESS_HOME: this.options.hostHome }, timeout: 60000 },
+    );
+    if (operation !== "status") return this.hostInstallation("status");
+    return JSON.parse(stdout);
+  }
+  /** @param {import('@areal/workbench/desktop-contract/desktop-control').HostUpdateRequest} request */
+  async hostUpdate(request) {
+    if (this.hostUpdateInFlight) throw new Error("正在核查原升级请求，请稍后刷新");
+    this.hostUpdateInFlight = true;
+    const client = new HostClient();
+    try {
+      if (!this.options.hostHome) throw new Error("Host home 尚未配置");
+      await client.connect(this.options.hostHome);
+      const empty = {
+        supported: false,
+        restartPending: false,
+        targetVersion: null,
+        prepareRequestId: null,
+        operation: null,
+      };
+      if (!client.capabilities.includes("updates")) {
+        if (request.operation !== "status") throw new Error("当前 Host 不支持受控升级");
+        return empty;
+      }
+      if (!this.hostUpdateReference) this.loadReferences(await this.readControl());
+      const original = this.hostUpdateReference;
+      if (original) {
+        if (original.hostId !== client.hostId)
+          throw new Error("Host 身份已变化，原升级请求仍需核查");
+        const { operation: receipt } = await client.operation(original.requestId);
+        if (
+          receipt !== null &&
+          (!hostUpdateReceipt(receipt) ||
+            receipt.requestId !== original.requestId ||
+            receipt.hostId !== original.hostId ||
+            receipt.generation !== original.generation ||
+            receipt.action !== original.action ||
+            receipt.targetVersion !== original.targetVersion)
+        )
+          throw new Error("原升级请求回执与保存的身份不一致");
+        if (receipt && ["prepared", "completed", "blocked"].includes(receipt.state)) {
+          this.hostUpdateReference = null;
+          await this.persistReferences();
+        } else {
+          if (request.operation !== "status" && request.operation !== "check")
+            throw new Error("原升级请求结果待核查，请检查原请求");
+          return {
+            supported: true,
+            restartPending: true,
+            targetVersion: original.targetVersion,
+            prepareRequestId: original.action === "prepare" ? original.requestId : null,
+            operation: this.publicHostUpdate(
+              receipt ?? {
+                version: 1,
+                ...original,
+                state: "admissionUnknown",
+                message: "原请求结果未知；只核查原编号，不自动重新提交。",
+              },
+            ),
+          };
+        }
+      }
+      if (request.operation === "prepare" || request.operation === "apply") {
+        this.assertApplicationWrite();
+        this.hostUpdateReference = {
+          requestId: request.requestId,
+          hostId: client.hostId,
+          generation: client.generation,
+          action: request.operation,
+          targetVersion: request.targetVersion,
+        };
+        await this.persistReferences();
+        try {
+          const receipt = await client.request("host.update", {
+            requestId: request.requestId,
+            expectedGeneration: client.generation,
+            action: request.operation,
+            targetVersion: request.targetVersion,
+            ...(request.operation === "apply" ? { strategy: "ifIdle" } : {}),
+          });
+          this.publicHostUpdate(receipt);
+          if (
+            receipt.requestId !== request.requestId ||
+            receipt.hostId !== client.hostId ||
+            receipt.generation !== client.generation ||
+            receipt.action !== request.operation ||
+            receipt.targetVersion !== request.targetVersion
+          )
+            throw new Error("升级回执与原请求不一致，请核查原编号");
+          if (["prepared", "completed", "blocked"].includes(receipt.state)) {
+            this.hostUpdateReference = null;
+            await this.persistReferences();
+          }
+        } catch (error) {
+          if (
+            [
+              "invalidUpdateTarget",
+              "updateUnavailable",
+              "invalidRequest",
+              "generationMismatch",
+              "stopInProgress",
+            ].includes(String(desktopError(error).code))
+          ) {
+            this.hostUpdateReference = null;
+            await this.persistReferences();
+          }
+          throw error;
+        }
+      }
+      const status = await client.request("host.updateStatus", {});
+      return {
+        supported: true,
+        restartPending: status.restartPending,
+        targetVersion: status.targetVersion,
+        prepareRequestId: status.prepareRequestId,
+        operation: status.operation === null ? null : this.publicHostUpdate(status.operation),
+      };
+    } finally {
+      client.close();
+      this.hostUpdateInFlight = false;
+    }
+  }
+  /** @param {unknown} value */
+  publicHostUpdate(value) {
+    if (!hostUpdateReceipt(value)) throw new Error("Host 升级回执无效");
+    const { version, requestId, hostId, generation, action, targetVersion, state, message } = value;
+    return {
+      version,
+      requestId,
+      hostId,
+      generation,
+      action,
+      targetVersion,
+      state,
+      ...(message ? { message } : {}),
+    };
+  }
   get serviceExited() {
     return !!this.exitConfirmation && this.exitConfirmation === this.metadata;
   }
@@ -1401,7 +1573,11 @@ class SharedCoreBackend {
   async persistReferences() {
     const write = async () => {
       await mkdir(this.app.getPath("userData"), { recursive: true, mode: 0o700 });
-      if (!this.lifecycleReferences.size && !this.hostReferences.size) {
+      if (
+        !this.lifecycleReferences.size &&
+        !this.hostReferences.size &&
+        !this.hostUpdateReference
+      ) {
         await rm(this.controlPath, { force: true });
         return;
       }
@@ -1414,6 +1590,7 @@ class SharedCoreBackend {
               version: 3,
               home: this.home,
               references: [...this.lifecycleReferences.values(), ...this.hostReferences.values()],
+              hostUpdate: this.hostUpdateReference,
             }),
           );
           await file.sync();
@@ -1440,6 +1617,19 @@ class SharedCoreBackend {
   /** @param {Record<string,unknown>|null} control */
   loadReferences(control) {
     if (control?.version === 2 || control?.version === 3) {
+      if (control.hostUpdate != null) {
+        const update = control.hostUpdate;
+        if (
+          !record(update) ||
+          !["requestId", "hostId", "generation", "targetVersion"].every(
+            (key) => typeof update[key] === "string",
+          ) ||
+          !["prepare", "apply"].includes(String(update.action))
+        )
+          throw new Error("保存的升级请求引用无效，请保留原记录并检查");
+        this.hostUpdateReference =
+          /** @type {NonNullable<SharedCoreBackend['hostUpdateReference']>} */ (update);
+      }
       for (const reference of readReferences(control.references)) {
         if (hostReference(reference)) this.hostReferences.set(reference.requestId, reference);
         else this.lifecycleReferences.set(reference.requestId, reference);

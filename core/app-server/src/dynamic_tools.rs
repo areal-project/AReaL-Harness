@@ -99,6 +99,17 @@ impl DynamicToolHost for ToolHost {
     fn is_closed(&self) -> bool {
         self.stop.is_cancelled()
     }
+    async fn host_status(
+        &self,
+        cancel: CancellationToken,
+    ) -> anyhow::Result<Option<areal_protocol::desktop::HostUpdateStatus>> {
+        let value = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            self.request("areal/host/status", json!({}), cancel),
+        )
+        .await??;
+        Ok(serde_json::from_value(value)?)
+    }
     async fn prepare_schedule(
         &self,
         params: Value,

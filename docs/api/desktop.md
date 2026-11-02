@@ -71,6 +71,12 @@ Thread 快照和 Item 通知支持可选 `agentMessage.phase`，生命周期、�
 
 initialize → initialized → areal/capabilities（可带 apiVersion）。请求 ID 双向独立，item/tool/call 是须应答的服务器请求。恢复用 thread/resume 替换基线；订阅、发送队列与背压见 [Core](core.md)。
 
+### Host 待重启状态
+
+`areal/host/status {}` 是只读方法，按当前连接的 `areal/capabilities.features.hostUpdateStatus` 与方法列表发现。响应为 `null`，或 `{hostId,generation,executableVersion,capabilities,restartPending,targetVersion}`；`targetVersion` 可为 `null`。Web 沿既有刷新周期显示已登记 Host 的待重启状态；旧 Core 缺此 feature、Host 缺 `updates` 或没有当前在线 owner 时隐藏提示。
+
+Core 只经当前认证 principal 已登记的宿主连接读取。调用前后核对原连接与 owner 是否仍当前；断线或替换期间的结果不转给后继连接。客户端不能提交 owner、版本或路径等权威字段，读取不启动 Host 或项目，不读取 Host 私有文件。未登记调度宿主的 Core 返回 `null`；这包括当前未建立该登记的受抑制项目连接。
+
 <a id="browser-auth"></a>
 ### 浏览器登录
 

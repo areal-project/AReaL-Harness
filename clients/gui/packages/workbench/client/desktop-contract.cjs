@@ -256,6 +256,8 @@ function validateCommand(name, params, { serviceOnly = false } = {}) {
       if (!conversation.isRequest(name, params)) invalid();
       return;
     case "serviceLifecycle":
+    case "hostInstallation":
+    case "hostUpdate":
     case "serviceStatus":
     case "stopService":
     case "recoverResources":
@@ -511,6 +513,8 @@ function validateCommandResponse(name, params, value) {
       validateConversationResponse(invocation.name, invocation.request, value);
       return;
     case "serviceLifecycle":
+    case "hostInstallation":
+    case "hostUpdate":
     case "serviceStatus":
     case "stopService":
     case "recoverResources":

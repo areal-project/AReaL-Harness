@@ -180,6 +180,9 @@ async fn upgrade_homebrew(source: Homebrew, check: bool) -> Result<()> {
     let latest = formula_version(&source)?;
     println!("areal {current} ({}: {latest})", source.formula);
     if current == latest || check {
+        if !check {
+            prepare_host(&latest).await?;
+        }
         return Ok(());
     }
     ensure!(
@@ -198,6 +201,29 @@ async fn upgrade_homebrew(source: Homebrew, check: bool) -> Result<()> {
         output.status.success()
             && String::from_utf8_lossy(&output.stdout).trim() == format!("areal {latest}"),
         "Homebrew did not install areal {latest}"
+    );
+    prepare_host(&latest).await?;
+    Ok(())
+}
+
+async fn prepare_host(target: &str) -> Result<()> {
+    let Ok(client) = areal_host::Client::connect().await else {
+        return Ok(());
+    };
+    let status = client.status().await?;
+    if client.identity().executable_version == target
+        || !status.capabilities.iter().any(|c| c == "updates")
+    {
+        return Ok(());
+    }
+    let request_id = uuid::Uuid::new_v4().to_string();
+    eprintln!("Host update prepare requestId: {request_id}");
+    let receipt = client
+        .prepare_update(&request_id, &client.identity().generation, target)
+        .await?;
+    println!("{}", serde_json::to_string_pretty(&receipt)?);
+    println!(
+        "Host update prepared. Apply explicitly: areal host update apply --target-version {target} --strategy ifIdle"
     );
     Ok(())
 }
@@ -250,6 +276,9 @@ pub async fn run(check: bool) -> Result<()> {
     let latest = published_version()?;
     println!("areal {current} (latest published: {latest})");
     if current == latest || check {
+        if !check {
+            prepare_host(&latest).await?;
+        }
         return Ok(());
     }
     ensure!(
@@ -260,6 +289,7 @@ pub async fn run(check: bool) -> Result<()> {
         .to_str()
         .context("installation prefix is not UTF-8")?;
     println!("{}", python(&["--version", &latest, "--prefix", prefix])?);
+    prepare_host(&latest).await?;
     Ok(())
 }
 

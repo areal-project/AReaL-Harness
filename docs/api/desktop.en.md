@@ -71,6 +71,12 @@ The auth file `{version:1,principals:[{id,token,permissions,threadIds?}]}` requi
 
 Use initialize → initialized → areal/capabilities (optional apiVersion). Request IDs are independent in each direction; item/tool/call is a server request requiring a response. Replace the baseline through thread/resume. See [Core](core.en.md) for subscriptions, queues and backpressure.
 
+### Host restart-pending status
+
+`areal/host/status {}` is read-only. Discover it through the current connection's `areal/capabilities.features.hostUpdateStatus` and method list. Its response is `null` or `{hostId,generation,executableVersion,capabilities,restartPending,targetVersion}`, with nullable `targetVersion`. Web uses its existing refresh cadence to display the registered Host's pending restart. It hides the hint when an older Core lacks this feature, Host lacks `updates`, or no current online owner is registered.
+
+Core reads only through the host connection registered by the current authenticated principal. It checks the original connection and current owner before and after the callback; a result from a disconnected or replaced owner does not pass to a successor. Clients cannot submit authoritative owner, version, or path fields. Reads never start Host or a project, and Core does not read Host private files. A Core without a registered scheduling host returns `null`, including suppressed project connections that have not established this registration.
+
 <a id="browser-auth"></a>
 ### Browser login
 

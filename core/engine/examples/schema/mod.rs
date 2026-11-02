@@ -357,6 +357,7 @@ pub fn projections() -> (Value, Value) {
     );
     insert(&["mcp/read"], mcp);
     insert(&["server/status", "server/drain"], status);
+    insert(&["host/status"], nullable(schema::<HostUpdateStatus>()));
     let model_configuration_proof = object(json!({
         "serviceId":string,"generation":string,"applied":schema::<AppliedModelConfiguration>(),
         "modelRevision":string,"credentialStates":{"type":"object","additionalProperties":{"enum":["notRequired","available","unavailable"]}}

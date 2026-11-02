@@ -21224,6 +21224,11 @@
       "title": "HookAcknowledge",
       "type": "object"
     },
+    "areal/host/status": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
     "areal/inbox/list": {
       "additionalProperties": false,
       "properties": {
@@ -53170,6 +53175,51 @@
         "threadId"
       ],
       "type": "object"
+    },
+    "areal/host/status": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "capabilities": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "executableVersion": {
+              "type": "string"
+            },
+            "generation": {
+              "type": "string"
+            },
+            "hostId": {
+              "type": "string"
+            },
+            "restartPending": {
+              "type": "boolean"
+            },
+            "targetVersion": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "hostId",
+            "generation",
+            "executableVersion",
+            "capabilities",
+            "restartPending"
+          ],
+          "title": "HostUpdateStatus",
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "areal/inbox/list": {
       "additionalProperties": true,
@@ -149426,6 +149476,11 @@
       ],
       "type": "object"
     },
+    "areal/host/status": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
     "areal/task/prepare": {
       "additionalProperties": false,
       "properties": {
@@ -149524,6 +149579,51 @@
       "additionalProperties": false,
       "properties": {},
       "type": "object"
+    },
+    "areal/host/status": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "capabilities": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "executableVersion": {
+              "type": "string"
+            },
+            "generation": {
+              "type": "string"
+            },
+            "hostId": {
+              "type": "string"
+            },
+            "restartPending": {
+              "type": "boolean"
+            },
+            "targetVersion": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "hostId",
+            "generation",
+            "executableVersion",
+            "capabilities",
+            "restartPending"
+          ],
+          "title": "HostUpdateStatus",
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "areal/task/prepare": {
       "type": "object"

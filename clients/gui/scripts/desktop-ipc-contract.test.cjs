@@ -355,6 +355,8 @@ test("Desktop commands map to their own dispatch layer and Core catalog through 
   );
   const unmapped = [...core].filter(
     (method) =>
+      // Web 经 Core 查询 Host；GUI Main 直接调用 Host，不经过此 Core 代理。
+      method !== "areal/host/status" &&
       !targets.has(method) &&
       !templates.some(({ prefix, suffix }) => method.startsWith(prefix) && method.endsWith(suffix)),
   );

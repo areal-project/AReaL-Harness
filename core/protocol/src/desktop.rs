@@ -7,6 +7,17 @@ pub const MAX_SUBSCRIPTIONS: usize = 128;
 pub const BROWSER_V1_BUNDLE: &str = "areal.browser.v1";
 pub const COMPUTER_V1_BUNDLE: &str = "areal.computer.v1";
 
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HostUpdateStatus {
+    pub host_id: String,
+    pub generation: String,
+    pub executable_version: String,
+    pub capabilities: Vec<String>,
+    pub restart_pending: bool,
+    pub target_version: Option<String>,
+}
+
 /// 本机电脑工具与浏览器分别启用，操作仍由 Core 审批和记录。
 pub fn computer_v1_tool() -> super::ToolDefinition {
     super::ToolDefinition {
@@ -92,6 +103,7 @@ crate::method_catalog! {
     "turn/steer" => Mutation;
     "turn/interrupt" => Mutation;
     "areal/capabilities" => Read;
+    "areal/host/status" => Read;
     "areal/subscription/remove" => Subscription;
     "areal/thread/tools/attach" => Mutation, Thread;
     "areal/agent/spawn" => Mutation;
@@ -327,6 +339,7 @@ pub enum ThreadOwnership {
     },
 }
 pub const SERVER_REQUESTS: &[&str] = &[
+    "areal/host/status",
     "item/tool/call",
     "areal/task/prepare",
     "areal/browser/prepare",

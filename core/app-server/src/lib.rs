@@ -632,6 +632,7 @@ async fn connection(
                 || method.starts_with("areal/marketplace/")
                 || method.starts_with("areal/mcp/")
                 || method.starts_with("areal/server/")
+                || method == "areal/host/status"
                 || method == "areal/agent/wait"
                 || method == "areal/context/compact"
                 || matches!(
@@ -663,6 +664,7 @@ async fn connection(
                     | "areal/process/get"
                     | "areal/process/list"
                     | "areal/server/status"
+                    | "areal/host/status"
                     | "areal/server/modelConfiguration/read"
                     | "areal/mcp/list"
                     | "areal/mcp/read"
@@ -718,6 +720,8 @@ async fn connection(
                     check_side_policy(&engine, &method, &params).await?;
                     if configuration::METHODS.contains(&method.as_str()) {
                         configuration::dispatch(configuration, &principal, &method, params).await
+                    } else if method == "areal/host/status" {
+                        read_host_status(&engine, &principal, params).await
                     } else if method == "turn/interrupt" {
                         interrupt(&engine, params).await
                     } else if method == "turn/steer" {
@@ -1140,6 +1144,9 @@ impl Connection {
                 .map_err(map_error)?;
             return Ok(json!({"ready":true}));
         }
+        if method == "areal/host/status" {
+            return read_host_status(engine, &self.principal, params).await;
+        }
         if task_mode::METHODS.contains(&method) {
             if matches!(method, "areal/owner/watch" | "areal/owner/unwatch") {
                 task_mode::authorize_owner(&self.principal)?;
@@ -1397,6 +1404,7 @@ impl Connection {
                     "runtime":engine.runtime_capabilities()});
                 capabilities["features"]["threadCreationJournal"] = json!({"version":1,"binding":engine.creation_admission(&self.principal.id).await});
                 capabilities["features"]["sideExecutableV2"] = json!(true);
+                capabilities["features"]["hostUpdateStatus"] = json!(true);
                 capabilities["features"]["connectionProcesses"] = json!(true);
                 capabilities["desktopToolBundles"] = if can_attach_browser {
                     json!([{ "bundleId":areal_protocol::desktop::COMPUTER_V1_BUNDLE,
@@ -1620,6 +1628,17 @@ impl Connection {
             _ => Err(RpcError::method()),
         }
     }
+}
+
+async fn read_host_status(
+    engine: &Engine,
+    principal: &auth::Principal,
+    params: Value,
+) -> Result<Value, RpcError> {
+    if !params.as_object().is_some_and(|p| p.is_empty()) {
+        return Err(RpcError::invalid("expected empty Host status request"));
+    }
+    Ok(json!(engine.host_update_status(&principal.id).await))
 }
 
 fn validate_model(engine: &Engine, model: Option<&str>) -> Result<(), RpcError> {

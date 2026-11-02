@@ -101,6 +101,33 @@ impl ServiceRun {
         state.active = false;
         storage::write(&path, &state)
     }
+    pub(crate) fn acknowledge_controlled_stop(home: &Path, id: &str) -> Result<Option<String>> {
+        let stop: Value = storage::read(&home.join("host/stop.json"))?;
+        ensure!(
+            stop["requestId"] == id && stop["state"] == "completed",
+            "controlled stop changed before exec"
+        );
+        let path = home.join("host/service-run.json");
+        let mut state: Self = storage::read(&path)?;
+        let previous = state.acknowledged_stop_request_id.replace(id.into());
+        state.active = false;
+        storage::write(&path, &state)?;
+        Ok(previous)
+    }
+    pub(crate) fn undo_controlled_stop(
+        home: &Path,
+        id: &str,
+        previous: Option<String>,
+    ) -> Result<()> {
+        let path = home.join("host/service-run.json");
+        let mut state: Self = storage::read(&path)?;
+        ensure!(
+            state.acknowledged_stop_request_id.as_deref() == Some(id),
+            "controlled acknowledgement changed"
+        );
+        state.acknowledged_stop_request_id = previous;
+        storage::write(&path, &state)
+    }
 }
 
 pub fn offline_service_status(home: &Path) -> Result<Value> {
@@ -115,7 +142,7 @@ pub fn offline_service_status(home: &Path) -> Result<Value> {
         "hostId":identity,
         "state": if state.as_ref().is_some_and(|s| s.crash_loop_stopped) {"crashLoopStopped"} else if state.as_ref().is_some_and(|s| s.active) {"unavailable"} else {"stopped"},
         "stopIntent":stop.as_ref().is_some_and(|s| (s["state"] == "completed" && state.as_ref().and_then(|s| s.acknowledged_stop_request_id.as_deref()) != s["requestId"].as_str()) || (s["state"] != "completed" && !crate::server::settled_refusal(s))),
-        "restartPending":false,
+        "restartPending":crate::server::updates::restart_pending(home)?,
         "automaticRestarts":state.as_ref().map(|s| s.crashes.len().min(5)).unwrap_or(0),
         "live":false
     }))
@@ -124,6 +151,38 @@ pub fn offline_service_status(home: &Path) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn controlled_exec_acknowledges_only_original_stop_without_resetting_budget() {
+        let root = tempfile::tempdir().unwrap();
+        storage::private_dir(&root.path().join("host")).unwrap();
+        let state = ServiceRun {
+            active: false,
+            managed: true,
+            pid: std::process::id(),
+            crashes: vec![100, 200],
+            ..Default::default()
+        };
+        storage::write(&root.path().join("host/service-run.json"), &state).unwrap();
+        storage::write(
+            &root.path().join("host/stop.json"),
+            &serde_json::json!({"requestId":"original","state":"completed"}),
+        )
+        .unwrap();
+        assert!(ServiceRun::acknowledge_controlled_stop(root.path(), "another").is_err());
+        let previous = ServiceRun::acknowledge_controlled_stop(root.path(), "original").unwrap();
+        let mut saved: ServiceRun =
+            storage::read(&root.path().join("host/service-run.json")).unwrap();
+        assert_eq!(saved.crashes, vec![100, 200]);
+        assert_eq!(
+            saved.begin(true, Some("original".into()), 250),
+            Some(Duration::ZERO)
+        );
+        assert_eq!(saved.crashes, vec![100, 200]);
+        ServiceRun::undo_controlled_stop(root.path(), "original", previous).unwrap();
+        let saved: ServiceRun = storage::read(&root.path().join("host/service-run.json")).unwrap();
+        assert_eq!(saved.acknowledged_stop_request_id, None);
+        assert_eq!(saved.crashes, vec![100, 200]);
+    }
     #[test]
     fn managed_budget_and_stop_acknowledgement_follow_explicit_intent() {
         let mut state = ServiceRun::default();

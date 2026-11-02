@@ -42,6 +42,7 @@ pub const CAPABILITIES: &[&str] = &[
     "scheduledActivation",
     "scheduledPreparation",
     "powerV1",
+    "updates",
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

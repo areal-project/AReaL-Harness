@@ -8,6 +8,8 @@ mod schedule_connection;
 mod schedules;
 #[path = "subscription/host.rs"]
 mod subscriptions;
+#[path = "updates.rs"]
+pub(crate) mod updates;
 use crate::{
     Activity, CAPABILITIES, HostIdentity, HostStatus, LaunchInputs, OpenResult, ProjectActivity,
     ProjectRegistration, ProjectStatus, StopStrategy, VERSION, launch,
@@ -332,6 +334,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     }
     host.restore_subscriptions().await?;
     storage::write(&directory.join("host.json"), &host.identity)?;
+    host.settle_update_start()?;
     let scheduler = schedules::run(host.clone());
     tokio::pin!(scheduler);
     let connections = schedule_connection::run(host.clone());
@@ -358,6 +361,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     std::fs::remove_file(socket)?;
     std::fs::remove_file(directory.join("host.json"))?;
     crate::service_run::ServiceRun::finish(&host.home)?;
+    host.exec_update(managed)?;
     drop(lock);
     Ok(HostExit::Stopped)
 }
@@ -838,7 +842,7 @@ impl Host {
             }
             .into(),
             projects,
-            restart_pending: false,
+            restart_pending: updates::restart_pending(&self.home).unwrap_or(true),
             stop_intent: stop.is_some(),
             capabilities: CAPABILITIES.iter().map(|s| (*s).into()).collect(),
         }
@@ -997,14 +1001,23 @@ impl Host {
             "host.operation" => {
                 let query: OperationQuery = serde_json::from_value(params)?;
                 wire::request_id(&query.request_id)?;
+                if self
+                    .receipt(&query.request_id)?
+                    .is_some_and(|record| record.receipt["method"] == "host.update")
+                {
+                    return Ok(
+                        json!({"operation":self.reconcile_update(&query.request_id).await?}),
+                    );
+                }
                 Ok(
                     json!({"operation":match self.client_operation(&query.request_id)? { Some(receipt) => Some(receipt), None => self.reconcile(&query.request_id).await? }}),
                 )
             }
-            "host.update" => Err(error(
-                "unsupportedCapability",
-                "updates are not supported by this Host",
-            )),
+            "host.updateStatus" => {
+                serde_json::from_value::<Empty>(params)?;
+                self.update_status()
+            }
+            "host.update" => self.update(serde_json::from_value(params)?).await,
             _ => Err(error("methodNotFound", "unknown Host method")),
         }
     }
@@ -1752,6 +1765,14 @@ impl Host {
     async fn stop_host(&self, input: Stop) -> Result<Value> {
         let _host_guard = self.host_stop_gate.lock().await;
         self.generation(&input.expected_generation)?;
+        ensure!(
+            self.reserved_update_stop()?
+                .is_none_or(|id| id == input.request_id),
+            error(
+                "stopInProgress",
+                "reconcile the original controlled update before a new stop"
+            )
+        );
         if input.project_id.is_some() || input.service_generation.is_some() {
             return Err(error(
                 "invalidRequest",
@@ -1766,6 +1787,9 @@ impl Host {
                 .await?
                 .context("missing stop operation");
         }
+        self.stop_host_new(input).await
+    }
+    async fn stop_host_new(&self, input: Stop) -> Result<Value> {
         if let Some(existing) = self.stop.borrow().as_ref() {
             if !matches!(
                 existing["state"].as_str(),

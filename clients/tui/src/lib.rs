@@ -248,6 +248,7 @@ async fn interactive(
     let mut clock = tokio::time::interval(Duration::from_secs(1));
     let mut reconnect: Option<tokio::task::JoinHandle<Result<Client>>> = None;
     let mut updating: Option<tokio::task::JoinHandle<Result<()>>> = None;
+    let mut host_updates: Option<tokio::task::JoinHandle<Result<Option<String>>>> = None;
     let mut next_retry = Instant::now();
     let mut retry_seconds = 1;
     loop {
@@ -300,6 +301,10 @@ async fn interactive(
             app.disconnect(&e.to_string());
         }
         tokio::select! {
+            result = async { host_updates.as_mut().unwrap().await }, if host_updates.is_some() => {
+                host_updates = None;
+                if let Ok(Ok(notice)) = result { app.host_update_notice = notice; app.dirty = true; }
+            }
             notice = async { trajectory_notice.as_mut().unwrap().await }, if trajectory_notice.is_some() => {
                 *trajectory_notice = None;
                 if let Ok(notice) = notice { app.set_trajectory_notice(notice); }
@@ -334,7 +339,12 @@ async fn interactive(
             _ = redraw.tick() => {
                 if app.dirty { terminal.draw(|frame| ui::draw(frame, app))?; app.dirty = false; }
             }
-            _ = refresh.tick() => { if let Err(e) = app.refresh() { app.status = e.to_string(); app.dirty = true; } }
+            _ = refresh.tick() => {
+                if let Err(e) = app.refresh() { app.status = e.to_string(); app.dirty = true; }
+                if host_updates.is_none() && let Some(project) = args.host_project.clone() {
+                    host_updates = Some(tokio::spawn(async move { project.update_notice().await }));
+                }
+            }
             _ = clock.tick() => { if app.active().is_some() || app.view == View::Agents { app.dirty = true; } }
             event = events.next() => {
                 let Some(Ok(event)) = event else { break; };

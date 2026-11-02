@@ -19,6 +19,19 @@ pub struct ServiceInstallation {
     descriptor_digest: String,
 }
 impl ServiceInstallation {
+    pub fn status(home: &Path) -> Result<serde_json::Value> {
+        let Some(installation) =
+            storage::read_optional::<Self>(&home.join("host/service-install.json"))?
+        else {
+            return Ok(serde_json::json!({"installed":false}));
+        };
+        ensure!(
+            installation.home == storage::canonical_pending(home)?,
+            "service home mismatch"
+        );
+        installation.verify_descriptor()?;
+        Ok(serde_json::json!({"installed":true,"label":installation.label}))
+    }
     pub fn current() -> Result<Self> {
         let home = areal_local_service::home()?;
         let user_home = std::env::home_dir().context("user home unavailable")?;
@@ -35,12 +48,30 @@ impl ServiceInstallation {
     pub fn at(home: PathBuf, service_directory: &Path, executable: &Path) -> Result<Self> {
         let home = storage::canonical_pending(&home)?;
         let real = executable.canonicalize()?;
-        let stable = real
-            .ancestors()
-            .skip(1)
-            .map(|p| p.join("bin/areal"))
-            .find(|path| path.is_symlink() && path.canonicalize().is_ok_and(|p| p == real))
-            .unwrap_or(real);
+        let keg = real.parent().and_then(Path::parent);
+        let brew_entry = keg.and_then(|keg| {
+            let formula = keg.parent()?;
+            let cellar = formula.parent()?;
+            if cellar.file_name()? != "Cellar" {
+                return None;
+            }
+            let name = formula.file_name()?;
+            if name != "areal" && name != "areal-beta" {
+                return None;
+            }
+            let entry = cellar.parent()?.join("opt").join(name).join("bin/areal");
+            entry
+                .canonicalize()
+                .is_ok_and(|path| path == real)
+                .then_some(entry)
+        });
+        let stable = brew_entry.unwrap_or_else(|| {
+            real.ancestors()
+                .skip(1)
+                .map(|p| p.join("bin/areal"))
+                .find(|path| path.is_symlink() && path.canonicalize().is_ok_and(|p| p == real))
+                .unwrap_or_else(|| real.clone())
+        });
         let label = format!(
             "org.areal.host.{}",
             &storage::digest(home.as_os_str().as_encoded_bytes())[..16]
@@ -264,6 +295,12 @@ impl ServiceInstallation {
         Ok(())
     }
     pub async fn uninstall(home: &Path) -> Result<Option<Self>> {
+        Self::uninstall_mode(home, false).await
+    }
+    pub async fn uninstall_stopped(home: &Path) -> Result<Option<Self>> {
+        Self::uninstall_mode(home, true).await
+    }
+    async fn uninstall_mode(home: &Path, stopped_only: bool) -> Result<Option<Self>> {
         let path = home.join("host/service-install.json");
         let Some(installation) = storage::read_optional::<Self>(&path)? else {
             return Ok(None);
@@ -274,6 +311,10 @@ impl ServiceInstallation {
         );
         installation.verify_descriptor()?;
         if let Ok(client) = crate::Client::connect_at(home.to_owned()).await {
+            ensure!(
+                !stopped_only,
+                "Host is running again; service removal requires the original confirmed stop and never submits a new stop"
+            );
             let request = uuid::Uuid::new_v4().to_string();
             let receipt = client
                 .stop(

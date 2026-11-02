@@ -9,6 +9,26 @@ pub(crate) struct HostProject {
 }
 
 impl HostProject {
+    pub(crate) async fn update_notice(&self) -> Result<Option<String>> {
+        let client = areal_host::Client::connect_at(self.client.home().to_path_buf()).await?;
+        if !client
+            .status()
+            .await?
+            .capabilities
+            .iter()
+            .any(|c| c == "updates")
+        {
+            return Ok(None);
+        }
+        let state = client.update_status().await?;
+        Ok((state["restartPending"] == true).then(|| {
+            format!(
+                "Host {} · update {} pending · apply explicitly with areal host update apply",
+                client.identity().executable_version,
+                state["targetVersion"].as_str().unwrap_or("unknown")
+            )
+        }))
+    }
     pub(crate) async fn observe_service(&self) -> Result<areal_protocol::service::Service> {
         let client = areal_host::Client::connect_at(self.client.home().to_path_buf()).await?;
         let opened = client.reconnect(&self.project_id).await?;

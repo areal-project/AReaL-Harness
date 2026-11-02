@@ -42,6 +42,142 @@ impl Model for TextModel {
     }
 }
 type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
+
+#[tokio::test]
+async fn host_update_status_fences_authenticated_socket_disconnect_and_replacement() {
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    async fn connect(addr: std::net::SocketAddr, token: &str) -> Socket {
+        let mut request = format!("ws://{addr}").into_client_request().unwrap();
+        request
+            .headers_mut()
+            .insert("Authorization", format!("Bearer {token}").parse().unwrap());
+        let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+        assert!(
+            call(
+                &mut socket,
+                1,
+                "initialize",
+                json!({"clientInfo":{"name":"host-status-fixture","version":"1"}})
+            )
+            .await
+            .0["error"]
+                .is_null()
+        );
+        socket
+            .send(Wire::Text(
+                json!({"method":"initialized"}).to_string().into(),
+            ))
+            .await
+            .unwrap();
+        socket
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(TextModel), Limits::default()).unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let stop = CancellationToken::new();
+    let token = "a".repeat(64);
+    let foreign_token = "b".repeat(64);
+    let authentication = serde_json::from_value(json!({"version":1,"principals":[
+        {"id":"owner","token":token,"permissions":["observe","interact","manage","tools"]},
+        {"id":"foreign","token":foreign_token,"permissions":["observe","interact","manage","tools"]}
+    ]}))
+    .unwrap();
+    let server = tokio::spawn(areal_app_server::serve_authenticated(
+        listener,
+        engine.clone(),
+        stop.clone(),
+        Some(authentication),
+    ));
+    let mut reader = connect(addr, &token).await;
+    let (capabilities, _) = call(&mut reader, 2, "areal/capabilities", json!({})).await;
+    assert_eq!(capabilities["result"]["features"]["hostUpdateStatus"], true);
+    assert!(
+        capabilities["result"]["methods"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("areal/host/status"))
+    );
+    assert_eq!(
+        call(&mut reader, 3, "areal/host/status", json!({})).await.0["result"],
+        Value::Null
+    );
+    let mut original = connect(addr, &token).await;
+    assert_eq!(
+        call(&mut original, 2, "areal/task/host/ready", json!({}))
+            .await
+            .0["result"]["ready"],
+        true
+    );
+    let mut successor = connect(addr, &token).await;
+    assert!(
+        call(&mut successor, 2, "areal/task/host/ready", json!({}))
+            .await
+            .0["error"]
+            .is_object()
+    );
+    let reading = tokio::spawn(async move {
+        let response = call(&mut reader, 4, "areal/host/status", json!({})).await.0;
+        (reader, response)
+    });
+    let request = receive(&mut original).await;
+    assert_eq!(request["method"], "areal/host/status");
+    assert_eq!(request["params"], json!({}));
+    original.close(None).await.unwrap();
+    let (mut reader, response) = reading.await.unwrap();
+    assert_eq!(
+        response["result"],
+        Value::Null,
+        "a disconnected original read cannot adopt its successor"
+    );
+    assert_eq!(
+        call(&mut successor, 3, "areal/task/host/ready", json!({}))
+            .await
+            .0["result"]["ready"],
+        true
+    );
+    let expected = json!({"hostId":"host","generation":"new-generation","executableVersion":"0.1.9","capabilities":["updates"],"restartPending":true,"targetVersion":"0.2.0"});
+    let reading = tokio::spawn(async move {
+        let response = call(&mut reader, 5, "areal/host/status", json!({})).await.0;
+        (reader, response)
+    });
+    let request = receive(&mut successor).await;
+    assert_eq!(request["method"], "areal/host/status");
+    successor
+        .send(Wire::Text(
+            json!({"id":request["id"],"result":expected})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+    let (mut reader, response) = reading.await.unwrap();
+    assert_eq!(response["result"], expected);
+    assert!(
+        call(
+            &mut reader,
+            6,
+            "areal/host/status",
+            json!({"hostId":"forged","executableVersion":"forged"})
+        )
+        .await
+        .0["error"]
+            .is_object()
+    );
+    let mut foreign = connect(addr, &foreign_token).await;
+    assert_eq!(
+        call(&mut foreign, 2, "areal/host/status", json!({}))
+            .await
+            .0["result"],
+        Value::Null
+    );
+    foreign.close(None).await.unwrap();
+    reader.close(None).await.unwrap();
+    successor.close(None).await.unwrap();
+    stop.cancel();
+    server.await.unwrap().unwrap();
+    engine.shutdown().await;
+}
 fn validate(name: &str, value: &Value) {
     let schemas: Value = serde_json::from_str(include_str!(
         "../../../schemas/app-server/codex-0.145.0.json"

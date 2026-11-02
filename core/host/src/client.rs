@@ -143,6 +143,28 @@ impl Client {
     pub async fn activity(&self) -> Result<Activity> {
         self.call("host.activity", json!({})).await
     }
+    pub async fn update_status(&self) -> Result<Value> {
+        self.call("host.updateStatus", json!({})).await
+    }
+    pub async fn prepare_update(
+        &self,
+        request_id: &str,
+        expected_generation: &str,
+        target_version: &str,
+    ) -> Result<Value> {
+        self.call("host.update", json!({"requestId":request_id,"expectedGeneration":expected_generation,"action":"prepare","targetVersion":target_version})).await
+            .with_context(|| format!("host.update prepare requestId {request_id}; query the original operation after a lost reply"))
+    }
+    pub async fn apply_update(
+        &self,
+        request_id: &str,
+        expected_generation: &str,
+        target_version: &str,
+        strategy: StopStrategy,
+    ) -> Result<Value> {
+        self.call("host.update", json!({"requestId":request_id,"expectedGeneration":expected_generation,"action":"apply","targetVersion":target_version,"strategy":strategy})).await
+            .with_context(|| format!("host.update apply requestId {request_id}; query the original operation after a lost reply"))
+    }
     pub async fn list(&self) -> Result<Vec<ProjectRegistration>> {
         let result: Value = self.call("projects.list", json!({})).await?;
         Ok(serde_json::from_value(result["projects"].clone())?)

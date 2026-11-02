@@ -12,6 +12,8 @@ let skills = [],
 const pending = new Map();
 let interactionDisplayed = null;
 let executionsSupported = false;
+let hostUpdatesSupported = false,
+  hostStatusReading = false;
 let goalsSupported = false,
   displayedGoal = null;
 let tasksSupported = false,
@@ -933,6 +935,22 @@ $("goal-form").onsubmit = async (e) => {
 };
 for (const action of ["pause", "resume", "clear"])
   $("goal-" + action).onclick = () => goalControl(action).catch(notice);
+async function refreshHostStatus() {
+  if (!connected || !hostUpdatesSupported || hostStatusReading) return;
+  hostStatusReading = true;
+  const current = socket;
+  try {
+    const status = await call("areal/host/status", {});
+    if (current !== socket || !connected) return;
+    $("connection").textContent = status?.capabilities?.includes("updates")
+      ? `已连接本地 Core · 后台 ${status.executableVersion}${status.restartPending ? ` · 待应用 ${status.targetVersion ?? "更新"}` : ""}`
+      : "已连接本地 Core";
+  } catch {
+    if (current === socket && connected) $("connection").textContent = "已连接本地 Core";
+  } finally {
+    hostStatusReading = false;
+  }
+}
 async function connect() {
   connected = false;
   for (const request of pending.values()) request.reject(Error("正在重新连接，请重试。"));
@@ -989,6 +1007,7 @@ async function connect() {
   });
   socket.send(JSON.stringify({ method: "initialized", params: {} }));
   const capabilities = await call("areal/capabilities", {});
+  hostUpdatesSupported = capabilities.features?.hostUpdateStatus === true;
   executionsSupported = capabilities.methods?.includes("areal/execution/list") === true;
   goalsSupported = capabilities.features?.goals === true;
   tasksSupported = capabilities.features?.taskModes === true;
@@ -996,6 +1015,7 @@ async function connect() {
   $("inbox-open").hidden = !tasksSupported;
   $("connection").textContent = "已连接本地 Core";
   $("connection").dataset.state = "connected";
+  await refreshHostStatus();
   await list();
   await reload();
   if (tasksSupported) {
@@ -1776,6 +1796,7 @@ function renderInbox() {
   if (!forms.length) list.append(node("p", "没有待回答的问题。", "muted"));
 }
 setInterval(() => {
+  void refreshHostStatus();
   if (connected && tasksSupported) {
     if (!$("inbox-dialog").open) loadInbox().catch(() => {});
     if (!$("task-center").hidden) listTasks().catch(notice);

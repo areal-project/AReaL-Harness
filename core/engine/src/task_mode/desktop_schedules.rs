@@ -92,6 +92,25 @@ impl Engine {
             .cloned()
     }
 
+    pub async fn host_update_status(
+        &self,
+        owner: &str,
+    ) -> Option<areal_protocol::desktop::HostUpdateStatus> {
+        let host = self.schedule_host(owner).await?;
+        if !self.host_current(&host).await {
+            return None;
+        }
+        let status = host
+            .host_status(tokio_util::sync::CancellationToken::new())
+            .await
+            .ok()
+            .flatten();
+        if !self.host_current(&host).await {
+            return None;
+        }
+        status
+    }
+
     pub(super) async fn host_current(&self, host: &Arc<dyn tools::DynamicToolHost>) -> bool {
         !host.is_closed()
             && self

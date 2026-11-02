@@ -12,7 +12,7 @@ const { readHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
 const {
   isLifecycleProjection,
 } = require("../packages/workbench/client/desktop-contract/shared.cjs");
-async function fixture(t) {
+async function fixture(t, extraCapabilities = []) {
   const root = await realpath(await mkdtemp("/tmp/ah-host-stop-"));
   const home = join(root, "desktop"),
     hostHome = join(root, "host"),
@@ -54,6 +54,7 @@ async function fixture(t) {
               hostId,
               generation,
               capabilities: [
+                ...extraCapabilities,
                 "activity",
                 "stopOperations",
                 "guiImport",
@@ -114,6 +115,91 @@ async function fixture(t) {
     },
   };
 }
+for (const action of ["prepare", "apply"]) {
+  test(`Host update ${action} settles its original wrapped receipt after reconnect`, async (t) => {
+    const f = await fixture(t, ["updates"]);
+    const requestId = randomUUID();
+    let original;
+    f.setHandler(async (request, socket) => {
+      if (request.method === "host.update") {
+        const control = JSON.parse(await readFile(f.backend.controlPath, "utf8"));
+        assert.equal(control.hostUpdate.requestId, requestId);
+        original = {
+          version: 1,
+          requestId,
+          hostId: f.hostId,
+          generation: f.generation,
+          action,
+          targetVersion: "0.1.9",
+          state: action === "prepare" ? "prepared" : "completed",
+          evidence: { target: "/private/target" },
+        };
+        socket.destroy();
+        return;
+      }
+      if (request.method === "host.operation") {
+        assert.equal(request.params.requestId, requestId);
+        return { operation: original };
+      }
+      assert.equal(request.method, "host.updateStatus");
+      return {
+        restartPending: action === "prepare",
+        targetVersion: "0.1.9",
+        prepareRequestId: requestId,
+        operation: original,
+      };
+    });
+    await assert.rejects(
+      f.backend.hostUpdate({ operation: action, requestId, targetVersion: "0.1.9" }),
+    );
+    await f.setGeneration(randomUUID());
+    const restarted = new SharedCoreBackend({
+      app: { getPath: () => f.profile },
+      home: f.home,
+      hostHome: f.hostHome,
+    });
+    const status = await restarted.hostUpdate({ operation: "check" });
+    assert.equal(status.operation.requestId, requestId);
+    assert.equal(status.operation.generation, f.generation);
+    assert.equal(status.operation.state, action === "prepare" ? "prepared" : "completed");
+    assert.equal("evidence" in status.operation, false);
+    assert.equal(restarted.hostUpdateReference, null);
+    assert.equal(f.calls.filter((call) => call.method === "host.update").length, 1);
+  });
+}
+test("Host update null lookup preserves UNKNOWN and blocks a new mutation without replay", async (t) => {
+  const f = await fixture(t, ["updates"]);
+  const requestId = randomUUID();
+  f.setHandler(async (request, socket) => {
+    if (request.method === "host.update") {
+      socket.destroy();
+      return;
+    }
+    assert.equal(request.method, "host.operation");
+    assert.equal(request.params.requestId, requestId);
+    return { operation: null };
+  });
+  await assert.rejects(
+    f.backend.hostUpdate({ operation: "prepare", requestId, targetVersion: "0.1.9" }),
+  );
+  const restarted = new SharedCoreBackend({
+    app: { getPath: () => f.profile },
+    home: f.home,
+    hostHome: f.hostHome,
+  });
+  const status = await restarted.hostUpdate({ operation: "check" });
+  assert.equal(status.operation.state, "admissionUnknown");
+  assert.equal(status.operation.requestId, requestId);
+  await assert.rejects(
+    restarted.hostUpdate({ operation: "prepare", requestId: randomUUID(), targetVersion: "0.1.9" }),
+    /原升级请求结果待核查/,
+  );
+  assert.equal(
+    JSON.parse(await readFile(restarted.controlPath, "utf8")).hostUpdate.requestId,
+    requestId,
+  );
+  assert.equal(f.calls.filter((call) => call.method === "host.update").length, 1);
+});
 test("Host activity is passive and whole-Host stop is durable before one dispatch", async (t) => {
   const f = await fixture(t);
   const activity = {
