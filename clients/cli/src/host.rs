@@ -3,7 +3,12 @@ use areal_host::{Client, ResolveProject, StopStrategy};
 use clap::Subcommand;
 #[derive(Subcommand)]
 pub enum HostCommand {
-    Run,
+    Run {
+        #[arg(long)]
+        managed: bool,
+    },
+    Install,
+    Uninstall,
     Status {
         #[arg(long)]
         json: bool,
@@ -40,16 +45,33 @@ pub enum HostCommand {
 }
 pub async fn execute(command: HostCommand) -> Result<()> {
     let value = match command {
-        HostCommand::Run => {
-            let exit = areal_host::run(areal_host::RunOptions::current()?).await?;
+        HostCommand::Run { managed } => {
+            let options = areal_host::RunOptions::current()?;
+            if !managed && areal_host::ServiceInstallation::start_installed(&options.home).await? {
+                return Ok(());
+            }
+            let exit = if managed {
+                areal_host::run_managed(options).await?
+            } else {
+                areal_host::run(options).await?
+            };
             if exit.code() != 0 {
                 std::process::exit(exit.code());
             }
             return Ok(());
         }
-        HostCommand::Status { .. } => {
-            serde_json::to_value(Client::connect().await?.status().await?)?
+        HostCommand::Install => {
+            let installation = areal_host::ServiceInstallation::current()?;
+            installation.install()?;
+            serde_json::to_value(installation)?
         }
+        HostCommand::Uninstall => serde_json::to_value(
+            areal_host::ServiceInstallation::uninstall(&areal_local_service::home()?).await?,
+        )?,
+        HostCommand::Status { .. } => match Client::connect().await {
+            Ok(client) => serde_json::to_value(client.status().await?)?,
+            Err(_) => areal_host::offline_service_status(&areal_local_service::home()?)?,
+        },
         HostCommand::List { .. } => {
             serde_json::json!({"projects":Client::connect().await?.list().await?})
         }

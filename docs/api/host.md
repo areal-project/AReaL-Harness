@@ -241,6 +241,12 @@ macOS 由 Host 持有 `caffeinate -i -w <HostPID>`，Linux 使用 `systemd-inhib
 
 ## 退出与服务管理器契约
 
+`areal host install` 在没有活动 Host 时注册当前 home 的用户级服务；已有 Host 持锁时先拒绝，要求显式停止后再安装。服务名为 `org.areal.host.<home摘要前16位>`，macOS 描述位于用户 `Library/LaunchAgents`，Linux 位于用户配置目录的 `systemd/user`。描述固定可执行入口和两个 Host home 环境变量。安装器或 Homebrew 的稳定 `bin/areal` 符号链接保留为启动入口，不固化它当前指向的版本目录。安装回执保存描述路径及摘要；不覆盖或删除无法与原回执匹配的描述。
+
+安装本身保留已有停止意图。普通 `areal host run` 检测到已安装服务时，在原锁内确认显式启动、清除崩溃预算，再请求原管理器任务启动；既有 CLI/GUI 的主动连接启动复用此入口。管理器使用 `areal host run --managed`，该入口及状态读取均不清除停止意图。`areal host uninstall` 先按原 Host 身份执行空闲停止；原停止未确认完成或锁未释放时保留服务登记。退注册只移除该安装回执覆盖的描述，不删除 home、身份或操作回执。
+
+Host 离线时，`areal host status` 读取持久服务状态，标记 `live:false`。尚未结算的活动记录显示 `unavailable`，耗尽预算显示 `crashLoopStopped`；离线视图不证明旧进程或未知操作已完成。版本升级能力仍由 `updates` 单独协商。
+
 `areal host run` 全生命周期持有 `host.lock`。并发竞争的输家在 macOS 退出 0，在 Linux 退出 73，systemd 配置 `RestartPreventExitStatus=73`。正常显式停止退出 0；异常失败退出非零并消耗有界重启预算。macOS 使用 `KeepAlive.SuccessfulExit=false`。持久显式停止意图禁止自动重启，新的显式本机启动可清除它。五分钟最多自动重启五次，退避 1、2、4、8、16 秒；用尽后持久化 `crashLoopStopped`。
 
 Host 崩溃关闭它持有的生命期管道，既有 service-host、launcher、Core、Runtime 清理链仍是权威。后继等待清理证明与旧锁。上述保证仅适用于 Host-owned generation，不适用于 `legacyPending`。注销、关机与休眠不保证可达。安装包、launchd、systemd、真机验收均需独立证据。

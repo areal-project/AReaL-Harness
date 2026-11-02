@@ -190,7 +190,15 @@ pub async fn run(options: RunOptions) -> Result<HostExit> {
         .run_until(run_local(options))
         .await
 }
+pub async fn run_managed(options: RunOptions) -> Result<HostExit> {
+    tokio::task::LocalSet::new()
+        .run_until(run_local_mode(options, true))
+        .await
+}
 async fn run_local(options: RunOptions) -> Result<HostExit> {
+    run_local_mode(options, false).await
+}
+async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> {
     let home = storage::canonical_pending(&options.home)?;
     storage::private_dir(&home)?;
     let lock = storage::open_private(&home.join("host.lock"), true)?;
@@ -203,6 +211,10 @@ async fn run_local(options: RunOptions) -> Result<HostExit> {
     }
     let directory = home.join("host");
     storage::private_dir(&directory)?;
+    let Some(delay) = crate::service_run::ServiceRun::prepare(&home, managed)? else {
+        return Ok(HostExit::Stopped);
+    };
+    tokio::time::sleep(delay).await;
     for sub in ["operations", "projects", "launch"] {
         storage::private_dir(&directory.join(sub))?;
     }
@@ -345,6 +357,7 @@ async fn run_local(options: RunOptions) -> Result<HostExit> {
     host.power.close().await;
     std::fs::remove_file(socket)?;
     std::fs::remove_file(directory.join("host.json"))?;
+    crate::service_run::ServiceRun::finish(&host.home)?;
     drop(lock);
     Ok(HostExit::Stopped)
 }
@@ -2088,7 +2101,7 @@ fn stop_receipt(project: &str, strategy: StopStrategy, operation: &StopOperation
     }
     value
 }
-fn settled_refusal(receipt: &Value) -> bool {
+pub(crate) fn settled_refusal(receipt: &Value) -> bool {
     let Some(targets) = receipt["projects"].as_array() else {
         return false;
     };
@@ -2637,7 +2650,10 @@ mod tests {
             let bin=std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
             let task=tokio::task::spawn_local(run_local(RunOptions {home:home.clone(),bin_dir:bin.clone()}));
             let client=loop {if let Ok(client)=Client::connect_at(home.clone()).await {break client;}tokio::task::yield_now().await;};
+            let run_record=std::fs::read(home.join("host/service-run.json")).unwrap();
             assert!(matches!(run_local(RunOptions {home:home.clone(),bin_dir:bin.clone()}).await.unwrap(),HostExit::AlreadyRunning));
+            assert!(matches!(run_local_mode(RunOptions {home:home.clone(),bin_dir:bin.clone()},true).await.unwrap(),HostExit::AlreadyRunning));
+            assert_eq!(std::fs::read(home.join("host/service-run.json")).unwrap(),run_record);
             let identity=client.identity().clone();assert!(client.status().await.unwrap().projects.is_empty());
             let mut bad=BufReader::new(UnixStream::connect(&identity.socket_path).await.unwrap());
             wire::write(bad.get_mut(),&json!({"version":1,"id":"bad","method":"hello","params":{"protocolVersions":[1],"capabilities":[],"authToken":"wrong"}})).await.unwrap();
@@ -2688,6 +2704,13 @@ mod tests {
 
             let stop_id=uuid::Uuid::new_v4().to_string();let stop=client.stop(&stop_id,&identity.generation,StopStrategy::IfIdle).await.unwrap();assert_eq!(stop["state"],"completed");assert!(matches!(task.await.unwrap().unwrap(),HostExit::Stopped));
             assert!(!home.join("host/host.json").exists());
+            let stopped_record=std::fs::read(home.join("host/stop.json")).unwrap();
+            assert!(matches!(run_local_mode(RunOptions {home:home.clone(),bin_dir:bin.clone()},true).await.unwrap(),HostExit::Stopped));
+            assert!(!home.join("host/host.json").exists());
+            assert_eq!(std::fs::read(home.join("host/stop.json")).unwrap(),stopped_record);
+            let offline=crate::offline_service_status(&home).unwrap();
+            assert_eq!(offline["state"],"stopped");
+            assert_eq!(offline["stopIntent"],true);
             assert_eq!(storage::read::<String>(&home.join("host/identity.json")).unwrap(),identity.host_id);
             assert_eq!(crate::operation_offline(&home,&id).unwrap().unwrap(),receipt);
             let restarted=tokio::task::spawn_local(run_local(RunOptions {home:home.clone(),bin_dir:bin}));
