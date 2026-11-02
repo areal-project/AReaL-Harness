@@ -10,7 +10,7 @@
 
 | 分类 | 文档 |
 |---|---|
-| 使用指南 | [快速开始](guides/quickstart.md) · [CLI、TUI 与 Web](guides/clients.md) · [配置](guides/configuration.md) · [Runtime 部署](guides/runtime.md) · [桌面 Worktree](guides/worktrees.md) |
+| 使用指南 | [快速开始](guides/quickstart.md) · [CLI/TUI 下载安装与使用](guides/cli-tui.md) · [CLI、TUI 与 Web](guides/clients.md) · [配置](guides/configuration.md) · [Runtime 部署](guides/runtime.md) · [桌面 Worktree](guides/worktrees.md) |
 | 扩展与协作 | [工具与 hooks](guides/tools.md) · [MCP](guides/mcp.md) · [Skill](guides/skills.md) · [Workgroup](guides/workgroups.md) |
 | API 契约 | [Core](api/core.md) · [桌面 API](api/desktop.md) · [Task Mode 与频道](api/tasks.md) · [Browser](api/browser.md) · [电脑控制](api/computer.md) · [Runtime](api/runtime.md) · [TypeScript SDK](api/typescript-sdk.md) · [Native Host](api/native-host.md) · [Claude CLI](api/claude-cli.md) · [本地服务](api/local-service.md) |
 | 架构设计 | [分层与目录](design/architecture.md) · [上下文管理](design/context-management.md) · [Agent 委派](design/multi-agent.md) · [Workgroup](design/workgroups.md) · [插件](design/plugins.md) · [TUI](design/tui.md) · [图表规范](design/STYLE_GUIDE.md) |
