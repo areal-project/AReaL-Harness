@@ -1,3 +1,4 @@
+import { readTurnToolDetails } from "./support/tool-history.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -309,6 +310,21 @@ try {
     return turn && ["completed", "failed"].includes(turn.status) && turn;
   }, "Search turn settles");
   facts.nativeBeforeAnnotation = await nativeFact();
+  facts.turn = await readTurnToolDetails({
+    command: async (name, params) => {
+      const result = await page.evaluate(
+        ({ name, params }) => window.arealDesktop.command(name, params),
+        { name, params },
+      );
+      assert.equal(result.ok, true, JSON.stringify(result));
+      return result.value;
+    },
+    readThread: async () =>
+      (await state()).projects.find((project) => project.id === projectId).state.threads[threadId],
+    projectId,
+    threadId,
+    turnId: facts.turn.id,
+  });
   const finalRead = facts.turn.items.filter((item) => item.type === "dynamicToolCall").at(-1);
   facts.read = {
     success: finalRead.success,

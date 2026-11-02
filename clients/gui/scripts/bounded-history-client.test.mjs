@@ -160,6 +160,125 @@ function anchorFixture(count = 12, intercept = async () => {}) {
     return page([entry("old", item(`anchor-${n}`))], n + 1 < count ? `page:${n + 1}` : null);
   });
 }
+
+test("acquire refreshes an already invalidated view before bounded hydration", async () => {
+  let observations = 0;
+  const f = fixture(async (method) => {
+    assert.equal(method, "areal/thread/observe");
+    observations++;
+    return {
+      ...baseline(),
+      history: { snapshotId: `snapshot-${observations}`, nextCursor: null, complete: true },
+    };
+  });
+  await f.backend.openThread(f.project, "thread");
+  const previous = f.backend.historyWindow(f.project, "thread");
+  previous.invalidated = true;
+  previous.epoch++;
+  assert.deepEqual(await f.history("acquire"), { supported: true, complete: true });
+  const current = f.backend.historyWindow(f.project, "thread");
+  assert.notEqual(current, previous);
+  assert.notEqual(current.invalidated, true);
+  assert.equal(current.snapshotId, "snapshot-2");
+  assert.equal(current.views.has("view-a"), true);
+  assert.equal(observations, 2, "one explicit acquire refreshes once, without retries");
+  assert.equal(
+    f.calls.some((call) => call.method === "thread/read"),
+    false,
+  );
+  assert.ok(f.calls.every((call) => !call.maxResponseBytes || call.maxResponseBytes <= 1048576));
+  await f.history("release");
+  assert.equal(current.views.size, 0);
+});
+
+for (const keepOtherView of [false, true])
+  test(`release during invalidated acquire cannot resurrect its view (other view: ${keepOtherView})`, async () => {
+    let observations = 0;
+    let enter;
+    let finish;
+    const entered = new Promise((resolve) => {
+      enter = resolve;
+    });
+    const held = new Promise((resolve) => {
+      finish = resolve;
+    });
+    const f = fixture(async (method) => {
+      assert.equal(method, "areal/thread/observe");
+      if (++observations === 2) {
+        enter();
+        await held;
+      }
+      return {
+        ...baseline(),
+        history: { snapshotId: "snapshot", nextCursor: null, complete: true },
+      };
+    });
+    await f.backend.openThread(f.project, "thread");
+    const previous = f.backend.historyWindow(f.project, "thread");
+    previous.invalidated = true;
+    if (keepOtherView) previous.views.add("view-b");
+    const pending = f.history("acquire");
+    const rejected = assert.rejects(pending, /历史视图/);
+    await entered;
+    await f.history("release");
+    finish();
+    await rejected;
+    const current = f.backend.historyWindow(f.project, "thread");
+    assert.equal(current.views.has("view-a"), false);
+    assert.equal(current.views.has("view-b"), keepOtherView);
+    assert.equal(observations, 2);
+  });
+
+for (const replaceClient of [false, true])
+  test(`invalidated acquire cannot adopt a replacement connection window (new client: ${replaceClient})`, async () => {
+    const f = fixture(async (method) => {
+      assert.equal(method, "areal/thread/observe");
+      return {
+        ...baseline(),
+        history: { snapshotId: "initial", nextCursor: null, complete: true },
+      };
+    });
+    await f.backend.openThread(f.project, "thread");
+    const previous = f.backend.historyWindow(f.project, "thread");
+    previous.invalidated = true;
+    let enter, finish;
+    const entered = new Promise((resolve) => {
+      enter = resolve;
+    });
+    const held = new Promise((resolve) => {
+      finish = resolve;
+    });
+    f.project.observationReads.set("thread", {
+      client: f.project.client,
+      generation: f.project.connectionGeneration,
+      get promise() {
+        enter();
+        return held;
+      },
+    });
+    const pending = f.history("acquire");
+    const rejected = assert.rejects(pending, (error) => error.code === "HISTORY_VIEW_UNAVAILABLE");
+    await entered;
+    if (replaceClient) f.project.client = { ...f.project.client };
+    f.project.connectionGeneration++;
+    f.backend.installObservation(f.project, {
+      ...baseline(),
+      history: { snapshotId: "replacement", nextCursor: null, complete: true },
+    });
+    const replacement = f.backend.historyWindow(f.project, "thread");
+    assert.notEqual(replacement, previous);
+    assert.equal(replacement.views.has("view-a"), true);
+    finish();
+    await rejected;
+    assert.equal(f.backend.historyWindow(f.project, "thread"), replacement);
+    assert.equal(replacement.snapshotId, "replacement");
+    assert.equal(
+      f.calls.length,
+      1,
+      "the stale request does not reobserve or retry on the replacement connection",
+    );
+    await f.history("release");
+  });
 const target = (n) => ({ turnId: "old", itemId: `anchor-${n}` });
 
 test("late loadOlder deduplicates a cursor committed by ensureAnchor without reversing the frontier", async () => {
@@ -1201,7 +1320,7 @@ test("acquire restores the entire latest turn beyond four pages and pins it thro
   );
 });
 
-test("concurrent owners share latest hydration and retain live deltas when the first owner closes", async () => {
+test("closing one concurrent owner rejects only its acquire while other readers retain hydration and live deltas", async () => {
   let resolvePage, started;
   const reading = new Promise((resolve) => {
     started = resolve;
@@ -1215,6 +1334,7 @@ test("concurrent owners share latest hydration and retain live deltas when the f
   });
   await f.backend.openThread(f.project, "thread");
   const first = f.history("acquire");
+  const firstRejected = assert.rejects(first, (error) => error.code === "HISTORY_VIEW_UNAVAILABLE");
   await reading;
   const second = f.history("acquire", { viewId: "view-b" });
   const older = f.history("loadOlder", { viewId: "view-b" });
@@ -1226,7 +1346,7 @@ test("concurrent owners share latest hydration and retain live deltas when the f
     delta: ":live",
   });
   resolvePage(page([entry("t2", item("i1"))], null));
-  await Promise.all([first, second, older]);
+  await Promise.all([firstRejected, second, older]);
   assert.deepEqual(ids(f), ["i1", "i2"]);
   assert.equal(f.project.model.state.threads.thread.turns.at(-1).items.at(-1).text, "i2:live");
   assert.equal(f.calls.filter((call) => call.method === "areal/conversation/history").length, 1);

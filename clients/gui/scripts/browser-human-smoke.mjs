@@ -1,3 +1,4 @@
+import { readTurnToolDetails } from "./support/tool-history.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -278,19 +279,7 @@ async function terminalTurn(previous) {
       ? last
       : null;
   }, `terminal ${phase} turn`);
-  const deferred = turn.items.filter(
-    (item) => item.type === "historyDeferred" && item.originalType === "dynamicToolCall",
-  );
-  if (!deferred.length) return turn;
-  const history = { projectId, threadId, viewId: "browser-human-tool-records" };
-  await command("history", { ...history, operation: "acquire" });
-  try {
-    for (const item of deferred)
-      await command("history", { ...history, operation: "loadItem", itemId: item.id });
-    return (await thread()).turns.find((item) => item.id === turn.id);
-  } finally {
-    await command("history", { ...history, operation: "release" });
-  }
+  return readTurnToolDetails({ command, readThread: thread, projectId, threadId, turnId: turn.id });
 }
 function browserItem(turn) {
   const item = turn.items.find(

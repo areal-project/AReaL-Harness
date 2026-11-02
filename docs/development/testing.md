@@ -17,6 +17,12 @@ Side Chat 的 Esc 回退测试等待任务资源外层弹层完全退出布局�
 
 浏览器终态结果、Worktree 与定时任务合同通过现有 `history.loadItem` 读取成功工具的延期原文，再核对真实执行结果与所属目录中的落盘文件；不能把对话摘要缺少原文判为工具未执行，也不能仅凭摘要宣称执行成功。迁移 smoke 通过当前工具摘要的展开控件查看结果，保留子对话与主草稿隔离断言。
 
+工具事实验收使用 `scripts/support/tool-history.mjs`：只对目标 Turn 的延期工具记录 acquire/loadItem，再按原 Turn/item 身份重读快照，最后释放临时 view。原文已内联时沿用完整历史兼容路径；failed、interrupted 与 UNKNOWN 的原断言不变。读取失败或身份变化直接失败，不自动重试或跳过。界面展示验收继续通过可见摘要展开控件验证加载；RPC 协议验收直接检查正式响应、错误分类、通知、线程及请求收据。缺失 Profile 与缺失 provider 同时出现时先验证 Profile 解析错误，避免默认模型配置掩盖资源引用契约。
+
+新的 history view 在 acquire 时若发现既有窗口已失效，只重建一次基线后按原预算补全；已有 view 的重复注册不触发恢复循环。恢复等待前固定原连接身份与代际；同一连接可生成新窗口，等待期间的新连接不能接管旧请求。读取期间窗口再次换代、失效或本次 view 被释放仍返回真实失败，即使其他 view 存活。并发读取者共享补全，关闭一个读取者只拒绝其自身 acquire，不取消其他仍存活的 view。
+
+调度候选通过 GUI 的 `workflow_dispatch` 输入 `smoke_parallel` 显式比较 4/5；默认值和普通 PR/main 固定为 4，不自动提高共享资源占用。该开关只改变 smoke 矩阵上限，不改变测试、门禁、超时或真实产物依赖。完成同一成功 ref/SHA 的缓存预热后，以同一个 `comparison_base` 和 `qualification=none` 串行运行两个值，记录真实缓存命中、同期工作流、首次失败反馈、总反馈和累计 runner 时间；若有 main 等待或重叠运行，应先结束本次对照再比较。矩阵与共享池空档不能据 created→started 自动解释为容量不足；排序或五并发仅是待证伪候选，不宣称能消除长等待。
+
 | 入口 | 范围 |
 |---|---|
 | `make verify` | Cordis pin、格式、静态检查、Rust workspace、两套 SDK、Python、文档、TUI 与统一委派 smoke |
@@ -75,7 +81,7 @@ GUI 的产物 job 完成必要构建与 RPC 校验后即可发布同一源码的
 
 容器使用固定版本和摘要的官方 cargo-chef 二进制，从清单与锁文件生成依赖配方；依赖编译层位于真实源码 COPY 之前。源码变动只重建工作区代码；新增 target、清单或锁文件变化仍会更新配方。运行镜像仅导出最终层缓存，测试镜像保留完整构建层，避免两套完整依赖缓存重复占用空间。测试目标只导入自己的完整缓存图，作为隔离最终镜像 min 图与测试构建图的候选措施。本地 OCI 缓存/native snapshotter 的结构实验支持这一选择；托管 GHA 缓存/overlayfs 仍待验证，尚未证明线上缓存失效的根因或耗时收益。macOS 原生与 GUI 构建共用同一环境键的 Rust 依赖缓存。macOS 私有 Bash 只缓存当前身份目录；锁文件、构建脚本、架构、编译器、SDK、系统或 runner 镜像变化都会换键。恢复后仍核对二进制、对应源码包与许可证摘要，不保存其他身份或下载目录。验收结果及失败报告从不作为缓存通过证据。
 
-用 `python3 scripts/ci-timing.py --collect areal-project/AReaL-Harness --limit 50 --output target/ci/timing` 保存 gh 原始数据并生成逐 job/step CSV；离线重放使用 `--input <snapshot.json>`。采集最近 50 个 run 的全部 attempt，逐轮读取对应 jobs；分析使用各轮 run_started_at，避免把重跑前的等待或前一轮 runner minutes 计入本轮。分析保留取消、失败、重跑 attempt 和 runner 信息；依赖等待只作估计，机器排队只报告可识别下界。包含安装/编译的复合 step 独立列为 mixed，不能全算测试耗时。缺少日志或子报告时缓存冷热及精确测试拆分保持 unknown；只比较覆盖相同的成功运行，并同时查看墙钟关键路径和累计 runner minutes。
+用 `python3 scripts/ci-timing.py --collect areal-project/AReaL-Harness --limit 50 --output target/ci/timing` 保存 gh 原始数据并生成逐 job/step CSV；离线重放使用 `--input <snapshot.json>`。采集最近 50 个 run 的全部 attempt，逐轮读取对应 jobs；分析使用各轮 run_started_at，避免把重跑前的等待或前一轮 runner minutes 计入本轮。分析保留取消、失败、重跑 attempt 和 runner 信息；依赖等待只作估计；`post_dependency_delay_estimate_s` 是从 job 创建与估计依赖完成两者较晚时刻到启动的调度等待，可能包含矩阵限流、调度器、共享配额和 runner 准备。API 无法分离真实机器排队，旧 `runner_wait_lower_bound_s` 字段保留为 null，不能据此诊断容量不足。`first_failure_feedback_s` 使用实际失败 step 的结束时间，并记录其准备/验收/混合阶段；单测输出的模拟失败记录不计入。包含安装/编译的复合 step 独立列为 mixed，不能全算测试耗时。缺少日志或子报告时缓存冷热及精确测试拆分保持 unknown；只比较覆盖相同的成功运行，并同时查看墙钟关键路径和累计 runner minutes。
 
 `scripts/ci-scope.py` 是本地与 CI 共用的检查计划所有者；`check-changed` 解析一次 merge-base，合并暂存、未暂存与未跟踪路径，重命名两侧均纳入，部分暂存相互抵消也保留选检。计划登记命令、依赖、环境能力、平台和 manifest 子测试全集，并绑定 base/source/head 与输入摘要。共享 Rust、schema、锁文件、构建与 CI 变化扩大范围，未知代码保守扩大；比较基准不可用时不得放行。
 

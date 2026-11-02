@@ -117,6 +117,7 @@ def analyze(snapshot):
             raise ValueError("Snapshot mixes workflow attempts; collect attempt-specific jobs")
         started = run.get("run_started_at") or run["created_at"]
         row_start = len(rows)
+        failed_steps = []
         full = any(job["name"] == "macOS native Harness" and job.get("steps") for job in jobs)
         layout = (
             "shared-plan"
@@ -130,6 +131,15 @@ def analyze(snapshot):
                     continue
                 duration = seconds(step.get("started_at"), step.get("completed_at"))
                 category = phase(step["name"])
+                if step.get("conclusion") == "failure" and step.get("completed_at"):
+                    failed_steps.append(
+                        {
+                            "completed_at": step["completed_at"],
+                            "job": job["name"],
+                            "step": step["name"],
+                            "phase": category,
+                        }
+                    )
                 if duration is not None:
                     totals[category] += duration
                 steps.append(
@@ -183,7 +193,9 @@ def analyze(snapshot):
                     "cache_state": "unknown",
                     "wait_from_run_s": wait,
                     "dag_wait_estimate_s": dag,
-                    "runner_wait_lower_bound_s": runner_wait,
+                    "post_dependency_delay_estimate_s": runner_wait,
+                    # Jobs API 未提供真实 ready 时刻，不能把调度/矩阵等待当成机器排队。
+                    "runner_wait_lower_bound_s": None,
                     "unattributed_wait_s": max(0, (wait or 0) - dag - (runner_wait or 0)),
                     "preparation_s": totals["preparation"],
                     "validation_s": totals["validation"],
@@ -197,6 +209,11 @@ def analyze(snapshot):
             )
         ended = [job["completed_at"] for job in jobs if job.get("completed_at")]
         completed = run["status"] == "completed"
+        first_failure = (
+            min(failed_steps, key=lambda step: instant(step["completed_at"]))
+            if failed_steps
+            else None
+        )
         runs.append(
             {
                 "workflow": run["name"],
@@ -211,6 +228,10 @@ def analyze(snapshot):
                 if completed and ended
                 else None,
                 "runner_minutes": sum(row["wall_s"] or 0 for row in rows[row_start:]) / 60,
+                "first_failure_feedback_s": seconds(started, first_failure["completed_at"])
+                if first_failure
+                else None,
+                "first_failure": first_failure,
             }
         )
     grouped = defaultdict(list)
@@ -237,7 +258,7 @@ def analyze(snapshot):
         "mixed_work_s",
         "upload_cleanup_s",
         "dag_wait_estimate_s",
-        "runner_wait_lower_bound_s",
+        "post_dependency_delay_estimate_s",
     )
     for key, samples in sorted(grouped.items(), key=lambda pair: str(pair[0])):
         item = dict(
@@ -257,11 +278,12 @@ def analyze(snapshot):
         summary.append(item)
     return {
         "notes": [
-            "DAG waiting is estimated from known predecessor completions. Jobs API does not expose exact ready time; runner wait is a lower bound and residual waiting stays unattributed.",
+            "DAG waiting is estimated from known predecessor completions. Post-dependency delay runs from max(job creation, estimated dependency completion) to job start; it can include matrix throttling, orchestration, shared quota and provisioning. Jobs API cannot isolate machine queue time, so legacy runner_wait_lower_bound_s is unknown (null). Residual waiting stays unattributed.",
             "Mixed steps include compilation/installation and validation; do not count them as pure test time. Child reports or logs are needed for an exact split.",
             "Cache state is unknown without cache logs. Compare successful runs with the same coverage, platform and cache state; cancelled/failed/incomplete runs are retained separately.",
             "Runner minutes are accumulated observed job wall time, not a billing estimate. Incomplete jobs have no complete duration.",
             "Each attempt uses its own run_started_at and jobs; the original run creation time is retained in raw data, not counted as rerun queue time.",
+            "First failure feedback uses a real failed step's completion timestamp, not strings printed by unit-test fixtures. Its phase distinguishes preparation/infrastructure failures from validation or mixed steps; it is not the exact assertion-failure instant.",
         ],
         "runs": runs,
         "jobs": rows,

@@ -1,3 +1,4 @@
+import { readTurnToolDetails } from "./support/tool-history.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -565,7 +566,20 @@ try {
   }, "Runtime command actually started");
   await page.getByRole("button", { name: "暂停执行", exact: true }).click();
   await until((s) => thread(s)?.turns?.at(-1)?.status !== "inProgress", "Runtime pause settled");
-  const runtimePaused = (await turns()).at(-1);
+  const runtimePaused = await readTurnToolDetails({
+    command: async (name, params) => {
+      const result = await page.evaluate(
+        ({ name, params }) => window.arealDesktop.command(name, params),
+        { name, params },
+      );
+      assert.equal(result.ok, true, JSON.stringify(result));
+      return result.value;
+    },
+    readThread: async () => thread(await snapshot()),
+    projectId,
+    threadId,
+    turnId: (await turns()).at(-1).id,
+  });
   await writeFile(join(scratch, "runtime-pause-turn.json"), JSON.stringify(runtimePaused, null, 2));
   await shot("00-runtime-paused.png");
   assert.equal(

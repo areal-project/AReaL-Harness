@@ -1,3 +1,4 @@
+import { readTurnToolDetails } from "./support/tool-history.mjs";
 import assert from "node:assert/strict";
 import { makeTempDir } from "./support/temp.mjs";
 import { createRequire } from "node:module";
@@ -291,18 +292,14 @@ try {
         threads.map(({ threadId }, index) => complete(threadId, `${kind} ${index}`)),
       );
       for (let index = 0; index < threads.length; index++) {
-        const history = { projectId, threadId: threads[index].threadId, viewId: randomUUID() };
-        await backend.command("history", { ...history, operation: "acquire" });
-        const turn = projection().state.threads[threads[index].threadId].turns.at(-1);
-        for (const item of turn.items) {
-          if (item.type === "historyDeferred" && item.originalType === "dynamicToolCall")
-            await backend.command("history", {
-              ...history,
-              operation: "loadItem",
-              itemId: item.id,
-            });
-        }
-        const items = projection().state.threads[threads[index].threadId].turns.at(-1).items;
+        const turn = await readTurnToolDetails({
+          command: (name, params) => backend.command(name, params),
+          readThread: async () => projection().state.threads[threads[index].threadId],
+          projectId,
+          threadId: threads[index].threadId,
+          turnId: projection().state.threads[threads[index].threadId].turns.at(-1).id,
+        });
+        const items = turn.items;
         const toolSucceeded = items.some(
           (item) => item.type === "dynamicToolCall" && item.success === true,
         );
@@ -325,7 +322,6 @@ try {
             (await readFile(join(directories[index], "shell-cwd.txt"), "utf8")).trim(),
             directories[index],
           );
-        await backend.command("history", { ...history, operation: "release" });
       }
       checks.push(
         `real Core/Runtime ${kind} tools mutate matching relative paths only in their owning default checkout`,
