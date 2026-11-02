@@ -130,6 +130,8 @@ target/debug/areal service bind --workspace /absolute/workspace \
 
 供应商终态 `TurnOutcome.details` 可含可选 `messageSummary`，仅允许精确白名单摘要（`upstream stream request failed` 或 `Unsupported service_tier: fast`），任意上游文本仍不进入该字段。这是可忽略的增量字段，旧消费者无需改变。Responses SSE 错误封套缺少顶层事件 `type` 时，沿用有类型错误的供应商分类与重试策略；HTTP 200 状态不代表模型成功。
 
+会话创建预检中，未装配的模型供应商返回参数错误 RPC `-32602`，消息以 `MODEL_NOT_CONFIGURED` 开头。拒绝结果为 `outcome.kind="rejected"`、`recovery.kind="none"`，不创建 Thread 或受理回执。
+
 模型目录 `reasoningEffortOptions` 只列已声明或已核实的档位；未知时返回空列表。`capabilities.reasoningEffortOptions` 省略表示未知，显式空列表表示无可选强度。Core 在最终参数合并后阻止已知非法值，供应商目录仍可用于修正。配置 `reasoningEffort: "default"` 明确覆盖继承默认，HTTP 请求省略强度；null／省略仍继承。识别出的参数拒绝使用 `MODEL_PARAMETER_UNSUPPORTED`，只公开白名单参数和关联 `requestId`；原始供应商错误保存在私有本机诊断，不自动改参重发。
 
 `parameters.serviceTier` 独立于推理强度，可设为 `"fast"` 或 `"default"`。`"fast"` 请求供应商 Fast 优先服务；`"default"` 显式覆盖继承的 Fast 设置并请求标准服务。null／省略仍继承模型、供应商或上游项目默认。Core 在 Chat Completions、Responses HTTP 与 Responses WebSocket 请求中按原值发送 `service_tier`，仅配置时发送。使用 ChatGPT 授权访问 OpenAI API 的适配器将 `fast` 编码为该通道接受的 `priority`；显式 `default` 与省略语义不变。该转换不应用于 API Key 供应商或 Codex 订阅传输。Responses 终态返回已识别的实际档位时，请求审计在 `usageDetails.serviceTier` 中记录该值；缺失或未知时省略，不从请求推断。请求 Fast 而实际返回 `default` 表示本次按标准档位处理，不能将请求被接受视为已获得加速。不预判模型或供应商支持情况，供应商拒绝按现有失败路径上报；可识别的 `service_tier` 参数拒绝使用 `MODEL_PARAMETER_UNSUPPORTED`，不改参重发。请求 Fast 不保证实际加速。会话配置和快照保留该值，旧快照缺失此字段时仍可读取。旧客户端省略该字段时沿用原行为；包含该字段的新请求和快照需要支持 `serviceTier` 的 Core。

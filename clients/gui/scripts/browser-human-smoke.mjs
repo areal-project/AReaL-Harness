@@ -271,13 +271,26 @@ async function thread() {
   ];
 }
 async function terminalTurn(previous) {
-  return until(async () => {
+  const turn = await until(async () => {
     const turns = (await thread())?.turns ?? [],
       last = turns.at(-1);
     return turns.length > previous && ["completed", "failed", "interrupted"].includes(last?.status)
       ? last
       : null;
   }, `terminal ${phase} turn`);
+  const deferred = turn.items.filter(
+    (item) => item.type === "historyDeferred" && item.originalType === "dynamicToolCall",
+  );
+  if (!deferred.length) return turn;
+  const history = { projectId, threadId, viewId: "browser-human-tool-records" };
+  await command("history", { ...history, operation: "acquire" });
+  try {
+    for (const item of deferred)
+      await command("history", { ...history, operation: "loadItem", itemId: item.id });
+    return (await thread()).turns.find((item) => item.id === turn.id);
+  } finally {
+    await command("history", { ...history, operation: "release" });
+  }
 }
 function browserItem(turn) {
   const item = turn.items.find(
