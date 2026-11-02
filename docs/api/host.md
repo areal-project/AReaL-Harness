@@ -189,6 +189,10 @@ prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每�
 
 `enable` 沿用原 Relay origin、一次性 `code` 与 `confirmed` 输入。非法 origin、无效 code 或缺少必要登记信息在受理前返回 `invalid-origin`、`invalid-code` 或 `enrollment-required`。Host 在唯一 HTTPS `/enroll` POST 前持久化原 `remote.gateway.control` 的 `outcomeUnknown` 回执，绑定来源、Host 身份、代际、原 revision 与 HMAC，不保存登记码。禁用客户端重试和重定向。仅可证明拒绝授权的 403/429 响应结算为原 `blocked` 回执；断流、超时、异常状态或无法解析的成功响应保持 UNKNOWN。确定成功后，只有当前内存延续可以将同一原 ID 转入既有 Remote CAS/Vault 提交链；不从 UNKNOWN 查询触发另一次登记。GUI 仅按原 ID 核查已确认拒绝；未知结果保留原引用。
 
+`device.push.register` 与 `device.push.unregister` 是无项目 `context` 的设备命令，仍需有效 `observe` 授权，并共用写入速率预算。登记参数为 `{platform:"apns",token,environment:"production"|"development"}`；token 为 64–200 位十六进制，保存为小写。注销参数为空对象。原 `commandId` 是 UUID；加密 Remote 配置中的 `pushCommands` 按设备保存原语义摘要与 `{registered}` 回执，同 ID 不同参数返回 `COMMAND_CONFLICT`，容量为 4096 条。token 更新不改变 grant revision。内部保存操作另按来源、设备与原命令 ID 关联；保存结果未知时返回 `submissionUnknown:true`，只查询原命令，不重新提交。无项目 `context` 的 `command.read({commandId})` 即使项目离线也可返回原设备回执；找不到时为 `notFound` 且 `submissionUnknown:true`。公开快照和错误不包含 token 或内部存储路径。
+
+Relay 的实际 `Ready.push` 决定 `pushSupported` 与连接描述中的 `push` 能力。Host 使用既有 Core 连接扫描审批和问题提醒，完整分页及摘要就绪后建立基线；Core 连接代际改变时重新建立基线。在线设备的提醒被抑制且计入已观察集合，离线后不补发这些历史提醒。离线提醒经原 Relay 通道发送，并在实际出队前重新核对 grant、token、项目映射、Core 连接与 Gateway 代际；帧只含不透明定位 ID、类别、计数和合并 ID，不含正文。Relay 注销通知只移除当前仍匹配的 token，保留轮换后的新 token 和原命令回执。此能力目前覆盖审批和问题提醒；`session.send` 的任务完成与排队任务推送尚未迁入原生 owner。
+
 ### journal 与操作回执
 
 journal 快照为 `{version:1,pending:object[],outcomes:object}`，保留条目内的未知字段。固定文件槽位承载大于 1 MiB 的快照，控制帧仍受传输上限约束。prepare 或 commit 的 CAS 冲突通过 `result.state:"blocked"` 与 `result.error.code:"revisionConflict"` 表达，不是顶层 RPC error。只有该明确冲突允许重读并重新计算修改。断连、超时或未决 commit 只允许查询原 requestId，不重新执行修改 closure 或 Core 派发。

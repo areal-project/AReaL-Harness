@@ -3,7 +3,7 @@ mod create;
 #[path = "observer.rs"]
 mod observer;
 #[path = "overview.rs"]
-mod overview;
+pub(super) mod overview;
 #[path = "projection.rs"]
 mod projection;
 use super::wire;
@@ -21,6 +21,8 @@ use std::{
 
 const METHODS: &[&str] = &[
     "session.create",
+    "device.push.register",
+    "device.push.unregister",
     "host.describe",
     "project.list",
     "task.read",
@@ -356,7 +358,12 @@ impl Session {
                 Err(fail("LIMIT_EXCEEDED"))
             } else if matches!(
                 request["method"].as_str(),
-                Some("interaction.respond" | "session.create")
+                Some(
+                    "interaction.respond"
+                        | "session.create"
+                        | "device.push.register"
+                        | "device.push.unregister"
+                )
             ) {
                 writes = (writes + refilled.elapsed().as_secs_f64() * 5.0).min(10.0);
                 refilled = Instant::now();
@@ -383,10 +390,31 @@ impl Session {
                         | "COMMAND_CONFLICT"
                         | "RESOURCE_UNAVAILABLE"
                         | "CORE_INCOMPATIBLE"
-                        | "LIMIT_EXCEEDED" => message.as_str(),
+                        | "LIMIT_EXCEEDED"
+                        | "CAPACITY_EXCEEDED" => message.as_str(),
                         _ => "CORE_UNAVAILABLE",
                     };
-                    json!({"id":request["id"],"error":{"code":code,"message":"请求暂不可用，请重新读取原状态"}})
+                    let mut response = json!({"id":request["id"],"error":{"code":code,"message":"请求暂不可用，请重新读取原状态"}});
+                    if matches!(
+                        request["method"].as_str(),
+                        Some(
+                            "session.create"
+                                | "interaction.respond"
+                                | "device.push.register"
+                                | "device.push.unregister"
+                                | "command.read"
+                        )
+                    ) {
+                        response["error"]["submissionUnknown"] = json!(code == "CORE_UNAVAILABLE");
+                        if let Some(id) = request
+                            .get("commandId")
+                            .or_else(|| request["params"].get("commandId"))
+                            .and_then(Value::as_str)
+                        {
+                            response["error"]["commandId"] = json!(id);
+                        }
+                    }
+                    response
                 }
             };
             wire::write_json(&mut writer, &serde_json::to_vec(&response)?, limits).await?;
@@ -476,6 +504,12 @@ impl Session {
                 .collect(),
         );
         let mut value = json!({"apiVersion":"areal.remote.v2","hostId":self.host_peer,"gatewayGeneration":self.generation,"connectionId":self.connection,"grantRevision":self.grant["revision"],"capabilities":self.grant["capabilities"],"methods":METHODS,"limits":limits});
+        if self.host.gateway.push_supported.get() {
+            value["capabilities"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!("push"));
+        }
         if ready {
             value["event"] = json!("ready");
         }
@@ -514,16 +548,7 @@ impl Session {
         Ok(())
     }
     fn bindings(&self) -> Result<Vec<(String, String)>> {
-        let current = self
-            .host
-            .slots
-            .borrow()
-            .values()
-            .map(|slot| slot.registration.clone())
-            .collect::<Vec<_>>();
-        self.host
-            .migration
-            .remote_bindings(&self.source_id, &current)
+        gateway_owner::push::bindings(&self.host, &self.source_id)
     }
     fn project_id(&self, alias: &str) -> Result<String> {
         self.bindings()?
@@ -686,6 +711,12 @@ impl Session {
                 "INVALID_PARAMS"
             );
             return Ok(self.describe(false));
+        }
+        if matches!(method, "device.push.register" | "device.push.unregister")
+            || (method == "command.read" && request.get("context").is_none())
+        {
+            ensure!(request.get("context").is_none(), "INVALID_PARAMS");
+            return gateway_owner::push::device_command(&self.host, &self.peer, request);
         }
         if method == "project.list" {
             ensure!(

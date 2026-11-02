@@ -8,6 +8,8 @@ use tokio::task::JoinSet;
 mod control;
 #[path = "enrollment.rs"]
 mod enrollment;
+#[path = "push.rs"]
+mod push;
 #[path = "session.rs"]
 mod session;
 
@@ -24,6 +26,8 @@ pub(super) struct Gateway {
     direct: RefCell<Option<crate::gateway::direct::DirectHandle>>,
     prepared_direct: RefCell<Option<DirectRunning>>,
     direct_error: RefCell<String>,
+    push_supported: std::cell::Cell<bool>,
+    push_diagnostic: RefCell<String>,
 }
 struct Invite {
     request_id: String,
@@ -94,7 +98,15 @@ impl Gateway {
         self.generation.borrow().as_str() == generation
     }
     pub fn status(&self) -> Value {
-        self.status.borrow().clone()
+        let mut status = self.status.borrow().clone();
+        if let Some(status) = status.as_object_mut() {
+            status.insert("pushSupported".into(), json!(self.push_supported.get()));
+            status.insert(
+                "pushDiagnostic".into(),
+                json!(self.push_diagnostic.borrow().as_str()),
+            );
+        }
+        status
     }
     fn cancel_pair(&self) {
         *self.invite.borrow_mut() = None;
@@ -213,6 +225,9 @@ struct Running {
     events: tokio::sync::mpsc::Receiver<RelayEvent>,
     identity: Rc<wire::Identity>,
     transport: String,
+    attention: Rc<Mutex<push::Attention>>,
+    scanning: Rc<std::cell::Cell<bool>>,
+    last_scan: std::time::Instant,
 }
 impl Drop for Running {
     fn drop(&mut self) {
@@ -251,6 +266,7 @@ async fn run_relay(host: Rc<Host>) {
             .is_some_and(|running| Some(&running.transport) != transport.as_ref())
         {
             running = None;
+            host.gateway.push_supported.set(false);
         }
         if running.is_none() && terminal_transport != transport {
             if let Some(snapshot) = desired {
@@ -274,6 +290,9 @@ async fn run_relay(host: Rc<Host>) {
                         events,
                         identity,
                         transport: transport_key(config, TransportKind::Relay),
+                        attention: Rc::new(Mutex::new(push::Attention::default())),
+                        scanning: Rc::new(std::cell::Cell::new(false)),
+                        last_scan: std::time::Instant::now() - Duration::from_secs(5),
                     }))
                 })();
                 match startup {
@@ -297,9 +316,9 @@ async fn run_relay(host: Rc<Host>) {
         };
         tokio::select! {
             event=event=>{
-                let Some(event)=event else{running=None;continue;};
+                let Some(event)=event else{running=None;host.gateway.push_supported.set(false);continue;};
                 match event{
-                    RelayEvent::Ready{..}=>{*host.gateway.status.borrow_mut()=json!({"owner":"native","connected":true,"state":"ready"});},
+                    RelayEvent::Ready{push,..}=>{host.gateway.push_supported.set(push);*host.gateway.status.borrow_mut()=json!({"owner":"native","connected":true,"state":"ready"});},
                     RelayEvent::Channel{generation: relay_generation, id, stream}=>{
                         let current=running.as_mut().unwrap();
                         let host=host.clone();let identity=current.identity.clone();let generation=host.gateway.generation.borrow().clone();
@@ -308,8 +327,9 @@ async fn run_relay(host: Rc<Host>) {
                         let admission = Admission { generation, kind:TransportKind::Relay, transport:current.transport.clone(), close };
                         current.tasks.spawn_local(async move{let _=session::Session::run(host,stream,identity,admission).await;});
                     },
-                    RelayEvent::Disconnected{retry,..}=>{if !retry {terminal_transport = running.as_ref().map(|running| running.transport.clone());} *host.gateway.status.borrow_mut()=json!({"owner":"native","connected":false,"state":if retry{"reconnecting"}else{"unavailable"}});},
-                    RelayEvent::PushUnregistered(_)|RelayEvent::PushDropped=>{},
+                    RelayEvent::Disconnected{retry,..}=>{host.gateway.push_supported.set(false);if !retry {terminal_transport = running.as_ref().map(|running| running.transport.clone());} *host.gateway.status.borrow_mut()=json!({"owner":"native","connected":false,"state":if retry{"reconnecting"}else{"unavailable"}});},
+                    RelayEvent::PushUnregistered(token)=>{if push::unregister_token(&host,&token).is_err(){*host.gateway.push_diagnostic.borrow_mut()="push-unregister-unavailable".into();}},
+                    RelayEvent::PushDropped=>{*host.gateway.push_diagnostic.borrow_mut()="push-dropped".into();},
                 }
             },
             _=tokio::time::sleep(Duration::from_millis(250))=>{},
@@ -318,6 +338,31 @@ async fn run_relay(host: Rc<Host>) {
             host.changed();
         }
         if let Some(running) = &mut running {
+            if host.gateway.push_supported.get()
+                && !running.scanning.get()
+                && running.last_scan.elapsed() >= Duration::from_secs(5)
+            {
+                running.last_scan = std::time::Instant::now();
+                running.scanning.set(true);
+                let slot = push::ScanSlot(running.scanning.clone());
+                let attention = running.attention.clone();
+                let host = host.clone();
+                let handle = running.handle.clone();
+                let transport = running.transport.clone();
+                let generation = host.gateway.generation.borrow().clone();
+                running.tasks.spawn_local(async move {
+                    let _slot = slot;
+                    if attention
+                        .lock()
+                        .await
+                        .tick(host.clone(), handle, transport, generation)
+                        .await
+                        .is_err()
+                    {
+                        *host.gateway.push_diagnostic.borrow_mut() = "push-scan-unavailable".into();
+                    }
+                });
+            }
             while running.tasks.try_join_next().is_some() {}
         }
     }

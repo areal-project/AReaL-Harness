@@ -97,64 +97,10 @@ impl Session {
             let rows = page["data"].as_array().context("CORE_UNAVAILABLE")?;
             json!({"data":rows.iter().map(work).collect::<Vec<_>>(),"nextCursor":page["nextCursor"],"complete":page["complete"]})
         } else {
-            let mut cursor = None;
-            let mut offset = 0usize;
-            if let Some(value) = params.get("cursor") {
-                let decoded: Vec<Value> = serde_json::from_slice(
-                    &URL_SAFE_NO_PAD
-                        .decode(value.as_str().context("INVALID_PARAMS")?)
-                        .context("INVALID_PARAMS")?,
-                )
-                .context("INVALID_PARAMS")?;
-                ensure!(
-                    decoded.len() == 2
-                        && (decoded[0].is_null()
-                            || decoded[0]
-                                .as_str()
-                                .is_some_and(|cursor| cursor.len() <= 256))
-                        && decoded[1].as_u64().is_some_and(|offset| offset <= 32),
-                    "INVALID_PARAMS"
-                );
-                cursor = decoded[0].as_str().map(str::to_owned);
-                offset = decoded[1].as_u64().unwrap() as usize;
-            }
-            let mut data = vec![];
-            let mut complete = false;
-            let mut summaries_complete = true;
-            for _ in 0..4 {
-                if data.len() >= limit {
-                    break;
-                }
-                let mut query = json!({"filter":"attention","limit":1});
-                if let Some(cursor) = &cursor {
-                    query["cursor"] = json!(cursor);
-                }
-                let page = self
-                    .rpc(project, generation, "areal/work/overview", query)
-                    .await?;
-                let Some(row) = page["data"].as_array().context("CORE_UNAVAILABLE")?.first() else {
-                    complete = page["complete"] == true;
-                    break;
-                };
-                summaries_complete &= row["attentionComplete"] == true;
-                let refs = row["attentionRefs"]
-                    .as_array()
-                    .context("CORE_UNAVAILABLE")?;
-                ensure!(offset <= refs.len(), "INVALID_PARAMS");
-                let end = refs.len().min(offset + limit - data.len());
-                data.extend(refs[offset..end].iter().map(attention));
-                offset = end;
-                if offset < refs.len() {
-                    break;
-                }
-                offset = 0;
-                cursor = page["nextCursor"].as_str().map(str::to_owned);
-                if page["complete"] == true {
-                    complete = true;
-                    break;
-                }
-            }
-            json!({"data":data,"nextCursor":if complete{None}else{Some(URL_SAFE_NO_PAD.encode(serde_json::to_vec(&json!([cursor,offset]))?))},"complete":complete,"summariesComplete":summaries_complete})
+            read_attention(params, limit, |query| {
+                self.rpc(project, generation, "areal/work/overview", query)
+            })
+            .await?
         };
         result["projectId"] = json!(project);
         result["serviceGeneration"] = json!(generation);
@@ -165,4 +111,73 @@ impl Session {
         self.authorize(Some(project), "observe")?;
         Ok(result)
     }
+}
+
+pub(in crate::server::gateway_owner) async fn read_attention<F, Fut>(
+    params: &Value,
+    limit: usize,
+    mut request: F,
+) -> Result<Value>
+where
+    F: FnMut(Value) -> Fut,
+    Fut: std::future::Future<Output = Result<Value>>,
+{
+    let mut cursor = None;
+    let mut offset = 0usize;
+    if let Some(value) = params.get("cursor") {
+        let decoded: Vec<Value> = serde_json::from_slice(
+            &URL_SAFE_NO_PAD
+                .decode(value.as_str().context("INVALID_PARAMS")?)
+                .context("INVALID_PARAMS")?,
+        )
+        .context("INVALID_PARAMS")?;
+        ensure!(
+            decoded.len() == 2
+                && (decoded[0].is_null()
+                    || decoded[0]
+                        .as_str()
+                        .is_some_and(|cursor| cursor.len() <= 256))
+                && decoded[1].as_u64().is_some_and(|offset| offset <= 32),
+            "INVALID_PARAMS"
+        );
+        cursor = decoded[0].as_str().map(str::to_owned);
+        offset = decoded[1].as_u64().unwrap() as usize;
+    }
+    let mut data = vec![];
+    let mut complete = false;
+    let mut summaries_complete = true;
+    for _ in 0..4 {
+        if data.len() >= limit {
+            break;
+        }
+        let mut query = json!({"filter":"attention","limit":1});
+        if let Some(cursor) = &cursor {
+            query["cursor"] = json!(cursor);
+        }
+        let page = request(query).await?;
+        let Some(row) = page["data"].as_array().context("CORE_UNAVAILABLE")?.first() else {
+            complete = page["complete"] == true;
+            break;
+        };
+        summaries_complete &= row["attentionComplete"] == true;
+        let refs = row["attentionRefs"]
+            .as_array()
+            .context("CORE_UNAVAILABLE")?;
+        ensure!(offset <= refs.len(), "INVALID_PARAMS");
+        let end = refs.len().min(offset + limit - data.len());
+        data.extend(refs[offset..end].iter().map(attention));
+        offset = end;
+        if offset < refs.len() {
+            break;
+        }
+        offset = 0;
+        cursor = page["nextCursor"].as_str().map(str::to_owned);
+        if page["complete"] == true {
+            complete = true;
+            break;
+        }
+    }
+    Ok(
+        json!({"data":data,"nextCursor":if complete{None}else{Some(URL_SAFE_NO_PAD.encode(serde_json::to_vec(&json!([cursor,offset]))?))},"complete":complete,"summariesComplete":summaries_complete}),
+    )
 }

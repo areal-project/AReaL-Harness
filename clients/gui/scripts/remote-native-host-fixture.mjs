@@ -84,6 +84,7 @@ export async function nativeHostFixture(t, { config } = {}) {
     stdio: ["ignore", "ignore", log.fd],
   });
   await log.close();
+  evidence.hostPid = child.pid;
   let identity;
   t.after(async () => {
     try {
@@ -191,6 +192,8 @@ export async function nativeHostFixture(t, { config } = {}) {
       t.diagnostic(`native Host evidence: ${join(root, "evidence.json")}`);
     }
   });
+  await writeFile(join(root, "evidence.json"), JSON.stringify(evidence, null, 2), { mode: 0o600 });
+  t.diagnostic(`native Host startup evidence: ${join(root, "evidence.json")}`);
   await until(async () => {
     assert.equal(child.exitCode, null, "owned Host must remain alive");
     try {
@@ -252,10 +255,15 @@ export async function nativeCoreProject(t, fixture, { approval = false } = {}) {
     source: { kind: "cli" },
     defaultBinding: false,
   });
+  const modelRequests = [];
   const model = createServer(async (request, response) => {
     let raw = "";
     for await (const chunk of request) raw += chunk;
     const body = JSON.parse(raw);
+    modelRequests.push({
+      stream: body.stream === true,
+      roles: (body.messages ?? []).map((message) => message.role),
+    });
     if (respondToSessionName(body, response)) return;
     const delta =
       approval && !(body.messages ?? []).some((message) => message.role === "tool")
@@ -347,6 +355,87 @@ export async function nativeCoreProject(t, fixture, { approval = false } = {}) {
     projectId: binding.projectId,
     service: ensured.service,
     core,
+    modelRequests,
+    async readAttention() {
+      const refs = [];
+      let cursor;
+      for (let page = 0; page < 32; page++) {
+        const result = await core.call("areal/work/overview", {
+          limit: 100,
+          ...(cursor ? { cursor } : {}),
+        });
+        for (const row of result.data) refs.push(...row.attentionRefs);
+        if (!result.nextCursor) return refs;
+        cursor = result.nextCursor;
+      }
+      throw new Error("Native attention fixture exceeded the public page bound");
+    },
+    async createApproval() {
+      assert.equal(approval, true, "the original profile must require fs_create approval");
+      const threadRequestId = randomUUID(),
+        turnRequestId = randomUUID();
+      const created = await core.call("areal/thread/start", {
+        requestId: threadRequestId,
+        cwd: workspace,
+        agentProfile: { id: "fixture", revision: "v1" },
+      });
+      const threadId = created.thread.id;
+      const started = await core.call("areal/turn/start", {
+        requestId: turnRequestId,
+        threadId,
+        input: [
+          { type: "text", text: "PRIVATE_PUSH_APPROVAL: create approved.txt with approved once." },
+        ],
+        expectedConfigRevision: 1,
+      });
+      let interaction;
+      await until(async () => {
+        interaction = (await core.call("areal/interaction/list", { threadId })).data.find(
+          (item) =>
+            item.turnId === started.turn.id &&
+            item.kind === "approval" &&
+            item.status === "pending",
+        );
+        return interaction;
+      }, "real Core pending approval");
+      let attention;
+      await until(async () => {
+        attention = (await this.readAttention()).find(
+          (item) =>
+            item.threadId === threadId &&
+            item.turnId === started.turn.id &&
+            item.interactionId === interaction.requestId,
+        );
+        return attention;
+      }, "real Core overview approval reference");
+      return {
+        threadRequestId,
+        turnRequestId,
+        threadId,
+        turnId: started.turn.id,
+        interactionId: interaction.requestId,
+        argumentsDigest: interaction.argumentsDigest,
+        attentionRef: attention.attentionRef,
+      };
+    },
+    async denyApproval(target) {
+      await core.call("areal/interaction/respond", {
+        requestId: target.interactionId,
+        threadId: target.threadId,
+        turnId: target.turnId,
+        argumentsDigest: target.argumentsDigest,
+        decision: "deny",
+      });
+      await until(async () => {
+        const result = await core.call("thread/read", {
+          threadId: target.threadId,
+          includeTurns: true,
+        });
+        return result.thread.turns.some(
+          (turn) => turn.id === target.turnId && turn.status !== "inProgress",
+        );
+      }, "original approval turn terminal after explicit fixture denial");
+    },
     starts: async () =>
       (await core.call("thread/list", { limit: 100 })).data.filter(
         (thread) => !original.has(thread.id),
