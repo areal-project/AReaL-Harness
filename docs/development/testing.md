@@ -19,6 +19,8 @@ Side Chat 的 Esc 回退测试等待任务资源外层弹层完全退出布局�
 
 工具事实验收使用 `scripts/support/tool-history.mjs`：只对目标 Turn 的延期工具记录 acquire/loadItem，再按原 Turn/item 身份重读快照，最后释放临时 view。原文已内联时沿用完整历史兼容路径；failed、interrupted 与 UNKNOWN 的原断言不变。读取失败或身份变化直接失败，不自动重试或跳过。界面展示验收继续通过可见摘要展开控件验证加载；RPC 协议验收直接检查正式响应、错误分类、通知、线程及请求收据。缺失 Profile 与缺失 provider 同时出现时先验证 Profile 解析错误，避免默认模型配置掩盖资源引用契约。
 
+新的 history view 在 acquire 时若发现既有窗口已失效，只重建一次基线后按原预算补全；已有 view 的重复注册不触发恢复循环。读取期间连接或窗口换代、再次失效或全部 view 被释放仍返回真实失败。并发读取者共享补全，关闭一个读取者不取消其他仍存活的 view。
+
 | 入口 | 范围 |
 |---|---|
 | `make verify` | Cordis pin、格式、静态检查、Rust workspace、两套 SDK、Python、文档、TUI 与统一委派 smoke |

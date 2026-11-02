@@ -72,8 +72,26 @@ async function historyCommand(observation, project, request) {
   }
   if (!window) throw historyFailure("历史视图尚未就绪，请重新打开聊天。");
   if (operation === "acquire") {
+    const registered = window.views.has(viewId);
     window.views.add(viewId);
+    // 新的显式阅读先重建已失效基线；已有 view 的重复注册不能启动恢复循环。
+    if (window.invalidated && !registered) {
+      await observation.refreshHistory(project, window);
+      window = observation.historyWindow(project, threadId);
+    }
+    if (!window?.views.size) throw historyFailure("历史视图已关闭，请重新打开聊天。");
+    const acquiredWindow = window;
+    const acquiredEpoch = window.epoch;
     await observation.hydrateLatest(project, window);
+    if (
+      observation.historyWindow(project, threadId) !== acquiredWindow ||
+      window.epoch !== acquiredEpoch ||
+      window.invalidated ||
+      !window.views.size ||
+      !observation.host.currentConnection(project, window.client) ||
+      project.connectionGeneration !== window.generation
+    )
+      throw historyFailure("历史视图已变化，请重新加载。");
     return { supported: true, complete: window.complete };
   }
   if (!window.views.has(viewId)) throw historyFailure("历史视图已关闭，请重新打开聊天。");

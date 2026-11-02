@@ -107,6 +107,66 @@ function anchorFixture(count = 12, intercept = async () => {}) {
     return page([entry("old", item(`anchor-${n}`))], n + 1 < count ? `page:${n + 1}` : null);
   });
 }
+
+test("acquire refreshes an already invalidated view before bounded hydration", async () => {
+  let observations = 0;
+  const f = fixture(async (method) => {
+    assert.equal(method, "areal/thread/observe");
+    observations++;
+    return {
+      ...baseline(),
+      history: { snapshotId: `snapshot-${observations}`, nextCursor: null, complete: true },
+    };
+  });
+  await f.backend.openThread(f.project, "thread");
+  const previous = f.backend.historyWindow(f.project, "thread");
+  previous.invalidated = true;
+  previous.epoch++;
+  assert.deepEqual(await f.history("acquire"), { supported: true, complete: true });
+  const current = f.backend.historyWindow(f.project, "thread");
+  assert.notEqual(current, previous);
+  assert.notEqual(current.invalidated, true);
+  assert.equal(current.snapshotId, "snapshot-2");
+  assert.equal(current.views.has("view-a"), true);
+  assert.equal(observations, 2, "one explicit acquire refreshes once, without retries");
+  assert.equal(
+    f.calls.some((call) => call.method === "thread/read"),
+    false,
+  );
+  assert.ok(f.calls.every((call) => !call.maxResponseBytes || call.maxResponseBytes <= 1048576));
+  await f.history("release");
+  assert.equal(current.views.size, 0);
+});
+
+test("release during invalidated acquire cannot resurrect its reading view", async () => {
+  let observations = 0;
+  let enter;
+  let finish;
+  const entered = new Promise((resolve) => {
+    enter = resolve;
+  });
+  const held = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const f = fixture(async (method) => {
+    assert.equal(method, "areal/thread/observe");
+    if (++observations === 2) {
+      enter();
+      await held;
+    }
+    return { ...baseline(), history: { snapshotId: "snapshot", nextCursor: null, complete: true } };
+  });
+  await f.backend.openThread(f.project, "thread");
+  f.backend.historyWindow(f.project, "thread").invalidated = true;
+  const pending = f.history("acquire");
+  const rejected = assert.rejects(pending, /历史视图/);
+  await entered;
+  await f.history("release");
+  finish();
+  await rejected;
+  assert.equal(f.backend.historyWindow(f.project, "thread").views.size, 0);
+  assert.equal(observations, 2);
+});
 const target = (n) => ({ turnId: "old", itemId: `anchor-${n}` });
 
 test("late loadOlder deduplicates a cursor committed by ensureAnchor without reversing the frontier", async () => {

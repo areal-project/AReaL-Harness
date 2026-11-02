@@ -21,6 +21,8 @@ Browser terminal results, Worktree and scheduled-task contracts use the existing
 
 Tool-fact acceptance uses `scripts/support/tool-history.mjs`: acquire/loadItem only for deferred tool records in the target Turn, reread the snapshot by its original Turn/item identity, then release the temporary view. Inline records retain the full-history compatibility path; original failed, interrupted and UNKNOWN assertions remain active. Read failures or changed identity fail directly without retries or skips. Presentation acceptance still exercises the visible summary disclosure; RPC acceptance checks formal responses, error categories, notifications, threads and request receipts directly. When both Profile and provider references are missing, Profile resolution errors take precedence, keeping model configuration from masking the resource-reference contract.
 
+When a new history view acquires an already invalidated window, it rebuilds the baseline once before bounded hydration; registering the same view again does not trigger recovery loops. Connection/window changes, renewed invalidation, or release of all views during the read still fail explicitly. Concurrent readers share hydration, and closing one reader does not cancel another live view.
+
 | Entry point | Coverage |
 |---|---|
 | `make verify` | Cordis pin, formatting, static checks, Rust workspace, both SDKs, Python, documentation, TUI and unified delegation smoke |
