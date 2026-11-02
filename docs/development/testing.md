@@ -142,6 +142,8 @@ python3 scripts/verification.py doctor --core "$PWD/.local/dev-bin/verification/
 
 doctor 在启动 Electron 前检查 Core 内嵌输入身份、整套组件哈希、Renderer 源码和输出哈希。报告包含三个程序的路径、SHA、探测命令、退出码或信号，以及 macOS 签名检查；任一失败仍保留其余探测，返回非零。每次使用新的报告文件，已有报告拒绝覆盖。文件助手无请求探测只验证启动，不执行文件操作。退出 0 和签名有效均不证明人工授权；`authorization` 默认 `unknown`，人工实际观察后可用 `--authorization-observation areal=allowed` 等逐组件记录。SIGKILL 只记为信号，不能自动归因为防护拦截。报告不替代真实 Runtime、供应商或安装包验收。
 
+doctor 也接受安装器版本目录的 `bin/areal`：先复用安装器校验 manifest 与完整文件清单，再从同一 bundle 的 `libexec/areal` 探测 Runtime，核对 manifest、实际 Core 版本、内嵌输入与当前源码及 Renderer。它不往 bundle 写入固定槽回执或锁；版本化产物仍保持原清单。这个入口用于源码 GUI 的受控升级验收，不替代签名安装包或系统授权验收。
+
 浏览器静态验收通过现有 `verification.py` 从匹配当前 GUI 输入的构建创建独立副本：
 
 ```sh

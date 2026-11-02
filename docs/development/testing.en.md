@@ -144,6 +144,8 @@ Deployment reuses existing process/open-file inspection and rejects occupied slo
 
 Before Electron starts, doctor checks Core's embedded input identity, all component hashes, Renderer inputs and output hashes. Reports include each of the three programs' path, SHA, probe command, exit code or signal, and macOS signature check. A failed probe does not discard remaining diagnostics and produces a nonzero exit. Use a new report filename for each attempt; existing reports cannot be overwritten. The file helper's no-request probe checks startup without performing a file operation. Neither exit zero nor a valid signature proves manual authorization. `authorization` defaults to `unknown`; after actual human observation, record each component separately with options such as `--authorization-observation areal=allowed`. SIGKILL is recorded as a signal without attributing it to endpoint protection. Reports do not replace real Runtime, provider or packaged-app acceptance.
 
+Doctor also accepts `bin/areal` in an installer version directory. It first reuses installer validation of the manifest and full inventory, then probes Runtime from the same bundle’s `libexec/areal` and checks the manifest, actual Core version, embedded inputs, current source and Renderer. It writes no fixed-slot receipt or lock into the bundle, preserving its original inventory. This supports controlled-update acceptance with source Electron; it does not replace signed-package or system-authorization acceptance.
+
 Static browser acceptance uses the existing `verification.py` to create a private copy of a build matching the current GUI inputs:
 
 ```sh

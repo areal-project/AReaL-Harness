@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -112,6 +113,80 @@ class VerificationTests(unittest.TestCase):
             passed=False,
         )
         self.assertEqual((self.root / "doctor.json").read_bytes(), original)
+
+    def installed_bundle(self):
+        bundle = self.root / "prefix/lib/areal/0.1.8-fixture"
+        (bundle / "bin").mkdir(parents=True)
+        (bundle / "libexec/areal").mkdir(parents=True)
+        for name in verification.components():
+            destination = bundle / ("bin" if name == "areal" else "libexec/areal") / name
+            shutil.copy2(self.source / name, destination)
+        core = bundle / "bin/areal"
+        identity = {
+            "inputHash": self.expected,
+            "sourceRevision": "fixture",
+            "apiVersion": "areal.core.v1",
+            "stateVersion": 1,
+            "workingTree": "true",
+        }
+        core.write_text(
+            f"#!{sys.executable}\nimport sys\nprint('areal 0.1.8' if '--version' in sys.argv else {json.dumps(identity)!r})\n"
+        )
+        (bundle / "LICENSE").write_text("fixture license")
+        verification.write_json(
+            bundle / "manifest.json",
+            {
+                "manifestVersion": 2,
+                "productVersion": "areal 0.1.8",
+                "platform": verification.TARGETS[
+                    (verification.platform.system(), verification.platform.machine())
+                ][0],
+                "coreBuild": identity,
+                "sourceRevision": "fixture",
+                "apiVersion": "areal.core.v1",
+                "stateVersion": 1,
+                "workingTree": True,
+                "files": {
+                    str(path.relative_to(bundle)): verification.digest(path)
+                    for path in bundle.rglob("*")
+                    if path.is_file()
+                },
+            },
+        )
+        return bundle
+
+    def bundle_doctor(self, bundle, passed=True):
+        report = self.root / "bundle-doctor.json"
+        self.cli("doctor", "--core", bundle / "bin/areal", "--report", report, passed=passed)
+        return json.loads(report.read_text())
+
+    def test_installed_bundle_uses_verified_inventory_and_libexec_probes(self):
+        bundle = self.installed_bundle()
+        report = self.bundle_doctor(bundle)
+        self.assertTrue(report["passed"])
+        self.assertEqual(report["build"]["core"]["layout"], "installedBundle")
+        self.assertEqual(
+            report["components"]["areal-runtime"]["path"],
+            str((bundle / "libexec/areal/areal-runtime").resolve()),
+        )
+        self.assertFalse((bundle / "bin/verification-build.json").exists())
+
+    def test_installed_bundle_tampering_is_rejected_before_program_execution(self):
+        bundle = self.installed_bundle()
+        marker = self.root / "tampered-program-ran"
+        (bundle / "libexec/areal/areal-runtime").write_text(
+            f"#!{sys.executable}\nfrom pathlib import Path\nPath({str(marker)!r}).touch()\n"
+        )
+        report = self.bundle_doctor(bundle, passed=False)
+        self.assertIn("bundle file checksum mismatch", " ".join(report["errors"]))
+        self.assertFalse(marker.exists())
+        self.assertTrue(all(not row["passed"] for row in report["components"].values()))
+
+    def test_installed_bundle_source_mismatch_is_rejected(self):
+        bundle = self.installed_bundle()
+        (self.root / "Cargo.toml").write_text("changed")
+        report = self.bundle_doctor(bundle, passed=False)
+        self.assertIn("Core/Runtime build inputs differ", " ".join(report["errors"]))
 
     def test_stale_sources_and_tampered_renderer_are_rejected(self):
         (self.root / "Cargo.toml").write_text("changed")

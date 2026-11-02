@@ -14,6 +14,7 @@ import subprocess
 import tempfile
 
 from package import source_input_hash
+from install import TARGETS, verify_bundle
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -241,14 +242,44 @@ def doctor(args):
                 "authorization observation must be COMPONENT=unknown|prompt-seen|allowed|denied"
             )
     observations = dict(item.split("=", 1) for item in args.authorization_observation)
+    bundle = directory.parent if directory.name == "bin" else None
+    bundled = bundle is not None and (bundle / "manifest.json").is_file()
+    manifest = None
+    bundle_error = None
+    if bundled:
+        try:
+            target = TARGETS.get((platform.system(), platform.machine()))
+            if target is None:
+                raise ValueError("unsupported bundle platform")
+            metadata = json.loads((bundle / "manifest.json").read_text())
+            version = str(metadata["productVersion"]).removeprefix("areal ")
+            manifest = verify_bundle(bundle, version, target[0])
+            if manifest["coreBuild"]["inputHash"] != source_input_hash(args.root):
+                raise ValueError("Core/Runtime build inputs differ from checkout")
+        except (OSError, ValueError, KeyError) as error:
+            bundle_error = str(error)
+            report["errors"].append(bundle_error)
     # 无请求参数的文件助手只返回 InvalidArgument，不执行文件操作。
     for name, arguments in [
         ("areal", ["build-info"]),
         ("areal-runtime", ["--version"]),
         ("areal-runtime-fs", []),
     ]:
-        path = args.core if name == "areal" else directory / name
-        record = probe(path, arguments)
+        path = (
+            args.core
+            if name == "areal"
+            else (bundle / "libexec/areal" / name if bundled else directory / name)
+        )
+        record = (
+            {
+                "path": str(path),
+                "arguments": arguments,
+                "passed": False,
+                "error": f"bundle validation failed; program not executed: {bundle_error}",
+            }
+            if bundle_error
+            else probe(path, arguments)
+        )
         record["authorization"] = observations.get(name, "unknown")
         report["components"][name] = record
         if not record["passed"]:
@@ -256,11 +287,21 @@ def doctor(args):
                 f"startup probe failed: {path}; inspect signal/exitCode and any security prompt"
             )
     try:
-        receipt = json.loads((directory / RECEIPT).read_text())
-        check_files(directory, receipt)
         expected = source_input_hash(args.root)
-        if receipt["inputHash"] != expected:
-            raise ValueError("Core/Runtime build inputs differ from checkout; rebuild and deploy")
+        if bundled:
+            receipt = {"layout": "installedBundle", "bundle": str(bundle), "manifest": manifest}
+            if not bundle_error:
+                version = probe(args.core, ["--version"])
+                report["bundleVersion"] = version
+                if not version["passed"] or version["stdout"].strip() != manifest["productVersion"]:
+                    raise ValueError("Core version differs from bundle manifest")
+        else:
+            receipt = json.loads((directory / RECEIPT).read_text())
+            check_files(directory, receipt)
+            if receipt["inputHash"] != expected:
+                raise ValueError(
+                    "Core/Runtime build inputs differ from checkout; rebuild and deploy"
+                )
         core = report["components"]["areal"]
         if core["passed"] and json.loads(core["stdout"]).get("inputHash") != expected:
             raise ValueError("Core build-info differs from checkout inputs")
