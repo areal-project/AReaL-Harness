@@ -8,6 +8,8 @@ pub(super) mod overview;
 mod projection;
 #[path = "send.rs"]
 mod send;
+#[path = "stop.rs"]
+mod stop;
 use super::wire;
 use crate::server::{Host, gateway_owner};
 use anyhow::{Context, Result, ensure};
@@ -24,6 +26,7 @@ use std::{
 const METHODS: &[&str] = &[
     "session.create",
     "session.send",
+    "turn.stop",
     "device.push.register",
     "device.push.unregister",
     "host.describe",
@@ -365,6 +368,7 @@ impl Session {
                     "interaction.respond"
                         | "session.create"
                         | "session.send"
+                        | "turn.stop"
                         | "device.push.register"
                         | "device.push.unregister"
                 )
@@ -407,6 +411,7 @@ impl Session {
                         Some(
                             "session.create"
                                 | "session.send"
+                                | "turn.stop"
                                 | "interaction.respond"
                                 | "device.push.register"
                                 | "device.push.unregister"
@@ -773,6 +778,10 @@ impl Session {
         if method == "subscription.close" {
             return self.close_session(&project, params);
         }
+        if method == "turn.stop" {
+            let generation = text(&request["context"], "serviceGeneration")?;
+            return self.stop_turn(&project, generation, request).await;
+        }
         let (_, generation) = self.project(&project)?;
         match method {
             "work.list" | "attention.list" => {
@@ -964,8 +973,10 @@ impl Session {
         };
         let mut result = Self::command_view(record, command);
         if record.is_some_and(|record| {
-            record["remote"]["method"] == "session.send"
-                && record.get("admissionState").is_none()
+            matches!(
+                record["remote"]["method"].as_str(),
+                Some("session.send" | "turn.stop")
+            ) && record.get("admissionState").is_none()
                 && gateway_owner::push::awaiting(&self.host, record)
         }) {
             result["admissionState"] = json!("pending");

@@ -33,7 +33,10 @@ async function until(read, label) {
 }
 
 // 只提供真实 Host 的本地配置生产者；Remote 请求仍由原客户端进入 Rust owner。
-export async function nativeHostFixture(t, { config, deferNative = false } = {}) {
+export async function nativeHostFixture(
+  t,
+  { config, deferNative = false, expectedUnknownSettlement } = {},
+) {
   assert.ok(
     process.platform !== "darwin" || process.env.AREAL_TEST_HOST_KEYCHAIN === "1",
     "Requires isolated synthetic Host vault authorization",
@@ -104,7 +107,7 @@ export async function nativeHostFixture(t, { config, deferNative = false } = {})
             return ["completed", "blocked"].includes(operation.state);
           }, "original project ensure settlement before fixture stop");
         }
-        const reference = {
+        const reference = expectedUnknownSettlement?.reference ?? {
           kind: "stopHost",
           requestId: randomUUID(),
           home,
@@ -115,25 +118,97 @@ export async function nativeHostFixture(t, { config, deferNative = false } = {})
         const observation = { reference };
         evidence.cleanup.push(observation);
         let receipt;
-        try {
+        if (expectedUnknownSettlement?.reference) {
+          assert.equal(expectedUnknownSettlement.businessAssertionsPassed, true);
+          const {
+            service,
+            terminal,
+            status,
+            stopReceipt,
+            target: originalTarget,
+          } = expectedUnknownSettlement;
+          const tool = terminal.items.find((item) => item.id === status.unresolvedTools[0].itemId);
+          assert.equal(status.restartSafe, false);
+          assert.equal(status.runtime.activeProcesses, 0);
+          assert.equal(status.activeTasks, 0);
+          assert.equal(status.pendingQueueItems, 0);
+          for (const key of [
+            "activeTurns",
+            "activeGoals",
+            "resources",
+            "compactions",
+            "workgroups",
+          ])
+            assert.deepEqual(status[key], []);
+          assert.equal(terminal.id, originalTarget.expectedTurnId);
+          assert.deepEqual(status.unresolvedTools, [
+            { threadId: originalTarget.threadId, itemId: tool.id },
+          ]);
+          assert.equal(tool.execution.outcome, "unknown");
+          assert.equal(tool.execution.inspection, undefined);
+          assert(["blocked", "settlementIncomplete"].includes(stopReceipt.state));
+          assert.equal(stopReceipt.projects.length, 1);
+          const target = stopReceipt.projects[0];
+          assert.equal(target.serviceId, service.serviceId);
+          assert.equal(target.serviceGeneration, service.generation);
+          assert.equal(target.receipt.lifecycle.executionOutcomes.uninspectedUnknown, 1);
+          assert.equal(target.receipt.lifecycle.settled.allowed, false);
+          assert.equal(reference.hostId, identity.hostId);
+          assert.equal(reference.generation, identity.generation);
+          assert.equal(stopReceipt.requestId, reference.requestId);
+          assert.equal(stopReceipt.hostId, reference.hostId);
+          assert.equal(stopReceipt.generation, reference.generation);
           receipt = readHostReceipt(
             reference,
-            await host.stop(reference.requestId, reference.generation, reference.strategy),
+            (await host.operation(reference.requestId)).operation,
           );
-        } catch (error) {
-          observation.error = { code: error.code, message: error.message };
-          host.close();
-          receipt = await readOfflineHostReceipt(binary, reference);
-        }
+          assert.ok(receipt, "original UNKNOWN guard stop remains queryable");
+          assert(["blocked", "settlementIncomplete"].includes(receipt.state));
+          assert.equal(receipt.projects.length, 1);
+          assert.equal(receipt.projects[0].requestId, target.requestId);
+          assert.equal(receipt.projects[0].serviceId, target.serviceId);
+          assert.equal(receipt.projects[0].serviceGeneration, target.serviceGeneration);
+          assert.equal(
+            receipt.projects[0].receipt.lifecycle.executionOutcomes.uninspectedUnknown,
+            1,
+          );
+          assert.equal(receipt.projects[0].receipt.lifecycle.settled.allowed, false);
+          for (const pid of [service.hostPid, service.corePid])
+            assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+          const current = JSON.parse(await readFile(join(home, "host/host.json"), "utf8"));
+          assert.deepEqual(current, identity);
+          const command = spawnSync("/bin/ps", ["-p", String(child.pid), "-o", "command="], {
+            encoding: "utf8",
+          });
+          assert.equal(command.status, 0);
+          assert.equal(command.stdout.trim(), `${binary} host run`);
+          assert.equal(digest(await readFile(binary)), evidence.binarySha256);
+          observation.harnessTermination = {
+            pid: child.pid,
+            signal: "SIGTERM",
+            productDrain: false,
+            unknownAcknowledged: false,
+          };
+          assert.equal(child.kill("SIGTERM"), true);
+        } else
+          try {
+            receipt = readHostReceipt(
+              reference,
+              await host.stop(reference.requestId, reference.generation, reference.strategy),
+            );
+          } catch (error) {
+            observation.error = { code: error.code, message: error.message };
+            host.close();
+            receipt = await readOfflineHostReceipt(binary, reference);
+          }
         observation.receipt = receipt ?? null;
         assert.ok(receipt, `UNKNOWN original fixture stop ${reference.requestId}; no replay`);
-        assert.equal(receipt.state, "completed");
+        if (!observation.harnessTermination) assert.equal(receipt.state, "completed");
       }
-      await until(
-        () => child.exitCode !== null || child.signalCode !== null,
-        "owned Host natural exit",
-      );
-      assert.equal(child.exitCode, 0);
+      await until(() => child.exitCode !== null || child.signalCode !== null, "owned Host exit");
+      if (evidence.cleanup.some((entry) => entry.harnessTermination))
+        assert(child.exitCode === 0 || child.signalCode === "SIGTERM");
+      else assert.equal(child.exitCode, 0);
       const service = `org.areal.host.v1.${digest(home)}`;
       for (const directory of ["vault-operations", "remote-operations"]) {
         for (const name of await readdir(join(home, "host", directory)).catch((error) => {
@@ -238,7 +313,7 @@ export async function nativeHostFixture(t, { config, deferNative = false } = {})
 export async function nativeCoreProject(
   t,
   fixture,
-  { approval = false, holdModel = false, effectModel = false } = {},
+  { approval = false, holdModel = false, effectModel = false, stopModel = false } = {},
 ) {
   const { createServer } = await import("node:http");
   const { connect } = await import("../../../examples/desktop-api/client.mjs");
@@ -249,7 +324,7 @@ export async function nativeCoreProject(
     scratch = join(root, "scratch");
   for (const directory of [workspace, user, scratch])
     await mkdir(directory, { recursive: true, mode: 0o700 });
-  if (effectModel) await mkdir(join(workspace, "effects"), { mode: 0o700 });
+  if (effectModel || stopModel) await mkdir(join(workspace, "effects"), { mode: 0o700 });
   const projectId = randomUUID();
   const alias = digest(`host:${projectId}`).slice(0, 24);
   const binding = { projectId, dataDir: join(root, "state") };
@@ -277,9 +352,10 @@ export async function nativeCoreProject(
     );
     const input = JSON.stringify(currentMessages[0]?.content ?? null);
     const effect = effectModel && input.match(/RC05_EFFECT:([a-f0-9-]{36})/);
+    const cleanup = stopModel && input.match(/RC06_CLEANUP:([a-f0-9-]{36})/);
     const hasTool = currentMessages.some((message) => message.role === "tool");
     const delta =
-      effect && !hasTool
+      (effect || cleanup) && !hasTool
         ? {
             tool_calls: [
               {
@@ -289,7 +365,9 @@ export async function nativeCoreProject(
                 function: {
                   name: "run_command",
                   arguments: JSON.stringify({
-                    command: `printf x >> '${join(workspace, "effects", effect[1])}'`,
+                    command: cleanup
+                      ? `trap 'sleep 1; exit 0' TERM; printf ready >> '${join(workspace, "effects", cleanup[1])}'; while :; do sleep 1; done`
+                      : `printf x >> '${join(workspace, "effects", effect[1])}'`,
                   }),
                 },
               },
@@ -316,7 +394,7 @@ export async function nativeCoreProject(
         `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: delta.tool_calls ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`,
       );
     };
-    if (!holdModel || (effect && hasTool)) return release();
+    if (!holdModel || cleanup || (effect && hasTool)) return release();
     const held = {
       inputSha256: digest(input),
       released: false,
