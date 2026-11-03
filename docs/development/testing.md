@@ -227,6 +227,8 @@ macOS 登录会话中的 Keychain 权限边界另用 `python3 scripts/git-keycha
 
 ## GUI 与桌面路由门禁
 
+`pnpm --dir clients/gui test:service-connection` 区分当前应用的 Main 连接与发现的旧 Desktop。当前应用夹具经 `initialize` 和 `connectMain` 进入生产连接边界，每次连接建立独立传输，覆盖原请求身份、丢失回复、停止及重连失败后的回执核查；外来后台经真实 WebSocket `attach` 观察，并验证命令被拒绝且不会自动接管。生命周期兼容夹具提供旧 Desktop 回执，不能替代真实 Host 升级、服务注册或 GUI 验收。
+
 会话目录回归使用 `cargo test --locked -p areal-app-server --lib catalog_tests`、`cargo test --locked -p areal-engine --lib catalog::tests`、`cargo test --locked -p areal-engine --test catalog_observation` 和 `node --test clients/gui/scripts/catalog-refresh.test.cjs`（从仓库根运行）。覆盖旧元数据与持久字节兼容、过滤先于分页、完整参考对照、长过滤空洞、游标排序与授权、会话锁与注册互不阻塞、注册回滚，以及 GUI 合并刷新和连接换代。观察回归还核对模型输入、工具副作用、用量及重启历史不受目录读取影响。GUI 用例已纳入 `pnpm --dir clients/gui verify`。
 
 显式局部性能对照使用 `cargo test --locked --release -p areal-app-server --lib catalog_performance_comparison -- --ignored --nocapture` 与 `node clients/gui/scripts/catalog-refresh-benchmark.cjs`。后者可传入旧版 `history-observation.cjs` 路径，在相同 fixture 下比较旧协调器。耗时不作为 CI 阈值；固定源码、原始样本、复现方法与测量限制见[会话目录性能报告](../benchmarks/reports/conversation-catalog.md)。
@@ -438,7 +440,7 @@ Relay 的原实际重启、替换与不可用预算场景可在同一固定产�
 
 将选择条件设为 `Direct and Relay share one readonly Core observer`，可运行原观察恢复场景：Direct 与 Relay 读取同一真实 Core Thread 基线，Relay 断连期间由公开配置 API 更新 revision，恢复连接取得 sequence 0 的新订阅和新基线；Direct 的原连接和订阅持续可读。原 Host journal 与权威 Thread 对照用于核对无额外提交。场景名沿用旧名称，证据不推断物理 Core 连接数或 RPC 次数。
 
-同一 CA 和产物环境下，选择 `connection write burst|receipt reads preserve|all current write methods|write budgets isolate|authentication and grant changes` 可运行两种 transport 的五个原预算场景。各场景先保留完整 JS 精确时钟 reference，再验证真实 Rust 连接；原 199/200ms 与 999/1000ms 边界还由 `cargo test --locked -p areal-host --lib request_budget_tests` 覆盖。真实连接的拒绝前缀使用 `params: null`，在预算扣减后、授权与项目读取前被参数校验拒绝，避免前缀的无关磁盘读取消耗预算窗口。一次发送有界前缀后提交合法命令，必须实际收到 `LIMIT_EXCEEDED`，再通过原命令查询和完整 journal、Thread 身份集合核对无副作用。写额度和总请求额度分别保留“命令超过允许的预算”和“请求过于频繁”；同设备跨 Direct/Relay、其他设备与重连使用实际连接核对分桶。真实经过时间仅作证据，不当作可控时钟，也不据此声称精确物理派发次数。
+同一 CA 和产物环境下，选择 `connection write burst|receipt reads preserve|all current write methods|write budgets isolate|authentication and grant changes` 可运行两种 transport 的五个原预算场景。各场景先保留完整 JS 精确时钟 reference，再验证真实 Rust 连接；原 199/200ms 与 999/1000ms 边界还由 `cargo test --locked -p areal-host --lib request_budget_tests` 覆盖。真实连接的拒绝前缀使用 `params: null`，在预算扣减后、授权与项目读取前被参数校验拒绝，避免前缀的无关磁盘读取消耗预算窗口。一次发送有界前缀后提交合法命令，必须实际收到 `LIMIT_EXCEEDED`，再通过原命令查询和完整 journal、Thread 身份集合核对无副作用。写额度和总请求额度分别保留“命令超过允许的预算”和“请求过于频繁”；同设备跨 Direct/Relay、其他设备与重连使用实际连接核对分桶。真实混合请求的前缀包含十个参数无效的 `command.read` 和十个参数无效的写请求，核对两类请求合计计费及末项合法命令按总额度拒绝。合法回执读取不消耗写额度及精确窗口边界由 JS reference 和 Rust owner 时钟测试覆盖；另一条真实连接上的合法回执可用性另由共享写额度场景检查。真实经过时间仅作证据，不当作可控时钟，也不据此声称精确物理派发次数。
 
 同一 CA 与固定产物环境下，选择 `sequential large history reads` 运行原大历史速率场景。默认和降低限额各使用独立真实 Host/Core，经公开 API 生成 50 个已完成 Turn、100 个原生消息；每次读取核对全部原 Item ID，保持 20 次历史读取、健康设备读取、4 个关闭帧和原滚动帧数、字节、单帧及心跳断言。TLS 代理只旁读 Host 帧类型、channel、接收时间与 JSON 字节数，不保存内容或登记 capability；实际 pong 必须发生在读取负载期间。180 秒场景预算容纳两组真实数据准备，单个应用请求仍为原 5 秒 deadline。证据保存在各 `native-remote-host-*/evidence.json`，记录接收端观察而非 Rust 物理发送调用。 整个 transport 入口的 CA 子进程直接继承标准输出与错误输出，失败时保留完整子测试日志；包装预算为 600 秒，容纳多个真实场景的完整生命周期；这不改变各场景和请求预算，也不表示整个七文件套件已验收。 同一入口可选择 `legacy encrypted` 与 `a real paused Relay TCP reader`：前者使用真实 Host 加密配置验证旧登记先持久禁用、拒绝无新登记码的启用，再显式重新登记；后者使用真实 50 Turn、100 Item 历史，暂停实际 TCP 读取，在原 16×8 请求和 1050ms 间隔内核对慢设备离线并实际关闭，健康设备与 Host 继续服务，原 journal、线程和 Item 身份不变。慢读场景的 180 秒预算包含真实数据准备。公开设备在线状态和实际连接关闭替代旧私有 Core 连接计数，不据此推断物理 RPC 次数。
 

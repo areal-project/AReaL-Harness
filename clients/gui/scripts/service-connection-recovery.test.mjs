@@ -21,6 +21,8 @@ import { once } from "node:events";
 const require = createRequire(import.meta.url);
 const { CoreBackend } = require("../app/src/core/backend.cjs");
 const { SharedCoreBackend } = require("../app/src/core/service-client.cjs");
+const { ServiceConnection } = require("../app/src/core/service-connection.cjs");
+const { createOwner } = require("../app/src/core/application-owner.cjs");
 const { PROTOCOL, COMMAND_CONTRACT } = require("../app/src/core/service-protocol.cjs");
 const { serviceIdentity } = require("../app/src/core/service-config.cjs");
 const { WebSocketServer } = require("../app/node_modules/ws");
@@ -534,6 +536,45 @@ async function fixture(
     });
   });
   const backend = new SharedCoreBackend({ app: { getPath: () => home }, home });
+  let mainFailure;
+  const connectMain = async () => {
+    let closed = false;
+    const transports = new Set();
+    backend.mainDesktop = {
+      adapter: {
+        connectMain(onMessage, onClose) {
+          const transport = new ServiceConnection(
+            (params) => onMessage({ method: "state", params }),
+            onClose,
+          );
+          transports.add(transport);
+          const failure = mainFailure;
+          mainFailure = undefined;
+          const ready = failure ? Promise.reject(failure) : transport.connect(metadata);
+          return {
+            metadata: { ...metadata },
+            request: async (method, params) => {
+              await ready;
+              return transport.request(method, params, method === "command");
+            },
+            close: () => {
+              transports.delete(transport);
+              transport.close();
+            },
+          };
+        },
+      },
+      get closed() {
+        return closed;
+      },
+      async close() {
+        closed = true;
+        for (const transport of transports) transport.close();
+        transports.clear();
+      },
+    };
+    await backend.initialize();
+  };
   const publish = () =>
     writeFile(join(home, "service.json"), JSON.stringify(metadata), { mode: 0o600 });
   const drop = () => {
@@ -548,6 +589,10 @@ async function fixture(
   return {
     home,
     backend,
+    connectMain,
+    failNextMain: (error) => {
+      mainFailure = error;
+    },
     metadata,
     calls,
     publish,
@@ -894,14 +939,30 @@ test("subscription-selected turn submission uses its original receipt without re
   assert.equal(f.calls.length, 1, "reusing a settled request ID never repeats the turn");
 });
 
+test("a discovered foreign Desktop remains read-only", async (t) => {
+  const f = await fixture(t, { commandResult: { accepted: true } });
+  f.backend.applicationOwner = createOwner(join(f.home, "current-profile"));
+  f.metadata.applicationOwner = createOwner(join(f.home, "foreign-profile"));
+  f.service.applicationOwner = f.metadata.applicationOwner;
+  await f.publish();
+  await f.backend.attach();
+  assert.equal(f.backend.status.connected, true);
+  await assert.rejects(f.backend.command("connect", { projectId: "p" }), {
+    code: "APPLICATION_OWNER_MISMATCH",
+  });
+  assert.equal(
+    f.calls.some((call) => call.method === "command"),
+    false,
+  );
+});
+
 test("legacy task catalog is blocked without starting owners and recovers with the current contract", async (t) => {
   const result = { data: [], errors: [], owners: [], hasMore: false };
   const f = await fixture(t, {
     commandContract: "areal.desktop-commands.v2",
     commandResult: result,
   });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   assert.equal(f.backend.snapshot().desktopCapabilities.currentCommands, false);
   for (const operation of ["preview", "observe"]) {
     await assert.rejects(f.backend.command("tasks", { operation, projectId: "p" }), {
@@ -956,8 +1017,7 @@ test("public command availability comes only from the current service contract",
 
 test("legacy Desktop contract cannot accept writes requiring original recovery identities", async (t) => {
   const f = await fixture(t, { commandContract: "areal.desktop-commands.v1" });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   assert.equal(f.backend.snapshot().desktopCapabilities.currentCommands, false);
   for (const [name, request] of [
     ["create", { projectId: "p" }],
@@ -980,8 +1040,7 @@ test("legacy Desktop contract cannot accept writes requiring original recovery i
 
 test("an unadvertised backend rejects current commands before sending or inventing a receipt", async (t) => {
   const f = await fixture(t, { commandContract: null });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   const thread = { projectId: "p", threadId: "t" };
   const requests = [
     ["send", { ...thread, text: "keep my draft" }],
@@ -1076,8 +1135,7 @@ test("an unadvertised backend rejects current commands before sending or inventi
 
 test("an unadvertised backend keeps compatible observation and control commands", async (t) => {
   const f = await fixture(t, { commandContract: null, commandResult: { accepted: true } });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   const thread = { projectId: "p", threadId: "t" };
   const requests = [
     ["list", { projectId: "p" }],
@@ -1105,7 +1163,7 @@ test("an unadvertised backend keeps compatible observation and control commands"
 test("legacy queue edits retain the original receipt after disconnect without replay", async (t) => {
   const f = await fixture(t, { commandContract: null });
   await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   const requestId = "62bedfab-f198-4d6a-b66d-46760b04e214";
   const request = {
     projectId: "p",
@@ -1147,7 +1205,7 @@ test("a backend published after startup timeout attaches without launching again
   );
 });
 
-test("passive reconnect publishes connecting until the original observer is ready", async (t) => {
+test("passive reconnect publishes connecting until the original observer is available for inspection", async (t) => {
   const f = await fixture(t);
   await f.publish();
   await f.backend.attach();
@@ -1158,7 +1216,8 @@ test("passive reconnect publishes connecting until the original observer is read
   assert.equal(f.backend.snapshot().connection.state, "connecting");
   assert.ok(f.backend.reconnectTimer);
   await until(() => f.backend.status.connected);
-  assert.deepEqual([...new Set(states)], ["connecting", "ready"]);
+  assert.deepEqual([...new Set(states)], ["connecting", "unavailable"]);
+  assert.equal(f.backend.snapshot().connection.recovery, "check");
   assert.equal(
     f.calls.some((call) => call.method === "command"),
     false,
@@ -1227,8 +1286,7 @@ for (const mismatch of [null, "request", "target", "generation", "instance"]) {
         outcomes: { [requestId]: { status: "completed", accepted: true, operation } },
       },
     });
-    await f.publish();
-    await f.backend.attach();
+    await f.connectMain();
     await assert.rejects(
       f.backend.command("send", { projectId: "p", threadId: "t", text: "once", requestId }),
       (error) => {
@@ -1295,8 +1353,7 @@ for (const scenario of [
       },
       deferredCommandState: true,
     });
-    await f.publish();
-    await f.backend.attach();
+    await f.connectMain();
     await assert.rejects(
       f.backend.command("send", { projectId: "p", threadId: "t", text: "once", requestId }),
       (error) => {
@@ -1316,7 +1373,7 @@ for (const scenario of [
 test("an unknown command is never replayed when its observer reconnects", async (t) => {
   const f = await fixture(t);
   await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   const requestId = "e99d906b-7912-4e95-81dc-a3fd3c967779";
   const request = { projectId: "p", threadId: "t", text: "once", requestId };
   await assert.rejects(
@@ -1364,7 +1421,7 @@ for (const forUpdate of [false, true]) {
   test(`confirmed explicit stop (forUpdate=${forUpdate}) blocks automatic attachment`, async (t) => {
     const f = await fixture(t);
     await f.publish();
-    await f.backend.attach();
+    await f.connectMain();
     assert.equal((await f.backend.stopService(forUpdate)).stopped, true);
     await f.publish();
     f.drop();
@@ -1415,7 +1472,7 @@ for (const automatic of [false, true]) {
   test(`completed update resumes after GUI reopen (automatic=${automatic})`, async (t) => {
     const f = await fixture(t);
     await f.publish();
-    await f.backend.attach();
+    await f.connectMain();
     const stopped = await f.backend.stopService(true);
     assert.equal(stopped.operation.phase, "completed");
     const journal = join(f.home, "lifecycle-operations", `${stopped.operation.requestId}.json`);
@@ -1456,7 +1513,7 @@ for (const scenario of [
     }
     if (scenario === "unfinished target") f.setStop("pending");
     await f.publish();
-    await f.backend.attach();
+    await f.connectMain();
     const stopped = await f.backend.stopService(scenario !== "stopped");
     if (scenario === "missing receipt")
       await rm(join(f.home, "lifecycle-operations", `${stopped.operation.requestId}.json`));
@@ -1604,13 +1661,15 @@ test("deployment identity includes split desktop contract content", async (t) =>
   assert.equal(await identity(f.backend.options), before);
 });
 
-test("automatic same-deployment reopen silently retains the existing service", async (t) => {
+test("automatic same-deployment reopen observes the existing service without taking ownership", async (t) => {
   const f = await startupFixture(t);
   f.metadata.identity = f.identity;
   await f.publish();
   await f.backend.init({ automatic: true });
-  assert.deepEqual(f.backend.snapshot().connection, { state: "ready" });
-  assert.equal(f.backend.snapshot().backendUpdate, undefined);
+  assert.equal(f.backend.snapshot().connection.state, "unavailable");
+  assert.equal(f.backend.snapshot().connection.recovery, "check");
+  assert.equal(f.backend.snapshot().backendUpdate.state, "pending");
+  assert.match(f.backend.snapshot().backendUpdate.message, /旧应用会话/);
   assert.equal(await f.launches(), 0);
   assert.deepEqual(
     f.calls.map((call) => call.method),
@@ -1618,13 +1677,15 @@ test("automatic same-deployment reopen silently retains the existing service", a
   );
 });
 
-test("automatic idle reopen retains the old deployment with an explicit update pending", async (t) => {
+test("automatic idle reopen observes the old deployment without taking ownership", async (t) => {
   const f = await startupFixture(t);
   await f.backend.init({ automatic: true });
   assert.equal(f.backend.metadata.identity, "fixture");
   assert.equal(await f.launches(), 0);
-  assert.deepEqual(f.backend.snapshot().connection, { state: "ready" });
-  assert.deepEqual(f.backend.snapshot().backendUpdate, { state: "pending" });
+  assert.equal(f.backend.snapshot().connection.state, "unavailable");
+  assert.equal(f.backend.snapshot().connection.recovery, "check");
+  assert.equal(f.backend.snapshot().backendUpdate.state, "pending");
+  assert.match(f.backend.snapshot().backendUpdate.message, /旧应用会话/);
   assert.deepEqual(
     f.calls.map((call) => call.method),
     ["hello"],
@@ -1632,9 +1693,9 @@ test("automatic idle reopen retains the old deployment with an explicit update p
   await assert.rejects(readFile(f.backend.controlPath), { code: "ENOENT" });
 });
 
-test("explicit update persists its reference and launches only after confirmed exit", async (t) => {
+test("explicit update persists its reference and reconnects only after confirmed exit", async (t) => {
   const f = await startupFixture(t);
-  await f.backend.init({ automatic: true });
+  await f.connectMain();
   assert.equal(
     (
       await f.backend.applyUpdate({
@@ -1647,7 +1708,7 @@ test("explicit update persists its reference and launches only after confirmed e
   );
   assert.equal(f.controlAtStop().references[0].kind, "updateDesktop");
   assert.equal(f.backend.metadata.identity, f.identity);
-  assert.equal(await f.launches(), 1);
+  assert.equal(f.connections(), 2);
   assert.deepEqual(f.backend.snapshot().connection, { state: "ready" });
   assert.equal(f.backend.snapshot().backendUpdate, undefined);
   assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
@@ -1672,13 +1733,15 @@ for (const [label, service, resources] of [
     const f = await startupFixture(t, { service, resources });
     await f.backend.init({ automatic: true });
     assert.equal(f.backend.status.connected, true);
-    assert.deepEqual(f.backend.snapshot().backendUpdate, { state: "pending" });
+    assert.equal(f.backend.snapshot().connection.recovery, "check");
+    assert.equal(f.backend.snapshot().backendUpdate.state, "pending");
+    assert.match(f.backend.snapshot().backendUpdate.message, /旧应用会话/);
     assert.equal(f.backend.metadata.identity, "fixture");
     Object.assign(f.service, { busy: false, clients: 1 });
     await f.backend.init({ automatic: true });
     await sleep(30);
     assert.equal(
-      f.calls.some((call) => call.method === "stopService"),
+      f.calls.some((call) => ["stopService", "lifecycleRequest"].includes(call.method)),
       false,
     );
     assert.equal(await f.launches(), 0);
@@ -1689,9 +1752,11 @@ test("explicit connect observes a changed deployment without automatic replaceme
   const f = await startupFixture(t);
   await f.backend.init();
   assert.equal(f.backend.status.connected, true);
-  assert.deepEqual(f.backend.snapshot().backendUpdate, { state: "pending" });
+  assert.equal(f.backend.snapshot().connection.recovery, "check");
+  assert.equal(f.backend.snapshot().backendUpdate.state, "pending");
+  assert.match(f.backend.snapshot().backendUpdate.message, /旧应用会话/);
   assert.equal(
-    f.calls.some((call) => call.method === "stopService"),
+    f.calls.some((call) => ["stopService", "lifecycleRequest"].includes(call.method)),
     false,
   );
   assert.equal(await f.launches(), 0);
@@ -1700,7 +1765,7 @@ test("explicit connect observes a changed deployment without automatic replaceme
 test("replacement capability failure keeps the original connected service", async (t) => {
   const f = await startupFixture(t);
   await writeFile(f.binary, '#!/bin/sh\nprintf "unrecognized subcommand\\n"\n');
-  await f.backend.init({ automatic: true });
+  await f.connectMain();
   await assert.rejects(f.backend.applyUpdate(), /当前 Core 不支持/);
   assert.equal(f.backend.status.connected, true);
   assert.equal(f.backend.snapshot().connection.state, "ready");
@@ -1713,13 +1778,21 @@ test("replacement capability failure keeps the original connected service", asyn
   assert.equal(await f.launches(), 0);
 });
 
-test("identity read failure leaves a retained observer usable with an update error", async (t) => {
+test("missing replacement binary leaves the original Desktop available for inspection", async (t) => {
   const f = await startupFixture(t);
   await rm(f.binary);
+  const descriptor = await readFile(join(f.home, "service.json"));
   await f.backend.init({ automatic: true });
   assert.equal(f.backend.status.connected, true);
-  assert.equal(f.backend.snapshot().connection.state, "ready");
-  assert.equal(f.backend.snapshot().backendUpdate.state, "failed");
+  assert.equal(f.backend.snapshot().connection.recovery, "check");
+  assert.deepEqual(await readFile(join(f.home, "service.json")), descriptor);
+  await assert.rejects(f.backend.command("connect", { projectId: "p" }), {
+    code: "APPLICATION_OWNER_MISMATCH",
+  });
+  assert.equal(
+    f.calls.some((call) => call.method === "command"),
+    false,
+  );
   assert.equal(
     f.calls.some((call) => call.method === "stopService"),
     false,
@@ -1730,7 +1803,7 @@ test("identity read failure leaves a retained observer usable with an update err
 test("known blocked update stays connected and permits unrelated reads and writes", async (t) => {
   const f = await startupFixture(t, { commandResult: { accepted: true } });
   f.setStop("refused");
-  await f.backend.init({ automatic: true });
+  await f.connectMain();
   const result = await f.backend.applyUpdate();
   assert.equal(result.operation.phase, "blocked");
   assert.equal(f.backend.status.connected, true);
@@ -1748,7 +1821,7 @@ test("lost update response reads the original receipt and never replays on start
     service: { targets: [{ projectId: "p", serviceId: "s", generation: "g" }] },
   });
   f.setStop("unknown");
-  await f.backend.init({ automatic: true });
+  await f.connectMain();
   const result = await f.backend.applyUpdate();
   assert.equal(result.operation.phase, "acceptedPending");
   const control = JSON.parse(await readFile(f.backend.controlPath, "utf8"));
@@ -1767,30 +1840,25 @@ test("lost update response reads the original receipt and never replays on start
   assert.equal(await f.launches(), 0);
 });
 
-test("confirmed update exit followed by launch failure retains the update reference", async (t) => {
+test("confirmed update exit followed by connection failure retains the update reference", async (t) => {
   const f = await startupFixture(t);
-  await f.backend.init({ automatic: true });
-  const appPath = f.backend.app.getAppPath;
-  f.backend.app.getAppPath = () => {
-    throw Error("replacement launch unavailable");
-  };
-  await assert.rejects(f.backend.applyUpdate(), /replacement launch unavailable/);
+  await f.connectMain();
+  f.failNextMain(Error("replacement connection unavailable"));
+  await assert.rejects(f.backend.applyUpdate(), /replacement connection unavailable/);
   const control = JSON.parse(await readFile(f.backend.controlPath, "utf8"));
   assert.equal(control.references[0].kind, "updateDesktop");
   await f.backend.init({ automatic: true });
   assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
-  assert.equal(await f.launches(), 0);
   assert.equal(JSON.parse(await readFile(f.backend.controlPath, "utf8")).references.length, 1);
-  f.backend.app.getAppPath = appPath;
   await f.backend.init();
-  assert.equal(await f.launches(), 1);
+  assert.equal(f.backend.metadata.identity, f.identity);
+  assert.equal(f.connections(), 2);
   assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
 });
 
 test("legacy lifecycle stays readable but unsupported stop never probes or persists intent", async (t) => {
   const f = await fixture(t, { lifecycle: false });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   await assert.rejects(f.backend.stopService(), (error) => error.code === "LIFECYCLE_UNSUPPORTED");
   assert.equal(f.backend.snapshot().connection.state, "ready");
   assert.equal((await f.backend.serviceStatus()).connected, true);
@@ -1805,7 +1873,7 @@ test("single-turn cancellation persists fixed identity without blocking unrelate
   const target = { projectId: "p", serviceId: "s", generation: "g" };
   const f = await fixture(t, { commandResult: { accepted: true }, service: { targets: [target] } });
   await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   f.setStop("unknown");
   const result = await f.backend.command("stop", {
     projectId: "p",
@@ -1814,6 +1882,7 @@ test("single-turn cancellation persists fixed identity without blocking unrelate
     requestId: "db7fbfc7-161c-4bf1-a633-cc8421518571",
   });
   assert.equal(result.operation.phase, "acceptedPending");
+  await f.connectMain();
   await f.backend.checkLifecycle();
   assert.deepEqual(
     await f.backend.command("send", {
@@ -1841,34 +1910,47 @@ test("single-turn cancellation persists fixed identity without blocking unrelate
   );
 });
 
-test("legacy unconfirmed startup attaches for observation without a permanent global freeze", async (t) => {
+test("legacy unconfirmed startup preserves its reference for observation", async (t) => {
   const f = await fixture(t, { commandResult: { accepted: true } });
   await f.publish();
   await f.backend.saveControl("unconfirmed");
   await f.backend.init({ automatic: true });
   assert.equal(f.backend.status.connected, true);
-  assert.equal(f.backend.snapshot().connection.state, "ready");
+  assert.equal(f.backend.snapshot().connection.recovery, "check");
   assert.equal(f.backend.snapshot().lifecycle.phase, "admissionUnconfirmed");
-  assert.deepEqual(await f.backend.command("list", { projectId: "p" }), { accepted: true });
+  assert.equal((await f.backend.serviceStatus()).connected, true);
+  await assert.rejects(f.backend.command("list", { projectId: "p" }), {
+    code: "APPLICATION_OWNER_MISMATCH",
+  });
+  assert.equal(
+    f.calls.some((call) => call.method === "command"),
+    false,
+  );
   assert.equal(
     f.calls.some((call) => ["stopService", "lifecycleRequest"].includes(call.method)),
     false,
   );
 });
 
-test("restoring a project on a connected legacy backend does not restart connection recovery", async (t) => {
+test("inspecting a connected legacy backend preserves its unconfirmed recovery reference", async (t) => {
   const f = await fixture(t, { commandResult: { accepted: true } });
   await f.publish();
   await f.backend.saveControl("unconfirmed");
   await f.backend.init({ automatic: true });
-  const states = [];
-  f.backend.onChange = () => states.push(f.backend.snapshot().connection.state);
   const original = await readFile(f.backend.controlPath, "utf8");
-  assert.deepEqual(await f.backend.command("connect", { projectId: "p" }), { accepted: true });
-  assert.deepEqual(await f.backend.command("open", { projectId: "p", threadId: "t" }), {
-    accepted: true,
-  });
-  assert.deepEqual(states, [], "project restoration must not invalidate its own ready connection");
+  assert.equal((await f.backend.serviceStatus()).connected, true);
+  await f.backend.checkLifecycle();
+  assert.equal(f.backend.status.connected, true);
+  for (const [name, request] of [
+    ["connect", { projectId: "p" }],
+    ["open", { projectId: "p", threadId: "t" }],
+  ]) {
+    await assert.rejects(f.backend.command(name, request), { code: "APPLICATION_OWNER_MISMATCH" });
+  }
+  assert.equal(
+    f.calls.some((call) => call.method === "command"),
+    false,
+  );
   assert.equal(f.calls.filter((call) => call.method === "hello").length, 1);
   assert.equal(
     await readFile(f.backend.controlPath, "utf8"),
@@ -1885,7 +1967,7 @@ test("a completed target receipt and original Desktop exit settle the crash befo
   const target = { projectId: "p", serviceId: "s", generation: "g" };
   const f = await fixture(t, { service: { targets: [target] } });
   await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   f.setStop("crashed");
   const result = await f.backend.stopService();
   assert.equal(result.stopped, true);
@@ -1900,7 +1982,7 @@ test("a missing descriptor and completed target never prove a live Desktop has e
   });
   f.metadata.pid = process.pid;
   await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   f.setStop("crashed");
   const result = await f.backend.stopService();
   assert.equal(result.stopped, false);
@@ -1916,8 +1998,7 @@ test("a corrupted immediate receipt is reconciled against the original request i
       requestId: "0de45cd4-1d08-4390-afb6-5cef5633b838",
     }),
   });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   f.setStop("pending");
   const result = await f.backend.stopService();
   const request = f.calls.find((call) => call.method === "lifecycleRequest").params;
@@ -1930,8 +2011,7 @@ test("a fixed single-turn request ID cannot be rebound to a later turn", async (
   const f = await fixture(t, {
     service: { targets: [{ projectId: "p", serviceId: "s", generation: "g" }] },
   });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   f.setStop("pending");
   const request = {
     projectId: "p",
@@ -1950,7 +2030,7 @@ test("a fixed single-turn request ID cannot be rebound to a later turn", async (
 test("known incomplete update permits a fresh explicit intent after rechecking remaining targets", async (t) => {
   const target = { projectId: "p", serviceId: "s", generation: "g" };
   const f = await startupFixture(t, { service: { targets: [target] } });
-  await f.backend.init({ automatic: true });
+  await f.connectMain();
   f.setStop("partial");
   assert.equal((await f.backend.applyUpdate()).operation.phase, "partial");
   assert.equal(f.backend.snapshot().lifecycle.targets[0].message, "fixture cleanup pending");
@@ -1959,7 +2039,7 @@ test("known incomplete update permits a fresh explicit intent after rechecking r
   const requests = f.calls.filter((call) => call.method === "lifecycleRequest");
   assert.equal(requests.length, 2);
   assert.notEqual(requests[0].params.requestId, requests[1].params.requestId);
-  assert.equal(await f.launches(), 1);
+  assert.equal(f.connections(), 2);
 });
 
 test("completed single-turn references do not prevent an explicit reconnect after Desktop stop", async (t) => {
@@ -1967,7 +2047,7 @@ test("completed single-turn references do not prevent an explicit reconnect afte
     service: { targets: [{ projectId: "p", serviceId: "s", generation: "g" }] },
   });
   await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   assert.equal(
     (
       await f.backend.command("stop", {
@@ -1996,7 +2076,7 @@ test("explicit update finalizes a live Desktop after read-only reconciliation co
   const f = await startupFixture(t, { service: { targets: [target] } });
   f.metadata.pid = process.pid;
   await f.publish();
-  await f.backend.init({ automatic: true });
+  await f.connectMain();
   f.setStop("pending");
   const first = await f.backend.applyUpdate();
   const receipt = f.receipts.get(first.operation.requestId);
@@ -2017,8 +2097,7 @@ test("receipt persistence failure after admission retains and reads the original
   const f = await fixture(t, {
     service: { targets: [{ projectId: "p", serviceId: "s", generation: "g" }] },
   });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   f.setStop("receipt-failed");
   const result = await f.backend.stopService();
   assert.equal(result.operation.phase, "acceptedPending");
@@ -2042,7 +2121,7 @@ test("offline recovery queries the original Host receipt without relaunching or 
   const originalRegistry = join(f.home, "original-harness");
   f.service.harnessHome = originalRegistry;
   await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   f.setStop("pending");
   const first = await f.backend.stopService();
   const target = first.operation.targets[0];
@@ -2093,8 +2172,7 @@ test("proven initial admission failure releases its reference and allows a new e
   const f = await fixture(t, {
     service: { targets: [{ projectId: "p", serviceId: "s", generation: "g" }] },
   });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   f.setStop("admission-failed");
   await assert.rejects(
     f.backend.stopService(),
@@ -2121,8 +2199,7 @@ test("single-turn cancellation uses the healthy target snapshot when another Cor
     service: { targets: [healthy, disconnected] },
     resourceError: { code: "DISCONNECTED", message: "unrelated Core is disconnected" },
   });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   const requestId = "79a29f4e-a52a-439d-8e2b-336406883293";
   const result = await f.backend.command("stop", {
     projectId: "p",
@@ -2160,8 +2237,7 @@ for (const supported of [false, true]) {
       commandResult: { accepted: true },
       service: supported ? { selectedThreadObservation: true } : {},
     });
-    await f.publish();
-    await f.backend.attach();
+    await f.connectMain();
     await f.backend.command("connect", { projectId: "p", threadId: "t" });
     const command = f.calls.find((call) => call.method === "command");
     assert.deepEqual(

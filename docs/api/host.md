@@ -168,6 +168,8 @@ prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每�
 
 ### Rust Gateway 交接
 
+网关预算拒绝通过既有 stderr 写入固定字段的 `gateway.budget_exceeded` JSON 诊断；客户端启动的共享 Host 将 stderr 保存到私有 `<Host home>/host.log`。每个连接的请求数和写入预算拒绝各只记录首次。记录包含拒绝类型、准入时的窗口经过毫秒数、请求计数、写入令牌账面余额、白名单方法名、传输类型和内部连接及网关代际标识；请求数拒绝发生在写入令牌刷新之前。未知方法记为 null，不记录请求参数或请求 ID。日志写入失败不改变请求响应。这些本机记录不自动进入 GUI 反馈导出。
+
 原生 Gateway 复用同一 Noise 身份、grants、Remote revision 与 Host journal。旧执行者先关闭入口、排空已接受的工作并释放租约，再提交交接；Host 在现有状态所有者中原子核对来源、revision 和无租约条件并保存原回执。持久交接后，`remote.acquire` 与通用 `remote.replace` 返回 `nativeGatewayOwned`；设置写入只经过原生 owner。原生入口启动失败时报告不可用，不恢复旧 JS 执行者。客户端以 `remoteGatewayV1` 能力决定是否使用原生 GUI 门面，不能按版本号推断。
 
 | 方法 | 参数 | 结果 |
@@ -187,7 +189,7 @@ prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每�
 
 `interaction.respond` 的允许操作须完成原内容审阅；其预检发现审批摘要变化或原目标不存在时返回 `TARGET_CHANGED`。问答须覆盖当前问题的全部且仅有的键，保留原选项与自由文本规则，每个答案最多 4096 UTF-8 字节。`deny` 可直接提交精确原 thread、Turn、交互 ID 与摘要，由 Core 原子核对目标、类型、状态、到期时间和摘要；它不依赖完整交互列表的读取预算。Core 明确拒绝与未收到结果分别保留 rejected 和 UNKNOWN，不据当前状态补造受理。
 
-`session.create` 只创建普通 `ask` 会话。新会话沿用同项目保存的默认 Profile：外部部署使用保存的引用，managed 部署只选择保存目录中唯一且具有对应 base 的 `resources-` 派生版本，并核对同一 Core 目录已加载该不可变引用；缺失、歧义或尚未加载时拒绝，不生成资源或刷新目录。默认 Profile 引用 Workflow 时，保留 `UNSUPPORTED_PROFILE` 拒绝。请求将原手机命令绑定到 Core 的 `areal/thread/start`、原 `creationAdmission` 与创建受理回执；结果不确定时只核查该原请求。同一 peer 的两个连接重叠提交同一个 `commandId`，在最后一次前置异步读取后重新核对 journal，复用同一原操作。`interaction.respond` 同样在读取当前交互后核对原操作，副本不另行提交审批。
+`session.create` 只创建普通 `ask` 会话。新会话沿用同项目保存的默认 Profile：外部部署使用保存的引用，managed 部署只选择保存目录中唯一且具有对应 base 的 `resources-` 派生版本，并核对同一 Core 目录已加载该不可变引用；缺失、歧义或尚未加载时拒绝，不生成资源或刷新目录。默认 Profile 引用 Workflow 时，保留 `UNSUPPORTED_PROFILE` 拒绝。请求将原手机命令绑定到 Core 的 `areal/thread/start`、原 `creationAdmission` 与创建受理回执；结果不确定时只核查该原请求。恢复仅在 serviceId、principal identity 与持久 journalEpoch 相同时跨 Core 代际查询，读取前核对当前绑定，结算前复核完整连接范围与授权。匹配的 completed 回执结算 accepted；没有任何回执时，仅原 requestId、方法、身份、journalEpoch、coreInstanceId 全部一致的 `creationAdmission.notAdmitted` 负证明，且当前 Core instance 已不同，才能结算 rejected。缺失或冲突的证据继续 UNKNOWN，恢复不重新创建会话。同一 peer 的两个连接重叠提交同一个 `commandId`，在最后一次前置异步读取后重新核对 journal，复用同一原操作。`interaction.respond` 同样在读取当前交互后核对原操作，副本不另行提交审批。
 
 `project.models` 是仅需 `observe` 的只读方法，接受空 `params` 和仅含 `projectId` 的 `context`。返回 `{projectId,gatewayGeneration,grantRevision,serviceGeneration,models}`，最多 200 项、128 KiB；每项仅公开 `providerId,modelId,displayName,reasoningEffortOptions,available,unavailableReason`。普通模型来自当前 Core 已应用目录；ChatGPT 名称、模型与可用性来自同一 source 的 Host 订阅 owner。仅已认证且目录 `checking` 时，补入当前 Core 的 `lastAcceptedModel` 和本连接已经观察的当前会话配置；候选省略 `available`，不宣称可用。此集合不恢复旧 GUI 曾加载的全部会话或跨项目历史偏好。读取前后核对授权、Gateway/Core 代际、共享连接和订阅目录；离线返回 `CORE_UNAVAILABLE`，变化返回 `RESYNC_REQUIRED`。读取不启动项目、不创建会话、观察订阅或刷新模型目录；旧 Host 不声明该方法。 `session.open` 和 `session.updated` 的 `snapshot.models` 复用同一目录和六字段投影，候选取自本次已观察的会话配置；异步目录读取后再次核对原观察连接，完整快照（含目录）仍受 192 KiB 限制。
 

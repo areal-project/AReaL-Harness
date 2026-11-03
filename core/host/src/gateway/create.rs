@@ -228,9 +228,7 @@ impl Session {
         else {
             return Ok(record.clone());
         };
-        if record["coreScope"]["serviceId"] != service
-            || record["coreScope"]["generation"] != generation
-        {
+        if record["coreScope"]["serviceId"] != service {
             return Ok(record.clone());
         }
         let Some(operation) = record["params"]["requestId"].as_str() else {
@@ -239,7 +237,56 @@ impl Session {
         let Some(digest) = record["nativeDigest"].as_str() else {
             return Ok(record.clone());
         };
-        let result=self.host.schedules.connections.remote_request(&self.host,&id,&service,&generation,&connection,"areal/request/read",json!({"requestId":operation,"creationAdmission":record["params"]["creationAdmission"]})).await;
+        let Ok(original) = serde_json::from_value::<areal_protocol::desktop::CreationAdmission>(
+            record["params"]["creationAdmission"].clone(),
+        ) else {
+            return Ok(record.clone());
+        };
+        if original.identity.is_empty()
+            || uuid::Uuid::parse_str(&original.journal_epoch).is_err()
+            || uuid::Uuid::parse_str(&original.core_instance_id).is_err()
+        {
+            return Ok(record.clone());
+        }
+        let caps = self
+            .rpc(project, &generation, "areal/capabilities", json!({}))
+            .await;
+        self.authorize(Some(project), "submit")?;
+        let Ok(caps) = caps else {
+            return Ok(record.clone());
+        };
+        let Ok(binding) = serde_json::from_value::<areal_protocol::desktop::CreationAdmission>(
+            caps["features"]["threadCreationJournal"]["binding"].clone(),
+        ) else {
+            return Ok(record.clone());
+        };
+        if binding.identity != original.identity
+            || binding.journal_epoch != original.journal_epoch
+            || uuid::Uuid::parse_str(&binding.core_instance_id).is_err()
+            || self
+                .host
+                .schedules
+                .connections
+                .shared_identity(&self.host, &id)
+                .ok()
+                != Some((service.clone(), generation.clone(), connection.clone()))
+        {
+            return Ok(record.clone());
+        }
+        let result = self
+            .host
+            .schedules
+            .connections
+            .remote_request(
+                &self.host,
+                &id,
+                &service,
+                &generation,
+                &connection,
+                "areal/request/read",
+                json!({"requestId":operation,"creationAdmission":original}),
+            )
+            .await;
         self.authorize(Some(project), "submit")?;
         let Ok(value) = result else {
             return Ok(record.clone());
@@ -254,9 +301,10 @@ impl Session {
         {
             return Ok(record.clone());
         }
-        let candidates = value["data"]
-            .as_array()
-            .context("RESOURCE_UNAVAILABLE")?
+        let Some(receipts) = value["data"].as_array() else {
+            return Ok(record.clone());
+        };
+        let candidates = receipts
             .iter()
             .filter(|receipt| {
                 receipt["requestId"] == operation
@@ -265,6 +313,19 @@ impl Session {
                     && receipt["identity"] == record["params"]["creationAdmission"]["identity"]
             })
             .collect::<Vec<_>>();
+        if receipts.is_empty()
+            && value["creationAdmission"]["status"] == "notAdmitted"
+            && value["creationAdmission"]["requestId"] == operation
+            && value["creationAdmission"]["method"] == "areal/thread/start"
+            && value["creationAdmission"]["identity"] == original.identity
+            && value["creationAdmission"]["journalEpoch"] == original.journal_epoch
+            && value["creationAdmission"]["coreInstanceId"] == original.core_instance_id
+            && binding.core_instance_id != original.core_instance_id
+        {
+            let mut settled = record.clone();
+            settled["admissionState"] = json!("rejected");
+            return self.settle_command(&id, settled);
+        }
         if candidates.len() != 1 {
             return Ok(record.clone());
         }
@@ -276,7 +337,10 @@ impl Session {
         let Some(thread) = thread else {
             return Ok(record.clone());
         };
-        if receipt["operation"]["target"]["kind"] != "thread"
+        if thread.is_empty()
+            || receipt["operation"]["requestId"] != operation
+            || receipt["operation"]["method"] != "areal/thread/start"
+            || receipt["operation"]["target"]["kind"] != "thread"
             || receipt["operation"]["target"]["threadId"] != thread
             || receipt["status"] != "completed"
         {
