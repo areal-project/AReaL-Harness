@@ -1298,6 +1298,36 @@ fn summary_options_do_not_change_solve_configuration() {
 }
 
 #[test]
+fn summary_prefix_reuse_is_explicit_and_preserves_legacy_config() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    let original = load_config(&i).unwrap().model;
+    assert_eq!(original.summary_preserve_prefix, None);
+    let legacy = serde_json::to_value(&original).unwrap();
+    assert!(legacy.get("summary_preserve_prefix").is_none());
+    let restored: areal_config::SelectedModelConfig = serde_json::from_value(legacy).unwrap();
+    assert_eq!(restored.fingerprint(), original.fingerprint());
+    write(
+        &mut i,
+        "schema_version=1\n[model]\nsummary_preserve_prefix=false\n",
+    );
+    let configured = load_config(&i).unwrap();
+    assert_eq!(configured.model.summary_preserve_prefix, Some(false));
+    assert_eq!(
+        configured.diagnostic(false)["model"]["summary_preserve_prefix"],
+        false
+    );
+    assert_ne!(configured.model.fingerprint(), original.fingerprint());
+    set(&mut i, "AREAL_HARNESS_SUMMARY_PRESERVE_PREFIX", "true");
+    assert_eq!(
+        load_config(&i).unwrap().model.summary_preserve_prefix,
+        Some(true)
+    );
+    set(&mut i, "AREAL_HARNESS_SUMMARY_PRESERVE_PREFIX", "automatic");
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+}
+
+#[test]
 fn request_bytes_are_independent_and_reject_invalid_limits() {
     let temp = tempfile::tempdir().unwrap();
     let mut i = inputs(temp.path());

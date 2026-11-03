@@ -246,6 +246,7 @@ struct References;
 
 type CapturedRequest = (RequestPurpose, Vec<Message>, Vec<Value>);
 struct PrefixHistory {
+    preserve_prefix: bool,
     requests: Mutex<Vec<CapturedRequest>>,
     invalid_summaries: usize,
     invalid_summary: &'static str,
@@ -257,7 +258,7 @@ impl Model for PrefixHistory {
         "prefix-history-fixture"
     }
     fn supports_prefix_summary(&self) -> bool {
-        true
+        self.preserve_prefix
     }
     async fn stream(&self, _: Vec<Message>) -> anyhow::Result<ModelStream> {
         unreachable!()
@@ -313,89 +314,103 @@ impl Model for PrefixHistory {
 
 #[tokio::test]
 async fn automatic_summary_reuses_the_real_solve_prefix_without_replaying_work() {
-    let data = tempfile::tempdir().unwrap();
-    let model = Arc::new(PrefixHistory {
-        requests: Mutex::new(vec![]),
-        invalid_summaries: 0,
-        invalid_summary: "",
-    });
-    let engine = Engine::open(
-        data.path(),
-        model.clone(),
-        Limits {
-            context_window_tokens: 32000,
-            context_output_reserve_tokens: 2000,
-            context_window_bytes: 13000,
-            context_recent_bytes: 3000,
-            max_children_per_turn: 0,
-            max_agent_depth: 0,
-            ..Limits::default()
-        },
-    )
-    .unwrap();
-    let thread = engine.create_with_tools("/workspace".into(), vec![ToolDefinition {
+    for preserve_prefix in [true, false] {
+        let data = tempfile::tempdir().unwrap();
+        let model = Arc::new(PrefixHistory {
+            preserve_prefix,
+            requests: Mutex::new(vec![]),
+            invalid_summaries: 0,
+            invalid_summary: "",
+        });
+        let engine = Engine::open(
+            data.path(),
+            model.clone(),
+            Limits {
+                context_window_tokens: 32000,
+                context_output_reserve_tokens: 2000,
+                context_window_bytes: 13000,
+                context_recent_bytes: 3000,
+                max_children_per_turn: 0,
+                max_agent_depth: 0,
+                ..Limits::default()
+            },
+        )
+        .unwrap();
+        let thread = engine.create_with_tools("/workspace".into(), vec![ToolDefinition {
         name:"read_reference".into(), description:"Read one reference".into(),
         input_schema:json!({"type":"object","properties":{"index":{"type":"integer"}},"required":["index"]}), output_schema:None,
     }], Arc::new(References)).await.unwrap();
-    // 标题生成也使用 Summary purpose；本用例只统计压缩请求，与评测关闭命名的配置一致。
-    engine
-        .configure_thread(
-            serde_json::from_value(json!({
-                "threadId":thread.id,"expectedRevision":1,
-                "options":{"automaticSessionName":false}
-            }))
-            .unwrap(),
-        )
-        .await
-        .unwrap();
-    engine
-        .start(
-            &thread.id,
-            vec![Input::text(
-                "Binding original contract: inspect all eight references.",
-            )],
-        )
-        .await
-        .unwrap();
-    let done = tokio::time::timeout(std::time::Duration::from_secs(10), engine.wait(&thread.id))
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(
-        done.turns[0].status,
-        TurnStatus::Completed,
-        "{:?}",
-        done.turns[0].error
-    );
-    assert!(done.context_checkpoint.is_some());
-    let full = engine.read(&thread.id, true).await.unwrap();
-    let calls: Vec<_> = full
-        .turns
-        .iter()
-        .flat_map(|t| &t.items)
-        .filter_map(|item| match item {
-            areal_protocol::Item::DynamicToolCall {
-                tool,
-                arguments,
-                success,
-                ..
-            } if tool == "read_reference" => Some((arguments["index"].as_u64().unwrap(), *success)),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(calls, (0..8).map(|n| (n, Some(true))).collect::<Vec<_>>());
-    {
-        let requests = model.requests.lock().unwrap();
-        let summary = requests
-            .iter()
-            .find(|(p, _, _)| *p == RequestPurpose::Summary)
+        // 标题生成也使用 Summary purpose；本用例只统计压缩请求，与评测关闭命名的配置一致。
+        engine
+            .configure_thread(
+                serde_json::from_value(json!({
+                    "threadId":thread.id,"expectedRevision":1,
+                    "options":{"automaticSessionName":false}
+                }))
+                .unwrap(),
+            )
+            .await
             .unwrap();
-        assert!(summary.1.starts_with(&requests[0].1));
-        assert_eq!(summary.1.last().unwrap().role, "developer");
-        assert_eq!(summary.2, requests[0].2);
-        assert!(!summary.2.is_empty());
+        engine
+            .start(
+                &thread.id,
+                vec![Input::text(
+                    "Binding original contract: inspect all eight references.",
+                )],
+            )
+            .await
+            .unwrap();
+        let done =
+            tokio::time::timeout(std::time::Duration::from_secs(10), engine.wait(&thread.id))
+                .await
+                .unwrap()
+                .unwrap();
+        assert_eq!(
+            done.turns[0].status,
+            TurnStatus::Completed,
+            "{:?}",
+            done.turns[0].error
+        );
+        assert!(done.context_checkpoint.is_some());
+        let full = engine.read(&thread.id, true).await.unwrap();
+        let calls: Vec<_> = full
+            .turns
+            .iter()
+            .flat_map(|t| &t.items)
+            .filter_map(|item| match item {
+                areal_protocol::Item::DynamicToolCall {
+                    tool,
+                    arguments,
+                    success,
+                    ..
+                } if tool == "read_reference" => {
+                    Some((arguments["index"].as_u64().unwrap(), *success))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(calls, (0..8).map(|n| (n, Some(true))).collect::<Vec<_>>());
+        {
+            let requests = model.requests.lock().unwrap();
+            let summary = requests
+                .iter()
+                .find(|(p, _, _)| *p == RequestPurpose::Summary)
+                .unwrap();
+            if preserve_prefix {
+                assert!(summary.1.starts_with(&requests[0].1));
+                assert_eq!(summary.1.last().unwrap().role, "developer");
+                assert_eq!(summary.2, requests[0].2);
+                assert!(!summary.2.is_empty());
+            } else {
+                assert_eq!(summary.1.len(), 2);
+                assert_eq!(summary.1[0].role, "system");
+                assert_eq!(summary.1[1].role, "user");
+                assert!(summary.1[1].text_content().contains("historicalRole"));
+                assert!(summary.2.is_empty());
+            }
+        }
+        engine.shutdown().await;
     }
-    engine.shutdown().await;
 }
 
 #[tokio::test]
@@ -404,6 +419,7 @@ async fn invalid_prefix_summary_uses_existing_retry_for_quoted_evidence() {
     for (invalid_summary, invalid_summaries) in [(TOOL_TEXT, 1), ("", 1), (TOOL_TEXT, usize::MAX)] {
         let data = tempfile::tempdir().unwrap();
         let model = Arc::new(PrefixHistory {
+            preserve_prefix: true,
             requests: Mutex::new(vec![]),
             invalid_summaries,
             invalid_summary,

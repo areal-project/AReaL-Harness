@@ -826,6 +826,8 @@ pub struct ModelOptions {
     pub service_tier: Option<String>,
     pub summary_reasoning_effort: Option<String>,
     pub summary_max_output_tokens: Option<u64>,
+    /// 显式禁用会改写前缀的兼容网关上的摘要复用；不改变普通求解缓存。
+    pub summary_preserve_prefix: Option<bool>,
     pub reasoning_summary: Option<String>,
     pub responses_websocket: bool,
     pub responses_prompt_cache: bool,
@@ -850,6 +852,7 @@ impl Default for ModelOptions {
             service_tier: None,
             summary_reasoning_effort: None,
             summary_max_output_tokens: None,
+            summary_preserve_prefix: None,
             reasoning_summary: None,
             responses_websocket: false,
             responses_prompt_cache: false,
@@ -1156,6 +1159,7 @@ impl HttpModel {
 impl Model for HttpModel {
     fn supports_prefix_summary(&self) -> bool {
         self.protocol == ModelProtocol::Responses
+            && self.options.summary_preserve_prefix.unwrap_or(true)
     }
     fn check_work(&self) -> Result<()> {
         let capabilities = resolved_capabilities(

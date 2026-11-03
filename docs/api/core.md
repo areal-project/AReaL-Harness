@@ -183,6 +183,8 @@ Rust `Model::chat_with_limits(messages, tools, purpose, ToolCallLimits, cap)` �
 
 `Limits::default()` 的上下文窗口兜底为 131072 token。内置 HTTP 模型每次请求的输出上限默认 16384 token，`ModelOptions.max_output_tokens=None`（包括旧模型快照中的省略值）同样采用该默认；显式正数可调大或调小，Goal 与摘要专用限制仍取更小值。自定义 `Model` 不因此获得 HTTP 输出限制，需正确声明自身 capabilities 并落实请求额度。配置覆盖与输入空间计算见[配置指南](../guides/configuration.md)。
 
+内置 HTTP 的可选 `ModelOptions.summary_preserve_prefix` 控制 `Model::supports_prefix_summary()`：省略保持 Responses 前缀复用，显式 false 走现有引用式历史；Chat 始终不启用。该值随选中模型配置、重载和 Workgroup 保留，旧模型快照省略此字段时保持原指纹。它不改普通请求缓存、工具权限、摘要重试上限或检查点提交不变量。
+
 Checkpoint 的 `retainedInputs: [{itemId, content}]` 与 `evidence: string[]` 是完整请求预算内的原文和历史回执投影，不另设固定额度。最新真实用户请求在前缀内时完整保留，其他输入优先较近修订；首问不享有永久优先。输出仍按权威原文顺序排列，旧附件超额时保留可容纳的文字并明确标记附件省略，完整原文通过 `read_history` 回取。自动 Goal 续轮不是新用户要求。旧 checkpoint 未含 retainedInputs 时保留原重放语义，直到下一次成功压缩；不批量改写用户历史。摘要是可出错的历史证据，不能覆盖后续用户指令。
 
 当候选的必需投影已经达到软 token 目标，较早的纯文本修订可继续使用硬窗口与既有字节额度内的余量；不扩大旧附件或可选回执的额度。`targetMet=false` 如实报告软目标未达成，不据此省掉仍可容纳的修订；完整请求仍须通过硬窗口门禁。摘要不能把所有旧要求必然单独重放当作前提。

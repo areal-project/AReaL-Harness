@@ -965,7 +965,7 @@ async fn prefix_summary_preserves_http_input_and_schema_but_rejects_tool_emissio
     .unwrap();
     assert!(model.supports_prefix_summary());
     let solve = model
-        .chat(history, tools.clone())
+        .chat(history.clone(), tools.clone())
         .await
         .unwrap()
         .collect::<Vec<_>>()
@@ -986,6 +986,41 @@ async fn prefix_summary_preserves_http_input_and_schema_but_rejects_tool_emissio
     assert_eq!(&after[..before.len()], before);
     assert_eq!(after.last().unwrap()["role"], "developer");
     assert_eq!(compact["tool_choice"], "none");
+    // 协议桥可能重写 system 顺序；关闭前缀复用只影响摘要，不改变求解工具。
+    let quoted = HttpModel::with_protocol(
+        format!("http://{address}/"),
+        "fixture".into(),
+        None,
+        ModelProtocol::Responses,
+    )
+    .unwrap()
+    .with_options(areal_engine::model::ModelOptions {
+        summary_preserve_prefix: Some(false),
+        ..Default::default()
+    })
+    .unwrap();
+    assert!(!quoted.supports_prefix_summary());
+    let _ = quoted
+        .chat(history, tools.clone())
+        .await
+        .unwrap()
+        .collect::<Vec<_>>()
+        .await;
+    assert_eq!(rx.recv().await.unwrap()["tools"], original["tools"]);
+    let evidence = vec![
+        Message::text("system", "Write a checkpoint"),
+        Message::text("user", "Quoted historical evidence"),
+    ];
+    let events = quoted
+        .chat_for(evidence, tools.clone(), RequestPurpose::Summary)
+        .await
+        .unwrap()
+        .collect::<Vec<_>>()
+        .await;
+    assert!(events.iter().all(Result::is_ok));
+    let request = rx.recv().await.unwrap();
+    assert!(request.get("tools").is_none());
+    assert_eq!(request["input"].as_array().unwrap().len(), 2);
     let bad = HttpModel::with_protocol(
         format!("http://{address}/"),
         "bad".into(),
@@ -1014,6 +1049,13 @@ async fn prefix_summary_preserves_http_input_and_schema_but_rejects_tool_emissio
         .await;
     assert!(rx.recv().await.unwrap().get("tools").is_none());
     let chat = HttpModel::new(format!("http://{address}/"), "fixture".into(), None).unwrap();
+    assert!(!chat.supports_prefix_summary());
+    let chat = chat
+        .with_options(areal_engine::model::ModelOptions {
+            summary_preserve_prefix: Some(true),
+            ..Default::default()
+        })
+        .unwrap();
     assert!(!chat.supports_prefix_summary());
     server.abort();
 }

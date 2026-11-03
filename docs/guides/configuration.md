@@ -184,6 +184,8 @@ endpoint 是完整 HTTP(S) 请求 URL；Core 只支持 `chat-completions` / `res
 
 可选采样参数不配置时省略，显式 0 保留。`temperature` 为有限数 [0,2]，`top_p` / `min_p` 为 [0,1]，`top_k` 为正整数或 -1，`presence_penalty` 为 [-2,2]，`repetition_penalty` 大于 0。Chat 与 Responses 均接受 temperature/top_p；其余四项只支持 Chat，Responses 配置时拒绝。参数发送不证明供应商实际采纳。摘要默认继承求解采样/推理配置并禁用工具。可单独设置 `model.summary_reasoning_effort` 和 `model.summary_max_output_tokens`（环境变量 `AREAL_HARNESS_SUMMARY_REASONING_EFFORT` / `AREAL_HARNESS_SUMMARY_MAX_OUTPUT_TOKENS`），不会修改后续求解参数。摘要输出上限为全局输出上限、摘要专用上限、Goal 剩余额度与 16384 中的最小值；专用上限需大于零。未配置时兼容原行为；例如可在求解 high 时显式选择摘要 low/4096，需验证供应商支持和任务保留效果。
 
+`model.summary_preserve_prefix` 是可选的摘要输入策略（环境变量 `AREAL_HARNESS_SUMMARY_PRESERVE_PREFIX`）。省略时保持原行为：Responses 尝试复用求解前缀与工具定义，Chat 使用引用式历史。显式 `false` 让 Responses 从首次摘要就使用引用式历史，省去已知不保真网关上的前缀尝试；普通求解的工具、缓存和预算不变。`true` 不会为 Chat 开启前缀复用。应按端点实际是否保留 system / developer 顺序、工具 schema 与缓存身份配置，不按模型名称猜测；关闭可能损失真实可复用的缓存。引用式摘要仍须通过原检查点提交校验，较少请求不能单独证明任务效果提升。旧配置继续兼容；旧版本不识别新增字段。
+
 `model.context_window_tokens` 设置当前模型的用户工作预算（1–2000000），Provider/模型参数及 `parameters.contextWindowTokens` 同样支持。工作窗口依次取用户显式配置、当前账号/渠道报告的默认值、渠道与完整型号对应的内置默认值、全局 `limits.context_window_tokens`（默认 131072）。用户值无论大于或小于报告值都优先；清空用户参数后恢复默认解析。报告值和用户值分别保留，目录更新不改写用户参数。它们控制本地预检，不能改变供应商服务端上限。
 
 模型目录中的可选 `reportedContextWindowTokens`（TOML 为每个模型上的 `reported_context_window_tokens`，1–2000000）保存自动发现的上游默认值，独立于 `parameters.contextWindowTokens`。旧配置中的参数继续视为用户显式设置；自动发现的新模型把报告值写入独立字段。新版本可读取省略该字段的旧配置；旧 Core 不支持包含该字段的新配置。诊断分别显示报告来源、用户预算与实际窗口。GPT 订阅使用账号报告与订阅专用默认表，API 使用 API 表；不会把 `max_context_window` 等可选最大容量当作默认值，也不按供应商显示名或模糊型号前缀匹配。
