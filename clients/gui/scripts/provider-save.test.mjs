@@ -265,10 +265,9 @@ test("configuration diagnostics distinguish Core rejection from catalog refresh 
       return rpc(method, params);
     };
     const saved = await f.service.command({ ...f.request, operation: "save" });
-    await assert.rejects(
-      f.service.command({ operation: "apply", expectedRevision: saved.revision }),
-      /应用未全部确认/,
-    );
+    const applying = f.service.command({ operation: "apply", expectedRevision: saved.revision });
+    if (failure === "apply") await assert.rejects(applying, /private fixture detail/);
+    else assert.equal((await applying).application.kind, "unknown");
     const event = events.find((item) => item.phase === failure && item.outcome === "failed");
     assert.ok(event, `diagnostics must identify the ${failure} boundary`);
     assert.equal(event.projectId, f.project.id);
@@ -477,6 +476,97 @@ test("Core admission refusal after preflight settles before CAS rollback and com
   assert.equal(f.backend.providerUpdating, false);
   assert.deepEqual(f.project.configurations.running, { model: "old-model" });
 });
+
+test("explicit apply preserves the concrete rejection and redacts stored credentials", async (t) => {
+  const f = fixture({ syncFails: true });
+  t.after(() => f.service.close());
+  f.service.requestReconciliation = () => {};
+  const saved = await f.service.command({ ...f.request, operation: "save" });
+  const rpc = f.project.client.request.bind(f.project.client);
+  const secret = "fixture-private-credential";
+  f.service.config.vault.keys.AREAL_CREDENTIAL_fixture = secret;
+  f.service.config.key = () => secret;
+  f.project.client.request = async (method, params) => {
+    if (method !== applyMethod) return rpc(method, params);
+    const error = {
+      code: -32010,
+      message: `deployment configuration changed ${secret}`,
+      data: { reason: "DEPLOYMENT_CHANGE_REQUIRES_RESTART" },
+    };
+    f.operations.set(params.requestId, { requestId: params.requestId, state: "rejected", error });
+    throw Object.assign(new Error(error.message), error);
+  };
+  await assert.rejects(
+    f.service.command({ operation: "apply", expectedRevision: saved.revision }),
+    (error) => {
+      assert.match(error.message, /deployment configuration changed/);
+      assert.ok(!error.message.includes(secret));
+      return true;
+    },
+  );
+  assert.equal(f.service.applicationState(f.project).kind, "failed");
+  assert.equal(f.service.config.value.revision, saved.revision);
+});
+
+for (const entry of ["reconcile", "save", "retry", "retry-after-failure", "reconcile-read-failure"])
+  test(`catalog refresh automatically recovers without restart or duplicate apply via ${entry}`, async (t) => {
+    const f = fixture();
+    t.after(() => f.service.close());
+    const rpc = f.project.client.request.bind(f.project.client);
+    let unavailable = true;
+    let proofReadFailed = false;
+    f.project.client.request = async (method, params) => {
+      if (method === "areal/model/list" && unavailable)
+        throw new Error("fixture temporary catalog failure");
+      if (
+        method === readMethod &&
+        !unavailable &&
+        entry === "reconcile-read-failure" &&
+        !proofReadFailed
+      ) {
+        proofReadFailed = true;
+        throw new Error("fixture temporary proof read failure");
+      }
+      return rpc(method, params);
+    };
+    if (entry === "save") {
+      // 保留真实保存与恢复定时器，只控制 Core 读取失败的边界。
+      await f.service.command({ ...f.request, operation: "save" });
+      await f.service.reconcileProject(f.project);
+    } else if (entry.startsWith("retry")) {
+      if (entry === "retry-after-failure")
+        f.service.applicationFailed(
+          f.service.target(f.project),
+          "old",
+          new Error("previous failure"),
+        );
+      const result = await f.service.command({ operation: "apply", expectedRevision: "old" });
+      assert.equal(result.application.kind, "unknown");
+    } else await f.service.reconcileProject(f.project);
+    assert.equal(f.service.applicationState(f.project).kind, "unknown");
+    assert.equal(f.project.providerRevision, f.service.config.value.revision);
+    const settled = Promise.withResolvers();
+    const timeout = setTimeout(
+      () => settled.reject(new Error("automatic catalog recovery did not finish")),
+      7000,
+    );
+    t.after(() => clearTimeout(timeout));
+    f.backend.onChange = () => {
+      if (f.service.applicationState(f.project).kind === "applied") settled.resolve();
+    };
+    unavailable = false;
+    await settled.promise;
+    assert.equal(f.service.pendingApplications.size, 0);
+    assert.equal(f.project.providerError, null);
+    assert.equal(f.project.providerFailure, undefined);
+    assert.deepEqual(f.project.models, f.service.config.value.data[0].models);
+    assert.equal(
+      f.calls.filter(([method]) => method === applyMethod).length,
+      entry === "save" ? 1 : 0,
+    );
+    assert.equal(f.calls.filter(([method]) => method === "write").length, entry === "save" ? 1 : 0);
+    assert.equal(f.project.service.generation, "generation-p");
+  });
 
 test("a lost apply receipt reads the original operation and does not submit twice", async () => {
   const f = fixture({ lostApply: true });

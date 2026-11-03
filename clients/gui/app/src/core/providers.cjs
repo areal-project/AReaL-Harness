@@ -881,7 +881,9 @@ class AppProviders {
       failure.serviceId === project.service.serviceId &&
       failure.generation === project.service.generation
     )
-      return { kind: "failed", revision, message: failure.message };
+      return failure.catalogRefreshPending
+        ? { kind: "unknown", revision }
+        : { kind: "failed", revision, message: failure.message };
     return project.providerRevision === revision &&
       !project.providerError &&
       (!project.providerProof || this.credentialsReady(project.providerProof, this.snapshot()))
@@ -901,13 +903,17 @@ class AppProviders {
       return;
     }
     const message = this.redact(errorMessage(error) || "模型配置暂未生效，请重试。");
+    const catalogRefreshPending =
+      providerContract.record(error) && error.configurationRefreshPending === true;
     target.project.providerFailure = {
       revision,
       serviceId: target.serviceId,
       generation: target.generation,
       message,
+      ...(catalogRefreshPending ? { catalogRefreshPending: true } : {}),
     };
     target.project.providerError = message;
+    if (catalogRefreshPending) this.requestReconciliation(2000);
   }
   requestReconciliation(delay = 0) {
     if (this.closed || this.backend.closing || this.reconciliationTimer || this.reconciliation)
@@ -1317,7 +1323,14 @@ class AppProviders {
           this.requireTarget(target);
           return result;
         },
-      );
+      ).catch((error) => {
+        // 应用证明与凭据已确认；目录读取失败只重试核对，不重新提交配置。
+        const failure = Object.assign(new Error(this.redact(errorMessage(error))), {
+          configurationRefreshPending: true,
+        });
+        this.applicationFailed(target, snapshot.revision, failure);
+        throw failure;
+      });
       this.rememberProof(target, proof, snapshot);
       target.project.models = models.data;
     }
@@ -1524,7 +1537,10 @@ class AppProviders {
         target.project.providerError = this.redact(errorMessage(error));
       return {
         target,
-        pending: this.pendingApplications.has(target.project.id) || !this.currentTarget(target),
+        pending:
+          this.pendingApplications.has(target.project.id) ||
+          !this.currentTarget(target) ||
+          (providerContract.record(error) && error.configurationRefreshPending === true),
         error,
       };
     }
@@ -1548,7 +1564,19 @@ class AppProviders {
         const snapshot = await this.config.current();
         this.requireTarget(target);
         if (this.applicationState(project, snapshot.revision).kind === "failed") return;
-        target.proof = await this.readProof(target);
+        target.proof = await this.readProof(target).catch((error) => {
+          const previous = project.providerFailure;
+          if (
+            previous?.catalogRefreshPending &&
+            previous.revision === snapshot.revision &&
+            previous.serviceId === target.serviceId &&
+            previous.generation === target.generation
+          )
+            throw Object.assign(new Error(this.redact(errorMessage(error))), {
+              configurationRefreshPending: true,
+            });
+          throw error;
+        });
         this.rememberProof(target, target.proof, snapshot);
         if (
           target.proof.applied.revision === snapshot.revision &&
@@ -1713,8 +1741,18 @@ class AppProviders {
       if (request.expectedRevision !== current.revision)
         throw new Error("供应商配置已变化，请刷新后重新应用");
       const outcomes = await this.applyProjects(current);
-      if (outcomes.some((outcome) => !outcome.applied))
-        throw new Error("模型配置应用未全部确认，请等待后刷新核对。");
+      const failure = outcomes.find(
+        (outcome) =>
+          !outcome.applied &&
+          !(
+            providerContract.record(outcome.error) &&
+            outcome.error.configurationRefreshPending === true
+          ),
+      );
+      if (failure)
+        throw new Error(
+          this.redact(errorMessage(failure.error) || "模型配置应用未全部确认，请等待后刷新核对。"),
+        );
       if ((await this.config.current()).revision !== current.revision)
         throw new Error("模型配置已被外部修改，请刷新核对。");
       this.backend.onChange();
