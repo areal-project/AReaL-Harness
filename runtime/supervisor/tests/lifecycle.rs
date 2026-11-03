@@ -1280,6 +1280,37 @@ async fn bounded<T>(future: impl std::future::Future<Output = T>) -> T {
 }
 
 #[tokio::test]
+async fn cumulative_output_warns_before_exhaustion_without_resetting_the_epoch() {
+    for (limit, bytes, expected) in [
+        (10, &b"1234567"[..], false),
+        (10, &b"12345678"[..], true),
+        (u64::MAX, &b"12345678"[..], false),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let executor = Executor::new(false);
+        let mut config = Config::read_only(dir.path().into());
+        config.limits.output_bytes = limit;
+        let runtime = Supervisor::new(config, executor.clone()).unwrap();
+        let epoch = runtime.connection_info().runtime_epoch;
+        let root = runtime.connection_info().root_scope_id;
+        assert_eq!(runtime.status()["rotationRecommended"], false);
+        let started = runtime.start(process(&runtime, &root)).await.unwrap();
+        bounded(executor.entered()).await;
+        executor.finish(&started.process_id, bytes).await;
+        bounded(runtime.wait_process(&started.process_id))
+            .await
+            .unwrap();
+        let status = runtime.status();
+        assert_eq!(status["outputBytes"]["used"], bytes.len());
+        assert_eq!(status["rotationRecommended"], expected);
+        assert_eq!(status["runtimeEpoch"], epoch);
+        assert_eq!(status["activeProcesses"], 0);
+        assert_eq!(status["scopes"]["used"], 1);
+        bounded(runtime.shutdown()).await.unwrap();
+    }
+}
+
+#[tokio::test]
 async fn lost_caller_and_concurrent_retry_share_one_pending_start() {
     let dir = tempfile::tempdir().unwrap();
     let executor = Executor::new(true);

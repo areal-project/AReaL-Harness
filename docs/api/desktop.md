@@ -306,6 +306,8 @@ features.goals=true 表示服务支持 Goal，无需单独配置开关；Goal �
 
 `reasons` 为 `{code,count}` 数组，code 包括 `activeTurn`、`resource`、`compaction`、`workgroup`、`activeGoal`、`queuedMessage`、`activeTask`。Core 共用观察和准入锁内的操作判定；观察不是停止授权。`ifIdle` 要求没有工作且执行已结算，`settled` 仅描述 cancel 的执行/资源结算后置条件。cancel 保留暂停 Queue 中的输入，不重新套用 pending 必须为零的前提。未检查的历史结果仍保留在 journal 中，并继续阻止原 Thread 续轮，但不阻止服务退出。Hook task scope 不确定、Runtime 观察不可用、活跃 Runtime 进程及未确认清理仍是资源阻塞。超时可能返回 draining，RPC 成功不证明进程已退出。未知版本、原因或缺失许可字段不能推断为允许。
 
+`server/drain` 的 `strategy="runtimeRotation"` 供可信宿主做容量维护：在同一准入锁内检查 `ifIdle`，空闲时仅关闭新工作准入，保留 Queue 暂停意图、修订和 Goal 状态；忙碌时返回未关闭准入的当前状态，不取消任务。已处于 draining/closed 的实例拒绝该请求，不能接管用户的显式排空意图。返回 `draining=true` 和结算许可后，宿主仍须确认旧进程正常清理才能启动新 epoch。该策略是请求枚举的增量扩展；旧 Core 不支持时不能回退到取消或重放。
+
 共享服务的 `server/status.configuration` 返回 `{modelRevision,applied,appliedRevision,applySequence,currentFileRevision,credentialStates,pendingApply,restartRequired,error}`，其他部署为 null。`applied={revision,sequence}` 是 Core 已确认的文件版本。GUI 模型配置使用上面的显式热应用接口；普通 CLI 模型热更新缺失环境凭据时可同时返回 `restartRequired=true` 和 `error`，表示需要由持有有效凭据的本地客户端安全重启；其他加载错误不触发自动重启。`areal/server/configurationChanged` 向已订阅会话发布 `{threadId,configuration}`。`server/drain` 增加 `strategy="ifIdle"`：在同一准入锁内检查空闲并关闭准入，忙碌拒绝时保留任务运行。见[配置热更新](../guides/configuration.md)。
 
 ### Desktop 适配器生命周期
