@@ -6678,10 +6678,10 @@
     },
     {
       "id": "R-MESSAGES-012",
-      "title": "本地点击发送在现有 ReadingView 登记临时阅读意图，并立即把本地待发消息定位到阅读区域上沿",
+      "title": "本地点击发送在现有 ReadingView 登记临时阅读意图",
       "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
       "strength": "default",
-      "textSha256": "35925dec638f4901f836b26a08827caf8e717b308fd34c003c2249dda4bb5aa0"
+      "textSha256": "9d5d33067d33ed194577a79d0ca4b6d45e0afa9bada798c4368d55591976fa7b"
     },
     {
       "id": "R-SKELETON-001",

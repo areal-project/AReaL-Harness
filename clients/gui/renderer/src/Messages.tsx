@@ -677,26 +677,32 @@ export function Messages({
       user &&
       !goalContinuationLabel(latest) &&
       ((requested && requested.afterTurnId !== latestTurnId) || firstMountedTurn);
+    // 续发沿自然尾部衔接，避免先补一屏空白置顶，再随受理和回复重排。
+    const continuation = (thread.turns?.length ?? 0) > 1 || !!requested?.afterTurnId;
     if (accepted) {
       cancelTurnStart(requested);
       reading.current = changeReadingIntent(reading.current, {
         kind: "following",
-        target: { kind: "turnStart", turnId: latestTurnId },
+        target: continuation ? undefined : { kind: "turnStart", turnId: latestTurnId },
       });
       reservation.current =
-        reserveResponseSpace && section
+        !continuation && reserveResponseSpace && section
           ? { turnId: latestTurnId, height: 0, contentHeight: 0 }
           : undefined;
     } else if (
       requested?.afterTurnId === latestTurnId &&
       readingDom.responseSection(element, readingDom.pendingTurnTarget)
     ) {
-      // 点发送即定位待发消息，不等 Core 受理；受理后的真实消息出现在同一位置，不再跳动。
+      // 点发送即显示待发消息；首轮预留回应区，续发直接沿尾部跟随。
       reading.current = changeReadingIntent(reading.current, {
         kind: "following",
-        target: { kind: "turnStart", turnId: readingDom.pendingTurnTarget },
+        target: continuation
+          ? undefined
+          : { kind: "turnStart", turnId: readingDom.pendingTurnTarget },
       });
-      reservation.current = { turnId: readingDom.pendingTurnTarget, height: 0, contentHeight: 0 };
+      reservation.current = continuation
+        ? undefined
+        : { turnId: readingDom.pendingTurnTarget, height: 0, contentHeight: 0 };
     } else if (!switched && previous.id !== latestTurnId) reservation.current = undefined;
     // 自然流布局由父容器滚动；自身高度包含占位，
     // 用它计算预留空间会在下一次尺寸变化时形成反馈增长。
