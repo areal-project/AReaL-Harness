@@ -35,7 +35,7 @@ const originalChecks = [
 
 export async function nativeInteractionContract(t) {
   const f = await nativeHostFixture(t);
-  const expectedChecks = [0, 1, 2, 4, 5, 6, 16].map((index) => originalChecks[index]);
+  const expectedChecks = [0, 1, 2, 4, 5, 6, 15, 16].map((index) => originalChecks[index]);
   const proof = {
     owner: "Rust Host",
     scope: "original RC07 real-Core subset",
@@ -536,6 +536,35 @@ export async function nativeInteractionContract(t) {
       assert.equal(Object.hasOwn(answered.response, "argumentsDigest"), false);
       assert.equal((await respond(value, params, a, commandId)).error?.code, "COMMAND_CONFLICT");
       assert.equal((await a.rpc("command.read", { commandId })).result.admissionState, "accepted");
+    });
+    await check(originalChecks[15], async () => {
+      const opened = await a.rpc("session.open", { threadId: first.target.threadId });
+      assert.ok(opened.result, JSON.stringify(opened));
+      const journal = await f.client.journal(project.projectId).read();
+      const pages = await Promise.all(
+        Array.from({ length: 17 }, () => a.rpc("attention.read", first.target)),
+      );
+      for (const page of pages) {
+        assert.ok(page.result, JSON.stringify(page));
+        assert.equal(page.result.threadId, first.target.threadId);
+        assert.equal(page.result.turnId, first.target.turnId);
+        assert.equal(page.result.interactionId, first.target.interactionId);
+        assert.equal(page.result.argumentsDigest, first.item.argumentsDigest);
+        assert.equal(page.result.complete, true);
+      }
+      const history = await a.rpc("session.history", { threadId: first.target.threadId });
+      assert.equal(history.result?.subscriptionId, opened.result.subscriptionId);
+      assert.equal(history.result.connectionId, opened.result.connectionId);
+      assert.equal(a.socket.readyState, WebSocket.OPEN);
+      assert.deepEqual(await f.client.journal(project.projectId).read(), journal);
+      proof.concurrentDetailReads = {
+        submitted: pages.length,
+        completed: pages.length,
+        subscriptionId: history.result.subscriptionId,
+        connectionId: history.result.connectionId,
+        observation:
+          "real wire pipelining and subscription continuity; private queue size unmeasured",
+      };
     });
     await check(originalChecks[16], async () => {
       assert.ok(a.active.capabilities.includes("answer"));
