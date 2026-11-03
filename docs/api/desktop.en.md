@@ -557,6 +557,8 @@ The GUI service's narrow `trajectory` command accepts `{operation:"status"}`, `{
 
 ## Desktop provider connection diagnostics
 
+Local diagnostic `schemaVersion: 1` events add `type/component: model-configuration` without changing provider command contracts. `phase` is `read-proof/apply/refresh-catalog`; `outcome` is `started/ok/failed`, with `durationMs`, project/generation aliases, and optional `requestId`. Failures include allowlisted `code/reason`, mapping unknown values to `OTHER`, without exception text, configuration, or credentials. Feedback attachments further alias request identities within the report. Existing events remain readable; readers should ignore unknown event types and additional fields. RPC-stage success does not establish complete application success.
+
 The desktop `providers` command returns a fixed `error.code` and actionable guidance when network initialization or a `discover` or `probe` request fails.
 
 | `error.code` | Diagnosis |

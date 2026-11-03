@@ -555,6 +555,8 @@ GUI 服务的窄命令 `trajectory` 支持 `{operation:"status"}`、`{operation:
 
 ## 桌面供应商连接诊断
 
+本机诊断包的 `schemaVersion: 1` 事件新增 `type/component: model-configuration`，不改变供应商命令契约。`phase` 为 `read-proof/apply/refresh-catalog`，`outcome` 为 `started/ok/failed`，附 `durationMs`、项目/代际别名与可选 `requestId`；失败附白名单 `code/reason`，未知值归为 `OTHER`，不附异常正文、配置或凭据。反馈附件再次将请求身份转为报告内别名。旧事件继续可读；读取器应忽略未知事件类型和新增字段。RPC 阶段成功不等同于完整应用成功。
+
 桌面 `providers` 命令的 `discover` 与 `probe` 在网络初始化或请求失败时返回固定的 `error.code` 和操作提示。
 
 | `error.code` | 诊断 |

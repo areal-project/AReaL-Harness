@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { AppProviders } from "../app/src/core/providers.cjs";
 import { CoreBackend } from "../app/src/core/backend.cjs";
 import { CoreClient } from "../packages/runtime-client/core.js";
+import diagnostics from "../app/src/core/diagnostics.cjs";
 
 const readMethod = "areal/server/modelConfiguration/read";
 const applyMethod = "areal/server/modelConfiguration/apply";
@@ -231,6 +232,55 @@ test("one save returns only after the same Core proves the revision and its cata
     [readMethod, "areal/server/status", "write", applyMethod, "areal/model/list"],
   );
   assert.equal(f.project.service.generation, "generation-p");
+});
+
+test("configuration diagnostics distinguish Core rejection from catalog refresh failure", async (t) => {
+  const events = [];
+  const record = diagnostics.record;
+  diagnostics.record = (event) => events.push(event);
+  t.after(() => {
+    diagnostics.record = record;
+  });
+  for (const failure of ["apply", "refresh-catalog"]) {
+    const f = fixture();
+    t.after(() => f.service.close());
+    f.service.requestReconciliation = () => {};
+    const rpc = f.project.client.request.bind(f.project.client);
+    f.project.client.request = async (method, params) => {
+      if (failure === "apply" && method === applyMethod) {
+        const error = {
+          code: -32010,
+          message: "private fixture detail",
+          data: { reason: "DEPLOYMENT_CHANGE_REQUIRES_RESTART" },
+        };
+        f.operations.set(params.requestId, {
+          requestId: params.requestId,
+          state: "rejected",
+          error,
+        });
+        throw Object.assign(new Error(error.message), error);
+      }
+      if (failure === "refresh-catalog" && method === "areal/model/list")
+        throw Object.assign(new Error("private fixture detail"), { code: "ETIMEDOUT" });
+      return rpc(method, params);
+    };
+    const saved = await f.service.command({ ...f.request, operation: "save" });
+    await assert.rejects(
+      f.service.command({ operation: "apply", expectedRevision: saved.revision }),
+      /应用未全部确认/,
+    );
+    const event = events.find((item) => item.phase === failure && item.outcome === "failed");
+    assert.ok(event, `diagnostics must identify the ${failure} boundary`);
+    assert.equal(event.projectId, f.project.id);
+    assert.equal(event.coreGeneration, f.project.service.generation);
+    assert.ok(event.durationMs >= 0);
+    assert.equal(
+      event.reason,
+      failure === "apply" ? "DEPLOYMENT_CHANGE_REQUIRES_RESTART" : undefined,
+    );
+    assert.equal(f.service.public().application.kind, failure === "apply" ? "failed" : "unknown");
+    assert.ok(!JSON.stringify(events).includes("private fixture detail"));
+  }
 });
 
 test("running task save fails before persistence or Core mutation", async () => {

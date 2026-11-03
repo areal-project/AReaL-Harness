@@ -10,6 +10,7 @@ const { monitorEventLoopDelay } = require("node:perf_hooks");
  * @typedef {{boundary:'main-desktop'|'desktop-core',projectId?:string,coreGeneration?:string,connectionGeneration?:number,hostPid?:number,corePid?:number,serviceId?:string}} SocketTarget
  * @typedef {({type:'socket-open'} & SocketTarget) | ({type:'socket-error',code:unknown} & SocketTarget) | ({type:'socket-close',closeCode:unknown} & SocketTarget)
  * | {type:'command-complete',command:unknown,outcome:'ok'|'failed',durationMs:number}
+ * | {type:'model-configuration',phase:'read-proof'|'apply'|'refresh-catalog',outcome:'started'|'ok'|'failed',durationMs:number,projectId:string,coreGeneration?:string,requestId?:string,code?:unknown,reason?:unknown}
  * | {type:'window-ready',windows:number}
  * | {type:'service-topology',state:unknown,projects:number,connectedProjects:number}
  * | {type:'desktop-spawn',pid:number} | {type:'desktop-exit',pid:number,exitCode:number|null,signal:string|null}
@@ -54,6 +55,23 @@ const REASONS = new Set([
   "launch-failed",
   "integrity-failure",
   "memory-eviction",
+]);
+const CONFIGURATION_REASONS = new Set([
+  "MODEL_CONFIGURATION_GENERATION_MISMATCH",
+  "MODEL_CONFIGURATION_CONFLICT",
+  "MODEL_CONFIGURATION_INVALID_CREDENTIAL",
+  "MODEL_CONFIGURATION_CREDENTIAL_CONFLICT",
+  "MODEL_CONFIGURATION_INVALID",
+  "MODEL_CONFIGURATION_FILE_CONFLICT",
+  "DEPLOYMENT_CHANGE_REQUIRES_RESTART",
+  "MODEL_CONFIGURATION_UNREFERENCED_CREDENTIAL",
+  "MODEL_CONFIGURATION_MODEL_UNAVAILABLE",
+  "MODEL_CONFIGURATION_ARCHIVE_FULL",
+  "MODEL_CONFIGURATION_CAPACITY",
+  "MODEL_CONFIGURATION_BUSY",
+  "MODEL_CONFIGURATION_APPLY_FAILED",
+  "MODEL_CONFIGURATION_REQUEST_CONFLICT",
+  "MODEL_CONFIGURATION_UNKNOWN",
 ]);
 const PROCESS_TYPES = new Set([
   "Utility",
@@ -148,6 +166,36 @@ function projectIncident(event, maps) {
   /** @type {Record<string,unknown>} */
   const value = { type: event.type };
   switch (event.type) {
+    case "model-configuration":
+      value.phase = choose(new Set(["read-proof", "apply", "refresh-catalog"]), event.phase);
+      value.outcome = choose(new Set(["started", "ok", "failed"]), event.outcome);
+      value.durationMs = integer(event.durationMs);
+      value.requestId =
+        typeof event.requestId === "string" && UUID.test(event.requestId)
+          ? event.requestId
+          : undefined;
+      value.project = maps
+        ? alias(maps.projects, event.projectId, "p")
+        : /^(?:p\d{1,3}|other)$/.test(typeof event.project === "string" ? event.project : "")
+          ? event.project
+          : undefined;
+      value.coreGeneration = maps
+        ? alias(maps.generations, event.coreGeneration, "g")
+        : /^(?:g\d{1,3}|other)$/.test(
+              typeof event.coreGeneration === "string" ? event.coreGeneration : "",
+            )
+          ? event.coreGeneration
+          : undefined;
+      if (event.outcome === "failed") {
+        value.reason = choose(CONFIGURATION_REASONS, event.reason, "OTHER");
+        value.code =
+          typeof event.code === "number"
+            ? [-32602, -32601, -32603, -32000, -32003, -32010].includes(event.code)
+              ? event.code
+              : "OTHER"
+            : choose(CODES, event.code, "OTHER");
+      }
+      break;
     case "service-topology":
       value.state = choose(new Set(["connecting", "ready", "unavailable"]), event.state);
       value.projects = integer(event.projects, 0, 1000000);
@@ -276,31 +324,33 @@ function projectIncident(event, maps) {
     default:
       return null;
   }
-  value.level =
-    event.type === "command-complete"
-      ? event.outcome === "failed"
-        ? "error"
-        : "info"
-      : [
-            "socket-error",
-            "uncaught-exception",
-            "renderer-gone",
-            "child-process-gone",
-            "desktop-spawn-error",
-          ].includes(String(event.type))
-        ? "error"
-        : ["renderer-unresponsive", "desktop-exit-timeout", "application-owner-lost"].includes(
-              String(event.type),
-            )
-          ? "warn"
-          : "info";
-  value.component = String(event.type).startsWith("socket-")
-    ? "transport"
-    : event.type === "command-complete"
-      ? "desktop-ipc"
-      : event.type === "resource-sample"
-        ? "process"
-        : "lifecycle";
+  value.level = ["command-complete", "model-configuration"].includes(String(event.type))
+    ? event.outcome === "failed"
+      ? "error"
+      : "info"
+    : [
+          "socket-error",
+          "uncaught-exception",
+          "renderer-gone",
+          "child-process-gone",
+          "desktop-spawn-error",
+        ].includes(String(event.type))
+      ? "error"
+      : ["renderer-unresponsive", "desktop-exit-timeout", "application-owner-lost"].includes(
+            String(event.type),
+          )
+        ? "warn"
+        : "info";
+  value.component =
+    event.type === "model-configuration"
+      ? "model-configuration"
+      : String(event.type).startsWith("socket-")
+        ? "transport"
+        : event.type === "command-complete"
+          ? "desktop-ipc"
+          : event.type === "resource-sample"
+            ? "process"
+            : "lifecycle";
   return value;
 }
 /** @param {unknown} value @param {string} runId @param {string} role */

@@ -40,6 +40,20 @@ test("local reports freeze reviewed diagnostic context and exclude private autom
   const coreRoot = join(root, "core");
   const project = "0123456789abcdef01234567",
     requestId = randomUUID();
+  for (const reason of ["DEPLOYMENT_CHANGE_REQUIRES_RESTART", secret])
+    diagnostics.record({
+      type: "model-configuration",
+      phase: "apply",
+      outcome: "failed",
+      durationMs: 17,
+      projectId: secret,
+      coreGeneration: secret,
+      requestId,
+      reason,
+      code: reason === secret ? secret : -32010,
+      message: secret,
+      credentials: { key: secret },
+    });
   const requests = join(coreRoot, project, "state/model-requests");
   await mkdir(requests, { recursive: true });
   await writeFile(
@@ -73,6 +87,20 @@ test("local reports freeze reviewed diagnostic context and exclude private autom
   const context = JSON.parse(preview.diagnostics);
   assert.equal(context.modelRequests[0].httpStatus, 429);
   assert.equal(context.modelRequests[0].error.code, "rate_limit_exceeded");
+  const configuration = context.runs[0].events.filter(
+    (event) => event.type === "model-configuration",
+  );
+  assert.equal(configuration.length, 2);
+  assert.equal(configuration[0].reason, "DEPLOYMENT_CHANGE_REQUIRES_RESTART");
+  assert.equal(configuration[0].code, -32010);
+  assert.equal(configuration[0].phase, "apply");
+  assert.equal(configuration[0].level, "error");
+  assert.equal(configuration[0].component, "model-configuration");
+  assert.equal(configuration[0].durationMs, 17);
+  assert.match(configuration[0].requestId, /^ref-/);
+  assert.match(configuration[0].coreGeneration, /^g\d+$/);
+  assert.equal(configuration[1].reason, "OTHER");
+  assert.equal(configuration[1].code, "OTHER");
   assert.ok(
     context.runs[0].events.some(
       (e) =>

@@ -3,6 +3,7 @@
 const { catalog, rejectModel, subscriptionAvailable } = require("./provider-model-catalog.cjs");
 const { testConnection, errorMessage } = require("./provider-probe.cjs");
 const { startupTrace } = require("./startup-timing.cjs");
+const diagnostics = require("./diagnostics.cjs");
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const { randomUUID, createHash } = require("node:crypto");
@@ -1240,14 +1241,47 @@ class AppProviders {
       throw new Error("Core 模型配置应用证明无效，请刷新核对。");
     return proof;
   }
+  /** @template T @param {ProviderTarget} target @param {'read-proof'|'apply'|'refresh-catalog'} phase @param {string|undefined} requestId @param {()=>Promise<T>} action @returns {Promise<T>} */
+  async configurationStep(target, phase, requestId, action) {
+    const context = {
+      type: /** @type {const} */ ("model-configuration"),
+      projectId: target.project.id,
+      coreGeneration: target.generation,
+      phase,
+      requestId,
+    };
+    const started = performance.now();
+    diagnostics.record({ ...context, outcome: "started", durationMs: 0 });
+    try {
+      const result = await action();
+      diagnostics.record({
+        ...context,
+        outcome: "ok",
+        durationMs: Math.round(performance.now() - started),
+      });
+      return result;
+    } catch (error) {
+      const failure = providerContract.record(error) ? error : {};
+      diagnostics.record({
+        ...context,
+        outcome: "failed",
+        durationMs: Math.round(performance.now() - started),
+        code: failure.code,
+        reason: providerContract.record(failure.data) ? failure.data.reason : undefined,
+      });
+      throw error;
+    }
+  }
   /** @param {ProviderTarget} target @param {string} [requestId] */
   async readProof(target, requestId) {
-    const proof = await target.client.request(
-      "areal/server/modelConfiguration/read",
-      { expectedGeneration: target.generation, ...(requestId ? { requestId } : {}) },
-      { decode: providerContract.configurationProof },
-    );
-    return this.validateProof(target, proof);
+    return this.configurationStep(target, "read-proof", requestId, async () => {
+      const proof = await target.client.request(
+        "areal/server/modelConfiguration/read",
+        { expectedGeneration: target.generation, ...(requestId ? { requestId } : {}) },
+        { decode: providerContract.configurationProof },
+      );
+      return this.validateProof(target, proof);
+    });
   }
   /** @param {ProviderTarget} target @param {ConfigurationProof} proof @param {ModelSnapshot} snapshot */
   rememberProof(target, proof, snapshot) {
@@ -1270,12 +1304,20 @@ class AppProviders {
         configurationSettled: true,
       });
     if (refreshModels) {
-      const models = await target.client.request(
-        "areal/model/list",
-        {},
-        { decode: providerContract.models },
+      const models = await this.configurationStep(
+        target,
+        "refresh-catalog",
+        this.pendingApplications.get(target.project.id)?.requestId,
+        async () => {
+          const result = await target.client.request(
+            "areal/model/list",
+            {},
+            { decode: providerContract.models },
+          );
+          this.requireTarget(target);
+          return result;
+        },
       );
-      this.requireTarget(target);
       this.rememberProof(target, proof, snapshot);
       target.project.models = models.data;
     }
@@ -1426,16 +1468,18 @@ class AppProviders {
       try {
         const receipt = this.validateProof(
           target,
-          await target.client.request(
-            "areal/server/modelConfiguration/apply",
-            {
-              requestId: pending.requestId,
-              expectedGeneration: pending.generation,
-              expectedApplied: pending.expectedApplied,
-              targetRevision: snapshot.revision,
-              credentials,
-            },
-            { decode: providerContract.configurationProof },
+          await this.configurationStep(target, "apply", pending.requestId, () =>
+            target.client.request(
+              "areal/server/modelConfiguration/apply",
+              {
+                requestId: pending.requestId,
+                expectedGeneration: pending.generation,
+                expectedApplied: pending.expectedApplied,
+                targetRevision: snapshot.revision,
+                credentials,
+              },
+              { decode: providerContract.configurationProof },
+            ),
           ),
         );
         if (
