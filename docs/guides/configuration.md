@@ -653,3 +653,5 @@ hooks = [{ type = "command", command = "python3 /absolute/path/hook.py", timeout
 有效来源、显式审阅、执行与剩余限制见 [插件指南](plugins.md)。
 
 `programmaticTools` 默认开启，在 Runtime 会话中同时展示程序化组合入口与原生工具；设为 false 可回退。`programmaticToolsOnly` 默认关闭，只用于显式收窄模型展示。配置和兼容性见[程序化工具调用](programmatic-tools.md)。
+
+`model.summary_quoted_retry`（`AREAL_HARNESS_SUMMARY_QUOTED_RETRY`）默认省略/false，仅显式开启时在既有第二次摘要额度内把格式失败的保留前缀切为引用证据，不增加重试或预算。格式验收不证明语义准确；已观察到的公式失真仍是负面证据，该策略及 `summary_preserve_prefix=false` 都不能直接视为语义恢复通过。普通请求截断、空回复仍按独立失败与 usage 契约处理。

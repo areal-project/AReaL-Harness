@@ -964,6 +964,7 @@ async fn prefix_summary_preserves_http_input_and_schema_but_rejects_tool_emissio
     )
     .unwrap();
     assert!(model.supports_prefix_summary());
+    assert!(!model.supports_quoted_summary_retry());
     let solve = model
         .chat(history.clone(), tools.clone())
         .await
@@ -996,10 +997,12 @@ async fn prefix_summary_preserves_http_input_and_schema_but_rejects_tool_emissio
     .unwrap()
     .with_options(areal_engine::model::ModelOptions {
         summary_preserve_prefix: Some(false),
+        summary_quoted_retry: Some(true),
         ..Default::default()
     })
     .unwrap();
     assert!(!quoted.supports_prefix_summary());
+    assert!(quoted.supports_quoted_summary_retry());
     let _ = quoted
         .chat(history, tools.clone())
         .await

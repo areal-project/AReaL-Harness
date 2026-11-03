@@ -1328,6 +1328,28 @@ fn summary_prefix_reuse_is_explicit_and_preserves_legacy_config() {
 }
 
 #[test]
+fn quoted_summary_retry_requires_explicit_configuration() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    assert_eq!(load_config(&i).unwrap().model.summary_quoted_retry, None);
+    write(
+        &mut i,
+        "schema_version=1\n[model]\nsummary_quoted_retry=true\n",
+    );
+    assert_eq!(
+        load_config(&i).unwrap().model.summary_quoted_retry,
+        Some(true)
+    );
+    set(&mut i, "AREAL_HARNESS_SUMMARY_QUOTED_RETRY", "false");
+    assert_eq!(
+        load_config(&i).unwrap().model.summary_quoted_retry,
+        Some(false)
+    );
+    set(&mut i, "AREAL_HARNESS_SUMMARY_QUOTED_RETRY", "maybe");
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+}
+
+#[test]
 fn request_bytes_are_independent_and_reject_invalid_limits() {
     let temp = tempfile::tempdir().unwrap();
     let mut i = inputs(temp.path());

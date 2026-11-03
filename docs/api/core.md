@@ -562,3 +562,5 @@ Turn 的 `trace` 增加 `startedAtMs`、`queuedAtMs`、`queueDurationMs` 和 `ac
 `ToolExecution.parentCallId` 是可选子调用关联字段，旧记录缺省为无父调用。程序化工具共享原生执行链及预算；子调用保留事实，模型历史只投影父调用，见[程序工具契约](../guides/programmatic-tools.md)。
 
 完整请求预检与自动压缩共享有效 usage 校准；Responses 摘要可保留原前缀及工具 schema，但工具执行预算始终为零。新增默认返回 false 的 `Model::supports_prefix_summary()`；自定义适配器仅在支持尾部维护指令与禁用工具协议时声明 true。审计和回退条件见[上下文管理](../design/context-management.md)。
+
+`model.summary_quoted_retry`（`AREAL_HARNESS_SUMMARY_QUOTED_RETRY`）默认省略/false，仅显式开启时在既有第二次摘要额度内把格式失败的保留前缀切为引用证据，不增加重试或预算。格式验收不证明语义准确；已观察到的公式失真仍是负面证据，该策略及 `summary_preserve_prefix=false` 都不能直接视为语义恢复通过。普通请求截断、空回复仍按独立失败与 usage 契约处理。

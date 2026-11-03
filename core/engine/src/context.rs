@@ -1319,7 +1319,7 @@ impl Engine {
                 }
                 attempt += 1;
                 network_retries = 0;
-                if preserved_prefix.take().is_some() {
+                if model.supports_quoted_summary_retry() && preserved_prefix.take().is_some() {
                     // 已观察到前缀摘要格式失效；在原有第二次额度内改用引用证据，避免继续诱发历史工具调用。
                     input = summary_input(&summary_history);
                     input[0] = Message::text("system", &summary_instructions);

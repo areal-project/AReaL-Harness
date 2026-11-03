@@ -675,6 +675,10 @@ pub trait Model: Send + Sync {
     fn supports_prefix_summary(&self) -> bool {
         false
     }
+    /// 引用证据重试可能改变摘要语义，只能显式启用；不增加摘要次数。
+    fn supports_quoted_summary_retry(&self) -> bool {
+        false
+    }
     async fn stream(&self, messages: Vec<Message>) -> Result<ModelStream>;
     async fn chat(
         &self,
@@ -828,6 +832,7 @@ pub struct ModelOptions {
     pub summary_max_output_tokens: Option<u64>,
     /// 显式禁用会改写前缀的兼容网关上的摘要复用；不改变普通求解缓存。
     pub summary_preserve_prefix: Option<bool>,
+    pub summary_quoted_retry: Option<bool>,
     pub reasoning_summary: Option<String>,
     pub responses_websocket: bool,
     pub responses_prompt_cache: bool,
@@ -853,6 +858,7 @@ impl Default for ModelOptions {
             summary_reasoning_effort: None,
             summary_max_output_tokens: None,
             summary_preserve_prefix: None,
+            summary_quoted_retry: None,
             reasoning_summary: None,
             responses_websocket: false,
             responses_prompt_cache: false,
@@ -1157,6 +1163,9 @@ impl HttpModel {
 
 #[async_trait]
 impl Model for HttpModel {
+    fn supports_quoted_summary_retry(&self) -> bool {
+        self.options.summary_quoted_retry.unwrap_or(false)
+    }
     fn supports_prefix_summary(&self) -> bool {
         self.protocol == ModelProtocol::Responses
             && self.options.summary_preserve_prefix.unwrap_or(true)

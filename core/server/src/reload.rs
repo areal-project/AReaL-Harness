@@ -60,6 +60,7 @@ pub fn model(
             summary_reasoning_effort: config.summary_reasoning_effort.clone(),
             summary_max_output_tokens: config.summary_max_output_tokens,
             summary_preserve_prefix: config.summary_preserve_prefix,
+            summary_quoted_retry: config.summary_quoted_retry,
             reasoning_summary: config.reasoning_summary.clone(),
             max_output_tokens: config.max_output_tokens,
             max_request_bytes: config.max_request_bytes,

@@ -254,6 +254,9 @@ struct PrefixHistory {
 
 #[async_trait]
 impl Model for PrefixHistory {
+    fn supports_quoted_summary_retry(&self) -> bool {
+        true
+    }
     fn name(&self) -> &str {
         "prefix-history-fixture"
     }
