@@ -63,6 +63,20 @@ const METHODS: &[&str] = &[
     "attention.list",
 ];
 
+#[derive(Debug, PartialEq, Eq)]
+enum BudgetExceeded {
+    Requests,
+    Writes,
+}
+
+impl std::fmt::Display for BudgetExceeded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("LIMIT_EXCEEDED")
+    }
+}
+
+impl std::error::Error for BudgetExceeded {}
+
 struct RequestBudget {
     window: Instant,
     reads: u32,
@@ -78,13 +92,19 @@ impl RequestBudget {
             refilled: now,
         }
     }
-    fn check(&mut self, method: Option<&str>, now: Instant) -> Result<()> {
+    fn check(
+        &mut self,
+        method: Option<&str>,
+        now: Instant,
+    ) -> std::result::Result<(), BudgetExceeded> {
         if now.duration_since(self.window) >= Duration::from_secs(1) {
             self.window = now;
             self.reads = 0;
         }
         self.reads += 1;
-        ensure!(self.reads <= 20, "LIMIT_EXCEEDED");
+        if self.reads > 20 {
+            return Err(BudgetExceeded::Requests);
+        }
         if matches!(
             method,
             Some(
@@ -102,7 +122,9 @@ impl RequestBudget {
             self.writes =
                 (self.writes + now.duration_since(self.refilled).as_secs_f64() * 5.0).min(10.0);
             self.refilled = now;
-            ensure!(self.writes >= 1.0, "LIMIT_EXCEEDED");
+            if self.writes < 1.0 {
+                return Err(BudgetExceeded::Writes);
+            }
             self.writes -= 1.0;
         }
         Ok(())
@@ -431,7 +453,7 @@ impl Session {
             drop(bytes);
             let result = match budget.check(request["method"].as_str(), Instant::now()) {
                 Ok(()) => session.request(&request).await,
-                Err(error) => Err(error),
+                Err(error) => Err(error.into()),
             };
             let response = match result {
                 Ok(result) => json!({"id":request["id"],"result":result}),
@@ -454,7 +476,13 @@ impl Session {
                         | "SUBMISSION_UNKNOWN" => message.as_str(),
                         _ => "CORE_UNAVAILABLE",
                     };
-                    let mut response = json!({"id":request["id"],"error":{"code":code,"message":"请求暂不可用，请重新读取原状态"}});
+                    let description = match error.downcast_ref::<BudgetExceeded>() {
+                        Some(BudgetExceeded::Requests) => "请求过于频繁",
+                        Some(BudgetExceeded::Writes) => "命令超过允许的预算",
+                        None => "请求暂不可用，请重新读取原状态",
+                    };
+                    let mut response =
+                        json!({"id":request["id"],"error":{"code":code,"message":description}});
                     if matches!(
                         request["method"].as_str(),
                         Some(
@@ -1354,11 +1382,8 @@ mod request_budget_tests {
             budget.check(Some("session.create"), start).unwrap();
         }
         assert_eq!(
-            budget
-                .check(Some("session.create"), start)
-                .unwrap_err()
-                .to_string(),
-            "LIMIT_EXCEEDED"
+            budget.check(Some("session.create"), start).unwrap_err(),
+            BudgetExceeded::Writes
         );
         assert!(
             budget
@@ -1385,7 +1410,10 @@ mod request_budget_tests {
         for _ in 0..10 {
             budget.check(Some("session.create"), start).unwrap();
         }
-        assert!(budget.check(Some("command.read"), start).is_err());
+        assert_eq!(
+            budget.check(Some("command.read"), start).unwrap_err(),
+            BudgetExceeded::Requests
+        );
         assert!(
             budget
                 .check(Some("command.read"), start + Duration::from_millis(999))

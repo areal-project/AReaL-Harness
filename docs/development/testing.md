@@ -432,6 +432,8 @@ Relay 的原实际重启、替换与不可用预算场景可在同一固定产�
 
 将选择条件设为 `Direct and Relay share one readonly Core observer`，可运行原观察恢复场景：Direct 与 Relay 读取同一真实 Core Thread 基线，Relay 断连期间由公开配置 API 更新 revision，恢复连接取得 sequence 0 的新订阅和新基线；Direct 的原连接和订阅持续可读。原 Host journal 与权威 Thread 对照用于核对无额外提交。场景名沿用旧名称，证据不推断物理 Core 连接数或 RPC 次数。
 
+同一 CA 和产物环境下，选择 `connection write burst|receipt reads preserve|all current write methods|write budgets isolate|authentication and grant changes` 可运行两种 transport 的五个原预算场景。各场景先保留完整 JS 精确时钟 reference，再验证真实 Rust 连接；原 199/200ms 与 999/1000ms 边界还由 `cargo test --locked -p areal-host --lib request_budget_tests` 覆盖。真实连接使用有界、一次发送的拒绝前缀后提交合法命令，必须实际收到 `LIMIT_EXCEEDED`，再通过原命令查询和完整 journal、Thread 身份集合核对无副作用。写额度和总请求额度分别保留“命令超过允许的预算”和“请求过于频繁”；同设备跨 Direct/Relay、其他设备与重连使用实际连接核对分桶。真实经过时间仅作证据，不当作可控时钟，也不据此声称精确物理派发次数。
+
 同一固定产物环境下，`node --test --test-concurrency=1 clients/gui/scripts/remote-client-kind-host.test.mjs clients/gui/scripts/remote-device-management-host.test.mjs` 运行原设备类型与管理套件的 Rust Host 路径，保留元数据、授权拒绝、配对与连接连续性断言。原保存次数/连接对象观察改为真实配置、原完成回执与认证连接；不计物理写入次数。`node --test clients/gui/scripts/mobile-workspace.test.mjs` 保留原六个 JS 状态用例，并追加真实 MobileClient/Rust Host/Core 的分页历史和事件路径；证据区分这两个层级，Node 客户端不代表真机或 GUI。
 
 同一已验证产物环境下，`node --test clients/gui/scripts/remote-artifact-native.test.mjs` 通过 Rust `review.read`/`artifact.read` 读取原生 Task 图片，核对分片拼接、媒体归属与精确清理；`node --test clients/gui/scripts/remote-project-models-native.test.mjs` 从真实 Core 读取有界六字段模型目录及已配置显示名。这两条原生路径单列证据，不外推为原 Remote 套件全部通过。

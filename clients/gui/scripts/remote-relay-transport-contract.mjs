@@ -192,7 +192,7 @@ if (!process.env.RC12_TLS_HOME) {
         native = await nativeProject(t, f, { commands: true });
       }
       await f.remote.control({ operation: "enableDirect" });
-      if (!approval) {
+      if (!approval && !nativeOwner) {
         t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
         t.after(() => t.mock.timers.reset());
       }
@@ -240,7 +240,63 @@ if (!process.env.RC12_TLS_HOME) {
       const starts = nativeOwner
         ? native.starts
         : () => native.calls.filter((method) => method === "areal/thread/start").length;
-      return { f, native, client, rpc, write, read, accepted, limited, starts };
+      return { f, native, client, context, rpc, write, read, accepted, limited, starts };
+    }
+    function budgetTest(name, reference, native) {
+      test(name, async (t) => {
+        await t.test("JS exact-clock reference", reference);
+        await t.test("Rust Host real connection", native);
+      });
+    }
+    async function nativeBudget(t) {
+      const b = await budgetFixture(t, true);
+      const state = async () => ({
+        journal: await b.f.client.journal(b.native.projectId).read(),
+        threads: (await b.native.core.call("thread/list", { limit: 100 })).data
+          .map((thread) => thread.id)
+          .sort(),
+      });
+      async function batch(client, requests) {
+        const packets = requests.map((request) => ({
+          id: randomUUID(),
+          context:
+            request.method === "command.read" ? { projectId: b.native.alias } : b.context(client),
+          ...request,
+        }));
+        const started = performance.now();
+        for (const packet of packets) client.secure.send(packet);
+        const responses = [];
+        for (const packet of packets) {
+          const response = (await next(client.messages)).value;
+          assert.equal(response.id, packet.id);
+          responses.push(response);
+        }
+        b.f.evidence.nativeBudgetBatches ??= [];
+        b.f.evidence.nativeBudgetBatches.push({
+          elapsedMs: performance.now() - started,
+          commandIds: requests.map((request) => request.commandId ?? null),
+          responses,
+        });
+        return responses;
+      }
+      async function exhaust(client, requests) {
+        const responses = await batch(client, [
+          ...Array.from({ length: 19 }, () => ({
+            method: "session.create",
+            params: { unexpected: true },
+            commandId: randomUUID(),
+          })),
+          ...requests,
+        ]);
+        for (const response of responses.slice(0, 10))
+          assert.equal(response.error?.code, "INVALID_PARAMS", JSON.stringify(response));
+        for (const response of responses.slice(10, 19)) {
+          if (response.error?.code === "LIMIT_EXCEEDED") b.limited(response);
+          else assert.equal(response.error?.code, "INVALID_PARAMS", JSON.stringify(response));
+        }
+        return responses.slice(19);
+      }
+      return { ...b, state, batch, exhaust };
     }
     test(`same peer overlapping session.create preserves one original command (${transport})`, async (t) => {
       const { f, native, client, write, read, starts } = await budgetFixture(t, true);
@@ -341,138 +397,359 @@ if (!process.env.RC12_TLS_HOME) {
         }
       });
     });
-    test(`connection write burst refuses the eleventh command before journal and RPC (${transport})`, async (t) => {
-      const { f, client, rpc, write, read, accepted, limited, starts } = await budgetFixture(
-        t,
-        true,
-      );
-      assert.equal(client.active.limits.writeRequestsPerSecond, 5);
-      assert.equal(client.active.limits.writeBurst, 10);
-      for (let n = 0; n < 10; n++) accepted(await write(client));
-      const before = await readFile(join(f.home, "project-outcomes.json"), "utf8");
-      const pending = await readFile(join(f.home, "project-pending.json"), "utf8");
-      const saved = f.savedWrites.length;
-      const refused = randomUUID();
-      limited(await write(client, "session.create", {}, { commandId: refused }));
-      assert.equal(starts(), 10);
-      assert.equal(f.savedWrites.length, saved);
-      assert.equal(await readFile(join(f.home, "project-outcomes.json"), "utf8"), before);
-      assert.equal(await readFile(join(f.home, "project-pending.json"), "utf8"), pending);
-      assert.equal((await read(client, refused)).result.admissionState, "notFound");
-      const described = await rpc(client, { method: "host.describe", params: {} });
-      assert.equal(described.result.limits.writeRequestsPerSecond, 5);
-      assert.equal(described.result.limits.writeBurst, 10);
-      assert.equal(described.result.limits.readRequestsPerSecond, 20);
-      t.mock.timers.tick(199);
-      limited(await write(client));
-      t.mock.timers.tick(1);
-      accepted(await write(client));
-      limited(await write(client));
-      assert.equal(starts(), 11);
-      t.mock.timers.tick(5000);
-      for (let n = 0; n < 10; n++) accepted(await write(client));
-      limited(await write(client));
-      assert.equal(starts(), 21);
-      assert.equal(client.socket.readyState, 1);
-    });
-    test(`receipt reads preserve write credit and mixed traffic retains the aggregate limit (${transport})`, async (t) => {
-      const { client, write, read, accepted, starts } = await budgetFixture(t);
-      for (let n = 0; n < 10; n++)
+    budgetTest(
+      `connection write burst refuses the eleventh command before journal and RPC (${transport})`,
+      async (t) => {
+        const { f, client, rpc, write, read, accepted, limited, starts } = await budgetFixture(t);
+        assert.equal(client.active.limits.writeRequestsPerSecond, 5);
+        assert.equal(client.active.limits.writeBurst, 10);
+        for (let n = 0; n < 10; n++) accepted(await write(client));
+        const before = await readFile(join(f.home, "project-outcomes.json"), "utf8");
+        const pending = await readFile(join(f.home, "project-pending.json"), "utf8");
+        const saved = f.savedWrites.length;
+        const refused = randomUUID();
+        limited(await write(client, "session.create", {}, { commandId: refused }));
+        assert.equal(starts(), 10);
+        assert.equal(f.savedWrites.length, saved);
+        assert.equal(await readFile(join(f.home, "project-outcomes.json"), "utf8"), before);
+        assert.equal(await readFile(join(f.home, "project-pending.json"), "utf8"), pending);
+        assert.equal((await read(client, refused)).result.admissionState, "notFound");
+        const described = await rpc(client, { method: "host.describe", params: {} });
+        assert.equal(described.result.limits.writeRequestsPerSecond, 5);
+        assert.equal(described.result.limits.writeBurst, 10);
+        assert.equal(described.result.limits.readRequestsPerSecond, 20);
+        t.mock.timers.tick(199);
+        limited(await write(client));
+        t.mock.timers.tick(1);
+        accepted(await write(client));
+        limited(await write(client));
+        assert.equal(starts(), 11);
+        t.mock.timers.tick(5000);
+        for (let n = 0; n < 10; n++) accepted(await write(client));
+        limited(await write(client));
+        assert.equal(starts(), 21);
+        assert.equal(client.socket.readyState, 1);
+      },
+      async (t) => {
+        const b = await nativeBudget(t);
+        const before = await b.state();
+        const commandId = randomUUID();
+        const [refused] = await b.exhaust(b.client, [
+          { method: "session.create", params: {}, commandId },
+        ]);
+        b.limited(refused);
+        assert.equal(refused.error.commandId, commandId);
+        const reader = await device(t, b.f.remote, {
+          identity: b.client.identity,
+          transport: transport === "direct" ? "relay" : "direct",
+        });
+        const original = await b.read(reader, commandId);
+        assert.equal(original.result?.admissionState, "notFound");
+        assert.deepEqual(await b.state(), before);
+        assert.equal(await b.starts(), 0);
+        const described = await b.rpc(reader, { method: "host.describe", params: {} });
+        assert.equal(described.result.limits.writeRequestsPerSecond, 5);
+        assert.equal(described.result.limits.writeBurst, 10);
+        assert.equal(described.result.limits.readRequestsPerSecond, 20);
+        b.f.evidence.nativeBudget = {
+          group: "write burst",
+          commandId,
+          refusal: refused,
+          original: original.result,
+          journalAndThreadIdsUnchanged: true,
+          timing:
+            "real connection; exact 199/200ms boundary belongs to reference and Rust owner unit",
+        };
+      },
+    );
+
+    budgetTest(
+      `receipt reads preserve write credit and mixed traffic retains the aggregate limit (${transport})`,
+      async (t) => {
+        const { client, write, read, accepted, starts } = await budgetFixture(t);
+        for (let n = 0; n < 10; n++)
+          assert.equal((await read(client)).result.admissionState, "notFound");
+        for (let n = 0; n < 10; n++) accepted(await write(client));
+        const over = await read(client);
+        assert.equal(over.error?.code, "LIMIT_EXCEEDED");
+        assert.equal(over.error.message, "请求过于频繁");
+        assert.equal(starts(), 10);
+        t.mock.timers.tick(999);
+        assert.equal((await read(client)).error?.code, "LIMIT_EXCEEDED");
+        t.mock.timers.tick(1);
+        for (let n = 0; n < 20; n++)
+          assert.equal((await read(client)).result.admissionState, "notFound");
+        assert.equal((await read(client)).error?.code, "LIMIT_EXCEEDED");
+        assert.equal(client.socket.readyState, 1);
+      },
+      async (t) => {
+        const b = await nativeBudget(t);
+        const before = await b.state();
+        const commandId = randomUUID();
+        const responses = await b.batch(b.client, [
+          ...Array.from({ length: 10 }, () => ({
+            method: "command.read",
+            params: { commandId: randomUUID() },
+          })),
+          ...Array.from({ length: 10 }, () => ({
+            method: "session.create",
+            params: { unexpected: true },
+            commandId: randomUUID(),
+          })),
+          { method: "session.create", params: {}, commandId },
+        ]);
+        for (const response of responses.slice(0, 10))
+          assert.equal(response.result?.admissionState, "notFound");
+        for (const response of responses.slice(10, 20))
+          assert.equal(response.error?.code, "INVALID_PARAMS");
+        const refused = responses[20];
+        assert.equal(refused.error?.code, "LIMIT_EXCEEDED");
+        assert.equal(refused.error.message, "请求过于频繁");
+        assert.equal(refused.error.commandId, commandId);
+        assert.equal(refused.error.submissionUnknown, false);
+        const reader = await device(t, b.f.remote, {
+          identity: b.client.identity,
+          transport: transport === "direct" ? "relay" : "direct",
+        });
+        const original = await b.read(reader, commandId);
+        assert.equal(original.result?.admissionState, "notFound");
+        assert.deepEqual(await b.state(), before);
+        assert.equal(await b.starts(), 0);
+        b.f.evidence.nativeBudget = {
+          group: "aggregate mixed traffic",
+          commandId,
+          refusal: refused,
+          original: original.result,
+          journalAndThreadIdsUnchanged: true,
+          timing:
+            "real connection; exact 999/1000ms boundary belongs to reference and Rust owner unit",
+        };
+      },
+    );
+
+    budgetTest(
+      `all current write methods share the connection bucket while receipt reads remain available (${transport})`,
+      async (t) => {
+        const { client, write, read, accepted, limited, starts } = await budgetFixture(t);
+        for (let n = 0; n < 10; n++) accepted(await write(client));
+        for (const method of [
+          "session.create",
+          "session.send",
+          "turn.stop",
+          "interaction.respond",
+          "task.question.reply",
+          "task.pause",
+        ]) {
+          assert.ok(client.active.methods.includes(method));
+          limited(await write(client, method));
+        }
         assert.equal((await read(client)).result.admissionState, "notFound");
-      for (let n = 0; n < 10; n++) accepted(await write(client));
-      const over = await read(client);
-      assert.equal(over.error?.code, "LIMIT_EXCEEDED");
-      assert.equal(over.error.message, "请求过于频繁");
-      assert.equal(starts(), 10);
-      t.mock.timers.tick(999);
-      assert.equal((await read(client)).error?.code, "LIMIT_EXCEEDED");
-      t.mock.timers.tick(1);
-      for (let n = 0; n < 20; n++)
-        assert.equal((await read(client)).result.admissionState, "notFound");
-      assert.equal((await read(client)).error?.code, "LIMIT_EXCEEDED");
-      assert.equal(client.socket.readyState, 1);
-    });
-    test(`all current write methods share the connection bucket while receipt reads remain available (${transport})`, async (t) => {
-      const { client, write, read, accepted, limited, starts } = await budgetFixture(t);
-      for (let n = 0; n < 10; n++) accepted(await write(client));
-      for (const method of [
-        "session.create",
-        "session.send",
-        "turn.stop",
-        "interaction.respond",
-        "task.question.reply",
-        "task.pause",
-      ]) {
-        assert.ok(client.active.methods.includes(method));
-        limited(await write(client, method));
-      }
-      assert.equal((await read(client)).result.admissionState, "notFound");
-      assert.equal(starts(), 10);
-    });
-    test(`write budgets isolate connections and devices and reconnect starts a new bucket (${transport})`, async (t) => {
-      const { f, client, write, read, accepted, limited, starts } = await budgetFixture(t);
-      for (let n = 0; n < 10; n++) accepted(await write(client));
-      limited(await write(client));
-      const sameDevice = await device(t, f.remote, {
-        identity: client.identity,
-        transport: transport === "direct" ? "relay" : "direct",
-      });
-      for (let n = 0; n < 10; n++) accepted(await write(sameDevice));
-      limited(await write(sameDevice));
-      const otherDevice = await device(t, f.remote, { pair: true, transport, preset: "Operator" });
-      accepted(await write(otherDevice));
-      client.socket.close();
-      await new Promise((resolve) => client.socket.once("close", resolve));
-      const reconnected = await device(t, f.remote, { identity: client.identity, transport });
-      assert.notEqual(reconnected.active.connectionId, client.active.connectionId);
-      accepted(await write(reconnected));
-      assert.equal((await read(otherDevice)).result.admissionState, "notFound");
-      assert.equal(starts(), 22);
-    });
-    test(`authentication and grant changes refuse writes before journal or dispatch (${transport})`, async (t) => {
-      const { f, client, write, accepted, starts } = await budgetFixture(t);
-      const unknown = await device(t, f.remote, { transport });
-      assert.equal(unknown.active.error.code, "FORBIDDEN");
-      const observer = await device(t, f.remote, { pair: true, transport });
-      assert.equal((await write(observer)).error.code, "FORBIDDEN");
-      const stale = await write(
-        client,
-        "session.create",
-        {},
-        {
+        assert.equal(starts(), 10);
+      },
+      async (t) => {
+        const b = await nativeBudget(t);
+        const before = await b.state();
+        const requests = [
+          "session.create",
+          "session.send",
+          "turn.stop",
+          "interaction.respond",
+          "task.question.reply",
+          "task.pause",
+        ].map((method) => ({ method, params: {}, commandId: randomUUID() }));
+        const responses = [];
+        let client = b.client;
+        for (const request of requests) {
+          const [response] = await b.exhaust(client, [request]);
+          b.limited(response);
+          responses.push(response);
+          client.socket.close();
+          await waitFor(() => client.socket.readyState === 3);
+          if (request !== requests.at(-1))
+            client = await device(t, b.f.remote, { identity: b.client.identity, transport });
+        }
+        const reader = await device(t, b.f.remote, {
+          identity: b.client.identity,
+          transport: transport === "direct" ? "relay" : "direct",
+        });
+        for (const request of requests) {
+          assert.ok(b.client.active.methods.includes(request.method));
+          assert.equal(
+            (await b.read(reader, request.commandId)).result?.admissionState,
+            "notFound",
+          );
+        }
+        assert.deepEqual(await b.state(), before);
+        assert.equal(await b.starts(), 0);
+        b.f.evidence.nativeBudget = {
+          group: "shared write bucket",
+          requests,
+          refusals: responses,
+          journalAndThreadIdsUnchanged: true,
+        };
+      },
+    );
+
+    budgetTest(
+      `write budgets isolate connections and devices and reconnect starts a new bucket (${transport})`,
+      async (t) => {
+        const { f, client, write, read, accepted, limited, starts } = await budgetFixture(t);
+        for (let n = 0; n < 10; n++) accepted(await write(client));
+        limited(await write(client));
+        const sameDevice = await device(t, f.remote, {
+          identity: client.identity,
+          transport: transport === "direct" ? "relay" : "direct",
+        });
+        for (let n = 0; n < 10; n++) accepted(await write(sameDevice));
+        limited(await write(sameDevice));
+        const otherDevice = await device(t, f.remote, {
+          pair: true,
+          transport,
+          preset: "Operator",
+        });
+        accepted(await write(otherDevice));
+        client.socket.close();
+        await new Promise((resolve) => client.socket.once("close", resolve));
+        const reconnected = await device(t, f.remote, { identity: client.identity, transport });
+        assert.notEqual(reconnected.active.connectionId, client.active.connectionId);
+        accepted(await write(reconnected));
+        assert.equal((await read(otherDevice)).result.admissionState, "notFound");
+        assert.equal(starts(), 22);
+      },
+      async (t) => {
+        const b = await nativeBudget(t);
+        const before = await b.state();
+        const commandId = randomUUID();
+        const [refused] = await b.exhaust(b.client, [
+          { method: "session.create", params: {}, commandId },
+        ]);
+        b.limited(refused);
+        assert.deepEqual(await b.state(), before);
+        const sameDevice = await device(t, b.f.remote, {
+          identity: b.client.identity,
+          transport: transport === "direct" ? "relay" : "direct",
+        });
+        assert.equal((await b.read(sameDevice, commandId)).result?.admissionState, "notFound");
+        const one = await b.write(sameDevice);
+        b.accepted(one);
+        const otherDevice = await device(t, b.f.remote, {
+          pair: true,
+          transport,
+          preset: "Operator",
+          projects: [b.native.alias],
+        });
+        const two = await b.write(otherDevice);
+        b.accepted(two);
+        b.client.socket.close();
+        await waitFor(() => b.client.socket.readyState === 3);
+        const reconnected = await device(t, b.f.remote, { identity: b.client.identity, transport });
+        assert.notEqual(reconnected.active.connectionId, b.client.active.connectionId);
+        const three = await b.write(reconnected);
+        b.accepted(three);
+        assert.equal((await b.read(otherDevice)).result?.admissionState, "notFound");
+        assert.equal(await b.starts(), 3);
+        assert.equal(new Set([one, two, three].map((reply) => reply.result.operationId)).size, 3);
+        b.f.evidence.nativeBudget = {
+          group: "connection device and reconnect isolation",
+          commandId,
+          refusal: refused,
+          accepted: [one.result, two.result, three.result],
+          originalConnectionId: b.client.active.connectionId,
+          reconnectedConnectionId: reconnected.active.connectionId,
+          nativeStarts: await b.starts(),
+        };
+      },
+    );
+
+    budgetTest(
+      `authentication and grant changes refuse writes before journal or dispatch (${transport})`,
+      async (t) => {
+        const { f, client, write, accepted, starts } = await budgetFixture(t);
+        const unknown = await device(t, f.remote, { transport });
+        assert.equal(unknown.active.error.code, "FORBIDDEN");
+        const observer = await device(t, f.remote, { pair: true, transport });
+        assert.equal((await write(observer)).error.code, "FORBIDDEN");
+        const stale = await write(
+          client,
+          "session.create",
+          {},
+          {
+            context: {
+              projectId: "project",
+              gatewayGeneration: client.active.gatewayGeneration,
+              grantRevision: client.active.grantRevision + 1,
+              serviceGeneration: "generation-1",
+            },
+          },
+        );
+        assert.equal(stale.error.code, "RESYNC_REQUIRED");
+        assert.equal(starts(), 0);
+        accepted(await write(client));
+        const before = await readFile(join(f.home, "project-outcomes.json"), "utf8");
+        // 模拟消息出队前已提交的撤权；验证 common acceptor 优先于写预算检查。
+        f.remote.config.deviceGrants.find((grant) => grant.devicePeerId === client.peer).status =
+          "revoked";
+        client.secure.send({
+          id: randomUUID(),
+          method: "session.create",
+          commandId: randomUUID(),
           context: {
             projectId: "project",
             gatewayGeneration: client.active.gatewayGeneration,
-            grantRevision: client.active.grantRevision + 1,
+            grantRevision: client.active.grantRevision,
             serviceGeneration: "generation-1",
           },
-        },
-      );
-      assert.equal(stale.error.code, "RESYNC_REQUIRED");
-      assert.equal(starts(), 0);
-      accepted(await write(client));
-      const before = await readFile(join(f.home, "project-outcomes.json"), "utf8");
-      // 模拟消息出队前已提交的撤权；验证 common acceptor 优先于写预算检查。
-      f.remote.config.deviceGrants.find((grant) => grant.devicePeerId === client.peer).status =
-        "revoked";
-      client.secure.send({
-        id: randomUUID(),
-        method: "session.create",
-        commandId: randomUUID(),
-        context: {
-          projectId: "project",
-          gatewayGeneration: client.active.gatewayGeneration,
-          grantRevision: client.active.grantRevision,
-          serviceGeneration: "generation-1",
-        },
-        params: {},
-      });
-      const revoked = await next(client.messages);
-      // 撤权沿用关闭通道语义；异步加密发送可能在关闭时被取消。
-      assert.ok(revoked.done || revoked.value?.error?.code === "GRANT_CHANGED");
-      assert.equal(starts(), 1);
-      assert.equal(await readFile(join(f.home, "project-outcomes.json"), "utf8"), before);
-    });
+          params: {},
+        });
+        const revoked = await next(client.messages);
+        // 撤权沿用关闭通道语义；异步加密发送可能在关闭时被取消。
+        assert.ok(revoked.done || revoked.value?.error?.code === "GRANT_CHANGED");
+        assert.equal(starts(), 1);
+        assert.equal(await readFile(join(f.home, "project-outcomes.json"), "utf8"), before);
+      },
+      async (t) => {
+        const b = await nativeBudget(t);
+        const before = await b.state();
+        const unknown = await device(t, b.f.remote, { transport });
+        assert.equal(unknown.active.error?.code, "FORBIDDEN");
+        const observer = await device(t, b.f.remote, {
+          pair: true,
+          transport,
+          projects: [b.native.alias],
+        });
+        assert.equal((await b.write(observer)).error?.code, "FORBIDDEN");
+        const stale = await b.write(
+          b.client,
+          "session.create",
+          {},
+          {
+            context: { ...b.context(b.client), grantRevision: b.client.active.grantRevision + 1 },
+          },
+        );
+        assert.equal(stale.error?.code, "RESYNC_REQUIRED");
+        assert.deepEqual(await b.state(), before);
+        assert.equal(await b.starts(), 0);
+        const accepted = await b.write(b.client);
+        b.accepted(accepted);
+        const afterAccepted = await b.state();
+        await b.f.remote.control({ operation: "revoke", id: b.client.peer });
+        await waitFor(() => b.client.socket.readyState === 3);
+        const revoked = await device(t, b.f.remote, { identity: b.client.identity, transport });
+        assert.equal(revoked.active.error?.code, "FORBIDDEN");
+        assert.deepEqual(await b.state(), afterAccepted);
+        assert.equal(await b.starts(), 1);
+        assert.equal((await observer.read("healthy-after-revoke")).result.projects.length, 1);
+        b.f.evidence.nativeBudget = {
+          group: "authentication and grant fence",
+          unauthorized: [unknown.active.error, stale.error, revoked.active.error],
+          original: accepted.result,
+          originalConnectionClosed: b.client.socket.readyState === 3,
+          journalAndThreadIdsUnchangedAfterRevoke: true,
+          observation:
+            "public revocation and actual channel close; no synthetic queued-message barrier",
+        };
+      },
+    );
   }
   test("real CLI enrollment persists encrypted capability before outbound Host registration", async (t) => {
     const relay = await relayFixture(t),
