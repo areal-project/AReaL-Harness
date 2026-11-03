@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { nativeHostFixture, nativeCoreProject } from "./remote-native-host-fixture.mjs";
 import { pushRelay, phone, until, runWithIsolatedCA } from "./remote-native-push-fixture.mjs";
-import { stopSettlement, assertUnknownSettlement } from "./remote-stop-settlement-scenario.mjs";
+import { stopSettlement, assertStopSettlement } from "./remote-stop-settlement-scenario.mjs";
 
 if (!process.env.RC12_TLS_HOME) {
   test("native T24 uses the isolated process CA", async () => {
@@ -14,7 +14,7 @@ if (!process.env.RC12_TLS_HOME) {
   });
 } else {
   test(
-    "original T24 settles only the targeted Turn and preserves Runtime UNKNOWN",
+    "original T24 preserves targeted Runtime termination or UNKNOWN",
     { timeout: 240000 },
     async (t) => {
       const expectedUnknownSettlement = {};
@@ -76,7 +76,8 @@ if (!process.env.RC12_TLS_HOME) {
         const terminal = (
           await native("thread/read", { threadId: evidence.target.threadId, includeTurns: true })
         ).thread.turns.find((turn) => turn.id === evidence.target.expectedTurnId);
-        assertUnknownSettlement(evidence.original, terminal);
+        const outcome = assertStopSettlement(evidence.original, terminal);
+        assert.equal(outcome, evidence.outcome);
         let status;
         await until(async () => {
           status = await native("areal/server/status");
@@ -91,6 +92,38 @@ if (!process.env.RC12_TLS_HOME) {
             )
           );
         }, "original Runtime resources released before UNKNOWN guard cleanup");
+        if (outcome === "terminated") {
+          assert.deepEqual(status.unresolvedTools, []);
+          assert.equal(status.restartSafe, true);
+          evidence.runtimeResourcesConfirmedReleased = true;
+          const reference = {
+            requestId: randomUUID(),
+            projectId: project.projectId,
+            serviceId: project.service.serviceId,
+            serviceGeneration: project.service.generation,
+          };
+          evidence.offline = { reference };
+          await writeFile(
+            join(f.evidence.root, "offline-reference.json"),
+            JSON.stringify(reference, null, 2),
+          );
+          try {
+            evidence.offline.receipt = await f.client.stopProject(
+              reference.requestId,
+              reference.projectId,
+              reference.serviceGeneration,
+              "ifIdle",
+              true,
+            );
+          } catch (error) {
+            evidence.offline.error = { code: error.code, message: error.message };
+            evidence.offline.receipt = (await f.client.operation(reference.requestId)).operation;
+          }
+          assert.equal(evidence.offline.receipt.state, "completed");
+          for (const key of ["requestId", "projectId", "serviceId", "serviceGeneration"])
+            assert.equal(evidence.offline.receipt[key], reference[key]);
+          return;
+        }
         const tool = evidence.original.items.find((item) => item.tool === "run_command");
         assert.deepEqual(status.unresolvedTools, [
           { threadId: evidence.target.threadId, itemId: tool.id },

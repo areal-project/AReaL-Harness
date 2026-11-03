@@ -167,3 +167,23 @@ test("work pages and refreshes merge by modification time descending", async () 
   assert.equal(workspace.state.groups.project.nextCursor, "last");
   workspace.dispose();
 });
+
+if (!process.env.RC12_TLS_HOME) {
+  test(
+    "Rust Host mobile workspace source uses the isolated process CA",
+    { timeout: 300000 },
+    async () => {
+      const { runWithIsolatedCA } = await import("./remote-native-push-fixture.mjs");
+      await runWithIsolatedCA(import.meta.filename);
+    },
+  );
+} else {
+  test(
+    "production MobileClient preserves Rust history, live tail and late response identity",
+    { timeout: 240000 },
+    async (t) => {
+      const { nativeMobileWorkspace } = await import("./mobile-workspace-native-fixture.mjs");
+      await nativeMobileWorkspace(t);
+    },
+  );
+}

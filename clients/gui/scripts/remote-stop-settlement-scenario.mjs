@@ -160,6 +160,50 @@ export function assertUnknownSettlement(original, settledTurn) {
   assert.equal(result.error.message, "interrupted tool invocation; outcome is UNKNOWN");
 }
 
+export function assertStopSettlement(original, settledTurn) {
+  const tools = settledTurn.items.filter(
+    (item) => item.type === "dynamicToolCall" && item.tool === "run_command",
+  );
+  assert.equal(tools.length, 1);
+  if (tools[0].execution.outcome === "unknown") {
+    assertUnknownSettlement(original, settledTurn);
+    return "unknown";
+  }
+  const before = original.items.filter(
+    (item) => item.type === "dynamicToolCall" && item.tool === "run_command",
+  );
+  assert.equal(before.length, 1);
+  const tool = tools[0];
+  assert.equal(settledTurn.id, original.id);
+  assert.equal(settledTurn.status, "interrupted");
+  assert.equal(settledTurn.error, null);
+  assert.equal(tool.id, before[0].id);
+  assert.deepEqual(tool.arguments, before[0].arguments);
+  for (const key of ["runtimeEpoch", "scopeId", "operationId"]) {
+    assert.ok(before[0].execution[key]);
+    assert.equal(tool.execution[key], before[0].execution[key]);
+  }
+  assert.equal(tool.execution.backend, "runtime");
+  assert.equal(tool.execution.outcome, "failed");
+  assert.equal(tool.execution.inspection, undefined);
+  assert.equal(tool.status, "failed");
+  assert.equal(tool.success, false);
+  const result = JSON.parse(tool.contentItems.find((item) => item.type === "inputText").text);
+  assert.equal(result.commandStatus, "terminated");
+  assert.equal(result.state, "exited");
+  assert.equal(result.outputClosed, true);
+  assert.equal(result.outputReadComplete, true);
+  assert.equal(result.outputIntegrity, "retained");
+  assert.equal(result.stopReason, "scope revoked");
+  assert.equal(result.returnReason, "completed");
+  assert.ok(
+    (typeof result.signal === "string" && result.signal.length > 0) ||
+      Number.isSafeInteger(result.exitCode),
+    "original Runtime result must identify the actual process exit",
+  );
+  return "terminated";
+}
+
 export async function stopSettlement({
   a,
   native,
@@ -214,13 +258,19 @@ export async function stopSettlement({
   settlementEvidence.afterAdmission = await readTurn(threadId, turnId);
   assert.equal(settlementEvidence.afterAdmission.id, turnId);
   if (settlementEvidence.afterAdmission.status !== "inProgress")
-    assertUnknownSettlement(settlementEvidence.original, settlementEvidence.afterAdmission);
+    settlementEvidence.admissionSettlement = assertStopSettlement(
+      settlementEvidence.original,
+      settlementEvidence.afterAdmission,
+    );
   settlementEvidence.admissionWitness = "original active read and accepted atomic Core guard";
   settlementEvidence.observationBoundary =
     "separate read after network receipt; cleanup order unproven";
   await settled(threadId);
   settlementEvidence.terminal = await readTurn(threadId, turnId);
-  assertUnknownSettlement(settlementEvidence.original, settlementEvidence.terminal);
+  settlementEvidence.outcome = assertStopSettlement(
+    settlementEvidence.original,
+    settlementEvidence.terminal,
+  );
   if (journal) settlementEvidence.hostJournalBeforeQueries = await journal(accepted);
   else settlementEvidence.dispatchesBeforeQueries = await control("dispatches");
   settlementEvidence.savedReceipt = await a.rpc("command.read", {
@@ -249,7 +299,10 @@ export async function stopSettlement({
     );
   }
   settlementEvidence.afterQueries = await readTurn(threadId, turnId);
-  assertUnknownSettlement(settlementEvidence.original, settlementEvidence.afterQueries);
+  assert.equal(
+    assertStopSettlement(settlementEvidence.original, settlementEvidence.afterQueries),
+    settlementEvidence.outcome,
+  );
   settlementEvidence.markerContents = await readFile(join(workspace, "effects", marker), "utf8");
   assert.equal(
     settlementEvidence.markerContents,

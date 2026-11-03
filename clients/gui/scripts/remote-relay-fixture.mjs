@@ -1,11 +1,11 @@
 import { attachRemoteHostFixture } from "./remote-host-fixture.cjs";
-import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { createServer as tlsServer } from "node:tls";
 import { createServer as netServer, connect } from "node:net";
-import { randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
+import { randomBytes, randomUUID, createCipheriv, createDecipheriv } from "node:crypto";
 import { createRequire } from "node:module";
 import { CoreClient } from "../packages/runtime-client/core.js";
 const require = createRequire(new URL("../app/package.json", import.meta.url));
@@ -238,6 +238,16 @@ export async function relayFixture(
   }
   return f;
 }
+export async function nativeRelayHostFixture(t, options = {}) {
+  const { nativeHostFixture } = await import("./remote-native-host-fixture.mjs");
+  const fixture = await nativeHostFixture(t, options);
+  const workspace = join(fixture.evidence.root, "Project");
+  await mkdir(workspace);
+  const projectAlias = randomUUID().replaceAll("-", "").slice(0, 24);
+  await fixture.source.register(randomUUID(), { id: projectAlias, root: workspace });
+  return { ...fixture, projectAlias };
+}
+
 export async function hostFixture(t, { config, commands = false } = {}) {
   const home = await mkdtemp(join(tmpdir(), "rc12-host-"));
   const key = randomBytes(32);

@@ -3,7 +3,6 @@ import { recoverSentEffect } from "./remote-send-recovery-scenario.mjs";
 import { fastPreservation } from "./remote-configure-scenario.mjs";
 import { taskOwnedPreflight, stopSettlement } from "./remote-stop-settlement-scenario.mjs";
 import { makeTempDir } from "./support/temp.mjs";
-// 原生 T18–T34：真实 DesktopService/Core/Runtime/Noise；本机安全存储用显式 fixture。
 import assert from "node:assert/strict";
 import { CoreClient } from "../packages/runtime-client/core.js";
 import { createRequire } from "node:module";
@@ -23,6 +22,7 @@ import {
   browserTransportLimitation,
 } from "./remote-conformance-transport.mjs";
 const transport = selectRemoteTransport();
+const rustOwner = process.env.AREAL_REMOTE_OWNER === "rust";
 const filename = fileURLToPath(import.meta.url),
   gui = resolve(dirname(filename), ".."),
   root = resolve(gui, "../..");
@@ -167,7 +167,218 @@ async function rejectRememberedDecision({ native, rpc, threadId, params, decisio
   );
 }
 
-if (process.argv[2] === "--host-worker") {
+if (process.argv[2] === "--host-worker" && rustOwner) {
+  const { nativeHostFixture } = await import("./remote-native-host-fixture.mjs");
+  const { startupTrace } = require("../app/src/core/startup-timing.cjs");
+  const options = JSON.parse(process.env.RC05_HOST_OPTIONS);
+  const cleanup = [];
+  let backend;
+  const fixture = await nativeHostFixture(
+    { after: (action) => cleanup.push(action), diagnostic: console.log },
+    {
+      caseRoot: options.caseRoot,
+      deferNative: true,
+      ...(process.env.NODE_EXTRA_CA_CERTS
+        ? { tlsHome: dirname(process.env.NODE_EXTRA_CA_CERTS) }
+        : {}),
+      config: {
+        identity: options.hostIdentity,
+        enabled: false,
+        directEnabled: false,
+        schemaVersion: 2,
+      },
+    },
+  );
+  try {
+    backend = new CoreBackend({
+      ...options,
+      home: fixture.source.source.coreHome,
+      hostHome: fixture.home,
+      guiProfile: fixture.source.source.profile,
+      harnessHome: fixture.source.source.legacyServiceHome,
+      sourceSingletonHeld: true,
+      encryption: encryptionFixture,
+    });
+    backend.supportsBrowser = () => false;
+    await backend.init();
+    await backend.command("providers", { operation: "list" });
+    const projectId = backend.saved[0]?.id ?? (await backend.addProject(options.workspace));
+    const project = await backend.start(projectId);
+    fixture.evidence.service = project.service;
+    const native = (method, params) => project.client.request(method, params);
+    process.send({ event: "service-started", projectId, service: project.service });
+    const remote = await fixture.make();
+    let endpoint;
+    if (transport === "direct") {
+      if (!remote.state().directEnabled) await remote.control({ operation: "enableDirect" });
+      const origin = new URL(remote.state().directUrl).origin;
+      endpoint = { origin, ws: `${origin.replace(/^http:/, "ws:")}/remote/socket`, room: null };
+    } else endpoint = await initializeConformanceHost(remote, transport, options.remoteTransport);
+    let offlineReference;
+    process.on("message", async (message) => {
+      try {
+        let result;
+        if (message.method === "control") result = await remote.control(message.params);
+        else if (message.method === "native")
+          result = await native(message.params.method, message.params.params);
+        else if (message.method === "foreign-project") {
+          const id = await backend.addProject(join(options.workspace, "foreign"));
+          const foreign = await backend.start(id);
+          result = { projectId: id, service: foreign.service };
+        } else if (message.method === "profile") {
+          backend.defaultProfile = structuredClone(message.params);
+          const prepared = await backend.prepareServiceLaunch(
+            project,
+            startupTrace("fixture.profile"),
+          );
+          const requestId = randomUUID();
+          fixture.evidence.ensure = {
+            reference: {
+              requestId,
+              hostId: fixture.client.hostId,
+              generation: fixture.client.generation,
+              projectId: backend.host.resolve(projectId).projectId,
+            },
+          };
+          await writeFile(
+            join(options.caseRoot, "ensure-reference.json"),
+            JSON.stringify(fixture.evidence.ensure.reference, null, 2),
+          );
+          fixture.evidence.ensure.result = await backend.host.ensure(
+            requestId,
+            projectId,
+            prepared.launchInputs,
+            prepared.credentials,
+          );
+          result = structuredClone(message.params);
+        } else if (message.method === "last-create-profile") {
+          const { snapshot } = await backend.host.journal(projectId).read();
+          const records = [...snapshot.pending, ...Object.values(snapshot.outcomes)].filter(
+            (record) =>
+              record.method === "areal/thread/start" &&
+              record.operationId === message.params.operationId,
+          );
+          assert.equal(
+            records.length,
+            1,
+            "the original create operation has one journal association",
+          );
+          const record = records[0];
+          result = {
+            observation:
+              "original Host association and explicit Core result; raw dispatch parameters unobserved",
+            operationId: record.operationId,
+            commandId: record.remote.commandId,
+            method: record.method,
+            nativeDigest: record.nativeDigest,
+            coreScope: record.coreScope,
+            admissionState: record.admissionState,
+            receipt: record.receipt,
+            error: record.error,
+          };
+          await writeFile(
+            join(options.caseRoot, "native-create-observation.json"),
+            JSON.stringify(result, null, 2),
+          );
+        } else if (message.method === "journal") {
+          const { snapshot } = await backend.host.journal(projectId).read();
+          const { accepted, peer } = message.params;
+          const rows = [...snapshot.pending, ...Object.values(snapshot.outcomes)].filter(
+            (row) => row.operationId === accepted.operationId,
+          );
+          assert.equal(rows.length, 1);
+          const row = rows[0];
+          assert.equal(row.remote.hostId, identityId(options.hostIdentity));
+          assert.equal(row.remote.devicePeerId, peer);
+          assert.equal(row.remote.projectId, projectId);
+          assert.equal(row.remote.commandId, accepted.commandId);
+          assert.equal(row.remote.method, "turn.stop");
+          assert.equal(row.method, "turn/interrupt");
+          assert.equal(row.admissionState, "accepted");
+          assert.deepEqual(row.remote.target, accepted.target);
+          result = row;
+        } else if (message.method === "offline") {
+          offlineReference = {
+            requestId: randomUUID(),
+            projectId: backend.host.resolve(projectId).projectId,
+            hostId: fixture.client.hostId,
+            generation: fixture.client.generation,
+            serviceGeneration: project.service.generation,
+            serviceId: project.service.serviceId,
+          };
+          fixture.evidence.offline = { reference: offlineReference };
+          await writeFile(
+            join(options.caseRoot, "offline-reference.json"),
+            JSON.stringify(offlineReference, null, 2),
+          );
+          try {
+            fixture.evidence.offline.receipt = await fixture.client.stopProject(
+              offlineReference.requestId,
+              offlineReference.projectId,
+              offlineReference.serviceGeneration,
+              "ifIdle",
+              true,
+            );
+          } catch (error) {
+            fixture.evidence.offline.error = { code: error.code, message: error.message };
+            fixture.evidence.offline.receipt = (
+              await fixture.client.operation(offlineReference.requestId)
+            ).operation;
+          }
+          assert.equal(
+            fixture.evidence.offline.receipt?.state,
+            "completed",
+            "original offline stop must complete without replay",
+          );
+          const receipt = fixture.evidence.offline.receipt;
+          for (const key of ["requestId", "projectId", "serviceGeneration", "serviceId"])
+            assert.equal(receipt[key], offlineReference[key]);
+          result = fixture.evidence.offline;
+        } else if (message.method === "stop") {
+          if (offlineReference) {
+            const receipt = (await fixture.client.operation(offlineReference.requestId)).operation;
+            assert.ok(
+              receipt && ["completed", "blocked"].includes(receipt.state),
+              "UNKNOWN original offline operation; preserve Host and credentials",
+            );
+          }
+          const remoteConfigSha256 = createHash("sha256")
+            .update(JSON.stringify(await fixture.persisted()))
+            .digest("hex");
+          await remote.close();
+          await backend.disconnect();
+          backend = null;
+          for (const action of cleanup.splice(0).reverse()) await action();
+          process.send(
+            { id: message.id, result: { remoteConfigSha256, evidence: fixture.evidence } },
+            () => process.exit(0),
+          );
+          return;
+        } else
+          throw Object.assign(
+            new Error(`Rust owner has no legacy private fixture control: ${message.method}`),
+            { code: "NATIVE_OBSERVATION_UNAVAILABLE" },
+          );
+        process.send({ id: message.id, result });
+      } catch (error) {
+        process.send({ id: message.id, error: { message: error.message, code: error.code } });
+      }
+    });
+    process.send({
+      event: "ready",
+      projectId,
+      ...endpoint,
+      transport,
+      generation: project.service.generation,
+      service: project.service,
+      rustHost: fixture.evidence.host,
+    });
+  } catch (error) {
+    await backend?.disconnect();
+    for (const action of cleanup.splice(0).reverse()) await action();
+    throw error;
+  }
+} else if (process.argv[2] === "--host-worker") {
   // 仅父测试进程提供隔离目录；真实远程请求不拥有这些测试控制能力。
   const options = JSON.parse(process.env.RC05_HOST_OPTIONS);
   const backend = new CoreBackend(options);
@@ -805,6 +1016,7 @@ if (process.argv[2] === "--host-worker") {
     desktopConfig: deployment,
     defaultProfile: { id: "fixture", revision: "v1" },
     workspace,
+    ...(rustOwner ? { caseRoot: scratch, hostIdentity } : {}),
   };
   let transportFixture,
     transportFailureEvidence,
@@ -815,13 +1027,15 @@ if (process.argv[2] === "--host-worker") {
     browserLayoutSafe = false,
     host,
     workerSequence = 0,
-    passed = false;
+    passed = false,
+    nativeCleanup;
   const waiting = new Map(),
     connections = new Set(),
     instances = new Map(),
     hostWorkers = [],
     ownedProcesses = new Map(),
     checks = [],
+    stoppedProjects = [],
     phaseErrors = [],
     recentRpcOutcomes = [],
     requiredUnrun = [],
@@ -838,6 +1052,19 @@ if (process.argv[2] === "--host-worker") {
       waiting.set(id, { resolve, reject, timer });
       worker.send({ id, method, params });
     });
+  const offline = async () => {
+    const result = await control("offline");
+    if (rustOwner) {
+      const { reference, receipt } = result;
+      assert.equal(receipt.state, "completed");
+      for (const key of ["requestId", "projectId", "serviceGeneration", "serviceId"])
+        assert.equal(receipt[key], reference[key]);
+      assert.equal(reference.hostId, host.rustHost.hostId);
+      assert.equal(reference.generation, host.rustHost.generation);
+      stoppedProjects.push(result);
+    }
+    return result;
+  };
   // 只记录本次父进程和实际 service descriptor 的后代；不按名称寻找或终止用户进程。
   function recordOwnedProcesses() {
     const roots = new Map([[process.pid, "harness"]]);
@@ -1115,10 +1342,30 @@ if (process.argv[2] === "--host-worker") {
         revision: "v1",
       });
       const workflow = await a.rpc("session.create");
-      const workflowDispatchProfile = await control("last-create-profile");
-      assert.deepEqual(workflowDispatchProfile, { id: "flow", revision: "v1" });
+      if (rustOwner)
+        await writeFile(
+          join(scratch, "native-preflight.json"),
+          JSON.stringify({ workflow, expectedProfile: { id: "flow", revision: "v1" } }, null, 2),
+        );
       assert.equal(workflow.result.admissionState, "rejected");
       assert.equal(workflow.result.error.code, "UNSUPPORTED_PROFILE");
+      const workflowDispatchProfile = await control(
+        "last-create-profile",
+        rustOwner ? { operationId: workflow.result.operationId } : undefined,
+      );
+      if (rustOwner) {
+        assert.equal(workflowDispatchProfile.operationId, workflow.result.operationId);
+        assert.equal(workflowDispatchProfile.commandId, workflow.result.commandId);
+        assert.equal(workflowDispatchProfile.method, "areal/thread/start");
+        assert.match(workflowDispatchProfile.nativeDigest, /^[a-f0-9]{64}$/);
+        assert.equal(workflowDispatchProfile.coreScope.generation, host.generation);
+        assert.equal(workflowDispatchProfile.admissionState, "rejected");
+        assert.equal(workflowDispatchProfile.error.code, "UNSUPPORTED_PROFILE");
+        const original = await a.rpc("command.read", { commandId: workflow.result.commandId });
+        assert.equal(original.result.operationId, workflow.result.operationId);
+        assert.equal(original.result.admissionState, "rejected");
+        assert.equal(original.result.error.code, "UNSUPPORTED_PROFILE");
+      } else assert.deepEqual(workflowDispatchProfile, { id: "flow", revision: "v1" });
       await control("profile", { id: "fixture", revision: "v1" });
       const running = (
         await a.rpc("session.send", {
@@ -1144,7 +1391,7 @@ if (process.argv[2] === "--host-worker") {
         waitForModel: () => waitFor(() => held.size > 0, "ownership model held"),
         evidence: taskOwnershipEvidence,
       });
-      await control("offline");
+      await offline();
       assert.ok((await a.rpc("session.create")).error);
       assert.equal(
         (await a.rpc("command.read", { commandId: created.commandId })).result.admissionState,
@@ -1243,14 +1490,19 @@ if (process.argv[2] === "--host-worker") {
         startTurn,
         waitForModel: () => waitFor(() => held.size > 0, "ownership model held"),
         control,
-        offline: () => control("offline"),
+        offline,
+        ...(rustOwner
+          ? {
+              journal: (accepted) => control("journal", { accepted, peer: identityId(deviceA) }),
+            }
+          : {}),
         settlementEvidence,
         taskOwnershipEvidence,
       });
       checks.push({
         case: "T24",
         detail:
-          "real Runtime Stop admission precedes failed Turn with original tool UNKNOWN; exact single append, saved receipt and duplicate without replay or acknowledgement; actual queued Task-owned refusal and offline receipt",
+          "real Runtime Stop preserves exact original Tool identity and authoritative terminated or UNKNOWN result; single append, original receipt and duplicate without replay or acknowledgement; Task-owned refusal and offline receipt",
       });
     }
     if (interactionOnly || interactionSettlementOnly) {
@@ -2585,6 +2837,20 @@ if (process.argv[2] === "--host-worker") {
     for (const instance of instances.values()) {
       let client;
       try {
+        const stopped = stoppedProjects.find(
+          ({ receipt }) =>
+            receipt.serviceId === instance.serviceId &&
+            receipt.serviceGeneration === instance.generation &&
+            receipt.state === "completed",
+        );
+        if (stopped) {
+          drainStatus.push({
+            serviceId: instance.serviceId,
+            generation: instance.generation,
+            completedStop: stopped,
+          });
+          continue;
+        }
         const auth = JSON.parse(await readFile(instance.authFile, "utf8"));
         const token = auth.principals.find((principal) => principal.id === "desktop-owner").token;
         client = new CoreClient({
@@ -2612,7 +2878,8 @@ if (process.argv[2] === "--host-worker") {
     if (worker?.exitCode === null && worker.signalCode === null) {
       try {
         const exited = once(worker, "exit");
-        await control("stop");
+        const stopped = await control("stop");
+        if (rustOwner) nativeCleanup = stopped;
         await Promise.race([
           exited,
           pause(5000).then(() => {
@@ -2625,8 +2892,8 @@ if (process.argv[2] === "--host-worker") {
         worker.kill("SIGTERM");
       }
     }
-    const cleanup = [];
-    for (const instance of instances.values()) {
+    const cleanup = nativeCleanup?.evidence.cleanup ?? [];
+    for (const instance of rustOwner ? [] : instances.values()) {
       try {
         cleanup.push(
           JSON.parse(
@@ -2738,9 +3005,11 @@ if (process.argv[2] === "--host-worker") {
     }
     let remoteConfigSha256 = null;
     try {
-      remoteConfigSha256 = createHash("sha256")
-        .update(await readFile(join(home, "remote-host-fixture.json")))
-        .digest("hex");
+      remoteConfigSha256 = rustOwner
+        ? (nativeCleanup?.remoteConfigSha256 ?? null)
+        : createHash("sha256")
+            .update(await readFile(join(home, "remote-host-fixture.json")))
+            .digest("hex");
     } catch (error) {
       passed = false;
       phaseErrors.push({ phase: "config-evidence", code: error.code });
@@ -2760,11 +3029,14 @@ if (process.argv[2] === "--host-worker") {
         requiredUnrun.length === 0 &&
         (repetitions === 0 || completedRaceIterations >= 100),
       fullConformance: false,
+      businessOwner: rustOwner ? "Rust Host" : "legacy JS RemoteControl",
+      ...(rustOwner ? { rustHost: host?.rustHost, nativeCleanup: nativeCleanup?.evidence } : {}),
       requiredUnrun,
       phaseErrors,
       ...(!passed ? { recentRpcOutcomes } : {}),
       remoteConfigSha256,
       checkLayer: "native-node-business; browser subchecks only when explicitly recorded",
+      ...(rustOwner ? { credentialBoundary: "isolated synthetic Host Keychain entries" } : {}),
       kind: transport === "direct" ? "native-direct-loopback" : "native-relay-node-tls",
       transport: transportFixture?.evidence ??
         transportFailureEvidence ?? { transport, startup: "failed" },
@@ -2846,7 +3118,9 @@ if (process.argv[2] === "--host-worker") {
         ...(transport === "direct" ? ["Relay"] : ["production PWA strict TLS"]),
         "public network",
         "physical phone",
-        "system keychain",
+        ...(rustOwner
+          ? ["production credentials and real credential migration"]
+          : ["system keychain"]),
         "native Browser adapter (Node fixture)",
         "packaged Electron",
       ],

@@ -233,9 +233,14 @@ The phone and scheduled tasks no longer depend on the GUI. Desktop Service is re
 - Compare implementations in isolated environments before switching. Each production identity, grant set, and journal has one writer. Retain the JS implementation until Rust passes the reference tests; never serve one identity through two concurrent Gateways.
 - Preserve paired devices, the Remote Noise identity, and grants from a single legacy profile without re-pairing. Different identities from multiple profiles produce a conflict; never overwrite them or present them as one peer.
 
+### Reference observations and stop settlement
+
+- JS private dispatch-parameter caches, save counts, and connection objects may be replaced by the same original request's Host receipt, durable result, real connection state, and actual effects. Replacement evidence must preserve identity and authorization and must not claim to measure physical calls underneath.
+- T24 binds settlement to the original Tool `id`, `runtimeEpoch`, `scopeId`, and `operationId`. Accept a terminated tool and `interrupted` Turn only when the original Runtime result establishes termination through `terminated`, `exited`, closed output, and corresponding evidence; Turn status alone is insufficient. Without a definite result, retain the original strong UNKNOWN assertions. `null`, timeout, and disconnection never prove non-execution. Authorization, target refusal, original-request association, and exactly-once effects remain required.
+
 ### Stop and ask
 
-- Any reference test needs a changed assertion to pass.
+- Outside the explicit observation migration and stop-settlement branches supported by original evidence above, a reference test needs changed business assertions to pass.
 - The Relay server protocol (`services/remote-relay`) would have to change.
 
 ### Done when

@@ -500,10 +500,11 @@ impl Host {
                     .filter_map(|grant| grant["devicePeerId"].as_str())
                     .map(str::to_owned)
                     .collect::<Vec<_>>();
-                if let Some(grants) = config["deviceGrants"].as_array_mut() {
+                if let Some(grants) = config.get_mut("deviceGrants").and_then(Value::as_array_mut) {
                     grants.retain(|grant| !forgotten.iter().any(|id| grant["devicePeerId"] == *id));
                 }
-                if let Some(commands) = config["pushCommands"].as_array_mut() {
+                if let Some(commands) = config.get_mut("pushCommands").and_then(Value::as_array_mut)
+                {
                     commands.retain(|command| {
                         !forgotten.iter().any(|id| command["devicePeerId"] == *id)
                     });

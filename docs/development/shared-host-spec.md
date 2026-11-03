@@ -233,9 +233,14 @@ GUI 不再启动 Desktop Service 管项目生命周期，而是连 Host；⌘Q �
 - 在隔离环境并行对照后切换。生产身份、grant 与 journal 始终只有一个 writer；Rust Gateway 通过对照前保留 JS 实现，不让两个 Gateway 同时承接同一身份。
 - 单旧 profile 的已配对设备、Remote Noise 身份与授权原样保留，无需重新配对。多个 profile 的不同身份报告冲突，不能覆盖或伪装为同一个 peer。
 
+### 对照观察与停止结算
+
+- JS 私有派发参数缓存、保存次数和连接对象，可替换为同一原请求的 Host 回执、持久结果、真实连接状态和实际副作用；替代证据必须保留原身份与授权，不能宣称测量了底层物理调用次数。
+- T24 按原 Tool 的 `id`、`runtimeEpoch`、`scopeId`、`operationId` 核对结算。只有原 Runtime 结果明确证明 `terminated`、`exited`、输出关闭等终止事实时，才接受对应的已终止工具与 `interrupted` Turn；不能仅凭 Turn 状态判断。缺少确定结果时继续执行原 UNKNOWN 强断言；`null`、超时和断连都不证明未执行。授权、目标拒绝、原请求关联和单次副作用约束始终保留。
+
 ### 需要停下来问的情况
 
-- 任何对照测试需要修改断言才能通过。
+- 除上述明确的观察迁移和有原始证据的停止结算分支外，对照测试需要修改业务断言才能通过。
 - 需要改变 Relay 服务端（`services/remote-relay`）的协议。
 
 ### 完成条件

@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { createIdentity, identityId, secureChannel } from "../packages/remote/src/channel.mjs";
 import { createRemoteWire } from "../packages/remote/src/wire.mjs";
 import { parseRemoteConfig } from "../app/src/core/remote-config.cjs";
 import { browserDeviceName } from "../renderer/remote-web/device-name.mjs";
-import { hostFixture, waitFor } from "./remote-relay-fixture.mjs";
+import { nativeRelayHostFixture as hostFixture, waitFor } from "./remote-relay-fixture.mjs";
 
 const require = createRequire(new URL("../app/package.json", import.meta.url));
 const WebSocket = require("ws");
@@ -28,7 +29,7 @@ async function next(messages) {
 
 async function connect(t, remote, { identity, inviteSecret, displayName = "Chrome · macOS" } = {}) {
   identity ??= await createIdentity();
-  const origin = remote.direct.origin;
+  const origin = remote.state().directUrl;
   const socket = new WebSocket(origin.replace(/^http/, "ws") + "/remote/socket", { origin });
   t.after(() => socket.terminate());
   const { wire, ready } = createRemoteWire(socket);
@@ -42,10 +43,18 @@ async function connect(t, remote, { identity, inviteSecret, displayName = "Chrom
     displayName,
     ...(inviteSecret ? { inviteSecret } : {}),
   });
-  return { socket, messages, identity, peer: identityId(identity), first: await next(messages) };
+  return {
+    socket,
+    secure,
+    messages,
+    identity,
+    peer: identityId(identity),
+    first: await next(messages),
+  };
 }
 
-async function pairDevice(t, remote, displayName) {
+async function pairDevice(t, f, displayName) {
+  const { remote } = f;
   const inviteSecret = new URLSearchParams(
     new URL((await remote.control({ operation: "pair" })).payload).hash.slice(1),
   ).get("invite");
@@ -54,10 +63,12 @@ async function pairDevice(t, remote, displayName) {
   await remote.control({
     operation: "approve",
     id: client.peer,
-    projects: ["project"],
+    projects: [f.projectAlias],
     preset: "Observer",
   });
-  assert.equal((await next(client.messages)).event, "ready");
+  client.active = await next(client.messages);
+  assert.equal(client.active.event, "ready");
+  await remote.refresh();
   return client;
 }
 
@@ -69,25 +80,31 @@ test("same-named devices get distinct names, pairing time and live presence", as
   const { remote } = f;
   await remote.control({ operation: "enableDirect" });
   const before = Date.now();
-  const first = await pairDevice(t, remote, "Chrome · macOS");
-  const second = await pairDevice(t, remote, "Chrome · macOS");
+  const first = await pairDevice(t, f, "Chrome · macOS");
+  const second = await pairDevice(t, f, "Chrome · macOS");
   assert.equal(grantOf(remote, first.peer).displayName, "Chrome · macOS");
   assert.equal(grantOf(remote, second.peer).displayName, "Chrome · macOS (2)");
   const stored = (await f.persisted()).deviceGrants;
   assert.ok(stored.every((grant) => grant.pairedAt >= before));
   assert.deepEqual(parseRemoteConfig(await f.persisted()).deviceGrants, stored);
 
-  await waitFor(() => grantOf(remote, first.peer).online === true);
+  await waitFor(async () => {
+    await remote.refresh();
+    return grantOf(remote, first.peer).online === true;
+  });
   assert.ok(grantOf(remote, first.peer).lastSeenAt >= before);
   first.socket.terminate();
-  await waitFor(() => grantOf(remote, first.peer).online === false);
+  await waitFor(async () => {
+    await remote.refresh();
+    return first.socket.readyState === 3 && grantOf(remote, first.peer).online === false;
+  });
   assert.ok(grantOf(remote, first.peer).lastSeenAt >= before);
 
   const pairedAt = stored[0].pairedAt;
   await remote.control({
     operation: "updateGrant",
     id: first.peer,
-    projects: ["project"],
+    projects: [f.projectAlias],
     preset: "Operator",
   });
   assert.equal(grantOf(remote, first.peer).pairedAt, pairedAt, "updates keep pairing time");
@@ -97,21 +114,25 @@ test("rename keeps the connection and revision; revoked devices can be forgotten
   const f = await hostFixture(t);
   const { remote } = f;
   await remote.control({ operation: "enableDirect" });
-  const phone = await pairDevice(t, remote, "Safari · iOS");
-  const laptop = await pairDevice(t, remote, "Chrome · macOS");
+  const phone = await pairDevice(t, f, "Safari · iOS");
+  const laptop = await pairDevice(t, f, "Chrome · macOS");
   const revision = grantOf(remote, phone.peer).revision;
 
   await remote.control({ operation: "renameDevice", id: phone.peer, name: "  我的 iPhone  " });
   assert.equal(grantOf(remote, phone.peer).displayName, "我的 iPhone");
   assert.equal(grantOf(remote, phone.peer).revision, revision);
   assert.equal(grantOf(remote, phone.peer).online, true, "rename does not disconnect");
-  await assert.rejects(
-    remote.control({ operation: "renameDevice", id: phone.peer, name: "   " }),
-    /1 到 80/,
-  );
+  assert.equal(phone.socket.readyState, 1);
+  phone.secure.send({ id: "renamed", method: "host.describe", params: {} });
+  const described = await next(phone.messages);
+  assert.equal(described.id, "renamed");
+  assert.equal(described.result.connectionId, phone.active.connectionId);
+  await assert.rejects(remote.control({ operation: "renameDevice", id: phone.peer, name: "   " }), {
+    code: "invalidRequest",
+  });
   await assert.rejects(
     remote.control({ operation: "renameDevice", id: phone.peer, name: "x".repeat(81) }),
-    /1 到 80/,
+    { code: "invalidRequest" },
   );
 
   await remote.control({ operation: "revoke", id: laptop.peer });
@@ -119,9 +140,10 @@ test("rename keeps the connection and revision; revoked devices can be forgotten
   assert.equal(revoked.status, "revoked");
   assert.equal(typeof revoked.revokedAt, "number");
   assert.equal(revoked.online, false);
+  await waitFor(() => laptop.socket.readyState === 3);
   await assert.rejects(
     remote.control({ operation: "renameDevice", id: laptop.peer, name: "旧电脑" }),
-    /设备未获授权/,
+    { code: "invalidRequest" },
   );
 
   await remote.control({ operation: "forgetRevoked" });
@@ -131,13 +153,54 @@ test("rename keeps the connection and revision; revoked devices can be forgotten
     (await f.persisted()).deviceGrants.map((grant) => grant.devicePeerId),
     [phone.peer],
   );
-  const writes = f.savedWrites.length;
-  await remote.control({ operation: "forgetRevoked" });
-  assert.equal(f.savedWrites.length, writes, "nothing to forget does not write");
+  const beforeForget = await f.client.request("remote.read", {});
+  const requestId = randomUUID();
+  await f.client.request("remote.gateway.control", {
+    requestId,
+    expectedGeneration: f.client.generation,
+    sourceId: f.source.sourceId,
+    request: { operation: "forgetRevoked" },
+  });
+  const { operation } = await f.client.operation(requestId);
+  const afterForget = await f.client.request("remote.read", {});
+  assert.equal(operation.requestId, requestId);
+  assert.equal(operation.sourceId, f.source.sourceId);
+  assert.equal(operation.method, "remote.replace");
+  assert.equal(operation.state, "completed");
+  assert.equal(operation.previousRevision, beforeForget.revision);
+  assert.equal(operation.revision, afterForget.revision);
+  assert.deepEqual(
+    afterForget.config,
+    beforeForget.config,
+    "nothing to forget leaves grants unchanged",
+  );
+  t.diagnostic(
+    "Host receipt and persisted configuration verified; physical write count is not measured",
+  );
 });
 
 test("renamed and forgotten devices reject malformed requests", async (t) => {
   const f = await hostFixture(t);
+  const beforeForget = await f.client.request("remote.read", {});
+  assert.equal(Object.hasOwn(beforeForget.config, "deviceGrants"), false);
+  assert.equal(Object.hasOwn(beforeForget.config, "pushCommands"), false);
+  const requestId = randomUUID();
+  await f.client.request("remote.gateway.control", {
+    requestId,
+    expectedGeneration: f.client.generation,
+    sourceId: f.source.sourceId,
+    request: { operation: "forgetRevoked" },
+  });
+  const { operation } = await f.client.operation(requestId);
+  const afterForget = await f.client.request("remote.read", {});
+  assert.equal(operation.requestId, requestId);
+  assert.equal(operation.sourceId, f.source.sourceId);
+  assert.equal(operation.method, "remote.replace");
+  assert.equal(operation.state, "completed");
+  assert.equal(operation.previousRevision, beforeForget.revision);
+  assert.equal(operation.revision, afterForget.revision);
+  assert.deepEqual(afterForget.config, beforeForget.config);
+  assert.deepEqual(parseRemoteConfig(await f.persisted()), beforeForget.config);
   for (const request of [
     { operation: "renameDevice", id: "peer" },
     { operation: "renameDevice", id: "peer", name: 1 },

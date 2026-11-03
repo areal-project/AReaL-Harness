@@ -35,7 +35,13 @@ async function until(read, label) {
 // 只提供真实 Host 的本地配置生产者；Remote 请求仍由原客户端进入 Rust owner。
 export async function nativeHostFixture(
   t,
-  { config, deferNative = false, expectedUnknownSettlement } = {},
+  {
+    config,
+    deferNative = false,
+    expectedUnknownSettlement,
+    caseRoot,
+    tlsHome = process.env.RC12_TLS_HOME,
+  } = {},
 ) {
   assert.ok(
     process.platform !== "darwin" || process.env.AREAL_TEST_HOST_KEYCHAIN === "1",
@@ -46,7 +52,7 @@ export async function nativeHostFixture(
     "AREAL_CORE_BIN must identify the locked verification slot",
   );
   const binary = resolve(process.env.AREAL_CORE_BIN);
-  const root = await realpath(await mkdtemp(join(tmpdir(), "native-remote-host-")));
+  const root = await realpath(caseRoot ?? (await mkdtemp(join(tmpdir(), "native-remote-host-"))));
   const home = join(root, "registry");
   await mkdir(home, { mode: 0o700 });
   const host = new HostClient();
@@ -78,9 +84,7 @@ export async function nativeHostFixture(
   const child = spawn(binary, ["host", "run"], {
     env: {
       ...process.env,
-      ...(process.env.RC12_TLS_HOME
-        ? { SSL_CERT_FILE: join(process.env.RC12_TLS_HOME, "ca.pem") }
-        : {}),
+      ...(tlsHome ? { SSL_CERT_FILE: join(tlsHome, "ca.pem") } : {}),
       AREAL_HARNESS_HOME: home,
       AREAL_HARNESS_SERVICE_HOME: home,
     },
