@@ -465,6 +465,14 @@
     "ciSmoke": "conversation-derivation"
   },
   {
+    "script": "test:content-reading",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["conversation", "design"],
+    "requires": ["electron", "core-binary", "native-runtime", "gui-build", "git"],
+    "notes": "Isolated desktop with deterministic SSE: streaming diagrams, zoom/pan/focus, table scrolling, Markdown copy and CSV download."
+  },
+  {
     "script": "test:conversation-flow",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],

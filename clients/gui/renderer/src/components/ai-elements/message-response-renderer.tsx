@@ -11,7 +11,16 @@ import { MarkdownSurface } from "@areal/ui/experimental";
  * no ZCode services, subscription, citations catalog or platform stores.
  * See ZCODE-LICENSE and ../../../THIRD-PARTY-NOTICES.md.
  */
-import { memo, useMemo, useRef, type ComponentProps, type ReactNode } from "react";
+import {
+  memo,
+  useCallback,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import {
   defaultRehypePlugins,
   defaultRemarkPlugins,
@@ -30,6 +39,8 @@ import { ControlHintTooltip } from "../../ControlHintTooltip.js";
 import { decodeFilePathUriEscapes, joinFilePath, markdownFileLocation } from "../../lib/path.js";
 import { Button } from "../ui/button.js";
 import { MessageCodeBlock } from "./message-code-block.js";
+import { DiagramReader, type DiagramSelection } from "./diagram-reader.js";
+import { Dialog } from "../ui/dialog.js";
 import { useCodePreferences } from "../../settings/preferences.js";
 import { MarkdownBlockquote } from "./markdown-blockquote.js";
 import { MarkdownListItem, MarkdownOrderedList, MarkdownUnorderedList } from "./markdown-list.js";
@@ -94,7 +105,72 @@ type WorkspaceLinkTree = {
   properties?: Record<string, unknown>;
   data?: Record<string, unknown>;
   children?: WorkspaceLinkTree[];
+  position?: { start: { offset?: number }; end: { offset?: number } };
 };
+type MarkdownSourceNode = {
+  type: string;
+  identifier?: string;
+  position?: WorkspaceLinkTree["position"];
+  children?: MarkdownSourceNode[];
+};
+type TableSourceFile = { value: unknown; data: Record<string, unknown> };
+function collectTableMarkdown() {
+  return (tree: MarkdownSourceNode, file: TableSourceFile) => {
+    const source = String(file.value);
+    const tables: MarkdownSourceNode[] = [];
+    const definitions = new Map<string, string>();
+    const sourceOf = (node: MarkdownSourceNode) => {
+      const start = node.position?.start.offset;
+      const end = node.position?.end.offset;
+      if (start === undefined || end === undefined) return "";
+      const indent = start - source.lastIndexOf("\n", start - 1) - 1;
+      // 嵌套表格拷出后是独立表格，去掉后续行继承的引用/列表缩进。
+      return source
+        .slice(start, end)
+        .split("\n")
+        .map((line, index) =>
+          index === 0 ? line : line.slice(Math.min(indent, /^[ \t>]*/.exec(line)![0].length)),
+        )
+        .join("\n");
+    };
+    const collect = (node: MarkdownSourceNode) => {
+      if (node.type === "table") tables.push(node);
+      if (node.type === "definition" && node.identifier && !definitions.has(node.identifier))
+        definitions.set(node.identifier, sourceOf(node));
+      node.children?.forEach(collect);
+    };
+    collect(tree);
+    file.data.tableSources = new Map(
+      tables.map((table) => {
+        const references = new Set<string>();
+        const visit = (node: MarkdownSourceNode) => {
+          if ((node.type === "linkReference" || node.type === "imageReference") && node.identifier)
+            references.add(node.identifier);
+          node.children?.forEach(visit);
+        };
+        visit(table);
+        const suffix = [...references].flatMap((id) =>
+          definitions.has(id) ? [definitions.get(id)!] : [],
+        );
+        return [table.position!.start.offset!, [sourceOf(table), ...suffix].join("\n\n")];
+      }),
+    );
+  };
+}
+function preserveTableMarkdown() {
+  return (tree: WorkspaceLinkTree, file: TableSourceFile) => {
+    const visit = (node: WorkspaceLinkTree) => {
+      if (node.tagName === "table") {
+        const start = node.position?.start.offset;
+        const sources = file.data.tableSources as Map<number, string> | undefined;
+        const source = start === undefined ? undefined : sources?.get(start);
+        if (source !== undefined) node.data = { ...node.data, tableMarkdown: source };
+      }
+      node.children?.forEach(visit);
+    };
+    visit(tree);
+  };
+}
 // Harden rewrites path-relative URLs to their pathname (`./a/b` becomes `/a/b`).
 // Keep the authored path for file links and workspace images.
 const workspacePathPattern = /^(?:\.\.?\/|\/(?!\/))/;
@@ -139,6 +215,8 @@ export type MessageResponseProps = {
   onRenderImage?: (uri: string, alt: string) => ReactNode;
   /** A paragraph holding only one file link may become a file card; null keeps the link. */
   onRenderFileCard?: (path: string, label: string) => ReactNode;
+  diagramScope?: string;
+  onExpandDiagram?: (selection: DiagramSelection) => void;
   webPreviews?: boolean;
   className?: string;
 };
@@ -150,6 +228,8 @@ export const MessageResponse = memo(function MessageResponse({
   onOpenFileLink,
   onRenderImage,
   onRenderFileCard,
+  diagramScope,
+  onExpandDiagram,
   webPreviews = false,
   className,
   fileLinks = false,
@@ -160,40 +240,78 @@ export const MessageResponse = memo(function MessageResponse({
   const { fontSizePx } = useCodePreferences();
   // Snapshot refreshes can replace navigation callbacks. Keep Markdown component
   // types stable so a media read does not remount its own attachment on refresh.
-  const callbacks = useRef({ onOpenExternalUrl, onOpenFileLink, onRenderImage, onRenderFileCard });
-  callbacks.current = { onOpenExternalUrl, onOpenFileLink, onRenderImage, onRenderFileCard };
+  const callbacks = useRef({
+    onOpenExternalUrl,
+    onOpenFileLink,
+    onRenderImage,
+    onRenderFileCard,
+    onExpandDiagram,
+  });
+  callbacks.current = {
+    onOpenExternalUrl,
+    onOpenFileLink,
+    onRenderImage,
+    onRenderFileCard,
+    onExpandDiagram,
+  };
+  const streamState = useRef(streaming);
+  streamState.current = streaming;
+  const instanceScope = useId();
+  const readerScope = diagramScope ?? instanceScope;
+  const [diagram, setDiagram] = useState<DiagramSelection | null>(null);
+  // 阅读器归消息所有，不能随流式/静态解析器切换一起卸载。
+  const diagramTriggers = useCallback(
+    () =>
+      document.querySelectorAll<HTMLButtonElement>(
+        `[data-diagram-reader="${CSS.escape(readerScope)}"]`,
+      ),
+    [readerScope],
+  );
+  const expandDiagram = useCallback(
+    (code: string, trigger: HTMLButtonElement) => {
+      const selection = {
+        code,
+        trigger,
+        index: Array.from(diagramTriggers()).indexOf(trigger),
+        scope: readerScope,
+      };
+      if (callbacks.current.onExpandDiagram) callbacks.current.onExpandDiagram(selection);
+      else setDiagram(selection);
+    },
+    [diagramTriggers, readerScope],
+  );
   // Preserve the host's authorized media references through sanitization.
   // The caller still validates the exact blob URI and reads it through Core.
   const rehypePlugins = useMemo(
-    () =>
-      fileLinks || onRenderImage || fileLinkBase || fileReferenceRoot
-        ? Object.entries(defaultRehypePlugins).flatMap(
-            ([name, plugin]): (typeof defaultRehypePlugins)[string][] => {
-              const before =
-                name === "harden" && (fileLinks || fileReferenceRoot || onRenderImage)
-                  ? [preserveWorkspaceFilePaths]
-                  : [];
-              if (name === "harden" && fileLinkBase && Array.isArray(plugin))
-                return [...before, [plugin[0], { ...plugin[1], defaultOrigin: fileLinkBase }]];
-              if (name !== "sanitize" || !onRenderImage || !Array.isArray(plugin))
-                return [...before, plugin];
-              const schema = plugin[1] ?? {};
-              return [
-                ...before,
-                [
-                  plugin[0],
-                  {
-                    ...schema,
-                    protocols: {
-                      ...schema.protocols,
-                      src: [...(schema.protocols?.src ?? []), "areal"],
-                    },
-                  },
-                ],
-              ];
-            },
-          )
-        : undefined,
+    () => [
+      ...Object.entries(defaultRehypePlugins).flatMap(
+        ([name, plugin]): (typeof defaultRehypePlugins)[string][] => {
+          const before =
+            name === "harden" && (fileLinks || fileReferenceRoot || onRenderImage)
+              ? [preserveWorkspaceFilePaths]
+              : [];
+          if (name === "harden" && fileLinkBase && Array.isArray(plugin))
+            return [...before, [plugin[0], { ...plugin[1], defaultOrigin: fileLinkBase }]];
+          if (name !== "sanitize" || !onRenderImage || !Array.isArray(plugin))
+            return [...before, plugin];
+          const schema = plugin[1] ?? {};
+          return [
+            ...before,
+            [
+              plugin[0],
+              {
+                ...schema,
+                protocols: {
+                  ...schema.protocols,
+                  src: [...(schema.protocols?.src ?? []), "areal"],
+                },
+              },
+            ],
+          ];
+        },
+      ),
+      preserveTableMarkdown,
+    ],
     [fileLinks, Boolean(onRenderImage), fileLinkBase, Boolean(fileReferenceRoot)],
   );
   const remarkPlugins = useMemo(
@@ -201,13 +319,14 @@ export const MessageResponse = memo(function MessageResponse({
       preserveLineBreaks
         ? [
             ...Object.values(defaultRemarkPlugins),
+            collectTableMarkdown,
             pluginReferenceLabels,
             ...(fileLinks ? [relativeFileLinks] : []),
             remarkBreaks,
           ]
         : fileLinks
-          ? [...Object.values(defaultRemarkPlugins), relativeFileLinks]
-          : undefined,
+          ? [...Object.values(defaultRemarkPlugins), collectTableMarkdown, relativeFileLinks]
+          : [...Object.values(defaultRemarkPlugins), collectTableMarkdown],
     [fileLinks, preserveLineBreaks],
   );
   const components = useMemo(
@@ -421,9 +540,11 @@ export const MessageResponse = memo(function MessageResponse({
           <MessageCodeBlock
             code={codeText}
             language={language}
-            streaming={streaming}
+            streaming={streamState.current}
             theme={theme}
             fontSizePx={fontSizePx}
+            readerScope={readerScope}
+            onExpandDiagram={expandDiagram}
           />
         );
       },
@@ -439,7 +560,6 @@ export const MessageResponse = memo(function MessageResponse({
       tr: MarkdownTableRow,
     }),
     [
-      streaming,
       theme,
       Boolean(onOpenExternalUrl),
       Boolean(onOpenFileLink),
@@ -448,27 +568,49 @@ export const MessageResponse = memo(function MessageResponse({
       webPreviews,
       fontSizePx,
       fileReferenceRoot,
+      readerScope,
+      expandDiagram,
     ],
   );
   return (
-    <MarkdownSurface
-      streaming={streaming}
-      theme={theme}
-      className={className}
-      components={components}
-      parseIncompleteMarkdown={streaming}
-      remarkPlugins={remarkPlugins}
-      rehypePlugins={rehypePlugins}
-      plugins={plugins}
-      controls={STREAMDOWN_CONTROLS}
-      linkSafety={{ enabled: false }}
-      urlTransform={(url, key, node) =>
-        onRenderImage && key === "src" && /^areal:\/\/blob\/[A-Za-z0-9_-]+$/.test(url)
-          ? url
-          : defaultUrlTransform(url, key, node)
-      }
-    >
-      {normalizeMessageSingleDollarMath(children)}
-    </MarkdownSurface>
+    <>
+      <MarkdownSurface
+        streaming={streaming}
+        theme={theme}
+        className={className}
+        components={components}
+        parseIncompleteMarkdown={streaming}
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
+        plugins={plugins}
+        controls={STREAMDOWN_CONTROLS}
+        linkSafety={{ enabled: false }}
+        urlTransform={(url, key, node) =>
+          onRenderImage && key === "src" && /^areal:\/\/blob\/[A-Za-z0-9_-]+$/.test(url)
+            ? url
+            : defaultUrlTransform(url, key, node)
+        }
+      >
+        {normalizeMessageSingleDollarMath(children)}
+      </MarkdownSurface>
+      <Dialog
+        open={diagram !== null}
+        onOpenChange={(open) => {
+          if (!open) setDiagram(null);
+        }}
+      >
+        {diagram && (
+          <DiagramReader
+            code={diagram.code}
+            theme={theme}
+            returnFocus={() =>
+              diagram.trigger.isConnected
+                ? diagram.trigger
+                : (diagramTriggers()[diagram.index] ?? false)
+            }
+          />
+        )}
+      </Dialog>
+    </>
   );
 });

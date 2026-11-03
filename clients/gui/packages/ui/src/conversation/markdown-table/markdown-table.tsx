@@ -16,6 +16,7 @@ import {
   Maximize2Icon,
 } from "lucide-react";
 import { cn } from "../../lib/utils.js";
+import { observeResize } from "../../lib/observe-resize.js";
 import { Button } from "../../components/button/button.js";
 import {
   Dialog,
@@ -392,12 +393,50 @@ export function resolveMarkdownTableVirtualScrollMax({
   return Math.max(0, tableWidth - trackWidth);
 }
 
-export type MarkdownTableLabels = { copyFailed: (error: string) => string; copySucceeded: string; downloadFailed: string; copyMarkdown: string; downloadCsv: string; openPreview: string; collapseScrollMode: string; expandScrollMode: string; previewTitle: string; previewDescription: string; closeDialog: string };
-const defaultLabels: MarkdownTableLabels = { copyFailed: error => `Copy failed: ${error}`, copySucceeded: "Copied", downloadFailed: "Download failed", copyMarkdown: "Copy Markdown", downloadCsv: "Download CSV", openPreview: "Open preview", collapseScrollMode: "Collapse", expandScrollMode: "Expand", previewTitle: "Table preview", previewDescription: "Read the complete table", closeDialog: "Close dialog" };
+export type MarkdownTableLabels = {
+  copyFailed: (error: string) => string;
+  copySucceeded: string;
+  downloadFailed: string;
+  copyMarkdown: string;
+  downloadCsv: string;
+  openPreview: string;
+  collapseScrollMode: string;
+  expandScrollMode: string;
+  previewTitle: string;
+  previewDescription: string;
+  closeDialog: string;
+  scrollHint?: string;
+};
+const defaultLabels: MarkdownTableLabels = {
+  copyFailed: (error) => `Copy failed: ${error}`,
+  copySucceeded: "Copied",
+  downloadFailed: "Download failed",
+  copyMarkdown: "Copy Markdown",
+  downloadCsv: "Download CSV",
+  openPreview: "Open preview",
+  collapseScrollMode: "Collapse",
+  expandScrollMode: "Expand",
+  previewTitle: "Table preview",
+  previewDescription: "Read the complete table",
+  closeDialog: "Close dialog",
+};
 const ignoreNotice = (_message: string, _tone: "success" | "error") => {};
-export type MarkdownTableProps = ComponentProps<"table"> & MarkdownTableNodeProp & { labels?: MarkdownTableLabels; onNotify?: (message: string, tone: "success" | "error") => void };
+export type MarkdownTableProps = ComponentProps<"table"> &
+  MarkdownTableNodeProp & {
+    sourceMarkdown?: string;
+    labels?: MarkdownTableLabels;
+    onNotify?: (message: string, tone: "success" | "error") => void;
+  };
 
-export function MarkdownTable({ className, children, node: _node, labels = defaultLabels, onNotify = ignoreNotice, ...props }: MarkdownTableProps) {
+export function MarkdownTable({
+  className,
+  children,
+  node: _node,
+  sourceMarkdown,
+  labels = defaultLabels,
+  onNotify = ignoreNotice,
+  ...props
+}: MarkdownTableProps) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [expandedScrollEnabled, setExpandedScrollEnabled] = useState(false);
   const [canToggleExpandedScroll, setCanToggleExpandedScroll] = useState(false);
@@ -432,6 +471,7 @@ export function MarkdownTable({ className, children, node: _node, labels = defau
   const virtualScrollbarWrapperRef = useRef<HTMLDivElement | null>(null);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
+  const previewButtonRef = useRef<HTMLButtonElement | null>(null);
   const setNextEdgeShadowState = useCallback(
     (nextEdgeShadowState: MarkdownTableEdgeShadowState) => {
       if (edgeShadowStateRef.current === nextEdgeShadowState) {
@@ -814,15 +854,14 @@ export function MarkdownTable({ className, children, node: _node, labels = defau
       };
     }
 
-    const resizeObserver = new ResizeObserver(scheduleMeasureAndWatchRect);
-    resizeObserver.observe(root);
-    resizeObserver.observe(frame);
-    resizeObserver.observe(viewport);
-    resizeObserver.observe(table);
+    const stopObserving = observeResize(
+      [root, frame, viewport, table],
+      scheduleMeasureAndWatchRect,
+    );
     window.addEventListener("resize", scheduleMeasureAndWatchRect);
 
     return () => {
-      resizeObserver.disconnect();
+      stopObserving();
       window.removeEventListener("resize", scheduleMeasureAndWatchRect);
       mutationObserver?.disconnect();
       if (rafId !== null) cancelAnimationFrame(rafId);
@@ -891,17 +930,13 @@ export function MarkdownTable({ className, children, node: _node, labels = defau
       };
     }
 
-    const resizeObserver = new ResizeObserver(() => {
-      debouncedUpdate();
-    });
-    resizeObserver.observe(viewport);
-    resizeObserver.observe(table);
+    const stopObserving = observeResize([viewport, table], debouncedUpdate);
     window.addEventListener("resize", debouncedUpdate);
 
     return () => {
       viewport.removeEventListener("scroll", updateEdgeShadowState);
       viewport.removeEventListener("wheel", handleWheel);
-      resizeObserver.disconnect();
+      stopObserving();
       window.removeEventListener("resize", debouncedUpdate);
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
@@ -949,8 +984,11 @@ export function MarkdownTable({ className, children, node: _node, labels = defau
       rafId = requestAnimationFrame(updateStickyOffset);
     };
 
-    const resizeObserver =
-      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleStickyOffset);
+    const stopObserving =
+      typeof ResizeObserver === "undefined"
+        ? undefined
+        : observeResize([frame, verticalViewport], scheduleStickyOffset);
+    let stopObservingDock: (() => void) | undefined;
     const syncDockObservation = () => {
       const nextDock =
         root?.querySelector<HTMLElement>(MARKDOWN_TABLE_V4_COMPOSER_DOCK_SELECTOR) ?? null;
@@ -960,9 +998,12 @@ export function MarkdownTable({ className, children, node: _node, labels = defau
         scheduleStickyOffset();
         return;
       }
-      if (observedDock) resizeObserver?.unobserve(observedDock);
+      stopObservingDock?.();
       observedDock = nextDock;
-      if (observedDock) resizeObserver?.observe(observedDock);
+      stopObservingDock =
+        observedDock && typeof ResizeObserver !== "undefined"
+          ? observeResize(observedDock, scheduleStickyOffset)
+          : undefined;
       scheduleStickyOffset();
     };
 
@@ -971,8 +1012,6 @@ export function MarkdownTable({ className, children, node: _node, labels = defau
     updateStickyOffset();
     verticalViewport.addEventListener("scroll", scheduleStickyOffset, { passive: true });
     window.addEventListener("resize", scheduleStickyOffset);
-    resizeObserver?.observe(frame);
-    resizeObserver?.observe(verticalViewport);
     syncDockObservation();
     // draft/空态切换会条件挂载或替换 V4 composer dock；只观察初始节点会让
     // 新 dock 的输入增高不再触发吸底重算，因此同时跟踪根节点的子树变化并重新绑定。
@@ -987,7 +1026,8 @@ export function MarkdownTable({ className, children, node: _node, labels = defau
     return () => {
       verticalViewport.removeEventListener("scroll", scheduleStickyOffset);
       window.removeEventListener("resize", scheduleStickyOffset);
-      resizeObserver?.disconnect();
+      stopObserving?.();
+      stopObservingDock?.();
       dockMutationObserver?.disconnect();
       if (rafId !== null) cancelAnimationFrame(rafId);
       wrapper.style.transform = "";
@@ -1104,21 +1144,17 @@ export function MarkdownTable({ className, children, node: _node, labels = defau
 
   const handleCopyMarkdown = useCallback(async () => {
     if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
-      onNotify(
-        labels.copyFailed("clipboard-unavailable"), "error",
-      );
+      onNotify(labels.copyFailed("clipboard-unavailable"), "error");
       return;
     }
 
     try {
-      await navigator.clipboard.writeText(buildMarkdownTableText(getRows()));
+      await navigator.clipboard.writeText(sourceMarkdown ?? buildMarkdownTableText(getRows()));
       onNotify(labels.copySucceeded, "success");
     } catch (error) {
-      onNotify(
-        labels.copyFailed(error instanceof Error ? error.message : String(error)), "error",
-      );
+      onNotify(labels.copyFailed(error instanceof Error ? error.message : String(error)), "error");
     }
-  }, [getRows, labels, onNotify]);
+  }, [getRows, labels, onNotify, sourceMarkdown]);
 
   const handleDownloadCsv = useCallback(() => {
     if (
@@ -1167,7 +1203,9 @@ export function MarkdownTable({ className, children, node: _node, labels = defau
   const copyLabel = labels.copyMarkdown;
   const downloadLabel = labels.downloadCsv;
   const previewLabel = labels.openPreview;
-  const scrollModeLabel = (expandedScrollEnabled ? labels.collapseScrollMode : labels.expandScrollMode);
+  const scrollModeLabel = expandedScrollEnabled
+    ? labels.collapseScrollMode
+    : labels.expandScrollMode;
   const previewTitle = labels.previewTitle;
   const previewDescription = labels.previewDescription;
   // viewportMaxWidth 是虚拟滚动槽宽，用来计算 virtualScrollMax 和 thumb；
@@ -1180,6 +1218,11 @@ export function MarkdownTable({ className, children, node: _node, labels = defau
   return (
     <div ref={rootRef} className="my-0 flex min-w-0 flex-col gap-2">
       <div className="flex items-center justify-end gap-1" data-markdown-table-toolbar="">
+        {edgeShadowState !== "none" && labels.scrollHint && (
+          <span className="mr-auto text-ui-caption text-foreground-subtle">
+            {labels.scrollHint}
+          </span>
+        )}
         <MarkdownTableActionButton
           label={copyLabel}
           onClick={() => {
@@ -1191,9 +1234,16 @@ export function MarkdownTable({ className, children, node: _node, labels = defau
         <MarkdownTableActionButton label={downloadLabel} onClick={handleDownloadCsv}>
           <DownloadIcon className="size-3.5" />
         </MarkdownTableActionButton>
-        <MarkdownTableActionButton label={previewLabel} onClick={() => setPreviewOpen(true)}>
+        <Button
+          ref={previewButtonRef}
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setPreviewOpen(true)}
+        >
           <Maximize2Icon className="size-3.5" />
-        </MarkdownTableActionButton>
+          {previewLabel}
+        </Button>
         {canToggleExpandedScroll ? (
           <MarkdownTableActionButton label={scrollModeLabel} onClick={handleToggleExpandedScroll}>
             {expandedScrollEnabled ? (
@@ -1229,6 +1279,24 @@ export function MarkdownTable({ className, children, node: _node, labels = defau
             <div
               ref={scrollViewportRef}
               className="!scrollbar-hide w-full overflow-x-auto overflow-y-visible"
+              tabIndex={0}
+              role="region"
+              aria-label={labels.previewTitle}
+              onKeyDown={(event) => {
+                if (
+                  event.target !== event.currentTarget ||
+                  event.altKey ||
+                  event.ctrlKey ||
+                  event.metaKey
+                )
+                  return;
+                if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+                event.preventDefault();
+                commitVirtualScrollLeft(
+                  virtualScrollLeftRef.current + (event.key === "ArrowRight" ? 80 : -80),
+                );
+                latestMeasureEdgeShadowStateRef.current();
+              }}
             >
               <table
                 ref={tableRef}
@@ -1258,10 +1326,8 @@ export function MarkdownTable({ className, children, node: _node, labels = defau
           // overflow 测量变化时只切换可见性，保留节点和纵向占位，避免扰动 timeline 高度。
           style={{ width: scrollbarWidth }}
           className={cn(
-            "pointer-events-none py-1 opacity-0 transition-[width,opacity] duration-200 ease-out motion-reduce:transition-none",
-            virtualScrollbarVisible
-              ? "visible group-hover/markdown-table-frame:pointer-events-auto group-hover/markdown-table-frame:opacity-100"
-              : "invisible",
+            "py-1 transition-[width] duration-200 ease-out motion-reduce:transition-none",
+            virtualScrollbarVisible ? "visible" : "invisible",
             virtualScrollbarSticky && "relative z-20",
           )}
         >
@@ -1288,12 +1354,31 @@ export function MarkdownTable({ className, children, node: _node, labels = defau
         </div>
       </div>
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="flex max-h-[calc(100vh-2rem)] w-max max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-hidden rounded-2xl p-4 sm:max-h-[calc(100vh-8rem)] sm:max-w-[calc(100vw-8rem)] md:min-w-[640px] lg:min-w-[720px]">
+        <DialogContent
+          finalFocus={previewButtonRef}
+          closeLabel={labels.closeDialog}
+          className="flex max-h-[calc(100dvh-2rem)] w-max max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-hidden rounded-2xl p-4"
+        >
           <DialogHeader className="pr-8">
             <DialogTitle>{previewTitle}</DialogTitle>
             <DialogDescription>{previewDescription}</DialogDescription>
           </DialogHeader>
-          <div className="min-h-0 overflow-auto rounded-xl border border-border bg-background">
+          <div className="flex flex-wrap gap-1">
+            <Button variant="ghost" size="sm" onClick={() => void handleCopyMarkdown()}>
+              <CopyIcon />
+              {copyLabel}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleDownloadCsv}>
+              <DownloadIcon />
+              {downloadLabel}
+            </Button>
+          </div>
+          <div
+            tabIndex={0}
+            role="region"
+            aria-label={labels.previewTitle}
+            className="min-h-0 overflow-auto overscroll-contain rounded-xl border border-border bg-background"
+          >
             <table
               className={cn(
                 "w-max min-w-full border-separate border-spacing-0 text-ui-base [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-background",

@@ -80,6 +80,8 @@ import { Button } from "./components/ui/button.js";
 import { toast } from "./components/ui/toast.js";
 import { Popover, PopoverContent } from "./components/ui/popover.js";
 import { MessageResponse } from "./components/ai-elements/message.js";
+import { DiagramReader, type DiagramSelection } from "./components/ai-elements/diagram-reader.js";
+import { Dialog } from "./components/ui/dialog.js";
 import { SentAttachment } from "./MessageAttachment.js";
 import {
   WorkspaceFileCard,
@@ -198,6 +200,9 @@ export function Messages({
   const touchReading = useRef<{ y: number; requested: boolean } | undefined>(undefined);
   const readingViewport = useRef<{ width: number; height: number } | undefined>(undefined);
   const owner = JSON.stringify([project.id, thread.id, embedded]);
+  // 完成后的历史投影可能重挂消息，阅读器由对话持有并以消息身份找回入口。
+  const [diagram, setDiagram] = useState<(DiagramSelection & { owner: string }) | null>(null);
+  useEffect(() => setDiagram(null), [owner]);
   const reading = useRef(createReadingState(owner, history.generation));
   const [, refreshReading] = useState(0);
   const readingFrame = useRef<number | undefined>(undefined);
@@ -571,8 +576,10 @@ export function Messages({
       >
         <ConversationContentView
           blocks={blocks}
-          markdown={(text) => (
+          markdown={(text, offset) => (
             <MessageResponse
+              diagramScope={JSON.stringify([owner, turn.id, entry.id, offset])}
+              onExpandDiagram={(selection) => setDiagram({ ...selection, owner })}
               className="conversation-markdown"
               preserveLineBreaks
               streaming={
@@ -888,6 +895,28 @@ export function Messages({
   );
   return (
     <div className={embedded ? "messages-embedded" : "messages-shell"}>
+      <Dialog
+        open={diagram?.owner === owner}
+        onOpenChange={(open) => {
+          if (!open) setDiagram(null);
+        }}
+      >
+        {diagram?.owner === owner && (
+          <DiagramReader
+            code={diagram.code}
+            theme={dark ? "dark" : "light"}
+            returnFocus={() =>
+              diagram.trigger.isConnected
+                ? diagram.trigger
+                : (container.current?.querySelectorAll<HTMLButtonElement>(
+                    `[data-diagram-reader="${CSS.escape(diagram.scope)}"]`,
+                  )[diagram.index] ??
+                  container.current ??
+                  false)
+            }
+          />
+        )}
+      </Dialog>
       {!embedded && showTurnNavigation && (
         <TurnNavigation
           key={owner}

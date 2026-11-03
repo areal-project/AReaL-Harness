@@ -14,6 +14,7 @@
     "test:shared-host-consumers": "node scripts/shared-host-consumers-smoke.mjs",
     "test:manifest": "node --test scripts/test-manifest.test.mjs scripts/test-selection.test.mjs scripts/test-repeat.test.mjs",
     "test:unit": "vp test run",
+    "test:content-reading": "node scripts/conversation-content-reading-smoke.mjs",
     "test:worktree": "node --test scripts/worktree-git.test.cjs scripts/worktree-host.test.cjs scripts/worktree-contract.test.cjs scripts/pdf-file-open.test.cjs scripts/worktree-admission.test.cjs scripts/worktree-task-routing.test.cjs scripts/schedule-admission.test.cjs scripts/schedule-owner-activation.test.cjs scripts/worktree-refactor-integration.test.mjs scripts/worktree-gen-ui-state.test.cjs",
     "test:worktree-ui": "node scripts/worktree-ui-smoke.mjs",
     "test:worktree-core": "node scripts/worktree-integration.mjs",

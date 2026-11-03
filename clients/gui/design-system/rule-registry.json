@@ -3253,7 +3253,7 @@
       "title": "保留原虚拟滚动、列测量和预览",
       "owner": "clients/gui/packages/ui/src/conversation/markdown-table/markdown-table.md#行为",
       "strength": "default",
-      "textSha256": "09a0fa2e630bf957e683f30bd6686bb547522ef4170310bbc184906825d10f51"
+      "textSha256": "93f9cd2438e2f629fd912721dbf26416ada3efa30f77cb903a5576d6b84bed16"
     },
     {
       "id": "R-MESSAGEATTACHMENTS-001",
@@ -3267,14 +3267,14 @@
       "title": "preview插槽由宿主提供已完成图形，默认预览并可切换完整源码",
       "owner": "clients/gui/packages/ui/src/conversation/message-code-block/message-code-block.md#行为",
       "strength": "default",
-      "textSha256": "d9bf2b9e9a7f886e89989b04f5c3c9a53b129c76b94079abbd2b2d387f9dae85"
+      "textSha256": "0c5bcd730b270d0d24d3da95585cfe3ea59f3bb156430fa99eed8cf7c21acc9c"
     },
     {
       "id": "R-MESSAGECODEBLOCK-002",
       "title": "Mermaid预览由renderer复用既有Streamdown插件，保持strict安全配置",
       "owner": "clients/gui/packages/ui/src/conversation/message-code-block/message-code-block.md#内容",
       "strength": "must",
-      "textSha256": "c702540ecac23db2795cf2d7498223ffb8db430d3d139dcc2914d64c55b1a9dc"
+      "textSha256": "92e1c56b58dc36359925c44eae5c8af2d0fcaacd5ff20aca1e1eb7b3a14f79cc"
     },
     {
       "id": "R-NATIVECONTENT-001",

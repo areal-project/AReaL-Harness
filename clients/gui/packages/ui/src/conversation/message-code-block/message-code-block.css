@@ -78,3 +78,12 @@
 .conversation-code-actions > button[aria-pressed="true"] {
   background: var(--color-hover);
 }
+.conversation-code-actions > .conversation-diagram-expand {
+  width: auto;
+  padding-inline: var(--spacing-field);
+  border-radius: var(--radius-control);
+}
+.conversation-code-preview svg {
+  width: 100%;
+  max-height: min(28rem, 60vh);
+}

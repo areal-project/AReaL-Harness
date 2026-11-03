@@ -12,26 +12,114 @@ const codeStyle: CSSProperties & Record<`--${string}`, string> = {
 };
 
 /** Presentation only: the existing viewer owns highlighting and line wrapping. */
-export function MessageCodeBlock({ code, language, streaming, fontSizePx, CodeComponent = CodeViewer, preview, previewLabel = "预览图形", sourceLabel = "查看源码" }: { preview?: ReactNode; previewLabel?: string; sourceLabel?: string; code: string; language: string; streaming: boolean; fontSizePx: number; CodeComponent?: ComponentType<CodeViewerProps> }) {
+export function MessageCodeBlock({
+  code,
+  language,
+  streaming,
+  fontSizePx,
+  CodeComponent = CodeViewer,
+  preview,
+  previewActions,
+  previewLabel = "预览图形",
+  sourceLabel = "查看源码",
+}: {
+  preview?: ReactNode;
+  previewActions?: ReactNode;
+  previewLabel?: string;
+  sourceLabel?: string;
+  code: string;
+  language: string;
+  streaming: boolean;
+  fontSizePx: number;
+  CodeComponent?: ComponentType<CodeViewerProps>;
+}) {
   const [showSource, setShowSource] = useState(false);
   const [wrap, setWrap] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
-  const viewerStyle: typeof codeStyle = { ...codeStyle, "--diffs-line-height": `${fontSizePx + 8}px` };
-  const copy = async () => {
-    try { await navigator.clipboard.writeText(code); setCopyState("copied"); }
-    catch { setCopyState("failed"); }
+  const viewerStyle: typeof codeStyle = {
+    ...codeStyle,
+    "--diffs-line-height": `${fontSizePx + 8}px`,
   };
-  return <section className="conversation-code-block" aria-label={`${language} 代码`}>
-    <div className="conversation-code-header">
-      <Code2 size={20} aria-hidden="true" /><span>{language}</span>
-      <div className="conversation-code-actions">
-        {preview && <><Button variant="ghost" aria-label={previewLabel} title={previewLabel} aria-pressed={!showSource} onClick={() => setShowSource(false)}><Eye size={16} /></Button><Button variant="ghost" aria-label={sourceLabel} title={sourceLabel} aria-pressed={showSource} onClick={() => setShowSource(true)}><Code2 size={16} /></Button></>}
-        {(!preview || showSource) && <Button variant="ghost" aria-label={wrap ? "禁用自动换行" : "启用自动换行"} title="自动换行" aria-pressed={wrap} onClick={() => setWrap(value => !value)}><WrapText size={16} /></Button>}
-        <Button variant="ghost" aria-label="复制代码" title="复制代码" onClick={() => void copy()}>{copyState === "copied" ? <Check size={16} /> : <Copy size={16} />}</Button>
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+  };
+  return (
+    <section className="conversation-code-block" aria-label={`${language} 代码`}>
+      <div className="conversation-code-header">
+        <Code2 size={20} aria-hidden="true" />
+        <span>{language}</span>
+        <div className="conversation-code-actions">
+          {preview && previewActions}
+          {preview && (
+            <>
+              <Button
+                variant="ghost"
+                aria-label={previewLabel}
+                title={previewLabel}
+                aria-pressed={!showSource}
+                onClick={() => setShowSource(false)}
+              >
+                <Eye size={16} />
+              </Button>
+              <Button
+                variant="ghost"
+                aria-label={sourceLabel}
+                title={sourceLabel}
+                aria-pressed={showSource}
+                onClick={() => setShowSource(true)}
+              >
+                <Code2 size={16} />
+              </Button>
+            </>
+          )}
+          {(!preview || showSource) && (
+            <Button
+              variant="ghost"
+              aria-label={wrap ? "禁用自动换行" : "启用自动换行"}
+              title="自动换行"
+              aria-pressed={wrap}
+              onClick={() => setWrap((value) => !value)}
+            >
+              <WrapText size={16} />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            aria-label="复制代码"
+            title="复制代码"
+            onClick={() => void copy()}
+          >
+            {copyState === "copied" ? <Check size={16} /> : <Copy size={16} />}
+          </Button>
+        </div>
       </div>
-    </div>
-    {copyState !== "idle" && <span className="sr-only" role="status">{copyState === "copied" ? "代码已复制" : "复制失败，请选择代码手动复制"}</span>}
-    {preview && <div className="conversation-code-preview" hidden={showSource}>{preview}</div>}
-    <div className="conversation-code-content" hidden={!!preview && !showSource}><CodeComponent code={code} language={language} fontSizePx={fontSizePx} showLineNumbers={false} transparentBackground wrapLongLines={wrap} enableSyntaxHighlighting={!streaming} style={viewerStyle} /></div>
-  </section>;
+      {copyState !== "idle" && (
+        <span className="sr-only" role="status">
+          {copyState === "copied" ? "代码已复制" : "复制失败，请选择代码手动复制"}
+        </span>
+      )}
+      {preview && (
+        <div className="conversation-code-preview" hidden={showSource}>
+          {preview}
+        </div>
+      )}
+      <div className="conversation-code-content" hidden={!!preview && !showSource}>
+        <CodeComponent
+          code={code}
+          language={language}
+          fontSizePx={fontSizePx}
+          showLineNumbers={false}
+          transparentBackground
+          wrapLongLines={wrap}
+          enableSyntaxHighlighting={!streaming}
+          style={viewerStyle}
+        />
+      </div>
+    </section>
+  );
 }
