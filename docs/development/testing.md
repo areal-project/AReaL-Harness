@@ -227,6 +227,8 @@ macOS 登录会话中的 Keychain 权限边界另用 `python3 scripts/git-keycha
 
 ## GUI 与桌面路由门禁
 
+`pnpm --dir clients/gui test:service-connection` 区分当前应用的 Main 连接与发现的旧 Desktop。当前应用夹具经 `initialize` 和 `connectMain` 进入生产连接边界，每次连接建立独立传输，覆盖原请求身份、丢失回复、停止及重连失败后的回执核查；外来后台经真实 WebSocket `attach` 观察，并验证命令被拒绝且不会自动接管。生命周期兼容夹具提供旧 Desktop 回执，不能替代真实 Host 升级、服务注册或 GUI 验收。
+
 会话目录回归使用 `cargo test --locked -p areal-app-server --lib catalog_tests`、`cargo test --locked -p areal-engine --lib catalog::tests`、`cargo test --locked -p areal-engine --test catalog_observation` 和 `node --test clients/gui/scripts/catalog-refresh.test.cjs`（从仓库根运行）。覆盖旧元数据与持久字节兼容、过滤先于分页、完整参考对照、长过滤空洞、游标排序与授权、会话锁与注册互不阻塞、注册回滚，以及 GUI 合并刷新和连接换代。观察回归还核对模型输入、工具副作用、用量及重启历史不受目录读取影响。GUI 用例已纳入 `pnpm --dir clients/gui verify`。
 
 显式局部性能对照使用 `cargo test --locked --release -p areal-app-server --lib catalog_performance_comparison -- --ignored --nocapture` 与 `node clients/gui/scripts/catalog-refresh-benchmark.cjs`。后者可传入旧版 `history-observation.cjs` 路径，在相同 fixture 下比较旧协调器。耗时不作为 CI 阈值；固定源码、原始样本、复现方法与测量限制见[会话目录性能报告](../benchmarks/reports/conversation-catalog.md)。
