@@ -1,8 +1,8 @@
 [中文](conversation-reading-acceptance.md) | **English**
 
-# Conversation reading experience and acceptance
+# Conversation and Composer experience acceptance contract
 
-This document defines desktop reading targets, cases, and delivery order. It does not claim that the implementation meets them. See the [Messages reading contract](../../clients/gui/renderer/src/Messages.md) for current behavior and the [Core API](../api/core.en.md) for interfaces.
+This document defines the desktop journey from composing through submission, execution, reading, and continuation. It does not claim that the implementation meets this contract. Reading standards C1-C7 and the existing quantitative gates remain in effect; the sections below add Composer, cross-stage state, and evidence requirements. See the [Messages reading contract](../../clients/gui/renderer/src/Messages.md) for current behavior and the [Core API](../api/core.en.md) for interfaces.
 
 ## Problem definition
 
@@ -90,3 +90,54 @@ Each execution record includes its case ID, standards, fixture identity, initial
 Before design, establish a failure matrix on the current version. Distinguish content not returned, missing projection, DOM not yet rendered, and content outside the viewport. Before implementation, map every design decision to a failing case and an owning boundary. If T3 shows that tool-body reads block basic conversation, evaluate a Core basic-conversation read interface. Fetching more raw records at once does not replace this check.
 
 Delivery must map standards to cases, design decisions, changes, and evidence. One passing real conversation, passing static checks, or complete final message counts cannot independently establish that the conversation experience is fixed.
+
+## Composer and cross-stage contract
+
+A task includes an unsubmitted draft, attached context, an admitted operation, and execution results. Their identities cannot be inferred from a bubble appearing, the editor clearing, or animation stopping. Core/Runtime own execution and history facts; Composer owns intent not yet handed off; the reading host owns viewport, selection, and expansion state.
+
+| ID | Invariant | Counterexample and acceptance |
+| --- | --- | --- |
+| D1 | One keypress consumes one user intent | Confirming an IME candidate neither sends nor selects a command; a subsequent deliberate Enter can send according to settings. Enter in a Slash/Mention menu only selects. Check remapped shortcuts and newlines separately. Record compositionstart/end, isComposing, keyCode, and actual admission count rather than copying a fixed 500 ms window. |
+| D2 | Drafts and context are isolated by project/conversation; recovery does not silently degrade them | Test text, images, files, and references across A/B navigation, renderer reload, and application reopening separately. When file bytes cannot be restored, retain at least an identifiable needs-reattach record and an explicit notice. Restoring text while silently omitting context fails. Recovery must not read paths beyond the original authorization. |
+| D3 | Submission identity and feedback are trustworthy | Repeated clicks or keypresses do not duplicate admission. Distinguish uploading, not yet admitted, queued, running, explicitly failed, and awaiting reconciliation. Reconcile a lost receipt before considering resubmission; do not replay unknown submissions. Explicit failure preserves recoverable input. |
+| D4 | Asynchronous completion cannot overwrite newer intent | While upload, configuration, or submission is pending, navigate, edit, or cancel through entries the product actually permits. Old receipts settle only their original draft/operation; they cannot clear newer content, steal focus, or attach files to another conversation. If editing is temporarily disabled, verify content and focus during the lock and after release. |
+| D5 | Stop, approval, and queue state follow execution facts | A stop request is not confirmed termination; approval is not tool success; queued is not running. Verify ownership, terminal state, and actual side effects. Persistent faults expose specific problems the user can act on. |
+| D6 | Reading details survive output and settlement | Open a diagram, select text, or expand a tool, then advance output, tool settlement, and turn completion. The diagram remains open; selection and manual expansion follow the same content identity. Closing returns to an identifiable entry. Deleted or changed content is a separate boundary. |
+| D7 | Keyboard and layout do not block the task | Complete input, attachment actions, send, stop, menu dismissal, and result use with narrow windows, large text, and keyboard-only input. Focus is visible. Closing a menu does not also stop a task. Ordinary text does not widen the page; wide tables/diagrams scroll locally. |
+
+### Required journeys and production owners
+
+| Case | Fixed operation and passing condition | Standards / existing owners / entry |
+| --- | --- | --- |
+| J1 Input intent | Compose Chinese, confirm a candidate, then deliberately press Enter; select Slash/Mention items and insert normal newlines; verify text and admission count | D1; LexicalChatInput, ChatPromptEditor; `test:composer`. Native IME acceptance is separate; synthetic events do not replace it. |
+| J2 Draft recovery | Add text, a test image, files/references through UI; navigate A/B, reload, and separately reopen; recover completely or explicitly require reattachment | D2, D4; Composer, composerDraftStorage, composerDraftAttachments; `test:composer-files` can be extended. The command existing does not establish reload coverage. |
+| J3 Submission boundaries | Fail before admission, lose the receipt after admission, double-click send, and change target while pending; reconcile the same requestId with independent admission records | D3, D4; Composer, submitMessage, and the main-process admission owner; `test:send-admission`. |
+| J4 Execution intervention | Append/queue while running, approve, and stop while subsequent events arrive; verify state, ownership, and actual side effects | D5; Composer, TurnActivity, Core/Runtime; `test:stop-turn`, `test:composer`. |
+| J5 Reading control | In a genuinely overflowing response, scroll up and select an old paragraph; continue output through completion; explicitly return to latest and resume following | C3, C6, D6; Messages, conversationReading, readingViews; `test:conversation-reading`, `test:reading-checkpoint`. |
+| J6 Result use | Enlarge a closed diagram block while the response streams, zoom/pan, then close after completion; horizontally scroll wide tables, retain long-table headers, copy/download | D6, D7; Messages, MessageResponse, DiagramReader, MarkdownTable; `test:content-reading`. |
+| J7 Performance interference | Type continuously into short and approximately 30k-character drafts; then type and read history during a long streaming response; verify actual character growth and layout | P1/P2 below and existing scrolling gates; TextContentPlugin, Composer, Messages; measure in a real browser/desktop, not only pure-function tests. |
+
+### Composer performance measurement
+
+These are additional initial budgets; they do not change existing reading gates. Separate client feedback, submission admission, first provider output, and execution completion rather than combining them into one response time.
+
+- **P1 Input feedback:** renderer receipt of a real input event to the corresponding character entering the DOM and the next visible feedback has a p95 target of at most 100 ms. Collect at least 20 valid samples per workload, reporting p50/p95/max, missing/duplicated characters, long tasks, and frame intervals. Compute percentiles from sorted samples at `ceil(p*n)-1`. Verify actual text growth.
+- **P2 Foreground/background isolation:** report idle typing, typing during streaming, and history reading separately. Specify content size, delta frequency, mounted message count, and tool-detail state. Empty-page speed does not substitute for the streaming case.
+- `keydown -> next rAF callback` is only a pre-paint proxy. Callback arrival, DOM mutation, and screen paint are different boundaries. Proxy-only evidence is insufficient for formally passing P1.
+- Report local IPC admission and provider first-output latency separately. Do not count Playwright/CDP round trips or provider wait as local input latency. Record build mode, CPU load, and probe overhead; uncontrolled conditions do not support cross-product speed rankings.
+
+## Acceptance records and release decision
+
+Record each item as `PASS`, `FAIL`, `UNVERIFIED`, or `BLOCKED`, with its boundary and reason. `BLOCKED` means prerequisites such as launch, build, or the test driver prevented observation. `UNVERIFIED` means untested or insufficient evidence. A zero exit status, partially completed stages, or an existing screenshot does not automatically pass a whole journey.
+
+Minimum fields: contract/case ID, source commit and dirty state, Core/Renderer identity, OS/browser/window/text size, workload size, actions and event order, independent expectation, observed result, raw samples/screenshots/trace, failure classification, and cleanup. Correctness counterexamples must fail the target assertion; a probe deliberately throwing a sampling-complete exception is not a product failure. Preserve the first failure and subsequent corrections rather than erasing them through changed locators, environment, or waits.
+
+The release floor is no confirmed unresolved content loss, cross-conversation contamination, duplicate admission, misleading state, or lost reading control within scoped D1-D6 and C1/C3/C7. Judge performance budgets independently; low latency cannot offset data errors. Explicitly retain untested native IME, real-provider, package, platform, and assistive-technology boundaries rather than substituting static checks.
+
+## How references inform the contract
+
+Open Claude UI provides interaction research material; T3 Code provides a readable product implementation. Neither comments, demos, nor source alone establishes AReaL's behavior or original Claude behavior.
+
+- [Open Claude UI Composer](https://github.com/Caho1/open-claude-ui/blob/2d56ab417f888e8c77f5d5090f53c1f65a05ab0b/code-examples/RichComposerWithMentions.tsx) and [scroll hook](https://github.com/Caho1/open-claude-ui/blob/2d56ab417f888e8c77f5d5090f53c1f65a05ab0b/code-examples/useClaudeScrollPinning.ts): derive input intent and reading ownership; their particular time/distance values are not this product's gates.
+- [T3 draft storage](https://github.com/pingdotgg/t3code/blob/2ad6712c6d8054f32de9e04df89bd659380f48a3/apps/web/src/composerDraftStore.ts): preserve metadata and recovery state when files cannot serialize; informs D2 counterexamples without requiring its state library.
+- [T3 submission](https://github.com/pingdotgg/t3code/blob/2ad6712c6d8054f32de9e04df89bd659380f48a3/apps/web/src/components/chat/useComposerSend.ts) and [reading anchors](https://github.com/pingdotgg/t3code/blob/2ad6712c6d8054f32de9e04df89bd659380f48a3/apps/web/src/components/chat/timelineScrollAnchoring.ts): reference submission snapshots, protecting newer drafts on failure, and explicit scroll modes; validate this product through its existing state owners.

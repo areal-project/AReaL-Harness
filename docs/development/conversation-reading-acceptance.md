@@ -1,8 +1,8 @@
 **中文** | [English](conversation-reading-acceptance.en.md)
 
-# 对话流体验与验收
+# 对话流与 Composer 体验验收合同
 
-本页定义桌面对话阅读的目标、用例和交付顺序，不表示当前实现已通过这些标准。现有行为见 [Messages 阅读合同](../../clients/gui/renderer/src/Messages.md)，接口见 [Core API](../api/core.md)。
+本页定义桌面“组织任务 → 提交 → 执行 → 阅读 → 继续”的验收合同，不表示当前实现已通过。阅读标准 C1–C7 和既有量化门槛继续有效；下文补充 Composer、跨阶段状态和证据要求。现有行为见 [Messages 阅读合同](../../clients/gui/renderer/src/Messages.md)，接口见 [Core API](../api/core.md)。
 
 ## 问题定义
 
@@ -90,3 +90,54 @@ T2 与 T3 固定基本消息，独立改变内部记录规模。T4 需要真实�
 进入设计前，先用当前版本建立失败矩阵，区分内容未返回、投影缺失、DOM 尚未呈现和内容已在视口外。进入实现前，每个设计决定都要对应一条失败用例和一个负责边界。T3 若证明基本阅读被工具原文读取阻塞，再评估 Core 的基本对话读取接口；单纯把更多原始记录一次拉完不能替代这项验证。
 
 实现交付必须给出“标准、用例、设计决定、变更、证据”的对应关系。单条真实会话通过、静态检查通过或最终消息计数齐全，都不能单独作为整个对话流已修复的结论。
+
+## Composer 与跨阶段合同
+
+一次任务包含未提交草稿、附带上下文、已受理操作和执行结果。这些对象的身份不能由气泡是否出现、输入框是否清空或动画是否停止推断。运行与历史事实仍由 Core/Runtime 拥有；Composer 拥有用户尚未交付的意图，阅读宿主拥有视口、选区与展开状态。
+
+| 编号 | 不变量 | 反例与验收 |
+| --- | --- | --- |
+| D1 | 同一个按键只消费一个用户意图 | 中文候选确认不发送、不选择命令；确认后再次主动 Enter 可按设置发送；Slash/Mention 菜单开启时 Enter 只选择；改绑快捷键与换行分别检查。记录 compositionstart/end、isComposing、keyCode 和实际受理次数，不照搬固定 500 ms 窗口。 |
+| D2 | 草稿与上下文按项目/会话隔离，恢复不静默降级 | A/B 会话往返、renderer reload、应用重开分别检查文本、图片、文件与引用。不能恢复文件字节时，至少保留可识别的待重附记录及明确提示；不能只恢复正文后悄悄少发上下文。恢复不读取超出原授权的路径。 |
+| D3 | 提交身份与反馈可信 | 连续点击和按键不会重复受理；上传中、尚未受理、已排队、执行中、明确失败、结果待核对分别表达。回执丢失时先对账，不重放未知提交；明确失败保留可恢复输入。 |
+| D4 | 异步完成不能覆盖后来意图 | 上传、配置和提交等待中，按实际产品允许的入口切会话、编辑或取消；旧回执只能结算原草稿/操作，不能清空新内容、抢焦点或把附件放入新会话。若编辑被暂时禁止，必须验证禁用期间和恢复时的内容与焦点。 |
+| D5 | 停止、审批和排队由执行事实驱动 | “请求停止”不等于“已停止”；审批点击不等于工具成功；队列不冒充运行。确认归属、终态和实际副作用；持续故障展示用户能处理的具体问题。 |
+| D6 | 阅读细节跨输出与结算连续 | 打开图形、选中文本或展开工具后推进正文、工具结算和回合完成。图形仍打开，选区/人工展开按同一内容身份保留；关闭回到可识别入口。已删除或改变的内容单列边界。 |
+| D7 | 键盘与布局不阻断任务 | 窄窗、大字号、纯键盘下可完成输入、附件操作、发送、停止、菜单关闭和结果使用。焦点可见，菜单关闭不顺带停止任务；普通正文不撑宽整个页面，宽表/图形局部滚动。 |
+
+### 必测旅程与生产所有者
+
+| 用例 | 固定操作与通过条件 | 标准 / 现有所有者 / 入口 |
+| --- | --- | --- |
+| J1 输入意图 | 中文组词、候选确认、紧接的主动 Enter；Slash/Mention 选择与普通换行；核对正文及受理数 | D1；LexicalChatInput、ChatPromptEditor；`test:composer`。原生输入法人工验收另列，合成事件不代替。 |
+| J2 草稿恢复 | UI 添加文字、测试图片、文件/引用，A/B 往返后 reload，再单独测试重开；完整恢复或明确待重附 | D2、D4；Composer、composerDraftStorage、composerDraftAttachments；`test:composer-files` 可扩展，现有命令存在不表示已覆盖 reload。 |
+| J3 提交边界 | 受理前失败、受理后丢回执、双击发送、期间切换目标；核对同一 requestId 与独立受理记录 | D3、D4；Composer、submitMessage 和主进程受理所有者；`test:send-admission`。 |
+| J4 执行介入 | 运行中追加/排队、审批、停止，同时保持后续事件到达；核对状态、归属和实际副作用 | D5；Composer、TurnActivity、Core/Runtime；`test:stop-turn`、`test:composer`。 |
+| J5 阅读控制 | 足够溢出的真实回复中上滑、选中旧段落；继续输出并完成；显式返回最新再恢复跟随 | C3、C6、D6；Messages、conversationReading、readingViews；`test:conversation-reading`、`test:reading-checkpoint`。 |
+| J6 结果使用 | 流式闭合图形放大、缩放/平移、完成后关闭；宽表横滚、长表固定表头、复制/下载 | D6、D7；Messages、MessageResponse、DiagramReader、MarkdownTable；`test:content-reading`。 |
+| J7 性能干扰 | 短稿、约 30k 字符稿分别连续输入；再在长回复流式更新时输入和回看；检查真实字符增长及布局 | 下述 P1/P2 与既有滚动门槛；TextContentPlugin、Composer、Messages；需在真实浏览器/桌面记录，不能由纯函数测试替代。 |
+
+### Composer 性能口径
+
+这些是新增的初始预算，不修改既有阅读门槛。先区分客户端反馈、提交受理、供应商首段输出及执行完成；不同时间段不能合并成“响应时间”。
+
+- **P1 输入反馈**：从 renderer 接到真实输入事件，到对应字符进入 DOM 并出现下一次可见反馈，p95 目标不超过 100 ms。每种工作负载至少 20 个有效样本，记录 p50/p95/max、丢字/重字、longtask 与帧间隔；百分位使用排序后 `ceil(p*n)-1`。必须验证正文确实增长。
+- **P2 前后台互不阻断**：分别报告空闲输入、流式更新中输入、回看历史三组，明确内容规模、增量频率、已挂载消息数和工具详情状态。不能以空白页面速度代替流式场景。
+- `keydown → 下一 rAF 回调` 仅是绘制前代理指标；rAF 到达、DOM 更新、屏幕绘制是不同边界。只采到代理指标时标为证据不足，不能据此宣布 P1 正式通过。
+- 本地 IPC 受理、模型首段响应另列耗时；不能把 Playwright/CDP 往返或供应商等待归为本地输入延迟。构建、CPU 负载和探针开销需记录；不受控环境不作跨产品快慢排名。
+
+## 验收记录与发布判定
+
+每项记录使用 `PASS`、`FAIL`、`UNVERIFIED` 或 `BLOCKED`，同时记录边界和理由。`BLOCKED` 是启动、构建、测试驱动等前置条件阻止观察；`UNVERIFIED` 是未测或证据不足。一个脚本退出零、部分阶段跑过或截图存在，都不自动授予整条旅程 PASS。
+
+最小记录字段：合同/用例 ID、源码提交与 dirty 状态、Core/Renderer 身份、OS/浏览器/窗口/字号、数据规模、动作与事件顺序、独立预期、实际值、原始样本/截图/trace、失败分类、清理结果。正确性反例要让目标断言失败；不要用探针主动抛出的“采样完成”异常冒充产品失败。保存首次失败和后续修正，不能通过更换定位器、环境或等待条件抹掉原记录。
+
+发布底线是范围内的 D1–D6 与 C1/C3/C7 没有已确认未解决的内容丢失、串会话、重复受理、状态误导或阅读控制权丢失。性能预算独立判定，不能用低延迟抵消数据错误。未测的原生 IME、真实供应商、安装包、平台或辅助技术能力明确保留，不以静态检查代替。
+
+## 参考如何进入合同
+
+Open Claude UI 作为交互研究材料，T3 Code 作为可读的产品实现；两者的注释、演示和源码都不自动证明 AReaL 或原版 Claude 的实际行为。
+
+- [Open Claude UI Composer](https://github.com/Caho1/open-claude-ui/blob/2d56ab417f888e8c77f5d5090f53c1f65a05ab0b/code-examples/RichComposerWithMentions.tsx) 与 [滚动 Hook](https://github.com/Caho1/open-claude-ui/blob/2d56ab417f888e8c77f5d5090f53c1f65a05ab0b/code-examples/useClaudeScrollPinning.ts)：提炼输入意图和阅读控制权；具体时间/距离值不是本产品门槛。
+- [T3 草稿存储](https://github.com/pingdotgg/t3code/blob/2ad6712c6d8054f32de9e04df89bd659380f48a3/apps/web/src/composerDraftStore.ts)：文件不可序列化时仍保留元数据和恢复状态；供 D2 反例设计使用，不要求复制其状态库。
+- [T3 提交路径](https://github.com/pingdotgg/t3code/blob/2ad6712c6d8054f32de9e04df89bd659380f48a3/apps/web/src/components/chat/useComposerSend.ts) 与 [阅读锚点](https://github.com/pingdotgg/t3code/blob/2ad6712c6d8054f32de9e04df89bd659380f48a3/apps/web/src/components/chat/timelineScrollAnchoring.ts)：参考提交快照、失败时的新草稿保护及明确的滚动模式；本产品仍按既有状态所有者验收。
