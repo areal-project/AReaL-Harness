@@ -82,6 +82,8 @@ struct RequestBudget {
     reads: u32,
     writes: f64,
     refilled: Instant,
+    logged_requests: bool,
+    logged_writes: bool,
 }
 impl RequestBudget {
     fn new(now: Instant) -> Self {
@@ -90,6 +92,8 @@ impl RequestBudget {
             reads: 0,
             writes: 10.0,
             refilled: now,
+            logged_requests: false,
+            logged_writes: false,
         }
     }
     fn check(
@@ -128,6 +132,38 @@ impl RequestBudget {
             self.writes -= 1.0;
         }
         Ok(())
+    }
+    fn rejection_diagnostic(
+        &mut self,
+        error: &BudgetExceeded,
+        method: Option<&str>,
+        now: Instant,
+        kind: gateway_owner::TransportKind,
+        connection: &str,
+        generation: &str,
+    ) -> Option<Value> {
+        let (logged, reason) = match error {
+            BudgetExceeded::Requests => (&mut self.logged_requests, "requests"),
+            BudgetExceeded::Writes => (&mut self.logged_writes, "writes"),
+        };
+        if *logged {
+            return None;
+        }
+        *logged = true;
+        Some(json!({
+            "event": "gateway.budget_exceeded",
+            "reason": reason,
+            "elapsed_ms": now.duration_since(self.window).as_millis(),
+            "reads": self.reads,
+            "write_tokens": self.writes,
+            "method": method.filter(|method| METHODS.contains(method)),
+            "transport": match kind {
+                gateway_owner::TransportKind::Direct => "direct",
+                gateway_owner::TransportKind::Relay => "relay",
+            },
+            "connectionId": connection,
+            "gatewayGeneration": generation,
+        }))
     }
 }
 
@@ -451,9 +487,24 @@ impl Session {
             };
             let request: Value = serde_json::from_slice(&bytes.bytes)?;
             drop(bytes);
-            let result = match budget.check(request["method"].as_str(), Instant::now()) {
+            let now = Instant::now();
+            let method = request["method"].as_str();
+            let result = match budget.check(method, now) {
                 Ok(()) => session.request(&request).await,
-                Err(error) => Err(error.into()),
+                Err(error) => {
+                    if let Some(diagnostic) = budget.rejection_diagnostic(
+                        &error,
+                        method,
+                        now,
+                        session.kind,
+                        &session.connection,
+                        &session.generation,
+                    ) {
+                        use std::io::Write;
+                        let _ = writeln!(std::io::stderr().lock(), "{diagnostic}");
+                    }
+                    Err(error.into())
+                }
             };
             let response = match result {
                 Ok(result) => json!({"id":request["id"],"result":result}),
@@ -1373,6 +1424,73 @@ impl Session {
 #[cfg(test)]
 mod request_budget_tests {
     use super::*;
+
+    #[test]
+    fn diagnostics_capture_each_rejection_once_and_filter_methods() {
+        let start = Instant::now();
+        let mut budget = RequestBudget::new(start);
+        for _ in 0..10 {
+            budget.check(Some("session.create"), start).unwrap();
+        }
+        let error = budget.check(Some("session.create"), start).unwrap_err();
+        let diagnostic = budget
+            .rejection_diagnostic(
+                &error,
+                Some("session.create"),
+                start,
+                gateway_owner::TransportKind::Relay,
+                "connection",
+                "generation",
+            )
+            .unwrap();
+        assert_eq!(
+            diagnostic,
+            json!({"event":"gateway.budget_exceeded","reason":"writes","elapsed_ms":0,"reads":11,"write_tokens":0.0,"method":"session.create","transport":"relay","connectionId":"connection","gatewayGeneration":"generation"})
+        );
+        assert!(
+            budget
+                .rejection_diagnostic(
+                    &error,
+                    Some("session.create"),
+                    start,
+                    gateway_owner::TransportKind::Relay,
+                    "connection",
+                    "generation"
+                )
+                .is_none()
+        );
+        for _ in 0..9 {
+            budget.check(Some("command.read"), start).unwrap();
+        }
+        let later = start + Duration::from_millis(50);
+        let error = budget.check(Some("untrusted secret"), later).unwrap_err();
+        let diagnostic = budget
+            .rejection_diagnostic(
+                &error,
+                Some("untrusted secret"),
+                later,
+                gateway_owner::TransportKind::Direct,
+                "connection",
+                "generation",
+            )
+            .unwrap();
+        assert_eq!(
+            diagnostic,
+            json!({"event":"gateway.budget_exceeded","reason":"requests","elapsed_ms":50,"reads":21,"write_tokens":0.0,"method":null,"transport":"direct","connectionId":"connection","gatewayGeneration":"generation"})
+        );
+        assert!(
+            budget
+                .rejection_diagnostic(
+                    &error,
+                    Some("untrusted secret"),
+                    later,
+                    gateway_owner::TransportKind::Direct,
+                    "connection",
+                    "generation"
+                )
+                .is_none()
+        );
+    }
 
     #[test]
     fn write_burst_refills_at_200ms_and_stays_capped_after_idle() {

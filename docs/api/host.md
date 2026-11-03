@@ -168,6 +168,8 @@ prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每�
 
 ### Rust Gateway 交接
 
+网关预算拒绝通过既有 stderr 写入固定字段的 `gateway.budget_exceeded` JSON 诊断；客户端启动的共享 Host 将 stderr 保存到私有 `<Host home>/host.log`。每个连接的请求数和写入预算拒绝各只记录首次。记录包含拒绝类型、准入时的窗口经过毫秒数、请求计数、写入令牌账面余额、白名单方法名、传输类型和内部连接及网关代际标识；请求数拒绝发生在写入令牌刷新之前。未知方法记为 null，不记录请求参数或请求 ID。日志写入失败不改变请求响应。这些本机记录不自动进入 GUI 反馈导出。
+
 原生 Gateway 复用同一 Noise 身份、grants、Remote revision 与 Host journal。旧执行者先关闭入口、排空已接受的工作并释放租约，再提交交接；Host 在现有状态所有者中原子核对来源、revision 和无租约条件并保存原回执。持久交接后，`remote.acquire` 与通用 `remote.replace` 返回 `nativeGatewayOwned`；设置写入只经过原生 owner。原生入口启动失败时报告不可用，不恢复旧 JS 执行者。客户端以 `remoteGatewayV1` 能力决定是否使用原生 GUI 门面，不能按版本号推断。
 
 | 方法 | 参数 | 结果 |

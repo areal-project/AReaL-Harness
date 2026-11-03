@@ -168,6 +168,8 @@ Without an imported or newly created Remote configuration, remote.read returns {
 
 ### Rust Gateway handoff
 
+Gateway budget rejections emit fixed-field `gateway.budget_exceeded` JSON diagnostics through existing stderr; client-started shared Hosts save stderr to private `<Host home>/host.log`. Each connection records only the first request-count rejection and the first write-budget rejection. Records contain the rejection type, window elapsed milliseconds at admission, request count, stored write-token balance, an allowlisted method, transport type, and internal connection and gateway generation identifiers. Request-count rejection precedes write-token refill. Unknown methods are recorded as null; request parameters and IDs are omitted. Logging failures do not change responses. These local records are not automatically included in GUI feedback exports.
+
 The native Gateway reuses the same Noise identity, grants, Remote revision, and Host journal. The old executor closes its endpoints, drains accepted work, and releases its lease before handoff. The existing Host state owner atomically checks the source, revision, and absence of a lease and saves the original receipt. After durable handoff, `remote.acquire` and generic `remote.replace` return `nativeGatewayOwned`; settings writes go through the native owner. Native startup failure reports unavailability without restoring the JS executor. Clients select the native GUI facade through capability `remoteGatewayV1`, never a version-number inference.
 
 | Method | Parameters | Result |
