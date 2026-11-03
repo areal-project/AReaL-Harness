@@ -2,6 +2,8 @@
 
 # 测试
 
+桌面对话阅读按[对话流体验与验收](conversation-reading-acceptance.md)先定义完整性、可读时机和阅读位置标准，再设计过程与终态用例，随后进行设计、实现和统一验收。单条会话最终加载完整不能替代加载过程与交互检查。
+
 Side Chat 的 Esc 回退测试等待任务资源外层弹层完全退出布局后，再验证主任务停止。内部 `Activity` 隐藏会早于 `keepMounted` 弹层关闭动画完成；动画期间仍应保护主任务。测试显式拉长该动画并记录弹层状态，覆盖两种主/侧任务启动顺序，不用固定 sleep 或重复发送 Esc 掩盖竞态。
 
 模型计量观察器的非干扰测试在磁盘写入仍被阻塞时等待 `drained` 结算信号，再在观察器锁内检查内存账本。客户端收到 HTTP EOF 不代表服务端 `finally` 已完成；不能用延长 sleep 或提前释放磁盘阻塞替代这个先后关系。
@@ -10,6 +12,10 @@ Side Chat 的 Esc 回退测试等待任务资源外层弹层完全退出布局�
 发行验收的本地模型将辅助会话标题与求解请求分开处理。主任务退出可取消尚未完成的命名请求，此时命名回包的 BrokenPipe/ConnectionReset 不应把成功的读写验收改判失败；求解回包中断、命名携带工具或其他协议错误仍失败。`scripts/fixture_session_title.py` 仅用于本地 fixture，不改变生产重试、超时或模型消费。
 
 依赖安装见[开发指南](README.md)。常规测试使用临时目录、动态 loopback 端口和确定性模型，无需真实模型凭据。
+
+模型选择 smoke 以夹具明确配置的思考档位为预期：四档、二档与空列表分别验证选项、滑块边界、键盘/拖动、历史无效值修正和服务默认；Fast 的请求与冷重开断言使用同一受限档位配置。供应商目录读取可能结算待应用配置，保存种子前的空闲检查放在目录读取之后。
+
+浏览器终态结果、Worktree 与定时任务合同通过现有 `history.loadItem` 读取成功工具的延期原文，再核对真实执行结果与所属目录中的落盘文件；不能把对话摘要缺少原文判为工具未执行，也不能仅凭摘要宣称执行成功。迁移 smoke 通过当前工具摘要的展开控件查看结果，保留子对话与主草稿隔离断言。
 
 | 入口 | 范围 |
 |---|---|
@@ -65,11 +71,11 @@ pnpm --dir clients/gui test:conversation-reading
 
 PR 工作流按 PR 编号取消旧运行；Verify/GUI 的 main 与手动运行按 run ID 独立分组，避免共享并发组替换等待中的 main 提交。纯说明文档保留轻量格式、合同和链接门禁，不下载 Cargo 依赖或恢复 Rust 构建缓存，也不运行依赖审计；内置 Skill Markdown 等产品输入仍按代码处理。工作流本身不使用 paths 跳过必需检查，最终门禁继续验证明确的不适用结果。Linux GUI 安装使用 setup-node 的 pnpm store 缓存，Relay 使用独立 Node 版本和 npm 锁文件缓存；依赖审计下载固定版本与 SHA-256 校验的官方 cargo-audit 二进制。
 
-GUI 的产物 job 完成必要构建与 RPC 校验后即可发布同一源码的输入包；Core 合同按 manifest 稳定分成两片，构建后的独立原生/设计校验另占一条 macOS lane。三条 lane 共用同一 run/attempt 的依赖报告，各自产生唯一结果；原有 `macOS Core contracts` 检查名作为严格汇总保留。桌面模块、截图模块和既有 Core/renderer/原生 helper 产物一起冻结，消费者不再重复 `build:desktop`。最终门禁仍核对检查 ID、子测试全集、平台、源码、计划、run 和 attempt，拒绝漏项、重复、失败或过期输入。
+GUI 的产物 job 完成必要构建与 RPC 校验后即可发布同一源码的输入包；Core 合同按 manifest 稳定分成两片，独立原生/设计校验复用第二个分片的准备，保留单独的执行步骤与结果目录，合同失败后仍继续收集。两条 lane 共用同一 run/attempt 的依赖报告，各自产生唯一结果；原有 `macOS Core contracts` 检查名作为严格汇总保留。桌面模块、截图模块和既有 Core/renderer/原生 helper 产物一起冻结，消费者不再重复 `build:desktop`。最终门禁仍核对检查 ID、子测试全集、平台、源码、计划、run 和 attempt，拒绝漏项、重复、失败或过期输入。
 
-容器使用固定版本和摘要的官方 cargo-chef 二进制，从清单与锁文件生成依赖配方；依赖编译层位于真实源码 COPY 之前。源码变动只重建工作区代码；新增 target、清单或锁文件变化仍会更新配方。运行镜像仅导出最终层缓存，测试镜像保留完整构建层，避免两套完整依赖缓存重复占用空间；macOS 原生与 GUI 构建共用同一环境键的 Rust 依赖缓存。验收结果及失败报告从不作为缓存通过证据。
+容器使用固定版本和摘要的官方 cargo-chef 二进制，从清单与锁文件生成依赖配方；依赖编译层位于真实源码 COPY 之前。源码变动只重建工作区代码；新增 target、清单或锁文件变化仍会更新配方。运行镜像仅导出最终层缓存，测试镜像保留完整构建层，避免两套完整依赖缓存重复占用空间。测试目标只导入自己的完整缓存图，作为隔离最终镜像 min 图与测试构建图的候选措施。本地 OCI 缓存/native snapshotter 的结构实验支持这一选择；托管 GHA 缓存/overlayfs 仍待验证，尚未证明线上缓存失效的根因或耗时收益。macOS 原生与 GUI 构建共用同一环境键的 Rust 依赖缓存。macOS 私有 Bash 只缓存当前身份目录；锁文件、构建脚本、架构、编译器、SDK、系统或 runner 镜像变化都会换键。恢复后仍核对二进制、对应源码包与许可证摘要，不保存其他身份或下载目录。验收结果及失败报告从不作为缓存通过证据。
 
-用 `python3 scripts/ci-timing.py --collect areal-project/AReaL-Harness --limit 50 --output target/ci/timing` 保存 gh 原始数据并生成逐 job/step CSV；离线重放使用 `--input <snapshot.json>`。分析保留取消、失败、重跑 attempt 和 runner 信息；依赖等待只作估计，机器排队只报告可识别下界。包含安装/编译的复合 step 独立列为 mixed，不能全算测试耗时。缺少日志或子报告时缓存冷热及精确测试拆分保持 unknown；只比较覆盖相同的成功运行，并同时查看墙钟关键路径和累计 runner minutes。
+用 `python3 scripts/ci-timing.py --collect areal-project/AReaL-Harness --limit 50 --output target/ci/timing` 保存 gh 原始数据并生成逐 job/step CSV；离线重放使用 `--input <snapshot.json>`。采集最近 50 个 run 的全部 attempt，逐轮读取对应 jobs；分析使用各轮 run_started_at，避免把重跑前的等待或前一轮 runner minutes 计入本轮。分析保留取消、失败、重跑 attempt 和 runner 信息；依赖等待只作估计，机器排队只报告可识别下界。包含安装/编译的复合 step 独立列为 mixed，不能全算测试耗时。缺少日志或子报告时缓存冷热及精确测试拆分保持 unknown；只比较覆盖相同的成功运行，并同时查看墙钟关键路径和累计 runner minutes。
 
 `scripts/ci-scope.py` 是本地与 CI 共用的检查计划所有者；`check-changed` 解析一次 merge-base，合并暂存、未暂存与未跟踪路径，重命名两侧均纳入，部分暂存相互抵消也保留选检。计划登记命令、依赖、环境能力、平台和 manifest 子测试全集，并绑定 base/source/head 与输入摘要。共享 Rust、schema、锁文件、构建与 CI 变化扩大范围，未知代码保守扩大；比较基准不可用时不得放行。
 
@@ -109,6 +115,8 @@ AREAL_CORE_BIN=/absolute/verified/bin/areal pnpm --dir clients/gui test:history-
 `model_input_budget` 从默认 Desktop 的真实出站求解请求计量固定指令、环境说明及每工具的 name/description/parameters。首个 profile 明确不含 Runtime 与插件；动态用户正文和随机路径不计入固定基线。基线变化报告分项与工具名，必须人工审阅更新，不自动调整生产输入或额度。
 
 `test:conversation-reading` 使用生产 Messages、Desktop 历史窗口与确定性 Core RPC fixture，组合验证旧页淘汰、离开返回、重观察、后台增量、宽度变化和 Renderer 重载。该短场景登记为常规 ciSmoke；它不启动真实 Core 或 Electron，不证明供应商、安装包或物理输入验收。历史窗口的多视图保护、有限扫描、取消及预算失败由 bounded-history-client 行为检查覆盖。
+
+`node clients/gui/scripts/bounded-history-ui-smoke.mjs` 在生产 Renderer 和 Desktop 历史所有者上使用受控 Core 响应。上滑分页应静默加载；场景在请求挂起时检查无分页加载文字，完成后检查旧消息出现，并验证正文与输入框位置、失败重试，以及读取期间上滑只续读一次、向下取消续读。场景延迟滚动后的动画帧，在该帧前合入历史页，验证同一可见段落的偏移不超过 2 像素；另检查 30 轮完整快照的上下滚轮浏览，以及超过 16 页后的淘汰和缺页重读。`AREAL_HISTORY_UI_LOCALE=en` 可复验英文。该场景不代表真实 Core 或安装包验收。
 
 `test:navigation-cache` 使用生产 React App、真实 Chrome 和 fixture PlatformServices，记录无关 UI 操作的派生计算次数，检查名称、未读、运行、排序和新快照刷新，并保存源码身份及截图。它不启动 Core/Electron，也不验证安装包或感知延迟。`readingViews` 单测覆盖 32 项内存边界、最近访问淘汰、存储不可用和语义锚点重载；真实主题与布局连续性仍需 Renderer 场景。旧 `conversation-flow` 场景在 `.tool-summary-row .tool-failed` 定位器超时；生产折叠失败状态由 `ActivityRowStatus` 的 `data-tone="failed"` 表达。该 markup 与 `readingViews` 容量裁剪属于不同边界，本专项未修改旧 runner，完整对话流未计为通过。
 
@@ -461,7 +469,7 @@ PR #111 在初始 G0 快照后整合历史恢复与定时任务所有权。以�
 
 `pnpm --dir clients/gui test:macos-dmg` 在 macOS 上独立通过真实 `codesign` 和 `hdiutil` 验证签名 framework 暂存。它需要允许磁盘映像设备访问的环境；受限 Agent 沙箱可能返回 `Device not configured`。应记录环境失败，并在允许的宿主环境重跑相同测试，不跳过断言，也不据此宣称安装包验收通过。macOS GUI job 显式执行该检查；可移植 `verify` 不创建磁盘映像。
 
-GUI CI 只构建一次 Core 和 Renderer。构建 job 完成后，10 项原生 Core 合同与 GUI smoke 并行消费同一份产物，分别校验源码 SHA 和可执行组件；`GUI gate` 同时等待两组结果，失败、取消或意外跳过都不能通过。Core 合同的日志、报告和隔离临时目录单独归档。历史兼容、迁移、Composer、模型选择、队列、对话派生和 Side chat 按清单选择后拆成独立隔离的 matrix job（最多六个并发，`fail-fast: false`）。同轮 artifact 以 tar 保留可执行权限，并记录精确 checkout SHA；smoke 拒绝不匹配的源码。锁定的 pnpm/Electron/FFmpeg 下载使用缓存；构建成功即可保存构建缓存，不再因后续 smoke 失败丢失缓存。报告与跨 job 产物绑定 workflow attempt；需要重跑时执行完整 workflow，旧 attempt 的通过记录或产物不能满足新一轮门禁。缺失产物、失败、取消或意外跳过仍使 gate 失败，不使用 `continue-on-error`。
+GUI CI 只构建一次 Core 和 Renderer。构建 job 完成后，10 项原生 Core 合同与 GUI smoke 并行消费同一份产物，分别校验源码 SHA 和可执行组件；`GUI gate` 同时等待两组结果，失败、取消或意外跳过都不能通过。Core 合同的日志、报告和隔离临时目录单独归档。历史兼容、迁移、Composer、模型选择、队列、对话派生和 Side chat 按清单选择后拆成独立隔离的 matrix job（最多四个并发，`fail-fast: false`；各 workflow 仍共享 macOS 配额）。同轮 artifact 以 tar 保留可执行权限，并记录精确 checkout SHA；smoke 拒绝不匹配的源码。锁定的 pnpm/Electron/FFmpeg 下载使用缓存；构建成功即可保存构建缓存，不再因后续 smoke 失败丢失缓存。报告与跨 job 产物绑定 workflow attempt；需要重跑时执行完整 workflow，旧 attempt 的通过记录或产物不能满足新一轮门禁。缺失产物、失败、取消或意外跳过仍使 gate 失败，不使用 `continue-on-error`。
 
 恢复去重的归属包含项目、聊天和 Core 连接代际；适配器重建后不能复用旧代际的完成/失败尝试。`thread-restoration-ui-smoke.mjs` 使用真实构建的 Renderer 及受控 Desktop 投影复现此边界，同时保持未知提交不重发。
 

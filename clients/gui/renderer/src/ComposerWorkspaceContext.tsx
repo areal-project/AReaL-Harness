@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { useCloudEnvironment } from "./cloudEnvironment.js";
 import { Button } from "./components/ui/button.js";
 import { Cloud } from "lucide-react";
@@ -127,27 +128,27 @@ export function ComposerWorkspaceContext({
         <span>{t("workspace.readingInfo")}</span>
       ) : (
         <>
-          <span className="composer-workspace-location" title={current.info.root ?? project.root}>
-            {current.info.target ? (
-              <GitFork className="size-3.5" aria-hidden="true" />
-            ) : (
-              <WorkspaceLocalIcon />
-            )}
-            {t(current.info.target ? "workspace.worktree" : "workspace.local")}
-          </span>
-          {showBranch && current.info.git !== false && current.info.branch && (
-            <span
-              className="composer-workspace-branch"
-              aria-label={t("workspace.currentBranch")}
-              title={current.info.branch}
-            >
-              <GitBranch className="size-3.5 shrink-0" aria-hidden="true" />
-              <span>
-                {current.info.branch === "(detached)"
-                  ? t("workspace.detachedHead")
-                  : current.info.branch}
-              </span>
+          <TitleTooltip title={current.info.root ?? project.root}>
+            <span className="composer-workspace-location">
+              {current.info.target ? (
+                <GitFork className="size-3.5" aria-hidden="true" />
+              ) : (
+                <WorkspaceLocalIcon />
+              )}
+              {t(current.info.target ? "workspace.worktree" : "workspace.local")}
             </span>
+          </TitleTooltip>
+          {showBranch && current.info.git !== false && current.info.branch && (
+            <TitleTooltip title={current.info.branch}>
+              <span className="composer-workspace-branch" aria-label={t("workspace.currentBranch")}>
+                <GitBranch className="size-3.5 shrink-0" aria-hidden="true" />
+                <span>
+                  {current.info.branch === "(detached)"
+                    ? t("workspace.detachedHead")
+                    : current.info.branch}
+                </span>
+              </span>
+            </TitleTooltip>
           )}
         </>
       )}

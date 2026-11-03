@@ -1,3 +1,4 @@
+import { DelayedVisible } from "@areal/ui";
 import { useI18n } from "./i18n/IntlProvider.js";
 import type { ManagementResponseMap } from "@areal/workbench/desktop-contract/management";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -495,7 +496,9 @@ export function ProcessesPane({
           </p>
         )}
         {loading ? (
-          <p role="status">读取进程中…</p>
+          <DelayedVisible active>
+            <p role="status">读取进程中…</p>
+          </DelayedVisible>
         ) : (
           !items.length && !error && <p>此任务暂无受管进程</p>
         )}

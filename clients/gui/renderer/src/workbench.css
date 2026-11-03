@@ -33,7 +33,7 @@ textarea {
   font-family: inherit;
 }
 button {
-  transition: background-color 0.15s;
+  transition: background-color var(--motion-normal) var(--ease-standard);
 }
 pre {
   white-space: pre-wrap;
@@ -164,8 +164,8 @@ kbd {
   cursor: var(--interactive-cursor, pointer);
   flex-shrink: 0;
   transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
+    color var(--motion-normal) var(--ease-standard),
+    background-color var(--motion-normal) var(--ease-standard);
 }
 .section-action-btn:hover {
   color: var(--color-foreground);
@@ -181,7 +181,7 @@ kbd {
   padding: 0 4px 0 8px;
   border-radius: var(--radius-navigation);
   color: var(--color-foreground);
-  transition: background-color 0.15s ease;
+  transition: background-color var(--motion-normal) var(--ease-standard);
 }
 .project-row:hover,
 .project-row:has([data-popup-open]),
@@ -246,8 +246,8 @@ kbd {
   border: 0;
   cursor: var(--interactive-cursor, pointer);
   transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
+    background-color var(--motion-normal) var(--ease-standard),
+    color var(--motion-normal) var(--ease-standard);
 }
 .project-show-more:hover {
   background: var(--color-sidebar-item, var(--color-hover));
@@ -423,8 +423,8 @@ kbd {
   font-weight: 430;
   line-height: 18px;
   transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
+    color var(--motion-normal) var(--ease-standard),
+    background-color var(--motion-normal) var(--ease-standard);
 }
 button.composer-project {
   cursor: var(--interactive-cursor, pointer);
@@ -437,7 +437,7 @@ button.composer-project:hover,
 .composer-project > svg {
   flex-shrink: 0;
   color: currentColor;
-  transition: color 0.15s ease;
+  transition: color var(--motion-normal) var(--ease-standard);
 }
 button.composer-project:hover > svg,
 .composer-project[data-popup-open] > svg {
@@ -2688,15 +2688,15 @@ button[aria-label="停止"] {
   border: 0;
   cursor: var(--interactive-cursor, pointer);
   transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
+    background-color var(--motion-normal) var(--ease-standard),
+    color var(--motion-normal) var(--ease-standard);
 }
 .new-task-action > svg {
   flex-shrink: 0;
   width: 16px;
   height: 16px;
   color: var(--color-foreground-subtle);
-  transition: color 0.15s ease;
+  transition: color var(--motion-normal) var(--ease-standard);
 }
 .new-task-action:hover:not(:disabled) > svg {
   color: var(--color-foreground);
@@ -3546,7 +3546,7 @@ button[aria-label="停止"] {
   width: 0;
   border-left: 1px solid color-mix(in lab, var(--color-review-tree-guide-ink) 25%, transparent);
   opacity: 0;
-  transition: opacity 150ms;
+  transition: opacity var(--motion-normal) var(--ease-standard);
   pointer-events: none;
 }
 .review-file-tree [role="tree"]:hover .review-tree-guide {
@@ -4545,21 +4545,52 @@ button[aria-label="停止"] {
   min-width: 0;
   margin-block: var(--conversation-gap) 0;
 }
-.turn-retry-notice {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  color: var(--color-foreground-subtle);
-  font-size: var(--text-conversation);
-  line-height: var(--conversation-line);
-  overflow-wrap: anywhere;
-}
 .turn-retry-attention {
   color: var(--color-status-attention);
 }
-.turn-retry-notice > svg {
+.conversation-event {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-inline);
+  margin: 16px 0;
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-ui-xs);
+  line-height: var(--conversation-line);
+  text-align: center;
+}
+.conversation-event::before,
+.conversation-event::after {
+  content: "";
+  flex: 1 1 0;
+  border-top: 1px solid var(--color-menu-border, var(--color-border));
+  min-width: 16px;
+}
+.conversation-event-content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: 80%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.conversation-event-content > svg {
   flex: none;
+}
+.message-branch-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.message-actions .message-time {
+  width: auto;
+  height: auto;
+  padding: 0;
+  opacity: 1;
+  white-space: nowrap;
+  font-size: var(--text-ui-xs);
+  color: var(--color-foreground-subtle);
 }
 .execution-status {
   color: var(--color-status-running);

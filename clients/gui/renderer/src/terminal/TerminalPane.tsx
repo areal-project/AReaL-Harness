@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { Button } from "@areal/ui";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Plus, X } from "lucide-react";
@@ -185,16 +186,19 @@ export function TerminalPane({
               </Button>
             ))}
           </div>
-          <select
-            aria-label="新终端保留范围"
-            title="Turn 终端需要正在执行的任务，范围由 Core 校验"
-            value={nextLifetime}
-            onChange={(event) => setNextLifetime(event.target.value === "turn" ? "turn" : "thread")}
-            className="rounded border border-border bg-background px-2 py-1 text-compact-caption"
-          >
-            <option value="thread">Thread · 当前对话</option>
-            <option value="turn">Turn · 当前任务</option>
-          </select>
+          <TitleTooltip title={"Turn 终端需要正在执行的任务，范围由 Core 校验"}>
+            <select
+              aria-label="新终端保留范围"
+              value={nextLifetime}
+              onChange={(event) =>
+                setNextLifetime(event.target.value === "turn" ? "turn" : "thread")
+              }
+              className="rounded border border-border bg-background px-2 py-1 text-compact-caption"
+            >
+              <option value="thread">Thread · 当前对话</option>
+              <option value="turn">Turn · 当前任务</option>
+            </select>
+          </TitleTooltip>
           <Button
             unstyled
             data-slot={undefined}

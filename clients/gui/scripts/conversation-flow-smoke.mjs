@@ -97,6 +97,25 @@ try {
       );
       firstTurnSamples.push({ reducedMotion, scenario, samples });
     };
+    // 回复写满阅读区后跟随最新内容（R-MESSAGES-012）。
+    const atTail = async (scenario) => {
+      await page.waitForFunction(() => {
+        const messages = document.querySelector("#first-turn-reading-preview .messages");
+        return !!messages && messages.scrollHeight - messages.scrollTop - messages.clientHeight < 2;
+      });
+      const samples = await messages.evaluate(async (element) => {
+        const samples = [];
+        for (let frame = 0; frame < 8; frame++) {
+          await new Promise(requestAnimationFrame);
+          samples.push(element.scrollHeight - element.scrollTop - element.clientHeight);
+        }
+        return samples;
+      });
+      assert.ok(
+        samples.every((value) => value < 2),
+        `${scenario} follows tail: ${samples}`,
+      );
+    };
     const grow = async () => {
       await reading.getByRole("button", { name: "追加长输出", exact: true }).click();
       await page.waitForTimeout(400);
@@ -110,15 +129,41 @@ try {
       }
       if (scenario === "unknown" || scenario === "history")
         await reading.getByRole("button", { name: "开始发送", exact: true }).click();
+      // 回看时发送也立即定位待发消息；受理后真实消息落在同一位置，不再跳动。
+      let sentInset;
+      if (scenario === "history") {
+        const pendingInset = () =>
+          messages.evaluate((element) => {
+            const pending = element.querySelector(".pending-message .user-message");
+            return pending
+              ? pending.getBoundingClientRect().top - element.getBoundingClientRect().top
+              : null;
+          });
+        await page.waitForFunction(() => {
+          const messages = document.querySelector("#first-turn-reading-preview .messages");
+          const pending = messages?.querySelector(".pending-message .user-message");
+          if (!messages || !pending) return false;
+          const inset = pending.getBoundingClientRect().top - messages.getBoundingClientRect().top;
+          return inset >= -1 && inset < 80;
+        });
+        sentInset = await pendingInset();
+      }
       if (scenario === "unknown")
         await reading.getByRole("button", { name: "响应丢失", exact: true }).click();
       await reading.getByRole("button", { name: "收到用户消息", exact: true }).click();
       await nearTop(`${scenario}-accepted`);
+      if (sentInset !== undefined) {
+        const { inset } = await geometry();
+        assert.ok(
+          Math.abs(inset - sentInset) < 2,
+          `accepted stays in place: ${sentInset} -> ${inset}`,
+        );
+      }
       await grow();
       await grow();
-      await nearTop(`${scenario}-long-output`);
+      await atTail(`${scenario}-long-output`);
       await messages.hover();
-      await page.mouse.wheel(0, 220);
+      await page.mouse.wheel(0, -220);
       await page.waitForTimeout(150);
       const held = await geometry();
       await grow();

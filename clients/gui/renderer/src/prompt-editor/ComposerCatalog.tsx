@@ -1,3 +1,4 @@
+import { DelayedVisible } from "@areal/ui";
 import { Button, Input } from "@areal/ui";
 import { observeResize } from "@areal/ui/observe-resize";
 import { useLayoutEffect, useRef, useState } from "react";
@@ -168,11 +169,11 @@ export function ComposerCatalog({
             )}
             {group === "files" && catalog.files && (
               <>
-                {catalog.files.loading && (
+                <DelayedVisible active={catalog.files.loading}>
                   <p role="status" className="composer-catalog-empty">
                     {t("common.loading")}
                   </p>
-                )}
+                </DelayedVisible>
                 {catalog.files.error && (
                   <p role="alert" className="composer-catalog-empty">
                     {catalog.files.error}

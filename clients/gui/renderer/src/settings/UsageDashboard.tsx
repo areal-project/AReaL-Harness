@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { Button, Input } from "@areal/ui";
 import { useI18n, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.js";
 import { ActionButton } from "../components/ui/action-button.js";
@@ -305,9 +306,8 @@ export function UsageDashboard({ action }: { action: Action }) {
         <div className="usage-legend">
           <span>{t("settings.usageDashboard.less")}</span>
           {[0, 1, 2, 3, 4].map((i) => (
-            <span
+            <TitleTooltip
               key={i}
-              className={`usage-cell usage-level-${i}`}
               title={
                 [
                   t("settings.usageDashboard.noUsage"),
@@ -317,7 +317,9 @@ export function UsageDashboard({ action }: { action: Action }) {
                   t("settings.usageDashboard.moreThan2Hours"),
                 ][i]
               }
-            />
+            >
+              <span className={`usage-cell usage-level-${i}`} />
+            </TitleTooltip>
           ))}
           <span>{t("settings.usageDashboard.more")}</span>
         </div>

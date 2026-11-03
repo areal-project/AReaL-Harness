@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { useEffect, useState } from "react";
 import { activityLabel } from "./conversationPresentation.js";
 import type { Data } from "./services.js";
@@ -23,14 +24,21 @@ export function TurnActivity({
       <span
         role="status"
         aria-live="polite"
-        className={project.state?.connected && !project.state?.interactions?.[threadId]?.data?.some((item: Data) => item.status === "pending") ? "turn-thinking" : undefined}
+        className={
+          project.state?.connected &&
+          !project.state?.interactions?.[threadId]?.data?.some(
+            (item: Data) => item.status === "pending",
+          )
+            ? "turn-thinking"
+            : undefined
+        }
       >
         {label}
       </span>
       {seconds >= 5 && (
-        <span className="activity-elapsed" title="从打开本次执行视图起计时">
-          {seconds} 秒
-        </span>
+        <TitleTooltip title={"从打开本次执行视图起计时"}>
+          <span className="activity-elapsed">{seconds} 秒</span>
+        </TitleTooltip>
       )}
     </div>
   );

@@ -5,6 +5,7 @@
   --motion-fast: 100ms;
   --motion-normal: 160ms;
   --motion-slow: 240ms;
+  --motion-loop: infinite;
   --ease-standard: cubic-bezier(.2, 0, 0, 1);
   --layer-dialog: 50;
   --layer-popover: 60;
@@ -134,5 +135,5 @@
   --color-foreground-inverse: #000000;
   --color-success: #46bf72;
 }
-:root[data-reduced-motion="true"] { --motion-fast: 0ms; --motion-normal: 0ms; --motion-slow: 0ms; }
-@media (prefers-reduced-motion: reduce) { :root:not([data-reduced-motion="false"]) { --motion-fast: 0ms; --motion-normal: 0ms; --motion-slow: 0ms; } }
+:root[data-reduced-motion="true"] { --motion-fast: 0ms; --motion-normal: 0ms; --motion-slow: 0ms; --motion-loop: 0; }
+@media (prefers-reduced-motion: reduce) { :root:not([data-reduced-motion="false"]) { --motion-fast: 0ms; --motion-normal: 0ms; --motion-slow: 0ms; --motion-loop: 0; } }

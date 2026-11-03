@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import type { ResourceRequest, Scope } from "@areal/workbench/desktop-contract/resource";
 import { normalizeMcp } from "@areal/workbench/desktop-contract/resource";
 import {
@@ -234,14 +235,16 @@ export function McpSettings({
                     <strong>{item.id}</strong>
                     <p>{source}</p>
                     {/* MCP 启动命令／URL 单行截断，长命令看不到后半段；补完整值的原生 title。 */}
-                    <p
+                    <TitleTooltip
                       title={`${item.config.transport?.type ?? ""} ${
                         item.config.transport?.command ?? item.config.transport?.url ?? ""
                       }`.trim()}
                     >
-                      {item.config.transport?.type} ·{" "}
-                      {item.config.transport?.command ?? item.config.transport?.url ?? ""}
-                    </p>
+                      <p>
+                        {item.config.transport?.type} ·{" "}
+                        {item.config.transport?.command ?? item.config.transport?.url ?? ""}
+                      </p>
+                    </TitleTooltip>
                   </div>
                   <SettingsBadge>
                     {resourceMcpStateMessages[item.state]
@@ -570,12 +573,14 @@ export function TaskSkillsSettings(props: SettingsProps) {
               <BookOpen size={20} />
               <span>
                 <strong>{item.name || item.id}</strong>
-                <small title={item.description}>
-                  {item.description ||
-                    t("settings.resourceSettings.versionValueViewSkillContent", {
-                      value0: item.revision,
-                    })}
-                </small>
+                <TitleTooltip title={item.description}>
+                  <small>
+                    {item.description ||
+                      t("settings.resourceSettings.versionValueViewSkillContent", {
+                        value0: item.revision,
+                      })}
+                  </small>
+                </TitleTooltip>
               </span>
               <SettingsBadge>
                 {!item.available

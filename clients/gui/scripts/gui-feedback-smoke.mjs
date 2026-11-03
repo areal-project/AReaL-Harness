@@ -440,7 +440,7 @@ try {
         await page
           .getByTestId("workspace-file-preview")
           .getByRole("navigation", { name: "文件路径", exact: true })
-          .getAttribute("title"),
+          .getAttribute("aria-description"),
         `${workspace}/${scenario.path}`,
       );
       await capture(`${scenario.id}-file`);

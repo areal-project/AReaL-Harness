@@ -1,3 +1,4 @@
+import { TitleTooltip } from "../../components/tooltip/tooltip.js";
 /* Adapted from ZCode 872ad960 TaskListItem.tsx: original default row markup,
  * title overflow and action geometry. Core supplies state and callbacks. */
 import { memo, type ReactNode, type ComponentProps } from "react";
@@ -89,9 +90,11 @@ export const MemoTaskItem = memo(function TaskListItem({
       {(nested || statePending || running || attention || unread || archived) && (
         <div className="relative flex size-4 shrink-0 items-center justify-center">
           {statePending ? (
-            <span role="img" aria-label="状态待更新" title="打开任务以更新状态">
-              <CircleDashed className="size-3.5 text-foreground-subtle" />
-            </span>
+            <TitleTooltip title={"打开任务以更新状态"}>
+              <span role="img" aria-label="状态待更新">
+                <CircleDashed className="size-3.5 text-foreground-subtle" />
+              </span>
+            </TitleTooltip>
           ) : running ? (
             <LoaderIcon className="size-4 animate-spin motion-reduce:animate-none text-foreground-subtle" />
           ) : attention ? (
@@ -119,14 +122,15 @@ export const MemoTaskItem = memo(function TaskListItem({
         </div>
       </div>
       {worktree && (
-        <span
-          data-testid="task-worktree-badge"
-          className="task-worktree-badge shrink-0 text-foreground-subtle"
-          title={worktreeTitle}
-          aria-label={worktreeLabel}
-        >
-          <GitFork className="size-3.5" aria-hidden="true" />
-        </span>
+        <TitleTooltip title={worktreeTitle}>
+          <span
+            data-testid="task-worktree-badge"
+            className="task-worktree-badge shrink-0 text-foreground-subtle"
+            aria-label={worktreeLabel}
+          >
+            <GitFork className="size-3.5" aria-hidden="true" />
+          </span>
+        </TitleTooltip>
       )}
       <HoverActions
         onClick={(e) => e.stopPropagation()}

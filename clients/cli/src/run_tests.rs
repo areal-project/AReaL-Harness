@@ -8,6 +8,7 @@ async fn configure_requests(
     supported: bool,
     disable: bool,
     previous: Option<bool>,
+    model: Option<&str>,
 ) -> (Vec<Value>, String) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!("ws://{}", listener.local_addr().unwrap());
@@ -26,6 +27,10 @@ async fn configure_requests(
             let result = match method {
                 "initialize" => json!({}),
                 "areal/capabilities" => json!({"features":{"automaticSessionName":supported}}),
+                "areal/model/list" => json!({"data":[
+                    {"providerId":"arena","modelId":"terra"},
+                    {"providerId":"other","modelId":"terra"}
+                ]}),
                 "areal/thread/start" | "areal/thread/observe" | "thread/read" => {
                     let mut options = json!({});
                     if let Some(enabled) = previous {
@@ -80,6 +85,9 @@ async fn configure_requests(
     if previous.is_some() {
         arguments.extend(["--resume", "session"]);
     }
+    if let Some(model) = model {
+        arguments.extend(["--model", model]);
+    }
     let args = LegacyArgs::try_parse_from(arguments).unwrap().cli;
     let error = tokio::time::timeout(Duration::from_secs(5), execute(&args))
         .await
@@ -101,7 +109,7 @@ async fn naming_choice_reaches_core_and_survives_cli_resume() {
         (true, false, Some(true), Some(true)),
         (true, true, Some(true), Some(false)),
     ] {
-        let (requests, error) = configure_requests(supported, disable, previous).await;
+        let (requests, error) = configure_requests(supported, disable, previous, None).await;
         assert!(error.contains("configuration captured"), "{error}");
         let configure = requests
             .iter()
@@ -124,7 +132,7 @@ async fn naming_choice_reaches_core_and_survives_cli_resume() {
 
 #[tokio::test]
 async fn unsupported_core_rejects_opt_out_before_session_or_task_mutation() {
-    let (requests, error) = configure_requests(false, true, None).await;
+    let (requests, error) = configure_requests(false, true, None, None).await;
     assert!(
         error.contains("Core does not support --no-session-name"),
         "{error}"
@@ -133,4 +141,43 @@ async fn unsupported_core_rejects_opt_out_before_session_or_task_mutation() {
         r["method"].as_str(),
         Some("initialize" | "initialized" | "areal/capabilities")
     )));
+}
+
+#[tokio::test]
+async fn explicit_provider_model_is_resolved_before_creation_and_applied_on_resume() {
+    for previous in [None, Some(false)] {
+        let (requests, error) =
+            configure_requests(true, false, previous, Some("arena:terra")).await;
+        assert!(error.contains("configuration captured"), "{error}");
+        let expected = json!({"providerId":"arena","modelId":"terra"});
+        let configure = requests
+            .iter()
+            .find(|r| r["method"] == "areal/thread/configure")
+            .unwrap();
+        assert_eq!(configure["params"]["model"], expected);
+        if previous.is_none() {
+            let catalog = requests
+                .iter()
+                .position(|r| r["method"] == "areal/model/list")
+                .unwrap();
+            let start = requests
+                .iter()
+                .position(|r| r["method"] == "areal/thread/start")
+                .unwrap();
+            assert!(catalog < start);
+            assert_eq!(requests[start]["params"]["model"], expected);
+        } else {
+            assert!(requests.iter().all(|r| r["method"] != "areal/thread/start"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn ambiguous_model_is_rejected_before_creating_a_session() {
+    let (requests, error) = configure_requests(true, false, None, Some("terra")).await;
+    assert!(
+        error.contains("model must identify exactly one configured API model"),
+        "{error}"
+    );
+    assert!(requests.iter().all(|r| r["method"] != "areal/thread/start"));
 }

@@ -4,6 +4,8 @@
 
 本文定义计划中的 Remote v2。本页不把设计写成已实现能力；当前模块职责见[架构与目录](architecture.md)，验证入口见[测试计划](../development/remote-control-testing.md)。
 
+后续[独立环境服务设计](environment-service.md)和[实施计划](../development/environment-service-plan.md)细化 Desktop Service 的 owner 与登录后台演进，复用本页 Gateway/Core/Runtime/Relay 分工。以下包含早期切片和目标描述；当前方法范围以 [Remote API](../api/remote-control.md)及源码为准，GUI 退出存活能力以实际生命周期验收为准。
+
 ## RC-01 实现范围
 
 只读 Direct 入口由 `RemoteControl` 随现有桌面后台管理，独立监听 loopback；它不接入 DesktopService 的高权限请求分发器。浏览器 shell 复用现有 GUI 构建，使用共享 `@areal/remote` Noise 实现；只发送 v2 hello 和两个只读方法，不持有 Core 连接或执行循环。v2 在解码 JSON 前使用收紧的消息与缓冲限额，旧本地服务继续沿用其所有者。

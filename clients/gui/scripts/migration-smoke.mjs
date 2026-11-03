@@ -780,8 +780,9 @@ try {
     const donePane = page.locator(`[data-agent-conversation="${doneChild.id}"]`);
     assert.equal(await donePane.locator(".user-message").count(), 1);
     await donePane.locator(".turn-progress-summary").click();
-    await donePane.locator(".tool-event").first().waitFor();
-    await donePane.getByRole("button", { name: "查看工具原始记录", exact: true }).click();
+    const doneTool = donePane.locator(".tool-event").first();
+    await doneTool.waitFor();
+    await doneTool.locator("button[aria-expanded]").click();
     await donePane.getByLabel("工具结果", { exact: true }).waitFor();
     const doneAvatar = await page
       .locator(`[data-testid=chat-view] [data-agent-avatar="${doneChild.id}"]`)

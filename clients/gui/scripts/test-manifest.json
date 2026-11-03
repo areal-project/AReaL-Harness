@@ -363,6 +363,14 @@
     "notes": "Production Messages and Desktop history with deterministic Core RPCs check evicted-page restore, reobservation, streaming and reflow. No provider or package coverage."
   },
   {
+    "script": "test:tool-detail-ui",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["conversation", "history", "design"],
+    "requires": ["browser", "gui-build", "git"],
+    "notes": "Production Messages and Desktop history with controlled deferred tool reads, failures and retry; no provider or package coverage."
+  },
+  {
     "script": "test:history-recovery",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],

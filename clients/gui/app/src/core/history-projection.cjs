@@ -20,17 +20,23 @@ function mergeHistory(thread, entries) {
   const shown = new Set((thread.turns ?? []).map((turn) => turn.id));
   const merged = (thread.turns ?? []).map((current) => {
     const older = turns.get(current.id);
-    const currentIds = new Set((current.items ?? []).map((item) => item.id));
-    return older
-      ? {
-          ...older,
-          ...current,
-          items: [
-            ...older.items.filter((item) => !currentIds.has(item.id)),
-            ...(current.items ?? []),
-          ],
-        }
-      : { ...current, items: current.items ?? [] };
+    const currentItems = current.items ?? [];
+    if (!older) return { ...current, items: currentItems };
+    const currentPositions = new Map(currentItems.map((item, index) => [item.id, index]));
+    /** @type {import('@areal/workbench/core-model-contract').CoreItem[]} */
+    const items = [];
+    let position = 0;
+    // 重叠条目确定新历史的位置；条目正文及未进入快照的实时尾部沿用当前版本。
+    for (const item of older.items) {
+      const shared = currentPositions.get(item.id);
+      if (shared === undefined) items.push(item);
+      else {
+        items.push(...currentItems.slice(position, shared + 1));
+        position = shared + 1;
+      }
+    }
+    items.push(...currentItems.slice(position));
+    return { ...older, ...current, items };
   });
   return {
     ...thread,

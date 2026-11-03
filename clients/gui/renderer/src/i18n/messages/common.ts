@@ -518,6 +518,18 @@ export const commonMessages = {
   "chat.history.loadingLatest": { "zh-CN": "正在恢复本轮消息…", en: "Restoring current turn…" },
   "chat.history.loadingOlder": { "zh-CN": "正在加载更早的消息…", en: "Loading older messages…" },
   "chat.history.loadFull": { "zh-CN": "加载完整内容", en: "Load full content" },
+  "chat.timeline.compaction.completed": { "zh-CN": "上下文已压缩", en: "Context compacted" },
+  "chat.timeline.compaction.running": { "zh-CN": "正在压缩上下文…", en: "Compacting context…" },
+  "chat.timeline.compaction.failed": {
+    "zh-CN": "上下文压缩未完成",
+    en: "Context compaction did not complete",
+  },
+  "chat.history.loadingDetails": { "zh-CN": "正在读取工具详情…", en: "Reading tool details…" },
+  "chat.history.detailsFailed": {
+    "zh-CN": "暂时无法读取详情，请重试。",
+    en: "Details could not be read. Please try again.",
+  },
+  "chat.history.retryDetails": { "zh-CN": "重试", en: "Retry" },
   "chat.history.loadingFull": {
     "zh-CN": "正在加载完整内容… {progress, number}%",
     en: "Loading full content… {progress, number}%",
@@ -536,6 +548,7 @@ export const commonMessages = {
       "{kind, select, userMessage {这条消息} dynamicToolCall {这条工具记录} other {这段历史内容}}较大（{size, number} MiB），可按需加载完整内容。",
     en: "{kind, select, userMessage {This message} dynamicToolCall {This tool record} other {This historical content}} is large ({size, number} MiB). Load the full content when needed.",
   },
+  "chat.sent.appContent": { "zh-CN": "应用内容", en: "App content" },
   "chat.history.reloadPage": {
     "zh-CN": "加载此处历史消息",
     en: "Load messages in this gap",

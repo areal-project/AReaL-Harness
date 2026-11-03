@@ -537,7 +537,7 @@
     },
     {
       "file": "packages/ui/src/conversation/thinking-status/thinking-status.css",
-      "finding": "literal color: mask-image: linear-gradient(90deg, transparent 35%, #000 50%, transparent 65%)",
+      "finding": "literal color: mask-image: linear-gradient(90deg, transparent 12.5%, #000 50%, transparent 87.5%)",
       "occurrence": 1,
       "reason": "黑色只定义 alpha 遮罩的覆盖度，颜色不进入最终前景。保持现有扫光和遮罩范围。",
       "exitCondition": "遮罩形状变更时以动画像素证据复核，不映射到主题前景色。"
@@ -897,7 +897,7 @@
       {
         "sourceIndex": 374,
         "file": "packages/ui/src/conversation/thinking-status/thinking-status.css",
-        "finding": "literal color: mask-image: linear-gradient(90deg, transparent 35%, #000 50%, transparent 65%)",
+        "finding": "literal color: mask-image: linear-gradient(90deg, transparent 12.5%, #000 50%, transparent 87.5%)",
         "classification": "合理例外或定量保留债务",
         "reason": "黑色只定义 alpha 遮罩的覆盖度，颜色不进入最终前景。保持现有扫光和遮罩范围。"
       },

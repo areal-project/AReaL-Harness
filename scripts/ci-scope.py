@@ -83,6 +83,12 @@ CI_PLATFORMS = {
     for group in set().union(*WORKFLOW_GROUPS.values())
 }
 
+# 短原生检查复用第二个合同分片的准备；结果仍按原检查 ID 独立收集。
+CORE_LANES = [
+    {"lane": "contracts-1", "group": "core-contracts", "item": "core-contracts", "native": False},
+    {"lane": "contracts-2", "group": "core-contracts", "item": "core-contracts:2", "native": True},
+]
+
 
 REQUIREMENT_HINTS = {
     "python3": "Python >=3.11 with tomllib and tar extraction filtering; activate the repository .venv",
@@ -804,13 +810,7 @@ if __name__ == "__main__":
         release=str(applicable("release", plan["paths"])).lower(),
         smoke_matrix=json.dumps(matrix, separators=(",", ":")),
         core_matrix=json.dumps(
-            {
-                "include": [
-                    {"lane": "contracts-1", "group": "core-contracts", "item": "core-contracts"},
-                    {"lane": "contracts-2", "group": "core-contracts", "item": "core-contracts:2"},
-                    {"lane": "native-checks", "group": "gui-native-checks", "item": ""},
-                ]
-            },
+            {"include": CORE_LANES},
             separators=(",", ":"),
         ),
         host_matrix=json.dumps({"include": host}, separators=(",", ":")),

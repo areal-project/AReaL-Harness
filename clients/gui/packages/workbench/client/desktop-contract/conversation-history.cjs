@@ -173,7 +173,11 @@ function isDeferredItem(value) {
     value.type === "historyDeferred" &&
     typeof value.cursor === "string" &&
     typeof value.version === "string" &&
-    integer(value.totalBytes)
+    integer(value.totalBytes) &&
+    (value.preview === undefined ||
+      (isCoreItem(value.preview) &&
+        value.preview.id === value.id &&
+        value.preview.type === value.originalType))
   );
 }
 /** @param {unknown} value @returns {{data:HistorySummary[],nextCursor?:string|null}} */

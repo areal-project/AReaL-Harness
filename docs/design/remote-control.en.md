@@ -4,6 +4,8 @@
 
 This document specifies planned Remote v2 behavior, not shipped capability. See [architecture and layout](architecture.en.md) for module ownership and the [test plan](../development/remote-control-testing.en.md) for verification entry points.
 
+The follow-on [independent environment design](environment-service.en.md) and [implementation plan](../development/environment-service-plan.en.md) refine Desktop Service ownership and login-service evolution while retaining Gateway/Core/Runtime/Relay responsibilities. This page includes early slices and target behavior; the [Remote API](../api/remote-control.en.md) and source define current methods, and lifecycle acceptance establishes survival after GUI exit.
+
 ## RC-01 implementation scope
 
 `RemoteControl` manages the read-only Direct entry within the existing desktop background adapter on a separate loopback listener. It does not enter the privileged DesktopService dispatcher. The browser shell uses the existing GUI build and shared `@areal/remote` Noise implementation; it sends only v2 hello and two read methods, with no Core connection or execution loop. v2 applies tighter message and buffer limits before JSON decoding; existing local services retain their owners.

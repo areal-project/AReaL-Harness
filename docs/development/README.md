@@ -10,7 +10,35 @@
 
 开始修改前核对 `git status --short`、当前分支和已有 worktree 的任务归属。当前 checkout 有其他活跃写任务时，优先复用本任务的独立 worktree；没有可复用目录时，从明确的已提交基线创建 `codex/` worktree。未提交改动由原任务提交或显式交接，不能仅因工作区暂时干净就认定无人写入。
 
+隔离在修改版本号、准备 PR 或派发写任务之前完成。新建分支不等于新建工作目录；每个独立并行写任务使用自己的 worktree。同一任务内按不重叠文件分工的子任务可以共用该任务目录，由主任务统一提交与构建；派发信息必须给出该目录的绝对路径、基线提交和文件所有权，子任务先核对 `git rev-parse --show-toplevel` 与分支再编辑。只读审查也明确其读取的 worktree 和提交。
+
+使用 Git 原生入口，不另建任务登记系统：
+
+```sh
+git worktree list --porcelain
+git worktree add -b codex/task-name /absolute/task-worktree <committed-base>
+git -C /absolute/task-worktree status --short
+git -C /absolute/task-worktree rev-parse --show-toplevel HEAD
+```
+
+切换后，所有编辑、构建和提交命令都以该 worktree 为 cwd。发现意外改动时仍停止并核对归属；隔离不能替代这项保护。共享主目录的原有脏文件不需要为此收起或搬运。
+
 在选定 worktree 完成构建，再进入终验；同一个验收实例使用的源码、依赖与输出在其退出前固定。需要继续开发或构建时使用另一个 worktree。浏览器验收优先消费独立静态产物；必须使用 Vite 开发模式的计量场景在独立冻结 worktree 串行执行，避免类型生成或构建触发 HMR。操作与证据要求见[验证产物与启动诊断](testing.md#本地验证产物与启动诊断)。
+
+## PR 提交身份
+
+获得推送和 PR 创建授权后，先完成目标分支推送，再从干净的任务 worktree 使用以下入口；仓库与分支均显式指定，不从 remote 名称猜测目标：
+
+```sh
+python3 scripts/pr-create.py --repo upstream-owner/repository \
+  --head-repo fork-owner/repository --branch codex/task-name --base main \
+  --expected-head <full-commit-sha> --title 'fix(scope): describe the change' \
+  --body-file /absolute/pr-body.md
+```
+
+脚本通过 `gh` 读取来源分支，要求远端 SHA、当前 HEAD、当前分支和干净工作区一致，再检查是否已有同来源、同 base 的开放 PR。全部满足才创建，并回读 PR 的状态、`headRefOid`、来源仓库、来源分支及 base。成功输出 JSON；失败退出非零。它不推送、不合并、不自动重试创建。测试随 `make script-test` 执行，仅使用临时 Git 仓库和合成 `gh`。
+
+创建响应丢失时结果为 UNKNOWN；先用 `gh pr list --state all` 核对该来源的开放、关闭和已合并 PR，再决定下一步。已得到 URL 但回读不符时，错误保留该 URL，处理原 PR，不能另建。远端可能在前置检查后变化，回读失败因此不表示“未创建”。之后更新 PR 仍须重新核对 head。合并另需授权，并使用 `gh pr merge <number> --repo <owner/repository> --match-head-commit <verified-full-sha>` 约束实际合并提交；CI 与源码审核要求照常执行。
 
 ## 环境
 
@@ -99,7 +127,7 @@ Homebrew/Linux 发行产物、安装验收与 draft 发布流程见[发行流程
 
 GUI 使用独立 pnpm 11.7.0 workspace。运行 `make gui-install`、`make gui-build`、`make gui-smoke`；启动、打包与隔离配置见 [GUI 指南](../../clients/gui/README.md)。
 
-PR CI 以包含 runner 排队的 10–15 分钟端到端反馈为目标。GUI smoke 复用绑定同一 SHA 的 debug 构建，最多六个场景并发。`make verify-native` 先构建，再以四个 Make worker 运行既有 launcher、Runtime、Harness、Desktop API 和 Workgroup 验收组；公共构建及 SDK 前置在对应消费者启动前完成。验收命令保持不变，PR 关键路径不执行发行打包。托管 runner 排队与冷缓存仍可能超出目标，应测量实际流水线耗时，不能用超时设置冒充性能达标。CLI/GUI 完整打包、安装升级验收、签名、公证、上传及频道同步归本地发行流程。
+PR CI 以包含 runner 排队的 10–15 分钟端到端反馈为目标。GUI smoke 复用绑定同一 SHA 的 debug 构建，最多四个场景并发。`make verify-native` 先构建，再以四个 Make worker 运行既有 launcher、Runtime、Harness、Desktop API 和 Workgroup 验收组；公共构建及 SDK 前置在对应消费者启动前完成。验收命令保持不变，PR 关键路径不执行发行打包。托管 runner 排队与冷缓存仍可能超出目标，应测量实际流水线耗时，不能用超时设置冒充性能达标。CLI/GUI 完整打包、安装升级验收、签名、公证、上传及频道同步归本地发行流程。
 
 `make setup-node` 仅安装锁定的 Node 开发依赖，供不运行格式检查的原生 CI 使用；本地完整开发仍使用 `make setup`。
 
