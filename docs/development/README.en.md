@@ -170,6 +170,19 @@ In Codex, a heartbeat attached to this chat can run the command every 30 minutes
 
 ## Validation artifact retention
 
+### Collect primary and custom targets on demand
+
+The temporary-worktree mode excludes primary targets, custom `CARGO_TARGET_DIR` directories and unregistered build copies. Preview these with the separate intermediate-file mode, which defaults to the cleanup script's primary checkout `target` only:
+
+```sh
+make artifact-cleanup ARGS='--rust-intermediates --report /private/tmp/rust-primary-preview.json'
+make artifact-cleanup ARGS='--rust-intermediates --target-root /path/to/checkout/custom-target --report /private/tmp/rust-custom-preview.json'
+```
+
+Repeat `--target-root` to select multiple real directories inside Cargo checkouts; only profiles with `.cargo-lock` are recognized. This mode skips GUI/Core bundle retention and loose-output deletion, does not implicitly scan other worktrees, and is mutually exclusive with `--temporary-worktrees`, `--root` and `--no-worktrees`. After review, add `--apply` with a new report path. It removes regular intermediate files individually from the four cache directories, retaining executable-bit files, dynamic/static libraries, shells, release archives, manifest-owned bundles, apps, dependency directories and symlinks. Profile-level files remain. Open files anywhere in the profile, build/debug processes and Cargo locks block collection. File identity is checked before deletion; changed retained entries or deletion failures stop execution and leave a partial receipt.
+
+Reports identify selected and excluded scopes and record `free_before_bytes` and `free_after_bytes`. Concurrent writes affect those readings; allocated-block estimates cannot replace them. Every mode refuses to overwrite an existing report. Automatic collection still uses temporary-worktree mode only. Primary/custom builds, Codex sessions/evidence, dependencies, installations and release packages require their own retention policies and explicit scope authorization.
+
 Run `make artifact-cleanup` to preview AReaL artifacts under `~/Documents/Codex` and this repository's registered worktrees. The default is read-only. GUI packaging evidence identifies rounds, with executable/Core completeness checks; matching app/ZIP copies belong to the same round. For standalone Core, the command retains the newest five complete, manifest-verified bundle versions, deduplicated by build identity and file hashes. Cargo profile directories are mutable build outputs and are never counted as historical rounds. Loose profile outputs are removed only when all three binaries match a known complete bundle and at least five verified bundle versions remain; unidentified outputs remain.
 
 Rust `deps`, `incremental`, `build`, and `.fingerprint` directories are managed independently of retained versions. Merely using a repository as a working directory does not block cache cleanup. Build/debugger processes, open files inside a candidate, and held Cargo locks do block it. Active profile outputs protect companion binaries as a group. Packaged GUI/Core runtime files remain with retained versions; generated debugging information can be lost when deleting caches. Unidentified archives and small packaging evidence records remain. Custom `target/delivery-*` contents are handled only as identified packages, never as an entire disposable cache.

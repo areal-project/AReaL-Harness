@@ -10,13 +10,14 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "artifact-cleanup.py"
 
 
-class TemporaryWorktreeCacheTest(unittest.TestCase):
+class CleanupFixture(unittest.TestCase):
     # 失败方式：删除主仓/可执行产物、忽略锁或打开文件、预算内全清、失效路径阻断。
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="worktree cache ")
@@ -64,6 +65,7 @@ class TemporaryWorktreeCacheTest(unittest.TestCase):
         )
 
     def run_cleanup(self, *args, budget="0"):
+        self.report = self.root / f"result-{time.time_ns()}.json"
         result = subprocess.run(
             [
                 sys.executable,
@@ -84,6 +86,8 @@ class TemporaryWorktreeCacheTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)
 
+
+class TemporaryWorktreeCacheTest(CleanupFixture):
     def test_preview_and_apply_only_touch_registered_secondary_caches(self):
         missing = self.root / "missing checkout"
         self.git("worktree", "add", "--detach", str(missing), "HEAD")
@@ -188,6 +192,143 @@ class TemporaryWorktreeCacheTest(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertTrue((self.old / "target/debug/deps/cache").exists())
+
+
+class RustIntermediatesTest(CleanupFixture):
+    def run_intermediates(self, *args):
+        self.report = self.root / f"intermediates-{time.time_ns()}.json"
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(self.repo / "scripts/artifact-cleanup.py"),
+                "--rust-intermediates",
+                "--report",
+                str(self.report),
+                "--json",
+                *args,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def test_custom_target_preserves_executables_packages_sources_and_symlinks(self):
+        target = self.repo / "experiments/custom artifacts"
+        profile = target / "aarch64-apple-darwin/debug"
+        cache = profile / "deps"
+        cache.mkdir(parents=True)
+        (profile / ".cargo-lock").touch()
+        removable = cache / "libengine.rlib"
+        removable.write_bytes(b"intermediate")
+        keep = {
+            cache / "test-runner": b"executable",
+            cache / "plugin.dylib": b"shared library",
+            cache / "release.zip": b"package",
+            cache / "nested.app/data": b"app data",
+            cache / "bundle/manifest.json": b"{}",
+            cache / "bundle/data": b"bundle data",
+            profile / "areal": b"profile executable",
+            target / "delivery-keep/debug/deps/cache": b"delivery data",
+            target / "vendor/node_modules/pkg/debug/deps/cache": b"dependency data",
+            target / "source.rs": b"source",
+        }
+        for path, data in keep.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        (target / "delivery-keep/debug/.cargo-lock").touch()
+        (target / "vendor/node_modules/pkg/debug/.cargo-lock").touch()
+        (cache / "test-runner").chmod(0o755)
+        link = cache / "outside-link"
+        link.symlink_to(self.old / "target/debug/deps/cache")
+        options = ["--target-root", str(target)]
+        self.run_intermediates(*options)
+        self.assertTrue(removable.exists())
+        applied = self.run_intermediates(*options, "--apply")
+        self.assertFalse(removable.exists())
+        self.assertEqual(sum(i.get("deleted_files", 0) for i in applied["items"]), 1)
+        self.assertEqual(applied["target_roots"], [str(target)])
+        self.assertIn("free_before_bytes", applied)
+        self.assertIn("free_after_bytes", applied)
+        for path, data in keep.items():
+            self.assertEqual(path.read_bytes(), data)
+        self.assertTrue(link.is_symlink())
+        self.assertTrue((self.repo / "target/debug/deps/cache").exists())
+        repeated = self.run_intermediates(*options, "--apply")
+        self.assertFalse(any(i["status"] == "deleted" for i in repeated["items"]))
+
+    def test_primary_profile_lock_and_open_companion_block_deletion(self):
+        companion = self.repo / "target/debug/areal"
+        child = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import sys; f=open(sys.argv[1]); print('ready',flush=True); sys.stdin.read()",
+                str(companion),
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            self.assertEqual(child.stdout.readline().strip(), "ready")
+            report = self.run_intermediates("--apply")
+            self.assertEqual({i["status"] for i in report["items"]}, {"blocked-in-use"})
+        finally:
+            child.communicate(timeout=10)
+        with (self.repo / "target/debug/.cargo-lock").open("r+") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            report = self.run_intermediates("--apply")
+            self.assertEqual({i["status"] for i in report["items"]}, {"blocked-build-lock"})
+        self.assertTrue((self.repo / "target/debug/deps/cache").exists())
+
+    def test_existing_receipt_and_symlink_target_are_rejected(self):
+        self.report.write_text("original receipt")
+        link = self.repo / "linked target"
+        link.symlink_to(self.repo / "target", target_is_directory=True)
+        for options in [["--report", str(self.report)], ["--target-root", str(link)]]:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(self.repo / "scripts/artifact-cleanup.py"),
+                    "--rust-intermediates",
+                    "--apply",
+                    "--report",
+                    str(self.report),
+                    *options,
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.report.read_text(), "original receipt")
+        self.assertTrue((self.repo / "target/debug/deps/cache").exists())
+
+    def test_process_inspection_failure_blocks_all_deletions_and_returns_failure(self):
+        shim = self.root / "inspection shim"
+        shim.mkdir()
+        ps = shim / "ps"
+        ps.write_text("#!/bin/sh\nexit 1\n")
+        ps.chmod(0o755)
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(self.repo / "scripts/artifact-cleanup.py"),
+                "--rust-intermediates",
+                "--apply",
+                "--report",
+                str(self.report),
+                "--json",
+            ],
+            env={**os.environ, "PATH": str(shim) + os.pathsep + os.environ["PATH"]},
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual({i["status"] for i in report["items"]}, {"blocked-activity-unknown"})
+        self.assertEqual(report["deleted_estimated_bytes"], 0)
+        self.assertTrue((self.repo / "target/debug/deps/cache").exists())
 
 
 class ArtifactCleanupTest(unittest.TestCase):

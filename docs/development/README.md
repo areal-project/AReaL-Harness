@@ -168,6 +168,19 @@ make artifact-cleanup ARGS='--temporary-worktrees --cache-budget-gib 40 --min-fr
 
 ## 验证产物保留
 
+### 按需回收主工作树和自定义 target
+
+磁盘压力来自主工作树、自定义 `CARGO_TARGET_DIR` 或未登记的构建副本时，临时工作树模式不会覆盖这些目录。使用独立的中间文件模式预览，默认只选当前清理脚本所属主仓的 `target`：
+
+```sh
+make artifact-cleanup ARGS='--rust-intermediates --report /private/tmp/rust-primary-preview.json'
+make artifact-cleanup ARGS='--rust-intermediates --target-root /path/to/checkout/custom-target --report /private/tmp/rust-custom-preview.json'
+```
+
+`--target-root` 可重复，每个路径必须是 Cargo checkout 内的真实目录；只识别带 `.cargo-lock` 的 profile。该模式不运行 GUI/Core 包保留和散装产物删除，也不隐式扫描其他工作树；与 `--temporary-worktrees`、`--root`、`--no-worktrees` 互斥。审阅后用新的报告路径追加 `--apply`。它逐文件回收四类缓存中的普通中间文件，保留可执行位文件、动态/静态库、shell、发布归档、带 manifest 的包、应用、依赖目录和符号链接；profile 顶层文件保留。整个 profile 的打开文件、构建/调试进程和 Cargo 锁仍会阻止回收，删除前复核文件身份，保留项变化或删除失败时停止并记录部分结果。
+
+报告列出所选范围、排除范围及 `free_before_bytes`、`free_after_bytes`；前后空闲读数受并发写入影响，不能用分配块估算替代。所有模式拒绝覆盖已有报告。自动回收继续只使用临时工作树模式；主仓、自定义构建目录、Codex 会话/取证文件、依赖、安装目录及发布包需要各自的保留规则和显式范围授权。
+
 运行 `make artifact-cleanup` 预览 `~/Documents/Codex` 及本仓已登记工作树中的 AReaL 产物，默认只读。GUI 以打包记录识别轮次并检查可执行文件及 Core 的完整性，匹配的应用和 ZIP 副本归入同轮。独立 Core 则保留最新 5 个完整且通过清单校验的版本包，以构建身份和文件哈希去重。Cargo profile 是可变构建输出，不作为历史轮次计数。只有某 profile 的三个二进制均匹配已知完整包、且已有至少 5 个校验通过的版本包时，才清理其散装产物；无法识别的产物保留。
 
 Rust 的 `deps`、`incremental`、`build`、`.fingerprint` 独立于版本保留管理。仅把仓库当作工作目录不阻止缓存清理；构建/调试器进程、候选目录内打开的文件及持有的 Cargo 锁会阻止清理。使用中的 profile 产物会一起保护伴随二进制。保留版本包中的 GUI/Core 运行文件保留，清缓存可能损失生成的调试信息。无法识别的归档和小型打包验收记录保留。自定义 `target/delivery-*` 仅按已识别的包处理，不把整目录当作缓存。
