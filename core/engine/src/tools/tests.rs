@@ -2134,3 +2134,18 @@ async fn read_helpers_work_without_write_or_network_permissions() {
     client.shutdown().await.unwrap();
     result.unwrap();
 }
+
+#[test]
+fn environment_fact_snapshot_keeps_source_reference_without_repeating_declarations() {
+    let mut handles = Handles::default();
+    handles.environment_facts.insert("/repo".into(), json!({"cwd":"/repo","fingerprint":"observed","sourceItemId":"original-item","invalidateOn":"environment changes","declarations":[{"text":"public config\n".repeat(2000)}]}));
+    let snapshot = handles.snapshot();
+    assert_eq!(snapshot["environmentFactCount"], 1);
+    assert_eq!(
+        snapshot["environmentFacts"][0]["sourceItemId"],
+        "original-item"
+    );
+    assert_eq!(snapshot["environmentFacts"][0]["fingerprint"], "observed");
+    assert!(!snapshot.to_string().contains("public config"));
+    assert!(snapshot.to_string().len() < 2000);
+}

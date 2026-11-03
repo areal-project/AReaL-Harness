@@ -323,7 +323,11 @@ impl Handles {
                 .then(|| json!({"path":path,"fileVersion":id}))
         });
         json!({"processes":bounded(self.process_snapshots.values().cloned()),
-            "environmentFacts":bounded(self.environment_facts.values().cloned()),
+            "environmentFacts":bounded(self.environment_facts.values().map(|fact| json!({
+                "cwd":fact["cwd"],"fingerprint":fact["fingerprint"],"sourceItemId":fact["sourceItemId"],
+                "readback":"read_history(itemId=sourceItemId); follow rawResult if present",
+                "invalidateOn":fact["invalidateOn"],"observedOnly":true
+            }))),
             "environmentFactCount":self.environment_facts.len(),"environmentFactsObservedOnly":true,
             "files":bounded(files),"processCount":self.processes.len(),
             "retainedFileVersions":self.versions.len(),"observedOnly":true,
@@ -1463,6 +1467,9 @@ impl Engine {
                         json!(previous != current),
                     );
                 }
+            }
+            if call.name == "environment_info" && success {
+                result["sourceItemId"] = json!(item_id);
             }
             cell.state
                 .lock()
