@@ -575,7 +575,8 @@ if (!process.env.RC12_TLS_HOME) {
   });
 
   test("pin mismatch and foreign room cannot request approval or consume an invitation", async (t) => {
-    const f = await enrolledHost(t);
+    const f = await enrolledHost(t, {}, {}, nativeRelayHostFixture);
+    f.evidence.relay = f.relay.resources;
     const invitation = await f.remote.control({ operation: "pair", transport: "relay" });
     const inviteSecret = new URLSearchParams(new URL(invitation.payload).hash.slice(1)).get(
       "invite",
@@ -583,19 +584,26 @@ if (!process.env.RC12_TLS_HOME) {
     await assert.rejects(
       device(t, f.remote, {
         pair: true,
+        projects: [f.projectAlias],
         inviteSecret,
         hostPin: identityId(await createIdentity()),
       }),
     );
+    await f.remote.refresh();
     assert.equal(f.remote.state().pending.length, 0);
     await assert.rejects(device(t, f.remote, { room: "f".repeat(64) }));
     assert.equal(f.remote.state().connected, true);
-    assert.equal((await device(t, f.remote, { pair: true, inviteSecret })).active.event, "ready");
+    assert.equal(
+      (await device(t, f.remote, { pair: true, inviteSecret, projects: [f.projectAlias] })).active
+        .event,
+      "ready",
+    );
   });
   test("Direct and Relay share device limits and grant shrink/revoke invalidates both", async (t) => {
-    const f = await enrolledHost(t);
+    const f = await enrolledHost(t, {}, {}, nativeRelayHostFixture);
+    f.evidence.relay = f.relay.resources;
     await f.remote.control({ operation: "enableDirect" });
-    const first = await device(t, f.remote, { pair: true });
+    const first = await device(t, f.remote, { pair: true, projects: [f.projectAlias] });
     const direct = await device(t, f.remote, { identity: first.identity, transport: "direct" });
     assert.equal(direct.active.event, "ready");
     const extra = await device(t, f.remote, { identity: first.identity }).catch(() => null);
@@ -605,7 +613,7 @@ if (!process.env.RC12_TLS_HOME) {
     await f.remote.control({
       operation: "updateGrant",
       id: first.peer,
-      projects: ["project"],
+      projects: [f.projectAlias],
       preset: "Observer",
     });
     await waitFor(() => first.socket.readyState === 3 && direct.socket.readyState === 3);
@@ -714,8 +722,9 @@ if (!process.env.RC12_TLS_HOME) {
   });
 
   test("noncanonical base64 from one client closes only that channel before Noise", async (t) => {
-    const f = await enrolledHost(t);
-    const healthy = await device(t, f.remote, { pair: true });
+    const f = await enrolledHost(t, {}, {}, nativeRelayHostFixture);
+    f.evidence.relay = f.relay.resources;
+    const healthy = await device(t, f.remote, { pair: true, projects: [f.projectAlias] });
     const attacker = await rawRelay(t, f.remote);
     assert.equal(attacker.type, "ready");
     attacker.socket.send(JSON.stringify({ type: "data", channel: attacker.channel, data: "Zh==" }));
@@ -868,11 +877,13 @@ if (!process.env.RC12_TLS_HOME) {
   });
   test("unfinished Direct and Relay handshakes consume the same Host admission budget", async (t) => {
     const { createRemoteWire } = await import("../packages/remote/src/wire.mjs");
-    const f = await enrolledHost(t);
+    const f = await enrolledHost(t, {}, {}, nativeRelayHostFixture);
+    f.evidence.relay = f.relay.resources;
     await f.remote.control({ operation: "enableDirect" });
     const held = [];
     for (let n = 0; n < 4; n++) {
-      const socket = new WebSocket(f.remote.direct.ws, { origin: f.remote.direct.origin });
+      const origin = f.remote.state().directUrl;
+      const socket = new WebSocket(origin.replace(/^http/, "ws") + "/remote/socket", { origin });
       t.after(() => socket.terminate());
       await createRemoteWire(socket).ready;
       held.push(socket);
@@ -889,7 +900,10 @@ if (!process.env.RC12_TLS_HOME) {
     assert.ok(held.every((socket) => socket.readyState === 1));
     for (const socket of held) socket.terminate();
     await new Promise((resolve) => setTimeout(resolve, 50));
-    assert.equal((await device(t, f.remote, { pair: true })).active.event, "ready");
+    assert.equal(
+      (await device(t, f.remote, { pair: true, projects: [f.projectAlias] })).active.event,
+      "ready",
+    );
   });
 
   test("legacy encrypted Relay registration cannot reactivate without a new explicit enrollment", async (t) => {
@@ -924,8 +938,9 @@ if (!process.env.RC12_TLS_HOME) {
     assert.notEqual((await f.persisted()).room, registration.room);
   });
   test("foreign channel injection is rejected without affecting another authorized device", async (t) => {
-    const f = await enrolledHost(t),
-      healthy = await device(t, f.remote, { pair: true });
+    const f = await enrolledHost(t, {}, {}, nativeRelayHostFixture);
+    f.evidence.relay = f.relay.resources;
+    const healthy = await device(t, f.remote, { pair: true, projects: [f.projectAlias] });
     const attacker = await rawRelay(t, f.remote),
       other = await rawRelay(t, f.remote);
     attacker.socket.send(JSON.stringify({ type: "data", channel: other.channel, data: "Zg==" }));
@@ -935,33 +950,32 @@ if (!process.env.RC12_TLS_HOME) {
     other.socket.terminate();
   });
   test("paced orderly close delivers typed protocol/authentication refusals before closing only that channel", async (t) => {
-    const f = await enrolledHost(t, { framesPerSecond: 8, bytesPerSecond: 524288 });
-    const healthy = await device(t, f.remote, { pair: true });
+    const f = await enrolledHost(
+      t,
+      { framesPerSecond: 8, bytesPerSecond: 524288 },
+      {},
+      nativeRelayHostFixture,
+    );
+    f.evidence.relay = f.relay.resources;
+    const healthy = await device(t, f.remote, { pair: true, projects: [f.projectAlias] });
     for (const [options, code] of [
       [{}, "FORBIDDEN"],
       [{ apiVersion: "legacy" }, "PROTOCOL_UNSUPPORTED"],
     ]) {
-      const pending = device(t, f.remote, options);
-      await waitFor(() =>
-        [...f.remote.channels.values()].some((endpoint) => endpoint.readyState === 2),
-      );
-      const closing = [...f.remote.channels.values()].find((endpoint) => endpoint.readyState === 2);
-      assert.ok(f.remote.sessions.sockets.has(closing));
-      assert.ok(closing.bufferedAmount > 0);
-      assert.ok(f.remote.sessions.sendBufferedBytes() >= closing.bufferedAmount);
-      assert.throws(() => closing.send(Buffer.of(1)), /断开/);
-      const rejected = await pending;
+      const rejected = await device(t, f.remote, options);
       assert.equal(rejected.active?.error?.code, code);
-      assert.ok(f.remote.relayTransport.controlBytes > 0);
-      assert.ok(f.remote.sessions.sendBufferedBytes() >= f.remote.relayTransport.controlBytes);
       await waitFor(() => rejected.socket.readyState === 3);
+      assert.equal((await next(rejected.messages)).done, true);
       assert.equal((await healthy.read(code)).result.projects.length, 1);
     }
     const coalesced = await device(t, f.remote, { coalesceClose: true });
     assert.equal(coalesced.active?.error?.code, "FORBIDDEN");
     await waitFor(() => coalesced.socket.readyState === 3);
+    assert.equal((await next(coalesced.messages)).done, true);
     assert.equal((await healthy.read("coalesced-close")).result.projects.length, 1);
     assert.equal(f.remote.state().connected, true);
+    f.evidence.orderlyCloseObservation =
+      "typed refusal before actual channel close and application EOF; private send buffer unobserved";
   });
 
   test("revocation aborts already paced Relay bytes immediately and cannot publish them after the fence", async (t) => {

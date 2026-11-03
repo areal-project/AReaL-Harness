@@ -428,6 +428,8 @@ macOS 实际崩溃预算使用 `AREAL_HOST_SERVICE_ROOT=/absolute/authorized/roo
 
 Relay 的原实际重启、替换与不可用预算场景可在同一固定产物上选择运行。先从仓库根用 `node --input-type=module -e 'import { certificates } from "./clients/gui/scripts/remote-relay-fixture.mjs"; console.log(await certificates())'` 生成隔离 CA；将打印目录分别填入 `RC12_TLS_HOME=/printed/path` 和 `NODE_EXTRA_CA_CERTS=/printed/path/ca.pem`，保留上述 Core/Keychain 环境，然后运行 `node --test --test-concurrency=1 --test-name-pattern='Relay restart and Host restart|Host replacement|Host fails closed' clients/gui/scripts/remote-relay-transport-contract.mjs`。原同 home Host 重启必须使用原完成停止回执与自然退出后显式启动，不能用重建 facade 代替。报告仅计所选三场景；其余原传输用例仍单列。所有本案进程收尾后仅清理本次打印的测试 CA 目录。
 
+同一 CA 和产物环境下，将上述选择条件换为 `pin mismatch|Direct and Relay share device limits|noncanonical base64|unfinished Direct and Relay handshakes|foreign channel injection|paced orderly close`，运行六个原连接与安全场景。它们使用真实 Rust Host、Direct/Relay 和 Noise 客户端，核对邀请、设备与未完成握手预算、授权收缩、攻击连接隔离及健康读取。关闭验证使用原类型化拒绝、实际 socket 关闭和应用流结束，替代 JS 私有缓存计数；不声称测得内部缓存或物理发送次数，也不代表整个传输套件已迁入。
+
 同一固定产物环境下，`node --test --test-concurrency=1 clients/gui/scripts/remote-client-kind-host.test.mjs clients/gui/scripts/remote-device-management-host.test.mjs` 运行原设备类型与管理套件的 Rust Host 路径，保留元数据、授权拒绝、配对与连接连续性断言。原保存次数/连接对象观察改为真实配置、原完成回执与认证连接；不计物理写入次数。`node --test clients/gui/scripts/mobile-workspace.test.mjs` 保留原六个 JS 状态用例，并追加真实 MobileClient/Rust Host/Core 的分页历史和事件路径；证据区分这两个层级，Node 客户端不代表真机或 GUI。
 
 同一已验证产物环境下，`node --test clients/gui/scripts/remote-artifact-native.test.mjs` 通过 Rust `review.read`/`artifact.read` 读取原生 Task 图片，核对分片拼接、媒体归属与精确清理；`node --test clients/gui/scripts/remote-project-models-native.test.mjs` 从真实 Core 读取有界六字段模型目录及已配置显示名。这两条原生路径单列证据，不外推为原 Remote 套件全部通过。
