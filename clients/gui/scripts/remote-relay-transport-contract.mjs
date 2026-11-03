@@ -15,6 +15,7 @@ import {
   certificates,
   relayFixture,
   hostFixture,
+  nativeRelayHostFixture,
   waitFor,
   nativeProject,
 } from "./remote-relay-fixture.mjs";
@@ -139,17 +140,18 @@ async function rawRelay(t, remote) {
   );
   return { socket, ...(await ready) };
 }
-async function enrolledHost(t, relayOptions = {}, hostOptions = {}) {
+async function enrolledHost(t, relayOptions = {}, hostOptions = {}, createHost = hostFixture) {
   const relay = await relayFixture(t, { relayOptions }),
-    host = await hostFixture(t, hostOptions);
-  await host.remote.control({
+    host = await createHost(t, hostOptions);
+  const enrollmentRequest = {
     operation: "enable",
     relay: relay.origin,
     code: relay.admin("enrollment").code,
     confirmed: true,
-  });
+  };
+  await host.remote.control(enrollmentRequest);
   await waitFor(() => host.remote.state().connected);
-  return { relay, ...host };
+  return { relay, ...host, enrollmentRequest };
 }
 
 if (!process.env.RC12_TLS_HOME) {
@@ -618,8 +620,9 @@ if (!process.env.RC12_TLS_HOME) {
     );
   });
   test("Relay restart and Host restart create fresh connections without replaying requests", async (t) => {
-    const f = await enrolledHost(t);
-    const first = await device(t, f.remote, { pair: true });
+    const f = await enrolledHost(t, {}, {}, nativeRelayHostFixture);
+    f.evidence.relay = f.relay.resources;
+    const first = await device(t, f.remote, { pair: true, projects: [f.projectAlias] });
     assert.equal((await first.read()).result.projects.length, 1);
     await f.relay.stop();
     await waitFor(() => first.socket.readyState === 3 && !f.remote.state().connected);
@@ -628,17 +631,23 @@ if (!process.env.RC12_TLS_HOME) {
     const second = await device(t, f.remote, { identity: first.identity });
     assert.notEqual(second.active.connectionId, first.active.connectionId);
     assert.equal(second.active.gatewayGeneration, first.active.gatewayGeneration);
-    f.remote.close();
-    const restored = await f.make();
-    await waitFor(() => restored.state().connected);
-    const third = await device(t, restored, { identity: first.identity });
+    const beforeRestart = await f.client.request("remote.read", {});
+    f.remote = await f.restart();
+    await waitFor(async () => (await f.remote.refresh()).connected);
+    assert.deepEqual(await f.client.request("remote.read", {}), beforeRestart);
+    const third = await device(t, f.remote, { identity: first.identity });
     assert.notEqual(third.active.gatewayGeneration, first.active.gatewayGeneration);
     assert.notEqual(third.active.connectionId, second.active.connectionId);
     assert.equal((await third.read()).result.projects.length, 1);
   });
   test("Host replacement closes old channels and requires explicit reclaim instead of fighting the replacement", async (t) => {
-    const f = await enrolledHost(t);
-    const first = await device(t, f.remote, { pair: true });
+    const f = await enrolledHost(t, {}, {}, nativeRelayHostFixture);
+    f.evidence.relay = f.relay.resources;
+    const originalEnable = JSON.parse(
+      await readFile(join(f.home, "host/remote-state.json"), "utf8"),
+    ).receipt;
+    assert.equal(originalEnable.state, "completed");
+    const first = await device(t, f.remote, { pair: true, projects: [f.projectAlias] });
     const replacement = new WebSocket(f.relay.origin.replace("https:", "wss:") + "/remote/socket");
     t.after(() => replacement.terminate());
     await new Promise((resolve, reject) => {
@@ -661,6 +670,27 @@ if (!process.env.RC12_TLS_HOME) {
     await new Promise((r) => setTimeout(r, 3200));
     assert.equal(replacement.readyState, 1);
     assert.match(f.remote.state().relayError, /替换/);
+    const beforeReplay = await f.client.request("remote.read", {});
+    const { operation } = await f.client.operation(originalEnable.requestId);
+    assert.equal(operation.requestId, originalEnable.requestId);
+    assert.equal(operation.state, "completed");
+    assert.equal(operation.controlDigest, originalEnable.controlDigest);
+    await f.client.request("remote.gateway.control", {
+      requestId: originalEnable.requestId,
+      expectedGeneration: f.client.generation,
+      sourceId: f.source.sourceId,
+      request: f.enrollmentRequest,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 3200));
+    assert.equal(replacement.readyState, 1);
+    assert.equal((await f.remote.refresh()).connected, false);
+    assert.deepEqual(await f.client.request("remote.read", {}), beforeReplay);
+    f.evidence.completedEnableReplay = {
+      requestId: originalEnable.requestId,
+      state: operation.state,
+      replacementRemainedConnected: true,
+      configurationUnchanged: true,
+    };
     await f.remote.control({ operation: "enable", relay: f.relay.origin, confirmed: true });
     await waitFor(() => f.remote.state().connected && replacement.readyState === 3);
     assert.equal((await device(t, f.remote, { identity: first.identity })).active.event, "ready");
@@ -980,7 +1010,8 @@ if (!process.env.RC12_TLS_HOME) {
 
   test("Host fails closed on a valid but unusable service budget without a reconnect loop", async (t) => {
     const relay = await relayFixture(t, { relayOptions: { framesPerSecond: 2 } });
-    const f = await hostFixture(t);
+    const f = await nativeRelayHostFixture(t);
+    f.evidence.relay = relay.resources;
     await f.remote.control({
       operation: "enable",
       relay: relay.origin,
@@ -988,12 +1019,21 @@ if (!process.env.RC12_TLS_HOME) {
       confirmed: true,
     });
     await waitFor(() => f.remote.state().relayError.includes("传输限额"));
-    const refused = f.remote.relayTransport;
+    const refused = await f.client.request("remote.read", {});
+    const acceptedHandshakes = relay.acceptedTlsConnections;
     assert.equal(f.remote.state().connected, false);
-    assert.equal(refused.channels.size, 0);
+    assert.equal((await f.remote.refresh()).deviceGrants.filter((grant) => grant.online).length, 0);
     await new Promise((resolve) => setTimeout(resolve, 3200));
-    assert.equal(f.remote.relayTransport, refused);
-    assert.equal(f.remote.retry, undefined);
+    assert.equal((await f.remote.refresh()).connected, false);
+    assert.equal(relay.acceptedTlsConnections, acceptedHandshakes);
+    assert.deepEqual(await f.client.request("remote.read", {}), refused);
+    f.evidence.unusableBudget = {
+      diagnostic: f.remote.state().relayError,
+      acceptedHandshakes,
+      configurationUnchanged: true,
+      observation:
+        "actual TLS connections and persisted configuration; private retry timer unobserved",
+    };
   });
 
   test("re-enabling drops paced old-generation work and no old timer writes into a fresh connection", async (t) => {

@@ -80,23 +80,51 @@ export async function nativeHostFixture(
   };
   const instances = [];
   const evidence = { root, binary, binarySha256: digest(await readFile(binary)), cleanup: [] };
-  const log = await open(join(root, "host.log"), "a", 0o600);
-  const child = spawn(binary, ["host", "run"], {
-    env: {
-      ...process.env,
-      ...(tlsHome ? { SSL_CERT_FILE: join(tlsHome, "ca.pem") } : {}),
-      AREAL_HARNESS_HOME: home,
-      AREAL_HARNESS_SERVICE_HOME: home,
-    },
-    stdio: ["ignore", "ignore", log.fd],
-  });
-  await log.close();
-  evidence.hostPid = child.pid;
+  const startHost = async () => {
+    const log = await open(join(root, "host.log"), "a", 0o600);
+    const spawned = spawn(binary, ["host", "run"], {
+      env: {
+        ...process.env,
+        ...(tlsHome ? { SSL_CERT_FILE: join(tlsHome, "ca.pem") } : {}),
+        AREAL_HARNESS_HOME: home,
+        AREAL_HARNESS_SERVICE_HOME: home,
+      },
+      stdio: ["ignore", "ignore", log.fd],
+    });
+    await log.close();
+    evidence.hostPid = spawned.pid;
+    return spawned;
+  };
+  let child = await startHost();
+  let restartReference;
   let identity;
   t.after(async () => {
     try {
       await Promise.all(instances.map((remote) => remote.close()));
       source.close();
+      if (restartReference) {
+        const receipt = readHostReceipt(
+          restartReference,
+          (await host.operation(restartReference.requestId)).operation,
+        );
+        evidence.restartStopReceipt = receipt;
+        assert.equal(
+          receipt?.state,
+          "completed",
+          "original restart stop remains UNKNOWN; preserve fixture",
+        );
+      }
+      if (!identity && evidence.restarts?.length && child.exitCode === null) {
+        const current = JSON.parse(await readFile(join(home, "host/host.json"), "utf8"));
+        assert.equal(current.pid, child.pid);
+        assert.equal(current.hostId, restartReference.hostId);
+        host.close();
+        await host.connect(home);
+        assert.equal(host.hostId, current.hostId);
+        assert.equal(host.generation, current.generation);
+        identity = current;
+        evidence.host = current;
+      }
       if (identity) {
         if (evidence.ensure) {
           const original = evidence.ensure.reference;
@@ -302,9 +330,75 @@ export async function nativeHostFixture(
     await remote.init();
     return remote;
   };
+  const restart = async () => {
+    for (const remote of instances) await remote.close();
+    const previous = structuredClone(identity);
+    const oldChild = child;
+    restartReference = {
+      kind: "stopHost",
+      requestId: randomUUID(),
+      home,
+      hostId: previous.hostId,
+      generation: previous.generation,
+      strategy: "ifIdle",
+    };
+    const observation = { reference: restartReference, before: previous };
+    (evidence.restarts ??= []).push(observation);
+    await writeFile(join(root, "evidence.json"), JSON.stringify(evidence, null, 2));
+    try {
+      observation.receipt = readHostReceipt(
+        restartReference,
+        await host.stop(
+          restartReference.requestId,
+          restartReference.generation,
+          restartReference.strategy,
+        ),
+      );
+    } catch (error) {
+      observation.error = { code: error.code, message: error.message };
+      observation.receipt = await readOfflineHostReceipt(binary, restartReference);
+    }
+    assert.equal(
+      observation.receipt?.state,
+      "completed",
+      "only query the original restart stop; no replay",
+    );
+    await until(
+      () => oldChild.exitCode !== null || oldChild.signalCode !== null,
+      "original Host naturally exits before restart",
+    );
+    assert.equal(oldChild.exitCode, 0);
+    observation.originalExited = true;
+    host.close();
+    identity = undefined;
+    delete evidence.host;
+    child = await startHost();
+    await until(async () => {
+      assert.equal(child.exitCode, null);
+      try {
+        await host.connect(home);
+        return true;
+      } catch {
+        host.close();
+        return false;
+      }
+    }, "restarted Host authenticated startup");
+    identity = JSON.parse(await readFile(join(home, "host/host.json"), "utf8"));
+    assert.equal(identity.hostId, previous.hostId);
+    assert.notEqual(identity.generation, previous.generation);
+    assert.notEqual(identity.pid, previous.pid);
+    evidence.host = identity;
+    observation.after = identity;
+    await source.reconnect();
+    restartReference = null;
+    const remote = await make();
+    await writeFile(join(root, "evidence.json"), JSON.stringify(evidence, null, 2));
+    return remote;
+  };
   return {
     remote: deferNative ? null : await make(),
     make,
+    restart,
     home,
     source,
     client: host,

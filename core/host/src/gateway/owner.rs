@@ -30,6 +30,7 @@ pub(super) struct Gateway {
     prepared_direct: RefCell<Option<DirectRunning>>,
     direct_error: RefCell<String>,
     push_supported: std::cell::Cell<bool>,
+    relay_reconnect: std::cell::Cell<bool>,
     push_diagnostic: RefCell<String>,
     completions: RefCell<BTreeMap<String, push::Completion>>,
     completion_changed: Notify,
@@ -248,6 +249,11 @@ async fn run_relay(host: Rc<Host>) {
     let mut observed_revision = None;
     loop {
         let previous_status = host.gateway.status();
+        if host.gateway.relay_reconnect.replace(false) {
+            running = None;
+            terminal_transport = None;
+            host.gateway.push_supported.set(false);
+        }
         let snapshot = host.remote.snapshot(&host.migration);
         let desired = snapshot
             .as_ref()
@@ -335,7 +341,18 @@ async fn run_relay(host: Rc<Host>) {
                         let admission = Admission { generation, kind:TransportKind::Relay, transport:current.transport.clone(), close };
                         current.tasks.spawn_local(async move{let _=session::Session::run(host,stream,identity,admission).await;});
                     },
-                    RelayEvent::Disconnected{retry,..}=>{host.gateway.push_supported.set(false);if !retry {terminal_transport = running.as_ref().map(|running| running.transport.clone());} *host.gateway.status.borrow_mut()=json!({"owner":"native","connected":false,"state":if retry{"reconnecting"}else{"unavailable"}});},
+                    RelayEvent::Disconnected { reason, retry, .. } => {
+                        host.gateway.push_supported.set(false);
+                        if !retry {
+                            terminal_transport = running.as_ref().map(|running| running.transport.clone());
+                        }
+                        let diagnostic = match reason.as_str() {
+                            "REPLACED" => Some("replaced"),
+                            "UNSUPPORTED" => Some("unsupported"),
+                            _ => None,
+                        };
+                        *host.gateway.status.borrow_mut() = json!({"owner":"native","connected":false,"state":if retry{"reconnecting"}else{"unavailable"},"relayDiagnostic":diagnostic});
+                    },
                     RelayEvent::PushUnregistered(token)=>{if push::unregister_token(&host,&token).is_err(){*host.gateway.push_diagnostic.borrow_mut()="push-unregister-unavailable".into();}},
                     RelayEvent::PushDropped=>{*host.gateway.push_diagnostic.borrow_mut()="push-dropped".into();},
                 }
