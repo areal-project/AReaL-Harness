@@ -736,14 +736,28 @@ impl Session {
         let thread = text(params, "threadId")?;
         text(params, "turnId")?;
         text(params, "interactionId")?;
-        let result = self
+        let result = match self
             .rpc(
                 project,
                 generation,
                 "areal/interaction/list",
                 json!({"threadId":thread}),
             )
-            .await?;
+            .await
+        {
+            Ok(result) => result,
+            Err(error) => {
+                let missing = error
+                    .downcast_ref::<crate::server::schedule_connection::RpcFailure>()
+                    .is_some_and(|failure| failure.0["code"] == -32004);
+                if !missing {
+                    return Err(error);
+                }
+                self.authorize(Some(project), "observe")?;
+                ensure!(self.project(project)?.1 == generation, "RESYNC_REQUIRED");
+                return Err(fail("TARGET_CHANGED"));
+            }
+        };
         result["data"]
             .as_array()
             .and_then(|items| {
@@ -1129,6 +1143,28 @@ impl Session {
         text(params, "interactionId")?;
         let capability = "answer";
         self.authorize(Some(project), capability)?;
+        if let Some(decision) = params.get("decision") {
+            ensure!(
+                matches!(decision.as_str(), Some("allowOnce" | "deny"))
+                    && params.get("answers").is_none()
+                    && params["argumentsDigest"].as_str().is_some_and(|digest| {
+                        digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    }),
+                "INVALID_PARAMS"
+            );
+        } else {
+            ensure!(
+                params.get("argumentsDigest").is_none()
+                    && params["answers"].as_object().is_some_and(|answers| {
+                        !answers.is_empty()
+                            && answers.len() <= 8
+                            && answers.values().all(|answer| {
+                                answer.as_str().is_some_and(|answer| answer.len() <= 4096)
+                            })
+                    }),
+                "INVALID_PARAMS"
+            );
+        }
         #[derive(Serialize)]
         #[serde(rename_all = "camelCase")]
         struct Semantic<'a> {
@@ -1166,24 +1202,52 @@ impl Session {
                 && request["context"]["serviceGeneration"] == generation,
             "RESYNC_REQUIRED"
         );
-        let item = self.interaction(project, generation, params).await?;
-        if let Some(record) = self.command_record(project, &command)? {
-            ensure!(
-                record["remote"]["semanticDigest"] == digest,
-                "COMMAND_CONFLICT"
-            );
-            return self.command_result(project, Some(&record), &command).await;
-        }
-        ensure!(
-            item["status"] == "pending"
-                && item["expiresAt"].as_i64().is_some_and(|at| at
-                    > std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs() as i64),
-            "TARGET_CHANGED"
-        );
         if params["decision"] != "deny" {
+            let item = self.interaction(project, generation, params).await?;
+            if let Some(record) = self.command_record(project, &command)? {
+                ensure!(
+                    record["remote"]["semanticDigest"] == digest,
+                    "COMMAND_CONFLICT"
+                );
+                return self.command_result(project, Some(&record), &command).await;
+            }
+            ensure!(
+                item["status"] == "pending"
+                    && item["expiresAt"].as_i64().is_some_and(|at| at
+                        > std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs() as i64),
+                "TARGET_CHANGED"
+            );
+            if item["kind"] == "approval" {
+                ensure!(params["decision"] == "allowOnce", "INVALID_PARAMS");
+                ensure!(
+                    params["argumentsDigest"] == item["argumentsDigest"],
+                    "TARGET_CHANGED"
+                );
+            } else {
+                let questions = item["questions"].as_array().context("INVALID_PARAMS")?;
+                let answers = params["answers"].as_object().context("INVALID_PARAMS")?;
+                ensure!(
+                    item["kind"] == "question"
+                        && params.get("decision").is_none()
+                        && !questions.is_empty()
+                        && questions.len() <= 8
+                        && answers.len() == questions.len()
+                        && questions.iter().all(|question| {
+                            question["id"].as_str().is_some_and(|id| {
+                                answers.get(id).is_some_and(|answer| {
+                                    question["allowFreeText"] == true
+                                        || question["options"]
+                                            .as_array()
+                                            .is_some_and(|options| options.contains(answer))
+                                })
+                            })
+                        }),
+                    "INVALID_PARAMS"
+                );
+            }
             let body = serde_json::to_string(&Self::interaction_body(&item))?;
             let target = json!({"threadId":params["threadId"],"turnId":params["turnId"],"interactionId":params["interactionId"],"kind":item["kind"],"argumentsDigest":item["argumentsDigest"],"expiresAt":item["expiresAt"]});
             let scope = self.scope(project, generation, &target, &body);
@@ -1194,28 +1258,10 @@ impl Session {
             );
         }
         let mut native = json!({"threadId":params["threadId"],"turnId":params["turnId"],"requestId":params["interactionId"]});
-        if item["kind"] == "approval" {
-            ensure!(
-                matches!(params["decision"].as_str(), Some("allowOnce" | "deny"))
-                    && params["argumentsDigest"] == item["argumentsDigest"]
-                    && params.get("answers").is_none(),
-                "INVALID_PARAMS"
-            );
-            native["decision"] = params["decision"].clone();
+        if let Some(decision) = params.get("decision") {
+            native["decision"] = decision.clone();
             native["argumentsDigest"] = params["argumentsDigest"].clone();
         } else {
-            ensure!(
-                params.get("decision").is_none()
-                    && params.get("argumentsDigest").is_none()
-                    && params["answers"]
-                        .as_object()
-                        .is_some_and(|answers| !answers.is_empty()
-                            && answers.len() <= 8
-                            && answers.values().all(|v| v
-                                .as_str()
-                                .is_some_and(|s| !s.trim().is_empty() && s.len() <= 4096))),
-                "INVALID_PARAMS"
-            );
             native["answers"] = params["answers"].clone();
         }
         let (id, _) = self.project(project)?;

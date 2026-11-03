@@ -6,6 +6,8 @@ use std::os::unix::fs::PermissionsExt;
 use tokio::{net::TcpListener, sync::mpsc, task::AbortHandle};
 use tokio_tungstenite::tungstenite::Message;
 
+const ORIGINAL_DIGEST: &str = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+
 enum CoreResponse {
     Message(Value),
     Disconnect,
@@ -25,6 +27,13 @@ impl CoreCall {
     }
     fn reject(self) {
         self.responses.send(CoreResponse::Message(json!({"id":self.request["id"],"error":{"code":-32009,"message":"original interaction already answered"}}))).unwrap();
+    }
+    fn invalid(self, message: &str) {
+        self.responses
+            .send(CoreResponse::Message(
+                json!({"id":self.request["id"],"error":{"code":-32602,"message":message}}),
+            ))
+            .unwrap();
     }
     fn disconnect(self) {
         self.responses.send(CoreResponse::Disconnect).unwrap();
@@ -259,7 +268,7 @@ impl Fixture {
         request
     }
     fn item(status: &str) -> Value {
-        json!({"threadId":"thread","turnId":"turn","requestId":"interaction","kind":"approval","status":status,"expiresAt":4_000_000_000u64,"argumentsDigest":"original-digest","tool":"fs_create","generation":1,"effectiveArguments":{"path":"original.txt","text":"original"},"effectivePermissions":[]})
+        json!({"threadId":"thread","turnId":"turn","requestId":"interaction","kind":"approval","status":status,"expiresAt":4_000_000_000u64,"argumentsDigest":ORIGINAL_DIGEST,"tool":"fs_create","generation":1,"effectiveArguments":{"path":"original.txt","text":"original"},"effectivePermissions":[]})
     }
     fn target() -> Value {
         json!({"threadId":"thread","turnId":"turn","interactionId":"interaction"})
@@ -272,7 +281,7 @@ impl Fixture {
     }
     fn answer(&self, token: Value, command: &str) -> Value {
         let mut params = Self::target();
-        params["argumentsDigest"] = json!("original-digest");
+        params["argumentsDigest"] = json!(ORIGINAL_DIGEST);
         params["decision"] = json!("allowOnce");
         params["reviewToken"] = token;
         self.request("interaction.respond", params, Some(command))
@@ -311,7 +320,7 @@ async fn lost_core_response_keeps_original_unknown_without_replay_or_cross_devic
         let answering = Fixture::dispatch(session, request.clone());
         f.call("areal/interaction/list").await.reply(json!({"data":[Fixture::item("pending")]}));
         let call = f.call("areal/interaction/respond").await;
-        assert_eq!(call.request["params"], json!({"threadId":"thread","turnId":"turn","requestId":"interaction","decision":"allowOnce","argumentsDigest":"original-digest"}));
+        assert_eq!(call.request["params"], json!({"threadId":"thread","turnId":"turn","requestId":"interaction","decision":"allowOnce","argumentsDigest":ORIGINAL_DIGEST}));
         call.disconnect();
         let (session, result) = answering.await.unwrap();
         let original = result.unwrap();
@@ -378,7 +387,7 @@ async fn two_preflighted_devices_keep_distinct_original_outcomes_and_one_core_an
                 assert_eq!(result["target"]["threadId"], "thread");
                 assert_eq!(result["target"]["turnId"], "turn");
                 assert_eq!(result["target"]["interactionId"], "interaction");
-                assert_eq!(result["target"]["argumentsDigest"], "original-digest");
+                assert_eq!(result["target"]["argumentsDigest"], ORIGINAL_DIGEST);
             }
             let mut states = [
                 one["admissionState"].as_str().unwrap(),
@@ -695,4 +704,262 @@ async fn unknown_original_answer_allows_settled_ordinary_operations_but_not_unkn
         assert_eq!(sending.await.unwrap().1.unwrap_err().to_string(), "SUBMISSION_UNKNOWN");
         assert!(f.calls.try_recv().is_err());
     }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn rc07_approval_digest_mismatch_is_target_changed_before_journal_admission() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let (session, token) = f.review(f.session("a")).await;
+            let before = f.host.journal.native_snapshot("project").unwrap();
+            let mut request = f.answer(token, &uuid::Uuid::new_v4().to_string());
+            request["params"]["argumentsDigest"] = json!("f".repeat(64));
+            let answering = Fixture::dispatch(session, request);
+            f.call("areal/interaction/list")
+                .await
+                .reply(json!({"data":[Fixture::item("pending")]}));
+            assert_eq!(
+                answering.await.unwrap().1.unwrap_err().to_string(),
+                "TARGET_CHANGED"
+            );
+            assert_eq!(f.host.journal.native_snapshot("project").unwrap(), before);
+            assert!(f.calls.try_recv().is_err());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn rc07_questions_require_exact_keys_options_and_utf8_budget_before_admission() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let mut question = Fixture::item("pending");
+            question["kind"] = json!("question");
+            question["argumentsDigest"] = Value::Null;
+            question["questions"] = json!([
+                {"id":"choice","title":"Pick","options":["a","b"],"allowFreeText":false},
+                {"id":"text","title":"Explain","options":[],"allowFreeText":true}
+            ]);
+            let reading = Fixture::dispatch(
+                f.session("a"),
+                f.request("attention.read", Fixture::target(), None),
+            );
+            f.call("areal/interaction/list")
+                .await
+                .reply(json!({"data":[question]}));
+            let (mut session, detail) = reading.await.unwrap();
+            let token = detail.unwrap()["reviewToken"].clone();
+            let before = f.host.journal.native_snapshot("project").unwrap();
+            for answers in [
+                json!({"choice":"a"}),
+                json!({"choice":"a","text":"ok","extra":"bad"}),
+                json!({"choice":"other","text":"ok"}),
+                json!({"choice":"a","text":"界".repeat(1365)+"ab"}),
+            ] {
+                let mut params = Fixture::target();
+                params["answers"] = answers;
+                params["reviewToken"] = token.clone();
+                let request = f.request(
+                    "interaction.respond",
+                    params,
+                    Some(&uuid::Uuid::new_v4().to_string()),
+                );
+                let mut answering = Fixture::dispatch(session, request);
+                let completed = tokio::select! {
+                    result = &mut answering => result.unwrap(),
+                    call = f.calls.recv() => {
+                        let call = call.unwrap();
+                        assert_eq!(call.request["method"], "areal/interaction/list");
+                        call.reply(json!({"data":[question]}));
+                        tokio::select! {
+                            result = &mut answering => result.unwrap(),
+                            call = f.calls.recv() => {
+                                let call = call.unwrap();
+                                assert_eq!(call.request["method"], "areal/interaction/respond");
+                                call.invalid("answers do not match the questions");
+                                f.call("areal/interaction/list").await.reply(json!({"data":[question]}));
+                                answering.await.unwrap()
+                            }
+                        }
+                    }
+                };
+                session = completed.0;
+                assert_eq!(completed.1.unwrap_err().to_string(), "INVALID_PARAMS");
+                assert_eq!(f.host.journal.native_snapshot("project").unwrap(), before);
+            }
+            let answers = json!({"choice":"a","text":"界".repeat(1365)+"a"});
+            assert_eq!(answers["text"].as_str().unwrap().len(), 4096);
+            let mut params = Fixture::target();
+            params["answers"] = answers.clone();
+            params["reviewToken"] = token;
+            let request = f.request(
+                "interaction.respond",
+                params,
+                Some(&uuid::Uuid::new_v4().to_string()),
+            );
+            let answering = Fixture::dispatch(session, request);
+            f.call("areal/interaction/list")
+                .await
+                .reply(json!({"data":[question]}));
+            let call = f.call("areal/interaction/respond").await;
+            assert_eq!(call.request["params"]["answers"], answers);
+            assert!(call.request["params"].get("decision").is_none());
+            assert!(call.request["params"].get("argumentsDigest").is_none());
+            call.reply(json!({"answers":answers}));
+            question["status"] = json!("answered");
+            f.call("areal/interaction/list")
+                .await
+                .reply(json!({"data":[question]}));
+            assert_eq!(
+                answering.await.unwrap().1.unwrap()["admissionState"],
+                "accepted"
+            );
+            assert!(f.calls.try_recv().is_err());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn rc07_deny_preserves_atomic_target_without_read_budget_and_retains_core_invalid_params() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        let mut oversized = Fixture::item("pending");
+        oversized["effectiveArguments"]["text"] = json!("x".repeat(4 * 1024 * 1024));
+        let reading = Fixture::dispatch(f.session("a"), f.request("attention.read", Fixture::target(), None));
+        f.call("areal/interaction/list").await.reply(json!({"data":[oversized]}));
+        let (mut session, unreadable) = reading.await.unwrap();
+        assert_eq!(unreadable.unwrap_err().to_string(), "RESOURCE_UNAVAILABLE");
+        for reason in [None, Some("approval requires the current digest and a supported decision"), Some("question requires answers only")] {
+            let mut params = Fixture::target();
+            params["decision"] = json!("deny");
+            params["argumentsDigest"] = json!(ORIGINAL_DIGEST);
+            let request = f.request("interaction.respond", params, Some(&uuid::Uuid::new_v4().to_string()));
+            let answering = Fixture::dispatch(session, request);
+            let call = f.call("areal/interaction/respond").await;
+            assert_eq!(call.request["params"], json!({"threadId":"thread","turnId":"turn","requestId":"interaction","decision":"deny","argumentsDigest":ORIGINAL_DIGEST}));
+            match reason {
+                None => call.reply(json!({"decision":"deny","argumentsDigest":ORIGINAL_DIGEST})),
+                Some(reason) => call.invalid(reason),
+            }
+            f.call("areal/interaction/list").await.reply(json!({"data":[oversized]}));
+            let completed = answering.await.unwrap();
+            session = completed.0;
+            let result = completed.1.unwrap();
+            assert_eq!(result["target"]["interactionId"], "interaction");
+            assert_eq!(result["observedState"]["status"], "unavailable");
+            match reason {
+                None => assert_eq!(result["admissionState"], "accepted"),
+                Some(_) => {
+                    assert_eq!(result["admissionState"], "rejected");
+                    assert_eq!(result["error"]["coreCode"], -32602);
+                    assert_eq!(result["error"]["code"], "INVALID_PARAMS");
+                }
+            }
+        }
+        assert!(f.calls.try_recv().is_err());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn rc07_missing_thread_is_target_changed_after_final_identity_checks() {
+    tokio::task::LocalSet::new().run_until(async {
+        for mode in ["missing", "revoked", "generation"] {
+            let mut f = Fixture::new().await;
+            let reading = Fixture::dispatch(f.session("a"), f.request("attention.read", Fixture::target(), None));
+            let call = f.call("areal/interaction/list").await;
+            if mode == "revoked" {
+                f.grant("a", |grant| grant["status"] = json!("revoked"));
+            }
+            if mode == "generation" {
+                f.host.slots.borrow_mut().get_mut("project").unwrap().service.as_mut().unwrap().identity.generation = "replacement".into();
+            }
+            call.responses.send(CoreResponse::Message(json!({"id":call.request["id"],"error":{"code":-32004,"message":"thread not found"}}))).unwrap();
+            let expected = match mode {
+                "revoked" => "GRANT_CHANGED",
+                "generation" => "RESYNC_REQUIRED",
+                _ => "TARGET_CHANGED",
+            };
+            assert_eq!(reading.await.unwrap().1.unwrap_err().to_string(), expected);
+        }
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn rc07_stale_cursor_rejects_same_digest_body_change_and_replaced_core_generation() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for mode in ["body", "generation"] {
+                let mut f = Fixture::new().await;
+                let mut item = Fixture::item("pending");
+                item["effectiveArguments"]["text"] = json!("x".repeat(40000));
+                let reading = Fixture::dispatch(
+                    f.session("a"),
+                    f.request("attention.read", Fixture::target(), None),
+                );
+                f.call("areal/interaction/list")
+                    .await
+                    .reply(json!({"data":[item]}));
+                let (session, page) = reading.await.unwrap();
+                let page = page.unwrap();
+                assert_eq!(page["complete"], false);
+                assert_eq!(page["reviewToken"], Value::Null);
+                assert!(page["nextCursor"].is_string());
+                assert_eq!(page["argumentsDigest"], ORIGINAL_DIGEST);
+                let connection = session.connection.clone();
+                let core_identity = f
+                    .host
+                    .schedules
+                    .connections
+                    .shared_identity(&f.host, "project")
+                    .unwrap();
+                let journal = f.host.journal.native_snapshot("project").unwrap();
+                if mode == "body" {
+                    item["effectiveArguments"]["text"] =
+                        json!("x".repeat(40000) + "changed without digest");
+                    assert_eq!(item["argumentsDigest"], ORIGINAL_DIGEST);
+                    assert_eq!(
+                        f.host
+                            .schedules
+                            .connections
+                            .shared_identity(&f.host, "project")
+                            .unwrap(),
+                        core_identity
+                    );
+                } else {
+                    f.host
+                        .slots
+                        .borrow_mut()
+                        .get_mut("project")
+                        .unwrap()
+                        .service
+                        .as_mut()
+                        .unwrap()
+                        .identity
+                        .generation = "replacement".into();
+                    f.reconnect().await;
+                    let replacement = f
+                        .host
+                        .schedules
+                        .connections
+                        .shared_identity(&f.host, "project")
+                        .unwrap();
+                    assert_eq!(replacement.0, core_identity.0);
+                    assert_eq!(replacement.1, "replacement");
+                    assert_ne!(replacement.2, core_identity.2);
+                }
+                let mut params = Fixture::target();
+                params["cursor"] = page["nextCursor"].clone();
+                let reading = Fixture::dispatch(session, f.request("attention.read", params, None));
+                f.call("areal/interaction/list")
+                    .await
+                    .reply(json!({"data":[item]}));
+                let (session, result) = reading.await.unwrap();
+                assert_eq!(session.connection, connection);
+                assert_eq!(result.unwrap_err().to_string(), "TARGET_CHANGED", "{mode}");
+                assert_eq!(f.host.journal.native_snapshot("project").unwrap(), journal);
+                assert!(f.calls.try_recv().is_err());
+            }
+        })
+        .await;
 }
