@@ -81,6 +81,13 @@ impl Session {
             "RESOURCE_UNAVAILABLE"
         );
         let goal_control_allowed = self.goal_control_allowed(&project, &native["thread"])?;
+        let models = self
+            .model_catalog(&project, &viewer.generation, || {
+                Ok(native["thread"]["desktop"]["configuration"]
+                    .get("model")
+                    .cloned())
+            })
+            .await?;
         let viewer = self.viewer.as_mut().context("RESYNC_REQUIRED")?;
         ensure!(viewer.observation.current(&self.host), "RESYNC_REQUIRED");
         let mut snapshot = projection::snapshot(
@@ -90,6 +97,7 @@ impl Session {
             &viewer.observation.features(),
         )?;
         snapshot["goalControlAllowed"] = json!(goal_control_allowed);
+        snapshot = projection::with_models(snapshot, &models["models"])?;
         viewer.sequence += 1;
         viewer.model = native["thread"]["desktop"]["configuration"]
             .get("model")
@@ -149,6 +157,14 @@ impl Session {
             generation.into(),
             thread_id.clone(),
         ];
+        let models = self
+            .model_catalog(project, generation, || {
+                Ok(native["thread"]["desktop"]["configuration"]
+                    .get("model")
+                    .cloned())
+            })
+            .await?;
+        ensure!(observation.current(&self.host), "RESYNC_REQUIRED");
         let mut snapshot = projection::snapshot(
             &native["thread"],
             &native["ownership"],
@@ -157,6 +173,7 @@ impl Session {
         )?;
         snapshot["goalControlAllowed"] =
             json!(self.goal_control_allowed(project, &native["thread"])?);
+        snapshot = projection::with_models(snapshot, &models["models"])?;
         let viewer = Viewer {
             project: project.into(),
             thread_id,

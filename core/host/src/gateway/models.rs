@@ -83,6 +83,16 @@ impl Session {
                 && request.get("commandId").is_none(),
             "INVALID_PARAMS"
         );
+        self.model_catalog(project, generation, || self.observed_model(project))
+            .await
+    }
+
+    pub(super) async fn model_catalog(
+        &self,
+        project: &str,
+        generation: &str,
+        observed_model: impl FnOnce() -> Result<Option<Value>>,
+    ) -> Result<Value> {
         let (id, _) = self.project(project)?;
         let identity = self
             .host
@@ -115,7 +125,7 @@ impl Session {
         let mut remembered = vec![core["lastAcceptedModel"]["model"].clone()];
         if subscription.as_ref().is_some_and(|value| {
             value["authenticated"] == true && value["availability"] == "checking"
-        }) && let Some(model) = self.observed_model(project)?
+        }) && let Some(model) = observed_model()?
         {
             remembered.push(model);
         }

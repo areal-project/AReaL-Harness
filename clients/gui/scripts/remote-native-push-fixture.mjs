@@ -300,6 +300,7 @@ export async function phone(t, remote, projectId, identity = undefined, pair = f
     peer: identityId(identity),
     active,
     close: () => socket.terminate(),
+    nextMessage: () => next(messages),
     send(method, params = {}, commandId, context) {
       const id = randomUUID();
       secure.send({

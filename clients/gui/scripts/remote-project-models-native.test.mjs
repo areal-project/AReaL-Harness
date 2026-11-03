@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { nativeHostFixture, nativeCoreProject } from "./remote-native-host-fixture.mjs";
@@ -78,6 +79,79 @@ if (!process.env.RC12_TLS_HOME) {
       proof.checks.push(
         "project catalog and configured display names match the real Core projection",
         "scoped six-field reads do not create threads, write journal, or invoke the model",
+      );
+
+      const created = await project.core.call("areal/thread/start", {
+        requestId: randomUUID(),
+        cwd: project.workspace,
+        agentProfile: { id: "fixture", revision: "v1" },
+      });
+      const threadId = created.thread.id;
+      const journalBeforeOpen = await f.client.journal(project.projectId).read();
+      const threadsBeforeOpen = await project.core.call("thread/list", { limit: 100 });
+      const opened = await device.rpc("session.open", { threadId }, undefined, {
+        projectId: project.alias,
+      });
+      assert.deepEqual(opened.result?.snapshot.models, first.result.models);
+      const catalogChanged = await project.core.call("areal/provider/upsert", {
+        provider: {
+          id: "snapshot-model",
+          revision: 0,
+          endpoint: "http://127.0.0.1:1/private-endpoint",
+          protocol: "chatCompletions",
+          models: ["snapshot-model"],
+          parameters: {},
+        },
+        expectedRevision: 0,
+      });
+      const configured = await project.core.call("areal/thread/configure", {
+        threadId,
+        expectedRevision: opened.result.snapshot.configRevision,
+        model: { providerId: "fixture", modelId: "fixture" },
+      });
+      let updated;
+      do {
+        updated = await device.nextMessage();
+      } while (
+        updated.event !== "session.updated" ||
+        updated.snapshot?.configRevision !== configured.revision
+      );
+      assert.equal(updated.subscriptionId, opened.result.subscriptionId);
+      assert.equal(updated.connectionId, opened.result.connectionId);
+      const currentModels = await read();
+      assert.deepEqual(updated.snapshot.models, currentModels.result.models);
+      assert.ok(updated.snapshot.models.some((model) => model.providerId === "snapshot-model"));
+      assert.ok(Buffer.byteLength(JSON.stringify(updated.snapshot)) <= 192 * 1024);
+      assert.deepEqual(await f.client.journal(project.projectId).read(), journalBeforeOpen);
+      const threadsAfterOpen = await project.core.call("thread/list", { limit: 100 });
+      assert.deepEqual(
+        threadsAfterOpen.data.map((thread) => thread.id).sort(),
+        threadsBeforeOpen.data.map((thread) => thread.id).sort(),
+      );
+      assert.equal(project.modelRequests.length, 0);
+      proof.sessionModels = {
+        threadId,
+        subscriptionId: opened.result.subscriptionId,
+        connectionId: opened.result.connectionId,
+        openModels: opened.result.snapshot.models,
+        updatedModels: updated.snapshot.models,
+        configRevision: updated.snapshot.configRevision,
+      };
+      proof.checks.push(
+        "session.open and session.updated retain the same scoped catalog as project.models",
+        "catalog updates preserve the foreground subscription without journal or model effects",
+      );
+      await project.core.call("areal/provider/remove", {
+        id: catalogChanged.id,
+        expectedRevision: catalogChanged.revision,
+      });
+      await device.rpc(
+        "session.close",
+        { subscriptionId: opened.result.subscriptionId },
+        undefined,
+        {
+          projectId: project.alias,
+        },
       );
 
       const providers = [];

@@ -338,3 +338,42 @@ pub(super) fn snapshot(
     );
     Ok(snapshot)
 }
+
+pub(super) fn with_models(mut snapshot: Value, models: &Value) -> Result<Value> {
+    snapshot["models"] = models.clone();
+    ensure!(
+        serde_json::to_vec(&snapshot)?.len() <= 192 * 1024,
+        "RESOURCE_UNAVAILABLE"
+    );
+    Ok(snapshot)
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn session_snapshot_counts_model_catalog_in_its_complete_budget() {
+        let scope = vec![
+            "project".into(),
+            "service".into(),
+            "generation".into(),
+            "thread".into(),
+        ];
+        let thread = json!({"id":"thread","turns":[],"desktop":{"configuration":{"revision":1},"queue":{"items":(0..100).map(|index|json!({"id":index.to_string(),"status":"pending","input":[{"type":"text","text":"q".repeat(768)}]})).collect::<Vec<_>>()}}});
+        let ownership = json!({"kind":"ordinary"});
+        let empty = with_models(
+            snapshot(&thread, &ownership, &scope, &json!({})).unwrap(),
+            &json!([]),
+        )
+        .unwrap();
+        assert_eq!(empty["models"], json!([]));
+        let models = json!([{"providerId":"fixture","modelId":"model","displayName":"m".repeat(120 * 1024)}]);
+        assert!(serde_json::to_vec(&models).unwrap().len() < 128 * 1024);
+        assert!(serde_json::to_vec(&empty).unwrap().len() < 192 * 1024);
+        assert_eq!(
+            with_models(empty, &models).unwrap_err().to_string(),
+            "RESOURCE_UNAVAILABLE"
+        );
+    }
+}
