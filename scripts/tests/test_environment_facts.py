@@ -89,18 +89,17 @@ class EnvironmentFactsTests(unittest.TestCase):
             }
             self.assertEqual(verification.run(request), 0)
             receipt = json.loads((scratch / "verification" / ("a" * 32 + ".json")).read_text())
-            self.assertEqual(receipt["environmentBefore"], receipt["environmentAfter"])
+            self.assertTrue(receipt["environmentUnchanged"])
+            self.assertNotIn("environmentAfter", receipt)
             self.assertTrue(receipt["sourceUnchanged"])
             (workspace / "source.py").write_text("value = 2\n")
             self.assertNotEqual(receipt["sourceAfter"], verification.fingerprint(workspace))
             changed = verification.environment_binding([sys.executable, "-V"], workspace)
-            self.assertNotEqual(
-                receipt["environmentBefore"]["commandDigest"], changed["commandDigest"]
-            )
+            self.assertNotEqual(receipt["environment"]["commandDigest"], changed["commandDigest"])
             with patch.dict(os.environ, {"ENV_FACT_SECRET": "different"}):
                 changed = verification.environment_binding(request["argv"], workspace)
             self.assertNotEqual(
-                receipt["environmentBefore"]["environmentDigest"], changed["environmentDigest"]
+                receipt["environment"]["environmentDigest"], changed["environmentDigest"]
             )
 
 

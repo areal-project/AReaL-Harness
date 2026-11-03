@@ -140,6 +140,7 @@ def run(request):
     with log.open("rb") as output:
         output.seek(max(0, log.stat().st_size - 8192))
         tail = output.read().decode("utf-8", errors="replace")
+    environment_after = environment_binding(argv, request["cwd"])
     result = {
         "outputTail": tail,
         "schema": "areal.verification.v1",
@@ -147,8 +148,8 @@ def run(request):
         "argv": argv,
         "cwd": request["cwd"],
         "exitCode": process.returncode,
-        "environmentBefore": environment_before,
-        "environmentAfter": environment_binding(argv, request["cwd"]),
+        "environment": environment_before,
+        "environmentUnchanged": environment_before == environment_after,
         "sourceBefore": before,
         "sourceAfter": after,
         "sourceUnchanged": before == after,
@@ -158,6 +159,8 @@ def run(request):
         "receiptPath": str(receipt),
         "scope": "command exit only; excludes generated/build output; does not certify task correctness",
     }
+    if environment_after != environment_before:
+        result["environmentAfter"] = environment_after
     temporary = receipt.with_suffix(".tmp")
     temporary.write_text(json.dumps(result, ensure_ascii=False, indent=2))
     temporary.replace(receipt)

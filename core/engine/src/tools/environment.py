@@ -149,7 +149,14 @@ def discover(request):
     }
     fingerprint = digest(facts)
     # 空结果也进入指纹；展示时合并缺失路径，减少重复 JSON 包装。
-    facts["absentDeclarations"] = [r["path"] for r in checks if r["status"] == "missing"]
+    missing = {}
+    for row in checks:
+        if row["status"] == "missing":
+            path = Path(row["path"])
+            missing.setdefault(str(path.parent), []).append(path.name)
+    facts["absentDeclarations"] = [
+        {"folder": folder, "names": names} for folder, names in missing.items()
+    ]
     facts["declarations"] = [r for r in checks if r["status"] != "missing"]
     facts.update(
         fingerprint=fingerprint,
