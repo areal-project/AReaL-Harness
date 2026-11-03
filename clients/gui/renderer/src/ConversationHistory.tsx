@@ -78,6 +78,7 @@ export function useConversationHistory(projectId: string, thread: Data, action: 
             ? { operation: "loadItem", itemId }
             : { operation: "loadOlder", ...(pageId ? { pageId } : {}) }),
         });
+        return true;
       } catch {
         if (current.current === generation)
           setFailure({
@@ -85,6 +86,7 @@ export function useConversationHistory(projectId: string, thread: Data, action: 
             itemId,
             message: t("chat.history.loadFailed"),
           });
+        return false;
       }
     },
     [action, generation, projectId, thread.id, viewId, t],

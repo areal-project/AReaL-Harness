@@ -303,9 +303,13 @@ function isInheritedHistoryResponseDataItemVariant1ItemVariant1Variant6(value) {
 /** @param {unknown} value @returns {value is InheritedHistoryResponseDataItemVariant1ItemVariant1} */
 function isInheritedHistoryResponseDataItemVariant1ItemVariant1(value) { return [(isInheritedHistoryResponseDataItemVariant1ItemVariant1Variant1(value)),(isInheritedHistoryResponseDataItemVariant1ItemVariant1Variant2(value)),(isInheritedHistoryResponseDataItemVariant1ItemVariant1Variant3(value)),(isInheritedHistoryResponseDataItemVariant1ItemVariant1Variant4(value)),(isInheritedHistoryResponseDataItemVariant1ItemVariant1Variant5(value)),(isInheritedHistoryResponseDataItemVariant1ItemVariant1Variant6(value))].filter(Boolean).length === 1; }
 
-/** @typedef {{"cursor":string,"id":string,"originalType":string,"totalBytes":number,"type":"historyDeferred","version":string}} InheritedHistoryResponseDataItemVariant1ItemVariant2 */
+/** @typedef {(InheritedHistoryResponseDataItemVariant1ItemVariant1|null)} InheritedHistoryResponseDataItemVariant1ItemVariant2Preview */
+/** @param {unknown} value @returns {value is InheritedHistoryResponseDataItemVariant1ItemVariant2Preview} */
+function isInheritedHistoryResponseDataItemVariant1ItemVariant2Preview(value) { return ((isInheritedHistoryResponseDataItemVariant1ItemVariant1(value)) || (value === null)); }
+
+/** @typedef {{"cursor":string,"id":string,"originalType":string,"preview"?:InheritedHistoryResponseDataItemVariant1ItemVariant2Preview,"totalBytes":number,"type":"historyDeferred","version":string}} InheritedHistoryResponseDataItemVariant1ItemVariant2 */
 /** @param {unknown} value @returns {value is InheritedHistoryResponseDataItemVariant1ItemVariant2} */
-function isInheritedHistoryResponseDataItemVariant1ItemVariant2(value) { return modelRecord(value) && (typeof value["cursor"] === "string") && (typeof value["id"] === "string") && (typeof value["originalType"] === "string") && (typeof value["totalBytes"] === "number" && Number.isSafeInteger(value["totalBytes"]) && value["totalBytes"] >= 0) && (value["type"] === "historyDeferred") && (typeof value["version"] === "string"); }
+function isInheritedHistoryResponseDataItemVariant1ItemVariant2(value) { return modelRecord(value) && (typeof value["cursor"] === "string") && (typeof value["id"] === "string") && (typeof value["originalType"] === "string") && (value["preview"] === undefined || (isInheritedHistoryResponseDataItemVariant1ItemVariant2Preview(value["preview"]))) && (typeof value["totalBytes"] === "number" && Number.isSafeInteger(value["totalBytes"]) && value["totalBytes"] >= 0) && (value["type"] === "historyDeferred") && (typeof value["version"] === "string"); }
 
 /** @typedef {(InheritedHistoryResponseDataItemVariant1ItemVariant1|InheritedHistoryResponseDataItemVariant1ItemVariant2)} InheritedHistoryResponseDataItemVariant1Item */
 /** @param {unknown} value @returns {value is InheritedHistoryResponseDataItemVariant1Item} */

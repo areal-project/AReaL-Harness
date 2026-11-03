@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { WorkspaceDelimitedPreview } from "./WorkspaceDelimitedPreview.js";
 import { Textarea } from "@areal/ui";
 // ZCode PreviewPane breadcrumb/header composition + its CodeViewer.
@@ -306,30 +307,28 @@ export function WorkspaceFilePane({
       }}
     >
       <div className="panel-toolbar file-preview-toolbar">
-        <nav
-          className="file-preview-path min-w-0 flex-1"
-          aria-label="文件路径"
-          title={`${root}/${path}`}
-        >
-          <div className="flex min-w-max items-center gap-0.5 text-ui-sm text-foreground-subtle">
-            <span>{root.split("/").pop()}</span>
-            <ChevronRight className="size-3.5 shrink-0 text-foreground-subtlest" />
-            {segments.slice(0, -1).map((segment, index) => (
-              <Fragment key={index}>
-                <span>{segment}</span>
-                <ChevronRight className="size-3.5 shrink-0 text-foreground-subtlest" />
-              </Fragment>
-            ))}
-            <FileDisplayInline
-              path={path}
-              options={{
-                showIcon: false,
-                className: "inline-flex shrink-0 items-center",
-                fileNameClassName: "whitespace-nowrap text-ui-sm font-medium text-foreground",
-              }}
-            />
-          </div>
-        </nav>
+        <TitleTooltip title={`${root}/${path}`}>
+          <nav className="file-preview-path min-w-0 flex-1" aria-label="文件路径">
+            <div className="flex min-w-max items-center gap-0.5 text-ui-sm text-foreground-subtle">
+              <span>{root.split("/").pop()}</span>
+              <ChevronRight className="size-3.5 shrink-0 text-foreground-subtlest" />
+              {segments.slice(0, -1).map((segment, index) => (
+                <Fragment key={index}>
+                  <span>{segment}</span>
+                  <ChevronRight className="size-3.5 shrink-0 text-foreground-subtlest" />
+                </Fragment>
+              ))}
+              <FileDisplayInline
+                path={path}
+                options={{
+                  showIcon: false,
+                  className: "inline-flex shrink-0 items-center",
+                  fileNameClassName: "whitespace-nowrap text-ui-sm font-medium text-foreground",
+                }}
+              />
+            </div>
+          </nav>
+        </TitleTooltip>
         <div className="file-preview-actions flex shrink-0 items-center gap-1.5">
           {hasPreview && !doc?.editing && (
             <Button

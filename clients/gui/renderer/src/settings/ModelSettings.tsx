@@ -1,3 +1,4 @@
+import { DelayedVisible } from "@areal/ui";
 import { withDefaultModelCapabilities } from "@areal/provider-config";
 import { useI18n, UiMessageError } from "../i18n/IntlProvider.js";
 import { SettingsSelect } from "./SettingsPageParts.js";
@@ -731,11 +732,11 @@ export function ModelSettings({
                       </Button>
                     </div>
                   </div>
-                  {discovery.state.kind === "loading" && (
+                  <DelayedVisible active={discovery.state.kind === "loading"}>
                     <p className="settings-muted" role="status">
                       {t("settings.modelSettings.fetchingModels")}
                     </p>
-                  )}
+                  </DelayedVisible>
                   {discovery.state.kind === "failed" && (
                     <p className="settings-error" role="alert">
                       {discovery.state.message}

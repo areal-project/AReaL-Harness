@@ -8,7 +8,7 @@ layer: core
 category: overlay
 aliases: ["辅助提示"]
 related: ["button"]
-exports: ["Tooltip", "TooltipContent", "TooltipProvider", "TooltipTrigger"]
+exports: ["Tooltip", "TooltipContent", "TooltipProvider", "TooltipTrigger", "TitleTooltip"]
 ---
 
 # Tooltip 辅助提示
@@ -19,13 +19,13 @@ exports: ["Tooltip", "TooltipContent", "TooltipProvider", "TooltipTrigger"]
 
 ## 组成
 
-本合同覆盖同模块导出的整组组件：Tooltip, TooltipContent, TooltipProvider, TooltipTrigger。真实API读取生成的TypeScript声明。
+本合同覆盖同模块导出的整组组件：Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, TitleTooltip。`TitleTooltip` 代替原生 `title`，把子元素本身作为触发器；Button 的 `title` 也由它渲染。真实API读取生成的TypeScript声明。
 
 `TooltipContent.anchor` 与 Base UI `Tooltip.Positioner.anchor` 同型，支持 DOM 或虚拟锚点，可用于 Lexical 行内节点；省略时使用 `TooltipTrigger`。
 
 ## 状态
 
-延迟、打开、四向定位、触发器聚焦。
+`R-TOOLTIP-002` 延迟、打开、四向定位、触发器聚焦。首个提示悬停约 600ms 出现，400ms 内移到相邻触发器立即出现且不播入场；滚动时收起悬停打开的提示，键盘聚焦打开的保留。
 
 ## 行为
 

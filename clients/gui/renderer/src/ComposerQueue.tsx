@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { isRequest } from "@areal/workbench/desktop-contract/conversation";
 import { modelRecord } from "@areal/workbench/desktop-contract/shared";
 import { Button } from "@areal/ui";
@@ -262,9 +263,9 @@ export function ComposerQueue({
               <GripVertical size={13} />
             </Button>
             <ListEnd size={17} className="composer-queue-glyph" />
-            <span className="composer-queue-copy" title={queueLabel(item)}>
-              {queueLabel(item)}
-            </span>
+            <TitleTooltip title={queueLabel(item)}>
+              <span className="composer-queue-copy">{queueLabel(item)}</span>
+            </TitleTooltip>
             {editingId === item.id && <small>编辑中</small>}
             <div className="composer-queue-actions">
               <Button

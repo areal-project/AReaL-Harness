@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { observeResize } from "@areal/ui/observe-resize";
 import type { SnapShotSource } from "@areal/workbench/desktop-contract/snapshots";
 import { SnapShotAttachment } from "./snapshots/SnapShotAttachment.js";
@@ -306,15 +307,15 @@ export function ImagePreview({
             <div className="image-preview-original">
               <img src={url} alt={name} />
               {annotation?.points.map((point, index) => (
-                <span
-                  key={point.id}
-                  className="browser-annotation-marker"
-                  aria-label={`已确认标注 ${index + 1}`}
-                  title={point.comment}
-                  style={{ left: `${point.xPercent}%`, top: `${point.yPercent}%` }}
-                >
-                  {index + 1}
-                </span>
+                <TitleTooltip key={point.id} title={point.comment}>
+                  <span
+                    className="browser-annotation-marker"
+                    aria-label={`已确认标注 ${index + 1}`}
+                    style={{ left: `${point.xPercent}%`, top: `${point.yPercent}%` }}
+                  >
+                    {index + 1}
+                  </span>
+                </TitleTooltip>
               ))}
             </div>
             <ImageAnnotationList note={annotation} />

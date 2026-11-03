@@ -106,6 +106,59 @@ test("re-observing a mounted view keeps the displayed boundary turn and its orde
   for (const turns of published) assert.deepEqual(turns, settled);
 });
 
+test("re-observation inserts new same-turn history after its shared prefix and preserves live updates", async () => {
+  const { backend, project, model } = fixture();
+  const message = (id) => ({ id, type: "agentMessage", text: id });
+  const items = [
+    { id: "user", type: "userMessage", content: [{ type: "inputText", text: "question" }] },
+    message("old-step"),
+    message("old-tail"),
+    message("new-step"),
+    message("new-tail"),
+  ];
+  const observe = (item) => ({
+    ...latest(),
+    thread: { ...latest().thread, turns: [{ id: "active", status: "inProgress", items: [item] }] },
+  });
+  const page = (items) => ({
+    snapshotId: "snapshot",
+    data: items.map((item) => entry("active", "inProgress", item)),
+    nextCursor: null,
+    complete: true,
+  });
+  project.client.request = async () => page(items.slice(0, 2));
+  const view = { threadId: "thread", viewId: "view", operation: "acquire" };
+  backend.installObservation(project, observe(items[2]));
+  await backend.historyCommand(project, view);
+  assert.deepEqual(shape(model.state.threads.thread), ["active:user+old-step+old-tail"]);
+
+  let finish;
+  project.client.request = () =>
+    new Promise((resolve) => {
+      finish = resolve;
+    });
+  backend.installObservation(project, observe(items[4]));
+  const hydration = backend.historyCommand(project, view);
+  await new Promise((resolve) => setImmediate(resolve));
+  model.event("item/agentMessage/delta", {
+    threadId: "thread",
+    turnId: "active",
+    itemId: "old-step",
+    delta: ":live",
+  });
+  model.event("item/started", {
+    threadId: "thread",
+    turnId: "active",
+    item: message("live-suffix"),
+  });
+  finish(page(items.slice(0, 4)));
+  await hydration;
+  assert.deepEqual(shape(model.state.threads.thread), [
+    "active:user+old-step+old-tail+new-step+new-tail+live-suffix",
+  ]);
+  assert.equal(model.state.threads.thread.turns[0].items[1].text, "old-step:live");
+});
+
 test("re-observation does not keep pages loaded through load-older", async () => {
   const { backend, project, model } = fixture();
   const request = project.client.request;

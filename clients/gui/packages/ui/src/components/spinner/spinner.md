@@ -23,7 +23,7 @@ exports: ["Spinner"]
 
 ## 状态
 
-`R-SPINNER-002` 默认尺寸、宿主className、局部加载。
+`R-SPINNER-002` 默认尺寸、宿主className、局部加载。只在可见且窗口在前台时转动；短于 400ms 的加载用 [Skeleton](../skeleton/skeleton.md) 合同里的 `useDelayedVisible` 决定是否显示。
 
 ## 行为
 

@@ -592,21 +592,32 @@ async fn ordinary_admission_capabilities_and_rpc_errors_are_explicit() {
     assert_eq!(semantics["areal/plugin/read"]["effect"], "read");
     assert_eq!(semantics["areal/task/subscribe"]["effect"], "subscription");
     assert_eq!(semantics["areal/thread/configure"]["receipt"], "thread");
-    for (request_id, configuration) in [
+    for (request_id, configuration, expected_code) in [
         (
             "missing-profile",
             json!({"agentProfile":{"id":"missing","revision":"1"}}),
+            -32004,
         ),
         (
             "missing-provider",
             json!({"model":{"providerId":"missing","modelId":"test"}}),
+            -32602,
         ),
     ] {
         let mut request = configuration;
         request["requestId"] = json!(request_id);
         request["admissionGuard"] = json!({"ordinarySession":true});
         let (invalid, events) = call(&mut socket, 200, "areal/thread/start", request).await;
-        assert_eq!(invalid["error"]["code"], -32004, "{invalid}");
+        assert_eq!(invalid["error"]["code"], expected_code, "{invalid}");
+        if request_id == "missing-provider" {
+            assert!(
+                invalid["error"]["message"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("MODEL_NOT_CONFIGURED: provider 'missing'"),
+                "{invalid}"
+            );
+        }
         assert_eq!(
             invalid["error"]["data"]["outcome"]["kind"], "rejected",
             "{invalid}"

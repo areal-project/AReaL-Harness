@@ -362,8 +362,17 @@ async fn bounded_observation_and_own_history_reassemble_escaped_oversize_across_
                 .collect();
             older_ids.extend(ordered_ids);
             ordered_ids = older_ids;
+            let mut last_turn = Value::Null;
             for entry in page["result"]["data"].as_array().unwrap() {
-                assert_turn_metadata(&entry["turn"]);
+                if entry["sourceTurnId"] != last_turn {
+                    assert_turn_metadata(&entry["turn"]);
+                    last_turn = entry["sourceTurnId"].clone();
+                } else {
+                    assert_eq!(
+                        entry["turn"],
+                        json!({"id":last_turn,"status":entry["sourceTurnStatus"]})
+                    );
+                }
                 assert!(
                     entry.get("fragment").is_none(),
                     "ordinary small older items fit page"
@@ -394,6 +403,239 @@ async fn bounded_observation_and_own_history_reassemble_escaped_oversize_across_
             assert!(found[id] == *item, "item content differs for {id}");
         }
         running.close().await;
+    }
+}
+
+#[tokio::test]
+async fn own_history_keeps_repeated_turn_configuration_and_trace_once_per_page() {
+    for archived in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let (id, _) = fixture(dir.path(), archived).await;
+        let path = dir.path().join(format!("{id}.json"));
+        let mut record: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let mut configuration = record["thread"]["desktop"]["configuration"].clone();
+        configuration["options"]["appendInstructions"] = json!("configuration".repeat(1000));
+        let trace = json!({"activities":[{"id":"request","kind":"model","label":"trace".repeat(2000),"startedAtMs":1,"status":"completed"}]});
+        let turns: Vec<_> = (0..2).map(|n| {
+            let mut value = turn(n, "answer".repeat(160));
+            for item in 2..12 {
+                value["items"].as_array_mut().unwrap().push(json!({"id":format!("item-{n}-{item}"),"type":"agentMessage","text":"message".repeat(140)}));
+            }
+            value["configuration"] = configuration.clone();
+            value["trace"] = trace.clone();
+            value
+        }).collect();
+        record["thread"]["turns"] = json!(turns);
+        record["thread"]["historyArchive"] = Value::Null;
+        std::fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+        let mut running = Running::open(dir.path()).await;
+        let max = 96 * 1024;
+        let reply = running
+            .call(
+                "areal/conversation/history",
+                json!({"threadId":id,"view":"own","maxBytes":max}),
+                Some(max),
+            )
+            .await;
+        assert!(reply.get("error").is_none(), "{reply}");
+        assert_eq!(
+            reply["result"]["complete"], true,
+            "ordinary items and one copy of each turn's metadata fit"
+        );
+        let entries = reply["result"]["data"].as_array().unwrap();
+        assert_eq!(entries.len(), 24);
+        for group in entries.chunks(12) {
+            assert_eq!(group[0]["turn"]["configuration"], configuration);
+            assert_eq!(
+                group[0]["turn"]["trace"]["activities"][0]["label"],
+                trace["activities"][0]["label"]
+            );
+            for entry in &group[1..] {
+                assert_eq!(
+                    entry["turn"],
+                    json!({"id":group[0]["sourceTurnId"],"status":"completed"})
+                );
+            }
+        }
+        assert_eq!(
+            item_map(&turns),
+            entries
+                .iter()
+                .map(|entry| (
+                    entry["sourceItemId"].as_str().unwrap().to_owned(),
+                    entry["item"].clone()
+                ))
+                .collect()
+        );
+        running.close().await;
+    }
+}
+
+#[tokio::test]
+async fn bounded_pages_prefer_whole_turns_and_preserve_oversized_turn_progress() {
+    let dir = tempfile::tempdir().unwrap();
+    let (id, _) = fixture(dir.path(), false).await;
+    let path = dir.path().join(format!("{id}.json"));
+    let mut record: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    let mut older = turn(0, "a".repeat(4000));
+    older["items"][0]["content"][0]["text"] = json!("q".repeat(8000));
+    record["thread"]["turns"] = json!([older, turn(1, "a".repeat(1000))]);
+    record["thread"]["historyArchive"] = Value::Null;
+    record["thread"]["desktop"] =
+        serde_json::to_value(areal_protocol::desktop::DesktopState::default()).unwrap();
+    std::fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+    let mut running = Running::open(dir.path()).await;
+    for (method, max) in [
+        ("areal/conversation/history", 11000),
+        ("areal/thread/observe", 16000),
+    ] {
+        let params = if method == "areal/thread/observe" {
+            json!({"threadId":id,"mode":"bounded","maxBytes":max})
+        } else {
+            json!({"threadId":id,"view":"own","maxBytes":max})
+        };
+        let reply = running.call(method, params, Some(max)).await;
+        assert!(reply.get("error").is_none(), "{reply}");
+        let result = &reply["result"];
+        let cursor = if method == "areal/thread/observe" {
+            let turns = result["thread"]["turns"].as_array().unwrap();
+            assert_eq!(
+                turns.len(),
+                1,
+                "do not include the older answer without its prompt"
+            );
+            assert_eq!(turns[0]["id"], "turn-1");
+            &result["history"]["nextCursor"]
+        } else {
+            let entries = result["data"].as_array().unwrap();
+            assert_eq!(
+                entries.len(),
+                2,
+                "do not include the older answer without its prompt"
+            );
+            assert_eq!(entries[0]["sourceItemId"], "user-1");
+            &result["nextCursor"]
+        };
+        assert!(cursor.is_string());
+        let mut next = cursor.clone();
+        let mut recovered = Vec::new();
+        loop {
+            let page = running
+                .call(
+                    "areal/conversation/history",
+                    json!({"threadId":id,"view":"own","cursor":next,"maxBytes":11000}),
+                    Some(11000),
+                )
+                .await;
+            assert!(page.get("error").is_none(), "{page}");
+            let mut items: Vec<_> = page["result"]["data"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|entry| entry["sourceItemId"].clone())
+                .collect();
+            items.extend(recovered);
+            recovered = items;
+            next = page["result"]["nextCursor"].clone();
+            if next.is_null() {
+                break;
+            }
+        }
+        assert_eq!(recovered, vec![json!("user-0"), json!("answer-0")]);
+    }
+    running.close().await;
+}
+
+#[tokio::test]
+async fn conversation_observation_keeps_basic_messages_independent_of_tool_body_size() {
+    for archived in [false, true] {
+        for body_size in [20_000, 80_000, 8] {
+            let dir = tempfile::tempdir().unwrap();
+            let (id, _) = fixture(dir.path(), archived).await;
+            let path = dir.path().join(format!("{id}.json"));
+            let mut record: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            let turns: Vec<_> = (0..3).map(|n| {
+                let mut value = turn(n, format!("answer {n}"));
+                let tools = (0..8).map(|k| json!({
+                    "id":format!("tool-{n}-{k}"),"type":"dynamicToolCall","tool":if k == 0 {"run_command"} else {"shell"},
+                    "arguments":{"command":"echo fixture"},"status":"completed","success":true,
+                    "callId":format!("call-{n}-{k}"),"execution":{"runtimeEpoch":"fixture","scopeId":"fixture","operationId":"fixture","outcome":"succeeded"},
+                    "contentItems":[{"type":"text","text":if k == 0 {json!({"processId":format!("p-{n}"),"state":"exited","commandStatus":"succeeded","outputReadComplete":true,"stdout":"x".repeat(body_size),"stderr":""}).to_string()} else {"x".repeat(body_size)}}]
+                }));
+                value["items"].as_array_mut().unwrap().splice(1..1, tools);
+                value["items"].as_array_mut().unwrap().insert(2, json!({"id":format!("opaque-{n}"),"type":"modelContext","value":"opaque".repeat(20000)}));
+                value
+            }).collect();
+            record["thread"]["turns"] = json!(turns);
+            record["thread"]["historyArchive"] = Value::Null;
+            std::fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+            let mut running = Running::open(dir.path()).await;
+            if body_size == 20_000 {
+                let legacy = running
+                    .call(
+                        "areal/thread/observe",
+                        json!({
+                            "threadId":id,"mode":"bounded","maxBytes":65536
+                        }),
+                        Some(65536),
+                    )
+                    .await;
+                assert_eq!(
+                    legacy["result"]["history"]["complete"], false,
+                    "the control keeps basic messages fixed while tool bodies exhaust the legacy budget"
+                );
+            }
+            let reply = running
+                .call(
+                    "areal/thread/observe",
+                    json!({
+                        "threadId":id,"mode":"conversation","maxBytes":65536
+                    }),
+                    Some(65536),
+                )
+                .await;
+            assert!(reply.get("error").is_none(), "{reply}");
+            assert_eq!(reply["result"]["history"]["complete"], true);
+            let observed = reply["result"]["thread"]["turns"].as_array().unwrap();
+            assert_eq!(observed.len(), 3);
+            for (n, value) in observed.iter().enumerate() {
+                let items = value["items"].as_array().unwrap();
+                assert_eq!(items.first().unwrap()["id"], format!("user-{n}"));
+                assert_eq!(items.last().unwrap()["text"], format!("answer {n}"));
+                assert_eq!(
+                    items.len(),
+                    10,
+                    "provider context is not conversation content"
+                );
+                assert!(
+                    items[1..9]
+                        .iter()
+                        .all(|item| item["type"] == "historyDeferred")
+                );
+                let preview = &items[1]["preview"];
+                assert_eq!(preview["tool"], "run_command");
+                let status: Value =
+                    serde_json::from_str(preview["contentItems"][0]["text"].as_str().unwrap())
+                        .unwrap();
+                assert_eq!(status["commandStatus"], "succeeded");
+                assert!(status.get("stdout").is_none());
+                for detail in &items[2..9] {
+                    assert_eq!(detail["preview"]["tool"], "shell");
+                    assert_eq!(detail["preview"]["arguments"]["command"], "echo fixture");
+                    assert!(detail["preview"]["contentItems"].is_null());
+                    assert!(serde_json::to_vec(&detail["preview"]).unwrap().len() < 1024);
+                }
+            }
+            let detail = running.call("areal/conversation/history", json!({
+                "threadId":id,"view":"own","cursor":observed[0]["items"][1]["cursor"],"maxBytes":1048576
+            }), Some(1048576)).await;
+            let fragment = detail["result"]["data"][0]["fragment"]["text"]
+                .as_str()
+                .unwrap();
+            let restored: Value = serde_json::from_str(fragment).unwrap();
+            assert_eq!(restored["item"], item_map(&turns)["tool-0-0"]);
+            running.close().await;
+        }
     }
 }
 

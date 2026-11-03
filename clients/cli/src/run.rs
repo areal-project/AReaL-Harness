@@ -248,6 +248,34 @@ async fn execute_connected(args: &Cli, local: &local::Local) -> Result<(i32, Vec
             profile = Some(json!({"id":entry["id"],"revision":entry["revision"]}));
         }
     }
+    let selected_model = if let Some(name) = &args.model {
+        let catalog = rpc.call("areal/model/list", json!({})).await?;
+        let entries = catalog["data"]
+            .as_array()
+            .context("invalid model catalog")?;
+        let matches: Vec<_> = entries
+            .iter()
+            .filter(|m| {
+                m["modelId"] == *name
+                    || format!(
+                        "{}:{}",
+                        m["providerId"].as_str().unwrap_or("default"),
+                        m["modelId"].as_str().unwrap_or("")
+                    ) == *name
+            })
+            .collect();
+        ensure!(
+            matches.len() == 1,
+            "model must identify exactly one configured API model"
+        );
+        Some(matches[0].clone())
+    } else {
+        None
+    };
+    let model_reference = selected_model
+        .as_ref()
+        .filter(|model| model["providerId"].is_string())
+        .map(|model| json!({"providerId":model["providerId"],"modelId":model["modelId"]}));
     let thread = if let Some(id) = &args.resume {
         // 旧 Core 通过 turn/start 订阅事件；只读恢复避免接管桌面工具宿主。
         let method = resume_method(&capabilities);
@@ -255,7 +283,8 @@ async fn execute_connected(args: &Cli, local: &local::Local) -> Result<(i32, Vec
     } else {
         rpc.call(
             "areal/thread/start",
-            json!({"requestId":key(),"agentProfile":profile}),
+            // 显式模型参与创建预检，不能先依赖可能尚未装配的默认供应商。
+            json!({"requestId":key(),"agentProfile":profile,"model":model_reference}),
         )
         .await?
     };
@@ -342,28 +371,9 @@ async fn execute_connected(args: &Cli, local: &local::Local) -> Result<(i32, Vec
     if let Some(effort) = &args.effort {
         configure["parameters"] = json!({"reasoningEffort":effort});
     }
-    if let Some(name) = &args.model {
-        let catalog = rpc.call("areal/model/list", json!({})).await?;
-        let entries = catalog["data"].as_array().unwrap();
-        let matches: Vec<_> = entries
-            .iter()
-            .filter(|m| {
-                m["modelId"] == *name
-                    || format!(
-                        "{}:{}",
-                        m["providerId"].as_str().unwrap_or("default"),
-                        m["modelId"].as_str().unwrap_or("")
-                    ) == *name
-            })
-            .collect();
-        ensure!(
-            matches.len() == 1,
-            "model must identify exactly one configured API model"
-        );
-        let model = matches[0];
-        if model["providerId"].is_string() {
-            configure["model"] =
-                json!({"providerId":model["providerId"],"modelId":model["modelId"]});
+    if selected_model.is_some() {
+        if let Some(model) = model_reference {
+            configure["model"] = model;
         } else {
             ensure!(
                 config["model"].is_null(),

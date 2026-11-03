@@ -746,7 +746,7 @@ try {
       new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
     );
   }, pastedText);
-  await page.getByTitle(`Composer reference acceptance ${marker}`, { exact: true }).waitFor();
+  await page.locator(`[aria-description="Composer reference acceptance ${marker}"]`).waitFor();
   const reviewLines = [1, 2, 3].map((line) => `attached review evidence ${line} ${marker}`);
   await writeFile(
     join(workspace, "evidence.txt"),
@@ -1117,7 +1117,7 @@ try {
     "expand retains every pasted character through its final marker",
   );
   assert.equal(
-    await page.getByTitle(`Composer reference acceptance ${marker}`, { exact: true }).count(),
+    await page.locator(`[aria-description="Composer reference acceptance ${marker}"]`).count(),
     0,
     "expanded text card is removed",
   );

@@ -52,6 +52,10 @@ export function hydrateReadingViews() {
   if (readingViewsHydrated) return;
   readingViewsHydrated = true;
   try {
+    // 重载或关闭前写入尚未落盘的阅读位置。
+    window.addEventListener("pagehide", saveReadingViews);
+  } catch {}
+  try {
     const raw = window.sessionStorage.getItem(readingCheckpointKey);
     if (!raw || raw.length > readingCheckpointLimit) return;
     const checkpoint: unknown = JSON.parse(raw);
@@ -109,7 +113,14 @@ export function hydrateReadingViews() {
     savedReadingCheckpoint = raw;
   } catch {}
 }
+let pendingSave: ReturnType<typeof setTimeout> | undefined;
+/** 滚动时每帧都会更新阅读记录；写入 sessionStorage 合并为每 300ms 至多一次。 */
+export function scheduleSaveReadingViews() {
+  pendingSave ??= setTimeout(saveReadingViews, 300);
+}
 export function saveReadingViews() {
+  if (pendingSave !== undefined) clearTimeout(pendingSave);
+  pendingSave = undefined;
   // 存储不可用时也限制进程内缓存，避免每次滚动遍历全部曾访问的会话。
   for (const owner of readingViews.keys()) {
     if (readingViews.size <= readingViewLimit) break;

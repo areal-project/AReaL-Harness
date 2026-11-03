@@ -86,7 +86,34 @@ const baseline = () => ({
   history: { snapshotId: "reading-snapshot", nextCursor: "page:0", complete: false },
 });
 
-export async function createReadingFixture() {
+export async function createReadingFixture({ deferredTools = false } = {}) {
+  const detailItems = new Map();
+  const initial = baseline();
+  if (deferredTools) {
+    const sourceTurn = initial.thread.turns[0];
+    sourceTurn.items = sourceTurn.items.map((item) => {
+      if (item.type !== "dynamicToolCall") return item;
+      const entry = {
+        sourceThreadId: "reading-thread",
+        sourceTurnId: sourceTurn.id,
+        sourceItemId: item.id,
+        sourceTurnStatus: sourceTurn.status,
+        turn: { id: sourceTurn.id, status: sourceTurn.status, durationMs: sourceTurn.durationMs },
+        item,
+      };
+      const raw = JSON.stringify(entry);
+      detailItems.set(`detail:${item.id}`, { entry, raw });
+      return {
+        id: item.id,
+        type: "historyDeferred",
+        originalType: item.type,
+        cursor: `detail:${item.id}`,
+        version: "fixture-v1",
+        totalBytes: Buffer.byteLength(raw),
+        preview: { ...item, contentItems: [] },
+      };
+    });
+  }
   const model = new CoreTaskModel();
   const project = { id: "reading-project", model, connectionGeneration: 1 };
   const backend = Object.assign(Object.create(CoreBackend.prototype), {
@@ -121,6 +148,26 @@ export async function createReadingFixture() {
         await new Promise((resolve) => held.push({ resolve, cursor: params.cursor }));
         pending--;
       }
+      const detail = detailItems.get(params.cursor);
+      if (detail)
+        return {
+          snapshotId: "reading-snapshot",
+          complete: true,
+          nextCursor: null,
+          data: [
+            {
+              ...detail.entry,
+              item: undefined,
+              fragment: {
+                offsetUtf8: 0,
+                nextOffsetUtf8: Buffer.byteLength(detail.raw),
+                totalBytes: Buffer.byteLength(detail.raw),
+                text: detail.raw,
+                version: "fixture-v1",
+              },
+            },
+          ],
+        };
       const n = Number(params.cursor.split(":")[1]);
       const value = turn(n);
       return {
@@ -138,11 +185,12 @@ export async function createReadingFixture() {
       };
     },
   };
-  backend.installObservation(project, baseline());
+  backend.installObservation(project, initial);
   model.connection(true);
   const snapshot = () => ({
     thread: model.state.threads["reading-thread"],
     calls: calls.length,
+    detailCalls: calls.filter(({ params }) => detailItems.has(params.cursor)),
     pending,
     held: held.map(({ cursor }) => ({ cursor })),
     views: [...(backend.historyWindow(project, "reading-thread")?.views ?? [])],
@@ -226,7 +274,7 @@ export async function createReadingFixture() {
                 response.end(JSON.stringify(result));
                 return;
               }
-              if (input.operation === "reobserve") backend.installObservation(project, baseline());
+              if (input.operation === "reobserve") backend.installObservation(project, initial);
               else if (input.operation === "delta")
                 model.event("item/agentMessage/delta", {
                   threadId: "reading-thread",

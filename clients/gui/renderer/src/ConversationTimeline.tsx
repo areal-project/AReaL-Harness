@@ -4,6 +4,32 @@ import { ControlHintTooltip } from "./ControlHintTooltip.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import type { Data } from "./services.js";
 import { retryProgress } from "./conversationEvents.js";
+import type { ComponentProps } from "react";
+
+export function TimelineNotice({ children, className = "", ...props }: ComponentProps<"div">) {
+  return (
+    <div {...props} className={`conversation-event ${className}`}>
+      <span className="conversation-event-content">{children}</span>
+    </div>
+  );
+}
+
+export function CompactionNotices({ turn }: { turn: Data }) {
+  const { t } = useI18n();
+  return (turn.trace?.activities ?? [])
+    .filter((activity: Data) => activity.kind === "compaction")
+    .map((activity: Data) => (
+      <TimelineNotice key={activity.id} data-compaction={activity.id} role="status">
+        {t(
+          activity.status === "completed"
+            ? "chat.timeline.compaction.completed"
+            : activity.status === "running"
+              ? "chat.timeline.compaction.running"
+              : "chat.timeline.compaction.failed",
+        )}
+      </TimelineNotice>
+    ));
+}
 
 export function MessageTime({ createdAt }: { createdAt?: number }) {
   const { locale, t } = useI18n();
@@ -34,12 +60,16 @@ export function ModelChanges({ changes, afterTurnId }: { changes?: Data[]; after
   return (changes ?? [])
     .filter((change) => (change.afterTurnId ?? undefined) === afterTurnId)
     .map((change) => (
-      <p className="model-change-notice" data-model-change={change.revision} key={change.revision}>
+      <TimelineNotice
+        className="model-change-notice"
+        data-model-change={change.revision}
+        key={change.revision}
+      >
         {t("chat.timeline.modelChange", {
           from: [change.from.providerId, change.from.modelId].filter(Boolean).join(" / "),
           to: [change.to.providerId, change.to.modelId].filter(Boolean).join(" / "),
         })}
-      </p>
+      </TimelineNotice>
     ));
 }
 
@@ -48,7 +78,12 @@ export function TurnRetries({ turn }: { turn: Data }) {
   return retryProgress(turn).flatMap((retry) => {
     if (retry.state === "waiting" || retry.state === "retrying") return [];
     return (
-      <p className="turn-retry-notice" data-retry-state={retry.state} key={retry.id} role="status">
+      <TimelineNotice
+        className="turn-retry-notice"
+        data-retry-state={retry.state}
+        key={retry.id}
+        role="status"
+      >
         {retry.state === "recovered" ? (
           <Check size={14} aria-hidden="true" />
         ) : retry.state === "exhausted" ? (
@@ -61,7 +96,7 @@ export function TurnRetries({ turn }: { turn: Data }) {
           {" · "}
           {t("chat.timeline.retry.attempts", { attempts: retry.attempts })}
         </span>
-      </p>
+      </TimelineNotice>
     );
   });
 }

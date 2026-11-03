@@ -381,6 +381,11 @@
     "status": "active"
   },
   {
+    "path": "clients/gui/packages/ui/src/components/skeleton/skeleton.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
     "path": "clients/gui/packages/ui/src/components/spinner/spinner.md",
     "role": "consumer",
     "status": "active"

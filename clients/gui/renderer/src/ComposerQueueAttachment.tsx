@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import { AttachmentCard } from "@areal/ui/experimental";
 import { useEffect, useState } from "react";
 import { ScanText } from "lucide-react";
@@ -63,7 +64,9 @@ export function ComposerQueueAttachment({
               <ScanText size={22} />
             </AttachmentCard.Icon>
             <AttachmentCard.Text>
-              <span title={name}>{name}</span>
+              <TitleTooltip title={name}>
+                <span>{name}</span>
+              </TitleTooltip>
             </AttachmentCard.Text>
           </>
         )}

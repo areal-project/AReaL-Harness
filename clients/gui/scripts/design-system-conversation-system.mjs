@@ -277,25 +277,31 @@ async function verifySubagentFlow(page, preview, scratch) {
     positions.push(
       await thinking.evaluate((element, time) => {
         const sweep = element.querySelector(".areal-thinking-sweep");
-        const animation = sweep.getAnimations()[0];
-        animation.pause();
-        animation.currentTime = time;
-        return parseFloat(getComputedStyle(sweep).maskPosition);
+        for (const animation of sweep.getAnimations({ subtree: true })) {
+          animation.pause();
+          animation.currentTime = time;
+        }
+        return new DOMMatrix(
+          getComputedStyle(sweep.querySelector(".areal-thinking-band")).transform,
+        ).m41;
       }, time),
     );
     await thinking.screenshot({ path: join(scratch, `thinking-${time}.png`) });
   }
   assert.ok(
-    positions[0] > positions[1] && positions[1] > positions[2],
-    "mask highlights move left to right with a 250% mask",
+    positions[0] < positions[1] && positions[1] < positions[2],
+    "the highlight band translates left to right",
   );
   await thinking.evaluate((element) =>
-    element.querySelector(".areal-thinking-sweep").getAnimations()[0].play(),
+    element
+      .querySelector(".areal-thinking-sweep")
+      .getAnimations({ subtree: true })
+      .forEach((animation) => animation.play()),
   );
   await page.getByLabel("减少动态效果", { exact: true }).check();
   assert.equal(
     await thinking
-      .locator(".areal-thinking-sweep")
+      .locator(".areal-thinking-band")
       .evaluate((element) => getComputedStyle(element).animationName),
     "none",
   );
@@ -303,7 +309,7 @@ async function verifySubagentFlow(page, preview, scratch) {
   await page.emulateMedia({ reducedMotion: "reduce" });
   assert.equal(
     await thinking
-      .locator(".areal-thinking-sweep")
+      .locator(".areal-thinking-band")
       .evaluate((element) => getComputedStyle(element).animationName),
     "none",
   );

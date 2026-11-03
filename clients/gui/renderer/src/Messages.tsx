@@ -1,8 +1,13 @@
-import { sentSnapShots, isSnapShotDecoration } from "./snapshots/source.js";
 import { commandResourceLabel } from "./conversationPresentation.js";
 import { useTranscriptSelection } from "./useTranscriptSelection.js";
-import { readingAnchor, restoreReadingAnchor } from "./conversationReadingDom.js";
-import { MessageTime, ModelChanges, TurnRetries } from "./ConversationTimeline.js";
+import * as readingDom from "./conversationReadingDom.js";
+import {
+  MessageTime,
+  ModelChanges,
+  TurnRetries,
+  TimelineNotice,
+  CompactionNotices,
+} from "./ConversationTimeline.js";
 import {
   beginReadingRestore,
   changeReadingIntent,
@@ -16,6 +21,7 @@ import {
   cancelTurnStart,
   hydrateReadingViews,
   saveReadingViews,
+  scheduleSaveReadingViews,
   type ResponseSpace,
 } from "./readingViews.js";
 import { usePendingMessage } from "./pendingMessage.js";
@@ -28,7 +34,6 @@ import { useI18n } from "./i18n/IntlProvider.js";
 import { WorktreeStatus } from "./WorktreeStatus.js";
 import { TurnUsage } from "./TurnUsage.js";
 import { mcpResultKey, type McpResultSource, type McpResultState } from "./mcp-app-services.js";
-import { McpContentLabel } from "./McpComposerAttachments.js";
 import { useForkHistory } from "./ForkHistory.js";
 import { DeferredHistoryItem, useConversationHistory } from "./ConversationHistory.js";
 import { UnknownToolInspection } from "./UnknownToolInspection.js";
@@ -44,16 +49,21 @@ import {
 import { progressAutoCollapse, TurnProgress } from "./TurnProgress.js";
 import { TurnElapsed } from "./TurnElapsed.js";
 import { ForkIcon } from "./interfaceIcons.js";
-import { UserPromptEdit } from "./UserPromptEdit.js";
-import { UserMessageBody } from "./UserMessageBody.js";
 import { isOrdinaryConversation } from "./ordinaryConversation.js";
 import { MessageActions } from "./MessageActions.js";
-import { CollapsibleText } from "./CollapsibleText.js";
 import { UserFeedback } from "./UserFeedback.js";
 import { TurnHookStats } from "./TurnHookStats.js";
 import { agentAssignment } from "./AgentIdentity.js";
 import { ToolEvent } from "./ToolEvent.js";
 import { TurnActivity, TurnExecution } from "./TurnExecution.js";
+import { SentUserMessage } from "./SentUserMessage.js";
+import {
+  MemoTurn,
+  turnContextStamp,
+  turnIdentity,
+  useLiveFunctions,
+  withHistoryTopology,
+} from "./conversationTurns.js";
 import {
   Fragment,
   useCallback,
@@ -77,12 +87,6 @@ import {
   opensOutside,
   workspaceFileCardType,
 } from "./WorkspaceMedia.js";
-import { sentReviewFeedback } from "./reviewComments.js";
-import { SentBrowserAnnotations } from "./BrowserAnnotationAttachments.js";
-import { sentImageAnnotations } from "./imageAnnotations.js";
-import { ImageAnnotationList } from "./ImageAnnotationViews.js";
-import { sentBrowserAnnotations } from "./browserAnnotations.js";
-import { SentReviewComments } from "./ReviewCommentViews.js";
 import { latestScheduleItems, ScheduledTaskCards } from "./ScheduledTasks.js";
 import { TurnFileSummary } from "./TurnFileSummary.js";
 import type { Data, Action, PlatformServices } from "./services.js";
@@ -161,63 +165,7 @@ export function Messages({
   const history = useConversationHistory(project.id, localThread, action);
   const thread: Data = {
     ...localThread,
-    turns: [
-      ...inherited.turns,
-      ...(localThread.turns ?? []).map((turn: Data) => {
-        const items: Data[] = turn.items ?? [];
-        const records: Data[] = [...(localThread.displayHistory?.pageTopology ?? [])]
-          .reverse()
-          .flatMap((page: Data) => page.items.filter((item: Data) => item.turnId === turn.id));
-        const known = new Set(records.map((item) => item.itemId));
-        const shown = new Map(items.map((item) => [item.id, item]));
-        const topology = records.flatMap((record) => {
-          if (shown.has(record.itemId)) return [shown.get(record.itemId)!];
-          const slot = {
-            id: record.itemId,
-            type: record.type,
-            phase: record.phase,
-            historyActivityBreak: record.activityBreak,
-            historyOmitted: true,
-          };
-          return record.answers
-            ? [
-                slot,
-                {
-                  id: `question-answer:${record.itemId}`,
-                  type: "questionAnswer",
-                  historyOmitted: true,
-                },
-              ]
-            : record.visible === false
-              ? []
-              : [slot];
-        });
-        const ordered: Data[] = [];
-        let cursor = 0;
-        for (const item of items) {
-          if (known.has(item.id)) {
-            const index = topology.findIndex((entry) => entry.id === item.id);
-            while (cursor < index) ordered.push(topology[cursor++]);
-            cursor = Math.max(cursor, index + 1);
-          }
-          ordered.push(item);
-        }
-        ordered.push(...topology.slice(cursor).filter((item) => !shown.has(item.id)));
-        return {
-          ...turn,
-          items: ordered.flatMap((item) => [
-            ...(localThread.displayHistory?.gaps ?? [])
-              .filter((gap: Data) => gap.beforeItemId === item.id)
-              .map((gap: Data) => ({
-                ...gap,
-                type: "historyPageGap",
-                topologyKnown: gap.topologyKnown === true,
-              })),
-            item,
-          ]),
-        };
-      }),
-    ],
+    turns: [...inherited.turns, ...withHistoryTopology(localThread)],
   };
   const inheritedIds = new Set(inherited.turns.map((turn) => turn.id));
   const creationAnchor =
@@ -317,7 +265,7 @@ export function Messages({
       following: reading.current.kind === "following",
       atTail: element.scrollHeight - element.scrollTop - element.clientHeight <= 1,
       responseSpace: reservation.current && { ...reservation.current },
-      anchor: reading.current.kind === "following" ? undefined : readingAnchor(element),
+      anchor: reading.current.kind === "following" ? undefined : readingDom.readingAnchor(element),
     });
     const anchor = readingViews.get(activeOwner.current)?.anchor;
     const identity = JSON.stringify([
@@ -340,7 +288,7 @@ export function Messages({
       );
       void historyCurrent.current.retain(reading.current.revision, anchor ?? null).catch(() => {});
     } else if (reading.current.kind === "holding") reading.current = { ...reading.current, anchor };
-    saveReadingViews();
+    scheduleSaveReadingViews();
   };
   const releaseResponseSpace = () => {
     reservation.current = undefined;
@@ -349,7 +297,7 @@ export function Messages({
   const readHere = (control?: HTMLElement) => {
     cancelTurnStart(readingViews.get(owner)?.pendingTurnStart);
     const element = container.current;
-    const anchor = element ? readingAnchor(element) : undefined;
+    const anchor = element ? readingDom.readingAnchor(element) : undefined;
     reading.current = changeReadingIntent(reading.current, {
       kind: "holding",
       anchor,
@@ -368,7 +316,7 @@ export function Messages({
     const element = container.current;
     if (!element || reading.current.kind === "restoring") return;
     const space = reservation.current;
-    const section = element.querySelector<HTMLElement>("[data-latest-turn=true]");
+    const section = space && readingDom.responseSection(element, space.turnId, latestTurnId);
     const viewport = readingViewport.current;
     // Viewport/font reflow can queue scroll before resize reconciliation,
     // including natural first-turn history with no reserved response space.
@@ -408,7 +356,7 @@ export function Messages({
     if (!following && reading.current.kind === "following")
       reading.current = changeReadingIntent(reading.current, {
         kind: "holding",
-        anchor: readingAnchor(element),
+        anchor: readingDom.readingAnchor(element),
       });
     rememberReading();
     setReadingHistory(
@@ -431,7 +379,13 @@ export function Messages({
       if (reading.current.owner !== owner) return;
       await history.load(undefined, pageId);
     } finally {
-      if (olderInFlight.current === request) olderInFlight.current = undefined;
+      if (olderInFlight.current === request) {
+        olderInFlight.current = undefined;
+        // 读取期间继续上滑的意图留到投影提交后检查，不要求用户再滑一次。
+        requestAnimationFrame(() => {
+          if (reading.current.owner === owner) autoLoadCurrent.current();
+        });
+      }
     }
   };
   const autoLoadOlder = () => {
@@ -484,22 +438,17 @@ export function Messages({
     localThread.displayHistory?.viewGeneration,
   ]);
   const scheduleReading = () => {
+    // 在分页或流式更新改变 DOM 前记录用户位置；下一帧只调度历史读取。
+    updateReading();
     if (readingFrame.current !== undefined) return;
     readingFrame.current = requestAnimationFrame(() => {
       readingFrame.current = undefined;
       if (activeOwner.current !== owner) return;
-      updateReading();
       autoLoadCurrent.current();
     });
   };
   const requestOlderFromInput = () => {
-    if (
-      olderInFlight.current ||
-      localThread.displayHistory?.loadingOlder ||
-      localThread.displayHistory?.loadingLatest ||
-      history.failure
-    )
-      return;
+    if (history.failure) return;
     autoOlderIntent.current = true;
     if (reading.current.kind === "following")
       reading.current = changeReadingIntent(reading.current, { kind: "holding" });
@@ -655,7 +604,7 @@ export function Messages({
                 send={
                   readOnly || localThread.desktop?.archived || !project.state?.connected
                     ? undefined
-                    : sendGenUi
+                    : live.sendGenUi
                 }
               />
             ) : (
@@ -663,10 +612,6 @@ export function Messages({
             )
           }
         />
-        <MessageTime createdAt={entry.createdAt} />
-        {!deferActions && entry.phase !== "commentary" && turn.status !== "inProgress" && (
-          <MessageActions text={conversationContentToText(blocks)} />
-        )}
       </div>
     );
   };
@@ -719,18 +664,6 @@ export function Messages({
       (el) => el.dataset.turnId === latestTurnId,
     );
     const user = section?.querySelector<HTMLElement>(".user-message");
-    // The accepted user starts at the live column inset. Earlier action rows
-    // and inter-turn gaps belong to history, not this response track; reserving
-    // them exposes the preceding file card after reflow. Long replies still
-    // consume this space naturally, and explicit history reading releases it.
-    const responseTrackHeight = () => {
-      if (!section || !user) return 0;
-      const column = getComputedStyle(section.parentElement!);
-      return Math.max(
-        0,
-        element.clientHeight - parseFloat(column.paddingTop) - parseFloat(column.paddingBottom),
-      );
-    };
     if (switched) {
       reservation.current =
         reserveResponseSpace && remembered?.responseSpace
@@ -754,6 +687,16 @@ export function Messages({
         reserveResponseSpace && section
           ? { turnId: latestTurnId, height: 0, contentHeight: 0 }
           : undefined;
+    } else if (
+      requested?.afterTurnId === latestTurnId &&
+      readingDom.responseSection(element, readingDom.pendingTurnTarget)
+    ) {
+      // 点发送即定位待发消息，不等 Core 受理；受理后的真实消息出现在同一位置，不再跳动。
+      reading.current = changeReadingIntent(reading.current, {
+        kind: "following",
+        target: { kind: "turnStart", turnId: readingDom.pendingTurnTarget },
+      });
+      reservation.current = { turnId: readingDom.pendingTurnTarget, height: 0, contentHeight: 0 };
     } else if (!switched && previous.id !== latestTurnId) reservation.current = undefined;
     // 自然流布局由父容器滚动；自身高度包含占位，
     // 用它计算预留空间会在下一次尺寸变化时形成反馈增长。
@@ -762,19 +705,18 @@ export function Messages({
     seenTurn.current = { owner, id: latestTurnId };
     const layout = () => {
       const space = reservation.current;
-      if (space && section && space.turnId === latestTurnId) {
-        const contentHeight = section.getBoundingClientRect().height;
+      const reserved = space && readingDom.responseSection(element, space.turnId, latestTurnId);
+      if (space && reserved?.querySelector(".user-message")) {
+        const contentHeight = reserved.getBoundingClientRect().height;
         // Recompute from the live track: both response growth and input-area
         // collapse change layout. Neither first-paint size becomes history.
-        space.height = Math.max(0, responseTrackHeight() - contentHeight);
+        space.height = Math.max(
+          0,
+          readingDom.responseTrackHeight(element, reserved) - contentHeight,
+        );
         space.contentHeight = contentHeight;
         spacer.style.height = `${space.height}px`;
       } else spacer.style.height = "0px";
-      if (readingFrame.current !== undefined) {
-        cancelAnimationFrame(readingFrame.current);
-        readingFrame.current = undefined;
-        updateReading();
-      }
       const state = reading.current;
       const disclosure = state.kind === "holding" ? state.disclosure : undefined;
       if (disclosure && element.contains(disclosure.control)) {
@@ -783,15 +725,13 @@ export function Messages({
           element.getBoundingClientRect().top -
           disclosure.offset;
       } else if (state.kind === "following") {
-        if (state.target?.kind === "turnStart" && state.target.turnId === latestTurnId && user) {
-          const inset = parseFloat(getComputedStyle(section!.parentElement!).paddingTop);
-          element.scrollTop +=
-            user.getBoundingClientRect().top - element.getBoundingClientRect().top - inset;
-        } else element.scrollTop = element.scrollHeight;
+        const placed = readingDom.positionTurnStart(element, state.target?.turnId, latestTurnId);
+        if (placed === "tail") reading.current = changeReadingIntent(state, { kind: "following" });
+        if (placed !== "placed") element.scrollTop = element.scrollHeight;
       } else if (state.kind === "holding" && state.anchor)
-        restoreReadingAnchor(element, state.anchor);
+        readingDom.restoreReadingAnchor(element, state.anchor);
       else if (state.kind === "restoring" && state.phase === "ready") {
-        const result = restoreReadingAnchor(element, state.anchor);
+        const result = readingDom.restoreReadingAnchor(element, state.anchor);
         if (result === true) {
           reading.current = {
             owner: state.owner,
@@ -900,6 +840,38 @@ export function Messages({
       reading.current = changeReadingIntent(reading.current, { kind: "holding" });
     };
   }, [owner]);
+  const live = useLiveFunctions({
+    loadOlder,
+    readHere,
+    releaseResponseSpace,
+    rememberReading,
+    renderAgentMessage,
+    loadHistory: history.load,
+    sendGenUi,
+    onFork,
+    onOpenResult,
+    onFile,
+    onAgent,
+    readTurnReview,
+    onReview,
+    responseActions,
+    onLink,
+  });
+  const turnStamp = turnContextStamp(
+    project,
+    localThread,
+    [owner, dark, readOnly, decisionShown, embedded, canFork, forking, ordinary, editable],
+    live,
+  ).concat(
+    JSON.stringify([
+      creationAnchor,
+      latestSchedules,
+      resultStates,
+      history.failure,
+      history.generation,
+      turnIdentity(t),
+    ]),
+  );
   return (
     <div className={embedded ? "messages-embedded" : "messages-shell"}>
       {!embedded && showTurnNavigation && (
@@ -1032,8 +1004,6 @@ export function Messages({
             <div ref={olderSentinel} className="message-history-controls" aria-live="polite">
               {localThread.displayHistory.loadingLatest ? (
                 <span role="status">{t("chat.history.loadingLatest")}</span>
-              ) : localThread.displayHistory.loadingOlder ? (
-                <span role="status">{t("chat.history.loadingOlder")}</span>
               ) : null}
             </div>
           )}
@@ -1064,578 +1034,543 @@ export function Messages({
             const earlierIssue = prefixIssue.slice(0, turnIndex).find(Boolean);
             const currentIssue = prefixIssue[turnIndex];
             const inspectTurn = earlierIssue || (turn.status === "inProgress" ? "" : currentIssue);
-            const forkReason = inspectTurn
-              ? "历史包含未结算或未核查的操作；请在来源核查或选择更早轮次"
-              : "";
-            const forkAt = (anchor: HTMLElement) => {
-              setForking(true);
-              setForkError(null);
-              void onFork?.(turn.id, anchor)
-                .catch((cause: Error & { data?: { reason?: string } }) => {
-                  const reason = cause.data?.reason;
-                  const message =
-                    reason === "TURN_NOT_TERMINAL"
-                      ? "此轮仍在运行；请等待完成后重新分支。"
-                      : reason === "HISTORY_UNRESOLVED"
-                        ? "来源历史有未结算或未核查的操作；请在来源核查 UNKNOWN，或选择更早轮次。"
-                        : reason === "ANCHOR_NOT_FOUND"
-                          ? "轮次位置已变化；请刷新来源后重新选择。"
-                          : cause.message;
-                  setForkError({ turnId: turn.id, message });
-                })
-                .finally(() => setForking(false));
-            };
-            const forkControls = (
-              <>
-                {canFork && turn.status !== "inProgress" && (
-                  <Button
-                    unstyled
-                    data-slot={undefined}
-                    type="button"
-                    className="turn-fork-trigger"
-                    disabled={forking || !!forkReason}
-                    title={forkReason || undefined}
-                    aria-label="从此轮创建聊天分支"
-                    aria-describedby={forkReason ? `fork-reason-${turn.id}` : undefined}
-                    onClick={(event) => forkAt(event.currentTarget)}
-                  >
-                    <ForkIcon />
-                    <span>分支</span>
-                  </Button>
-                )}
-                {canFork && inspectTurn && turn.status !== "inProgress" && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="xs"
-                    className="side-bring-action"
-                    aria-label={t("chat.selection.inspectSourceTurn")}
-                    onClick={() =>
-                      document
-                        .querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(inspectTurn)}"]`)
-                        ?.scrollIntoView({ block: "center" })
-                    }
-                  >
-                    {t("chat.selection.inspectSource")}
-                  </Button>
-                )}
-              </>
-            );
-            const segments = executionSegments(turn.items ?? [], turn.status);
-            const hasFinal = segments.some(
-              (item: Data) =>
-                item.type === "agentMessage" && item.phase === "final_answer" && item.text?.trim(),
-            );
-            const finalMessage = segments.findLast(
-              (item: Data) =>
-                item.type === "agentMessage" && item.phase === "final_answer" && item.text?.trim(),
-            );
-            // Old snapshots have no phases. A completed text-tail allows a purely
-            // chronological disclosure; it does not classify or rewrite any message.
-            // Unsettled work, pending input and terminal exceptions stay inspectable.
-            const tail = segments.at(-1);
-            const pendingInput = project.state?.interactions?.[thread.id]?.data?.some(
-              (item: Data) => item.status === "pending" && item.turnId === turn.id,
-            );
-            const legacyReply =
-              turn.status === "completed" &&
-              tail?.type === "agentMessage" &&
-              segments.every((item: Data) => item.type !== "agentMessage" || item.phase == null) &&
-              !executionOutcome(segments.flatMap((item: Data) => item.items ?? [])).unfinished &&
-              !pendingInput
-                ? tail
-                : undefined;
-            const responseMessage = finalMessage ?? legacyReply;
-            const hasReadingSummary = hasFinal || !!legacyReply;
-            // 带phase与旧快照共用同一过程总组；从运行期起保留挂载，
-            // 完成收敛只隐藏内容，不重置工具详情或改变历史顺序。
-            const groups = progressGroups(segments, turn.id, legacyReply?.id);
-            const firstProgress = groups.findIndex((group) => group.progress);
-            const initialUser = segments.find((item) => item.type === "userMessage");
-            const queue = project.state?.queues?.[thread.id];
-            const stopAccepted =
-              turn.status === "inProgress" &&
-              queue?.paused === true &&
-              queue?.pauseReason === "stopped";
-            const command = (turn.items ?? []).find(
-              (item: Data) => item.type === "dynamicToolCall" && item.tool === "run_command",
-            );
-            const resourceLabel =
-              command && queue?.pauseReason === "stopped" && turn.interruption !== "userPause"
-                ? commandResourceLabel(command)
-                : null;
-            const hasInterruption =
-              turn.status === "interrupted" || (turn.status === "failed" && !!turn.interruption);
-            const stopHeading = (
-              <div className="turn-stop-heading turn-progress-heading">
-                <div className="turn-progress-label">
-                  <span className="turn-status turn-progress-summary" role="status">
-                    {t(
-                      turn.interruption === "userPause"
-                        ? "chat.timeline.interruption.userPause"
-                        : turn.interruption === "coreRecovery"
-                          ? "chat.timeline.interruption.coreRecovery"
-                          : "chat.timeline.interruption.other",
-                    )}
-                    {turn.error ? `：${turnFailureMessage(turn)}` : ""}
-                  </span>
-                </div>
-                <div className="turn-progress-divider" />
-              </div>
-            );
             return (
-              <section
+              <MemoTurn
                 key={JSON.stringify([owner, turn.id])}
-                data-turn-id={turn.id}
-                data-turn-status={turn.status}
-                data-latest-turn={turn.id === latestTurnId}
-              >
-                {stopAccepted && (
-                  <p role="status">
-                    {ordinary ? "暂停已受理，等待执行结算" : "停止已受理，等待执行结算"}
-                  </p>
-                )}
-                {resourceLabel && <p role="status">{resourceLabel}</p>}
-                {groups.map((group, groupIndex) => {
-                  const outcome = executionOutcome(
-                    group.entries.flatMap(({ item }) => item.items ?? []),
-                  );
-                  const contents = group.entries.map(({ item }) => {
-                    if (item.historyOmitted) return null;
-                    if (item.type === "historyPageGap")
-                      return (
-                        <div key={item.id} className="notice" data-history-page-id={item.id}>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            disabled={localThread.displayHistory?.loadingOlder}
-                            onClick={() => void loadOlder(item.id)}
-                          >
-                            {t("chat.history.reloadPage")}
-                          </Button>
-                        </div>
-                      );
-                    if (item.type === "historyDeferred")
-                      return (
-                        <DeferredHistoryItem
-                          key={item.id}
-                          item={item}
-                          loading={localThread.displayHistory?.loadingItems?.[item.id]}
-                          error={
-                            history.failure?.itemId === item.id
-                              ? history.failure?.message
-                              : undefined
+                turn={turn}
+                stamp={`${turnStamp}${JSON.stringify([inspectTurn, isInherited, turn.id === latestTurnId, forkError?.turnId === turn.id && forkError?.message])}`}
+                render={() => {
+                  const forkReason = inspectTurn
+                    ? "历史包含未结算或未核查的操作；请在来源核查或选择更早轮次"
+                    : "";
+                  const forkAt = (anchor: HTMLElement) => {
+                    setForking(true);
+                    setForkError(null);
+                    void live
+                      .onFork?.(turn.id, anchor)
+                      .catch((cause: Error & { data?: { reason?: string } }) => {
+                        const reason = cause.data?.reason;
+                        const message =
+                          reason === "TURN_NOT_TERMINAL"
+                            ? "此轮仍在运行；请等待完成后重新分支。"
+                            : reason === "HISTORY_UNRESOLVED"
+                              ? "来源历史有未结算或未核查的操作；请在来源核查 UNKNOWN，或选择更早轮次。"
+                              : reason === "ANCHOR_NOT_FOUND"
+                                ? "轮次位置已变化；请刷新来源后重新选择。"
+                                : cause.message;
+                        setForkError({ turnId: turn.id, message });
+                      })
+                      .finally(() => setForking(false));
+                  };
+                  const forkControls = (
+                    <>
+                      {canFork && turn.status !== "inProgress" && (
+                        <Button
+                          unstyled
+                          data-slot={undefined}
+                          type="button"
+                          className="turn-fork-trigger"
+                          disabled={forking || !!forkReason}
+                          title={forkReason || undefined}
+                          aria-label="从此轮创建聊天分支"
+                          aria-describedby={forkReason ? `fork-reason-${turn.id}` : undefined}
+                          onClick={(event) => forkAt(event.currentTarget)}
+                        >
+                          <ForkIcon />
+                          <span>分支</span>
+                        </Button>
+                      )}
+                      {canFork && inspectTurn && turn.status !== "inProgress" && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="xs"
+                          className="side-bring-action"
+                          aria-label={t("chat.selection.inspectSourceTurn")}
+                          onClick={() =>
+                            document
+                              .querySelector<HTMLElement>(
+                                `[data-turn-id="${CSS.escape(inspectTurn)}"]`,
+                              )
+                              ?.scrollIntoView({ block: "center" })
                           }
-                          onLoad={() => {
-                            readHere();
-                            void history.load(item.id);
-                          }}
-                        />
-                      );
-                    if (item.type === "questionAnswer")
-                      return (
-                        <div className="user-message" data-question-answer={item.id} key={item.id}>
-                          <div className="user-message-content">
-                            <div className="user-bubble question-answer-bubble">
-                              {item.questions.map((question: Data) => (
-                                <div key={question.id}>
-                                  <p className="question-answer-title">{question.title}</p>
-                                  <p>{item.answers[question.id]}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    if (item.type === "userMessage") {
-                      const continuation = turn.continuedFromTurnId
-                        ? "继续执行"
-                        : goalContinuationLabel(turn);
-                      if (
-                        continuation &&
-                        item.id ===
-                          turn.items?.find((entry: Data) => entry.type === "userMessage")?.id
-                      ) {
-                        return (
-                          <div className="turn-status" key={item.id}>
-                            {continuation}
-                          </div>
+                        >
+                          {t("chat.selection.inspectSource")}
+                        </Button>
+                      )}
+                    </>
+                  );
+                  const segments = executionSegments(turn.items ?? [], turn.status);
+                  const hasFinal = segments.some(
+                    (item: Data) =>
+                      item.type === "agentMessage" &&
+                      item.phase === "final_answer" &&
+                      item.text?.trim(),
+                  );
+                  const finalMessage = segments.findLast(
+                    (item: Data) =>
+                      item.type === "agentMessage" &&
+                      item.phase === "final_answer" &&
+                      item.text?.trim(),
+                  );
+                  // Old snapshots have no phases. A completed text-tail allows a purely
+                  // chronological disclosure; it does not classify or rewrite any message.
+                  // Unsettled work, pending input and terminal exceptions stay inspectable.
+                  const tail = segments.at(-1);
+                  const pendingInput = project.state?.interactions?.[thread.id]?.data?.some(
+                    (item: Data) => item.status === "pending" && item.turnId === turn.id,
+                  );
+                  const legacyReply =
+                    turn.status === "completed" &&
+                    tail?.type === "agentMessage" &&
+                    segments.every(
+                      (item: Data) => item.type !== "agentMessage" || item.phase == null,
+                    ) &&
+                    !executionOutcome(segments.flatMap((item: Data) => item.items ?? []))
+                      .unfinished &&
+                    !pendingInput
+                      ? tail
+                      : undefined;
+                  const responseMessage =
+                    finalMessage ??
+                    legacyReply ??
+                    segments.findLast(
+                      (item: Data) => item.type === "agentMessage" && item.text?.trim(),
+                    );
+                  const hasReadingSummary = hasFinal || !!legacyReply;
+                  // 带phase与旧快照共用同一过程总组；从运行期起保留挂载，
+                  // 完成收敛只隐藏内容，不重置工具详情或改变历史顺序。
+                  const groups = progressGroups(segments, turn.id, legacyReply?.id);
+                  const firstProgress = groups.findIndex((group) => group.progress);
+                  const initialUser = segments.find((item) => item.type === "userMessage");
+                  const queue = project.state?.queues?.[thread.id];
+                  const stopAccepted =
+                    turn.status === "inProgress" &&
+                    queue?.paused === true &&
+                    queue?.pauseReason === "stopped";
+                  const command = (turn.items ?? []).find(
+                    (item: Data) => item.type === "dynamicToolCall" && item.tool === "run_command",
+                  );
+                  const resourceLabel =
+                    command && queue?.pauseReason === "stopped" && turn.interruption !== "userPause"
+                      ? commandResourceLabel(command)
+                      : null;
+                  const hasInterruption =
+                    turn.status === "interrupted" ||
+                    (turn.status === "failed" && !!turn.interruption);
+                  const stopHeading = (
+                    <TimelineNotice className="turn-stop-heading" role="status">
+                      {t(
+                        turn.interruption === "userPause"
+                          ? "chat.timeline.interruption.userPause"
+                          : turn.interruption === "coreRecovery"
+                            ? "chat.timeline.interruption.coreRecovery"
+                            : "chat.timeline.interruption.other",
+                      )}
+                      {turn.error ? `：${turnFailureMessage(turn)}` : ""}
+                    </TimelineNotice>
+                  );
+                  return (
+                    <section
+                      key={JSON.stringify([owner, turn.id])}
+                      data-turn-id={turn.id}
+                      data-turn-status={turn.status}
+                      data-latest-turn={turn.id === latestTurnId}
+                    >
+                      {stopAccepted && (
+                        <TimelineNotice role="status">
+                          {ordinary ? "暂停已受理，等待执行结算" : "停止已受理，等待执行结算"}
+                        </TimelineNotice>
+                      )}
+                      {resourceLabel && (
+                        <TimelineNotice role="status">{resourceLabel}</TimelineNotice>
+                      )}
+                      {groups.map((group, groupIndex) => {
+                        const outcome = executionOutcome(
+                          group.entries.flatMap(({ item }) => item.items ?? []),
                         );
-                      }
-                      const content = item.content ?? [];
-                      const imageParts = content.filter((part: Data) => part.type === "image");
-                      const decorations = content
-                        .filter((part: Data) => part.type === "text" && part.mcpContent)
-                        .map((part: Data) => part.mcpContent);
-                      const appContent = content.filter(
-                        (part: Data) =>
-                          part.type === "text" &&
-                          part.mcpContent &&
-                          !isSnapShotDecoration(part.mcpContent, imageParts),
-                      );
-                      const text = content
-                        .filter((part: Data) => part.type === "text" && !part.mcpContent)
-                        .map((part: Data) => part.text ?? "")
-                        .join("\n");
-                      const feedback = sentReviewFeedback(text);
-                      const attachments: Data[] = content.filter(
-                        (part: Data) => part.type !== "text",
-                      );
-                      const browserFeedback = sentBrowserAnnotations(feedback.text, attachments);
-                      const snapshotFeedback = sentSnapShots(
-                        browserFeedback.text,
-                        attachments,
-                        decorations,
-                      );
-                      const imageFeedback = sentImageAnnotations(
-                        snapshotFeedback.text,
-                        attachments,
-                      );
-                      const ordinaryAttachments = attachments
-                        .map((part: Data, index: number) => ({ part, index }))
-                        .filter(
-                          ({ part }) =>
-                            !browserFeedback.notes.some(
-                              (note) => note.imageUri === (part.url ?? part.uri),
-                            ),
-                        );
-                      return (
-                        <Fragment key={item.id}>
-                          <div className="user-message" data-side-item-id={item.id}>
-                            <div className="user-message-content">
-                              <SentReviewComments comments={feedback.comments} />
-                              {appContent.length > 0 && (
-                                <div className="user-attachments" aria-label="应用内容">
-                                  {appContent.map((part: Data, index: number) => (
-                                    <McpContentLabel key={index} block={part.mcpContent} />
-                                  ))}
-                                </div>
-                              )}
-                              <SentBrowserAnnotations
-                                notes={browserFeedback.notes}
-                                attachments={attachments}
-                                projectId={project.id}
-                                threadId={thread.id}
-                                action={action}
-                              />
-                              {ordinaryAttachments.length > 0 ? (
-                                <div className="user-attachments" data-testid="user-attachments">
-                                  {ordinaryAttachments.map(({ part, index }) => {
-                                    const note = imageFeedback.notes.find(
-                                      (note) => note.attachmentIndex === index,
-                                    );
-                                    return (
-                                      <div
-                                        key={`${index}:${part.url ?? part.uri}`}
-                                        className="flex flex-col gap-2"
-                                      >
-                                        <SentAttachment
-                                          part={part}
-                                          annotation={note}
-                                          snapShotSource={
-                                            snapshotFeedback.notes.find(
-                                              (record) =>
-                                                record.imageUri === (part.url ?? part.uri),
-                                            )?.source
-                                          }
-                                          projectId={project.id}
-                                          threadId={thread.id}
-                                          action={action}
-                                        />
-                                        {note && <ImageAnnotationList note={note} />}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : null}
-                              {imageFeedback.text.trim() ? (
-                                <div className="user-bubble">
-                                  <CollapsibleText
-                                    key={`${owner}:${item.id}`}
-                                    onExpandedChange={() => {
-                                      if (reading.current.kind === "following")
-                                        reading.current = changeReadingIntent(reading.current, {
-                                          kind: "holding",
-                                        });
-                                      releaseResponseSpace();
-                                      rememberReading();
-                                    }}
-                                  >
-                                    <UserMessageBody
-                                      fileReferenceRoot={
-                                        localThread.worktree?.directory ?? project.root
-                                      }
-                                      theme={dark ? "dark" : "light"}
-                                      onOpenExternalUrl={onLink}
-                                      onOpenFileLink={onFile}
-                                    >
-                                      {imageFeedback.text}
-                                    </UserMessageBody>
-                                  </CollapsibleText>
-                                </div>
-                              ) : null}
-                              <MessageTime createdAt={item.createdAt} />
-                              {(text.trim() || item.id === editable) && (
-                                <MessageActions text={text}>
-                                  {item.id === editable && (
-                                    <UserPromptEdit
-                                      key={`${owner}:${item.id}`}
-                                      project={project}
-                                      thread={localThread}
-                                      item={item}
-                                      action={action}
-                                    />
-                                  )}
-                                </MessageActions>
-                              )}
-                            </div>
-                          </div>
-                          {turn.id === creationAnchor && item.id === initialUser?.id && (
-                            <WorktreeStatus
-                              events={localThread.worktreeEvents}
-                              current={localThread.worktree}
-                            />
-                          )}
-                        </Fragment>
-                      );
-                    }
-                    if (item.type === "agentMessage")
-                      return renderAgentMessage(item, turn, item.id === finalMessage?.id);
-                    if (item.type === "agentMedia")
-                      return (
-                        <div className="assistant-media flex flex-wrap gap-2" key={item.id}>
-                          <SentAttachment
-                            part={{
-                              type: item.modality,
-                              uri: item.media.uri,
-                              name:
-                                item.modality === "image"
-                                  ? "生成的图片"
-                                  : item.modality === "audio"
-                                    ? "生成的音频"
-                                    : "生成的文件",
-                            }}
-                            projectId={project.id}
-                            threadId={thread.id}
-                            action={action}
-                          />
-                        </div>
-                      );
-                    return (
-                      <TurnExecution
-                        key={item.id}
-                        readingKey={JSON.stringify([project.id, thread.id, turn.id, item.id])}
-                        items={item.items}
-                        turn={turn}
-                        project={project}
-                        threadId={thread.id}
-                        renderItem={(entry: Data, disclosure) => {
-                          if (entry.type === "historyPageGap")
+                        const contents = group.entries.map(({ item }) => {
+                          if (item.historyOmitted) return null;
+                          if (item.type === "historyPageGap")
                             return (
-                              <Button
-                                key={entry.id}
-                                data-history-page-id={entry.id}
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => void loadOlder(entry.id)}
-                              >
-                                {t("chat.history.reloadPage")}
-                              </Button>
+                              <div key={item.id} className="notice" data-history-page-id={item.id}>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={localThread.displayHistory?.loadingOlder}
+                                  onClick={() => void live.loadOlder?.(item.id)}
+                                >
+                                  {t("chat.history.reloadPage")}
+                                </Button>
+                              </div>
                             );
-                          if (entry.type === "dynamicToolCall")
+                          if (item.type === "historyDeferred")
                             return (
-                              <div data-side-item-id={entry.id} key={entry.id}>
-                                <ToolEvent
-                                  item={entry}
-                                  {...disclosure}
-                                  onOpenResult={
-                                    (ordinary ||
-                                      localThread.conversation?.policy?.kind ===
-                                        "sideExecutableV2") &&
-                                    !readOnly &&
-                                    !isInherited &&
-                                    !localThread.desktop?.archived
-                                      ? onOpenResult
-                                      : undefined
-                                  }
-                                  resultState={
-                                    resultStates?.[
-                                      mcpResultKey({
-                                        projectId: project.id,
-                                        threadId: thread.id,
-                                        turnId: turn.id,
-                                        itemId: entry.id,
-                                      })
-                                    ]
-                                  }
-                                  onFile={onFile}
-                                  onAgent={isInherited ? undefined : onAgent}
-                                  agents={isInherited ? undefined : project.state?.threads}
-                                  agentTaskOf={(id) => agentAssignment(thread, id)}
-                                  turnId={turn.id}
+                              <DeferredHistoryItem
+                                key={item.id}
+                                item={item}
+                                loading={localThread.displayHistory?.loadingItems?.[item.id]}
+                                error={
+                                  history.failure?.itemId === item.id
+                                    ? history.failure?.message
+                                    : undefined
+                                }
+                                onLoad={() => {
+                                  live.readHere?.();
+                                  void live.loadHistory?.(item.id);
+                                }}
+                              />
+                            );
+                          if (item.type === "questionAnswer")
+                            return (
+                              <div
+                                className="user-message"
+                                data-question-answer={item.id}
+                                key={item.id}
+                              >
+                                <div className="user-message-content">
+                                  <div className="user-bubble question-answer-bubble">
+                                    {item.questions.map((question: Data) => (
+                                      <div key={question.id}>
+                                        <p className="question-answer-title">{question.title}</p>
+                                        <p>{item.answers[question.id]}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          if (item.type === "userMessage") {
+                            const continuation = turn.continuedFromTurnId
+                              ? "继续执行"
+                              : goalContinuationLabel(turn);
+                            if (
+                              continuation &&
+                              item.id ===
+                                turn.items?.find((entry: Data) => entry.type === "userMessage")?.id
+                            ) {
+                              return <TimelineNotice key={item.id}>{continuation}</TimelineNotice>;
+                            }
+                            return (
+                              <Fragment key={item.id}>
+                                <SentUserMessage
+                                  item={item}
+                                  owner={owner}
+                                  project={project}
+                                  localThread={localThread}
                                   action={action}
+                                  dark={dark}
+                                  editable={item.id === editable}
+                                  onLink={live.onLink}
+                                  onFile={live.onFile}
+                                  onExpand={() => {
+                                    if (reading.current.kind === "following")
+                                      reading.current = changeReadingIntent(reading.current, {
+                                        kind: "holding",
+                                      });
+                                    live.releaseResponseSpace?.();
+                                    live.rememberReading?.();
+                                  }}
+                                />
+                                {turn.id === creationAnchor && item.id === initialUser?.id && (
+                                  <WorktreeStatus
+                                    events={localThread.worktreeEvents}
+                                    current={localThread.worktree}
+                                  />
+                                )}
+                              </Fragment>
+                            );
+                          }
+                          if (item.type === "agentMessage")
+                            return live.renderAgentMessage?.(
+                              item,
+                              turn,
+                              item.id === finalMessage?.id,
+                            );
+                          if (item.type === "agentMedia")
+                            return (
+                              <div className="assistant-media flex flex-wrap gap-2" key={item.id}>
+                                <SentAttachment
+                                  part={{
+                                    type: item.modality,
+                                    uri: item.media.uri,
+                                    name:
+                                      item.modality === "image"
+                                        ? "生成的图片"
+                                        : item.modality === "audio"
+                                          ? "生成的音频"
+                                          : "生成的文件",
+                                  }}
                                   projectId={project.id}
                                   threadId={thread.id}
-                                  readTurnReview={
-                                    turn.status === "completed" ? readTurnReview : undefined
-                                  }
+                                  action={action}
                                 />
                               </div>
                             );
-                          if (entry.type === "modelContext") return null;
                           return (
-                            <SettingsDisclosure
-                              className="tool-call"
-                              data-side-item-id={entry.id}
-                              key={entry.id}
-                              title={entry.type}
-                            >
-                              <pre>{JSON.stringify(entry, null, 2)}</pre>
-                            </SettingsDisclosure>
+                            <TurnExecution
+                              key={item.id}
+                              readingKey={JSON.stringify([project.id, thread.id, turn.id, item.id])}
+                              items={item.items}
+                              turn={turn}
+                              project={project}
+                              threadId={thread.id}
+                              renderItem={(entry: Data, disclosure) => {
+                                if (entry.type === "historyPageGap")
+                                  return (
+                                    <Button
+                                      key={entry.id}
+                                      data-history-page-id={entry.id}
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => void live.loadOlder?.(entry.id)}
+                                    >
+                                      {t("chat.history.reloadPage")}
+                                    </Button>
+                                  );
+                                if (entry.type === "dynamicToolCall")
+                                  return (
+                                    <div data-side-item-id={entry.id} key={entry.id}>
+                                      <ToolEvent
+                                        item={entry}
+                                        onLoadDetails={
+                                          (entry.processRecords ?? [entry]).some(
+                                            (record: Data) => record.deferredHistory,
+                                          )
+                                            ? async () => {
+                                                for (const record of entry.processRecords ?? [
+                                                  entry,
+                                                ]) {
+                                                  if (
+                                                    record.deferredHistory &&
+                                                    !(await live.loadHistory?.(record.id))
+                                                  )
+                                                    throw Error("Tool detail read failed");
+                                                }
+                                              }
+                                            : undefined
+                                        }
+                                        detailsLoading={(entry.processRecords ?? [entry]).some(
+                                          (record: Data) =>
+                                            localThread.displayHistory?.loadingItems?.[record.id],
+                                        )}
+                                        detailsError={
+                                          (entry.processRecords ?? [entry]).some(
+                                            (record: Data) => record.id === history.failure?.itemId,
+                                          )
+                                            ? history.failure?.message
+                                            : undefined
+                                        }
+                                        {...disclosure}
+                                        onOpenResult={
+                                          (ordinary ||
+                                            localThread.conversation?.policy?.kind ===
+                                              "sideExecutableV2") &&
+                                          !readOnly &&
+                                          !isInherited &&
+                                          !localThread.desktop?.archived
+                                            ? live.onOpenResult
+                                            : undefined
+                                        }
+                                        resultState={
+                                          resultStates?.[
+                                            mcpResultKey({
+                                              projectId: project.id,
+                                              threadId: thread.id,
+                                              turnId: turn.id,
+                                              itemId: entry.id,
+                                            })
+                                          ]
+                                        }
+                                        onFile={live.onFile}
+                                        onAgent={isInherited ? undefined : live.onAgent}
+                                        agents={isInherited ? undefined : project.state?.threads}
+                                        agentTaskOf={(id) => agentAssignment(thread, id)}
+                                        turnId={turn.id}
+                                        action={action}
+                                        projectId={project.id}
+                                        threadId={thread.id}
+                                        readTurnReview={
+                                          turn.status === "completed"
+                                            ? live.readTurnReview
+                                            : undefined
+                                        }
+                                      />
+                                    </div>
+                                  );
+                                if (entry.type === "modelContext") return null;
+                                return (
+                                  <SettingsDisclosure
+                                    className="tool-call"
+                                    data-side-item-id={entry.id}
+                                    key={entry.id}
+                                    title={entry.type}
+                                  >
+                                    <pre>{JSON.stringify(entry, null, 2)}</pre>
+                                  </SettingsDisclosure>
+                                );
+                              }}
+                            />
                           );
-                        }}
-                      />
-                    );
-                  });
-                  return (
-                    <Fragment key={group.id}>
-                      {group.progress ? (
-                        <TurnProgress
-                          readingKey={JSON.stringify([project.id, thread.id, turn.id, group.id])}
-                          summaryAvailable
-                          turn={!thread.cloud && groupIndex === firstProgress ? turn : undefined}
-                          connected={!!project.state?.connected}
-                          label={legacyReply ? "早前消息与活动" : "本轮过程"}
-                          settled={
-                            turn.status === "completed" &&
-                            hasReadingSummary &&
-                            !outcome.unfinished &&
-                            !pendingInput
-                          }
-                          {...outcome}
-                        >
-                          {contents}
-                        </TurnProgress>
-                      ) : (
-                        contents
-                      )}
-                      {group.entries.some(({ item }) => !thread.cloud && item === initialUser) &&
-                        firstProgress < 0 && (
-                          <TurnElapsed turn={turn} connected={!!project.state?.connected} />
-                        )}
-                    </Fragment>
-                  );
-                })}
-                {hasInterruption && stopHeading}
-                <TurnRetries turn={turn} />
-                {!isInherited &&
-                  (turn.items ?? [])
-                    .filter((item: Data) => item.type === "dynamicToolCall")
-                    .map((item: Data) => (
-                      <UnknownToolInspection
-                        key={`${project.id}:${thread.id}:${item.id}`}
-                        item={item}
-                        project={
-                          readOnly
-                            ? { ...project, state: { ...project.state, connected: false } }
-                            : project
-                        }
-                        thread={thread}
-                        action={action}
-                      />
-                    ))}
-                <ScheduledTaskCards
-                  items={turn.items ?? []}
-                  project={project}
-                  action={action}
-                  latest={latestSchedules}
-                />
-                <TurnFileSummary
-                  turn={turn}
-                  readTurnReview={readTurnReview}
-                  onFile={onFile}
-                  onReview={onReview}
-                />
-                {responseMessage && turn.status !== "inProgress" ? (
-                  <MessageActions
-                    text={conversationContentToText(
-                      projectConversationContent(
-                        responseMessage.text,
-                        turn.status === "completed",
-                        false,
-                      ),
-                    )}
-                  >
-                    <TurnHookStats turn={turn} />
-                    <TurnUsage
-                      project={project}
-                      thread={localThread}
-                      turn={turn}
-                      action={action}
-                      inherited={isInherited}
-                    />
-                    {forkControls}
-                    {responseActions?.(responseMessage)}
-                    {!isInherited && !readOnly && (
-                      <UserFeedback
+                        });
+                        return (
+                          <Fragment key={group.id}>
+                            {group.progress ? (
+                              <TurnProgress
+                                readingKey={JSON.stringify([
+                                  project.id,
+                                  thread.id,
+                                  turn.id,
+                                  group.id,
+                                ])}
+                                summaryAvailable
+                                turn={
+                                  !thread.cloud && groupIndex === firstProgress ? turn : undefined
+                                }
+                                connected={!!project.state?.connected}
+                                label={legacyReply ? "早前消息与活动" : "本轮过程"}
+                                settled={
+                                  turn.status === "completed" &&
+                                  hasReadingSummary &&
+                                  !outcome.unfinished &&
+                                  !pendingInput
+                                }
+                                {...outcome}
+                              >
+                                {contents}
+                              </TurnProgress>
+                            ) : (
+                              contents
+                            )}
+                            {group.entries.some(
+                              ({ item }) => !thread.cloud && item === initialUser,
+                            ) &&
+                              firstProgress < 0 && (
+                                <TurnElapsed turn={turn} connected={!!project.state?.connected} />
+                              )}
+                          </Fragment>
+                        );
+                      })}
+                      {!isInherited &&
+                        (turn.items ?? [])
+                          .filter((item: Data) => item.type === "dynamicToolCall")
+                          .map((item: Data) => (
+                            <UnknownToolInspection
+                              key={`${project.id}:${thread.id}:${item.id}`}
+                              item={item}
+                              project={
+                                readOnly
+                                  ? { ...project, state: { ...project.state, connected: false } }
+                                  : project
+                              }
+                              thread={thread}
+                              action={action}
+                            />
+                          ))}
+                      <ScheduledTaskCards
+                        items={turn.items ?? []}
                         project={project}
-                        thread={localThread}
-                        turn={turn}
-                        item={responseMessage}
                         action={action}
-                        dark={dark}
+                        latest={latestSchedules}
                       />
-                    )}
-                  </MessageActions>
-                ) : (
-                  <div className="message-actions">
-                    <TurnUsage
-                      project={project}
-                      thread={localThread}
-                      turn={turn}
-                      action={action}
-                      inherited={isInherited}
-                    />
-                    {forkControls}
-                  </div>
-                )}
-                <ModelChanges changes={thread.desktop?.modelChanges} afterTurnId={turn.id} />
-                {canFork && forkReason && turn.status !== "inProgress" && (
-                  <p id={`fork-reason-${turn.id}`} className="notice">
-                    {forkReason}
-                  </p>
-                )}
-                {canFork && forkError?.turnId === turn.id && (
-                  <p role="alert" className="notice">
-                    {forkError?.message}
-                  </p>
-                )}
-                {showTurnStatus(turn, hasInterruption, hasReadingSummary) && (
-                  <div className="turn-status">
-                    {({ completed: "已完成", interrupted: "已停止", failed: "执行失败" } as Data)[
-                      turn.status
-                    ] ?? turn.status}
-                    {turn.error ? `：${turnFailureMessage(turn)}` : ""}
-                  </div>
-                )}
-                {!finalMessage &&
-                  turn.status !== "inProgress" &&
-                  turn.items?.some(
-                    (item: Data) =>
-                      item.type === "dynamicToolCall" && item.execution?.hooks?.length,
-                  ) && (
-                    <div className="message-actions">
-                      <TurnHookStats turn={turn} />
-                    </div>
-                  )}
-                <TurnActivity
-                  turn={turn}
-                  project={project}
-                  threadId={thread.id}
-                  decisionShown={decisionShown}
-                />
-              </section>
+                      <TurnFileSummary
+                        turn={turn}
+                        readTurnReview={live.readTurnReview}
+                        onFile={live.onFile}
+                        onReview={live.onReview}
+                      />
+                      {responseMessage && turn.status !== "inProgress" ? (
+                        <MessageActions
+                          text={conversationContentToText(
+                            projectConversationContent(
+                              responseMessage.text,
+                              turn.status === "completed",
+                              false,
+                            ),
+                          )}
+                        >
+                          <TurnHookStats turn={turn} />
+                          <TurnUsage
+                            project={project}
+                            thread={localThread}
+                            turn={turn}
+                            action={action}
+                            inherited={isInherited}
+                          />
+                          <span className="message-branch-meta">
+                            {forkControls}
+                            <MessageTime createdAt={responseMessage.createdAt} />
+                          </span>
+                          {live.responseActions?.(responseMessage)}
+                          {!isInherited && !readOnly && (
+                            <UserFeedback
+                              project={project}
+                              thread={localThread}
+                              turn={turn}
+                              item={responseMessage}
+                              action={action}
+                              dark={dark}
+                            />
+                          )}
+                        </MessageActions>
+                      ) : turn.status !== "inProgress" ? (
+                        <div className="message-actions">
+                          <TurnHookStats turn={turn} />
+                          <TurnUsage
+                            project={project}
+                            thread={localThread}
+                            turn={turn}
+                            action={action}
+                            inherited={isInherited}
+                          />
+                          <span className="message-branch-meta">
+                            {forkControls}
+                            <MessageTime
+                              createdAt={
+                                turn.items?.findLast((item: Data) => item.type === "agentMessage")
+                                  ?.createdAt
+                              }
+                            />
+                          </span>
+                        </div>
+                      ) : null}
+                      {hasInterruption && stopHeading}
+                      <CompactionNotices turn={turn} />
+                      <TurnRetries turn={turn} />
+                      <ModelChanges changes={thread.desktop?.modelChanges} afterTurnId={turn.id} />
+                      {canFork && forkReason && turn.status !== "inProgress" && (
+                        <p id={`fork-reason-${turn.id}`} className="notice">
+                          {forkReason}
+                        </p>
+                      )}
+                      {canFork && forkError?.turnId === turn.id && (
+                        <p role="alert" className="notice">
+                          {forkError?.message}
+                        </p>
+                      )}
+                      {showTurnStatus(turn, hasInterruption, hasReadingSummary) && (
+                        <TimelineNotice>
+                          {(
+                            {
+                              completed: "已完成",
+                              interrupted: "已停止",
+                              failed: "执行失败",
+                            } as Data
+                          )[turn.status] ?? turn.status}
+                          {turn.error ? `：${turnFailureMessage(turn)}` : ""}
+                        </TimelineNotice>
+                      )}
+                      <TurnActivity
+                        turn={turn}
+                        project={project}
+                        threadId={thread.id}
+                        decisionShown={decisionShown}
+                      />
+                    </section>
+                  );
+                }}
+              />
             );
           })}
           {outgoingVisible && (

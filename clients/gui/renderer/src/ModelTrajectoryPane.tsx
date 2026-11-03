@@ -1,3 +1,4 @@
+import { TitleTooltip } from "@areal/ui";
 import {
   Button,
   Input,
@@ -637,7 +638,9 @@ export function ModelTrajectoryPane({
     >
       <header className="trajectory-header">
         <div className="trajectory-toolbar">
-          <strong title={title}>{title}</strong>
+          <TitleTooltip title={title}>
+            <strong>{title}</strong>
+          </TitleTooltip>
           <CopyTextAction text={allCopy} noun={t("trace.copyAll")} iconSize={15} />
           <Button
             size="sm"

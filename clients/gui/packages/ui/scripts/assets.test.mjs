@@ -177,17 +177,21 @@ test("theme source only retains documented color algorithms", async () => {
   assert.throws(() => verifyThemeSource(source.replace("0.2126", "0.2")), /algorithm constant/);
 });
 
-test("every duration token has a system and explicit reduced-motion override", () => {
+test("every motion token has a system and explicit reduced-motion override", () => {
   const future = structuredClone(tokens);
   future.foundation["motion-panel"] = { ...future.foundation["motion-fast"] };
   const css = renderFoundations(future).foundation;
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
-  for (const name of Object.keys(future.foundation).filter((name) => name.startsWith("motion-")))
+  for (const name of Object.keys(future.foundation).filter((name) => name.startsWith("motion-"))) {
+    const reduced = name === "motion-loop" ? "0" : "0ms";
     assert.equal(
-      css.split(`--${name}: 0ms;`).length - 1,
+      css.split(`--${name}: ${reduced};`).length - 1,
       2,
       `${name} must follow both preference sources`,
     );
+  }
+  future.foundation["motion-bounce"] = { ...future.foundation["ease-standard"] };
+  assert.throws(() => renderFoundations(future), /missing reduced motion value: motion-bounce/);
 });
 
 test("published component contracts retain known document links after flattening", async () => {

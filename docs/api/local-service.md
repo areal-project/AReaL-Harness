@@ -97,6 +97,18 @@ GUI 的 registry 默认是 `~/.areal/gui/<GUI Core home 摘要>`，每项目 dat
 
 ## 实例、兼容性与历史
 
+对话模式的普通工具预览保留名称、状态与有限的动作参数，排除原始结果和执行详情；单个动作参数最多4KiB，命令预览另保留既有进程状态。GUI使用同一摘要行，在用户展开详情时自动读取原文。折叠状态不发起详情读取，正常加载不显示体积告警或额外加载按钮；真实错误在对应展开区重试。合并命令按顺序读取各组成记录，沿用原有缓存与分片预算。
+
+`mode:"conversation"` 在阅读分页预算前排除 `modelContext`。这些 provider 私有续接记录从未作为对话正文呈现，不应挤占基本消息的传输预算；完整历史、引用和执行轨迹的读取仍保留它们。模式不修改持久 Thread，也不改变模型续接上下文。
+
+延期工具条目可带 `preview`，其类型为原始 Core `Item`，ID 与原条目相同。命令结果预览去除 JSON 的 `stdout`、`stderr`，保留进程身份、退出码、运行状态、输出完整性和读取游标等语义；预览自身需小于当前响应预算的四分之一。Desktop 在历史响应边界校验预览身份与类型，Renderer 沿既有进程分组合并状态，并在展开时顺序读取组成该进程的延期记录。预览不算已加载的原文，也不用于执行或模型回放。
+
+Core 的 `conversationObservation` 能力允许 `areal/thread/observe` 和 `thread/resume` 使用 `mode:"conversation"`。Desktop 协商后优先使用此模式；旧 Core 继续使用 `mode:"bounded"`。两种模式均遵守 `maxBytes`，并保留相同的观察与订阅原子性。对话模式把已结束轮次中成功且已结算的普通工具记录投影为 `historyDeferred`，通过现有单条分片读取展开详情。用户消息、Agent 回复、错误及未结算工具保持原始语义；问答和 Agent 交接工具保留原文供语义投影。分页游标携带读取模式，后续页延续同一模式。详情游标仍返回完整原始条目，不改变持久记录、模型上下文或执行轨迹读取。对话正文自身超过预算时仍需分页，不承诺任意大小会话一次读完。
+
+Desktop 打开会话时，使用有界 `areal/thread/observe` 并请求现有的 1 MiB 响应上限。Core 的观察窗口和 `areal/conversation/history {view:"own"}` 旧页在预算足以容纳最近一轮时优先停在轮次边界，避免把更旧轮次的回复与提问分到两页。单轮超过预算时仍按条目分页，超大条目沿用 `historyDeferred` 与 UTF-8 分片。
+
+own 历史页的 `data` 按时间顺序排列。同一页每轮的首个条目在 `turn` 中携带完整展示元数据，后续条目的 `turn` 只含 `id` 和 `status`；配置和轨迹不会随每个条目重复传输。消费者按轮次合并展示元数据，不用后续精简对象替换已有对象。每页独立携带本页各轮的完整元数据，条目分片仍重组为完整条目 JSON。游标格式和失效规则沿用原契约，持久记录格式不变。
+
 同一 dataDir 只允许一个 Core。`ensure` 串行化并发启动，发现运行实例后校验身份和配置；模型文件变更原地热更新；同一二进制的其他 TOML 配置在空闲时自动重启，有后台工作时拒绝自动重启。二进制、权限、Runtime、部署文件或模型 CLI/环境覆盖变化需执行 `areal service restart`。不会静默扩大写/网络权限，也不会杀掉未被托管的旧 Core。符号链接按规范路径识别。
 
 开发版与 PATH 中的安装版在相同工作区、相同 dataDir 下会定位同一实例，但二进制内容及不同版本的默认配置可能不兼容。冲突诊断给出当前客户端二进制的绝对路径和已解析的部署参数；使用该命令并保持相同环境重启，避免裸 `areal` 重新启动另一版本。同一二进制的普通配置更新沿用空闲自动重启；二进制、Runtime、权限等边界变化需显式重启。
@@ -117,6 +129,8 @@ target/debug/areal service bind --workspace /absolute/workspace \
 共享服务使用管理模式启动：默认模型凭据缺失、为空或不满足 HTTP header 格式时，Core 仍可连接，模型目录将其标记为不可用。该模型的执行返回 `MODEL_CREDENTIAL_UNAVAILABLE`，不发送匿名请求、不切换模型。GUI 可进入设置补填密钥并保存应用；支持热应用的 Core 通过[受保护的模型配置接口](desktop.md#模型配置热应用)追加安全存储引用并确认文件版本，不重启 Core 或 Runtime。启动环境中的普通凭据和非模型部署变化继续遵循原重启规则。配置语法、模型地址和协议等其他校验仍然保留。
 
 供应商终态 `TurnOutcome.details` 可含可选 `messageSummary`，仅允许精确白名单摘要（`upstream stream request failed` 或 `Unsupported service_tier: fast`），任意上游文本仍不进入该字段。这是可忽略的增量字段，旧消费者无需改变。Responses SSE 错误封套缺少顶层事件 `type` 时，沿用有类型错误的供应商分类与重试策略；HTTP 200 状态不代表模型成功。
+
+会话创建预检中，未装配的模型供应商返回参数错误 RPC `-32602`，消息以 `MODEL_NOT_CONFIGURED` 开头。拒绝结果为 `outcome.kind="rejected"`、`recovery.kind="none"`，不创建 Thread 或受理回执。
 
 模型目录 `reasoningEffortOptions` 只列已声明或已核实的档位；未知时返回空列表。`capabilities.reasoningEffortOptions` 省略表示未知，显式空列表表示无可选强度。Core 在最终参数合并后阻止已知非法值，供应商目录仍可用于修正。配置 `reasoningEffort: "default"` 明确覆盖继承默认，HTTP 请求省略强度；null／省略仍继承。识别出的参数拒绝使用 `MODEL_PARAMETER_UNSUPPORTED`，只公开白名单参数和关联 `requestId`；原始供应商错误保存在私有本机诊断，不自动改参重发。
 

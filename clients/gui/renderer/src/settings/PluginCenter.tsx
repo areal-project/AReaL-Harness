@@ -1,3 +1,5 @@
+import { DelayedVisible } from "@areal/ui";
+import { TitleTooltip } from "@areal/ui";
 import { SettingsGroupCard, SettingsRow } from "@areal/ui/compositions";
 import { Textarea } from "@areal/ui";
 import { useI18n, UiMessageError, type UiMessage, formatUiMessage } from "../i18n/IntlProvider.js";
@@ -1165,11 +1167,13 @@ export function PluginCenter({
                 <header className="plugin-center-header">
                   <div>
                     {project && (
-                      <p className="plugin-management-context" title={project.root}>
-                        {t("settings.pluginCenter.managedProjectName", {
-                          name: project.name || project.root?.split(/[\\/]/).pop(),
-                        })}
-                      </p>
+                      <TitleTooltip title={project.root}>
+                        <p className="plugin-management-context">
+                          {t("settings.pluginCenter.managedProjectName", {
+                            name: project.name || project.root?.split(/[\\/]/).pop(),
+                          })}
+                        </p>
+                      </TitleTooltip>
                     )}
                     <h1>{title}</h1>
                     <p>
@@ -1865,9 +1869,9 @@ export function PluginCenter({
                   </DropdownMenu>
                 </div>
               </header>
-              {detailLoading && !detail && (
+              <DelayedVisible active={detailLoading && !detail}>
                 <p role="status">{t("settings.pluginCenter.loadingPluginDetails")}</p>
-              )}
+              </DelayedVisible>
               <Feedback
                 error={detailError || (pendingKind !== "unknown" ? displayedError?.message : "")}
               />
