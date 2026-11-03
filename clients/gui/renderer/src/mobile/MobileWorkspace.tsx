@@ -159,7 +159,7 @@ export function MobileWorkspaceView({
               className={`mobile-navigation flex items-center shrink-0 gap-inline min-h-[var(--size-touch-target)] ${page.kind === "work" ? "mobile-project-navigation justify-between" : ""}`}
             >
               <Button
-                className="mobile-back-button h-auto min-h-[var(--size-touch-target)] p-0 gap-inline [&_svg]:size-[var(--spacing-field)]! text-fixed-body"
+                className="mobile-back-button h-auto min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] p-0 gap-inline [&_svg]:size-[var(--spacing-field)]! text-fixed-body"
                 variant="ghost"
                 data-action="workspace-back"
                 aria-label={t("mobile.back")}
