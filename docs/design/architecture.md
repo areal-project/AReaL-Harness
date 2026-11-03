@@ -268,3 +268,5 @@ Cloud 接入归 Clients：桌面适配器保存远端原生 Thread 身份及加�
 外部 LCU 是显式选择的电脑控制方式。Main 持有固定版本原始 CUA client 与每聊天 JS 会话，沿现有 computerHost 认证连接提供原始工具与原生应用授权。Core 向手动新建聊天注入完整初始化指令，产生可信调用身份，复用 MCP 结果投影与媒体持久化，并在权威 turn 结算前等待清理。旧聊天不迁移工具表；provider 切换在执行准入再次校验。LCU 不承载内置浏览器，Preview/browser_v1 的所有者保持不变。
 
 程序化工具位于 `core/engine/src/tools/program`，`tools/edit_files` 提供直接批量编辑入口，两者通过 `tools/composition` 复用原生子调用的准入、预算和结算：无宿主 I/O 的解释器仅产生调用请求，Core 沿既有入口持有权限、预算、历史和结算，Runtime 继续持有原生效果与进程生命周期；不增加 Clients 到 Runtime 的旁路。契约见[程序化工具调用](../guides/programmatic-tools.md)。
+
+原生 schema 发现复用 Core registry 投影及 Turn 内展示状态。环境发现通过有界只读 Runtime helper 完成；来源观察、重复投影、验证绑定和上下文预算审计归 Core；临时路径别名及清理归 Runtime。接口细节见[工具](../guides/tools.md)。

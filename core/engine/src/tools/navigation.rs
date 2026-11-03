@@ -29,7 +29,12 @@ pub(super) async fn invoke(
             "-I".into(),
             "-B".into(),
             "-c".into(),
-            include_str!("navigation.py").into(),
+            if name == "environment_info" {
+                include_str!("environment.py")
+            } else {
+                include_str!("navigation.py")
+            }
+            .into(),
             request.to_string(),
         ]
     };

@@ -182,3 +182,11 @@ Goal/Task 中 ask_user_question 支持 mode=async；提问持久写入独立频�
 结果包含 `allApplied` 和逐文件 `files`：`APPLIED` 表示已确认成功，`FAILED` 表示已确认调用失败，`UNKNOWN` 表示效果未确认（包括在途取消），`NOT_RUN` 表示未派发。`receipt` 保留原生状态、版本、`callId/itemId`，不重复 JSON 的 data/text。容器错误附 `error`；首错后续文件不执行。失败不回滚已完成文件，不自动重放；重启从持久收据恢复，只有 UNKNOWN 仍需检查。只有调用成功且 allApplied=true 时才顺接预先选定的验证。
 
 每个 Turn 的指令快照记录 `workspaceRoot/sessionCwd/commandDefaultCwd` 与 `checkedFiles`，包括缺失、空内容和已加载文件的观察及摘要。只认证 root→cwd 链；目标子树的额外祖先仍需检查。路径、指令或作用域改变后重新发现；不据此扫描工作区外父目录。解释器和测试入口不由 Core 猜测或自动安装：使用同一命令环境的真实探测和项目声明，保留来源/版本；源码、环境或测试选择改变后，旧验证回执不再证明当前版本。
+
+## 环境事实与重复观察候选
+
+`environment_info({cwd?,executables?:[{name,kind}]})` 在工作区根及 cwd 检查固定公开声明（Python/Node 清单、测试配置、Makefile、锁文件），保留缺失、不可读和超大状态，不递归或执行配置。cwd 必须在工作区；每个声明最多 1 MiB，原文预览最多 1024 字符。默认只探测 python/python3，最多四个 Python/Node 指定解释器，每个 3 秒，均在 Runtime 只读导航 Scope 内执行。记录实际解析路径、版本、prefix、库目录身份及环境摘要，环境变量值不返回。
+
+事实绑定来源哈希、工作区/cwd、解释器身份与环境摘要；配置、声明、解释器、依赖或环境变化后重新确认。库目录身份不是完整依赖内容哈希，原地修改包后必须重新验证。当前 Turn 最多保留四组观察供 `task_state` 回取；均为 observedOnly，重启/新 Turn 失效。没有自动安装、切换 shell、全盘扫描或自动选择测试。验证收据额外记录命令摘要、cwd、有效可执行文件及执行前后环境绑定；不会据历史通过省略新的验证。
+
+`resultViews.repeatedObservations:true` 显式启用重复文件片段/环境事实投影。实际只读操作仍执行；仅完全相同内容且含回取引用后有净节省时折叠正文，保留本次 fileVersion、分页、遗漏、指纹及原文引用。最多保留 128 个身份，压缩/新 Turn 清空。原文不可回取、失败或短结果不折叠；进程状态及错误不因相似日志被省略。

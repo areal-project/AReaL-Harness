@@ -48,3 +48,15 @@ if (edits.success && edits.data.allApplied) {
 该实现支持数据依赖编排与选择观察，不包含 Codex 的跨模型轮 yield/wait 单元、工具延迟发现或并行叶子调度。这些能力不代表完整产品兼容。减少模型请求未必减少净 token 或总耗时；脚本、目录、强制回执、额外读取和失败恢复都可能抵消收益。可用既有轨迹回放验证确定性恢复错误与投影开销，用同一操作集回归排除提前失败导致的假提速。真实模型采用率、缓存命中和任务质量仍须与机制证据区分；跨任务能力声明遵循[评测方法](../benchmarks/methodology.md)。
 
 已知范围的多文件读取可直接在一个程序中 `for (const path of paths) text(await tools.read_file({path,offset:1,limit:80}));`。正文和 `fileVersion/nextLine` 一并返回；未知代码的理解仍由模型完成。进程到达循环或时间上限时保留真实状态、句柄和游标，不自动认定完成。`edit_files` 可直接调用，不依赖启用 PTC；原文件工具继续兼容，详见[工具合同](tools.md)。批量容器及其每个叶子均计入程序的 64 次上限和 Turn 工具预算；准入按请求的最大叶子数保守预留。
+
+## 精简交互候选
+
+`policy.compactTools:true` 将原生常用层收敛为读取、搜索、`edit_files`、命令/验证、进程交互、图像、环境事实和原文回取；`tool_search` 按名称/说明发现其余已授权原生能力，完整 schema 在下一次模型请求可见，Turn 结束清空。底层文件、恢复、技能、服务和协作入口仍注册、受原权限及 allowlist 约束；批量编辑在内部调用底层工具。若 allowlist 不允许发现入口，保留原展示，避免让能力不可达。MCP 的 `lazyMcpSchemas` 仍独立配置。
+
+精简配置使用较短基础说明和程序描述；不改变执行内核。`programmaticTools` 可独立开关，不按模型名称选择。`programmaticToolsOnly` 仍会把 schema 移入程序描述，不能据入口减少推断 token 下降。可将下面片段并入现有 extensions 文件，保留部署原有 tools/hooks/权限；它是显式候选，不是通用性能默认。
+
+```json
+{"policy":{"compactTools":true,"programmaticTools":true,"programmaticToolsOnly":false,"resultViews":{"repeatedObservations":true}}}
+```
+
+准入分别核对最终请求大小、真实采用率、实际 provider 输入/缓存/输出及总结/恢复子请求。确定性回放只能证明操作与权限不变量，不能证明模型选择了组合路径。

@@ -69,3 +69,5 @@ Remote 的 Direct 与 Relay 已接入共同 Host 授权和 PWA 协议，Direct �
 隔离 worker 继承父纯工具策略，不继承外部工具、hooks、插件和凭据。协作回执区分制品支持与当前就绪，版本化等待跳过未变化的已结算状态，批量回执保留结构化状态、有界正文预览、分页与原文回取。App 引用变化追加为任务数据，不回写系统指令快照；Responses HTTP 路由按会话与 Turn 隔离。`completionFocus` 与独立的 `executionFocus` 均为默认关闭的显式实验策略，分别引导交付收尾与独立读取、等待和委派契约组织；不保证消除长尾或降低消费；协议与兼容边界见[Core](api/core.md)。
 
 桌面手机连接支持启动本机 Relay、自动生成私有网络配对二维码、系统 SSH 部署 Linux Relay，以及手工配置外部 HTTPS Relay。内网可达的公司 VPN 可复用本机入口；不内置公网连接服务。SSH 路径包含 ACME 证书续期、升级和移除，公网、真机及安装包验收独立报告。
+
+显式精简工具及重复观察候选、环境来源与验证绑定见[工具](guides/tools.md)和[组合执行](guides/programmatic-tools.md)。上下文审计分开记录原始/校准估计、provider usage、输出预留及压缩触发原因；校准不等于减少输入。

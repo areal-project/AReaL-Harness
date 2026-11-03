@@ -775,7 +775,7 @@ impl Invocation<'_> {
                     name: self.call.name.clone(),
                     arguments: effective.to_string(),
                 };
-                if call.name == "read_file"
+                if matches!(call.name.as_str(), "read_file" | "environment_info")
                     || call.name == "search_files" && !state.thread.is_read_only_side()
                 {
                     drop(state);

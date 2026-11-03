@@ -4,6 +4,8 @@ use super::*;
 use std::time::Instant;
 mod js;
 
+const COMPACT_DESCRIPTION: &str = "Compose already-decided native calls using fresh isolated JavaScript with top-level await. tools.NAME(args) returns {success,outcome,callId,itemId,data,text,availableImages}; text(result) avoids duplicate data/text; image(result) forwards images. Use the read → decide → edit/test/wait example in the instructions. Return for new errors, conflicts, UNKNOWN, permissions or semantic/visual decisions. No hidden retry/install/new plan. Native permissions, version checks, receipts and Turn budgets still apply. Calls are serial even in Promise.all. No Node, filesystem, network, timers or persistent state. At most 64 calls (batch leaves also count), 64 KiB code/arguments, 1 MiB archived text, 16 KiB preview, 4 images. Default 600s, max 1800s; timeout/cancel/UNKNOWN stop dispatch. Completed effects persist on error; unfinished process handles/cursors and child receipts are returned. Retrieve omitted evidence with read_history(itemId) or read_tool_result(resultId).";
+
 const MAX_CALLS: usize = 64;
 const MAX_CODE: usize = 64 * 1024;
 const MAX_TEXT: usize = 1024 * 1024;
@@ -165,7 +167,11 @@ impl Engine {
             if d["function"]["name"] == "tool_program" {
                 d["function"]["description"] = json!(format!(
                     "{}\n{}",
-                    definition().description,
+                    if self.extensions.policy.compact_tools {
+                        COMPACT_DESCRIPTION.into()
+                    } else {
+                        definition().description
+                    },
                     catalog_description
                 ));
             }
@@ -214,6 +220,7 @@ impl Engine {
             let visible = self
                 .visible_tools(invocation.cell, &config, thread.desktop.is_some(), &thread)
                 .await;
+            let visible = self.project_native_tools(invocation.cell, visible).await;
             let allowed: std::collections::HashSet<String> = {
                 let bindings = invocation.cell.bindings.read().await;
                 visible

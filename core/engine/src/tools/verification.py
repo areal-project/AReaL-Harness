@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import shutil
 import subprocess
 import sys
 import time
@@ -78,6 +79,19 @@ def fingerprint(workspace):
     return digest.hexdigest()
 
 
+def environment_binding(argv, cwd):
+    executable = shutil.which(argv[0])
+    identity = None
+    if executable:
+        path = Path(executable).resolve()
+        info = path.stat()
+        identity = dict(path=str(path), size=info.st_size, mtimeNs=info.st_mtime_ns)
+    digest = hashlib.sha256(json.dumps(dict(os.environ), sort_keys=True).encode()).hexdigest()
+    return {"environmentDigest": digest, "executable": identity, "cwd": str(Path(cwd).resolve()),
+            "commandDigest": hashlib.sha256(json.dumps(argv).encode()).hexdigest(),
+            "scope": "command environment and executable identity, not a full dependency content hash; dependency changes require new validation"}
+
+
 def run(request):
     scratch = Path(request["scratch"]) / "verification"
     scratch.mkdir(parents=True, exist_ok=True)
@@ -94,6 +108,7 @@ def run(request):
             "verify_command requires the test/build executable directly; use run_command for explicit shell scripts"
         )
     before = fingerprint(request["workspace"])
+    environment_before = environment_binding(argv, request["cwd"])
     started = time.monotonic()
     limited = False
     with log.open("wb") as output:
@@ -128,6 +143,8 @@ def run(request):
         "argv": argv,
         "cwd": request["cwd"],
         "exitCode": process.returncode,
+        "environmentBefore": environment_before,
+        "environmentAfter": environment_binding(argv, request["cwd"]),
         "sourceBefore": before,
         "sourceAfter": after,
         "sourceUnchanged": before == after,

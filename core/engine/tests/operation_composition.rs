@@ -360,3 +360,115 @@ async fn instruction_facts_distinguish_empty_missing_and_loaded_and_refresh_next
     client.shutdown().await.unwrap();
     runtime.await.unwrap();
 }
+
+struct SurfaceModel {
+    round: AtomicUsize,
+}
+#[async_trait]
+impl Model for SurfaceModel {
+    fn name(&self) -> &str {
+        "compact-surface-fixture"
+    }
+    async fn stream(&self, _: Vec<Message>) -> anyhow::Result<ModelStream> {
+        unreachable!()
+    }
+    async fn chat(&self, messages: Vec<Message>, tools: Vec<Value>) -> anyhow::Result<ModelStream> {
+        let round = self.round.fetch_add(1, Ordering::SeqCst) % 4;
+        let names: Vec<_> = tools
+            .iter()
+            .filter_map(|d| d["function"]["name"].as_str())
+            .collect();
+        assert!(
+            names.contains(&"edit_files")
+                && names.contains(&"tool_program")
+                && names.contains(&"environment_info")
+        );
+        assert!(!names.contains(&"fs_apply_patches") && !names.contains(&"fs_create"));
+        assert_eq!(names.contains(&"read_history"), round != 0);
+        let event = match round {
+            0 => {
+                assert!(names.len() <= 15, "{names:?}");
+                assert!(messages.iter().any(|m| {
+                    m.text_content()
+                        .contains("Once edits and checks are decided")
+                }));
+                call("tool_search", json!({"query":"read_history","limit":1}), 0)
+            }
+            1 => call(
+                "tool_program",
+                json!({"code":"text(await tools.edit_files({files:[{path:'created',text:'content'}]}));"}),
+                1,
+            ),
+            2 => {
+                assert!(messages.last().unwrap().text_content().contains("APPLIED"));
+                call("read_history", json!({"limit":1}), 2)
+            }
+            _ => ModelEvent::text("discovered and edited through native children"),
+        };
+        Ok(Box::pin(futures_util::stream::iter([Ok(event)])))
+    }
+}
+
+#[tokio::test]
+async fn compact_surface_discovers_next_request_and_keeps_hidden_edit_children() {
+    use areal_engine::tools::{ToolExtensions, ToolPolicy};
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = dir.path().join("workspace");
+    std::fs::create_dir(&workspace).unwrap();
+    let (client, rt) = runtime(&workspace, Arc::new(Mutex::new(vec![]))).await;
+    let engine = Engine::open_with_extensions(
+        &dir.path().join("data"),
+        Arc::new(SurfaceModel {
+            round: AtomicUsize::new(0),
+        }),
+        Limits::default(),
+        Some(RuntimeConfig {
+            client: client.clone(),
+            workspace: workspace.clone(),
+            writable: true,
+            command_scope: None,
+            command_scratch: None,
+        }),
+        ToolExtensions {
+            policy: ToolPolicy {
+                compact_tools: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let thread = engine
+        .create(workspace.to_str().unwrap().into())
+        .await
+        .unwrap();
+    for _ in 0..2 {
+        engine
+            .start(
+                &thread.id,
+                vec![Input::text(
+                    "Create the decided file and inspect its record",
+                )],
+            )
+            .await
+            .unwrap();
+        let done = tokio::time::timeout(Duration::from_secs(15), engine.wait(&thread.id))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            done.turns.last().unwrap().status,
+            TurnStatus::Completed,
+            "{:?}",
+            done.turns.last().unwrap().error
+        );
+        assert_eq!(
+            std::fs::read_to_string(workspace.join("created")).unwrap(),
+            "content"
+        );
+        std::fs::remove_file(workspace.join("created")).unwrap();
+    }
+    engine.shutdown().await;
+    client.shutdown().await.unwrap();
+    rt.await.unwrap();
+}

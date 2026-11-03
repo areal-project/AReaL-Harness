@@ -417,6 +417,7 @@ impl Engine {
                 .visible_tools(cell, &configuration, thread.desktop.is_some(), &thread)
                 .await;
             let tool_definitions = self.project_mcp_tools(cell, tool_definitions).await;
+            let tool_definitions = self.project_native_tools(cell, tool_definitions).await;
             let mut tool_definitions = self.project_program_tools(cell, tool_definitions).await;
             if goal_report_only {
                 let name = if thread.goals.goal.as_ref().is_some_and(|g| g.limits_pending) {
@@ -631,6 +632,12 @@ impl Engine {
                 previous_usage.as_ref(),
             );
             let calibrated_estimate = context_request.estimated_tokens;
+            self.store.save_audit(json!({"kind":"contextRequestBudget","threadId":thread_id,"turnId":turn_id,
+                "rawEstimatedInputTokens":request_estimate,"calibratedEstimatedInputTokens":calibrated_estimate,
+                "previousUsageCalibration":context_request.previous_usage,"outputReserveTokens":context_budget.reserve,
+                "inputLimit":context_budget.input_limit,"window":context_budget.window,
+                "toolSchemaBytes":serde_json::to_vec(&tool_definitions)?.len(),
+                "overheadEstimatedTokens":overhead,"calibrationIsSaving":false})).await?;
             let mut compaction_failure = None;
             if side_thread_id.is_none() && preflight_compactions < 2 {
                 let result = self
@@ -660,6 +667,9 @@ impl Engine {
                 if checkpoint_after != checkpoint_before
                     || history_tail_after != history_tail_before
                 {
+                    if let Some(active) = state.active.as_mut() {
+                        active.observation_results.clear();
+                    }
                     preflight_compactions += 1;
                     previous_usage = None;
                     model_rounds -= 1;

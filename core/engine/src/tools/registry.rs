@@ -11,6 +11,8 @@ pub struct ToolPolicy {
     pub programmatic_tools: bool,
     /// 仅收窄模型展示；所有叶子调用仍走原始执行与权限入口。
     pub programmatic_tools_only: bool,
+    /// 显式候选：常用入口直接展示，其他已授权原生 schema 按需发现。
+    pub compact_tools: bool,
     /// 显式实验，只延迟模型 schema 投影，保留宿主发现与执行预算。
     pub lazy_mcp_schemas: bool,
     /// 已知内置只读调用的并发上限；1 保留串行执行。
@@ -36,6 +38,7 @@ impl Default for ToolPolicy {
         Self {
             programmatic_tools: true,
             programmatic_tools_only: false,
+            compact_tools: false,
             lazy_mcp_schemas: false,
             parallel_read_calls: 1,
             completion_focus: false,
@@ -67,6 +70,8 @@ pub struct ResultViewPolicy {
     pub repeat_lines: bool,
     /// 无损文件行包装独立于搜索/命令视图实验开关。
     pub file_lines: bool,
+    /// 显式候选：只折叠已重新观察且逐字相同的文件片段与环境事实。
+    pub repeated_observations: bool,
 }
 
 impl Default for ResultViewPolicy {
@@ -76,6 +81,7 @@ impl Default for ResultViewPolicy {
             search_groups: true,
             repeat_lines: true,
             file_lines: true,
+            repeated_observations: false,
         }
     }
 }

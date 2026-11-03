@@ -48,3 +48,15 @@ Scripts may inspect known failures explicitly. UNKNOWN, cancellation and exhaust
 This implementation supports result-dependent composition and selected observations, excluding Codex's cross-model-round yield/wait cells, deferred tool discovery and parallel leaf scheduling. These capabilities do not imply complete product compatibility. Fewer model calls need not mean lower tokens or latency: code, catalogs, mandatory receipts, extra reads and failures can offset savings. Saved-trajectory replay can verify deterministic recovery errors and projection overhead; regressions with an identical operation set exclude early-failure speedups. Separate mechanism evidence from real model adoption, cache hits and task quality. Cross-task capability claims follow the [evaluation methodology](../benchmarks/methodology.en.md).
 
 Known file ranges can be read in one program with `for (const path of paths) text(await tools.read_file({path,offset:1,limit:80}));`. Return content with `fileVersion/nextLine`; unfamiliar code still requires model interpretation. At the loop or time bound, preserve the actual process state, handle and cursor. `edit_files` also works directly with PTC disabled; existing file tools remain compatible; see the [tool contract](tools.en.md). Batch containers and each leaf count against the 64-call program bound and Turn tool budget; admission conservatively reserves the requested maximum number of leaves.
+
+## Compact interaction candidate
+
+`policy.compactTools:true` exposes reads, search, `edit_files`, commands/verification, process interaction, images, environment facts and raw-result retrieval. `tool_search` discovers other authorized native capabilities by name/description; matching schemas appear on the next model request and reset each Turn. Low-level files, recovery, skills, services and collaboration remain registered under existing permissions/allowlists. Batch edits dispatch native children internally. If an allowlist excludes discovery, the original surface remains available. MCP `lazyMcpSchemas` is independent.
+
+Compact mode uses shorter instructions and program descriptions with the same executor. `programmaticTools` is independently configurable, without model-name routing. `programmaticToolsOnly` moves schemas into the program description; fewer entry points do not imply fewer input tokens. Merge this explicit candidate fragment into existing extensions, preserving tools/hooks/permissions:
+
+```json
+{"policy":{"compactTools":true,"programmaticTools":true,"programmaticToolsOnly":false,"resultViews":{"repeatedObservations":true}}}
+```
+
+Evaluate final request size, actual adoption, provider input/cached/output tokens and all summary/recovery subrequests separately. Deterministic replay establishes execution invariants, not real model adoption.

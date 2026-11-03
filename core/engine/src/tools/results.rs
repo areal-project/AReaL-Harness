@@ -130,7 +130,12 @@ impl Engine {
         } else {
             None
         };
-        let projection_snapshot = raw.get("mcpResult").is_some()
+        let observation_key = policy
+            .repeated_observations
+            .then(|| observation_key(name, raw))
+            .flatten();
+        let projection_snapshot = observation_key.is_some()
+            || raw.get("mcpResult").is_some()
             || bytes.len() > MAX_RESULT
             || baseline != *raw
             || candidate.is_some();
@@ -234,6 +239,37 @@ impl Engine {
                 }
             } else if snapshot.is_some() {
                 reason = "noNetSaving";
+            }
+        }
+        if let Some(key) = observation_key
+            && snapshot.is_some()
+        {
+            let mut state = cell.state.lock().await;
+            if let Some(active) = state.active.as_mut() {
+                if let Some(previous) = active.observation_results.get(&key) {
+                    let mut proposed = raw.clone();
+                    for field in [
+                        "lines",
+                        "text",
+                        "declarations",
+                        "absentDeclarations",
+                        "executables",
+                    ] {
+                        proposed.as_object_mut().unwrap().remove(field);
+                    }
+                    proposed["unchangedObservation"] = json!({"previousResultId":previous,"basis":"fresh observation matched exactly; current versions and pagination retained"});
+                    proposed["rawResult"] = reference.clone().unwrap();
+                    if worthwhile(&value.to_string(), &proposed.to_string()) {
+                        value = proposed;
+                        kind = "repeated-observation-v1";
+                        reason = "applied";
+                    }
+                } else {
+                    if active.observation_results.len() >= 128 {
+                        active.observation_results.clear();
+                    }
+                    active.observation_results.insert(key, item_id.into());
+                }
             }
         }
         if coordination
@@ -1133,6 +1169,129 @@ mod tests {
                 .read_tool_result(&cell, &json!({"resultId":"saved-call"}))
                 .await
                 .is_err()
+        );
+        engine.shutdown().await;
+    }
+}
+
+// 必须先执行只读操作再比较；不省略 I/O、不复用旧版本、不折叠错误或进程输出。
+fn observation_key(name: &str, raw: &Value) -> Option<String> {
+    if raw.get("error").is_some() || raw.to_string().len() < 1024 {
+        return None;
+    }
+    let body = match name {
+        "read_file" if raw["sha256"].is_string() && raw["lines"].is_array() => {
+            json!({"path":raw["path"],"sha256":raw["sha256"],"offset":raw["offset"],"lines":raw["lines"],"nextLine":raw["nextLine"],"eof":raw["eof"],"truncated":raw["truncated"]})
+        }
+        "environment_info" if raw["fingerprint"].is_string() => {
+            json!({"fingerprint":raw["fingerprint"]})
+        }
+        _ => return None,
+    };
+    Some(format!("{name}:{:x}", Sha256::digest(body.to_string())))
+}
+
+#[cfg(test)]
+mod observation_tests {
+    use super::*;
+    #[test]
+    fn repeated_observation_key_is_content_and_range_bound_but_preserves_new_versions() {
+        let mut value = json!({"path":"workspace://repo/a", "sha256":"a", "fileVersion":"v1", "offset":1,"nextLine":2,"eof":true,"lines":[{"number":1,"text":"x".repeat(1600)}]});
+        let key = observation_key("read_file", &value).unwrap();
+        value["fileVersion"] = json!("v2");
+        assert_eq!(observation_key("read_file", &value).unwrap(), key);
+        for (field, next) in [
+            ("sha256", json!("b")),
+            ("offset", json!(2)),
+            ("path", json!("workspace://repo/b")),
+        ] {
+            let mut changed = value.clone();
+            changed[field] = next;
+            assert_ne!(observation_key("read_file", &changed).unwrap(), key);
+        }
+        value["error"] = json!("permission denied");
+        assert!(observation_key("read_file", &value).is_none());
+        assert!(observation_key("run_command", &value).is_none());
+    }
+}
+
+#[cfg(test)]
+mod repeated_projection_tests {
+    use super::*;
+    struct PendingModel;
+    #[async_trait::async_trait]
+    impl Model for PendingModel {
+        fn name(&self) -> &str {
+            "pending-fixture"
+        }
+        async fn stream(&self, _: Vec<Message>) -> anyhow::Result<model::ModelStream> {
+            Ok(Box::pin(futures_util::stream::pending()))
+        }
+    }
+    #[tokio::test]
+    async fn repeated_read_retains_new_version_and_retrievable_full_observation() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut extensions = ToolExtensions::default();
+        extensions.policy.result_views.repeated_observations = true;
+        let engine = Engine::open_with_extensions(
+            directory.path(),
+            Arc::new(PendingModel),
+            Limits::default(),
+            None,
+            extensions,
+        )
+        .unwrap();
+        let thread = engine.create("/fixture".into()).await.unwrap();
+        engine
+            .start(&thread.id, vec![Input::text("observe")])
+            .await
+            .unwrap();
+        let cell = engine.cell(&thread.id).await.unwrap();
+        let mut raw = json!({"path":"workspace://repo/a","sha256":"same","fileVersion":"first", "offset":1,"nextLine":51,"eof":true,"lines":(1..=50).map(|n|json!({"number":n,"text":"a sufficiently long line of unchanged source text\n"})).collect::<Vec<_>>()});
+        let first = engine
+            .prepare_tool_result(&cell, "first", "read_file", &raw, None)
+            .await
+            .unwrap();
+        assert!(first.value.get("unchangedObservation").is_none());
+        raw["fileVersion"] = json!("fresh-version");
+        let second = engine
+            .prepare_tool_result(&cell, "second", "read_file", &raw, None)
+            .await
+            .unwrap();
+        assert_eq!(second.value["fileVersion"], "fresh-version");
+        assert_eq!(second.value["nextLine"], 51);
+        assert_eq!(
+            second.value["unchangedObservation"]["previousResultId"],
+            "first"
+        );
+        assert!(second.value.to_string().len() < first.value.to_string().len());
+        let item: Item = serde_json::from_value(json!({"type":"dynamicToolCall","id":"second","tool":"read_file","callId":"second","arguments":{},"status":"completed","success":true,"contentItems":[{"type":"inputText","text":second.value.to_string()}],"execution":{"runtimeEpoch":"epoch","scopeId":"scope","operationId":"operation","outcome":"succeeded","resultSnapshot":second.snapshot}})).unwrap();
+        cell.state
+            .lock()
+            .await
+            .thread
+            .turns
+            .last_mut()
+            .unwrap()
+            .items
+            .push(item);
+        let page = engine
+            .read_tool_result(&cell, &json!({"resultId":"second"}))
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(page["text"].as_str().unwrap()).unwrap(),
+            raw
+        );
+        raw["sha256"] = json!("changed");
+        assert!(
+            engine
+                .prepare_tool_result(&cell, "third", "read_file", &raw, None)
+                .await
+                .unwrap()
+                .value
+                .get("unchangedObservation")
+                .is_none()
         );
         engine.shutdown().await;
     }

@@ -589,7 +589,14 @@ impl Engine {
         if self.runtime.is_none() && cell.state.lock().await.thread.desktop.is_none() {
             return Ok(None);
         }
-        let mut instructions = InstructionText::new(include_str!("instructions.md").to_owned());
+        let mut instructions = InstructionText::new(
+            if self.extensions.policy.compact_tools {
+                include_str!("instructions-compact.md")
+            } else {
+                include_str!("instructions.md")
+            }
+            .to_owned(),
+        );
         let (configuration, base_network_policy) = {
             let state = cell.state.lock().await;
             let configuration = state
@@ -851,6 +858,7 @@ impl Engine {
             && self.limits.context_auto_compaction
             && serde_json::to_vec(&snapshot.turns)?.len()
                 > budget.window.saturating_mul(8).max(1024 * 1024);
+        self.store.save_audit(json!({"kind":"contextCompactionDecision","threadId":snapshot.id,"rawEstimatedInputTokens":raw_estimate,"calibratedEstimatedInputTokens":estimated_tokens,"outputReserveTokens":budget.reserve,"tokenTrigger":token_trigger,"byteTrigger":byte_trigger,"storageTrigger":storage_trigger,"manual":force,"enabled":self.limits.context_compaction_enabled})).await?;
         if !force && !byte_trigger && !token_trigger && !storage_trigger {
             return Ok(());
         }
