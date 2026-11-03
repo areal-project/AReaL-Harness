@@ -13,6 +13,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 import zipfile
 from datetime import datetime, timezone
 from contextlib import contextmanager, nullcontext
@@ -614,13 +615,72 @@ def free_bytes(path):
     return info.f_bavail * info.f_frsize
 
 
-def plan_cache_budget(items, budget, min_free):
+def reusable_cache_status(group, min_idle_ns, warnings):
+    repo = Path(group[0]["scope"])
+    try:
+        state = command(
+            [
+                "git",
+                "--no-optional-locks",
+                "-C",
+                str(repo),
+                "status",
+                "--porcelain",
+                "--untracked-files=normal",
+            ]
+        )
+        if state.returncode:
+            raise RuntimeError("Cannot inspect worktree changes")
+        if state.stdout:
+            return "retained-worktree-dirty"
+        admin = command(
+            ["git", "--no-optional-locks", "-C", str(repo), "rev-parse", "--absolute-git-dir"]
+        )
+        if admin.returncode:
+            raise RuntimeError("Cannot inspect worktree activity")
+        latest = max(i["last_modified_ns"] for i in group)
+        for name in ["index", "logs/HEAD"]:
+            path = Path(admin.stdout.strip()) / name
+            if path.exists():
+                latest = max(latest, path.stat().st_mtime_ns)
+
+        def scan_error(error):
+            raise error
+
+        # 已有文件重写不改变父目录时间；逐文件检查避免误判刚完成的构建。
+        for base, dirs, files in os.walk(
+            group[0]["profile"], onerror=scan_error, followlinks=False
+        ):
+            for name in [".", *dirs, *files]:
+                latest = max(latest, (Path(base) / name).lstat().st_mtime_ns)
+        for item in group:
+            item["last_activity_ns"] = latest
+        if time.time_ns() - latest < min_idle_ns:
+            return "retained-recent"
+    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+        warnings.append(
+            f"Reuse inspection unavailable; profile retained: {group[0]['profile']}: {error}"
+        )
+        return "blocked-reuse-unknown"
+    return None
+
+
+def plan_cache_budget(items, budget, min_free, min_idle_ns, warnings):
     remaining = remaining_cache_bytes(items)
     groups = cache_groups(items)
-    # 目录修改时间表示最近写入，不把复用过的缓存宣称为精确 LRU。
+    for group in groups.values():
+        if all(i["status"] == "eligible" for i in group):
+            retained = reusable_cache_status(group, min_idle_ns, warnings)
+            if retained:
+                for item in group:
+                    item["status"] = retained
+    # 文件写入和 Git 活动只是复用信号，不把它们宣称为精确 LRU。
     ordered = sorted(
         groups.items(),
-        key=lambda pair: (max(i["last_modified_ns"] for i in pair[1]), pair[0]),
+        key=lambda pair: (
+            max(i.get("last_activity_ns", i["last_modified_ns"]) for i in pair[1]),
+            pair[0],
+        ),
     )
     selected = []
     for profile, group in ordered:
@@ -673,6 +733,12 @@ def main():
     parser.add_argument(
         "--min-free-gib", type=float, default=30, help="Free-space collection threshold"
     )
+    parser.add_argument(
+        "--min-idle-hours",
+        type=float,
+        default=72,
+        help="Minimum idle age for temporary worktree caches; pressure never overrides this",
+    )
     parser.add_argument("--json", action="store_true", help="Print the complete JSON preview")
     parser.add_argument(
         "--report", type=Path, help="Save the complete JSON preview outside artifact roots"
@@ -683,8 +749,13 @@ def main():
     args = parser.parse_args()
     if args.keep < 1:
         parser.error("--keep must be at least 1")
-    if any(not math.isfinite(v) or v < 0 for v in [args.cache_budget_gib, args.min_free_gib]):
-        parser.error("Cache budget and free-space threshold must be finite and nonnegative")
+    if any(
+        not math.isfinite(v) or v < 0
+        for v in [args.cache_budget_gib, args.min_free_gib, args.min_idle_hours]
+    ):
+        parser.error(
+            "Cache budget, free-space threshold and idle age must be finite and nonnegative"
+        )
     if args.apply and not args.report:
         parser.error("--apply requires --report for a durable deletion receipt")
     if args.rust_intermediates and (args.temporary_worktrees or args.root or args.no_worktrees):
@@ -818,7 +889,12 @@ def main():
         measure_items(items, args.temporary_worktrees, warnings)
     budget = int(args.cache_budget_gib * 1024**3)
     min_free = int(args.min_free_gib * 1024**3)
-    selected = plan_cache_budget(items, budget, min_free) if args.temporary_worktrees else items
+    min_idle_ns = int(args.min_idle_hours * 3600 * 10**9)
+    selected = (
+        plan_cache_budget(items, budget, min_free, min_idle_ns, warnings)
+        if args.temporary_worktrees
+        else items
+    )
     report = {
         "mode": "apply" if args.apply else "preview",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -852,6 +928,7 @@ def main():
         report["cache_policy"] = {
             "budget_bytes": budget,
             "min_free_bytes": min_free,
+            "min_idle_hours": args.min_idle_hours,
             "before_bytes": remaining_cache_bytes(items),
             "unmeasured_profiles": sorted({i["profile"] for i in items if not i["size_known"]}),
         }
@@ -865,6 +942,12 @@ def main():
             try:
                 profile = Path(key) if "profile" in group[0] else None
                 with build_locks(profile, create=True) if profile else nullcontext():
+                    if args.temporary_worktrees:
+                        retained = reusable_cache_status(group, min_idle_ns, warnings)
+                        if retained:
+                            for item in group:
+                                item["status"] = retained
+                            continue
                     if (
                         args.temporary_worktrees
                         and remaining_cache_bytes(items) <= budget
@@ -938,7 +1021,9 @@ def main():
         available = [free_bytes(root) for root in roots if root.is_dir()]
         report["cache_policy"]["min_observed_free_bytes"] = min(available, default=free_bytes(REPO))
         if args.apply and remaining > budget:
-            warnings.append("Secondary cache budget remains exceeded; active or locked caches kept")
+            warnings.append(
+                "Secondary cache budget remains exceeded; reusable, active or locked caches kept"
+            )
         if args.apply and available and min(available) < min_free:
             warnings.append(
                 "Disk remains below free-space threshold; protected or unrelated data kept"
@@ -971,7 +1056,7 @@ def main():
         )
         for warning in warnings:
             print("WARNING: " + warning)
-    return 1 if activity_error else 0
+    return 1 if activity_error or any(i["status"] == "blocked-reuse-unknown" for i in items) else 0
 
 
 if __name__ == "__main__":

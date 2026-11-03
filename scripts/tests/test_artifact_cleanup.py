@@ -29,6 +29,7 @@ class CleanupFixture(unittest.TestCase):
         (self.repo / "core/engine").mkdir(parents=True)
         (self.repo / "core/engine/Cargo.toml").write_text('[package]\nname = "areal-engine"\n')
         (self.repo / "Cargo.toml").write_text("[workspace]\n")
+        (self.repo / ".gitignore").write_text("/target/\n")
         self.git("init", "-q")
         self.git("add", ".")
         self.git(
@@ -55,8 +56,15 @@ class CleanupFixture(unittest.TestCase):
                 cache = profile / name
                 cache.mkdir()
                 (cache / "cache").write_bytes(b"x" * 16384)
+                os.utime(cache / "cache", (age, age))
                 os.utime(cache, (age, age))
+            os.utime(profile / ".cargo-lock", (age, age))
+            os.utime(profile / "areal", (age, age))
             os.utime(profile, (age, age))
+        for checkout in [self.old, self.new]:
+            gitdir = Path(self.git("-C", str(checkout), "rev-parse", "--absolute-git-dir").strip())
+            for name in ["index", "logs/HEAD"]:
+                os.utime(gitdir / name, (100, 100))
         self.report = self.root / "result.json"
 
     def git(self, *args):
@@ -88,6 +96,74 @@ class CleanupFixture(unittest.TestCase):
 
 
 class TemporaryWorktreeCacheTest(CleanupFixture):
+    def test_recent_nested_build_survives_pressure_and_repeated_runs(self):
+        cache = self.old / "target/debug/deps/cache"
+        cache.write_bytes(b"recent build")
+        report = self.run_cleanup("--apply", "--min-free-gib", "1000000")
+        self.assertTrue(cache.exists(), "Low free space must not evict a recent build")
+        self.assertFalse((self.new / "target/debug/deps/cache").exists())
+        self.assertEqual(
+            {i["status"] for i in report["items"] if i["scope"] == str(self.old)},
+            {"retained-recent"},
+        )
+        repeated = self.run_cleanup("--apply", "--min-free-gib", "1000000")
+        self.assertTrue(cache.exists())
+        self.assertFalse(any(i["status"] == "deleted" for i in repeated["items"]))
+
+    def test_developing_worktree_keeps_even_old_caches(self):
+        for checkout in [self.old, self.new]:
+            (checkout / "work-in-progress.rs").write_text("// pending work\n")
+        self.git("-C", str(self.old), "add", "work-in-progress.rs")
+        report = self.run_cleanup("--apply", "--min-free-gib", "1000000")
+        self.assertEqual({i["status"] for i in report["items"]}, {"retained-worktree-dirty"})
+        for checkout in [self.old, self.new]:
+            self.assertTrue((checkout / "target/debug/deps/cache").exists())
+
+    def test_recent_clean_checkout_is_retained_without_refreshing_git_index(self):
+        gitdir = Path(self.git("-C", str(self.old), "rev-parse", "--absolute-git-dir").strip())
+        (gitdir / "logs/HEAD").touch()
+        before = (gitdir / "index").stat().st_mtime_ns
+        report = self.run_cleanup("--apply")
+        self.assertEqual((gitdir / "index").stat().st_mtime_ns, before)
+        self.assertEqual(
+            {i["status"] for i in report["items"] if i["scope"] == str(self.old)},
+            {"retained-recent"},
+        )
+        self.assertTrue((self.old / "target/debug/deps/cache").exists())
+        self.assertFalse((self.new / "target/debug/deps/cache").exists())
+
+    def test_unknown_worktree_state_blocks_deletion_and_reports_failure(self):
+        shim = self.root / "git shim"
+        shim.mkdir()
+        git = shim / "git"
+        git.write_text(
+            '#!/bin/sh\nfor arg in "$@"; do\n'
+            '  if [ "$arg" = status ]; then exit 1; fi\ndone\n'
+            'exec /usr/bin/git "$@"\n'
+        )
+        git.chmod(0o755)
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(self.repo / "scripts/artifact-cleanup.py"),
+                "--temporary-worktrees",
+                "--cache-budget-gib",
+                "0",
+                "--apply",
+                "--report",
+                str(self.report),
+                "--json",
+            ],
+            env={**os.environ, "PATH": str(shim) + os.pathsep + os.environ["PATH"]},
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        report = json.loads(self.report.read_text())
+        self.assertEqual({i["status"] for i in report["items"]}, {"blocked-reuse-unknown"})
+        for checkout in [self.old, self.new]:
+            self.assertTrue((checkout / "target/debug/deps/cache").exists())
+
     def test_preview_and_apply_only_touch_registered_secondary_caches(self):
         missing = self.root / "missing checkout"
         self.git("worktree", "add", "--detach", str(missing), "HEAD")
