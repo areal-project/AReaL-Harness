@@ -33,7 +33,7 @@ impl ServiceInstallation {
         Ok(serde_json::json!({"installed":true,"label":installation.label}))
     }
     pub fn current() -> Result<Self> {
-        let home = areal_local_service::home()?;
+        let home = areal_local_service::home().context("resolve Host home for service manager")?;
         let user_home = std::env::home_dir().context("user home unavailable")?;
         let root = if cfg!(target_os = "macos") {
             user_home.join("Library/LaunchAgents")
@@ -43,11 +43,15 @@ impl ServiceInstallation {
                 .unwrap_or_else(|| user_home.join(".config"))
                 .join("systemd/user")
         };
-        Self::at(home, &root, &std::env::current_exe()?)
+        let executable = std::env::current_exe().context("resolve service executable")?;
+        Self::at(home, &root, &executable)
     }
     pub fn at(home: PathBuf, service_directory: &Path, executable: &Path) -> Result<Self> {
-        let home = storage::canonical_pending(&home)?;
-        let real = executable.canonicalize()?;
+        let home = storage::canonical_pending(&home)
+            .with_context(|| format!("resolve Host home {}", home.display()))?;
+        let real = executable
+            .canonicalize()
+            .with_context(|| format!("resolve service executable {}", executable.display()))?;
         let keg = real.parent().and_then(Path::parent);
         let brew_entry = keg.and_then(|keg| {
             let formula = keg.parent()?;
@@ -76,14 +80,16 @@ impl ServiceInstallation {
             "org.areal.host.{}",
             &storage::digest(home.as_os_str().as_encoded_bytes())[..16]
         );
-        let descriptor = storage::canonical_pending(service_directory)?.join(format!(
-            "{label}.{}",
-            if cfg!(target_os = "macos") {
-                "plist"
-            } else {
-                "service"
-            }
-        ));
+        let descriptor = storage::canonical_pending(service_directory)
+            .with_context(|| format!("resolve service directory {}", service_directory.display()))?
+            .join(format!(
+                "{label}.{}",
+                if cfg!(target_os = "macos") {
+                    "plist"
+                } else {
+                    "service"
+                }
+            ));
         let mut installation = Self {
             label,
             descriptor,
@@ -140,23 +146,32 @@ impl ServiceInstallation {
         ))
     }
     pub fn install(&self) -> Result<()> {
-        storage::private_dir(&self.home)?;
-        storage::private_dir(&self.home.join("host"))?;
-        let lock = storage::open_private(&self.home.join("host.lock"), true)?;
+        storage::private_dir(&self.home)
+            .with_context(|| format!("check Host home {}", self.home.display()))?;
+        let host_dir = self.home.join("host");
+        storage::private_dir(&host_dir)
+            .with_context(|| format!("check Host directory {}", host_dir.display()))?;
+        let lock_path = self.home.join("host.lock");
+        let lock = storage::open_private(&lock_path, true)
+            .with_context(|| format!("open Host lock {}", lock_path.display()))?;
         lock.try_lock_exclusive()
             .context("Host is running; explicitly stop it before installing a system service")?;
         let directory = self
             .descriptor
             .parent()
             .context("missing service directory")?;
-        std::fs::create_dir_all(directory)?;
-        let meta = std::fs::symlink_metadata(directory)?;
+        std::fs::create_dir_all(directory)
+            .with_context(|| format!("create service directory {}", directory.display()))?;
+        let meta = std::fs::symlink_metadata(directory)
+            .with_context(|| format!("inspect service directory {}", directory.display()))?;
         ensure!(
             meta.is_dir() && meta.uid() == unsafe { libc::geteuid() } && meta.mode() & 0o022 == 0,
             "service directory must be owned by this user and not writable by others"
         );
-        let existing: Option<Self> =
-            storage::read_optional(&self.home.join("host/service-install.json"))?;
+        let record_path = host_dir.join("service-install.json");
+        let existing: Option<Self> = storage::read_optional(&record_path).with_context(|| {
+            format!("read service installation record {}", record_path.display())
+        })?;
         if std::fs::symlink_metadata(&self.descriptor).is_ok() {
             let previous = existing
                 .as_ref()
@@ -179,7 +194,8 @@ impl ServiceInstallation {
         let loaded = cfg!(target_os = "macos")
             && Command::new("/bin/launchctl")
                 .args(["print", &format!("{domain}/{}", self.label)])
-                .output()?
+                .output()
+                .with_context(|| format!("run launchctl print for {domain}/{}", self.label))?
                 .status
                 .success();
         ensure!(
@@ -187,11 +203,29 @@ impl ServiceInstallation {
             "an unowned service is already registered under this label"
         );
         let temporary = directory.join(format!(".{}.tmp", uuid::Uuid::new_v4()));
-        let mut file = storage::open_private(&temporary, true)?;
-        file.write_all(self.contents()?.as_bytes())?;
-        file.sync_all()?;
-        std::fs::rename(&temporary, &self.descriptor)?;
-        storage::write(&self.home.join("host/service-install.json"), self)?;
+        let mut file = storage::open_private(&temporary, true).with_context(|| {
+            format!("open temporary service descriptor {}", temporary.display())
+        })?;
+        file.write_all(self.contents()?.as_bytes())
+            .with_context(|| {
+                format!("write temporary service descriptor {}", temporary.display())
+            })?;
+        file.sync_all().with_context(|| {
+            format!("sync temporary service descriptor {}", temporary.display())
+        })?;
+        std::fs::rename(&temporary, &self.descriptor).with_context(|| {
+            format!(
+                "publish service descriptor {} to {}",
+                temporary.display(),
+                self.descriptor.display()
+            )
+        })?;
+        storage::write(&record_path, self).with_context(|| {
+            format!(
+                "write service installation record {}",
+                record_path.display()
+            )
+        })?;
         drop(lock);
         if cfg!(target_os = "macos") {
             if !loaded {

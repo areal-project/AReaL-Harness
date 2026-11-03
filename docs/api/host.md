@@ -293,7 +293,7 @@ macOS 由 Host 持有 `caffeinate -i -w <HostPID>`，Linux 使用 `systemd-inhib
 
 ## 退出与服务管理器契约
 
-`areal host install` 在没有活动 Host 时注册当前 home 的用户级服务；已有 Host 持锁时先拒绝，要求显式停止后再安装。服务名为 `org.areal.host.<home摘要前16位>`，macOS 描述位于用户 `Library/LaunchAgents`，Linux 位于用户配置目录的 `systemd/user`。描述固定可执行入口和两个 Host home 环境变量。安装器或 Homebrew 的稳定 `bin/areal` 符号链接保留为启动入口，不固化它当前指向的版本目录。安装回执保存描述路径及摘要；不覆盖或删除无法与原回执匹配的描述。
+`areal host install` 在没有活动 Host 时注册当前 home 的用户级服务；已有 Host 持锁时先拒绝，要求显式停止后再安装。服务名为 `org.areal.host.<home摘要前16位>`，macOS 描述位于用户 `Library/LaunchAgents`，Linux 位于用户配置目录的 `systemd/user`。描述固定可执行入口和两个 Host home 环境变量。安装器或 Homebrew 的稳定 `bin/areal` 符号链接保留为启动入口，不固化它当前指向的版本目录。安装回执保存描述路径及摘要；不覆盖或删除无法与原回执匹配的描述。路径相关的安装错误标明失败阶段和路径，并保留底层原因；服务管理器错误保留其输出。
 
 安装本身保留已有停止意图。普通 `areal host run` 检测到已安装服务时，在原锁内确认显式启动、清除崩溃预算，再请求原管理器任务启动；既有 CLI/GUI 的主动连接启动复用此入口。管理器使用 `areal host run --managed`，该入口及状态读取均不清除停止意图。`areal host uninstall` 先按原 Host 身份执行空闲停止；原停止未确认完成或锁未释放时保留服务登记。退注册只移除该安装回执覆盖的描述，不删除 home、身份或操作回执。
 
