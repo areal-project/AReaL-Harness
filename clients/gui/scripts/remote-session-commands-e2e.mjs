@@ -9,7 +9,7 @@ import { createRequire } from "node:module";
 import { fork, execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -559,6 +559,8 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
     );
   const binary = process.env.AREAL_CORE_BIN;
   if (!binary) throw new Error("AREAL_CORE_BIN must identify the reviewed immutable native bundle");
+  const publicCommandsOnly = process.env.RC05_PUBLIC_COMMANDS_ONLY === "1";
+  assert.ok(!publicCommandsOnly || rustOwner, "Public command checks require the Rust Host owner");
   const taskPauseOnly = process.env.RC09_TASK_PAUSE_ONLY === "1";
   const reviewOnly = process.env.RC10_REVIEW_ONLY === "1";
   const taskQuestionsOnly = process.env.RC08_TASK_QUESTIONS_ONLY === "1";
@@ -569,6 +571,7 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
   const interactionSettlementOnly = process.env.RC07_SETTLEMENT_ONLY === "1";
   assert.ok(
     [
+      publicCommandsOnly,
       reviewOnly,
       taskQuestionsOnly,
       taskPauseOnly,
@@ -582,7 +585,12 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
   );
   let completedRaceIterations = 0;
   const repetitions =
-    reviewOnly || taskQuestionsOnly || preflightOnly || settlementOnly || interactionSettlementOnly
+    publicCommandsOnly ||
+    reviewOnly ||
+    taskQuestionsOnly ||
+    preflightOnly ||
+    settlementOnly ||
+    interactionSettlementOnly
       ? 0
       : Number(
           (taskPauseOnly
@@ -594,7 +602,8 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
   assert.ok(
     Number.isInteger(repetitions) &&
       repetitions >=
-        (reviewOnly ||
+        (publicCommandsOnly ||
+        reviewOnly ||
         taskQuestionsOnly ||
         preflightOnly ||
         settlementOnly ||
@@ -1193,6 +1202,7 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
       secure,
       async rpc(method, params = {}, commandId = randomUUID(), context = {}) {
         if (
+          publicCommandsOnly ||
           reviewOnly ||
           taskPauseOnly ||
           taskQuestionsOnly ||
@@ -1261,6 +1271,7 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
       b = await connectDevice(deviceB, true);
     phase = "business";
     if (
+      !publicCommandsOnly &&
       !reviewOnly &&
       !taskPauseOnly &&
       !taskQuestionsOnly &&
@@ -1403,6 +1414,150 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
           "busy, stale config, Task-owned root, Workflow default, offline create and saved-outcome read",
         taskId: taskOwnershipEvidence.createdTask.id,
         workflowDispatchProfile,
+      });
+    }
+    if (publicCommandsOnly) {
+      const threadId = (await a.rpc("session.create")).result.threadId;
+      const sendId = randomUUID();
+      const effects = [randomUUID(), randomUUID()];
+      const originalParams = {
+        threadId,
+        expectedConfigRevision: 1,
+        text: `RC05_EFFECT:${effects[0]}`,
+      };
+      const original = (await a.rpc("session.send", originalParams, sendId)).result;
+      assert.equal(original.admissionState, "accepted");
+      const duplicate = (await a.rpc("session.send", originalParams, sendId)).result;
+      const saved = (await a.rpc("command.read", { commandId: sendId })).result;
+      for (const receipt of [duplicate, saved]) {
+        assert.equal(receipt.admissionState, "accepted");
+        assert.equal(receipt.operationId, original.operationId);
+        assert.equal(receipt.turnId, original.turnId);
+      }
+      assert.equal(
+        (await a.rpc("session.send", { ...originalParams, text: "changed" }, sendId)).error.code,
+        "COMMAND_CONFLICT",
+      );
+      await settled(threadId);
+      const independentParams = { ...originalParams, text: `RC05_EFFECT:${effects[1]}` };
+      const independent = (await b.rpc("session.send", independentParams, sendId)).result;
+      assert.equal(independent.admissionState, "accepted");
+      assert.notEqual(independent.operationId, original.operationId);
+      assert.notEqual(independent.turnId, original.turnId);
+      const independentDuplicate = (await b.rpc("session.send", independentParams, sendId)).result;
+      assert.equal(independentDuplicate.admissionState, "accepted");
+      assert.equal(independentDuplicate.operationId, independent.operationId);
+      assert.equal(independentDuplicate.turnId, independent.turnId);
+      await settled(threadId);
+      const turns = (await native("thread/read", { threadId, includeTurns: true })).thread.turns;
+      assert.deepEqual(
+        turns.map((turn) => turn.id).sort(),
+        [original.turnId, independent.turnId].sort(),
+        "duplicate Remote send must not create another Core Turn",
+      );
+      for (const effect of effects)
+        assert.equal(await readFile(join(workspace, "effects", effect), "utf8"), "x");
+      for (const [device, receipt] of [
+        [a, original],
+        [b, independent],
+      ]) {
+        const current = (await device.rpc("command.read", { commandId: sendId })).result;
+        assert.equal(current.operationId, receipt.operationId);
+        assert.equal(current.turnId, receipt.turnId);
+      }
+      checks.push({
+        case: "T19-public/T20-public",
+        detail:
+          "public Rust Host duplicate send keeps original operation and Turn; same UUID on another device has an independent operation and Turn; changed text conflicts; each Runtime effect occurs once; no lost-response fault injected",
+      });
+
+      const journalDirectory = join(registry, "host/journals/records");
+      const readJournalRecords = async () => {
+        const names = (await readdir(journalDirectory)).sort();
+        return Promise.all(
+          names.map(async (name) => [name, await readFile(join(journalDirectory, name))]),
+        );
+      };
+      const journalBefore = await readJournalRecords();
+      assert.ok(journalBefore.length > 0);
+      const threadIdsBefore = (await native("thread/list", { limit: 100 })).data
+        .map((thread) => thread.id)
+        .sort();
+      const failedCommandId = randomUUID();
+      const journalDirectoryStat = await lstat(journalDirectory);
+      assert.equal(journalDirectoryStat.isDirectory(), true);
+      assert.equal(journalDirectoryStat.uid, process.getuid());
+      const journalDirectoryMode = journalDirectoryStat.mode & 0o777;
+      assert.equal(journalDirectoryMode, 0o700);
+      await chmod(journalDirectory, 0o500);
+      try {
+        const failed = await a.rpc("session.create", {}, failedCommandId);
+        assert.equal(failed.error.code, "CORE_UNAVAILABLE");
+        assert.equal(failed.error.submissionUnknown, true);
+        assert.equal(failed.error.commandId, failedCommandId);
+      } finally {
+        await chmod(journalDirectory, journalDirectoryMode);
+      }
+      assert.equal((await lstat(journalDirectory)).mode & 0o777, journalDirectoryMode);
+      assert.deepEqual(await readJournalRecords(), journalBefore);
+      assert.deepEqual(
+        (await native("thread/list", { limit: 100 })).data.map((thread) => thread.id).sort(),
+        threadIdsBefore,
+      );
+      assert.equal(
+        (await a.rpc("command.read", { commandId: failedCommandId })).result.admissionState,
+        "notFound",
+      );
+      checks.push({
+        case: "T22-pending-public",
+        detail:
+          "actual Rust Host journal records directory is read-only for one legal Remote create; create returns CORE_UNAVAILABLE/submissionUnknown with original command ID, original journal bytes and Core Thread IDs remain equal, original command stays notFound, directory mode restored; no outcome-write fault injected",
+      });
+
+      const startHeldTurn = async () => {
+        const started = await native("areal/turn/start", {
+          requestId: randomUUID(),
+          threadId,
+          input: [{ type: "text", text: "RC05_HOLD" }],
+          expectedConfigRevision: 1,
+        });
+        await waitFor(
+          () => [...held].some((response) => !response.destroyed && !response.writableEnded),
+          "public stop model barrier",
+        );
+        return started.turn.id;
+      };
+      const releaseHeldModel = () => {
+        for (const response of held) {
+          if (response.destroyed || response.writableEnded) continue;
+          response.writeHead(200, { "Content-Type": "text/event-stream" });
+          response.end(
+            `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "done" }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+          );
+        }
+        held.clear();
+      };
+      const turnA = await startHeldTurn();
+      releaseHeldModel();
+      await settled(threadId);
+      const turnB = await startHeldTurn();
+      const commandId = randomUUID();
+      const params = { threadId, expectedTurnId: turnA };
+      const refusal = await a.rpc("turn.stop", params, commandId);
+      assert.equal(refusal.error.code, "TARGET_CHANGED");
+      assert.equal((await a.rpc("command.read", { commandId })).result.admissionState, "notFound");
+      assert.equal((await a.rpc("turn.stop", params, commandId)).error.code, "TARGET_CHANGED");
+      const current = (await native("thread/read", { threadId, includeTurns: true })).thread.turns;
+      assert.equal(current.find((turn) => turn.id === turnB).status, "inProgress");
+      releaseHeldModel();
+      await settled(threadId);
+      const finished = (await native("thread/read", { threadId, includeTurns: true })).thread.turns;
+      assert.equal(finished.find((turn) => turn.id === turnA).status, "completed");
+      assert.equal(finished.find((turn) => turn.id === turnB).status, "completed");
+      checks.push({
+        case: "T23-public",
+        detail:
+          "public Stop for naturally completed A is rejected before admission while B is held; original command remains notFound and B completes normally; no admitted interrupt barrier or lost-response fault injected",
       });
     }
     if (stopOnly || settlementOnly) {
@@ -3025,6 +3180,7 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
     const report = {
       passed,
       acceptance:
+        !publicCommandsOnly &&
         passed &&
         requiredUnrun.length === 0 &&
         (repetitions === 0 || completedRaceIterations >= 100),
@@ -3097,9 +3253,12 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
                     ? "RC06_T24"
                     : interactionSettlementOnly
                       ? "RC07_T26_T27"
-                      : "RC05",
+                      : publicCommandsOnly
+                        ? "RC05_PUBLIC_COMMANDS"
+                        : "RC05",
       coveredCases: checks.flatMap((check) => check.case.split("/")),
       raceAcceptanceRequired:
+        !publicCommandsOnly &&
         !reviewOnly &&
         !taskQuestionsOnly &&
         !preflightOnly &&
@@ -3115,6 +3274,14 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
         .update(await readFile(binary))
         .digest("hex"),
       notCovered: [
+        ...(publicCommandsOnly
+          ? [
+              "T18 crash after acceptance and T22 outcome-write fault boundaries",
+              "T19 lost native response",
+              "T23 admitted interrupt dispatch barrier and lost response",
+              "100-race acceptance",
+            ]
+          : []),
         ...(transport === "direct" ? ["Relay"] : ["production PWA strict TLS"]),
         "public network",
         "physical phone",
