@@ -7,6 +7,7 @@
 | 能力 | 实现与入口 |
 |---|---|
 | 程序化工具调用 | 默认与原生工具共存；有界 JavaScript 数据依赖、串行叶子、选择观察与父子审计，无跨轮状态恢复；真实质量与效率须独立评测。[执行边界](guides/programmatic-tools.md) |
+| 关联文件编辑 | `edit_files` 直接表达有界多文件创建/修改，保留逐文件版本检查、收据和部分失败；可在既有程序里顺接验证。[工具合同](guides/tools.md#关联文件编辑与环境事实) |
 | 会话目录 | 默认内存索引、正确的授权后分页与 GUI 刷新合并；显式 SQLite 索引可回退内存，两者均可显式启用轻量元数据目录与按需历史加载。文件保持事实，复杂恢复仍全量；无自动历史淘汰或全文检索。[配置](guides/configuration.md#会话目录后端) |
 | 项目规则 | 按工作区根到会话 cwd 加载规则，同层 `AGENTS.override.md` 优先于 `AGENTS.md`，空白回退、子目录优先、每 Turn 刷新、有界且经 Runtime 读取。[客户端](guides/clients.md) |
 | 会话与模型 | 持久 Thread/Turn、流式正文、Chat Completions 思考与 Responses 思考摘要/文本事件、追加输入、取消、恢复；Chat Completions / Responses，模态取决于 adapter 和模型。桌面可独立切换 Fast 服务档位，配置与供应商请求沿现有模型参数链路保存；请求不保证实际加速。[客户端](guides/clients.md) |

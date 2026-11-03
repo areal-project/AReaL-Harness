@@ -498,6 +498,9 @@ When no rule files exist, project-rule loading neither requests a Runtime Scope 
 
 Engine loads project instructions before the first model request of each Turn and persists them in `instructionSnapshot`. It reads `AGENTS.md` along the workspace-root-to-Thread-`cwd` chain and includes source paths in the snapshot. No API fields are added; projects with only a root file remain compatible. Combined content above 32 KiB, invalid UTF-8, symlinks or a chain beyond 64 levels fail the Turn before a model request instead of truncating rules. See [clients](../guides/clients.en.md#history-recovery-and-observability) for scope, precedence and cwd path aliases.
 
+The instruction snapshot includes `checkedFiles` observations for the root/cwd chain, distinguishing missing, empty and loaded files without certifying unknown subtrees. The dynamic `edit_files` tool composes bounded file creation/replacement through native dispatch without a new Runtime protocol; per-file statuses, compatibility and allowlist constraints are in the [tool contract](../guides/tools.en.md#related-edits-and-environment-facts).
+
+
 Shared Browser attachment of the fixed bundle to an older Thread is implemented as `areal/thread/tools/attach`; see the [Browser contract](browser.en.md#10-existing-threads-and-core-extensions) for its request, receipt, storage version, and downgrade limits. Preparation remains a proposal; read-only observation uses `areal/thread/observe`. `thread/resume` retains Host binding and can negotiate the bounded display response described above.
 
 An experimental setting, disabled by default, enables bounded whole-file references in Core request projection and checkpoint evidence; Runtime owns execution waits. See the [configuration guide](../guides/configuration.en.md#reference-retention-and-bounded-tool-recovery) for retrieval, noninteractive stdin and failure limits.

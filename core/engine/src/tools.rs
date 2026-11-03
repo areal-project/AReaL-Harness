@@ -321,7 +321,9 @@ impl Handles {
     }
 }
 mod agents;
+mod composition;
 mod conversation_context;
+mod edit_files;
 mod extensions;
 mod file_before;
 mod images;
@@ -1343,6 +1345,10 @@ impl Engine {
                 (outcome, false, json!({"error":error}))
             }
         };
+        if call.name == "edit_files" && !success && result.get("files").is_none() {
+            self.edit_files_failure_receipt(cell, &call, &mut result)
+                .await;
+        }
         if call.name == "tool_program" && result.get("contentItems").is_none() {
             self.program_failure_receipt(cell, &call, &mut result).await;
         }

@@ -1,7 +1,7 @@
 //! 数据依赖、分支和等待由 JavaScript 编排，原生执行与事实仍归 Core/Runtime。
 use super::registry::RegisteredTool;
 use super::*;
-use std::{sync::atomic::Ordering, time::Instant};
+use std::time::Instant;
 mod js;
 
 const MAX_CALLS: usize = 64;
@@ -12,7 +12,7 @@ const RECEIPT_RESERVE: usize = 96 * 1024;
 pub(super) fn definition() -> areal_protocol::ToolDefinition {
     areal_protocol::ToolDefinition {
         name: "tool_program".into(),
-        description: "Run bounded JavaScript with top-level await to compose native tools, use their returned data in subsequent calls, branch, loop, poll processes, and select observations. Prefer this for an already-decided sequence of at least two native calls; use a direct tool for a single operation. If a process is running and no independent work remains, wait inside the program using the normal wait budget instead of repeated one-second model status turns. Use tools.NAME(arguments). Each returns {success,outcome,callId,itemId,data,text,availableImages}; data is the parsed native JSON result, text is its text representation. Use text(value) to return selected observations; text(nativeResult) avoids duplicating parsed data and text. Use image(nativeResult) to forward actual images. Intermediate native outputs stay in durable history; retrieve by itemId with read_history when needed. All native calls retain their existing permissions, hooks, schemas, aliases and shared budgets. Calls execute serially, including Promise.all; no parallel resource increase. This is a fresh isolated interpreter with no Node, filesystem, network, timers, imports or persistent state. Maximum 64 native calls, 64 KiB code/arguments, 1 MiB archived text with a 16 KiB preview and read_tool_result reference, four image results; default 600 seconds, max 1800. Only declared tools are accessible. No automatic retries. UNKNOWN, cancellation, and exhausted budgets stop dispatch even if caught. Completed effects are retained on error. A program may inspect known failures but must report meaningful failures; mandatory receipts preserve every child outcome and process status. Await run/read_process as needed and inspect commandStatus/outputReadComplete before using generated files. When visual judgment or a new model decision is needed, emit images/relevant observations and finish. Large selected output is saved with a preview; retrieve it without rerunning completed effects. Do not conceal unresolved processes. Example: const a=await tools.fs_list({path:'workspace://repo'}); text(a.data);".into(),
+        description: "Run bounded JavaScript with top-level await to compose native tools, use their returned data in subsequent calls, branch, loop, poll processes, and select observations. Prefer this for an already-decided sequence of at least two native calls; use a direct tool for a single operation. If a process is running and no independent work remains, wait inside the program using the normal wait budget instead of repeated one-second model status turns. Use tools.NAME(arguments). Each returns {success,outcome,callId,itemId,data,text,availableImages}; data is the parsed native JSON result, text is its text representation. Use text(value) to return selected observations; text(nativeResult) avoids duplicating parsed data and text. Use image(nativeResult) to forward actual images. Intermediate native outputs stay in durable history; retrieve by itemId with read_history when needed. All native calls retain their existing permissions, hooks, schemas, aliases and shared budgets. Calls execute serially, including Promise.all; no parallel resource increase. This is a fresh isolated interpreter with no Node, filesystem, network, timers, imports or persistent state. Maximum 64 native calls, 64 KiB code/arguments, 1 MiB archived text with a 16 KiB preview and read_tool_result reference, four image results; default 600 seconds, max 1800. Only declared tools are accessible. No automatic retries. UNKNOWN, cancellation, and exhausted budgets stop dispatch even if caught. Completed effects are retained on error. A program may inspect known failures but must report meaningful failures; mandatory receipts preserve every child outcome and process status. Await run/read_process as needed and inspect commandStatus/outputReadComplete before using generated files. When visual judgment or a new model decision is needed, emit images/relevant observations and finish. Large selected output is saved with a preview; retrieve it without rerunning completed effects. Do not conceal unresolved processes. Example after reading both files and choosing the test: const e=await tools.edit_files({files:[{path:'src/a.py',patches:[{oldText:'old_a',newText:'new_a'}]},{path:'src/b.py',patches:[{oldText:'old_b',newText:'new_b'}]}]}); text(e); if(e.success && e.data.allApplied){let r=await tools.run_command({argv:['python','-m','pytest','tests/test_feature.py','-q']}); text(r); for(let i=0;i<2 && r.success && (r.data.commandStatus==='running' || r.data.outputReadComplete===false);i++){r=await tools.read_process({processId:r.data.processId}); text(r);}} Return new errors for model judgment; do not auto-install, retry edits, or change the test. Known-range read example: for(const path of ['src/a.py','src/b.py']) text(await tools.read_file({path,offset:1,limit:80})); Return to the model before interpreting unfamiliar code.".into(),
         input_schema: json!({"type":"object","properties":{"code":{"type":"string","maxLength":65536},"timeoutMs":{"type":"integer","minimum":1,"maximum":1800000}},"required":["code"],"additionalProperties":false}),
         output_schema: None,
     }
@@ -23,7 +23,7 @@ fn eligible(entry: &RegisteredTool) -> bool {
         || matches!(entry.backend, Backend::Core)
             && matches!(
                 entry.definition.name.as_str(),
-                "read_history" | "read_tool_result"
+                "read_history" | "read_tool_result" | "edit_files"
             )
 }
 
@@ -68,7 +68,7 @@ fn receipt(item: &Item) -> Option<Value> {
     Some(result)
 }
 
-fn child_view(item: &Item) -> Value {
+pub(super) fn child_view(item: &Item) -> Value {
     let mut result = receipt(item).unwrap();
     let Item::DynamicToolCall { content_items, .. } = item else {
         unreachable!()
@@ -100,6 +100,11 @@ fn program_receipt(executed: usize, error: &Option<String>, receipts: &[Value]) 
 
 /// 恢复仅补充已记录事实。没有解释器状态恢复或代码重放。
 pub(crate) fn recovered_program_content(items: &[Item], parent: &str) -> Option<Vec<Value>> {
+    if let Some(Item::DynamicToolCall {arguments, execution, ..}) = items.iter().find(|item|
+        matches!(item, Item::DynamicToolCall {tool, call_id, ..} if tool == "edit_files" && call_id == parent)) {
+        return Some(vec![json!({"type":"inputText","text":super::edit_files::receipt(items, parent, execution.effective_arguments.as_ref().unwrap_or(arguments)).to_string()})]);
+    }
+
     let children = child_receipts(items, parent);
     if children.is_empty() {
         return None;
@@ -238,6 +243,7 @@ impl Engine {
             });
             let mut fatal = None;
             let mut executed = 0;
+            let mut reserved_calls = 0usize;
             let mut output = js::Output::default();
             loop {
                 let request = tokio::select! {
@@ -251,7 +257,13 @@ impl Engine {
                     arguments,
                     reply,
                 } = request;
-                if !allowed.contains(&name) || executed >= MAX_CALLS {
+                // 批量入口的叶子也计入程序上限，不能通过容器扩大执行预算。
+                let work = 1 + if name == "edit_files" {
+                    arguments["files"].as_array().map_or(0, Vec::len)
+                } else {
+                    0
+                };
+                if !allowed.contains(&name) || reserved_calls.saturating_add(work) > MAX_CALLS {
                     fatal = Some(error(
                         rt::ErrorCode::ResourceExhausted,
                         "program tool is unavailable or call limit exhausted",
@@ -259,96 +271,23 @@ impl Engine {
                     let _ = reply.send(Err("program dispatch stopped".into()));
                     break;
                 }
+                reserved_calls += work;
                 let call = ToolCall {
                     id: id(),
                     name,
                     arguments: arguments.to_string(),
                 };
-                if remaining < self.tool_output_budget(invocation.cell, &call).await {
-                    fatal = Some(error(
-                        rt::ErrorCode::ResourceExhausted,
-                        "shared output budget exhausted",
-                    ));
-                    let _ = reply.send(Err("shared output budget exhausted".into()));
-                    break;
-                }
+                let value = match self
+                    .dispatch_nested_tool(invocation, &cancel, call, &mut remaining, deadline)
+                    .await
                 {
-                    let mut state = invocation.cell.state.lock().await;
-                    let side = state.thread.is_read_only_side();
-                    let limit = if side {
-                        if self.limits.max_tool_calls == 0 {
-                            self.limits.max_side_tool_calls
-                        } else {
-                            self.limits
-                                .max_tool_calls
-                                .min(self.limits.max_side_tool_calls)
-                        }
-                    } else {
-                        self.limits.max_tool_calls
-                    };
-                    let active = state.active.as_mut().unwrap();
-                    if active.sealed || (limit != 0 && active.tool_calls >= limit) {
-                        fatal = Some(error(
-                            rt::ErrorCode::ResourceExhausted,
-                            "shared tool budget exhausted",
-                        ));
-                        let _ = reply.send(Err("shared tool budget exhausted".into()));
-                        break;
-                    }
-                    if let Err(e) = self.reserve_agent_tool_call(invocation.cell) {
-                        fatal = Some(error(rt::ErrorCode::ResourceExhausted, e));
-                        let _ = reply.send(Err("shared agent tool budget exhausted".into()));
-                        break;
-                    }
-                    active.tool_calls += 1;
-                }
-                let call_id = call.id.clone();
-                let start = self
-                    .start_tool(
-                        invocation.cell,
-                        &cancel,
-                        call,
-                        remaining,
-                        None,
-                        Some(invocation.call.id.clone()),
-                    )
-                    .await;
-                let mut child = match start {
-                    Ok(c) => c,
-                    Err(e) => {
-                        fatal = Some(error(rt::ErrorCode::Unavailable, e));
-                        break;
-                    }
-                };
-                let result = tokio::select! {
-                    value=&mut child=>value,
-                    _=invocation.cancel.cancelled()=>{cancel.cancel(); (&mut child).await}
-                    _=tokio::time::sleep_until(deadline.into())=>{cancel.cancel(); (&mut child).await}
-                };
-                let bytes = match result {
-                    Ok(Ok(bytes)) => bytes,
-                    value => {
-                        fatal = Some(error(
-                            rt::ErrorCode::Unavailable,
-                            format!("program child did not settle: {value:?}"),
-                        ));
+                    Ok(value) => value,
+                    Err(error) => {
+                        fatal = Some(error);
                         break;
                     }
                 };
                 executed += 1;
-                invocation
-                    .nested_output_bytes
-                    .fetch_add(bytes, Ordering::Relaxed);
-                remaining = remaining.saturating_sub(bytes);
-                let state = invocation.cell.state.lock().await;
-                let item = state.thread.turns.last().unwrap().items.iter().find(
-                    |item| matches!(item,Item::DynamicToolCall{call_id:id,..} if id==&call_id),
-                );
-                let Some(item) = item else {
-                    fatal = Some(error(rt::ErrorCode::Unavailable, "missing child journal"));
-                    break;
-                };
-                let value = child_view(item);
                 if value["outcome"] == "unknown" || value["outcome"] == "running" {
                     fatal = Some(error(
                         rt::ErrorCode::Unavailable,

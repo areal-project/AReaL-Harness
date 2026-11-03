@@ -367,6 +367,7 @@ impl Registry {
             output_schema: None,
         }, Backend::Core)?;
         if runtime {
+            registry.insert(super::edit_files::definition(), Backend::Core)?;
             if extensions.policy.programmatic_tools {
                 registry.insert(super::program::definition(), Backend::Core)?;
             }

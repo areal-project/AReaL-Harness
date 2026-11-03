@@ -63,7 +63,7 @@ impl Model for BatchModel {
         *self.received.lock().await = messages.clone();
         *self.declarations.lock().await = definitions;
         let round = self.requests.fetch_add(1, Ordering::SeqCst);
-        if round == 0 {
+        if round == 0 && !self.calls.is_empty() {
             return Ok(Box::pin(futures_util::stream::iter(
                 self.calls
                     .clone()
@@ -90,7 +90,7 @@ impl Model for BatchModel {
         for ((call, advertised), result) in self.calls.iter().zip(advertised).zip(results) {
             assert_eq!(advertised["id"], call.id);
             assert_eq!(result.tool_call_id.as_deref(), Some(call.id.as_str()));
-            if call.name == "tool_program" {
+            if matches!(call.name.as_str(), "tool_program" | "edit_files") {
                 continue;
             }
             let value: Value = serde_json::from_str(&result.text_content())?;
@@ -959,4 +959,267 @@ async fn program_children_share_tool_budget_and_invalid_arguments_never_dispatch
         assert!(runtime.seen.try_recv().is_err());
         close(engine, runtime).await;
     }
+}
+
+fn edits(files: Value) -> ToolCall {
+    ToolCall {
+        id: "batch-parent".into(),
+        name: "edit_files".into(),
+        arguments: json!({"files":files}).to_string(),
+    }
+}
+
+fn edit_receipt(thread: &areal_protocol::Thread) -> Value {
+    thread.turns[0]
+        .items
+        .iter()
+        .find_map(|item| match item {
+            Item::DynamicToolCall {
+                tool,
+                content_items: Some(content),
+                ..
+            } if tool == "edit_files" => {
+                Some(serde_json::from_str(content[0]["text"].as_str().unwrap()).unwrap())
+            }
+            _ => None,
+        })
+        .unwrap()
+}
+
+#[tokio::test]
+async fn edits_keep_native_receipts_without_requiring_programmatic_tools() {
+    let dir = tempfile::tempdir().unwrap();
+    let extensions = ToolExtensions {
+        policy: ToolPolicy {
+            programmatic_tools: false,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let (engine, model, mut runtime, thread, _) = open(
+        dir.path(),
+        vec![edits(json!([
+            {"path":"a","text":"first"},{"path":"b","text":"second"}
+        ]))],
+        Limits::default(),
+        extensions,
+    )
+    .await;
+    for expected in ["workspace://repo/a", "workspace://repo/b"] {
+        let next = runtime.next().await;
+        assert_eq!(next.path(), expected);
+        assert_eq!(next.request["params"]["command"]["kind"], "write");
+        assert_eq!(
+            next.request["params"]["command"]["expected"]["kind"],
+            "absent"
+        );
+        next.succeed();
+    }
+    let done = bounded(engine.wait(&thread)).await.unwrap();
+    assert_eq!(done.turns[0].status, TurnStatus::Completed);
+    let receipt = edit_receipt(&done);
+    assert_eq!(receipt["allApplied"], true);
+    for file in receipt["files"].as_array().unwrap() {
+        assert_eq!(file["status"], "APPLIED");
+        assert!(file["receipt"]["itemId"].is_string());
+        assert!(file["receipt"].get("text").is_none());
+        assert!(file["receipt"]["data"]["fileVersion"].is_string());
+    }
+    assert_eq!(model.requests.load(Ordering::SeqCst), 2);
+    assert!(
+        !model
+            .declarations
+            .lock()
+            .await
+            .iter()
+            .any(|d| d["function"]["name"] == "tool_program")
+    );
+    assert!(runtime.seen.try_recv().is_err());
+    close(engine, runtime).await;
+}
+
+#[tokio::test]
+async fn edits_stop_on_conflict_permission_or_unknown_and_never_replay_applied_files() {
+    for code in ["CONFLICT", "PERMISSION_DENIED", "UNAVAILABLE"] {
+        let dir = tempfile::tempdir().unwrap();
+        let (engine, _, mut runtime, thread, _) = open(
+            dir.path(),
+            vec![edits(json!([
+                {"path":"a","text":"first"},{"path":"b","text":"second"},{"path":"c","text":"tail"}
+            ]))],
+            Limits::default(),
+            ToolExtensions::default(),
+        )
+        .await;
+        runtime.next().await.succeed();
+        runtime
+            .next()
+            .await
+            .release
+            .send(json!({"error":{"code":code,"message":"fixture boundary"}}))
+            .unwrap();
+        let done = bounded(engine.wait(&thread)).await.unwrap();
+        let receipt = edit_receipt(&done);
+        let statuses: Vec<_> = receipt["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["status"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            statuses,
+            vec![
+                "APPLIED",
+                if code == "UNAVAILABLE" {
+                    "UNKNOWN"
+                } else {
+                    "FAILED"
+                },
+                "NOT_RUN"
+            ]
+        );
+        assert_eq!(receipt["allApplied"], false);
+        assert!(runtime.seen.try_recv().is_err());
+        close(engine, runtime).await;
+    }
+}
+
+#[tokio::test]
+async fn edits_reject_unobserved_patch_and_invalid_or_duplicate_batch_before_writes() {
+    for files in [
+        json!([{"path":"a","patches":[{"oldText":"old","newText":"new"}]},{"path":"tail","text":"x"}]),
+        json!([{"path":"a","text":"x"},{"path":"workspace://repo/a","text":"y"}]),
+        json!([{"path":"a","text":"x"},{"path":"b","patches":[]}]),
+        json!([{"path":"a","text":"x","patches":[{"oldText":"x","newText":"y"}]}]),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let (engine, _, mut runtime, thread, _) = open(
+            dir.path(),
+            vec![edits(files)],
+            Limits::default(),
+            ToolExtensions::default(),
+        )
+        .await;
+        let done = bounded(engine.wait(&thread)).await.unwrap();
+        assert_eq!(edit_receipt(&done)["allApplied"], false);
+        assert!(runtime.seen.try_recv().is_err());
+        close(engine, runtime).await;
+    }
+}
+
+#[tokio::test]
+async fn edits_share_budget_and_preserve_partial_receipts_on_cancellation() {
+    for cancelled in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let limits = Limits {
+            max_tool_calls: if cancelled { 20 } else { 2 },
+            ..Limits::default()
+        };
+        let (engine, _, mut runtime, thread, turn) = open(
+            dir.path(),
+            vec![edits(json!([
+                {"path":"a","text":"x"},{"path":"b","text":"y"},{"path":"c","text":"z"}
+            ]))],
+            limits,
+            ToolExtensions::default(),
+        )
+        .await;
+        runtime.next().await.succeed();
+        let pending = if cancelled {
+            let pending = runtime.next().await;
+            engine.interrupt(&thread, &turn).await.unwrap();
+            Some(pending)
+        } else {
+            None
+        };
+        let done = bounded(engine.wait(&thread)).await.unwrap();
+        let receipt = edit_receipt(&done);
+        assert_eq!(receipt["files"][0]["status"], "APPLIED");
+        assert_eq!(
+            receipt["files"][1]["status"],
+            if cancelled { "UNKNOWN" } else { "NOT_RUN" }
+        );
+        assert_eq!(receipt["files"][2]["status"], "NOT_RUN");
+        assert!(runtime.seen.try_recv().is_err());
+        drop(pending);
+        close(engine, runtime).await;
+    }
+}
+
+#[tokio::test]
+async fn program_composes_batch_edits_without_exposing_child_calls_as_model_calls() {
+    let dir = tempfile::tempdir().unwrap();
+    let (engine, model, mut runtime, thread, _) = open(dir.path(), vec![program(
+        "const e=await tools.edit_files({files:[{path:'a',text:'x'},{path:'b',text:'y'}]});text(e);if(e.success && e.data.allApplied)text(await tools.fs_stat({path:'b'}));"
+    )], Limits::default(), program_policy()).await;
+    for _ in 0..3 {
+        runtime.next().await.succeed();
+    }
+    let done = bounded(engine.wait(&thread)).await.unwrap();
+    assert_eq!(done.turns[0].status, TurnStatus::Completed);
+    assert_eq!(model.requests.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        done.turns[0]
+            .items
+            .iter()
+            .filter(|i| matches!(i, Item::DynamicToolCall { .. }))
+            .count(),
+        5
+    );
+    assert!(runtime.seen.try_recv().is_err());
+    close(engine, runtime).await;
+}
+
+#[tokio::test]
+async fn empty_instruction_chain_reports_checked_scope_and_leaves_descendants_unclaimed() {
+    let dir = tempfile::tempdir().unwrap();
+    let (engine, model, runtime, thread, _) = open(
+        dir.path(),
+        vec![],
+        Limits::default(),
+        ToolExtensions::default(),
+    )
+    .await;
+    let done = bounded(engine.wait(&thread)).await.unwrap();
+    assert_eq!(done.turns[0].status, TurnStatus::Completed);
+    let messages = model.received.lock().await;
+    let text = messages
+        .iter()
+        .map(Message::text_content)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        text.contains("workspaceRoot")
+            && text.contains("sessionCwd")
+            && text.contains("commandDefaultCwd")
+    );
+    assert!(text.contains("\"path\":\"AGENTS.override.md\",\"state\":\"missing\""));
+    assert!(text.contains("\"path\":\"AGENTS.md\",\"state\":\"missing\""));
+    assert!(text.contains("descendants and paths outside this chain are not certified"));
+    assert_eq!(runtime.scopes.load(Ordering::SeqCst), 0);
+    drop(messages);
+    close(engine, runtime).await;
+}
+
+#[tokio::test]
+async fn batch_children_cannot_bypass_program_call_bound() {
+    let dir = tempfile::tempdir().unwrap();
+    let (engine, _, mut runtime, thread, _) = open(dir.path(), vec![program(
+        "for(let batch=0;batch<4;batch++){const files=[];for(let i=0;i<16;i++)files.push({path:`f-${batch}-${i}`,text:'x'});await tools.edit_files({files});}"
+    )], Limits::default(), program_policy()).await;
+    // 3 × (容器 1 + 文件 16) = 51；第四批整体超出 64，不能在内部偷增额度。
+    for _ in 0..48 {
+        runtime.next().await.succeed();
+    }
+    let done = bounded(engine.wait(&thread)).await.unwrap();
+    assert_eq!(
+        done.turns[0]
+            .items
+            .iter()
+            .filter(|i| matches!(i, Item::DynamicToolCall {tool, ..} if tool == "fs_create"))
+            .count(),
+        48
+    );
+    assert!(runtime.seen.try_recv().is_err());
+    close(engine, runtime).await;
 }

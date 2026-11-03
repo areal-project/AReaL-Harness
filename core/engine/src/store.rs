@@ -412,7 +412,9 @@ impl Store {
                         call_id,
                         execution,
                         ..
-                    } if tool == "tool_program" && execution.outcome == ToolOutcome::Running => {
+                    } if matches!(tool.as_str(), "tool_program" | "edit_files")
+                        && execution.outcome == ToolOutcome::Running =>
+                    {
                         Some(call_id.clone())
                     }
                     _ => None,

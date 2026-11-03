@@ -512,6 +512,9 @@ CLI 保持 `--input-file` 的 2 MiB 上限，以有界读取在 JSON 解析前�
 
 项目指令由 Engine 在每个 Turn 首次模型请求前加载，并保存为 `instructionSnapshot`。按工作区根到 Thread `cwd` 的目录链读取 `AGENTS.md`，来源路径随正文写入快照；不新增 API 字段，已有仅根文件项目保持兼容。正文合计超过 32 KiB、无效 UTF-8、符号链接或超过 64 层的目录链使 Turn 在请求模型前失败，不截断规则。作用域、优先级与 cwd 路径别名见[客户端指南](../guides/clients.md#历史恢复与观测)。
 
+指令快照包含 root/cwd 链的 `checkedFiles` 观察，缺失、空文件与已加载文件分别表达；不会为未知子树推断规则已检查。动态工具 `edit_files` 将有界多文件创建/替换组合到现有原生执行链，不增加 Runtime 协议；逐文件状态、兼容入口及 allowlist 约束见[工具合同](../guides/tools.md#关联文件编辑与环境事实)。
+
+
 Shared Browser 的旧 Thread 固定工具包追加已实现，方法为 `areal/thread/tools/attach`；请求、回执、存储版本与回退限制见[Browser 契约](browser.md#10-旧-thread-与多客户端新增-core-接口)。工具准备仍是设计契约；只读观察使用 `areal/thread/observe`。`thread/resume` 保留 Host 绑定语义，并可协商上述有界显示响应。
 
 Core 可通过默认关闭的实验配置，在请求投影与检查点证据中有界保留完整文件参考；执行等待仍由 Runtime 管理。参考回取、非交互 stdin 和连续失败上限见[配置指南](../guides/configuration.md#参考保留与有界工具恢复)。

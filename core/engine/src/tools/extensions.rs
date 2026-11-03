@@ -682,6 +682,9 @@ impl Invocation<'_> {
                     .map_err(invalid);
             }
             Backend::Core => {
+                if self.call.name == "edit_files" {
+                    return self.engine.edit_files(self, args).await;
+                }
                 if self.call.name == "tool_program" {
                     return self.engine.tool_program(self, args).await;
                 }

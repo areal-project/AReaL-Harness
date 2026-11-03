@@ -12,16 +12,24 @@ Set `programmaticTools:false` to restore native-only tool exposure. Save this JS
 
 ## Execution and observations
 
-`tool_program({code, timeoutMs?})` runs top-level await in a fresh QuickJS context. There is no Node, filesystem, network, module import, timer or cross-call state. File and process operations must use declared native tools. Every child follows the original Core/Runtime schema, permissions, hooks, file versions, budget and journal. The catalog contains currently visible built-ins and `read_history/read_tool_result`; recursive programs, MCP and delegation are excluded.
+`tool_program({code, timeoutMs?})` runs top-level await in a fresh QuickJS context. There is no Node, filesystem, network, module import, timer or cross-call state. File and process operations must use declared native tools. Every child follows the original Core/Runtime schema, permissions, hooks, file versions, budget and journal. The catalog contains currently visible built-ins and `read_history/read_tool_result/edit_files`; recursive programs, MCP and delegation are excluded.
+
+After reading the files and choosing the edits and test entry point, compose edits, verification and bounded collection. Return to the model for unexpected failures, conflicts, permissions, UNKNOWN or visual judgment; do not install dependencies or choose new plans inside a loop. With no independent work, use the normal wait budget instead of explicit one-second status turns.
 
 ```javascript
-const listing = await tools.fs_list({path: 'workspace://repo'});
-text(listing.data);
-const first = await tools.fs_read({path: 'workspace://repo/config.json'});
-if (first.success) {
-    const config = JSON.parse(first.data.text);
-    const file = await tools.fs_stat({path: config.outputPath});
-    text({output: file.data});
+const edits = await tools.edit_files({files: [
+  {path: 'src/a.py', patches: [{oldText: 'old_a', newText: 'new_a'}]},
+  {path: 'src/b.py', patches: [{oldText: 'old_b', newText: 'new_b'}]}
+]});
+text(edits);
+if (edits.success && edits.data.allApplied) {
+  let result = await tools.run_command({argv: ['python', '-m', 'pytest', 'tests/test_feature.py', '-q']});
+  text(result);
+  for (let i = 0; i < 2 && result.success &&
+      (result.data.commandStatus === 'running' || result.data.outputReadComplete === false); i++) {
+    result = await tools.read_process({processId: result.data.processId});
+    text(result);
+  }
 }
 ```
 
@@ -38,3 +46,5 @@ Selected text above 16 KiB is saved as complete JSON before displaying a marked 
 Scripts may inspect known failures explicitly. UNKNOWN, cancellation and exhausted shared budgets stop dispatch even when caught. Completed effects remain and nothing is retried automatically. Cancellation settles admitted children and exits the interpreter. Core restart reconstructs receipts and preserves uncertain outcomes as UNKNOWN, without restoring JavaScript state or replaying code.
 
 This implementation supports result-dependent composition and selected observations, excluding Codex's cross-model-round yield/wait cells, deferred tool discovery and parallel leaf scheduling. These capabilities do not imply complete product compatibility. Fewer model calls need not mean lower tokens or latency: code, catalogs, mandatory receipts, extra reads and failures can offset savings. Saved-trajectory replay can verify deterministic recovery errors and projection overhead; regressions with an identical operation set exclude early-failure speedups. Separate mechanism evidence from real model adoption, cache hits and task quality. Cross-task capability claims follow the [evaluation methodology](../benchmarks/methodology.en.md).
+
+Known file ranges can be read in one program with `for (const path of paths) text(await tools.read_file({path,offset:1,limit:80}));`. Return content with `fileVersion/nextLine`; unfamiliar code still requires model interpretation. At the loop or time bound, preserve the actual process state, handle and cursor. `edit_files` also works directly with PTC disabled; existing file tools remain compatible; see the [tool contract](tools.en.md). Batch containers and each leaf count against the 64-call program bound and Turn tool budget; admission conservatively reserves the requested maximum number of leaves.

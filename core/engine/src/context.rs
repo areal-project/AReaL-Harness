@@ -8,6 +8,12 @@ const SUMMARY_LIMIT: usize = 16 * 1024;
 
 const PROJECT_INSTRUCTION_LIMIT: usize = 32 * 1024;
 
+#[derive(Default)]
+struct ProjectInstructions {
+    content: String,
+    checks: Vec<Value>,
+}
+
 // 只沿会话 cwd 的祖先链加载，不扫描无关子树，也不越过 Runtime 工作区。
 fn project_instruction_directories(workspace: &Path, cwd: &Path) -> anyhow::Result<Vec<String>> {
     let relative = cwd
@@ -694,12 +700,16 @@ impl Engine {
                 let _ = sent.send(result);
             });
         }
-        let content = received.await??;
-        if content.is_empty() {
+        let loaded = received.await??;
+        instructions.push(Kind::Other, "指令发现范围", &format!(
+            "\nProject instruction discovery (observed for this Turn): {}. The workspace-root-to-session-cwd chain has already been checked; missing/empty entries are confirmed empty observations, not a request to search parent directories. For a different target subtree, check only its additional ancestor directories, using AGENTS.override.md before AGENTS.md (first non-empty wins). Recheck if cwd, scope or instruction files change; descendants and paths outside this chain are not certified.\n",
+            json!({"workspaceRoot":runtime.workspace,"sessionCwd":cwd,"commandDefaultCwd":runtime.workspace,"checkedFiles":loaded.checks})
+        ));
+        if loaded.content.is_empty() {
             return Ok(Some(instructions));
         }
         instructions.push(Kind::Rules, "AGENTS.md", "\n\nProject AGENTS.md instructions (subordinate to the user's request and deployment permissions). In each directory, the first non-empty file wins: AGENTS.override.md, then AGENTS.md; only one file per directory is included. Each file applies only to its directory and descendants; closer files take precedence for files in their subtree. Before working in other directories, read their applicable instruction files using the same selection order. Only the workspace-root-to-session-cwd chain is loaded here:\n");
-        instructions.push(Kind::Rules, "AGENTS.md", &content);
+        instructions.push(Kind::Rules, "AGENTS.md", &loaded.content);
         Ok(Some(instructions))
     }
 
@@ -707,7 +717,7 @@ impl Engine {
         &self,
         cell: &Cell,
         paths: Vec<[String; 2]>,
-    ) -> anyhow::Result<String> {
+    ) -> anyhow::Result<ProjectInstructions> {
         use areal_runtime_protocol as rt;
         use base64::Engine as _;
         let client = &self.runtime.as_ref().unwrap().client;
@@ -723,7 +733,7 @@ impl Engine {
             .unwrap()
             .cancel
             .clone();
-        let mut content = String::new();
+        let mut loaded = ProjectInstructions::default();
         let mut remaining = PROJECT_INSTRUCTION_LIMIT;
         for candidates in paths {
             for path in candidates {
@@ -732,7 +742,10 @@ impl Engine {
                 )
                 .await
                 {
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        loaded.checks.push(json!({"path":path,"state":"missing"}));
+                        continue;
+                    }
                     Err(error) => return Err(error).context("cannot inspect project instructions"),
                     Ok(metadata) => anyhow::ensure!(
                         metadata.is_file() && metadata.len() <= PROJECT_INSTRUCTION_LIMIT as u64,
@@ -772,14 +785,22 @@ impl Engine {
                 let text =
                     String::from_utf8(bytes).with_context(|| format!("{path} must be UTF-8"))?;
                 if text.trim().is_empty() {
+                    loaded
+                        .checks
+                        .push(json!({"path":path,"state":"empty","sha256":value["sha256"]}));
                     continue;
                 }
+                loaded
+                    .checks
+                    .push(json!({"path":path,"state":"loaded","sha256":value["sha256"]}));
                 remaining -= text.len();
-                content.push_str(&format!("\n--- {path} ---\n{text}\n"));
+                loaded
+                    .content
+                    .push_str(&format!("\n--- {path} ---\n{text}\n"));
                 break;
             }
         }
-        Ok(content)
+        Ok(loaded)
     }
 
     pub(crate) async fn compact_context(

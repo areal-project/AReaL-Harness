@@ -23,6 +23,7 @@ Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后�
 | `fs_create` | `path,text`，只创建不存在的文件 |
 | `fs_write` | `path,text,fileVersion?/expectedSha256?`；省略版本使用本 Turn 最近观察，未观察时仅新建 |
 | `fs_apply_patches` | `path,patches[1..32],fileVersion?/expectedSha256?`；一次 CAS 原子应用多个唯一文本替换，任一失败则不写入 |
+| `edit_files` | `files[1..16]`；每项 `{path,text}` 新建或 `{path,patches,fileVersion?/expectedSha256?}` 修改；复用上述原生合同，按序执行、首错停止，非跨文件原子事务 |
 | `run_command` | `command` 或 `argv` 二选一；前者经 `/bin/bash -o pipefail -c`，后者直接执行；cwd 默认 `.` |
 | `verify_command` | `argv,cwd?,timeoutMs?,yieldMs?`；直接执行、拒绝 shell 入口，必须配置独立 scratch |
 | `read_process/write_process/terminate_process` | 本 Turn 进程句柄；续读、输入与终止 |
@@ -173,3 +174,11 @@ Goal/Task 中 ask_user_question 支持 mode=async；提问持久写入独立频�
 `read_history` 只读取当前 Thread，压缩和重启后仍可使用。列表页返回 `{items:[{itemId,turnId,type,preview}],nextBefore,order:"newestFirst"}`；指定 itemId 后使用 read_tool_result 同样的字节分页封套（resultId 标识历史条目）。跨条目/Thread 游标会拒绝。`agent_read` 返回的 `sourceItemId` 与 `activity.lastTool.id` 属于子会话，不能传给父会话的 `read_history`；完整交接应通过 `agent_read` 的 offset/nextOffset 读取。返回的是已记录证据，不执行原工具、不授予权限。显式工具 allowlist 需要包含 read_history，才可访问归档用户输入和回执。
 
 参考保留预算与连续失败硬上限属于默认关闭的实验策略；检查点回取及仍默认关闭非交互 stdin 的命令契约见[配置指南](configuration.md#参考保留与有界工具恢复)。原文回取、失败提示与 UNKNOWN 不重放不依赖这些实验开关。
+
+## 关联文件编辑与环境事实
+
+`edit_files` 不要求 JavaScript，保留全部旧文件入口。批量参数合计最多 64 KiB，路径规范化后不得重复；更新前必须观察文件，目录须已存在。形状和重复路径先校验，版本、权限、hooks 在各文件真正执行时校验，不承诺整批预检或回滚。每个文件消耗原生工具预算并持久化独立收据；Turn allowlist 必须同时允许容器及所用的 `fs_create/fs_apply_patches`。
+
+结果包含 `allApplied` 和逐文件 `files`：`APPLIED` 表示已确认成功，`FAILED` 表示已确认调用失败，`UNKNOWN` 表示效果未确认（包括在途取消），`NOT_RUN` 表示未派发。`receipt` 保留原生状态、版本、`callId/itemId`，不重复 JSON 的 data/text。容器错误附 `error`；首错后续文件不执行。失败不回滚已完成文件，不自动重放；重启从持久收据恢复，只有 UNKNOWN 仍需检查。只有调用成功且 allApplied=true 时才顺接预先选定的验证。
+
+每个 Turn 的指令快照记录 `workspaceRoot/sessionCwd/commandDefaultCwd` 与 `checkedFiles`，包括缺失、空内容和已加载文件的观察及摘要。只认证 root→cwd 链；目标子树的额外祖先仍需检查。路径、指令或作用域改变后重新发现；不据此扫描工作区外父目录。解释器和测试入口不由 Core 猜测或自动安装：使用同一命令环境的真实探测和项目声明，保留来源/版本；源码、环境或测试选择改变后，旧验证回执不再证明当前版本。

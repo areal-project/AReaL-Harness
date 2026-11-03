@@ -12,16 +12,24 @@
 
 ## 执行和观察
 
-`tool_program({code, timeoutMs?})` 在新的 QuickJS 上下文执行顶层 await。没有 Node、文件、网络、模块导入、计时器或跨调用状态；文件和进程操作只能调用目录里列出的原生工具。每个调用沿原 Core/Runtime 入口完成 schema、权限、hooks、文件版本、预算与持久化。只包含本次可见的内置工具以及 `read_history/read_tool_result`，不支持递归编排、MCP 或委派。
+`tool_program({code, timeoutMs?})` 在新的 QuickJS 上下文执行顶层 await。没有 Node、文件、网络、模块导入、计时器或跨调用状态；文件和进程操作只能调用目录里列出的原生工具。每个调用沿原 Core/Runtime 入口完成 schema、权限、hooks、文件版本、预算与持久化。只包含本次可见的内置工具以及 `read_history/read_tool_result/edit_files`，不支持递归编排、MCP 或委派。
+
+模型已读过文件并确定补丁和测试入口后，可以把关联修改、验证及有界回收放进同一程序。新错误、冲突、权限、UNKNOWN 或视觉判断必须回到模型；不在循环里安装依赖或更换方案。无独立工作时使用正常等待预算，不显式用 1 秒制造回收轮次。
 
 ```javascript
-const listing = await tools.fs_list({path: 'workspace://repo'});
-text(listing.data);
-const first = await tools.fs_read({path: 'workspace://repo/config.json'});
-if (first.success) {
-    const config = JSON.parse(first.data.text);
-    const file = await tools.fs_stat({path: config.outputPath});
-    text({output: file.data});
+const edits = await tools.edit_files({files: [
+  {path: 'src/a.py', patches: [{oldText: 'old_a', newText: 'new_a'}]},
+  {path: 'src/b.py', patches: [{oldText: 'old_b', newText: 'new_b'}]}
+]});
+text(edits);
+if (edits.success && edits.data.allApplied) {
+  let result = await tools.run_command({argv: ['python', '-m', 'pytest', 'tests/test_feature.py', '-q']});
+  text(result);
+  for (let i = 0; i < 2 && result.success &&
+      (result.data.commandStatus === 'running' || result.data.outputReadComplete === false); i++) {
+    result = await tools.read_process({processId: result.data.processId});
+    text(result);
+  }
 }
 ```
 
@@ -38,3 +46,5 @@ if (first.success) {
 已知失败可由脚本读取并作显式判断；UNKNOWN、取消和共享预算耗尽停止后续派发，不能被 catch 绕过。已产生的效果不回滚，不自动重试。取消先结算已准入叶子并退出解释器。Core 重启只重建父子回执，将不确定结果保留为 UNKNOWN；不恢复 JavaScript 状态、不重新执行代码。
 
 该实现支持数据依赖编排与选择观察，不包含 Codex 的跨模型轮 yield/wait 单元、工具延迟发现或并行叶子调度。这些能力不代表完整产品兼容。减少模型请求未必减少净 token 或总耗时；脚本、目录、强制回执、额外读取和失败恢复都可能抵消收益。可用既有轨迹回放验证确定性恢复错误与投影开销，用同一操作集回归排除提前失败导致的假提速。真实模型采用率、缓存命中和任务质量仍须与机制证据区分；跨任务能力声明遵循[评测方法](../benchmarks/methodology.md)。
+
+已知范围的多文件读取可直接在一个程序中 `for (const path of paths) text(await tools.read_file({path,offset:1,limit:80}));`。正文和 `fileVersion/nextLine` 一并返回；未知代码的理解仍由模型完成。进程到达循环或时间上限时保留真实状态、句柄和游标，不自动认定完成。`edit_files` 可直接调用，不依赖启用 PTC；原文件工具继续兼容，详见[工具合同](tools.md)。批量容器及其每个叶子均计入程序的 64 次上限和 Turn 工具预算；准入按请求的最大叶子数保守预留。
