@@ -930,7 +930,7 @@ export function DraftComposer({
               composerPaste(event, (pasted) => setFiles((current) => [...current, ...pasted]));
           }}
           topContent={
-            <div hidden={!!outgoing && !files.length}>
+            <div hidden={!!outgoing}>
               {skills.tags}
               <div className="composer-attachment-row">
                 {files.length ? (

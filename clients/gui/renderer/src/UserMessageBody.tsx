@@ -6,6 +6,7 @@ import { stripGenUiModelContext } from "@areal/gen-ui/contract";
 import { Box } from "lucide-react";
 import { MessageResponse } from "./components/ai-elements/message.js";
 import { formatSkillMentionDisplayLabel } from "./mentions/mentionMarkdown.js";
+import { DraftAttachment } from "./MessageAttachment.js";
 
 type UserMessageProjection = {
   text: string;
@@ -135,7 +136,7 @@ export function PendingMessageView({
           {!!message.files.length && (
             <div className="user-attachments">
               {message.files.map((file, index) => (
-                <span key={index}>{file.name}</span>
+                <DraftAttachment key={index} file={file} />
               ))}
             </div>
           )}

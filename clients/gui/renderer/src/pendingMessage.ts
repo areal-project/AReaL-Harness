@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 // 仅表示本地在途输入；草稿和 Core 回执继续由原提交链路管理。
 export type PendingMessage = {
   text: string;
-  files: readonly { name: string }[];
+  files: readonly File[];
   previousUserIds: readonly string[];
   starting?: boolean;
 };

@@ -337,14 +337,22 @@ export function ImagePreview({
   );
 }
 
-export function DraftAttachment({ file, onRemove }: { file: File; onRemove: () => void }) {
+export function DraftAttachment({ file, onRemove }: { file: File; onRemove?: () => void }) {
   const [url, setUrl] = useState("");
   useEffect(() => {
     const objectUrl = URL.createObjectURL(file);
     setUrl(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
   }, [file]);
-  return <AttachmentTile name={file.name} mime={file.type} url={url} onRemove={onRemove} />;
+  return (
+    <AttachmentTile
+      name={file.name}
+      mime={file.type}
+      url={url}
+      onRemove={onRemove}
+      sent={!onRemove}
+    />
+  );
 }
 
 export function SentAttachment({

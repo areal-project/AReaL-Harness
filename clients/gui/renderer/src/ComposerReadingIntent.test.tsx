@@ -32,7 +32,7 @@ vi.mock("./ConversationComposer.js", () => ({
   ConversationComposer: (props: ComponentProps<typeof ConversationComposer>) => {
     observed.submit = props.onSubmit;
     observed.modifiedSubmit = props.onModifiedSubmit;
-    return null;
+    return props.topContent;
   },
 }));
 vi.mock("./components/ui/button.js", () => ({
@@ -66,24 +66,26 @@ function fixture(plan = false, file = false, running = false) {
       requestId: "original-request",
     }),
   );
-  renderToStaticMarkup(
-    createElement(Composer, {
-      project: {
-        id: projectId,
-        root: "/preview",
-        models: [],
-        pending: [],
-        configurations: { thread: config },
-        state: { connected: true, threads: { thread }, interactions: {}, queues: {} },
-      },
-      thread,
-      action: action as Action,
-      executionBlocked: false,
-      onPanel: () => {},
-      onNew: () => {},
-    }),
-  );
-  return { key, owner, action };
+  const render = () =>
+    renderToStaticMarkup(
+      createElement(Composer, {
+        project: {
+          id: projectId,
+          root: "/preview",
+          models: [],
+          pending: [],
+          configurations: { thread: config },
+          state: { connected: true, threads: { thread }, interactions: {}, queues: {} },
+        },
+        thread,
+        action: action as Action,
+        executionBlocked: false,
+        onPanel: () => {},
+        onNew: () => {},
+      }),
+    );
+  render();
+  return { key, owner, action, render };
 }
 
 describe("Composer reading intent across unknown boundaries", () => {
@@ -175,4 +177,27 @@ describe("Composer follow-up destination before acceptance", () => {
       setApplicationPreferences({ followUp: "queue" });
     },
   );
+});
+
+describe("Composer pending attachment visibility", () => {
+  it("hides captured attachments during submission and restores them after rejection", async () => {
+    const f = fixture(false, true);
+    let reject!: (error: Error) => void;
+    f.action.mockReset().mockImplementation(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    observed.submit!("message with attachment");
+    await vi.waitFor(() => expect(f.action).toHaveBeenCalledOnce());
+    expect(f.render()).toContain('<div hidden="">');
+    expect(attachmentDrafts.get(f.key)).toHaveLength(1);
+    reject(new Error("upload rejected"));
+    await vi.waitFor(() => expect(sending.has(f.key)).toBe(false));
+    expect(f.render()).not.toContain('<div hidden="">');
+    expect(attachmentDrafts.get(f.key)).toHaveLength(1);
+    attachmentDrafts.delete(f.key);
+    readingViews.delete(f.owner);
+  });
 });

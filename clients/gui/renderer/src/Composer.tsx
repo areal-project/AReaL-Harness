@@ -1116,7 +1116,7 @@ export function Composer({
             composerPaste(event, (pasted) => setFiles((current) => [...current, ...pasted]))
           }
           topContent={
-            <div hidden={!!outgoing && !files.length}>
+            <div hidden={!!outgoing}>
               {queueEditor.edit && (
                 <div className="composer-queue-edit-banner" aria-label="编辑排队消息">
                   <span>
