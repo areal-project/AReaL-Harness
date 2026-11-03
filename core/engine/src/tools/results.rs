@@ -294,6 +294,27 @@ impl Engine {
             kind = "coordination-v2-preview-v1";
             reason = "pagedHandoffPreview";
         }
+        if raw.get("processId").is_some()
+            && (value.to_string().len() > MAX_RESULT
+                || value["stdout"].as_str().map_or(0, str::len)
+                    + value["stderr"].as_str().map_or(0, str::len)
+                    > raw["outputPageBytes"].as_u64().unwrap_or(8192) as usize)
+        {
+            // 已收集区间先保存，再缩短显示。保存失败仍可从 Runtime 原游标回取，不重放进程。
+            if snapshot.is_none() {
+                value["rawResult"] = json!({"processId":raw["processId"],"after":raw["collectedFromCursor"],"view":"raw",
+                    "readback":"read_process with this processId, after and view=raw; follow nextCursor",
+                    "scope":"Runtime process lifetime; durable snapshot unavailable"});
+            }
+            if let Some(preview) = output::bounded_preview(
+                &value,
+                raw["outputPageBytes"].as_u64().unwrap_or(8192) as usize,
+            ) {
+                value = preview;
+                kind = "process-collected-preview-v1";
+                reason = "boundedDisplayWithRawEvidence";
+            }
+        }
         if value.to_string().len() > MAX_RESULT && !program {
             // 先装入可信回取引用，再分配头尾预算；不能让通用截断删掉回取入口。
             let full = value.to_string();
@@ -1230,13 +1251,14 @@ mod observation_tests {
 #[cfg(test)]
 mod repeated_projection_tests {
     use super::*;
-    struct PendingModel;
+    struct PendingModel(Arc<tokio::sync::Notify>);
     #[async_trait::async_trait]
     impl Model for PendingModel {
         fn name(&self) -> &str {
             "pending-fixture"
         }
         async fn stream(&self, _: Vec<Message>) -> anyhow::Result<model::ModelStream> {
+            self.0.notify_one();
             Ok(Box::pin(futures_util::stream::pending()))
         }
     }
@@ -1245,9 +1267,10 @@ mod repeated_projection_tests {
         let directory = tempfile::tempdir().unwrap();
         let mut extensions = ToolExtensions::default();
         extensions.policy.result_views.repeated_observations = true;
+        let entered = Arc::new(tokio::sync::Notify::new());
         let engine = Engine::open_with_extensions(
             directory.path(),
-            Arc::new(PendingModel),
+            Arc::new(PendingModel(entered.clone())),
             Limits::default(),
             None,
             extensions,
@@ -1256,6 +1279,10 @@ mod repeated_projection_tests {
         let thread = engine.create("/fixture".into()).await.unwrap();
         engine
             .start(&thread.id, vec![Input::text("observe")])
+            .await
+            .unwrap();
+        // 先让模型进入等待，避免 fixture 改写历史触发并发请求组装的重启清空。
+        tokio::time::timeout(Duration::from_secs(10), entered.notified())
             .await
             .unwrap();
         let cell = engine.cell(&thread.id).await.unwrap();

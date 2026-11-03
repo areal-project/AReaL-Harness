@@ -119,6 +119,50 @@ fn successful_progress(kind: &str, line: &str) -> bool {
     }
 }
 
+/// 只缩短正文；退出事实、失败、游标及原文引用始终保留为结构化字段。
+pub(super) fn bounded_preview(
+    raw: &serde_json::Value,
+    max_bytes: usize,
+) -> Option<serde_json::Value> {
+    use serde_json::json;
+    raw.get("processId")?;
+    let raw_bytes =
+        raw["stdout"].as_str().unwrap_or("").len() + raw["stderr"].as_str().unwrap_or("").len();
+    let mut value = raw.clone();
+    for limit in [max_bytes, max_bytes / 2, 2048, 1024, 512, 128, 0] {
+        let mut displayed = 0;
+        for key in ["stdout", "stderr"] {
+            let text = raw[key].as_str().unwrap_or("");
+            let budget = limit / 2;
+            let view = if text.len() <= budget {
+                text.to_owned()
+            } else {
+                let head = super::prefix(text, budget / 4);
+                let tail = super::suffix(text, budget * 3 / 4);
+                displayed += head.len() + tail.len();
+                value[format!("{key}OmittedBytes")] = json!(text.len() - head.len() - tail.len());
+                format!("{head}\n[body omitted; retrieve rawResult for this interval]\n{tail}")
+            };
+            if text.len() <= budget {
+                displayed += text.len();
+            }
+            value[key] = json!(view);
+        }
+        // 二进制证据留在快照或 Runtime 原文中，不能把 base64 再带进模型预览。
+        value.as_object_mut()?.remove("stdoutBase64");
+        value.as_object_mut()?.remove("stderrBase64");
+        value["displayOmittedBytes"] = json!(raw_bytes.saturating_sub(displayed));
+        value["evidenceSufficiency"] = json!("requiresJudgment");
+        value["previewNote"] = json!(
+            "Head/tail preview, not a semantic summary. Exit status and outputReadComplete are execution facts, not proof of correctness. Retrieve omitted evidence only if needed for the decision; do not rerun the command."
+        );
+        if value.to_string().len() <= super::MAX_RESULT {
+            return Some(value);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

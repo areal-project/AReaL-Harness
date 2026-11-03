@@ -904,6 +904,7 @@ impl Supervisor {
                     }
                     return Err(exhausted("ancestor process budget exhausted"));
                 }
+                let output = Output::new(self.config.output_window_bytes)?;
                 for ancestor in &ancestors {
                     state
                         .scopes
@@ -932,14 +933,7 @@ impl Supervisor {
                         ancestors,
                         cancel,
                         limits,
-                        // A fast helper can finish before its consumer polls.
-                        // Retain its entire bounded envelope independently of
-                        // the configurable command-output window.
-                        output: Output::new(if helper.is_some() {
-                            self.config.output_window_bytes.max(MAX_FRAME_BYTES)
-                        } else {
-                            self.config.output_window_bytes
-                        }),
+                        output,
                         charge_output,
                         accepts_stdin: request.tty || request.pipe_stdin,
                     },
@@ -1144,7 +1138,11 @@ impl Supervisor {
             }
         }
         let process = state.processes.get_mut(process_id).unwrap();
-        process.output.append(stream, &bytes[..accepted]);
+        if let Err(error) = process.output.append(stream, &bytes[..accepted]) {
+            process.output.truncated = true;
+            process.info.stop_reason.get_or_insert(error.message);
+            process.cancel.cancel();
+        }
         if accepted < bytes.len() {
             process.output.truncated = true;
             process
@@ -1186,7 +1184,7 @@ impl Supervisor {
         process.info.state = ProcessState::Unknown;
         process.info.cleanup_error = Some(reason.into());
         process.info.failure_reason = Some(reason.into());
-        process.output.closed = true;
+        process.output.close();
         process.output.truncated = true;
         let owners = process.ancestors.clone();
         for owner in owners {
@@ -1564,7 +1562,7 @@ fn release_process(state: &mut Registry, process_id: &str) {
         process.info.state = ProcessState::Exited;
     }
     process.info.cleanup_confirmed = true;
-    process.output.closed = true;
+    process.output.close();
     let owners = process.ancestors.clone();
     for owner in owners {
         state.scopes.get_mut(&owner).unwrap().info.active_processes -= 1;

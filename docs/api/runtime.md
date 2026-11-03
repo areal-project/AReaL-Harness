@@ -103,6 +103,8 @@ Rust Client 的 `launch_with_limits` 投影可信 PATH 并向 Runtime 传递上�
 
 Runtime daemon 可用 `--cumulative-output-bytes` 独立设置部署及 Scope 后代累计输出上限；省略时等于 `--output-bytes`，且不得小于单进程上限。进程仍受 `--output-bytes` 限制，输出窗口另由 `--output-window-bytes` 约束。stdout/stderr 的真实接受字节对每个祖先累计一次；重复读取保留输出不再收费。文件助手的 JSON/base64 响应也是进程输出。
 
+`--output-window-bytes` 现在限制热内存窗口。Runtime 将已经接受的原始输出在热窗口不足时保存到私有临时文件，支持窗口外的原游标回取；该文件随保留的进程记录清理，不构成跨 Runtime 重启的持久历史。磁盘上每字节带一个流标记，最多为已接受输出的两倍，不扩大进程或祖先输出额度；读取不重复计费。保留失败会停止进程并报告截断/失败，不能静默丢失证据。
+
 Core 使用 `readForHistory` 捕获条件编辑的历史前像。仅这一经过校验的文件助手使用独立的 `MAX_FRAME_BYTES - 4096` 响应上限，不消耗命令或祖先输出额度。读取权限、文件大小、进程容量、时限和操作保留上限继续适用。普通 `read` 与 `process.start` 保留原有输出计量。
 
 ## 有界 hook 写入组

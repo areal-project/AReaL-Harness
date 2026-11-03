@@ -470,7 +470,7 @@ fn definitions_with_policy(policy: &ToolPolicy) -> Vec<Value> {
         tool(
             "read_process",
             &format!(
-                "Collect output until completion or waitMs (default {}; 0 drains retained output without waiting). Output pages are bounded to {} bytes and may return earlier. No fixed wait ceiling; Turn deadline and cancellation still apply. Omit after to resume this Turn's last returned cursor. Explicit null starts at the earliest retained output. Set view=raw to disable folding and inspect original output, including on every continuation. Check state, exitCode and stopReason; gap means older output was lost.",
+                "Collect output until completion or waitMs (default {}; 0 drains retained output without waiting). Auto collects up to 1 MiB/512 Runtime pages per call; the model preview is bounded to {} bytes. Collected output may be omitted from the preview, with a rawResult reference. Process completion, outputReadComplete and evidence sufficiency are distinct. No fixed wait ceiling; Turn deadline and cancellation still apply. Omit after to resume this Turn's last returned cursor. Explicit null starts at the earliest retained output. Set view=raw to disable folding and inspect original output, including on every continuation. Check state, exitCode and stopReason; gap means older output was lost.",
                 policy.read_wait_ms, policy.output_page_bytes
             ),
             json!({"processId":process_id,"after":{"type":["string","null"]},"waitMs":{"type":"integer","minimum":0,"default":policy.read_wait_ms},"view":{"type":"string","enum":["auto","raw"],"default":"auto"}}),
@@ -2017,12 +2017,30 @@ async fn process_output(
     let mut closed = false;
     // Bound raw bytes and the escaped model payload independently. The latter
     // keeps binary/control-heavy output from falling into the journal fallback.
-    let mut remaining = output_page_bytes;
-    let mut request_bytes = remaining.min(1024);
+    // 收集预算与模型展示预算分离；原文交给既有结果快照保存后再投影。
+    let collection_limit = if read.view == OutputView::Auto {
+        1024 * 1024
+    } else {
+        output_page_bytes
+    };
+    let mut remaining = collection_limit;
+    let mut request_bytes = if read.view == OutputView::Auto {
+        rt::MAX_READ_BYTES
+    } else {
+        1024
+    }
+    .min(remaining);
+    let mut pages = 0;
+    let from_cursor = after.clone();
     let return_reason = loop {
-        if remaining == 0 {
-            break "outputLimit";
+        if remaining == 0 || pages >= 512 {
+            break if read.view == OutputView::Auto {
+                "collectionLimit"
+            } else {
+                "outputLimit"
+            };
         }
+        pages += 1;
         let mut wait = budget.saturating_sub(started.elapsed());
         if output_quiet_ms > 0
             && let Some(last) = last_output
@@ -2062,7 +2080,8 @@ async fn process_output(
                 "Runtime returned more output than requested",
             ));
         }
-        let fits = model_output_fits(&stdout, &stderr, &page_stdout, &page_stderr);
+        let fits = read.view == OutputView::Auto
+            || model_output_fits(&stdout, &stderr, &page_stdout, &page_stderr);
         if !fits && (!page_stdout.is_empty() || !page_stderr.is_empty()) {
             // Retry from the same cursor with a smaller request. Runtime output
             // is retained, so no bytes are lost while finding a JSON-safe page.
@@ -2096,7 +2115,7 @@ async fn process_output(
         }
         request_bytes = request_bytes.max(1024).min(remaining.max(1));
         // waitMs=0 只禁止等待新输出，已保留的字节仍应填满当前安全页。
-        if started.elapsed() >= budget && !received_output {
+        if started.elapsed() >= budget && (!received_output || read.wait_ms > 0) {
             break "waitBudget";
         }
         if output_quiet_ms > 0
@@ -2113,7 +2132,9 @@ async fn process_output(
             "process outcome is UNKNOWN",
         ));
     }
-    let success = info.state != rt::ProcessState::Unknown
+    let success = !gap
+        && !truncated
+        && info.state != rt::ProcessState::Unknown
         && (info.state != rt::ProcessState::Exited
             || (info.exit_code == Some(0) && info.stop_reason.is_none()));
     let command_status = if info.state != rt::ProcessState::Exited {
@@ -2129,9 +2150,11 @@ async fn process_output(
     let stderr_text = String::from_utf8_lossy(&stderr).into_owned();
     // 保留 Runtime 的退出事实；137 也可能是程序自行返回，不能据此猜测信号或终止来源。
     let mut result = json!({"processId":read.process_id, "state":info.state, "returnReason":return_reason, "exitCode":info.exit_code, "signal":info.signal, "sandboxDenied":info.sandbox_denied, "stopReason":info.stop_reason, "stdout":stdout_text, "stderr":stderr_text, "stdoutBytes":stdout.len(), "stderrBytes":stderr.len(), "outputPageBytes":output_page_bytes, "nextCursor":after, "outputClosed":closed, "gap":gap, "truncated":truncated,
-        "commandStatus":command_status,"outputReadComplete":closed,
+        "commandStatus":command_status,"processComplete":info.state == rt::ProcessState::Exited,"outputReadComplete":closed,
+        "collectedFromCursor":from_cursor,"collectionLimitBytes":collection_limit,"collectionPages":pages,
+        "evidenceStatus":if gap || truncated { "incomplete" } else if closed { "collected" } else { "partial" },
         "outputIntegrity":if gap || truncated { "incomplete" } else { "retained" },
-        "nextAction":if !closed { "Read this process again to collect remaining/new output; omit after to continue." } else { "Retained output has been read to its end. Evaluate the actual checks; exit zero alone does not prove correctness." }});
+        "nextAction":if !closed { "Process or collection remains unfinished. Continue the same process within the remaining budget when necessary; omit after to resume." } else { "Retained output has been read to its end. Evaluate the actual checks; exit zero alone does not prove correctness." }});
     if read.view == OutputView::Auto
         && std::str::from_utf8(&stdout).is_ok()
         && std::str::from_utf8(&stderr).is_ok()

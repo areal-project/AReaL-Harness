@@ -103,6 +103,8 @@ Defaults are 30 seconds per process, 8 MiB cumulative descendant output and 4 co
 
 The Runtime daemon accepts `--cumulative-output-bytes` to set cumulative deployment/descendant-Scope output independently. Omitted values equal `--output-bytes` and explicit values cannot be smaller than the per-process cap. Each process remains bounded by `--output-bytes`; retained windows are separately bounded by `--output-window-bytes`. Accepted stdout/stderr bytes are charged once to each ancestor; rereading retained output does not charge again. File-helper JSON/base64 responses are process output too.
 
+`--output-window-bytes` now bounds the hot memory window. Runtime retains accepted raw output in a private temporary file when the hot window fills for cursor readback beyond that window. The file is reclaimed with the retained process record; it is not durable history across Runtime restarts. A stream tag accompanies each byte, bounding disk use to twice accepted output without increasing process or ancestor quotas; rereads are not charged again. Retention failure stops the process and reports truncation/failure rather than silently losing evidence.
+
 Core uses `readForHistory` to capture a conditional edit's historical preimage. Only this validated filesystem helper uses a private response cap of `MAX_FRAME_BYTES - 4096` and does not consume command or ancestor output quotas. Read permissions, file bounds, process capacity, deadlines and retained-operation limits still apply. Ordinary `read` and `process.start` retain their existing output accounting.
 
 ## Bounded hook write groups

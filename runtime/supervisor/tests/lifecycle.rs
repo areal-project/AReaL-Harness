@@ -1469,7 +1469,7 @@ async fn cumulative_output_does_not_reset_when_children_exit() {
 }
 
 #[tokio::test]
-async fn byte_cursor_reports_eviction_and_respects_small_reads() {
+async fn byte_cursor_reads_retained_output_beyond_memory_window() {
     let dir = tempfile::tempdir().unwrap();
     let executor = Executor::new(false);
     let mut config = Config::read_only(dir.path().into());
@@ -1490,11 +1490,11 @@ async fn byte_cursor_reports_eviction_and_respects_small_reads() {
         })
         .await
         .unwrap();
-    assert!(first.gap);
+    assert!(!first.gap);
     assert!(!first.closed);
     assert_eq!(
         STANDARD.decode(&first.chunks[0].data_base64).unwrap(),
-        b"45"
+        b"01"
     );
     let second = runtime
         .output(ReadOutput {
@@ -1506,10 +1506,10 @@ async fn byte_cursor_reports_eviction_and_respects_small_reads() {
         .await
         .unwrap();
     assert!(!second.gap);
-    assert!(second.closed);
+    assert!(!second.closed);
     assert_eq!(
         STANDARD.decode(&second.chunks[0].data_base64).unwrap(),
-        b"67"
+        b"23"
     );
     let error = runtime
         .output(ReadOutput {

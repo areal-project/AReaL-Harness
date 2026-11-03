@@ -1119,7 +1119,7 @@ async fn output_does_not_short_circuit_budgets_pty_deadlines_or_loss() {
         let client = process_fixture(2000, Some(100), Some("wallTime"), loss).await;
         let started = Instant::now();
         let (success, result) = command(&client, None, false).await;
-        assert_eq!(success, loss); // Loss returns a still-running process; it is not test success.
+        assert!(!success); // 输出缺失和进程终止都不能作为成功收据。
         assert_eq!(
             result["returnReason"],
             if loss { "outputLoss" } else { "completed" }
@@ -2148,4 +2148,85 @@ fn environment_fact_snapshot_keeps_source_reference_without_repeating_declaratio
     assert_eq!(snapshot["environmentFacts"][0]["fingerprint"], "observed");
     assert!(!snapshot.to_string().contains("public config"));
     assert!(snapshot.to_string().len() < 2000);
+}
+
+#[tokio::test(start_paused = true)]
+async fn collection_drains_many_display_pages_and_keeps_exit_failure() {
+    let raw = format!(
+        "{}\nFAIL: assertion in final output\n",
+        "progress\n".repeat(9000)
+    );
+    let client = process_fixture_output(0, Some(0), Some("wallTime"), false, raw.clone()).await;
+    let (success, result) = process_output(
+        &client,
+        "scope",
+        ReadProcess {
+            process_id: "process".into(),
+            after: None,
+            wait_ms: 0,
+            view: OutputView::Auto,
+        },
+        0,
+        None,
+        8192,
+    )
+    .await
+    .unwrap();
+    assert!(!success);
+    assert_eq!(result["stdout"], raw);
+    assert_eq!(result["processComplete"], true);
+    assert_eq!(result["outputReadComplete"], true);
+    let mut archived = result.clone();
+    archived["rawResult"] = json!({"resultId":"saved-output"});
+    let view = output::bounded_preview(&archived, 8192).unwrap();
+    assert_eq!(view["commandStatus"], "terminated");
+    assert_eq!(view["exitCode"], 1);
+    assert_eq!(view["rawResult"]["resultId"], "saved-output");
+    assert!(view["stdout"].as_str().unwrap().contains("FAIL: assertion"));
+    assert!(view["displayOmittedBytes"].as_u64().unwrap() > 60000);
+    assert_eq!(view["evidenceSufficiency"], "requiresJudgment");
+    assert!(view.to_string().len() <= MAX_RESULT);
+    client.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn collection_cap_does_not_confuse_process_exit_with_drained_output() {
+    let raw = "x".repeat(1024 * 1024 + 19);
+    let client = process_fixture_output(0, Some(0), None, false, raw).await;
+    let (_, first) = process_output(
+        &client,
+        "scope",
+        ReadProcess {
+            process_id: "process".into(),
+            after: None,
+            wait_ms: 0,
+            view: OutputView::Auto,
+        },
+        0,
+        None,
+        8192,
+    )
+    .await
+    .unwrap();
+    assert_eq!(first["commandStatus"], "succeeded");
+    assert_eq!(first["outputReadComplete"], false);
+    assert_eq!(first["returnReason"], "collectionLimit");
+    let (_, last) = process_output(
+        &client,
+        "scope",
+        ReadProcess {
+            process_id: "process".into(),
+            after: Some(first["nextCursor"].as_str().unwrap().into()),
+            wait_ms: 0,
+            view: OutputView::Auto,
+        },
+        0,
+        None,
+        8192,
+    )
+    .await
+    .unwrap();
+    assert_eq!(last["stdout"].as_str().unwrap().len(), 19);
+    assert_eq!(last["outputReadComplete"], true);
+    client.shutdown().await.unwrap();
 }

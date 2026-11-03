@@ -70,13 +70,15 @@ areal exec --config ./config.toml --workspace ./artifact-workspace \
 
 `run_command` 的非 PTY stdin 默认关闭；显式 `stdinOpen:true` 保持管道以供后续写入，`stdinOpen:false` 明确关闭，PTY 行为不变。`write_process {processId,text?,close?}` 可写入非空文本、用 `close:true` 单独发送 EOF，或先写入再关闭；不能同时省略文本与关闭动作。不重启命令，仍要求当前 Turn 所有权和 Runtime 权限。`stdinMode` 报告 closed/pipe/pty；旧配置可显式选择默认开放管道，见配置指南。
 
-命令 timeoutMs 默认 600000，受 Runtime 授权截断并返回 effectiveTimeoutMs。普通命令/续读默认等 120 秒，PTY 1 秒；`yieldMs` / `waitMs` 接受非负 u64，0 不等待新输出，但会在页上限内读完已保留的字节。等待不改变进程期限或持有模型许可，每次收集最多 `tools.policy.outputPageBytes`（默认 8192）字节；JSON 转义会占用模型结果预算，控制字符较多时实际页会自动缩小并通过 cursor 续读。Jest、Karma、Mocha、Cargo test、Pytest 和 Go test 的成功进度行可折叠，完整保留其他行和 stdout/stderr 边界；只在包含元数据的序列化结果更小时启用视图。未知命令、复合 shell 命令和丢失输出保持原样。无输出或早期输出默认都继续等待；显式设置 outputQuietMs>0 才按静默窗口提前返回，底层轮询每次最多 1 秒。
+命令 timeoutMs 默认 600000，受 Runtime 授权截断并返回 effectiveTimeoutMs。普通命令/续读默认等 120 秒，PTY 1 秒；`yieldMs` / `waitMs` 接受非负 u64，0 不等待新输出，但会在收集上限内读取已保留字节。等待不改变进程期限或持有模型许可；`tools.policy.outputPageBytes`（默认 8192）限制展示量和 raw 页，auto 的收集上限独立。JSON 转义也计入展示预算。Jest、Karma、Mocha、Cargo test、Pytest 和 Go test 的成功进度行可折叠，完整保留其他行和 stdout/stderr 边界；只在包含元数据的序列化结果更小时启用视图。未知命令和复合 shell 命令不做格式猜测；大结果仍有显式的有界预览，输出丢失不会被隐藏。无输出或早期输出默认都继续等待；显式设置 outputQuietMs>0 才按静默窗口提前返回，底层轮询每次最多 1 秒。
 
 单独 EOF 使用该工具调用已持久化的 Runtime operation ID；写入后再关闭使用两个不同操作 ID，保留执行顺序，避免审计身份指向未执行的操作。
 
-`returnReason` 为 completed、waitBudget、outputLimit、outputLoss 或 outputQuiet。`commandStatus` 为 running/succeeded/failed/terminated；`outputReadComplete` / `outputClosed` 表示生产者关闭且保留输出读完，`outputIntegrity` 为 retained/incomplete，`nextAction` 提示后续操作。completed 不代替退出码检查，gap/truncated 即使读完仍表示丢失。
+`returnReason` 为 completed、waitBudget、collectionLimit、outputLimit（raw 转义上限）、outputLoss 或 outputQuiet。`commandStatus` 为 running/succeeded/failed/terminated；`outputReadComplete` / `outputClosed` 表示生产者关闭且保留输出读完，`outputIntegrity` 为 retained/incomplete，`nextAction` 提示后续操作。completed 不代替退出码检查，gap/truncated 即使读完仍表示丢失。
 
 `run_command` 与 `read_process` 保留 Runtime 的 `exitCode`、`signal`、`sandboxDenied` 和 `stopReason`。`signal` 为 POSIX 信号编号的十进制字符串（例如 `"9"`），正常退出时为 null；shell 返回 137 不会被推断为信号 9。信号本身不说明发送者，`sandboxDenied=false` 也不能证明没有沙箱拒绝；仅凭 SIGKILL 不能认定是超时、内存不足或系统安全软件终止。
+
+默认 `auto` 在一次调用内有界收集最多 1 MiB、512 个 Runtime 页，等待仍遵守显式预算、Turn 截止时间与取消；不会因 8 KiB 展示量已满而立即返回模型。`waitMs=0` 只排空当前保留输出。已退出进程仍可能 `outputReadComplete=false`；`processComplete`、输出读完与证据充分不是同一事实。完整已收集区间由现有工具结果快照保存，模型保留结构化状态和有界正文；遗漏量、原文引用、游标均显式返回，未识别正文仅作头尾预览，不声称语义总结。必要诊断可能位于遗漏范围，必须按判断需要回取，不能凭退出码或预览宣布验证通过。`raw` 保留旧的逐页读取契约。
 
 read_process 省略 after 接续本 Turn 最近返回的游标，显式 null 从最早保留输出开始。`view="auto"` 默认折叠成功进度；`view="raw"` 返回原始页，续读时也须指定 raw。回看已提供 rawResult 的历史页使用 `read_tool_result`；仍在 Runtime 保留的进程输出可用 `after=null,view="raw"`；结束游标之后没有旧内容。短进程/游标/fileVersion 句柄绑定 Turn 和目标，Core 展开后仍执行 Runtime 权限检查；格式错误返回可恢复错误，不猜测句柄。最多缓存 128 个文件版本和每进程一个当前游标别名，旧显式游标会过期。`task_state` 的 observedOnly=true 表示历史观察，不能证明当前状态；压缩保留这些缓存，Turn 结束或重启即失效。
 
