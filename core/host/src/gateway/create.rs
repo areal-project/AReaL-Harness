@@ -55,6 +55,33 @@ impl Session {
             );
             return self.command_result(project, Some(&record), &command).await;
         }
+        let profile = crate::launch::remote_profile(&crate::server::schedule_connection::inputs(
+            &self.host, &id,
+        )?)?;
+        let profiles = if profile.is_some() {
+            Some(
+                self.rpc(project, generation, "areal/profile/list", json!({}))
+                    .await,
+            )
+        } else {
+            None
+        };
+        if let Some(record) = self.command_record(project, &command)? {
+            ensure!(
+                record["remote"]["semanticDigest"] == digest,
+                "COMMAND_CONFLICT"
+            );
+            return self.command_result(project, Some(&record), &command).await;
+        }
+        if let (Some(profile), Some(profiles)) = (&profile, profiles) {
+            let profiles = profiles?;
+            ensure!(
+                profiles["data"].as_array().is_some_and(|rows| rows
+                    .iter()
+                    .any(|row| row["id"] == profile.id && row["revision"] == profile.revision)),
+                "RESOURCE_UNAVAILABLE"
+            );
+        }
         ensure!(
             caps["features"]["threadStartAdmissionGuard"] == true
                 && caps["features"]["permissionPresets"] == true
@@ -73,10 +100,16 @@ impl Session {
                 == scope,
             "RESYNC_REQUIRED"
         );
+        ensure!(
+            crate::launch::remote_profile(&crate::server::schedule_connection::inputs(
+                &self.host, &id
+            )?)? == profile,
+            "RESYNC_REQUIRED"
+        );
         let operation = uuid::Uuid::new_v4().to_string();
         let workspace = self.host.slots.borrow()[&id].registration.workspace.clone();
         let native: areal_protocol::desktop::ThreadStart = serde_json::from_value(
-            json!({"requestId":operation,"cwd":workspace,"options":{"permissionPreset":"ask"},"admissionGuard":{"ordinarySession":true},"creationAdmission":caps["features"]["threadCreationJournal"]["binding"]}),
+            json!({"requestId":operation,"cwd":workspace,"options":{"permissionPreset":"ask"},"agentProfile":profile,"admissionGuard":{"ordinarySession":true},"creationAdmission":caps["features"]["threadCreationJournal"]["binding"]}),
         )?;
         let native_digest = areal_local_service::storage::digest(&serde_json::to_vec(&native)?);
         let native = serde_json::to_value(native)?;
@@ -144,7 +177,15 @@ impl Session {
                     return Ok(Self::command_view(Some(&record), &command));
                 };
                 settled["admissionState"] = json!("rejected");
-                settled["error"] = rejected.0.clone();
+                settled["error"] = if rejected.0["code"] == -32602
+                    && rejected.0["message"]
+                        .as_str()
+                        .is_some_and(|message| message.contains("UNSUPPORTED_PROFILE:"))
+                {
+                    json!({"code":"UNSUPPORTED_PROFILE","coreCode":-32602})
+                } else {
+                    rejected.0.clone()
+                };
             }
         }
         let settled = self.settle_command(&id, settled)?;

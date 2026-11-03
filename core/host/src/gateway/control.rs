@@ -88,7 +88,12 @@ impl Host {
                                         && active.revision == grant["revision"]
                                         && active.transport == transport_key(config, active.kind))
                             );
-                        grant["lastSeenAt"] = Value::Null;
+                        grant["lastSeenAt"] = self
+                            .gateway
+                            .last_seen
+                            .borrow()
+                            .get(grant["devicePeerId"].as_str().unwrap_or_default())
+                            .map_or(Value::Null, |seen| json!(seen));
                         grant
                     })
                     .collect::<Vec<_>>()
@@ -536,6 +541,19 @@ impl Host {
                 &self.migration,
                 &projects,
             )?;
+        }
+
+        if operation == "forgetRevoked" {
+            for grant in snapshot["config"]["deviceGrants"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|grant| grant["status"] == "revoked")
+            {
+                if let Some(peer) = grant["devicePeerId"].as_str() {
+                    self.gateway.last_seen.borrow_mut().remove(peer);
+                }
+            }
         }
 
         if let Some(next) = prepared {

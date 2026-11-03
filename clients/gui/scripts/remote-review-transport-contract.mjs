@@ -1,5 +1,8 @@
-// 实际 Noise/Direct/CoreClient/HTTP，原生 Core 边界由本进程 fixture 提供；不启动 Native。
+// 旧 JS Direct/Core 边界组合保留；末尾另验真实 Rust Host 的审阅客户端路径。
 import assert from "node:assert/strict";
+import { test } from "node:test";
+import { nativeReviewTransport } from "./remote-review-native-fixture.mjs";
+import { runWithIsolatedCA } from "./remote-native-push-fixture.mjs";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { createRequire } from "node:module";
@@ -380,10 +383,10 @@ try {
   ])
     await capabilityCase(granted);
   console.log(
-    "PASS actual ready/host.describe grant intersections and production pause UI: Operator reachable, Observer and no-pause legacy disabled",
+    "PASS legacy JS owner actual ready/host.describe grant intersections and production pause UI: Operator reachable, Observer and no-pause legacy disabled",
   );
   console.log(
-    "PASS production Noise/Direct exact dispatch, readonly CoreClient, native blob HTTP, hidden refs and Desktop callback noninterference (Core boundary fixture)",
+    "PASS legacy JS owner Noise/Direct exact dispatch, readonly CoreClient, native blob HTTP, hidden refs and Desktop callback noninterference (Core boundary fixture)",
   );
 } finally {
   secure.close();
@@ -396,4 +399,16 @@ try {
   wss.close();
   http.closeAllConnections();
   await new Promise((resolve) => http.close(resolve));
+}
+
+if (!process.env.RC12_TLS_HOME) {
+  test("Rust review transport uses the isolated process CA", async () => {
+    await runWithIsolatedCA(import.meta.filename);
+  });
+} else {
+  test(
+    "Rust Host preserves original partial review and image while a later Task runs",
+    { timeout: 180000 },
+    nativeReviewTransport,
+  );
 }

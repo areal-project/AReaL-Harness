@@ -22,6 +22,7 @@ pub(super) struct Gateway {
     pub pending: std::cell::Cell<usize>,
     pub peers: RefCell<BTreeMap<String, usize>>,
     active: RefCell<BTreeMap<String, ActiveSession>>,
+    last_seen: RefCell<BTreeMap<String, u64>>,
     invite: RefCell<Option<Invite>>,
     pairs: RefCell<BTreeMap<String, PendingPair>>,
     counters: Arc<crate::gateway::relay::Counters>,

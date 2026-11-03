@@ -418,7 +418,7 @@ async fn connect(host: Rc<Host>, id: &str, service: Service) -> Result<Rc<CoreSe
     Ok(session)
 }
 
-fn inputs(host: &Host, id: &str) -> Result<LaunchInputs> {
+pub(super) fn inputs(host: &Host, id: &str) -> Result<LaunchInputs> {
     storage::read(
         &host
             .home

@@ -185,7 +185,7 @@ prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每�
 
 控制请求复用原 Remote 回执目录，以 `controlDigest` 绑定原设置请求。该值使用当前 Host generation 的既有认证 token 做 HMAC，按方法、来源与 requestId 分域，并绑定规范化请求字节；认证 key 只留在 Host 与已认证本机 Main 客户端，不返回 Renderer 或另建密钥存储。临时配对操作的回执标记 `ephemeral:true` 并绑定原 Host 身份，不保存邀请秘密；重启、消费或取消后的查询不重建邀请。GUI 持久保留未确认请求引用，只核查原 ID。`null` 不允许重放。Remote `interaction.respond` 的原生 `requestId` 是交互领域标识；其日志 UUID 不替换该 ID，也不产生独立的 `areal/request/read` 受理证明。回复不确定时保留 journal UNKNOWN，交互当前状态作为单独观察，不据此推定本命令受理。支持原生请求回执的其他提交方法仍按原 ID 核查。
 
-`session.create` 只创建普通 `ask` 会话，将原手机命令绑定到 Core 的 `areal/thread/start`、原 `creationAdmission` 与创建受理回执；结果不确定时只核查该原请求。同一 peer 的两个连接重叠提交同一个 `commandId`，在最后一次前置异步读取后重新核对 journal，复用同一原操作。`interaction.respond` 同样在读取当前交互后核对原操作，副本不另行提交审批。
+`session.create` 只创建普通 `ask` 会话。新会话沿用同项目保存的默认 Profile：外部部署使用保存的引用，managed 部署只选择保存目录中唯一且具有对应 base 的 `resources-` 派生版本，并核对同一 Core 目录已加载该不可变引用；缺失、歧义或尚未加载时拒绝，不生成资源或刷新目录。默认 Profile 引用 Workflow 时，保留 `UNSUPPORTED_PROFILE` 拒绝。请求将原手机命令绑定到 Core 的 `areal/thread/start`、原 `creationAdmission` 与创建受理回执；结果不确定时只核查该原请求。同一 peer 的两个连接重叠提交同一个 `commandId`，在最后一次前置异步读取后重新核对 journal，复用同一原操作。`interaction.respond` 同样在读取当前交互后核对原操作，副本不另行提交审批。
 
 `project.models` 是仅需 `observe` 的只读方法，接受空 `params` 和仅含 `projectId` 的 `context`。返回 `{projectId,gatewayGeneration,grantRevision,serviceGeneration,models}`，最多 200 项、128 KiB；每项仅公开 `providerId,modelId,displayName,reasoningEffortOptions,available,unavailableReason`。普通模型来自当前 Core 已应用目录；ChatGPT 名称、模型与可用性来自同一 source 的 Host 订阅 owner。仅已认证且目录 `checking` 时，补入当前 Core 的 `lastAcceptedModel` 和本连接已经观察的当前会话配置；候选省略 `available`，不宣称可用。此集合不恢复旧 GUI 曾加载的全部会话或跨项目历史偏好。读取前后核对授权、Gateway/Core 代际、共享连接和订阅目录；离线返回 `CORE_UNAVAILABLE`，变化返回 `RESYNC_REQUIRED`。读取不启动项目、不创建会话、观察订阅或刷新模型目录；旧 Host 不声明该方法。
 
@@ -205,6 +205,8 @@ prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每�
 | queueSteer | queueItemId, expectedTurnId | 当前队列 revision |
 | steer | text, expectedTurnId | 保留非负安全整数输入，Core 依据确切 Turn 判定 |
 
+
+`review.read` 的历史文件 diff 仅使用同一已完成 Turn/Item 中已确认成功的 Runtime 原生文件结果，核对路径、完整 before/after 字节及 SHA-256 链。它在隔离临时目录生成 Git hunks；当前工作区后续编辑不参与重建，临时路径不进入响应。缺少完整历史或确认来源时返回 `diff.state:unavailable`，不使用当前磁盘内容补齐。
 
 `review.read` 首页面包含最多 16 个原生媒体引用；`artifactRef` 是绑定原 Thread/Turn/Item、连接、grant、Gateway 和 Core scope 的认证不透明选择器。`artifact.read` 要求 `review` 及 `{artifactRef,offset,length}`，重新核对原媒体，只读取获权 Core blob，校验完整长度与 SHA-256，每次返回最多 48 KiB 的 base64 分片。图片最多 16 MiB，沿用静态 PNG/JPEG/GIF/WebP 的 raster 预算。不接受任意 URL 或文件路径，不启动项目；连接或授权变化使原引用失效。
 

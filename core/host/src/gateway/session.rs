@@ -12,6 +12,8 @@ mod observer;
 pub(super) mod overview;
 #[path = "projection.rs"]
 mod projection;
+#[path = "review.rs"]
+mod review;
 #[path = "send.rs"]
 pub(super) mod send;
 #[path = "stop.rs"]
@@ -58,6 +60,52 @@ const METHODS: &[&str] = &[
     "attention.list",
 ];
 
+struct RequestBudget {
+    window: Instant,
+    reads: u32,
+    writes: f64,
+    refilled: Instant,
+}
+impl RequestBudget {
+    fn new(now: Instant) -> Self {
+        Self {
+            window: now,
+            reads: 0,
+            writes: 10.0,
+            refilled: now,
+        }
+    }
+    fn check(&mut self, method: Option<&str>, now: Instant) -> Result<()> {
+        if now.duration_since(self.window) >= Duration::from_secs(1) {
+            self.window = now;
+            self.reads = 0;
+        }
+        self.reads += 1;
+        ensure!(self.reads <= 20, "LIMIT_EXCEEDED");
+        if matches!(
+            method,
+            Some(
+                "interaction.respond"
+                    | "session.create"
+                    | "session.send"
+                    | "session.control"
+                    | "turn.stop"
+                    | "task.pause"
+                    | "task.question.reply"
+                    | "device.push.register"
+                    | "device.push.unregister"
+            )
+        ) {
+            self.writes =
+                (self.writes + now.duration_since(self.refilled).as_secs_f64() * 5.0).min(10.0);
+            self.refilled = now;
+            ensure!(self.writes >= 1.0, "LIMIT_EXCEEDED");
+            self.writes -= 1.0;
+        }
+        Ok(())
+    }
+}
+
 pub(crate) struct Session {
     pub(crate) host: Rc<Host>,
     pub(crate) peer: String,
@@ -86,7 +134,13 @@ impl Drop for SessionSlot {
                 .set(self.host.gateway.pending.get() - 1);
         }
         if let Some(connection) = &self.connection {
-            self.host.gateway.active.borrow_mut().remove(connection);
+            if let Some(active) = self.host.gateway.active.borrow_mut().remove(connection) {
+                self.host
+                    .gateway
+                    .last_seen
+                    .borrow_mut()
+                    .insert(active.peer, gateway_owner::now_ms());
+            }
             self.host.changed();
         }
         if let Some(peer) = &self.peer {
@@ -331,13 +385,16 @@ impl Session {
                 close: admission.close,
             },
         );
+        session
+            .host
+            .gateway
+            .last_seen
+            .borrow_mut()
+            .insert(session.peer.clone(), gateway_owner::now_ms());
         session.host.changed();
         let ready = session.describe(true);
         wire::write_json(&mut writer, &serde_json::to_vec(&ready)?, limits).await?;
-        let mut window = Instant::now();
-        let mut reads = 0u32;
-        let mut writes = 10f64;
-        let mut refilled = Instant::now();
+        let mut budget = RequestBudget::new(Instant::now());
         loop {
             enum Incoming {
                 Request(Option<RequestMessage>),
@@ -369,37 +426,9 @@ impl Session {
             };
             let request: Value = serde_json::from_slice(&bytes.bytes)?;
             drop(bytes);
-            if window.elapsed() >= Duration::from_secs(1) {
-                window = Instant::now();
-                reads = 0;
-            }
-            reads += 1;
-            let result = if reads > 20 {
-                Err(fail("LIMIT_EXCEEDED"))
-            } else if matches!(
-                request["method"].as_str(),
-                Some(
-                    "interaction.respond"
-                        | "session.create"
-                        | "session.send"
-                        | "session.control"
-                        | "turn.stop"
-                        | "task.pause"
-                        | "task.question.reply"
-                        | "device.push.register"
-                        | "device.push.unregister"
-                )
-            ) {
-                writes = (writes + refilled.elapsed().as_secs_f64() * 5.0).min(10.0);
-                refilled = Instant::now();
-                if writes < 1.0 {
-                    Err(fail("LIMIT_EXCEEDED"))
-                } else {
-                    writes -= 1.0;
-                    session.request(&request).await
-                }
-            } else {
-                session.request(&request).await
+            let result = match budget.check(request["method"].as_str(), Instant::now()) {
+                Ok(()) => session.request(&request).await,
+                Err(error) => Err(error),
             };
             let response = match result {
                 Ok(result) => json!({"id":request["id"],"result":result}),
@@ -930,8 +959,10 @@ impl Session {
             let core = error["coreCode"]
                 .as_i64()
                 .or_else(|| error["code"].as_i64());
-            let code = if record["remote"]["method"] == "session.send"
-                && error["code"] == "UNSUPPORTED_PROFILE"
+            let code = if matches!(
+                record["remote"]["method"].as_str(),
+                Some("session.send" | "session.create")
+            ) && error["code"] == "UNSUPPORTED_PROFILE"
             {
                 "UNSUPPORTED_PROFILE"
             } else {
@@ -1234,73 +1265,103 @@ impl Session {
         self.authorize(Some(project), capability)?;
         self.command_result(project, Some(&settled), &command).await
     }
-    async fn review(&mut self, project: &str, generation: &str, params: &Value) -> Result<Value> {
-        self.authorize(Some(project), "review")?;
-        ensure!(
-            exact(params, &["threadId", "turnId", "itemId", "cursor", "limit"]),
-            "INVALID_PARAMS"
+}
+
+#[cfg(test)]
+mod request_budget_tests {
+    use super::*;
+
+    #[test]
+    fn write_burst_refills_at_200ms_and_stays_capped_after_idle() {
+        let start = Instant::now();
+        let mut budget = RequestBudget::new(start);
+        for _ in 0..10 {
+            budget.check(Some("session.create"), start).unwrap();
+        }
+        assert_eq!(
+            budget
+                .check(Some("session.create"), start)
+                .unwrap_err()
+                .to_string(),
+            "LIMIT_EXCEEDED"
         );
-        let thread_id = text(params, "threadId")?;
-        let turn_id = text(params, "turnId")?;
-        let response = self
-            .rpc(
-                project,
-                generation,
-                "thread/read",
-                json!({"threadId":thread_id,"includeTurns":true}),
-            )
-            .await?;
-        let thread = &response["thread"];
-        let turn = thread["turns"]
-            .as_array()
-            .and_then(|turns| turns.iter().find(|turn| turn["id"] == turn_id))
-            .context("RESOURCE_UNAVAILABLE")?;
-        let items = turn["items"].as_array().context("RESOURCE_UNAVAILABLE")?;
-        if let Some(id) = params.get("itemId") {
-            ensure!(
-                id.is_string() && items.iter().filter(|i| i["id"] == *id).count() == 1,
-                "RESOURCE_UNAVAILABLE"
-            );
+        assert!(
+            budget
+                .check(Some("session.create"), start + Duration::from_millis(199))
+                .is_err()
+        );
+        let refilled = start + Duration::from_millis(200);
+        budget.check(Some("session.create"), refilled).unwrap();
+        assert!(budget.check(Some("session.create"), refilled).is_err());
+        let idle = start + Duration::from_millis(5200);
+        for _ in 0..10 {
+            budget.check(Some("session.create"), idle).unwrap();
         }
-        let result:Vec<_>=items.iter().filter(|item|params.get("itemId").is_none_or(|id|item["id"]==*id)).filter(|i|matches!(i["type"].as_str(),Some("agentMessage"|"dynamicToolCall"))).map(|i|{
-            let text=if i["type"]=="agentMessage"{i["text"].as_str().unwrap_or_default().to_owned()}else{i["contentItems"].as_array().map(|c|c.iter().filter(|c|matches!(c["type"].as_str(),Some("inputText"|"text"))).filter_map(|c|c["text"].as_str()).collect::<Vec<_>>().join("\n")).unwrap_or_default()};
-            json!({"itemId":i["id"],"type":i["type"],"phase":i["phase"],"status":i["status"],"success":i["success"],"executionOutcome":i["execution"]["outcome"],"text":text})
-        }).collect();
-        let body = serde_json::to_string(
-            &json!({"threadId":thread["id"],"turnId":turn["id"],"itemId":params["itemId"],"turnStatus":turn["status"],"error":turn["error"],"partial":turn["status"]!="completed","taskRunStatus":null,"notice":"原 Turn 输出；文本可读不代表成功。Task Run 状态需单独查看 Task，不能由此 Turn 推断。","result":result,"diff":{"state":"unavailable","notice":"此 Turn/Item 无法重建完整历史版本；不会使用当前工作区替代。"},"artifactNotice":"最多列出 16 个具有原 Turn/Item 原生归属且不超过 16 MiB 的 PNG/JPEG/GIF/WebP；超出列表、动画或其他制品请在桌面查看。"}),
-        )?;
-        ensure!(body.len() <= 4 * 1024 * 1024, "RESOURCE_UNAVAILABLE");
-        let target = json!({"threadId":thread_id,"turnId":turn_id,"itemId":params["itemId"]});
-        let scope = self.scope(project, generation, &target, &body);
-        let offset = self.offset(params.get("cursor"), &scope)?;
-        ensure!(offset < body.len() || offset == 0, "INVALID_PARAMS");
-        let limit = params
-            .get("limit")
-            .map(|n| n.as_u64().context("INVALID_PARAMS"))
-            .transpose()?
-            .unwrap_or(16384) as usize;
-        ensure!((1..=16384).contains(&limit), "INVALID_PARAMS");
-        let mut end = (offset + limit).min(body.len());
-        while !body.is_char_boundary(end) {
-            end -= 1;
+        assert!(budget.check(Some("session.create"), idle).is_err());
+    }
+
+    #[test]
+    fn reads_preserve_write_credit_and_mixed_requests_reset_at_1000ms() {
+        let start = Instant::now();
+        let mut budget = RequestBudget::new(start);
+        for _ in 0..10 {
+            budget.check(Some("command.read"), start).unwrap();
         }
-        ensure!(end > offset || end == body.len(), "INVALID_PARAMS");
-        let next = if end < body.len() {
-            Some(self.seal(scope, end)?)
-        } else {
-            None
-        };
-        self.authorize(Some(project), "review")?;
-        let artifacts = self.review_artifacts(
-            project,
-            generation,
-            thread,
-            turn,
-            params.get("itemId").and_then(Value::as_str),
-            offset,
-        )?;
-        Ok(
-            json!({"artifacts":artifacts,"projectId":project,"threadId":thread_id,"turnId":turn_id,"itemId":params["itemId"],"connectionId":self.connection,"gatewayGeneration":self.generation,"serviceGeneration":generation,"review":{"encoding":"json-utf8","offset":offset,"totalBytes":body.len(),"chunk":&body[offset..end]},"nextCursor":next}),
-        )
+        for _ in 0..10 {
+            budget.check(Some("session.create"), start).unwrap();
+        }
+        assert!(budget.check(Some("command.read"), start).is_err());
+        assert!(
+            budget
+                .check(Some("command.read"), start + Duration::from_millis(999))
+                .is_err()
+        );
+        let next_window = start + Duration::from_millis(1000);
+        for _ in 0..20 {
+            budget.check(Some("command.read"), next_window).unwrap();
+        }
+        assert!(budget.check(Some("command.read"), next_window).is_err());
+    }
+
+    #[test]
+    fn all_write_methods_share_credit_while_receipt_reads_remain_available() {
+        let start = Instant::now();
+        let mut budget = RequestBudget::new(start);
+        for _ in 0..10 {
+            budget.check(Some("session.create"), start).unwrap();
+        }
+        for method in [
+            "session.create",
+            "session.send",
+            "session.control",
+            "turn.stop",
+            "interaction.respond",
+            "task.question.reply",
+            "task.pause",
+            "device.push.register",
+            "device.push.unregister",
+        ] {
+            assert!(budget.check(Some(method), start).is_err(), "{method}");
+        }
+        budget.check(Some("command.read"), start).unwrap();
+    }
+
+    #[test]
+    fn each_connection_and_reconnect_starts_with_independent_credit() {
+        let start = Instant::now();
+        let mut first = RequestBudget::new(start);
+        for _ in 0..10 {
+            first.check(Some("session.create"), start).unwrap();
+        }
+        assert!(first.check(Some("session.create"), start).is_err());
+        let mut second = RequestBudget::new(start);
+        let mut reconnected = RequestBudget::new(start);
+        for _ in 0..10 {
+            second.check(Some("session.create"), start).unwrap();
+            reconnected.check(Some("session.create"), start).unwrap();
+        }
+        assert!(first.check(Some("session.create"), start).is_err());
+        assert!(second.check(Some("session.create"), start).is_err());
+        assert!(reconnected.check(Some("session.create"), start).is_err());
     }
 }

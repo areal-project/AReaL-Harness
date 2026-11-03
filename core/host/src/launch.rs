@@ -3,6 +3,60 @@ use anyhow::{Context, Result, ensure};
 use areal_local_service::{LaunchContext, LaunchSpec, LocalArgs, storage};
 use std::{collections::BTreeMap, os::unix::fs::PermissionsExt, path::Path};
 
+pub(super) fn remote_profile(
+    inputs: &LaunchInputs,
+) -> Result<Option<areal_protocol::desktop::VersionRef>> {
+    let Some(preparation) = &inputs.schedule_preparation else {
+        return Ok(None);
+    };
+    let profile = match preparation {
+        crate::SchedulePreparation::External { default_profile } => {
+            return default_profile
+                .clone()
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(Into::into);
+        }
+        crate::SchedulePreparation::Managed { .. } => {
+            let path = inputs
+                .deployment_path
+                .as_ref()
+                .context("saved managed deployment missing")?;
+            let deployment: serde_json::Value = storage::read(path)?;
+            let profiles = deployment["profiles"]
+                .as_array()
+                .context("saved managed profiles missing")?;
+            let derived: Vec<_> = profiles
+                .iter()
+                .filter(|profile| {
+                    profile["allowPluginSkills"] == true
+                        && profile["revision"].as_str().is_some_and(|revision| {
+                            revision.strip_prefix("resources-").is_some_and(|suffix| {
+                                suffix.len() == 32
+                                    && suffix.bytes().all(|byte| {
+                                        byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+                                    })
+                            })
+                        })
+                })
+                .collect();
+            ensure!(
+                derived.len() == 1,
+                "saved managed resource profile is ambiguous or missing"
+            );
+            let selected = derived[0];
+            ensure!(
+                profiles.iter().any(|base| base["id"] == selected["id"]
+                    && base["revision"].is_string()
+                    && base["revision"] != selected["revision"]),
+                "saved managed profile has no matching base"
+            );
+            serde_json::json!({"id":selected["id"],"revision":selected["revision"]})
+        }
+    };
+    Ok(Some(serde_json::from_value(profile)?))
+}
+
 pub struct ResolveProject {
     pub explicit_data_dir: bool,
     pub no_auto_restart: bool,
@@ -434,6 +488,68 @@ mod tests {
             bin,
             registration,
             inputs,
+        }
+    }
+
+    #[test]
+    fn remote_profile_preserves_external_reference_without_reading_deployment() {
+        let mut fixture = managed_launch_fixture();
+        fixture.inputs.deployment_path = Some(fixture.temporary.path().join("absent.json"));
+        fixture.inputs.schedule_preparation = Some(crate::SchedulePreparation::External {
+            default_profile: Some(serde_json::json!({"id":"flow","revision":"v1"})),
+        });
+        assert_eq!(
+            remote_profile(&fixture.inputs).unwrap(),
+            Some(areal_protocol::desktop::VersionRef {
+                id: "flow".into(),
+                revision: "v1".into()
+            })
+        );
+        fixture.inputs.schedule_preparation = Some(crate::SchedulePreparation::External {
+            default_profile: None,
+        });
+        assert_eq!(remote_profile(&fixture.inputs).unwrap(), None);
+        fixture.inputs.schedule_preparation = None;
+        assert_eq!(remote_profile(&fixture.inputs).unwrap(), None);
+    }
+
+    #[test]
+    fn remote_profile_selects_unique_saved_managed_revision_without_materializing() {
+        let mut fixture = managed_launch_fixture();
+        let path = fixture.temporary.path().join("saved-deployment.json");
+        let revision = format!("resources-{}", "a".repeat(32));
+        let deployment = serde_json::json!({"profiles":[{"id":"standard","revision":"base"},{"id":"standard","revision":revision,"allowPluginSkills":true}]});
+        storage::write(&path, &deployment).unwrap();
+        fixture.inputs.deployment_path = Some(path.clone());
+        let before = std::fs::read(&path).unwrap();
+        assert_eq!(
+            remote_profile(&fixture.inputs).unwrap(),
+            Some(areal_protocol::desktop::VersionRef {
+                id: "standard".into(),
+                revision
+            })
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert!(!fixture.home.exists());
+    }
+
+    #[test]
+    fn remote_profile_rejects_missing_ambiguous_or_unproven_managed_selection() {
+        let mut fixture = managed_launch_fixture();
+        let path = fixture.temporary.path().join("saved-deployment.json");
+        fixture.inputs.deployment_path = Some(path.clone());
+        assert!(remote_profile(&fixture.inputs).is_err());
+        let base = serde_json::json!({"id":"standard","revision":"base"});
+        let derived = serde_json::json!({"id":"standard","revision":format!("resources-{}", "a".repeat(32)),"allowPluginSkills":true});
+        for profiles in [
+            serde_json::json!([base]),
+            serde_json::json!([derived]),
+            serde_json::json!([base, derived, derived]),
+            serde_json::json!([base,{"id":"standard","revision":"resources-short","allowPluginSkills":true}]),
+            serde_json::json!([base,{"id":"other","revision":format!("resources-{}", "b".repeat(32)),"allowPluginSkills":true}]),
+        ] {
+            storage::write(&path, &serde_json::json!({"profiles":profiles})).unwrap();
+            assert!(remote_profile(&fixture.inputs).is_err());
         }
     }
 
