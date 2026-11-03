@@ -19,6 +19,10 @@ Side Chat 的 Esc 回退测试等待任务资源外层弹层完全退出布局�
 
 Worktree 集成夹具将自动命名响应保持到真实文件工具完成后，确认命名已进入观察状态，再重新打开会话并租用历史视图，避免把合法的命名编辑误判为工具失败。文件、Shell、受管进程、目录隔离与重启断言保持不变。
 
+Side Chat parity 的 P4 使用真实 Shift/方向键与 Enter，读取选区矩形并确认选中文字仍在对话视口内，再执行引用操作；旧阅读锚点不能抢回原生键盘移动后的视口。数量、字数限制、冻结的引用正文及不自动提交断言继续由原场景检查。
+
+GUI 的原生构建、Core 契约、smoke 与可选重复基线统一使用 `macos-15-intel`，保持产物与消费方架构一致；原生 Runtime 的 macOS 通道继续使用 ARM64 的 `macos-15`。两者均为 [GitHub 标准 runner](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。不同架构的耗时记录不能混算，也不能直接沿用历史 ARM 基线作性能比较。
+
 | 入口 | 范围 |
 |---|---|
 | `make verify` | Cordis pin、格式、静态检查、Rust workspace、两套 SDK、Python、文档、TUI 与统一委派 smoke |

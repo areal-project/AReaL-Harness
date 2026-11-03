@@ -21,6 +21,10 @@ Browser terminal results, Worktree and scheduled-task contracts use the existing
 
 The Worktree integration fixture holds automatic naming responses until the real file tools finish, observes the completed names, then reopens each conversation before leasing its history view. This prevents a legitimate naming edit from being misclassified as a tool failure. File, Shell, managed-process, directory-isolation and restart assertions remain intact.
 
+Side Chat parity P4 uses native Shift/arrow keys and Enter, checks selection rectangles against the transcript viewport before quoting, and verifies that a previous reading anchor cannot take back the viewport after native keyboard movement. The original scenario retains its count/length limits, frozen quote contents and no-automatic-submission assertions.
+
+Native GUI builds, Core contracts, smoke and optional repeated baselines consistently use `macos-15-intel`, keeping artifacts and consumers on the same architecture. The native Runtime macOS lane continues to use ARM64 `macos-15`. Both are [standard GitHub runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). Do not pool timing records across architectures or directly reuse historical ARM baselines for performance comparisons.
+
 | Entry point | Coverage |
 |---|---|
 | `make verify` | Cordis pin, formatting, static checks, Rust workspace, both SDKs, Python, documentation, TUI and unified delegation smoke |

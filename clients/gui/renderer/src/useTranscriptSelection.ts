@@ -30,10 +30,15 @@ export function useTranscriptSelection({
   onAddSelection,
   onSideSelection,
   readOnly,
+  onSelectionIntent,
 }: Pick<
   ComponentProps<typeof Messages>,
   "project" | "onAddSelection" | "onSideSelection" | "readOnly"
-> & { thread: Data; container: RefObject<HTMLDivElement | null> }) {
+> & {
+  thread: Data;
+  container: RefObject<HTMLDivElement | null>;
+  onSelectionIntent?: () => void;
+}) {
   const selectionOwner = JSON.stringify([
     project.core?.instanceId,
     project.core?.connectionGeneration,
@@ -160,6 +165,8 @@ export function useTranscriptSelection({
       range: range.cloneRange(),
       rect: visibleRect ?? range.getBoundingClientRect(),
     };
+    // 原生选区可先于 scroll 事件移动视口；重绘前确认阅读意图，避免旧锚点抢回位置。
+    onSelectionIntent?.();
     // 流式回复的增量尚未确认持久化；DOM 相等不能证明选区属于冻结证据。
     const streamingReply =
       sourceTurn?.status === "inProgress" && canonical?.type === "agentMessage";
