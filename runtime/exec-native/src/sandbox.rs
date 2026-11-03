@@ -183,26 +183,63 @@ fn proc_mount_args(mount: LinuxProcMount) -> &'static [&'static str] {
 
 #[cfg(target_os = "linux")]
 fn run_linux_preflight(proc_mount: LinuxProcMount) -> Result<()> {
-    let mut command = std::process::Command::new("/usr/bin/bwrap");
-    command.args([
-        "--unshare-all",
-        "--die-with-parent",
-        "--new-session",
-        "--cap-drop",
-        "ALL",
-        "--dev",
-        "/dev",
-    ]);
-    command.args(proc_mount_args(proc_mount));
+    run_linux_preflight_with(proc_mount, Path::new("/usr/bin/bwrap"))
+}
+
+#[cfg(target_os = "linux")]
+fn run_linux_preflight_with(proc_mount: LinuxProcMount, executable: &Path) -> Result<()> {
+    use std::os::{fd::AsRawFd, unix::process::CommandExt};
+
+    let mut argv = vec![executable.to_string_lossy().into_owned()];
+    argv.extend(
+        [
+            "--unshare-all",
+            "--die-with-parent",
+            "--new-session",
+            "--cap-drop",
+            "ALL",
+            "--dev",
+            "/dev",
+        ]
+        .map(str::to_owned),
+    );
+    argv.extend(
+        proc_mount_args(proc_mount)
+            .iter()
+            .map(|arg| (*arg).to_owned()),
+    );
     // BusyBox 系统只有 /bin/true；与实际 native 命令一致，绑定其可执行文件及解释器。
     for path in ["/bin", "/usr", "/lib", "/lib64"] {
         if Path::new(path).exists() {
-            command.args(["--ro-bind", path, path]);
+            argv.extend(["--ro-bind", path, path].map(str::to_owned));
         }
     }
-    command.args(["--", "/bin/true"]);
+    argv.extend(["--", "/bin/true"].map(str::to_owned));
+    // namespaces 可用不代表 seccomp 可用；能力声明必须验证真实受限执行的过滤器。
+    let filter = seccomp(
+        &mut argv,
+        Profile::Native,
+        areal_runtime_protocol::NetworkRequest::Deny,
+    )?;
+    let mut command = std::process::Command::new(&argv[0]);
+    command.args(&argv[1..]);
+    if let Some(filter) = &filter {
+        let fd = filter.as_raw_fd();
+        // 仅在子进程保留指定过滤器描述符，父进程及其他描述符的 CLOEXEC 不变。
+        unsafe {
+            command.pre_exec(move || {
+                let flags = libc::fcntl(fd, libc::F_GETFD);
+                if flags < 0 || libc::fcntl(fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC) < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
     command.stdout(std::process::Stdio::null());
-    let output = command.output().map_err(|error| {
+    let output = command.output();
+    drop(filter);
+    let output = output.map_err(|error| {
         Error::new(
             ErrorCode::Unsupported,
             format!("cannot run Linux Bubblewrap preflight: {error}"),
@@ -672,6 +709,45 @@ pub fn seccomp(
 mod policy_tests {
     use super::*;
     use std::{collections::BTreeMap, path::PathBuf};
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_preflight_passes_the_filter_through_exec() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let executable = temp.path().join("bwrap-probe");
+        let observed = temp.path().join("bwrap-probe.filter");
+        std::fs::write(
+            &executable,
+            "#!/bin/sh\nset -eu\ntest \"$1\" = --seccomp\ncat /proc/self/fd/\"$2\" > \"$0.filter\"\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+        run_linux_preflight_with(LinuxProcMount::Private, &executable).unwrap();
+        let bytes = std::fs::read(&observed).unwrap();
+        assert!(!bytes.is_empty());
+        assert_eq!(bytes.len() % std::mem::size_of::<libc::sock_filter>(), 0);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_preflight_rejects_a_filter_installation_failure() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let executable = temp.path().join("bwrap-reject-filter");
+        // namespaces/普通命令成功的替身，仅在实际传入过滤器时报告内核拒绝。
+        std::fs::write(
+            &executable,
+            "#!/bin/sh\nif [ \"$1\" = --seccomp ]; then echo seccomp-unavailable >&2; exit 79; fi\nexit 0\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+        for mount in [LinuxProcMount::Private, LinuxProcMount::Empty] {
+            let error = run_linux_preflight_with(mount, &executable).unwrap_err();
+            assert_eq!(error.code, ErrorCode::Unsupported);
+            assert!(error.message.contains("seccomp-unavailable"));
+        }
+    }
 
     #[cfg(target_os = "linux")]
     #[test]
