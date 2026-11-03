@@ -3,6 +3,7 @@
 const { catalog, rejectModel, subscriptionAvailable } = require("./provider-model-catalog.cjs");
 const { testConnection, errorMessage } = require("./provider-probe.cjs");
 const { startupTrace } = require("./startup-timing.cjs");
+const diagnostics = require("./diagnostics.cjs");
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const { randomUUID, createHash } = require("node:crypto");
@@ -880,7 +881,9 @@ class AppProviders {
       failure.serviceId === project.service.serviceId &&
       failure.generation === project.service.generation
     )
-      return { kind: "failed", revision, message: failure.message };
+      return failure.catalogRefreshPending
+        ? { kind: "unknown", revision }
+        : { kind: "failed", revision, message: failure.message };
     return project.providerRevision === revision &&
       !project.providerError &&
       (!project.providerProof || this.credentialsReady(project.providerProof, this.snapshot()))
@@ -900,13 +903,17 @@ class AppProviders {
       return;
     }
     const message = this.redact(errorMessage(error) || "模型配置暂未生效，请重试。");
+    const catalogRefreshPending =
+      providerContract.record(error) && error.configurationRefreshPending === true;
     target.project.providerFailure = {
       revision,
       serviceId: target.serviceId,
       generation: target.generation,
       message,
+      ...(catalogRefreshPending ? { catalogRefreshPending: true } : {}),
     };
     target.project.providerError = message;
+    if (catalogRefreshPending) this.requestReconciliation(2000);
   }
   requestReconciliation(delay = 0) {
     if (this.closed || this.backend.closing || this.reconciliationTimer || this.reconciliation)
@@ -1051,8 +1058,29 @@ class AppProviders {
     if (request.operation === "probe" || request.operation === "discover")
       return this.test(request);
     if (["saveAndApply", "removeAndApply", "defaultAndApply"].includes(request.operation))
-      return this.saveAndApply(request);
-    if (request.operation === "apply") return this.apply(request);
+      return diagnostics.withOperation(
+        "model-configuration",
+        {},
+        () => this.saveAndApply(request),
+        (result) =>
+          result.application.kind === "failed"
+            ? "failed"
+            : ["unknown", "deferred"].includes(result.application.kind)
+              ? "unknown"
+              : "ok",
+      );
+    if (request.operation === "apply")
+      return diagnostics.withOperation(
+        "model-configuration",
+        {},
+        () => this.apply(request),
+        (result) =>
+          result.application.kind === "failed"
+            ? "failed"
+            : ["unknown", "deferred"].includes(result.application.kind)
+              ? "unknown"
+              : "ok",
+      );
     if (request.operation === "save") return this.save(request);
     if (!["save", "remove", "default"].includes(request.operation))
       throw new Error("不支持的供应商操作");
@@ -1240,14 +1268,47 @@ class AppProviders {
       throw new Error("Core 模型配置应用证明无效，请刷新核对。");
     return proof;
   }
+  /** @template T @param {ProviderTarget} target @param {'read-proof'|'apply'|'refresh-catalog'} phase @param {string|undefined} requestId @param {()=>Promise<T>} action @returns {Promise<T>} */
+  async configurationStep(target, phase, requestId, action) {
+    const context = {
+      type: /** @type {const} */ ("model-configuration"),
+      projectId: target.project.id,
+      coreGeneration: target.generation,
+      phase,
+      requestId,
+    };
+    const started = performance.now();
+    diagnostics.record({ ...context, outcome: "started", durationMs: 0 });
+    try {
+      const result = await action();
+      diagnostics.record({
+        ...context,
+        outcome: "ok",
+        durationMs: Math.round(performance.now() - started),
+      });
+      return result;
+    } catch (error) {
+      const failure = providerContract.record(error) ? error : {};
+      diagnostics.record({
+        ...context,
+        outcome: "failed",
+        durationMs: Math.round(performance.now() - started),
+        code: failure.code,
+        reason: providerContract.record(failure.data) ? failure.data.reason : undefined,
+      });
+      throw error;
+    }
+  }
   /** @param {ProviderTarget} target @param {string} [requestId] */
   async readProof(target, requestId) {
-    const proof = await target.client.request(
-      "areal/server/modelConfiguration/read",
-      { expectedGeneration: target.generation, ...(requestId ? { requestId } : {}) },
-      { decode: providerContract.configurationProof },
-    );
-    return this.validateProof(target, proof);
+    return this.configurationStep(target, "read-proof", requestId, async () => {
+      const proof = await target.client.request(
+        "areal/server/modelConfiguration/read",
+        { expectedGeneration: target.generation, ...(requestId ? { requestId } : {}) },
+        { decode: providerContract.configurationProof },
+      );
+      return this.validateProof(target, proof);
+    });
   }
   /** @param {ProviderTarget} target @param {ConfigurationProof} proof @param {ModelSnapshot} snapshot */
   rememberProof(target, proof, snapshot) {
@@ -1270,12 +1331,27 @@ class AppProviders {
         configurationSettled: true,
       });
     if (refreshModels) {
-      const models = await target.client.request(
-        "areal/model/list",
-        {},
-        { decode: providerContract.models },
-      );
-      this.requireTarget(target);
+      const models = await this.configurationStep(
+        target,
+        "refresh-catalog",
+        this.pendingApplications.get(target.project.id)?.requestId,
+        async () => {
+          const result = await target.client.request(
+            "areal/model/list",
+            {},
+            { decode: providerContract.models },
+          );
+          this.requireTarget(target);
+          return result;
+        },
+      ).catch((error) => {
+        // 应用证明与凭据已确认；目录读取失败只重试核对，不重新提交配置。
+        const failure = Object.assign(new Error(this.redact(errorMessage(error))), {
+          configurationRefreshPending: true,
+        });
+        this.applicationFailed(target, snapshot.revision, failure);
+        throw failure;
+      });
       this.rememberProof(target, proof, snapshot);
       target.project.models = models.data;
     }
@@ -1294,7 +1370,21 @@ class AppProviders {
   }
   /** @param {ProviderTarget} target */
   reconcilePending(target) {
-    return this.inProject(target.project, () => this.inspectPending(target));
+    return diagnostics.withOperation(
+      "model-configuration",
+      {
+        projectId: target.project.id,
+        coreGeneration: target.generation,
+        requestId: this.pendingApplications.get(target.project.id)?.requestId,
+      },
+      () => this.inProject(target.project, () => this.inspectPending(target)),
+      (result) =>
+        result?.rejected
+          ? "failed"
+          : result?.pending || result?.generationChanged
+            ? "unknown"
+            : "ok",
+    );
   }
   /** @param {ProviderTarget} target @param {unknown} [notAccepted] @returns {Promise<PendingOutcome|undefined>} */
   async inspectPending(target, notAccepted, { refreshModels = true } = {}) {
@@ -1426,16 +1516,18 @@ class AppProviders {
       try {
         const receipt = this.validateProof(
           target,
-          await target.client.request(
-            "areal/server/modelConfiguration/apply",
-            {
-              requestId: pending.requestId,
-              expectedGeneration: pending.generation,
-              expectedApplied: pending.expectedApplied,
-              targetRevision: snapshot.revision,
-              credentials,
-            },
-            { decode: providerContract.configurationProof },
+          await this.configurationStep(target, "apply", pending.requestId, () =>
+            target.client.request(
+              "areal/server/modelConfiguration/apply",
+              {
+                requestId: pending.requestId,
+                expectedGeneration: pending.generation,
+                expectedApplied: pending.expectedApplied,
+                targetRevision: snapshot.revision,
+                credentials,
+              },
+              { decode: providerContract.configurationProof },
+            ),
           ),
         );
         if (
@@ -1480,7 +1572,10 @@ class AppProviders {
         target.project.providerError = this.redact(errorMessage(error));
       return {
         target,
-        pending: this.pendingApplications.has(target.project.id) || !this.currentTarget(target),
+        pending:
+          this.pendingApplications.has(target.project.id) ||
+          !this.currentTarget(target) ||
+          (providerContract.record(error) && error.configurationRefreshPending === true),
         error,
       };
     }
@@ -1489,77 +1584,103 @@ class AppProviders {
   reconcileProject(project, { refreshModels = true } = {}) {
     if (!this.manages(project)) return Promise.resolve();
     const target = this.target(project);
-    return this.inProject(project, async () => {
-      try {
-        if (this.closed || this.backend.closing) return;
-        this.requireTarget(target);
-        if (
-          !["areal/server/modelConfiguration/read", "areal/server/modelConfiguration/apply"].every(
-            (method) => target.client.capabilities?.methods?.includes(method),
-          )
-        )
-          throw new Error("请更新 Core 后再应用模型配置。");
-        const reconciled = await this.inspectPending(target, undefined, { refreshModels });
-        if (reconciled?.pending) return;
-        const snapshot = await this.config.current();
-        this.requireTarget(target);
-        if (this.applicationState(project, snapshot.revision).kind === "failed") return;
-        target.proof = await this.readProof(target);
-        this.rememberProof(target, target.proof, snapshot);
-        if (
-          target.proof.applied.revision === snapshot.revision &&
-          this.credentialsReady(target.proof, snapshot)
-        ) {
-          await this.confirmProof(target, target.proof, snapshot, { refreshModels });
-          return;
-        }
-        if (
-          this.saving ||
-          this.backend.providerUpdating ||
-          this.backend.resourcesUpdating ||
-          this.backend.activeCommands ||
-          this.backend.starting.size
-        ) {
-          project.providerError = null;
-          return;
-        }
-        const status = await target.client.request(
-          "areal/server/status",
-          {},
-          { decode: providerContract.serverStatus },
-        );
-        this.requireTarget(target);
-        if (
-          !status.restartSafe ||
-          this.saving ||
-          this.backend.providerUpdating ||
-          this.backend.resourcesUpdating ||
-          this.backend.activeCommands ||
-          this.backend.starting.size
-        ) {
-          project.providerError = null;
-          return;
-        }
-        this.backend.providerUpdating = true;
-        try {
-          if (this.closed || this.backend.closing) return;
-          const outcome = await this.applyProject(snapshot, target, { refreshModels });
-          if (!outcome.applied && !outcome.pending)
-            this.applicationFailed(target, snapshot.revision, outcome.error);
-        } finally {
-          this.backend.providerUpdating = false;
-        }
-      } catch (error) {
-        this.applicationFailed(target, this.snapshot().revision, error);
-      } finally {
-        this.backend.onChange();
-        if (
-          project.client?.ready &&
-          ["deferred", "unknown"].includes(this.applicationState(project).kind)
-        )
-          this.requestReconciliation(2000);
-      }
-    });
+    return diagnostics.withOperation(
+      "model-configuration",
+      {
+        projectId: project.id,
+        coreGeneration: target.generation,
+        requestId: this.pendingApplications.get(project.id)?.requestId,
+      },
+      () =>
+        this.inProject(project, async () => {
+          try {
+            if (this.closed || this.backend.closing) return;
+            this.requireTarget(target);
+            if (
+              ![
+                "areal/server/modelConfiguration/read",
+                "areal/server/modelConfiguration/apply",
+              ].every((method) => target.client.capabilities?.methods?.includes(method))
+            )
+              throw new Error("请更新 Core 后再应用模型配置。");
+            const reconciled = await this.inspectPending(target, undefined, { refreshModels });
+            if (reconciled?.pending) return;
+            const snapshot = await this.config.current();
+            this.requireTarget(target);
+            if (this.applicationState(project, snapshot.revision).kind === "failed") return;
+            target.proof = await this.readProof(target).catch((error) => {
+              const previous = project.providerFailure;
+              if (
+                previous?.catalogRefreshPending &&
+                previous.revision === snapshot.revision &&
+                previous.serviceId === target.serviceId &&
+                previous.generation === target.generation
+              )
+                throw Object.assign(new Error(this.redact(errorMessage(error))), {
+                  configurationRefreshPending: true,
+                });
+              throw error;
+            });
+            this.rememberProof(target, target.proof, snapshot);
+            if (
+              target.proof.applied.revision === snapshot.revision &&
+              this.credentialsReady(target.proof, snapshot)
+            ) {
+              await this.confirmProof(target, target.proof, snapshot, { refreshModels });
+              return;
+            }
+            if (
+              this.saving ||
+              this.backend.providerUpdating ||
+              this.backend.resourcesUpdating ||
+              this.backend.activeCommands ||
+              this.backend.starting.size
+            ) {
+              project.providerError = null;
+              return;
+            }
+            const status = await target.client.request(
+              "areal/server/status",
+              {},
+              { decode: providerContract.serverStatus },
+            );
+            this.requireTarget(target);
+            if (
+              !status.restartSafe ||
+              this.saving ||
+              this.backend.providerUpdating ||
+              this.backend.resourcesUpdating ||
+              this.backend.activeCommands ||
+              this.backend.starting.size
+            ) {
+              project.providerError = null;
+              return;
+            }
+            this.backend.providerUpdating = true;
+            try {
+              if (this.closed || this.backend.closing) return;
+              const outcome = await this.applyProject(snapshot, target, { refreshModels });
+              if (!outcome.applied && !outcome.pending)
+                this.applicationFailed(target, snapshot.revision, outcome.error);
+            } finally {
+              this.backend.providerUpdating = false;
+            }
+          } catch (error) {
+            this.applicationFailed(target, this.snapshot().revision, error);
+          } finally {
+            this.backend.onChange();
+            if (
+              project.client?.ready &&
+              ["deferred", "unknown"].includes(this.applicationState(project).kind)
+            )
+              this.requestReconciliation(2000);
+          }
+        }),
+      () => {
+        const state = this.applicationState(project).kind;
+        return state === "applied" ? "ok" : state === "failed" ? "failed" : "unknown";
+      },
+    );
   }
   /** @param {ProviderRequest} request */
   async saveAndApply(request) {
@@ -1669,8 +1790,18 @@ class AppProviders {
       if (request.expectedRevision !== current.revision)
         throw new Error("供应商配置已变化，请刷新后重新应用");
       const outcomes = await this.applyProjects(current);
-      if (outcomes.some((outcome) => !outcome.applied))
-        throw new Error("模型配置应用未全部确认，请等待后刷新核对。");
+      const failure = outcomes.find(
+        (outcome) =>
+          !outcome.applied &&
+          !(
+            providerContract.record(outcome.error) &&
+            outcome.error.configurationRefreshPending === true
+          ),
+      );
+      if (failure)
+        throw new Error(
+          this.redact(errorMessage(failure.error) || "模型配置应用未全部确认，请等待后刷新核对。"),
+        );
       if ((await this.config.current()).revision !== current.revision)
         throw new Error("模型配置已被外部修改，请刷新核对。");
       this.backend.onChange();

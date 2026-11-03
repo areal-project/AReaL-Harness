@@ -178,7 +178,8 @@ try {
   );
   assert.equal(connection.ok, true);
   await page.getByRole("button", { name: "设置", exact: true }).click();
-  await page.getByRole("button", { name: "后台服务", exact: true }).click();
+  await page.getByRole("button", { name: "常规", exact: true }).click();
+  await page.getByRole("button", { name: "打开高级诊断", exact: true }).click();
   await page.getByRole("button", { name: /导出诊断包/ }).click();
   const initial = await exported();
   const coreOpen = initial.report.runs

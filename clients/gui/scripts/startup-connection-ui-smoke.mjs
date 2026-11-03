@@ -1055,7 +1055,8 @@ try {
     assert.equal(await page.getByTestId("chat-input").getAttribute("contenteditable"), "true");
     await page.getByTestId("chat-input").fill("BACKEND_UPDATE_DRAFT_PRESERVED");
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "后台服务", exact: true }).click();
+    await page.getByRole("button", { name: "常规", exact: true }).click();
+    await page.getByRole("button", { name: "打开高级诊断", exact: true }).click();
     const backendStatus = page.getByTestId("backend-service-status");
     const update = backendStatus.getByRole("button", { name: /^(更新后台…|正在更新…)$/ });
     const serviceCalls = () =>

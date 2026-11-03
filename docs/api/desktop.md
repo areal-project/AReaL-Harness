@@ -262,7 +262,7 @@ Desktop 首先按相同 generation 查询状态并尝试重连。仅在 `status 
 
 `operation` 使用原 `requestId`，状态为 `running`、`applied`、`rejected` 或 `unknown`，终态可带脱敏的 `result` 或 `error`。受理后的操作由 Core 持有，断线不取消提交。重复请求返回原结果，不重复发布配置；响应丢失先读取原请求。进程内回执有容量边界，代际改变或记录不可用不证明原请求失败，不能自动重发。客户端可核对新实例的当前就绪状态，但不能将其当成旧请求的回执。
 
-多个 Core 各自应用并确认。GUI 的供应商“保存”使用已有持久化命令，按文件 CAS 保存后即可完成；运行中的任务不阻止保存，应用失败也不撤销已经保存的修改。桌面服务在任务结束或重连后尝试应用，忙碌时每两秒核对一次；明确的非忙碌失败停止自动重试，结果未知时只查询原请求。页面区分保存和生效状态，并保留新草稿的原始 CAS 版本。备用默认模型和删除供应商继续使用严格协调操作；已知部分失败可按文件 CAS 补偿，再应用恢复产生的实际版本，未知请求未查清前不得回滚。外部写入或新任务可能阻止补偿，此时保留实际应用版本与待应用状态。文件监听与显式应用共享已应用基线，非模型配置继续遵循安全重启边界。
+多个 Core 各自应用并确认。GUI 的供应商“保存”使用已有持久化命令，按文件 CAS 保存后即可完成；运行中的任务不阻止保存，应用失败也不撤销已经保存的修改。桌面服务在任务结束或重连后尝试应用，忙碌时每两秒核对一次；明确的非忙碌拒绝停止自动重试，显式 `apply` 失败保留具体脱敏原因，结果未知时只查询原请求。已确认版本及凭据后，目录刷新失败按同项目、同服务代际、同配置版本记录为可恢复核对状态，对外沿用 `application.kind: unknown`；既有两秒恢复循环重新核对权威证明并刷新目录，不重启或重复热应用。显式 `apply` 仅剩此类读取失败时返回当前待确认快照，成功刷新后清除暂时失败；连接换代后的迟到结果不能覆盖新连接。页面区分保存和生效状态，并保留新草稿的原始 CAS 版本。备用默认模型和删除供应商继续使用严格协调操作；已知部分失败可按文件 CAS 补偿，再应用恢复产生的实际版本，未知请求未查清前不得回滚。外部写入或新任务可能阻止补偿，此时保留实际应用版本与待应用状态。文件监听与显式应用共享已应用基线，非模型配置继续遵循安全重启边界。
 
 ## Skill 元信息与资源
 
@@ -557,6 +557,22 @@ GUI 服务的窄命令 `trajectory` 支持 `{operation:"status"}`、`{operation:
 
 ## 桌面供应商连接诊断
 
+### 客户端运行观测
+
+本机导出仍使用 `format: areal-harness-diagnostics-v1`。新增 `monitoring` 接入描述：`schemaVersion: 1`、`source: desktop-diagnostics`、`transport: local-only`；`data.path: runs` 引用同一报告的 `header/events/incident`，`incidents` 按 `runId/incidentId/failureSeq` 索引现场。它是供监控平台适配器消费的本地数据契约，尚无网络传输、上传队列或服务端。消费者应忽略新增字段；旧记录缺少环境或操作字段时保持未知。
+
+`runs[].header` 在运行开始时记录 OS 版本、平台/架构、应用/Electron/Node 版本、源码或安装包模式、语言地区、可用逻辑 CPU 数和总/可用内存。字段按固定格式校验；不读取环境变量、主机名、用户名或配置内容。故障资源样本是 GUI Main 进程的内存和运行时长，不代表 Core/Runtime 的内存。
+
+`type: operation` 使用 `name: startup | model-configuration | task-send | history-load | reconnect`，记录 `started/ok/failed/unknown`、耗时与可选项目/代际/请求关联。`operationId` 绑定异步作用域，嵌套调用用 `parentOperationId` 关联；作用域结束后，延迟回调不继承已结束的操作。模型应用继续保留 `read-proof/apply/refresh-catalog` 阶段与原 Core `requestId`，自动核对使用独立操作。
+
+`ok` 只表示该边界成功：任务发送表示准入调用返回，不表示模型任务执行完成；历史加载表示本次权威读取完成，不表示整个历史都已下载。模型配置根据实际应用状态分类，待确认/推迟应用记 `unknown`。重连流程仍有异步历史刷新，连接与核对流程返回后保守记 `unknown`；后续 `history-load` 和任务发送结果分别证明相应路径恢复。异常记 `failed` 并保留白名单错误码/原因；`SUBMISSION_UNKNOWN` 不表示未受理，不授权重放写入。
+
+错误级事件拥有 `incidentId`，并触发即时资源样本。每次导出为每个保留运行提取最近错误及其前 24、后 7 条已记录事件，保存到 `incident`。`windowTruncated` 表示窗口外仍有事件，`rotationGap` 表示发生过日志轮转；现场由仍保留的日志派生，无法保证轮转后仍保留全部故障历史。缺失、非法记录与读取预算限制仍由报告的 `incomplete/omissions` 表达。
+
+本机反馈沿用 `bugReport.prepare` 冻结这份上下文，并将 operation、parent、incident、run 和 request 身份一致替换成报告内别名。预览、保存和导出引用同一份冻结数据；诊断默认不附带，联系方式不采集。接口没有增加 Renderer 任意写日志或读取文件的能力。测试入口为 `test:observability` 与 `test:observability-desktop`。
+
+本机诊断包的 `schemaVersion: 1` 事件新增 `type/component: model-configuration`，不改变供应商命令契约。`phase` 为 `read-proof/apply/refresh-catalog`，`outcome` 为 `started/ok/failed`，附 `durationMs`、项目/代际别名与可选 `requestId`；失败附白名单 `code/reason`，未知值归为 `OTHER`，不附异常正文、配置或凭据。反馈附件再次将请求身份转为报告内别名。旧事件继续可读；读取器应忽略未知事件类型和新增字段。RPC 阶段成功不等同于完整应用成功。
+
 桌面 `providers` 命令的 `discover` 与 `probe` 在网络初始化或请求失败时返回固定的 `error.code` 和操作提示。
 
 | `error.code` | 诊断 |
@@ -608,3 +624,14 @@ SnapShots 是 Electron 本地能力，不新增 Core 或 Runtime RPC。主窗口
 macOS 原生后端拥有捕获权限、系统全局快捷键、辅助进程和透明捕获窗口。其它桌面平台报告 `unavailable`，Web 和 Remote 不暴露本机桌面捕获。该能力为增量接口，没有 `snapShots` 的调用方继续使用既有附件路径。
 
 应用图标只写入图片附件的 `_meta["areal.snapShot"]` 展示信息，经既有同 URI 的资源 sidecar 保存到历史；模型文本剔除图标，历史卡片仅合并同条消息图片 URI 匹配的图标。
+
+## Electron 本机问题反馈
+
+`bugReport` 是 GUI Main 所有的窄桌面命令，不是 Core WebSocket 方法，也不通过 Remote 暴露。契约所有者为 `clients/gui/packages/workbench/client/desktop-contract/bug-report.cjs`；沿用可信 renderer 的 sender 校验与请求/响应校验，拒绝未知字段、任意路径、超限描述/图片和服务端调用。
+
+- `prepare {}` 返回 `{token, diagnostics}`，冻结有界隐私投影，最多保留 8 份易失预览、有效期 30 分钟。
+- `save {id, description, screenshots, diagnosticsToken?}` 返回 `{id}`。`id` 为 UUID；截图为有界 PNG data URL，在 Main 再次解码/重编码。保存为 `schemaVersion: 1`、`state: local-only`，诊断正文由 Main 持有的预览取得，renderer 不能注入诊断正文。同一 ID 的相同输入恢复原记录，冲突输入拒绝覆盖。
+- `list {}` 返回 `{reports}`（ID、时间、截图数、有无诊断）；`read {id}` 返回 `{report}`，含描述、截图和诊断 JSON 字符串或 `null`。
+- `export {id}` 仅经原生保存框选择位置，返回 `{path}` 或 `{canceled:true}`；导出已保存内容，不重新采集。`delete {id}` 返回 `{deleted:true}`，仅移除该本机记录。
+
+该新增命令不改变已有模型回复评价 `feedback` 或数据飞轮契约。问题反馈不包含联系方式或上传接口；可见状态只表示本机事实。目录、限制、隐私与使用流程见 [GUI 指南](../../clients/gui/README.md#本机问题反馈)。

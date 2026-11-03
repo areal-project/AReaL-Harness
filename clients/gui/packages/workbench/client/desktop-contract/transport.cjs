@@ -160,6 +160,11 @@ const commandDefinitions = Object.freeze({
     "app",
     { status: read, ...operations(mutation, "requestAccess openSettings restart stop") },
   ],
+  bugReport: [
+    "main",
+    "app",
+    { prepare: read, list: read, read, save: mutation, delete: mutation, export: read },
+  ],
   exportDiagnostics: ["main", "app", read],
   connectService: ["main", "app", subscription],
   export: ["main", "thread", read],

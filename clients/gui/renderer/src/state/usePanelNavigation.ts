@@ -112,8 +112,8 @@ export function usePanelNavigation(
       workspacePanels.selectPanel("Skills");
       return;
     }
-    if (["设置", "Skills", "MCP", "后台服务", "会话配置"].includes(name)) {
-      setSettingsTab(name === "设置" ? "模型服务" : name);
+    if (["设置", "Skills", "MCP", "高级诊断", "后台服务", "会话配置"].includes(name)) {
+      setSettingsTab(name === "设置" ? "模型服务" : name === "后台服务" ? "高级诊断" : name);
       setSettingsOpen(true);
       return;
     }

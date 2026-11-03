@@ -509,7 +509,8 @@ try {
     "Plugin management has no unrelated project recovery action",
   );
   await button("设置").click();
-  await button("后台服务").click();
+  await button("常规").click();
+  await button("打开高级诊断").click();
   await page.getByRole("heading", { name: "待核对的会话创建", exact: true }).waitFor();
   await page.getByText(requestId, { exact: false }).waitFor();
   const beforeCheck = (await trace()).length;

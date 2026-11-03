@@ -106,6 +106,7 @@ export function WorkbenchSettings({
           fileOpen={contextualFileOpen}
           action={resourceAction}
           connected={snapshot.connection?.state === "ready"}
+          onDiagnostics={() => setSettingsTab("高级诊断")}
         />
       ) : settingsTab === "SnapShots" ? (
         <SnapShotSettings
@@ -167,8 +168,12 @@ export function WorkbenchSettings({
           connected={snapshot.connection?.state === "ready"}
           onStatus={onTrajectoryStatus}
         />
-      ) : settingsTab === "后台服务" ? (
+      ) : ["高级诊断", "后台服务"].includes(settingsTab) ? (
         <>
+          <Button variant="ghost" onClick={() => setSettingsTab("常规")}>
+            {t("settings.diagnostics.back")}
+          </Button>
+          <p className="settings-section-desc">{t("settings.diagnostics.description")}</p>
           <ServiceStatusSettings
             backendStatus={{
               connection: snapshot.connection,

@@ -476,8 +476,8 @@ export const operationMessages = {
     en: "Let AReaL handle ongoing tasks on a schedule.",
   },
   "operations.schedules.backendUpdateRequired": {
-    "zh-CN": "后台版本过旧，无法读取任务目录。请在设置的“后台服务”中更新后重试。",
-    en: "The background service is too old to read the task catalog. Update it in Settings > Background service, then retry.",
+    "zh-CN": "当前版本无法读取任务目录。请在设置 → 常规 → 高级诊断中完成更新后重试。",
+    en: "This version cannot read the task catalog. Complete the update in Settings > General > Advanced diagnostics, then retry.",
   },
   "operations.schedules.partialLoad": {
     "zh-CN": "部分任务未能加载",

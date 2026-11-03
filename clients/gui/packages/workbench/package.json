@@ -63,6 +63,10 @@
       "types": "./client/desktop-contract/feedback.cjs",
       "default": "./client/desktop-contract/feedback.cjs"
     },
+    "./desktop-contract/bug-report": {
+      "types": "./client/desktop-contract/bug-report.cjs",
+      "default": "./client/desktop-contract/bug-report.cjs"
+    },
     "./desktop-contract/trajectory": {
       "types": "./client/desktop-contract/trajectory.cjs",
       "default": "./client/desktop-contract/trajectory.cjs"

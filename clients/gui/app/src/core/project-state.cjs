@@ -26,7 +26,7 @@ const {
  * pending:PendingSubmission[],journalWrite?:Promise<unknown>,reconciliation?:Reconciliation|null,reconciliationRead?:{client:import('@areal/runtime-client/core').CoreClient|null|undefined,generation?:number,promise:Promise<void>}|null,outcomes:Record<string,SubmissionOutcome>,
  * configurations:Record<string,import("./thread-configuration.cjs").Configuration|undefined>,configurationChanges:Map<string,string>,taskDraftWrites?:Map<string,Promise<unknown>>,taskCreateWrites?:Map<string,Promise<unknown>>,taskViewWrite?:Promise<unknown>,
  * models?:import('./provider-contract.cjs').ModelCatalogEntry[],profiles?:unknown,resourceProfile?:import('@areal/workbench/desktop-contract').ResourceRef,resourceFingerprint?:string,providerRevision?:string|null,providerSnapshot?:import('./provider-contract.cjs').ModelSnapshot,summariesLoaded?:boolean,
- * providerProof?:import('./provider-contract.cjs').ConfigurationProof,providerError?:string|null,providerFailure?:{revision:string,serviceId?:string,generation?:string,message:string},
+ * providerProof?:import('./provider-contract.cjs').ConfigurationProof,providerError?:string|null,providerFailure?:{revision:string,serviceId?:string,generation?:string,message:string,catalogRefreshPending?:boolean},
  * observationErrors?:Record<string,ObservationError>,refreshErrors?:Record<string,RefreshError>,
  * observationReads?:Map<string,ObservationRead>,summaryRead?:SummaryRead,summaryReads?:Promise<void|import('@areal/workbench/core-model-contract').CoreThread[]>,
  * taskNotificationMonitor?:InstanceType<typeof import('./notifications.cjs').TaskNotificationMonitor>,taskViews?:Map<string,string>,

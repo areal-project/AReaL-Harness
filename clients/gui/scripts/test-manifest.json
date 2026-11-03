@@ -1,5 +1,29 @@
 [
   {
+    "script": "test:observability",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["diagnostics", "feedback", "provider", "service"],
+    "requires": [],
+    "notes": "Local recorder concurrency, privacy projection, operation outcomes and immutable feedback evidence."
+  },
+  {
+    "script": "test:observability-desktop",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["diagnostics", "feedback", "desktop", "provider", "lifecycle"],
+    "requires": ["electron", "core-binary", "native-runtime", "gui-build", "git"],
+    "notes": "Isolated desktop startup, model configuration, task admission, history, injected Core loss/recovery and local feedback."
+  },
+  {
+    "script": "test:advanced-diagnostics",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["desktop", "service", "provider", "lifecycle"],
+    "requires": ["electron", "core-binary", "native-runtime"],
+    "notes": "Isolated desktop configuration, task execution, automatic Core recovery, and advanced diagnostics navigation/export."
+  },
+  {
     "script": "test:shared-host-consumers",
     "layer": "contract",
     "platforms": ["darwin", "linux"],
@@ -779,6 +803,28 @@
     "platforms": ["darwin", "linux"],
     "areas": ["plugins"],
     "requires": ["electron", "core-binary", "gui-build", "git"]
+  },
+  {
+    "script": "test:bug-report",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["feedback", "diagnostics"],
+    "requires": []
+  },
+  {
+    "script": "test:bug-report-electron",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["feedback", "diagnostics"],
+    "requires": ["electron", "gui-build"],
+    "notes": "Isolated Main IPC and filesystem; Core is deliberately absent; native save picker is injected."
+  },
+  {
+    "script": "test:bug-report-ui",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["feedback"],
+    "requires": ["browser", "gui-build"]
   },
   {
     "script": "test:feedback",

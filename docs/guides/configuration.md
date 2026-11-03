@@ -285,7 +285,7 @@ Core 的模型请求（含摘要、子 Agent 与 Workgroup）、Streamable HTTP 
 
 Core HTTP 客户端优先读取大写变量，再读取小写变量；第三方工具的优先级由其 HTTP 库决定，建议大小写值保持一致。`socks5` 在本地解析目标域名，`socks5h` 交给代理解析。HTTP(S) Basic 和 SOCKS5 用户名/密码可通过代理 URL 的 userinfo 配置；该 URL 可能包含凭据，不应写入仓库或共享诊断。
 
-macOS GUI 后台启动时通过系统 `scutil --proxy` 读取活动网络的静态 HTTP、HTTPS 和 SOCKS 代理，转换成上述环境变量后传给 Core；模型设置的模型发现、连接测试及 ChatGPT 订阅请求使用同一代理快照。系统 HTTPS 代理使用 HTTP CONNECT，系统 SOCKS 使用 `socks5h`，由代理解析目标域名。macOS 的 SOCKS 连接先经 GUI 后台的 loopback TCP 转接，再连接配置的上游代理，以兼容原生 Core 无法直接完成部分系统代理握手的情况；认证、SOCKS 数据和 TLS 原样透传。后台以权限 0600 保存转接端口和上游地址摘要，重启复用端口，不保存代理密码；代理 URL 及绕过规则的含义不变。优先级为对应协议的显式环境变量、显式 `ALL_PROXY`、系统对应协议代理、系统 SOCKS；大小写值统一为 Core 的大写优先规则。系统域名、IP 和 CIDR 绕过条目与已有 `NO_PROXY` 合并，`*.example.com` 转换为包含根域名的 `.example.com`；localhost、其子域、127.0.0.0/8 和 ::1 始终绕过。此路径不执行终端启动脚本、不修改系统设置；不解析 PAC、自动发现、仅排除简单主机名的选项或任意位置的通配符。其他系统沿用代理环境变量。更改系统代理后，等待任务完成，在 GUI“后台服务”中停止后台服务并重新连接，以重新读取并应用设置；只关闭窗口不会刷新后台环境。显式启用的 Responses WebSocket 仍遵循本页说明的直接连接限制。
+macOS GUI 后台启动时通过系统 `scutil --proxy` 读取活动网络的静态 HTTP、HTTPS 和 SOCKS 代理，转换成上述环境变量后传给 Core；模型设置的模型发现、连接测试及 ChatGPT 订阅请求使用同一代理快照。系统 HTTPS 代理使用 HTTP CONNECT，系统 SOCKS 使用 `socks5h`，由代理解析目标域名。macOS 的 SOCKS 连接先经 GUI 后台的 loopback TCP 转接，再连接配置的上游代理，以兼容原生 Core 无法直接完成部分系统代理握手的情况；认证、SOCKS 数据和 TLS 原样透传。后台以权限 0600 保存转接端口和上游地址摘要，重启复用端口，不保存代理密码；代理 URL 及绕过规则的含义不变。优先级为对应协议的显式环境变量、显式 `ALL_PROXY`、系统对应协议代理、系统 SOCKS；大小写值统一为 Core 的大写优先规则。系统域名、IP 和 CIDR 绕过条目与已有 `NO_PROXY` 合并，`*.example.com` 转换为包含根域名的 `.example.com`；localhost、其子域、127.0.0.0/8 和 ::1 始终绕过。此路径不执行终端启动脚本、不修改系统设置；不解析 PAC、自动发现、仅排除简单主机名的选项或任意位置的通配符。其他系统沿用代理环境变量。更改系统代理后，等待任务完成，在 GUI“设置 → 常规 → 高级诊断”中停止后台服务并重新连接，以重新读取并应用设置；只关闭窗口不会刷新后台环境。显式启用的 Responses WebSocket 仍遵循本页说明的直接连接限制。
 
 例如使用 SOCKS5 远端 DNS，并保留已有绕过条目：
 
@@ -490,7 +490,7 @@ upload_interval_ms = 1000
 
 已配置接收地址后，可在 GUI“数据飞轮”页通过开关启停：就绪开启显示浅绿，关闭、采集待应用或异常显示浅橙，并提供文字状态。开关只修改当前配置的 `enabled`，保留地址、凭据引用与队列；CLI 对应 `trajectory set-enabled true` / `trajectory set-enabled false`，可用 `--expected-revision` 传入 `status.config_revision` 防止覆盖并发编辑。从关闭变开启会恢复仍保留的失败副本，保留接收端 Retry-After；重复开启不重置已有重试预算。`sync-config --resume-retained` 供外部配置工具显式恢复失败副本，普通 `sync-config` 不重置它们。
 
-GUI 自动在 Core 空闲且其它配置没有变化时，复用 `ifIdle` 排空和安全应用流程装配采集。运行中任务、终端和排队消息阻止自动重启，显示待应用；存在其它配置变化或应用失败时显示原因，由后台服务原有安全应用入口处理。CLI 只应用上传控制，现有 Core 的采集设置仍需安全重启。关闭不会删除缓存或原会话；已超出容量被淘汰的副本、关闭期间未采集的事件不能通过重新开启恢复。
+GUI 自动在 Core 空闲且其它配置没有变化时，复用 `ifIdle` 排空和安全应用流程装配采集。运行中任务、终端和排队消息阻止自动重启，显示待应用；存在其它配置变化或应用失败时显示原因，由高级诊断中的安全应用入口处理。CLI 只应用上传控制，现有 Core 的采集设置仍需安全重启。关闭不会删除缓存或原会话；已超出容量被淘汰的副本、关闭期间未采集的事件不能通过重新开启恢复。
 
 ```sh
 target/debug/areal trajectory status --config /absolute/config.toml

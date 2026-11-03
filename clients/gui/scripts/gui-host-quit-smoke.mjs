@@ -279,7 +279,8 @@ try {
   checks.push("draft cancellation preserves edits and GUI");
   await guard.waitFor({ state: "hidden" });
   await name.fill("Fixture");
-  await page.getByRole("button", { name: "后台服务", exact: true }).click();
+  await page.getByRole("button", { name: "常规", exact: true }).click();
+  await page.getByRole("button", { name: "打开高级诊断", exact: true }).click();
   const quitDescription = page.getByText(
     "默认保持共享后台运行。有活动任务时可选择停止任务并退出，停止需要再次确认。",
     { exact: true },

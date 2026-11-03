@@ -51,7 +51,6 @@ export const settingsNavigationGroups = [
         icon: <SettingsConfigurationIcon />,
       },
       { id: "Cloud", label: "settings.cloud.title", icon: <Server strokeWidth={1.5} /> },
-      { id: "后台服务", label: "settings.service.title", icon: <Server strokeWidth={1.5} /> },
       {
         id: "数据飞轮",
         label: "settings.trajectory.title",
@@ -67,6 +66,7 @@ export const settingsNavigationGroups = [
 ] as const satisfies readonly SettingsNavigationGroup[];
 
 export function settingsLabel(name: string, t: ReturnType<typeof useI18n>["t"]) {
+  if (["高级诊断", "后台服务"].includes(name)) return t("settings.service.title");
   const item = settingsNavigationGroups
     .flatMap((group) => group.items.map((item) => ({ id: item.id, label: item.label })))
     .find((item) =>

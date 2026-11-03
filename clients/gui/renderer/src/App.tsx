@@ -280,7 +280,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     } else await resourceAction("connectService", {});
   };
   const backend = useBackendRecovery(snapshot, resourceAction, reconnectService, () => {
-    setSettingsTab("后台服务");
+    setSettingsTab("高级诊断");
     setSettingsOpen(true);
   });
   const { backendActionPending, backendActionError, runBackendAction, quitStartup } = backend;
@@ -433,7 +433,9 @@ function AppContent({ services }: { services: PlatformServices }) {
     !(thread && admitting) &&
     thread?.conversation?.kind !== "fork" &&
     !thread?.turns?.some((turn: Data) => turn.items?.length || turn.status === "inProgress");
-  const taskActions = <WorkspaceTaskActions session={session} workspacePanels={workspacePanels} />;
+  const taskActions = (
+    <WorkspaceTaskActions session={session} workspacePanels={workspacePanels} services={services} />
+  );
   const pluginCenterActive = surfaces.pluginCenterActive;
   const applicationRail = (
     <WorkbenchRail
@@ -551,7 +553,7 @@ function AppContent({ services }: { services: PlatformServices }) {
             onRetry={() => void retryRestoration()}
             onBackendAction={(kind) => void runBackendAction(kind)}
             onSettings={() => {
-              setSettingsTab((viewFailure && recoverySettings(viewFailure)) || "后台服务");
+              setSettingsTab((viewFailure && recoverySettings(viewFailure)) || "高级诊断");
               setSettingsOpen(true);
             }}
             onQuit={() => void quitStartup()}

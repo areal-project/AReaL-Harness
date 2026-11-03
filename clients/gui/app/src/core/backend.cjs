@@ -6,6 +6,7 @@ const {
   readCommandInvocation,
 } = require("@areal/workbench/desktop-contract");
 const { startupTrace } = require("./startup-timing.cjs");
+const diagnostics = require("./diagnostics.cjs");
 
 const { GuiHostProjects, requestIdFor } = require("./gui-host-projects.cjs");
 const { LifecycleOperations } = require("./lifecycle-operations.cjs");
@@ -836,7 +837,12 @@ class CoreBackend {
 
   /** @param {Parameters<InstanceType<typeof HistoryObservation>['openThread']>} args */
   openThread(...args) {
-    return this.observations.openThread(...args);
+    const [project] = args;
+    return diagnostics.withOperation(
+      "history-load",
+      { projectId: project.id, coreGeneration: project.service?.generation },
+      () => this.observations.openThread(...args),
+    );
   }
 
   /** @param {Parameters<InstanceType<typeof HistoryObservation>['supportsBoundedHistory']>} args */
@@ -881,7 +887,13 @@ class CoreBackend {
 
   /** @param {Parameters<InstanceType<typeof HistoryObservation>['historyCommand']>} args */
   historyCommand(...args) {
-    return this.observations.historyCommand(...args);
+    const [project, request] = args;
+    if (request.operation === "release") return this.observations.historyCommand(...args);
+    return diagnostics.withOperation(
+      "history-load",
+      { projectId: project.id, coreGeneration: project.service?.generation },
+      () => this.observations.historyCommand(...args),
+    );
   }
 
   /** @param {Parameters<InstanceType<typeof HistoryObservation>['observeThread']>} args */
@@ -1394,6 +1406,24 @@ class CoreBackend {
     const semantics = commandSemantics(commandName, rawRequest);
     if (semantics.requestId && !rawRequest[semantics.requestId])
       rawRequest = { ...rawRequest, [semantics.requestId]: randomUUID() };
+    if (commandName === "send" || (commandName === "side" && rawRequest.operation === "send")) {
+      const projectId = typeof rawRequest.projectId === "string" ? rawRequest.projectId : undefined;
+      const requestId = typeof rawRequest.requestId === "string" ? rawRequest.requestId : undefined;
+      return diagnostics.withOperation(
+        "task-send",
+        {
+          projectId,
+          requestId,
+          coreGeneration: projectId ? this.projects.get(projectId)?.service?.generation : undefined,
+        },
+        () => CoreBackend.prototype.commandObserved.call(this, commandName, rawRequest, context),
+      );
+    }
+    return CoreBackend.prototype.commandObserved.call(this, commandName, rawRequest, context);
+  }
+
+  /** @param {string} commandName @param {Record<string,unknown>} rawRequest @param {NonNullable<Parameters<CoreBackend["command"]>[2]>} context */
+  async commandObserved(commandName, rawRequest, context) {
     const invocation = readCommandInvocation(commandName, { ...rawRequest });
     if (this.worktrees && !this.cloudConversations?.routes(commandName, rawRequest))
       Object.assign(

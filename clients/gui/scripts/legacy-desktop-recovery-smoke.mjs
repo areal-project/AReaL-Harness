@@ -261,7 +261,8 @@ try {
     if (await startupSettings.isVisible()) await startupSettings.click();
     else {
       await page.getByRole("button", { name: "设置", exact: true }).click();
-      await page.getByRole("button", { name: "后台服务", exact: true }).click();
+      await page.getByRole("button", { name: "常规", exact: true }).click();
+      await page.getByRole("button", { name: "打开高级诊断", exact: true }).click();
     }
   };
   await launchCurrent();
