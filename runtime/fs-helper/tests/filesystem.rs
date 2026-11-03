@@ -530,3 +530,52 @@ fn staged_content_delivery_never_broadens_existing_read_write_permissions() {
         );
     }
 }
+
+#[test]
+fn image_view_uses_read_permissions_and_binds_source_without_modification() {
+    use sha2::{Digest, Sha256};
+    let f = Fixture::new();
+    let path = f.0.path().join("source.png");
+    let mut random = 42u32;
+    let source = image::RgbImage::from_fn(1024, 1024, |_, _| {
+        random ^= random << 13;
+        random ^= random >> 17;
+        random ^= random << 5;
+        image::Rgb([random as u8, (random >> 8) as u8, (random >> 16) as u8])
+    });
+    source.save(&path).unwrap();
+    let before = fs::read(&path).unwrap();
+    let command = |path: &str| FileCommand::ReadImage {
+        path: path.into(),
+        options: ImageViewOptions {
+            max_dimension: Some(512),
+            max_view_bytes: Some(4096),
+            ..Default::default()
+        },
+    };
+    let result = f.run(command("source.png")).unwrap();
+    assert_eq!(
+        result["sourceSha256"],
+        format!("{:x}", Sha256::digest(&before))
+    );
+    assert_eq!(result["sourceBytes"], before.len());
+    assert_eq!(result["sourceTransferred"], false);
+    assert_eq!(
+        result["views"][0]["sourceDimensions"],
+        serde_json::json!([1024, 1024])
+    );
+    let pixels = STANDARD
+        .decode(result["views"][0]["dataBase64"].as_str().unwrap())
+        .unwrap();
+    assert!(pixels.len() <= 4096);
+    assert_eq!(
+        image::load_from_memory(&pixels).unwrap().width(),
+        result["views"][0]["outputDimensions"][0].as_u64().unwrap() as u32
+    );
+    assert_eq!(fs::read(&path).unwrap(), before);
+    symlink(&path, f.0.path().join("link.png")).unwrap();
+    assert!(f.run(command("link.png")).is_err());
+    assert!(f.run(command("../source.png")).is_err());
+    fs::hard_link(&path, f.0.path().join("hard.png")).unwrap();
+    assert!(f.run(command("hard.png")).is_err());
+}

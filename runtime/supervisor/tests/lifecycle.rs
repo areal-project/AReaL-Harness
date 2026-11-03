@@ -492,7 +492,8 @@ async fn file_responses_preserve_full_chunks_with_small_command_windows() {
 
 #[tokio::test]
 async fn readonly_file_output_quota_is_known_but_mutation_acknowledgement_remains_unknown() {
-    for writes in [true, false] {
+    for kind in ["write", "read", "image"] {
+        let writes = kind == "write";
         let directory = tempfile::tempdir().unwrap();
         let executor = Executor::new(false);
         let mut config = Config::read_only(directory.path().into());
@@ -509,6 +510,11 @@ async fn readonly_file_output_quota_is_known_but_mutation_acknowledgement_remain
                     path: "workspace://repo/file".into(),
                     data_base64: STANDARD.encode("changed"),
                     expected: ExpectedFile::Absent,
+                }
+            } else if kind == "image" {
+                FileCommand::ReadImage {
+                    path: "workspace://repo/file".into(),
+                    options: Default::default(),
                 }
             } else {
                 FileCommand::Read {
@@ -2626,4 +2632,100 @@ async fn hook_group_cancelled_member_and_cleanup_unknown_do_not_release_other_me
     assert!(bounded(foreign).await.unwrap().is_err());
     assert_eq!(executor.starts.load(Ordering::SeqCst), 2);
     assert!(runtime.start(process(&runtime, &root)).await.is_err());
+}
+
+#[tokio::test]
+async fn image_response_is_retained_and_paged_without_enlarging_rpc_frames() {
+    let dir = tempfile::tempdir().unwrap();
+    let executor = Executor::new(false);
+    let mut config = Config::read_only(dir.path().into());
+    config.file_helper = Some(std::env::current_exe().unwrap());
+    config.output_window_bytes = 64;
+    let runtime = Supervisor::new(config, executor.clone()).unwrap();
+    let root = runtime.connection_info().root_scope_id;
+    let request = FileRequest {
+        operation_id: op(&runtime),
+        scope_id: root.clone(),
+        command: FileCommand::ReadImage {
+            path: "workspace://repo/image.png".into(),
+            options: Default::default(),
+        },
+    };
+    let call = {
+        let runtime = runtime.clone();
+        let request = request.clone();
+        tokio::spawn(async move { runtime.filesystem(request).await })
+    };
+    bounded(executor.entered()).await;
+    let process = executor.executions.lock().unwrap()[0].process_id.clone();
+    let raw = serde_json::to_vec(&serde_json::json!({"result":{"views":[{"dataBase64":STANDARD.encode(vec![42u8; 300_000])}]}})).unwrap();
+    executor.finish(&process, &raw).await;
+    let response = bounded(call).await.unwrap().unwrap();
+    assert!(serde_json::to_vec(&response).unwrap().len() < MAX_FRAME_BYTES);
+    assert_eq!(response["imageOutput"]["bytes"], raw.len());
+    assert_eq!(runtime.scope(&root).unwrap().output_bytes, raw.len() as u64);
+    let mut restored = Vec::new();
+    let mut after = None;
+    loop {
+        let page = runtime
+            .output(ReadOutput {
+                process_id: process.clone(),
+                after,
+                max_bytes: MAX_READ_BYTES,
+                wait_ms: 0,
+            })
+            .await
+            .unwrap();
+        assert!(!page.gap && !page.truncated);
+        assert!(serde_json::to_vec(&page).unwrap().len() < MAX_FRAME_BYTES);
+        for chunk in page.chunks {
+            restored.extend(STANDARD.decode(chunk.data_base64).unwrap());
+        }
+        if page.closed {
+            break;
+        }
+        after = Some(page.next_cursor);
+    }
+    assert_eq!(restored, raw);
+    assert_eq!(runtime.filesystem(request).await.unwrap(), response);
+    assert_eq!(runtime.scope(&root).unwrap().output_bytes, raw.len() as u64);
+    bounded(runtime.shutdown()).await.unwrap();
+}
+
+#[tokio::test]
+async fn image_preprocessing_cancellation_keeps_one_operation_and_no_success() {
+    let dir = tempfile::tempdir().unwrap();
+    let executor = Executor::new(false);
+    let mut config = Config::read_only(dir.path().into());
+    config.file_helper = Some(std::env::current_exe().unwrap());
+    let runtime = Supervisor::new(config, executor.clone()).unwrap();
+    let root = runtime.connection_info().root_scope_id;
+    let scope = runtime.create_scope(child(&runtime, &root)).unwrap();
+    let request = FileRequest {
+        operation_id: op(&runtime),
+        scope_id: scope.scope_id.clone(),
+        command: FileCommand::ReadImage {
+            path: "workspace://repo/a.png".into(),
+            options: Default::default(),
+        },
+    };
+    let call = {
+        let runtime = runtime.clone();
+        let request = request.clone();
+        tokio::spawn(async move { runtime.filesystem(request).await })
+    };
+    bounded(executor.entered()).await;
+    runtime.revoke(&scope.scope_id).unwrap();
+    let error = bounded(call).await.unwrap().unwrap_err();
+    assert_eq!(error.code, ErrorCode::ScopeClosed);
+    assert_eq!(
+        runtime.operation(&request.operation_id).unwrap().state,
+        OperationState::Cancelled
+    );
+    assert_eq!(
+        runtime.filesystem(request).await.unwrap_err().code,
+        ErrorCode::ScopeClosed
+    );
+    assert_eq!(executor.starts.load(Ordering::SeqCst), 1);
+    bounded(runtime.shutdown()).await.unwrap();
 }

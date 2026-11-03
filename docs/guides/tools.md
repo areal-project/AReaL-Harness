@@ -18,7 +18,7 @@ Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后�
 |---|---|
 | `read_file` | `path,offset?=1,limit?=120`；UTF-8 行、行号、nextLine/eof、完整摘要与 fileVersion；最多 1000 行、约 14 KiB |
 | `search_files` | `pattern,path?=".",glob?,context?=2,limit?=50`；rg 正则，context ≤10、limit ≤100；遵循 gitignore，不跟随符号链接 |
-| `image_read` | `path,maxDimension?=2048,crop?,frameIndex?/timeMs?`；PNG/JPEG/WebP/GIF，最多 8 MiB/32 MP；仅缩小，返回真实 Core Blob 图像 |
+| `image_read` | `path,maxDimension?=2048,maxViewBytes?=1048576,crop?,frameIndex?/timeMs?`；PNG/JPEG/WebP/GIF，最多 8 MiB/32 MP；仅缩小，返回真实 Core Blob 图像 |
 | `fs_read/list/stat` | 相对路径或 workspace URI；read offset 默认 0、maxBytes 默认/上限 8192，返回完整摘要与版本；list 默认 limit=100、最多 256 |
 | `fs_create` | `path,text`，只创建不存在的文件 |
 | `fs_write` | `path,text,fileVersion?/expectedSha256?`；省略版本使用本 Turn 最近观察，未观察时仅新建 |
@@ -36,7 +36,7 @@ Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后�
 
 完整响应中的调用依次执行；每响应默认 128 次资源保护与显式 Turn 剩余预算取较小值。两种协议均有 4 MiB 工具缓冲；编号非法或超限时，该响应的所有调用都不执行。文本结果页仍最多 16 KiB。`remainingToolCalls` 在无累计预算时为 null，否则为整数，压缩不重置计数；有限剩余额度 ≤32 时提示收尾。`max_output_bytes` 默认无限，显式有限预算不足以执行下一工具时保留已确认结果并要求未完成交接。独立的 `max_response_bytes` 默认限制单响应 4 MiB，包含推理/provider context/媒体。已知参数与工具失败返回模型处理，UNKNOWN 停止执行。
 
-`image_read` 读取原始图像载荷前检查当前 Scope 及全部祖先的剩余累计输出额度，按分块 base64 与 JSON 开销计算保守上界。余量不足时返回 `RESOURCE_EXHAUSTED` / `TOOL_MEDIA_TRANSFER_LIMIT_EXCEEDED`，尚未开始图像载荷读取；可用本地命令生成更小的图像文件后再读。该检查不扩大或重置既有输出预算，也不豁免文件读取；并发消费仍受 Runtime 硬上限约束。
+`image_read` 将显式裁剪、缩放与 GIF 采样请求交给 Runtime 文件助手，在已授权的读取边界内一次读取有界原图、预处理后再传输视图。原图不经过 Core，也不需要安装 Pillow 等依赖。`maxViewBytes` 可设为 4096–1048576，默认每幅 1 MiB，必要时等比缩小并报告实际尺寸。sourceBytes、sourceSha256、源/输出尺寸、runtimeOutputBytes 与派生 Blob 一起返回；实际派生响应（含 JSON/base64）继续消耗进程和祖先输出额度，预处理继续受进程时限、源大小、解码工作及内存边界约束。额度不足明确失败，不自动改请求重试或安装依赖；压缩原图很小时，派生 PNG 的传输计费可能更大，不承诺每张图都省字节。要求同版 Runtime 的 runtimeImageViewsV1 能力，旧 Runtime 返回 UNSUPPORTED，不回退到传输原图。
 
 `image_read` 也支持 GIF：省略 `frameIndex` / `timeMs` 时，确定性抽取首、中、尾帧并按动画顺序返回；这不是全动画覆盖。指定零基 `frameIndex` 或 `timeMs` 可查看被略过的瞬间，两者互斥。解码正确合成 disposal，报告帧数、总时长、帧起始时间与持续时间。时间线扫描只读取最多 4096 帧的元数据；实际解码截至最后所选帧，按帧矩形累计最多 1 Gi 像素，避免为每帧重复物化完整画布。GIF 画布最多 16 MP，四个有界缓冲共用 256 MiB 工作预算；超限返回可恢复的工具错误，早期帧可独立读取。每个 PNG 视图最多 1 MiB，必要时继续等比缩小，返回原始/实际尺寸、原始 SHA、裁剪区域、派生 Blob 与所用策略；原图不修改，细节可重新裁剪读取。
 

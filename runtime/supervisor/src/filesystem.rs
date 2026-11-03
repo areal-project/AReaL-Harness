@@ -99,6 +99,7 @@ impl Supervisor {
                                 FileCommand::ReadForHistory { .. }
                             ),
                         },
+                        matches!(request.command, FileCommand::ReadImage { .. }),
                     ))
                     .catch_unwind()
                     .await
@@ -148,8 +149,14 @@ impl Supervisor {
         self: &Arc<Self>,
         process: StartProcess,
         helper: FileHelper,
+        image_view: bool,
     ) -> Result<Value> {
         let writes = helper.writes;
+        let response_limit = if image_view {
+            MAX_IMAGE_RESPONSE_BYTES
+        } else {
+            MAX_HELPER_RESPONSE_BYTES
+        };
         let process = self.start_inner(process, Some(helper), true).await?;
         let mut cursor = None;
         let mut bytes = Vec::new();
@@ -173,7 +180,7 @@ impl Supervisor {
                 if stream == OutputStream::Stdout {
                     // The helper returns a JSON envelope containing base64, not
                     // raw file bytes. Its complete response must fit one RPC frame.
-                    if bytes.len() + chunk.len() > MAX_HELPER_RESPONSE_BYTES {
+                    if bytes.len() + chunk.len() > response_limit {
                         incomplete = true;
                     } else {
                         bytes.extend(chunk);
@@ -192,6 +199,16 @@ impl Supervisor {
             }
         }
         let info = self.wait_process(&process.process_id).await?;
+        if image_view
+            && info.state == ProcessState::Exited
+            && info.cleanup_confirmed
+            && info.stop_reason.as_deref() == Some("scope revoked")
+        {
+            return Err(Error::new(
+                ErrorCode::ScopeClosed,
+                "image preprocessing cancelled with scope; no view was committed",
+            ));
+        }
         if incomplete || info.stop_reason.is_some() {
             // 只读助手已回收且确定耗尽输出额度时，失败结果已知；写入丢失确认仍必须保留 UNKNOWN。
             if !writes
@@ -224,6 +241,13 @@ impl Supervisor {
             return Err(unavailable("ambiguous file helper response"));
         }
         if let Some(value) = envelope.remove("result") {
+            if image_view {
+                // 大视图仍通过既有有界输出页传递，fs.execute 的单帧上限不变。
+                return Ok(
+                    serde_json::json!({"imageOutput":{"processId":process.process_id,"bytes":bytes.len(),
+                    "encoding":"file-helper-json","scopeId":info.scope_id,"exitCode":info.exit_code}}),
+                );
+            }
             return Ok(value);
         }
         match envelope.remove("error") {

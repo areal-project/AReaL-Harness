@@ -105,6 +105,8 @@ Runtime daemon 可用 `--cumulative-output-bytes` 独立设置部署及 Scope �
 
 `--output-window-bytes` 现在限制热内存窗口。Runtime 将已经接受的原始输出在热窗口不足时保存到私有临时文件，支持窗口外的原游标回取；该文件随保留的进程记录清理，不构成跨 Runtime 重启的持久历史。磁盘上每字节带一个流标记，最多为已接受输出的两倍，不扩大进程或祖先输出额度；读取不重复计费。保留失败会停止进程并报告截断/失败，不能静默丢失证据。
 
+`FileCommand.readImage {path,options?}` 是受同一文件读取授权约束的派生视图入口。options 包含 maxDimension、maxViewBytes、crop、frameIndex/timeMs，默认值与边界见[工具](../guides/tools.md)。文件助手在 Runtime 内完成解码；成功返回 `imageOutput:{processId,bytes,encoding:"file-helper-json",scopeId,exitCode}`，用既有 `output.read` 从 null 游标分块回取完整 `{result:{sourceSha256,sourceBytes,views,...}}` JSON；每个 view 包含 coverage、sourceDimensions、outputDimensions、outputBytes、dataBase64。单帧仍为 128 KiB，最多三幅 1 MiB PNG 的完整封装上限为 4 MiB + 32 KiB。原图限制 8 MiB，禁止符号链接/硬链接与越权路径，不写用户文件。文件操作收据可回读而不重执行，输出只计费一次。`runtimeImageViewsV1` 表示该能力，旧部署不自动降级。
+
 Core 使用 `readForHistory` 捕获条件编辑的历史前像。仅这一经过校验的文件助手使用独立的 `MAX_FRAME_BYTES - 4096` 响应上限，不消耗命令或祖先输出额度。读取权限、文件大小、进程容量、时限和操作保留上限继续适用。普通 `read` 与 `process.start` 保留原有输出计量。
 
 ## 有界 hook 写入组

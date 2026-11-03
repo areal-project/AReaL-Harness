@@ -795,8 +795,14 @@ impl Invocation<'_> {
                 }
                 if call.name == "image_read" {
                     drop(state);
-                    return images::read(self.engine, runtime, self.execution_scope(), &effective)
-                        .await;
+                    return images::read(
+                        self.engine,
+                        runtime,
+                        self.execution_scope(),
+                        self.operation,
+                        &effective,
+                    )
+                    .await;
                 }
                 let mut request = request_with_policy(
                     &call,

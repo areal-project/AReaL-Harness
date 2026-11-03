@@ -237,7 +237,7 @@ impl Supervisor {
             root_scope_id: self.root.clone(),
             capabilities: json!({
                 "transport": "privateStdio", "authentication": "inheritedPipe", "reconnect": false,
-                "failureIsolationV1":true,
+                "failureIsolationV1":true,"runtimeImageViewsV1":self.config.file_helper.is_some(),
                 "sandbox": self.backend.sandbox_profile(), "restrictedScopeIsolation": self.backend.restricted_scope_isolation() && restricted.is_ok(), "processCleanup": "executorManagedProcesses",
                 "processTreeCleanupVerified": false, "coreHostIsolated": false,
                 "directoryObjectIsolation": false, "sandboxDenialAttribution": false,
