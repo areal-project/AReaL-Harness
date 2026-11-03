@@ -37,10 +37,13 @@ struct Expected {
     digest: Option<String>,
     accepted: bool,
     enqueue: bool,
+    configure: bool,
 }
 pub(super) fn is_legacy(record: &Value) -> bool {
-    record["remote"]["method"] == "session.send"
-        && record.get("nativeDigest").is_none()
+    matches!(
+        record["remote"]["method"].as_str(),
+        Some("session.send" | "session.control")
+    ) && record.get("nativeDigest").is_none()
         && record.get("coreScope").is_none()
 }
 fn id(value: &Value) -> Option<&str> {
@@ -59,48 +62,75 @@ fn expected(record: &Value) -> Option<Expected> {
     id(&record["remote"]["devicePeerId"])?;
     id(&record["remote"]["projectId"])?;
     let method = record["method"].as_str()?;
-    let enqueue = match method {
-        "areal/turn/start" => false,
-        "areal/turn/enqueue" => true,
+    let (enqueue, configure) = match (method, record["remote"]["method"].as_str()) {
+        ("areal/turn/start", Some("session.send")) => (false, false),
+        ("areal/turn/enqueue", Some("session.send")) => (true, false),
+        ("areal/thread/configure", Some("session.control"))
+            if record["remote"]["target"]["operation"] == "configure" =>
+        {
+            (false, true)
+        }
         _ => return None,
     };
     let thread = id(&record["remote"]["target"]["threadId"])?;
-    let revision = record["remote"]["target"]["expectedConfigRevision"].as_u64()?;
+    let revision = record["remote"]["target"][if configure {
+        "expectedRevision"
+    } else {
+        "expectedConfigRevision"
+    }]
+    .as_u64()?;
     let accepted = record["admissionState"] == "accepted" && record["accepted"] == true;
     let digest = if accepted {
         if record.get("params").is_some() || record["threadId"] != thread {
             return None;
         }
-        if enqueue {
-            id(&record["receipt"]["queueItemId"])?;
-        } else {
-            id(&record["turnId"])?;
+        if !configure {
+            if enqueue {
+                id(&record["receipt"]["queueItemId"])?;
+            } else {
+                id(&record["turnId"])?;
+            }
         }
         None
     } else {
         if record.get("admissionState").is_some() || record.get("accepted").is_some() {
             return None;
         }
-        let params: areal_protocol::desktop::TurnStart =
-            serde_json::from_value(record["params"].clone()).ok()?;
-        let guard = params.admission_guard.as_ref()?;
-        if params.request_id != operation
-            || params.thread_id != thread
-            || params.expected_config_revision != Some(revision)
-            || !guard.ordinary_session
-            || guard.config_revision != revision
-            || params.interaction_mode.is_some()
-            || (enqueue
-                && guard
-                    .expected_turn_id
-                    .as_ref()
-                    .is_none_or(|id| id.is_empty()))
-            || params.input.len() != 1
-            || !matches!(&params.input[0], areal_protocol::Input::Text {text,text_elements,mcp_content} if !text.trim().is_empty() && text.len()<=64*1024 && text_elements.is_empty() && mcp_content.is_none())
-        {
-            return None;
+        if configure {
+            let params: areal_protocol::desktop::ConfigureThread =
+                serde_json::from_value(record["params"].clone()).ok()?;
+            if params.request_id.as_deref() != Some(operation)
+                || params.thread_id != thread
+                || params.expected_revision != revision
+                || params.agent_profile.is_some()
+                || params.reset_model
+                || params.selected_skills.is_some()
+            {
+                return None;
+            }
+            Some(storage::digest(&serde_json::to_vec(&params).ok()?))
+        } else {
+            let params: areal_protocol::desktop::TurnStart =
+                serde_json::from_value(record["params"].clone()).ok()?;
+            let guard = params.admission_guard.as_ref()?;
+            if params.request_id != operation
+                || params.thread_id != thread
+                || params.expected_config_revision != Some(revision)
+                || !guard.ordinary_session
+                || guard.config_revision != revision
+                || params.interaction_mode.is_some()
+                || (enqueue
+                    && guard
+                        .expected_turn_id
+                        .as_ref()
+                        .is_none_or(|id| id.is_empty()))
+                || params.input.len() != 1
+                || !matches!(&params.input[0], areal_protocol::Input::Text {text,text_elements,mcp_content} if !text.trim().is_empty() && text.len()<=64*1024 && text_elements.is_empty() && mcp_content.is_none())
+            {
+                return None;
+            }
+            Some(storage::digest(&serde_json::to_vec(&params).ok()?))
         }
-        Some(storage::digest(&serde_json::to_vec(&params).ok()?))
     };
     Some(Expected {
         operation: operation.into(),
@@ -109,6 +139,7 @@ fn expected(record: &Value) -> Option<Expected> {
         digest,
         accepted,
         enqueue,
+        configure,
     })
 }
 fn digest(record: &Value) -> Result<String> {
@@ -171,7 +202,16 @@ fn receipt(expected: &Expected, record: &Value, value: &Value, identity: &str) -
     if let Some(digest) = &expected.digest {
         ensure!(actual_digest == digest, "original request digest differs");
     }
-    let (turn, queue) = if expected.enqueue {
+    let (turn, queue) = if expected.configure {
+        ensure!(
+            record["remote"]["target"]["expectedRevision"]
+                .as_u64()
+                .and_then(|revision| revision.checked_add(1))
+                == value["result"]["revision"].as_u64(),
+            "original configuration result differs"
+        );
+        (None, None)
+    } else if expected.enqueue {
         let queue =
             id(&value["result"]["queueItemId"]).context("missing original queue admission")?;
         ensure!(
@@ -205,6 +245,10 @@ pub(super) fn observed_store(
 ) -> Result<ObservedStore> {
     let expected = expected(record).context("legacy record shape differs")?;
     ensure!(expected.accepted, "legacy admission is not proved");
+    ensure!(
+        !expected.configure,
+        "configuration has no completion observation"
+    );
     let proof: Proof = serde_json::from_value(record[PROOF].clone())?;
     let binding = source(host, selected, project, alias, record)?;
     ensure!(
@@ -252,6 +296,9 @@ async fn recover_inner(
     let Some(expected) = expected(record) else {
         return Ok(None);
     };
+    if expected.configure && expected.accepted {
+        return Ok(Some(record.clone()));
+    }
     if record.get(PROOF).is_some() {
         observed_store(host, selected, project, alias, record)?;
         return Ok(Some(record.clone()));
@@ -309,12 +356,22 @@ async fn recover_inner(
         "original receipt unavailable or ambiguous"
     );
     let receipt = receipt(&expected, record, candidates[0], "desktop-owner")?;
-    let (native, barrier, observation) = host
-        .schedules
-        .connections
-        .remote_observe(host, project, &scope.1, &expected.thread)
-        .await?;
-    ensure!(observation.current(host), "legacy observation changed");
+    let seed = if expected.configure {
+        None
+    } else {
+        let (native, barrier, observation) = host
+            .schedules
+            .connections
+            .remote_observe(host, project, &scope.1, &expected.thread)
+            .await?;
+        ensure!(observation.current(host), "legacy observation changed");
+        Some(push::CompletionSeed {
+            native,
+            barrier,
+            observation,
+            scope: scope.clone(),
+        })
+    };
     ensure!(
         host.schedules.connections.shared_identity(host, project)? == scope
             && source(host, selected, project, alias, record)? == binding,
@@ -370,18 +427,8 @@ async fn recover_inner(
         .retain(|entry| entry["operationId"] != expected.operation);
     snapshot["outcomes"][&expected.operation] = candidate.clone();
     host.journal.native_replace(project, revision, snapshot)?;
-    push::track_seed(
-        host,
-        project,
-        alias,
-        &candidate,
-        true,
-        Some(push::CompletionSeed {
-            native,
-            barrier,
-            observation,
-            scope,
-        }),
-    );
+    if seed.is_some() {
+        push::track_seed(host, project, alias, &candidate, true, seed);
+    }
     Ok(Some(candidate))
 }

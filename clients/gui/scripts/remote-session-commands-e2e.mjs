@@ -1,5 +1,6 @@
 import { attachRemoteHostFixture } from "./remote-host-fixture.cjs";
 import { recoverSentEffect } from "./remote-send-recovery-scenario.mjs";
+import { fastPreservation } from "./remote-configure-scenario.mjs";
 import { taskOwnedPreflight, stopSettlement } from "./remote-stop-settlement-scenario.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 // 原生 T18–T34：真实 DesktopService/Core/Runtime/Noise；本机安全存储用显式 fixture。
@@ -1094,24 +1095,7 @@ if (process.argv[2] === "--host-worker") {
         });
       }
       await pause(1050);
-      const fastThread = (await a.rpc("session.create")).result.threadId;
-      const fastBaseline = await native("areal/thread/observe", { threadId: fastThread });
-      await native("areal/thread/configure", {
-        threadId: fastThread,
-        expectedRevision: fastBaseline.thread.desktop.configuration.revision,
-        parameters: { serviceTier: "fast", reasoningEffort: "low" },
-      });
-      const fastConfigured = await native("areal/thread/observe", { threadId: fastThread });
-      const effortSaved = await a.rpc("session.control", {
-        threadId: fastThread,
-        operation: "configure",
-        expectedRevision: fastConfigured.thread.desktop.configuration.revision,
-        values: { parameters: { reasoningEffort: "high" } },
-      });
-      assert.equal(effortSaved.result?.admissionState, "accepted", JSON.stringify(effortSaved));
-      const fastRetained = await native("areal/thread/observe", { threadId: fastThread });
-      assert.equal(fastRetained.thread.desktop.configuration.parameters.serviceTier, "fast");
-      assert.equal(fastRetained.thread.desktop.configuration.parameters.reasoningEffort, "high");
+      await fastPreservation({ rpc: (...args) => a.rpc(...args), native });
       checks.push({
         case: "Fast preservation",
         detail:

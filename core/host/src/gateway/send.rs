@@ -242,7 +242,7 @@ impl Session {
         let mut settled = record.clone();
         match response {
             Ok(result) => {
-                if !Self::send_receipt(&mut settled, &result) {
+                if !Self::submission_receipt(&mut settled, &result) {
                     self.authorize(Some(project), "submit")?;
                     return Ok(Self::command_view(Some(&record), command));
                 }
@@ -277,8 +277,18 @@ impl Session {
         self.authorize(Some(project), "submit")?;
         Ok(Self::command_view(Some(&settled), command))
     }
-    fn send_receipt(record: &mut Value, result: &Value) -> bool {
-        if record["method"] == "areal/turn/enqueue" {
+    pub(super) fn submission_receipt(record: &mut Value, result: &Value) -> bool {
+        if record["method"] == "areal/thread/configure" {
+            let Some(expected) = record["remote"]["target"]["expectedRevision"]
+                .as_u64()
+                .and_then(|revision| revision.checked_add(1))
+            else {
+                return false;
+            };
+            if result["revision"].as_u64() != Some(expected) {
+                return false;
+            }
+        } else if record["method"] == "areal/turn/enqueue" {
             let Some(queue) = result["queueItemId"]
                 .as_str()
                 .filter(|id| !id.is_empty() && id.len() <= 128)
@@ -298,7 +308,11 @@ impl Session {
         record["admissionState"] = json!("accepted");
         true
     }
-    pub(super) async fn reconcile_send(&self, project: &str, record: &Value) -> Result<Value> {
+    pub(super) async fn reconcile_submission(
+        &self,
+        project: &str,
+        record: &Value,
+    ) -> Result<Value> {
         if record.get("admissionState").is_some() {
             return Ok(record.clone());
         }
@@ -376,16 +390,18 @@ impl Session {
             return Ok(record.clone());
         };
         let mut settled = record.clone();
-        if !Self::send_receipt(&mut settled, &result) {
+        if !Self::submission_receipt(&mut settled, &result) {
             return Ok(record.clone());
         }
         let settled = self.settle_command(&id, settled)?;
-        gateway_owner::push::track(&self.host, &id, project, &settled, true);
+        if record["remote"]["method"] == "session.send" {
+            gateway_owner::push::track(&self.host, &id, project, &settled, true);
+        }
         Ok(settled)
     }
 }
 
-fn remote_control(entry: &Value) -> bool {
+pub(super) fn remote_control(entry: &Value) -> bool {
     let params = &entry["params"];
     let remote = &entry["remote"];
     let target = &remote["target"];

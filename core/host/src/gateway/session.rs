@@ -1,3 +1,5 @@
+#[path = "configure.rs"]
+mod configure;
 #[path = "create.rs"]
 mod create;
 #[path = "observer.rs"]
@@ -26,6 +28,7 @@ use std::{
 const METHODS: &[&str] = &[
     "session.create",
     "session.send",
+    "session.control",
     "turn.stop",
     "device.push.register",
     "device.push.unregister",
@@ -368,6 +371,7 @@ impl Session {
                     "interaction.respond"
                         | "session.create"
                         | "session.send"
+                        | "session.control"
                         | "turn.stop"
                         | "device.push.register"
                         | "device.push.unregister"
@@ -411,6 +415,7 @@ impl Session {
                         Some(
                             "session.create"
                                 | "session.send"
+                                | "session.control"
                                 | "turn.stop"
                                 | "interaction.respond"
                                 | "device.push.register"
@@ -782,6 +787,10 @@ impl Session {
             let generation = text(&request["context"], "serviceGeneration")?;
             return self.stop_turn(&project, generation, request).await;
         }
+        if method == "session.control" {
+            let generation = text(&request["context"], "serviceGeneration")?;
+            return self.configure_session(&project, generation, request).await;
+        }
         let (_, generation) = self.project(&project)?;
         match method {
             "work.list" | "attention.list" => {
@@ -895,7 +904,7 @@ impl Session {
         let mut result = json!({"commandId":command,"method":record["remote"]["method"],"target":record["remote"]["target"],"operationId":record["operationId"],"admissionState":record.get("admissionState").cloned().unwrap_or(json!("unknown")),"submissionUnknown":record.get("admissionState").is_none()});
         if matches!(
             record["remote"]["method"].as_str(),
-            Some("session.create" | "session.send")
+            Some("session.create" | "session.send" | "session.control")
         ) {
             result["nativeRequestId"] = record["operationId"].clone();
         }
@@ -957,15 +966,18 @@ impl Session {
             record
         };
         let sent;
-        let record = if let Some(record) =
-            record.filter(|record| record["remote"]["method"] == "session.send")
-        {
+        let record = if let Some(record) = record.filter(|record| {
+            matches!(
+                record["remote"]["method"].as_str(),
+                Some("session.send" | "session.control")
+            )
+        }) {
             sent = if gateway_owner::legacy::is_legacy(record) {
                 let id = self.project_id(project)?;
                 gateway_owner::legacy::recover(&self.host, &self.source_id, &id, project, record)
                     .await
             } else {
-                self.reconcile_send(project, record).await?
+                self.reconcile_submission(project, record).await?
             };
             Some(&sent)
         } else {
