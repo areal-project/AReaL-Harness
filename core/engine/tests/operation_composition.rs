@@ -363,6 +363,7 @@ async fn instruction_facts_distinguish_empty_missing_and_loaded_and_refresh_next
 
 struct SurfaceModel {
     round: AtomicUsize,
+    program_only: bool,
 }
 #[async_trait]
 impl Model for SurfaceModel {
@@ -378,13 +379,24 @@ impl Model for SurfaceModel {
             .iter()
             .filter_map(|d| d["function"]["name"].as_str())
             .collect();
-        assert!(
-            names.contains(&"edit_files")
-                && names.contains(&"tool_program")
-                && names.contains(&"environment_info")
-        );
+        assert!(names.contains(&"tool_program") && names.contains(&"tool_search"));
+        let catalog = tools
+            .iter()
+            .find(|d| d["function"]["name"] == "tool_program")
+            .unwrap()["function"]["description"]
+            .as_str()
+            .unwrap();
+        assert!(catalog.contains("edit_files") && catalog.contains("environment_info"));
+        assert_eq!(names.contains(&"edit_files"), !self.program_only);
+        assert_eq!(names.contains(&"environment_info"), !self.program_only);
         assert!(!names.contains(&"fs_apply_patches") && !names.contains(&"fs_create"));
-        assert_eq!(names.contains(&"read_history"), round != 0);
+        assert_eq!(
+            names.contains(&"read_history"),
+            round != 0 && !self.program_only
+        );
+        if self.program_only && round != 0 {
+            assert!(catalog.contains("\"name\":\"read_history\""));
+        }
         let event = match round {
             0 => {
                 assert!(names.len() <= 15, "{names:?}");
@@ -401,7 +413,15 @@ impl Model for SurfaceModel {
             ),
             2 => {
                 assert!(messages.last().unwrap().text_content().contains("APPLIED"));
-                call("read_history", json!({"limit":1}), 2)
+                if self.program_only {
+                    call(
+                        "tool_program",
+                        json!({"code":"text(await tools.read_history({limit:1}));"}),
+                        2,
+                    )
+                } else {
+                    call("read_history", json!({"limit":1}), 2)
+                }
             }
             _ => ModelEvent::text("discovered and edited through native children"),
         };
@@ -411,6 +431,12 @@ impl Model for SurfaceModel {
 
 #[tokio::test]
 async fn compact_surface_discovers_next_request_and_keeps_hidden_edit_children() {
+    for program_only in [false, true] {
+        compact_surface(program_only).await;
+    }
+}
+
+async fn compact_surface(program_only: bool) {
     use areal_engine::tools::{ToolExtensions, ToolPolicy};
     let dir = tempfile::tempdir().unwrap();
     let workspace = dir.path().join("workspace");
@@ -420,6 +446,7 @@ async fn compact_surface_discovers_next_request_and_keeps_hidden_edit_children()
         &dir.path().join("data"),
         Arc::new(SurfaceModel {
             round: AtomicUsize::new(0),
+            program_only,
         }),
         Limits::default(),
         Some(RuntimeConfig {
@@ -432,6 +459,7 @@ async fn compact_surface_discovers_next_request_and_keeps_hidden_edit_children()
         ToolExtensions {
             policy: ToolPolicy {
                 compact_tools: true,
+                programmatic_tools_only: program_only,
                 ..Default::default()
             },
             ..Default::default()

@@ -17,18 +17,15 @@ Set `programmaticTools:false` to restore native-only tool exposure. Save this JS
 After reading the files and choosing the edits and test entry point, compose edits, verification and bounded collection. Return to the model for unexpected failures, conflicts, permissions, UNKNOWN or visual judgment; do not install dependencies or choose new plans inside a loop. With no independent work, use the normal wait budget instead of explicit one-second status turns.
 
 ```javascript
-const edits = await tools.edit_files({files: [
-  {path: 'src/a.py', patches: [{oldText: 'old_a', newText: 'new_a'}]},
-  {path: 'src/b.py', patches: [{oldText: 'old_b', newText: 'new_b'}]}
-]});
-text(edits);
-if (edits.success && edits.data.allApplied) {
-  let result = await tools.run_command({argv: ['python', '-m', 'pytest', 'tests/test_feature.py', '-q']});
-  text(result);
-  for (let i = 0; i < 2 && result.success &&
-      (result.data.commandStatus === 'running' || result.data.outputReadComplete === false); i++) {
-    result = await tools.read_process({processId: result.data.processId});
-    text(result);
+const end = Date.now() + 540000; // 此局部上限必须小于所选程序超时。
+const e = await tools.edit_files({files:[{path:'src/a.py',patches:[{oldText:'old_a',newText:'new_a'}]},{path:'src/b.py',patches:[{oldText:'old_b',newText:'new_b'}]}]});
+text(e);
+if (e.success && e.data.allApplied) {
+  let r = await tools.run_command({argv:['python','-m','pytest','tests/test_feature.py','-q']});
+  text(r);
+  while (r.success && (r.data.commandStatus==='running' || r.data.outputReadComplete===false) && Date.now()<end) {
+    r = await tools.read_process({processId:r.data.processId,waitMs:Math.max(0,Math.min(120000,end-Date.now()))});
+    text(r);
   }
 }
 ```
@@ -45,7 +42,7 @@ Selected text above 16 KiB is saved as complete JSON before displaying a marked 
 
 Scripts may inspect known failures explicitly. UNKNOWN, cancellation and exhausted shared budgets stop dispatch even when caught. Completed effects remain and nothing is retried automatically. Cancellation settles admitted children and exits the interpreter. Core restart reconstructs receipts and preserves uncertain outcomes as UNKNOWN, without restoring JavaScript state or replaying code.
 
-This implementation supports result-dependent composition and selected observations, excluding Codex's cross-model-round yield/wait cells, deferred tool discovery and parallel leaf scheduling. These capabilities do not imply complete product compatibility. Fewer model calls need not mean lower tokens or latency: code, catalogs, mandatory receipts, extra reads and failures can offset savings. Saved-trajectory replay can verify deterministic recovery errors and projection overhead; regressions with an identical operation set exclude early-failure speedups. Separate mechanism evidence from real model adoption, cache hits and task quality. Cross-task capability claims follow the [evaluation methodology](../benchmarks/methodology.en.md).
+This implementation supports result-dependent composition and selected observations, excluding Codex's cross-model-round yield/wait cells and parallel leaf scheduling. These capabilities do not imply complete product compatibility. Fewer model calls need not mean lower tokens or latency: code, catalogs, mandatory receipts, extra reads and failures can offset savings. Saved-trajectory replay can verify deterministic recovery errors and projection overhead; regressions with an identical operation set exclude early-failure speedups. Separate mechanism evidence from real model adoption, cache hits and task quality. Cross-task capability claims follow the [evaluation methodology](../benchmarks/methodology.en.md).
 
 Known file ranges can be read in one program with `for (const path of paths) text(await tools.read_file({path,offset:1,limit:80}));`. Return content with `fileVersion/nextLine`; unfamiliar code still requires model interpretation. At the loop or time bound, preserve the actual process state, handle and cursor. `edit_files` also works directly with PTC disabled; existing file tools remain compatible; see the [tool contract](tools.en.md). Batch containers and each leaf count against the 64-call program bound and Turn tool budget; admission conservatively reserves the requested maximum number of leaves.
 
@@ -62,3 +59,5 @@ Compact mode uses shorter instructions and program descriptions with the same ex
 Evaluate final request size, actual adoption, provider input/cached/output tokens and all summary/recovery subrequests separately. Deterministic replay establishes execution invariants, not real model adoption.
 
 Program results distinguish `programCompleted` (interpreter completion), `allChildrenSucceeded` (every native child succeeded) and `pendingProcesses` (deduplicated using the latest receipt per process). Outer success is true only when both the interpreter and every child succeeded. Later success cannot erase earlier failure; expected failing controls remain recorded as failures for model interpretation. This result-contract change does not automatically block explicitly composed later steps or add retries.
+
+See [compact-programmatic.json](../../examples/tool-profiles/compact-programmatic.json) for an explicit composition-first candidate. It reuses the same executor, moving common native tools into the program catalog while retaining tool_search and authorized advanced capabilities. It tests actual edit/execute/collection composition without model-name routing or default changes. Schema text can increase serialized bytes; fewer entry points do not prove token savings. Compare final instruction, catalog and history sizes separately from provider usage against ordinary compact mode.

@@ -4,7 +4,7 @@ use super::*;
 use std::time::Instant;
 mod js;
 
-const COMPACT_DESCRIPTION: &str = "Compose already-decided native calls using fresh isolated JavaScript with top-level await. tools.NAME(args) returns {success,outcome,callId,itemId,data,text,availableImages}; text(result) avoids duplicate data/text; image(result) forwards images. Use the read → decide → edit/test/wait example in the instructions. Return for new errors, conflicts, UNKNOWN, permissions or semantic/visual decisions. No hidden retry/install/new plan. Native permissions, version checks, receipts and Turn budgets still apply. Calls are serial even in Promise.all. No Node, filesystem, network, timers or persistent state. At most 64 calls (batch leaves also count), 64 KiB code/arguments, 1 MiB archived text, 16 KiB preview, 4 images. Default 600s, max 1800s; timeout/cancel/UNKNOWN stop dispatch. Completed effects persist on error; unfinished process handles/cursors and child receipts are returned. Retrieve omitted evidence with read_history(itemId) or read_tool_result(resultId).";
+const PROGRAM_DESCRIPTION: &str = "Compose already-decided native calls in fresh JavaScript with top-level await. Use tools.NAME(args); returns {success,outcome,callId,itemId,data,text,availableImages}. text(result) avoids duplicate data/text; image(result) forwards images. Follow the read → decide → edit/test/collect example in instructions. Return for new errors, conflicts, UNKNOWN, permissions or semantic/visual judgment; no hidden repair, install or retry. Calls retain native permissions, versions, hooks and shared budgets, and are serial even in Promise.all. No Node, filesystem, network, imports, timers or persistent state. Up to 64 calls (batch leaves count), 64 KiB code/arguments, 1 MiB archived text/16 KiB preview, four images; default timeout 600s, max 1800s. Timeout/cancel/UNKNOWN stop dispatch. Receipts distinguish programCompleted, allChildrenSucceeded and pendingProcesses. Outer success is false if any child failed. Completed effects persist; read_history(itemId)/read_tool_result(resultId) recover evidence without replay.";
 
 const MAX_CALLS: usize = 64;
 const MAX_CODE: usize = 64 * 1024;
@@ -14,7 +14,7 @@ const RECEIPT_RESERVE: usize = 96 * 1024;
 pub(super) fn definition() -> areal_protocol::ToolDefinition {
     areal_protocol::ToolDefinition {
         name: "tool_program".into(),
-        description: "Run bounded JavaScript with top-level await to compose native tools, use their returned data in subsequent calls, branch, loop, poll processes, and select observations. Prefer this for an already-decided sequence of at least two native calls; use a direct tool for a single operation. If a process is running and no independent work remains, wait inside the program using the normal wait budget instead of repeated one-second model status turns. Use tools.NAME(arguments). Each returns {success,outcome,callId,itemId,data,text,availableImages}; data is the parsed native JSON result, text is its text representation. Use text(value) to return selected observations; text(nativeResult) avoids duplicating parsed data and text. Use image(nativeResult) to forward actual images. Intermediate native outputs stay in durable history; retrieve by itemId with read_history when needed. All native calls retain their existing permissions, hooks, schemas, aliases and shared budgets. Calls execute serially, including Promise.all; no parallel resource increase. This is a fresh isolated interpreter with no Node, filesystem, network, timers, imports or persistent state. Maximum 64 native calls, 64 KiB code/arguments, 1 MiB archived text with a 16 KiB preview and read_tool_result reference, four image results; default 600 seconds, max 1800. Only declared tools are accessible. No automatic retries. UNKNOWN, cancellation, and exhausted budgets stop dispatch even if caught. Completed effects are retained on error. A program may inspect known failures but must report meaningful failures; mandatory receipts preserve every child outcome and process status. Await run/read_process as needed and inspect commandStatus/outputReadComplete before using generated files. When visual judgment or a new model decision is needed, emit images/relevant observations and finish. Large selected output is saved with a preview; retrieve it without rerunning completed effects. Do not conceal unresolved processes. Example after reading both files and choosing the test: const e=await tools.edit_files({files:[{path:'src/a.py',patches:[{oldText:'old_a',newText:'new_a'}]},{path:'src/b.py',patches:[{oldText:'old_b',newText:'new_b'}]}]}); text(e); if(e.success && e.data.allApplied){let r=await tools.run_command({argv:['python','-m','pytest','tests/test_feature.py','-q']}); text(r); for(let i=0;i<2 && r.success && (r.data.commandStatus==='running' || r.data.outputReadComplete===false);i++){r=await tools.read_process({processId:r.data.processId}); text(r);}} Return new errors for model judgment; do not auto-install, retry edits, or change the test. Known-range read example: for(const path of ['src/a.py','src/b.py']) text(await tools.read_file({path,offset:1,limit:80})); Return to the model before interpreting unfamiliar code.".into(),
+        description: PROGRAM_DESCRIPTION.into(),
         input_schema: json!({"type":"object","properties":{"code":{"type":"string","maxLength":65536},"timeoutMs":{"type":"integer","minimum":1,"maximum":1800000}},"required":["code"],"additionalProperties":false}),
         output_schema: None,
     }
@@ -189,15 +189,8 @@ impl Engine {
         };
         for d in &mut definitions {
             if d["function"]["name"] == "tool_program" {
-                d["function"]["description"] = json!(format!(
-                    "{}\n{}",
-                    if self.extensions.policy.compact_tools {
-                        COMPACT_DESCRIPTION.into()
-                    } else {
-                        definition().description
-                    },
-                    catalog_description
-                ));
+                d["function"]["description"] =
+                    json!(format!("{}\n{}", PROGRAM_DESCRIPTION, catalog_description));
             }
         }
         definitions
