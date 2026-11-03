@@ -336,12 +336,12 @@ if (!process.env.RC12_TLS_HOME) {
     try {
       const env = { ...process.env };
       delete env.NODE_TEST_CONTEXT;
-      const output = execFileSync(process.execPath, ["--test", import.meta.filename], {
+      execFileSync(process.execPath, ["--test", import.meta.filename], {
         env: { ...env, RC12_TLS_HOME: home, NODE_EXTRA_CA_CERTS: join(home, "ca.pem") },
         encoding: "utf8",
         timeout: 600000,
+        stdio: ["ignore", "inherit", "inherit"],
       });
-      process.stdout.write(output);
     } finally {
       await rm(home, { recursive: true, force: true });
     }
@@ -459,7 +459,7 @@ if (!process.env.RC12_TLS_HOME) {
         const responses = await batch(client, [
           ...Array.from({ length: 19 }, () => ({
             method: "session.create",
-            params: { unexpected: true },
+            params: null,
             commandId: randomUUID(),
           })),
           ...requests,
@@ -669,7 +669,7 @@ if (!process.env.RC12_TLS_HOME) {
           })),
           ...Array.from({ length: 10 }, () => ({
             method: "session.create",
-            params: { unexpected: true },
+            params: null,
             commandId: randomUUID(),
           })),
           { method: "session.create", params: {}, commandId },

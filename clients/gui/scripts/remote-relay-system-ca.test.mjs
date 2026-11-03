@@ -108,7 +108,9 @@ test("process CA trust covers Rust enrollment, WSS and saved registration across
           assert.equal(originalReceipt.method, "remote.replace");
           assert.equal(originalReceipt.revision, beforeConfig.revision);
           const operations = join(rejected.home, "host/remote-operations");
-          const beforeOperations = new Set(await readdir(operations));
+          const beforeOperations = new Set(
+            (await readdir(operations)).filter((name) => name.endsWith(".json")),
+          );
           const isEnrollment = (operation) =>
             operation?.method === "remote.gateway.control" &&
             operation.ephemeral === true &&
@@ -129,7 +131,7 @@ test("process CA trust covers Rust enrollment, WSS and saved registration across
           } catch (error) {
             try {
               const added = (await readdir(operations)).filter(
-                (name) => !beforeOperations.has(name),
+                (name) => name.endsWith(".json") && !beforeOperations.has(name),
               );
               for (const name of added) {
                 const stored = JSON.parse(await readFile(join(operations, name), "utf8"));
@@ -150,7 +152,9 @@ test("process CA trust covers Rust enrollment, WSS and saved registration across
             }
             throw error;
           }
-          const added = (await readdir(operations)).filter((name) => !beforeOperations.has(name));
+          const added = (await readdir(operations)).filter(
+            (name) => name.endsWith(".json") && !beforeOperations.has(name),
+          );
           const receipts = await Promise.all(
             added.map(async (name) => JSON.parse(await readFile(join(operations, name), "utf8"))),
           );
