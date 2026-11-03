@@ -187,6 +187,8 @@ prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每�
 
 `session.create` 只创建普通 `ask` 会话，将原手机命令绑定到 Core 的 `areal/thread/start`、原 `creationAdmission` 与创建受理回执；结果不确定时只核查该原请求。同一 peer 的两个连接重叠提交同一个 `commandId`，在最后一次前置异步读取后重新核对 journal，复用同一原操作。`interaction.respond` 同样在读取当前交互后核对原操作，副本不另行提交审批。
 
+`project.models` 是仅需 `observe` 的只读方法，接受空 `params` 和仅含 `projectId` 的 `context`。返回 `{projectId,gatewayGeneration,grantRevision,serviceGeneration,models}`，最多 200 项、128 KiB；每项仅公开 `providerId,modelId,displayName,reasoningEffortOptions,available,unavailableReason`。普通模型来自当前 Core 已应用目录；ChatGPT 名称、模型与可用性来自同一 source 的 Host 订阅 owner。仅已认证且目录 `checking` 时，补入当前 Core 的 `lastAcceptedModel` 和本连接已经观察的当前会话配置；候选省略 `available`，不宣称可用。此集合不恢复旧 GUI 曾加载的全部会话或跨项目历史偏好。读取前后核对授权、Gateway/Core 代际、共享连接和订阅目录；离线返回 `CORE_UNAVAILABLE`，变化返回 `RESYNC_REQUIRED`。读取不启动项目、不创建会话、观察订阅或刷新模型目录；旧 Host 不声明该方法。
+
 `session.send` 沿用 `{threadId,expectedConfigRevision,text,enqueue?,expectedTurnId?}`，使用当前项目、Gateway、grant 与 Core 代际的写入 `context`。文本非空且最多 64 KiB；可选字段显式 `null` 非法，省略 `enqueue` 与显式 `false` 的命令语义摘要不同。Host 先核对普通会话所有权、配置 revision、活动 Turn 与队列，再由 Core 的 `ordinarySession` 准入 guard 原子核对。直接发送只允许 idle 且无待处理队列；排队必须绑定确切的原活动 `expectedTurnId`。忙碌、目标变化与不支持的 Workflow profile 分别保留 `TURN_BUSY`、`TARGET_CHANGED`、`UNSUPPORTED_PROFILE` 语义。
 
 `session.control` 支持 `configure`、`goalCreate/goalPause/goalResume/goalClear`、`queueUpdate/queueRemove/queueReorder/queuePause/queueResume/queueSteer` 和 `steer`，参数为 `{threadId,operation,expectedRevision,values}`，使用同样的写入 `context` 与 `submit` 授权。其中 `configure` 的 `values` 仅接受 `model`、仅含 `reasoningEffort` 的 `parameters`，及原 Remote 白名单 `options`。Host 核对普通会话、空闲轮次及预期配置 revision，并从同一 Core 的权威 `thread/inspect` 配置合并参数和选项，保留 Fast 等未改字段；Core 原子核对配置 revision。新命令摘要使用固定外层字段顺序与按键排序的 `values`，不依赖客户端 JSON 属性顺序；原操作写入现有 journal 后只派发一次。重复命令与 `command.read` 读取原结果，丢回复仅核查同存储、同 principal 与原 typed 摘要的 Core 回执。旧 JS configure 的原 `command.read` 保留原 semanticDigest；旧 pending 仅在已提交 source/migration/project/dataDir 与原 typed Core 回执一致时结算，不重新配置或补造派发绑定。手机恢复只查询原命令，不重新提交旧控制。目标控制除原生根会话条件外，还要求当前 Goal 来自同 Host、设备、项目的 accepted `goalCreate` 回执；观察投影与准入使用同一 journal 归属。队列编辑保留原队列 revision 和项目身份，拒绝改写有附件或已截断的排队正文；steer 绑定确切活动 Turn。Goal 与 queueSteer 使用原 typed Core 摘要，普通队列编辑使用去掉 requestId 的 management 摘要；旧 pending 同样只读相应原回执，保留 goalCreate 的 goalId/revision。`steer` 沿旧映射不添加原生 requestId，仅明确 Core 回答可结算；丢回复保持 UNKNOWN，原命令查询和副本都不再次追加输入。
@@ -203,6 +205,12 @@ prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每�
 | queueSteer | queueItemId, expectedTurnId | 当前队列 revision |
 | steer | text, expectedTurnId | 保留非负安全整数输入，Core 依据确切 Turn 判定 |
 
+
+`review.read` 首页面包含最多 16 个原生媒体引用；`artifactRef` 是绑定原 Thread/Turn/Item、连接、grant、Gateway 和 Core scope 的认证不透明选择器。`artifact.read` 要求 `review` 及 `{artifactRef,offset,length}`，重新核对原媒体，只读取获权 Core blob，校验完整长度与 SHA-256，每次返回最多 48 KiB 的 base64 分片。图片最多 16 MiB，沿用静态 PNG/JPEG/GIF/WebP 的 raster 预算。不接受任意 URL 或文件路径，不启动项目；连接或授权变化使原引用失效。
+
+`task.read` 只读取原 `{taskId,runId?}`，分别投影暂停可用性、当前 Run/revision 和 worker 结算状态，不证明命令受理。`task.pause` 要求 `pauseTask`、原 `{taskId,expectedRunId,expectedRevision}` 和正常写入 context；Core 原子核对该 Run 与版本，accepted 暂停回执不代表 worker 已清理。`task.question.read` 接受 `{taskId,runId,questionId}`，只读该 Task 和独立 Channel，不打开或替换前台会话观察；最多读取八页、每页 100 条、累计 4 MiB，完整题目最多八题、32 KiB。`task.question.reply` 要求 `answer`、同一目标与 `answers`：键和选项对应原问题，每个 UTF-8 答案非空且最多 4096 字节，问题仍待回复、未过期且 Run 未终结。暂停的 Task 仍可回复原问题；回复不恢复 Task 或新建 Run。
+
+两种写入在派发一次 Core 请求前持久化原命令关联。暂停使用 typed `TaskControl`，回复使用 typed `ChannelReply`。结果不确定时，以原 requestId、不带 thread scope 读取原 Task 回执，核对 method、typed 摘要、principal、持久存储和 Task 目标。导入的旧 pending 另需已提交的 source/migration/project/dataDir 证明；保留原 Remote semanticDigest，不补造派发绑定。新回复的语义摘要按答案键排序。 旧回复重试遇到原 JSON 键序不同，须核对原 typed pending 参数或已验证的原 Task 回执/证明后才复用结果；本次重试无法核实时返回 UNKNOWN，已保存的 accepted 历史和原 semanticDigest 不变。原回执或来源无法确认时继续 UNKNOWN，不重派；确证同一命令 ID 对应不同内容时返回 `COMMAND_CONFLICT`。保存结果可离线 `command.read`；独立 `observedState` 仅描述当前 Task/问题状态，标注 `provesCommandAdmission:false`，不能从已回答或 worker 已结算推断本操作受理。
 
 `turn.stop` 接受 `{threadId,expectedTurnId}` 与同样的写入 `context`，要求 `interrupt` 授权。Host 核对普通会话及确切活动 Turn，再由 Core 的 `turn/interrupt` 与 `ordinarySession` guard 原子核对原目标。命令先写入现有 journal；同 peer、同 `commandId` 的副本复用原操作。仅明确的 Core 回应确认 accepted 或 rejected；连接丢失继续 UNKNOWN，原 `command.read` 和重复命令都不再次停止。该 Core 方法没有独立受理回执，结果不暴露 `nativeRequestId`，不以 Turn 已结束推断本次停止已受理。项目离线仍可读取已保存的原结果；受理停止不代表 Runtime UNKNOWN 工具已经得到成功结算。
 

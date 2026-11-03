@@ -313,7 +313,14 @@ export async function nativeHostFixture(
 export async function nativeCoreProject(
   t,
   fixture,
-  { approval = false, holdModel = false, effectModel = false, stopModel = false } = {},
+  {
+    approval = false,
+    holdModel = false,
+    effectModel = false,
+    stopModel = false,
+    taskModel = false,
+    modelDisplayName,
+  } = {},
 ) {
   const { createServer } = await import("node:http");
   const { connect } = await import("../../../examples/desktop-api/client.mjs");
@@ -324,7 +331,8 @@ export async function nativeCoreProject(
     scratch = join(root, "scratch");
   for (const directory of [workspace, user, scratch])
     await mkdir(directory, { recursive: true, mode: 0o700 });
-  if (effectModel || stopModel) await mkdir(join(workspace, "effects"), { mode: 0o700 });
+  if (effectModel || stopModel || taskModel)
+    await mkdir(join(workspace, "effects"), { mode: 0o700 });
   const projectId = randomUUID();
   const alias = digest(`host:${projectId}`).slice(0, 24);
   const binding = { projectId, dataDir: join(root, "state") };
@@ -336,7 +344,8 @@ export async function nativeCoreProject(
     defaultBinding: false,
   });
   const modelRequests = [],
-    heldResponses = [];
+    heldResponses = [],
+    taskModels = new Map();
   const model = createServer(async (request, response) => {
     let raw = "";
     for await (const chunk of request) raw += chunk;
@@ -346,6 +355,114 @@ export async function nativeCoreProject(
       roles: (body.messages ?? []).map((message) => message.role),
     });
     if (respondToSessionName(body, response)) return;
+    const textMessages = (body.messages ?? []).flatMap((message) =>
+      typeof message.content === "string"
+        ? [message.content]
+        : Array.isArray(message.content)
+          ? message.content.filter((part) => typeof part.text === "string").map((part) => part.text)
+          : [],
+    );
+    const extractTaskContext = (prefix) =>
+      textMessages
+        .toReversed()
+        .map((value) => {
+          try {
+            return JSON.parse(value.split(prefix)[1]);
+          } catch {
+            return null;
+          }
+        })
+        .find(Boolean);
+    const taskGoal = extractTaskContext("Current authoritative goal: ");
+    const taskMarker =
+      taskModel && String(taskGoal?.goal?.objective ?? "").match(/RC08_TASK:([a-f0-9-]{36})/);
+    if (taskMarker) {
+      const effect = taskMarker[1],
+        text = taskGoal.goal.objective;
+      const state = taskModels.get(effect) ?? { stage: 0, answered: false, reported: false };
+      taskModels.set(effect, state);
+      const goal = taskGoal;
+      const channel = extractTaskContext("Current task channel: ");
+      const answer = channel?.messages?.find((message) => message.kind === "reply")?.answers;
+      let name, args;
+      if (state.stage === 0) {
+        name = "ask_user_question";
+        args = {
+          questions: text.includes("RC08_KEYS")
+            ? ["Z", "a", "10", "2"].map((id) => ({
+                id,
+                title: `Original ${id}`,
+                options: [],
+                allowFreeText: true,
+              }))
+            : [
+                {
+                  id: "choice",
+                  title: "Native Task choice",
+                  options: ["A", "B"],
+                  allowFreeText: false,
+                },
+                { id: "free", title: "Native Task free text", options: [], allowFreeText: true },
+              ],
+          mode: "async",
+          required: !text.includes("RC08_TERMINAL"),
+          timeoutSeconds: text.includes("RC08_EXPIRE") ? 1 : 600,
+        };
+        state.stage++;
+      } else if (state.stage === 1) {
+        name = "run_command";
+        args = {
+          command: `printf x >> '${join(workspace, "effects", effect + "-pending")}'; while [ ! -f '${join(workspace, "effects", effect + "-release")}' ]; do sleep 0.05; done; printf y >> '${join(workspace, "effects", effect + "-work")}'`,
+          timeoutMs: 120000,
+        };
+        state.stage++;
+      } else if (answer && !state.answered) {
+        assert.ok(["A", "B"].includes(answer.choice ?? answer.Z));
+        state.answered = true;
+        modelRequests.push({
+          effect,
+          taskId: channel.taskId,
+          runId: channel.runId,
+          answers: answer,
+        });
+        name = "run_command";
+        args = {
+          command: `printf '${answer.choice ?? answer.Z}' >> '${join(workspace, "effects", effect + "-reply")}'`,
+        };
+      } else if (!answer && !text.includes("RC08_TERMINAL") && state.stage === 2) {
+        name = "task_wait";
+        args = {};
+        state.stage++;
+      } else if (!state.reported) {
+        assert.ok(Number.isSafeInteger(goal?.revision), "native Task authoritative goal context");
+        name = "goal_update";
+        args = {
+          expectedRevision: goal.revision,
+          status: "complete",
+          summary: "Task fixture complete",
+          evidence: ["native Runtime useful work and original Channel checked"],
+          remaining: [],
+        };
+        state.reported = true;
+      }
+      const delta = name
+        ? {
+            tool_calls: [
+              {
+                index: 0,
+                id: randomUUID(),
+                type: "function",
+                function: { name, arguments: JSON.stringify(args) },
+              },
+            ],
+          }
+        : { content: "RC08_DONE" };
+      response.writeHead(200, { "Content-Type": "text/event-stream" });
+      response.end(
+        `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: name ? "tool_calls" : "stop" }], usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 } })}\n\ndata: [DONE]\n\n`,
+      );
+      return;
+    }
     const messages = body.messages ?? [];
     const currentMessages = messages.slice(
       messages.findLastIndex((message) => message.role === "user"),
@@ -417,7 +534,7 @@ export async function nativeCoreProject(
     deploymentPath = join(root, "deployment.json");
   await writeFile(
     configPath,
-    `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\n`,
+    `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\n${modelDisplayName === undefined ? "" : `models=[{id="fixture",display_name=${JSON.stringify(modelDisplayName)}}]\n`}`,
   );
   await writeFile(
     deploymentPath,

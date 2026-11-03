@@ -15,7 +15,10 @@ struct Receipt {
     request_id: String,
     method: String,
     digest: String,
-    thread_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thread_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    task_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     turn_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -34,6 +37,8 @@ struct Expected {
     operation: String,
     method: String,
     thread: String,
+    task: Option<String>,
+    task_params: Option<Value>,
     digest: Option<String>,
     accepted: bool,
     enqueue: bool,
@@ -42,7 +47,7 @@ struct Expected {
 pub(super) fn is_legacy(record: &Value) -> bool {
     matches!(
         record["remote"]["method"].as_str(),
-        Some("session.send" | "session.control")
+        Some("session.send" | "session.control" | "task.pause" | "task.question.reply")
     ) && record.get("nativeDigest").is_none()
         && record.get("coreScope").is_none()
 }
@@ -52,7 +57,7 @@ fn id(value: &Value) -> Option<&str> {
         .filter(|id| !id.is_empty() && id.len() <= 128)
 }
 fn expected(record: &Value) -> Option<Expected> {
-    if !is_legacy(record) || record["remote"]["capability"] != "submit" {
+    if !is_legacy(record) {
         return None;
     }
     let operation = id(&record["operationId"])?;
@@ -62,6 +67,32 @@ fn expected(record: &Value) -> Option<Expected> {
     id(&record["remote"]["devicePeerId"])?;
     id(&record["remote"]["projectId"])?;
     let method = record["method"].as_str()?;
+    if matches!(
+        record["remote"]["method"].as_str(),
+        Some("task.pause" | "task.question.reply")
+    ) {
+        if !session::send::remote_control(record) {
+            return None;
+        }
+        let task = id(&record["params"]["taskId"])?;
+        if record.get("admissionState").is_some() || record.get("accepted").is_some() {
+            return None;
+        }
+        return Some(Expected {
+            operation: operation.into(),
+            method: method.into(),
+            thread: String::new(),
+            task: Some(task.into()),
+            task_params: Some(record["params"].clone()),
+            digest: Some(session::tasks::native_digest(method, &record["params"]).ok()?),
+            accepted: false,
+            enqueue: false,
+            control: true,
+        });
+    }
+    if record["remote"]["capability"] != "submit" {
+        return None;
+    }
     let (enqueue, control) = match (method, record["remote"]["method"].as_str()) {
         ("areal/turn/start", Some("session.send")) => (false, false),
         ("areal/turn/enqueue", Some("session.send")) => (true, false),
@@ -158,6 +189,8 @@ fn expected(record: &Value) -> Option<Expected> {
         operation: operation.into(),
         method: method.into(),
         thread: thread.into(),
+        task: None,
+        task_params: None,
         digest,
         accepted,
         enqueue,
@@ -203,14 +236,21 @@ fn source(
         .journal_source(selected, project, alias, &current)
 }
 fn receipt(expected: &Expected, record: &Value, value: &Value, identity: &str) -> Result<Receipt> {
+    let target = match &expected.task {
+        Some(task) => json!({"kind":"task","taskId":task}),
+        None => json!({"kind":"thread","threadId":expected.thread}),
+    };
     ensure!(
         value["requestId"] == expected.operation
             && value["method"] == expected.method
             && value["identity"] == identity
-            && value["threadId"] == expected.thread
+            && expected.task.as_ref().map_or_else(
+                || value["threadId"] == expected.thread,
+                |task| value["taskId"] == *task
+            )
             && value["operation"]["requestId"] == expected.operation
             && value["operation"]["method"] == expected.method
-            && value["operation"]["target"] == json!({"kind":"thread","threadId":expected.thread})
+            && value["operation"]["target"] == target
             && value["status"] == "completed",
         "legacy receipt identity differs"
     );
@@ -222,11 +262,30 @@ fn receipt(expected: &Expected, record: &Value, value: &Value, identity: &str) -
         "invalid original receipt digest"
     );
     if let Some(digest) = &expected.digest {
-        ensure!(actual_digest == digest, "original request digest differs");
+        ensure!(
+            actual_digest == digest,
+            if expected.task.is_some() {
+                "COMMAND_CONFLICT"
+            } else {
+                "original request digest differs"
+            }
+        );
     }
     let (turn, queue) = if expected.control {
         ensure!(
-            session::controls::apply_result(&mut record.clone(), &value["result"]),
+            if expected.task.is_some() {
+                {
+                    let mut native = record.clone();
+                    native["params"] = expected
+                        .task_params
+                        .clone()
+                        .context("missing original task parameters")?;
+                    session::tasks::apply_result(&mut native, &value["result"])
+                        && (!expected.accepted || native["receipt"] == record["receipt"])
+                }
+            } else {
+                session::controls::apply_result(&mut record.clone(), &value["result"])
+            },
             "original control result differs"
         );
         (None, None)
@@ -250,7 +309,8 @@ fn receipt(expected: &Expected, record: &Value, value: &Value, identity: &str) -
         request_id: expected.operation.clone(),
         method: expected.method.clone(),
         digest: actual_digest.into(),
-        thread_id: expected.thread.clone(),
+        thread_id: expected.task.is_none().then(|| expected.thread.clone()),
+        task_id: expected.task.clone(),
         turn_id: turn,
         queue_item_id: queue,
     })
@@ -280,7 +340,7 @@ pub(super) fn observed_store(
             && uuid::Uuid::parse_str(&proof.store.journal_epoch).is_ok()
             && proof.receipt.request_id == expected.operation
             && proof.receipt.method == expected.method
-            && proof.receipt.thread_id == expected.thread
+            && proof.receipt.thread_id.as_deref() == Some(expected.thread.as_str())
             && proof.receipt.digest.len() == 64
             && if expected.enqueue {
                 proof.receipt.queue_item_id.as_deref() == record["receipt"]["queueItemId"].as_str()
@@ -293,6 +353,102 @@ pub(super) fn observed_store(
     );
     Ok(proof.store)
 }
+pub(super) async fn task_retry(
+    host: &Rc<Host>,
+    selected: &str,
+    project: &str,
+    alias: &str,
+    record: &Value,
+    incoming: &Value,
+) -> Result<Option<Value>> {
+    ensure!(is_legacy(record), "COMMAND_CONFLICT");
+    let operation = id(&record["operationId"]).context("COMMAND_CONFLICT")?;
+    uuid::Uuid::parse_str(operation).context("COMMAND_CONFLICT")?;
+    let pause = record["remote"]["method"] == "task.pause";
+    ensure!(
+        record["remote"]["method"]
+            == if pause {
+                "task.pause"
+            } else {
+                "task.question.reply"
+            }
+            && record["method"]
+                == if pause {
+                    "areal/task/pause"
+                } else {
+                    "areal/channel/reply"
+                }
+            && record["remote"]["capability"] == if pause { "pauseTask" } else { "answer" }
+            && incoming["requestId"] == operation,
+        "COMMAND_CONFLICT"
+    );
+    let keys = if pause {
+        &["taskId", "expectedRunId", "expectedRevision"][..]
+    } else {
+        &["taskId", "runId", "questionId"][..]
+    };
+    ensure!(
+        record["remote"]["target"]
+            .as_object()
+            .is_some_and(|target| target.len() == keys.len())
+            && keys
+                .iter()
+                .all(|key| record["remote"]["target"][key] == incoming[key]),
+        "COMMAND_CONFLICT"
+    );
+    let binding = source(host, selected, project, alias, record)?;
+    let incoming_digest =
+        session::tasks::native_digest(record["method"].as_str().unwrap(), incoming)?;
+    if record.get("admissionState").is_none() {
+        let original = expected(record).context("COMMAND_CONFLICT")?;
+        ensure!(
+            original.digest.as_deref() == Some(incoming_digest.as_str()),
+            "COMMAND_CONFLICT"
+        );
+        return Ok(Some(recover(host, selected, project, alias, record).await));
+    }
+    ensure!(
+        record["admissionState"] == "accepted"
+            && record["accepted"] == true
+            && record.get("params").is_none(),
+        "COMMAND_CONFLICT"
+    );
+    if record.get(PROOF).is_some() {
+        let proof: Proof = serde_json::from_value(record[PROOF].clone())?;
+        ensure!(
+            proof.version == 1
+                && proof.source == binding
+                && proof.record_digest == digest(record)?
+                && proof.store.service_id
+                    == storage::digest(binding.data_dir.as_os_str().as_encoded_bytes())[..24]
+                && proof.store.identity == "desktop-owner"
+                && uuid::Uuid::parse_str(&proof.store.journal_epoch).is_ok()
+                && proof.receipt.request_id == operation
+                && proof.receipt.method == record["method"]
+                && proof.receipt.task_id.as_deref() == incoming["taskId"].as_str()
+                && proof.receipt.thread_id.is_none(),
+            "legacy task proof differs"
+        );
+        ensure!(proof.receipt.digest == incoming_digest, "COMMAND_CONFLICT");
+        return Ok(Some(record.clone()));
+    }
+    let expected = Expected {
+        operation: operation.into(),
+        method: record["method"].as_str().unwrap().into(),
+        thread: String::new(),
+        task: Some(id(&incoming["taskId"]).context("COMMAND_CONFLICT")?.into()),
+        task_params: Some(incoming.clone()),
+        digest: Some(incoming_digest),
+        accepted: true,
+        enqueue: false,
+        control: true,
+    };
+    match recover_inner(host, selected, project, alias, record, Some(expected)).await {
+        Ok(record) => Ok(record),
+        Err(error) if error.to_string() == "COMMAND_CONFLICT" => Err(error),
+        Err(_) => Ok(None),
+    }
+}
 pub(super) async fn recover(
     host: &Rc<Host>,
     selected: &str,
@@ -300,7 +456,7 @@ pub(super) async fn recover(
     alias: &str,
     record: &Value,
 ) -> Value {
-    match recover_inner(host, selected, project, alias, record).await {
+    match recover_inner(host, selected, project, alias, record, None).await {
         Ok(Some(record)) => record,
         _ => record.clone(),
     }
@@ -311,11 +467,12 @@ async fn recover_inner(
     project: &str,
     alias: &str,
     record: &Value,
+    task_retry: Option<Expected>,
 ) -> Result<Option<Value>> {
-    let Some(expected) = expected(record) else {
+    let Some(expected) = task_retry.or_else(|| expected(record)) else {
         return Ok(None);
     };
-    if expected.control && expected.accepted {
+    if expected.control && expected.accepted && expected.task.is_none() {
         return Ok(Some(record.clone()));
     }
     if record.get(PROOF).is_some() {
@@ -359,7 +516,11 @@ async fn recover_inner(
             &scope.1,
             &scope.2,
             "areal/request/read",
-            json!({"threadId":expected.thread,"requestId":expected.operation}),
+            if expected.task.is_some() {
+                json!({"requestId":expected.operation})
+            } else {
+                json!({"threadId":expected.thread,"requestId":expected.operation})
+            },
         )
         .await?;
     let candidates = read["data"]
@@ -369,10 +530,11 @@ async fn recover_inner(
         .filter(|entry| {
             entry["requestId"] == expected.operation
                 && entry["method"] == expected.method
-                && expected
-                    .digest
-                    .as_ref()
-                    .is_none_or(|digest| entry["digest"] == *digest)
+                && (expected.task.is_some()
+                    || expected
+                        .digest
+                        .as_ref()
+                        .is_none_or(|digest| entry["digest"] == *digest))
         })
         .collect::<Vec<_>>();
     ensure!(
@@ -424,10 +586,16 @@ async fn recover_inner(
     if !expected.accepted {
         candidate["accepted"] = json!(true);
         candidate["admissionState"] = json!("accepted");
-        candidate["threadId"] = json!(expected.thread);
+        if expected.task.is_none() {
+            candidate["threadId"] = json!(expected.thread);
+        }
         if expected.control {
             ensure!(
-                session::controls::apply_result(&mut candidate, &candidates[0]["result"]),
+                if expected.task.is_some() {
+                    session::tasks::apply_result(&mut candidate, &candidates[0]["result"])
+                } else {
+                    session::controls::apply_result(&mut candidate, &candidates[0]["result"])
+                },
                 "original control result differs"
             );
         }

@@ -278,7 +278,12 @@ impl Session {
         Ok(Self::command_view(Some(&settled), command))
     }
     pub(super) fn submission_receipt(record: &mut Value, result: &Value) -> bool {
-        if record["remote"]["method"] == "session.control" {
+        if matches!(
+            record["remote"]["method"].as_str(),
+            Some("task.pause" | "task.question.reply")
+        ) {
+            return tasks::apply_result(record, result);
+        } else if record["remote"]["method"] == "session.control" {
             return controls::apply_result(record, result);
         } else if record["method"] == "areal/turn/enqueue" {
             let Some(queue) = result["queueItemId"]
@@ -308,7 +313,10 @@ impl Session {
         if record.get("admissionState").is_some() || record["method"] == "turn/steer" {
             return Ok(record.clone());
         }
-        self.authorize(Some(project), "submit")?;
+        self.authorize(
+            Some(project),
+            record["remote"]["capability"].as_str().unwrap_or("submit"),
+        )?;
         let id = self.project_id(project)?;
         let Ok(scope) = self
             .host
@@ -334,9 +342,13 @@ impl Session {
                     && binding["journalEpoch"] == original["journalEpoch"],
                 "RESYNC_REQUIRED"
             );
-            let thread = record["params"]["threadId"]
-                .as_str()
-                .context("RESOURCE_UNAVAILABLE")?;
+            let task = record["params"].get("taskId");
+            let thread = record["params"].get("threadId");
+            let target = if let Some(task) = task {
+                json!({"kind":"task","taskId":task})
+            } else {
+                json!({"kind":"thread","threadId":thread.context("RESOURCE_UNAVAILABLE")?})
+            };
             let operation = record["params"]["requestId"]
                 .as_str()
                 .context("RESOURCE_UNAVAILABLE")?;
@@ -345,7 +357,11 @@ impl Session {
                     project,
                     &scope.1,
                     "areal/request/read",
-                    json!({"threadId":thread,"requestId":operation}),
+                    if task.is_some() {
+                        json!({"requestId":operation})
+                    } else {
+                        json!({"threadId":thread,"requestId":operation})
+                    },
                 )
                 .await?;
             ensure!(
@@ -365,11 +381,14 @@ impl Session {
                         && receipt["method"] == record["method"]
                         && receipt["digest"] == record["nativeDigest"]
                         && receipt["identity"] == original["identity"]
-                        && receipt["threadId"] == thread
+                        && if let Some(task) = task {
+                            receipt["taskId"] == *task
+                        } else {
+                            Some(&receipt["threadId"]) == thread
+                        }
                         && receipt["operation"]["requestId"] == operation
                         && receipt["operation"]["method"] == record["method"]
-                        && receipt["operation"]["target"]
-                            == json!({"kind":"thread","threadId":thread})
+                        && receipt["operation"]["target"] == target
                         && receipt["status"] == "completed"
                 })
                 .collect::<Vec<_>>();
@@ -377,7 +396,10 @@ impl Session {
             Ok(candidates[0]["result"].clone())
         }
         .await;
-        self.authorize(Some(project), "submit")?;
+        self.authorize(
+            Some(project),
+            record["remote"]["capability"].as_str().unwrap_or("submit"),
+        )?;
         let Ok(result) = result else {
             return Ok(record.clone());
         };
@@ -393,7 +415,7 @@ impl Session {
     }
 }
 
-pub(super) fn remote_control(entry: &Value) -> bool {
+pub(crate) fn remote_control(entry: &Value) -> bool {
     let params = &entry["params"];
     let remote = &entry["remote"];
     let target = &remote["target"];

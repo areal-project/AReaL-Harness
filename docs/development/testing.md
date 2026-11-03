@@ -420,6 +420,10 @@ macOS 实际崩溃预算使用 `AREAL_HOST_SERVICE_ROOT=/absolute/authorized/roo
 
 `AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal AREAL_SCHEDULE_GUI_ROOT=/absolute/source/clients/gui AREAL_SCHEDULE_MODE=accept node clients/gui/scripts/schedule-reliability-lifecycle-smoke.mjs` 运行真实源码 Electron/Main/Host 调度生命周期回归。夹具使用独立应用身份和已构建的 Renderer 资源，通过公开 bridge 创建任务；不验证任务创建对话框。原断言覆盖未打开项目到期一次、GUI 退出后触发、显式停止期间不准入及显式重连后的 misfire。生命周期身份取认证 Host 描述及原停止回执，不依赖旧 Desktop 的 `core/service.json`。停止未确认时保留隔离凭据和现场，清理只核查原请求。结果、trace、截图与清理在 `.scratch/schedule-reliability-lifecycle-*/manifest.json`；该路径不覆盖真实供应商、真机或系统登录。
 
+`AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal node --test clients/gui/scripts/remote-task-native.test.mjs` 让旧 JS 生产者与 Rust Gateway 执行同一 Task 问答/暂停场景，使用真实 Core/Runtime、确定性本地模型与本地 Relay，核对原 Run、答案及 UTF-8 预算、暂停和 worker 结算，以及旧丢回复请求的只读恢复。同一环境下分别运行 `node clients/gui/scripts/remote-task-question-contract.mjs` 和 `node clients/gui/scripts/remote-task-pause-contract.mjs`：原 JS 断言通过真实 Host journal CAS 与模拟 Core 执行。存储失败场景仅临时将本案确切 transfer 目录设为只读，随后恢复原权限；实际失败为 EACCES，“disk full”保留为历史注入错误标签。证据与清理保存在各 `native-remote-host-*/` 目录；不代表真机、真实供应商或 GUI 验收。
+
+同一已验证产物环境下，`node --test clients/gui/scripts/remote-artifact-native.test.mjs` 通过 Rust `review.read`/`artifact.read` 读取原生 Task 图片，核对分片拼接、媒体归属与精确清理；`node --test clients/gui/scripts/remote-project-models-native.test.mjs` 从真实 Core 读取有界六字段模型目录及已配置显示名。这两条原生路径单列证据，不外推为原 Remote 套件全部通过。
+
 `pnpm --dir clients/gui run test:shared-host-consumers` 使用隔离真实 Host/Core 验证 GUI 命名环境凭据、等价 CLI 别名及外来项目的原配置和会话创建。`node clients/gui/scripts/shared-host-gui-journal.mjs` 经普通提交 owner 验证双客户端 CAS、大记录和丢回复后的原回执恢复。`node clients/gui/scripts/gui-host-lifecycle-smoke.mjs` 验证项目登记、客户端断开、显式停止/重开，以及独立客户端活动轮次的全局观察和结算；活动查询不把轮次重复计入任务数。三个脚本使用 `AREAL_TEST_BIN_DIR` 指定的固定完整产物；默认使用本仓 `.local/shared-host-bin`。这些场景不访问真实 Keychain，不启动 Renderer，不替代旧 Desktop writer fence、GUI/TUI 审批交接或安装包验收。
 
 `node clients/gui/scripts/gui-terminal-connection-smoke.mjs` 使用同一固定产物，在独立 Node 客户端中运行生产 Main 终端连接适配器。场景覆盖显式 Profile 权限、真实 PTY 输入/输出/resize、强杀客户端后的定向 Runtime 清理、原请求恢复及普通 thread 资源继续。它不启动 Electron，不验证 Desktop 提交 journal 桥接或退出界面。

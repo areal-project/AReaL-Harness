@@ -1,7 +1,11 @@
+#[path = "artifacts.rs"]
+mod artifacts;
 #[path = "controls.rs"]
 pub(super) mod controls;
 #[path = "create.rs"]
 mod create;
+#[path = "models.rs"]
+mod models;
 #[path = "observer.rs"]
 mod observer;
 #[path = "overview.rs"]
@@ -9,9 +13,11 @@ pub(super) mod overview;
 #[path = "projection.rs"]
 mod projection;
 #[path = "send.rs"]
-mod send;
+pub(super) mod send;
 #[path = "stop.rs"]
 mod stop;
+#[path = "tasks.rs"]
+pub(super) mod tasks;
 use super::wire;
 use crate::server::{Host, gateway_owner};
 use anyhow::{Context, Result, ensure};
@@ -30,15 +36,20 @@ const METHODS: &[&str] = &[
     "session.send",
     "session.control",
     "turn.stop",
+    "project.models",
     "device.push.register",
     "device.push.unregister",
     "host.describe",
     "project.list",
     "task.read",
+    "task.pause",
+    "task.question.read",
+    "task.question.reply",
     "attention.read",
     "interaction.respond",
     "command.read",
     "review.read",
+    "artifact.read",
     "session.open",
     "session.history",
     "session.body",
@@ -373,6 +384,8 @@ impl Session {
                         | "session.send"
                         | "session.control"
                         | "turn.stop"
+                        | "task.pause"
+                        | "task.question.reply"
                         | "device.push.register"
                         | "device.push.unregister"
                 )
@@ -417,6 +430,8 @@ impl Session {
                                 | "session.send"
                                 | "session.control"
                                 | "turn.stop"
+                                | "task.pause"
+                                | "task.question.reply"
                                 | "interaction.respond"
                                 | "device.push.register"
                                 | "device.push.unregister"
@@ -791,43 +806,34 @@ impl Session {
             let generation = text(&request["context"], "serviceGeneration")?;
             return self.control_session(&project, generation, request).await;
         }
+        if matches!(method, "task.pause" | "task.question.reply") {
+            let generation = text(&request["context"], "serviceGeneration")?;
+            return self.task_command(&project, generation, request).await;
+        }
         let (_, generation) = self.project(&project)?;
         match method {
+            "project.models" => self.project_models(&project, &generation, request).await,
             "work.list" | "attention.list" => {
                 self.overview(&project, &generation, method, params).await
             }
             "session.open" => self.open_session(&project, &generation, params).await,
             "session.history" => self.session_history(&project, &generation, params).await,
             "session.body" => self.session_body(&project, &generation, params).await,
-            "task.read" => {
-                ensure!(exact(params, &["taskId", "runId"]), "INVALID_PARAMS");
-                let task_id = text(params, "taskId")?;
-                let task = self
-                    .rpc(
-                        &project,
-                        &generation,
-                        "areal/task/read",
-                        json!({"taskId":task_id}),
-                    )
-                    .await?;
-                let run = task["runs"]
-                    .as_array()
-                    .and_then(|runs| runs.iter().find(|run| run["id"] == params["runId"]));
-                let workers = run
-                    .and_then(|run| run["workers"].as_array())
-                    .is_some_and(|workers| workers.iter().all(|w| w["settled"] == true));
-                let status = run
-                    .map(|run| run["status"].clone())
-                    .unwrap_or(json!("unavailable"));
-                Ok(
-                    json!({"taskId":task["id"],"runId":params["runId"],"revision":task["revision"],"taskPaused":task["paused"]==true,"taskCancelled":task["cancelled"]==true,"currentRunId":task["runs"].as_array().and_then(|runs|runs.last()).map(|run|run["id"].clone()),"runStatus":status,"reason":run.and_then(|run|run["reason"].as_str()),"workersSettled":workers,"settled":task["paused"]==true && workers && matches!(status.as_str(),Some("paused"|"completed"|"failed"|"cancelled")),"provesCommandAdmission":false,"projectId":project,"serviceGeneration":generation,"available":params["runId"].is_string() && task["runs"].as_array().and_then(|runs|runs.last()).is_some_and(|run|run["id"]==params["runId"]) && task["paused"]!=true && task["cancelled"]!=true}),
+            "task.read" | "task.question.read" => {
+                self.task_read(
+                    &project,
+                    &generation,
+                    params,
+                    method == "task.question.read",
                 )
+                .await
             }
             "attention.read" => self.attention_read(&project, &generation, params).await,
             "session.create" => self.create_session(&project, &generation, request).await,
             "session.send" => self.send_session(&project, &generation, request).await,
             "interaction.respond" => self.respond(&project, &generation, request).await,
             "review.read" => self.review(&project, &generation, params).await,
+            "artifact.read" => self.artifact(&project, &generation, params).await,
             _ => Err(fail("INVALID_PARAMS")),
         }
     }
@@ -904,7 +910,13 @@ impl Session {
         let mut result = json!({"commandId":command,"method":record["remote"]["method"],"target":record["remote"]["target"],"operationId":record["operationId"],"admissionState":record.get("admissionState").cloned().unwrap_or(json!("unknown")),"submissionUnknown":record.get("admissionState").is_none()});
         if matches!(
             record["remote"]["method"].as_str(),
-            Some("session.create" | "session.send" | "session.control")
+            Some(
+                "session.create"
+                    | "session.send"
+                    | "session.control"
+                    | "task.pause"
+                    | "task.question.reply"
+            )
         ) && record["method"] != "turn/steer"
         {
             result["nativeRequestId"] = record["operationId"].clone();
@@ -970,7 +982,7 @@ impl Session {
         let record = if let Some(record) = record.filter(|record| {
             matches!(
                 record["remote"]["method"].as_str(),
-                Some("session.send" | "session.control")
+                Some("session.send" | "session.control" | "task.pause" | "task.question.reply")
             )
         }) {
             sent = if gateway_owner::legacy::is_legacy(record) {
@@ -1011,6 +1023,12 @@ impl Session {
                         json!({"source":"interaction.read","status":"unavailable","provesCommandAdmission":false})
                     }
                 };
+            }
+            if matches!(
+                record["remote"]["method"].as_str(),
+                Some("task.pause" | "task.question.reply")
+            ) {
+                result["observedState"] = self.task_observation(project, record).await;
             }
             self.authorize(
                 Some(project),
@@ -1273,8 +1291,16 @@ impl Session {
             None
         };
         self.authorize(Some(project), "review")?;
+        let artifacts = self.review_artifacts(
+            project,
+            generation,
+            thread,
+            turn,
+            params.get("itemId").and_then(Value::as_str),
+            offset,
+        )?;
         Ok(
-            json!({"artifacts":[],"projectId":project,"threadId":thread_id,"turnId":turn_id,"itemId":params["itemId"],"connectionId":self.connection,"gatewayGeneration":self.generation,"serviceGeneration":generation,"review":{"encoding":"json-utf8","offset":offset,"totalBytes":body.len(),"chunk":&body[offset..end]},"nextCursor":next}),
+            json!({"artifacts":artifacts,"projectId":project,"threadId":thread_id,"turnId":turn_id,"itemId":params["itemId"],"connectionId":self.connection,"gatewayGeneration":self.generation,"serviceGeneration":generation,"review":{"encoding":"json-utf8","offset":offset,"totalBytes":body.len(),"chunk":&body[offset..end]},"nextCursor":next}),
         )
     }
 }

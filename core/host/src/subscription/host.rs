@@ -121,6 +121,23 @@ impl Host {
                 )
             })
     }
+    pub(super) fn subscription_model_catalog(&self, id: &str) -> Result<Option<Value>> {
+        let source = self.subscriptions.sources.borrow().get(id).cloned();
+        let Some(source) = source else {
+            ensure!(
+                !self.subscriptions.unavailable.borrow().contains_key(id),
+                error(
+                    "subscriptionUnavailable",
+                    "native subscription source is unavailable"
+                )
+            );
+            return Ok(None);
+        };
+        let snapshot = source.snapshot()?;
+        Ok(Some(
+            json!({"accountEpoch":snapshot["accountEpoch"],"authenticated":snapshot["authenticated"],"availability":snapshot["availability"],"models":snapshot["models"]}),
+        ))
+    }
     fn subscription_snapshot(&self, id: &str) -> Result<Value> {
         wire::request_id(id)?;
         let (account_revision, _) = self

@@ -13,7 +13,7 @@
 /** @typedef {Fields & {revision?:number,model?:Fields|null,parameters?:Fields|null,profile?:Fields|null,options?:Fields|null,permissions?:Fields|null}} Configuration */
 /** @typedef {Fields & {revision:number,eventSequence?:number,goal?:Fields|null}} Goals */
 /** @typedef {Fields & {id:string,turns?:Turn[]|null,status?:Fields|null,goals?:Goals|null,desktop?:(Fields & {receipts?:Fields[]|null,interactions?:Interaction[]|null,queue?:Queue|null,configuration?:Configuration|null})|null}} Thread */
-/** @typedef {Fields & {id:string,status:string,workers?:Fields[]|null,reason?:string}} TaskRun */
+/** @typedef {Fields & {id:string,status:string,workers?:Fields[]|null,reason?:string|null}} TaskRun */
 /** @typedef {Fields & {id:string,revision:number,runs:TaskRun[]}} Task */
 /** @typedef {Fields & {id:string,runId:string,kind:string,status:string,expiresAt?:number|null,questions?:Question[]|null}} ChannelItem */
 /** @typedef {{thread:Thread,ownership:Fields & {kind:'ordinary'|'task'}}} Observation */
@@ -170,7 +170,7 @@ function task(value) {
         record(v) &&
         typeof v.id === "string" &&
         typeof v.status === "string" &&
-        (v.reason === undefined || typeof v.reason === "string") &&
+        (v.reason == null || typeof v.reason === "string") &&
         (v.workers == null || (Array.isArray(v.workers) && v.workers.every(record))),
     )
   );

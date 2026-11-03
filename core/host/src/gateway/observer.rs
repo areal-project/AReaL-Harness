@@ -10,6 +10,7 @@ pub(super) struct Viewer {
     sequence: u64,
     barrier: u64,
     observation: CoreObservation,
+    model: Option<Value>,
     body: Option<FrozenBody>,
 }
 struct FrozenBody {
@@ -25,6 +26,17 @@ impl Viewer {
     }
 }
 impl Session {
+    pub(super) fn observed_model(&self, project: &str) -> Result<Option<Value>> {
+        let Some(viewer) = self
+            .viewer
+            .as_ref()
+            .filter(|viewer| viewer.project == project)
+        else {
+            return Ok(None);
+        };
+        ensure!(viewer.observation.current(&self.host), "RESYNC_REQUIRED");
+        Ok(viewer.model.clone())
+    }
     pub(super) async fn next_event(&mut self) -> Result<CoreEvent> {
         match &mut self.viewer {
             Some(viewer) => viewer
@@ -79,6 +91,9 @@ impl Session {
         )?;
         snapshot["goalControlAllowed"] = json!(goal_control_allowed);
         viewer.sequence += 1;
+        viewer.model = native["thread"]["desktop"]["configuration"]
+            .get("model")
+            .cloned();
         viewer.barrier = barrier;
         let sequence = viewer.sequence;
         let mut value = self.viewer.as_ref().unwrap().keys(self);
@@ -151,6 +166,9 @@ impl Session {
             sequence: 0,
             barrier,
             observation,
+            model: native["thread"]["desktop"]["configuration"]
+                .get("model")
+                .cloned(),
             body: None,
         };
         let mut result = viewer.keys(self);
