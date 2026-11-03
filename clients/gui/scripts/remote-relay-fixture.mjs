@@ -124,6 +124,7 @@ export async function relayFixture(
     certificate = "server.pem",
     relayOptions = {},
     tlsHome = process.env.RC12_TLS_HOME,
+    observeHostFrames = false,
   } = {},
 ) {
   const home = await mkdtemp(join(tmpdir(), "rc12-relay-"));
@@ -134,6 +135,10 @@ export async function relayFixture(
   const sockets = new Set();
   let acceptedTlsConnections = 0;
   let tlsHandshakeErrors = 0;
+  const hostFrames = [];
+  const hostPongs = [];
+  let observedSockets = 0;
+  let frameObservationErrors = 0;
   const proxy = tlsServer(
     {
       key: await readFile(join(tlsHome, "server.key")),
@@ -141,6 +146,57 @@ export async function relayFixture(
     },
     (socket) => {
       acceptedTlsConnections += 1;
+      if (observeHostFrames) {
+        const socketId = ++observedSockets;
+        const receiver = new WebSocket.Receiver({ isServer: true, maxPayload: 524288 });
+        let header = Buffer.alloc(0);
+        let upgraded = false;
+        let ignored = false;
+        let host = false;
+        receiver.on("error", () => frameObservationErrors++);
+        receiver.on("message", (bytes, binary) => {
+          if (binary) return;
+          try {
+            const value = JSON.parse(bytes.toString("utf8"));
+            if (value.protocol === "areal.relay.v1" && value.role === "host") {
+              host = true;
+              return;
+            }
+            if (host)
+              hostFrames.push({
+                socketId,
+                at: performance.now(),
+                bytes: bytes.length,
+                type: value.type,
+                channel: value.channel,
+              });
+          } catch {
+            frameObservationErrors++;
+          }
+        });
+        receiver.on("pong", () => {
+          if (host) hostPongs.push({ socketId, at: performance.now() });
+        });
+        socket.on("data", (chunk) => {
+          if (ignored) return;
+          if (upgraded) {
+            receiver.write(Buffer.from(chunk));
+            return;
+          }
+          header = Buffer.concat([header, chunk]);
+          const end = header.indexOf("\r\n\r\n");
+          if (end < 0) {
+            if (header.length > 32768) ignored = true;
+            return;
+          }
+          upgraded = /upgrade:\s*websocket/i.test(header.subarray(0, end).toString("ascii"));
+          ignored = !upgraded;
+          if (upgraded && header.length > end + 4)
+            receiver.write(Buffer.from(header.subarray(end + 4)));
+          header = Buffer.alloc(0);
+        });
+        socket.once("close", () => receiver.destroy());
+      }
       const upstream = connect(backendPort, "127.0.0.1");
       sockets.add(socket);
       sockets.add(upstream);
@@ -192,6 +248,11 @@ export async function relayFixture(
     },
     get tlsHandshakeErrors() {
       return tlsHandshakeErrors;
+    },
+    hostFrames,
+    hostPongs,
+    get frameObservationErrors() {
+      return frameObservationErrors;
     },
     logs: () => logs,
     admin: (...args) =>

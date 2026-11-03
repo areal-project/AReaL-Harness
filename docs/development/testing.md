@@ -434,6 +434,8 @@ Relay 的原实际重启、替换与不可用预算场景可在同一固定产�
 
 同一 CA 和产物环境下，选择 `connection write burst|receipt reads preserve|all current write methods|write budgets isolate|authentication and grant changes` 可运行两种 transport 的五个原预算场景。各场景先保留完整 JS 精确时钟 reference，再验证真实 Rust 连接；原 199/200ms 与 999/1000ms 边界还由 `cargo test --locked -p areal-host --lib request_budget_tests` 覆盖。真实连接使用有界、一次发送的拒绝前缀后提交合法命令，必须实际收到 `LIMIT_EXCEEDED`，再通过原命令查询和完整 journal、Thread 身份集合核对无副作用。写额度和总请求额度分别保留“命令超过允许的预算”和“请求过于频繁”；同设备跨 Direct/Relay、其他设备与重连使用实际连接核对分桶。真实经过时间仅作证据，不当作可控时钟，也不据此声称精确物理派发次数。
 
+同一 CA 与固定产物环境下，选择 `sequential large history reads` 运行原大历史速率场景。默认和降低限额各使用独立真实 Host/Core，经公开 API 生成 50 个已完成 Turn、100 个原生消息；每次读取核对全部原 Item ID，保持 20 次历史读取、健康设备读取、4 个关闭帧和原滚动帧数、字节、单帧及心跳断言。TLS 代理只旁读 Host 帧类型、channel、接收时间与 JSON 字节数，不保存内容或登记 capability；实际 pong 必须发生在读取负载期间。180 秒场景预算容纳两组真实数据准备，单个应用请求仍为原 5 秒 deadline。证据保存在各 `native-remote-host-*/evidence.json`，记录接收端观察而非 Rust 物理发送调用。 整个 transport 入口的 CA 子进程包装预算为 600 秒，容纳多个真实场景的完整生命周期；这不改变各场景和请求预算，也不表示整个七文件套件已验收。
+
 同一固定产物环境下，`node --test --test-concurrency=1 clients/gui/scripts/remote-client-kind-host.test.mjs clients/gui/scripts/remote-device-management-host.test.mjs` 运行原设备类型与管理套件的 Rust Host 路径，保留元数据、授权拒绝、配对与连接连续性断言。原保存次数/连接对象观察改为真实配置、原完成回执与认证连接；不计物理写入次数。`node --test clients/gui/scripts/mobile-workspace.test.mjs` 保留原六个 JS 状态用例，并追加真实 MobileClient/Rust Host/Core 的分页历史和事件路径；证据区分这两个层级，Node 客户端不代表真机或 GUI。
 
 同一已验证产物环境下，`node --test clients/gui/scripts/remote-artifact-native.test.mjs` 通过 Rust `review.read`/`artifact.read` 读取原生 Task 图片，核对分片拼接、媒体归属与精确清理；`node --test clients/gui/scripts/remote-project-models-native.test.mjs` 从真实 Core 读取有界六字段模型目录及已配置显示名。这两条原生路径单列证据，不外推为原 Remote 套件全部通过。

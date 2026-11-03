@@ -9,6 +9,7 @@ import { createIdentity, identityId, secureChannel } from "../packages/remote/sr
 const require = createRequire(new URL("../app/package.json", import.meta.url));
 const WebSocket = require("ws");
 import { nativeHostFixture, nativeCoreProject } from "./remote-native-host-fixture.mjs";
+import { nativeHistory } from "./remote-relay-native-history-fixture.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -163,7 +164,7 @@ if (!process.env.RC12_TLS_HOME) {
       const output = execFileSync(process.execPath, ["--test", import.meta.filename], {
         env: { ...env, RC12_TLS_HOME: home, NODE_EXTRA_CA_CERTS: join(home, "ca.pem") },
         encoding: "utf8",
-        timeout: 180000,
+        timeout: 600000,
       });
       process.stdout.write(output);
     } finally {
@@ -1428,7 +1429,7 @@ if (!process.env.RC12_TLS_HOME) {
 
   test(
     "sequential large history reads honor actual Relay Host rates without disconnecting another device",
-    { timeout: 60000 },
+    { timeout: 180000 },
     async (t) => {
       for (const limits of [
         {},
@@ -1437,30 +1438,38 @@ if (!process.env.RC12_TLS_HOME) {
         await t.test(
           Object.keys(limits).length ? "lowered operator limits" : "default limits",
           async (t) => {
-            const f = await enrolledHost(t, limits);
-            const frames = [];
-            let heartbeats = 0;
-            const socket = f.remote.relayTransport.socket,
-              send = socket.send.bind(socket);
-            socket.on("ping", () => heartbeats++);
-            socket.send = (text, ...args) => {
-              frames.push({
-                at: performance.now(),
-                bytes: Buffer.byteLength(text),
-                type: JSON.parse(text).type,
-              });
-              return send(text, ...args);
+            const relay = await relayFixture(t, { relayOptions: limits, observeHostFrames: true });
+            const f = await nativeHostFixture(t);
+            f.evidence.relay = relay.resources;
+            await f.remote.control({
+              operation: "enable",
+              relay: relay.origin,
+              code: relay.admin("enrollment").code,
+              confirmed: true,
+            });
+            await waitFor(() => f.remote.state().connected);
+            const native = await nativeHistory(t, f);
+            const itemIds = native.thread.turns.flatMap((turn) =>
+              turn.items.map((item) => item.id),
+            );
+            f.evidence.historyRates = {
+              limits,
+              completedTurns: native.thread.turns.length,
+              itemIds,
+              completedReads: [],
+              observedHostFrames: relay.hostFrames,
+              observation:
+                "TLS proxy receive timestamps and JSON payload byte counts; no Rust physical-send inference",
             };
-            await nativeProject(t, f, { large: true });
-            const reader = await device(t, f.remote, { pair: true });
-            const healthy = await device(t, f.remote, { pair: true });
+            const reader = await device(t, f.remote, { pair: true, projects: [native.alias] });
+            const healthy = await device(t, f.remote, { pair: true, projects: [native.alias] });
             async function readHistory(id, method) {
               reader.secure.send({
                 id,
                 method,
-                context: { projectId: "project" },
+                context: { projectId: native.alias },
                 params: {
-                  threadId: "thread",
+                  threadId: native.threadId,
                   ...(method === "session.history" ? { limit: 100 } : {}),
                 },
               });
@@ -1474,11 +1483,21 @@ if (!process.env.RC12_TLS_HOME) {
                 );
                 assert.equal(response.value.id, id);
                 assert.ok(response.value.result, JSON.stringify(response.value));
+                const turns =
+                  method === "session.open"
+                    ? response.value.result.snapshot.turns
+                    : response.value.result.turns;
+                assert.deepEqual(
+                  turns.flatMap((turn) => turn.items.map((item) => item.id)),
+                  itemIds,
+                );
+                f.evidence.historyRates.completedReads.push(id);
                 return response.value;
               }
             }
             await readHistory("open", "session.open");
             await new Promise((resolve) => setTimeout(resolve, 1100));
+            const loadStarted = performance.now();
             let totalBytes = 0;
             for (let index = 0; index < 20; index++) {
               totalBytes += Buffer.byteLength(
@@ -1493,6 +1512,9 @@ if (!process.env.RC12_TLS_HOME) {
                 await waitFor(() => invalid.socket.readyState === 3);
               }
             }
+            const frames = relay.hostFrames;
+            const heartbeats = relay.hostPongs.filter((pong) => pong.at >= loadStarted).length;
+            assert.equal(relay.frameObservationErrors, 0);
             const windows = frames.map((frame) =>
               frames.filter((other) => other.at >= frame.at && other.at < frame.at + 1000),
             );
@@ -1500,6 +1522,15 @@ if (!process.env.RC12_TLS_HOME) {
             const maxBytes = Math.max(
               ...windows.map((window) => window.reduce((sum, frame) => sum + frame.bytes, 0)),
             );
+            Object.assign(f.evidence.historyRates, {
+              sequentialReads: 20,
+              totalBytes,
+              maxFrames,
+              maxBytes,
+              heartbeatsDuringLoad: heartbeats,
+              closeFrames: frames.filter((frame) => frame.type === "close").length,
+              observedHostFrames: [...frames],
+            });
             assert.ok(
               maxFrames <= (limits.framesPerSecond ?? 80) - 2,
               "automatic pong reserve remains available",
@@ -1510,7 +1541,7 @@ if (!process.env.RC12_TLS_HOME) {
             if (limits.idleTimeoutMs)
               assert.ok(heartbeats > 0, "lowered policy includes actual automatic pongs");
             t.diagnostic(
-              `maximum outbound rolling-second: ${maxFrames} JSON frames / ${maxBytes} bytes; ${heartbeats} actual heartbeat pongs reserved`,
+              `observed Host frames at TLS proxy rolling-second: ${maxFrames} JSON frames / ${maxBytes} bytes; ${heartbeats} actual heartbeat pongs reserved`,
             );
             t.diagnostic(
               `20 sequential history responses, ${totalBytes} plaintext bytes; Host and both devices remain connected`,
