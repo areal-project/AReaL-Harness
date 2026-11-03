@@ -43,6 +43,15 @@ fn temporary_alias_allows_unix_socket_and_keeps_original_files() {
     let mut aliases = HashMap::new();
     prepare_temporary_alias(&mut exec, SandboxProfile::FullAccess, &mut aliases).unwrap();
     let alias = PathBuf::from(&exec.env["TMPDIR"]);
+    use std::os::unix::fs::PermissionsExt;
+    assert_eq!(
+        std::fs::metadata(alias.parent().unwrap())
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o700
+    );
     assert!(alias.as_os_str().len() < 48);
     let listener = std::os::unix::net::UnixListener::bind(alias.join("client.sock")).unwrap();
     std::fs::write(alias.join("retained.txt"), b"retained").unwrap();
