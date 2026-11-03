@@ -82,6 +82,27 @@ impl Fixture {
             .unwrap()
             .to_owned();
         let registration = host.slots.borrow()["project"].registration.clone();
+        let launch_dir = host
+            .home
+            .join("host/launch")
+            .join(storage::digest(b"project"));
+        storage::private_dir(&launch_dir).unwrap();
+        storage::write(
+            &launch_dir.join("inputs.json"),
+            &crate::LaunchInputs {
+                workspace: registration.workspace.clone(),
+                cwd: registration.workspace.clone(),
+                config_home: host.home.clone(),
+                homedir: None,
+                config_path: None,
+                deployment_path: None,
+                schedule_preparation: None,
+                environment: Default::default(),
+                credential_names: vec![],
+                options: Default::default(),
+            },
+        )
+        .unwrap();
         let alias = host
             .migration
             .remote_projects(&source, &[registration])
@@ -645,6 +666,109 @@ async fn lost_outcome_write_stays_unknown_after_same_home_owner_reconstruction()
             assert!(f.calls.try_recv().is_err());
         })
         .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn create_pending_write_failure_prevents_core_mutation() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        let command = uuid::Uuid::new_v4().to_string();
+        let creating = Fixture::dispatch(f.session("a"), f.request("session.create", json!({}), Some(&command)));
+        let caps = f.call("areal/capabilities").await;
+        let directory = f.host.home.join("host/journals/records");
+        let before = f.host.journal.native_snapshot("project").unwrap();
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o500)).unwrap();
+        caps.reply(json!({"features":{"threadStartAdmissionGuard":true,"permissionPresets":true,"threadCreationJournal":{"binding":{"identity":"store","journalEpoch":"epoch","coreInstanceId":"instance"}}},"methods":["areal/thread/start","areal/request/read"]}));
+        let (_, result) = creating.await.unwrap();
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(result.unwrap_err().chain().any(|error| error.downcast_ref::<std::io::Error>().is_some_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)));
+        assert_eq!(f.host.journal.native_snapshot("project").unwrap(), before);
+        assert!(f.calls.try_recv().is_err());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn create_lost_outcome_recovers_original_receipt_after_owner_reconstruction() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        let command = uuid::Uuid::new_v4().to_string();
+        let request = f.request("session.create", json!({}), Some(&command));
+        let mut creating = Fixture::dispatch(f.session("a"), request.clone());
+        f.call("areal/capabilities").await.reply(json!({"features":{"threadStartAdmissionGuard":true,"permissionPresets":true,"threadCreationJournal":{"binding":{"identity":"store","journalEpoch":"epoch","coreInstanceId":"instance"}}},"methods":["areal/thread/start","areal/request/read"]}));
+        let held = tokio::select! {
+            call = f.call("areal/thread/start") => call,
+            done = &mut creating => panic!("creation ended before dispatch: {:?}", done.unwrap().1),
+        };
+        let (revision, pending) = f.host.journal.native_snapshot("project").unwrap();
+        let record = &pending["pending"][0];
+        let operation = record["operationId"].clone();
+        assert_eq!(held.request["params"]["requestId"], operation);
+        let digest = record["nativeDigest"].clone();
+        let directory = f.host.home.join("host/journals/records");
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o500)).unwrap();
+        held.reply(json!({"thread":{"id":"created-thread"}}));
+        let (_, result) = creating.await.unwrap();
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(result.unwrap_err().chain().any(|error| error.downcast_ref::<std::io::Error>().is_some_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)));
+        assert_eq!(f.host.journal.native_snapshot("project").unwrap(), (revision, pending));
+        let service = f.host.slots.borrow()["project"].service.clone().unwrap();
+        (f.close)();
+        let old_host = Rc::downgrade(&f.host);
+        let mut restarted = crate::server::schedules::tests::fixture(f.root.path());
+        Rc::get_mut(&mut restarted.migration).unwrap().vault = crate::vault::Vault::isolated_files(&restarted.home);
+        *restarted.gateway.generation.borrow_mut() = "gateway".into();
+        {
+            let mut slots = restarted.slots.borrow_mut();
+            let slot = slots.get_mut("project").unwrap();
+            slot.service = Some(service.clone());
+            slot.state = "ready".into();
+        }
+        f.host = Rc::new(restarted);
+        f.close = f.host.schedules.connections.connect_test_core(f.host.clone(), "project", service).await.unwrap();
+        tokio::task::yield_now().await;
+        assert!(old_host.upgrade().is_none());
+        let reading = Fixture::dispatch(f.session("a"), f.request("command.read", json!({"commandId":command}), None));
+        let query = f.call("areal/request/read").await;
+        assert_eq!(query.request["params"], json!({"requestId":operation,"creationAdmission":{"identity":"store","journalEpoch":"epoch","coreInstanceId":"instance"}}));
+        query.reply(json!({"data":[{"requestId":operation,"method":"areal/thread/start","digest":digest,"identity":"store","status":"completed","threadId":"created-thread","operation":{"target":{"kind":"thread","threadId":"created-thread"}}}]}));
+        let (_, recovered) = reading.await.unwrap();
+        let recovered = recovered.unwrap();
+        assert_eq!(recovered["commandId"], command);
+        assert_eq!(recovered["operationId"], operation);
+        assert_eq!(recovered["admissionState"], "accepted");
+        assert_eq!(recovered["receipt"]["threadId"], "created-thread");
+        let (_, duplicate) = Fixture::dispatch(f.session("a"), request).await.unwrap();
+        assert_eq!(duplicate.unwrap(), recovered);
+        assert!(f.calls.try_recv().is_err());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stop_lost_response_keeps_original_unknown_without_redispatch() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        f.grant("a", |grant| grant["capabilities"] = json!(["observe", "answer", "submit", "interrupt"]));
+        let command = uuid::Uuid::new_v4().to_string();
+        let request = f.request("turn.stop", json!({"threadId":"thread","expectedTurnId":"turn"}), Some(&command));
+        let stopping = Fixture::dispatch(f.session("a"), request.clone());
+        f.call("areal/capabilities").await.reply(json!({"features":{"turnInterruptAdmissionGuard":true,"atomicObserveOwnership":true},"methods":["turn/interrupt"]}));
+        f.call("areal/thread/observe").await.reply(json!({"thread":{"id":"thread","status":{"type":"active"},"turns":[{"id":"turn","status":"inProgress","items":[]}]},"ownership":{"kind":"ordinary"}}));
+        let interrupt = f.call("turn/interrupt").await;
+        assert_eq!(interrupt.request["params"], json!({"threadId":"thread","turnId":"turn","admissionGuard":{"ordinarySession":true}}));
+        interrupt.disconnect();
+        let (_, result) = stopping.await.unwrap();
+        let original = result.unwrap();
+        assert_eq!(original["admissionState"], "unknown");
+        f.reconnect().await;
+        for request in [request, f.request("command.read", json!({"commandId":command}), None)] {
+            let (_, result) = Fixture::dispatch(f.session("a"), request).await.unwrap();
+            let result = result.unwrap();
+            assert_eq!(result["admissionState"], "unknown");
+            assert_eq!(result["commandId"], command);
+            assert_eq!(result["operationId"], original["operationId"]);
+        }
+        assert!(f.calls.try_recv().is_err());
+    }).await;
 }
 
 #[tokio::test(flavor = "current_thread")]
