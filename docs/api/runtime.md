@@ -18,7 +18,7 @@ Runtime 装配失败时，完成启动回滚后通过 `connection.open` 返回�
 
 capabilities 描述实际 sandbox、fullAccess、rootNetwork、方法和 processLimits；不授予新权限。coreHostIsolated/processTreeCleanupVerified/directoryObjectIsolation/sandboxDenialAttribution 为 false。旧 Runtime 缺少 rootNetwork 时 Core 保守视为无网络。
 
-`restrictedScopes` 返回 `{available:true}` 或 `{available:false,error}`，表示当前部署的受限执行先决条件是否通过探测。full-access 父 Scope 可运行不代表只读子 Scope 可运行：收窄后仍需实际 OS 沙箱。Linux 探测 Bubblewrap namespaces，macOS 探测 Seatbelt；结果按 Runtime 进程缓存，环境能力改变后需要重新启动 Runtime。该字段不证明任意程序、路径或副作用必然成功。旧 `restrictedScopeIsolation` 标志也要求这项实测通过，不能只依据部署名称宣告可用。
+`restrictedScopes` 返回 `{available:true}` 或 `{available:false,error}`，表示当前部署的受限执行先决条件是否通过探测。full-access 父 Scope 可运行不代表只读子 Scope 可运行：收窄后仍需实际 OS 沙箱。Linux 在 Bubblewrap namespaces 内安装与受限执行相同的 seccomp 过滤器并执行短命令；仅 namespaces 可用而过滤器不可用时仍报告不可用。macOS 探测 Seatbelt。结果按 Runtime 进程缓存，环境能力改变后需要重新启动 Runtime。该字段不证明任意程序、路径或副作用必然成功。旧 `restrictedScopeIsolation` 标志也要求这项实测通过，不能只依据部署名称宣告可用。预检失败不会移除过滤器或放宽已请求的受限 Scope。
 
 原生后端根据有效 Scope 选择准入、命令沙箱和 syscall 策略。full-access 部署下的受限 Scope 或固定只读输入使用 native 策略，Linux 不因父部署标记而跳过 seccomp；未收窄且无只读输入的完整授权仍保留 full-access 行为。
 
