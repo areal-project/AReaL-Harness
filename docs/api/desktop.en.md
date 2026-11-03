@@ -557,6 +557,20 @@ The GUI service's narrow `trajectory` command accepts `{operation:"status"}`, `{
 
 ## Desktop provider connection diagnostics
 
+### Client runtime observability
+
+Local exports retain `format: areal-harness-diagnostics-v1`. The new `monitoring` descriptor has `schemaVersion: 1`, `source: desktop-diagnostics`, and `transport: local-only`. `data.path: runs` references the same report's `header/events/incident`; `incidents` indexes scenes by `runId/incidentId/failureSeq`. This is a local data contract for monitoring adapters, with no network transport, upload queue, or server. Consumers should ignore additive fields; missing environment or operation fields in older records remain unknown.
+
+At run start, `runs[].header` records OS release, platform/architecture, app/Electron/Node versions, source/packaged mode, locale, available logical CPU count, and total/free memory. Fields use fixed-format validation; environment variables, hostname, username, and configuration content are excluded. Failure resource samples describe GUI Main memory and uptime, not Core/Runtime memory.
+
+`type: operation` uses `name: startup | model-configuration | task-send | history-load | reconnect`, with `started/ok/failed/unknown`, duration, and optional project/generation/request correlation. `operationId` binds an asynchronous scope; nested calls use `parentOperationId`. Delayed callbacks do not inherit completed operations. Model application retains `read-proof/apply/refresh-catalog` phases and the original Core `requestId`; automatic reconciliation creates a separate operation.
+
+`ok` applies only to its boundary: task sending means admission returned, not that model execution completed; history loading means that authoritative read completed, not that all history was downloaded. Model configuration uses actual application state, recording pending/deferred application as `unknown`. Reconnection still includes asynchronous history refresh, so its connection/reconciliation return is conservatively `unknown`; subsequent `history-load` and task-send outcomes separately establish recovery of those paths. Exceptions record `failed` with allowlisted codes/reasons; `SUBMISSION_UNKNOWN` does not mean not admitted and never authorizes replay.
+
+Error-level events receive `incidentId` and trigger an immediate resource sample. Each export derives `incident` for the latest error in each retained run, including up to 24 preceding and seven following recorded events. `windowTruncated` signals events outside that window; `rotationGap` signals log rotation. Scenes derive from retained logs and cannot guarantee preservation of all past failures after rotation. Missing/invalid records and read-budget limits remain visible through `incomplete/omissions`.
+
+Local feedback freezes this context through `bugReport.prepare`, consistently replacing operation, parent, incident, run, and request identities with report-local aliases. Preview, save, and export share that frozen data. Diagnostic attachment is opt-in; contact details are not collected. No arbitrary Renderer log-writing or file-reading capability is added. Test entry points are `test:observability` and `test:observability-desktop`.
+
 Local diagnostic `schemaVersion: 1` events add `type/component: model-configuration` without changing provider command contracts. `phase` is `read-proof/apply/refresh-catalog`; `outcome` is `started/ok/failed`, with `durationMs`, project/generation aliases, and optional `requestId`. Failures include allowlisted `code/reason`, mapping unknown values to `OTHER`, without exception text, configuration, or credentials. Feedback attachments further alias request identities within the report. Existing events remain readable; readers should ignore unknown event types and additional fields. RPC-stage success does not establish complete application success.
 
 The desktop `providers` command returns a fixed `error.code` and actionable guidance when network initialization or a `discover` or `probe` request fails.

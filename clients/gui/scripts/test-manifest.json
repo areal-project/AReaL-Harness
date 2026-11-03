@@ -1,5 +1,21 @@
 [
   {
+    "script": "test:observability",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["diagnostics", "feedback", "provider", "service"],
+    "requires": [],
+    "notes": "Local recorder concurrency, privacy projection, operation outcomes and immutable feedback evidence."
+  },
+  {
+    "script": "test:observability-desktop",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["diagnostics", "feedback", "desktop", "provider", "lifecycle"],
+    "requires": ["electron", "core-binary", "native-runtime", "gui-build", "git"],
+    "notes": "Isolated desktop startup, model configuration, task admission, history, injected Core loss/recovery and local feedback."
+  },
+  {
     "script": "test:advanced-diagnostics",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],

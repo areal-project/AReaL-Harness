@@ -555,6 +555,20 @@ GUI 服务的窄命令 `trajectory` 支持 `{operation:"status"}`、`{operation:
 
 ## 桌面供应商连接诊断
 
+### 客户端运行观测
+
+本机导出仍使用 `format: areal-harness-diagnostics-v1`。新增 `monitoring` 接入描述：`schemaVersion: 1`、`source: desktop-diagnostics`、`transport: local-only`；`data.path: runs` 引用同一报告的 `header/events/incident`，`incidents` 按 `runId/incidentId/failureSeq` 索引现场。它是供监控平台适配器消费的本地数据契约，尚无网络传输、上传队列或服务端。消费者应忽略新增字段；旧记录缺少环境或操作字段时保持未知。
+
+`runs[].header` 在运行开始时记录 OS 版本、平台/架构、应用/Electron/Node 版本、源码或安装包模式、语言地区、可用逻辑 CPU 数和总/可用内存。字段按固定格式校验；不读取环境变量、主机名、用户名或配置内容。故障资源样本是 GUI Main 进程的内存和运行时长，不代表 Core/Runtime 的内存。
+
+`type: operation` 使用 `name: startup | model-configuration | task-send | history-load | reconnect`，记录 `started/ok/failed/unknown`、耗时与可选项目/代际/请求关联。`operationId` 绑定异步作用域，嵌套调用用 `parentOperationId` 关联；作用域结束后，延迟回调不继承已结束的操作。模型应用继续保留 `read-proof/apply/refresh-catalog` 阶段与原 Core `requestId`，自动核对使用独立操作。
+
+`ok` 只表示该边界成功：任务发送表示准入调用返回，不表示模型任务执行完成；历史加载表示本次权威读取完成，不表示整个历史都已下载。模型配置根据实际应用状态分类，待确认/推迟应用记 `unknown`。重连流程仍有异步历史刷新，连接与核对流程返回后保守记 `unknown`；后续 `history-load` 和任务发送结果分别证明相应路径恢复。异常记 `failed` 并保留白名单错误码/原因；`SUBMISSION_UNKNOWN` 不表示未受理，不授权重放写入。
+
+错误级事件拥有 `incidentId`，并触发即时资源样本。每次导出为每个保留运行提取最近错误及其前 24、后 7 条已记录事件，保存到 `incident`。`windowTruncated` 表示窗口外仍有事件，`rotationGap` 表示发生过日志轮转；现场由仍保留的日志派生，无法保证轮转后仍保留全部故障历史。缺失、非法记录与读取预算限制仍由报告的 `incomplete/omissions` 表达。
+
+本机反馈沿用 `bugReport.prepare` 冻结这份上下文，并将 operation、parent、incident、run 和 request 身份一致替换成报告内别名。预览、保存和导出引用同一份冻结数据；诊断默认不附带，联系方式不采集。接口没有增加 Renderer 任意写日志或读取文件的能力。测试入口为 `test:observability` 与 `test:observability-desktop`。
+
 本机诊断包的 `schemaVersion: 1` 事件新增 `type/component: model-configuration`，不改变供应商命令契约。`phase` 为 `read-proof/apply/refresh-catalog`，`outcome` 为 `started/ok/failed`，附 `durationMs`、项目/代际别名与可选 `requestId`；失败附白名单 `code/reason`，未知值归为 `OTHER`，不附异常正文、配置或凭据。反馈附件再次将请求身份转为报告内别名。旧事件继续可读；读取器应忽略未知事件类型和新增字段。RPC 阶段成功不等同于完整应用成功。
 
 桌面 `providers` 命令的 `discover` 与 `probe` 在网络初始化或请求失败时返回固定的 `error.code` 和操作提示。

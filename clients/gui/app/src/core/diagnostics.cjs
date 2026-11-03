@@ -5,10 +5,23 @@ const fs = require("node:fs");
 const { join, dirname, resolve } = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { monitorEventLoopDelay } = require("node:perf_hooks");
+const { AsyncLocalStorage } = require("node:async_hooks");
+const os = require("node:os");
+const { buildMonitoringEnvelope } = require("./monitoring-envelope.cjs");
+/** @type {AsyncLocalStorage<{operationId:string,active:boolean}>} */
+const operations = new AsyncLocalStorage();
+const OPERATION_NAMES = new Set([
+  "startup",
+  "model-configuration",
+  "task-send",
+  "history-load",
+  "reconnect",
+]);
 
 /**
  * @typedef {{boundary:'main-desktop'|'desktop-core',projectId?:string,coreGeneration?:string,connectionGeneration?:number,hostPid?:number,corePid?:number,serviceId?:string}} SocketTarget
  * @typedef {({type:'socket-open'} & SocketTarget) | ({type:'socket-error',code:unknown} & SocketTarget) | ({type:'socket-close',closeCode:unknown} & SocketTarget)
+ * | {type:'operation',name:string,outcome:'started'|'ok'|'failed'|'unknown',durationMs?:number,projectId?:string,coreGeneration?:string,requestId?:string,incidentId?:string,code?:unknown,reason?:unknown}
  * | {type:'command-complete',command:unknown,outcome:'ok'|'failed',durationMs:number}
  * | {type:'model-configuration',phase:'read-proof'|'apply'|'refresh-catalog',outcome:'started'|'ok'|'failed',durationMs:number,projectId:string,coreGeneration?:string,requestId?:string,code?:unknown,reason?:unknown}
  * | {type:'window-ready',windows:number}
@@ -17,7 +30,7 @@ const { monitorEventLoopDelay } = require("node:perf_hooks");
  * | {type:'desktop-spawn-error',code:unknown} | {type:'application-owner-lost'}
  * | {type:'renderer-gone',reason:unknown,exitCode:unknown} | {type:'renderer-unresponsive'|'renderer-responsive'}
  * | {type:'child-process-gone',processType:unknown,reason:unknown,exitCode:unknown}
- * | {type:'resource-sample',rssBytes:number,heapUsedBytes:number,uptimeSeconds:number,eventLoopDelayMs:number,eventLoopP50Ms?:number,eventLoopP99Ms?:number,eventLoopMaxMs?:number,eventLoopSamples?:number}
+ * | {type:'resource-sample',rssBytes:number,heapUsedBytes:number,uptimeSeconds:number,eventLoopDelayMs?:number,eventLoopP50Ms?:number,eventLoopP99Ms?:number,eventLoopMaxMs?:number,eventLoopSamples?:number}
  * | {type:'uncaught-exception',errorName:unknown,code:unknown}
  * | {type:'desktop-exit-timeout',cause:'completed-lifecycle'|'external-quit'|'signal',stage:'disconnect'|'metadata'}
  * | {type:'quit-stage',attempt:number,elapsedMs:number,stage:'checking'|'readiness'|'reconcile'|'native-confirmation'|'stop'|'terminal'|'finalizing'|'disconnect'|'exit-ready'|'canceled'|'failed'|'incomplete'}
@@ -45,6 +58,20 @@ const CODES = new Set([
   "ENOSPC",
   "EMFILE",
   "ENFILE",
+  "CORE_STOPPED",
+  "CORE_BUSY",
+  "CORE_INCOMPATIBLE",
+  "CORE_OWNER_MISMATCH",
+  "CORE_RECOVERY_EXHAUSTED",
+  "CORE_UNAVAILABLE",
+  "SUBMISSION_UNKNOWN",
+  "STALE_CONNECTION",
+  "TARGET_CHANGED",
+  "COMMAND_CONFLICT",
+  "CAPACITY_EXCEEDED",
+  "LIMIT_EXCEEDED",
+  "RESPONSE_TOO_LARGE",
+  "RESPONSE_INVALID",
 ]);
 const REASONS = new Set([
   "clean-exit",
@@ -72,6 +99,9 @@ const CONFIGURATION_REASONS = new Set([
   "MODEL_CONFIGURATION_APPLY_FAILED",
   "MODEL_CONFIGURATION_REQUEST_CONFLICT",
   "MODEL_CONFIGURATION_UNKNOWN",
+  "RESPONSE_TOO_LARGE",
+  "RESPONSE_INVALID",
+  "NOT_ADMITTED",
 ]);
 const PROCESS_TYPES = new Set([
   "Utility",
@@ -165,7 +195,45 @@ function projectIncident(event, maps) {
   if (!object(event)) return null;
   /** @type {Record<string,unknown>} */
   const value = { type: event.type };
+  value.operationId =
+    typeof event.operationId === "string" && UUID.test(event.operationId)
+      ? event.operationId
+      : undefined;
+  value.parentOperationId =
+    typeof event.parentOperationId === "string" && UUID.test(event.parentOperationId)
+      ? event.parentOperationId
+      : undefined;
+  value.incidentId =
+    typeof event.incidentId === "string" && UUID.test(event.incidentId)
+      ? event.incidentId
+      : undefined;
   switch (event.type) {
+    case "operation":
+      if (typeof event.name !== "string" || !OPERATION_NAMES.has(event.name)) return null;
+      value.name = event.name;
+      value.outcome = choose(new Set(["started", "ok", "failed", "unknown"]), event.outcome);
+      value.durationMs = integer(event.durationMs);
+      value.requestId =
+        typeof event.requestId === "string" && UUID.test(event.requestId)
+          ? event.requestId
+          : undefined;
+      value.project = maps
+        ? alias(maps.projects, event.projectId, "p")
+        : /^(?:p\d{1,3}|other)$/.test(typeof event.project === "string" ? event.project : "")
+          ? event.project
+          : undefined;
+      value.coreGeneration = maps
+        ? alias(maps.generations, event.coreGeneration, "g")
+        : /^(?:g\d{1,3}|other)$/.test(
+              typeof event.coreGeneration === "string" ? event.coreGeneration : "",
+            )
+          ? event.coreGeneration
+          : undefined;
+      if (event.outcome === "failed") {
+        value.code = choose(CODES, event.code, "OTHER");
+        value.reason = choose(CONFIGURATION_REASONS, event.reason, "OTHER");
+      }
+      break;
     case "model-configuration":
       value.phase = choose(new Set(["read-proof", "apply", "refresh-catalog"]), event.phase);
       value.outcome = choose(new Set(["started", "ok", "failed"]), event.outcome);
@@ -324,7 +392,9 @@ function projectIncident(event, maps) {
     default:
       return null;
   }
-  value.level = ["command-complete", "model-configuration"].includes(String(event.type))
+  value.level = ["command-complete", "model-configuration", "operation"].includes(
+    String(event.type),
+  )
     ? event.outcome === "failed"
       ? "error"
       : "info"
@@ -342,15 +412,17 @@ function projectIncident(event, maps) {
         ? "warn"
         : "info";
   value.component =
-    event.type === "model-configuration"
-      ? "model-configuration"
-      : String(event.type).startsWith("socket-")
-        ? "transport"
-        : event.type === "command-complete"
-          ? "desktop-ipc"
-          : event.type === "resource-sample"
-            ? "process"
-            : "lifecycle";
+    event.type === "operation"
+      ? "operation"
+      : event.type === "model-configuration"
+        ? "model-configuration"
+        : String(event.type).startsWith("socket-")
+          ? "transport"
+          : event.type === "command-complete"
+            ? "desktop-ipc"
+            : event.type === "resource-sample"
+              ? "process"
+              : "lifecycle";
   return value;
 }
 /** @param {unknown} value @param {string} runId @param {string} role */
@@ -383,6 +455,19 @@ function projectHeader(value, runId, role) {
         ? value.electron
         : undefined,
     node: typeof value.node === "string" && VERSION.test(value.node) ? value.node : undefined,
+    osRelease:
+      typeof value.osRelease === "string" && /^\d{1,4}(?:\.\d{1,4}){1,3}$/.test(value.osRelease)
+        ? value.osRelease
+        : undefined,
+    locale:
+      typeof value.locale === "string" &&
+      /^[a-z]{2,3}(?:-[A-Z][a-z]{3})?(?:-[A-Z]{2}|-\d{3})?$/.test(value.locale)
+        ? value.locale
+        : undefined,
+    packaged: typeof value.packaged === "boolean" ? value.packaged : undefined,
+    cpuCount: integer(value.cpuCount, 1, 65536),
+    totalMemoryBytes: integer(value.totalMemoryBytes, 0, 2 ** 50),
+    freeMemoryBytes: integer(value.freeMemoryBytes, 0, 2 ** 50),
   };
 }
 /** @param {unknown} value */
@@ -493,7 +578,11 @@ function record(event) {
   )
     return;
   try {
-    const value = projectIncident(event, current.maps);
+    const operation = operations.getStore();
+    const value = projectIncident(
+      { ...event, operationId: operation?.active ? operation.operationId : undefined },
+      current.maps,
+    );
     if (!value) {
       current.health.invalidEvents++;
       return;
@@ -507,6 +596,10 @@ function record(event) {
     }
     if (current.recent.size >= 128) current.recent.clear();
     current.recent.set(key, now);
+    if (value.level === "error") {
+      recordFailureResources();
+      value.incidentId = randomUUID();
+    }
     const line =
       JSON.stringify({
         schemaVersion: 1,
@@ -558,8 +651,77 @@ function record(event) {
     failed(error, current);
   }
 }
-/** @param {{role:'main'|'desktop',root:string,appRunId?:string,version?:string}} options */
-function start({ role, root, appRunId, version }) {
+/** @param {{projectId?:string,coreGeneration?:string,requestId?:string}} context */
+function safeContext(context) {
+  try {
+    return {
+      projectId: context?.projectId,
+      coreGeneration: context?.coreGeneration,
+      requestId: context?.requestId,
+    };
+  } catch {
+    return {};
+  }
+}
+function recordFailureResources() {
+  const memory = process.memoryUsage();
+  record({
+    type: "resource-sample",
+    rssBytes: memory.rss,
+    heapUsedBytes: memory.heapUsed,
+    uptimeSeconds: process.uptime(),
+  });
+}
+/** @template T @param {string} name @param {{projectId?:string,coreGeneration?:string,requestId?:string}} context @param {() => Promise<T>} action @param {(result:T) => 'ok'|'unknown'|'failed'} [classify] @returns {Promise<T>} */
+async function withOperation(name, context, action, classify) {
+  if (!OPERATION_NAMES.has(name)) return action();
+  const parent = operations.getStore();
+  const parentOperationId = parent?.active ? parent.operationId : undefined;
+  const operationId = randomUUID(),
+    started = performance.now();
+  const scope = { operationId, active: true };
+  return operations.run(scope, async () => {
+    const fields = {
+      type: /** @type {const} */ ("operation"),
+      name,
+      parentOperationId,
+      ...safeContext(context),
+    };
+    record({ ...fields, outcome: "started" });
+    try {
+      const result = await action();
+      let outcome = /** @type {"ok"|"unknown"|"failed"} */ ("ok");
+      try {
+        if (classify) outcome = classify(result);
+      } catch {
+        outcome = "unknown";
+      }
+      record({
+        ...fields,
+        outcome,
+        durationMs: Math.floor(performance.now() - started),
+      });
+      return result;
+    } catch (error) {
+      try {
+        record({
+          ...fields,
+          outcome: "failed",
+          durationMs: Math.floor(performance.now() - started),
+          code: object(error) ? error.code : undefined,
+          reason: object(error)
+            ? (error.reason ?? (object(error.data) ? error.data.reason : undefined))
+            : undefined,
+        });
+      } catch {}
+      throw error;
+    } finally {
+      scope.active = false;
+    }
+  });
+}
+/** @param {{role:'main'|'desktop',root:string,appRunId?:string,version?:string,packaged?:boolean}} options */
+function start({ role, root, appRunId, version, packaged }) {
   if (initialized) return;
   initialized = true;
   recorder = {
@@ -612,6 +774,12 @@ function start({ role, root, appRunId, version }) {
         arch: process.arch,
         electron: process.versions.electron,
         node: process.versions.node,
+        osRelease: os.release(),
+        locale: Intl.DateTimeFormat().resolvedOptions().locale,
+        packaged,
+        cpuCount: os.availableParallelism(),
+        totalMemoryBytes: os.totalmem(),
+        freeMemoryBytes: os.freemem(),
         startedAt: new Date().toISOString(),
       },
       runId,
@@ -781,6 +949,7 @@ async function collect({ mainRoot, desktopRoot, coreRoot, instance }) {
         omissions.rejectedEntries++;
         continue;
       }
+      /** @type {Array<Record<string, unknown> & {seq:number}>} */
       const events = [];
       for (let shard = 0; shard < SHARDS; shard++) {
         const raw = await read(join(path, `events-${shard}.ndjson`), SHARD_BYTES, true);
@@ -837,8 +1006,23 @@ async function collect({ mainRoot, desktopRoot, coreRoot, instance }) {
       const health = current
         ? projectHealth(recorder?.health)
         : projectHealth(await json(join(path, "health.json")));
+      const failure = [...events].reverse().find((event) => event.level === "error");
+      const failureIndex = failure ? events.indexOf(failure) : -1;
+      const windowStart = Math.max(0, failureIndex - 24);
+      const windowEnd = Math.min(events.length, failureIndex + 8);
+      const incident = failure
+        ? {
+            failureSeq: failure.seq,
+            incidentId: failure.incidentId,
+            operationId: failure.operationId,
+            events: events.slice(windowStart, windowEnd),
+            windowTruncated: windowStart > 0 || windowEnd < events.length,
+            rotationGap: (health.rotations ?? 0) > 0,
+          }
+        : null;
       runs.push({
         header,
+        incident,
         status: current
           ? "current-run"
           : observedExit
@@ -865,6 +1049,7 @@ async function collect({ mainRoot, desktopRoot, coreRoot, instance }) {
     !["recording", "exited"].includes(currentRecorder.state);
   const report = {
     format: "areal-harness-diagnostics-v1",
+    monitoring: buildMonitoringEnvelope(runs),
     exportedAt: new Date().toISOString(),
     incomplete,
     omissions,
@@ -906,4 +1091,4 @@ async function exportTo(destination, roots) {
 function errorCode(error) {
   return object(error) && typeof error.code === "string" ? error.code : undefined;
 }
-module.exports = { start, record, startCrashReporter, exportTo, collect };
+module.exports = { start, record, withOperation, startCrashReporter, exportTo, collect };

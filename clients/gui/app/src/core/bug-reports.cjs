@@ -62,7 +62,15 @@ class BugReports {
           if (["endpoint", "model", "instance", "crashDumps", "serviceId"].includes(key))
             return undefined;
           if (
-            ["requestId", "runId", "appRunId", "project"].includes(key) &&
+            [
+              "requestId",
+              "runId",
+              "appRunId",
+              "project",
+              "operationId",
+              "parentOperationId",
+              "incidentId",
+            ].includes(key) &&
             typeof value === "string"
           ) {
             if (!aliases.has(value)) aliases.set(value, `ref-${aliases.size + 1}`);

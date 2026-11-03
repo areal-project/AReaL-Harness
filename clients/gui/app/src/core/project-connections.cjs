@@ -277,6 +277,16 @@ class ProjectConnections {
 
   /** @param {Project} project */
   async reconnectProject(project) {
+    return diagnostics.withOperation(
+      "reconnect",
+      { projectId: project.id, coreGeneration: project.service?.generation },
+      () => this.reconnectProjectObserved(project),
+      () => "unknown",
+    );
+  }
+
+  /** @param {Project} project */
+  async reconnectProjectObserved(project) {
     const previous = project.service,
       previousClient = project.client;
     if (!previous) throw Object.assign(new Error("Core 服务尚未就绪"), { code: "CORE_STOPPED" });

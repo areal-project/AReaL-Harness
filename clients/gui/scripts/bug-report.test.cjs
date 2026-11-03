@@ -54,6 +54,20 @@ test("local reports freeze reviewed diagnostic context and exclude private autom
       message: secret,
       credentials: { key: secret },
     });
+  await diagnostics.withOperation("model-configuration", { requestId }, async () => {
+    await assert.rejects(
+      diagnostics.withOperation("history-load", { projectId: secret }, async () => {
+        throw Object.assign(new Error(secret), { code: "ECONNRESET" });
+      }),
+      /PRIVATE_PATH_PROMPT_TOKEN_SENTINEL/,
+    );
+  });
+  const original = await diagnostics.collect({ mainRoot, desktopRoot });
+  const privateIds = original.runs.flatMap((run) =>
+    run.events.flatMap((event) =>
+      [event.operationId, event.parentOperationId, event.incidentId].filter(Boolean),
+    ),
+  );
   const requests = join(coreRoot, project, "state/model-requests");
   await mkdir(requests, { recursive: true });
   await writeFile(
@@ -82,9 +96,21 @@ test("local reports freeze reviewed diagnostic context and exclude private autom
     requestId,
     "private-model-name",
     "private.company.example",
+    ...privateIds,
   ])
     assert.ok(!preview.diagnostics.includes(forbidden), forbidden);
   const context = JSON.parse(preview.diagnostics);
+  const operations = context.runs[0].events.filter((event) => event.type === "operation");
+  const parent = operations.find((event) => event.name === "model-configuration");
+  const child = operations.find(
+    (event) => event.name === "history-load" && event.outcome === "failed",
+  );
+  assert.match(parent.operationId, /^ref-/);
+  assert.equal(child.parentOperationId, parent.operationId);
+  assert.equal(context.runs[0].incident.incidentId, child.incidentId);
+  assert.equal(context.monitoring.incidents[0].incidentId, child.incidentId);
+  assert.equal(context.monitoring.transport, "local-only");
+  assert.ok(context.runs[0].header.osRelease);
   assert.equal(context.modelRequests[0].httpStatus, 429);
   assert.equal(context.modelRequests[0].error.code, "rate_limit_exceeded");
   const configuration = context.runs[0].events.filter(

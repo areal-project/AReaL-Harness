@@ -1058,8 +1058,29 @@ class AppProviders {
     if (request.operation === "probe" || request.operation === "discover")
       return this.test(request);
     if (["saveAndApply", "removeAndApply", "defaultAndApply"].includes(request.operation))
-      return this.saveAndApply(request);
-    if (request.operation === "apply") return this.apply(request);
+      return diagnostics.withOperation(
+        "model-configuration",
+        {},
+        () => this.saveAndApply(request),
+        (result) =>
+          result.application.kind === "failed"
+            ? "failed"
+            : ["unknown", "deferred"].includes(result.application.kind)
+              ? "unknown"
+              : "ok",
+      );
+    if (request.operation === "apply")
+      return diagnostics.withOperation(
+        "model-configuration",
+        {},
+        () => this.apply(request),
+        (result) =>
+          result.application.kind === "failed"
+            ? "failed"
+            : ["unknown", "deferred"].includes(result.application.kind)
+              ? "unknown"
+              : "ok",
+      );
     if (request.operation === "save") return this.save(request);
     if (!["save", "remove", "default"].includes(request.operation))
       throw new Error("不支持的供应商操作");
@@ -1349,7 +1370,21 @@ class AppProviders {
   }
   /** @param {ProviderTarget} target */
   reconcilePending(target) {
-    return this.inProject(target.project, () => this.inspectPending(target));
+    return diagnostics.withOperation(
+      "model-configuration",
+      {
+        projectId: target.project.id,
+        coreGeneration: target.generation,
+        requestId: this.pendingApplications.get(target.project.id)?.requestId,
+      },
+      () => this.inProject(target.project, () => this.inspectPending(target)),
+      (result) =>
+        result?.rejected
+          ? "failed"
+          : result?.pending || result?.generationChanged
+            ? "unknown"
+            : "ok",
+    );
   }
   /** @param {ProviderTarget} target @param {unknown} [notAccepted] @returns {Promise<PendingOutcome|undefined>} */
   async inspectPending(target, notAccepted, { refreshModels = true } = {}) {
@@ -1549,89 +1584,103 @@ class AppProviders {
   reconcileProject(project, { refreshModels = true } = {}) {
     if (!this.manages(project)) return Promise.resolve();
     const target = this.target(project);
-    return this.inProject(project, async () => {
-      try {
-        if (this.closed || this.backend.closing) return;
-        this.requireTarget(target);
-        if (
-          !["areal/server/modelConfiguration/read", "areal/server/modelConfiguration/apply"].every(
-            (method) => target.client.capabilities?.methods?.includes(method),
-          )
-        )
-          throw new Error("请更新 Core 后再应用模型配置。");
-        const reconciled = await this.inspectPending(target, undefined, { refreshModels });
-        if (reconciled?.pending) return;
-        const snapshot = await this.config.current();
-        this.requireTarget(target);
-        if (this.applicationState(project, snapshot.revision).kind === "failed") return;
-        target.proof = await this.readProof(target).catch((error) => {
-          const previous = project.providerFailure;
-          if (
-            previous?.catalogRefreshPending &&
-            previous.revision === snapshot.revision &&
-            previous.serviceId === target.serviceId &&
-            previous.generation === target.generation
-          )
-            throw Object.assign(new Error(this.redact(errorMessage(error))), {
-              configurationRefreshPending: true,
+    return diagnostics.withOperation(
+      "model-configuration",
+      {
+        projectId: project.id,
+        coreGeneration: target.generation,
+        requestId: this.pendingApplications.get(project.id)?.requestId,
+      },
+      () =>
+        this.inProject(project, async () => {
+          try {
+            if (this.closed || this.backend.closing) return;
+            this.requireTarget(target);
+            if (
+              ![
+                "areal/server/modelConfiguration/read",
+                "areal/server/modelConfiguration/apply",
+              ].every((method) => target.client.capabilities?.methods?.includes(method))
+            )
+              throw new Error("请更新 Core 后再应用模型配置。");
+            const reconciled = await this.inspectPending(target, undefined, { refreshModels });
+            if (reconciled?.pending) return;
+            const snapshot = await this.config.current();
+            this.requireTarget(target);
+            if (this.applicationState(project, snapshot.revision).kind === "failed") return;
+            target.proof = await this.readProof(target).catch((error) => {
+              const previous = project.providerFailure;
+              if (
+                previous?.catalogRefreshPending &&
+                previous.revision === snapshot.revision &&
+                previous.serviceId === target.serviceId &&
+                previous.generation === target.generation
+              )
+                throw Object.assign(new Error(this.redact(errorMessage(error))), {
+                  configurationRefreshPending: true,
+                });
+              throw error;
             });
-          throw error;
-        });
-        this.rememberProof(target, target.proof, snapshot);
-        if (
-          target.proof.applied.revision === snapshot.revision &&
-          this.credentialsReady(target.proof, snapshot)
-        ) {
-          await this.confirmProof(target, target.proof, snapshot, { refreshModels });
-          return;
-        }
-        if (
-          this.saving ||
-          this.backend.providerUpdating ||
-          this.backend.resourcesUpdating ||
-          this.backend.activeCommands ||
-          this.backend.starting.size
-        ) {
-          project.providerError = null;
-          return;
-        }
-        const status = await target.client.request(
-          "areal/server/status",
-          {},
-          { decode: providerContract.serverStatus },
-        );
-        this.requireTarget(target);
-        if (
-          !status.restartSafe ||
-          this.saving ||
-          this.backend.providerUpdating ||
-          this.backend.resourcesUpdating ||
-          this.backend.activeCommands ||
-          this.backend.starting.size
-        ) {
-          project.providerError = null;
-          return;
-        }
-        this.backend.providerUpdating = true;
-        try {
-          if (this.closed || this.backend.closing) return;
-          const outcome = await this.applyProject(snapshot, target, { refreshModels });
-          if (!outcome.applied && !outcome.pending)
-            this.applicationFailed(target, snapshot.revision, outcome.error);
-        } finally {
-          this.backend.providerUpdating = false;
-        }
-      } catch (error) {
-        this.applicationFailed(target, this.snapshot().revision, error);
-      } finally {
-        this.backend.onChange();
-        if (
-          project.client?.ready &&
-          ["deferred", "unknown"].includes(this.applicationState(project).kind)
-        )
-          this.requestReconciliation(2000);
-      }
-    });
+            this.rememberProof(target, target.proof, snapshot);
+            if (
+              target.proof.applied.revision === snapshot.revision &&
+              this.credentialsReady(target.proof, snapshot)
+            ) {
+              await this.confirmProof(target, target.proof, snapshot, { refreshModels });
+              return;
+            }
+            if (
+              this.saving ||
+              this.backend.providerUpdating ||
+              this.backend.resourcesUpdating ||
+              this.backend.activeCommands ||
+              this.backend.starting.size
+            ) {
+              project.providerError = null;
+              return;
+            }
+            const status = await target.client.request(
+              "areal/server/status",
+              {},
+              { decode: providerContract.serverStatus },
+            );
+            this.requireTarget(target);
+            if (
+              !status.restartSafe ||
+              this.saving ||
+              this.backend.providerUpdating ||
+              this.backend.resourcesUpdating ||
+              this.backend.activeCommands ||
+              this.backend.starting.size
+            ) {
+              project.providerError = null;
+              return;
+            }
+            this.backend.providerUpdating = true;
+            try {
+              if (this.closed || this.backend.closing) return;
+              const outcome = await this.applyProject(snapshot, target, { refreshModels });
+              if (!outcome.applied && !outcome.pending)
+                this.applicationFailed(target, snapshot.revision, outcome.error);
+            } finally {
+              this.backend.providerUpdating = false;
+            }
+          } catch (error) {
+            this.applicationFailed(target, this.snapshot().revision, error);
+          } finally {
+            this.backend.onChange();
+            if (
+              project.client?.ready &&
+              ["deferred", "unknown"].includes(this.applicationState(project).kind)
+            )
+              this.requestReconciliation(2000);
+          }
+        }),
+      () => {
+        const state = this.applicationState(project).kind;
+        return state === "applied" ? "ok" : state === "failed" ? "failed" : "unknown";
+      },
+    );
   }
   /** @param {ProviderRequest} request */
   async saveAndApply(request) {
