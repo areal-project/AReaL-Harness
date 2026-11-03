@@ -1,3 +1,6 @@
+#[path = "creation_recovery_tests.rs"]
+mod creation_recovery_tests;
+
 #[path = "artifact_tests.rs"]
 mod artifact_tests;
 
@@ -697,7 +700,7 @@ async fn create_lost_outcome_recovers_original_receipt_after_owner_reconstructio
         let command = uuid::Uuid::new_v4().to_string();
         let request = f.request("session.create", json!({}), Some(&command));
         let mut creating = Fixture::dispatch(f.session("a"), request.clone());
-        f.call("areal/capabilities").await.reply(json!({"features":{"threadStartAdmissionGuard":true,"permissionPresets":true,"threadCreationJournal":{"binding":{"identity":"store","journalEpoch":"epoch","coreInstanceId":"instance"}}},"methods":["areal/thread/start","areal/request/read"]}));
+        f.call("areal/capabilities").await.reply(json!({"features":{"threadStartAdmissionGuard":true,"permissionPresets":true,"threadCreationJournal":{"binding":{"identity":"store","journalEpoch":"11111111-1111-4111-8111-111111111111","coreInstanceId":"22222222-2222-4222-8222-222222222222"}}},"methods":["areal/thread/start","areal/request/read"]}));
         let held = tokio::select! {
             call = f.call("areal/thread/start") => call,
             done = &mut creating => panic!("creation ended before dispatch: {:?}", done.unwrap().1),
@@ -731,9 +734,10 @@ async fn create_lost_outcome_recovers_original_receipt_after_owner_reconstructio
         tokio::task::yield_now().await;
         assert!(old_host.upgrade().is_none());
         let reading = Fixture::dispatch(f.session("a"), f.request("command.read", json!({"commandId":command}), None));
+        f.call("areal/capabilities").await.reply(json!({"features":{"threadCreationJournal":{"binding":{"identity":"store","journalEpoch":"11111111-1111-4111-8111-111111111111","coreInstanceId":"22222222-2222-4222-8222-222222222222"}}}}));
         let query = f.call("areal/request/read").await;
-        assert_eq!(query.request["params"], json!({"requestId":operation,"creationAdmission":{"identity":"store","journalEpoch":"epoch","coreInstanceId":"instance"}}));
-        query.reply(json!({"data":[{"requestId":operation,"method":"areal/thread/start","digest":digest,"identity":"store","status":"completed","threadId":"created-thread","operation":{"target":{"kind":"thread","threadId":"created-thread"}}}]}));
+        assert_eq!(query.request["params"], json!({"requestId":operation,"creationAdmission":{"identity":"store","journalEpoch":"11111111-1111-4111-8111-111111111111","coreInstanceId":"22222222-2222-4222-8222-222222222222"}}));
+        query.reply(json!({"data":[{"requestId":operation,"method":"areal/thread/start","digest":digest,"identity":"store","status":"completed","threadId":"created-thread","operation":{"requestId":operation,"method":"areal/thread/start","target":{"kind":"thread","threadId":"created-thread"}}}]}));
         let (_, recovered) = reading.await.unwrap();
         let recovered = recovered.unwrap();
         assert_eq!(recovered["commandId"], command);
