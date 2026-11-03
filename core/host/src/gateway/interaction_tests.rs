@@ -1,3 +1,6 @@
+#[path = "artifact_tests.rs"]
+mod artifact_tests;
+
 use super::*;
 use areal_local_service::storage;
 use areal_protocol::service::{Service, State};
