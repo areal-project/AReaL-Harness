@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { Composer, attachmentDrafts, sending } from "./Composer.js";
 import type { ConversationComposer } from "./ConversationComposer.js";
 import { readingViews, cancelTurnStart } from "./readingViews.js";
-import { usePendingMessage } from "./pendingMessage.js";
+import { setPendingMessage, usePendingMessage } from "./pendingMessage.js";
 import { setApplicationPreferences } from "./settings/applicationPreferences.js";
 import { planModeOptions } from "./permissions.js";
 import type { Action } from "./services.js";
@@ -43,7 +43,7 @@ vi.mock("./components/ui/button.js", () => ({
 }));
 vi.mock("./i18n/IntlProvider.js", () => ({ useI18n: () => ({ t: (id: string) => id }) }));
 
-function fixture(plan = false, file = false, running = false) {
+function fixture(plan = false, file = false, running = false, empty = false) {
   const projectId = crypto.randomUUID();
   const key = `areal-gui:draft:${projectId}:thread`;
   const owner = JSON.stringify([projectId, "thread", false]);
@@ -51,14 +51,16 @@ function fixture(plan = false, file = false, running = false) {
   const config = { revision: 1, options: planModeOptions(plan) };
   const thread = {
     id: "thread",
-    turns: [
-      {
-        id: "old",
-        status: running ? "inProgress" : "completed",
-        configuration: config,
-        items: [{ id: "answer", type: "agentMessage", text: "Ready" }],
-      },
-    ],
+    turns: empty
+      ? []
+      : [
+          {
+            id: "old",
+            status: running ? "inProgress" : "completed",
+            configuration: config,
+            items: [{ id: "answer", type: "agentMessage", text: "Ready" }],
+          },
+        ],
   };
   const action = vi.fn<Action>().mockRejectedValue(
     Object.assign(new Error("response lost"), {
@@ -172,7 +174,9 @@ describe("Composer follow-up destination before acceptance", () => {
       else expect(pendingMessage).toMatchObject({ text: "follow-up message" });
       expect(intent).toBeUndefined();
       renderToStaticMarkup(createElement(Probe));
-      expect(pendingMessage).toBeUndefined();
+      if (queued) expect(pendingMessage).toBeUndefined();
+      else expect(pendingMessage).toMatchObject({ text: "follow-up message" });
+      setPendingMessage(f.key);
       readingViews.delete(f.owner);
       setApplicationPreferences({ followUp: "queue" });
     },
@@ -200,4 +204,27 @@ describe("Composer pending attachment visibility", () => {
     attachmentDrafts.delete(f.key);
     readingViews.delete(f.owner);
   });
+});
+
+describe("Composer receipt before history projection", () => {
+  it.each([true, false])(
+    "keeps the outgoing message until history replaces it (first=%s)",
+    async (first) => {
+      const f = fixture(false, false, false, first);
+      f.action.mockReset().mockResolvedValue({ threadId: "thread" });
+      observed.submit!("second message");
+      await vi.waitFor(() => expect(f.action).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(sending.has(f.key)).toBe(false));
+      let pendingMessage: unknown;
+      function Probe() {
+        pendingMessage = usePendingMessage(f.key);
+        return null;
+      }
+      renderToStaticMarkup(createElement(Probe));
+      expect(pendingMessage).toMatchObject({ text: "second message", accepted: true });
+      expect(f.render()).not.toContain('<div hidden="">');
+      setPendingMessage(f.key);
+      readingViews.delete(f.owner);
+    },
+  );
 });

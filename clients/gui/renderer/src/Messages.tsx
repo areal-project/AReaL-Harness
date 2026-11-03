@@ -25,7 +25,7 @@ import {
   scheduleSaveReadingViews,
   type ResponseSpace,
 } from "./readingViews.js";
-import { usePendingMessage } from "./pendingMessage.js";
+import { setPendingMessage, usePendingMessage } from "./pendingMessage.js";
 import type { ConversationSelectionReference } from "./conversationSelectionReference.js";
 import { projectConversationContent, conversationContentToText } from "./conversationContent.js";
 import { ConversationContentView } from "./ConversationContentView.js";
@@ -152,7 +152,8 @@ export function Messages({
   readTurnReview: (turnId: string, itemId?: string) => Promise<Data>;
 }) {
   const { t } = useI18n();
-  const outgoing = usePendingMessage(`areal-gui:draft:${project.id}:${localThread.id}`);
+  const draftKey = `areal-gui:draft:${project.id}:${localThread.id}`;
+  const outgoing = usePendingMessage(draftKey);
   const outgoingVisible =
     !readOnly &&
     outgoing &&
@@ -161,6 +162,10 @@ export function Messages({
         (item: Data) => item.type === "userMessage" && !outgoing.previousUserIds.includes(item.id),
       ),
     );
+  useEffect(() => {
+    // 回执先于历史投影到达时保留预览，真实用户消息出现后才释放本地文件。
+    if (!readOnly && outgoing?.accepted && !outgoingVisible) setPendingMessage(draftKey);
+  }, [draftKey, readOnly, outgoing, outgoingVisible]);
   hydrateReadingViews();
   const inherited = useForkHistory(project.id, localThread, action);
   const history = useConversationHistory(project.id, localThread, action);

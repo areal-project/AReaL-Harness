@@ -7,6 +7,7 @@ import { Box } from "lucide-react";
 import { MessageResponse } from "./components/ai-elements/message.js";
 import { formatSkillMentionDisplayLabel } from "./mentions/mentionMarkdown.js";
 import { DraftAttachment } from "./MessageAttachment.js";
+import { MessageActions } from "./MessageActions.js";
 
 type UserMessageProjection = {
   text: string;
@@ -140,20 +141,25 @@ export function PendingMessageView({
               ))}
             </div>
           )}
-          <div className="user-bubble whitespace-pre-wrap break-words">
-            {message.text ? (
-              <UserMessageBody theme={theme} fileReferenceRoot={fileReferenceRoot}>
-                {message.text}
-              </UserMessageBody>
-            ) : (
-              !message.files.length && t("chat.submission.context")
-            )}
-          </div>
+          {(message.text || !message.files.length) && (
+            <div className="user-bubble whitespace-pre-wrap break-words">
+              {message.text ? (
+                <UserMessageBody theme={theme} fileReferenceRoot={fileReferenceRoot}>
+                  {message.text}
+                </UserMessageBody>
+              ) : (
+                t("chat.submission.context")
+              )}
+            </div>
+          )}
+          {message.text.trim() && <MessageActions text={message.text} />}
         </div>
       </div>
-      <p className="turn-status" role="status">
-        {t(message.starting ? "chat.submission.starting" : "chat.submission.sending")}
-      </p>
+      <div className="turn-activity">
+        <p className="execution-status" role="status">
+          {t(message.starting ? "chat.submission.starting" : "chat.submission.sending")}
+        </p>
+      </div>
     </section>
   );
 }

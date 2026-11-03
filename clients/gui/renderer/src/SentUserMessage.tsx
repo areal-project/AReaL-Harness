@@ -119,9 +119,9 @@ export function SentUserMessage({
             </CollapsibleText>
           </div>
         ) : null}
-        <MessageTime createdAt={item.createdAt} />
-        {(text.trim() || editable) && (
+        {text.trim() || editable ? (
           <MessageActions text={text}>
+            <MessageTime createdAt={item.createdAt} />
             {editable && (
               <UserPromptEdit
                 key={`${owner}:${item.id}`}
@@ -132,6 +132,8 @@ export function SentUserMessage({
               />
             )}
           </MessageActions>
+        ) : (
+          <MessageTime createdAt={item.createdAt} />
         )}
       </div>
     </div>

@@ -186,7 +186,11 @@ function AttachmentTile({
           aria-label={image ? `预览图片 ${name}` : `下载附件 ${name}`}
         >
           {image ? (
-            <img className="task-resource-thumbnail" src={url} alt="" />
+            url ? (
+              <img className="task-resource-thumbnail" src={url} alt="" />
+            ) : (
+              <span className="task-resource-thumbnail" aria-hidden="true" />
+            )
           ) : (
             <DocumentPanelIcon />
           )}
@@ -209,7 +213,11 @@ function AttachmentTile({
           }
         >
           {image ? (
-            <AttachmentPreview className="size-full rounded-none" />
+            url ? (
+              <AttachmentPreview className="size-full rounded-none" />
+            ) : (
+              <span className="sr-only">{name}</span>
+            )
           ) : (
             <>
               <AttachmentPreview />
@@ -414,7 +422,12 @@ export function SentAttachment({
         {failure}
       </span>
     );
-  if (!media) return <span className="text-ui-sm text-foreground-subtle">读取附件…</span>;
+  if (!media)
+    return part.type === "image" ? (
+      <AttachmentTile name={name} mime="image/*" url="" sent compact={compact} />
+    ) : (
+      <span className="text-ui-sm text-foreground-subtle">读取附件…</span>
+    );
   if (part.type === "audio" && !compact)
     return (
       <div className="flex flex-wrap items-center gap-2">

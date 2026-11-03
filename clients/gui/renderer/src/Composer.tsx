@@ -13,7 +13,7 @@ import { uploadComposerFiles } from "./ComposerUploads.js";
 export { uploadComposerFiles } from "./ComposerUploads.js";
 
 import { requestTurnStart, cancelTurnStart, readingViews } from "./readingViews.js";
-import { setPendingMessage, usePendingMessage } from "./pendingMessage.js";
+import { acceptPendingMessage, setPendingMessage, usePendingMessage } from "./pendingMessage.js";
 import { Input } from "@areal/ui";
 import { ComposerActionButton } from "@areal/ui/experimental";
 import { parseMentionMarkdown } from "./mentions/mentionMarkdown.js";
@@ -208,7 +208,8 @@ export function Composer({
     thread.id,
     configuration.requestId ?? null,
   );
-  const outgoing = usePendingMessage(key);
+  const pendingMessage = usePendingMessage(key);
+  const outgoing = busy ? pendingMessage : undefined;
   useEffect(() => {
     // 待提交预览只清空现有编辑器，保留 Enter 发送时的焦点与选区所有权。
     if (outgoing) api.current?.clear();
@@ -572,7 +573,9 @@ export function Composer({
         },
       });
       clear();
+      acceptPendingMessage(key);
     } catch (e) {
+      setPendingMessage(key);
       const error = e as Error & {
         submissionUnknown?: boolean;
         requestId?: string;
@@ -601,7 +604,6 @@ export function Composer({
         composerDraftStorage.setItem(`${key}:pending`, error.requestId);
       }
     } finally {
-      setPendingMessage(key);
       markSending(key, false);
     }
   };

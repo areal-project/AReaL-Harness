@@ -5,6 +5,7 @@ import { ContentSystemPreview } from "./ContentSystemPreview.js";
 import { ToastHost } from "../ToastHost.js";
 import { FeedbackNotice } from "../FeedbackNotice.js";
 import { ArtifactReviewExercise } from "./ArtifactReviewExercise.js";
+import { SendContinuityFixture } from "./SendContinuityFixture.js";
 import { DesignDashboard } from "./DesignDashboard.js";
 import { ProductCandidate } from "./ProductCandidate.js";
 import { DesignDocument } from "./DesignDocument.js";
@@ -622,7 +623,9 @@ createRoot(document.getElementById("root")!).render(
   <ApplicationIntlProvider>
     <ToastHost />
     <TooltipProvider>
-      {new URLSearchParams(window.location.search).has("dashboard") ? (
+      {new URLSearchParams(window.location.search).has("send-continuity") ? (
+        <SendContinuityFixture />
+      ) : new URLSearchParams(window.location.search).has("dashboard") ? (
         <DesignDashboard />
       ) : new URLSearchParams(window.location.search).has("product-candidate") ? (
         <ProductCandidate />

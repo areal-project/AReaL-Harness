@@ -6,7 +6,7 @@ import { requestTurnStart, cancelTurnStart, type TurnStartRequest } from "./read
 import { composerUploadOwner } from "./ComposerUploadState.js";
 import type { DraftComposerProps } from "./draftComposerTypes.js";
 import { PendingMessageView } from "./UserMessageBody.js";
-import { setPendingMessage, usePendingMessage } from "./pendingMessage.js";
+import { acceptPendingMessage, setPendingMessage, usePendingMessage } from "./pendingMessage.js";
 import { Input } from "@areal/ui";
 import { useComposerWorkspaceFiles } from "./lib/workspaceFileComposer.js";
 import { imageAnnotationBlocked, useImageAnnotationRevision } from "./imageAnnotations.js";
@@ -563,10 +563,12 @@ export function DraftComposer({
         else attachmentDrafts.delete(targetKey);
         clearComposerSkills(targetKey);
         clearComposerPlugins(targetKey);
+        acceptPendingMessage(targetKey);
       }
       localStorage.removeItem(targetKey);
       window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: targetKey }));
     } catch (e) {
+      if (targetKey) setPendingMessage(targetKey);
       const failure = e as RecoveryFailure;
       if (stoppedCreation.current.has(creationRequestId)) return;
       if (!sendStarted || !failure.submissionUnknown) cancelTurnStart(turnStart);
@@ -595,7 +597,6 @@ export function DraftComposer({
     } finally {
       setPendingMessage(key);
       if (targetKey) {
-        setPendingMessage(targetKey);
         markSending(targetKey, false);
       }
       markSending(key, false);
