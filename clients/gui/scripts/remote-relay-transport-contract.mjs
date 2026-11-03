@@ -665,7 +665,7 @@ if (!process.env.RC12_TLS_HOME) {
         const responses = await b.batch(b.client, [
           ...Array.from({ length: 10 }, () => ({
             method: "command.read",
-            params: { commandId: randomUUID() },
+            params: null,
           })),
           ...Array.from({ length: 10 }, () => ({
             method: "session.create",
@@ -674,9 +674,7 @@ if (!process.env.RC12_TLS_HOME) {
           })),
           { method: "session.create", params: {}, commandId },
         ]);
-        for (const response of responses.slice(0, 10))
-          assert.equal(response.result?.admissionState, "notFound");
-        for (const response of responses.slice(10, 20))
+        for (const response of responses.slice(0, 20))
           assert.equal(response.error?.code, "INVALID_PARAMS");
         const refused = responses[20];
         assert.equal(refused.error?.code, "LIMIT_EXCEEDED");
@@ -697,6 +695,8 @@ if (!process.env.RC12_TLS_HOME) {
           refusal: refused,
           original: original.result,
           journalAndThreadIdsUnchanged: true,
+          prefix:
+            "ten parameter-invalid receipt reads and ten parameter-invalid writes consume the aggregate budget before authorization I/O",
           timing:
             "real connection; exact 999/1000ms boundary belongs to reference and Rust owner unit",
         };
