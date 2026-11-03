@@ -159,6 +159,7 @@ export function GeneralSettings({
   fileOpen,
   action,
   connected = false,
+  onDiagnostics,
 }: {
   settings?: Data;
   power?: Snapshot["power"];
@@ -168,6 +169,7 @@ export function GeneralSettings({
   fileOpen?: PlatformServices["fileOpen"];
   action?: Action;
   connected?: boolean;
+  onDiagnostics?: () => void;
 }) {
   const { t } = useI18n();
   const prefs = useApplicationPreferences();
@@ -347,6 +349,21 @@ export function GeneralSettings({
         </SettingsGroupCard>
       </SettingsSection>
       <NotificationSettings settings={settings} action={action} connected={connected} />
+      {onDiagnostics && (
+        <SettingsSection title={t("settings.service.title")}>
+          <SettingsGroupCard>
+            <SettingsRow
+              label={t("settings.diagnostics.details")}
+              description={t("settings.diagnostics.description")}
+              control={
+                <ActionButton onClick={onDiagnostics}>
+                  {t("settings.diagnostics.open")}
+                </ActionButton>
+              }
+            />
+          </SettingsGroupCard>
+        </SettingsSection>
+      )}
     </div>
   );
 }

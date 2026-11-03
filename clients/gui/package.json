@@ -26,6 +26,7 @@
     "verify": "vp run verify-suite",
     "test:macos-dmg": "node --test scripts/dmg-size.test.mjs scripts/macos-dmg.test.mjs",
     "test:diagnostics": "node scripts/diagnostics-storage-smoke.mjs && node scripts/diagnostics-smoke.mjs",
+    "test:advanced-diagnostics": "node scripts/advanced-diagnostics-smoke.mjs",
     "test:state-projection": "node scripts/state-projection-smoke.mjs",
     "test:recovery": "node --test scripts/desktop-reconciliation.test.cjs && node scripts/recovery-contract-smoke.mjs",
     "test:creation-recovery": "node scripts/pending-project-smoke.mjs --recovery-notices",

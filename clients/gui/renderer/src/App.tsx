@@ -280,7 +280,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     } else await resourceAction("connectService", {});
   };
   const backend = useBackendRecovery(snapshot, resourceAction, reconnectService, () => {
-    setSettingsTab("后台服务");
+    setSettingsTab("高级诊断");
     setSettingsOpen(true);
   });
   const { backendActionPending, backendActionError, runBackendAction, quitStartup } = backend;
@@ -553,7 +553,7 @@ function AppContent({ services }: { services: PlatformServices }) {
             onRetry={() => void retryRestoration()}
             onBackendAction={(kind) => void runBackendAction(kind)}
             onSettings={() => {
-              setSettingsTab((viewFailure && recoverySettings(viewFailure)) || "后台服务");
+              setSettingsTab((viewFailure && recoverySettings(viewFailure)) || "高级诊断");
               setSettingsOpen(true);
             }}
             onQuit={() => void quitStartup()}

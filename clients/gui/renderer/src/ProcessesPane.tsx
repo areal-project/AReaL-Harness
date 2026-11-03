@@ -387,7 +387,7 @@ export function ProcessesPane({
         ) ||
         result.data.some((p: Process) => !p.cleanupConfirmed)
       ) {
-        throw Object.assign(new Error("仍有资源未确认清理，请保留阻塞并在后台服务中核查旧资源。"), {
+        throw Object.assign(new Error("仍有资源未确认清理，请在高级诊断中核查旧资源。"), {
           submissionUnknown: true,
         });
       }

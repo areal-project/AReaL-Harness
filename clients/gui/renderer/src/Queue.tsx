@@ -123,7 +123,7 @@ export function Queue({
       {queue.pauseReason && (
         <p>
           {queue.pauseReason === "serverDraining"
-            ? "后台服务退出时已暂停队列；待执行消息需明确继续后才会执行。"
+            ? "队列已暂停；点击继续后才会执行待发消息。"
             : queue.pauseReason === "user"
               ? "你已暂停队列。"
               : queue.pauseReason}

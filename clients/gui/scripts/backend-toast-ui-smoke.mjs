@@ -185,7 +185,7 @@ try {
       preview: async () => ({}),
       command: async (name, params) => {
         window.calls.push({ name, params });
-        if (name === "history" && params.operation !== "release")
+        if (name === "history" && params.operation === "acquire")
           return new Promise((resolve) =>
             window.historyReads.push((response) =>
               resolve(
@@ -195,6 +195,18 @@ try {
               ),
             ),
           );
+        if (name === "history" && params.operation === "loadOlder")
+          return { ok: true, value: { data: [], complete: true, nextCursor: null } };
+        if (name === "history" && params.operation === "retain")
+          return {
+            ok: true,
+            value: {
+              supported: true,
+              retained: true,
+              revision: params.revision,
+              viewGeneration: thread.displayHistory.viewGeneration,
+            },
+          };
         if (name === "history") return { ok: true, value: { released: true } };
         if (["connect", "list", "open"].includes(name))
           return { ok: true, value: structuredClone(snapshot) };
@@ -302,6 +314,48 @@ try {
       "Automatic progress and a completed stop do not notify the user.",
     );
   }
+  await page.evaluate(() =>
+    window.setBackendState({
+      lifecycle: { supported: true, operations: [], phase: "completed", kind: "quitInterface" },
+      connection: { state: "unavailable", message: "CONNECTION_FAILURE_SENTINEL" },
+    }),
+  );
+  await page.clock.runFor(5000);
+  check((await toast.count()) === 0, "A brief unavailable connection does not interrupt the user.");
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "常规", exact: true }).click();
+  await page.getByRole("button", { name: "打开高级诊断", exact: true }).click();
+  await page.getByTestId("backend-service-status").locator("summary").click();
+  const unavailableReason = page.getByText("CONNECTION_FAILURE_SENTINEL", { exact: true });
+  await unavailableReason.waitFor();
+  await page.evaluate(() => window.setBackendState({ connection: { state: "ready" } }));
+  await unavailableReason.waitFor({ state: "hidden" });
+  await page.getByRole("button", { name: "返回应用", exact: true }).click();
+  await page.clock.runFor(3500);
+  const unavailableToast = toast.filter({ hasText: "暂时无法恢复任务状态" });
+  check(
+    (await unavailableToast.count()) === 0,
+    "Recovery during the grace period cancels the notification.",
+  );
+  await page.clock.fastForward(5001);
+  await page.evaluate(() =>
+    window.setBackendState({
+      connection: { state: "unavailable", message: "CONNECTION_FAILURE_SENTINEL" },
+    }),
+  );
+  await page.clock.runFor(8001);
+  await toast.waitFor();
+  await toast.getByRole("button", { name: "查看详情", exact: true }).click();
+  await page.getByTestId("backend-service-status").locator("summary").click();
+  await page.getByText("CONNECTION_FAILURE_SENTINEL", { exact: true }).waitFor();
+  await page.screenshot({
+    path: join(scratch, "persistent-unavailable-diagnostics.png"),
+    animations: "disabled",
+  });
+  checks.push("Persistent unavailable opens diagnostics with the connection failure reason.");
+  await page.getByRole("button", { name: "返回应用", exact: true }).click();
+  await page.evaluate(() => window.setBackendState({ connection: { state: "ready" } }));
+  await toast.waitFor({ state: "hidden" });
   const lifecycle = {
     supported: true,
     operations: [],
@@ -314,8 +368,8 @@ try {
   await page.evaluate((lifecycle) => window.setBackendState({ lifecycle }), lifecycle);
   await toast.waitFor({ timeout: 5000 });
   check(
-    (await toast.getByRole("button", { name: "检查设置", exact: true }).count()) === 1,
-    "Actionable backend notification provides a settings recovery entry.",
+    (await toast.getByRole("button", { name: "查看详情", exact: true }).count()) === 1,
+    "Actionable backend notification provides a diagnostics recovery entry.",
   );
   check(
     (await toast.getByRole("alert").count()) === 1,
@@ -414,7 +468,7 @@ try {
       window.setBackendState({ lifecycle, desktopCapabilities: { currentCommands: true } }),
     lifecycle,
   );
-  await toast.getByRole("button", { name: "检查设置", exact: true }).click();
+  await toast.getByRole("button", { name: "查看详情", exact: true }).click();
   const checkButton = page.getByRole("button", { name: "检查后台", exact: true });
   await checkButton.click();
   await page.waitForFunction(() =>

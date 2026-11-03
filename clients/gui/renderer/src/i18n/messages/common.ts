@@ -400,12 +400,12 @@ export const commonMessages = {
   "recovery.reconnectProject": { "zh-CN": "重新连接项目", en: "Reconnect project" },
   "recovery.retryPrepare": { "zh-CN": "重试准备", en: "Retry preparation" },
   "backend.operationFailed": {
-    "zh-CN": "后台操作未完成，可在设置中查看详情。",
-    en: "The backend action did not complete. Details are available in settings.",
+    "zh-CN": "操作未完成，请查看具体原因。",
+    en: "The action did not complete. View the details for the cause.",
   },
   "backend.operationUnconfirmed": {
-    "zh-CN": "后台操作结果尚未确认，可在设置中查看状态。",
-    en: "The backend action is not confirmed yet. Check its status in settings.",
+    "zh-CN": "操作结果尚未确认，请核对原操作状态。",
+    en: "The result is not confirmed yet. Check the original action's status.",
   },
   "backend.updateStopped": {
     "zh-CN": "后台已退出，可在设置中继续更新。",
@@ -422,16 +422,16 @@ export const commonMessages = {
     en: "Restoring the connection. Your history and draft are saved…",
   },
   "backend.unavailable": {
-    "zh-CN": "暂时无法连接后台。历史和草稿已保留。",
-    en: "Unable to connect to the backend. Your history and draft are saved.",
+    "zh-CN": "暂时无法恢复任务状态。历史和草稿已保留，请查看详情。",
+    en: "Task status could not be restored. Your history and draft are saved. View the details.",
   },
   "backend.updateFailed": {
-    "zh-CN": "后台更新失败，请检查后台服务。",
-    en: "The backend update failed. Check the background service.",
+    "zh-CN": "更新未完成，请查看具体原因。",
+    en: "The update did not complete. View the details for the cause.",
   },
   "backend.updateRequired": {
-    "zh-CN": "请在设置的“后台服务”中更新后台后再发送，草稿已保留。",
-    en: "Update the backend in Settings > Background service before sending. Your draft is saved.",
+    "zh-CN": "当前版本需要完成更新才能发送。请前往设置 → 常规 → 高级诊断，草稿已保留。",
+    en: "An update is required before sending. Open Settings > General > Advanced diagnostics. Your draft is saved.",
   },
   "backend.updatePending": {
     "zh-CN": "已连接后台，更新可稍后应用。现有任务继续运行。",
@@ -774,7 +774,15 @@ export const commonMessages = {
   },
   "settings.hooks.title": { "zh-CN": "钩子", en: "Hooks" },
   "settings.session.title": { "zh-CN": "会话配置", en: "Session configuration" },
-  "settings.service.title": { "zh-CN": "后台服务", en: "Background service" },
+  "settings.service.title": { "zh-CN": "高级诊断", en: "Advanced diagnostics" },
+  "settings.diagnostics.details": { "zh-CN": "诊断与维护", en: "Diagnostics and maintenance" },
+  "settings.diagnostics.description": {
+    "zh-CN":
+      "应用自动管理连接、配置应用和断线恢复。遇到持续问题时，可在这里查看技术详情、导出诊断包或进行手动维护。",
+    en: "The app manages connections, configuration updates, and reconnection automatically. For persistent problems, inspect technical details, export diagnostics, or perform manual maintenance here.",
+  },
+  "settings.diagnostics.open": { "zh-CN": "打开高级诊断", en: "Open advanced diagnostics" },
+  "settings.diagnostics.back": { "zh-CN": "返回常规设置", en: "Back to General" },
   "settings.trajectory.title": { "zh-CN": "数据飞轮", en: "Data sharing" },
   "settings.trajectory.attentionTitle": {
     "zh-CN": "数据飞轮 · 需要检查",

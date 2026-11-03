@@ -1,5 +1,13 @@
 [
   {
+    "script": "test:advanced-diagnostics",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["desktop", "service", "provider", "lifecycle"],
+    "requires": ["electron", "core-binary", "native-runtime"],
+    "notes": "Isolated desktop configuration, task execution, automatic Core recovery, and advanced diagnostics navigation/export."
+  },
+  {
     "script": "test:shared-host-consumers",
     "layer": "contract",
     "platforms": ["darwin", "linux"],
