@@ -512,6 +512,20 @@ def intermediate_files(path):
                 or info.st_mode & 0o111
                 or child.suffix.lower()
                 in {".exe", ".dll", ".dylib", ".so", ".zip", ".dmg", ".pkg", ".a", ".sh"}
+                or name.lower().endswith(
+                    (
+                        ".tar",
+                        ".tar.gz",
+                        ".tgz",
+                        ".tar.bz2",
+                        ".tbz2",
+                        ".tar.xz",
+                        ".txz",
+                        ".tar.zst",
+                        ".tzst",
+                        ".7z",
+                    )
+                )
                 or ".so." in name
                 or name in {"manifest.json", "package-evidence.json"}
             ):
