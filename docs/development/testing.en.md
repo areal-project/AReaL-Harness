@@ -19,6 +19,8 @@ Model-selection smoke uses the efforts explicitly configured by its fixtures. Fo
 
 Browser terminal results, Worktree and scheduled-task contracts use the existing `history.loadItem` operation to read deferred successful-tool records before checking execution results and files written in the owning directory. A conversation summary without the full record does not prove that a tool failed to run; a summary alone also does not prove success. Migration smoke opens results through the current tool summary control and retains child-conversation and main-draft isolation assertions.
 
+The Worktree integration fixture holds automatic naming responses until the real file tools finish, observes the completed names, then reopens each conversation before leasing its history view. This prevents a legitimate naming edit from being misclassified as a tool failure. File, Shell, managed-process, directory-isolation and restart assertions remain intact.
+
 | Entry point | Coverage |
 |---|---|
 | `make verify` | Cordis pin, formatting, static checks, Rust workspace, both SDKs, Python, documentation, TUI and unified delegation smoke |
