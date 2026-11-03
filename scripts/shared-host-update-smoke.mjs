@@ -28,6 +28,7 @@ const mode = process.env.AREAL_UPDATE_CASE ?? "main";
 assert(
   [
     "main",
+    "cancel-confirmed",
     "prepare-red",
     "prepare-recovery",
     "prepare-existing-recovery",
@@ -46,6 +47,7 @@ const env = {
   ...process.env,
   HOME: join(root, "user"),
   AREAL_HARNESS_HOME: home,
+  AREAL_HARNESS_SERVICE_HOME: home,
   NO_PROXY: "127.0.0.1,localhost",
   no_proxy: "127.0.0.1,localhost",
   OTEL_SDK_DISABLED: "true",
@@ -78,7 +80,11 @@ const model = createServer(async (request, response) => {
     const original = input.messages.some(
       (message) => message.role === "user" && message.content === "H4_UPDATE_BUSY_BARRIER",
     );
-    evidence.modelRequests.push({ original, model: input.model });
+    const record = { original, model: input.model, closed: false };
+    evidence.modelRequests.push(record);
+    response.once("close", () => {
+      record.closed = true;
+    });
     const reply = () => {
       response.writeHead(200, { "Content-Type": "text/event-stream" });
       response.end(
@@ -265,7 +271,7 @@ try {
     evidence.checks.push(
       "failed target restore never reports the original apply completed before Host is available",
     );
-  } else if (mode !== "main") {
+  } else if (!["main", "cancel-confirmed"].includes(mode)) {
     const previousPreparation =
       mode.startsWith("apply-") || mode === "prepare-existing-recovery"
         ? await prepare(host)
@@ -366,40 +372,42 @@ try {
       await core.call("areal/thread/start", { requestId: randomUUID(), cwd: workspace })
     ).thread;
     const turnRequestId = randomUUID();
-    await core.call("areal/turn/start", {
+    const { turn: startedTurn } = await core.call("areal/turn/start", {
       requestId: turnRequestId,
       threadId: thread.id,
       input: [{ type: "text", text: "H4_UPDATE_BUSY_BARRIER" }],
     });
     await until(() => held, "original model request held");
     const prepared = await prepare(host);
-    evidence.coreHostPending = await until(async () => {
-      const value = await core.call("areal/host/status", {});
-      return value?.hostId === identity.hostId && value.restartPending && value;
-    }, "Core exposes authenticated Host pending state");
-    assert.equal(evidence.coreHostPending.targetVersion, "0.1.9");
-    evidence.cliPending = await cli(["host", "status", "--json"]);
-    assert.equal(evidence.cliPending.restartPending, true);
-    evidence.checks.push("CLI and authenticated Core client read the real Host pending version");
-    await pointAt(oldBinary);
-    const historic = await operation(prepared.requestId);
-    assert.equal(historic.state, "prepared");
-    await pointAt(newBinary);
-    evidence.checks.push("historical prepared receipt stays prepared after stable entry changes");
-    const busy = await host.request("host.update", {
-      requestId: randomUUID(),
-      expectedGeneration: host.generation,
-      action: "apply",
-      targetVersion: "0.1.9",
-      strategy: "ifIdle",
-    });
-    evidence.operations.push(busy);
-    assert.equal(busy.state, "blocked");
-    assert.equal((await host.request("host.status", {})).stopIntent, false);
-    assert.deepEqual(await descriptor(), identity);
-    evidence.checks.push(
-      "busy ifIdle refused before stop admission; original Host and Core work continue",
-    );
+    if (mode === "main") {
+      evidence.coreHostPending = await until(async () => {
+        const value = await core.call("areal/host/status", {});
+        return value?.hostId === identity.hostId && value.restartPending && value;
+      }, "Core exposes authenticated Host pending state");
+      assert.equal(evidence.coreHostPending.targetVersion, "0.1.9");
+      evidence.cliPending = await cli(["host", "status", "--json"]);
+      assert.equal(evidence.cliPending.restartPending, true);
+      evidence.checks.push("CLI and authenticated Core client read the real Host pending version");
+      await pointAt(oldBinary);
+      const historic = await operation(prepared.requestId);
+      assert.equal(historic.state, "prepared");
+      await pointAt(newBinary);
+      evidence.checks.push("historical prepared receipt stays prepared after stable entry changes");
+      const busy = await host.request("host.update", {
+        requestId: randomUUID(),
+        expectedGeneration: host.generation,
+        action: "apply",
+        targetVersion: "0.1.9",
+        strategy: "ifIdle",
+      });
+      evidence.operations.push(busy);
+      assert.equal(busy.state, "blocked");
+      assert.equal((await host.request("host.status", {})).stopIntent, false);
+      assert.deepEqual(await descriptor(), identity);
+      evidence.checks.push(
+        "busy ifIdle refused before stop admission; original Host and Core work continue",
+      );
+    }
     const unconfirmed = randomUUID();
     await assert.rejects(
       cli([
@@ -426,22 +434,37 @@ try {
     evidence.checks.push(
       "CLI cancel without second confirmation is rejected before stop admission",
     );
-    held();
-    const completed = await until(async () => {
-      const value = (await core.call("areal/thread/observe", { threadId: thread.id })).thread;
-      return value.turns[0]?.status === "completed" && value;
-    }, "original Turn completed");
-    evidence.originalTurn = {
-      threadId: thread.id,
-      turnRequestId,
-      turns: completed.turns.map(({ id, status }) => ({ id, status })),
-    };
-    assert.equal(completed.turns.length, 1);
-    await until(async () => {
-      const value = await host.request("host.activity", {});
-      return value.complete && value.projects.every((p) => p.state === "observed" && p.idleAllowed);
-    }, "real Core idle");
-    await prepare(host);
+    if (mode === "main") {
+      held();
+      const completed = await until(async () => {
+        const value = (await core.call("areal/thread/observe", { threadId: thread.id })).thread;
+        return value.turns[0]?.status === "completed" && value;
+      }, "original Turn completed");
+      evidence.originalTurn = {
+        threadId: thread.id,
+        turnRequestId,
+        turns: completed.turns.map(({ id, status }) => ({ id, status })),
+      };
+      assert.equal(completed.turns.length, 1);
+      await until(async () => {
+        const value = await host.request("host.activity", {});
+        return (
+          value.complete && value.projects.every((p) => p.state === "observed" && p.idleAllowed)
+        );
+      }, "real Core idle");
+      await prepare(host);
+    } else {
+      evidence.originalTurn = {
+        threadId: thread.id,
+        turnRequestId,
+        turnId: startedTurn.id,
+        statusBeforeConfirmation: (
+          await core.call("thread/read", { threadId: thread.id, includeTurns: true })
+        ).thread.turns[0].status,
+      };
+      assert.equal(evidence.originalTurn.statusBeforeConfirmation, "inProgress");
+      evidence.confirmedPreparation = prepared;
+    }
     pendingApply = randomUUID();
     evidence.pendingApply = {
       requestId: pendingApply,
@@ -449,26 +472,65 @@ try {
       generation: host.generation,
     };
     await save();
-    host.socket.removeAllListeners("data");
-    const lostReply = host
-      .request("host.update", {
-        requestId: pendingApply,
-        expectedGeneration: host.generation,
-        action: "apply",
-        targetVersion: "0.1.9",
-        strategy: "ifIdle",
-      })
-      .then(
-        () => {
-          throw new Error("Lost-response client unexpectedly observed a reply");
-        },
-        (error) => {
-          evidence.lostReply = error.message;
-        },
-      );
-    await until(async () => await operation(pendingApply), "original apply persisted");
-    host.close();
-    await lostReply;
+    if (mode === "main") {
+      host.socket.removeAllListeners("data");
+      const lostReply = host
+        .request("host.update", {
+          requestId: pendingApply,
+          expectedGeneration: host.generation,
+          action: "apply",
+          targetVersion: "0.1.9",
+          strategy: "ifIdle",
+        })
+        .then(
+          () => {
+            throw new Error("Lost-response client unexpectedly observed a reply");
+          },
+          (error) => {
+            evidence.lostReply = error.message;
+          },
+        );
+      await until(async () => await operation(pendingApply), "original apply persisted");
+      host.close();
+      await lostReply;
+    } else {
+      const args = [
+        "host",
+        "update",
+        "apply",
+        "--target-version",
+        "0.1.9",
+        "--strategy",
+        "cancel",
+        "--confirm-cancel",
+        "--request-id",
+        pendingApply,
+        "--expected-generation",
+        host.generation,
+        "--json",
+      ];
+      evidence.confirmedCancel = { args, originalPreparationId: prepared.requestId };
+      await save();
+      let response;
+      try {
+        response = await execute(oldBinary, args, { env, cwd: root, timeout: 90000 });
+      } catch (error) {
+        evidence.confirmedCancel.error = {
+          exitCode: error.code,
+          message: error.message,
+          stdout: error.stdout,
+          stderr: error.stderr,
+        };
+      }
+      if (response) {
+        evidence.confirmedCancel.exitCode = 0;
+        evidence.confirmedCancel.response = JSON.parse(response.stdout);
+        evidence.confirmedCancel.stderr = response.stderr;
+        assert.equal(evidence.confirmedCancel.response.requestId, pendingApply);
+        assert.ok(response.stderr.includes(pendingApply));
+      }
+      host.close();
+    }
     const after = await until(async () => {
       const value = await descriptor();
       return (
@@ -484,19 +546,46 @@ try {
     assert.equal(settled.generation, identity.generation);
     evidence.after = after;
     evidence.operations.push(settled);
+    if (mode === "cancel-confirmed") {
+      await save();
+      assert.equal(
+        evidence.confirmedCancel.exitCode,
+        0,
+        "the confirmed CLI must exit successfully; receipt recovery alone is not a CLI positive result",
+      );
+      assert.equal(evidence.confirmedCancel.response.requestId, pendingApply);
+    }
     evidence.checks.push(
-      "idle update execs real new version with original PID and stable Host identity",
+      mode === "main"
+        ? "idle update execs real new version with original PID and stable Host identity"
+        : "explicit CLI cancellation confirmation upgrades the busy Host with original PID and stable identity",
     );
-    evidence.checks.push("lost apply reply settles only original ID across generation change");
+    evidence.checks.push(
+      mode === "main"
+        ? "lost apply reply settles only original ID across generation change"
+        : "confirmed cancellation settles only its original apply ID across generation change",
+    );
     const reopened = await cli(ensureArgs, newBinary);
     evidence.reopenedService = reopened.service;
     core.close();
     core = await connect(reopened.service.endpoint, reopened.service.authFile);
     const history = (await core.call("areal/thread/observe", { threadId: thread.id })).thread;
-    assert.deepEqual(
-      history.turns.map(({ id, status }) => ({ id, status })),
-      evidence.originalTurn.turns,
-    );
+    if (mode === "main")
+      assert.deepEqual(
+        history.turns.map(({ id, status }) => ({ id, status })),
+        evidence.originalTurn.turns,
+      );
+    else {
+      assert.equal(history.turns.length, 1);
+      assert.equal(history.turns[0].id, startedTurn.id);
+      assert.equal(history.turns[0].status, "interrupted");
+      assert.equal(
+        evidence.modelRequests[0].closed,
+        true,
+        "original model HTTP body closed before fixture server cleanup",
+      );
+      evidence.cancelledTurn = { id: history.turns[0].id, status: history.turns[0].status };
+    }
     const pidPath = (
       await execute("/usr/bin/python3", [
         "-I",
@@ -520,7 +609,11 @@ try {
       "next project use starts real target-version Core and preserves original history",
     );
     assert.equal(evidence.modelRequests.filter((value) => value.original).length, 1);
-    evidence.checks.push("original Solve has one model request and one completed Turn");
+    evidence.checks.push(
+      mode === "main"
+        ? "original Solve has one model request and one completed Turn"
+        : "original Solve is cancelled once without model replay and retains its interrupted Turn",
+    );
   }
 } catch (error) {
   failure = error;
@@ -556,7 +649,10 @@ try {
         const solves = evidence.coreModelRequests.filter((row) => row.purpose === "Solve");
         assert.equal(solves.length, 1);
         assert.equal(solves[0].httpAttempts, 1);
-        assert.equal(solves[0].outcome, "completed");
+        assert.equal(
+          solves[0].outcome,
+          mode === "cancel-confirmed" ? "interrupted_or_unfinished" : "completed",
+        );
       } catch (error) {
         failure = error;
         evidence.failure = { message: error.message };

@@ -45,6 +45,8 @@ Side Chat 的 Esc 回退测试等待任务资源外层弹层完全退出布局�
 
 `tui-upgrade-smoke` 不构建或部署产物；先分别准备完整的不可变旧版与新版目录，并选择旧版不支持新版状态格式的组合。脚本隔离 home、工作区、状态和模型端点，通过真实 TUI 提交旧版与新版消息，显式重启激活新版，然后恢复仍打开的旧 TUI 并触发重连。它跨多个重试周期核对新版 Host/Core PID、generation、状态格式和后续回复。用 `--evidence /absolute/output` 保留终端画面、命令日志、源码与产物身份及清理结果；默认保存于临时目录。该检查不执行安装器，不替代 `upgrade-smoke`、安装包或真实供应商验收。
 
+`scripts/shared-host-update-smoke.mjs` 的 `cancel-confirmed` 模式要求 `<prefix>/lib/areal/0.1.8-macos-arm64` 与 `0.1.9-macos-arm64` 两份实际构建的不可变完整 bundle，并包含发行格式的 manifest 与 inventory；稳定入口为 `<prefix>/bin/areal`。同一 prefix 串行使用，运行前确认没有活跃 owner。运行 `AREAL_UPDATE_PREFIX=/absolute/prefix AREAL_UPDATE_CASE=cancel-confirmed node scripts/shared-host-update-smoke.mjs`，在隔离 home 和 Store 中用真实 Core 与确定性本地模型验证未确认取消被拒绝、显式确认取消原活动 Turn、原升级回执结算，以及新版本 Core 保留原历史。程序输出隔离目录中的 `result.json`，记录真实产物身份、命令回执、模型尝试和清理；该模式不注册系统服务，不代表 GUI、真实供应商或签名包验收。
+
 macOS 原生 smoke 需要 Seatbelt，Linux 原生 smoke 需要 `/usr/bin/bwrap` 和 user namespace；两者都不能在能力缺失时回退到无沙箱执行。`outer-container-perf` 仍在受控容器中验证。默认 `cargo test` 不运行显式忽略的原生 Workgroup 和容量用例。
 
 Linux 宿主常规检查使用 `make verify CARGO_TEST_ARGS='--exclude areal-runtime-exec-native'`。原生后端测试要求 `/usr/bin/bwrap` 和 user namespace；CI 的独立任务构建 Dockerfile 的 `runtime-tests` 目标，在带 Bubblewrap 的受控容器中实际运行包含 `outer-container-perf` 的全部后端测试，并启用 `areal-runtime/native-tests` 运行 daemon 的 `native_transport` 目标。该目标经私有 stdio 启动真实 daemon 和完整 Runtime bundle，使 Linux 在 daemon 旁找到 reaper；原生沙箱用例保留普通命令/Hook 并发进展和外部 writer 排他断言，四个 portable transport 用例仍属于默认测试。`make verify-native` 先构建 bundle，再在 macOS 显式运行同一原生目标。该 feature 仅选择测试目标，不改变生产行为；不能只排除 portable 宿主的原生测试就视为完成验收。
