@@ -3283,5 +3283,27 @@
     "Shared gateway, time variation, protocol bridging and runtime correction limit causal attribution",
     "Qwen coverage incomplete; no cross-modelpromotionsupport",
     "Aggregate tool-failure counts are not unique infrastructureincidentcounts"
-  ]
+  ],
+  "full_history_tool_audit": {
+    "model_calls": 0,
+    "author_reruns": 0,
+    "grader_reruns": 0,
+    "reader_controls_passed": 8,
+    "candidate_archives": 75,
+    "valid_baseline_archives": 70,
+    "archives_with_referenced_history_segments": 0,
+    "added_archived_unique_tools": 0,
+    "aggregate_tool_and_failure_counts_unchanged": true,
+    "new_known_seccomp_errors": 0,
+    "reader_semantics": "Core history-chain merge order with SHA verification and identical inherited turn/item deduplication; missing, corrupt or conflicting evidence rejected.",
+    "operator_archive_sha256": {
+      "reader-controls.json": "4c4ef9308fee7dc5a38002c9e41fedee4ed7579d0405fd680e77702a7a20a13f",
+      "astra-fixed75.json": "aa190160ac93a3a9867e5986ac335f4073c46003a91be64a9328805ba85595fe",
+      "aggregate-comparison.json": "cc642ec209c2a54625bb2605e6baad9fe5673a81ae047d3d7bb8bcda37eb44a6"
+    },
+    "reader_source_sha256": "9237ee6fd0d570ac5f4b8e90cd2d3f9d9aaadabed2b6124d3faa06745c52bc1f",
+    "tests_source_sha256": "0c8cc199037f1dbf402374724b87b04d0f7f45f0120ec14e9520d890ca3f8f53",
+    "prior_checkpoint_metrics_unchanged": true,
+    "known_chrome_anomalies_retained": true
+  }
 }
