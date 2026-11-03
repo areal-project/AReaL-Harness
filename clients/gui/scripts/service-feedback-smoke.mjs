@@ -155,8 +155,9 @@ try {
   const failedProject = page.getByRole("button", { name: "unavailable-project", exact: true });
   await failedProject.waitFor();
   await createProjectConversation(page, "unavailable-project");
-  const status = page.getByTestId("workspace-preparation-status");
-  await page.getByRole("button", { name: "连接暂不可用", exact: true }).waitFor();
+  const status = page.getByTestId("toast").filter({ hasText: "连接暂不可用" });
+  await status.waitFor();
+  await status.hover();
   const visibleText = await page.locator("body").innerText();
   assert.ok(
     !visibleText.includes(technicalError),
@@ -166,11 +167,6 @@ try {
   assert.ok(!visibleText.includes("当前任务配置不可用"));
   assert.ok(!visibleText.includes("权限模式不受支持"), "Unloaded capability is not unsupported");
   assert.ok(!visibleText.includes("暂无可用模型"), "Unloaded catalog is not an empty catalog");
-  assert.equal(
-    await page.getByTestId("feedback-notice").count(),
-    0,
-    "Connection state creates no warning card",
-  );
   const offlineInput = page.getByTestId("chat-input");
   await offlineInput.focus();
   await page.keyboard.type("Draft while preparing");
@@ -183,30 +179,20 @@ try {
     "Enter neither submits nor clears the offline draft",
   );
   await page.screenshot({ path: join(scratch, "quiet-project-status.png"), scale: "css" });
-  await status.click();
-  const details = page.getByTestId("workspace-preparation-details");
-  assert.ok(!(await details.innerText()).includes(technicalError));
-  await details.locator("summary").click();
-  assert.ok((await details.innerText()).includes(technicalError));
+  await status.getByRole("button", { name: "查看详情", exact: true }).click();
+  assert.ok((await page.locator("body").innerText()).includes(technicalError));
   await page.screenshot({ path: join(scratch, "project-status-details.png"), scale: "css" });
-  await details.locator("summary").click();
-  await details.getByRole("button", { name: "重新连接项目", exact: true }).click();
+  await status.getByRole("button", { name: "查看详情", exact: true }).click();
+  await status.getByRole("button", { name: "重新连接项目", exact: true }).click();
   await page.waitForFunction(() => {
-    const button = [
-      ...document.querySelectorAll('[data-testid="workspace-preparation-details"] button'),
-    ].find((button) => button.textContent === "重新连接项目");
+    const button = [...document.querySelectorAll('[data-testid="toast"] button')].find(
+      (value) => value.textContent === "重新连接项目",
+    );
     return button && !button.disabled;
   });
-  assert.equal(
-    await page.getByTestId("feedback-notice").count(),
-    0,
-    "A rejected reconnect does not create another incident",
-  );
-  checks.push(
-    "Offline draft stays editable with no warning card or false capability errors; details are on demand",
-  );
+  checks.push("Offline draft stays editable; top notification exposes details and retry");
   await unlink(fault);
-  await details.getByRole("button", { name: "重新连接项目", exact: true }).click();
+  await status.getByRole("button", { name: "重新连接项目", exact: true }).click();
   const reconnectDeadline = Date.now() + 30000;
   let recovered;
   while (Date.now() < reconnectDeadline) {
@@ -240,16 +226,16 @@ try {
     join(scratch, "missing-directory"),
   );
   await page.getByRole("button", { name: "打开项目", exact: true }).first().click();
-  const operationNotice = page.getByTestId("feedback-notice");
+  const operationNotice = page.getByTestId("toast");
   await operationNotice.filter({ hasText: "暂时无法完成操作" }).waitFor();
   assert.equal(await operationNotice.count(), 1);
   assert.ok(!(await page.locator("body").innerText()).includes("Error invoking remote method"));
   assert.equal(await input.textContent(), "Draft retained after a failed action");
   await page.screenshot({ path: join(scratch, "friendly-action-error.png"), scale: "css" });
-  await operationNotice.locator("summary").click();
+  await operationNotice.getByRole("button", { name: "查看详情", exact: true }).click();
   assert.ok((await page.locator("body").innerText()).includes("ENOENT"));
   await operationNotice.getByRole("button", { name: "关闭提示", exact: true }).click();
-  assert.equal(await operationNotice.count(), 0);
+  await operationNotice.waitFor({ state: "hidden" });
   assert.equal(await input.textContent(), "Draft retained after a failed action");
   checks.push(
     "Header action feedback uses the same collapsed details and preserves the editable draft when dismissed",

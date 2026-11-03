@@ -1,16 +1,6 @@
 import { TitleTooltip } from "@areal/ui";
-import { useCloudEnvironment } from "./cloudEnvironment.js";
-import { Button } from "./components/ui/button.js";
-import { Cloud } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "./components/ui/dropdown-menu.js";
 import { useEffect, useRef, useState } from "react";
 import { GitBranch, GitFork } from "lucide-react";
-import { WorkspaceLocalIcon } from "./homeChromeIcons.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import {
   WorkspacePreparationStatus,
@@ -25,7 +15,6 @@ export function ComposerWorkspaceContext({
   backendReady = false,
   showBranch = true,
   cloud = false,
-  selectable = false,
 }: {
   project: Data;
   threadId?: string;
@@ -33,13 +22,10 @@ export function ComposerWorkspaceContext({
   backendReady?: boolean;
   showBranch?: boolean;
   cloud?: boolean;
-  selectable?: boolean;
 }) {
   const { t } = useI18n();
-  const choice = useCloudEnvironment(project, action);
-  const inCloud = cloud || (selectable && choice.environment === "cloud");
-  const connected = !inCloud && backendReady && !!project.state?.connected;
-  const owner = JSON.stringify([project.id, threadId, project.root, connected, inCloud]);
+  const connected = !cloud && backendReady && !!project.state?.connected;
+  const owner = JSON.stringify([project.id, threadId, project.root, connected, cloud]);
   const request = useRef(action);
   request.current = action;
   const [result, setResult] = useState<{ owner: string; info?: Data; error?: string }>();
@@ -73,39 +59,7 @@ export function ComposerWorkspaceContext({
       : { kind: "preparing" };
   return (
     <div className="composer-workspace-context" role="group" aria-label={t("workspace.context")}>
-      {selectable && choice.available ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                type="button"
-                variant="ghost"
-                className="composer-workspace-location"
-                aria-label={t("workspace.environment")}
-              >
-                {inCloud ? <Cloud size={16} /> : <WorkspaceLocalIcon />}
-                {inCloud ? t("workspace.cloud") : t("workspace.local")}
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem onClick={() => choice.select("local")}>
-              <WorkspaceLocalIcon />
-              {t("workspace.local")}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => choice.select("cloud")}>
-              <Cloud size={16} />
-              {t("workspace.cloud")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : inCloud ? (
-        <span className="composer-workspace-location">
-          <Cloud size={16} />
-          {t("workspace.cloud")}
-        </span>
-      ) : null}
-      {inCloud ? null : !connected ? (
+      {cloud ? null : !connected ? (
         <WorkspacePreparationStatus
           key={owner}
           state={preparation}
@@ -128,16 +82,14 @@ export function ComposerWorkspaceContext({
         <span>{t("workspace.readingInfo")}</span>
       ) : (
         <>
-          <TitleTooltip title={current.info.root ?? project.root}>
-            <span className="composer-workspace-location">
-              {current.info.target ? (
+          {current.info.target && (
+            <TitleTooltip title={current.info.root ?? project.root}>
+              <span className="composer-workspace-location">
                 <GitFork className="size-3.5" aria-hidden="true" />
-              ) : (
-                <WorkspaceLocalIcon />
-              )}
-              {t(current.info.target ? "workspace.worktree" : "workspace.local")}
-            </span>
-          </TitleTooltip>
+                {t("workspace.worktree")}
+              </span>
+            </TitleTooltip>
+          )}
           {showBranch && current.info.git !== false && current.info.branch && (
             <TitleTooltip title={current.info.branch}>
               <span className="composer-workspace-branch" aria-label={t("workspace.currentBranch")}>

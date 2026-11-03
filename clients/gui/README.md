@@ -400,7 +400,9 @@ Core 构建完成后再启动使用该二进制的桌面 smoke，验收期间不
 
 Cloud 使用 AReaL 原生 app-server WebSocket 接口。设置中填写固定 Arena 服务地址，例如 `https://host/openapi/v1/app-server/`，以及自己的 token；不填写 workspace。只填写主机时补全标准路径。保存和打开配置页只读写本机加密配置，不连接远端、不分配沙箱。旧 Arena 配置的 workspace 后缀会从服务地址投影中移除，已有会话保留原 endpoint。
 
-项目新聊天选择 Cloud 时只编辑本地草稿，不分配工作区；首次发送时生成并持久保存会话 UUID，以该 ID 作为 workspace 连接 `/openapi/v1/app-server/<session-id>/`，连接成功后指示变绿。不同 Cloud 会话使用独立沙箱和 UPFS 子路径；同一会话的 query 使用原生 `turn/start` 直接发往既有沙箱。冷启动最多等待三分钟。token 通过系统安全存储加密，改变目标服务地址需提供新 token。
+项目新聊天使用项目 Composer，项目栏不展示 Cloud/Local 标签或切换入口；已保存的云端配置和旧草稿环境选择不改变新聊天的执行位置。已有 Cloud 会话仍从历史打开，使用各自的沙箱和 UPFS 子路径，同一会话的 query 使用原生 `turn/start` 发往既有沙箱。冷启动最多等待三分钟。token 通过系统安全存储加密，改变目标服务地址需提供新 token。
+
+项目连接、工作区准备及 Composer 的失败提示统一使用顶部冒泡通知，详细原因按需展开；通知提供原流程可用的重试操作。已有 Cloud 会话的断线和提交结果未知也使用顶部通知，恢复连接和未知结果确认入口仍在 Composer 保留。关闭通知不清除草稿，也不确认或重放未知提交。正常连接和发送进度不额外弹出通知。
 
 会话保存 Session ID、endpoint 和原生 thread 身份。打开已断开的会话不唤醒沙箱，下一条消息会重新连接、读取权威历史，再提交新 query，不重放旧 query。若断线前显示运行中，点击“恢复连接”读取权威状态后再继续；恢复只接回原会话，不重发提交结果未知的消息。Arena 默认在连续空闲 15 分钟后安全排空并销毁沙箱；时长和默认 Harness 由服务端“Agent 与 Harness 演进”配置。运行中的推理、工具、队列、Goal 或未确认资源不回收。原 Session 和 UPFS 保留，后续消息启动新沙箱代际并挂回同一子路径。回收要求运行包支持 Core 的空闲判定与 writer 隔离；旧运行包不会被盲目销毁。关闭 GUI 只断开客户端。
 
@@ -408,7 +410,7 @@ Cloud 支持文本及图片、音频、文件附件；可选择文件、粘贴�
 
 Cloud 对话的已读标记保存在本地导航元数据中，不要求云端支持桌面整理命令。
 
-`pnpm --dir clients/gui run test:cloud-lifecycle` 使用构建后的真实 Renderer 和 Cloud 适配器，以及本地 WebSocket 协议替身，验证保存和打开新聊天不连接、首次发送后会话 workspace 隔离、连接指示与销毁后的同会话恢复，并输出截图和请求记录；不替代真实 ARCA、UPFS 或模型验收。
+`pnpm --dir clients/gui run test:cloud-lifecycle` 使用构建后的真实 Renderer 和 Cloud 适配器，以及本地 WebSocket 协议替身，验证保存配置和项目新聊天不分配云端会话，以及已有云端会话的顶部通知、沙箱回收后的恢复和未知提交草稿保留，并输出截图和请求记录；不替代真实 ARCA、UPFS 或模型验收。
 交互设计从[用户交互模式](design-system/interactions.md)进入，页面是既有模式的组合；[设置页阶段一](design-system/exercises/settings-stage1.md)使用真实隔离Electron验证，第二阶段在审查后选择。
 
 真实对话的发送、命令、子代理及面板返回迁移和同状态验证见[对话阶段二](design-system/exercises/conversation-stage2.md)。

@@ -5,7 +5,6 @@ import {
   type RecoveryFailure,
   type RecoveryOwner,
 } from "../recoveryPresentation.js";
-import { useCloudEnvironment } from "../cloudEnvironment.js";
 import { call, type Action, type PlatformServices, type Snapshot } from "../services.js";
 import { conversationCatalog } from "./conversationCatalog.js";
 type InitialLocation =
@@ -137,29 +136,16 @@ export function useSessionNavigation(
     },
     [services, project?.id, threadId],
   );
-  const { environment, ready: environmentReady } = useCloudEnvironment(
-    project ?? { id: "projectless" },
-    resourceAction,
-  );
   useEffect(() => {
     if (
       resourceBrowsing.current ||
       !project?.id ||
       threadId ||
-      !environmentReady ||
-      environment !== "local" ||
       snapshot.connection?.state !== "ready"
     )
       return;
     void resourceAction("connect", { projectId: project.id }).catch(() => {});
-  }, [
-    project?.id,
-    threadId,
-    environmentReady,
-    environment,
-    snapshot.connection?.state,
-    resourceAction,
-  ]);
+  }, [project?.id, threadId, snapshot.connection?.state, resourceAction]);
   const restorationProjects = useRef(snapshot.projects);
   restorationProjects.current = snapshot.projects;
   const contextualFileOpen = useMemo<PlatformServices["fileOpen"]>(
@@ -235,10 +221,7 @@ export function useSessionNavigation(
             if (!current()) return;
           }
           const target = restorationProjects.current.find((item) => item.id === owner.projectId);
-          const cloud =
-            target?.state?.threads?.[owner.threadId]?.cloud ||
-            (!owner.threadId &&
-              localStorage.getItem(`areal-draft-environment:${owner.projectId}`) === "cloud");
+          const cloud = target?.state?.threads?.[owner.threadId]?.cloud;
           if (operation === "connect" && !cloud)
             await resourceAction("connect", {
               projectId: owner.projectId,

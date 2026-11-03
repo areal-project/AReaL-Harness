@@ -8,7 +8,6 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu.js";
 import { CloudComposer } from "../CloudComposer.js";
-import { useCloudEnvironment } from "../cloudEnvironment.js";
 import { FeedbackNotice } from "../FeedbackNotice.js";
 import { Composer } from "../Composer.js";
 import { ComposerWorkspaceContext } from "../ComposerWorkspaceContext.js";
@@ -389,7 +388,6 @@ function DraftConversation() {
     conversationReferences,
   } = useConversationContext();
   const { project, thread, projects, library, snapshot, resourceAction } = session;
-  const { environment } = useCloudEnvironment(project ?? { id: "projectless" }, resourceAction);
   const { workspaceView } = workspacePanels.view;
 
   const { showPanel } = panelNavigation;
@@ -469,13 +467,12 @@ function DraftConversation() {
               <ComposerWorkspaceContext
                 project={project}
                 showBranch={false}
-                selectable
                 action={resourceAction}
                 backendReady={snapshot.connection?.state === "ready"}
               />
             )}
           </div>
-          {project && environment !== "cloud" && (
+          {project && (
             <WorktreeStarter
               key={project.id}
               project={project}
@@ -498,29 +495,21 @@ function DraftConversation() {
           )}
         </div>
         {project ? (
-          environment === "cloud" ? (
-            <CloudComposer
-              project={project}
-              action={resourceAction}
-              onOpen={(pid, id) => open(pid, id, "replace")}
-            />
-          ) : (
-            <DraftComposer
-              worktree={worktreeSelection}
-              onWorktreeCreated={() => changeWorktreeSelection(project.id, undefined)}
-              appEntries={appEntries}
-              conversationReferences={conversationReferences}
-              surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
-              onAnnotate={openImageAnnotation}
-              key={project.id}
-              project={project}
-              backendReady={snapshot.connection?.state === "ready"}
-              action={action}
-              readAction={resourceAction}
-              onOpen={(pid, id) => open(pid, id, "replace")}
-              onPanel={showPanel}
-            />
-          )
+          <DraftComposer
+            worktree={worktreeSelection}
+            onWorktreeCreated={() => changeWorktreeSelection(project.id, undefined)}
+            appEntries={appEntries}
+            conversationReferences={conversationReferences}
+            surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
+            onAnnotate={openImageAnnotation}
+            key={project.id}
+            project={project}
+            backendReady={snapshot.connection?.state === "ready"}
+            action={action}
+            readAction={resourceAction}
+            onOpen={(pid, id) => open(pid, id, "replace")}
+            onPanel={showPanel}
+          />
         ) : (
           <ProjectlessDraft
             onAnnotate={openImageAnnotation}
