@@ -108,27 +108,37 @@ try {
   await page.getByText("尚无定时任务", { exact: true }).waitFor();
   await page.screenshot({ path: join(evidence, "02-narrow-empty.png") });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-  for (const scope of ["global", "project"]) {
-    await page.goto(url + "?empty" + (scope === "project" ? "&project" : ""));
-    await page.getByRole("button", { name: "整理每日计划", exact: false }).click();
-    const drafts = await page.evaluate(() => window.drafts);
-    assert.deepEqual(drafts, [
-      {
-        projectId: scope === "project" ? "00000000-0000-4000-a000-000000000001" : undefined,
-        text: "帮我创建一个定时任务：回顾我提供的计划，整理当天待办和需要关注的事项。",
-      },
-    ]);
-    assert.equal(
-      (await page.evaluate(() => window.calls)).filter((call) =>
-        ["create", "projectless", "reconcile"].includes(call.name),
-      ).length,
-      0,
-    );
-    assert.equal(
-      await page.evaluate(() => localStorage.getItem("areal-gui:ordinary-schedule-creation")),
-      null,
-    );
-  }
+  // 定时页新建打开弹框，不跳到对话页；创建直接提交到无项目工作区，接在任务自己的对话里运行。
+  await page.goto(url + "?empty");
+  await page.getByRole("button", { name: "整理每日计划", exact: false }).click();
+  const objective = page.getByRole("textbox", { name: "指令", exact: true });
+  assert.equal(await objective.inputValue(), "回顾我提供的计划，整理当天待办和需要关注的事项。");
+  assert.equal(
+    await page.getByText("跟随当前默认", { exact: true }).count(),
+    0,
+    "advanced starts collapsed",
+  );
+  await page.screenshot({ path: join(evidence, "02-new-dialog.png") });
+  await page.getByRole("button", { name: "创建", exact: true }).click();
+  await page.waitForFunction(() =>
+    window.calls.some((call) => call.name === "manage" && call.params.operation === "taskCreate"),
+  );
+  const created = (await page.evaluate(() => window.calls)).find(
+    (call) => call.name === "manage" && call.params.operation === "taskCreate",
+  ).params;
+  assert.equal(created.mode, "scheduled");
+  assert.equal(created.delivery, "thread");
+  assert.match(created.cwd, /^\/scratch\/\d{4}-\d{2}-\d{2}-/);
+  assert.equal(
+    (await page.evaluate(() => window.calls)).filter((call) =>
+      ["create", "reconcile"].includes(call.name),
+    ).length,
+    0,
+  );
+  assert.equal(
+    await page.evaluate(() => localStorage.getItem("areal-gui:ordinary-schedule-creation")),
+    null,
+  );
   await page.goto(url + "?fail");
   await page.getByRole("button", { name: "重新加载任务", exact: true }).waitFor();
   assert.equal(await page.getByText("尚无定时任务", { exact: true }).count(), 0);
@@ -138,19 +148,13 @@ try {
   await page.setViewportSize({ width: 1100, height: 800 });
   await page.goto(url + "?empty");
   await page.getByRole("button", { name: "整理每日计划", exact: false }).click();
-  assert.deepEqual(await page.evaluate(() => window.drafts), [
-    {
-      projectId: "00000000-0000-4000-a000-000000000001",
-      text: "帮我创建一个定时任务：回顾我提供的计划，整理当天待办和需要关注的事项。",
-    },
-  ]);
+  await page.getByRole("textbox", { name: "指令", exact: true }).waitFor();
   assert.equal(
-    (await page.evaluate(() => window.calls)).filter((call) =>
-      ["create", "projectless"].includes(call.name),
-    ).length,
+    (await page.evaluate(() => window.calls)).filter((call) => call.name === "create").length,
     0,
-    "new creation only stages a draft without allocating a Thread",
+    "opening the dialog does not allocate a Thread",
   );
+  await page.keyboard.press("Escape");
   for (const mode of ["unresolved", "completed", "observed-completed"]) {
     const result = { mode, passed: false };
     try {

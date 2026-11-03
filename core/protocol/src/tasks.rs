@@ -1,5 +1,8 @@
 //! 持久任务、独立通信频道与客户端控制契约。
-use crate::{desktop::Question, goals::GoalUsage};
+use crate::{
+    desktop::{ModelParameters, ModelRef, Question},
+    goals::GoalUsage,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -34,6 +37,23 @@ pub enum TaskMode {
     Foreground,
     Scheduled,
     Background,
+}
+
+/// 定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "camelCase")]
+pub enum TaskDelivery {
+    Thread,
+    #[default]
+    NewThread,
+}
+
+impl TaskDelivery {
+    pub fn is_new_thread(&self) -> bool {
+        *self == Self::NewThread
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -300,6 +320,14 @@ pub struct AcceptedSchedule {
 pub struct TaskCreate {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_thread_id: Option<String>,
+    /// 仅 scheduled；省略为 newThread。thread 时每次运行接在绑定对话里。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<TaskDelivery>,
+    /// 仅 scheduled；创建时固定的模型，省略时运行使用当前默认模型。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<ModelParameters>,
     pub request_id: String,
     pub mode: TaskMode,
     pub objective: String,
@@ -361,6 +389,12 @@ pub struct TaskUpdate {
     pub schedule: Option<Schedule>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schedule_v2: Option<ScheduleIntent>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<TaskDelivery>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<ModelParameters>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
@@ -473,6 +507,12 @@ impl TaskWorker {
 pub struct Task {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_thread_id: Option<String>,
+    #[serde(default, skip_serializing_if = "TaskDelivery::is_new_thread")]
+    pub delivery: TaskDelivery,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<ModelParameters>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deleted_at: Option<i64>,
     #[serde(default)]
@@ -585,6 +625,8 @@ pub struct TaskDirectoryRow {
     pub revision: u64,
     pub channel_sequence: u64,
     pub mode: TaskMode,
+    #[serde(default, skip_serializing_if = "TaskDelivery::is_new_thread")]
+    pub delivery: TaskDelivery,
     pub source_thread_id: Option<String>,
     pub thread_id: Option<String>,
     pub objective_preview: String,

@@ -610,6 +610,15 @@ impl Engine {
         Ok(model)
     }
 
+    pub(crate) fn configured_default_model(&self) -> Option<ModelRef> {
+        self.desktop
+            .configured_models
+            .read()
+            .unwrap()
+            .default_model
+            .clone()
+    }
+
     pub(crate) fn resolve_config(
         &self,
         profile: Option<VersionRef>,

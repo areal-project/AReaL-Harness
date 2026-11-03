@@ -124,6 +124,9 @@ async fn unified_task_worker_preserves_multimodal_input() {
         .task_create(
             "owner".into(),
             TaskCreate {
+                delivery: None,
+                model: None,
+                parameters: None,
                 source_thread_id: None,
                 request_id: "create".into(),
                 mode: TaskMode::Background,
@@ -289,6 +292,9 @@ async fn fixture() -> (
         .task_create(
             "owner".into(),
             TaskCreate {
+                delivery: None,
+                model: None,
+                parameters: None,
                 source_thread_id: None,
                 request_id: "create".into(),
                 mode: TaskMode::Background,

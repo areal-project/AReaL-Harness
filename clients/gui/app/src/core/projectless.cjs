@@ -144,6 +144,12 @@ class ProjectlessWorkspaces {
         );
       return { models: data, lastAcceptedModel: providers.lastAcceptedModel ?? null };
     }
+    if (request.operation === "scratch") {
+      // 定时页新建的无项目任务共用一个工作区（一个 Core），每个任务在其下有自己的子目录。
+      const root = scratchRoot(this.backend.userHome);
+      await mkdir(root, { recursive: true, mode: 0o700 });
+      return this.command({ operation: "prepare", requestId: SCRATCH_ID, directory: root });
+    }
     if (request.operation === "directory") {
       if (typeof request.path !== "string" || !isAbsolute(request.path))
         throw new Error("请选择绝对目录路径");
@@ -216,6 +222,14 @@ class ProjectlessWorkspaces {
     return next;
   }
 }
+const SCRATCH_ID = "00000000-0000-4000-a000-5c4a7c400001";
+/** @param {string|undefined} userHome */
+function scratchRoot(userHome) {
+  const home =
+    process.env.AREAL_HARNESS_HOME ||
+    join(process.env.AREAL_CORE_USER_HOME || userHome || homedir(), ".areal");
+  return join(home, "scratch");
+}
 /** @param {unknown} value @returns {value is Record<string,{root:string,existing?:boolean}>} */
 function isAllocations(value) {
   return (
@@ -252,4 +266,4 @@ function effectiveModel(value) {
     )
   );
 }
-module.exports = { ProjectlessWorkspaces };
+module.exports = { ProjectlessWorkspaces, SCRATCH_ID };

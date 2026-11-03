@@ -292,6 +292,17 @@ impl Engine {
                         .await?
                         .into_iter()
                         .find(|record| record["method"] == "areal/task/create");
+                    // 和 Codex/T3 一致：对话里建的任务接在这段对话里，模型固定为当前所用。
+                    let (model, parameters) = {
+                        let state = cell.state.lock().await;
+                        let configuration = state
+                            .thread
+                            .desktop
+                            .as_ref()
+                            .map(|d| d.configuration.clone())
+                            .unwrap_or_default();
+                        self.fixed_schedule_model(&configuration)
+                    };
                     let anchor_id = if let Some(record) = previous {
                         record["result"]["threadId"]
                             .as_str()
@@ -335,6 +346,9 @@ impl Engine {
                             mode: TaskMode::Scheduled,
                             objective: input.objective,
                             source_thread_id: Some(source),
+                            delivery: Some(TaskDelivery::Thread),
+                            model,
+                            parameters,
                             thread_id: Some(anchor_id),
                             interaction_mode: Some(InteractionMode::Interactive),
                             schedule: None,
@@ -359,6 +373,9 @@ impl Engine {
                             objective: input.objective,
                             schedule: None,
                             schedule_v2: input.schedule_v2,
+                            delivery: None,
+                            model: None,
+                            parameters: None,
                         },
                     )
                     .await?

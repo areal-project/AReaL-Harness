@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { Button } from "../components/ui/button.js";
 import { Composer } from "../Composer.js";
-import { stageComposerDraft } from "../composerDraftStorage.js";
 import { SidebarToggleIcon } from "../homeChromeIcons.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { NavigationBackIcon } from "../interfaceIcons.js";
@@ -49,8 +48,6 @@ export function TaskWorkspace({
   return (
     <TaskCenter
       target={view.target}
-      initialProjectId={view.scope}
-      defaultProjectId={view.scope}
       projects={snapshot.projects.map((p) => ({
         ...p,
         name:
@@ -60,15 +57,13 @@ export function TaskWorkspace({
       connected={snapshot.connection?.state === "ready"}
       action={action}
       onOpenThread={(pid, id) => void onOpenThread(pid, id)}
-      onStartDraft={(pid, text) => {
-        stageComposerDraft(
-          pid ? { kind: "project", projectId: pid } : { kind: "projectless" },
-          text,
-          true,
-        );
-        onNewTask(pid ?? "");
-      }}
       onOpenModelSettings={() => onPanel("设置")}
+      onReveal={
+        fileOpen
+          ? (projectId, path) =>
+              void fileOpen({ operation: "reveal", projectId, path }).catch(() => {})
+          : undefined
+      }
       renderConversation={(owner, managementThread, beforeTurns, options) => (
         <>
           <Messages

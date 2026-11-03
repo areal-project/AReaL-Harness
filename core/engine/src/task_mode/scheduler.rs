@@ -411,6 +411,7 @@ impl Engine {
             .goal_create(
                 task.owner.clone(),
                 GoalCreate {
+                    model_override: None,
                     infer_limits: false,
                     request_id: format!("task-run-{}", run.id),
                     thread_id: thread,
@@ -475,6 +476,7 @@ mod control_race_tests {
             .goal_create(
                 "fixture".into(),
                 GoalCreate {
+                    model_override: None,
                     request_id: "create".into(),
                     thread_id: thread.id.clone(),
                     expected_revision: 0,
@@ -535,6 +537,7 @@ mod control_race_tests {
             .goal_create(
                 "fixture".into(),
                 GoalCreate {
+                    model_override: None,
                     request_id: "create".into(),
                     thread_id: thread.id.clone(),
                     expected_revision: 0,

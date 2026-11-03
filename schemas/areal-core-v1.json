@@ -856,6 +856,26 @@
           "anyOf": [
             {
               "$defs": {
+                "GoalModel": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "model": {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/ModelRef"
+                    },
+                    "parameters": {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/ModelParameters",
+                      "default": {
+                        "maxOutputTokens": null,
+                        "reasoningEffort": null,
+                        "temperature": null
+                      }
+                    }
+                  },
+                  "required": [
+                    "model"
+                  ],
+                  "type": "object"
+                },
                 "GoalReport": {
                   "additionalProperties": false,
                   "properties": {
@@ -983,6 +1003,69 @@
                     "headless"
                   ],
                   "type": "string"
+                },
+                "ModelParameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "contextWindowTokens": {
+                      "format": "uint",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "maxOutputTokens": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "reasoningEffort": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "reasoningSummary": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "serviceTier": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "temperature": {
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "ModelRef": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "modelId": {
+                      "type": "string"
+                    },
+                    "providerId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "providerId",
+                    "modelId"
+                  ],
+                  "type": "object"
                 }
               },
               "additionalProperties": false,
@@ -1019,6 +1102,17 @@
                     "integer",
                     "null"
                   ]
+                },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
                 },
                 "objective": {
                   "type": "string"
@@ -1131,6 +1225,26 @@
           "anyOf": [
             {
               "$defs": {
+                "GoalModel": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "model": {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/ModelRef"
+                    },
+                    "parameters": {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/ModelParameters",
+                      "default": {
+                        "maxOutputTokens": null,
+                        "reasoningEffort": null,
+                        "temperature": null
+                      }
+                    }
+                  },
+                  "required": [
+                    "model"
+                  ],
+                  "type": "object"
+                },
                 "GoalReport": {
                   "additionalProperties": false,
                   "properties": {
@@ -1258,6 +1372,69 @@
                     "headless"
                   ],
                   "type": "string"
+                },
+                "ModelParameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "contextWindowTokens": {
+                      "format": "uint",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "maxOutputTokens": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "reasoningEffort": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "reasoningSummary": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "serviceTier": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "temperature": {
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "ModelRef": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "modelId": {
+                      "type": "string"
+                    },
+                    "providerId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "providerId",
+                    "modelId"
+                  ],
+                  "type": "object"
                 }
               },
               "additionalProperties": false,
@@ -1294,6 +1471,17 @@
                     "integer",
                     "null"
                   ]
+                },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
                 },
                 "objective": {
                   "type": "string"
@@ -4280,6 +4468,69 @@
                 }
               ]
             },
+            "ModelParameters": {
+              "additionalProperties": false,
+              "properties": {
+                "contextWindowTokens": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "maxOutputTokens": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "reasoningEffort": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reasoningSummary": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "serviceTier": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "temperature": {
+                  "format": "double",
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "ModelRef": {
+              "additionalProperties": false,
+              "properties": {
+                "modelId": {
+                  "type": "string"
+                },
+                "providerId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "providerId",
+                "modelId"
+              ],
+              "type": "object"
+            },
             "MonthDay": {
               "anyOf": [
                 {
@@ -4498,6 +4749,14 @@
                   "type": "object"
                 }
               ]
+            },
+            "TaskDelivery": {
+              "description": "定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。",
+              "enum": [
+                "thread",
+                "newThread"
+              ],
+              "type": "string"
             },
             "TaskMode": {
               "enum": [
@@ -4751,6 +5010,9 @@
                 "null"
               ]
             },
+            "delivery": {
+              "$ref": "#/properties/task/$defs/TaskDelivery"
+            },
             "id": {
               "type": "string"
             },
@@ -4794,6 +5056,16 @@
             "mode": {
               "$ref": "#/properties/task/$defs/TaskMode"
             },
+            "model": {
+              "anyOf": [
+                {
+                  "$ref": "#/properties/task/$defs/ModelRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "nextRunAt": {
               "format": "int64",
               "type": [
@@ -4806,6 +5078,16 @@
             },
             "owner": {
               "type": "string"
+            },
+            "parameters": {
+              "anyOf": [
+                {
+                  "$ref": "#/properties/task/$defs/ModelParameters"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "paused": {
               "type": "boolean"
@@ -6666,6 +6948,17 @@
                     "null"
                   ]
                 },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/thread/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
+                },
                 "objective": {
                   "type": "string"
                 },
@@ -6737,6 +7030,26 @@
                 "waitingForInput",
                 "waitingForCapacity",
                 "unreportedTurns"
+              ],
+              "type": "object"
+            },
+            "GoalModel": {
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "$ref": "#/properties/thread/$defs/ModelRef"
+                },
+                "parameters": {
+                  "$ref": "#/properties/thread/$defs/ModelParameters",
+                  "default": {
+                    "maxOutputTokens": null,
+                    "reasoningEffort": null,
+                    "temperature": null
+                  }
+                }
+              },
+              "required": [
+                "model"
               ],
               "type": "object"
             },
@@ -12318,6 +12631,17 @@
                     "null"
                   ]
                 },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/thread/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
+                },
                 "objective": {
                   "type": "string"
                 },
@@ -12389,6 +12713,26 @@
                 "waitingForInput",
                 "waitingForCapacity",
                 "unreportedTurns"
+              ],
+              "type": "object"
+            },
+            "GoalModel": {
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "$ref": "#/properties/thread/$defs/ModelRef"
+                },
+                "parameters": {
+                  "$ref": "#/properties/thread/$defs/ModelParameters",
+                  "default": {
+                    "maxOutputTokens": null,
+                    "reasoningEffort": null,
+                    "temperature": null
+                  }
+                }
+              },
+              "required": [
+                "model"
               ],
               "type": "object"
             },
@@ -20998,6 +21342,26 @@
     },
     "areal/goal/create": {
       "$defs": {
+        "GoalModel": {
+          "additionalProperties": false,
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/ModelRef"
+            },
+            "parameters": {
+              "$ref": "#/$defs/ModelParameters",
+              "default": {
+                "maxOutputTokens": null,
+                "reasoningEffort": null,
+                "temperature": null
+              }
+            }
+          },
+          "required": [
+            "model"
+          ],
+          "type": "object"
+        },
         "InteractionMode": {
           "enum": [
             "interactive",
@@ -21005,6 +21369,69 @@
             "headless"
           ],
           "type": "string"
+        },
+        "ModelParameters": {
+          "additionalProperties": false,
+          "properties": {
+            "contextWindowTokens": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "maxOutputTokens": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reasoningEffort": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reasoningSummary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "serviceTier": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "temperature": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "ModelRef": {
+          "additionalProperties": false,
+          "properties": {
+            "modelId": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerId",
+            "modelId"
+          ],
+          "type": "object"
         }
       },
       "additionalProperties": false,
@@ -21043,6 +21470,16 @@
           "type": [
             "integer",
             "null"
+          ]
+        },
+        "modelOverride": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GoalModel"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "objective": {
@@ -25613,6 +26050,69 @@
             }
           ]
         },
+        "ModelParameters": {
+          "additionalProperties": false,
+          "properties": {
+            "contextWindowTokens": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "maxOutputTokens": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reasoningEffort": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reasoningSummary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "serviceTier": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "temperature": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "ModelRef": {
+          "additionalProperties": false,
+          "properties": {
+            "modelId": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerId",
+            "modelId"
+          ],
+          "type": "object"
+        },
         "MonthDay": {
           "anyOf": [
             {
@@ -25882,6 +26382,14 @@
             }
           ]
         },
+        "TaskDelivery": {
+          "description": "定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。",
+          "enum": [
+            "thread",
+            "newThread"
+          ],
+          "type": "string"
+        },
         "TaskMode": {
           "enum": [
             "foreground",
@@ -25893,6 +26401,17 @@
       },
       "additionalProperties": false,
       "properties": {
+        "delivery": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TaskDelivery"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "仅 scheduled；省略为 newThread。thread 时每次运行接在绑定对话里。"
+        },
         "interactionMode": {
           "anyOf": [
             {
@@ -25922,8 +26441,29 @@
         "mode": {
           "$ref": "#/$defs/TaskMode"
         },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "仅 scheduled；创建时固定的模型，省略时运行使用当前默认模型。"
+        },
         "objective": {
           "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelParameters"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "requestId": {
           "type": "string"
@@ -26819,6 +27359,69 @@
             }
           ]
         },
+        "ModelParameters": {
+          "additionalProperties": false,
+          "properties": {
+            "contextWindowTokens": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "maxOutputTokens": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reasoningEffort": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reasoningSummary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "serviceTier": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "temperature": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "ModelRef": {
+          "additionalProperties": false,
+          "properties": {
+            "modelId": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerId",
+            "modelId"
+          ],
+          "type": "object"
+        },
         "MonthDay": {
           "anyOf": [
             {
@@ -27087,20 +27690,58 @@
               "type": "object"
             }
           ]
+        },
+        "TaskDelivery": {
+          "description": "定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。",
+          "enum": [
+            "thread",
+            "newThread"
+          ],
+          "type": "string"
         }
       },
       "additionalProperties": false,
       "description": "修改后续计划；不重新绑定执行会话、不重写已受理 Run 的 Goal。",
       "properties": {
+        "delivery": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TaskDelivery"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "expectedRevision": {
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
         },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "objective": {
           "type": [
             "string",
             "null"
+          ]
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelParameters"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "requestId": {
@@ -31856,6 +32497,17 @@
                       "null"
                     ]
                   },
+                  "modelOverride": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/properties/data/items/$defs/GoalModel"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
+                  },
                   "objective": {
                     "type": "string"
                   },
@@ -31927,6 +32579,26 @@
                   "waitingForInput",
                   "waitingForCapacity",
                   "unreportedTurns"
+                ],
+                "type": "object"
+              },
+              "GoalModel": {
+                "additionalProperties": false,
+                "properties": {
+                  "model": {
+                    "$ref": "#/properties/data/items/$defs/ModelRef"
+                  },
+                  "parameters": {
+                    "$ref": "#/properties/data/items/$defs/ModelParameters",
+                    "default": {
+                      "maxOutputTokens": null,
+                      "reasoningEffort": null,
+                      "temperature": null
+                    }
+                  }
+                },
+                "required": [
+                  "model"
                 ],
                 "type": "object"
               },
@@ -35562,6 +36234,17 @@
                         "null"
                       ]
                     },
+                    "modelOverride": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/oneOf/0/properties/thread/$defs/GoalModel"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
+                    },
                     "objective": {
                       "type": "string"
                     },
@@ -35633,6 +36316,26 @@
                     "waitingForInput",
                     "waitingForCapacity",
                     "unreportedTurns"
+                  ],
+                  "type": "object"
+                },
+                "GoalModel": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "model": {
+                      "$ref": "#/oneOf/0/properties/thread/$defs/ModelRef"
+                    },
+                    "parameters": {
+                      "$ref": "#/oneOf/0/properties/thread/$defs/ModelParameters",
+                      "default": {
+                        "maxOutputTokens": null,
+                        "reasoningEffort": null,
+                        "temperature": null
+                      }
+                    }
+                  },
+                  "required": [
+                    "model"
                   ],
                   "type": "object"
                 },
@@ -44340,6 +45043,17 @@
                       "null"
                     ]
                   },
+                  "modelOverride": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/properties/data/items/$defs/GoalModel"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
+                  },
                   "objective": {
                     "type": "string"
                   },
@@ -44411,6 +45125,26 @@
                   "waitingForInput",
                   "waitingForCapacity",
                   "unreportedTurns"
+                ],
+                "type": "object"
+              },
+              "GoalModel": {
+                "additionalProperties": false,
+                "properties": {
+                  "model": {
+                    "$ref": "#/properties/data/items/$defs/ModelRef"
+                  },
+                  "parameters": {
+                    "$ref": "#/properties/data/items/$defs/ModelParameters",
+                    "default": {
+                      "maxOutputTokens": null,
+                      "reasoningEffort": null,
+                      "temperature": null
+                    }
+                  }
+                },
+                "required": [
+                  "model"
                 ],
                 "type": "object"
               },
@@ -51536,6 +52270,26 @@
           "anyOf": [
             {
               "$defs": {
+                "GoalModel": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "model": {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/ModelRef"
+                    },
+                    "parameters": {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/ModelParameters",
+                      "default": {
+                        "maxOutputTokens": null,
+                        "reasoningEffort": null,
+                        "temperature": null
+                      }
+                    }
+                  },
+                  "required": [
+                    "model"
+                  ],
+                  "type": "object"
+                },
                 "GoalReport": {
                   "additionalProperties": false,
                   "properties": {
@@ -51663,6 +52417,69 @@
                     "headless"
                   ],
                   "type": "string"
+                },
+                "ModelParameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "contextWindowTokens": {
+                      "format": "uint",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "maxOutputTokens": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "reasoningEffort": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "reasoningSummary": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "serviceTier": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "temperature": {
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "ModelRef": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "modelId": {
+                      "type": "string"
+                    },
+                    "providerId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "providerId",
+                    "modelId"
+                  ],
+                  "type": "object"
                 }
               },
               "additionalProperties": false,
@@ -51699,6 +52516,17 @@
                     "integer",
                     "null"
                   ]
+                },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
                 },
                 "objective": {
                   "type": "string"
@@ -51805,6 +52633,26 @@
         },
         "goal": {
           "$defs": {
+            "GoalModel": {
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "$ref": "#/properties/goal/$defs/ModelRef"
+                },
+                "parameters": {
+                  "$ref": "#/properties/goal/$defs/ModelParameters",
+                  "default": {
+                    "maxOutputTokens": null,
+                    "reasoningEffort": null,
+                    "temperature": null
+                  }
+                }
+              },
+              "required": [
+                "model"
+              ],
+              "type": "object"
+            },
             "GoalReport": {
               "additionalProperties": false,
               "properties": {
@@ -51932,6 +52780,69 @@
                 "headless"
               ],
               "type": "string"
+            },
+            "ModelParameters": {
+              "additionalProperties": false,
+              "properties": {
+                "contextWindowTokens": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "maxOutputTokens": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "reasoningEffort": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reasoningSummary": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "serviceTier": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "temperature": {
+                  "format": "double",
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "ModelRef": {
+              "additionalProperties": false,
+              "properties": {
+                "modelId": {
+                  "type": "string"
+                },
+                "providerId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "providerId",
+                "modelId"
+              ],
+              "type": "object"
             }
           },
           "additionalProperties": false,
@@ -51968,6 +52879,17 @@
                 "integer",
                 "null"
               ]
+            },
+            "modelOverride": {
+              "anyOf": [
+                {
+                  "$ref": "#/properties/goal/$defs/GoalModel"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
             },
             "objective": {
               "type": "string"
@@ -52083,6 +53005,26 @@
           "anyOf": [
             {
               "$defs": {
+                "GoalModel": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "model": {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/ModelRef"
+                    },
+                    "parameters": {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/ModelParameters",
+                      "default": {
+                        "maxOutputTokens": null,
+                        "reasoningEffort": null,
+                        "temperature": null
+                      }
+                    }
+                  },
+                  "required": [
+                    "model"
+                  ],
+                  "type": "object"
+                },
                 "GoalReport": {
                   "additionalProperties": false,
                   "properties": {
@@ -52210,6 +53152,69 @@
                     "headless"
                   ],
                   "type": "string"
+                },
+                "ModelParameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "contextWindowTokens": {
+                      "format": "uint",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "maxOutputTokens": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "reasoningEffort": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "reasoningSummary": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "serviceTier": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "temperature": {
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "ModelRef": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "modelId": {
+                      "type": "string"
+                    },
+                    "providerId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "providerId",
+                    "modelId"
+                  ],
+                  "type": "object"
                 }
               },
               "additionalProperties": false,
@@ -52246,6 +53251,17 @@
                     "integer",
                     "null"
                   ]
+                },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
                 },
                 "objective": {
                   "type": "string"
@@ -52354,6 +53370,26 @@
           "anyOf": [
             {
               "$defs": {
+                "GoalModel": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "model": {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/ModelRef"
+                    },
+                    "parameters": {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/ModelParameters",
+                      "default": {
+                        "maxOutputTokens": null,
+                        "reasoningEffort": null,
+                        "temperature": null
+                      }
+                    }
+                  },
+                  "required": [
+                    "model"
+                  ],
+                  "type": "object"
+                },
                 "GoalReport": {
                   "additionalProperties": false,
                   "properties": {
@@ -52481,6 +53517,69 @@
                     "headless"
                   ],
                   "type": "string"
+                },
+                "ModelParameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "contextWindowTokens": {
+                      "format": "uint",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "maxOutputTokens": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "reasoningEffort": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "reasoningSummary": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "serviceTier": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "temperature": {
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "ModelRef": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "modelId": {
+                      "type": "string"
+                    },
+                    "providerId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "providerId",
+                    "modelId"
+                  ],
+                  "type": "object"
                 }
               },
               "additionalProperties": false,
@@ -52517,6 +53616,17 @@
                     "integer",
                     "null"
                   ]
+                },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
                 },
                 "objective": {
                   "type": "string"
@@ -52625,6 +53735,26 @@
           "anyOf": [
             {
               "$defs": {
+                "GoalModel": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "model": {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/ModelRef"
+                    },
+                    "parameters": {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/ModelParameters",
+                      "default": {
+                        "maxOutputTokens": null,
+                        "reasoningEffort": null,
+                        "temperature": null
+                      }
+                    }
+                  },
+                  "required": [
+                    "model"
+                  ],
+                  "type": "object"
+                },
                 "GoalReport": {
                   "additionalProperties": false,
                   "properties": {
@@ -52752,6 +53882,69 @@
                     "headless"
                   ],
                   "type": "string"
+                },
+                "ModelParameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "contextWindowTokens": {
+                      "format": "uint",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "maxOutputTokens": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "reasoningEffort": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "reasoningSummary": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "serviceTier": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "temperature": {
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "ModelRef": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "modelId": {
+                      "type": "string"
+                    },
+                    "providerId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "providerId",
+                    "modelId"
+                  ],
+                  "type": "object"
                 }
               },
               "additionalProperties": false,
@@ -52788,6 +53981,17 @@
                     "integer",
                     "null"
                   ]
+                },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
                 },
                 "objective": {
                   "type": "string"
@@ -52896,6 +54100,26 @@
           "anyOf": [
             {
               "$defs": {
+                "GoalModel": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "model": {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/ModelRef"
+                    },
+                    "parameters": {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/ModelParameters",
+                      "default": {
+                        "maxOutputTokens": null,
+                        "reasoningEffort": null,
+                        "temperature": null
+                      }
+                    }
+                  },
+                  "required": [
+                    "model"
+                  ],
+                  "type": "object"
+                },
                 "GoalReport": {
                   "additionalProperties": false,
                   "properties": {
@@ -53023,6 +54247,69 @@
                     "headless"
                   ],
                   "type": "string"
+                },
+                "ModelParameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "contextWindowTokens": {
+                      "format": "uint",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "maxOutputTokens": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "reasoningEffort": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "reasoningSummary": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "serviceTier": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "temperature": {
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "ModelRef": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "modelId": {
+                      "type": "string"
+                    },
+                    "providerId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "providerId",
+                    "modelId"
+                  ],
+                  "type": "object"
                 }
               },
               "additionalProperties": false,
@@ -53059,6 +54346,17 @@
                     "integer",
                     "null"
                   ]
+                },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/goal/anyOf/0/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
                 },
                 "objective": {
                   "type": "string"
@@ -66441,6 +67739,17 @@
                     "null"
                   ]
                 },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/thread/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
+                },
                 "objective": {
                   "type": "string"
                 },
@@ -66512,6 +67821,26 @@
                 "waitingForInput",
                 "waitingForCapacity",
                 "unreportedTurns"
+              ],
+              "type": "object"
+            },
+            "GoalModel": {
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "$ref": "#/properties/thread/$defs/ModelRef"
+                },
+                "parameters": {
+                  "$ref": "#/properties/thread/$defs/ModelParameters",
+                  "default": {
+                    "maxOutputTokens": null,
+                    "reasoningEffort": null,
+                    "temperature": null
+                  }
+                }
+              },
+              "required": [
+                "model"
               ],
               "type": "object"
             },
@@ -81529,6 +82858,17 @@
                     "null"
                   ]
                 },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/thread/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
+                },
                 "objective": {
                   "type": "string"
                 },
@@ -81600,6 +82940,26 @@
                 "waitingForInput",
                 "waitingForCapacity",
                 "unreportedTurns"
+              ],
+              "type": "object"
+            },
+            "GoalModel": {
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "$ref": "#/properties/thread/$defs/ModelRef"
+                },
+                "parameters": {
+                  "$ref": "#/properties/thread/$defs/ModelParameters",
+                  "default": {
+                    "maxOutputTokens": null,
+                    "reasoningEffort": null,
+                    "temperature": null
+                  }
+                }
+              },
+              "required": [
+                "model"
               ],
               "type": "object"
             },
@@ -87067,6 +88427,17 @@
                     "null"
                   ]
                 },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/thread/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
+                },
                 "objective": {
                   "type": "string"
                 },
@@ -87138,6 +88509,26 @@
                 "waitingForInput",
                 "waitingForCapacity",
                 "unreportedTurns"
+              ],
+              "type": "object"
+            },
+            "GoalModel": {
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "$ref": "#/properties/thread/$defs/ModelRef"
+                },
+                "parameters": {
+                  "$ref": "#/properties/thread/$defs/ModelParameters",
+                  "default": {
+                    "maxOutputTokens": null,
+                    "reasoningEffort": null,
+                    "temperature": null
+                  }
+                }
+              },
+              "required": [
+                "model"
               ],
               "type": "object"
             },
@@ -92041,6 +93432,69 @@
             }
           ]
         },
+        "ModelParameters": {
+          "additionalProperties": false,
+          "properties": {
+            "contextWindowTokens": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "maxOutputTokens": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reasoningEffort": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reasoningSummary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "serviceTier": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "temperature": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "ModelRef": {
+          "additionalProperties": false,
+          "properties": {
+            "modelId": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerId",
+            "modelId"
+          ],
+          "type": "object"
+        },
         "MonthDay": {
           "anyOf": [
             {
@@ -92259,6 +93713,14 @@
               "type": "object"
             }
           ]
+        },
+        "TaskDelivery": {
+          "description": "定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。",
+          "enum": [
+            "thread",
+            "newThread"
+          ],
+          "type": "string"
         },
         "TaskMode": {
           "enum": [
@@ -92512,6 +93974,9 @@
             "null"
           ]
         },
+        "delivery": {
+          "$ref": "#/$defs/TaskDelivery"
+        },
         "id": {
           "type": "string"
         },
@@ -92555,6 +94020,16 @@
         "mode": {
           "$ref": "#/$defs/TaskMode"
         },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "nextRunAt": {
           "format": "int64",
           "type": [
@@ -92567,6 +94042,16 @@
         },
         "owner": {
           "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelParameters"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "paused": {
           "type": "boolean"
@@ -92946,6 +94431,69 @@
             }
           ]
         },
+        "ModelParameters": {
+          "additionalProperties": false,
+          "properties": {
+            "contextWindowTokens": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "maxOutputTokens": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reasoningEffort": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reasoningSummary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "serviceTier": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "temperature": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "ModelRef": {
+          "additionalProperties": false,
+          "properties": {
+            "modelId": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerId",
+            "modelId"
+          ],
+          "type": "object"
+        },
         "MonthDay": {
           "anyOf": [
             {
@@ -93164,6 +94712,14 @@
               "type": "object"
             }
           ]
+        },
+        "TaskDelivery": {
+          "description": "定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。",
+          "enum": [
+            "thread",
+            "newThread"
+          ],
+          "type": "string"
         },
         "TaskMode": {
           "enum": [
@@ -93417,6 +94973,9 @@
             "null"
           ]
         },
+        "delivery": {
+          "$ref": "#/$defs/TaskDelivery"
+        },
         "id": {
           "type": "string"
         },
@@ -93460,6 +95019,16 @@
         "mode": {
           "$ref": "#/$defs/TaskMode"
         },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "nextRunAt": {
           "format": "int64",
           "type": [
@@ -93472,6 +95041,16 @@
         },
         "owner": {
           "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelParameters"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "paused": {
           "type": "boolean"
@@ -93851,6 +95430,69 @@
             }
           ]
         },
+        "ModelParameters": {
+          "additionalProperties": false,
+          "properties": {
+            "contextWindowTokens": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "maxOutputTokens": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reasoningEffort": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reasoningSummary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "serviceTier": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "temperature": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "ModelRef": {
+          "additionalProperties": false,
+          "properties": {
+            "modelId": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerId",
+            "modelId"
+          ],
+          "type": "object"
+        },
         "MonthDay": {
           "anyOf": [
             {
@@ -94069,6 +95711,14 @@
               "type": "object"
             }
           ]
+        },
+        "TaskDelivery": {
+          "description": "定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。",
+          "enum": [
+            "thread",
+            "newThread"
+          ],
+          "type": "string"
         },
         "TaskMode": {
           "enum": [
@@ -94322,6 +95972,9 @@
             "null"
           ]
         },
+        "delivery": {
+          "$ref": "#/$defs/TaskDelivery"
+        },
         "id": {
           "type": "string"
         },
@@ -94365,6 +96018,16 @@
         "mode": {
           "$ref": "#/$defs/TaskMode"
         },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "nextRunAt": {
           "format": "int64",
           "type": [
@@ -94377,6 +96040,16 @@
         },
         "owner": {
           "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelParameters"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "paused": {
           "type": "boolean"
@@ -94760,6 +96433,14 @@
             }
           ]
         },
+        "TaskDelivery": {
+          "description": "定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。",
+          "enum": [
+            "thread",
+            "newThread"
+          ],
+          "type": "string"
+        },
         "TaskDirectoryRow": {
           "additionalProperties": false,
           "description": "Committed display data. Execution controls and editing use the full Task read.",
@@ -94788,6 +96469,9 @@
                 "integer",
                 "null"
               ]
+            },
+            "delivery": {
+              "$ref": "#/$defs/TaskDelivery"
             },
             "enabled": {
               "type": "boolean"
@@ -95344,6 +97028,14 @@
             }
           ]
         },
+        "TaskDelivery": {
+          "description": "定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。",
+          "enum": [
+            "thread",
+            "newThread"
+          ],
+          "type": "string"
+        },
         "TaskDirectoryRow": {
           "additionalProperties": false,
           "description": "Committed display data. Execution controls and editing use the full Task read.",
@@ -95372,6 +97064,9 @@
                 "integer",
                 "null"
               ]
+            },
+            "delivery": {
+              "$ref": "#/$defs/TaskDelivery"
             },
             "enabled": {
               "type": "boolean"
@@ -95941,6 +97636,69 @@
                   }
                 ]
               },
+              "ModelParameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "contextWindowTokens": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "maxOutputTokens": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "reasoningEffort": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reasoningSummary": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "serviceTier": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "temperature": {
+                    "format": "double",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "ModelRef": {
+                "additionalProperties": false,
+                "properties": {
+                  "modelId": {
+                    "type": "string"
+                  },
+                  "providerId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "providerId",
+                  "modelId"
+                ],
+                "type": "object"
+              },
               "MonthDay": {
                 "anyOf": [
                   {
@@ -96159,6 +97917,14 @@
                     "type": "object"
                   }
                 ]
+              },
+              "TaskDelivery": {
+                "description": "定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。",
+                "enum": [
+                  "thread",
+                  "newThread"
+                ],
+                "type": "string"
               },
               "TaskMode": {
                 "enum": [
@@ -96412,6 +98178,9 @@
                   "null"
                 ]
               },
+              "delivery": {
+                "$ref": "#/properties/data/items/$defs/TaskDelivery"
+              },
               "id": {
                 "type": "string"
               },
@@ -96455,6 +98224,16 @@
               "mode": {
                 "$ref": "#/properties/data/items/$defs/TaskMode"
               },
+              "model": {
+                "anyOf": [
+                  {
+                    "$ref": "#/properties/data/items/$defs/ModelRef"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "nextRunAt": {
                 "format": "int64",
                 "type": [
@@ -96467,6 +98246,16 @@
               },
               "owner": {
                 "type": "string"
+              },
+              "parameters": {
+                "anyOf": [
+                  {
+                    "$ref": "#/properties/data/items/$defs/ModelParameters"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "paused": {
                 "type": "boolean"
@@ -96865,6 +98654,69 @@
             }
           ]
         },
+        "ModelParameters": {
+          "additionalProperties": false,
+          "properties": {
+            "contextWindowTokens": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "maxOutputTokens": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reasoningEffort": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reasoningSummary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "serviceTier": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "temperature": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "ModelRef": {
+          "additionalProperties": false,
+          "properties": {
+            "modelId": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerId",
+            "modelId"
+          ],
+          "type": "object"
+        },
         "MonthDay": {
           "anyOf": [
             {
@@ -97083,6 +98935,14 @@
               "type": "object"
             }
           ]
+        },
+        "TaskDelivery": {
+          "description": "定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。",
+          "enum": [
+            "thread",
+            "newThread"
+          ],
+          "type": "string"
         },
         "TaskMode": {
           "enum": [
@@ -97336,6 +99196,9 @@
             "null"
           ]
         },
+        "delivery": {
+          "$ref": "#/$defs/TaskDelivery"
+        },
         "id": {
           "type": "string"
         },
@@ -97379,6 +99242,16 @@
         "mode": {
           "$ref": "#/$defs/TaskMode"
         },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "nextRunAt": {
           "format": "int64",
           "type": [
@@ -97391,6 +99264,16 @@
         },
         "owner": {
           "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelParameters"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "paused": {
           "type": "boolean"
@@ -97770,6 +99653,69 @@
             }
           ]
         },
+        "ModelParameters": {
+          "additionalProperties": false,
+          "properties": {
+            "contextWindowTokens": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "maxOutputTokens": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reasoningEffort": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reasoningSummary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "serviceTier": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "temperature": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "ModelRef": {
+          "additionalProperties": false,
+          "properties": {
+            "modelId": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerId",
+            "modelId"
+          ],
+          "type": "object"
+        },
         "MonthDay": {
           "anyOf": [
             {
@@ -97988,6 +99934,14 @@
               "type": "object"
             }
           ]
+        },
+        "TaskDelivery": {
+          "description": "定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。",
+          "enum": [
+            "thread",
+            "newThread"
+          ],
+          "type": "string"
         },
         "TaskMode": {
           "enum": [
@@ -98241,6 +100195,9 @@
             "null"
           ]
         },
+        "delivery": {
+          "$ref": "#/$defs/TaskDelivery"
+        },
         "id": {
           "type": "string"
         },
@@ -98284,6 +100241,16 @@
         "mode": {
           "$ref": "#/$defs/TaskMode"
         },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "nextRunAt": {
           "format": "int64",
           "type": [
@@ -98296,6 +100263,16 @@
         },
         "owner": {
           "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelParameters"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "paused": {
           "type": "boolean"
@@ -98675,6 +100652,69 @@
             }
           ]
         },
+        "ModelParameters": {
+          "additionalProperties": false,
+          "properties": {
+            "contextWindowTokens": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "maxOutputTokens": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reasoningEffort": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reasoningSummary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "serviceTier": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "temperature": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "ModelRef": {
+          "additionalProperties": false,
+          "properties": {
+            "modelId": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerId",
+            "modelId"
+          ],
+          "type": "object"
+        },
         "MonthDay": {
           "anyOf": [
             {
@@ -98893,6 +100933,14 @@
               "type": "object"
             }
           ]
+        },
+        "TaskDelivery": {
+          "description": "定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。",
+          "enum": [
+            "thread",
+            "newThread"
+          ],
+          "type": "string"
         },
         "TaskMode": {
           "enum": [
@@ -99146,6 +101194,9 @@
             "null"
           ]
         },
+        "delivery": {
+          "$ref": "#/$defs/TaskDelivery"
+        },
         "id": {
           "type": "string"
         },
@@ -99189,6 +101240,16 @@
         "mode": {
           "$ref": "#/$defs/TaskMode"
         },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "nextRunAt": {
           "format": "int64",
           "type": [
@@ -99201,6 +101262,16 @@
         },
         "owner": {
           "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelParameters"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "paused": {
           "type": "boolean"
@@ -99580,6 +101651,69 @@
             }
           ]
         },
+        "ModelParameters": {
+          "additionalProperties": false,
+          "properties": {
+            "contextWindowTokens": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "maxOutputTokens": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reasoningEffort": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reasoningSummary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "serviceTier": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "temperature": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "ModelRef": {
+          "additionalProperties": false,
+          "properties": {
+            "modelId": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerId",
+            "modelId"
+          ],
+          "type": "object"
+        },
         "MonthDay": {
           "anyOf": [
             {
@@ -99798,6 +101932,14 @@
               "type": "object"
             }
           ]
+        },
+        "TaskDelivery": {
+          "description": "定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。",
+          "enum": [
+            "thread",
+            "newThread"
+          ],
+          "type": "string"
         },
         "TaskMode": {
           "enum": [
@@ -100051,6 +102193,9 @@
             "null"
           ]
         },
+        "delivery": {
+          "$ref": "#/$defs/TaskDelivery"
+        },
         "id": {
           "type": "string"
         },
@@ -100094,6 +102239,16 @@
         "mode": {
           "$ref": "#/$defs/TaskMode"
         },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "nextRunAt": {
           "format": "int64",
           "type": [
@@ -100106,6 +102261,16 @@
         },
         "owner": {
           "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelParameters"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "paused": {
           "type": "boolean"
@@ -102048,6 +104213,69 @@
             }
           ]
         },
+        "ModelParameters": {
+          "additionalProperties": false,
+          "properties": {
+            "contextWindowTokens": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "maxOutputTokens": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reasoningEffort": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reasoningSummary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "serviceTier": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "temperature": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "ModelRef": {
+          "additionalProperties": false,
+          "properties": {
+            "modelId": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerId",
+            "modelId"
+          ],
+          "type": "object"
+        },
         "MonthDay": {
           "anyOf": [
             {
@@ -102266,6 +104494,14 @@
               "type": "object"
             }
           ]
+        },
+        "TaskDelivery": {
+          "description": "定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。",
+          "enum": [
+            "thread",
+            "newThread"
+          ],
+          "type": "string"
         },
         "TaskMode": {
           "enum": [
@@ -102519,6 +104755,9 @@
             "null"
           ]
         },
+        "delivery": {
+          "$ref": "#/$defs/TaskDelivery"
+        },
         "id": {
           "type": "string"
         },
@@ -102562,6 +104801,16 @@
         "mode": {
           "$ref": "#/$defs/TaskMode"
         },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "nextRunAt": {
           "format": "int64",
           "type": [
@@ -102574,6 +104823,16 @@
         },
         "owner": {
           "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelParameters"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "paused": {
           "type": "boolean"
@@ -102953,6 +105212,69 @@
             }
           ]
         },
+        "ModelParameters": {
+          "additionalProperties": false,
+          "properties": {
+            "contextWindowTokens": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "maxOutputTokens": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reasoningEffort": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reasoningSummary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "serviceTier": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "temperature": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "ModelRef": {
+          "additionalProperties": false,
+          "properties": {
+            "modelId": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerId",
+            "modelId"
+          ],
+          "type": "object"
+        },
         "MonthDay": {
           "anyOf": [
             {
@@ -103171,6 +105493,14 @@
               "type": "object"
             }
           ]
+        },
+        "TaskDelivery": {
+          "description": "定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。",
+          "enum": [
+            "thread",
+            "newThread"
+          ],
+          "type": "string"
         },
         "TaskMode": {
           "enum": [
@@ -103424,6 +105754,9 @@
             "null"
           ]
         },
+        "delivery": {
+          "$ref": "#/$defs/TaskDelivery"
+        },
         "id": {
           "type": "string"
         },
@@ -103467,6 +105800,16 @@
         "mode": {
           "$ref": "#/$defs/TaskMode"
         },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "nextRunAt": {
           "format": "int64",
           "type": [
@@ -103479,6 +105822,16 @@
         },
         "owner": {
           "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelParameters"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "paused": {
           "type": "boolean"
@@ -103882,6 +106235,69 @@
             }
           ]
         },
+        "ModelParameters": {
+          "additionalProperties": false,
+          "properties": {
+            "contextWindowTokens": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "maxOutputTokens": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reasoningEffort": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reasoningSummary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "serviceTier": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "temperature": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "ModelRef": {
+          "additionalProperties": false,
+          "properties": {
+            "modelId": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerId",
+            "modelId"
+          ],
+          "type": "object"
+        },
         "MonthDay": {
           "anyOf": [
             {
@@ -104100,6 +106516,14 @@
               "type": "object"
             }
           ]
+        },
+        "TaskDelivery": {
+          "description": "定时运行的投递位置：接在绑定的对话里，或每次新建对话（旧任务的语义）。",
+          "enum": [
+            "thread",
+            "newThread"
+          ],
+          "type": "string"
         },
         "TaskMode": {
           "enum": [
@@ -104353,6 +106777,9 @@
             "null"
           ]
         },
+        "delivery": {
+          "$ref": "#/$defs/TaskDelivery"
+        },
         "id": {
           "type": "string"
         },
@@ -104396,6 +106823,16 @@
         "mode": {
           "$ref": "#/$defs/TaskMode"
         },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "nextRunAt": {
           "format": "int64",
           "type": [
@@ -104408,6 +106845,16 @@
         },
         "owner": {
           "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelParameters"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "paused": {
           "type": "boolean"
@@ -106211,6 +108658,17 @@
                     "null"
                   ]
                 },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/thread/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
+                },
                 "objective": {
                   "type": "string"
                 },
@@ -106282,6 +108740,26 @@
                 "waitingForInput",
                 "waitingForCapacity",
                 "unreportedTurns"
+              ],
+              "type": "object"
+            },
+            "GoalModel": {
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "$ref": "#/properties/thread/$defs/ModelRef"
+                },
+                "parameters": {
+                  "$ref": "#/properties/thread/$defs/ModelParameters",
+                  "default": {
+                    "maxOutputTokens": null,
+                    "reasoningEffort": null,
+                    "temperature": null
+                  }
+                }
+              },
+              "required": [
+                "model"
               ],
               "type": "object"
             },
@@ -110981,6 +113459,17 @@
                     "null"
                   ]
                 },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/thread/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
+                },
                 "objective": {
                   "type": "string"
                 },
@@ -111052,6 +113541,26 @@
                 "waitingForInput",
                 "waitingForCapacity",
                 "unreportedTurns"
+              ],
+              "type": "object"
+            },
+            "GoalModel": {
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "$ref": "#/properties/thread/$defs/ModelRef"
+                },
+                "parameters": {
+                  "$ref": "#/properties/thread/$defs/ModelParameters",
+                  "default": {
+                    "maxOutputTokens": null,
+                    "reasoningEffort": null,
+                    "temperature": null
+                  }
+                }
+              },
+              "required": [
+                "model"
               ],
               "type": "object"
             },
@@ -115574,6 +118083,17 @@
                     "null"
                   ]
                 },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/thread/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
+                },
                 "objective": {
                   "type": "string"
                 },
@@ -115645,6 +118165,26 @@
                 "waitingForInput",
                 "waitingForCapacity",
                 "unreportedTurns"
+              ],
+              "type": "object"
+            },
+            "GoalModel": {
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "$ref": "#/properties/thread/$defs/ModelRef"
+                },
+                "parameters": {
+                  "$ref": "#/properties/thread/$defs/ModelParameters",
+                  "default": {
+                    "maxOutputTokens": null,
+                    "reasoningEffort": null,
+                    "temperature": null
+                  }
+                }
+              },
+              "required": [
+                "model"
               ],
               "type": "object"
             },
@@ -132859,6 +135399,17 @@
                       "null"
                     ]
                   },
+                  "modelOverride": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/properties/data/items/$defs/GoalModel"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
+                  },
                   "objective": {
                     "type": "string"
                   },
@@ -132930,6 +135481,26 @@
                   "waitingForInput",
                   "waitingForCapacity",
                   "unreportedTurns"
+                ],
+                "type": "object"
+              },
+              "GoalModel": {
+                "additionalProperties": false,
+                "properties": {
+                  "model": {
+                    "$ref": "#/properties/data/items/$defs/ModelRef"
+                  },
+                  "parameters": {
+                    "$ref": "#/properties/data/items/$defs/ModelParameters",
+                    "default": {
+                      "maxOutputTokens": null,
+                      "reasoningEffort": null,
+                      "temperature": null
+                    }
+                  }
+                },
+                "required": [
+                  "model"
                 ],
                 "type": "object"
               },
@@ -136553,6 +139124,17 @@
                     "null"
                   ]
                 },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/thread/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
+                },
                 "objective": {
                   "type": "string"
                 },
@@ -136624,6 +139206,26 @@
                 "waitingForInput",
                 "waitingForCapacity",
                 "unreportedTurns"
+              ],
+              "type": "object"
+            },
+            "GoalModel": {
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "$ref": "#/properties/thread/$defs/ModelRef"
+                },
+                "parameters": {
+                  "$ref": "#/properties/thread/$defs/ModelParameters",
+                  "default": {
+                    "maxOutputTokens": null,
+                    "reasoningEffort": null,
+                    "temperature": null
+                  }
+                }
+              },
+              "required": [
+                "model"
               ],
               "type": "object"
             },
@@ -140339,6 +142941,17 @@
                     "null"
                   ]
                 },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/thread/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
+                },
                 "objective": {
                   "type": "string"
                 },
@@ -140410,6 +143023,26 @@
                 "waitingForInput",
                 "waitingForCapacity",
                 "unreportedTurns"
+              ],
+              "type": "object"
+            },
+            "GoalModel": {
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "$ref": "#/properties/thread/$defs/ModelRef"
+                },
+                "parameters": {
+                  "$ref": "#/properties/thread/$defs/ModelParameters",
+                  "default": {
+                    "maxOutputTokens": null,
+                    "reasoningEffort": null,
+                    "temperature": null
+                  }
+                }
+              },
+              "required": [
+                "model"
               ],
               "type": "object"
             },
@@ -144883,6 +147516,17 @@
                     "null"
                   ]
                 },
+                "modelOverride": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/thread/$defs/GoalModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
+                },
                 "objective": {
                   "type": "string"
                 },
@@ -144954,6 +147598,26 @@
                 "waitingForInput",
                 "waitingForCapacity",
                 "unreportedTurns"
+              ],
+              "type": "object"
+            },
+            "GoalModel": {
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "$ref": "#/properties/thread/$defs/ModelRef"
+                },
+                "parameters": {
+                  "$ref": "#/properties/thread/$defs/ModelParameters",
+                  "default": {
+                    "maxOutputTokens": null,
+                    "reasoningEffort": null,
+                    "temperature": null
+                  }
+                }
+              },
+              "required": [
+                "model"
               ],
               "type": "object"
             },
@@ -150795,6 +153459,17 @@
               "null"
             ]
           },
+          "modelOverride": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/GoalModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。"
+          },
           "objective": {
             "type": "string"
           },
@@ -150866,6 +153541,26 @@
           "waitingForInput",
           "waitingForCapacity",
           "unreportedTurns"
+        ],
+        "type": "object"
+      },
+      "GoalModel": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "$ref": "#/$defs/ModelRef"
+          },
+          "parameters": {
+            "$ref": "#/$defs/ModelParameters",
+            "default": {
+              "maxOutputTokens": null,
+              "reasoningEffort": null,
+              "temperature": null
+            }
+          }
+        },
+        "required": [
+          "model"
         ],
         "type": "object"
       },
