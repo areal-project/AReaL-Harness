@@ -54,6 +54,34 @@ class VerificationTests(unittest.TestCase):
                 text = json.dumps({"inputHash": self.expected})
             (self.source / name).write_text(f"#!{sys.executable}\nprint({text!r})\n")
             (self.source / name).chmod(0o755)
+        if verification.platform.system() == "Darwin":
+            for name in ["runtime/host-tools/bash.lock.json", "scripts/prepare-runtime-shell.py"]:
+                destination = self.root / name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / name, destination)
+            shells = self.source / "shells"
+            shells.mkdir()
+            for name in ["bash", "sh"]:
+                (shells / name).write_text("#!/bin/sh\nexit 0\n")
+                (shells / name).chmod(0o755)
+            (shells / "COPYING").write_text("fixture license")
+            (shells / "corresponding-source.tar.gz").write_bytes(b"fixture source")
+            lock = self.root / "runtime/host-tools/bash.lock.json"
+            metadata = json.loads(lock.read_text())
+            verification.write_json(
+                shells / "build.json",
+                {
+                    "lockSha256": verification.digest(lock),
+                    "builderSha256": verification.digest(
+                        self.root / "scripts/prepare-runtime-shell.py"
+                    ),
+                    "version": metadata["version"],
+                    "minimumMacOSVersion": metadata["minimumMacOSVersion"],
+                    "license": "GPL-3.0-or-later",
+                    "binarySha256": verification.digest(shells / "bash"),
+                    "sourceSha256": verification.digest(shells / "corresponding-source.tar.gz"),
+                },
+            )
         verification.write_json(
             self.source / verification.RECEIPT, verification.build_receipt(self.root, self.source)
         )
@@ -113,6 +141,58 @@ class VerificationTests(unittest.TestCase):
             passed=False,
         )
         self.assertEqual((self.root / "doctor.json").read_bytes(), original)
+
+    @unittest.skipUnless(verification.platform.system() == "Darwin", "macOS private shell")
+    def test_fixed_slot_includes_private_shell_executables_and_corresponding_source(self):
+        destination = self.root / "fixed slot"
+        self.cli(
+            "deploy",
+            "--source-dir",
+            self.source,
+            "--bin-dir",
+            destination,
+            "--evidence",
+            self.root / "deployment.json",
+        )
+        receipt = json.loads((destination / verification.RECEIPT).read_text())
+        for name in verification.artifact_files():
+            self.assertEqual(verification.digest(destination / name), receipt["files"][name])
+        for name in ["bash", "sh"]:
+            self.assertTrue((destination / "shells" / name).stat().st_mode & 0o111)
+        (destination / "shells/bash").write_text("tampered")
+        diagnostic = self.cli(
+            "doctor",
+            "--core",
+            destination / "areal",
+            "--report",
+            self.root / "shell-doctor.json",
+            passed=False,
+        )
+        self.assertIn("artifact changed", " ".join(diagnostic["errors"]))
+        with self.assertRaisesRegex(ValueError, "artifact changed"):
+            verification.check_files(destination, receipt)
+        (destination / "shells/bash").unlink()
+        with self.assertRaisesRegex(ValueError, "missing real artifact"):
+            verification.check_files(destination, receipt)
+
+    @unittest.skipUnless(verification.platform.system() == "Darwin", "macOS private shell")
+    def test_shell_tampering_and_missing_source_reject_deploy_before_slot_write(self):
+        destination = self.root / "fixed slot"
+        arguments = (
+            "deploy",
+            "--source-dir",
+            self.source,
+            "--bin-dir",
+            destination,
+            "--evidence",
+            self.root / "deployment.json",
+        )
+        source = self.source / "shells/corresponding-source.tar.gz"
+        source.write_bytes(b"tampered")
+        self.assertIn("artifact changed", self.cli(*arguments, passed=False)["error"])
+        source.unlink()
+        self.assertIn("missing real artifact", self.cli(*arguments, passed=False)["error"])
+        self.assertFalse(destination.exists())
 
     def installed_bundle(self):
         bundle = self.root / "prefix/lib/areal/0.1.8-fixture"
@@ -288,10 +368,21 @@ class VerificationTests(unittest.TestCase):
             self.root / "deployment.json",
         )
         self.cli(*arguments)
-        before = {p.name: p.read_bytes() for p in destination.iterdir()}
+        before = {
+            str(p.relative_to(destination)): p.read_bytes()
+            for p in destination.rglob("*")
+            if p.is_file()
+        }
         with verification.slot_lock(destination):
             self.cli(*arguments, passed=False)
-        self.assertEqual(before, {p.name: p.read_bytes() for p in destination.iterdir()})
+        self.assertEqual(
+            before,
+            {
+                str(p.relative_to(destination)): p.read_bytes()
+                for p in destination.rglob("*")
+                if p.is_file()
+            },
+        )
         opened = (destination / "areal-runtime").open("rb")
         child = subprocess.Popen(["/bin/sleep", "30"], stdin=opened)
         try:

@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import tempfile
 
-from package import source_input_hash
+from package import source_input_hash, private_shell_info
 from install import TARGETS, verify_bundle
 
 
@@ -33,6 +33,17 @@ def digest(path):
 def components():
     return ["areal", "areal-runtime", "areal-runtime-fs"] + (
         ["areal-runtime-reaper"] if platform.system() == "Linux" else []
+    )
+
+
+def artifact_files():
+    return components() + (
+        [
+            f"shells/{name}"
+            for name in ["bash", "sh", "build.json", "COPYING", "corresponding-source.tar.gz"]
+        ]
+        if platform.system() == "Darwin"
+        else []
     )
 
 
@@ -123,6 +134,8 @@ def slot_lock(directory):
 
 
 def build_receipt(root, directory):
+    if platform.system() == "Darwin":
+        private_shell_info(root, directory)
     return {
         "schemaVersion": 1,
         "sourceRoot": str(root),
@@ -130,15 +143,18 @@ def build_receipt(root, directory):
             ["git", "rev-parse", "HEAD"], cwd=root, text=True
         ).strip(),
         "inputHash": source_input_hash(root),
-        "files": {name: digest(directory / name) for name in components()},
+        "files": {name: digest(directory / name) for name in artifact_files()},
     }
 
 
 def check_files(directory, receipt):
-    for name in components():
+    if platform.system() == "Darwin" and (directory / "shells").is_symlink():
+        raise ValueError("Runtime shells must be a real bundle directory")
+    for name in artifact_files():
         path = directory / name
-        if path.is_symlink() or not path.is_file() or not os.access(path, os.X_OK):
-            raise ValueError(f"missing real executable: {path}")
+        executable = name in components() or name in {"shells/bash", "shells/sh"}
+        if path.is_symlink() or not path.is_file() or (executable and not os.access(path, os.X_OK)):
+            raise ValueError(f"missing real artifact: {path}")
         if digest(path) != receipt["files"].get(name):
             raise ValueError(f"artifact changed since build/deployment: {path}")
 
@@ -171,15 +187,19 @@ def deploy(args):
             raise ValueError(f"test slot is in use by PIDs {sorted(occupied)}")
         with tempfile.TemporaryDirectory(prefix=".deploy-", dir=destination) as temporary:
             staging = Path(temporary)
-            for name in components():
+            if platform.system() == "Darwin" and (destination / "shells").is_symlink():
+                raise ValueError("Runtime shells must be a real bundle directory")
+            for name in artifact_files():
                 target = destination / name
                 if target.is_symlink():
                     raise ValueError(f"destination must be a real file: {target}")
+                (staging / name).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source / name, staging / name)
             check_files(staging, receipt)
             check_files(source, receipt)
-            for name in components():
+            for name in artifact_files():
                 target = destination / name
+                target.parent.mkdir(parents=True, exist_ok=True)
                 if not target.exists() or digest(target) != receipt["files"][name]:
                     os.replace(staging / name, target)
             write_json(destination / RECEIPT, {**receipt, "deploymentDirectory": str(destination)})
