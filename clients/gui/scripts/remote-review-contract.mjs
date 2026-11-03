@@ -615,3 +615,20 @@ try {
 } finally {
   observers.close();
 }
+
+const { test } = await import("node:test");
+if (!process.env.RC12_TLS_HOME) {
+  test("Rust review denial sources use the isolated process CA", { timeout: 240000 }, async () => {
+    const { runWithIsolatedCA } = await import("./remote-native-push-fixture.mjs");
+    await runWithIsolatedCA(import.meta.filename);
+  });
+} else {
+  test(
+    "Rust Host rejects changed review cursors, foreign connection refs and invalid native images",
+    { timeout: 180000 },
+    async (t) => {
+      const { nativeReviewNegatives } = await import("./remote-review-native-negative-fixture.mjs");
+      await nativeReviewNegatives(t);
+    },
+  );
+}

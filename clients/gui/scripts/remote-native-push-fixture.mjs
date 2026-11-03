@@ -295,6 +295,7 @@ export async function phone(t, remote, projectId, identity = undefined, pair = f
     active = await next(messages);
   }
   return {
+    socket,
     identity,
     peer: identityId(identity),
     active,
