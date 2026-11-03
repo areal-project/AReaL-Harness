@@ -60,3 +60,5 @@ if (edits.success && edits.data.allApplied) {
 ```
 
 准入分别核对最终请求大小、真实采用率、实际 provider 输入/缓存/输出及总结/恢复子请求。确定性回放只能证明操作与权限不变量，不能证明模型选择了组合路径。
+
+程序结果分别报告 `programCompleted`（解释器结束）、`allChildrenSucceeded`（每个原生子调用均成功）和 `pendingProcesses`（按进程最新收据去重）。外层 success 只有解释器及全部子调用成功才为 true；后续成功不能覆盖先前失败，已知失败对照仍如实保留失败，由模型判断其预期含义。此为结果契约变化，不自动阻断已明确编排的后续步骤，也不添加重试。

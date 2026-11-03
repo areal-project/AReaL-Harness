@@ -60,3 +60,5 @@ Compact mode uses shorter instructions and program descriptions with the same ex
 ```
 
 Evaluate final request size, actual adoption, provider input/cached/output tokens and all summary/recovery subrequests separately. Deterministic replay establishes execution invariants, not real model adoption.
+
+Program results distinguish `programCompleted` (interpreter completion), `allChildrenSucceeded` (every native child succeeded) and `pendingProcesses` (deduplicated using the latest receipt per process). Outer success is true only when both the interpreter and every child succeeded. Later success cannot erase earlier failure; expected failing controls remain recorded as failures for model interpretation. This result-contract change does not automatically block explicitly composed later steps or add retries.

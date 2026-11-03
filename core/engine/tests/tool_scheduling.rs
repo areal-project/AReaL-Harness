@@ -1223,3 +1223,41 @@ async fn batch_children_cannot_bypass_program_call_bound() {
     assert!(runtime.seen.try_recv().is_err());
     close(engine, runtime).await;
 }
+
+#[tokio::test]
+async fn program_parent_preserves_earlier_failure_after_later_success() {
+    let dir = tempfile::tempdir().unwrap();
+    let (engine, _, mut runtime, thread, _) = open(dir.path(), vec![program("await tools.fs_stat({path:'workspace://repo/a'}); text(await tools.fs_stat({path:'workspace://repo/b'}));")], Limits::default(), program_policy()).await;
+    runtime
+        .next()
+        .await
+        .release
+        .send(json!({"error":{"code":"NOT_FOUND","message":"first observation missing"}}))
+        .unwrap();
+    runtime.next().await.succeed();
+    let done = bounded(engine.wait(&thread)).await.unwrap();
+    let parent = done.turns[0]
+        .items
+        .iter()
+        .find(|i| matches!(i, Item::DynamicToolCall { tool, .. } if tool == "tool_program"))
+        .unwrap();
+    let Item::DynamicToolCall {
+        success,
+        content_items,
+        execution,
+        ..
+    } = parent
+    else {
+        unreachable!()
+    };
+    assert_eq!(*success, Some(false));
+    assert_eq!(execution.outcome, ToolOutcome::Failed);
+    let receipt: Value =
+        serde_json::from_str(content_items.as_ref().unwrap()[0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(receipt["programCompleted"], true);
+    assert_eq!(receipt["allChildrenSucceeded"], false);
+    assert_eq!(receipt["children"][0]["error"]["code"], "NOT_FOUND");
+    assert_eq!(receipt["children"][1]["success"], true);
+    assert!(runtime.seen.try_recv().is_err());
+    close(engine, runtime).await;
+}

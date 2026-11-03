@@ -52,12 +52,15 @@ fn receipt(item: &Item) -> Option<Value> {
         parts.iter().find_map(|part| {
             serde_json::from_str::<Value>(part["text"].as_str()?)
                 .ok()
-                .filter(|v| v.get("processId").is_some())
+                .filter(|v| v.get("processId").is_some() || v.get("error").is_some())
         })
     }) {
         for key in [
             "processId",
             "commandStatus",
+            "processComplete",
+            "stopReason",
+            "outputIntegrity",
             "outputReadComplete",
             "nextCursor",
             "exitCode",
@@ -65,6 +68,9 @@ fn receipt(item: &Item) -> Option<Value> {
             if let Some(value) = data.get(key) {
                 result[key] = value.clone();
             }
+        }
+        if let Some(error) = data.get("error") {
+            result["error"] = json!({"code":error["code"],"message":prefix(error["message"].as_str().unwrap_or(""), 1024)});
         }
     }
     Some(result)
@@ -96,8 +102,26 @@ fn child_receipts(items: &[Item], parent: &str) -> Vec<Value> {
         .filter_map(receipt).collect()
 }
 
+fn all_children_succeeded(receipts: &[Value]) -> bool {
+    receipts
+        .iter()
+        .all(|r| r["success"] == true && r["outcome"] == "succeeded")
+}
 fn program_receipt(executed: usize, error: &Option<String>, receipts: &[Value]) -> Value {
-    json!({"type":"inputText","text":json!({"executed":executed,"error":error,"children":receipts,"note":"Native receipts retained. read_history(itemId) retrieves original observations; completed effects are not rolled back."}).to_string()})
+    let mut latest_processes = BTreeMap::new();
+    for receipt in receipts {
+        if let Some(process) = receipt["processId"].as_str() {
+            latest_processes.insert(process, receipt);
+        }
+    }
+    let pending: Vec<_> = latest_processes
+        .values()
+        .filter(|r| r["commandStatus"] == "running" || r["outputReadComplete"] == false)
+        .map(|r| r["processId"].clone())
+        .collect();
+    json!({"type":"inputText","text":json!({"executed":executed,"programCompleted":error.is_none(),
+        "allChildrenSucceeded":all_children_succeeded(receipts),"pendingProcesses":pending,
+        "error":error,"children":receipts,"note":"Program completion is not test success. Every child failure remains visible; later success does not erase it. read_history(itemId) retrieves original observations; completed effects are not rolled back."}).to_string()})
 }
 
 /// 恢复仅补充已记录事实。没有解释器状态恢复或代码重放。
@@ -375,7 +399,10 @@ impl Engine {
                     content.extend(images);
                 }
             }
-            Ok((output.error.is_none(), json!({"contentItems":content})))
+            Ok((
+                output.error.is_none() && all_children_succeeded(&receipts),
+                json!({"contentItems":content}),
+            ))
         })
     }
 }
@@ -383,6 +410,26 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn later_success_cannot_mask_failure_or_unfinished_processes() {
+        let receipts = vec![
+            json!({"success":false,"outcome":"failed","exitCode":1}),
+            json!({"success":true,"outcome":"succeeded","processId":"p","commandStatus":"running","outputReadComplete":false}),
+            json!({"success":true,"outcome":"succeeded","processId":"p","commandStatus":"succeeded","outputReadComplete":true}),
+            json!({"success":true,"outcome":"succeeded","processId":"q","commandStatus":"succeeded","outputReadComplete":false}),
+        ];
+        assert!(!all_children_succeeded(&receipts));
+        let value: Value = serde_json::from_str(
+            program_receipt(4, &None, &receipts)["text"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(value["programCompleted"], true);
+        assert_eq!(value["allChildrenSucceeded"], false);
+        assert_eq!(value["pendingProcesses"], json!(["q"]));
+        assert_eq!(value["children"][0]["exitCode"], 1);
+    }
     struct ReplayOnly;
     #[async_trait::async_trait]
     impl crate::model::Model for ReplayOnly {

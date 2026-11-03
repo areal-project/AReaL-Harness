@@ -2040,7 +2040,6 @@ async fn process_output(
                 "outputLimit"
             };
         }
-        pages += 1;
         let mut wait = budget.saturating_sub(started.elapsed());
         if output_quiet_ms > 0
             && let Some(last) = last_output
@@ -2098,6 +2097,7 @@ async fn process_output(
         truncated |= page.truncated;
         let received_output = !page_stdout.is_empty() || !page_stderr.is_empty();
         if received_output {
+            pages += 1;
             // Output arrival does not hand control back to the model by default.
             // An explicit nonzero policy can restore legacy burst coalescing.
             last_output = Some(tokio::time::Instant::now());
@@ -2127,10 +2127,16 @@ async fn process_output(
     };
     let info = owned_process(client, scope, &read.process_id).await?;
     if info.state == rt::ProcessState::Unknown {
-        return Err(rt::Error::new(
-            rt::ErrorCode::Unavailable,
-            "process outcome is UNKNOWN",
-        ));
+        let mut error = rt::Error::new(rt::ErrorCode::Unavailable, "process outcome is UNKNOWN");
+        // 未知终态不抹掉已经回收的证据；二进制保持无损，原错误仍是 UNKNOWN。
+        error.details = Some(
+            json!({"processId":read.process_id,"state":"unknown","nextCursor":after,
+            "outputReadComplete":closed,"gap":gap,"truncated":truncated,
+            "stdout":String::from_utf8_lossy(&stdout),"stderr":String::from_utf8_lossy(&stderr),
+            "stdoutBase64":STANDARD.encode(&stdout),"stderrBase64":STANDARD.encode(&stderr),
+            "evidenceSufficiency":"unknown"}),
+        );
+        return Err(error);
     }
     let success = !gap
         && !truncated

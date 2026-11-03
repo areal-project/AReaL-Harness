@@ -2230,3 +2230,44 @@ async fn collection_cap_does_not_confuse_process_exit_with_drained_output() {
     assert_eq!(last["outputReadComplete"], true);
     client.shutdown().await.unwrap();
 }
+
+#[tokio::test(start_paused = true)]
+async fn empty_polls_do_not_spend_the_data_page_budget() {
+    let client = process_fixture(700_000, None, None, false).await;
+    let (_, result) = command(&client, Some(800_000), false).await;
+    assert_eq!(result["returnReason"], "completed");
+    assert_eq!(result["collectionPages"], 0);
+    client.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn unknown_process_keeps_collected_bytes_and_cursor() {
+    let client = process_fixture_exit(
+        0,
+        Some(0),
+        None,
+        false,
+        "before unknown".into(),
+        Some(json!({"state":"unknown"})),
+    )
+    .await;
+    let error = process_output(
+        &client,
+        "scope",
+        ReadProcess {
+            process_id: "process".into(),
+            after: None,
+            wait_ms: 0,
+            view: OutputView::Auto,
+        },
+        0,
+        None,
+        8192,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.code, rt::ErrorCode::Unavailable);
+    assert_eq!(error.details.as_ref().unwrap()["stdout"], "before unknown");
+    assert_eq!(error.details.as_ref().unwrap()["state"], "unknown");
+    client.shutdown().await.unwrap();
+}
