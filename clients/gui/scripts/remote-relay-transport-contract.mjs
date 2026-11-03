@@ -10,6 +10,7 @@ const require = createRequire(new URL("../app/package.json", import.meta.url));
 const WebSocket = require("ws");
 import { nativeHostFixture, nativeCoreProject } from "./remote-native-host-fixture.mjs";
 import { nativeHistory } from "./remote-relay-native-history-fixture.mjs";
+import { assertNativeRelaySaveFailure } from "./remote-relay-native-save-fixture.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -1156,21 +1157,27 @@ if (!process.env.RC12_TLS_HOME) {
     assert.equal((await device(t, f.remote, { identity: first.identity })).active.event, "ready");
   });
   test("failed durable save never starts a newly enrolled Host", async (t) => {
-    const relay = await relayFixture(t),
-      f = await hostFixture(t);
-    f.rejectSave(true);
-    await assert.rejects(
-      f.remote.control({
-        operation: "enable",
-        relay: relay.origin,
-        code: relay.admin("enrollment").code,
-        confirmed: true,
-      }),
-      /storage unavailable/,
-    );
-    assert.equal(f.remote.state().enabled, false);
-    assert.equal(f.remote.state().connected, false);
-    assert.ok(!relay.logs().includes('"event":"closed"'));
+    await t.test("complete JS reference", async (t) => {
+      const relay = await relayFixture(t),
+        f = await hostFixture(t);
+      f.rejectSave(true);
+      await assert.rejects(
+        f.remote.control({
+          operation: "enable",
+          relay: relay.origin,
+          code: relay.admin("enrollment").code,
+          confirmed: true,
+        }),
+        /storage unavailable/,
+      );
+      assert.equal(f.remote.state().enabled, false);
+      assert.equal(f.remote.state().connected, false);
+      assert.ok(!relay.logs().includes('"event":"closed"'));
+    });
+    await t.test("real Rust durable-save refusal", async (t) => {
+      const relay = await relayFixture(t, { observeHostFrames: true });
+      await assertNativeRelaySaveFailure(t, relay);
+    });
   });
 
   test("noncanonical base64 from one client closes only that channel before Noise", async (t) => {

@@ -440,6 +440,8 @@ Relay 的原实际重启、替换与不可用预算场景可在同一固定产�
 
 同一 CA 与固定产物环境下，选择 `revocation aborts already paced|re-enabling drops paced` 运行原两种 fence 场景。每例保留完整 JS queue、timer 和发送计数 reference，再用真实 Rust Host/Core 生成 50 Turn、100 Item 历史。完整 `session.open` 与后续读取屏障后，唯一未完成请求是 `session.history`；观察该连接的大数据首片到达且完整回执尚未结束，再公开撤销设备或重新启用 Relay。断言原连接实际关闭、旧回执以 EOF 或截断 EOF 结束、撤销后的原身份被拒绝，或重新启用后的原身份保留同一 Host 的 Gateway generation，并取得新的 Relay TLS 连接、应用连接及订阅；健康读取及原 journal、Thread 和 Item 身份同时核对。180 秒单例预算包含真实数据准备，单请求仍为原 5 秒。接收端在途证据不证明当时 Rust 队列非空或物理发送次数。精确排队中止与 pending socket send 取消由 `cargo test --locked -p areal-host --lib accepted_close_waits_for_queue_and_abort_invalidates_old_stream` 和 `cargo test --locked -p areal-host --lib pending_socket_send_is_cancelled_before_old_generation_can_flush` 分层覆盖。
 
+同一环境下，选择 `failed durable save` 保留原 JS 存储故障 reference，再运行真实 Rust Host 的生产配置入口。夹具仅将本案已有的 Gateway operation 文件设为只读，必须实际收到 `EACCES`，最后恢复原权限；原请求 ID 的公开查询必须不存在，Remote 配置与原文件字节在内存中完整比较，公开状态保持禁用及断开。随后 250ms 的有界观察要求没有 TLS 连接或 Host 登记，不将这段观察单独当作无限期无登记的证明。证据只保存配置摘要、原请求身份和错误类型，测试使用本次合成钥匙串项。
+
 同一固定产物环境下，`node --test --test-concurrency=1 clients/gui/scripts/remote-client-kind-host.test.mjs clients/gui/scripts/remote-device-management-host.test.mjs` 运行原设备类型与管理套件的 Rust Host 路径，保留元数据、授权拒绝、配对与连接连续性断言。原保存次数/连接对象观察改为真实配置、原完成回执与认证连接；不计物理写入次数。`node --test clients/gui/scripts/mobile-workspace.test.mjs` 保留原六个 JS 状态用例，并追加真实 MobileClient/Rust Host/Core 的分页历史和事件路径；证据区分这两个层级，Node 客户端不代表真机或 GUI。
 
 同一已验证产物环境下，`node --test clients/gui/scripts/remote-artifact-native.test.mjs` 通过 Rust `review.read`/`artifact.read` 读取原生 Task 图片，核对分片拼接、媒体归属与精确清理；`node --test clients/gui/scripts/remote-project-models-native.test.mjs` 从真实 Core 读取有界六字段模型目录及已配置显示名。这两条原生路径单列证据，不外推为原 Remote 套件全部通过。
