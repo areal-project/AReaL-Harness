@@ -189,7 +189,20 @@ prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每�
 
 `session.send` 沿用 `{threadId,expectedConfigRevision,text,enqueue?,expectedTurnId?}`，使用当前项目、Gateway、grant 与 Core 代际的写入 `context`。文本非空且最多 64 KiB；可选字段显式 `null` 非法，省略 `enqueue` 与显式 `false` 的命令语义摘要不同。Host 先核对普通会话所有权、配置 revision、活动 Turn 与队列，再由 Core 的 `ordinarySession` 准入 guard 原子核对。直接发送只允许 idle 且无待处理队列；排队必须绑定确切的原活动 `expectedTurnId`。忙碌、目标变化与不支持的 Workflow profile 分别保留 `TURN_BUSY`、`TARGET_CHANGED`、`UNSUPPORTED_PROFILE` 语义。
 
-`session.control` 当前支持 `operation:"configure"`，参数为 `{threadId,operation,expectedRevision,values}`，使用同样的写入 `context` 与 `submit` 授权。`values` 仅接受 `model`、仅含 `reasoningEffort` 的 `parameters`，及原 Remote 白名单 `options`。Host 核对普通会话、空闲轮次及预期配置 revision，并从同一 Core 的权威 `thread/inspect` 配置合并参数和选项，保留 Fast 等未改字段；Core 原子核对配置 revision。新命令摘要使用固定外层字段顺序与按键排序的 `values`，不依赖客户端 JSON 属性顺序；原操作写入现有 journal 后只派发一次。重复命令与 `command.read` 读取原结果，丢回复仅核查同存储、同 principal 与原 typed 摘要的 Core 回执。旧 JS configure 的原 `command.read` 保留原 semanticDigest；旧 pending 仅在已提交 source/migration/project/dataDir 与原 typed Core 回执一致时结算，不重新配置或补造派发绑定。手机恢复只查询原命令，不重新提交旧控制。其余 control operation 尚未实现。
+`session.control` 支持 `configure`、`goalCreate/goalPause/goalResume/goalClear`、`queueUpdate/queueRemove/queueReorder/queuePause/queueResume/queueSteer` 和 `steer`，参数为 `{threadId,operation,expectedRevision,values}`，使用同样的写入 `context` 与 `submit` 授权。其中 `configure` 的 `values` 仅接受 `model`、仅含 `reasoningEffort` 的 `parameters`，及原 Remote 白名单 `options`。Host 核对普通会话、空闲轮次及预期配置 revision，并从同一 Core 的权威 `thread/inspect` 配置合并参数和选项，保留 Fast 等未改字段；Core 原子核对配置 revision。新命令摘要使用固定外层字段顺序与按键排序的 `values`，不依赖客户端 JSON 属性顺序；原操作写入现有 journal 后只派发一次。重复命令与 `command.read` 读取原结果，丢回复仅核查同存储、同 principal 与原 typed 摘要的 Core 回执。旧 JS configure 的原 `command.read` 保留原 semanticDigest；旧 pending 仅在已提交 source/migration/project/dataDir 与原 typed Core 回执一致时结算，不重新配置或补造派发绑定。手机恢复只查询原命令，不重新提交旧控制。目标控制除原生根会话条件外，还要求当前 Goal 来自同 Host、设备、项目的 accepted `goalCreate` 回执；观察投影与准入使用同一 journal 归属。队列编辑保留原队列 revision 和项目身份，拒绝改写有附件或已截断的排队正文；steer 绑定确切活动 Turn。Goal 与 queueSteer 使用原 typed Core 摘要，普通队列编辑使用去掉 requestId 的 management 摘要；旧 pending 同样只读相应原回执，保留 goalCreate 的 goalId/revision。`steer` 沿旧映射不添加原生 requestId，仅明确 Core 回答可结算；丢回复保持 UNKNOWN，原命令查询和副本都不再次追加输入。
+
+| operation | values | expectedRevision |
+| --- | --- | --- |
+| configure | model?, parameters?, options? | 当前配置 revision |
+| goalCreate | objective, inferLimits? | 当前 Goal revision |
+| goalPause / goalResume / goalClear | goalId | 当前 Goal revision |
+| queueUpdate | queueItemId, text | 当前队列 revision |
+| queueRemove | queueItemId | 当前队列 revision |
+| queueReorder | queueItemIds | 当前队列 revision |
+| queuePause / queueResume | 空对象 | 当前队列 revision |
+| queueSteer | queueItemId, expectedTurnId | 当前队列 revision |
+| steer | text, expectedTurnId | 保留非负安全整数输入，Core 依据确切 Turn 判定 |
+
 
 `turn.stop` 接受 `{threadId,expectedTurnId}` 与同样的写入 `context`，要求 `interrupt` 授权。Host 核对普通会话及确切活动 Turn，再由 Core 的 `turn/interrupt` 与 `ordinarySession` guard 原子核对原目标。命令先写入现有 journal；同 peer、同 `commandId` 的副本复用原操作。仅明确的 Core 回应确认 accepted 或 rejected；连接丢失继续 UNKNOWN，原 `command.read` 和重复命令都不再次停止。该 Core 方法没有独立受理回执，结果不暴露 `nativeRequestId`，不以 Turn 已结束推断本次停止已受理。项目离线仍可读取已保存的原结果；受理停止不代表 Runtime UNKNOWN 工具已经得到成功结算。
 

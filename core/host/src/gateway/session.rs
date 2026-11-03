@@ -1,5 +1,5 @@
-#[path = "configure.rs"]
-mod configure;
+#[path = "controls.rs"]
+pub(super) mod controls;
 #[path = "create.rs"]
 mod create;
 #[path = "observer.rs"]
@@ -789,7 +789,7 @@ impl Session {
         }
         if method == "session.control" {
             let generation = text(&request["context"], "serviceGeneration")?;
-            return self.configure_session(&project, generation, request).await;
+            return self.control_session(&project, generation, request).await;
         }
         let (_, generation) = self.project(&project)?;
         match method {
@@ -905,7 +905,8 @@ impl Session {
         if matches!(
             record["remote"]["method"].as_str(),
             Some("session.create" | "session.send" | "session.control")
-        ) {
+        ) && record["method"] != "turn/steer"
+        {
             result["nativeRequestId"] = record["operationId"].clone();
         }
         for key in ["threadId", "turnId", "receipt"] {

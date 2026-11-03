@@ -68,14 +68,16 @@ impl Session {
             serde_json::to_vec(&native)?.len() <= 4 * 1024 * 1024,
             "RESOURCE_UNAVAILABLE"
         );
+        let goal_control_allowed = self.goal_control_allowed(&project, &native["thread"])?;
         let viewer = self.viewer.as_mut().context("RESYNC_REQUIRED")?;
         ensure!(viewer.observation.current(&self.host), "RESYNC_REQUIRED");
-        let snapshot = projection::snapshot(
+        let mut snapshot = projection::snapshot(
             &native["thread"],
             &native["ownership"],
             &viewer.scope,
             &viewer.observation.features(),
         )?;
+        snapshot["goalControlAllowed"] = json!(goal_control_allowed);
         viewer.sequence += 1;
         viewer.barrier = barrier;
         let sequence = viewer.sequence;
@@ -132,12 +134,14 @@ impl Session {
             generation.into(),
             thread_id.clone(),
         ];
-        let snapshot = projection::snapshot(
+        let mut snapshot = projection::snapshot(
             &native["thread"],
             &native["ownership"],
             &scope,
             &observation.features(),
         )?;
+        snapshot["goalControlAllowed"] =
+            json!(self.goal_control_allowed(project, &native["thread"])?);
         let viewer = Viewer {
             project: project.into(),
             thread_id,

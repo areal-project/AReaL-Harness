@@ -278,16 +278,8 @@ impl Session {
         Ok(Self::command_view(Some(&settled), command))
     }
     pub(super) fn submission_receipt(record: &mut Value, result: &Value) -> bool {
-        if record["method"] == "areal/thread/configure" {
-            let Some(expected) = record["remote"]["target"]["expectedRevision"]
-                .as_u64()
-                .and_then(|revision| revision.checked_add(1))
-            else {
-                return false;
-            };
-            if result["revision"].as_u64() != Some(expected) {
-                return false;
-            }
+        if record["remote"]["method"] == "session.control" {
+            return controls::apply_result(record, result);
         } else if record["method"] == "areal/turn/enqueue" {
             let Some(queue) = result["queueItemId"]
                 .as_str()
@@ -313,7 +305,7 @@ impl Session {
         project: &str,
         record: &Value,
     ) -> Result<Value> {
-        if record.get("admissionState").is_some() {
+        if record.get("admissionState").is_some() || record["method"] == "turn/steer" {
             return Ok(record.clone());
         }
         self.authorize(Some(project), "submit")?;

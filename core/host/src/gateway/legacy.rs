@@ -37,7 +37,7 @@ struct Expected {
     digest: Option<String>,
     accepted: bool,
     enqueue: bool,
-    configure: bool,
+    control: bool,
 }
 pub(super) fn is_legacy(record: &Value) -> bool {
     matches!(
@@ -62,18 +62,20 @@ fn expected(record: &Value) -> Option<Expected> {
     id(&record["remote"]["devicePeerId"])?;
     id(&record["remote"]["projectId"])?;
     let method = record["method"].as_str()?;
-    let (enqueue, configure) = match (method, record["remote"]["method"].as_str()) {
+    let (enqueue, control) = match (method, record["remote"]["method"].as_str()) {
         ("areal/turn/start", Some("session.send")) => (false, false),
         ("areal/turn/enqueue", Some("session.send")) => (true, false),
-        ("areal/thread/configure", Some("session.control"))
-            if record["remote"]["target"]["operation"] == "configure" =>
+        (_, Some("session.control"))
+            if session::controls::method(record["remote"]["target"]["operation"].as_str()?)
+                == Some(method)
+                && method != "turn/steer" =>
         {
             (false, true)
         }
         _ => return None,
     };
     let thread = id(&record["remote"]["target"]["threadId"])?;
-    let revision = record["remote"]["target"][if configure {
+    let revision = record["remote"]["target"][if control {
         "expectedRevision"
     } else {
         "expectedConfigRevision"
@@ -84,7 +86,7 @@ fn expected(record: &Value) -> Option<Expected> {
         if record.get("params").is_some() || record["threadId"] != thread {
             return None;
         }
-        if !configure {
+        if !control {
             if enqueue {
                 id(&record["receipt"]["queueItemId"])?;
             } else {
@@ -96,19 +98,39 @@ fn expected(record: &Value) -> Option<Expected> {
         if record.get("admissionState").is_some() || record.get("accepted").is_some() {
             return None;
         }
-        if configure {
-            let params: areal_protocol::desktop::ConfigureThread =
-                serde_json::from_value(record["params"].clone()).ok()?;
-            if params.request_id.as_deref() != Some(operation)
-                || params.thread_id != thread
-                || params.expected_revision != revision
-                || params.agent_profile.is_some()
-                || params.reset_model
-                || params.selected_skills.is_some()
+        if control {
+            let params = &record["params"];
+            if params["requestId"] != operation
+                || params["threadId"] != thread
+                || params["expectedRevision"] != revision
             {
                 return None;
             }
-            Some(storage::digest(&serde_json::to_vec(&params).ok()?))
+            if method == "areal/thread/configure" {
+                let typed: areal_protocol::desktop::ConfigureThread =
+                    serde_json::from_value(params.clone()).ok()?;
+                if typed.agent_profile.is_some()
+                    || typed.reset_model
+                    || typed.selected_skills.is_some()
+                {
+                    return None;
+                }
+            }
+            if method == "areal/goal/create"
+                && !params.as_object()?.keys().all(|key| {
+                    [
+                        "requestId",
+                        "threadId",
+                        "expectedRevision",
+                        "objective",
+                        "inferLimits",
+                    ]
+                    .contains(&key.as_str())
+                })
+            {
+                return None;
+            }
+            Some(session::controls::native_digest(method, params).ok()??)
         } else {
             let params: areal_protocol::desktop::TurnStart =
                 serde_json::from_value(record["params"].clone()).ok()?;
@@ -139,7 +161,7 @@ fn expected(record: &Value) -> Option<Expected> {
         digest,
         accepted,
         enqueue,
-        configure,
+        control,
     })
 }
 fn digest(record: &Value) -> Result<String> {
@@ -202,13 +224,10 @@ fn receipt(expected: &Expected, record: &Value, value: &Value, identity: &str) -
     if let Some(digest) = &expected.digest {
         ensure!(actual_digest == digest, "original request digest differs");
     }
-    let (turn, queue) = if expected.configure {
+    let (turn, queue) = if expected.control {
         ensure!(
-            record["remote"]["target"]["expectedRevision"]
-                .as_u64()
-                .and_then(|revision| revision.checked_add(1))
-                == value["result"]["revision"].as_u64(),
-            "original configuration result differs"
+            session::controls::apply_result(&mut record.clone(), &value["result"]),
+            "original control result differs"
         );
         (None, None)
     } else if expected.enqueue {
@@ -246,7 +265,7 @@ pub(super) fn observed_store(
     let expected = expected(record).context("legacy record shape differs")?;
     ensure!(expected.accepted, "legacy admission is not proved");
     ensure!(
-        !expected.configure,
+        !expected.control,
         "configuration has no completion observation"
     );
     let proof: Proof = serde_json::from_value(record[PROOF].clone())?;
@@ -296,7 +315,7 @@ async fn recover_inner(
     let Some(expected) = expected(record) else {
         return Ok(None);
     };
-    if expected.configure && expected.accepted {
+    if expected.control && expected.accepted {
         return Ok(Some(record.clone()));
     }
     if record.get(PROOF).is_some() {
@@ -348,7 +367,12 @@ async fn recover_inner(
         .context("invalid original receipt response")?
         .iter()
         .filter(|entry| {
-            entry["requestId"] == expected.operation && entry["method"] == expected.method
+            entry["requestId"] == expected.operation
+                && entry["method"] == expected.method
+                && expected
+                    .digest
+                    .as_ref()
+                    .is_none_or(|digest| entry["digest"] == *digest)
         })
         .collect::<Vec<_>>();
     ensure!(
@@ -356,7 +380,7 @@ async fn recover_inner(
         "original receipt unavailable or ambiguous"
     );
     let receipt = receipt(&expected, record, candidates[0], "desktop-owner")?;
-    let seed = if expected.configure {
+    let seed = if expected.control {
         None
     } else {
         let (native, barrier, observation) = host
@@ -401,6 +425,12 @@ async fn recover_inner(
         candidate["accepted"] = json!(true);
         candidate["admissionState"] = json!("accepted");
         candidate["threadId"] = json!(expected.thread);
+        if expected.control {
+            ensure!(
+                session::controls::apply_result(&mut candidate, &candidates[0]["result"]),
+                "original control result differs"
+            );
+        }
         candidate.as_object_mut().unwrap().remove("params");
         if let Some(turn) = &receipt.turn_id {
             candidate["turnId"] = json!(turn);
