@@ -13,6 +13,7 @@ import {
   scheduledTaskState,
   scheduledTaskStateLabel,
   scheduledTaskSummary,
+  scheduledTaskConversation,
 } from "./scheduleText.js";
 import { scheduleZone, runZone } from "./TaskRunConversations.js";
 import { useI18n, type MessageId, type Translate } from "./i18n/IntlProvider.js";
@@ -41,6 +42,12 @@ import {
 } from "lucide-react";
 import { SidebarToggleIcon } from "./homeChromeIcons.js";
 import { TaskDraft, triggerExplanation, type TaskConversationRenderer } from "./TaskDraft.js";
+import {
+  modelParameters,
+  ScheduledTaskDialog,
+  type ScheduledTaskValues,
+} from "./ScheduledTaskEditDialog.js";
+import { TaskRunConversations } from "./TaskRunConversations.js";
 import { stageComposerDraft } from "./composerDraftStorage.js";
 import "./TaskCenter.css";
 import { TaskCatalogNotice } from "./TaskCatalogNotice.js";
@@ -191,14 +198,21 @@ const runReason = (reason: string, task: Data) =>
 type Props = {
   projects: Data[];
   connected: boolean;
-  initialProjectId?: string;
-  defaultProjectId?: string;
   action: Action;
   onOpenThread: (projectId: string, id: string) => void;
   onOpenModelSettings: () => void;
-  onStartDraft: (projectId: string | undefined, text: string) => void;
 };
 const taskKey = (task: Data) => `${task.projectId}:${task.id}`;
+/** 无项目任务的子目录名：日期、指令开头几个字和短 id，例如 2026-11-03-每天review代码-1a2b3c4d。 */
+export function taskFolderName(objective: string, requestId: string, now = new Date()) {
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const words = objective
+    .split(/\r?\n/, 1)[0]
+    .replace(/[\\/:*?"<>|.\s]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24);
+  return [date, words, requestId.replace(/-/g, "").slice(0, 8)].filter(Boolean).join("-");
+}
 const projectLabel = (project: Data) =>
   project.name ?? project.root?.split(/[\\/]/).pop() ?? "项目";
 
@@ -611,17 +625,16 @@ export function ChannelQuestion({
 export function TaskCenter({
   projects: allProjects,
   connected,
-  initialProjectId,
-  defaultProjectId,
   action,
   onOpenThread,
   onOpenModelSettings,
-  onStartDraft,
   navigation,
   target,
   renderConversation,
   renderResources,
+  onReveal,
 }: Props & {
+  onReveal?: (projectId: string, path: string) => void;
   navigation: ReactNode;
   renderConversation: TaskConversationRenderer;
   renderResources: (project: Data, thread: Data, task: Data, revealKey?: string) => ReactNode;
@@ -649,6 +662,7 @@ export function TaskCenter({
   const [creationTone, setCreationTone] = useState<"warning" | "error">("error");
   const [creationRequestId, setCreationRequestId] = useState<string>();
   const [creationChecked, setCreationChecked] = useState(false);
+  const [composer, setComposer] = useState<{ text: string; requestId: string } | null>(null);
   const creatingRequest = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -1419,6 +1433,35 @@ export function TaskCenter({
     setCreationError("");
     setCreationChecked(false);
   };
+  // 定时页新建的任务不关联项目：放进共用的无项目工作区，每个任务一个子目录和一个专属对话。
+  const createScheduled = async (values: ScheduledTaskValues, requestId: string) => {
+    const scratch = (await action("projectless", { operation: "scratch" })) as {
+      projectId: string;
+      cwd: string;
+    };
+    const separator = scratch.cwd.includes("/") ? "/" : "\\";
+    const created = (await action("manage", {
+      projectId: scratch.projectId,
+      operation: "taskCreate",
+      requestId,
+      mode: "scheduled",
+      objective: values.objective,
+      scheduleV2: values.scheduleV2,
+      interactionMode: "interactive",
+      delivery: values.delivery,
+      ...(values.model
+        ? { model: values.model, parameters: modelParameters(values.reasoningEffort) }
+        : {}),
+      cwd: `${scratch.cwd}${separator}${taskFolderName(values.objective, requestId)}`,
+    })) as Data;
+    window.dispatchEvent(
+      new CustomEvent("areal-scheduled-tasks-changed", { detail: scratch.projectId }),
+    );
+    setSelected(`${scratch.projectId}:${created.id}`);
+    setAllRunsShown(false);
+    setError("");
+    void refresh(false, scratch.projectId);
+  };
   const beginCreate = async (text = "") => {
     if (creatingRequest.current || !connected) return;
     creatingRequest.current = true;
@@ -1435,10 +1478,7 @@ export function TaskCenter({
     if (!saved) {
       creatingRequest.current = false;
       setCreating(false);
-      onStartDraft(
-        initialProjectId ?? defaultProjectId,
-        `${t("operations.schedules.creationIntent")}${text}`,
-      );
+      setComposer({ text, requestId: crypto.randomUUID() });
       return;
     }
     const draft = saved;
@@ -2167,49 +2207,68 @@ export function TaskCenter({
             )}
           </main>
         )}
-        {task && project && !creating && detailsReady && task.sourceThreadId && (
-          <ScheduledTaskConversation
-            task={task}
-            project={project}
+        {composer && (
+          <ScheduledTaskDialog
+            initialObjective={composer.text}
             action={action}
-            history={runHistory}
-            onClose={closeDetails}
-            onOpenThread={onOpenThread}
-            renderConversation={renderConversation}
-            renderResources={(owner, thread) =>
-              renderResources(owner, thread, { ...task, controlDisabled: disabled }, revealKey)
-            }
+            onClose={() => setComposer(null)}
+            onSubmit={(values) => createScheduled(values, composer.requestId)}
           />
         )}
-        {task && project && !creating && detailsReady && !task.sourceThreadId && (
-          <TaskDraft
-            key={selected}
-            projects={projects}
-            initialProjectId={project.id}
-            task={task}
-            action={action}
-            disabled={disabled}
-            onClose={closeDetails}
-            onCreated={updatedTask}
-            onOpenModelSettings={onOpenModelSettings}
-            renderConversation={renderConversation}
-            renderResources={(owner, thread) =>
-              renderResources(
-                owner,
-                thread,
-                {
-                  ...task,
-                  controlDisabled: disabled,
-                  displayStatus:
-                    task.paused || task.cancelled || finished(task)
-                      ? taskStatus(task, t)
-                      : t("operations.schedules.enabledGroup"),
-                },
-                revealKey,
-              )
-            }
-          />
-        )}
+        {task &&
+          project &&
+          !creating &&
+          detailsReady &&
+          (task.sourceThreadId || task.delivery === "thread") && (
+            <ScheduledTaskConversation
+              task={task}
+              project={project}
+              action={action}
+              disabled={disabled}
+              onReveal={onReveal}
+              history={runHistory}
+              onClose={closeDetails}
+              onOpenThread={onOpenThread}
+              renderConversation={renderConversation}
+              renderResources={(owner, thread) =>
+                renderResources(owner, thread, { ...task, controlDisabled: disabled }, revealKey)
+              }
+            />
+          )}
+        {task &&
+          project &&
+          !creating &&
+          detailsReady &&
+          !task.sourceThreadId &&
+          task.delivery !== "thread" && (
+            <TaskDraft
+              key={selected}
+              projects={projects}
+              initialProjectId={project.id}
+              task={task}
+              action={action}
+              disabled={disabled}
+              onClose={closeDetails}
+              onCreated={updatedTask}
+              onOpenModelSettings={onOpenModelSettings}
+              renderConversation={renderConversation}
+              renderResources={(owner, thread) =>
+                renderResources(
+                  owner,
+                  thread,
+                  {
+                    ...task,
+                    controlDisabled: disabled,
+                    displayStatus:
+                      task.paused || task.cancelled || finished(task)
+                        ? taskStatus(task, t)
+                        : t("operations.schedules.enabledGroup"),
+                  },
+                  revealKey,
+                )
+              }
+            />
+          )}
       </ScheduledWorkspace>
     </section>
   );
@@ -2219,18 +2278,22 @@ function ScheduledTaskConversation({
   task,
   project,
   action,
+  disabled,
   history,
   onClose,
   onOpenThread,
+  onReveal,
   renderConversation,
   renderResources,
 }: {
   task: Data;
   project: Data;
   action: Action;
+  disabled: boolean;
   history: ReactNode;
   onClose: () => void;
   onOpenThread: (projectId: string, threadId: string) => void;
+  onReveal?: (projectId: string, path: string) => void;
   renderConversation: TaskConversationRenderer;
   renderResources: (project: Data, thread: Data) => ReactNode;
 }) {
@@ -2240,11 +2303,14 @@ function ScheduledTaskConversation({
   });
   const [retry, setRetry] = useState(0);
   const state = scheduledTaskState(task, project, t);
+  // 运行接在这段对话里时，详情就是这段对话；旧的“每次新开”任务列出各次运行的对话。
+  const bound = scheduledTaskConversation(task);
+  const target: string | undefined = bound ?? task.sourceThreadId ?? undefined;
   useEffect(() => {
-    if (!project.state?.connected) return;
+    if (!project.state?.connected || !target) return;
     let live = true;
     setRead({ status: "pending" });
-    void action("open", { projectId: project.id, threadId: task.sourceThreadId })
+    void action("open", { projectId: project.id, threadId: target })
       .then(() => {
         if (live) setRead({ status: "ready" });
       })
@@ -2259,10 +2325,14 @@ function ScheduledTaskConversation({
     project.id,
     project.state?.connected,
     project.core?.connectionGeneration,
-    task.sourceThreadId,
+    target,
     retry,
   ]);
-  const thread = project.state?.threads?.[task.sourceThreadId];
+  const thread = target ? project.state?.threads?.[target] : undefined;
+  const folder =
+    !task.sourceThreadId && thread?.cwd && project.root && thread.cwd.startsWith(project.root)
+      ? thread.cwd.slice(project.root.length + 1) || "."
+      : undefined;
   return (
     <main
       className="task-conversation"
@@ -2279,20 +2349,27 @@ function ScheduledTaskConversation({
             {state.kind === "attention" ? state.reason : scheduledTaskSummary(task, t)}
           </span>
         </TitleTooltip>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={read.status !== "ready" || !thread}
-          onClick={() => onOpenThread(project.id, task.sourceThreadId)}
-        >
-          {t("operations.schedules.openSource")}
-        </Button>
+        {task.sourceThreadId && (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={read.status !== "ready" || !thread}
+            onClick={() => onOpenThread(project.id, task.sourceThreadId)}
+          >
+            {t("operations.schedules.openSource")}
+          </Button>
+        )}
+        {folder && onReveal && (
+          <Button size="sm" variant="ghost" onClick={() => onReveal(project.id, folder)}>
+            {t("operations.schedules.revealFolder")}
+          </Button>
+        )}
         {thread && renderResources(project, thread)}
         <Button size="sm" variant="ghost" onClick={onClose}>
           {t("operations.schedules.closeDetails")}
         </Button>
       </header>
-      {read.status === "error" && (
+      {target && read.status === "error" && (
         <p role="alert" className="task-plan-note">
           {t("operations.schedules.sourceUnavailable")}
           {read.error}
@@ -2301,12 +2378,12 @@ function ScheduledTaskConversation({
           </Button>
         </p>
       )}
-      {read.status === "pending" && (
+      {bound && read.status === "pending" && (
         <p role="status" className="task-plan-note">
           {t("operations.schedules.readingSource")}
         </p>
       )}
-      {thread && read.status === "ready" && (
+      {bound && thread && read.status === "ready" && (
         <div className="task-conversation-body">
           <section className="task-chat-pane">
             {renderConversation(project, thread, undefined, {
@@ -2315,10 +2392,24 @@ function ScheduledTaskConversation({
           </section>
         </div>
       )}
-      {!thread && read.status !== "pending" && (
+      {bound && !thread && read.status !== "pending" && (
         <div className="task-plan-note">
           <p>{t("operations.schedules.sourceMissing")}</p>
           {history}
+        </div>
+      )}
+      {!bound && (
+        <div className="task-conversation-body">
+          <section className="task-chat-pane">
+            {history}
+            <TaskRunConversations
+              project={project}
+              task={task}
+              action={action}
+              disabled={disabled}
+              renderConversation={renderConversation}
+            />
+          </section>
         </div>
       )}
     </main>

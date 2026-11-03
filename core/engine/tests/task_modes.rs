@@ -165,6 +165,9 @@ fn open(ask: bool, headless: bool) -> (tempfile::TempDir, Arc<Engine>, Arc<Fixtu
 }
 fn create(mode: TaskMode, thread_id: Option<String>) -> TaskCreate {
     TaskCreate {
+        delivery: None,
+        model: None,
+        parameters: None,
         source_thread_id: None,
         request_id: "create".into(),
         mode,
@@ -271,6 +274,7 @@ async fn headless_goal_never_waits_for_a_user() {
         .goal_create(
             "owner".into(),
             GoalCreate {
+                model_override: None,
                 infer_limits: false,
                 request_id: "headless".into(),
                 thread_id: thread.id.clone(),

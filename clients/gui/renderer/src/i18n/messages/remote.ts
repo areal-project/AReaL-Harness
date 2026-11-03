@@ -1199,7 +1199,7 @@ export const remoteMessages = {
     en: "Quit application",
   },
   "settings.serviceStatusSettings.keepsBackgroundRunningByDefault": {
-    "zh-CN": "默认保持共享后台运行。有活动任务时可选择停止任务并退出，停止需要再次确认。",
+    "zh-CN": "默认保持共享后台运行。有任务时可停止任务并退出，需再次确认。",
     en: "Keeps the shared backend running by default. When tasks are active, you can choose to stop them and quit after a second confirmation.",
   },
   "settings.serviceStatusSettings.quitAReaLHarness": {

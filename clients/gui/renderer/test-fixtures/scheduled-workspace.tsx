@@ -20,7 +20,6 @@ const project: ComponentProps<typeof TaskCenter>["projects"][number] = {
 const fixture = Object.assign(window, {
   calls: [] as { name: string; params: Data }[],
   opened: [] as { projectId: string; threadId: string }[],
-  drafts: [] as { projectId?: string; text: string }[],
   fail: query.has("fail"),
 });
 const originalThread = "00000000-0000-4000-a000-000000000002";
@@ -34,7 +33,7 @@ const completedOutcome = (requestId: string) => ({
     target: { kind: "thread", threadId: originalThread },
   },
 });
-// 旧版已保存的创建意图继续走原请求恢复；新意图由 onStartDraft 接管。
+// 旧版已保存的创建意图继续走原请求恢复；新意图打开新建弹框。
 if (recovery)
   localStorage.setItem(
     "areal-gui:ordinary-schedule-creation",
@@ -62,7 +61,12 @@ const rows = query.has("empty")
 
 const action = async (name: string, params: Data) => {
   fixture.calls.push({ name, params });
+  if (name === "projectless" && params.operation === "catalog")
+    return { models: [], lastAcceptedModel: null };
+  if (name === "projectless" && params.operation === "scratch")
+    return { projectId: project.id, cwd: "/scratch" };
   if (name === "projectless") return { projectId: project.id };
+  if (name === "manage" && params.operation === "taskCreate") return { id: "created" };
   if (name === "create" && recovery)
     throw Object.assign(Error("Fixture create response lost"), {
       submissionUnknown: true,
@@ -125,11 +129,9 @@ function Fixture() {
         <TaskCenter
           projects={projects}
           connected
-          defaultProjectId={query.has("project") ? project.id : undefined}
           action={action as Action}
           onOpenThread={(projectId, threadId) => fixture.opened.push({ projectId, threadId })}
           onOpenModelSettings={() => {}}
-          onStartDraft={(projectId, text) => fixture.drafts.push({ projectId, text })}
           navigation={null}
           renderConversation={() => <p>会话详情</p>}
           renderResources={() => null}

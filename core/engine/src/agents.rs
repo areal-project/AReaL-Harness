@@ -1898,6 +1898,7 @@ mod graceful_stop_tests {
             .goal_create(
                 "test".into(),
                 areal_protocol::goals::GoalCreate {
+                    model_override: None,
                     infer_limits: false,
                     interaction_mode: None,
                     request_id: "goal".into(),

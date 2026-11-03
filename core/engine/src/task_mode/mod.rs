@@ -488,6 +488,13 @@ impl Engine {
                 if request.mode == TaskMode::Background && !state.thread.dynamic_tools.is_empty() { return Err(invalid("detached tasks require server-owned tools")); }
             }
             if request.mode == TaskMode::Background && request.interaction_mode == Some(InteractionMode::Interactive) { return Err(invalid("detached tasks require asynchronous or headless interactions")); }
+            if request.mode != TaskMode::Scheduled && (request.delivery.is_some() || request.model.is_some() || request.parameters.is_some()) {
+                return Err(invalid("delivery and model apply only to scheduled tasks"));
+            }
+            if request.parameters.is_some() && request.model.is_none() { return Err(invalid("parameters require a model")); }
+            if let Some(model) = &request.model {
+                engine.resolve_config(None, Some(model.clone()), request.parameters.clone().unwrap_or_default(), 1)?;
+            }
             engine.validate_schedule_source(&owner, &request).await?;
             let mut state = engine.task_modes.state.lock().await;
             if let Some(result) = receipt(&state, &owner, "create", &request.request_id, &hash)? { return Ok(result); }
@@ -498,6 +505,7 @@ impl Engine {
             let mut candidate = state.clone();
             let task = Task {
                 source_thread_id: request.source_thread_id, deleted_at: None,
+                delivery: request.delivery.unwrap_or_default(), model: request.model, parameters: request.parameters,
                 run_count: 0, archived_run_count: 0, runs_complete: true,
                 skipped_runs: 0, last_skipped_at: None,
                 id: id(), revision: 1, channel_sequence: 0, owner: owner.clone(), mode: request.mode,
@@ -555,8 +563,12 @@ impl Engine {
             }
             if authorized_revision.is_some_and(|revision|state.tasks.get(&request.task_id).is_none_or(|task|task.revision!=revision)) {return Err(Error::Conflict);}
             if !engine.accepting_work() { return Err(Error::Closed); }
-            if request.objective.is_none() && request.schedule.is_none() && request.schedule_v2.is_none() {
-                return Err(invalid("provide an objective or schedule to update"));
+            if request.objective.is_none() && request.schedule.is_none() && request.schedule_v2.is_none() && request.delivery.is_none() && request.model.is_none() {
+                return Err(invalid("provide an objective, schedule, delivery or model to update"));
+            }
+            if request.parameters.is_some() && request.model.is_none() { return Err(invalid("parameters require a model")); }
+            if let Some(model) = &request.model {
+                engine.resolve_config(None, Some(model.clone()), request.parameters.clone().unwrap_or_default(), 1)?;
             }
             if request.objective.as_ref().is_some_and(|s| s.trim().is_empty() || s.chars().count() > 4000) {
                 return Err(invalid("objective must contain 1..4000 characters"));
@@ -574,6 +586,8 @@ impl Engine {
                 return Err(Error::Conflict);
             }
             if let Some(objective) = request.objective { task.objective = objective; }
+            if let Some(delivery) = request.delivery { task.delivery = delivery; }
+            if let Some(model) = request.model { task.model = Some(model); task.parameters = request.parameters; }
             if let Some(schedule) = request.schedule {
                 task.next_run_at = Some(schedule.at);
                 task.schedule = Some(schedule);
@@ -931,6 +945,9 @@ impl Engine {
                 task_id.clone(),
                 Task {
                     source_thread_id: None,
+                    delivery: Default::default(),
+                    model: None,
+                    parameters: None,
                     deleted_at: None,
                     run_count: 0,
                     archived_run_count: 0,

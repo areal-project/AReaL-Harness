@@ -103,6 +103,7 @@ fn model(report: bool, usage: bool) -> Arc<Fixture> {
 }
 fn request(thread_id: &str) -> GoalCreate {
     GoalCreate {
+        model_override: None,
         infer_limits: false,
         interaction_mode: None,
         request_id: "create-1".into(),

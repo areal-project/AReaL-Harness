@@ -184,6 +184,7 @@ async fn exercise(
         .goal_create(
             "fixture".into(),
             GoalCreate {
+                model_override: None,
                 infer_limits: matches!(reply, Reply::Startup),
                 interaction_mode: None,
                 request_id: "create".into(),
@@ -388,6 +389,7 @@ async fn required_http_report_works_after_generic_recovery_is_exhausted_and_keep
         .goal_create(
             "fixture".into(),
             GoalCreate {
+                model_override: None,
                 infer_limits: false,
                 interaction_mode: None,
                 request_id: "http".into(),

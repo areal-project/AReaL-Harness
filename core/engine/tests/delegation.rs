@@ -891,6 +891,9 @@ async fn task_run_inspection_rejects_unavailable_scope_before_registering_a_work
         .task_create(
             "fixture".into(),
             TaskCreate {
+                delivery: None,
+                model: None,
+                parameters: None,
                 source_thread_id: None,
                 request_id: "task-admission".into(),
                 mode: TaskMode::Background,
@@ -959,6 +962,9 @@ async fn task_run_inherited_inspection_runs_without_narrowing_the_scope() {
         .task_create(
             "fixture".into(),
             TaskCreate {
+                delivery: None,
+                model: None,
+                parameters: None,
                 source_thread_id: None,
                 request_id: "task-inherited".into(),
                 mode: TaskMode::Background,

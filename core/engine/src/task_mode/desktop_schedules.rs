@@ -324,6 +324,39 @@ impl Engine {
                 {
                     self.goals.request(thread_id);
                 }
+                // 接在普通对话里的运行结束后清掉目标，对话回到普通状态；暂停/受阻的保留以便恢复。
+                if task.delivery == TaskDelivery::Thread
+                    && matches!(goal.status, GoalStatus::Completed | GoalStatus::Failed)
+                    && goal.active_turn_id.is_none()
+                    && !goal.settling
+                    && run.workers.iter().all(|w| w.settled)
+                    && self
+                        .task_read(task_id)
+                        .await?
+                        .runs
+                        .iter()
+                        .any(|r| r.id == run.id && r.status.terminal())
+                {
+                    match self
+                        .goal_control(
+                            task.owner.clone(),
+                            "clear".into(),
+                            GoalControl {
+                                request_id: format!("task-settled-{}", run.id),
+                                thread_id: thread_id.clone(),
+                                goal_id: goal_id.clone(),
+                                expected_revision: view["revision"]
+                                    .as_u64()
+                                    .ok_or(Error::Conflict)?,
+                            },
+                            None,
+                        )
+                        .await
+                    {
+                        Ok(_) | Err(Error::Conflict) => {}
+                        Err(error) => return Err(error),
+                    }
+                }
             } else if task.cancelled || run.reason.as_deref() == Some("stopRequested") {
                 self.edit_task(task_id, |t| {
                     let r = t.runs.last_mut().unwrap();
@@ -359,6 +392,9 @@ impl Engine {
         let Some(host) = host else {
             return Ok(());
         };
+        if task.delivery == TaskDelivery::Thread {
+            return self.start_bound_schedule_run(&task, &run, host).await;
+        }
         let provider = self.schedule_tools(&task.owner).await;
         let prepared = self
             .task_modes
@@ -393,6 +429,10 @@ impl Engine {
             object.insert("cwd".into(), json!(anchor.cwd));
             object.insert("admissionGuard".into(), json!({"ordinarySession":true}));
             let mut p: ThreadStart = serde_json::from_value(value).map_err(invalid)?;
+            if let Some(model) = &task.model {
+                p.model = Some(model.clone());
+                p.parameters = task.parameters.clone().unwrap_or_default();
+            }
             p.dynamic_tools = provider
                 .as_ref()
                 .map(|provider| provider.definitions.clone())
@@ -494,6 +534,7 @@ impl Engine {
             .goal_create(
                 task.owner.clone(),
                 GoalCreate {
+                    model_override: None,
                     infer_limits: false,
                     request_id: format!("task-run-{}", run.id),
                     thread_id: thread.id,
@@ -514,6 +555,225 @@ impl Engine {
             Err(error) => Err(error),
         }
     }
+}
+
+impl Engine {
+    /// 定时任务固定模型：取对话当前所选模型，未选时取服务当前默认模型。
+    pub(super) fn fixed_schedule_model(
+        &self,
+        configuration: &areal_protocol::desktop::EffectiveConfig,
+    ) -> (
+        Option<areal_protocol::desktop::ModelRef>,
+        Option<areal_protocol::desktop::ModelParameters>,
+    ) {
+        let model = configuration
+            .model
+            .clone()
+            .or_else(|| self.configured_default_model());
+        let parameters = model
+            .as_ref()
+            .map(|_| areal_protocol::desktop::ModelParameters {
+                reasoning_effort: configuration.parameters.reasoning_effort.clone(),
+                service_tier: configuration.parameters.service_tier.clone(),
+                ..Default::default()
+            });
+        (model, parameters)
+    }
+
+    /// 绑定对话的运行：对话空闲时作为一个 Goal 接在对话末尾；忙碌时保持 queued 等下一次唤醒。
+    async fn start_bound_schedule_run(
+        self: &Arc<Self>,
+        task: &Task,
+        run: &TaskRun,
+        host: Arc<dyn tools::DynamicToolHost>,
+    ) -> Result<()> {
+        let Some(thread_id) = bound_thread(task) else {
+            return Err(Error::Conflict);
+        };
+        let settle = |reason: &'static str| {
+            let run_id = run.id.clone();
+            move |t: &mut Task| {
+                let r = t.runs.last_mut().unwrap();
+                if r.id == run_id && !r.status.terminal() {
+                    r.status = RunStatus::Failed;
+                    r.reason = Some(reason.into());
+                    r.completed_at = Some(now());
+                }
+            }
+        };
+        let cell = match self.cell(&thread_id).await {
+            Ok(cell) => cell,
+            Err(Error::NotFound) => {
+                return self.edit_task(&task.id, settle("threadMissing")).await;
+            }
+            Err(error) => return Err(error),
+        };
+        {
+            let state = cell.state.lock().await;
+            if state.thread.desktop.as_ref().is_some_and(|d| d.archived) {
+                drop(state);
+                return self.edit_task(&task.id, settle("threadArchived")).await;
+            }
+            if bound_thread_busy(&state) {
+                return Ok(());
+            }
+        }
+        let mut view = self.goal_get(&thread_id).await?;
+        if let Some(goal_id) = view["goal"]["id"].as_str().map(str::to_owned) {
+            let status = view["goal"]["status"].as_str().unwrap_or_default();
+            let ours = task
+                .runs
+                .iter()
+                .any(|r| r.goal_id.as_deref() == Some(goal_id.as_str()));
+            // 用户自己的未结束目标优先；只清理本任务的旧目标或已结束的目标。
+            if status == "active" || (!ours && !matches!(status, "completed" | "failed")) {
+                return Ok(());
+            }
+            self.goal_control(
+                task.owner.clone(),
+                "clear".into(),
+                GoalControl {
+                    request_id: format!("task-clear-{}", run.id),
+                    thread_id: thread_id.clone(),
+                    goal_id,
+                    expected_revision: view["revision"].as_u64().ok_or(Error::Conflict)?,
+                },
+                None,
+            )
+            .await?;
+            view = self.goal_get(&thread_id).await?;
+        }
+        if !self.host_current(&host).await {
+            return Ok(());
+        }
+        let provider = self.schedule_tools(&task.owner).await;
+        {
+            let state = cell.state.lock().await;
+            if bound_thread_busy(&state) {
+                return Ok(());
+            }
+            let mut bindings = cell.bindings.write().await;
+            if bindings
+                .schedule_host
+                .as_ref()
+                .is_some_and(|h| !h.is_closed() && h.id() != host.id())
+            {
+                return Err(Error::Conflict);
+            }
+            bindings.schedule_host = Some(host);
+            if bindings.host.as_ref().is_none_or(|old| old.is_closed()) {
+                bindings.host =
+                    provider.and_then(|provider| provider.for_tools(&state.thread.dynamic_tools));
+            }
+        }
+        self.edit_task(&task.id, |t| {
+            let r = t.runs.last_mut().unwrap();
+            if r.id == run.id && r.thread_id.is_none() {
+                r.thread_id = Some(thread_id.clone());
+            }
+        })
+        .await?;
+        let current = self.task_read(&task.id).await?;
+        if current.cancelled
+            || current
+                .runs
+                .last()
+                .is_none_or(|r| r.id != run.id || r.reason.as_deref() == Some("stopRequested"))
+        {
+            return Ok(());
+        }
+        let usage = self.task_modes.state.lock().await.usage(&task.id);
+        let used = usage.tokens_used.saturating_add(usage.reserved_tokens);
+        let budget = task.token_budget.map(|n| n.saturating_sub(used));
+        if budget == Some(0) {
+            return Err(invalid("task token budget exhausted"));
+        }
+        match self
+            .goal_create(
+                task.owner.clone(),
+                GoalCreate {
+                    model_override: task.model.clone().map(|model| GoalModel {
+                        model,
+                        parameters: task.parameters.clone().unwrap_or_default(),
+                    }),
+                    infer_limits: false,
+                    request_id: format!("task-run-{}", run.id),
+                    thread_id,
+                    expected_revision: view["revision"].as_u64().ok_or(Error::Conflict)?,
+                    objective: run.objective.clone().unwrap_or(task.objective.clone()),
+                    token_budget: budget,
+                    max_turns: task.max_turns,
+                    max_active_seconds: task.max_active_seconds,
+                    interaction_mode: Some(InteractionMode::Interactive),
+                },
+            )
+            .await
+        {
+            Ok(_) | Err(Error::Conflict) => Ok(()),
+            Err(Error::Exhausted(ref reason)) if reason.starts_with("active Turn capacity") => {
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// 归档绑定对话时暂停接在它上面的任务；恢复归档不自动开启，由用户在定时页决定。
+    pub(crate) async fn pause_tasks_bound_to(self: &Arc<Self>, thread_id: &str) -> Result<()> {
+        let bound: Vec<(String, u64, String)> = {
+            let state = self.task_modes.state.lock().await;
+            state
+                .tasks
+                .values()
+                .filter(|t| {
+                    t.mode == TaskMode::Scheduled
+                        && t.delivery == TaskDelivery::Thread
+                        && !t.paused
+                        && !t.cancelled
+                        && t.deleted_at.is_none()
+                        && bound_thread(t).as_deref() == Some(thread_id)
+                })
+                .map(|t| (t.id.clone(), t.revision, t.owner.clone()))
+                .collect()
+        };
+        for (task_id, revision, owner) in bound {
+            match self
+                .task_control(
+                    owner,
+                    "pause".into(),
+                    TaskControl {
+                        expected_run_id: None,
+                        request_id: format!("archive-pause-{thread_id}-{task_id}-{revision}"),
+                        task_id,
+                        expected_revision: revision,
+                    },
+                )
+                .await
+            {
+                Ok(_) | Err(Error::Conflict) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(())
+    }
+}
+
+/// 接收运行的对话：对话里建的任务是来源对话，定时页建的任务是它的专属对话。
+pub(crate) fn bound_thread(task: &Task) -> Option<String> {
+    task.source_thread_id
+        .clone()
+        .or_else(|| task.thread_id.clone())
+}
+
+fn bound_thread_busy(state: &crate::State) -> bool {
+    state.active.is_some()
+        || state.compacting
+        || state.thread.desktop.as_ref().is_some_and(|d| {
+            d.queue
+                .items
+                .iter()
+                .any(|i| matches!(i.status.as_str(), "pending" | "running"))
+                || d.interactions.iter().any(|i| i.status == "pending")
+        })
 }
 
 impl DesktopScheduleTools {

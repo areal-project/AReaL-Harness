@@ -1,4 +1,5 @@
 import { commandResourceLabel } from "./conversationPresentation.js";
+import { scheduledRunTask, scheduledTaskName } from "./scheduleText.js";
 import { useTranscriptSelection } from "./useTranscriptSelection.js";
 import * as readingDom from "./conversationReadingDom.js";
 import {
@@ -175,7 +176,9 @@ export function Messages({
     ordinary && !readOnly
       ? (localThread.turns ?? [])
           .flatMap((turn: Data) =>
-            turn.continuedFromTurnId || goalContinuationLabel(turn)
+            turn.continuedFromTurnId ||
+            goalContinuationLabel(turn) ||
+            scheduledRunTask(project.state?.tasks, turn.goal?.goalId)
               ? []
               : (turn.items ?? []).filter((item: Data) => item.type === "userMessage"),
           )
@@ -1258,8 +1261,21 @@ export function Messages({
                             ) {
                               return <TimelineNotice key={item.id}>{continuation}</TimelineNotice>;
                             }
+                            const scheduled =
+                              turn.goal?.origin === "initial" &&
+                              item.id ===
+                                turn.items?.find((entry: Data) => entry.type === "userMessage")?.id
+                                ? scheduledRunTask(project.state?.tasks, turn.goal.goalId)
+                                : undefined;
                             return (
                               <Fragment key={item.id}>
+                                {scheduled && (
+                                  <TimelineNotice data-scheduled-run={scheduled.id}>
+                                    {t("operations.schedules.runNotice", {
+                                      name: scheduledTaskName(scheduled),
+                                    })}
+                                  </TimelineNotice>
+                                )}
                                 <SentUserMessage
                                   item={item}
                                   owner={owner}

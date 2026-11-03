@@ -123,6 +123,7 @@ async fn exercise(
         .goal_create(
             "fixture".into(),
             GoalCreate {
+                model_override: None,
                 request_id: "create".into(),
                 thread_id: thread.id.clone(),
                 expected_revision: 0,

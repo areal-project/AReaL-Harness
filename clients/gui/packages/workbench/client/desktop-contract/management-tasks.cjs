@@ -109,7 +109,7 @@ module.exports = {
   draftRead,
 };
 
-/** @typedef {Record<string,unknown> & {operation:string,projectId?:string,requestId?:string,draftId?:string,viewId?:string,threadId?:string,taskId?:string,sourceThreadId?:string,turnId?:string,digest?:string,timeZone?:string,cwd?:string,effort?:string,limit?:number,expectedRevision?:number,model?:{providerId:string,modelId:string}|null}} TaskRequest */
+/** @typedef {Record<string,unknown> & {operation:string,projectId?:string,requestId?:string,draftId?:string,viewId?:string,threadId?:string,taskId?:string,sourceThreadId?:string,turnId?:string,digest?:string,timeZone?:string,cwd?:string,effort?:string,limit?:number,expectedRevision?:number,model?:{providerId:string,modelId:string}|null,delivery?:'thread'|'newThread',parameters?:Record<string,unknown>}} TaskRequest */
 /** @param {Record<string,unknown>} value @returns {TaskRequest} */
 function readTaskRequest(value) {
   if (!taskRequest(value)) throw new Error("任务请求结构无效");
@@ -135,6 +135,10 @@ function taskRequest(value) {
     ].every((key) => value[key] === undefined || typeof value[key] === "string") &&
     (value.limit === undefined || typeof value.limit === "number") &&
     (value.expectedRevision === undefined || typeof value.expectedRevision === "number") &&
+    (value.delivery === undefined ||
+      value.delivery === "thread" ||
+      value.delivery === "newThread") &&
+    (value.parameters === undefined || modelRecord(value.parameters)) &&
     (value.model == null ||
       (modelRecord(value.model) &&
         typeof value.model.providerId === "string" &&

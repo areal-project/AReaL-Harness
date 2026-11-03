@@ -361,6 +361,7 @@ async fn schedule_tool_uses_registered_scheduler_for_a_distinct_gui_connection()
         .unwrap();
     assert_eq!(task.owner, "owner");
     assert_eq!(task.source_thread_id.as_deref(), Some(source.id.as_str()));
+    assert_eq!(task.delivery, TaskDelivery::Thread);
     let anchor = engine
         .cell(task.thread_id.as_deref().unwrap())
         .await
@@ -1007,5 +1008,114 @@ async fn settled_schedule_history_does_not_stop_the_129th_trigger() {
             .tokens_used,
         30
     );
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn bound_schedule_waits_for_its_conversation_and_runs_there_with_its_fixed_model() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    engine
+        .install_configured_models(crate::desktop::ConfiguredModels {
+            providers: vec![
+                serde_json::from_value(json!({
+                    "id":"arena","revision":0,"endpoint":"http://127.0.0.1:9",
+                    "protocol":"responses","models":["terra"]
+                }))
+                .unwrap(),
+            ],
+            provider_ids: ["arena".to_owned()].into(),
+            ..Default::default()
+        })
+        .unwrap();
+    engine
+        .register_schedule_host(Arc::new(Host {
+            closed: AtomicBool::new(false),
+        }))
+        .await
+        .unwrap();
+    let conversation = engine.create("/workspace".into()).await.unwrap();
+    let busy = engine
+        .start(&conversation.id, vec![Input::text("busy")])
+        .await
+        .unwrap();
+    let value = engine
+        .task_create(
+            "fixture".into(),
+            serde_json::from_value(json!({
+                "requestId":"bound", "mode":"scheduled", "objective":"inspect",
+                "threadId":conversation.id, "delivery":"thread",
+                "model":{"providerId":"arena","modelId":"terra"},
+                "parameters":{"temperature":null,"maxOutputTokens":null,"reasoningEffort":"high"},
+                "schedule":{"at":now()-100,"intervalSeconds":3600}
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let id = value["id"].as_str().unwrap();
+    engine.advance_task(id).await.unwrap();
+    let run = engine.task_read(id).await.unwrap().runs[0].clone();
+    assert_eq!(
+        run.status,
+        RunStatus::Queued,
+        "busy conversation defers the run"
+    );
+    assert!(run.thread_id.is_none() && run.goal_id.is_none());
+
+    engine.interrupt(&conversation.id, &busy.id).await.unwrap();
+    engine.wait(&conversation.id).await.unwrap();
+    engine.advance_task(id).await.unwrap();
+    let run = engine.task_read(id).await.unwrap().runs[0].clone();
+    assert_eq!(run.thread_id.as_deref(), Some(conversation.id.as_str()));
+    let thread = engine.read(&conversation.id, true).await.unwrap();
+    let turn = thread.turns.last().unwrap();
+    assert_eq!(
+        turn.goal.as_ref().map(|g| g.goal_id.as_str()),
+        run.goal_id.as_deref()
+    );
+    let configuration = turn.configuration.as_ref().unwrap();
+    assert_eq!(configuration.model.as_ref().unwrap().model_id, "terra");
+    assert_eq!(
+        configuration.parameters.reasoning_effort.as_deref(),
+        Some("high")
+    );
+    let default = &thread.desktop.as_ref().unwrap().configuration;
+    assert!(
+        default.model.is_none(),
+        "the fixed model applies to the run only"
+    );
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn archiving_a_bound_conversation_pauses_its_tasks() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    let conversation = engine.create("/workspace".into()).await.unwrap();
+    let create = |request: &str, delivery: &str| {
+        serde_json::from_value::<TaskCreate>(json!({
+            "requestId":request, "mode":"scheduled", "objective":"inspect",
+            "threadId":conversation.id, "delivery":delivery,
+            "schedule":{"at":now()+3600}
+        }))
+        .unwrap()
+    };
+    let bound = engine
+        .task_create("fixture".into(), create("bound", "thread"))
+        .await
+        .unwrap();
+    let detached = engine
+        .task_create("fixture".into(), create("detached", "newThread"))
+        .await
+        .unwrap();
+    engine
+        .archive_thread(conversation.id.clone())
+        .await
+        .unwrap();
+    let paused = |value: &Value| value["id"].as_str().unwrap().to_owned();
+    assert!(engine.task_read(&paused(&bound)).await.unwrap().paused);
+    assert!(!engine.task_read(&paused(&detached)).await.unwrap().paused);
     engine.shutdown().await;
 }

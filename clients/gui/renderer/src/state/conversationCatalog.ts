@@ -22,7 +22,10 @@ export function conversationCatalog(projects: Data[], library: Data) {
       (Object.values(owner.state?.tasks ?? {}) as Data[])
         .filter((task) => task.mode === "scheduled")
         .flatMap((task) =>
-          [task.threadId, ...task.runs.map((run: Data) => run.threadId)].filter(Boolean),
+          [task.threadId, ...task.runs.map((run: Data) => run.threadId)].filter(
+            // 对话里建的任务接在来源对话里运行，来源对话仍是普通对话。
+            (id) => id && id !== task.sourceThreadId,
+          ),
         ),
     );
     const cached = library.projects?.[owner.id]?.navigationSummaries;

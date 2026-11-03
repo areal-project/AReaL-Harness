@@ -2,6 +2,9 @@
 "use strict";
 const { isAwaitingResponse, sameSubmission } = require("./project-state.cjs");
 const { createHash, randomUUID } = require("node:crypto");
+const { mkdir } = require("node:fs/promises");
+const { basename, dirname } = require("node:path");
+const { SCRATCH_ID } = require("./projectless.cjs");
 const { manageTaskDraft, taskDraftOperations } = require("./task-draft.cjs");
 
 const {
@@ -41,11 +44,23 @@ const writes = {
       "tokenBudget",
       "maxTurns",
       "maxActiveSeconds",
+      "delivery",
+      "model",
+      "parameters",
     ],
   ],
   taskUpdate: [
     "areal/task/update",
-    ["taskId", "expectedRevision", "objective", "schedule", "scheduleV2"],
+    [
+      "taskId",
+      "expectedRevision",
+      "objective",
+      "schedule",
+      "scheduleV2",
+      "delivery",
+      "model",
+      "parameters",
+    ],
   ],
   taskRunNow: ["areal/task/runNow", ["taskId", "expectedRevision"]],
   taskPause: ["areal/task/pause", ["taskId", "expectedRevision"]],
@@ -79,6 +94,21 @@ const executionRequestId = (requestId) => {
   const hex = createHash("sha256").update(`AREAL_TASK_EXECUTION_V1:${requestId}`).digest("hex");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 };
+/**
+ * 无项目工作区里每个任务有自己的子目录；普通项目的任务仍在项目根目录运行。
+ * @param {Project} project @param {string|undefined} cwd
+ */
+async function taskFolder(project, cwd) {
+  if (cwd === undefined) return project.root;
+  if (
+    project.projectlessRequestId !== SCRATCH_ID ||
+    dirname(cwd) !== project.root ||
+    !/^[^./\\][^/\\]{0,127}$/.test(basename(cwd))
+  )
+    throw new Error("任务目录必须是无项目工作区下的子目录");
+  await mkdir(cwd, { recursive: true, mode: 0o700 });
+  return cwd;
+}
 /** @param {Backend} backend @param {Project} project @param {Request} request */
 async function taskCreate(backend, project, request) {
   const requestId = request.requestId ?? randomUUID();
@@ -130,13 +160,9 @@ async function taskCreate(backend, project, request) {
         } else {
           if (pending || project.outcomes?.[preludeId]) throw unknown();
           await backend.resources.beforeCreate(project);
+          const cwd = await taskFolder(project, request.cwd);
           const { thread } = readThreadAdmission(
-            await backend.submit(
-              project,
-              "areal/thread/start",
-              { cwd: project.root },
-              { requestId: preludeId },
-            ),
+            await backend.submit(project, "areal/thread/start", { cwd }, { requestId: preludeId }),
           );
           params.threadId = thread.id;
         }

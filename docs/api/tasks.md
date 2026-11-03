@@ -11,7 +11,7 @@ Task 持有任务身份、目标、调度、总 token 预算和一个持久 Chan
 | mode | threadId | 默认 interactionMode | 触发方式 |
 |---|---|---|---|
 | foreground | 必填，根 Thread | interactive | 受理后排队启动 |
-| scheduled | 必填，执行环境定位用的根 Thread | interactive | 在线调度 Host 就绪后按 UTC 时间点触发，每次新建 Thread |
+| scheduled | 必填，执行环境定位用的根 Thread | interactive | 在线调度 Host 就绪后按 UTC 时间点触发；`delivery=thread` 接在绑定对话里，`newThread`（默认）每次新建 Thread |
 | background | 可省略；Core 创建协调 Thread | asynchronous | 受理后排队启动，worker 可使用独立 Session |
 
 `areal/goal/create` 继续原子受理首轮，同时登记 foreground Task，响应增加 `taskId/runId`。`areal/task/create` 先持久受理 Task，执行异步调度；返回成功不表示模型已开始。已有 Goal、活动 Turn 或用户队列占用绑定 Thread 时，新的 TaskRun 等待准入。每个 Task 同时最多一个未结束 Run。
@@ -49,14 +49,14 @@ async 默认期限 86400 秒，允许 1–604800 秒；同步问题允许 1–36
 
 | 方法 | 参数 | 响应 |
 |---|---|---|
-| task/create | `requestId, mode, objective, threadId?, sourceThreadId?, interactionMode?, schedule?, scheduleV2?, tokenBudget?, maxTurns?, maxActiveSeconds?` | Task 投影 |
+| task/create | `requestId, mode, objective, threadId?, sourceThreadId?, interactionMode?, schedule?, scheduleV2?, tokenBudget?, maxTurns?, maxActiveSeconds?, delivery?, model?, parameters?` | Task 投影 |
 | task/schedule/context | `timeZone` | `{coreNow,timeZone,localDate,localTime}` |
 | task/schedule/preview | `schedule: ScheduleIntent, from?, count: 1..10` | `{coreNow,from,schedule,timeZone,occurrences,warnings}` |
 | task/list | `after?, limit?` | `{data: Task[], nextCursor}` |
 | task/read | `taskId` | Task 投影 |
 | task/runs/list | `taskId, cursor?, limit?` | `{data: TaskRun[], nextCursor, hasMore, runCount}` |
 | task/run/read | `taskId, runId` | 完整单条 TaskRun |
-| task/update | `requestId, taskId, expectedRevision, objective?, schedule?, scheduleV2?` | 更新后的 Task 投影 |
+| task/update | `requestId, taskId, expectedRevision, objective?, schedule?, scheduleV2?, delivery?, model?, parameters?` | 更新后的 Task 投影 |
 | task/runNow | `requestId, taskId, expectedRevision` | `{taskId, runId, revision, accepted:true}` |
 | task/pause, task/resume, task/cancel, task/delete | `requestId, taskId, expectedRevision` | 已持久受理控制意图的 Task 投影 |
 | task/stopRun, task/resumeRun | `requestId, taskId, expectedRevision, expectedRunId` | 当前 Run 的停止／明确恢复意图，重复安排不变 |
@@ -70,7 +70,7 @@ async 默认期限 86400 秒，允许 1–604800 秒；同步问题允许 1–36
 
 `task/pause` 还接受可选 `expectedRunId`，由 `features.taskPauseRunGuard` 声明。Core 查询收据后，在同一 Task 锁内将其与最新 Run 比较，并同时检查 `expectedRevision`；Run 缺失或变化返回冲突。resume/cancel/delete 不接受此字段。同参数已受理请求即使在版本/Run 改变或重启后仍返回原收据；同键更换 Run 返回冲突。省略字段保持旧调用与收据摘要兼容。对于 scheduled，pause 只暂停之后的触发；stopRun 才停止当前执行。执行停止仍以 Run 和 worker 结算为准。
 
-Task 投影包括 `id, revision, channelSequence, owner, mode, interactionMode, objective, threadId, sourceThreadId?, deletedAt?, schedule, nextRunAt, paused, cancelled, tokenBudget, maxTurns, maxActiveSeconds, runs, runCount, archivedRunCount, runsComplete, skippedRuns, lastSkippedAt, pendingQuestions`；不内嵌 messages。每个 Run 包含 `id, threadId, goalId, status, reason, objective?, trigger, scheduledAt, startedAt, completedAt, usage, waitRequested, workers`。worker 包含 `threadId, turnId, status, settled`；status 为 running/completed/cancelled/failed。
+Task 投影包括 `id, revision, channelSequence, owner, mode, interactionMode, objective, threadId, sourceThreadId?, delivery?, model?, parameters?, deletedAt?, schedule, nextRunAt, paused, cancelled, tokenBudget, maxTurns, maxActiveSeconds, runs, runCount, archivedRunCount, runsComplete, skippedRuns, lastSkippedAt, pendingQuestions`；不内嵌 messages。每个 Run 包含 `id, threadId, goalId, status, reason, objective?, trigger, scheduledAt, startedAt, completedAt, usage, waitRequested, workers`。worker 包含 `threadId, turnId, status, settled`；status 为 running/completed/cancelled/failed。
 
 Run status 为 `queued/running/waitingForInput/waitingForAgents/paused/blocked/completed/failed/cancelled`；后三项是终态。paused/cancelled 为 Task 控制意图，清理期间 Run 可能仍为 running。以 Run 终态及 worker.settled 判断执行结算，不以控制请求返回或协调 Turn completed 代替。
 
@@ -79,6 +79,12 @@ Run status 为 `queued/running/waitingForInput/waitingForAgents/paused/blocked/c
 `task/delete` 使用相同的停止结算路径，同时持久保存 `deletedAt` UTC Unix 秒墓碑。墓碑设置 `cancelled=true` 和 `nextRunAt=null`，拒绝后续修改、开启和立即运行。返回成功只表示删除意图已受理。非终态 Run 或未结算 worker 存在时，客户端显示删除中并保留记录入口。Task、Channel、运行历史和原始收据不物理删除，墓碑仍计入 1024 个 Task 的容量。`task/list` 和 `task/read` 保留墓碑，活动目录可在执行全部结算后隐藏。首版没有恢复或永久清除命令。
 
 `sourceThreadId` 与 `deletedAt` 为可选字段，旧快照缺省为无来源、未删除。版本 5 及之后的 Task 账本继续保存这些字段，无需迁移或猜测旧来源。旧版本即使忽略墓碑字段，仍受既有 `cancelled` 停止语义约束。来源 Thread 的删除或归档不取消 Task。
+
+### 投递位置与固定模型
+
+`delivery` 与 `model/parameters` 只用于 scheduled；省略 `delivery` 或旧快照为 `newThread`，保持每次新建 Thread。`delivery=thread` 时运行接在绑定对话里：有 `sourceThreadId` 时是来源对话，否则是 `threadId`。到期 Run 先以 `queued` 受理；对话有活动 Turn、压缩、待执行队列、待处理交互或用户自己未结束的 Goal 时保持 `queued`，空闲后以完整 objective 作为一个 Goal 接在对话末尾。本任务的旧 Goal 与已结束的 Goal 在开始前清除；运行完成或失败后清除 Goal，对话回到普通状态，暂停/受阻的保留以便 `resumeRun`。
+
+`model` 在创建时验证可解析；`parameters` 需同时给出 `model`。newThread 用它创建运行 Thread；thread 只作用于该 Goal 的各轮（`Goal.modelOverride`），不改变对话默认配置。归档绑定对话会暂停投递到它的任务；取消归档不自动开启。
 
 ## 轻量目录与 owner 更新
 
@@ -114,7 +120,7 @@ Run status 为 `queued/running/waitingForInput/waitingForAgents/paused/blocked/c
 
 Core 从持久 Thread、Turn 和 tool-call ID 派生写入 requestId，模型不能指定。错误结果保留 `error.reason`、`error.outcome.kind` 与 `error.recovery`。revision 冲突返回 `REVISION_CONFLICT`，权限拒绝返回 `PERMISSION_DENIED`，存储结果不明返回 `UNKNOWN` 和原 requestId。UNKNOWN 后只核对原收据，不使用新的 tool-call ID 重发。空收据不证明未受理。
 
-创建工具固定来源 Thread 和 cwd，另建执行锚点，并通过现有 `task_create` 提交。公开 `TaskCreate.sourceThreadId` 也要求真实普通来源、相同 cwd 及单独锚点。锚点须绑定来源的同一在线连接，或同一认证身份的当前调度连接。完整 objective 保存执行方法、必要资料与输出要求，Run 不持续读取来源对话。每次 Run 仍使用独立 Thread 和当前默认模型，工作目录可能共享。
+创建工具固定来源 Thread 和 cwd，另建执行锚点，并通过现有 `task_create` 提交。公开 `TaskCreate.sourceThreadId` 也要求真实普通来源、相同 cwd 及单独锚点。锚点须绑定来源的同一在线连接，或同一认证身份的当前调度连接。完整 objective 保存执行方法、必要资料与输出要求，每次 Run 都发送完整 objective。工具创建的任务使用 `delivery=thread`，运行接在来源对话里，模型固定为创建时来源对话所用的模型。
 
 聊天任务卡绑定真实工具结果中的 Task 和回执。重载后读取当前 Task，历史成功事实与当前暂停、删除或不可达状态分别展示。右上角来源列表与全局中心读取同一 Core Task；暂停、开启、立即运行和删除通过直接命令执行，不依赖模型。旧 task-draft 管理会话仍可读取和管理历史任务。
 
