@@ -313,8 +313,7 @@ jobs:
     name: macOS GUI build and contracts
     outputs:
       artifact_ready: ${{ steps.smoke-inputs.outputs.artifact-id != '' }}
-    # 固定 GUI 构建与消费方架构；原生 Runtime 通道继续独立覆盖 ARM。
-    runs-on: macos-15-intel
+    runs-on: macos-15
     timeout-minutes: 60
     steps:
       - name: Prepare isolated build temporary root
@@ -420,7 +419,7 @@ jobs:
     name: macOS Core contracts (${{ matrix.lane }})
     needs: [scope, gui]
     if: ${{ always() && !cancelled() && needs.scope.outputs.gui_build == 'true' && needs.gui.outputs.artifact_ready == 'true' }}
-    runs-on: macos-15-intel
+    runs-on: macos-15
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -523,7 +522,7 @@ jobs:
     name: macOS GUI smoke (${{ matrix.scenario }})
     needs: [scope, gui]
     if: ${{ always() && !cancelled() && needs.scope.outputs.gui_build == 'true' && needs.gui.outputs.artifact_ready == 'true' }}
-    runs-on: macos-15-intel
+    runs-on: macos-15
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -657,7 +656,7 @@ jobs:
     name: macOS repeated baseline (${{ matrix.scenario }})
     needs: [scope, gui]
     if: github.event_name == 'workflow_dispatch' && inputs.qualification == 'macos-baseline'
-    runs-on: macos-15-intel
+    runs-on: macos-15
     timeout-minutes: 60
     strategy:
       fail-fast: false
