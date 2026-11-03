@@ -239,8 +239,10 @@ fn prepare_temporary_alias(
     }
     if !aliases.contains_key(&target) {
         // 使用短的私有目录，为 AF_UNIX 客户端自行追加的 socket 名保留空间。
+        use std::os::unix::fs::PermissionsExt;
         let directory = tempfile::Builder::new()
             .prefix(".ar-tmp-")
+            .permissions(std::fs::Permissions::from_mode(0o700))
             .tempdir_in("/tmp")
             .map_err(spawn_error)?;
         std::os::unix::fs::symlink(&target, directory.path().join("t")).map_err(spawn_error)?;
