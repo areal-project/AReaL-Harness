@@ -81,6 +81,25 @@ impl Default for Connections {
     }
 }
 impl Connections {
+    #[cfg(test)]
+    pub(super) async fn connect_test_core(
+        &self,
+        host: Rc<Host>,
+        id: &str,
+        service: Service,
+    ) -> Result<Box<dyn Fn()>> {
+        let session = connect(host, id, service).await?;
+        session.ready.set(true);
+        if let Some(previous) = self
+            .sessions
+            .borrow_mut()
+            .insert(id.into(), session.clone())
+        {
+            previous.close();
+        }
+        Ok(Box::new(move || session.close()))
+    }
+
     pub(super) fn shared_identity(
         &self,
         host: &Host,

@@ -1,0 +1,698 @@
+use super::*;
+use areal_local_service::storage;
+use areal_protocol::service::{Service, State};
+use futures_util::{SinkExt, StreamExt};
+use std::os::unix::fs::PermissionsExt;
+use tokio::{net::TcpListener, sync::mpsc, task::AbortHandle};
+use tokio_tungstenite::tungstenite::Message;
+
+enum CoreResponse {
+    Message(Value),
+    Disconnect,
+}
+
+struct CoreCall {
+    request: Value,
+    responses: mpsc::UnboundedSender<CoreResponse>,
+}
+impl CoreCall {
+    fn reply(self, result: Value) {
+        self.responses
+            .send(CoreResponse::Message(
+                json!({"id":self.request["id"],"result":result}),
+            ))
+            .unwrap();
+    }
+    fn reject(self) {
+        self.responses.send(CoreResponse::Message(json!({"id":self.request["id"],"error":{"code":-32009,"message":"original interaction already answered"}}))).unwrap();
+    }
+    fn disconnect(self) {
+        self.responses.send(CoreResponse::Disconnect).unwrap();
+    }
+}
+
+struct Fixture {
+    root: tempfile::TempDir,
+    host: Rc<Host>,
+    source: String,
+    alias: String,
+    calls: mpsc::UnboundedReceiver<CoreCall>,
+    server: AbortHandle,
+    close: Box<dyn Fn()>,
+}
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        (self.close)();
+        self.server.abort();
+    }
+}
+impl Fixture {
+    async fn new() -> Self {
+        let root = tempfile::tempdir().unwrap();
+        let mut host = crate::server::schedules::tests::fixture(root.path());
+        Rc::get_mut(&mut host.migration).unwrap().vault =
+            crate::vault::Vault::isolated_files(&host.home);
+        let source = crate::migration::Source {
+            profile: root.path().join("profile"),
+            core_home: root.path().join("legacy-core"),
+            legacy_service_home: root.path().join("legacy-service"),
+        };
+        storage::private_dir(&source.profile).unwrap();
+        storage::private_dir(&source.core_home).unwrap();
+        storage::write(&source.core_home.join("projects.json"), &json!([])).unwrap();
+        host.migration
+            .attach(source.clone(), "fixture", None)
+            .unwrap();
+        let imported = host.migration.import(
+            serde_json::from_value(json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":host.identity.generation,"source":source})).unwrap(),
+            "fixture", &[], &host.journal,
+        ).unwrap();
+        assert_eq!(imported["kind"], "ready");
+        let source = host.migration.source(source, &[]).unwrap()["sourceId"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let registration = host.slots.borrow()["project"].registration.clone();
+        let alias = host
+            .migration
+            .remote_projects(&source, &[registration])
+            .unwrap()
+            .remove(0);
+        let identity = base64::engine::general_purpose::STANDARD.encode(
+            libp2p_identity::Keypair::ed25519_from_bytes([9u8; 32])
+                .unwrap()
+                .to_protobuf_encoding()
+                .unwrap(),
+        );
+        let config = json!({"identity":identity,"directEnabled":true,"deviceGrants":[
+            {"devicePeerId":"a","status":"active","revision":1,"projectIds":[alias],"capabilities":["observe","answer","submit"]},
+            {"devicePeerId":"b","status":"active","revision":1,"projectIds":[alias],"capabilities":["observe","answer","submit"]}
+        ]});
+        host.remote
+            .dispatch(
+                "remote.acquire",
+                json!({"sourceId":source}),
+                "fixture",
+                &host.identity.generation,
+                &host.migration,
+                std::slice::from_ref(&alias),
+            )
+            .unwrap();
+        host.remote.dispatch("remote.replace", json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":host.identity.generation,"expectedRevision":0,"sourceId":source,"config":config}), "fixture", &host.identity.generation, &host.migration, std::slice::from_ref(&alias)).unwrap();
+        host.remote.disconnect("fixture");
+        host.remote.handoff(json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":host.identity.generation,"sourceId":source,"expectedRevision":1}), &host.identity, &host.migration).unwrap();
+        *host.gateway.generation.borrow_mut() = "gateway".into();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("ws://{}/", listener.local_addr().unwrap());
+        let (incoming, calls) = mpsc::unbounded_channel();
+        let server = tokio::task::spawn_local(async move {
+            let mut connections = tokio::task::JoinSet::new();
+            loop {
+                let (stream, _) = listener.accept().await.unwrap();
+                let incoming = incoming.clone();
+                connections.spawn_local(async move {
+                    let socket = tokio_tungstenite::accept_hdr_async(stream,
+                        |request: &tokio_tungstenite::tungstenite::handshake::server::Request,
+                         response: tokio_tungstenite::tungstenite::handshake::server::Response| {
+                            assert_eq!(request.headers()["authorization"], "Bearer original-owner-token");
+                            Ok(response)
+                        }).await.unwrap();
+                    let (mut writer, mut reader) = socket.split();
+                    let (responses, mut outgoing) = mpsc::unbounded_channel();
+                    loop {
+                        tokio::select! {
+                            response = outgoing.recv() => match response {
+                                Some(CoreResponse::Message(value)) => {
+                                    if writer.send(Message::Text(value.to_string().into())).await.is_err() { break; }
+                                }
+                                Some(CoreResponse::Disconnect) | None => {
+                                    let _ = writer.close().await;
+                                    break;
+                                }
+                            },
+                            message = reader.next() => {
+                                let Some(Ok(Message::Text(text))) = message else { break; };
+                                let request: Value = serde_json::from_str(&text).unwrap();
+                                if request["method"] == "initialized" { continue; }
+                                if request["method"] == "initialize" || request["method"] == "areal/subscription/remove" {
+                                    writer.send(Message::Text(json!({"id":request["id"],"result":{}}).to_string().into())).await.unwrap();
+                                    continue;
+                                }
+                                if incoming.send(CoreCall { request, responses: responses.clone() }).is_err() { break; }
+                            }
+                        }
+                    }
+                });
+            }
+        }).abort_handle();
+        let host = Rc::new(host);
+        let service = Self::service(&host, endpoint);
+        let close = host
+            .schedules
+            .connections
+            .connect_test_core(host.clone(), "project", service)
+            .await
+            .unwrap();
+        Self {
+            root,
+            host,
+            source,
+            alias,
+            calls,
+            server,
+            close,
+        }
+    }
+    fn service(host: &Host, endpoint: String) -> Service {
+        let registration = host.slots.borrow()["project"].registration.clone();
+        let service = Service {
+            identity: areal_protocol::service::Identity {
+                protocol_version: 1,
+                service_id: "original-service".into(),
+                generation: "core-generation".into(),
+                workspace: registration.workspace,
+                data_dir: registration.data_dir,
+                config_fingerprint: "fixture".into(),
+            },
+            owner: Some(host.owner()),
+            endpoint,
+            web_url: String::new(),
+            auth_file: host.home.join("core-auth.json"),
+            log_file: host.home.join("core.log"),
+            host_pid: 1,
+            core_pid: 2,
+            state: State::Ready,
+        };
+        storage::write(
+            &service.auth_file,
+            &json!({"principals":[{"id":"desktop-owner","token":"original-owner-token"}]}),
+        )
+        .unwrap();
+        let mut slots = host.slots.borrow_mut();
+        let slot = slots.get_mut("project").unwrap();
+        slot.service = Some(service.clone());
+        slot.state = "ready".into();
+        service
+    }
+    async fn reconnect(&mut self) {
+        let service = self.host.slots.borrow()["project"].service.clone().unwrap();
+        self.close = self
+            .host
+            .schedules
+            .connections
+            .connect_test_core(self.host.clone(), "project", service)
+            .await
+            .unwrap();
+    }
+    fn session(&self, peer: &str) -> Session {
+        let snapshot = self.host.remote.snapshot(&self.host.migration).unwrap();
+        Session {
+            host: self.host.clone(),
+            peer: peer.into(),
+            grant: gateway_owner::grant(&snapshot["config"], peer).unwrap(),
+            generation: "gateway".into(),
+            connection: uuid::Uuid::new_v4().to_string(),
+            host_peer: wire::Identity::from_base64(
+                snapshot["config"]["identity"].as_str().unwrap(),
+            )
+            .unwrap()
+            .peer()
+            .to_string(),
+            transport: gateway_owner::transport_key(
+                &snapshot["config"],
+                gateway_owner::TransportKind::Direct,
+            ),
+            kind: gateway_owner::TransportKind::Direct,
+            source_id: self.source.clone(),
+            viewer: None,
+            token_key: [7; 32],
+        }
+    }
+    fn grant(&self, peer: &str, mutate: impl FnOnce(&mut Value)) {
+        let snapshot = self.host.remote.snapshot(&self.host.migration).unwrap();
+        let mut config = snapshot["config"].clone();
+        let grant = config["deviceGrants"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|grant| grant["devicePeerId"] == peer)
+            .unwrap();
+        mutate(grant);
+        self.host.remote.dispatch("remote.gateway.replace", json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":self.host.identity.generation,"expectedRevision":snapshot["revision"],"sourceId":self.source,"config":config}), "fixture", &self.host.identity.generation, &self.host.migration, std::slice::from_ref(&self.alias)).unwrap();
+    }
+    async fn call(&mut self, method: &str) -> CoreCall {
+        let call = tokio::time::timeout(Duration::from_secs(5), self.calls.recv())
+            .await
+            .unwrap_or_else(|_| panic!("Core peer did not receive {method}"))
+            .unwrap();
+        assert_eq!(call.request["method"], method);
+        call
+    }
+    fn request(&self, method: &str, params: Value, command: Option<&str>) -> Value {
+        let mut request = json!({"id":uuid::Uuid::new_v4().to_string(),"method":method,"params":params,"context":{"projectId":self.alias}});
+        if let Some(command) = command {
+            request["commandId"] = json!(command);
+            request["context"]["gatewayGeneration"] = json!("gateway");
+            request["context"]["grantRevision"] = json!(1);
+            request["context"]["serviceGeneration"] = json!("core-generation");
+        }
+        request
+    }
+    fn item(status: &str) -> Value {
+        json!({"threadId":"thread","turnId":"turn","requestId":"interaction","kind":"approval","status":status,"expiresAt":4_000_000_000u64,"argumentsDigest":"original-digest","tool":"fs_create","generation":1,"effectiveArguments":{"path":"original.txt","text":"original"},"effectivePermissions":[]})
+    }
+    fn target() -> Value {
+        json!({"threadId":"thread","turnId":"turn","interactionId":"interaction"})
+    }
+    fn capabilities() -> Value {
+        json!({"features":{"atomicObserveOwnership":true,"turnStartAdmissionGuard":true,"threadCreationJournal":{"binding":{"identity":"store","journalEpoch":"epoch"}}},"methods":["areal/thread/configure","areal/turn/start","areal/request/read"]})
+    }
+    fn idle_thread(revision: u64) -> Value {
+        json!({"thread":{"id":"thread","status":{"type":"idle"},"turns":[{"id":"turn","status":"completed","items":[]}],"desktop":{"configuration":{"revision":revision}}},"ownership":{"kind":"ordinary"}})
+    }
+    fn answer(&self, token: Value, command: &str) -> Value {
+        let mut params = Self::target();
+        params["argumentsDigest"] = json!("original-digest");
+        params["decision"] = json!("allowOnce");
+        params["reviewToken"] = token;
+        self.request("interaction.respond", params, Some(command))
+    }
+    async fn review(&mut self, mut session: Session) -> (Session, Value) {
+        let request = self.request("attention.read", Self::target(), None);
+        let reading = tokio::task::spawn_local(async move {
+            let result = session.request(&request).await.unwrap();
+            (session, result)
+        });
+        self.call("areal/interaction/list")
+            .await
+            .reply(json!({"data":[Self::item("pending")]}));
+        let (session, detail) = reading.await.unwrap();
+        assert_eq!(detail["complete"], true);
+        (session, detail["reviewToken"].clone())
+    }
+    fn dispatch(
+        mut session: Session,
+        request: Value,
+    ) -> tokio::task::JoinHandle<(Session, Result<Value>)> {
+        tokio::task::spawn_local(async move {
+            let result = session.request(&request).await;
+            (session, result)
+        })
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lost_core_response_keeps_original_unknown_without_replay_or_cross_device_leak() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        let (session, token) = f.review(f.session("a")).await;
+        let command = uuid::Uuid::new_v4().to_string();
+        let request = f.answer(token, &command);
+        let answering = Fixture::dispatch(session, request.clone());
+        f.call("areal/interaction/list").await.reply(json!({"data":[Fixture::item("pending")]}));
+        let call = f.call("areal/interaction/respond").await;
+        assert_eq!(call.request["params"], json!({"threadId":"thread","turnId":"turn","requestId":"interaction","decision":"allowOnce","argumentsDigest":"original-digest"}));
+        call.disconnect();
+        let (session, result) = answering.await.unwrap();
+        let original = result.unwrap();
+        assert_eq!(original["admissionState"], "unknown");
+        assert!(original.get("receipt").is_none());
+        assert_eq!(original["submissionUnknown"], true);
+        f.reconnect().await;
+        for request in [request, f.request("command.read", json!({"commandId":command}), None)] {
+            let reading = Fixture::dispatch(f.session("a"), request);
+            f.call("areal/interaction/list").await.reply(json!({"data":[Fixture::item("answered")]}));
+            let (_, result) = reading.await.unwrap();
+            let result = result.unwrap();
+            assert_eq!(result["admissionState"], "unknown");
+            assert_eq!(result["operationId"], original["operationId"]);
+            assert_eq!(result["observedState"]["status"], "answered");
+            assert_eq!(result["observedState"]["provesCommandAdmission"], false);
+            assert!(result.get("receipt").is_none());
+        }
+        let mut other = f.session("b");
+        assert_eq!(other.request(&f.request("command.read", json!({"commandId":command}), None)).await.unwrap()["admissionState"], "notFound");
+        f.grant("a", |grant| grant["capabilities"] = json!(["observe"]));
+        let mut session = session;
+        assert_eq!(session.request(&f.request("command.read", json!({"commandId":command}), None)).await.unwrap_err().to_string(), "FORBIDDEN");
+        assert!(f.calls.try_recv().is_err());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn two_preflighted_devices_keep_distinct_original_outcomes_and_one_core_answer() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let (a, token_a) = f.review(f.session("a")).await;
+            let (b, token_b) = f.review(f.session("b")).await;
+            let command_a = uuid::Uuid::new_v4().to_string();
+            let command_b = uuid::Uuid::new_v4().to_string();
+            let mut one = Fixture::dispatch(a, f.answer(token_a, &command_a));
+            let mut two = Fixture::dispatch(b, f.answer(token_b, &command_b));
+            let preflight_a = f.call("areal/interaction/list").await;
+            let preflight_b = f.call("areal/interaction/list").await;
+            preflight_a.reply(json!({"data":[Fixture::item("pending")]}));
+            preflight_b.reply(json!({"data":[Fixture::item("pending")]}));
+            let first = f.call("areal/interaction/respond").await;
+            let second = tokio::select! {
+                call = f.call("areal/interaction/respond") => call,
+                done = &mut one => panic!("first original command returned before both Core dispatches: {:?}", done.unwrap().1),
+                done = &mut two => panic!("second original command returned before both Core dispatches: {:?}", done.unwrap().1),
+            };
+            assert_eq!(first.request["params"], second.request["params"]);
+            first.reply(json!({"answered":true,"requestId":"interaction"}));
+            second.reject();
+            for _ in 0..2 {
+                f.call("areal/interaction/list")
+                    .await
+                    .reply(json!({"data":[Fixture::item("answered")]}));
+            }
+            let (mut a, one) = one.await.unwrap();
+            let (_, two) = two.await.unwrap();
+            let one = one.unwrap();
+            let two = two.unwrap();
+            assert_eq!(one["commandId"], command_a);
+            assert_eq!(two["commandId"], command_b);
+            for result in [&one, &two] {
+                assert_eq!(result["target"]["threadId"], "thread");
+                assert_eq!(result["target"]["turnId"], "turn");
+                assert_eq!(result["target"]["interactionId"], "interaction");
+                assert_eq!(result["target"]["argumentsDigest"], "original-digest");
+            }
+            let mut states = [
+                one["admissionState"].as_str().unwrap(),
+                two["admissionState"].as_str().unwrap(),
+            ];
+            states.sort();
+            assert_eq!(states, ["accepted", "rejected"]);
+            assert_ne!(one["operationId"], two["operationId"]);
+            let rejected = if one["admissionState"] == "rejected" {
+                &one
+            } else {
+                &two
+            };
+            assert_eq!(rejected["error"]["code"], "TARGET_CHANGED");
+            assert_eq!(
+                a.request(&f.request("command.read", json!({"commandId":command_b}), None))
+                    .await
+                    .unwrap()["admissionState"],
+                "notFound"
+            );
+            assert!(f.calls.try_recv().is_err());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn delayed_duplicate_preflight_returns_original_durable_outcome_without_dispatch() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let (a, token) = f.review(f.session("a")).await;
+            let (second, second_token) = f.review(f.session("a")).await;
+            let command = uuid::Uuid::new_v4().to_string();
+            let request = f.answer(token, &command);
+            let delayed = Fixture::dispatch(a, request.clone());
+            let held = f.call("areal/interaction/list").await;
+            let first = Fixture::dispatch(second, f.answer(second_token, &command));
+            f.call("areal/interaction/list")
+                .await
+                .reply(json!({"data":[Fixture::item("pending")]}));
+            f.call("areal/interaction/respond")
+                .await
+                .reply(json!({"answered":true,"requestId":"interaction"}));
+            f.call("areal/interaction/list")
+                .await
+                .reply(json!({"data":[Fixture::item("answered")]}));
+            let (_, accepted) = first.await.unwrap();
+            let accepted = accepted.unwrap();
+            assert_eq!(accepted["admissionState"], "accepted");
+            held.reply(json!({"data":[Fixture::item("pending")]}));
+            f.call("areal/interaction/list")
+                .await
+                .reply(json!({"data":[Fixture::item("answered")]}));
+            let (_, duplicate) = delayed.await.unwrap();
+            assert_eq!(duplicate.unwrap(), accepted);
+            assert!(f.calls.try_recv().is_err());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn detail_and_original_command_observation_fence_final_grant_and_service_identity() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for mode in ["revoke", "generation"] {
+                let mut f = Fixture::new().await;
+                let reading = Fixture::dispatch(
+                    f.session("a"),
+                    f.request("attention.read", Fixture::target(), None),
+                );
+                let held = f.call("areal/interaction/list").await;
+                if mode == "revoke" {
+                    f.grant("a", |grant| grant["status"] = json!("revoked"));
+                } else {
+                    f.host
+                        .slots
+                        .borrow_mut()
+                        .get_mut("project")
+                        .unwrap()
+                        .service
+                        .as_mut()
+                        .unwrap()
+                        .identity
+                        .generation = "replacement".into();
+                }
+                held.reply(json!({"data":[Fixture::item("pending")]}));
+                let (_, result) = reading.await.unwrap();
+                assert!(result.is_err(), "{mode}");
+                assert!(
+                    f.host.journal.native_snapshot("project").unwrap().1["pending"]
+                        .as_array()
+                        .unwrap()
+                        .is_empty()
+                );
+            }
+            for mode in ["capability", "generation"] {
+                let mut f = Fixture::new().await;
+                let (session, token) = f.review(f.session("a")).await;
+                let command = uuid::Uuid::new_v4().to_string();
+                let answering = Fixture::dispatch(session, f.answer(token, &command));
+                f.call("areal/interaction/list")
+                    .await
+                    .reply(json!({"data":[Fixture::item("pending")]}));
+                f.call("areal/interaction/respond")
+                    .await
+                    .reply(json!({"answered":true}));
+                f.call("areal/interaction/list")
+                    .await
+                    .reply(json!({"data":[Fixture::item("answered")]}));
+                let (session, accepted) = answering.await.unwrap();
+                assert_eq!(accepted.unwrap()["admissionState"], "accepted");
+                let reading = Fixture::dispatch(
+                    session,
+                    f.request("command.read", json!({"commandId":command}), None),
+                );
+                let held = f.call("areal/interaction/list").await;
+                if mode == "capability" {
+                    f.grant("a", |grant| grant["capabilities"] = json!(["observe"]));
+                } else {
+                    f.host
+                        .slots
+                        .borrow_mut()
+                        .get_mut("project")
+                        .unwrap()
+                        .service
+                        .as_mut()
+                        .unwrap()
+                        .identity
+                        .generation = "replacement".into();
+                }
+                held.reply(json!({"data":[Fixture::item("answered")]}));
+                let (_, result) = reading.await.unwrap();
+                assert!(result.is_err(), "{mode}");
+            }
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn revocation_during_preflight_prevents_dispatch_and_after_dispatch_preserves_receipt() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let (session, token) = f.review(f.session("a")).await;
+            let command = uuid::Uuid::new_v4().to_string();
+            let answering = Fixture::dispatch(session, f.answer(token, &command));
+            let held = f.call("areal/interaction/list").await;
+            f.grant("a", |grant| grant["status"] = json!("revoked"));
+            held.reply(json!({"data":[Fixture::item("pending")]}));
+            assert_eq!(
+                answering.await.unwrap().1.unwrap_err().to_string(),
+                "GRANT_CHANGED"
+            );
+            assert!(f.calls.try_recv().is_err());
+            assert!(
+                f.host.journal.native_snapshot("project").unwrap().1["pending"]
+                    .as_array()
+                    .unwrap()
+                    .is_empty()
+            );
+            f.grant("a", |grant| grant["status"] = json!("active"));
+            let (session, token) = f.review(f.session("a")).await;
+            let command = uuid::Uuid::new_v4().to_string();
+            let answering = Fixture::dispatch(session, f.answer(token, &command));
+            f.call("areal/interaction/list")
+                .await
+                .reply(json!({"data":[Fixture::item("pending")]}));
+            let held = f.call("areal/interaction/respond").await;
+            f.grant("a", |grant| grant["status"] = json!("revoked"));
+            held.reply(json!({"answered":true,"requestId":"interaction"}));
+            assert_eq!(
+                answering.await.unwrap().1.unwrap_err().to_string(),
+                "GRANT_CHANGED"
+            );
+            f.grant("a", |grant| grant["status"] = json!("active"));
+            let reading = Fixture::dispatch(
+                f.session("a"),
+                f.request("command.read", json!({"commandId":command}), None),
+            );
+            f.call("areal/interaction/list")
+                .await
+                .reply(json!({"data":[Fixture::item("answered")]}));
+            let recovered = reading.await.unwrap().1.unwrap();
+            assert_eq!(recovered["admissionState"], "accepted");
+            assert_eq!(recovered["receipt"]["requestId"], "interaction");
+            assert!(f.calls.try_recv().is_err());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lost_outcome_write_stays_unknown_after_same_home_owner_reconstruction() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let (session, token) = f.review(f.session("a")).await;
+            let command = uuid::Uuid::new_v4().to_string();
+            let request = f.answer(token, &command);
+            let answering = Fixture::dispatch(session, request.clone());
+            f.call("areal/interaction/list")
+                .await
+                .reply(json!({"data":[Fixture::item("pending")]}));
+            let held = f.call("areal/interaction/respond").await;
+            let directory = f.host.home.join("host/journals/records");
+            let (revision, pending) = f.host.journal.native_snapshot("project").unwrap();
+            assert_eq!(pending["pending"].as_array().unwrap().len(), 1);
+            let operation = pending["pending"][0]["operationId"].clone();
+            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o500)).unwrap();
+            held.reply(json!({"answered":true,"requestId":"interaction"}));
+            let (_, result) = answering.await.unwrap();
+            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+            assert!(result.is_err());
+            assert_eq!(
+                f.host.journal.native_snapshot("project").unwrap(),
+                (revision, pending)
+            );
+            let service = f.host.slots.borrow()["project"].service.clone().unwrap();
+            (f.close)();
+            let old_host = Rc::downgrade(&f.host);
+            let mut restarted = crate::server::schedules::tests::fixture(f.root.path());
+            Rc::get_mut(&mut restarted.migration).unwrap().vault =
+                crate::vault::Vault::isolated_files(&restarted.home);
+            *restarted.gateway.generation.borrow_mut() = "gateway".into();
+            {
+                let mut slots = restarted.slots.borrow_mut();
+                let slot = slots.get_mut("project").unwrap();
+                slot.service = Some(service.clone());
+                slot.state = "ready".into();
+            }
+            f.host = Rc::new(restarted);
+            f.close = f
+                .host
+                .schedules
+                .connections
+                .connect_test_core(f.host.clone(), "project", service)
+                .await
+                .unwrap();
+            tokio::task::yield_now().await;
+            assert!(old_host.upgrade().is_none());
+            for request in [
+                request,
+                f.request("command.read", json!({"commandId":command}), None),
+            ] {
+                let reading = Fixture::dispatch(f.session("a"), request);
+                f.call("areal/interaction/list")
+                    .await
+                    .reply(json!({"data":[Fixture::item("answered")]}));
+                let (_, result) = reading.await.unwrap();
+                let result = result.unwrap();
+                assert_eq!(result["admissionState"], "unknown");
+                assert_eq!(result["operationId"], operation);
+                assert_eq!(result["observedState"]["provesCommandAdmission"], false);
+                assert!(result.get("receipt").is_none());
+            }
+            assert!(f.calls.try_recv().is_err());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn unknown_original_answer_allows_settled_ordinary_operations_but_not_unknown_submission() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        let (session, token) = f.review(f.session("a")).await;
+        let command = uuid::Uuid::new_v4().to_string();
+        let answering = Fixture::dispatch(session, f.answer(token, &command));
+        f.call("areal/interaction/list").await.reply(json!({"data":[Fixture::item("pending")]}));
+        f.call("areal/interaction/respond").await.disconnect();
+        let (session, unknown) = answering.await.unwrap();
+        let original = unknown.unwrap();
+        assert_eq!(original["admissionState"], "unknown");
+        f.reconnect().await;
+        let configure = f.request("session.control", json!({"threadId":"thread","operation":"configure","expectedRevision":1,"values":{"model":{"providerId":"fixture","modelId":"fixture"}}}), Some(&uuid::Uuid::new_v4().to_string()));
+        let configuring = Fixture::dispatch(session, configure);
+        f.call("areal/capabilities").await.reply(Fixture::capabilities());
+        f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+        f.call("areal/thread/inspect").await.reply(json!({"configuration":{"revision":1}}));
+        let configuration = f.call("areal/thread/configure").await;
+        assert_eq!(configuration.request["params"]["threadId"], "thread");
+        assert_eq!(configuration.request["params"]["expectedRevision"], 1);
+        configuration.reply(json!({"revision":2}));
+        let (session, configured) = configuring.await.unwrap();
+        assert_eq!(configured.unwrap()["admissionState"], "accepted");
+        let send = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":2,"text":"later"}), Some(&uuid::Uuid::new_v4().to_string()));
+        let sending = Fixture::dispatch(session, send);
+        f.call("areal/capabilities").await.reply(Fixture::capabilities());
+        f.call("areal/thread/observe").await.reply(Fixture::idle_thread(2));
+        let turn = f.call("areal/turn/start").await;
+        assert_eq!(turn.request["params"]["threadId"], "thread");
+        assert_eq!(turn.request["params"]["input"], json!([{"type":"text","text":"later","text_elements":[]}]));
+        turn.reply(json!({"turn":{"id":"later-turn"}}));
+        let (session, sent) = sending.await.unwrap();
+        let sent = sent.unwrap();
+        assert_eq!(sent["admissionState"], "accepted");
+        assert_eq!(sent["turnId"], "later-turn");
+        let reading = Fixture::dispatch(session, f.request("command.read", json!({"commandId":command}), None));
+        f.call("areal/interaction/list").await.reply(json!({"data":[Fixture::item("answered")]}));
+        let (session, recovered) = reading.await.unwrap();
+        let recovered = recovered.unwrap();
+        assert_eq!(recovered["operationId"], original["operationId"]);
+        assert_eq!(recovered["admissionState"], "unknown");
+        let ordinary = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":2,"text":"unresolved"}), Some(&uuid::Uuid::new_v4().to_string()));
+        let sending = Fixture::dispatch(session, ordinary);
+        f.call("areal/capabilities").await.reply(Fixture::capabilities());
+        f.call("areal/thread/observe").await.reply(Fixture::idle_thread(2));
+        f.call("areal/turn/start").await.disconnect();
+        let (session, unresolved) = sending.await.unwrap();
+        assert_eq!(unresolved.unwrap()["admissionState"], "unknown");
+        f.reconnect().await;
+        let next = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":2,"text":"blocked"}), Some(&uuid::Uuid::new_v4().to_string()));
+        let sending = Fixture::dispatch(session, next);
+        f.call("areal/capabilities").await.reply(Fixture::capabilities());
+        f.call("areal/thread/observe").await.reply(Fixture::idle_thread(2));
+        assert_eq!(sending.await.unwrap().1.unwrap_err().to_string(), "SUBMISSION_UNKNOWN");
+        assert!(f.calls.try_recv().is_err());
+    }).await;
+}

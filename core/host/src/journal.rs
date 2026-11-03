@@ -488,22 +488,24 @@ impl Journal {
 }
 
 fn preserve_pending_identity(before: &Snapshot, after: &Snapshot) -> Result<()> {
-    let identities: BTreeMap<_, _> = before
-        .pending
-        .iter()
-        .filter_map(|entry| {
+    fn key(entry: &Value) -> Option<&str> {
+        if entry["method"] == "areal/interaction/respond" {
+            entry["operationId"]
+                .as_str()
+                .or(entry["params"]["requestId"].as_str())
+        } else {
             entry["params"]["requestId"]
                 .as_str()
                 .or(entry["operationId"].as_str())
-                .map(|key| (key, entry))
-        })
+        }
+    }
+    let identities: BTreeMap<_, _> = before
+        .pending
+        .iter()
+        .filter_map(|entry| key(entry).map(|key| (key, entry)))
         .collect();
     for next in &after.pending {
-        if let Some(previous) = next["params"]["requestId"]
-            .as_str()
-            .or(next["operationId"].as_str())
-            .and_then(|key| identities.get(key))
-        {
+        if let Some(previous) = key(next).and_then(|key| identities.get(key)) {
             ensure!(
                 previous["method"] == next["method"]
                     && previous["params"] == next["params"]
@@ -543,6 +545,32 @@ fn remove_transfer(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn interaction_target_does_not_alias_command_identity() {
+        let mut before = super::Snapshot {
+            version: 1,
+            pending: vec![serde_json::json!({
+                "method":"areal/interaction/respond",
+                "operationId":"first",
+                "params":{"requestId":"interaction","decision":"allowOnce"},
+                "remote":{"devicePeerId":"first"}
+            })],
+            outcomes: Default::default(),
+        };
+        let mut after = before.clone();
+        let mut second = before.pending[0].clone();
+        second["operationId"] = serde_json::json!("second");
+        second["remote"]["devicePeerId"] = serde_json::json!("second");
+        after.pending.push(second);
+        assert!(super::preserve_pending_identity(&before, &after).is_ok());
+        after.pending[0]["params"]["decision"] = serde_json::json!("deny");
+        assert!(super::preserve_pending_identity(&before, &after).is_err());
+        before.pending[0]["method"] = serde_json::json!("areal/turn/start");
+        let mut ordinary = before.clone();
+        ordinary.pending[0]["operationId"] = serde_json::json!("replacement");
+        assert!(super::preserve_pending_identity(&before, &ordinary).is_err());
+    }
+
     use super::*;
 
     fn snapshot(text: &str) -> Value {

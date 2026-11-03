@@ -4,6 +4,9 @@ mod artifacts;
 pub(super) mod controls;
 #[path = "create.rs"]
 mod create;
+#[cfg(test)]
+#[path = "interaction_tests.rs"]
+mod interaction_tests;
 #[path = "models.rs"]
 mod models;
 #[path = "observer.rs"]
@@ -1041,8 +1044,34 @@ impl Session {
             if record["remote"]["method"] == "interaction.respond" {
                 let target = &record["remote"]["target"];
                 let observed = match self.project(project) {
-                    Ok((_, generation)) => {
-                        self.interaction(project, &generation, target).await.ok()
+                    Ok((id, generation)) => {
+                        let scope = self
+                            .host
+                            .schedules
+                            .connections
+                            .shared_identity(&self.host, &id)
+                            .ok();
+                        let observed = self.interaction(project, &generation, target).await;
+                        if let Some(scope) = scope {
+                            ensure!(
+                                self.project(project).ok() == Some((id.clone(), generation))
+                                    && self
+                                        .host
+                                        .schedules
+                                        .connections
+                                        .shared_identity(&self.host, &id)
+                                        .ok()
+                                        == Some(scope),
+                                "RESYNC_REQUIRED"
+                            );
+                        }
+                        match observed {
+                            Ok(item) => Some(item),
+                            Err(error) if error.to_string() == "RESYNC_REQUIRED" => {
+                                return Err(error);
+                            }
+                            Err(_) => None,
+                        }
                     }
                     Err(_) => None,
                 };
