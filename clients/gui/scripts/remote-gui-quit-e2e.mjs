@@ -1,19 +1,34 @@
 import { createHash, randomUUID } from "node:crypto";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync, spawn } from "node:child_process";
 import { applicationFixture } from "./application-fixture.mjs";
 import { readTurnToolDetails } from "./support/tool-history.mjs";
 import { respondToSessionName } from "../../../scripts/model-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
-import { selectRemoteTransport, requireBrowserTransport } from "./remote-conformance-transport.mjs";
-const transport = selectRemoteTransport();
-await requireBrowserTransport(transport, "remote-gui-quit-e2e");
+import {
+  selectRemoteTransport,
+  requireBrowserTransport,
+  startConformanceTransport,
+} from "./remote-conformance-transport.mjs";
+const relayProtocol = process.env.AREAL_RC13_MODE === "relay-protocol";
+const transport = selectRemoteTransport(relayProtocol ? "relay" : undefined);
+if (!relayProtocol) await requireBrowserTransport(transport, "remote-gui-quit-e2e");
 import assert from "node:assert/strict";
 import { selectConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
 import { createRequire } from "node:module";
-import { mkdir, readFile, writeFile, readdir, access, lstat, unlink } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  writeFile,
+  readdir,
+  access,
+  lstat,
+  unlink,
+  open,
+  cp,
+} from "node:fs/promises";
 
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createServer } from "node:http";
 
 const prompt = "RC13 approval continuity";
@@ -102,6 +117,9 @@ async function run() {
     status: "failed",
     scratch,
     checks,
+    clientSurface: relayProtocol ? "production-RemoteConnection-protocol" : "production-PWA",
+    transport,
+    excludes: relayProtocol ? ["PWA browser TLS", "physical phone"] : ["Relay", "physical phone"],
     cleanup: [],
     summaryRequests: 0,
     fixture: {
@@ -163,6 +181,7 @@ async function run() {
       ],
     }),
   );
+  let conformance;
   const env = {
     ...process.env,
     AREAL_GUI: "workbench",
@@ -252,6 +271,7 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
   }
   const security = (args) => spawnSync("/usr/bin/security", args, { encoding: "utf8", env });
   const missing = (result) => result.status === 44 && result.stderr.includes("could not be found");
+  let preserveRegistration = false;
   async function cleanEntry(service, account) {
     const found = security(["find-generic-password", "-s", service, "-a", account]);
     if (missing(found)) {
@@ -287,7 +307,10 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
       ? { safeStorageService: keychainService, hostVaultService: hostService }
       : { hostVaultDirectory: join(env.AREAL_HARNESS_SERVICE_HOME, "host/vault") }),
   };
-  let app, page, browser, remote, projectId, threadId, adapter, child;
+  let app, page, browser, remote, projectId, threadId, adapter, child, fixtureHost;
+  let protocol, protocolSocket, protocolReady, protocolSnapshot;
+  const protocolEvents = [];
+  report.protocolEvents = protocolEvents;
   const json = async (path) => JSON.parse(await readFile(path, "utf8"));
   const exists = async (path) => {
     try {
@@ -501,6 +524,40 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
     assert.equal(await generation(), report.coreGeneration);
   };
   try {
+    if (relayProtocol) {
+      conformance = await startConformanceTransport("relay");
+      report.relay = conformance.evidence;
+      Object.assign(env, conformance.childEnv, {
+        SSL_CERT_FILE: conformance.childEnv.NODE_EXTRA_CA_CERTS,
+      });
+      const hostLog = await open(join(scratch, "fixture-host.log"), "a", 0o600);
+      fixtureHost = spawn(env.AREAL_CORE_BIN, ["host", "run"], {
+        env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+        stdio: ["ignore", "ignore", hostLog.fd],
+      });
+      await hostLog.close();
+      report.prestartedHost = {
+        pid: fixtureHost.pid,
+        binary: env.AREAL_CORE_BIN,
+        caPath: env.SSL_CERT_FILE,
+      };
+      fixtureHost.once("exit", (code, signal) =>
+        Object.assign(report.prestartedHost, { exitCode: code, signal }),
+      );
+      await until(async () => {
+        assert.equal(fixtureHost.exitCode, null, "isolated CA Host remains running");
+        const client = new HostClient();
+        try {
+          const hello = await client.connect(env.AREAL_HARNESS_SERVICE_HOME);
+          report.prestartedHost.identity = { hostId: hello.hostId, generation: hello.generation };
+          return true;
+        } catch {
+          return false;
+        } finally {
+          client.close();
+        }
+      }, "public CLI Host with isolated CA ready before GUI attaches");
+    }
     await launch();
     await app.evaluate(({ dialog }, workspace) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [workspace] });
@@ -517,51 +574,126 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
     await button("手机连接").click();
     // 生产后台 safeStorage gate 是唯一 oracle；不替换加密实现。
     try {
-      await call("remoteControl", { operation: "enableDirect" });
+      if (relayProtocol) {
+        await call("remoteControl", {
+          operation: "enable",
+          ...conformance.hostOptions,
+          confirmed: true,
+        });
+        await until(
+          async () => (await call("remoteControl", { operation: "status" })).connected,
+          "production Relay connected",
+        );
+      } else await call("remoteControl", { operation: "enableDirect" });
     } catch (error) {
       report.status = "blocked";
-      report.blockedAt = "production enableDirect gate";
+      report.blockedAt = relayProtocol
+        ? "production Relay enable gate"
+        : "production enableDirect gate";
       throw error;
     }
     await button("添加设备").click();
     const invite = await page.getByRole("textbox", { name: "配对链接", exact: true }).inputValue();
-    browser = await chromium.launch({
-      executablePath:
-        process.env.AREAL_CHROME_EXECUTABLE ||
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-      headless: true,
-    });
-    remote = await browser.newPage();
-    await remote.addInitScript(() => {
-      const key = "areal-gui:application-preferences";
-      const prefs = JSON.parse(localStorage.getItem(key) || "{}");
-      localStorage.setItem(key, JSON.stringify({ ...prefs, nextPromptSuggestions: false }));
-    });
-    await remote.goto(invite);
-    await remote.getByRole("button", { name: "连接电脑", exact: true }).click();
-    await remote
-      .getByRole("status")
-      .getByText(/等待桌面确认/)
-      .waitFor();
+    if (relayProtocol) {
+      const { RemoteConnection } = await import(
+        pathToFileURL(join(gui, "packages/remote-client/src/index.mjs"))
+      );
+      const { createIdentity } = await import(
+        pathToFileURL(join(gui, "packages/remote/src/channel.mjs"))
+      );
+      report.protocolSources = Object.fromEntries(
+        await Promise.all(
+          [
+            "packages/remote-client/src/connection.mjs",
+            "packages/remote/src/channel.mjs",
+            "packages/remote/src/wire.mjs",
+          ].map(async (name) => [name, digest(await readFile(join(gui, name)))]),
+        ),
+      );
+      const WebSocket = require("ws");
+      const locator = new URL(invite);
+      const fragment = new URLSearchParams(locator.hash.slice(1));
+      protocolSocket = new WebSocket(locator.origin.replace(/^https:/, "wss:") + "/remote/socket", {
+        origin: locator.origin,
+        ca: await readFile(conformance.childEnv.NODE_EXTRA_CA_CERTS),
+      });
+      protocol = new RemoteConnection({
+        socket: protocolSocket,
+        identity: await createIdentity(),
+        host: fragment.get("host"),
+        room: fragment.get("room"),
+        hello: {
+          displayName: "RC13 Relay protocol phone",
+          clientKind: "ios",
+          inviteSecret: fragment.get("invite"),
+        },
+        isCurrent: () => true,
+        onClose() {
+          report.protocolDisconnected = true;
+        },
+      });
+      protocolReady = protocol.connect({
+        onHandshake() {},
+        onReady(ready) {
+          report.protocolReady = ready;
+        },
+        onSession(event) {
+          protocolEvents.push({
+            event: event.event,
+            sequence: event.sequence,
+            subscriptionId: event.subscriptionId,
+          });
+          if (event.snapshot) protocolSnapshot = event.snapshot;
+        },
+      });
+      protocolReady.catch(() => {});
+      await until(
+        async () => (await call("remoteControl", { operation: "status" })).pending.length === 1,
+        "production Relay pairing pending",
+      );
+    } else {
+      browser = await chromium.launch({
+        executablePath:
+          process.env.AREAL_CHROME_EXECUTABLE ||
+          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        headless: true,
+      });
+      remote = await browser.newPage();
+      await remote.addInitScript(() => {
+        const key = "areal-gui:application-preferences";
+        const prefs = JSON.parse(localStorage.getItem(key) || "{}");
+        localStorage.setItem(key, JSON.stringify({ ...prefs, nextPromptSuggestions: false }));
+      });
+      await remote.goto(invite);
+      await remote.getByRole("button", { name: "连接电脑", exact: true }).click();
+      await remote
+        .getByRole("status")
+        .getByText(/等待桌面确认/)
+        .waitFor();
+    }
     const pending = (await call("remoteControl", { operation: "status" })).pending;
     assert.equal(pending.length, 1);
     const approval = page.getByRole("group", { name: `确认设备 ${pending[0].id}`, exact: true });
     await approval.getByLabel("workspace", { exact: true }).check();
     await approval.getByRole("radio", { name: "可操作", exact: true }).check();
     await dump(page, "pair-pending-gui", approval);
-    await dump(
-      remote,
-      "pair-pending-pwa",
-      remote.getByRole("status").filter({ hasText: /等待桌面确认/ }),
-    );
+    if (!relayProtocol)
+      await dump(
+        remote,
+        "pair-pending-pwa",
+        remote.getByRole("status").filter({ hasText: /等待桌面确认/ }),
+      );
     await approval.getByRole("button", { name: "允许连接", exact: true }).click();
-    await remote
-      .getByRole("status")
-      .getByText(/已连接/)
-      .waitFor();
+    if (relayProtocol) await protocolReady;
+    else {
+      await remote
+        .getByRole("status")
+        .getByText(/已连接/)
+        .waitFor();
+    }
     await page.getByRole("textbox", { name: "配对链接", exact: true }).waitFor({ state: "hidden" });
     await dump(page, "pair-approved-gui");
-    await dump(remote, "pair-approved-pwa");
+    if (!relayProtocol) await dump(remote, "pair-approved-pwa");
     await button("返回应用").click();
     ({ threadId } = await call("create", {
       projectId,
@@ -586,6 +718,11 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
     assert.equal(interaction.turnId, turnId);
     report.original = { projectId, threadId, turnId, interactionId: interaction.requestId };
     adapter = await json(descriptorPath);
+    if (relayProtocol) {
+      assert.equal(adapter.pid, fixtureHost.pid);
+      assert.equal(adapter.hostId, report.prestartedHost.identity.hostId);
+      assert.equal(adapter.generation, report.prestartedHost.identity.generation);
+    }
     report.hostPid = adapter.pid;
     report.hostId = adapter.hostId;
     report.hostGeneration = adapter.generation;
@@ -605,29 +742,75 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
     });
     await call("library", { operation: "settings", key: "preventSleep", value: true });
     const headlessPower = await powerActive("source protection restored");
-    const projectButton = remote.getByRole("button", { name: "workspace", exact: true });
-    if ((await projectButton.getAttribute("aria-expanded")) === "true") await projectButton.click();
-    await projectButton.click();
-    await remote.locator(`.remote-session-row[data-thread-id="${threadId}"]`).click();
-    await remote.getByRole("button", { name: "返回项目列表", exact: true }).click();
-    await remote.getByRole("button", { name: "审阅待处理事项", exact: true }).click();
-    await until(async () => {
-      if (
-        (await remote.locator("#attention-more").isVisible()) &&
-        (await remote.locator("#attention-more").isEnabled())
-      )
-        await remote.locator("#attention-more").click();
-      return !(await remote.locator("#attention-allow").isDisabled());
-    }, "full authoritative review");
-    assert.equal(
-      await remote.locator("#attention-target").textContent(),
-      `Thread ${threadId} · Turn ${turnId} · 交互 ${interaction.requestId}`,
-    );
-    assert.match(await remote.locator("#attention-body").textContent(), /approved.txt/);
+    const readProtocolReview = async () => {
+      let cursor,
+        body = "",
+        review;
+      do {
+        review = await protocol.request({
+          method: "attention.read",
+          context: { projectId },
+          params: {
+            threadId,
+            turnId,
+            interactionId: interaction.requestId,
+            ...(cursor ? { cursor } : {}),
+          },
+        });
+        assert.equal(review.threadId, threadId);
+        assert.equal(review.turnId, turnId);
+        assert.equal(review.interactionId, interaction.requestId);
+        assert.equal(review.review.offset, Buffer.byteLength(body));
+        body += review.review.chunk;
+        cursor = review.nextCursor;
+      } while (cursor);
+      assert.equal(review.complete, true);
+      assert.equal(Buffer.byteLength(body), review.review.totalBytes);
+      assert.ok(review.reviewToken);
+      assert.match(body, /approved.txt/);
+      report.protocolReview = {
+        threadId,
+        turnId,
+        interactionId: interaction.requestId,
+        complete: true,
+        bodySha256: digest(Buffer.from(body)),
+      };
+      return review;
+    };
+    if (relayProtocol) {
+      const opened = await protocol.request({
+        method: "session.open",
+        context: { projectId },
+        params: { threadId },
+      });
+      protocolSnapshot = opened.snapshot;
+      await readProtocolReview();
+    } else {
+      const projectButton = remote.getByRole("button", { name: "workspace", exact: true });
+      if ((await projectButton.getAttribute("aria-expanded")) === "true")
+        await projectButton.click();
+      await projectButton.click();
+      await remote.locator(`.remote-session-row[data-thread-id="${threadId}"]`).click();
+      await remote.getByRole("button", { name: "返回项目列表", exact: true }).click();
+      await remote.getByRole("button", { name: "审阅待处理事项", exact: true }).click();
+      await until(async () => {
+        if (
+          (await remote.locator("#attention-more").isVisible()) &&
+          (await remote.locator("#attention-more").isEnabled())
+        )
+          await remote.locator("#attention-more").click();
+        return !(await remote.locator("#attention-allow").isDisabled());
+      }, "full authoritative review");
+      assert.equal(
+        await remote.locator("#attention-target").textContent(),
+        `Thread ${threadId} · Turn ${turnId} · 交互 ${interaction.requestId}`,
+      );
+      assert.match(await remote.locator("#attention-body").textContent(), /approved.txt/);
+    }
     assert.equal(await exists(join(workspace, "approved.txt")), false);
     assert.deepEqual(stages, ["approval"]);
     await dump(page, "before-quit-original-pending-gui");
-    await dump(remote, "before-quit-reviewed-approval-pwa");
+    if (!relayProtocol) await dump(remote, "before-quit-reviewed-approval-pwa");
     await quit();
     await sameOwner();
     await noDesktopProcess("GUI exited");
@@ -636,22 +819,82 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
     checks.push(
       "normal GUI exit preserves production Host identity and generation and original Core generation with approval pending",
     );
-    await remote.locator("#attention-refresh").click();
-    await until(
-      async () => !(await remote.locator("#attention-allow").isDisabled()),
-      "review after GUI exit",
-    );
-    await remote.locator("#attention-allow").click();
-    await remote.getByRole("button", { name: "关闭审阅", exact: true }).click();
-    await remote.locator(`.remote-session-row[data-thread-id="${threadId}"]`).click();
-    await until(
-      async () =>
-        (await remote
-          .locator(`#remote-session-ui [data-turn-id="${turnId}"]`)
-          .getAttribute("data-turn-status")) === "completed",
-      "original remote turn completed",
-    );
-    assert.equal(await remote.locator("#remote-session-ui [data-turn-id]").count(), 1);
+    if (relayProtocol) {
+      const review = await readProtocolReview();
+      const commandId = randomUUID();
+      report.protocolCommand = {
+        commandId,
+        method: "interaction.respond",
+        threadId,
+        turnId,
+        interactionId: interaction.requestId,
+        submissions: 0,
+      };
+      await writeFile(
+        join(scratch, "relay-original-command.json"),
+        JSON.stringify(report.protocolCommand, null, 2),
+      );
+      report.protocolCommand.submissions++;
+      try {
+        report.protocolCommand.result = await protocol.request({
+          method: "interaction.respond",
+          commandId,
+          context: {
+            projectId,
+            gatewayGeneration: report.protocolReady.gatewayGeneration,
+            grantRevision: report.protocolReady.grantRevision,
+            serviceGeneration: report.coreGeneration,
+          },
+          params: {
+            threadId,
+            turnId,
+            interactionId: interaction.requestId,
+            argumentsDigest: review.argumentsDigest,
+            reviewToken: review.reviewToken,
+            decision: "allowOnce",
+          },
+        });
+      } catch (error) {
+        report.protocolCommand.responseError = { code: error.code, message: error.message };
+      }
+      await until(async () => {
+        const original = await protocol.request({
+          method: "command.read",
+          context: { projectId },
+          params: { commandId },
+        });
+        report.protocolCommand.receipt = original;
+        if (original.admissionState === "rejected")
+          throw new Error("Original Relay approval rejected");
+        return original.admissionState === "accepted";
+      }, "original Relay approval receipt without replay");
+      assert.equal(report.protocolCommand.submissions, 1);
+      await until(
+        () => protocolSnapshot?.turns.find((turn) => turn.id === turnId)?.status === "completed",
+        "original Relay Turn completed",
+      );
+      assert.deepEqual(
+        protocolSnapshot.turns.map((turn) => turn.id),
+        [turnId],
+      );
+    } else {
+      await remote.locator("#attention-refresh").click();
+      await until(
+        async () => !(await remote.locator("#attention-allow").isDisabled()),
+        "review after GUI exit",
+      );
+      await remote.locator("#attention-allow").click();
+      await remote.getByRole("button", { name: "关闭审阅", exact: true }).click();
+      await remote.locator(`.remote-session-row[data-thread-id="${threadId}"]`).click();
+      await until(
+        async () =>
+          (await remote
+            .locator(`#remote-session-ui [data-turn-id="${turnId}"]`)
+            .getAttribute("data-turn-status")) === "completed",
+        "original remote turn completed",
+      );
+      assert.equal(await remote.locator("#remote-session-ui [data-turn-id]").count(), 1);
+    }
     assert.equal(await readFile(join(workspace, "approved.txt"), "utf8"), effect);
     assert.deepEqual(stages, ["approval", "completion"]);
     assert.deepEqual(modelErrors, []);
@@ -665,8 +908,12 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
       state: await powerRead(),
       exitedPid: headlessPower.helper.pid,
     });
-    checks.push("PWA allowOnce after GUI exit completes the original turn and filesystem effect");
-    await dump(remote, "after-quit-original-completed-pwa");
+    checks.push(
+      relayProtocol
+        ? "Relay protocol allowOnce after GUI exit completes the original turn and filesystem effect"
+        : "PWA allowOnce after GUI exit completes the original turn and filesystem effect",
+    );
+    if (!relayProtocol) await dump(remote, "after-quit-original-completed-pwa");
     await launch();
     await until(async () => project(await state())?.state?.connected, "reopened GUI connected");
     await call("open", { projectId, threadId });
@@ -763,10 +1010,14 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
       async () => !(await exists(descriptorPath)) && !alive(adapter.pid),
       "Host stopped and descriptor removed",
     );
-    await remote
-      .getByRole("status")
-      .getByText(/已断开|不可用/)
-      .waitFor();
+    if (relayProtocol)
+      await until(() => protocol.closed, "production Relay client disconnected after Host stop");
+    else {
+      await remote
+        .getByRole("status")
+        .getByText(/已断开|不可用/)
+        .waitFor();
+    }
     await quit();
     await launch(false);
     report.stoppedSnapshot = await until(async () => {
@@ -788,7 +1039,7 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
       "public stopService persists stopped intent, disconnects Remote and prevents automatic restart",
     );
     await dump(page, "final-stopped-gui");
-    await dump(remote, "final-disconnected-pwa");
+    if (!relayProtocol) await dump(remote, "final-disconnected-pwa");
     report.status = "passed";
   } catch (error) {
     report.error = error.message.replace(/#(?:host|invite)=[^\s"']+/g, "#[redacted]");
@@ -803,6 +1054,7 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
         report.status = "failed";
         process.exitCode = 1;
       });
+    protocolSocket?.terminate();
     await browser?.close().catch((error) => {
       report.browserCleanupError = error.message;
       report.status = "failed";
@@ -909,7 +1161,29 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
       report.cleanupRequired =
         "Inspect isolated Host original operations; UNKNOWN requests were retained, not replayed.";
     if (!app) await fixture.close();
-    if (hostStopped && !app) {
+    if (relayProtocol) {
+      try {
+        const original = (
+          await json(join(env.AREAL_CORE_HOME, "host-remote-gateway-operation.json"))
+        ).pending;
+        if (original) {
+          preserveRegistration = true;
+          report.unsettledRemote = original;
+          report.cleanupRequired =
+            "Original Remote registration remains unresolved; retained synthetic credentials and Relay store for original-ID inspection";
+          report.status = "failed";
+          process.exitCode = 1;
+        }
+      } catch (error) {
+        if (error.code !== "ENOENT") {
+          preserveRegistration = true;
+          report.remoteInspectionError = error.message;
+          report.status = "failed";
+          process.exitCode = 1;
+        }
+      }
+    }
+    if (hostStopped && !app && !preserveRegistration) {
       try {
         if (isMac)
           for (const account of [appName, `${appName} Key`])
@@ -962,6 +1236,29 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
         report.status = "failed";
         process.exitCode = 1;
       }
+    }
+    if (conformance) {
+      if (preserveRegistration && hostStopped) {
+        await conformance.stopRelay();
+        const retained = join(scratch, "retained-registration");
+        await mkdir(retained, { mode: 0o700 });
+        await cp(conformance.stateDirectory, join(retained, "relay"), { recursive: true });
+        await cp(conformance.caDirectory, join(retained, "ca"), { recursive: true });
+        report.retainedRegistration = {
+          path: retained,
+          includes: ["original Relay store", "synthetic CA"],
+          credentials: "retained in original isolated Keychain service; no read/delete",
+        };
+      }
+      if (hostStopped)
+        await conformance.close().catch((error) => {
+          report.relayCleanupError = error.message;
+          report.status = "failed";
+          process.exitCode = 1;
+        });
+      else
+        report.relayCleanupRequired =
+          "Preserved Relay for the original unsettled Host; inspect original operations before cleanup";
     }
     assert.equal(
       digest(await readFile(env.AREAL_CORE_BIN)),

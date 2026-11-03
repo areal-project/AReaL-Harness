@@ -474,9 +474,11 @@ TUI 与共享服务 PTY 检查共用终端画面解析器，处理增量重绘�
 
 ## Remote GUI 退出连续性
 
-构建 Core 与 GUI 后，运行 `pnpm -C clients/gui test:remote-gui-quit`。可通过 `AREAL_CORE_BIN` 指定已构建的 Core；`AREAL_GUI_EXECUTABLE` 选择包内 Electron/Core，`AREAL_CHROME_EXECUTABLE` 选择本机 Chrome。此独立原生用例创建隔离目录和本地确定性模型，启动生产 GUI 及其独立后台适配器，经桌面界面配对 PWA Operator，在原始文件审批待处理时正常退出 GUI，再由 PWA 允许一次。它核对同一适配器 PID/身份、独占服务注册记录的 Core generation、原 Thread/Turn/交互、一次文件工具结果、持久 Remote 受理记录以及两个正常模型阶段；重新打开 GUI 不得增加模型请求。随后通过公开 `stopService` 和正常确认对话框验证停止意图、描述文件删除、PID 退出、Remote 断连及再次打开 GUI 不自动启动。
+构建 Core 与 GUI 后，运行 `pnpm -C clients/gui test:remote-gui-quit`。可通过 `AREAL_CORE_BIN` 指定已构建的 Core；`AREAL_GUI_EXECUTABLE` 选择包内 Electron/Core，`AREAL_CHROME_EXECUTABLE` 选择本机 Chrome。此独立原生用例创建隔离目录和本地确定性模型，启动生产 GUI 和共享 Rust Host，经桌面界面配对 PWA Operator，在原始文件审批待处理时正常退出 GUI，再由 PWA 允许一次。它核对同一 Host PID/身份、独占服务注册记录的 Core generation、原 Thread/Turn/交互、一次文件工具结果、持久 Remote 受理记录以及两个正常模型阶段；重新打开 GUI 不得增加模型请求。随后通过公开 `stopService` 和正常确认对话框验证停止意图、描述文件删除、PID 退出、Remote 断连及再次打开 GUI 不自动启动。
 
-`node clients/gui/scripts/remote-gui-quit-e2e.mjs --self-test` 只检查确定性模型的两个阶段和拒绝条件，不加载 Electron、不启动网络，也不构成原生验收。原生运行需要操作系统安全存储可用；生产后台 `enableDirect` 失败返回退出码 2 和 `blocked`，不得替换 safeStorage。报告保存在独占 scratch 的 `report.json`；失败现场保留，若适配器仍存活，先核查并结算该隔离服务后显式停止。报告不包含服务凭据，不宣称精确 Core RPC 派发次数；不覆盖睡眠、手机真机、Relay、公网或发行安装验收。
+以 `AREAL_RC13_MODE=relay-protocol AREAL_CORE_BIN=/absolute/verified/areal AREAL_TEST_HOST_KEYCHAIN=1 node clients/gui/scripts/remote-gui-quit-e2e.mjs` 运行独立的 Relay 协议客户端模式。该模式先由公开 CLI 在同一隔离 registry 预启动带测试 CA 的 Host，再让真实源码 Electron 附着，完成项目、配对确认、退出和重开。远端使用生产 `RemoteConnection`，经本地生产 Relay 和严格 TLS 完成原交互的分页审阅与一次 `allowOnce`。同一原命令失去回复后只读取原 `commandId`；不再次响应审批。原 Relay 登记未结算时，保留本案合成凭据和 Relay store 供原 ID 核查。结果继续核对原 Host/Core 代际、原 Turn、一次文件副作用、持久受理记录及显式停止意图。协议客户端的原会话快照与 JSON 证据替代此模式的 PWA 画面；默认 Direct 模式的全部浏览器断言仍独立执行。该模式不代表浏览器 TLS 或手机真机验收，不改系统 CA 信任。运行须独占已验证产物和隔离 profile，由 GUI 验收驱动执行；报告和精确进程、测试凭据清理保存在同一 `report.json`。
+
+`node clients/gui/scripts/remote-gui-quit-e2e.mjs --self-test` 只检查确定性模型的两个阶段和拒绝条件，不加载 Electron、不启动网络，也不构成原生验收。原生运行需要操作系统安全存储可用；生产后台 `enableDirect` 失败返回退出码 2 和 `blocked`，不得替换 safeStorage。报告保存在独占 scratch 的 `report.json`；失败现场保留，若适配器仍存活，先核查并结算该隔离服务后显式停止。报告不包含服务凭据，不宣称精确 Core RPC 派发次数；默认 Direct 模式不覆盖睡眠、手机真机、Relay、公网或发行安装验收。
 
 ## CI 门禁与冷启动
 
