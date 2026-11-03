@@ -438,6 +438,8 @@ Relay 的原实际重启、替换与不可用预算场景可在同一固定产�
 
 `AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal node clients/gui/scripts/remote-review-contract.mjs` 保留原 JS 审阅契约，并在同入口追加真实 Rust Host/Core 的否定路径。新增来源核对跨连接 artifact 引用、继续生成后旧游标失效、原生坏图片字节、公开编辑移除旧 Turn、撤权及只观察 grant；每次 Remote 读取前后核对完整项目 journal 和 Thread 身份集合。该部分使用确定性本地模型、生产加密连接和本地 Relay，证据为 `native-remote-host-*/native-review-negatives.json`。外层 CA 包装不另计业务用例；原 fetch/HTTP 故障及精确帧边界断言仍属 JS reference，不能把新增子集说成全部原断言均已 Rust 化。
 
+同一产物与合成 Keychain 环境下运行 `node clients/gui/scripts/remote-interaction-contract.mjs`，先执行原 17 组 JS Gateway reference（持久化使用真实 Host journal CAS），再执行真实 Rust Gateway/Core 的七组交互路径。后者覆盖原审批审阅和分页、目标与摘要拒绝、UTF-8 问答，以及超过 4 MiB 的权威交互历史仍可拒绝原审批。`AREAL_REMOTE_OWNER=reference` 或 `rust` 可分别选择这两层；原异步丢回复、撤权和身份屏障另由 `cargo test --locked -p areal-host --lib interaction_tests` 使用真实 owner 与认证模拟 Core 验证。真实路径证据 `native-interaction-contract.json` 保留 `ownerRemaining` 和整体 `complete`，仅将七组的 `subsetComplete` 作为该路径通过条件。旧同连接第 17 个并发读取立即返回限流错误的行为尚未迁入；分层入口通过不能据此声明原全部交互语义已等价。
+
 `pnpm --dir clients/gui run test:shared-host-consumers` 使用隔离真实 Host/Core 验证 GUI 命名环境凭据、等价 CLI 别名及外来项目的原配置和会话创建。`node clients/gui/scripts/shared-host-gui-journal.mjs` 经普通提交 owner 验证双客户端 CAS、大记录和丢回复后的原回执恢复。`node clients/gui/scripts/gui-host-lifecycle-smoke.mjs` 验证项目登记、客户端断开、显式停止/重开，以及独立客户端活动轮次的全局观察和结算；活动查询不把轮次重复计入任务数。三个脚本使用 `AREAL_TEST_BIN_DIR` 指定的固定完整产物；默认使用本仓 `.local/shared-host-bin`。这些场景不访问真实 Keychain，不启动 Renderer，不替代旧 Desktop writer fence、GUI/TUI 审批交接或安装包验收。
 
 `node clients/gui/scripts/gui-terminal-connection-smoke.mjs` 使用同一固定产物，在独立 Node 客户端中运行生产 Main 终端连接适配器。场景覆盖显式 Profile 权限、真实 PTY 输入/输出/resize、强杀客户端后的定向 Runtime 清理、原请求恢复及普通 thread 资源继续。它不启动 Electron，不验证 Desktop 提交 journal 桥接或退出界面。

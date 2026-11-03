@@ -1,18 +1,20 @@
-// RC07 生产观察/交互入口的确定性 fixture；不替代原生验收。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { makeTempDir } from "./support/temp.mjs";
 import { join } from "node:path";
+import { taskContractHost, taskContractProject as PROJECT } from "./remote-task-contract-host.mjs";
 const require = createRequire(import.meta.url);
 const { InteractionReviews } = require("../app/src/core/remote-interactions.cjs");
 const { SessionObservers } = require("../app/src/core/remote-session-observer.cjs");
 const { CoreBackend } = require("../app/src/core/backend.cjs");
 const { sessionCommand } = require("../app/src/core/remote-session-commands.cjs");
 const { RemotePush } = require("../app/src/core/remote-push.cjs");
-const home = await makeTempDir("rc07-contract-");
+const rustOwner = process.env.AREAL_REMOTE_OWNER === "rust";
+const home = rustOwner ? undefined : await makeTempDir("rc07-contract-");
 const checks = [];
+const owner = rustOwner ? undefined : await taskContractHost();
 const defer = () => {
   let resolve;
   const promise = new Promise((r) => (resolve = r));
@@ -22,8 +24,9 @@ async function fixture(name) {
   const root = join(home, name);
   await mkdir(root);
   const backend = new CoreBackend({ home: root, binary: "/unused", onChange() {} });
-  backend.saved = [{ id: "p", root }];
-  const project = await backend.loadProjectJournal("p");
+  backend.saved = [{ id: PROJECT, root }];
+  const storage = await owner.register(backend, root);
+  const project = await backend.loadProjectJournal(PROJECT);
   project.service = { generation: "g", serviceId: "s" };
   project.endpoint = "ws://fixture";
   project.token = "fixture";
@@ -72,7 +75,7 @@ async function fixture(name) {
         devicePeerId,
         status: "active",
         revision: 1,
-        projectIds: ["p"],
+        projectIds: [PROJECT],
         capabilities: ["observe", "answer"],
       })),
     },
@@ -116,12 +119,18 @@ async function fixture(name) {
     turnId: item.turnId,
     interactionId: item.requestId,
   });
-  const read = (params = target(), conn = connection) => reviews.read(conn, "p", params, (x) => x);
+  const read = (params = target(), conn = connection) =>
+    reviews.read(conn, PROJECT, params, (x) => x);
   const request = (params, commandId = randomUUID()) => ({
     id: randomUUID(),
     method: "interaction.respond",
     commandId,
-    context: { projectId: "p", gatewayGeneration: "gw", grantRevision: 1, serviceGeneration: "g" },
+    context: {
+      projectId: PROJECT,
+      gatewayGeneration: "gw",
+      grantRevision: 1,
+      serviceGeneration: "g",
+    },
     params,
   });
   const run = (req, conn = connection) =>
@@ -131,7 +140,7 @@ async function fixture(name) {
       {
         id: randomUUID(),
         method: "command.read",
-        context: { projectId: "p" },
+        context: { projectId: PROJECT },
         params: { commandId },
       },
       conn,
@@ -146,6 +155,7 @@ async function fixture(name) {
     };
   };
   return {
+    ...storage,
     backend,
     project,
     remote,
@@ -172,17 +182,23 @@ async function fixture(name) {
   };
 }
 async function check(name, test) {
-  const f = await fixture(name);
+  if (rustOwner) return;
   try {
-    await test(f);
-    checks.push(name);
-  } finally {
-    f.observers.close();
-    f.remote.push.close();
+    const f = await fixture(name);
+    try {
+      await test(f);
+      checks.push(name);
+    } finally {
+      f.observers.close();
+      f.remote.push.close();
+    }
+  } catch (error) {
+    await owner.close();
+    throw error;
   }
 }
 await check("bounded-authoritative-detail-preserves-session", async (f) => {
-  await f.observers.open(f.connection, "p", "t", () => {});
+  await f.observers.open(f.connection, PROJECT, "t", () => {});
   const viewer = f.observers.viewers.get("c");
   const page = await f.read();
   assert.equal(page.threadId, "t");
@@ -215,7 +231,7 @@ await check("reviewed-approval-exact-native-identity-and-durable-dedup", async (
   );
   assert.equal((await f.commandRead(req.commandId)).admissionState, "accepted");
   assert.equal(f.calls.length, 1);
-  const saved = JSON.parse(await readFile(join(f.backend.home, "p-outcomes.json")));
+  const saved = (await f.journal.read()).snapshot.outcomes;
   assert.equal(saved[response.operationId].remote.target.interactionId, "interaction");
 });
 await check("partial-pages-forged-review-and-deny", async (f) => {
@@ -363,16 +379,13 @@ await check("lost-response-no-receipt-no-replay-independent-observation", async 
   await assert.rejects(f.commandRead(req.commandId), { code: "FORBIDDEN" });
 });
 await check("outcome-loss-and-host-restart-stays-unknown", async (f) => {
-  const save = f.backend.save.bind(f.backend);
-  f.backend.save = (name, value) =>
-    name.endsWith("-outcomes.json")
-      ? Promise.reject(new Error("crash before outcome"))
-      : save(name, value);
+  f.failJournal("outcome");
   const req = f.request(await f.approval("deny"));
   const result = await f.run(req);
   assert.equal(result.admissionState, "unknown");
   const backend = new CoreBackend({ home: f.backend.home, binary: "/unused" });
   backend.saved = f.backend.saved;
+  backend.host = f.backend.host;
   f.remote.backend = backend;
   const recovered = await f.commandRead(req.commandId);
   assert.equal(recovered.operationId, result.operationId);
@@ -393,17 +406,23 @@ await check("two-devices-one-core-answer-original-associations", async (f) => {
 });
 await check("final-revoke-fences-before-and-after-native-dispatch", async (f) => {
   const req = f.request(await f.approval("allowOnce"));
-  const save = f.backend.save.bind(f.backend);
-  f.backend.save = async (name, value) => {
-    await save(name, value);
-    if (name.endsWith("-pending.json") && value.length)
+  const change = f.journal.change.bind(f.journal);
+  f.journal.change = async (mutate) => {
+    let pending;
+    const receipt = await change(async (snapshot) => {
+      const next = await mutate(snapshot);
+      pending = next.pending.length > 0;
+      return next;
+    });
+    if (pending)
       f.remote.writes = Promise.resolve().then(
         () => (f.remote.config.deviceGrants[0].status = "revoked"),
       );
+    return receipt;
   };
   await assert.rejects(f.run(req), { code: "GRANT_CHANGED" });
   assert.equal(f.calls.length, 0);
-  f.backend.save = save;
+  f.journal.change = change;
   f.remote.config.deviceGrants[0].status = "active";
   const held = defer(),
     entered = defer(),
@@ -496,7 +515,7 @@ await check("detail-publication-fences-revocation-and-service-replacement", asyn
     f.remote.config.deviceGrants[0].status = "revoked";
   };
   await assert.rejects(
-    f.reviews.read(f.connection, "p", f.target(), () => published++),
+    f.reviews.read(f.connection, PROJECT, f.target(), () => published++),
     { code: "GRANT_CHANGED" },
   );
   assert.equal(published, 0);
@@ -505,7 +524,7 @@ await check("detail-publication-fences-revocation-and-service-replacement", asyn
     f.project.service.generation = "new";
   };
   await assert.rejects(
-    f.reviews.read(f.connection, "p", f.target(), () => published++),
+    f.reviews.read(f.connection, PROJECT, f.target(), () => published++),
     { code: "RESYNC_REQUIRED" },
   );
   assert.equal(published, 0);
@@ -524,7 +543,7 @@ await check("command-observation-final-identity-and-capability-fence", async (f)
   assert.equal(f.calls.length, 1);
 });
 await check("bounded-observer-queue-and-active-viewer-survive-detail-read", async (f) => {
-  await f.observers.open(f.connection, "p", "t", () => {});
+  await f.observers.open(f.connection, PROJECT, "t", () => {});
   const viewer = f.observers.viewers.get("c"),
     held = defer(),
     entered = defer();
@@ -583,7 +602,7 @@ await check("actual-noise-direct-reviewed-route-and-schema", async (f) => {
     secure.send({
       id: "review",
       method: "attention.read",
-      context: { projectId: "p" },
+      context: { projectId: PROJECT },
       params: f.target(),
     });
     const page = (await messages.next()).value.result;
@@ -612,7 +631,7 @@ await check("actual-noise-direct-reviewed-route-and-schema", async (f) => {
     secure.send({
       id: "injected",
       method: "attention.read",
-      context: { projectId: "p" },
+      context: { projectId: PROJECT },
       params: { ...f.target(), endpoint: "ws://injected" },
     });
     assert.equal((await messages.next()).value.error.code, "INVALID_PARAMS");
@@ -624,6 +643,31 @@ await check("actual-noise-direct-reviewed-route-and-schema", async (f) => {
     SessionObservers.prototype.connect = connect;
   }
 });
-console.log(
-  JSON.stringify({ kind: "fixture-contract", checks, passed: checks.length, home }, null, 2),
-);
+if (!rustOwner) {
+  await owner.close();
+  console.log(
+    JSON.stringify(
+      {
+        kind: "fixture-contract",
+        storageOwner: "Rust Host",
+        gatewayOwner: "JS reference",
+        coreRPC: "deterministic fixture",
+        checks,
+        passed: checks.length,
+        home,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+if (process.env.AREAL_REMOTE_OWNER !== "reference") {
+  const { nativeInteractionContract } = await import("./remote-interaction-native-fixture.mjs");
+  const { test } = await import("node:test");
+  await test(
+    "original RC07 real-Core subset through Rust Gateway",
+    { timeout: 240000 },
+    nativeInteractionContract,
+  );
+}

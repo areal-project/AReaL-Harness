@@ -206,6 +206,10 @@ await build({
     extraResources: [
       { from: bundle, to: "areal-core" },
       { from: relayBundle.bundleDir, to: "areal-relay" },
+      {
+        from: join(relayBundle.bundleDir, "node_modules"),
+        to: "areal-relay/node_modules",
+      },
       { from: join(gui, "renderer/dist"), to: "areal-gui" },
       {
         from: join(gui, "native/computer-helper/build/AReaL Computer Helper.app"),

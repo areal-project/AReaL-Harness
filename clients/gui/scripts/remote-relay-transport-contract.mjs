@@ -815,66 +815,128 @@ if (!process.env.RC12_TLS_HOME) {
       assert.equal((await fetch(relay.origin + path)).status, 404);
   });
   test("Direct and Relay share one readonly Core observer and Relay recovery obtains a fresh native baseline", async (t) => {
-    const f = await enrolledHost(t),
-      native = await nativeProject(t, f);
+    const f = await enrolledHost(t, {}, {}, nativeRelayHostFixture);
+    f.evidence.relay = f.relay.resources;
+    const native = await nativeCoreProject(t, f);
+    const threadRequestId = randomUUID();
+    const created = await native.core.call("areal/thread/start", {
+      requestId: threadRequestId,
+      cwd: native.workspace,
+      options: { automaticSessionName: false, appendInstructions: "Baseline 1" },
+    });
+    const threadId = created.thread.id;
+    const readThread = async () =>
+      (await native.core.call("thread/read", { threadId, includeTurns: true })).thread;
+    const readThreadIds = async () =>
+      (await native.core.call("thread/list", { limit: 100 })).data
+        .map((thread) => thread.id)
+        .sort();
+    const initialThread = await readThread();
+    const threadIds = await readThreadIds();
+    const journal = await f.client.journal(native.projectId).read();
+    assert.equal(initialThread.desktop.configuration.revision, 1);
+    assert.equal(initialThread.desktop.configuration.options.appendInstructions, "Baseline 1");
     await f.remote.control({ operation: "enableDirect" });
-    const relay = await device(t, f.remote, { pair: true }),
+    const relay = await device(t, f.remote, { pair: true, projects: [native.alias] }),
       direct = await device(t, f.remote, { identity: relay.identity, transport: "direct" });
-    async function observe(device) {
-      device.secure.send({
-        id: "observe",
+    async function reply(client, id) {
+      for (;;) {
+        const response = (await next(client.messages)).value;
+        if (response?.event === "session.updated") continue;
+        assert.equal(response?.id, id);
+        return response;
+      }
+    }
+    async function observe(client) {
+      const id = randomUUID();
+      client.secure.send({
+        id,
         method: "session.open",
-        context: { projectId: "project" },
-        params: { threadId: "thread" },
+        context: { projectId: native.alias },
+        params: { threadId },
       });
-      const response = (await next(device.messages)).value;
+      const response = await reply(client, id);
       assert.ok(!response.error, JSON.stringify(response));
       return response.result;
     }
     const first = await observe(relay),
       second = await observe(direct);
-    assert.equal(first.snapshot.title, "Baseline 1");
-    assert.equal(second.snapshot.title, "Baseline 1");
-    assert.equal(
-      native.calls.filter((method) => method === "initialize").length,
-      2,
-      "Desktop plus one shared readonly observer",
-    );
+    assert.equal(first.snapshot.threadId, threadId);
+    assert.equal(first.snapshot.configRevision, 1);
+    assert.equal(first.snapshot.configuration.options.appendInstructions, "Baseline 1");
+    assert.deepEqual(second.snapshot, first.snapshot);
+    assert.equal(first.sequence, 0);
+    assert.equal(second.sequence, 0);
+    assert.deepEqual(await f.client.journal(native.projectId).read(), journal);
+    assert.deepEqual(await readThread(), initialThread);
+    assert.deepEqual(await readThreadIds(), threadIds);
     await f.relay.stop();
     await waitFor(() => relay.socket.readyState === 3);
-    const observations = native.calls.filter((method) => method === "areal/thread/observe").length;
-    native.setVersion(2);
+    assert.equal(direct.socket.readyState, 1);
+    const configRequestId = randomUUID();
+    const configured = await native.core.call("areal/thread/configure", {
+      requestId: configRequestId,
+      threadId,
+      expectedRevision: 1,
+      options: { automaticSessionName: false, appendInstructions: "Baseline 2" },
+    });
+    assert.equal(configured.revision, 2);
+    const updatedThread = await readThread();
+    assert.equal(updatedThread.desktop.configuration.revision, 2);
+    assert.equal(updatedThread.desktop.configuration.options.appendInstructions, "Baseline 2");
+    assert.deepEqual(updatedThread.turns, initialThread.turns);
+    assert.deepEqual(await readThreadIds(), threadIds);
+    assert.deepEqual(await f.client.journal(native.projectId).read(), journal);
     await f.relay.start();
-    await waitFor(() => f.remote.state().connected, 7000);
-    assert.equal(
-      native.calls.filter((method) => method === "areal/thread/observe").length,
-      observations,
-      "transport restart does not replay application requests",
-    );
+    await waitFor(async () => (await f.remote.refresh()).connected, 7000);
+    assert.deepEqual(await f.client.journal(native.projectId).read(), journal);
+    assert.deepEqual(await readThread(), updatedThread);
+    assert.deepEqual(await readThreadIds(), threadIds);
     const restored = await device(t, f.remote, { identity: relay.identity });
     const third = await observe(restored);
-    assert.equal(third.snapshot.title, "Baseline 2");
+    assert.equal(third.snapshot.threadId, threadId);
+    assert.equal(third.snapshot.configRevision, 2);
+    assert.equal(third.snapshot.configuration.options.appendInstructions, "Baseline 2");
     assert.equal(third.sequence, 0);
     assert.notEqual(third.subscriptionId, first.subscriptionId);
     assert.notEqual(third.connectionId, first.connectionId);
     assert.equal((await direct.read("still-online")).result.projects[0].connectionState, "online");
-    const count = native.calls.length;
+    direct.secure.send({
+      id: "still-observing",
+      method: "session.history",
+      context: { projectId: native.alias },
+      params: { threadId, limit: 100 },
+    });
+    const history = await reply(direct, "still-observing");
+    assert.equal(history.result?.subscriptionId, second.subscriptionId);
+    assert.equal(history.result.connectionId, second.connectionId);
     restored.secure.send({ id: "legacy-write", method: "send", params: {} });
-    assert.equal((await next(restored.messages)).value.error.code, "INVALID_PARAMS");
-    assert.equal(native.calls.length, count);
-    assert.ok(
-      native.calls.every((method) =>
-        [
-          "initialize",
-          "initialized",
-          "areal/capabilities",
-          "areal/thread/observe",
-          "areal/subscription/remove",
-          "thread/read",
-        ].includes(method),
-      ),
-    );
+    const rejected = await reply(restored, "legacy-write");
+    assert.equal(rejected.error?.code, "INVALID_PARAMS");
+    assert.deepEqual(await f.client.journal(native.projectId).read(), journal);
+    assert.deepEqual(await readThread(), updatedThread);
+    assert.deepEqual(await readThreadIds(), threadIds);
+    f.evidence.observerRecovery = {
+      threadRequestId,
+      configRequestId,
+      threadId,
+      projectId: native.projectId,
+      alias: native.alias,
+      baselineRevisions: [
+        first.snapshot.configRevision,
+        second.snapshot.configRevision,
+        third.snapshot.configRevision,
+      ],
+      relay: { previous: first, restored: third },
+      direct: { opened: second, history: history.result },
+      journalUnchanged: true,
+      nativeThreadUnchangedAfterConfiguration: true,
+      threadAndTurnIdentitiesUnchanged: true,
+      observation:
+        "original Host journal, native thread, actual connections and subscriptions; physical Core RPC counts unobserved",
+    };
   });
+
   test("unfinished Direct and Relay handshakes consume the same Host admission budget", async (t) => {
     const { createRemoteWire } = await import("../packages/remote/src/wire.mjs");
     const f = await enrolledHost(t, {}, {}, nativeRelayHostFixture);
