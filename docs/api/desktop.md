@@ -330,6 +330,8 @@ features.goals=true 表示服务支持 Goal，无需单独配置开关；Goal �
 
 Main 把全 Host 停止意图作为 `kind="stopHost"` 引用写入原 `service-control.json` v3，与旧 Desktop 引用并存。引用绑定 home、hostId、generation、requestId 和 strategy，文件与目录同步后才分发。恢复只查询 `host.operation` 或离线 `areal host operation`；缺失、部分、清理未确认均保留原 ID。已完成请求不证明后继代际已停止，新明确停止意图须核对当前认证 Host。界面只展示回执投影，不接收 Host 凭据或路径。保持后台退出保留未决引用。
 
+`stopService` 的 Host 响应以 `operation` 返回 `stopHost` 投影，包含请求 ID、阶段和项目目标；旧 Desktop 路径仍返回其生命周期回执。当前连接发起的停止完成后，Main 断开该 GUI 的观察连接，仅在用户显式重连后恢复。
+
 已完成或明确阻止的 Host 停止允许用户显式重新连接；未知请求只允许核查。若 Desktop 仍存活，Main 通过固定 `hostReconnect` 请求恢复其 Host 客户端；该请求仅接受当前 Main socket。重连核对原 sourceId 并读取项目绑定，不重新导入旧数据、不启动项目 Core、不重放提交。重连成功后才移除已核查的控制引用。
 
 Host 断连会关闭 Desktop 的独立 Remote Gateway。显式重连等待旧 Gateway 的持久写入和本地监听资源关闭，再创建新实例。新实例先取得 Host execution lease，核查原 Remote 写入回执，再读取身份、grants 和配置。健康 Gateway 不替换；原请求未知、持久化失败或 lease 被占用时，恢复返回错误并保留原控制引用。

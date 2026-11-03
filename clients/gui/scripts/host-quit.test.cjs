@@ -7,6 +7,9 @@ const {
   hostActivityLabel,
 } = require("../app/src/core/host-quit.cjs");
 const { setNativeLocale } = require("../app/src/core/native-i18n.cjs");
+const { validateCommandResponse } = require("../packages/workbench/client/desktop-contract.cjs");
+
+const operation = { requestId: "stop-request", kind: "stopHost", phase: "completed", targets: [] };
 
 function fixture(activity, choices = []) {
   const dialogs = [];
@@ -21,7 +24,7 @@ function fixture(activity, choices = []) {
       },
       requestHostStop: async (request) => {
         stops.push(request);
-        return { stopped: true, operation: { phase: "completed" } };
+        return { stopped: true, operation, receipt: { private: true } };
       },
     },
     notify: async (options) => {
@@ -76,12 +79,18 @@ test("stop and quit requires a second confirmation before one durable stop", asy
   assert.deepEqual(decline.stops, []);
   const accept = fixture(active, [1, 1]);
   let stopping = 0;
-  assert.deepEqual(await confirmHostQuit(accept.backend, accept.notify, () => stopping++), {
-    stopped: true,
-  });
+  const result = await confirmHostQuit(accept.backend, accept.notify, () => stopping++);
+  assert.deepEqual(result, { stopped: true, operation });
+  validateCommandResponse("serviceLifecycle", { operation: "stopAndQuit" }, result);
   assert.equal(stopping, 1);
   assert.equal(accept.dialogs[1].defaultId, 0);
   assert.deepEqual(accept.stops, [{ strategy: "cancel" }]);
+});
+test("confirmed menu stop returns a validated public operation", async () => {
+  const f = fixture(active, [1]);
+  const result = await confirmHostStop(f.backend, f.notify);
+  assert.deepEqual(result, { stopped: true, operation });
+  validateCommandResponse("stopService", {}, result);
 });
 test("menu stop uses the same confirmed operation and incomplete cleanup stays visible", async () => {
   const f = fixture(active, [1]);

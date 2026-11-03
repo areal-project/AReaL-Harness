@@ -723,6 +723,7 @@ module.exports = {
   isReceipt,
   KINDS,
   isLifecycleReceipt,
+  lifecycleViewOperation,
   readLifecycleReceipt,
   isLifecycleProjection,
   isRecoveryView,

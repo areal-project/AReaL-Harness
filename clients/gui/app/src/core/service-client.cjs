@@ -1451,7 +1451,15 @@ class SharedCoreBackend {
       const connections = this.terminalConnections;
       await Promise.allSettled(this.guiTerminalStarts);
       connections.close();
-      if (this.terminalConnections === connections) this.guiTerminals.clear();
+      if (this.terminalConnections === connections) {
+        this.guiTerminals.clear();
+        const connection = this.connection;
+        this.stoppedConnection = connection;
+        this.disconnected();
+        this.connection = null;
+        connection?.close();
+        this.connectionState = this.hostRecoveryState();
+      }
     }
     if (receipt.state === "completed" || receipt.state === "blocked")
       this.hostStopResources.delete(reference.requestId);

@@ -1,6 +1,12 @@
 // @ts-check
 "use strict";
-const { modelRecord, count, isLifecycleReceipt, isLifecycleProjection } = require("./shared.cjs");
+const {
+  modelRecord,
+  count,
+  isLifecycleReceipt,
+  lifecycleViewOperation,
+  isLifecycleProjection,
+} = require("./shared.cjs");
 const { resourceInspection } = require("./desktop-control-resources.cjs");
 /** @typedef {'accessibility'|'screenRecording'|'inputMonitoring'} Capability */
 /** @typedef {{version:1,requestId:string,hostId:string,generation:string,action:'prepare'|'apply',targetVersion:string,state:'acceptedPending'|'prepared'|'blocked'|'partial'|'settlementIncomplete'|'admissionUnknown'|'completed',message?:string}} HostUpdateReceipt */
@@ -14,7 +20,7 @@ const { resourceInspection } = require("./desktop-control-resources.cjs");
 /** @typedef {keyof Requests} Name */
 /** @template {Name} N @typedef {Requests[N]} Request */
 /** @typedef {{canceled:true,kind?:string}} Canceled */
-/** @typedef {{stopped:boolean,operation:import('./shared.cjs').LifecycleReceipt,kind?:string}} LifecycleResult */
+/** @typedef {{stopped:boolean,operation:import('./shared.cjs').LifecycleReceipt|import('./shared.cjs').LifecycleViewOperation,kind?:string}} LifecycleResult */
 /** @typedef {{recovered:boolean,canceled?:boolean,lifecycle?:import('./shared.cjs').LifecycleProjection}|Canceled} RecoveryResult */
 /** @typedef {LifecycleResult|Canceled|{stopped:true,quitting:true}} QuitResult */
 /** @typedef {{canStop:boolean,connected:boolean,clients:number,busy:boolean,activeCommands:number,starting:number,providerUpdating:boolean,projects:Array<Omit<import('./desktop-control-resources.cjs').ResourceInspection,'serviceId'|'generation'|'lifecycle'> & {root:string,started:boolean}>}} ServiceStatus */
@@ -436,7 +442,10 @@ function lifecycleResult(value) {
   return (
     modelRecord(value) &&
     typeof value.stopped === "boolean" &&
-    isLifecycleReceipt(value.operation) &&
+    (isLifecycleReceipt(value.operation) ||
+      (modelRecord(value.operation) &&
+        value.operation.kind === "stopHost" &&
+        lifecycleViewOperation(value.operation))) &&
     (value.kind === undefined || typeof value.kind === "string")
   );
 }

@@ -10,6 +10,9 @@ const { SharedCoreBackend } = require("../app/src/core/service-client.cjs");
 const { readReferences } = require("../app/src/core/service-control.cjs");
 const { readHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
 const {
+  validateResponse,
+} = require("../packages/workbench/client/desktop-contract/desktop-control.cjs");
+const {
   isLifecycleProjection,
 } = require("../packages/workbench/client/desktop-contract/shared.cjs");
 async function fixture(t, extraCapabilities = []) {
@@ -219,6 +222,8 @@ test("Host activity is passive and whole-Host stop is durable before one dispatc
   };
   f.setHandler(async (request) => {
     if (request.method === "host.activity") return activity;
+    if (request.method === "host.operation")
+      return { operation: f.receipt(request.params.requestId) };
     assert.equal(request.method, "host.stop");
     const control = JSON.parse(await readFile(f.backend.controlPath, "utf8"));
     assert.equal(control.version, 3);
@@ -231,15 +236,32 @@ test("Host activity is passive and whole-Host stop is durable before one dispatc
   f.backend.attach = async () => {
     throw new Error("must not attach Desktop");
   };
+  let closed = false;
+  f.backend.connection = { close: () => (closed = true) };
+  f.backend.status.connected = true;
+  f.backend.connectionState = { state: "ready" };
   assert.deepEqual(await f.backend.readHostActivity(), activity);
   f.backend.guiTerminals.set("terminal", { projectId: "p", threadId: "t", id: "terminal" });
   const result = await f.backend.requestHostStop({ strategy: "cancel" });
   assert.equal(result.stopped, true);
   assert.equal(result.operation.kind, "stopHost");
+  assert.doesNotThrow(() => validateResponse("stopService", {}, result));
   assert.equal(f.calls.filter((request) => request.method === "host.stop").length, 1);
   assert.equal(f.backend.guiTerminals.size, 0);
   assert.equal(f.backend.terminalConnections.closed, true);
+  assert.equal(closed, true);
+  assert.equal(f.backend.snapshot().connection.state, "unavailable");
+  assert.equal(f.backend.snapshot().connection.recovery, "reconnect");
+  assert.equal(f.backend.canReconnect(), false);
   assert.equal(isLifecycleProjection(f.backend.lifecycleProjection()), true);
+  f.backend.initialize = async (_automatic, options) => {
+    assert.equal(options.reconnectHost, true);
+    f.backend.status.connected = true;
+    f.backend.connectionState = { state: "ready" };
+  };
+  await f.backend.init();
+  assert.equal(f.backend.snapshot().connection.state, "ready");
+  assert.equal(f.backend.hostReferences.size, 0);
 });
 test("lost stop response and reopened Main only query the durable original ID", async (t) => {
   const f = await fixture(t);
@@ -463,11 +485,17 @@ test("completed original stop cannot clear successor Main terminal ownership", a
   assert.equal(first.stopped, false);
   const { GuiTerminalConnections } = require("../app/src/core/gui-terminal-connections.cjs");
   f.backend.terminalConnections = new GuiTerminalConnections();
+  let closed = false;
+  f.backend.connection = { close: () => (closed = true) };
+  f.backend.status.connected = true;
+  f.backend.connectionState = { state: "ready" };
   f.backend.guiTerminals.set("successor", { projectId: "new", threadId: "new", id: "successor" });
   const final = await f.backend.readHostStop(f.backend.hostReferences.get(requestId));
   assert.equal(final.stopped, true);
   assert.equal(f.backend.terminalConnections.closed, false);
   assert.equal(f.backend.guiTerminals.has("successor"), true);
+  assert.equal(closed, false);
+  assert.equal(f.backend.snapshot().connection.state, "ready");
 });
 for (const state of ["partial", "settlementIncomplete", "completed"]) {
   test(`${state} original stop is queried without a new stop intent`, async (t) => {

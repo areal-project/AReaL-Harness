@@ -44,7 +44,7 @@ async function confirmHostStop(backend, notify, onStopping = () => {}) {
       code: "LIFECYCLE_INCOMPLETE",
       operation: result.operation,
     });
-  return { stopped: true };
+  return { stopped: true, operation: result.operation };
 }
 
 /** @param {Backend} backend @param {Notify} notify @param {()=>void} [onStopping] */
