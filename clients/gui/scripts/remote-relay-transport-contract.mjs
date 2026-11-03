@@ -155,6 +155,180 @@ async function enrolledHost(t, relayOptions = {}, hostOptions = {}, createHost =
   return { relay, ...host, enrollmentRequest };
 }
 
+async function nativePacedFence(t, operation) {
+  const relay = await relayFixture(t, {
+    relayOptions: { framesPerSecond: 12, bytesPerSecond: 524288, maxFrameBytes: 16384 },
+    observeHostFrames: true,
+  });
+  const f = await nativeHostFixture(t);
+  f.evidence.relay = relay.resources;
+  await f.remote.control({
+    operation: "enable",
+    relay: relay.origin,
+    code: relay.admin("enrollment").code,
+    confirmed: true,
+  });
+  await waitFor(() => f.remote.state().connected);
+  const native = await nativeHistory(t, f);
+  const reader = await device(t, f.remote, { pair: true, projects: [native.alias] });
+  const healthy = await device(t, f.remote, { pair: true, projects: [native.alias] });
+  const itemIds = native.thread.turns.flatMap((turn) => turn.items.map((item) => item.id));
+  async function open(client, id) {
+    client.secure.send({
+      id,
+      method: "session.open",
+      context: { projectId: native.alias },
+      params: { threadId: native.threadId },
+    });
+    const response = (await next(client.messages)).value;
+    assert.equal(response?.id, id);
+    assert.ok(response.result, JSON.stringify(response));
+    assert.deepEqual(
+      response.result.snapshot.turns.flatMap((turn) => turn.items.map((item) => item.id)),
+      itemIds,
+    );
+    return response.result;
+  }
+  const opened = await open(reader, "open");
+  assert.equal((await reader.read("before-history")).result.projects.length, 1);
+  const journal = await f.client.journal(native.projectId).read();
+  const threadIds = await native.readThreadIds();
+  const historyId = randomUUID();
+  const observation = {
+    operation,
+    projectId: native.projectId,
+    threadId: native.threadId,
+    historyId,
+    originalConnectionId: reader.active.connectionId,
+    originalGatewayGeneration: reader.active.gatewayGeneration,
+    subscriptionId: opened.subscriptionId,
+    barrierId: "before-history",
+    originalHistoryTextBytes: f.evidence.nativeHistory.textBytes,
+    historyState: "pending",
+    receivedData: [],
+    observedHostFrames: relay.hostFrames,
+    observedHostRegistrations: relay.hostRegistrations,
+    observation:
+      "receiver data during the sole outstanding history request after a complete read barrier; Rust queue occupancy and physical sends unobserved",
+  };
+  f.evidence.pacedFence = observation;
+  const firstData = new Promise((resolve) => {
+    const receive = (bytes) => {
+      const frame = JSON.parse(bytes.toString());
+      if (frame.type !== "data") return;
+      const received = { at: performance.now(), channel: frame.channel, bytes: bytes.length };
+      observation.receivedData.push(received);
+      if (received.bytes > 4096) resolve(received);
+    };
+    reader.socket.on("message", receive);
+    t.after(() => reader.socket.off("message", receive));
+  });
+  reader.secure.send({
+    id: historyId,
+    method: "session.history",
+    context: { projectId: native.alias },
+    params: { threadId: native.threadId, limit: 100 },
+  });
+  const pending = next(reader.messages).then(
+    (response) => {
+      observation.historyState = response.done ? "eof" : "response";
+      observation.historyResponseId = response.value?.id;
+      return response;
+    },
+    (error) => {
+      observation.historyState = "error";
+      observation.historyErrorCode = error.code;
+      return { error };
+    },
+  );
+  const fragment = await Promise.race([
+    firstData,
+    pending.then(() => assert.fail("history ended before its first observed Relay data frame")),
+  ]);
+  assert.ok(fragment.bytes > 4096, "first frame carries a large history fragment");
+  assert.ok(fragment.bytes < observation.originalHistoryTextBytes);
+  assert.equal(observation.historyState, "pending");
+  observation.originalHostSocketId = relay.hostFrames.findLast(
+    (frame) => frame.channel === fragment.channel,
+  ).socketId;
+  observation.historyPendingAtFence = true;
+  observation.fragmentBytesAtFence = fragment.bytes;
+  observation.fenceRequestedAt = performance.now();
+  const control =
+    operation === "revoke"
+      ? { operation, id: reader.peer }
+      : { operation: "enable", relay: relay.origin, confirmed: true };
+  await f.remote.control(control);
+  observation.fenceCompletedAt = performance.now();
+  await waitFor(() => reader.socket.readyState === 3);
+  const terminal = await pending;
+  if (terminal.error) assert.equal(terminal.error.code, "ERR_UNEXPECTED_EOF");
+  else assert.equal(terminal.done, true, JSON.stringify(terminal));
+  assert.equal((await next(reader.messages)).done, true);
+  if (operation === "revoke") {
+    const state = await f.remote.refresh();
+    const revoked = state.deviceGrants.find((grant) => grant.devicePeerId === reader.peer);
+    assert.equal(revoked.status, "revoked");
+    assert.equal(revoked.online, false);
+    assert.equal(revoked.revision, reader.active.grantRevision + 1);
+    assert.equal(
+      (await device(t, f.remote, { identity: reader.identity })).active.error.code,
+      "FORBIDDEN",
+    );
+    assert.equal((await healthy.read("after-revoke")).result.projects.length, 1);
+  } else {
+    await waitFor(() => healthy.socket.readyState === 3);
+    await waitFor(
+      async () =>
+        relay.hostRegistrations.some(
+          (entry) => entry.socketId !== observation.originalHostSocketId,
+        ) && (await f.remote.refresh()).connected,
+    );
+    const fresh = await device(t, f.remote, { identity: reader.identity });
+    assert.equal(fresh.active.gatewayGeneration, reader.active.gatewayGeneration);
+    assert.notEqual(fresh.active.connectionId, reader.active.connectionId);
+    const freshChannels = new Set();
+    const receive = (bytes) => {
+      const frame = JSON.parse(bytes.toString());
+      if (frame.type === "data") freshChannels.add(frame.channel);
+    };
+    fresh.socket.on("message", receive);
+    t.after(() => fresh.socket.off("message", receive));
+    assert.equal((await fresh.read("fresh-generation")).result.projects.length, 1);
+    const restored = await open(fresh, "fresh-open");
+    assert.equal(freshChannels.size, 1);
+    const [freshChannel] = freshChannels;
+    const freshHostSocketIds = new Set(
+      relay.hostFrames
+        .filter((frame) => frame.channel === freshChannel)
+        .map((frame) => frame.socketId),
+    );
+    assert.equal(freshHostSocketIds.size, 1);
+    const [freshHostSocketId] = freshHostSocketIds;
+    assert.notEqual(freshHostSocketId, observation.originalHostSocketId);
+    observation.freshHostSocketId = freshHostSocketId;
+    observation.freshRelayChannel = freshChannel;
+    assert.notEqual(restored.subscriptionId, opened.subscriptionId);
+    const restoredHealthy = await device(t, f.remote, { identity: healthy.identity });
+    assert.equal((await restoredHealthy.read("healthy-generation")).result.projects.length, 1);
+    observation.freshGatewayGeneration = fresh.active.gatewayGeneration;
+    observation.freshConnectionId = fresh.active.connectionId;
+    observation.freshSubscriptionId = restored.subscriptionId;
+  }
+  assert.equal((await f.remote.refresh()).connected, true);
+  assert.equal(relay.frameObservationErrors, 0);
+  assert.deepEqual(await f.client.journal(native.projectId).read(), journal);
+  assert.deepEqual(await native.readThread(), native.thread);
+  assert.deepEqual(await native.readThreadIds(), threadIds);
+  observation.oldConnectionClosed = true;
+  observation.healthyReadSucceeded = true;
+  observation.journalAndOriginalThreadUnchanged = true;
+  observation.exactPendingCancellationCoverage = [
+    "accepted_close_waits_for_queue_and_abort_invalidates_old_stream",
+    "pending_socket_send_is_cancelled_before_old_generation_can_flush",
+  ];
+}
+
 if (!process.env.RC12_TLS_HOME) {
   test("strict process-CA Relay Host contract", async () => {
     const home = await certificates();
@@ -1326,49 +1500,58 @@ if (!process.env.RC12_TLS_HOME) {
       "typed refusal before actual channel close and application EOF; private send buffer unobserved";
   });
 
-  test("revocation aborts already paced Relay bytes immediately and cannot publish them after the fence", async (t) => {
-    const f = await enrolledHost(t, { framesPerSecond: 12, bytesPerSecond: 524288 });
-    await nativeProject(t, f, { large: true });
-    const reader = await device(t, f.remote, { pair: true });
-    const healthy = await device(t, f.remote, { pair: true });
-    reader.secure.send({
-      id: "open",
-      method: "session.open",
-      context: { projectId: "project" },
-      params: { threadId: "thread" },
-    });
-    assert.ok((await next(reader.messages)).value.result);
-    const transport = f.remote.relayTransport;
-    const endpoint = [...transport.channels.values()].find(
-      (value) => value.remotePeer === reader.peer,
-    );
-    let sentData = 0;
-    const send = transport.socket.send.bind(transport.socket);
-    transport.socket.send = (text, ...args) => {
-      const frame = JSON.parse(text);
-      if (frame.type === "data" && frame.channel === endpoint.channel) sentData++;
-      return send(text, ...args);
-    };
-    reader.secure.send({
-      id: "pending",
-      method: "session.history",
-      context: { projectId: "project" },
-      params: { threadId: "thread", limit: 100 },
-    });
-    await waitFor(() => endpoint.queue.length > 0 && transport.paceTimer);
-    assert.ok(endpoint.bufferedAmount > 0);
-    assert.ok(f.remote.sessions.sendBufferedBytes() >= endpoint.bufferedAmount);
-    await f.remote.control({ operation: "revoke", id: reader.peer });
-    const sentAtFence = sentData;
-    assert.equal(endpoint.readyState, 3);
-    assert.equal(endpoint.queue.length, 0);
-    assert.equal(endpoint.bufferedAmount, 0);
-    assert.throws(() => endpoint.send(Buffer.of(1)), /断开/);
-    await waitFor(() => reader.socket.readyState === 3);
-    assert.equal((await healthy.read("after-revoke")).result.projects.length, 1);
-    assert.equal(sentData, sentAtFence);
-    assert.equal(f.remote.state().connected, true);
-  });
+  test(
+    "revocation aborts already paced Relay bytes immediately and cannot publish them after the fence",
+    { timeout: 180000 },
+    async (t) => {
+      await t.test("complete JS reference", async (t) => {
+        const f = await enrolledHost(t, { framesPerSecond: 12, bytesPerSecond: 524288 });
+        await nativeProject(t, f, { large: true });
+        const reader = await device(t, f.remote, { pair: true });
+        const healthy = await device(t, f.remote, { pair: true });
+        reader.secure.send({
+          id: "open",
+          method: "session.open",
+          context: { projectId: "project" },
+          params: { threadId: "thread" },
+        });
+        assert.ok((await next(reader.messages)).value.result);
+        const transport = f.remote.relayTransport;
+        const endpoint = [...transport.channels.values()].find(
+          (value) => value.remotePeer === reader.peer,
+        );
+        let sentData = 0;
+        const send = transport.socket.send.bind(transport.socket);
+        transport.socket.send = (text, ...args) => {
+          const frame = JSON.parse(text);
+          if (frame.type === "data" && frame.channel === endpoint.channel) sentData++;
+          return send(text, ...args);
+        };
+        reader.secure.send({
+          id: "pending",
+          method: "session.history",
+          context: { projectId: "project" },
+          params: { threadId: "thread", limit: 100 },
+        });
+        await waitFor(() => endpoint.queue.length > 0 && transport.paceTimer);
+        assert.ok(endpoint.bufferedAmount > 0);
+        assert.ok(f.remote.sessions.sendBufferedBytes() >= endpoint.bufferedAmount);
+        await f.remote.control({ operation: "revoke", id: reader.peer });
+        const sentAtFence = sentData;
+        assert.equal(endpoint.readyState, 3);
+        assert.equal(endpoint.queue.length, 0);
+        assert.equal(endpoint.bufferedAmount, 0);
+        assert.throws(() => endpoint.send(Buffer.of(1)), /断开/);
+        await waitFor(() => reader.socket.readyState === 3);
+        assert.equal((await healthy.read("after-revoke")).result.projects.length, 1);
+        assert.equal(sentData, sentAtFence);
+        assert.equal(f.remote.state().connected, true);
+      });
+      await t.test("real Rust receiver and public fence", async (t) => {
+        await nativePacedFence(t, "revoke");
+      });
+    },
+  );
 
   test("Host fails closed on a valid but unusable service budget without a reconnect loop", async (t) => {
     const relay = await relayFixture(t, { relayOptions: { framesPerSecond: 2 } });
@@ -1398,42 +1581,51 @@ if (!process.env.RC12_TLS_HOME) {
     };
   });
 
-  test("re-enabling drops paced old-generation work and no old timer writes into a fresh connection", async (t) => {
-    const f = await enrolledHost(t);
-    await nativeProject(t, f, { large: true });
-    const reader = await device(t, f.remote, { pair: true });
-    reader.secure.send({
-      id: "open",
-      method: "session.open",
-      context: { projectId: "project" },
-      params: { threadId: "thread" },
-    });
-    assert.ok((await next(reader.messages)).value.result);
-    const old = f.remote.relayTransport;
-    let oldSends = 0;
-    const send = old.socket.send.bind(old.socket);
-    old.socket.send = (...args) => {
-      oldSends++;
-      return send(...args);
-    };
-    reader.secure.send({
-      id: "pending",
-      method: "session.history",
-      context: { projectId: "project" },
-      params: { threadId: "thread", limit: 100 },
-    });
-    await waitFor(() => old.paceTimer !== null && old.paceTimer !== undefined);
-    await f.remote.control({ operation: "enable", relay: f.relay.origin, confirmed: true });
-    const countAtClose = oldSends;
-    await waitFor(() => f.remote.state().connected);
-    assert.equal(old.closed, true);
-    assert.equal(old.paceTimer, null);
-    assert.equal(old.channels.size, 0);
-    assert.equal(old.controls.size, 0);
-    const fresh = await device(t, f.remote, { identity: reader.identity });
-    assert.equal((await fresh.read()).result.projects.length, 1);
-    assert.equal(oldSends, countAtClose);
-  });
+  test(
+    "re-enabling drops paced old-generation work and no old timer writes into a fresh connection",
+    { timeout: 180000 },
+    async (t) => {
+      await t.test("complete JS reference", async (t) => {
+        const f = await enrolledHost(t);
+        await nativeProject(t, f, { large: true });
+        const reader = await device(t, f.remote, { pair: true });
+        reader.secure.send({
+          id: "open",
+          method: "session.open",
+          context: { projectId: "project" },
+          params: { threadId: "thread" },
+        });
+        assert.ok((await next(reader.messages)).value.result);
+        const old = f.remote.relayTransport;
+        let oldSends = 0;
+        const send = old.socket.send.bind(old.socket);
+        old.socket.send = (...args) => {
+          oldSends++;
+          return send(...args);
+        };
+        reader.secure.send({
+          id: "pending",
+          method: "session.history",
+          context: { projectId: "project" },
+          params: { threadId: "thread", limit: 100 },
+        });
+        await waitFor(() => old.paceTimer !== null && old.paceTimer !== undefined);
+        await f.remote.control({ operation: "enable", relay: f.relay.origin, confirmed: true });
+        const countAtClose = oldSends;
+        await waitFor(() => f.remote.state().connected);
+        assert.equal(old.closed, true);
+        assert.equal(old.paceTimer, null);
+        assert.equal(old.channels.size, 0);
+        assert.equal(old.controls.size, 0);
+        const fresh = await device(t, f.remote, { identity: reader.identity });
+        assert.equal((await fresh.read()).result.projects.length, 1);
+        assert.equal(oldSends, countAtClose);
+      });
+      await t.test("real Rust receiver and public fence", async (t) => {
+        await nativePacedFence(t, "enable");
+      });
+    },
+  );
 
   test(
     "sequential large history reads honor actual Relay Host rates without disconnecting another device",

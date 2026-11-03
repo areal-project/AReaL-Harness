@@ -136,6 +136,7 @@ export async function relayFixture(
   let acceptedTlsConnections = 0;
   let tlsHandshakeErrors = 0;
   const hostFrames = [];
+  const hostRegistrations = [];
   const hostPongs = [];
   let observedSockets = 0;
   let frameObservationErrors = 0;
@@ -160,6 +161,7 @@ export async function relayFixture(
             const value = JSON.parse(bytes.toString("utf8"));
             if (value.protocol === "areal.relay.v1" && value.role === "host") {
               host = true;
+              hostRegistrations.push({ socketId, at: performance.now() });
               return;
             }
             if (host)
@@ -250,6 +252,7 @@ export async function relayFixture(
       return tlsHandshakeErrors;
     },
     hostFrames,
+    hostRegistrations,
     hostPongs,
     get frameObservationErrors() {
       return frameObservationErrors;
