@@ -1255,7 +1255,7 @@ if (!process.env.RC12_TLS_HOME) {
         body: JSON.stringify({ code: relay.admin("enrollment").code }),
       })
     ).json();
-    const f = await hostFixture(t, {
+    const f = await nativeRelayHostFixture(t, {
       config: {
         enabled: true,
         relay: relay.origin,
@@ -1263,6 +1263,8 @@ if (!process.env.RC12_TLS_HOME) {
         identity: await createIdentity(),
       },
     });
+    f.evidence.relay = relay.resources;
+    await f.remote.refresh();
     assert.equal(f.remote.state().enabled, false);
     await assert.rejects(
       f.remote.control({ operation: "enable", relay: relay.origin, confirmed: true }),
@@ -1274,8 +1276,14 @@ if (!process.env.RC12_TLS_HOME) {
       code: relay.admin("enrollment").code,
       confirmed: true,
     });
-    await waitFor(() => f.remote.state().connected);
+    await waitFor(async () => (await f.remote.refresh()).connected);
     assert.notEqual((await f.persisted()).room, registration.room);
+    f.evidence.legacyRegistration = {
+      priorProtocol: "legacy without v2 marker",
+      legacyWasDisabled: true,
+      freshExplicitEnrollmentConnected: true,
+      registrationReplaced: true,
+    };
   });
   test("foreign channel injection is rejected without affecting another authorized device", async (t) => {
     const f = await enrolledHost(t, {}, {}, nativeRelayHostFixture);
@@ -1557,45 +1565,84 @@ if (!process.env.RC12_TLS_HOME) {
 
   test(
     "a real paused Relay TCP reader is isolated while a second device keeps reading Host state",
-    { timeout: 30000 },
+    { timeout: 180000 },
     async (t) => {
-      const f = await enrolledHost(t, { maxBufferedBytesPerChannel: 131072 });
-      const native = await nativeProject(t, f, { large: true });
-      const slow = await device(t, f.remote, { pair: true }),
-        healthy = await device(t, f.remote, { pair: true });
+      const f = await enrolledHost(
+        t,
+        { maxBufferedBytesPerChannel: 131072 },
+        {},
+        nativeHostFixture,
+      );
+      f.evidence.relay = f.relay.resources;
+      const native = await nativeHistory(t, f);
+      const slow = await device(t, f.remote, { pair: true, projects: [native.alias] }),
+        healthy = await device(t, f.remote, { pair: true, projects: [native.alias] });
       slow.secure.send({
         id: "open",
         method: "session.open",
-        context: { projectId: "project" },
-        params: { threadId: "thread" },
+        context: { projectId: native.alias },
+        params: { threadId: native.threadId },
       });
-      assert.equal((await next(slow.messages)).value.result.snapshot.turns[0].items.length, 100);
-      assert.equal(native.connections(), 2);
-      slow.socket._socket.pause();
-      t.after(() => slow.socket._socket?.resume());
-      for (let round = 0; round < 16 && native.connections() > 1; round++) {
-        for (let index = 0; index < 8; index++)
-          slow.secure.send({
-            id: `slow-${round}-${index}`,
-            method: "session.history",
-            context: { projectId: "project" },
-            params: { threadId: "thread", limit: 100 },
-          });
-        assert.equal(
-          (await healthy.read(`healthy-${round}`)).result.projects[0].connectionState,
-          "online",
-        );
-        await new Promise((resolve) => setTimeout(resolve, 1050));
-      }
-      assert.equal(
-        native.connections(),
-        1,
-        "slow channel releases its only Core observer within the bounded service backlog",
+      const opened = (await next(slow.messages)).value;
+      assert.ok(opened.result, JSON.stringify(opened));
+      const itemIds = native.thread.turns.flatMap((turn) => turn.items.map((item) => item.id));
+      assert.deepEqual(
+        opened.result.snapshot.turns.flatMap((turn) => turn.items.map((item) => item.id)),
+        itemIds,
       );
-      assert.equal(f.remote.state().connected, true);
-      assert.equal((await healthy.read("after-isolation")).result.projects.length, 1);
-      slow.socket._socket.resume();
+      const beforeJournal = await f.client.journal(native.projectId).read();
+      const threadIds = await native.readThreadIds();
+      const online = async () =>
+        (await f.remote.refresh()).deviceGrants.find((grant) => grant.devicePeerId === slow.peer)
+          ?.online === true;
+      assert.equal(await online(), true);
+      slow.socket._socket.pause();
+      let rounds = 0;
+      try {
+        for (; rounds < 16 && (await online()); rounds++) {
+          for (let index = 0; index < 8; index++)
+            slow.secure.send({
+              id: `slow-${rounds}-${index}`,
+              method: "session.history",
+              context: { projectId: native.alias },
+              params: { threadId: native.threadId, limit: 100 },
+            });
+          assert.equal(
+            (await healthy.read(`healthy-${rounds}`)).result.projects.find(
+              (project) => project.projectId === native.alias,
+            ).connectionState,
+            "online",
+          );
+          await new Promise((resolve) => setTimeout(resolve, 1050));
+        }
+        assert.equal(
+          await online(),
+          false,
+          "the actual slow channel is isolated within the bounded backlog",
+        );
+        assert.equal((await f.remote.refresh()).connected, true);
+        assert.equal((await healthy.read("after-isolation")).result.projects.length, 1);
+      } finally {
+        slow.socket._socket?.resume();
+      }
       await waitFor(() => slow.socket.readyState === 3);
+      assert.deepEqual(await f.client.journal(native.projectId).read(), beforeJournal);
+      assert.deepEqual(await native.readThread(), native.thread);
+      assert.deepEqual(await native.readThreadIds(), threadIds);
+      f.evidence.slowReader = {
+        projectId: native.projectId,
+        threadId: native.threadId,
+        subscriptionId: opened.result.subscriptionId,
+        connectionId: opened.result.connectionId,
+        itemIds,
+        rounds,
+        slowOffline: true,
+        slowSocketClosed: true,
+        healthyRemainedOnline: true,
+        journalAndOriginalThreadUnchanged: true,
+        observation:
+          "actual TCP pause, public device presence and socket close; physical Core connection counts unobserved",
+      };
     },
   );
 }

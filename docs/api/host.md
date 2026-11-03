@@ -123,7 +123,7 @@ GUI 根目录中的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` �
 
 旧无 owner 服务有活动任务时保持 `legacyPending`，原连接继续。迁移先空闲排空或显式授权取消，再核查持久停止回执、清理证明和锁，最后启动新的 Host-owned generation。修改登记元数据不能转交管道或进程所有权。旧 GUI-owned 服务同样要求原生命周期 owner 排空并结算后再替换。
 
-只自动迁移一个具有兼容 Remote 身份的旧 GUI profile。稳定 Host 监督 ID 与 Remote Noise 密钥独立。保留 profile 的 Noise 密钥、设备 pin、grants、撤销记录与 journal 关联。第二个具有不同 Noise 身份的 profile 返回 `migrationConflict`，保留原状态，要求显式选择身份或隔离 home；禁止覆盖、合并或静默重新生成 Noise 身份。凭据迁移覆盖 API keys、OAuth refresh/access tokens 与 provider subscription transport 会话。密钥库成功写入回执必须先于旧密文退役。
+只自动迁移一个具有兼容 Remote 身份的旧 GUI profile。稳定 Host 监督 ID 与 Remote Noise 密钥独立。保留 profile 的 Noise 密钥、设备 pin、grants、撤销记录与 journal 关联。第二个具有不同 Noise 身份的 profile 返回 `migrationConflict`，保留原状态，要求显式选择身份或隔离 home；禁止覆盖、合并或静默重新生成 Noise 身份。凭据迁移覆盖 API keys、OAuth refresh/access tokens 与 provider subscription transport 会话。密钥库成功写入回执必须先于旧密文退役。 接管尚未由原生 Host 拥有的旧配置时，缺少 `areal.remote.v2` 协议标记的 Relay 登记与设备迁移合并保存为禁用；保留原身份和登记，须用新的管理员登记码显式启用。
 
 ## GUI 来源与提交 journal 接口
 

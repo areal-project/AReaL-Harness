@@ -103,10 +103,14 @@ class NativeRemote {
     }
     await this.settle();
     if (!this.storage.nativeOwned) {
-      const config =
+      const migrated =
         this.config.schemaVersion !== 2 && this.config.devices?.length
           ? migrateLegacyDevices(this.config)
           : this.config;
+      const config =
+        migrated.enabled && migrated.relayProtocol !== "areal.remote.v2"
+          ? { ...migrated, enabled: false }
+          : migrated;
       if (!config.identity) {
         const { createIdentity } = await import("@areal/remote");
         this.config = await this.storage.replace({
