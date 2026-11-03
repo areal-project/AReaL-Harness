@@ -130,8 +130,18 @@ impl Engine {
         } else {
             None
         };
-        let observation_key = policy
-            .repeated_observations
+        // 程序子调用的数据由 JavaScript 消费，未必展示给模型，不能登记为已见观察。
+        let program_child = {
+            let state = cell.state.lock().await;
+            state.thread.turns.last().is_some_and(|turn| {
+                turn.items.iter().any(|item| {
+                    matches!(item,
+                    Item::DynamicToolCall { id, execution, .. }
+                    if id == item_id && execution.parent_call_id.is_some())
+                })
+            })
+        };
+        let observation_key = (policy.repeated_observations && !program_child)
             .then(|| observation_key(name, raw))
             .flatten();
         let projection_snapshot = observation_key.is_some()
@@ -246,7 +256,9 @@ impl Engine {
         {
             let mut state = cell.state.lock().await;
             if let Some(active) = state.active.as_mut() {
-                if let Some(previous) = active.observation_results.get(&key) {
+                if let Some(previous) = active.observation_results.get(&key)
+                    && previous != item_id
+                {
                     let mut proposed = raw.clone();
                     for field in [
                         "lines",
@@ -264,7 +276,7 @@ impl Engine {
                         kind = "repeated-observation-v1";
                         reason = "applied";
                     }
-                } else {
+                } else if !active.observation_results.contains_key(&key) {
                     if active.observation_results.len() >= 128 {
                         active.observation_results.clear();
                     }
@@ -1248,11 +1260,34 @@ mod repeated_projection_tests {
             .unwrap();
         let cell = engine.cell(&thread.id).await.unwrap();
         let mut raw = json!({"path":"workspace://repo/a","sha256":"same","fileVersion":"first", "offset":1,"nextLine":51,"eof":true,"lines":(1..=50).map(|n|json!({"number":n,"text":"a sufficiently long line of unchanged source text\n"})).collect::<Vec<_>>()});
+        let child: Item = serde_json::from_value(json!({"type":"dynamicToolCall","id":"program-only","tool":"read_file","callId":"program-only","arguments":{},"status":"completed","success":true,"execution":{"runtimeEpoch":"epoch","scopeId":"scope","operationId":"operation","outcome":"succeeded","parentCallId":"parent"}})).unwrap();
+        cell.state
+            .lock()
+            .await
+            .thread
+            .turns
+            .last_mut()
+            .unwrap()
+            .items
+            .push(child);
+        for _ in 0..2 {
+            let child = engine
+                .prepare_tool_result(&cell, "program-only", "read_file", &raw, None)
+                .await
+                .unwrap();
+            assert!(child.value.get("unchangedObservation").is_none());
+        }
         let first = engine
             .prepare_tool_result(&cell, "first", "read_file", &raw, None)
             .await
             .unwrap();
         assert!(first.value.get("unchangedObservation").is_none());
+        // 同一调用会先提交事实再处理后置 hook；投影重入不能把首个结果折叠成自己。
+        let first_again = engine
+            .prepare_tool_result(&cell, "first", "read_file", &raw, None)
+            .await
+            .unwrap();
+        assert_eq!(first_again.value, first.value);
         raw["fileVersion"] = json!("fresh-version");
         let second = engine
             .prepare_tool_result(&cell, "second", "read_file", &raw, None)
