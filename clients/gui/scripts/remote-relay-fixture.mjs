@@ -133,6 +133,7 @@ export async function relayFixture(
   await new Promise((r) => probe.close(r));
   const sockets = new Set();
   let acceptedTlsConnections = 0;
+  let tlsHandshakeErrors = 0;
   const proxy = tlsServer(
     {
       key: await readFile(join(tlsHome, "server.key")),
@@ -157,6 +158,7 @@ export async function relayFixture(
       }
     },
   );
+  proxy.on("tlsClientError", () => tlsHandshakeErrors++);
   await new Promise((r) => proxy.listen(0, "127.0.0.1", r));
   const origin = `https://127.0.0.1:${proxy.address().port}`;
   const config = join(home, "config.json");
@@ -187,6 +189,9 @@ export async function relayFixture(
     config,
     get acceptedTlsConnections() {
       return acceptedTlsConnections;
+    },
+    get tlsHandshakeErrors() {
+      return tlsHandshakeErrors;
     },
     logs: () => logs,
     admin: (...args) =>

@@ -400,6 +400,15 @@ impl Host {
                                 "Relay 登记失败，请检查 HTTPS 和登记码",
                             ));
                         }
+                        Ok(enrollment::Outcome::CertificateRejected(code)) => {
+                            self.remote.reject_enrollment(&input.request_id)?;
+                            return Err(error(
+                                "enrollment-failed",
+                                &format!(
+                                    "Relay HTTPS 证书验证失败（{code}）。请检查证书域名、有效期和桌面进程信任的 CA。"
+                                ),
+                            ));
+                        }
                         Err(_) => {
                             return Err(error(
                                 "enrollment-failed",

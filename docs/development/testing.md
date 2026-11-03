@@ -424,6 +424,8 @@ macOS 实际崩溃预算使用 `AREAL_HOST_SERVICE_ROOT=/absolute/authorized/roo
 
 `AREAL_REMOTE_OWNER=rust AREAL_REMOTE_NATIVE_ALLOWED=1 AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal RC05_PREFLIGHT_ONLY=1 node clients/gui/scripts/remote-session-commands-e2e.mjs` 将原命令 E2E 的 worker 切到生产 Rust Host，保留原模型、配对和业务断言。将 `RC05_PREFLIGHT_ONLY=1` 换为 `RC06_SETTLEMENT_ONLY=1` 运行原 T24。T21 用原 Host operation、typed 摘要与真实 Core 拒绝核对 Workflow 配置；T24 绑定原 Tool 和 Runtime 身份，确定退出时核对真实终止结果，缺确定结果时仍要求 UNKNOWN。原回执、持久关联与单次 Runtime 效果替换 JS 私有观察，不证明物理派发次数。Node 只生产配置及读取原 Core，Host 拥有 Gateway。默认入口仍是旧 JS 对照；Rust 模式遇到尚未迁入的私有 fault 控制会明确失败，不能作为全套通过。结果与原请求、正常停止及合成凭据清理保存在该次 `rc05-native-*/manifest.json` 和 `evidence.json`。
 
+使用 `AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal node --test clients/gui/scripts/remote-relay-system-ca.test.mjs` 运行 Rust Host 的原 CA 契约。测试以隔离 `SSL_CERT_FILE` 输入两个团队及组合根，真实执行 HTTPS 登记、WSS 和保存登记后的新隔离 Host 恢复；错误根、域名和过期证书检查实际握手失败、配置不变与原操作拒绝回执。此输入不修改系统信任，也不证明 macOS 钥匙串根枚举；独立 Node probe 仅标识测试证书类别，不替代 Rust 验证。证据与精确合成凭据清理保存在 `native-remote-host-*/evidence.json`。
+
 同一固定产物环境下，`node --test --test-concurrency=1 clients/gui/scripts/remote-client-kind-host.test.mjs clients/gui/scripts/remote-device-management-host.test.mjs` 运行原设备类型与管理套件的 Rust Host 路径，保留元数据、授权拒绝、配对与连接连续性断言。原保存次数/连接对象观察改为真实配置、原完成回执与认证连接；不计物理写入次数。`node --test clients/gui/scripts/mobile-workspace.test.mjs` 保留原六个 JS 状态用例，并追加真实 MobileClient/Rust Host/Core 的分页历史和事件路径；证据区分这两个层级，Node 客户端不代表真机或 GUI。
 
 同一已验证产物环境下，`node --test clients/gui/scripts/remote-artifact-native.test.mjs` 通过 Rust `review.read`/`artifact.read` 读取原生 Task 图片，核对分片拼接、媒体归属与精确清理；`node --test clients/gui/scripts/remote-project-models-native.test.mjs` 从真实 Core 读取有界六字段模型目录及已配置显示名。这两条原生路径单列证据，不外推为原 Remote 套件全部通过。
