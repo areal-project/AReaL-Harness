@@ -159,7 +159,7 @@ export function MobileComposer({
   return (
     <>
       <div
-        className="mobile-composer p-0! max-w-none! w-full [&_.composer-primary-action]:min-w-[var(--size-touch-target)] [&_.composer-primary-action]:min-h-[var(--size-touch-target)] [&_[data-composer-leading-actions]]:flex-[0_1_auto]! [&_[data-composer-leading-actions]]:max-w-[45%] [&_[data-composer-trailing-actions]]:flex-1! [&_[data-composer-trailing-actions]]:min-w-0 [&_.composer-editor]:rounded-none [&_.composer-editor]:shadow-none flex-[0_0_auto] min-w-0 composer-dock"
+        className="mobile-composer p-0! max-w-none! w-full [&_.composer-primary-action]:min-w-[var(--size-touch-target)] [&_.composer-primary-action]:min-h-[var(--size-touch-target)] [&_.composer-queue_button]:min-w-[var(--size-touch-target)] [&_.composer-queue_button]:min-h-[var(--size-touch-target)] [&_[data-composer-leading-actions]]:flex-[0_1_auto]! [&_[data-composer-leading-actions]]:max-w-[45%] [&_[data-composer-trailing-actions]]:flex-1! [&_[data-composer-trailing-actions]]:min-w-0 [&_.composer-editor]:rounded-none [&_.composer-editor]:shadow-none flex-[0_0_auto] min-w-0 composer-dock"
         data-field="composer"
         data-config-revision={snapshot?.configRevision}
         data-active-turn={snapshot?.activeTurnId ?? ""}
@@ -336,7 +336,7 @@ export function MobileComposer({
             </DialogTitle>
             <Button
               variant="ghost"
-              className="mobile-sheet-done h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] p-0 text-fixed-body font-semibold"
+              className="mobile-sheet-done h-[var(--size-touch-target)] min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] p-0 text-fixed-body font-semibold"
               data-action="model-done"
               disabled={command.busy || (running && !!Object.keys(sheet ?? {}).length)}
               onClick={() => void save()}
@@ -556,6 +556,7 @@ export function MobileComposer({
             {intent && command.error && (
               <Button
                 variant="ghost"
+                className="min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
                 onClick={() => {
                   commands.setIntent(projectId, threadId, undefined);
                   setSheet({});
