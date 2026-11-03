@@ -87,9 +87,13 @@ def environment_binding(argv, cwd):
         info = path.stat()
         identity = dict(path=str(path), size=info.st_size, mtimeNs=info.st_mtime_ns)
     digest = hashlib.sha256(json.dumps(dict(os.environ), sort_keys=True).encode()).hexdigest()
-    return {"environmentDigest": digest, "executable": identity, "cwd": str(Path(cwd).resolve()),
-            "commandDigest": hashlib.sha256(json.dumps(argv).encode()).hexdigest(),
-            "scope": "command environment and executable identity, not a full dependency content hash; dependency changes require new validation"}
+    return {
+        "environmentDigest": digest,
+        "executable": identity,
+        "cwd": str(Path(cwd).resolve()),
+        "commandDigest": hashlib.sha256(json.dumps(argv).encode()).hexdigest(),
+        "scope": "command environment and executable identity, not a full dependency content hash; dependency changes require new validation",
+    }
 
 
 def run(request):

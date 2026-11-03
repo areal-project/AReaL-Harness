@@ -1,4 +1,5 @@
 """环境事实的范围、失效与验证收据边界。"""
+
 import importlib.util
 import json
 import os
@@ -44,9 +45,15 @@ class EnvironmentFactsTests(unittest.TestCase):
 
     def test_actual_interpreter_and_environment_digest_do_not_expose_secret(self):
         with tempfile.TemporaryDirectory() as path:
-            request = {"roots": {"repo": path}, "executables": [{"name": sys.executable, "kind": "python"}]}
+            request = {
+                "roots": {"repo": path},
+                "executables": [{"name": sys.executable, "kind": "python"}],
+            }
             first = environment.discover(request)
-            self.assertEqual(Path(first["executables"][0]["observed"]["executable"]).resolve(), Path(sys.executable).resolve())
+            self.assertEqual(
+                Path(first["executables"][0]["observed"]["executable"]).resolve(),
+                Path(sys.executable).resolve(),
+            )
             with patch.dict(os.environ, {"ENV_FACT_SECRET": "must-stay-private"}):
                 second = environment.discover(request)
             self.assertNotEqual(first["fingerprint"], second["fingerprint"])
@@ -59,7 +66,9 @@ class EnvironmentFactsTests(unittest.TestCase):
             (root / "pyproject.toml").symlink_to(Path(outside) / "private")
             (root / "outside").symlink_to(outside)
             request = {"roots": {"repo": path}, "executables": []}
-            self.assertEqual(environment.discover(request)["declarations"][0]["status"], "notRegular")
+            self.assertEqual(
+                environment.discover(request)["declarations"][0]["status"], "notRegular"
+            )
             request["cwd"] = "workspace://repo/outside"
             with self.assertRaises(ValueError):
                 environment.discover(request)
@@ -71,8 +80,13 @@ class EnvironmentFactsTests(unittest.TestCase):
             workspace.mkdir()
             scratch = root / "scratch"
             (workspace / "source.py").write_text("value = 1\n")
-            request = {"scratch": str(scratch), "workspace": str(workspace), "cwd": str(workspace),
-                       "argv": [sys.executable, "-I", "-c", "print('checked')"], "identity": "a" * 32}
+            request = {
+                "scratch": str(scratch),
+                "workspace": str(workspace),
+                "cwd": str(workspace),
+                "argv": [sys.executable, "-I", "-c", "print('checked')"],
+                "identity": "a" * 32,
+            }
             self.assertEqual(verification.run(request), 0)
             receipt = json.loads((scratch / "verification" / ("a" * 32 + ".json")).read_text())
             self.assertEqual(receipt["environmentBefore"], receipt["environmentAfter"])
@@ -80,10 +94,14 @@ class EnvironmentFactsTests(unittest.TestCase):
             (workspace / "source.py").write_text("value = 2\n")
             self.assertNotEqual(receipt["sourceAfter"], verification.fingerprint(workspace))
             changed = verification.environment_binding([sys.executable, "-V"], workspace)
-            self.assertNotEqual(receipt["environmentBefore"]["commandDigest"], changed["commandDigest"])
+            self.assertNotEqual(
+                receipt["environmentBefore"]["commandDigest"], changed["commandDigest"]
+            )
             with patch.dict(os.environ, {"ENV_FACT_SECRET": "different"}):
                 changed = verification.environment_binding(request["argv"], workspace)
-            self.assertNotEqual(receipt["environmentBefore"]["environmentDigest"], changed["environmentDigest"])
+            self.assertNotEqual(
+                receipt["environmentBefore"]["environmentDigest"], changed["environmentDigest"]
+            )
 
 
 if __name__ == "__main__":
