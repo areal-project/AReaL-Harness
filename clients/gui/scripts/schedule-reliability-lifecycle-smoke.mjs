@@ -159,6 +159,10 @@ const installedElectron = process.env.AREAL_ELECTRON_EXECUTABLE || require("elec
 execFileSync("/usr/bin/ditto", [resolve(installedElectron, "../../.."), electronBundle]);
 const appDirectory = join(electronBundle, "Contents/Resources/app");
 await mkdir(appDirectory, { recursive: true });
+execFileSync("/usr/bin/ditto", [
+  join(gui, "renderer/dist"),
+  join(electronBundle, "Contents/Resources/areal-gui"),
+]);
 await writeFile(
   join(appDirectory, "package.json"),
   JSON.stringify({ name: "areal-schedule-isolated-test", productName: appName, main: "main.cjs" }),
@@ -225,6 +229,9 @@ const identity = {
   electron: require("electron/package.json").version,
 };
 let app, page, child, failure, primaryId;
+let stoppedMetadata,
+  hostStopped = false;
+const descriptorPath = join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json");
 async function until(read, label, timeout = 60000) {
   const end = Date.now() + timeout;
   while (Date.now() < end) {
@@ -251,6 +258,8 @@ async function check(name, run) {
   }
 }
 async function launch({ reconnectStopped = false } = {}) {
+  stoppedMetadata = undefined;
+  hostStopped = false;
   app = await electron.launch({
     executablePath: electronBinary,
     args: [],
@@ -278,7 +287,7 @@ async function launch({ reconnectStopped = false } = {}) {
     await page.getByRole("button", { name: "重新连接后台", exact: true }).click();
     cleanup.push({ kind: "explicit UI reconnect", at: Date.now(), pid: child.pid });
   }
-  await until(async () => (await snapshot()).connection?.state === "ready", "Desktop ready");
+  await until(async () => (await snapshot()).connection?.state === "ready", "Main/Host ready");
   await app.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0];
     w.setSize(1488, 1056);
@@ -287,11 +296,24 @@ async function launch({ reconnectStopped = false } = {}) {
   });
 }
 async function stopFixture() {
-  const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
+  const metadata = await readFile(descriptorPath, "utf8")
+    .then(JSON.parse)
+    .catch((error) => {
+      if (error.code !== "ENOENT" || !stoppedMetadata) throw error;
+      return null;
+    });
+  if (!metadata) {
+    await assertApplicationStopped(binary, env, stoppedMetadata);
+    hostStopped = true;
+    cleanup.push({ kind: "already confirmed Host stop", metadata: stoppedMetadata });
+    return;
+  }
   if (app) await quit();
   const host = new HostClient();
   try {
     await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    assert.equal(host.hostId, metadata.hostId);
+    assert.equal(host.generation, metadata.generation);
     const directory = join(env.AREAL_HARNESS_SERVICE_HOME, "host/operations");
     const unresolved = (receipt) =>
       ["acceptedPending", "admissionUnknown", "settlementIncomplete"].includes(receipt.state) ||
@@ -343,10 +365,18 @@ async function stopFixture() {
     host.close();
   }
   await assertApplicationStopped(binary, env, metadata);
-  cleanup.push({ pid: metadata.pid, stopped: true, kind: "fixture teardown" });
+  stoppedMetadata = metadata;
+  hostStopped = true;
+  cleanup.push({
+    pid: metadata.pid,
+    hostId: metadata.hostId,
+    generation: metadata.generation,
+    stopped: true,
+    kind: "fixture teardown",
+  });
 }
 async function quit(stopHost = false) {
-  const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
+  const metadata = JSON.parse(await readFile(descriptorPath, "utf8"));
   if (stopHost) {
     await app.evaluate(({ Menu }) => {
       globalThis.responses = [1];
@@ -394,7 +424,15 @@ async function quit(stopHost = false) {
   app = null;
   if (stopHost) {
     await assertApplicationStopped(binary, env, metadata);
-    cleanup.push({ pid: metadata.pid, stopped: true, kind: "menu Host stop and product app.quit" });
+    stoppedMetadata = metadata;
+    hostStopped = true;
+    cleanup.push({
+      pid: metadata.pid,
+      hostId: metadata.hostId,
+      generation: metadata.generation,
+      stopped: true,
+      kind: "menu Host stop and product app.quit",
+    });
   }
 }
 async function persisted(owner) {
@@ -695,20 +733,27 @@ try {
   }
   await fixture.close();
   try {
-    for (const account of [appName, `${appName} Key`]) await cleanEntry(keychainService, account);
-    const directory = join(env.AREAL_HARNESS_SERVICE_HOME, "host/vault-operations");
-    for (const name of await readdir(directory).catch((error) => {
-      if (error.code === "ENOENT") return [];
-      throw error;
-    })) {
-      const receipt = JSON.parse(await readFile(join(directory, name), "utf8"));
-      assert.equal(name, `${receipt.requestId}.json`);
-      assert.equal(receipt.method, "vault.replace");
-      assert.match(
-        receipt.entryId,
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-      );
-      await cleanEntry(hostService, receipt.entryId);
+    if (!hostStopped)
+      cleanup.push({
+        kind: "credentials retained",
+        reason: "Host stop is not confirmed; inspect original lifecycle requests before cleanup",
+      });
+    else {
+      for (const account of [appName, `${appName} Key`]) await cleanEntry(keychainService, account);
+      const directory = join(env.AREAL_HARNESS_SERVICE_HOME, "host/vault-operations");
+      for (const name of await readdir(directory).catch((error) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+      })) {
+        const receipt = JSON.parse(await readFile(join(directory, name), "utf8"));
+        assert.equal(name, `${receipt.requestId}.json`);
+        assert.equal(receipt.method, "vault.replace");
+        assert.match(
+          receipt.entryId,
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        );
+        await cleanEntry(hostService, receipt.entryId);
+      }
     }
   } catch (error) {
     failure ??= error.stack;
@@ -731,7 +776,7 @@ try {
     errors,
     cleanup,
     boundaries: [
-      "Real source Electron/Desktop/Core with local deterministic model and public project/task/lifecycle commands.",
+      "Real source Electron/Main/Host/Core with local deterministic model and public bridge project/task/lifecycle commands; task dialog creation is not exercised.",
       "Isolated Electron clone uses a distinct native safeStorage identity; HOME remains native and Core, GUI and Host homes are isolated.",
       "Host stop uses the application menu; native confirmation and folder picker responses are injected.",
       "No task read command is issued while observing unopened-owner admission. Immutable body/root hashes are read without starting Core.",

@@ -418,6 +418,8 @@ macOS 实际崩溃预算使用 `AREAL_HOST_SERVICE_ROOT=/absolute/authorized/roo
 
 `node scripts/shared-host-schedule-smoke.mjs` 使用 `AREAL_TEST_BIN_DIR` 指定的完整固定产物，默认 `.local/shared-host-bin`。它经真实 Core 创建启用、暂停及显式停止的定时任务，重启 Host 后检查仅启用项目自动激活、到期执行一次、停止抑制仍生效及显式恢复。另验证 managed 技能变更触发受控 Core 重启、新 profile 生效且 Run 不重复。独立工具连接发布 Browser/Computer 后，验证模型收到目录，工具连接关闭后原 Run 继续，后续 Run 不声明桌面工具；该检查不执行真实桌面动作。模型为本地确定性 HTTP fixture；原子发布根、不可变 Task body 和 Host 状态共同提供断言。临时目录的 `result.json` 保留源码、产物、请求与清理证据。该场景不启动 Electron，不访问 Keychain，不替代 GUI 退出交互、真机、真实供应商或系统服务登录验收。
 
+`AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal AREAL_SCHEDULE_GUI_ROOT=/absolute/source/clients/gui AREAL_SCHEDULE_MODE=accept node clients/gui/scripts/schedule-reliability-lifecycle-smoke.mjs` 运行真实源码 Electron/Main/Host 调度生命周期回归。夹具使用独立应用身份和已构建的 Renderer 资源，通过公开 bridge 创建任务；不验证任务创建对话框。原断言覆盖未打开项目到期一次、GUI 退出后触发、显式停止期间不准入及显式重连后的 misfire。生命周期身份取认证 Host 描述及原停止回执，不依赖旧 Desktop 的 `core/service.json`。停止未确认时保留隔离凭据和现场，清理只核查原请求。结果、trace、截图与清理在 `.scratch/schedule-reliability-lifecycle-*/manifest.json`；该路径不覆盖真实供应商、真机或系统登录。
+
 `pnpm --dir clients/gui run test:shared-host-consumers` 使用隔离真实 Host/Core 验证 GUI 命名环境凭据、等价 CLI 别名及外来项目的原配置和会话创建。`node clients/gui/scripts/shared-host-gui-journal.mjs` 经普通提交 owner 验证双客户端 CAS、大记录和丢回复后的原回执恢复。`node clients/gui/scripts/gui-host-lifecycle-smoke.mjs` 验证项目登记、客户端断开、显式停止/重开，以及独立客户端活动轮次的全局观察和结算；活动查询不把轮次重复计入任务数。三个脚本使用 `AREAL_TEST_BIN_DIR` 指定的固定完整产物；默认使用本仓 `.local/shared-host-bin`。这些场景不访问真实 Keychain，不启动 Renderer，不替代旧 Desktop writer fence、GUI/TUI 审批交接或安装包验收。
 
 `node clients/gui/scripts/gui-terminal-connection-smoke.mjs` 使用同一固定产物，在独立 Node 客户端中运行生产 Main 终端连接适配器。场景覆盖显式 Profile 权限、真实 PTY 输入/输出/resize、强杀客户端后的定向 Runtime 清理、原请求恢复及普通 thread 资源继续。它不启动 Electron，不验证 Desktop 提交 journal 桥接或退出界面。
