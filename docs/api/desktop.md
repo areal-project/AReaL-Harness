@@ -208,6 +208,8 @@ thread/configure 使用 expectedRevision，仅空闲且不压缩时生效。rese
 
 自定义模型可声明可选 `capabilities:{tools,vision,reasoning,reasoningEffortOptions?}`，经 `Provider.modelCapabilities` 按模型 ID 传入；未知模型键或无效声明拒绝更新。省略声明保留原协议行为。关闭工具后不发送工具定义，也不受理返回的工具调用；关闭视觉后拒绝图片输入；关闭推理后不发送推理参数。`reasoningEffortOptions` 为不重复的允许值子集，可选 `none/minimal/low/medium/high/xhigh/max`。空列表或省略采用原有六档，关闭推理时目录选项为空。
 
+`areal/model/list` 的供应商模型项可附带 `displayName`，取自 Core 已应用配置中同一 `providerId` 与 `modelId` 的非空显示名。启动安装和模型配置热应用同步更新此字段；仅修改配置文件不改变当前目录。未配置显示名时省略该字段，客户端仍以 `modelId` 回退。旧 Core 可省略此加法字段。
+
 `areal/model/list` 的每项 `parameters` 是 Core 按模型默认、Provider 默认合并的参数；`isDefault` 标识新会话的服务默认选择。显式 Profile 模型仍优先于全局默认。Composer 在发送前显示具体模型与有效思考强度，完全未设置强度时显示“供应商默认”，显式 `none` 显示“无”。“使用模型默认”只清除当前强度覆盖，不绕过模型或 Provider 已保存的默认值。新会话只保留本次未发送草稿的选择，创建成功后清除；历史使用会话当前已保存的选择，已有 Turn 快照不变。
 
 `areal/model/list` 还返回本实例的 `lastAcceptedModel`（无记录时为 null）：`{acceptedAt,model,modelId,reasoningEffort}`。`acceptedAt` 为 Core 受理时间（Unix 微秒），`model` 为供应商模型引用或隐式服务默认的 null，`modelId` 为实际模型名；`reasoningEffort=null` 与显式 `"none"` 不同。用户主会话的 `areal/turn/submit` 及显式 `areal/turn/start|enqueue` 将记录与受理收据写入同一 Thread 快照，并在响应/原收据中返回该字段。重复查询不刷新时间，后台执行不更新。桌面服务按时间汇总各项目的记录，持久保存新会话偏好；它不是已有会话配置的所有者。

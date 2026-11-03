@@ -462,7 +462,18 @@ impl Engine {
                         parameter_capabilities.push("reasoningSummary");
                     }
                 }
-                data.push(json!({"providerId":p.id,"providerRevision":p.revision,"modelId":name,"parameters":parameters,"isDefault":default_model.as_ref() == Some(&reference),"transport":p.protocol,"input":capabilities.input,"output":capabilities.output,"available":result.is_ok(),"credentialState":self.provider_view(p)["credentialState"],"contextWindowTokens":window.window_tokens,"effectiveContextWindowTokens":window.window_tokens,"reportedWindowTokens":window.reported_window_tokens,"reportedWindowSource":window.reported_window_source,"userBudgetTokens":window.user_budget_tokens,"windowSource":window.source,"capabilities":declared,"parameterCapabilities":parameter_capabilities,"reasoningEffortOptions":reasoning_efforts,"connectionState":"unchecked"}));
+                let mut entry = json!({"providerId":p.id,"providerRevision":p.revision,"modelId":name,"parameters":parameters,"isDefault":default_model.as_ref() == Some(&reference),"transport":p.protocol,"input":capabilities.input,"output":capabilities.output,"available":result.is_ok(),"credentialState":self.provider_view(p)["credentialState"],"contextWindowTokens":window.window_tokens,"effectiveContextWindowTokens":window.window_tokens,"reportedWindowTokens":window.reported_window_tokens,"reportedWindowSource":window.reported_window_source,"userBudgetTokens":window.user_budget_tokens,"windowSource":window.source,"capabilities":declared,"parameterCapabilities":parameter_capabilities,"reasoningEffortOptions":reasoning_efforts,"connectionState":"unchecked"});
+                if let Some(display_name) = self
+                    .desktop
+                    .configured_models
+                    .read()
+                    .unwrap()
+                    .display_names
+                    .get(&(p.id.clone(), name.clone()))
+                {
+                    entry["displayName"] = json!(display_name);
+                }
+                data.push(entry);
             }
         }
         json!({"data":data,"lastAcceptedModel":last_accepted_model})

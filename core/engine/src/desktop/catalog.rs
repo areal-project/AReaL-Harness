@@ -64,6 +64,7 @@ pub struct ConfiguredModels {
     pub providers: Vec<Provider>,
     pub provider_ids: BTreeSet<String>,
     pub parameters: BTreeMap<(String, String), ModelParameters>,
+    pub display_names: BTreeMap<(String, String), String>,
     pub credential_environments: BTreeMap<(String, String), String>,
     pub default_model: Option<ModelRef>,
 }

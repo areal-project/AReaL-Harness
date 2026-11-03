@@ -10,6 +10,9 @@ struct Fixture {
 }
 impl Fixture {
     async fn open() -> Self {
+        Self::open_with_providers(None).await
+    }
+    async fn open_with_providers(providers: Option<Value>) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let mut inputs = ConfigInputs {
             cwd: directory.path().into(),
@@ -23,6 +26,14 @@ impl Fixture {
             "schema_version = 2\n[model]\ncatalog_version = 1\n",
         )
         .unwrap();
+        if let Some(data) = providers {
+            let current = areal_config::models::read(&inputs, &[]).unwrap();
+            let update = serde_json::from_value(
+                json!({"expectedRevision":current.revision,"data":data,"defaultModel":null}),
+            )
+            .unwrap();
+            areal_config::models::write(&inputs, update, &[]).unwrap();
+        }
         let (document, config) = areal_config::models::read_resolved(&inputs, &[]).unwrap();
         let engine = Engine::open(
             &config.data_dir,
@@ -30,6 +41,8 @@ impl Fixture {
             Default::default(),
         )
         .unwrap();
+        let (catalog, _) = configured_models(&config, &inputs.env).unwrap();
+        engine.install_configured_models(catalog).unwrap();
         let reload = Reload::open(inputs.clone(), &config, &engine).unwrap();
         let identity = areal_protocol::service::Identity {
             protocol_version: 1,
@@ -74,6 +87,62 @@ impl Fixture {
             .await
             .unwrap()
     }
+}
+
+#[tokio::test]
+async fn model_display_names_follow_applied_configuration_and_provider_identity() {
+    let providers = |name: &str| {
+        json!([
+            {"id":"first","name":"First","endpoint":"http://127.0.0.1:1/v1/chat/completions","protocol":"chat-completions","enabled":true,"models":[{"id":"shared","displayName":name,"enabled":true,"parameters":{}}],"parameters":{}},
+            {"id":"second","name":"Second","endpoint":"http://127.0.0.1:1/v1/chat/completions","protocol":"chat-completions","enabled":true,"models":[{"id":"shared","displayName":"Second model","enabled":true,"parameters":{}},{"id":"unnamed","enabled":true,"parameters":{}}],"parameters":{}}
+        ])
+    };
+    let fixture = Fixture::open_with_providers(Some(providers("First model"))).await;
+    let names = |catalog: &Value| {
+        catalog["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| {
+                (
+                    (model["providerId"].clone(), model["modelId"].clone()),
+                    model.get("displayName").cloned(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let before = fixture.control.engine.model_catalog().await;
+    assert!(names(&before).contains(&(
+        (json!("first"), json!("shared")),
+        Some(json!("First model"))
+    )));
+    assert!(names(&before).contains(&(
+        (json!("second"), json!("shared")),
+        Some(json!("Second model"))
+    )));
+    assert!(names(&before).contains(&((json!("second"), json!("unnamed")), None)));
+    let current = areal_config::models::read(&fixture.inputs, &[]).unwrap();
+    let update = serde_json::from_value(json!({"expectedRevision":current.revision,"data":providers("Renamed model"),"defaultModel":null})).unwrap();
+    let saved = areal_config::models::write(&fixture.inputs, update, &[]).unwrap();
+    assert_eq!(
+        names(&fixture.control.engine.model_catalog().await),
+        names(&before)
+    );
+    let mut intent = fixture.intent("rename", saved.revision.clone());
+    intent.credentials.clear();
+    let receipt = fixture.control.clone().apply(intent).await.unwrap();
+    assert_eq!(receipt["applied"]["revision"], saved.revision);
+    let after = fixture.control.engine.model_catalog().await;
+    assert!(names(&after).contains(&(
+        (json!("first"), json!("shared")),
+        Some(json!("Renamed model"))
+    )));
+    assert!(names(&after).contains(&(
+        (json!("second"), json!("shared")),
+        Some(json!("Second model"))
+    )));
+    assert!(names(&after).contains(&((json!("second"), json!("unnamed")), None)));
+    fixture.control.engine.shutdown().await;
 }
 
 #[tokio::test]
