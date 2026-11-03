@@ -40,9 +40,13 @@ if (!process.env.AREAL_IOS_TLS_HOME) {
   }
 } else {
   const cleanup = [];
-  const fixture = { after: (fn) => cleanup.push(fn) };
+  const fixture = {
+    after: (fn) => cleanup.push(fn),
+    diagnostic: (message) => console.log(JSON.stringify({ diagnostic: message })),
+  };
   let simulator;
   let simulatorName;
+  let host;
   let stage = "sync";
   const records = [];
   const cleaned = [];
@@ -101,7 +105,7 @@ if (!process.env.AREAL_IOS_TLS_HOME) {
       tlsHome: process.env.AREAL_IOS_TLS_HOME,
       relayOptions: { allowedAppOrigins: ["capacitor://localhost"] },
     });
-    const host =
+    host =
       workspaceScenario || commandScenario
         ? await (
             await import("./mobile-core-fixture.mjs")
@@ -113,7 +117,10 @@ if (!process.env.AREAL_IOS_TLS_HOME) {
       code: relay.admin("enrollment").code,
       confirmed: true,
     });
-    await waitFor(() => host.remote.state().connected);
+    await waitFor(async () => {
+      if (workspaceScenario || commandScenario) await host.remote.refresh();
+      return host.remote.state().connected;
+    });
     const invitation = await host.remote.control({ operation: "pair", transport: "relay" });
     const cases = commandScenario
       ? ["pair", "new", "models", "send", "permissions", "queue", "stop", "unknown", "recover"]
@@ -121,6 +128,7 @@ if (!process.env.AREAL_IOS_TLS_HOME) {
         ? ["pair", "projects", "sessions", "baseline", "history", "live", "release"]
         : ["pair", "restore", "lifecycle", "revoked", "clear", "unpaired", "unpaired-dark"];
     let pairedPeer;
+    let droppedSubmission;
     for (const name of cases) {
       const productConfig = {
         mode: name === "unpaired-dark" ? "unpaired" : name,
@@ -132,7 +140,6 @@ if (!process.env.AREAL_IOS_TLS_HOME) {
       for (const kind of ["pairing", "ready", "background", "result"])
         await rm(join(container, "Documents", `product-${kind}.json`), { force: true });
       stage = `probe-${name}`;
-      if (name === "unknown") host.loseNext("areal/turn/start");
       if (name === "unpaired-dark") await sim("ui", simulator, "appearance", "dark");
       await run(
         "xcrun",
@@ -183,9 +190,9 @@ if (!process.env.AREAL_IOS_TLS_HOME) {
             await sim("launch", simulator, bundleId);
           }
           if (name === "queue") {
-            const queue = await host.backend.projects
-              .get(host.projectIds[0])
-              .client.request("areal/queue/list", { threadId: host.threadId });
+            const queue = await host.project.core.call("areal/queue/list", {
+              threadId: host.threadId,
+            });
             const item = queue.items.find((item) => item.id === ready.queueItemId);
             assert.equal(item?.status, "pending");
             assert.ok(item.input.some((part) => part.text === "MOBILE_QUEUED_AFTER_CURRENT"));
@@ -248,9 +255,10 @@ if (!process.env.AREAL_IOS_TLS_HOME) {
       ) {
         if (name === "send") host.threadId = record.threadId;
         assert.equal(record.threadId, host.threadId);
-        const { thread } = await host.backend.projects
-          .get(host.projectIds[0])
-          .client.request("thread/read", { threadId: host.threadId, includeTurns: true });
+        const { thread } = await host.project.core.call("thread/read", {
+          threadId: host.threadId,
+          includeTurns: true,
+        });
         const expected = { send: 1, permissions: 1, queue: 3, stop: 4, unknown: 5, recover: 5 }[
           name
         ];
@@ -263,24 +271,72 @@ if (!process.env.AREAL_IOS_TLS_HOME) {
         }
         if (name === "queue") assert.ok(thread.turns.every((turn) => turn.status === "completed"));
         if (name === "stop") assert.equal(thread.turns.at(-1).status, "interrupted");
-        if (name === "unknown") assert.equal(record.locators, 1);
-        if (name === "recover") assert.equal(record.locators, 0);
+        if (name === "unknown") {
+          assert.equal(record.locators, 1);
+          const sends = record.requests.filter((request) => request.method === "session.send");
+          assert.equal(sends.length, 1);
+          droppedSubmission = sends[0];
+          assert.equal(droppedSubmission.admissionState, "accepted");
+          assert.equal(typeof droppedSubmission.commandId, "string");
+          assert.equal(typeof droppedSubmission.operationId, "string");
+          assert.equal(droppedSubmission.turnId, thread.turns.at(-1).id);
+          const receipts = await host.project.core.call("areal/request/read", {
+            threadId: host.threadId,
+            requestId: droppedSubmission.operationId,
+          });
+          const original = receipts.data.filter(
+            (receipt) =>
+              receipt.requestId === droppedSubmission.operationId &&
+              receipt.method === "areal/turn/start",
+          );
+          assert.equal(original.length, 1);
+          assert.equal(original[0].result.turn.id, droppedSubmission.turnId);
+          record.originalReceipt = {
+            requestId: original[0].requestId,
+            turnId: original[0].result.turn.id,
+          };
+        }
+        if (name === "recover") {
+          assert.equal(record.locators, 0);
+          assert.equal(
+            record.requests.some((request) => request.method === "session.send"),
+            false,
+          );
+          const reads = record.requests.filter((request) => request.method === "command.read");
+          assert.equal(reads.length, 1);
+          assert.equal(reads[0].admissionState, "accepted");
+          assert.equal(reads[0].commandId, droppedSubmission.commandId);
+          assert.equal(reads[0].operationId, droppedSubmission.operationId);
+          assert.equal(reads[0].turnId, droppedSubmission.turnId);
+        }
       }
       if (workspaceScenario && name !== "pair") assert.equal(record.projects, 2);
       if (["history", "live"].includes(name)) assert.equal(record.history, true);
       if (name === "history") assert.equal(record.historyAutoload, true);
       if (name === "live") {
         assert.equal(record.live, true);
-        const thread = await host.backend.projects
-          .get(host.projectIds[0])
-          .client.request("thread/read", { threadId: host.threadId, includeTurns: true });
+        const thread = await host.project.core.call("thread/read", {
+          threadId: host.threadId,
+          includeTurns: true,
+        });
         assert.equal(thread.thread.turns.length, 53);
         assert.ok(thread.thread.turns.every((turn) => turn.status === "completed"));
         assert.ok(host.modelRequests() >= 53);
       }
-      if (name === "release")
-        await waitFor(() => host.remote.sessions.observers.viewers.size === 0);
+      if (name === "release") {
+        const opened = record.requests.find((request) => request.method === "session.open");
+        const closed = record.requests.filter((request) => request.method === "subscription.close");
+        assert.equal(typeof opened?.subscriptionId, "string");
+        assert.equal(closed.length, 1);
+        assert.equal(closed[0].subscriptionId, opened.subscriptionId);
+        assert.equal(closed[0].closed, true);
+      }
+      if (workspaceScenario || commandScenario) await host.remote.refresh();
       assert.equal(host.remote.state().pending.length, 0);
+      await writeFile(
+        join(output, `result-${runtime}.json`),
+        JSON.stringify(records, null, 2) + "\n",
+      );
     }
     if (commandScenario && process.env.AREAL_MOBILE_HOLD === "1") {
       const until = Date.now() + 600000;
@@ -350,6 +406,9 @@ if (!process.env.AREAL_IOS_TLS_HOME) {
           cleanup: cleaned,
           ...(workspaceScenario || commandScenario
             ? {
+                nativeHostEvidence: host?.evidence
+                  ? join(host.evidence.root, "evidence.json")
+                  : null,
                 coreBinary: {
                   path: process.env.AREAL_CORE_BIN,
                   sha256: createHash("sha256")

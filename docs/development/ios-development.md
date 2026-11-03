@@ -107,13 +107,14 @@ AREAL_RELAY_NODE=/path/to/node-24.2.0/bin/node node clients/gui/scripts/mobile-p
 
 ```sh
 node --test clients/gui/scripts/mobile-workspace.test.mjs
+AREAL_TEST_HOST_KEYCHAIN=1 \
 AREAL_CORE_BIN=/path/to/locked-slot/areal \
 AREAL_RUNTIME_BIN=/path/to/locked-slot/areal-runtime \
 AREAL_RELAY_NODE=/path/to/node-24.2.0/bin/node \
 node clients/gui/scripts/mobile-workspace-smoke.mjs
 ```
 
-真实 Core 门禁必须在 `scripts/verification.py` 的 `slot_lock` 上下文中运行，锁覆盖整个 runner 生命周期。先按[测试指南](testing.md)部署源码匹配的固定槽，包括私有 shell。runner 使用严格 TLS Relay、真实 Core/Runtime、确定性本地模型和原生 WKWebView。它创建两个项目和超过首屏预算的历史，检查首次读取、向上分页、桌面产生的新消息、旧边界消息保留及返回时订阅释放。DEBUG driver 只点击生产 DOM 和滚动消息视图。向上自动分页门禁使用合成 `PointerEvent(pointerType: touch)` 和实际 scroll；实体触摸手势仍需真机检查。证据写入 `.scratch/ios-remote-v1/mobile-workspace/`，包含源码版本、未提交路径、Core/Runtime 文件哈希与清理结果。它不证明真实供应商响应。
+真实 Core 门禁必须在 `scripts/verification.py` 的 `slot_lock` 上下文中运行，锁覆盖整个 runner 生命周期。先按[测试指南](testing.md)部署源码匹配的固定槽，包括私有 shell。runner 使用严格 TLS Relay、Rust Host/Core/Runtime、确定性本地模型和原生 WKWebView。它通过公开 Host API 登记两个项目，在首个项目的真实 Core 中创建超过首屏预算的历史，检查首次读取、向上分页、电脑产生的新消息、旧边界消息保留及返回时订阅释放。第二项目只验列表展示。DEBUG driver 点击生产 DOM、滚动消息视图，并记录原 `subscription.close` 的成功回执核对订阅释放。向上自动分页门禁使用合成 `TouchEvent` 和实际 scroll；实体触摸手势仍需真机检查。`AREAL_TEST_HOST_KEYCHAIN=1` 允许夹具管理自己创建的合成 Host vault 条目。证据写入 `.scratch/ios-remote-v1/mobile-workspace/`，包含源码版本、未提交路径、Core/Runtime 文件哈希、原 Host 证据位置与清理结果。它不证明真实供应商响应。
 
 ## 验证会话命令
 
@@ -123,13 +124,14 @@ node clients/gui/scripts/mobile-workspace-smoke.mjs
 
 ```sh
 node --test clients/gui/scripts/mobile-commands.test.mjs
+AREAL_TEST_HOST_KEYCHAIN=1 \
 AREAL_CORE_BIN=/path/to/locked-slot/areal \
 AREAL_RUNTIME_BIN=/path/to/locked-slot/areal-runtime \
 AREAL_RELAY_NODE=/path/to/node-24.2.0/bin/node \
 node clients/gui/scripts/mobile-command-smoke.mjs
 ```
 
-命令门禁同样需要 `slot_lock` 覆盖全程。runner 使用真实 Core、两个确定性本地模型、真实 DOM 输入与原生 Keychain，检查非默认模型首发、运行中排队、停止、受理后丢回包与重启核对。结果按独立 attempt 目录保存在 `.scratch/ios-remote-v1/mobile-commands/`，包括可见按钮的实际 CSS 触控尺寸。`AREAL_MOBILE_DERIVED` 可指定共享 DerivedData 缓存；证据目录不复用旧尝试。DOM 输入检查不替代实体键盘或触摸验收。
+命令门禁同样需要 `slot_lock` 覆盖全程。runner 使用 Rust Host/Core/Runtime、两个确定性本地模型、真实 DOM 输入与原生 Keychain，检查非默认模型首发、运行中排队、停止、受理后丢回包与重启核对。模型目录通过 Core 公开 Provider API 配置。`unknown` 的 DEBUG driver 等待真实 `session.send` 受理回执后，仅向客户端丢弃该回包，并立即恢复原请求方法；它记录原 commandId、operationId 和 Turn ID，runner 同时核对原 Core 回执。`recover` 重启 App 后只查询原 `command.read`，定位信息从 1 变为 0，Turn 总数保持 5。这证明客户端回包未知后的核对，不代表 Host/Core 回执本身未知。结果按独立 attempt 目录保存在 `.scratch/ios-remote-v1/mobile-commands/`，包括可见按钮的实际 CSS 触控尺寸。`AREAL_MOBILE_DERIVED` 可指定共享 DerivedData 缓存；证据目录不复用旧尝试。DOM 输入检查不替代实体键盘或触摸验收。
 
 移动项目和会话列表使用内容自适应高度的无阴影卡片；项目名、会话名和顶部标题限制为可用宽度内的单行，超长时显示省略号，完整值保留在 DOM 和 `title` 属性。列表刷新只更新无障碍状态与原位控件，不插入会推移内容的加载行。消息正文继续完整显示。
 

@@ -107,13 +107,14 @@ Sessions reuse `Messages`, the atomic `session.open` baseline, and `acceptSessio
 
 ```sh
 node --test clients/gui/scripts/mobile-workspace.test.mjs
+AREAL_TEST_HOST_KEYCHAIN=1 \
 AREAL_CORE_BIN=/path/to/locked-slot/areal \
 AREAL_RUNTIME_BIN=/path/to/locked-slot/areal-runtime \
 AREAL_RELAY_NODE=/path/to/node-24.2.0/bin/node \
 node clients/gui/scripts/mobile-workspace-smoke.mjs
 ```
 
-Run the real Core gate inside `slot_lock` from `scripts/verification.py`, holding the lock for the runner's entire lifetime. First deploy matching artifacts, including private shells, as described in the [testing guide](testing.en.md). The runner uses strict TLS Relay, real Core/Runtime, a deterministic local model, and native WKWebView. It creates two projects and history beyond the initial display budget, then checks the baseline, older history, a new desktop message, preservation of the old boundary, and subscription release on navigation. The DEBUG driver only clicks production DOM and scrolls the message view. Automatic older-history loading uses a synthetic `PointerEvent(pointerType: touch)` and actual scrolling; physical touch gestures still require device checks. Evidence in `.scratch/ios-remote-v1/mobile-workspace/` includes source revision, dirty paths, Core/Runtime hashes, and cleanup results. It does not qualify real providers.
+Run the real Core gate inside `slot_lock` from `scripts/verification.py`, holding the lock for the runner's entire lifetime. First deploy matching artifacts, including private shells, as described in the [testing guide](testing.en.md). The runner uses strict TLS Relay, Rust Host/Core/Runtime, a deterministic local model, and native WKWebView. It registers two projects through public Host APIs and seeds history beyond the initial display budget in the first project’s real Core. It checks the baseline, older history, a new computer message, preservation of the old boundary, and subscription release on navigation. The second project is checked only for list visibility. The DEBUG driver clicks production DOM, scrolls the message view, and records the successful original `subscription.close` receipt to verify release. Automatic older-history loading uses synthetic `TouchEvent` events and actual scrolling; physical touch gestures still require device checks. `AREAL_TEST_HOST_KEYCHAIN=1` permits the fixture to manage its own synthetic Host vault entries. Evidence in `.scratch/ios-remote-v1/mobile-workspace/` includes source revision, dirty paths, Core/Runtime hashes, the original Host evidence location, and cleanup results. It does not qualify real providers.
 
 ## Validate conversation commands
 
@@ -123,13 +124,14 @@ The mobile UI reuses `ConversationComposer`, `ComposerQueue`, and the shared Dia
 
 ```sh
 node --test clients/gui/scripts/mobile-commands.test.mjs
+AREAL_TEST_HOST_KEYCHAIN=1 \
 AREAL_CORE_BIN=/path/to/locked-slot/areal \
 AREAL_RUNTIME_BIN=/path/to/locked-slot/areal-runtime \
 AREAL_RELAY_NODE=/path/to/node-24.2.0/bin/node \
 node clients/gui/scripts/mobile-command-smoke.mjs
 ```
 
-Hold `slot_lock` for the entire command gate. The runner uses real Core, two deterministic local models, DOM input, and native Keychain to check first send with a non-default model, queueing during a turn, stopping, loss of an admitted reply, and reconciliation after restart. Each attempt has a separate evidence directory under `.scratch/ios-remote-v1/mobile-commands/`, including measured CSS hit targets for visible buttons. `AREAL_MOBILE_DERIVED` can select a shared DerivedData cache; evidence does not overwrite previous attempts. DOM input checks do not replace physical keyboard or touch acceptance.
+Hold `slot_lock` for the entire command gate. The runner uses Rust Host/Core/Runtime, two deterministic local models, DOM input, and native Keychain to check first send with a non-default model, queueing during a turn, stopping, loss of an admitted reply, and reconciliation after restart. The model catalog is configured through public Core Provider APIs. In `unknown`, the DEBUG driver waits for the real accepted `session.send` receipt, drops its delivery to the client, and immediately restores the original request method. It records the original commandId, operationId, and Turn ID; the runner also checks the original Core receipt. After an app restart, `recover` only queries the original `command.read`, locators move from 1 to 0, and the Turn count stays at 5. This proves reconciliation after unknown client delivery; it does not establish an unknown Host/Core receipt. Each attempt has a separate evidence directory under `.scratch/ios-remote-v1/mobile-commands/`, including measured CSS hit targets for visible buttons. `AREAL_MOBILE_DERIVED` can select a shared DerivedData cache; evidence does not overwrite previous attempts. DOM input checks do not replace physical keyboard or touch acceptance.
 
 Project and conversation lists use content-sized cards without shadows. Project names, conversation names, and navigation titles stay on one line within the available width, with an ellipsis on overflow. Full values remain in the DOM and `title` attribute. Refreshes update accessibility state and existing controls without inserting a loading row that shifts content. Message bodies remain complete.
 
