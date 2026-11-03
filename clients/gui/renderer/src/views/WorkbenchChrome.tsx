@@ -1,5 +1,6 @@
-import React from "react";
-import { Route } from "lucide-react";
+import React, { useState } from "react";
+import { BugReportDialog } from "../BugReportDialog.js";
+import { Bug, Route } from "lucide-react";
 import { ApplicationRail } from "../app-shell/ApplicationNavigation.js";
 import { WorkspaceHeader } from "../app-shell/WorkbenchShell.js";
 import { Button } from "../components/ui/button.js";
@@ -181,40 +182,53 @@ export function WorkspaceNavigation({
 export function WorkspaceTaskActions({
   session,
   workspacePanels,
+  services,
 }: {
   session: Session;
   workspacePanels: Panels;
+  services: PlatformServices;
 }) {
   const { t } = useI18n();
   const { project, thread } = session;
+  const [bugReportOpen, setBugReportOpen] = useState(false);
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            unstyled
-            aria-label={t("common.navigation.taskActions")}
-            className="icon-button"
-            disabled={!project}
-          >
-            <MoreOptionsIcon size={16} />
-          </Button>
-        }
+    <>
+      <BugReportDialog
+        open={bugReportOpen}
+        onClose={() => setBugReportOpen(false)}
+        services={services}
       />
-      <DropdownMenuContent align="end">
-        {thread && project && (
-          <DropdownMenuItem
-            onClick={() => {
-              workspacePanels.selectPanel("调用轨迹");
-              workspacePanels.exposePanel();
-            }}
-          >
-            <Route size={16} aria-hidden="true" />
-            {t("common.navigation.viewTrajectory")}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              unstyled
+              aria-label={t("common.navigation.taskActions")}
+              className="icon-button"
+            >
+              <MoreOptionsIcon size={16} />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => setBugReportOpen(true)}>
+            <Bug size={16} aria-hidden="true" />
+            {t("bugReport.title")}
           </DropdownMenuItem>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          {thread && project && (
+            <DropdownMenuItem
+              onClick={() => {
+                workspacePanels.selectPanel("调用轨迹");
+                workspacePanels.exposePanel();
+              }}
+            >
+              <Route size={16} aria-hidden="true" />
+              {t("common.navigation.viewTrajectory")}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
   );
 }
 export function ConversationHeader({

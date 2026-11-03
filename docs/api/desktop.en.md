@@ -608,3 +608,14 @@ Events are `requested`, `started`, `ready`, `failed`, and `shortcut-changed`. Ca
 The native macOS backend owns capture permissions, global shortcut registration, helper processes, and transparent capture overlays. Other desktop platforms report `unavailable`. Web and Remote do not expose local desktop capture. The capability is additive; consumers without `snapShots` retain their existing attachment flow.
 
 Application icons remain in image attachment `_meta["areal.snapShot"]` display data and use the existing same-URI resource sidecar for history. Model text excludes icons. Historical cards merge icons only when the image URI matches within the same message.
+
+## Electron local bug reports
+
+`bugReport` is a narrow GUI Main command, not a Core WebSocket method or Remote capability. Its contract owner is `clients/gui/packages/workbench/client/desktop-contract/bug-report.cjs`. It uses the existing trusted-renderer sender and request/response validation, rejecting unknown fields, arbitrary paths, oversized descriptions/images, and service-side invocation.
+
+- `prepare {}` returns `{token, diagnostics}`, freezing a bounded privacy projection. At most eight volatile previews are retained, each valid for 30 minutes.
+- `save {id, description, screenshots, diagnosticsToken?}` returns `{id}`. The ID is a UUID; screenshots are bounded PNG data URLs decoded/re-encoded again in Main. Records use `schemaVersion: 1` and `state: local-only`. Diagnostics come from Main's preview, never a renderer-supplied diagnostic body. Repeating identical input for an ID recovers the original record; conflicting input cannot overwrite it.
+- `list {}` returns `{reports}` (ID, creation time, screenshot count, diagnostic presence). `read {id}` returns `{report}` including description, screenshots, and a diagnostic JSON string or `null`.
+- `export {id}` chooses a destination only through the native save dialog and returns `{path}` or `{canceled:true}`. It exports saved content without recollection. `delete {id}` returns `{deleted:true}` and removes only that local record.
+
+This additive command does not change model-response `feedback` or data-flywheel contracts. Bug reporting has no contact field or upload API; visible states describe local facts only. See the [GUI guide](../../clients/gui/README.en.md#local-bug-reports) for storage, limits, privacy, and workflow.

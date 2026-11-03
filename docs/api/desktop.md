@@ -606,3 +606,14 @@ SnapShots 是 Electron 本地能力，不新增 Core 或 Runtime RPC。主窗口
 macOS 原生后端拥有捕获权限、系统全局快捷键、辅助进程和透明捕获窗口。其它桌面平台报告 `unavailable`，Web 和 Remote 不暴露本机桌面捕获。该能力为增量接口，没有 `snapShots` 的调用方继续使用既有附件路径。
 
 应用图标只写入图片附件的 `_meta["areal.snapShot"]` 展示信息，经既有同 URI 的资源 sidecar 保存到历史；模型文本剔除图标，历史卡片仅合并同条消息图片 URI 匹配的图标。
+
+## Electron 本机问题反馈
+
+`bugReport` 是 GUI Main 所有的窄桌面命令，不是 Core WebSocket 方法，也不通过 Remote 暴露。契约所有者为 `clients/gui/packages/workbench/client/desktop-contract/bug-report.cjs`；沿用可信 renderer 的 sender 校验与请求/响应校验，拒绝未知字段、任意路径、超限描述/图片和服务端调用。
+
+- `prepare {}` 返回 `{token, diagnostics}`，冻结有界隐私投影，最多保留 8 份易失预览、有效期 30 分钟。
+- `save {id, description, screenshots, diagnosticsToken?}` 返回 `{id}`。`id` 为 UUID；截图为有界 PNG data URL，在 Main 再次解码/重编码。保存为 `schemaVersion: 1`、`state: local-only`，诊断正文由 Main 持有的预览取得，renderer 不能注入诊断正文。同一 ID 的相同输入恢复原记录，冲突输入拒绝覆盖。
+- `list {}` 返回 `{reports}`（ID、时间、截图数、有无诊断）；`read {id}` 返回 `{report}`，含描述、截图和诊断 JSON 字符串或 `null`。
+- `export {id}` 仅经原生保存框选择位置，返回 `{path}` 或 `{canceled:true}`；导出已保存内容，不重新采集。`delete {id}` 返回 `{deleted:true}`，仅移除该本机记录。
+
+该新增命令不改变已有模型回复评价 `feedback` 或数据飞轮契约。问题反馈不包含联系方式或上传接口；可见状态只表示本机事实。目录、限制、隐私与使用流程见 [GUI 指南](../../clients/gui/README.md#本机问题反馈)。

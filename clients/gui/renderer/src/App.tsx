@@ -433,7 +433,9 @@ function AppContent({ services }: { services: PlatformServices }) {
     !(thread && admitting) &&
     thread?.conversation?.kind !== "fork" &&
     !thread?.turns?.some((turn: Data) => turn.items?.length || turn.status === "inProgress");
-  const taskActions = <WorkspaceTaskActions session={session} workspacePanels={workspacePanels} />;
+  const taskActions = (
+    <WorkspaceTaskActions session={session} workspacePanels={workspacePanels} services={services} />
+  );
   const pluginCenterActive = surfaces.pluginCenterActive;
   const applicationRail = (
     <WorkbenchRail

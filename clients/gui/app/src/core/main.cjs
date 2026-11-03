@@ -11,6 +11,7 @@ const {
   dialog,
   protocol,
   nativeTheme,
+  nativeImage,
   WebContentsView,
   shell,
   powerMonitor,
@@ -470,6 +471,28 @@ function startDesktop() {
       ? dialog.showSaveDialog(window, options)
       : dialog.showSaveDialog(options);
   }
+  const bugReports = new (require("./bug-reports.cjs").BugReports)({
+    root: join(applicationOwner.profile, "bug-reports"),
+    collect: () => diagnostics.collect({ ...diagnosticsRoots, coreRoot: serviceOptions(app).home }),
+    normalizeImage: (data) => {
+      const bytes = Buffer.from(data.slice("data:image/png;base64,".length), "base64");
+      if (
+        bytes.length < 24 ||
+        !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+        bytes.toString("ascii", 12, 16) !== "IHDR" ||
+        bytes.readUInt32BE(16) > 4096 ||
+        bytes.readUInt32BE(20) > 4096
+      )
+        throw new Error("BUG_REPORT_IMAGE_INVALID");
+      const image = nativeImage.createFromDataURL(data);
+      const { width, height } = image.getSize();
+      if (image.isEmpty() || width > 4096 || height > 4096)
+        throw new Error("BUG_REPORT_IMAGE_INVALID");
+      const png = image.toPNG();
+      if (png.length > 2 * 1024 * 1024) throw new Error("BUG_REPORT_IMAGE_INVALID");
+      return `data:image/png;base64,${png.toString("base64")}`;
+    },
+  });
   async function exportDiagnostics() {
     try {
       const options = {
@@ -594,9 +617,22 @@ function startDesktop() {
         });
     });
   }
+  let diagnosticTopology = "";
   function desktopSnapshot() {
     if (!backend) throw new Error(nativeText("lifecycle.preparing"));
     const state = backend.snapshot();
+    const topology = {
+      type: /** @type {const} */ ("service-topology"),
+      state: state.connection?.state,
+      projects: state.projects.length,
+      connectedProjects: state.projects.filter((project) => project.state?.connected === true)
+        .length,
+    };
+    const topologyKey = JSON.stringify(topology);
+    if (diagnosticTopology !== topologyKey) {
+      diagnosticTopology = topologyKey;
+      diagnostics.record(topology);
+    }
     // Wait for the authoritative saved Library before applying the default.
     // A temporary disconnect must not reset the native preference.
     if (state.connection?.state === "ready" && state.library && !quitting)
@@ -776,6 +812,7 @@ function startDesktop() {
         }
       });
       owner.on("did-finish-load", () => {
+        diagnostics.record({ type: "window-ready", windows: BrowserWindow.getAllWindows().length });
         computerUiAvailable = owner.mainFrame.url.startsWith("areal-ui://app/");
       });
       owner.on("destroyed", () => {
@@ -1520,11 +1557,26 @@ function startDesktop() {
       });
       handleDesktopIpc("areal-core:command", async (event, rawName, rawParams) => {
         trusted(event);
+        const started = performance.now();
+        let succeeded = true;
         try {
           if (typeof rawName !== "string") throw new Error("Invalid command name");
           const { name, request: params } = readCommandInvocation(rawName, rawParams, {
             serviceOnly: false,
           });
+          if (name === "bugReport") {
+            if (params.operation !== "export")
+              return { ok: true, value: await bugReports.command(params) };
+            const report = await bugReports.read(params.id);
+            const result = await showSaveDialog({
+              defaultPath: `areal-bug-${report.id}.json`,
+              filters: [{ name: "JSON", extensions: ["json"] }],
+            });
+            trusted(event);
+            if (result.canceled || !result.filePath) return { ok: true, value: { canceled: true } };
+            await require("./bug-reports.cjs").exportReport(result.filePath, report);
+            return { ok: true, value: { path: result.filePath } };
+          }
           if (name === "browserData") {
             if (!preview) throw new Error(nativeText("browser.previewUnavailable"));
             const value = await preview.browserData(params.operation, {
@@ -1743,7 +1795,15 @@ function startDesktop() {
           }
           return { ok: true, value };
         } catch (error) {
+          succeeded = false;
           return { ok: false, error: desktopError(error) };
+        } finally {
+          diagnostics.record({
+            type: "command-complete",
+            command: rawName,
+            outcome: succeeded ? "ok" : "failed",
+            durationMs: Math.round(performance.now() - started),
+          });
         }
       });
       let recoveryPending = 0;

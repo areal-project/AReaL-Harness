@@ -9,6 +9,9 @@ const { monitorEventLoopDelay } = require("node:perf_hooks");
 /**
  * @typedef {{boundary:'main-desktop'|'desktop-core',projectId?:string,coreGeneration?:string,connectionGeneration?:number,hostPid?:number,corePid?:number,serviceId?:string}} SocketTarget
  * @typedef {({type:'socket-open'} & SocketTarget) | ({type:'socket-error',code:unknown} & SocketTarget) | ({type:'socket-close',closeCode:unknown} & SocketTarget)
+ * | {type:'command-complete',command:unknown,outcome:'ok'|'failed',durationMs:number}
+ * | {type:'window-ready',windows:number}
+ * | {type:'service-topology',state:unknown,projects:number,connectedProjects:number}
  * | {type:'desktop-spawn',pid:number} | {type:'desktop-exit',pid:number,exitCode:number|null,signal:string|null}
  * | {type:'desktop-spawn-error',code:unknown} | {type:'application-owner-lost'}
  * | {type:'renderer-gone',reason:unknown,exitCode:unknown} | {type:'renderer-unresponsive'|'renderer-responsive'}
@@ -145,6 +148,40 @@ function projectIncident(event, maps) {
   /** @type {Record<string,unknown>} */
   const value = { type: event.type };
   switch (event.type) {
+    case "service-topology":
+      value.state = choose(new Set(["connecting", "ready", "unavailable"]), event.state);
+      value.projects = integer(event.projects, 0, 1000000);
+      value.connectedProjects = integer(event.connectedProjects, 0, 1000000);
+      break;
+    case "window-ready":
+      value.windows = integer(event.windows, 0, 1000);
+      break;
+    case "command-complete":
+      value.command = choose(
+        new Set([
+          "send",
+          "stop",
+          "respond",
+          "reconcile",
+          "configure",
+          "queue",
+          "open",
+          "create",
+          "providers",
+          "chatgpt",
+          "serviceStatus",
+          "serviceLifecycle",
+          "hostUpdate",
+          "bugReport",
+          "exportDiagnostics",
+          "remoteControl",
+          "resources",
+        ]),
+        event.command,
+      );
+      value.outcome = choose(new Set(["ok", "failed"]), event.outcome);
+      value.durationMs = integer(event.durationMs);
+      break;
     case "socket-open":
     case "socket-close":
     case "socket-error":
@@ -239,6 +276,31 @@ function projectIncident(event, maps) {
     default:
       return null;
   }
+  value.level =
+    event.type === "command-complete"
+      ? event.outcome === "failed"
+        ? "error"
+        : "info"
+      : [
+            "socket-error",
+            "uncaught-exception",
+            "renderer-gone",
+            "child-process-gone",
+            "desktop-spawn-error",
+          ].includes(String(event.type))
+        ? "error"
+        : ["renderer-unresponsive", "desktop-exit-timeout", "application-owner-lost"].includes(
+              String(event.type),
+            )
+          ? "warn"
+          : "info";
+  value.component = String(event.type).startsWith("socket-")
+    ? "transport"
+    : event.type === "command-complete"
+      ? "desktop-ipc"
+      : event.type === "resource-sample"
+        ? "process"
+        : "lifecycle";
   return value;
 }
 /** @param {unknown} value @param {string} runId @param {string} role */
@@ -579,8 +641,8 @@ function startCrashReporter({ app, crashReporter }) {
     record({ type: "crash-reporter", state: "unavailable" });
   }
 }
-/** @param {string} destination @param {{mainRoot:string,desktopRoot:string,coreRoot?:string,instance?:Parameters<typeof instanceSelection>[0]}} roots */
-async function exportTo(destination, { mainRoot, desktopRoot, coreRoot, instance }) {
+/** @param {{mainRoot:string,desktopRoot:string,coreRoot?:string,instance?:Parameters<typeof instanceSelection>[0]}} roots */
+async function collect({ mainRoot, desktopRoot, coreRoot, instance }) {
   const omissions = {
     rejectedEntries: 0,
     invalidLines: 0,
@@ -772,6 +834,11 @@ async function exportTo(destination, { mainRoot, desktopRoot, coreRoot, instance
     instance: instance ? instanceSelection(instance) : undefined,
     modelRequests,
   };
+  return report;
+}
+/** @param {string} destination @param {Parameters<typeof collect>[0]} roots */
+async function exportTo(destination, roots) {
+  const report = await collect(roots);
   const temporary = join(dirname(destination), `.areal-diagnostics-${randomUUID()}.tmp`);
   let output;
   try {
@@ -789,4 +856,4 @@ async function exportTo(destination, { mainRoot, desktopRoot, coreRoot, instance
 function errorCode(error) {
   return object(error) && typeof error.code === "string" ? error.code : undefined;
 }
-module.exports = { start, record, startCrashReporter, exportTo };
+module.exports = { start, record, startCrashReporter, exportTo, collect };

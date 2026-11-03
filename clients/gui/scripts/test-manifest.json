@@ -781,6 +781,28 @@
     "requires": ["electron", "core-binary", "gui-build", "git"]
   },
   {
+    "script": "test:bug-report",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["feedback", "diagnostics"],
+    "requires": []
+  },
+  {
+    "script": "test:bug-report-electron",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["feedback", "diagnostics"],
+    "requires": ["electron", "gui-build"],
+    "notes": "Isolated Main IPC and filesystem; Core is deliberately absent; native save picker is injected."
+  },
+  {
+    "script": "test:bug-report-ui",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["feedback"],
+    "requires": ["browser", "gui-build"]
+  },
+  {
     "script": "test:feedback",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
