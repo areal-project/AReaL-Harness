@@ -26,6 +26,39 @@ async function privateJson(path) {
   }
 }
 
+/** @param {string} home */
+async function prepareHostHome(home) {
+  await mkdir(home, { recursive: true, mode: 0o700 });
+  const directory = await open(
+    home,
+    constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+  );
+  try {
+    const stat = await directory.stat();
+    if (!stat.isDirectory() || stat.uid !== process.getuid?.())
+      throw new Error("Host home must be owned by the current user");
+    const mode = stat.mode & 0o7777;
+    if (mode === 0o755) {
+      await directory.chmod(0o700);
+      console.warn(`Restricted legacy Host home permissions to 700: ${home}`);
+    } else if ((mode & 0o7077) !== 0) {
+      throw new Error("Host home must be private or legacy mode 755");
+    }
+    const after = await directory.stat();
+    const named = await lstat(home);
+    if (
+      !named.isDirectory() ||
+      after.uid !== process.getuid?.() ||
+      (after.mode & 0o7077) !== 0 ||
+      after.dev !== named.dev ||
+      after.ino !== named.ino
+    )
+      throw new Error("Host home changed during initialization");
+  } finally {
+    await directory.close();
+  }
+}
+
 // 断连不重放写入。调用者必须凭原 requestId 查询持久回执。
 class HostClient {
   #intentKey = "";
@@ -48,7 +81,21 @@ class HostClient {
   /** @param {string} home */
   async connect(home) {
     if (this.socket) throw new Error("Host client already connected");
+    const homeStat = await lstat(home);
+    if (
+      !homeStat.isDirectory() ||
+      homeStat.uid !== process.getuid?.() ||
+      (homeStat.mode & 0o077) !== 0
+    )
+      throw new Error("Host home must be private and owned by this user");
     const canonical = await realpath(home);
+    const hostStat = await lstat(join(canonical, "host"));
+    if (
+      !hostStat.isDirectory() ||
+      hostStat.uid !== process.getuid?.() ||
+      (hostStat.mode & 0o077) !== 0
+    )
+      throw new Error("Host discovery directory must be private and owned by this user");
     this.home = canonical;
     const descriptor = await privateJson(join(canonical, "host", "host.json"));
     if (
@@ -92,13 +139,22 @@ class HostClient {
   }
   /** @param {string} home @param {string} binary */
   async connectOrStart(home, binary) {
+    await prepareHostHome(home);
     try {
       return await this.connect(home);
     } catch {
       this.close();
     }
-    await mkdir(home, { recursive: true, mode: 0o700 });
-    const log = await open(join(home, "host.log"), "a", 0o600);
+    const log = await open(
+      join(home, "host.log"),
+      constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW,
+      0o600,
+    );
+    const logStat = await log.stat();
+    if (!logStat.isFile() || logStat.uid !== process.getuid?.() || (logStat.mode & 0o077) !== 0) {
+      await log.close();
+      throw new Error("Host log must be private and owned by this user");
+    }
     const child = spawn(binary, ["host", "run"], {
       env: {
         ...Object.fromEntries(

@@ -25,9 +25,11 @@ impl Client {
         &self.identity
     }
     pub async fn connect() -> Result<Self> {
-        Self::connect_at(areal_local_service::home()?).await
+        Self::connect_at(areal_local_service::raw_home()?).await
     }
     pub async fn connect_at(home: PathBuf) -> Result<Self> {
+        let raw_meta = std::fs::symlink_metadata(&home)?;
+        ensure!(raw_meta.is_dir(), "Host home must not be a symbolic link");
         let home = storage::canonical_pending(&home)?;
         for directory in [&home, &home.join("host")] {
             let metadata = std::fs::symlink_metadata(directory)?;
@@ -50,13 +52,13 @@ impl Client {
         Ok(client)
     }
     pub async fn connect_or_start() -> Result<Self> {
-        Self::connect_or_start_at(areal_local_service::home()?).await
+        Self::connect_or_start_at(areal_local_service::raw_home()?).await
     }
     pub async fn connect_or_start_at(home: PathBuf) -> Result<Self> {
         if let Ok(client) = Self::connect_at(home.clone()).await {
             return Ok(client);
         }
-        storage::private_dir(&home)?;
+        let home = storage::prepare_host_home(&home)?;
         let binary = std::env::current_exe()?.canonicalize()?;
         let mut command = TrustedCommand::persistent(&binary)?;
         command

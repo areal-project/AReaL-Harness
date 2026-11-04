@@ -27,6 +27,51 @@ pub fn canonical_pending(path: &Path) -> Result<PathBuf> {
     )
 }
 
+pub fn prepare_host_home(path: &Path) -> Result<PathBuf> {
+    if let Err(error) = std::fs::symlink_metadata(path) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            return Err(error.into());
+        }
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(path)?;
+    }
+    let directory = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)?;
+    let meta = directory.metadata()?;
+    ensure!(
+        meta.is_dir() && meta.uid() == unsafe { libc::geteuid() },
+        "Host home must be owned by the current user"
+    );
+    let mode = meta.permissions().mode() & 0o7777;
+    if mode == 0o755 {
+        directory.set_permissions(std::fs::Permissions::from_mode(0o700))?;
+        eprintln!(
+            "Restricted legacy Host home permissions to 700: {}",
+            path.display()
+        );
+    } else {
+        ensure!(
+            mode & 0o7077 == 0,
+            "Host home must be private or legacy mode 755"
+        );
+    }
+    let after = directory.metadata()?;
+    let named = std::fs::symlink_metadata(path)?;
+    ensure!(
+        named.is_dir()
+            && after.uid() == unsafe { libc::geteuid() }
+            && after.mode() & 0o7077 == 0
+            && after.dev() == named.dev()
+            && after.ino() == named.ino(),
+        "Host home changed during initialization"
+    );
+    Ok(path.canonicalize()?)
+}
+
 pub fn private_dir(path: &Path) -> Result<()> {
     if !path.exists() {
         std::fs::DirBuilder::new()
@@ -344,6 +389,32 @@ pub fn file_digest(path: &Path) -> Result<String> {
 mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
+
+    #[test]
+    fn host_home_restricts_legacy_directory_without_changing_children() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("legacy");
+        std::fs::create_dir(&home).unwrap();
+        std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let child = home.join("child");
+        std::fs::create_dir(&child).unwrap();
+        std::fs::set_permissions(&child, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(home.join("config.toml"), b"original").unwrap();
+        prepare_host_home(&home).unwrap();
+        assert_eq!(std::fs::metadata(&home).unwrap().mode() & 0o7777, 0o700);
+        assert_eq!(std::fs::metadata(&child).unwrap().mode() & 0o7777, 0o755);
+        assert_eq!(
+            std::fs::read(home.join("config.toml")).unwrap(),
+            b"original"
+        );
+        prepare_host_home(&home).unwrap();
+        let alias = root.path().join("alias");
+        symlink(&home, &alias).unwrap();
+        assert!(prepare_host_home(&alias).is_err());
+        std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o775)).unwrap();
+        assert!(prepare_host_home(&home).is_err());
+        assert_eq!(std::fs::metadata(&home).unwrap().mode() & 0o7777, 0o775);
+    }
 
     #[test]
     fn canonical_identity_and_private_records_reject_symlinks() {

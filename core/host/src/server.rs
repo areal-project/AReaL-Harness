@@ -43,7 +43,7 @@ pub struct RunOptions {
 impl RunOptions {
     pub fn current() -> Result<Self> {
         Ok(Self {
-            home: areal_local_service::home()?,
+            home: areal_local_service::raw_home()?,
             bin_dir: std::env::current_exe()?
                 .canonicalize()?
                 .parent()
@@ -201,8 +201,7 @@ async fn run_local(options: RunOptions) -> Result<HostExit> {
     run_local_mode(options, false).await
 }
 async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> {
-    let home = storage::canonical_pending(&options.home)?;
-    storage::private_dir(&home)?;
+    let home = storage::prepare_host_home(&options.home)?;
     let lock = storage::open_private(&home.join("host.lock"), true)?;
     match lock.try_lock_exclusive() {
         Ok(()) => {}

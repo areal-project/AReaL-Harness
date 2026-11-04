@@ -8,6 +8,8 @@
 
 规范化服务 home 中只有一个 Host 独占 `host.lock`。H1 按 `AREAL_HARNESS_SERVICE_HOME`、`AREAL_HARNESS_HOME`、`~/.areal` 的顺序选择 home，权限为 0700。Host 描述包含 `version`、稳定 `hostId`、每次启动更新的 `generation`、`socketPath`、`authFile`、`pid` 和可执行版本。PID 仅供诊断，不作为发信号或接管依据。Unix 路径超长时沿用现有私有短路径 `control.sock` 派生规则。socket 与认证文件权限 0600，必须归相同 UID 所有，不得经不可信符号链接解析。
 
+Host 启动初始化兼容旧配置创建的 0755 home：只对当前用户拥有、最终路径不是符号链接的目录，通过同一打开的文件描述符收紧为 0700，并记录权限调整。已有私有目录继续使用；其他不安全权限或所有者不符时拒绝启动。初始化不递归修改子目录和配置内容。GUI 在打开私有 `host.log` 前执行同样的目录校验；只读连接不修正权限。
+
 本机 Unix domain socket 使用逐行 UTF-8 JSON，每帧一个请求，最大 1 MiB。分发前校验 peer UID 与 Host UID 相同，并核对 `hello.params.authToken` 与当前认证文件秘密。认证失败关闭连接。token 不进入命令行参数、URL、日志、状态事件或 Remote 响应。认证前只接受 `hello`，重连重新握手。认证 token 随 Host generation 轮换。本契约授予可信本机用户访问权，不隔离该用户自己的进程。
 
 
