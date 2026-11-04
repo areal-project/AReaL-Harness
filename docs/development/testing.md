@@ -424,6 +424,8 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 
 在同一固定组件环境中，`cargo test --locked -p areal-host native_detail_publication_fences_revoke_after_real_core_read -- --ignored` 以真实 Core 的原 `areal/interaction/list` 成功回帧作为发布屏障。无撤权对照核对完整详情与 review token；撤权分支在持有原回帧后修改隔离设备授权，再放行原帧，要求精确返回 `GRANT_CHANGED`。两组均核对原 interaction 内容不变、工具效果文件不存在。该测试使用进程内 Host owner，Runtime 启动后等待审批；不覆盖 Noise 错误编码、独立 Host 或工具执行。
 
+`cargo test --locked -p areal-host native_detail_publication_fences_service_identity_change -- --ignored` 在同一回帧屏障内启动第二个真实 Core，由 Host owner 夹具显式发布新的服务描述符；原共享连接返回 `scheduleHostUnavailable`，不发布旧详情。测试核对两个 Core 的 PID 与端点不同、原审批和 journal 不变、无工具副作用及全部自有进程退出。它验证服务身份变更的发布边界，不替代真实 Host 受控重启或 Noise 错误映射验收。
+
 `cargo test -p areal-host --lib interaction_tests` 还运行 artifact HTTP 测试。真实 Host 使用隔离文件 vault 和认证的本机模拟 Core WebSocket 与 HTTP 服务，验证合法图片、404、短流、错误 Content-Length、超长流取消、HTTP 响应等待期间授权版本变化，以及读取后媒体成员被移除。该测试不启动真实 Core 或 Runtime，也不能证明分块读取期间的授权变化。
 
 同一固定组件环境下，`cargo test --locked -p areal-host native_outcome_write_denied_preserves_original_pending_and_recovers -- --ignored` 运行有限 T22。测试代理收到真实 Core 成功回复后、向 Host 转发前，将隔离 journal 目录设为只读，检查实际 outcome 写入返回 `PermissionDenied` 且原 pending 字节保留。恢复权限后按原 typed 回执结算，重复命令只有一个 Turn 和一次 Runtime 写入。权限 guard 在正常路径和 panic 时恢复目录权限；测试记录原错误及内部 UNKNOWN 投影，不声称观察到 Remote wire 的 `submissionUnknown`。
