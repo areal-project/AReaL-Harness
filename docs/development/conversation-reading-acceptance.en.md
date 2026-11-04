@@ -132,6 +132,8 @@ Record each item as `PASS`, `FAIL`, `UNVERIFIED`, or `BLOCKED`, with its boundar
 
 Minimum fields: contract/case ID, source commit and dirty state, Core/Renderer identity, OS/browser/window/text size, workload size, actions and event order, independent expectation, observed result, raw samples/screenshots/trace, failure classification, and cleanup. Correctness counterexamples must fail the target assertion; a probe deliberately throwing a sampling-complete exception is not a product failure. Preserve the first failure and subsequent corrections rather than erasing them through changed locators, environment, or waits.
 
+Fault injection must first establish that the boundary actually used by the target operation fails, before asserting draft retention, feedback, and recovery. For example, once Host copies deployment skills into runtime snapshots, moving the original skill file does not establish failure of the active skill read. Record the requested resource identity, error receipt, and admission count. Classify an injection that misses its target as a fixture failure, not a product defect inferred from a missing-error timeout; do not skip the recovery case.
+
 The release floor is no confirmed unresolved content loss, cross-conversation contamination, duplicate admission, misleading state, or lost reading control within scoped D1-D6 and C1/C3/C7. Judge performance budgets independently; low latency cannot offset data errors. Explicitly retain untested native IME, real-provider, package, platform, and assistive-technology boundaries rather than substituting static checks.
 
 ## How references inform the contract
