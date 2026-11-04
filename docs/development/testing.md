@@ -420,7 +420,11 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 
 `AREAL_CORE_BIN=/absolute/verified/areal AREAL_NATIVE_FAULT_EVIDENCE=/absolute/evidence cargo test --locked -p areal-host native_create_success_reply_lost_recovers_without_redispatch -- --ignored` 显式运行真实 Core/Runtime 单场景。测试专用 WebSocket 代理丢弃真实创建成功回复，核对原 command 与 native request 身份、UNKNOWN、原 Core 回执恢复及重复请求不再转发创建，只产生一个 Thread。后续普通 Turn 的 Runtime 单次写入单独断言。普通单测忽略此入口；使用匹配的固定组件槽并串行运行，保留失败、回执与清理证据。Host owner/journal 使用进程内夹具，此测试不覆盖 Remote 传输、独立 Host 崩溃或原命令整套验收。
 
+同一环境下，将测试过滤器改为 `native_creation_recovery_tests -- --ignored --test-threads=1` 可串行运行创建、交互、发送丢回复及下述 outcome 写入失败场景。交互场景丢弃真实 Core 审批成功回复，检查原命令保持 UNKNOWN、观察到 answered 不构成准入证明、重连与重复提交不再转发审批，以及原 Runtime 副作用一次。后续普通 Core 配置与 Turn 单独执行，不能替代 Main 的 pending/hasWork 门禁或未知普通提交拒绝验收；跨设备查询隔离与撤权后的查询拒绝也在此场景检查。发送场景对应有限 T19，核对原 Turn 创建回复丢失后的 UNKNOWN、原 Core typed 回执恢复、journal 的 digest 与存储身份、重复发送不再转发、单 Turn 与单 Runtime 写入，以及同 command 改变文本时的 `COMMAND_CONFLICT`。这些场景不替代原 100 轮竞态验收。
+
 `cargo test -p areal-host --lib interaction_tests` 还运行 artifact HTTP 测试。真实 Host 使用隔离文件 vault 和认证的本机模拟 Core WebSocket 与 HTTP 服务，验证合法图片、404、短流、错误 Content-Length、超长流取消、HTTP 响应等待期间授权版本变化，以及读取后媒体成员被移除。该测试不启动真实 Core 或 Runtime，也不能证明分块读取期间的授权变化。
+
+同一固定组件环境下，`cargo test --locked -p areal-host native_outcome_write_denied_preserves_original_pending_and_recovers -- --ignored` 运行有限 T22。测试代理收到真实 Core 成功回复后、向 Host 转发前，将隔离 journal 目录设为只读，检查实际 outcome 写入返回 `PermissionDenied` 且原 pending 字节保留。恢复权限后按原 typed 回执结算，重复命令只有一个 Turn 和一次 Runtime 写入。权限 guard 在正常路径和 panic 时恢复目录权限；测试记录原错误及内部 UNKNOWN 投影，不声称观察到 Remote wire 的 `submissionUnknown`。
 
 `node scripts/shared-host-smoke.mjs` 验证共享 Host 的本机认证、并发启动、登记回执、旧服务受控重启、多项目隔离、Host 崩溃清理与停止回执。`AREAL_TEST_BIN_DIR` 指向完整新产物，`AREAL_LEGACY_TEST_BIN_DIR` 指向支持 service-v1 的完整旧产物；缺少旧产物会失败。`node scripts/shared-host-client-smoke.mjs` 使用同一新产物验证 exec、`-p`、headless TUI 和真实 PTY 在客户端强退后继续原 Turn，以及 resume 与 Web 复用。两者使用隔离 home/workspace、确定性模型与真实 Core/Runtime，并通过 `AREAL_TEST_EVIDENCE` 保存 JSON 证据。固定产物串行使用。这些检查不替代 GUI、Remote、真实供应商或安装包验收。
 
