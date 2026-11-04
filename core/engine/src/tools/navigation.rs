@@ -103,13 +103,27 @@ pub(super) async fn invoke(
             json!({"error":"read/search process failed or exceeded its output/time bounds","state":done.state,"exitCode":done.exit_code,"stopReason":done.stop_reason,"stderr":String::from_utf8_lossy(&stderr)}),
         ));
     }
-    let value: Value = serde_json::from_slice(&bytes)
+    let mut value: Value = serde_json::from_slice(&bytes)
         .map_err(|_| rt::Error::new(rt::ErrorCode::InvalidArgument, "invalid navigation result"))?;
+    add_search_guidance(name, &mut value);
     Ok(if value.get("error").is_some() {
         (false, value)
     } else {
         (true, value["result"].clone())
     })
+}
+
+fn add_search_guidance(name: &str, value: &mut Value) {
+    if name == "search_files"
+        && value["error"]
+            .as_str()
+            .is_some_and(|s| s.contains("regex parse error:"))
+    {
+        // 仅补充已知正则语法错误的用法提示；不改错误、不重试，也不掩盖权限或 IO 失败。
+        value["guidance"] = json!(
+            "pattern is a ripgrep regex. Correct its syntax; when using tool_program, put it in input rather than a JavaScript string. JSON example for a literal parenthesis: {\"pattern\":\"def fit\\\\(\"}. Resubmit only the corrected read, not earlier program edits."
+        );
+    }
 }
 
 pub(super) fn python_executable() -> rt::Result<String> {
@@ -121,4 +135,28 @@ pub(super) fn python_executable() -> rt::Result<String> {
                 format!("system Python is unavailable: {error}"),
             )
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn regex_guidance_preserves_error_and_does_not_reclassify_other_failures() {
+        for (name, error, expected) in [
+            ("search_files", "regex parse error: unclosed group", true),
+            ("search_files", "permission denied", false),
+            ("search_files", "invalid navigation result", false),
+            ("read_file", "regex parse error: unclosed group", false),
+        ] {
+            let mut value = json!({"error":error});
+            add_search_guidance(name, &mut value);
+            assert_eq!(value["error"], error);
+            assert_eq!(value.get("guidance").is_some(), expected);
+        }
+        let mut success = json!({"result":{"matches":[],"limited":false}});
+        let before = success.clone();
+        add_search_guidance("search_files", &mut success);
+        assert_eq!(success, before);
+    }
 }

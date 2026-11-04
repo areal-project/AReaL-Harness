@@ -383,8 +383,8 @@ fn definitions_with_policy(policy: &ToolPolicy) -> Vec<Value> {
     fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> Value {
         json!({"type":"function","function":{"name":name,"description":description,"parameters":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}})
     }
-    let path = json!({"type":"string","description":"Workspace path, e.g. src/main.py, ., or workspace://repo/src/main.py. Absolute paths outside the workspace require host access from the deployment and may require approval. No parent traversal."});
-    let process_id = json!({"type":"string","description":"Copy the complete opaque processId returned by run_command. Do not shorten, reconstruct or substitute a cursor."});
+    let path = json!({"type":"string","description":"Workspace path: src/main.py, . or workspace://repo/…; no parent traversal. External absolute paths need host access; approval may apply."});
+    let process_id = json!({"type":"string","description":"Copy the complete returned processId; never reconstruct it or substitute a cursor."});
     let mut definitions = vec![
         tool(
             "task_state",
@@ -400,8 +400,8 @@ fn definitions_with_policy(policy: &ToolPolicy) -> Vec<Value> {
         ),
         tool(
             "search_files",
-            "Search with ripgrep regex inside a workspace path, returning file names, line numbers and nearby lines. Respects gitignore, does not follow symlinks. Invalid regex is an error; limited results require narrowing the path or pattern.",
-            json!({"path":path,"pattern":{"type":"string"},"glob":{"type":"string"},"context":{"type":"integer","minimum":0,"maximum":10},"limit":{"type":"integer","minimum":1,"maximum":100}}),
+            "Search a workspace path using ripgrep regex; returns file names, line numbers and nearby lines. Respects gitignore; no symlink following. Correct invalid regex before repeating this read. Narrow path/pattern when limited; no matches is conclusive only when limited=false.",
+            json!({"path":path,"pattern":{"type":"string","description":"Ripgrep regex. In tool_program pass it through input to avoid a second string-escaping layer; see its regex example."},"glob":{"type":"string"},"context":{"type":"integer","minimum":0,"maximum":10},"limit":{"type":"integer","minimum":1,"maximum":100}}),
             &["pattern"],
         ),
         tool(
@@ -454,7 +454,7 @@ fn definitions_with_policy(policy: &ToolPolicy) -> Vec<Value> {
         ),
         tool(
             "verify_command",
-            "Run a test/build executable directly (no shell pipelines). Saves the complete output and a receipt in task scratch, with actual exit code and before/after source fingerprint. For example argv=[\"python\",\"-m\",\"pytest\",\"tests/test_feature.py\"]. Read the returned process until it exits; later source edits invalidate the receipt. Blender Python checks require nonzero --python-exit-code before the script/expression; rejected before execution otherwise. Exit zero alone does not prove requirement coverage.",
+            "Run an already-selected test/build executable directly; use run_command for shell pipelines. Saves full output and a source/command/environment-bound receipt. In tool_program use await collect(await tools.verify_command(input.check)). Inspect exitCode and verification.outputTail; changed conditions invalidate reuse. Blender Python checks require nonzero --python-exit-code before the script/expression. Exit zero does not certify assertion coverage.",
             json!({"argv":{"type":"array","items":{"type":"string"},"minItems":1},"cwd":path,"timeoutMs":{"type":"integer","minimum":1},"yieldMs":{"type":"integer","minimum":0}}),
             &["argv"],
         ),

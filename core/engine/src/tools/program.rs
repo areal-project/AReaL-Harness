@@ -4,7 +4,7 @@ use super::*;
 use std::time::Instant;
 mod js;
 
-const PROGRAM_DESCRIPTION: &str = "Compose already-decided native calls in fresh JavaScript with top-level await. Pass patches, regex and short source/argv strings in JSON input, then reference input in code without JavaScript quoting. Use tools.NAME(args); returns {success,outcome,callId,itemId,data,text,availableImages}. text(result) displays {itemId,data}; status remains in mandatory receipts. image(result) forwards images. await collect(processResult,{timeoutMs?,maxReads?}) displays each same-process observation and returns its final result; defaults 540s/16 reads, clamped to remaining budgets. Use it after run_command when only waiting/collection remains. Prefer directly exposed edit_files for large file creation; compose small patches and already-selected checks. Return for new errors, conflicts, UNKNOWN, permissions or semantic/visual judgment; no hidden repair, install or retry. Calls retain native permissions, versions, hooks and shared budgets, and are serial even in Promise.all. No Node, filesystem, network, imports, timers or persistent state. Up to 64 calls (batch leaves count), 64 KiB combined code/input and per-call arguments, 1 MiB archived text/16 KiB preview, four images; default timeout 600s, max 1800s. Timeout/cancel/UNKNOWN stop dispatch. Receipts distinguish programCompleted, allChildrenSucceeded and pendingProcesses. Outer success is false if any child failed. Completed effects persist; read_history(itemId)/read_tool_result(resultId) recover evidence without replay.";
+const PROGRAM_DESCRIPTION: &str = include_str!("program/description.md");
 
 const MAX_CALLS: usize = 64;
 const MAX_CODE: usize = 64 * 1024;
@@ -15,7 +15,7 @@ pub(super) fn definition() -> areal_protocol::ToolDefinition {
     areal_protocol::ToolDefinition {
         name: "tool_program".into(),
         description: PROGRAM_DESCRIPTION.into(),
-        input_schema: json!({"type":"object","properties":{"code":{"type":"string","maxLength":65536},"input":{"type":"object","description":"JSON data available as input in code. Put patches, regex and short script/argv strings here to avoid a second JavaScript quoting layer. Combined code and serialized input are limited to 64 KiB."},"timeoutMs":{"type":"integer","minimum":1,"maximum":1800000}},"required":["code"],"additionalProperties":false}),
+        input_schema: json!({"type":"object","properties":{"code":{"type":"string","maxLength":65536,"description":"JavaScript body using tools.NAME, input, text/image and await collect. Do not wrap it in tool_program(...) or a Markdown fence."},"input":{"type":"object","description":"JSON data referenced as input in code. Put patches, regex, scripts and argv here; JSON escaping applies once. Code plus serialized input: at most 64 KiB."},"timeoutMs":{"type":"integer","minimum":1,"maximum":1800000}},"required":["code"],"additionalProperties":false}),
         output_schema: None,
     }
 }
@@ -72,6 +72,9 @@ fn receipt(item: &Item) -> Option<Value> {
         if let Some(error) = data.get("error") {
             let message = error.as_str().or_else(|| error["message"].as_str());
             result["error"] = json!({"code":error.get("code"),"message":prefix(message.unwrap_or("Unknown tool error; inspect the original result"), 1024)});
+            if let Some(guidance) = data["guidance"].as_str() {
+                result["guidance"] = json!(prefix(guidance, 1024));
+            }
         }
     }
     Some(result)
@@ -108,7 +111,12 @@ fn all_children_succeeded(receipts: &[Value]) -> bool {
         .iter()
         .all(|r| r["success"] == true && r["outcome"] == "succeeded")
 }
-fn program_receipt(executed: usize, error: &Option<String>, receipts: &[Value]) -> Value {
+fn program_receipt(
+    executed: usize,
+    error: &Option<String>,
+    source_parse_error: bool,
+    receipts: &[Value],
+) -> Value {
     let mut latest_processes = BTreeMap::new();
     for receipt in receipts {
         if let Some(process) = receipt["processId"].as_str() {
@@ -120,9 +128,16 @@ fn program_receipt(executed: usize, error: &Option<String>, receipts: &[Value]) 
         .filter(|r| r["commandStatus"] == "running" || r["outputReadComplete"] == false)
         .map(|r| r["processId"].clone())
         .collect();
-    json!({"type":"inputText","text":json!({"executed":executed,"programCompleted":error.is_none(),
+    let mut value = json!({"executed":executed,"programCompleted":error.is_none(),
         "allChildrenSucceeded":all_children_succeeded(receipts),"pendingProcesses":pending,
-        "error":error,"children":receipts,"note":"Completion is not validation. read_history(itemId) retrieves child evidence; effects persist."}).to_string()})
+        "error":error,"children":receipts,"note":"Completion is not validation. read_history(itemId) retrieves child evidence; effects persist."});
+    if source_parse_error && error.is_some() && executed == 0 && receipts.is_empty() {
+        value["phase"] = json!("parse");
+        value["guidance"] = json!(
+            "No native tool ran. code must contain only the JavaScript body. Put multiline scripts, regex and quoted data in JSON input, then reference input in code; JSON escaping still applies. Correct this call's syntax before resubmitting; do not replay edits from earlier calls."
+        );
+    }
+    json!({"type":"inputText","text":value.to_string()})
 }
 
 /// 恢复仅补充已记录事实。没有解释器状态恢复或代码重放。
@@ -185,10 +200,16 @@ impl Engine {
                 .filter(|c| retained(&c["name"]))
                 .filter_map(|c| c["name"].as_str())
                 .collect();
-            let mut description = format!(
-                "Native tool catalog (exact existing schemas):\n{}",
-                serde_json::to_string(&inline).unwrap()
-            );
+            // 单独展示说明与参数，避免模型从一整段转义 JSON 中寻找调用契约。
+            let mut description = String::from("Native calls:");
+            for tool in inline {
+                description.push_str(&format!(
+                    "\n\n### tools.{}\n{}\nParameters: {}",
+                    tool["name"].as_str().unwrap(),
+                    tool["description"].as_str().unwrap_or(""),
+                    tool["parameters"]
+                ));
+            }
             if !names.is_empty() {
                 description.push_str(&format!(
                     "\nAlso callable as tools.NAME using their directly exposed schemas: {}",
@@ -372,7 +393,12 @@ impl Engine {
             let state = invocation.cell.state.lock().await;
             let items = &state.thread.turns.last().unwrap().items;
             let receipts = child_receipts(items, &invocation.call.id);
-            let mut content = vec![program_receipt(executed, &output.error, &receipts)];
+            let mut content = vec![program_receipt(
+                executed,
+                &output.error,
+                output.source_parse_error,
+                &receipts,
+            )];
             let mut text_bytes = 0;
             for part in output.parts {
                 if part["type"] == "inputText" {
@@ -432,12 +458,45 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_guidance_never_claims_recorded_effects_did_not_run() {
+        let error = Some("unexpected end of string".into());
+        for (executed, receipts, parse_error, expected) in [
+            (0, vec![], true, true),
+            (0, vec![], false, false),
+            (
+                1,
+                vec![json!({"success":true,"outcome":"succeeded"})],
+                true,
+                false,
+            ),
+            (
+                0,
+                vec![json!({"success":false,"outcome":"unknown"})],
+                true,
+                false,
+            ),
+        ] {
+            let result: Value = serde_json::from_str(
+                program_receipt(executed, &error, parse_error, &receipts)["text"]
+                    .as_str()
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(result.get("guidance").is_some(), expected);
+            assert_eq!(result["error"], error.as_ref().unwrap().as_str());
+            assert_eq!(result["children"], json!(receipts));
+            assert_eq!(result["programCompleted"], false);
+        }
+    }
+
     #[test]
     fn mandatory_receipt_retains_plain_text_errors() {
         let item: Item = serde_json::from_value(json!({
             "type":"dynamicToolCall","id":"item","tool":"read_file","callId":"call",
             "arguments":{"path":"large-line"},"status":"completed","success":false,
-            "contentItems":[{"type":"inputText","text":json!({"error":"single line exceeds output budget"}).to_string()}],
+            "contentItems":[{"type":"inputText","text":json!({"error":"single line exceeds output budget","guidance":"Use the returned bounded nextRead."}).to_string()}],
             "execution":{"outcome":"failed","runtimeEpoch":"fixture","scopeId":"scope","operationId":"op"}
         })).unwrap();
         let result = receipt(&item).unwrap();
@@ -447,6 +506,7 @@ mod tests {
         );
         assert_eq!(result["success"], false);
         assert_eq!(result["outcome"], "failed");
+        assert_eq!(result["guidance"], "Use the returned bounded nextRead.");
     }
 
     #[test]
@@ -459,7 +519,7 @@ mod tests {
         ];
         assert!(!all_children_succeeded(&receipts));
         let value: Value = serde_json::from_str(
-            program_receipt(4, &None, &receipts)["text"]
+            program_receipt(4, &None, false, &receipts)["text"]
                 .as_str()
                 .unwrap(),
         )
@@ -560,7 +620,12 @@ mod tests {
             let output = worker.await.unwrap();
             let elapsed = started.elapsed().as_micros();
             let receipts: Vec<_> = children.iter().take(consumed).filter_map(receipt).collect();
-            let mut content = vec![program_receipt(consumed, &output.error, &receipts)];
+            let mut content = vec![program_receipt(
+                consumed,
+                &output.error,
+                output.source_parse_error,
+                &receipts,
+            )];
             for part in &output.parts {
                 if part["type"] == "programImage" {
                     for child in &children {

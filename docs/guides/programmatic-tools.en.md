@@ -16,12 +16,24 @@ Set `programmaticTools:false` to restore native-only tool exposure. Save this JS
 
 After reading the files and choosing the edits and test entry point, compose edits, verification and bounded collection. Return to the model for unexpected failures, conflicts, permissions, UNKNOWN or visual judgment; do not install dependencies or choose new plans inside a loop. With no independent work, use the normal wait budget instead of explicit one-second status turns.
 
-```javascript
-const e = await tools.edit_files({files:[{path:'src/a.py',patches:[{oldText:'old_a',newText:'new_a'}]},{path:'src/b.py',patches:[{oldText:'old_b',newText:'new_b'}]}]});
-text(e);
-if (e.success && e.data.allApplied) {
-  await collect(await tools.run_command({argv:['python','-m','pytest','tests/test_feature.py','-q']}));
-}
+These are JSON arguments to `tool_program`; `code` contains only the JavaScript body, without a `tool_program(...)` wrapper. JSON escaping still applies; `input` avoids a second JavaScript string-escaping layer. Use an already-confirmed interpreter and selected check.
+
+Decided patch, selected check and bounded collection:
+
+```json
+{"input":{"edit":{"files":[{"path":"src/a.py","patches":[{"oldText":"old_a","newText":"new_a"}]}]},"check":{"argv":["python","-m","pytest","tests/test_a.py","-q"]}},"code":"const e=await tools.edit_files(input.edit);text(e);if(e.success && e.data.allApplied) await collect(await tools.verify_command(input.check));"}
+```
+
+Regex in `input`, matching a literal opening parenthesis:
+
+```json
+{"input":{"pattern":"def fit\\(","path":"src"},"code":"text(await tools.search_files(input));"}
+```
+
+A short multiline script in `input`:
+
+```json
+{"input":{"argv":["python","-c","print('check')\nassert 1 + 1 == 2"]},"code":"await collect(await tools.verify_command(input));"}
 ```
 
 `tools.NAME(args)` returns `{success,outcome,callId,itemId,data,text,availableImages}`. `data` is parsed native JSON and `text` retains its text. Calls complete serially: await is supported and Promise.all does not increase native concurrency. `text(value)` selects observations. For parsed JSON, `text(nativeResult)` displays only `{itemId,data}`; identity, outcome and errors remain in mandatory child receipts, and the original object including `data/text` is unchanged inside the program. Identical displays of the same native result object are emitted once per program, including text() after collect(); a changed object produces a new display; `image(nativeResult)` forwards actual images from this parent's children only. Return observations when new visual or business judgment is required. Each child's outcome and native `commandStatus/outputReadComplete/processId` are mandatory receipts and cannot be hidden by filtering.
@@ -62,8 +74,6 @@ Use [compact-composition.json](../../examples/tool-profiles/compact-composition.
 
 The optional JSON object `input` is parsed as the program input argument, never interpolated into JavaScript source. Put small patches, regex and short script/argv strings there to avoid a second JavaScript quoting layer. Code plus explicitly supplied serialized input share a 64 KiB bound; each leaf retains its own existing 64 KiB, permissions, version and budget checks. `__proto__` remains a JSON key. Large file creation stays directly accessible through edit_files. Short helper or test files can use `{path,text}` in the same `input.edit.files` array as patches and share their selected check; creating a new file does not itself require another model handoff.
 
-```javascript
-tool_program({input:{edit:{files:[{path:"src/a.py",patches:[{oldText:"old",newText:"new"}]}]},check:{argv:["python","-m","pytest","tests/test_a.py"]}},code:"const e=await tools.edit_files(input.edit);text(e);if(e.success && e.data.allApplied) await collect(await tools.verify_command(input.check));"});
-```
-
 The model still selects checks from public requirements. Preserve relevant validation and failure controls, rerun them after changes to their conditions, and report uncovered requirements. Programs only compose decided actions; fewer checks are not an efficiency improvement.
+
+A source parse failure may add `phase:"parse"` and `guidance` while preserving the original error, stating that no tool ran only before dispatch with no child receipts. Runtime exceptions, recorded effects and UNKNOWN do not receive that claim. Regex syntax errors retain their original diagnostics with guidance to pass patterns through `input`. Guidance never retries, replays or rewrites operations.

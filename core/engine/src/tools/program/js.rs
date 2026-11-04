@@ -14,21 +14,32 @@ pub(super) struct Request {
 pub(super) struct Output {
     pub parts: Vec<Json>,
     pub error: Option<String>,
+    pub source_parse_error: bool,
 }
 
-fn exception(ctx: &Ctx<'_>, error: rquickjs::Error) -> String {
+fn exception_detail(ctx: &Ctx<'_>, error: rquickjs::Error) -> (String, bool) {
     if error.is_exception() {
         let value = ctx.catch();
         if let Some(error) = value.as_exception() {
-            return error
-                .message()
-                .unwrap_or_else(|| "JavaScript exception".into());
+            let syntax = error
+                .get::<_, String>("name")
+                .is_ok_and(|name| name == "SyntaxError");
+            return (
+                error
+                    .message()
+                    .unwrap_or_else(|| "JavaScript exception".into()),
+                syntax,
+            );
         }
         if let Some(text) = value.as_string().and_then(|s| s.to_string().ok()) {
-            return text;
+            return (text, false);
         }
     }
-    error.to_string()
+    (error.to_string(), false)
+}
+
+fn exception(ctx: &Ctx<'_>, error: rquickjs::Error) -> String {
+    exception_detail(ctx, error).0
 }
 
 pub(super) fn run_with_input(
@@ -119,9 +130,12 @@ pub(super) fn run_with_input(
                 .map_err(|e| exception(&ctx, e))?;
             let execute: Function = runner.get("execute").map_err(|e| exception(&ctx, e))?;
             // 数据通过函数实参解析，不拼接进源码；引号、反斜杠和 ${...} 均保持数据语义。
-            let promise: Promise = execute
-                .call((code, input.to_string()))
-                .map_err(|e| exception(&ctx, e))?;
+            let promise: Promise = execute.call((code, input.to_string())).map_err(|e| {
+                // AsyncFunction 构造期的 SyntaxError 先于正文；运行期异常不能声称未执行。
+                let (message, syntax) = exception_detail(&ctx, e);
+                output.source_parse_error = syntax;
+                message
+            })?;
             let finished = loop {
                 if let Some(result) = promise.result::<Value>() {
                     break result.map(|_| ()).map_err(|e| exception(&ctx, e));
@@ -147,6 +161,161 @@ pub(super) fn run_with_input(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn examples(source: &str) -> Vec<Json> {
+        source
+            .split("```json\n")
+            .skip(1)
+            .filter_map(|block| {
+                let value: Json =
+                    serde_json::from_str(block.split("\n```").next().unwrap()).unwrap();
+                value.get("code").is_some().then_some(value)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn published_json_examples_execute_data_and_collect_to_completion() {
+        let examples = examples(super::super::PROGRAM_DESCRIPTION);
+        assert_eq!(examples.len(), 3);
+        let validator =
+            jsonschema::validator_for(&super::super::definition().input_schema).unwrap();
+        for (index, example) in examples.iter().enumerate() {
+            assert!(validator.is_valid(example));
+            for fail_edit in [false, true] {
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+                let argument = example.clone();
+                let worker = std::thread::spawn(move || {
+                    run_with_input(
+                        argument["code"].as_str().unwrap().into(),
+                        argument["input"].clone(),
+                        vec![
+                            "edit_files".into(),
+                            "verify_command".into(),
+                            "search_files".into(),
+                            "read_process".into(),
+                        ],
+                        tx,
+                        CancellationToken::new(),
+                        Instant::now() + std::time::Duration::from_secs(3),
+                    )
+                });
+                let mut calls = Vec::new();
+                let mut reads = 0;
+                while let Some(request) = rx.blocking_recv() {
+                    calls.push(request.name.clone());
+                    assert!(calls.len() <= 4, "example must not retry or invent actions");
+                    let result = match request.name.as_str() {
+                        "edit_files" => {
+                            assert_eq!(request.arguments, example["input"]["edit"]);
+                            serde_json::json!({"success":!fail_edit,"data":{"allApplied":!fail_edit,"files":[{"status":if fail_edit {"UNKNOWN"} else {"APPLIED"}}]}})
+                        }
+                        "search_files" => {
+                            assert_eq!(request.arguments["pattern"], r"def fit\(");
+                            serde_json::json!({"success":true,"data":{"matches":[],"limited":false}})
+                        }
+                        "verify_command" | "read_process" => {
+                            if request.name == "verify_command" {
+                                assert_eq!(
+                                    request.arguments,
+                                    if index == 0 {
+                                        example["input"]["check"].clone()
+                                    } else {
+                                        example["input"].clone()
+                                    }
+                                );
+                                if index == 2 {
+                                    assert_eq!(
+                                        request.arguments["argv"][2],
+                                        "print('check')\nassert 1 + 1 == 2"
+                                    );
+                                }
+                            } else {
+                                reads += 1;
+                                assert_eq!(request.arguments["processId"], "process");
+                            }
+                            serde_json::json!({"success":true,"data":{"processId":"process","processComplete":reads==2,"outputReadComplete":reads==2,"nextCursor":reads,"exitCode":if reads==2 {Some(0)} else {None}}})
+                        }
+                        name => panic!("unexpected tool: {name}"),
+                    };
+                    request.reply.send(Ok(result)).unwrap();
+                }
+                let output = worker.join().unwrap();
+                assert_eq!(output.error, None);
+                assert!(!output.source_parse_error);
+                if index == 0 && fail_edit {
+                    assert_eq!(calls, ["edit_files"]);
+                } else if index != 1 {
+                    assert_eq!(reads, 2, "published example must await complete collection");
+                    assert_eq!(output.parts.len(), if index == 0 { 4 } else { 3 });
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn guides_share_the_executable_model_visible_examples() {
+        let expected = examples(super::super::PROGRAM_DESCRIPTION);
+        for guide in [
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../docs/guides/programmatic-tools.md"
+            )),
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../docs/guides/programmatic-tools.en.md"
+            )),
+        ] {
+            assert_eq!(
+                examples(guide),
+                expected,
+                "guide examples must match model-visible examples"
+            );
+        }
+    }
+
+    #[test]
+    fn syntax_diagnostics_distinguish_compilation_from_runtime_effects() {
+        for (code, expected_parse, expected_calls) in [
+            ("text('first\nsecond');", true, 0),
+            ("throw new SyntaxError('runtime error');", false, 0),
+            (
+                "text(await tools.edit_files({files:[]}));throw new SyntaxError('after effect');",
+                false,
+                1,
+            ),
+        ] {
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            let worker = std::thread::spawn(move || {
+                run_with_input(
+                    code.into(),
+                    serde_json::json!({}),
+                    vec!["edit_files".into()],
+                    tx,
+                    CancellationToken::new(),
+                    Instant::now() + std::time::Duration::from_secs(2),
+                )
+            });
+            let mut calls = 0;
+            while let Some(request) = rx.blocking_recv() {
+                calls += 1;
+                request
+                    .reply
+                    .send(Ok(
+                        serde_json::json!({"success":true,"data":{"allApplied":true}}),
+                    ))
+                    .unwrap();
+            }
+            let output = worker.join().unwrap();
+            assert!(output.error.is_some());
+            assert_eq!(output.source_parse_error, expected_parse);
+            assert_eq!(calls, expected_calls);
+            if expected_calls == 1 {
+                assert_eq!(output.parts.len(), 1);
+            }
+        }
+    }
+
     fn run(
         code: String,
         names: Vec<String>,

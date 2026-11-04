@@ -701,6 +701,74 @@ fn program_policy() -> ToolExtensions {
 }
 
 #[tokio::test]
+async fn readable_program_catalog_preserves_direct_and_embedded_contracts() {
+    let mut catalogs = Vec::new();
+    for only in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut extensions = program_policy();
+        extensions.policy.compact_tools = true;
+        extensions.policy.programmatic_tools_only = only;
+        if only {
+            extensions.policy.programmatic_direct_tools = vec!["edit_files".into()];
+        }
+        let (engine, model, runtime, thread, _) = open(
+            dir.path(),
+            vec![program("text({ready:true});")],
+            Limits::default(),
+            extensions,
+        )
+        .await;
+        let done = bounded(engine.wait(&thread)).await.unwrap();
+        assert_eq!(done.turns[0].status, TurnStatus::Completed);
+        catalogs.push(model.declarations.lock().await.clone());
+        close(engine, runtime).await;
+    }
+    let direct = &catalogs[0];
+    let composed = &catalogs[1];
+    let description = composed
+        .iter()
+        .find(|d| d["function"]["name"] == "tool_program")
+        .unwrap()["function"]["description"]
+        .as_str()
+        .unwrap();
+    let mut embedded = std::collections::BTreeMap::new();
+    for section in description.split("\n\n### tools.").skip(1) {
+        let (name, rest) = section.split_once('\n').unwrap();
+        let (help, schema) = rest.split_once("\nParameters: ").unwrap();
+        let schema: Value = serde_json::from_str(schema.lines().next().unwrap()).unwrap();
+        assert!(embedded.insert(name, (help, schema)).is_none());
+    }
+    let mut removed = 0;
+    for original in direct.iter().map(|d| &d["function"]) {
+        let name = original["name"].as_str().unwrap();
+        if name == "tool_program" {
+            continue;
+        }
+        if let Some(visible) = composed.iter().find(|d| d["function"]["name"] == name) {
+            assert_eq!(&visible["function"], original);
+            assert!(
+                !embedded.contains_key(name),
+                "direct schema must not be duplicated"
+            );
+        } else {
+            let (help, schema) = embedded
+                .get(name)
+                .expect("hidden native tool must remain callable");
+            assert_eq!(*help, original["description"].as_str().unwrap());
+            assert_eq!(*schema, original["parameters"]);
+            removed += 1;
+        }
+    }
+    assert_eq!(embedded.len(), removed);
+    assert!(removed > 0);
+    assert!(
+        composed
+            .iter()
+            .any(|d| d["function"]["name"] == "edit_files")
+    );
+}
+
+#[tokio::test]
 async fn dependent_program_removes_a_model_round_with_identical_native_work_and_budget() {
     let mut costs = Vec::new();
     let mut operations = Vec::new();

@@ -393,7 +393,7 @@ impl Model for SurfaceModel {
             !self.program_only || self.direct_edit
         );
         assert_eq!(
-            catalog.contains("\"name\":\"edit_files\""),
+            catalog.contains("### tools.edit_files\n"),
             self.program_only && !self.direct_edit
         );
         assert_eq!(names.contains(&"environment_info"), !self.program_only);
@@ -403,15 +403,19 @@ impl Model for SurfaceModel {
             round != 0 && !self.program_only
         );
         if self.program_only && round != 0 {
-            assert!(catalog.contains("\"name\":\"read_history\""));
+            assert!(catalog.contains("### tools.read_history\n"));
         }
         let event = match round {
             0 => {
                 assert!(names.len() <= 15, "{names:?}");
-                assert!(messages.iter().any(|m| {
-                    m.text_content()
-                        .contains("await collect(await tools.run_command")
-                }));
+                assert!(
+                    messages
+                        .iter()
+                        .any(|m| m.text_content().contains("await collect"))
+                );
+                // 完整示例集中在工具定义；基础说明只保留决策边界，避免重复输入。
+                assert!(catalog.contains("```json\n"));
+                assert!(catalog.contains("await collect(await tools.verify_command(input.check))"));
                 call("tool_search", json!({"query":"read_history","limit":1}), 0)
             }
             1 if self.direct_edit => call(

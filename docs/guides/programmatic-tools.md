@@ -16,12 +16,24 @@
 
 模型已读过文件并确定补丁和测试入口后，可以把关联修改、验证及有界回收放进同一程序。新错误、冲突、权限、UNKNOWN 或视觉判断必须回到模型；不在循环里安装依赖或更换方案。无独立工作时使用正常等待预算，不显式用 1 秒制造回收轮次。
 
-```javascript
-const e = await tools.edit_files({files:[{path:'src/a.py',patches:[{oldText:'old_a',newText:'new_a'}]},{path:'src/b.py',patches:[{oldText:'old_b',newText:'new_b'}]}]});
-text(e);
-if (e.success && e.data.allApplied) {
-  await collect(await tools.run_command({argv:['python','-m','pytest','tests/test_feature.py','-q']}));
-}
+以下均为 `tool_program` 的 JSON 调用参数；`code` 仅包含 JavaScript 正文，不再包裹 `tool_program(...)`。JSON 转义仍适用，`input` 避免第二层 JavaScript 字符串转义。解释器和测试入口须已确认。
+
+已确定的小补丁、测试与有界回收：
+
+```json
+{"input":{"edit":{"files":[{"path":"src/a.py","patches":[{"oldText":"old_a","newText":"new_a"}]}]},"check":{"argv":["python","-m","pytest","tests/test_a.py","-q"]}},"code":"const e=await tools.edit_files(input.edit);text(e);if(e.success && e.data.allApplied) await collect(await tools.verify_command(input.check));"}
+```
+
+正则放入 `input`，以下匹配字面左括号：
+
+```json
+{"input":{"pattern":"def fit\\(","path":"src"},"code":"text(await tools.search_files(input));"}
+```
+
+多行短脚本放入 `input`：
+
+```json
+{"input":{"argv":["python","-c","print('check')\nassert 1 + 1 == 2"]},"code":"await collect(await tools.verify_command(input));"}
 ```
 
 `tools.NAME(args)` 返回 `{success,outcome,callId,itemId,data,text,availableImages}`，`data` 是可解析的原生 JSON，`text` 保留文本。调用按顺序完成，`await` 可用，`Promise.all` 也不会增加原生并发。`text(value)` 返回选定观察；`text(nativeResult)` 在 JSON 可解析时只展示 `{itemId,data}`；身份、成功状态和错误仍在强制子回执中，程序内部原始对象及 `data/text` 不变。同一原生结果对象的相同展示在一个程序内只发送一次（包括 `collect` 后再次 `text`）；对象改变仍会发送新的展示。`image(nativeResult)` 只转发本次父调用的真实子结果图片。模型需要新的视觉或业务判断时应返回观察，不能让脚本代替该判断。原生进程的 `commandStatus/outputReadComplete/processId` 和每个子调用终态属于强制回执，无法通过筛选隐藏。
@@ -62,8 +74,6 @@ if (e.success && e.data.allApplied) {
 
 `input` 是可选 JSON 对象，作为程序中的 `input` 实参解析，不拼接进 JavaScript 源码。把小补丁、正则和短脚本/argv 放入该对象可以避免第二层 JavaScript 引号与反斜杠；权限、版本检查和预算仍沿原叶子入口执行。数据不能成为宿主代码，`__proto__` 也只是 JSON 键。大段文件正文继续使用 edit_files 直达；短辅助脚本或测试文件可在同一 `input.edit.files` 中用 `{path,text}` 创建，与补丁和已选检查组合，不因它是新文件而增加一次模型交接。
 
-```javascript
-tool_program({input:{edit:{files:[{path:"src/a.py",patches:[{oldText:"old",newText:"new"}]}]},check:{argv:["python","-m","pytest","tests/test_a.py"]}},code:"const e=await tools.edit_files(input.edit);text(e);if(e.success && e.data.allApplied) await collect(await tools.verify_command(input.check));"});
-```
-
 检查仍须由模型根据公开要求选择。保留仍相关的验证与失败对照，在影响对应条件的修改后重新执行；未覆盖的要求显式报告。程序只能组合已经确定的动作，不能以少做检查换取较低消耗。
+
+程序正文在执行前解析失败时，收据保留原始错误并可附 `phase:"parse"` 和 `guidance`，只在未派发且没有子收据时说明没有工具执行。运行期异常、已产生效果或 UNKNOWN 不使用该提示。正则语法错误保留原文并提示通过 `input` 传递模式；这些提示不重试、不重放、不自动修补。
