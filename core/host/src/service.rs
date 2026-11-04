@@ -3,8 +3,9 @@ use areal_local_service::storage;
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use std::{
+    fs::OpenOptions,
     io::Write,
-    os::unix::fs::MetadataExt,
+    os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -202,24 +203,7 @@ impl ServiceInstallation {
             !loaded || existing.is_some(),
             "an unowned service is already registered under this label"
         );
-        let temporary = directory.join(format!(".{}.tmp", uuid::Uuid::new_v4()));
-        let mut file = storage::open_private(&temporary, true).with_context(|| {
-            format!("open temporary service descriptor {}", temporary.display())
-        })?;
-        file.write_all(self.contents()?.as_bytes())
-            .with_context(|| {
-                format!("write temporary service descriptor {}", temporary.display())
-            })?;
-        file.sync_all().with_context(|| {
-            format!("sync temporary service descriptor {}", temporary.display())
-        })?;
-        std::fs::rename(&temporary, &self.descriptor).with_context(|| {
-            format!(
-                "publish service descriptor {} to {}",
-                temporary.display(),
-                self.descriptor.display()
-            )
-        })?;
+        self.publish_descriptor(directory)?;
         storage::write(&record_path, self).with_context(|| {
             format!(
                 "write service installation record {}",
@@ -243,6 +227,33 @@ impl ServiceInstallation {
                     .arg(&self.descriptor),
             )?;
         }
+        Ok(())
+    }
+    fn publish_descriptor(&self, directory: &Path) -> Result<()> {
+        let temporary = directory.join(format!(".{}.tmp", self.label));
+        let contents = self.contents()?;
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(&temporary)
+            .with_context(|| format!("create temporary service descriptor {}; inspect any existing file before removing it", temporary.display()))?;
+        let meta = file.metadata()?;
+        ensure!(
+            meta.is_file()
+                && meta.uid() == unsafe { libc::geteuid() }
+                && meta.mode() & 0o077 == 0
+                && meta.nlink() == 1,
+            "invalid temporary service descriptor {}; inspect it before removing it",
+            temporary.display()
+        );
+        file.write_all(contents.as_bytes())
+            .with_context(|| format!("write temporary service descriptor {}; inspect any remaining file before removing it", temporary.display()))?;
+        file.sync_all()
+            .with_context(|| format!("sync temporary service descriptor {}; inspect any remaining file before removing it", temporary.display()))?;
+        std::fs::rename(&temporary, &self.descriptor)
+            .with_context(|| format!("publish temporary service descriptor {}; inspect any remaining file before removing it", temporary.display()))?;
         Ok(())
     }
     pub async fn start_installed(home: &Path) -> Result<bool> {
@@ -433,6 +444,55 @@ mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
 
+    #[test]
+    fn descriptor_temporary_file_rejects_existing_entries() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("agents");
+        std::fs::create_dir(&directory).unwrap();
+        let service = ServiceInstallation::at(
+            root.path().join("home"),
+            &directory,
+            &std::env::current_exe().unwrap(),
+        )
+        .unwrap();
+        let temporary = directory.join(format!(".{}.tmp", service.label));
+        std::fs::write(&temporary, "unknown trailing data").unwrap();
+        assert!(service.publish_descriptor(&directory).is_err());
+        assert_eq!(
+            std::fs::read_to_string(&temporary).unwrap(),
+            "unknown trailing data"
+        );
+        std::fs::remove_file(&temporary).unwrap();
+        service.publish_descriptor(&directory).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&service.descriptor).unwrap(),
+            service.contents().unwrap()
+        );
+        assert!(!temporary.exists());
+        service.publish_descriptor(&directory).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&service.descriptor).unwrap(),
+            service.contents().unwrap()
+        );
+        symlink(&service.descriptor, &temporary).unwrap();
+        assert!(service.publish_descriptor(&directory).is_err());
+        std::fs::remove_file(&temporary).unwrap();
+        std::fs::hard_link(&service.descriptor, &temporary).unwrap();
+        assert!(service.publish_descriptor(&directory).is_err());
+        std::fs::remove_file(&temporary).unwrap();
+        std::fs::remove_file(&service.descriptor).unwrap();
+        std::fs::create_dir(&service.descriptor).unwrap();
+        assert!(service.publish_descriptor(&directory).is_err());
+        assert_eq!(
+            std::fs::read_to_string(&temporary).unwrap(),
+            service.contents().unwrap()
+        );
+        std::fs::remove_dir(&service.descriptor).unwrap();
+        assert!(service.publish_descriptor(&directory).is_err());
+        std::fs::remove_file(&temporary).unwrap();
+        service.publish_descriptor(&directory).unwrap();
+        assert!(!temporary.exists());
+    }
     #[test]
     fn installed_stable_entry_survives_a_version_symlink_switch() {
         let root = tempfile::tempdir().unwrap();
