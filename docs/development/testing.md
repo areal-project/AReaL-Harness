@@ -577,6 +577,8 @@ PR #111 在初始 G0 快照后整合历史恢复与定时任务所有权。以�
 
 `gui-health.mjs --check --base=<ref>` 会标记基线源码已存在的超限，仍以已审核的 `health-baseline.json` 判定失败。继承分类用于归因，不是自动豁免；显式例外与基准变更继续经过既有审查。模型菜单 smoke 通过稳定的 `composer-model-trigger` 打开入口，在对应服务商标签内选择原生 radio，并以选中模型和后续行为验证结果。
 
+`mainSourceLines` 将 Main 自有源码总行数作为业务迁出的保守上限，只降不升。检查同时比较已审核基线和 PR 基点的实际行数；新增小文件也计入总量，旧基线尚未收紧的余量不能用于恢复已迁出的代码。它沿用现有生产源码统计范围，不替代业务必须经协议进入 Host 或 Core 的架构约束。
+
 `Track red main` 工作流跟踪 main 上 `Verify` 和 `GUI checks` 的 push 结果。写 issue 前核对当前 main 提交、该 workflow 最新 run/attempt 及终态；过期通知与未完成的新 attempt 不修改告警。当前失败创建或更新对应 issue，当前成功关闭；仓库保护规则拥有必需检查设置。`python3 -m unittest scripts.tests.test_ci_contracts` 在 GitHub CLI 边界使用离线响应，覆盖乱序完成、旧 attempt、新运行未完成和 API 读取失败，测试不会写入真实 issue。
 
 运行 `make hooks-install CI_BASE=upstream-readonly/main` 激活本地 hooks。安装器保存实际远程目标，不覆盖其他 hooks。提交钩子在暂存快照验证 manifest、生成 `target/ci/staged-plan.json`，再检查格式和 workflow；计划展示不等于执行验收。推送钩子要求推送 SHA 等于当前 HEAD、受控文件及非忽略未跟踪输入干净，抓取目标后运行受影响快检加失败专项和依赖。并发工作使用独立干净 worktree。`make workflow-lint` 使用校验 SHA-256 的 actionlint 1.7.12。远端独立执行适用检查；真实供应商、设备和签名安装包仍需专项验收。

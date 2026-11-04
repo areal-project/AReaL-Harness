@@ -95,6 +95,8 @@ test("JSON report counts production code and keeps report-only counts separate",
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.counts.mainSourceLines, 1);
+  assert.equal(report.metrics.mainSourceLines.value, report.counts.mainSourceLines);
+  assert.equal(report.metrics.mainSourceLines.direction, "down");
   assert.equal(report.metrics.appLines.value, 2);
   assert.equal(report.metrics.appHooks.value, 2);
   assert.equal(report.metrics.literalDebt.value, 6);
@@ -156,6 +158,51 @@ test("per-path caps reject growth, rename, and debt restored after deletion", as
   assert.notEqual(f.run("--check").status, 0);
 });
 
+test("Main aggregate rejects new small files and permits business removal", async (t) => {
+  const f = await fixture(t);
+  await f.put("app/src/business.cjs", "business();\n".repeat(3));
+  assert.equal(f.run("--write").status, 0);
+  await f.put("app/src/business.cjs", "business();\n");
+  assert.equal(f.run("--write").status, 0);
+  const baseline = await f.baseline();
+  assert.equal(baseline.mainSourceLines.value, 2);
+  await f.put("app/src/new-business.cjs", "newBusiness();\n");
+  const added = f.run("--check");
+  assert.notEqual(added.status, 0);
+  assert.match(added.stderr, /mainSourceLines/);
+  assert.notEqual(f.run("--write").status, 0);
+  assert.equal((await f.baseline()).mainSourceLines.value, 2);
+});
+
+test("Main cannot regrow against base using unused baseline headroom", async (t) => {
+  const f = await fixture(t);
+  await f.put("app/src/business.cjs", "business();\n".repeat(3));
+  assert.equal(f.run("--write").status, 0);
+  await f.put("app/src/business.cjs", "business();\n");
+  const git = (...args) => spawnSync("git", args, { cwd: join(f.root, "../.."), encoding: "utf8" });
+  assert.equal(git("init", "-q").status, 0);
+  assert.equal(git("add", ".").status, 0);
+  assert.equal(
+    git(
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.test",
+      "commit",
+      "-qm",
+      "reduced Main",
+    ).status,
+    0,
+  );
+  assert.equal(f.run("--check", "--base=HEAD").status, 0);
+  await f.put("app/src/business.cjs", "business();\n".repeat(2));
+  const grown = f.run("--check", "--base=HEAD");
+  assert.notEqual(grown.status, 0);
+  assert.match(grown.stderr, /mainSourceLines.*Main source increased against base/);
+  assert.notEqual(f.run("--write", "--base=HEAD").status, 0);
+  assert.equal((await f.baseline()).mainSourceLines.value, 4);
+});
+
 test("reviewed document transition matches only its exact values and unchanged ownership", () => {
   const before = { value: 262924, direction: "down", owner: "design/ clients/gui/design-system" };
   const current = { ...before, value: 269714 };
@@ -213,7 +260,7 @@ test("reviewed document transition never waives actual growth or other caps", as
 
 test("an explicit base detects baseline relaxation in the same change", async (t) => {
   const f = await fixture(t);
-  const git = (...args) => spawnSync("git", args, { cwd: f.root, encoding: "utf8" });
+  const git = (...args) => spawnSync("git", args, { cwd: join(f.root, "../.."), encoding: "utf8" });
   assert.equal(f.run("--write").status, 0);
   assert.equal(git("init", "-q").status, 0);
   assert.equal(git("add", ".").status, 0);

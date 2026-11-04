@@ -1,6 +1,11 @@
 {
   "$schemaVersion": 1,
   "$revision": "9297968c583330b149cb75117a6ab95b1b8c373d",
+  "mainSourceLines": {
+    "value": 66176,
+    "direction": "down",
+    "owner": "app/src"
+  },
   "mainCheckedFiles": {
     "value": 152,
     "direction": "up",

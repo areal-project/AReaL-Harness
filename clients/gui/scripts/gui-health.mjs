@@ -117,7 +117,14 @@ export async function collectHealth({ root = gui } = {}) {
   const checkedMainFiles = main.filter(
     (file) => /@ts-check\b/.test(file.source) || /\.tsx?$/.test(file.path),
   ).length;
+  const mainSourceLines = sum(main);
   const metrics = {
+    mainSourceLines: row(
+      mainSourceLines,
+      "down",
+      "app/src",
+      "Owned Main physical lines; aggregate ceiling for migrating business out of Electron",
+    ),
     mainCheckedFiles: row(
       checkedMainFiles,
       "up",
@@ -290,7 +297,7 @@ export async function collectHealth({ root = gui } = {}) {
       "GUI production app/src, renderer/src, packages/*/{src,client}, and package-root implementations; excludes package build/config/declaration tooling, vendor/generated/design previews/i18n messages/tests; manifest covers GUI root package only",
     metrics,
     counts: {
-      mainSourceLines: sum(main),
+      mainSourceLines,
       uiCssLines: sum(
         files.filter(
           (file) => file.path.startsWith("packages/ui/src/") && file.path.endsWith(".css"),
@@ -518,8 +525,15 @@ async function main() {
   const regressions = failures.filter(
     (failure) => !failure.reason?.includes("relaxed") && Number.isFinite(failure.current),
   );
-  const before =
-    !write && base && baseline && regressions.length ? await baseHealth(base, root) : null;
+  const before = base && baseline ? await baseHealth(base, root) : null;
+  if (before && report.metrics.mainSourceLines.value > before.metrics.mainSourceLines.value)
+    failures.push({
+      metric: "mainSourceLines",
+      baseline: before.metrics.mainSourceLines.value,
+      current: report.metrics.mainSourceLines.value,
+      direction: "down",
+      reason: "Main source increased against base",
+    });
   const inherited = before ? regressions.filter((failure) => inheritedFrom(failure, before)) : [];
   inherited.forEach((failure) =>
     console.warn(
