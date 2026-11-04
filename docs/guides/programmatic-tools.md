@@ -60,7 +60,7 @@ if (e.success && e.data.allApplied) {
 
 `programmaticDirectTools`（默认空数组）可在 `programmaticToolsOnly:true` 时保留最多 16 个不同原生工具的直达入口；仅与当前可见、已授权目录求交集，不能借此暴露隐藏工具。直达定义不再重复嵌入程序目录，`tools.NAME` 内部调用仍可用。不启用 only 模式时配置非空数组会报错。显式组合配置使用 `programmaticDirectTools:["edit_files"]`：保留大段文件的 JSON 表达，同时将确定的读取、执行和回收集中于程序入口。需要更自由的直接操作时可显式选择 only=false 并清空该数组；采用率与净成本必须单独验证。Rust 的完整 `ToolPolicy` 字面量需包含新字段或使用默认展开。
 
-`input` 是可选 JSON 对象，作为程序中的 `input` 实参解析，不拼接进 JavaScript 源码。把小补丁、正则和短脚本/argv 放入该对象可以避免第二层 JavaScript 引号与反斜杠；权限、版本检查和预算仍沿原叶子入口执行。数据不能成为宿主代码，`__proto__` 也只是 JSON 键。大段文件正文继续使用 edit_files 直达。
+`input` 是可选 JSON 对象，作为程序中的 `input` 实参解析，不拼接进 JavaScript 源码。把小补丁、正则和短脚本/argv 放入该对象可以避免第二层 JavaScript 引号与反斜杠；权限、版本检查和预算仍沿原叶子入口执行。数据不能成为宿主代码，`__proto__` 也只是 JSON 键。大段文件正文继续使用 edit_files 直达；短辅助脚本或测试文件可在同一 `input.edit.files` 中用 `{path,text}` 创建，与补丁和已选检查组合，不因它是新文件而增加一次模型交接。
 
 ```javascript
 tool_program({input:{edit:{files:[{path:"src/a.py",patches:[{oldText:"old",newText:"new"}]}]},check:{argv:["python","-m","pytest","tests/test_a.py"]}},code:"const e=await tools.edit_files(input.edit);text(e);if(e.success && e.data.allApplied) await collect(await tools.verify_command(input.check));"});
