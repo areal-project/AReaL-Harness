@@ -419,6 +419,14 @@ Proxy fixtures use dynamic loopback ports and isolated subprocess environments. 
 
 ## Shared local services
 
+### A0 protocol contracts
+
+`python3 scripts/generate-host-protocol.py --check` compares schema-generated Rust and TypeScript types and checks the local and Gateway method inventories. Production code does not import these generated types yet. The two current wire formats remain separate from proposals. Structural types do not replace byte budgets, authorization or mutable ownership checks.
+
+`make host-protocol-check` checks generated output, generator regressions and desktop IPC rejection cases. CI also runs `node clients/gui/scripts/check-desktop-ipc-freeze.cjs --base <SHA>` against the full PR base commit SHA. It rejects new top-level commands and business operations under existing commands. Native bridge channels are outside this freeze.
+
+`cargo test --locked -p areal-host --test host_protocol_conformance` compiles generated types and calls the actual local wire. After preparing matching Core/Runtime components in a verified fixed slot, run `AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal pnpm --dir clients/gui test:host-protocol-conformance`. It compares actual messages and resource boundaries through isolated Host, Core, Relay and Noise instances. On macOS the fixture uses synthetic keychain entries only. This check does not establish package, real-data or physical-phone acceptance.
+
 `node scripts/runtime-rotation-smoke.mjs` uses isolated directories, real Core/Runtime processes and a local model. Lower Scope, operation and cumulative output capacities independently verify automatic rotation after warning but before exhaustion, deferral of active Turns, old Core/Runtime exit, deployment drift protection, a new epoch, preserved history and Queue intent, submission deduplication across rotation and subsequent Turns. It runs through `make local-service-smoke` and `make harness-smoke`. Host tests cover maintenance RPC timeout and shutdown cancellation. Engine lifecycle tests also cover atomic admission between rotation and a new Turn, preserved historical UNKNOWN records and blocking unconfirmed resource cleanup. These are deterministic contract regressions, not evidence of overall Agent capability gains.
 
 `make local-service-smoke` uses temporary directories, real Core/Runtime, two PTYs and an HTTP model fixture. It verifies concurrent ensure, workspace/symlink identity, configuration conflicts, authentication, Web discovery, window exit, busy/cancel stop, persistent history, launcher/host SIGKILL cleanup and reattachment. It is included in `make harness-smoke`. `make desktop-schemas` also exports `schemas/local-service-v1.json`.

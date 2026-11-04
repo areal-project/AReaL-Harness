@@ -1,4 +1,4 @@
-import type { SnapShotServices, SnapShotSource } from "@areal/workbench/desktop-contract/snapshots";
+import type { SnapShotServices, SnapShotSource } from "../services.js";
 import { useSyncExternalStore } from "react";
 let bridge: SnapShotServices | undefined;
 const pending = new Map<

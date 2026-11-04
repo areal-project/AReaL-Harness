@@ -288,6 +288,12 @@ desktop-schemas: ## 从 Rust 类型导出 AReaL 桌面契约
 desktop-schema-check: ## 临时生成并规范化比较三份桌面 schema，不修改已提交文件
 	python3 scripts/desktop-schemas.py
 
+.PHONY: host-protocol-check
+host-protocol-check: ## 检查 A0 协议生成物与桌面 IPC 冻结的反例
+	python3 scripts/generate-host-protocol.py --check
+	python3 -m unittest scripts.tests.test_host_protocol_schema
+	node --test clients/gui/scripts/desktop-ipc-freeze.test.cjs
+
 package: release ## 生成 macOS arm64 / Linux x86_64 发行产物及完整性清单；ARGS 指定 --output
 	python3 scripts/package.py $(ARGS)
 

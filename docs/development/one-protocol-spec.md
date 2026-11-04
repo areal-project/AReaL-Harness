@@ -264,3 +264,59 @@ Main 中其余业务迁入 Host 监督的 Node 工作台服务或 Core，经协�
 - 远端 Linux 部署、GUI 连远端 Host、多 OS 用户、云账号。
 - 把工作台服务改写为 Rust 的完成时间；本规格只要求它经协议对外。
 - 手机原生界面重写。
+
+
+## 附录：A0 桌面命令去向
+
+现有方法只提供部分覆盖，均不是直接替换。提案标识操作族，并非已实现方法。保留已发布 Gateway 的语义与限制。Host 路由至 Core，不增加并行 Runtime。仅外壳的原生交互不在冻结范围。依据 `clients/gui/packages/workbench/client/desktop-contract/transport.cjs`、`app/src/core/main.cjs`、`backend.cjs`、`workspace.cjs`、`plugin-archives.cjs` 和 `core/host/src/gateway/session.rs`。
+
+| 命令 | 协议去向：现有部分覆盖 / 提案 | 目标所有者及拆分 |
+| --- | --- | --- |
+| `cloud` | 提案 `cloud.*` | Host 账户配置（`status`、`save`） |
+| `cloudSession` | 提案 `cloudSession.*` | 工作台云会话（`open`、`create`、`reconnect`、`send`、`stop`）；Core 执行与历史 |
+| `connect` | 现有 `project.ensure`（部分）; 提案 project subscription | Host 监督；Core 项目订阅 |
+| `list` | 现有 `work.list`（部分）; 提案 session listing | Core 项目会话；工作台只聚合跨项目结果 |
+| `open` | 现有 `session.open`（部分）; 提案 desktop subscription | Core 快照；Host 订阅传输；客户端投影 |
+| `history` | 现有 `session.history`, `session.body`（部分）; 提案 history subscription | Core 历史负责 `acquire`、`loadOlder`、`loadItem`；Host 订阅和客户端投影/缓存负责 `retain`、`ensureAnchor`、`release` |
+| `create` | 现有 `session.create`（部分）; 提案 desktop creation | Core 创建和回执 |
+| `prepareCreator` | 提案 creator preparation | Core 项目准备 |
+| `fork` | 提案 session fork | Core 分支和回执 |
+| `side` | 现有 `session.create`, `session.send`（部分）; 提案 side-session operations | Core 的 `recover`、`context`、`list`、`start`、`send`、`create`、`close` 及回执 |
+| `prediction` | 提案 session prediction | Core 上下文预测 |
+| `send` | 现有 `session.send`（部分）; 提案 desktop submission | Core 提交和回执 |
+| `editMessage` | 提案 session edit | Core 编辑和回执 |
+| `continue` | 提案 session continuation | Core 继续执行和回执 |
+| `stop` | 现有 `turn.stop`（部分）; 提案 desktop stop | Core 停止和回执 |
+| `attachBrowser` | 提案 browser attachment | Core 执行绑定；外壳原生浏览器 |
+| `respond` | 现有 `interaction.respond`（部分）; 提案 desktop response | Core 交互回复 |
+| `reconcile` | 现有 `command.read`（部分）; 提案 desktop receipt query | Core 权威回执；不重放不确定提交 |
+| `configure` | 现有 `session.control`（部分）; 提案 desktop configuration | Core 会话配置 |
+| `queue` | 提案 session queue read | Core 队列 |
+| `queueEdit` | 现有 `session.control`（部分）; 提案 desktop queue edits | Core 的 `update`、`remove`、`reorder`、`pause`、`resume`、`steer` |
+| `library` | 提案 `library.*` | 工作台跨项目目录与偏好：`dropSidebar`、`renameProject`、`renameThread`、`pinThread`、`pinProject`、`createSection`、`renameSection`、`removeSection`、`orderSection`、`moveThread`、`moveProject`、`readThread`、`markAllRead`、`orderSidebarThread`、`hideProject`、`orderProject`、`orderThread`、`settings`；`computerControlEnabled`、`computerControlProvider`、`computerControlExecutable` 由外壳协调桌面工具 |
+| `manage` | 现有 `session.control`, `task.read`, `task.pause`, `task.question.read`, `task.question.reply`, `artifact.read`（部分）; 提案 project management operations | Core 项目管理操作，包括插件、MCP、provider、进程、目标、计划、权限、执行、agent、工作流、工作组和任务。Host 拥有凭据。外壳负责 `pluginArchivePick`、解析 `pluginArchiveImport` 选择令牌、确认 `archive` 和原生浏览器/对话框。工作台只保留跨项目或过渡目录业务；`pluginInstall` 和导入仍是业务操作 Core 项目操作集合：`pluginComponents`、`pluginHooks`、`pluginMcp`、`mcpApps`、`genUiSource`、`mcpForms`、`mcpToolResult`、`plugins`、`plugin`、`providers`、`mcp`、`profile`、`skills`、`skill`、`inspect`、`context`、`inheritedHistory`、`plan`、`processes`、`process`、`processWait`、`goal`、`permissions`、`interactions`、`processOutput`、`executions`、`execution`、`executionTrace`、`executionTraceResult`、`executionArtifact`、`executionWait`、`agents`、`agentWait`、`workflows`、`server`、`workflow`、`workgroupPolicy`、`workgroups`、`workgroup`、`workgroupWait`、`workgroupArtifact`、`workgroupArtifactStatus`、`workgroupCapabilities`、`workgroupSubmission`、`pluginCapabilities`、`pluginReadiness`、`pluginSubmission`、`processSubmission`、`agentSubmission`、`mcpFormResourceSubmission`、`tasks`、`task`、`taskInbox`、`taskChannel`、`taskDraftHistory`、`taskDraftRead`、`taskSchedulePreview`、`taskScheduleContext`、`taskHistoryCapabilities`、`taskRuns`、`taskRun`、`taskWatch`、`taskUnwatch`、`pluginUserConfigSave`、`pluginDevelopmentLink`、`pluginDevelopmentUnlink`、`pluginArchiveImport`、`mcpFormResourceStage`、`pluginHooksConfigure`、`hookAcknowledge`、`marketplaceAdd`、`marketplaceAddGit`、`marketplaceRemove`、`marketplaceUpdate`、`pluginResolve`、`pluginAuthConfigure`、`pluginConnection`、`connectorConfigure`、`connectorCredential`、`pluginInstall`、`pluginConfigure`、`pluginComponentConfigure`、`pluginUninstall`、`pluginSetup`、`providerSave`、`providerRemove`、`mcpSave`、`mcpConnect`、`mcpDisconnect`、`archive`、`unarchive`、`processCloseStdin`、`processStart`、`processWrite`、`processResize`、`processTerminate`、`goalCreate`、`goalUpdate`、`goalPause`、`goalResume`、`goalClear`、`workgroupStart`、`workflowStart`、`workgroupRevise`、`agentSpawn`、`taskCreate`、`taskUpdate`、`taskRunNow`、`taskPause`、`taskResume`、`taskStopRun`、`taskResumeRun`、`taskCancel`、`taskDelete`、`taskReply`、`taskDraftSend`、`pluginCredentialsReload`、`pluginAuth`、`pluginAuthCredential`、`mcpAppOpen`、`mcpAppOpenFromResult`、`mcpAppRequest`、`mcpAppClose`、`mcpExtensionCall`、`mcpFormRespond`、`mcpFormPreview`、`mcpFormResourcePrepare`、`mcpFormResourceRelease`、`executionCancel`、`executionApply`、`serverDrain`、`serverGc`、`workgroupApplyArtifact`、`workgroupCancel`、`closeResources`、`planUpdate`、`toolAcknowledge`、`contextCompact`、`permissionsForget`、`providerProbe`、`taskDraftConfirm`、`taskDraftStart`。工作台拥有用户范围的 `pluginStoreSnapshot`、`pluginStoreDoctor`；项目范围由 Core 拥有。秘密字段、`pluginAuthCredential`、`connectorCredential` 经过 Host 凭据边界。外壳处理原生 MCP 视图/资源及 `pluginAuth` start 的外部浏览器。 |
+| `workspace` | 现有 `review.read`, `artifact.read`（部分）; 提案 project files/Git and worktree operations | Core 的 `list`、`search`、`localDirectoryReference`、`read`、`save`、`review`、`reviewCommits`、`reviewBranches`、`turnReview`、`status`、`info`、`gitState`、`gitStage`、`gitUnstage`、`gitCommit`、`gitPush`；工作台跨项目 `worktreeList`、`worktreeSettings`、`worktreeOptions`、`worktreeEnvironmentSave`、`worktreeEnvironmentDelete`、`worktreeCancel`、`worktreeAction`、`worktreeDelete`、`worktreeCreate`、`worktreeRead`、`worktreeOpen`（登记工作区） |
+| `media` | 提案 session media operations | Core 的 `list`、`read`、`upload`、`release` 及会话引用 |
+| `steer` | 现有 `session.control`（部分）; 提案 desktop steer | Core 执行调整 |
+| `dismissRecovery` | 提案 recovery dismissal | Core 项目恢复状态 |
+| `providers` | 现有 `vault.read`, `vault.replace`（部分）; 提案 provider operations | Host 凭据负责 `revealKey`、`save`、`saveAndApply`、`remove`、`removeAndApply`；Core provider 配置及 `list`、`discover`、`probe`、`apply`、`default`、`defaultAndApply` |
+| `chatgpt` | 现有 `vault.read`, `vault.replace`（部分）; 提案 account operations | Host 的 `status`、`login`、`forget`、`logout`、`selectAccount`、`cancel`、`probe`；外壳为 `login` 打开外部浏览器 |
+| `analytics` | 提案 analytics operations | 工作台跨项目 `read`、`sync`；Core 项目用量 |
+| `resources` | 提案 resource operations | Core 的 `hooks`、`builtinSkill`、`skills`、`mcp`、`skillRead`、`hooksSave`、`skillToggle`、`skillSave`、`mcpSave`、`mcpConnect`、`mcpDisconnect`；Host 凭据 |
+| `projectless` | 现有 `project.ensure`（部分）; 提案 projectless operations | 工作台的 `catalog`、`directory`、`prepare`；Host 项目监督 |
+| `tasks` | 现有 `task.read`（部分）; 提案 cross-project task operations | 工作台聚合 `list`、`inbox`、`preview`、`observe`；Core 项目任务权威 |
+| `trajectory` | 提案 trajectory operations | 工作台的 `status`、`retry`、`setEnabled` |
+| `feedback` | 提案 feedback operations | 工作台的 `status`、`read`、`preference`、`prepare`、`draft`、`refine`、`submit`、`close` |
+| `serviceLifecycle` | 现有 `host.status`, `host.stop`, `host.updateStatus`, `host.update`（部分）; 提案 recovery | Host 的 `check`、`stop`、`recover`、`update`；外壳的 `quitInterface`、确认和通知；`stopAndQuit` 拆为 Host 停止和外壳退出 |
+| `hostInstallation` | 提案 installation operations | Host 的 `status`、`install`、`uninstall`；外壳本机交互与停止协调 |
+| `hostUpdate` | 现有 `host.updateStatus`, `host.update`（部分）; 提案 update preparation | Host 的 `status`、`check`、`prepare`、`apply` |
+| `serviceStatus` | 现有 `host.status`（部分）; 提案 desktop status | Host 状态 |
+| `stopService` | 现有 `host.stop`（部分）; 提案 desktop stop | Host 停止；外壳确认 |
+| `recoverResources` | 提案 resource recovery | Host 恢复；外壳通知 |
+| `browserData` | 仅外壳 | 外壳的 `status`、`importChrome`、`clearCache`、`clearAll` |
+| `computerControl` | 仅外壳; 提案 configuration coordination | 外壳的 `status`、`requestAccess`、`openSettings`、`restart`、`stop`；工作台协调配置 |
+| `bugReport` | 提案 bug report operations | 工作台的 `prepare`、`list`、`read`、`save`、`delete`、`export` 数据；外壳选择位置并保存导出 |
+| `exportDiagnostics` | 提案 diagnostics export | 工作台诊断数据；外壳保存对话框 |
+| `connectService` | 现有 `host.subscribe`, `host.status`（部分）; 提案 discovery | Host 服务发现和连接 |
+| `export` | 现有 `session.history`, `session.body`（部分）; 提案 export | Core 历史和导出数据；外壳选择位置并保存 |
+| `remoteControl` | 现有 `remote.read`, `remote.replace`, `remote.gateway.state`, `remote.gateway.status`, `remote.gateway.control`（部分）; 提案 pairing/configuration | Host 远程配置及配对 |

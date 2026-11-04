@@ -1,6 +1,6 @@
 import { TitleTooltip } from "@areal/ui";
 import { observeResize } from "@areal/ui/observe-resize";
-import type { SnapShotSource } from "@areal/workbench/desktop-contract/snapshots";
+import type { SnapShotSource } from "./services.js";
 import { SnapShotAttachment } from "./snapshots/SnapShotAttachment.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useEffect, useRef, useState } from "react";

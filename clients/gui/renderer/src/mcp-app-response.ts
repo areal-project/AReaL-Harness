@@ -6,7 +6,7 @@ import {
   ToolSchema,
 } from "@modelcontextprotocol/core";
 import { McpUiHostContextSchema } from "@modelcontextprotocol/ext-apps/app-bridge";
-import type { DesktopError } from "@areal/workbench/desktop-contract";
+import type { DesktopError } from "./services.js";
 import type {
   McpAppCommand,
   McpAppEvent,

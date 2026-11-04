@@ -4,7 +4,7 @@ import type {
   ManagementResponseMap,
   ManagementResponse,
   PluginMutation,
-} from "@areal/workbench/desktop-contract/management";
+} from "../services.js";
 export type PluginDetail = ManagementResponseMap["plugin"];
 export type PluginReadiness = ManagementResponseMap["pluginReadiness"];
 export type PluginList = ManagementResponseMap["plugins"];

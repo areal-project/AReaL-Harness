@@ -6,13 +6,17 @@ The shared Host [target design and stages](../development/shared-host-spec.en.md
 
 AReaL-Harness follows **Clients → Core → Runtime**. Core exclusively owns sessions, Turns, model loops and agent state. Runtime handles execution permissions, operation facts and resource lifecycles. Clients project the authoritative history rather than maintaining another one.
 
+[ADR 0017](../adr/0017-one-protocol-one-ui.en.md) defines the unfinished unified protocol target. Clients access business capabilities through the Host protocol. Host owns authentication, grants, routing, cross-project business, the submission journal, and the credential vault. The project service supervises processes only; it exposes no client interface and owns no business logic. Core owns single-project business, execution, and history.
+
+During migration, a Host-supervised Node workbench service holds cross-project business that has not yet moved to Host or Core. It has no Electron dependency, client-facing port, or plaintext credentials. In the target design, the Electron shell provides native capabilities unavailable in browsers and registers a desktop tool provider with Host. The UI shows optional platform entry points according to available capabilities. These are migration targets, not claims about the current implementation.
+
 ![Architecture](diagrams/architecture.svg)
 
 [draw.io source](diagrams/architecture.drawio) · [PNG](diagrams/architecture.png) · [Diagram style](STYLE_GUIDE.en.md)
 
 Renderer language belongs to existing application preferences and accepts zh-CN and en. React Intl derives copy, numbers and dates from bundled messages without changing Core state, configuration or conversation identity. Retained local notices keep message descriptors and raw arguments until render; raw diagnostics and third-party content stay verbatim. See the [GUI language contract](../../clients/gui/README.en.md#interface-language-and-copy-development).
 
-GUI Renderer reads the preload object only in `main.tsx`. `createDesktopServices` injects the existing `PlatformServices` into the application. MCP Apps, native resource selection, and icon loading receive their capabilities through this interface. Missing capabilities do not create desktop subscriptions or native resource entry points. React components do not read the global bridge separately. Main continues to validate IPC senders and own windows, App tokens, and native grants. Core and Runtime retain execution and history authority.
+GUI Renderer reads the preload object only through `desktopBridge` in `desktop-services.ts`. `main.tsx` calls that adapter, and `createDesktopServices` injects the existing `PlatformServices` into the application. MCP Apps, native resource selection, and icon loading receive their capabilities through this interface. Missing capabilities do not create desktop subscriptions or native resource entry points. React components do not read the global bridge separately. Main continues to validate IPC senders and own windows, App tokens, and native grants. Core and Runtime retain execution and history authority.
 
 Core owns cross-restart creation admission evidence in the existing submissions journal. It persists admission before creation side effects and binds requests to journal coverage and the Engine boot. Only a retired original instance, continuous journal coverage, and absence of both admission and a Thread creation receipt establish non-admission. Desktop persists that result before removing pending; Renderer retains the draft. Legacy records, missing coverage, and admitted but unsettled records remain UNKNOWN without automatic replay. Retention, migration, and crash windows are specified in the [submission contract](../api/desktop.en.md#submissions).
 

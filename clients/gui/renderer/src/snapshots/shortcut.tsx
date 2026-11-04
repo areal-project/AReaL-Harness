@@ -7,7 +7,7 @@ import {
   type SnapShotShortcut,
   type SnapShotModifier,
   type SnapShotServices,
-} from "@areal/workbench/desktop-contract/snapshots";
+} from "../services.js";
 import { Button } from "../components/ui/button.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { matchesShortcutBinding, setShortcutRecordingActive } from "../shortcuts/bindings.js";

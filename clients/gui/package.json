@@ -204,7 +204,9 @@
     "test:snapshots": "AREAL_SNAPSHOTS_REGRESSION=1 node scripts/composer-smoke.mjs",
     "test:snapshots-native": "node --test scripts/snapshots-native.test.mjs",
     "test:composer-folder-vision": "AREAL_COMPOSER_FOLDER_VISION_REGRESSION=1 node scripts/composer-smoke.mjs",
-    "test:composer-folder-vision-contract": "node --test scripts/composer-folder-vision.test.mjs"
+    "test:composer-folder-vision-contract": "node --test scripts/composer-folder-vision.test.mjs",
+    "test:host-protocol-conformance": "node --test scripts/host-protocol-conformance.test.mjs",
+    "test:desktop-ipc-freeze": "node --test scripts/desktop-ipc-freeze.test.cjs"
   },
   "devDependencies": {
     "@areal/remote-client": "workspace:*",

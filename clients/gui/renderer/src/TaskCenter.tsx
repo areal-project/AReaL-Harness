@@ -49,7 +49,7 @@ import { stageComposerDraft } from "./composerDraftStorage.js";
 import "./TaskCenter.css";
 import { TaskCatalogNotice } from "./TaskCatalogNotice.js";
 import type { Action, Data } from "./services.js";
-import type { ObservedCatalogOwner } from "@areal/workbench/desktop-contract/catalog";
+import type { ObservedCatalogOwner } from "./services.js";
 import { GoalUsageSummary } from "./GoalUsage.js";
 import { goalBudgetMessage } from "./conversationPresentation.js";
 

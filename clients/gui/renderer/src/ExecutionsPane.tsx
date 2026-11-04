@@ -1,4 +1,4 @@
-import type { ManagementResponseMap } from "@areal/workbench/desktop-contract/management";
+import type { ManagementResponseMap } from "./services.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";
 import { AgentsPane } from "./AgentsPane.js";

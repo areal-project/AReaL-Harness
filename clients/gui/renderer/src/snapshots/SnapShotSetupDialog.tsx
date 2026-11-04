@@ -1,8 +1,4 @@
-import type {
-  DesktopSnapShotState,
-  SnapShotServices,
-  SnapShotSettings,
-} from "@areal/workbench/desktop-contract/snapshots";
+import type { DesktopSnapShotState, SnapShotServices, SnapShotSettings } from "../services.js";
 import type { ReactNode } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "../components/ui/dialog.js";
 import { Button } from "../components/ui/button.js";

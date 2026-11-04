@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Data, PlatformServices } from "../services.js";
-import type { OwnedPreviewRequest } from "@areal/workbench/desktop-contract";
+import type { OwnedPreviewRequest } from "../services.js";
 
 type WithoutOwner<Request> = Request extends unknown
   ? {

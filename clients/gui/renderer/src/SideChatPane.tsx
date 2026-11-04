@@ -1,9 +1,4 @@
-import {
-  sideSelection,
-  sideAnchor,
-  type SideSelection,
-  type SideAnchor,
-} from "@areal/workbench/desktop-contract/conversation";
+import { sideSelection, sideAnchor, type SideSelection, type SideAnchor } from "./services.js";
 import { Textarea } from "@areal/ui";
 import { useComposerPrediction } from "./useComposerPrediction.js";
 import { ContextMeter } from "./ContextMeter.js";

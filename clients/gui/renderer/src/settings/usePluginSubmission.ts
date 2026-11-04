@@ -1,8 +1,5 @@
 import { useRef, useState, type RefObject } from "react";
-import type {
-  ManagementResponseMap,
-  PluginMutation,
-} from "@areal/workbench/desktop-contract/management";
+import type { ManagementResponseMap, PluginMutation } from "../services.js";
 import type {
   PluginCommand,
   PluginMutationRequest,

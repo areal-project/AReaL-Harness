@@ -1184,5 +1184,21 @@
     "platforms": ["darwin", "linux", "win32"],
     "areas": ["composer"],
     "requires": []
+  },
+  {
+    "script": "test:host-protocol-conformance",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["remote", "protocol", "service"],
+    "requires": ["core-binary", "native-runtime"],
+    "notes": "A0 schema parity against actual Host/Core over local socket and Relay Noise; uses isolated homes and synthetic vault authorization."
+  },
+  {
+    "script": "test:desktop-ipc-freeze",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["desktop", "protocol"],
+    "requires": [],
+    "notes": "A0 base-registry subset checks and isolated added-command/operation rejection evidence. Native bridge channels remain outside this freeze."
   }
 ]

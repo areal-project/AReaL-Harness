@@ -1,4 +1,4 @@
-export { modelUsage, generationStats } from "@areal/workbench/desktop-contract/management-context";
+export { modelUsage, generationStats } from "./services.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ContextPartKind,

@@ -32,7 +32,7 @@ import "./BrowserFileHandoff.layout.css";
 import { BrowserStyleTrial, type StyleTrialDraft } from "./BrowserStyleTrial.js";
 import { BrowserKeyboardElementPicker } from "./BrowserKeyboardElementPicker.js";
 import type { Action } from "./services.js";
-import type { PreviewViewport, PreviewRequest } from "@areal/workbench/desktop-contract";
+import type { PreviewViewport, PreviewRequest } from "./services.js";
 import type { BrowserWorkspaceRequest } from "./app-shell/useBrowserWorkspace.js";
 type WithoutPage<Request> = Request extends unknown ? Omit<Request, "pageId"> : never;
 type PagePreviewRequest = WithoutPage<BrowserWorkspaceRequest>;

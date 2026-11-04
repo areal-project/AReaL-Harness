@@ -1,4 +1,4 @@
-import { isSnapShotSource, type SnapShotSource } from "@areal/workbench/desktop-contract/snapshots";
+import { isSnapShotSource, type SnapShotSource } from "../services.js";
 
 export type SnapShotFile = { id: string; source: SnapShotSource };
 const sources = new WeakMap<File, SnapShotFile>();

@@ -1,5 +1,5 @@
 import { attachmentDrafts } from "../composerDraftAttachments.js";
-import type { DesktopSnapShot, SnapShotSource } from "@areal/workbench/desktop-contract/snapshots";
+import type { DesktopSnapShot, SnapShotSource } from "../services.js";
 import { registerSnapShotFile, snapShotFile } from "./source.js";
 
 type DraftRecord = {

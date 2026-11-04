@@ -1,6 +1,6 @@
 import { TitleTooltip } from "@areal/ui";
-import { isRequest } from "@areal/workbench/desktop-contract/conversation";
-import { modelRecord } from "@areal/workbench/desktop-contract/shared";
+import { isRequest } from "./services.js";
+import { modelRecord } from "./services.js";
 import { Button } from "@areal/ui";
 import { useState } from "react";
 import {

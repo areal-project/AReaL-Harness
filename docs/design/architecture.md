@@ -6,13 +6,17 @@
 
 AReaL-Harness 采用 **Clients → Core → Runtime** 分层。Core 是会话、Turn、模型循环与 Agent 状态的唯一所有者；Runtime 只处理执行权限、操作事实和资源生命周期。客户端不维护另一套权威历史。
 
+[ADR 0017](../adr/0017-one-protocol-one-ui.md) 定义尚未完成的统一协议目标。客户端所需业务经 Host 协议提供，Host 负责认证、授权、路由、跨项目业务、提交 journal 和凭据保管。项目服务只监督进程，不向客户端提供接口或承载业务；单项目业务以及执行和历史权威归 Core。
+
+过渡期的 Node 工作台服务由 Host 监督，承载尚未迁入 Host 或 Core 的跨项目业务。它不依赖 Electron，不开放客户端端口，也不持有明文凭据。目标中的 Electron 外壳只提供浏览器没有的原生能力，并向 Host 登记桌面工具提供者；界面按可用能力显示可选平台入口。这些是迁移目标，不代表当前实现已满足该边界。
+
 ![架构](diagrams/architecture.svg)
 
 [draw.io 源文件](diagrams/architecture.drawio) · [PNG](diagrams/architecture.png) · [图表规范](STYLE_GUIDE.md)
 
 Renderer 界面语言由已有 application preferences 保存，仅允许 zh-CN 与 en。React Intl 从随包词条派生显示文案、数字与日期，不改变 Core 状态、配置或会话身份。持续显示的本地提示保存消息描述与原始参数，在渲染时翻译；原始诊断与第三方正文保持原文。开发合同见[GUI 语言说明](../../clients/gui/README.md#界面语言与文案开发)。
 
-GUI Renderer 只在 `main.tsx` 读取 preload 对象，由 `createDesktopServices` 将现有 `PlatformServices` 注入应用。MCP Apps、原生资源选择和图标加载通过该接口传递能力；缺少能力时不建立桌面订阅或原生资源入口。React 组件不另行读取全局 bridge。Main 继续校验 IPC 来源并持有窗口、App token 和原生授权，Core/Runtime 保持执行与历史权威。
+GUI Renderer 只在 `desktop-services.ts` 的 `desktopBridge` 读取 preload 对象；`main.tsx` 调用该适配入口，再由 `createDesktopServices` 将现有 `PlatformServices` 注入应用。MCP Apps、原生资源选择和图标加载通过该接口传递能力；缺少能力时不建立桌面订阅或原生资源入口。React 组件不另行读取全局 bridge。Main 继续校验 IPC 来源并持有窗口、App token 和原生授权，Core/Runtime 保持执行与历史权威。
 
 ## 模块职责
 

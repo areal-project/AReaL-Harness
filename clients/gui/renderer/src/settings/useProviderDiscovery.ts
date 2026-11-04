@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { Action } from "../services.js";
 
-export type { DiscoveryConnection } from "@areal/workbench/desktop-contract/provider";
-import type {
-  DiscoveryConnection,
-  ModelParameters,
-} from "@areal/workbench/desktop-contract/provider";
+export type { DiscoveryConnection } from "../services.js";
+import type { DiscoveryConnection, ModelParameters } from "../services.js";
 type DiscoveryState =
   | { kind: "idle" | "loading" }
   | { kind: "failed"; message: string }

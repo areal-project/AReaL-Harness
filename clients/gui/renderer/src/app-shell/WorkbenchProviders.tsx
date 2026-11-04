@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { SnapShotServices } from "@areal/workbench/desktop-contract/snapshots";
+import type { SnapShotServices } from "../services.js";
 import { ComputerControlContext } from "../ComputerControlEntry.js";
 import { SnapShotProvider } from "../snapshots/SnapShotCoordinator.js";
 

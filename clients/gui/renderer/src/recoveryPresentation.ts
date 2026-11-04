@@ -1,4 +1,4 @@
-import type { DesktopError } from "@areal/workbench/desktop-contract";
+import type { DesktopError } from "./services.js";
 import type { Data } from "./services.js";
 
 export type RecoveryFailure = DesktopError;

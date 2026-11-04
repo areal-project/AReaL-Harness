@@ -264,3 +264,59 @@ Only one UI remains, and the Host is the only client entry point.
 - Remote Linux deployment, GUI connecting to a remote Host, multiple OS users, cloud accounts.
 - A deadline for rewriting the workbench service in Rust; this spec only requires it to be reachable through the protocol.
 - Rewriting the phone UI natively.
+
+
+## Appendix: A0 desktop command destinations
+
+Existing methods are partial coverage, never aliases. Proposals name operation families, not implemented methods. Preserve published Gateway semantics and limits. Host routes to Core; no parallel runtime is introduced. Shell-only native interactions are outside the freeze. Source: `clients/gui/packages/workbench/client/desktop-contract/transport.cjs`, `app/src/core/main.cjs`, `backend.cjs`, `workspace.cjs`, `plugin-archives.cjs`, and `core/host/src/gateway/session.rs`.
+
+| Command | Protocol destination: existing partial / proposal | Target owner and split |
+| --- | --- | --- |
+| `cloud` | proposal `cloud.*` | Host account configuration (`status`, `save`) |
+| `cloudSession` | proposal `cloudSession.*` | Workbench cloud session (`open`, `create`, `reconnect`, `send`, `stop`); Core execution and history |
+| `connect` | existing `project.ensure` (partial); proposal project subscription | Host supervision; Core project subscription |
+| `list` | existing `work.list` (partial); proposal session listing | Core project sessions; workbench only cross-project aggregation |
+| `open` | existing `session.open` (partial); proposal desktop subscription | Core snapshot; Host subscription transport; client projection |
+| `history` | existing `session.history`, `session.body` (partial); proposal history subscription | Core history for `acquire`, `loadOlder`, `loadItem`; Host subscription and client projection/cache for `retain`, `ensureAnchor`, `release` |
+| `create` | existing `session.create` (partial); proposal desktop creation | Core creation and receipt |
+| `prepareCreator` | proposal creator preparation | Core project preparation |
+| `fork` | proposal session fork | Core fork and receipt |
+| `side` | existing `session.create`, `session.send` (partial); proposal side-session operations | Core `recover`, `context`, `list`, `start`, `send`, `create`, `close` and receipts |
+| `prediction` | proposal session prediction | Core context prediction |
+| `send` | existing `session.send` (partial); proposal desktop submission | Core submission and receipt |
+| `editMessage` | proposal session edit | Core edit and receipt |
+| `continue` | proposal session continuation | Core continuation and receipt |
+| `stop` | existing `turn.stop` (partial); proposal desktop stop | Core stop and receipt |
+| `attachBrowser` | proposal browser attachment | Core execution binding; shell native browser |
+| `respond` | existing `interaction.respond` (partial); proposal desktop response | Core interaction response |
+| `reconcile` | existing `command.read` (partial); proposal desktop receipt query | Core authoritative receipt; never replay uncertain submission |
+| `configure` | existing `session.control` (partial); proposal desktop configuration | Core session configuration |
+| `queue` | proposal session queue read | Core queue |
+| `queueEdit` | existing `session.control` (partial); proposal desktop queue edits | Core `update`, `remove`, `reorder`, `pause`, `resume`, `steer` |
+| `library` | proposal `library.*` | Workbench cross-project catalog and preferences: `dropSidebar`, `renameProject`, `renameThread`, `pinThread`, `pinProject`, `createSection`, `renameSection`, `removeSection`, `orderSection`, `moveThread`, `moveProject`, `readThread`, `markAllRead`, `orderSidebarThread`, `hideProject`, `orderProject`, `orderThread`, `settings`; shell coordinates desktop tool for `computerControlEnabled`, `computerControlProvider`, `computerControlExecutable` |
+| `manage` | existing `session.control`, `task.read`, `task.pause`, `task.question.read`, `task.question.reply`, `artifact.read` (partial); proposal project management operations | Core project management operations, including plugins, MCP, providers, processes, goals, plans, permissions, execution, agents, workflows, workgroups and tasks. Host owns credentials. Shell owns `pluginArchivePick`, resolves the `pluginArchiveImport` selection token, confirms `archive`, and handles native browser/dialog interaction. Workbench retains only cross-project or transitional catalog business; `pluginInstall` and import remain business operations Core project operation set: `pluginComponents`, `pluginHooks`, `pluginMcp`, `mcpApps`, `genUiSource`, `mcpForms`, `mcpToolResult`, `plugins`, `plugin`, `providers`, `mcp`, `profile`, `skills`, `skill`, `inspect`, `context`, `inheritedHistory`, `plan`, `processes`, `process`, `processWait`, `goal`, `permissions`, `interactions`, `processOutput`, `executions`, `execution`, `executionTrace`, `executionTraceResult`, `executionArtifact`, `executionWait`, `agents`, `agentWait`, `workflows`, `server`, `workflow`, `workgroupPolicy`, `workgroups`, `workgroup`, `workgroupWait`, `workgroupArtifact`, `workgroupArtifactStatus`, `workgroupCapabilities`, `workgroupSubmission`, `pluginCapabilities`, `pluginReadiness`, `pluginSubmission`, `processSubmission`, `agentSubmission`, `mcpFormResourceSubmission`, `tasks`, `task`, `taskInbox`, `taskChannel`, `taskDraftHistory`, `taskDraftRead`, `taskSchedulePreview`, `taskScheduleContext`, `taskHistoryCapabilities`, `taskRuns`, `taskRun`, `taskWatch`, `taskUnwatch`, `pluginUserConfigSave`, `pluginDevelopmentLink`, `pluginDevelopmentUnlink`, `pluginArchiveImport`, `mcpFormResourceStage`, `pluginHooksConfigure`, `hookAcknowledge`, `marketplaceAdd`, `marketplaceAddGit`, `marketplaceRemove`, `marketplaceUpdate`, `pluginResolve`, `pluginAuthConfigure`, `pluginConnection`, `connectorConfigure`, `connectorCredential`, `pluginInstall`, `pluginConfigure`, `pluginComponentConfigure`, `pluginUninstall`, `pluginSetup`, `providerSave`, `providerRemove`, `mcpSave`, `mcpConnect`, `mcpDisconnect`, `archive`, `unarchive`, `processCloseStdin`, `processStart`, `processWrite`, `processResize`, `processTerminate`, `goalCreate`, `goalUpdate`, `goalPause`, `goalResume`, `goalClear`, `workgroupStart`, `workflowStart`, `workgroupRevise`, `agentSpawn`, `taskCreate`, `taskUpdate`, `taskRunNow`, `taskPause`, `taskResume`, `taskStopRun`, `taskResumeRun`, `taskCancel`, `taskDelete`, `taskReply`, `taskDraftSend`, `pluginCredentialsReload`, `pluginAuth`, `pluginAuthCredential`, `mcpAppOpen`, `mcpAppOpenFromResult`, `mcpAppRequest`, `mcpAppClose`, `mcpExtensionCall`, `mcpFormRespond`, `mcpFormPreview`, `mcpFormResourcePrepare`, `mcpFormResourceRelease`, `executionCancel`, `executionApply`, `serverDrain`, `serverGc`, `workgroupApplyArtifact`, `workgroupCancel`, `closeResources`, `planUpdate`, `toolAcknowledge`, `contextCompact`, `permissionsForget`, `providerProbe`, `taskDraftConfirm`, `taskDraftStart`. Workbench owns user-scoped `pluginStoreSnapshot` and `pluginStoreDoctor`; project-scoped variants belong to Core. Secret fields and `pluginAuthCredential`, `connectorCredential` cross the Host credential boundary. Shell handles native MCP views/resources and the external browser for `pluginAuth` start. |
+| `workspace` | existing `review.read`, `artifact.read` (partial); proposal project files/Git and worktree operations | Core `list`, `search`, `localDirectoryReference`, `read`, `save`, `review`, `reviewCommits`, `reviewBranches`, `turnReview`, `status`, `info`, `gitState`, `gitStage`, `gitUnstage`, `gitCommit`, `gitPush`; workbench cross-project `worktreeList`, `worktreeSettings`, `worktreeOptions`, `worktreeEnvironmentSave`, `worktreeEnvironmentDelete`, `worktreeCancel`, `worktreeAction`, `worktreeDelete`, `worktreeCreate`, `worktreeRead`, `worktreeOpen` (workspace registration) |
+| `media` | proposal session media operations | Core `list`, `read`, `upload`, `release` and session references |
+| `steer` | existing `session.control` (partial); proposal desktop steer | Core execution steering |
+| `dismissRecovery` | proposal recovery dismissal | Core project recovery state |
+| `providers` | existing `vault.read`, `vault.replace` (partial); proposal provider operations | Host credentials for `revealKey`, `save`, `saveAndApply`, `remove`, `removeAndApply`; Core provider configuration and `list`, `discover`, `probe`, `apply`, `default`, `defaultAndApply` |
+| `chatgpt` | existing `vault.read`, `vault.replace` (partial); proposal account operations | Host `status`, `login`, `forget`, `logout`, `selectAccount`, `cancel`, `probe`; shell opens external browser for `login` |
+| `analytics` | proposal analytics operations | Workbench cross-project `read`, `sync`; Core project usage |
+| `resources` | proposal resource operations | Core `hooks`, `builtinSkill`, `skills`, `mcp`, `skillRead`, `hooksSave`, `skillToggle`, `skillSave`, `mcpSave`, `mcpConnect`, `mcpDisconnect`; Host credentials |
+| `projectless` | existing `project.ensure` (partial); proposal projectless operations | Workbench `catalog`, `directory`, `prepare`; Host project supervision |
+| `tasks` | existing `task.read` (partial); proposal cross-project task operations | Workbench aggregation for `list`, `inbox`, `preview`, `observe`; Core project task authority |
+| `trajectory` | proposal trajectory operations | Workbench `status`, `retry`, `setEnabled` |
+| `feedback` | proposal feedback operations | Workbench `status`, `read`, `preference`, `prepare`, `draft`, `refine`, `submit`, `close` |
+| `serviceLifecycle` | existing `host.status`, `host.stop`, `host.updateStatus`, `host.update` (partial); proposal recovery | Host `check`, `stop`, `recover`, `update`; shell `quitInterface`, confirmations and notifications; `stopAndQuit` splits Host stop and shell quit |
+| `hostInstallation` | proposal installation operations | Host `status`, `install`, `uninstall`; shell local interaction and stop coordination |
+| `hostUpdate` | existing `host.updateStatus`, `host.update` (partial); proposal update preparation | Host `status`, `check`, `prepare`, `apply` |
+| `serviceStatus` | existing `host.status` (partial); proposal desktop status | Host status |
+| `stopService` | existing `host.stop` (partial); proposal desktop stop | Host stop; shell confirmation |
+| `recoverResources` | proposal resource recovery | Host recovery; shell notification |
+| `browserData` | shell only | Shell `status`, `importChrome`, `clearCache`, `clearAll` |
+| `computerControl` | shell only; proposal configuration coordination | Shell `status`, `requestAccess`, `openSettings`, `restart`, `stop`; workbench configuration coordination |
+| `bugReport` | proposal bug report operations | Workbench `prepare`, `list`, `read`, `save`, `delete`, `export` data; shell chooses destination and saves export |
+| `exportDiagnostics` | proposal diagnostics export | Workbench diagnostic data; shell save dialog |
+| `connectService` | existing `host.subscribe`, `host.status` (partial); proposal discovery | Host service discovery and connection |
+| `export` | existing `session.history`, `session.body` (partial); proposal export | Core history and export data; shell chooses destination and saves |
+| `remoteControl` | existing `remote.read`, `remote.replace`, `remote.gateway.state`, `remote.gateway.status`, `remote.gateway.control` (partial); proposal pairing/configuration | Host remote configuration and pairing |

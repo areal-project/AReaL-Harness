@@ -29,8 +29,7 @@ export type PluginMcpResource = {
   state: string;
   owner: PackageOwner;
 };
-type InstalledPackage =
-  import("@areal/workbench/desktop-contract/management").ManagementResponseMap["plugin"];
+type InstalledPackage = import("../services.js").ManagementResponseMap["plugin"];
 type PluginConnection = {
   pluginId: string;
   installedDigest: string;

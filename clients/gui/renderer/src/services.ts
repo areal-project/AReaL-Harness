@@ -1,4 +1,4 @@
-// The renderer consumes only the narrow preload contract. Execution facts remain in Core.
+// 界面通过平台服务契约消费领域类型，桌面传输依赖留在适配器。
 import type {
   CommandName,
   CommandParams,
@@ -7,14 +7,65 @@ import type {
   PreviewRequest,
   NotificationTarget,
   QuitProgress,
-} from "@areal/workbench/desktop-contract";
+  ChatGPTStatus,
+  SnapShotServices,
+} from "./desktop-services.js";
 import type {
   McpAppCommand,
   McpAppDeepLink,
   McpAppEvent,
   McpFormResourceCommand,
 } from "./mcp-app-services.js";
-export type { CommandName, CommandParams, CommandResponse };
+export type { CommandName, CommandParams, CommandResponse, PreviewRequest };
+export type {
+  Attachment,
+  ChatGPTStatus,
+  DesktopError,
+  DesktopSnapShot,
+  DesktopSnapShotState,
+  DiscoveryConnection,
+  Hook,
+  ManagementRequest,
+  ManagementRequestMap,
+  ManagementResponse,
+  ManagementResponseMap,
+  McpAppDeepLink,
+  ModelParameters,
+  ObservedCatalogOwner,
+  OwnedPreviewRequest,
+  PluginCommandRef,
+  PluginMutation,
+  PreviewViewport,
+  ResourceRequest,
+  Scope,
+  SideAnchor,
+  SideSelection,
+  SidebarItem,
+  SnapShotModifier,
+  SnapShotServices,
+  SnapShotSettings,
+  SnapShotShortcut,
+  SnapShotSource,
+  TrajectoryStatus,
+  WorktreeOptions,
+} from "./desktop-services.js";
+export {
+  generationStats,
+  isModifierPairShortcut,
+  isRequest,
+  isSnapShotSource,
+  modelRecord,
+  modelUsage,
+  normalizeMcp,
+  readLibraryRequest,
+  readSnapShotSettings,
+  sideAnchor,
+  sideSelection,
+  snapShotShortcutModifierPair,
+  validateMcpPageCall,
+  validateMcpPageDeclaration,
+  validateMcpPageReply,
+} from "./desktop-services.js";
 export type Data = Record<string, any>;
 export type FileOpenTargets = {
   targets: { id: string; label: string }[];
@@ -48,7 +99,7 @@ export type HostPrerequisite = {
 };
 export interface Snapshot {
   projects: Data[];
-  subscription?: import("@areal/workbench/desktop-contract/provider").ChatGPTStatus;
+  subscription?: ChatGPTStatus;
   desktopCapabilities?: { currentCommands: boolean };
   power?: { enabled: boolean; active: boolean; error: string | null } | null;
   menuBar?: { supported: boolean; active: boolean; error: string | null } | null;
@@ -99,9 +150,9 @@ export interface UpdateState {
   percent?: number | null;
   detail?: string;
 }
-export type { NotificationTarget, QuitProgress } from "@areal/workbench/desktop-contract";
+export type { NotificationTarget, QuitProgress } from "./desktop-services.js";
 export interface PlatformServices {
-  snapShots?: import("@areal/workbench/desktop-contract/snapshots").SnapShotServices;
+  snapShots?: SnapShotServices;
   mcpApp?: McpAppCommand;
   onMcpAppEvent?(listener: (event: McpAppEvent) => void): () => void;
   onMcpAppDeepLink?(listener: (link: McpAppDeepLink) => Promise<void> | void): () => void;
@@ -150,8 +201,7 @@ export async function call<N extends CommandName, P extends CommandParams<N>>(
   name: N,
   params: P,
 ): Promise<CommandResponse<N, P>> {
-  const contract: typeof import("@areal/workbench/desktop-contract") =
-    await import("@areal/workbench/desktop-contract");
+  const contract: typeof import("./desktop-services.js") = await import("./desktop-services.js");
   contract.validateCommand(name, params);
   const result = await services.command(name, params);
   if (!result.ok) throw Object.assign(new Error(result.error.message), result.error);

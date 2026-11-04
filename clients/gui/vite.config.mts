@@ -16,6 +16,13 @@ export default defineConfig({
     rules: { "areal/require-suppression-reason": "error" },
     overrides: [
       {
+        files: [
+          "renderer/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+          "packages/{app,client,remote,remote-client,ui}/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+        ],
+        rules: { "areal/no-renderer-desktop-bridge": "error" },
+      },
+      {
         files: ["renderer/src/**/*.{js,jsx,ts,tsx}", "packages/ui/src/**/*.{js,jsx,ts,tsx}"],
         excludeFiles: ["packages/ui/src/lib/observe-resize.ts"],
         rules: { "areal/no-raw-resize-observer": "error" },

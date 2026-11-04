@@ -3,6 +3,7 @@ import requireSuppressionReason from "./rules/require-suppression-reason.ts";
 import noRawResizeObserver from "./rules/no-raw-resize-observer.ts";
 import noRawDisclosure from "./rules/no-raw-disclosure.ts";
 import noNativeTitle from "./rules/no-native-title.ts";
+import noRendererDesktopBridge from "./rules/no-renderer-desktop-bridge.ts";
 import noTransitionAll from "./rules/no-transition-all.ts";
 
 export default definePlugin({
@@ -13,5 +14,6 @@ export default definePlugin({
     "no-raw-disclosure": noRawDisclosure,
     "no-native-title": noNativeTitle,
     "no-transition-all": noTransitionAll,
+    "no-renderer-desktop-bridge": noRendererDesktopBridge,
   },
 });

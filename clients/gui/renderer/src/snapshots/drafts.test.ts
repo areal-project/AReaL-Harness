@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { IDBDatabase } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { DesktopSnapShot } from "@areal/workbench/desktop-contract/snapshots";
+import type { DesktopSnapShot } from "../services.js";
 import { attachmentDrafts } from "../composerDraftAttachments.js";
 import {
   acceptSnapShot,

@@ -1,6 +1,6 @@
 import { DelayedVisible } from "@areal/ui";
 import { useI18n } from "./i18n/IntlProvider.js";
-import type { ManagementResponseMap } from "@areal/workbench/desktop-contract/management";
+import type { ManagementResponseMap } from "./services.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Textarea } from "./components/ui/textarea.js";
 import { Button } from "./components/ui/button.js";

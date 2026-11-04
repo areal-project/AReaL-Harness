@@ -1,4 +1,4 @@
-import type { ManagementResponseMap } from "@areal/workbench/desktop-contract/management";
+import type { ManagementResponseMap } from "./services.js";
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "./components/ui/button.js";

@@ -1,4 +1,4 @@
-import type { TrajectoryStatus } from "@areal/workbench/desktop-contract";
+import type { TrajectoryStatus } from "../services.js";
 import { useCallback, useRef, useState } from "react";
 import type { useGuardedNavigation } from "../settings/UnsavedChanges.js";
 import type { createTaskWorkspace } from "./taskWorkspace.js";

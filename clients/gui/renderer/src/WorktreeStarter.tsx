@@ -21,7 +21,7 @@ export type WorktreeSelection = {
   environmentId?: string;
   environmentRevision?: number;
 };
-type Options = import("@areal/workbench/desktop-contract/workspace").WorktreeOptions;
+type Options = import("./services.js").WorktreeOptions;
 
 type PickerPage = "main" | "branch" | "environment";
 
