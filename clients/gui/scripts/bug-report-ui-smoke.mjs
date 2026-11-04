@@ -202,6 +202,22 @@ try {
             };
             return { ok: true, value: { id: params.id } };
           }
+          if (params.operation === "submit") {
+            if (!window.failedSubmit) {
+              window.failedSubmit = true;
+              return {
+                ok: false,
+                error: { code: "UPLOAD", message: "BUG_REPORT_UPLOAD_UNCONFIRMED" },
+              };
+            }
+            const report = window.bugReports[params.id];
+            Object.assign(report, {
+              state: "submitted",
+              submittedId: report.id,
+              submittedAt: new Date().toISOString(),
+            });
+            return { ok: true, value: { report } };
+          }
           if (params.operation === "read")
             return { ok: true, value: { report: window.bugReports[params.id] } };
           if (params.operation === "list")
@@ -303,12 +319,22 @@ try {
   assert.equal(await description.inputValue(), "重现问题：打开测试页面。");
   assert.equal(await dialog.getByRole("img").count(), 1);
   await save.click();
-  await dialog.getByText("已保存到本机，尚未发送。请检查内容后导出。").waitFor();
+  await dialog.getByText("已保存到本机，尚未发送。可检查内容后提交或导出。").waitFor();
   const saved = await page.evaluate(() => Object.values(window.bugReports)[0]);
   assert.equal(saved.diagnosticsToken, "11111111-1111-4111-8111-111111111111");
   assert.ok(saved.screenshots[0].startsWith("data:image/png;base64,"));
   await dialog.getByRole("button", { name: "导出反馈包" }).click();
-  assert.equal(await dialog.getByText("反馈包已导出，尚未发送。").count(), 0);
+  assert.equal(await dialog.getByText("反馈包已导出；导出不会提交反馈。").count(), 0);
+  await dialog.getByRole("button", { name: "提交反馈", exact: true }).click();
+  await dialog.getByRole("alert").waitFor();
+  assert.equal(await description.inputValue(), "重现问题：打开测试页面。");
+  await dialog.getByRole("button", { name: "提交反馈", exact: true }).click();
+  await dialog.getByText(`已提交，反馈编号：${saved.id}`).waitFor();
+  assert.equal(await dialog.getByRole("button", { name: "提交反馈", exact: true }).count(), 0);
+  await page.screenshot({ path: join(evidence, "submitted.png"), animations: "disabled" });
+  checks.push(
+    "failed submission retains saved content; retry shows receipt and hides submit action",
+  );
   await dialog.getByRole("button", { name: "本机反馈", exact: true }).click();
   await dialog.getByRole("button", { name: "查看反馈" }).click();
   await dialog.getByRole("button", { name: "删除本机反馈" }).click();

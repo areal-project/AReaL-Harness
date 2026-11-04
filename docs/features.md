@@ -70,4 +70,4 @@ Remote 的 Direct 与 Relay 已接入共同 Host 授权和 PWA 协议，Direct �
 
 ## 本机问题反馈
 
-右上角更多菜单提供问题描述、截图、可选隐私诊断预览、本机记录和 JSON 导出；无联系方式或服务端上传。见 [GUI 指南](../clients/gui/README.md#本机问题反馈)。
+右上角更多菜单提供问题描述、截图、可选隐私诊断预览、本机记录、JSON 导出和匿名提交至 PlayForge；成功保存反馈编号，失败保留本机副本。开发者通过 PlayForge 管理员 Token 查询和更新生命周期。见 [GUI 指南](../clients/gui/README.md#本机问题反馈)。

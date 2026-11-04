@@ -8,11 +8,17 @@ const contract = require("@areal/workbench/desktop-contract/bug-report");
 /** @typedef {import('@areal/workbench/desktop-contract/bug-report').Report} Report */
 
 class BugReports {
-  /** @param {{root:string,collect:()=>Promise<Awaited<ReturnType<typeof import('./diagnostics.cjs').collect>>>,normalizeImage:(data:string)=>string}} options */
-  constructor({ root, collect, normalizeImage }) {
+  /** @param {{root:string,collect:()=>Promise<Awaited<ReturnType<typeof import('./diagnostics.cjs').collect>>>,normalizeImage:(data:string)=>string,endpoint?:string}} options */
+  constructor({
+    root,
+    collect,
+    normalizeImage,
+    endpoint = "https://playforge.alipay.com/api/public/bug-reports",
+  }) {
     this.root = root;
     this.collect = collect;
     this.normalizeImage = normalizeImage;
+    this.endpoint = endpoint;
     /** @type {Map<string,{at:number,text:string}>} */
     this.prepared = new Map();
     this.queue = Promise.resolve();
@@ -99,12 +105,55 @@ class BugReports {
             createdAt: report.createdAt,
             screenshotCount: report.screenshots.length,
             hasDiagnostics: report.diagnostics !== null,
+            ...(report.submittedId ? { submittedId: report.submittedId } : {}),
           };
         }),
       );
       return { reports: reports.sort((a, b) => b.createdAt.localeCompare(a.createdAt)) };
     }
     if (request.operation === "read") return { report: await this.read(request.id) };
+    if (request.operation === "submit") {
+      const report = await this.read(request.id);
+      if (report.state === "submitted") return { report };
+      const endpoint = new URL(this.endpoint);
+      if (
+        endpoint.protocol !== "https:" &&
+        !(
+          endpoint.protocol === "http:" &&
+          ["127.0.0.1", "localhost", "[::1]"].includes(endpoint.hostname)
+        )
+      )
+        throw new Error("BUG_REPORT_ENDPOINT_INVALID");
+      if (endpoint.username || endpoint.password) throw new Error("BUG_REPORT_ENDPOINT_INVALID");
+      const body = JSON.stringify(report);
+      if (Buffer.byteLength(body) > 15 * 1024 * 1024)
+        throw new Error("BUG_REPORT_UPLOAD_TOO_LARGE");
+      // 超时或回执丢失保留原记录；重试沿用相同 ID，由服务端去重。
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        redirect: "error",
+        signal: AbortSignal.timeout(30_000),
+        credentials: "omit",
+      }).catch(() => {
+        throw new Error("BUG_REPORT_UPLOAD_UNCONFIRMED");
+      });
+      if (!response.ok)
+        throw new Error(
+          response.status === 413 ? "BUG_REPORT_UPLOAD_TOO_LARGE" : "BUG_REPORT_UPLOAD_UNCONFIRMED",
+        );
+      const receipt = await response.json().catch(() => null);
+      if (receipt?.id !== report.id) throw new Error("BUG_REPORT_UPLOAD_UNCONFIRMED");
+      const submitted = {
+        ...report,
+        state: /** @type {const} */ ("submitted"),
+        submittedId: receipt.id,
+        submittedAt: new Date().toISOString(),
+      };
+      await exportReport(join(this.root, `${report.id}.json`), submitted);
+      return { report: submitted };
+    }
     if (request.operation === "delete") {
       await fs.unlink(join(this.root, `${request.id}.json`));
       return { deleted: true };

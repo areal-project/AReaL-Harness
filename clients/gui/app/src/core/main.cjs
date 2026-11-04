@@ -473,6 +473,7 @@ function startDesktop() {
       : dialog.showSaveDialog(options);
   }
   const bugReports = new (require("./bug-reports.cjs").BugReports)({
+    endpoint: process.env.AREAL_BUG_REPORT_URL,
     root: join(applicationOwner.profile, "bug-reports"),
     collect: () => diagnostics.collect({ ...diagnosticsRoots, coreRoot: serviceOptions(app).home }),
     normalizeImage: (data) => {
