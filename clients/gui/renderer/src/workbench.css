@@ -1,6 +1,7 @@
 @import "@areal/ui/workbench.css";
 
 :root {
+  --message-reading-inset: 32px;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -476,7 +477,6 @@ button.composer-project:hover > svg,
   scrollbar-width: thin;
 }
 .message-column {
-  --message-reading-inset: 32px;
   width: 100%;
   min-width: 0;
   max-width: var(--reading-width, 768px);

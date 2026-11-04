@@ -39,9 +39,20 @@ export const MessageResponse = memo(function MessageResponse(props: MessageRespo
     <MessageResponseBoundary text={props.children} className={props.className}>
       <Suspense
         fallback={
-          <p role="status" data-reading-pending className="p-3 text-ui-base text-foreground-subtle">
-            {t("common.loading")}
-          </p>
+          props.preserveLineBreaks ? (
+            // 用户已提交的正文不等待 Markdown 代码块加载；沿用正文行高，避免占位额外撑高气泡。
+            <div data-reading-pending className={props.className}>
+              <p className="m-0 whitespace-pre-wrap break-words">{props.children}</p>
+            </div>
+          ) : (
+            <p
+              role="status"
+              data-reading-pending
+              className="p-3 text-ui-base text-foreground-subtle"
+            >
+              {t("common.loading")}
+            </p>
+          )
         }
       >
         <MarkdownResponse {...props} />

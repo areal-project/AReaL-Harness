@@ -865,6 +865,11 @@
     "status": "archived"
   },
   {
+    "path": "design/archive/research/conversation-dual-product-baseline.md",
+    "role": "process-evidence",
+    "status": "archived"
+  },
+  {
     "path": "design/archive/research/raft-design-analysis.md",
     "role": "process-evidence",
     "status": "archived"

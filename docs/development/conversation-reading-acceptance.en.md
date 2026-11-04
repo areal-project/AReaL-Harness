@@ -105,6 +105,25 @@ A task includes an unsubmitted draft, attached context, an admitted operation, a
 | D6 | Reading details survive output and settlement | Open a diagram, select text, or expand a tool, then advance output, tool settlement, and turn completion. The diagram remains open; selection and manual expansion follow the same content identity. Closing returns to an identifiable entry. Deleted or changed content is a separate boundary. |
 | D7 | Keyboard and layout do not block the task | Complete input, attachment actions, send, stop, menu dismissal, and result use with narrow windows, large text, and keyboard-only input. Focus is visible. Closing a menu does not also stop a task. Ordinary text does not widen the page; wide tables/diagrams scroll locally. |
 
+### Send stability: ownership and acceptance
+
+Classify this as I-INPUT / I-READ / I-OBSERVE, following INPUT-TRUTH-01, READ-CONTINUITY-01, and OBSERVE-TRUTH-01. The editor owns immediate text; draft storage owns unsent per-conversation content; `submitMessage` owns captured submission content; Core/Host own admission. `pendingMessage` is only a local preview, while the existing `Messages` reading state machine coordinates layout and scrolling. Progressive rendering must not replace available text with a differently sized loading label while code loads.
+
+Design at these boundaries rather than hiding intermediate layout with delays or animation:
+
+| Boundary | Constraint and minimal decision |
+| --- | --- |
+| Markdown unavailable | Preserve text, line breaks, and existing typography without extra placeholder padding; use the existing Markdown renderer once ready. Complex Markdown still requires T5: plain-text fallback does not promise equal height with arbitrary charts. |
+| New-chat preview to transcript | Share `--message-reading-inset` so creation receipts do not move the same bubble's reading origin. Represent each newline once: plain-text fallback uses pre-wrap; Markdown uses br and removes its appended serialization newline. Preserve repeated source spaces without interpreting that newline twice. |
+| Clearing a draft | Multiline input may shrink once. The native window must not move, and the input must not grow again without a cause. Distinguish normal shrinkage from a user bubble jumping back and forth. |
+| Preview to authoritative message | Text remains visible during handoff; equivalent bubbles retain position and size. Test receipt-first and projection-first separately. |
+| Edit / prepare context / submit | Treat these as separate capabilities. Existing conversations lock editing during submission or unknown outcomes. Before unlocking, cleanup must consume only the captured draft revision/attachments so late success or recovery cannot erase newer input. Removing `disabled` alone is unsafe. |
+| Persistence and render cost | Reuse in-memory drafts, 150ms batched writes, stable projection references, and memoized turns. Cross-draft storage-failure isolation and unrelated renders from broad snapshots require injection/measurement; broad subscriptions alone do not prove whole-tree rerenders per token. |
+
+Capture send jitter before the action: first/second × single/multiline × click/Enter, with cold/warm Markdown. Record Composer rect/height, message viewport, pending/accepted bubble rects, scrollTop/scrollHeight, focus, and action time per frame. Real Electron additionally records native bounds and admission/projection/first-answer timing. Do not wait for pending UI or several frames before establishing the geometry baseline.
+
+`send-continuity-ui-smoke.mjs` uses production components to cover initial frames and both handoff orders. Its controlled submission boundary does not replace Electron/Core evidence. Check visible original text, at most 1 CSS px variation in plain-text pending bubble height, no reverse Composer growth, and the existing handoff assertions independently. Replacing cold-start text with a taller loading placeholder must fail the test. Performance retains P1's initial p95 100ms budget; DOM/rAF proxies and actual visible feedback are reported separately.
+
 ### Required journeys and production owners
 
 | Case | Fixed operation and passing condition | Standards / existing owners / entry |

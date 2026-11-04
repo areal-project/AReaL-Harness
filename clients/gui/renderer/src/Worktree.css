@@ -44,3 +44,11 @@
   order: 2;
   margin-bottom: var(--spacing-field);
 }
+
+/* 新建会话预览与正式消息共用阅读起点，避免创建回执到达时再次向上跳动。 */
+.conversation-pane.draft-pane:has(.draft-message-preview) {
+  padding-top: 0;
+}
+.draft-pane:has(.draft-message-preview) .draft-message-preview {
+  padding-top: var(--message-reading-inset);
+}

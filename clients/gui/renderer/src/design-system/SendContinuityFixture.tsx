@@ -22,6 +22,20 @@ export function SendContinuityFixture() {
   useEffect(() => {
     let frame = 0;
     const samples: Data[] = [];
+    const markers: Data[] = [];
+    const mark = (event: Event) => {
+      if (event.type === "keydown" && (event as KeyboardEvent).key !== "Enter") return;
+      markers.push({
+        type: event.type,
+        time: performance.now(),
+        target: (event.target as Element | null)?.getAttribute("data-testid"),
+      });
+      document
+        .querySelector("[data-send-continuity]")
+        ?.setAttribute("data-send-markers", JSON.stringify(markers));
+    };
+    document.addEventListener("click", mark, true);
+    document.addEventListener("keydown", mark, true);
     const sample = () => {
       const root = document.querySelector("[data-send-continuity]");
       const reader = root?.querySelector(".messages");
@@ -30,18 +44,34 @@ export function SendContinuityFixture() {
         `[data-side-item-id="user-${root.getAttribute("data-sequence")}"]`,
       );
       const old = root?.querySelector('[data-side-item-id="answer-1"]');
-      if (reader && root) {
-        const viewport = reader.getBoundingClientRect();
+      if (root) {
+        const viewport = reader?.getBoundingClientRect();
+        const bubble = pending?.querySelector(".user-bubble");
+        const composer = root.querySelector(".composer-editor");
         const visible = (element: Element | null | undefined) => {
           const rect = element?.getBoundingClientRect();
-          return !!rect && rect.bottom > viewport.top && rect.top < viewport.bottom;
+          return !!rect && !!viewport && rect.bottom > viewport.top && rect.top < viewport.bottom;
         };
         samples.push({
           phase: root.getAttribute("data-send-continuity"),
-          top: reader.scrollTop,
+          time: performance.now(),
+          top: reader?.scrollTop,
+          scrollHeight: reader?.scrollHeight,
+          viewportY: viewport?.top,
+          viewportHeight: viewport?.height,
+          composerY: composer?.getBoundingClientRect().top,
+          composerHeight: composer?.getBoundingClientRect().height,
+          focus: document.activeElement?.getAttribute("data-testid"),
           pendingText: pending?.textContent,
+          pendingHTML: bubble?.innerHTML,
+          pendingParagraphWhiteSpace: bubble?.querySelector("p")
+            ? getComputedStyle(bubble.querySelector("p")!).whiteSpace
+            : undefined,
           pendingY: pending?.getBoundingClientRect().top,
+          pendingBubbleY: bubble?.getBoundingClientRect().top,
+          pendingBubbleHeight: bubble?.getBoundingClientRect().height,
           userY: user?.getBoundingClientRect().top,
+          userBubbleY: user?.querySelector(".user-bubble")?.getBoundingClientRect().top,
           oldVisible: visible(old),
           userVisible: visible(user),
           pendingVisible: visible(pending),
@@ -52,7 +82,11 @@ export function SendContinuityFixture() {
       frame = requestAnimationFrame(sample);
     };
     frame = requestAnimationFrame(sample);
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("click", mark, true);
+      document.removeEventListener("keydown", mark, true);
+    };
   }, []);
   const thread = { id: "send-continuity", turns };
   const config = {
@@ -158,7 +192,11 @@ export function SendContinuityFixture() {
         <button onClick={complete}>Complete turn</button>
         <button onClick={() => mediaRelease.current?.()}>Release media</button>
       </div>
-      <div style={{ height: 520, display: "flex", flexDirection: "column" }}>
+      <section
+        className={`conversation-pane ${opened ? "" : "draft-pane"}`}
+        style={{ height: 520 }}
+      >
+        {!opened && <div className="draft-greeting">Fixture</div>}
         {opened && (
           <Messages
             project={project}
@@ -171,27 +209,29 @@ export function SendContinuityFixture() {
             onReview={() => {}}
           />
         )}
-        {opened ? (
-          <Composer
-            project={project}
-            thread={thread}
-            action={action}
-            executionBlocked={false}
-            onPanel={() => {}}
-            onNew={() => {}}
-          />
-        ) : (
-          <DraftComposer
-            project={project}
-            action={action}
-            readAction={action}
-            backendReady
-            modelCatalogReady
-            onOpen={async () => setOpened(true)}
-            onPanel={() => {}}
-          />
-        )}
-      </div>
+        <div className={opened ? "active-composer" : "draft-composer"}>
+          {opened ? (
+            <Composer
+              project={project}
+              thread={thread}
+              action={action}
+              executionBlocked={false}
+              onPanel={() => {}}
+              onNew={() => {}}
+            />
+          ) : (
+            <DraftComposer
+              project={project}
+              action={action}
+              readAction={action}
+              backendReady
+              modelCatalogReady
+              onOpen={async () => setOpened(true)}
+              onPanel={() => {}}
+            />
+          )}
+        </div>
+      </section>
     </section>
   );
 }

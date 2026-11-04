@@ -34,6 +34,13 @@ function reply(markdown: string) {
 }
 
 describe("agent reply workspace media", () => {
+  it("represents a preserved newline once while retaining repeated spaces", () => {
+    const { markup } = reply("first  line\nsecond  line\nthird line");
+    expect(markup).toContain("first  line");
+    expect(markup).toContain("second  line");
+    expect(markup.match(/<br\s*\/?>/g)).toHaveLength(2);
+    expect(markup).not.toMatch(/<br\s*\/?>\n/);
+  });
   it("keeps relative file locations when the reply has no media renderer or root hint", () => {
     const cards: string[] = [];
     renderToStaticMarkup(

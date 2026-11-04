@@ -8,7 +8,8 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applicationFixture } from "./application-fixture.mjs";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
+import { randomUUID } from "node:crypto";
 import { respondToSessionName } from "./model-fixture.mjs";
 import { captureSmokeFailure } from "./smoke-navigation.mjs";
 
@@ -118,7 +119,12 @@ CoreBackend.prototype.dispatchCommand = async function(invocation, ...args) {
       }
     };
   }
-  return execute.call(this, invocation, ...args);
+  const result = await execute.call(this, invocation, ...args);
+  if (gate?.mode === 'lost-after-acceptance' && gate.name === name) {
+    record({ boundary: 'lostAfterAcceptance', phase: 'accepted', requestId: params.requestId, result });
+    throw Object.assign(new Error('Fixture lost accepted receipt'), { submissionUnknown: true, requestId: params.requestId, code: 'UNKNOWN' });
+  }
+  return result;
 };
 `;
 const hash = async () =>
@@ -137,7 +143,8 @@ let application,
   passed = false,
   failure,
   cleanup,
-  heldObservation;
+  heldObservation,
+  createPreviewFailure;
 const snapshot = () => page.evaluate(() => window.arealDesktop.snapshot());
 const project = (value) => value.projects.find((item) => item.root === workspace);
 const trace = async () =>
@@ -199,7 +206,12 @@ try {
   page.on("pageerror", (error) => errors.push(error.stack));
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
   await until(async () => (await snapshot()).connection?.state === "ready", "Desktop ready");
-  metadata = JSON.parse(await readFile(join(env.AREAL_CORE_HOME, "service.json"), "utf8"));
+  metadata = await readFile(join(env.AREAL_CORE_HOME, "service.json"), "utf8")
+    .then(JSON.parse)
+    .catch((error) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
   }, workspace);
@@ -229,19 +241,26 @@ try {
   await until(() => readFile(submissionEntered, "utf8").catch(() => false), "Create dispatch held");
   await page.getByTestId("pending-message").waitFor();
   assert.equal((await editorText()).trim(), "", "Composer clears before thread creation returns");
-  assert.equal(
-    await page.getByTestId("pending-message").locator(".user-bubble").innerText(),
-    originalText,
-  );
+  try {
+    assert.equal(
+      await page.getByTestId("pending-message").locator(".user-bubble").innerText(),
+      originalText,
+    );
+  } catch (error) {
+    createPreviewFailure = error.stack;
+    await capture("create-preview-failure");
+  }
   assert.match(
     await page.getByTestId("pending-message").getByRole("status").innerText(),
     /正在启动聊天|Starting your chat/,
   );
   assert.equal(requests.length, 0, "Local preview never claims model admission");
   await capture("create-pending");
-  checks.push(
-    "New-chat content moves to the transcript before real create dispatch; starting status is visible",
-  );
+  if (!createPreviewFailure) {
+    checks.push(
+      "New-chat content moves to the transcript before real create dispatch; starting status is visible",
+    );
+  }
   await rm(submissionGate);
   await until(
     async () =>
@@ -374,7 +393,7 @@ try {
   const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
   const draftKey = `areal-gui:draft:${finalProject.id}:${threadId}`;
   const requestId = "5594d99b-13a1-4ad8-8685-ef43a6580684";
-  for (const mode of ["pass", "reject", "unknown"]) {
+  for (const mode of ["lost-after-acceptance", "pass", "reject", "unknown"]) {
     const text = `Submission feedback ${mode}`;
     const count = requests.length;
     await rm(submissionEntered, { force: true });
@@ -461,6 +480,53 @@ try {
           BrowserWindow.getAllWindows()[0].webContents.debugger.detach(),
         );
       }
+    } else if (mode === "lost-after-acceptance") {
+      await until(
+        async () => requests.length === count + 1,
+        "Accepted message reaches provider exactly once",
+      );
+      await until(
+        async () =>
+          (await trace()).some(
+            (event) => event.boundary === "lostAfterAcceptance" && event.phase === "accepted",
+          ),
+        "Accepted result recorded before loss",
+      );
+      const accepted = (await trace()).findLast(
+        (event) => event.boundary === "lostAfterAcceptance" && event.phase === "accepted",
+      );
+      assert.ok(accepted.requestId, "Accepted request ID is recorded before receipt loss");
+      await until(
+        async () =>
+          project(await snapshot()).state.threads[threadId].turns.some(
+            (turn) =>
+              turn.status === "completed" &&
+              turn.items.some(
+                (item) =>
+                  item.type === "userMessage" && item.content.some((part) => part.text === text),
+              ),
+          ),
+        "Accepted turn appears in authoritative snapshot",
+      );
+      await writeFile(
+        join(scratch, "lost-after-acceptance-snapshot.json"),
+        JSON.stringify(await snapshot(), null, 2),
+      );
+      await capture("send-lost-after-acceptance");
+      await page.reload();
+      await page.getByTestId("chat-input").waitFor();
+      await until(async () => {
+        const visible = await page.locator(".user-message-body").filter({ hasText: text }).count();
+        const draft = (await editorText()).trim();
+        const sendDisabled = await page.getByTestId("chat-send-button").isDisabled();
+        return visible === 1 && (draft !== text || sendDisabled);
+      }, "Accepted history is visible and the recovered draft cannot be submitted again");
+      assert.equal(requests.length, count + 1, "Reload does not duplicate accepted request");
+      assert.equal(
+        await page.locator(".user-message-body").filter({ hasText: text }).count(),
+        1,
+        "Accepted history contains one user message",
+      );
     } else {
       await until(
         async () => (await editorText()).trim() === text,
@@ -494,10 +560,11 @@ try {
       }
     }
     checks.push(
-      `Delayed existing-chat ${mode}: text and attachment preview, empty Composer, no duplicate dispatch, ${mode === "pass" ? "Core handoff" : "draft restoration"}`,
+      `Delayed existing-chat ${mode}: text and attachment preview, empty Composer, no duplicate dispatch, ${mode === "pass" ? "Core handoff" : mode === "lost-after-acceptance" ? "accepted history survives reload without resubmission" : "draft restoration"}`,
     );
   }
   assert.deepEqual(errors, [], "No renderer or fixture errors after submission feedback checks");
+  if (createPreviewFailure) throw new Error(`First-message preview: ${createPreviewFailure}`);
   passed = true;
 } catch (error) {
   failure ??= error.stack;
@@ -505,6 +572,32 @@ try {
   if (page) await captureSmokeFailure(page, scratch, error);
 } finally {
   await rm(listGate, { force: true });
+  const descriptor = await readFile(
+    join(env.AREAL_HARNESS_SERVICE_HOME, "host", "host.json"),
+    "utf8",
+  )
+    .then(JSON.parse)
+    .catch((error) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+  if (descriptor) {
+    const { HostClient } = require("./src/core/host-client.cjs");
+    const host = new HostClient();
+    try {
+      await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+      assert.equal(host.hostId, descriptor.hostId);
+      assert.equal(host.generation, descriptor.generation);
+      const receipt = await host.stop(randomUUID(), descriptor.generation, "cancel");
+      await writeFile(join(scratch, "host-stop.json"), JSON.stringify(receipt, null, 2));
+      assert.equal(receipt.state, "completed");
+    } catch (error) {
+      failure ??= `Host stop: ${error.stack}`;
+      passed = false;
+    } finally {
+      host.close();
+    }
+  }
   if (app) {
     await app
       .evaluate(({ dialog }) => {
@@ -516,6 +609,12 @@ try {
       })
       .catch(() => {});
     await app.evaluate(({ app }) => app.quit()).catch(() => {});
+    try {
+      await closeSmokeApplication(app);
+    } catch (error) {
+      failure ??= error.stack;
+      passed = false;
+    }
   }
   await application?.close();
   try {
@@ -525,6 +624,7 @@ try {
     cleanup = error.stack;
     passed = false;
   }
+  server.closeAllConnections();
   if (server.listening) await new Promise((resolve) => server.close(resolve));
   assert.equal(await hash(), coreHash, "Core binary stays unchanged");
   await writeFile(
@@ -541,11 +641,12 @@ try {
         beforeCreate,
         checks,
         heldObservation,
+        createPreviewFailure,
         failure,
         cleanup,
         errors,
         boundaries:
-          "Source Electron and real Core. Deterministic loopback model. Filesystem barriers hold create/send dispatch and a real conversation-list response. Rejection and UNKNOWN are injected before send dispatch; accepted sends use real Core/model requests. Native folder picker stubbed. Deadline controls fixture completion, not a latency benchmark. No packaged app or physical input.",
+          "Source Electron and real Core. Deterministic loopback model. Filesystem barriers hold create/send dispatch and a real conversation-list response. Rejection and UNKNOWN are injected before send dispatch; lost-after-acceptance calls actual dispatch then discards its result; accepted sends use real Core/model requests. Native folder picker stubbed. Deadline controls fixture completion, not a latency benchmark. No packaged app or physical input.",
       },
       null,
       2,

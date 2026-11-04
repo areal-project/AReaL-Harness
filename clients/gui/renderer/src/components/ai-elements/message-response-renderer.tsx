@@ -99,6 +99,21 @@ function pluginReferenceLabels() {
     visit(tree);
   };
 }
+// remarkBreaks 在 br 后附加序列化换行；pre-wrap 会再显示一行，只保留语义上的 br。
+function preserveSingleLineBreaks() {
+  type Node = { type: string; tagName?: string; value?: string; children?: Node[] };
+  return (tree: Node) => {
+    const visit = (node: Node) => {
+      node.children?.forEach((child, index, siblings) => {
+        const next = siblings[index + 1];
+        if (child.tagName === "br" && next?.type === "text" && next.value?.startsWith("\n"))
+          next.value = next.value.slice(1);
+        visit(child);
+      });
+    };
+    visit(tree);
+  };
+}
 type WorkspaceLinkTree = {
   type: string;
   tagName?: string;
@@ -311,8 +326,15 @@ export const MessageResponse = memo(function MessageResponse({
         },
       ),
       preserveTableMarkdown,
+      ...(preserveLineBreaks ? [preserveSingleLineBreaks] : []),
     ],
-    [fileLinks, Boolean(onRenderImage), fileLinkBase, Boolean(fileReferenceRoot)],
+    [
+      fileLinks,
+      Boolean(onRenderImage),
+      fileLinkBase,
+      Boolean(fileReferenceRoot),
+      preserveLineBreaks,
+    ],
   );
   const remarkPlugins = useMemo(
     () =>
