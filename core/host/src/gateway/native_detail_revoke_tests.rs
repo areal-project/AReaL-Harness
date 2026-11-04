@@ -157,15 +157,16 @@ fn observed_grant(f: &Fixture) -> Value {
         "status":grant["status"],"capabilities":grant["capabilities"],"projectIds":grant["projectIds"]})
 }
 
-async fn detail_case(revoke: bool) {
+async fn detail_case(mode: &str) {
     let mut f = Fixture::new().await;
     (f.close)();
     f.server.abort();
     let mut native = start_native_core(&f).await;
     let (target, original) = pending_approval(&native).await;
     let run = native.run.clone();
-    storage::write(&run.join("detail-plan.json"), &json!({"target":target,"original":original,"revoke":revoke,"boundary":"real Core/Runtime startup, in-process Host owner; no Noise or independent Host"})).unwrap();
+    storage::write(&run.join("detail-plan.json"), &json!({"target":target,"original":original,"mode":mode,"boundary":"real Core/Runtime startup, in-process Host owner; no Noise or independent Host"})).unwrap();
     let mut proxy = attach_detail_proxy(&mut f, &native, target.clone()).await;
+    let original_journal = f.host.journal.native_snapshot("project").unwrap();
     let request = f.request("attention.read", target.clone(), None);
     storage::write(&run.join("detail-request.json"), &request).unwrap();
     let reading = Fixture::dispatch(f.session("a"), request);
@@ -181,11 +182,32 @@ async fn detail_case(revoke: bool) {
         .unwrap();
     assert_eq!(held_item, &original);
     let before_grant = observed_grant(&f);
-    if revoke {
+    let before_service = f.host.slots.borrow()["project"].service.clone().unwrap();
+    let mut replacement = if mode == "replacement" {
+        let mut replacement = start_native_core(&f).await;
+        // 独立 Core 是真实进程；服务描述符换代由此 Host owner 夹具显式发布。
+        replacement.direct.identity.generation = uuid::Uuid::new_v4().to_string();
+        assert_ne!(before_service.core_pid, replacement.direct.core_pid);
+        assert_ne!(native.direct.endpoint, replacement.direct.endpoint);
+        assert_ne!(
+            before_service.identity.generation,
+            replacement.direct.identity.generation
+        );
+        f.host
+            .slots
+            .borrow_mut()
+            .get_mut("project")
+            .unwrap()
+            .service = Some(replacement.direct.clone());
+        Some(replacement)
+    } else {
+        None
+    };
+    if mode == "revoke" {
         f.grant("a", |grant| grant["status"] = json!("revoked"));
     }
     let after_grant = observed_grant(&f);
-    if revoke {
+    if mode == "revoke" {
         assert_eq!(before_grant["status"], "active");
         assert_eq!(after_grant["status"], "revoked");
         assert_ne!(before_grant, after_grant);
@@ -194,7 +216,8 @@ async fn detail_case(revoke: bool) {
     }
     storage::write(
         &run.join("detail-grant-after-held.json"),
-        &json!({"heldRequestId":frame["request"]["id"],"before":before_grant,"after":after_grant}),
+        &json!({"heldRequestId":frame["request"]["id"],"before":before_grant,"after":after_grant,
+            "beforeService":before_service,"afterService":f.host.slots.borrow()["project"].service}),
     )
     .unwrap();
     proxy.release.take().unwrap().send(()).unwrap();
@@ -207,8 +230,18 @@ async fn detail_case(revoke: bool) {
         Err(error) => json!({"error":error.to_string()}),
     };
     storage::write(&run.join("detail-result.json"), &recorded).unwrap();
-    if revoke {
+    if mode == "revoke" {
         assert_eq!(result.unwrap_err().to_string(), "GRANT_CHANGED");
+        assert!(recorded.get("result").is_none());
+    } else if mode == "replacement" {
+        assert_eq!(
+            result
+                .unwrap_err()
+                .downcast_ref::<crate::wire::Error>()
+                .unwrap()
+                .code,
+            "scheduleHostUnavailable"
+        );
         assert!(recorded.get("result").is_none());
     } else {
         let detail = result.unwrap();
@@ -227,6 +260,10 @@ async fn detail_case(revoke: bool) {
             "questions":original.get("questions").cloned().unwrap_or(json!([]))})
         );
     }
+    assert_eq!(
+        f.host.journal.native_snapshot("project").unwrap(),
+        original_journal
+    );
     let after = areal_local_service::rpc(
         &native.direct,
         "areal/interaction/list",
@@ -246,7 +283,12 @@ async fn detail_case(revoke: bool) {
     assert!(!native.effect.exists());
     (f.close)();
     proxy.task.abort();
-    for child in [&mut native.core, &mut native.model] {
+    let mut children = vec![&mut native.core, &mut native.model];
+    if let Some(replacement) = replacement.as_mut() {
+        assert!(!replacement.effect.exists());
+        children.extend([&mut replacement.core, &mut replacement.model]);
+    }
+    for child in children {
         if child.0.try_wait().unwrap().is_none() {
             unsafe {
                 libc::kill(child.0.id() as i32, libc::SIGINT);
@@ -263,7 +305,8 @@ async fn detail_case(revoke: bool) {
             "owned child must exit"
         );
     }
-    storage::write(&run.join("detail-complete.json"), &json!({"passed":true,"revoke":revoke,"corePid":native.core.0.id(),"modelPid":native.model.0.id(),"effectAbsent":true})).unwrap();
+    storage::write(&run.join("detail-complete.json"), &json!({"passed":true,"mode":mode,"corePid":native.core.0.id(),"modelPid":native.model.0.id(),"effectAbsent":true,
+        "replacement":replacement.as_ref().map(|core|json!({"corePid":core.core.0.id(),"modelPid":core.model.0.id(),"run":core.run}))})).unwrap();
     println!("native detail evidence: {}", run.display());
 }
 
@@ -272,8 +315,16 @@ async fn detail_case(revoke: bool) {
 async fn native_detail_publication_fences_revoke_after_real_core_read() {
     tokio::task::LocalSet::new()
         .run_until(async {
-            detail_case(false).await;
-            detail_case(true).await;
+            detail_case("control").await;
+            detail_case("revoke").await;
         })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "two real Core/Runtime instances; in-process Host owner only, no Noise or independent Host"]
+async fn native_detail_publication_fences_service_identity_change() {
+    tokio::task::LocalSet::new()
+        .run_until(detail_case("replacement"))
         .await;
 }
