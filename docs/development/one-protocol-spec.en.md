@@ -23,9 +23,9 @@ Baselines: AReaL-Harness `codex/shared-host` `7611582f`; T3 Code `8760d063` (`do
 
 ## Handing work to Codex
 
-Implement A0 → A4 in order. A0 is documents and schema only and may run alongside the shared Host H3–H4 acceptance; A1 onward waits until the maintainer confirms H4 acceptance is done. One PR per work package. Prompts cite the matching section and the "Execution rules" below.
+Implement A0 → A4 as one task, in order and continuously, without waiting for H4 acceptance to finish: branch from `codex/shared-host` and merge H4 in once it lands. Packages do not wait for maintainer review; each package is its own local commit and the next package starts only after every completion condition of the current one is met (including the installed-package journey with a copy of real data, except for A0). After all packages, run OP-01 to OP-08 in full, then open one PR. Steps that delete an old path run only after their package's acceptance passes. Prompts cite the matching section and the "Execution rules" below.
 
-- Use high reasoning effort throughout. A0 and A3 start with a design note that the maintainer confirms before implementation.
+- Use high reasoning effort throughout. The A3 workbench service design note goes into the commit and may be implemented directly; stop only for "Stop and ask" items.
 - General repository rules (layering, paired Chinese/English docs, test layers, PR template) follow AGENTS.md and are not repeated here.
 - Reversible implementation choices within a package are Codex's call, explained in the PR; only "Stop and ask" items need asking first.
 
@@ -35,7 +35,7 @@ These turn problems from the previous shared Host migration into hard requiremen
 
 1. **Report progress by real journeys.** The first line of every report answers: can the maintainer's real old environment (installed package plus a copy of real data) complete this package's acceptance journey? Unit tests and static checks come after. Partial passes never replace that answer.
 2. **Connect end to end first, then fill in.** The first step of every package is to run the shortest end-to-end journey (even one method) on the packaged build with a copy of real data, proving every wire reaches the Host. Only then write the full implementation and unit tests. Installed-package verification is never left to the end. A0 is static only and is accepted by conformance tests and freeze checks; installed-package journeys with real data start at A1.
-3. **Close one package at a time.** Do not start the next package until every completion condition of the current one is met. Problems that belong to another package or to the shared Host go into the PR's "Known issues" and are reported, not fixed on the side.
+3. **Close one package at a time.** Do not start the next package until every completion condition of the current one is met. Problems that belong to another package or to the shared Host go into "Known issues" and are reported, not fixed on the side.
 4. **Keep historical facts separate from the current switch.** This spec migrates no storage and rewrites no history. Every data-path switch sits behind a flag and can fall back to the old IPC path, which stays intact during the switch. An UNKNOWN on a historical command affects only that command's display and lookup; it must not block a project from working, a flag from being turned on, or a package from completing.
 5. **Stop when stuck and come back with options.** If the same blocker survives two rounds of investigation without new evidence, stop searching. Write a table of what can and cannot be proven, and give two or three options in which the software carries the complexity, for the maintainer to choose. Never work around it by disabling a project, skipping tests, loosening assertions or deleting data.
 6. **Budget test fixtures.** Reuse existing fixtures and smoke scripts first. If fixture problems themselves (process exit waits, simulated port conflicts and the like) take more than half a day in total, stop and report; do not build a new fixture framework.
@@ -204,7 +204,7 @@ Move the rest of Main's business code into the Host-supervised Node workbench se
 
 ### Work
 
-1. Deliver a design note first: workbench service supervision, its private channel to the Host, method namespace routing, how it gets Core connections, and capability fallback when Node is absent.
+1. Write and commit a design note first: workbench service supervision, its private channel to the Host, method namespace routing, how it gets Core connections, and capability fallback when Node is absent.
 2. Migrate by domain, one PR each: session actions (fork, side, edit, continue, prediction) → workspace and worktrees → `manage` (plugins, MCP, schedule editing, workgroups, configuration) → providers and subscriptions, library, export, feedback and diagnostics. Decide per domain whether it belongs in Core (single project) or the workbench service (cross-project).
 3. Add `tool.provide`: once connected to the Host, the Electron shell registers desktop tools and the Host relays them to the Cores that need them; on disconnect they are revoked and reported unavailable.
 4. After each domain moves, delete the matching Main files and IPC commands.
