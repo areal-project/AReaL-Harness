@@ -6,6 +6,7 @@ Historical records do not define current capabilities. Use the [run guide](../RE
 
 | Report | Evidence scope |
 |---|---|
+| [executionFocus on fixed75 tasks](long-horizon75-execution-focus.en.md) | 75 Astra candidates and70valid baseline pairs; all correction costs, browser anomalies and single-object token regressions retained; explicit policy not promoted by default |
 | [Modeling tool-surface comparison](modeling-tool-surface.en.md) | Ten same-main artifact-workspace pairs; explicit tool selection, all attempts, joint blind reviews and rejected process-image candidate |
 | [Conversation directory, pagination and GUI refreshes](conversation-catalog.en.md), [follow-up validation](conversation-catalog-validation.en.md), [memory and SQLite comparison](conversation-catalog-sqlite.en.md), [compact metadata and lazy history](conversation-catalog-lazy.en.md) | Alternating release Engine/RPC comparisons, real GUI cache IO and compatibility regressions; adverse results retained, no overall Agent speedup claim |
 | [Completion, read refill and Responses routing](completion-cache-routing.en.md) | Fixed100 comparison; cache fractions converge but30.6% wall gap remains; failures, UNKNOWN and rejected promotion retained |
