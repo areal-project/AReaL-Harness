@@ -30,7 +30,9 @@ if (e.success && e.data.allApplied) {
 }
 ```
 
-`tools.NAME(args)` 返回 `{success,outcome,callId,itemId,data,text,availableImages}`，`data` 是可解析的原生 JSON，`text` 保留文本。调用按顺序完成，`await` 可用，`Promise.all` 也不会增加原生并发。`text(value)` 返回选定观察；`text(nativeResult)` 在 JSON 可解析时省去与 `data` 重复的 `text` 字段，程序内部仍可读取两者。`image(nativeResult)` 只转发本次父调用的真实子结果图片。模型需要新的视觉或业务判断时应返回观察，不能让脚本代替该判断。原生进程的 `commandStatus/outputReadComplete/processId` 和每个子调用终态属于强制回执，无法通过筛选隐藏。
+`tools.NAME(args)` 返回 `{success,outcome,callId,itemId,data,text,availableImages}`，`data` 是可解析的原生 JSON，`text` 保留文本。调用按顺序完成，`await` 可用，`Promise.all` 也不会增加原生并发。`text(value)` 返回选定观察；`text(nativeResult)` 在 JSON 可解析时只展示 `{itemId,data}`；身份、成功状态和错误仍在强制子回执中，程序内部原始对象及 `data/text` 不变。`image(nativeResult)` 只转发本次父调用的真实子结果图片。模型需要新的视觉或业务判断时应返回观察，不能让脚本代替该判断。原生进程的 `commandStatus/outputReadComplete/processId` 和每个子调用终态属于强制回执，无法通过筛选隐藏。
+
+`await collect(processResult, {timeoutMs?, maxReads?})` 是现有程序内的回收助手，只对传入结果的同一进程调用 `read_process`，不启动或重试命令。它自动展示每页观察，返回最后一个原生结果，无需再次 `text()`。默认总等待 540000 毫秒、最多 16 次读取，可显式设为 0–1800000 毫秒和 0–64 次；实际还受程序剩余时间、原生调用次数、取消及共享预算限制。按退出和输出读完状态结束，失败立即返回；到达上限或已退出且游标无进展时保留真实状态、游标和停止原因，不推断证据充分或测试通过。它不适用于需要先观察交互提示或已有独立工作的等待。
 
 中间原文保留在独立 `DynamicToolCall` 中，`ToolExecution.parentCallId` 可选字段关联父调用。投影给模型时只发送实际模型发起的父 function_call 和父结果，不伪造子 function_call；使用 `read_history(itemId)` 可读回已记录子观察。原生结果的分页/快照限制保持不变，不会把未读取的进程输出伪装成已读取。
 

@@ -70,7 +70,8 @@ fn receipt(item: &Item) -> Option<Value> {
             }
         }
         if let Some(error) = data.get("error") {
-            result["error"] = json!({"code":error["code"],"message":prefix(error["message"].as_str().unwrap_or(""), 1024)});
+            let message = error.as_str().or_else(|| error["message"].as_str());
+            result["error"] = json!({"code":error.get("code"),"message":prefix(message.unwrap_or("Unknown tool error; inspect the original result"), 1024)});
         }
     }
     Some(result)
@@ -121,7 +122,7 @@ fn program_receipt(executed: usize, error: &Option<String>, receipts: &[Value]) 
         .collect();
     json!({"type":"inputText","text":json!({"executed":executed,"programCompleted":error.is_none(),
         "allChildrenSucceeded":all_children_succeeded(receipts),"pendingProcesses":pending,
-        "error":error,"children":receipts,"note":"Program completion is not test success. Every child failure remains visible; later success does not erase it. read_history(itemId) retrieves original observations; completed effects are not rolled back."}).to_string()})
+        "error":error,"children":receipts,"note":"Completion is not validation. read_history(itemId) retrieves child evidence; effects persist."}).to_string()})
 }
 
 /// 恢复仅补充已记录事实。没有解释器状态恢复或代码重放。

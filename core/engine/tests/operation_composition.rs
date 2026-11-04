@@ -64,7 +64,7 @@ impl Model for PlannedModel {
             ]
         } else if self.composed && round == 1 {
             let code = format!(
-                "const e=await tools.edit_files({});text(e);if(e.success && e.data.allApplied){{let r=await tools.run_command({});text(r);if(r.success && r.data.commandStatus==='running'){{r=await tools.read_process({{processId:r.data.processId}});text(r);}}}}",
+                "const e=await tools.edit_files({});text(e);if(e.success && e.data.allApplied){{await collect(await tools.run_command({}));}}",
                 json!({"files":[patch("a"),patch("b")]}),
                 json!({"argv":["/bin/sh","-c",CHECK],"yieldMs":0})
             );

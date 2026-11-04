@@ -108,6 +108,12 @@ pub(super) fn run(
                     call,
                     serde_json::to_string(&names).unwrap(),
                     super::MAX_TEXT as u32,
+                    Function::new(ctx.clone(), move || {
+                        deadline
+                            .saturating_duration_since(Instant::now())
+                            .as_millis() as u64
+                    })
+                    .map_err(|e| exception(&ctx, e))?,
                 ))
                 .map_err(|e| exception(&ctx, e))?;
             let execute: Function = runner.get("execute").map_err(|e| exception(&ctx, e))?;
@@ -244,7 +250,88 @@ mod tests {
         let view: Json = serde_json::from_str(result.parts[0]["text"].as_str().unwrap()).unwrap();
         assert_eq!(view["data"]["answer"], "observed");
         assert!(view.get("text").is_none());
-        assert_eq!(view["outcome"], "succeeded");
         assert_eq!(view["itemId"], "item");
+        assert!(view.get("outcome").is_none());
+    }
+
+    #[test]
+    fn collect_keeps_each_page_and_stops_for_terminal_failure_or_bounds() {
+        for (stop, max_reads, timeout, expected_reads) in [
+            ("complete", 16, 1000, 2),
+            ("failed", 16, 1000, 1),
+            ("readLimit", 1, 1000, 1),
+            ("waitBudget", 16, 0, 0),
+            ("noProgress", 16, 1000, 1),
+        ] {
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            let code = format!(
+                "const r=await collect(await tools.run_command({{argv:['check']}}),{{maxReads:{max_reads},timeoutMs:{timeout}}});text({{final:r.data.commandStatus}});"
+            );
+            let worker = std::thread::spawn(move || {
+                run(
+                    code,
+                    vec!["run_command".into(), "read_process".into()],
+                    tx,
+                    CancellationToken::new(),
+                    Instant::now() + std::time::Duration::from_secs(3),
+                )
+            });
+            let mut reads = 0;
+            while let Some(request) = rx.blocking_recv() {
+                if request.name == "read_process" {
+                    reads += 1;
+                    assert_eq!(request.arguments["processId"], "p");
+                    assert!(request.arguments["waitMs"].as_u64().unwrap() <= 1000);
+                    assert!(request.arguments.get("after").is_none());
+                }
+                let terminal =
+                    reads == 2 || (reads == 1 && matches!(stop, "failed" | "noProgress"));
+                let success = !(reads == 1 && stop == "failed");
+                request.reply.send(Ok(serde_json::json!({
+                    "tool":request.name,"itemId":format!("item-{reads}"),"success":success,
+                    "data":{"processId":"p","processComplete":terminal,
+                    "commandStatus":if !success {"failed"}else if terminal {"succeeded"}else{"running"},
+                    "outputReadComplete":terminal && stop != "noProgress", "exitCode":if !success {1}else{0},
+                    "nextCursor":if stop == "noProgress" {0}else{reads},"stdout":format!("page-{reads}")}
+                }))).unwrap();
+            }
+            let result = worker.join().unwrap();
+            assert_eq!(result.error, None, "{stop}: {result:?}");
+            assert_eq!(reads, expected_reads, "{stop}");
+            let text = serde_json::to_string(&result.parts).unwrap();
+            for page in 0..=reads {
+                assert!(text.contains(&format!("page-{page}")));
+            }
+            if stop != "complete" {
+                assert!(text.contains(stop), "{text}");
+            }
+        }
+    }
+
+    #[test]
+    fn collect_cancel_does_not_dispatch_another_command_or_drop_observed_pages() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let cancel = CancellationToken::new();
+        let interrupt = cancel.clone();
+        let worker = std::thread::spawn(move || {
+            run(
+            "await collect(await tools.run_command({argv:['check']})); await tools.run_command({argv:['must-not-run']});".into(),
+            vec!["run_command".into(), "read_process".into()], tx, interrupt,
+            Instant::now() + std::time::Duration::from_secs(3))
+        });
+        rx.blocking_recv().unwrap().reply.send(Ok(serde_json::json!({"success":true,
+            "itemId":"start", "data":{"processId":"p","commandStatus":"running",
+            "processComplete":false,"outputReadComplete":false,"stdout":"observed-before-cancel"}}))).unwrap();
+        let waiting = rx.blocking_recv().unwrap();
+        assert_eq!(waiting.name, "read_process");
+        cancel.cancel();
+        let result = worker.join().unwrap();
+        assert!(result.error.is_some());
+        assert!(
+            serde_json::to_string(&result.parts)
+                .unwrap()
+                .contains("observed-before-cancel")
+        );
+        assert!(rx.blocking_recv().is_none());
     }
 }
