@@ -12,7 +12,7 @@
 
 ## 执行和观察
 
-`tool_program({code, timeoutMs?})` 在新的 QuickJS 上下文执行顶层 await。没有 Node、文件、网络、模块导入、计时器或跨调用状态；文件和进程操作只能调用目录里列出的原生工具。每个调用沿原 Core/Runtime 入口完成 schema、权限、hooks、文件版本、预算与持久化。只包含本次可见的内置工具以及 `read_history/read_tool_result/edit_files`，不支持递归编排、MCP 或委派。
+`tool_program({code, input?, timeoutMs?})` 在新的 QuickJS 上下文执行顶层 await。没有 Node、文件、网络、模块导入、计时器或跨调用状态；文件和进程操作只能调用目录里列出的原生工具。每个调用沿原 Core/Runtime 入口完成 schema、权限、hooks、文件版本、预算与持久化。只包含本次可见的内置工具以及 `read_history/read_tool_result/edit_files`，不支持递归编排、MCP 或委派。
 
 模型已读过文件并确定补丁和测试入口后，可以把关联修改、验证及有界回收放进同一程序。新错误、冲突、权限、UNKNOWN 或视觉判断必须回到模型；不在循环里安装依赖或更换方案。无独立工作时使用正常等待预算，不显式用 1 秒制造回收轮次。
 
@@ -32,7 +32,7 @@ if (e.success && e.data.allApplied) {
 
 ## 预算、失败与恢复
 
-单程序最多 64 次叶子调用，代码与单次叶子参数各 64 KiB，解释器内存 64 MiB、栈 512 KiB，选定文本按真实 UTF-8 字节计量，最多 1 MiB，最多四项图片选择。默认墙钟 600 秒，`timeoutMs` 范围 1–1800000；全 Turn 的原始时限仍有效。父和叶子共享工具次数、输出与 Agent 预算，文本筛选不豁免执行成本。长程序会受 CPU 中断检查，不能通过无限循环绕过时限。
+单程序最多 64 次叶子调用，代码及显式 input 的序列化 JSON 合计 64 KiB，单次叶子参数 64 KiB，解释器内存 64 MiB、栈 512 KiB，选定文本按真实 UTF-8 字节计量，最多 1 MiB，最多四项图片选择。默认墙钟 600 秒，`timeoutMs` 范围 1–1800000；全 Turn 的原始时限仍有效。父和叶子共享工具次数、输出与 Agent 预算，文本筛选不豁免执行成本。长程序会受 CPU 中断检查，不能通过无限循环绕过时限。
 
 超过 16 KiB 的选定文本先持久保存完整 JSON，再向模型提供有明确标记的预览和 `read_tool_result` 引用；不会因为展示长度打断后续步骤。所有子操作状态、进程回执和真实图片保持完整。无法保存原文或不允许回取时保留原始有界结果，仍受总输出预算约束。超过 1 MiB 的归档上限仍显式报错，已完成效果不会回滚。
 
@@ -59,3 +59,11 @@ if (e.success && e.data.allApplied) {
 保留编辑直达的组合配置使用 [compact-composition.json](../../examples/tool-profiles/compact-composition.json)：大段文件创建保持 `edit_files` 直达，收到 `allApplied` 后将已选执行和回收放入程序；小补丁可与测试一起编排。`collect` 自动展示观察，不再手写轮询循环或重复 `text()`。默认配置不变。原 [compact-programmatic.json](../../examples/tool-profiles/compact-programmatic.json) 仅保留为全程序化对照：它把 schema 搬入描述，可能增加固定输入和代码转义/恢复成本，不能以较小菜单证明效率。比较最终说明、schema、历史、缓存输入与未缓存输入，不能只比较命中率；减少高缓存的机械轮次也会改变该比例。
 
 `programmaticDirectTools`（默认空数组）可在 `programmaticToolsOnly:true` 时保留最多 16 个不同原生工具的直达入口；仅与当前可见、已授权目录求交集，不能借此暴露隐藏工具。直达定义不再重复嵌入程序目录，`tools.NAME` 内部调用仍可用。不启用 only 模式时配置非空数组会报错。显式组合配置使用 `programmaticDirectTools:["edit_files"]`：保留大段文件的 JSON 表达，同时将确定的读取、执行和回收集中于程序入口。需要更自由的直接操作时可显式选择 only=false 并清空该数组；采用率与净成本必须单独验证。Rust 的完整 `ToolPolicy` 字面量需包含新字段或使用默认展开。
+
+`input` 是可选 JSON 对象，作为程序中的 `input` 实参解析，不拼接进 JavaScript 源码。把小补丁、正则和短脚本/argv 放入该对象可以避免第二层 JavaScript 引号与反斜杠；权限、版本检查和预算仍沿原叶子入口执行。数据不能成为宿主代码，`__proto__` 也只是 JSON 键。大段文件正文继续使用 edit_files 直达。
+
+```javascript
+tool_program({input:{edit:{files:[{path:"src/a.py",patches:[{oldText:"old",newText:"new"}]}]},check:{argv:["python","-m","pytest","tests/test_a.py"]}},code:"const e=await tools.edit_files(input.edit);text(e);if(e.success && e.data.allApplied) await collect(await tools.verify_command(input.check));"});
+```
+
+检查仍须由模型根据公开要求选择。保留仍相关的验证与失败对照，在影响对应条件的修改后重新执行；未覆盖的要求显式报告。程序只能组合已经确定的动作，不能以少做检查换取较低消耗。

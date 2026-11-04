@@ -969,6 +969,24 @@ fn edits(files: Value) -> ToolCall {
     }
 }
 
+#[tokio::test]
+async fn oversized_program_input_never_dispatches_an_effect() {
+    let dir = tempfile::tempdir().unwrap();
+    let call = ToolCall {
+        id: "oversized-program".into(),
+        name: "tool_program".into(),
+        arguments: json!({"code":"await tools.fs_create(input);","input":{"path":"must-not-exist","text":"中".repeat(22000)}}).to_string(),
+    };
+    let (engine, _, mut runtime, thread, _) =
+        open(dir.path(), vec![call], Limits::default(), program_policy()).await;
+    let done = bounded(engine.wait(&thread)).await.unwrap();
+    assert!(!done.turns[0].items.iter().any(
+        |i| matches!(i,Item::DynamicToolCall{execution,..} if execution.parent_call_id.is_some())
+    ));
+    assert!(runtime.seen.try_recv().is_err());
+    close(engine, runtime).await;
+}
+
 fn edit_receipt(thread: &areal_protocol::Thread) -> Value {
     thread.turns[0]
         .items

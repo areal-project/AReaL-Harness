@@ -4,7 +4,7 @@ use super::*;
 use std::time::Instant;
 mod js;
 
-const PROGRAM_DESCRIPTION: &str = "Compose already-decided native calls in fresh JavaScript with top-level await. Use tools.NAME(args); returns {success,outcome,callId,itemId,data,text,availableImages}. text(result) displays {itemId,data}; status remains in mandatory receipts. image(result) forwards images. await collect(processResult,{timeoutMs?,maxReads?}) displays each same-process observation and returns its final result; defaults 540s/16 reads, clamped to remaining budgets. Use it after run_command when only waiting/collection remains. Prefer directly exposed edit_files for large file creation; compose small patches and already-selected checks. Return for new errors, conflicts, UNKNOWN, permissions or semantic/visual judgment; no hidden repair, install or retry. Calls retain native permissions, versions, hooks and shared budgets, and are serial even in Promise.all. No Node, filesystem, network, imports, timers or persistent state. Up to 64 calls (batch leaves count), 64 KiB code/arguments, 1 MiB archived text/16 KiB preview, four images; default timeout 600s, max 1800s. Timeout/cancel/UNKNOWN stop dispatch. Receipts distinguish programCompleted, allChildrenSucceeded and pendingProcesses. Outer success is false if any child failed. Completed effects persist; read_history(itemId)/read_tool_result(resultId) recover evidence without replay.";
+const PROGRAM_DESCRIPTION: &str = "Compose already-decided native calls in fresh JavaScript with top-level await. Pass patches, regex and short source/argv strings in JSON input, then reference input in code without JavaScript quoting. Use tools.NAME(args); returns {success,outcome,callId,itemId,data,text,availableImages}. text(result) displays {itemId,data}; status remains in mandatory receipts. image(result) forwards images. await collect(processResult,{timeoutMs?,maxReads?}) displays each same-process observation and returns its final result; defaults 540s/16 reads, clamped to remaining budgets. Use it after run_command when only waiting/collection remains. Prefer directly exposed edit_files for large file creation; compose small patches and already-selected checks. Return for new errors, conflicts, UNKNOWN, permissions or semantic/visual judgment; no hidden repair, install or retry. Calls retain native permissions, versions, hooks and shared budgets, and are serial even in Promise.all. No Node, filesystem, network, imports, timers or persistent state. Up to 64 calls (batch leaves count), 64 KiB combined code/input and per-call arguments, 1 MiB archived text/16 KiB preview, four images; default timeout 600s, max 1800s. Timeout/cancel/UNKNOWN stop dispatch. Receipts distinguish programCompleted, allChildrenSucceeded and pendingProcesses. Outer success is false if any child failed. Completed effects persist; read_history(itemId)/read_tool_result(resultId) recover evidence without replay.";
 
 const MAX_CALLS: usize = 64;
 const MAX_CODE: usize = 64 * 1024;
@@ -15,7 +15,7 @@ pub(super) fn definition() -> areal_protocol::ToolDefinition {
     areal_protocol::ToolDefinition {
         name: "tool_program".into(),
         description: PROGRAM_DESCRIPTION.into(),
-        input_schema: json!({"type":"object","properties":{"code":{"type":"string","maxLength":65536},"timeoutMs":{"type":"integer","minimum":1,"maximum":1800000}},"required":["code"],"additionalProperties":false}),
+        input_schema: json!({"type":"object","properties":{"code":{"type":"string","maxLength":65536},"input":{"type":"object","description":"JSON data available as input in code. Put patches, regex and short script/argv strings here to avoid a second JavaScript quoting layer. Combined code and serialized input are limited to 64 KiB."},"timeoutMs":{"type":"integer","minimum":1,"maximum":1800000}},"required":["code"],"additionalProperties":false}),
         output_schema: None,
     }
 }
@@ -239,8 +239,15 @@ impl Engine {
             let code = args["code"]
                 .as_str()
                 .ok_or_else(|| error(rt::ErrorCode::InvalidArgument, "missing code"))?;
-            if code.len() > MAX_CODE {
-                return Err(error(rt::ErrorCode::InvalidArgument, "code exceeds 64 KiB"));
+            let input = args.get("input").cloned().unwrap_or_else(|| json!({}));
+            let source_bytes = code
+                .len()
+                .saturating_add(args.get("input").map_or(0, |v| v.to_string().len()));
+            if !input.is_object() || source_bytes > MAX_CODE {
+                return Err(error(
+                    rt::ErrorCode::InvalidArgument,
+                    "code and JSON input must fit 64 KiB; input must be an object",
+                ));
             }
             let (config, thread) = {
                 let state = invocation.cell.state.lock().await;
@@ -267,7 +274,9 @@ impl Engine {
                     .map(str::to_owned)
                     .collect()
             };
-            let reserve = code.len().saturating_mul(4).saturating_add(RECEIPT_RESERVE);
+            let reserve = source_bytes
+                .saturating_mul(4)
+                .saturating_add(RECEIPT_RESERVE);
             let mut remaining = invocation.remaining_output.saturating_sub(reserve);
             if remaining < MIN_TOOL_OUTPUT_BUDGET {
                 return Err(error(
@@ -283,7 +292,7 @@ impl Engine {
             let names = allowed.iter().cloned().collect();
             let code = code.to_owned();
             let mut worker = tokio::task::spawn_blocking(move || {
-                js::run(code, names, sent, worker_cancel, deadline)
+                js::run_with_input(code, input, names, sent, worker_cancel, deadline)
             });
             let mut fatal = None;
             let mut executed = 0;
@@ -508,13 +517,15 @@ mod tests {
                 })
                 .collect();
             let code = arguments["code"].as_str().unwrap().to_owned();
+            let input = arguments.get("input").cloned().unwrap_or_else(|| json!({}));
             let cancel = CancellationToken::new();
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
             let worker_cancel = cancel.clone();
             let started = Instant::now();
             let worker = tokio::task::spawn_blocking(move || {
-                js::run(
+                js::run_with_input(
                     code,
+                    input,
                     names,
                     tx,
                     worker_cancel,

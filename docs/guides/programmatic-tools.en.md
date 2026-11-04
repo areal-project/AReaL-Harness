@@ -12,7 +12,7 @@ Set `programmaticTools:false` to restore native-only tool exposure. Save this JS
 
 ## Execution and observations
 
-`tool_program({code, timeoutMs?})` runs top-level await in a fresh QuickJS context. There is no Node, filesystem, network, module import, timer or cross-call state. File and process operations must use declared native tools. Every child follows the original Core/Runtime schema, permissions, hooks, file versions, budget and journal. The catalog contains currently visible built-ins and `read_history/read_tool_result/edit_files`; recursive programs, MCP and delegation are excluded.
+`tool_program({code, input?, timeoutMs?})` runs top-level await in a fresh QuickJS context. There is no Node, filesystem, network, module import, timer or cross-call state. File and process operations must use declared native tools. Every child follows the original Core/Runtime schema, permissions, hooks, file versions, budget and journal. The catalog contains currently visible built-ins and `read_history/read_tool_result/edit_files`; recursive programs, MCP and delegation are excluded.
 
 After reading the files and choosing the edits and test entry point, compose edits, verification and bounded collection. Return to the model for unexpected failures, conflicts, permissions, UNKNOWN or visual judgment; do not install dependencies or choose new plans inside a loop. With no independent work, use the normal wait budget instead of explicit one-second status turns.
 
@@ -32,7 +32,7 @@ Original observations remain in separate `DynamicToolCall` items linked by the o
 
 ## Budgets, failures and recovery
 
-Each program allows at most 64 child calls, 64 KiB of code or child arguments, 64 MiB interpreter memory, a 512 KiB stack, 1 MiB of selected text measured in actual UTF-8 bytes and four image selections. Wall time defaults to 600 seconds; `timeoutMs` accepts 1–1800000. Original Turn deadlines still apply. Parent and children share tool, output and Agent budgets; filtering does not waive execution cost. CPU interrupt checks bound infinite loops.
+Each program allows at most 64 child calls, 64 KiB for code plus explicit serialized input, and 64 KiB per child arguments, 64 MiB interpreter memory, a 512 KiB stack, 1 MiB of selected text measured in actual UTF-8 bytes and four image selections. Wall time defaults to 600 seconds; `timeoutMs` accepts 1–1800000. Original Turn deadlines still apply. Parent and children share tool, output and Agent budgets; filtering does not waive execution cost. CPU interrupt checks bound infinite loops.
 
 Selected text above 16 KiB is saved as complete JSON before displaying a marked preview and `read_tool_result` reference. Display limits do not abort subsequent steps. All child outcomes, process receipts and actual images remain complete. If storage or retrieval is unavailable, retain the original bounded result under the shared output budget. Exceeding the 1 MiB archive limit remains an explicit error with completed effects retained.
 
@@ -59,3 +59,11 @@ Program results distinguish `programCompleted` (interpreter completion), `allChi
 Use [compact-composition.json](../../examples/tool-profiles/compact-composition.json) for mixed interaction: large file creation stays in direct `edit_files`; after allApplied, compose selected execution and collection in a program. Small patches can share a program with their checks. `collect` displays observations automatically, avoiding handwritten polling and duplicate text(). Defaults are unchanged. [compact-programmatic.json](../../examples/tool-profiles/compact-programmatic.json) remains a program-only control: moving schemas into descriptions can increase fixed input and quoting/recovery costs. A smaller menu is not evidence of efficiency. Compare final instructions, schemas, history, cached and uncached input separately; removing highly cached mechanical turns also changes the hit ratio.
 
 `programmaticDirectTools` (empty by default) retains up to 16 distinct native direct entries with `programmaticToolsOnly:true`. It only intersects the currently visible, authorized catalog and cannot expose hidden tools. Direct definitions are not duplicated in the program catalog; `tools.NAME` calls remain available. A nonempty list without only mode is rejected. The explicit composition profile uses `programmaticDirectTools:["edit_files"]` to keep full source in JSON while routing decided reads, execution and collection through the program entry. For a broader direct surface, explicitly select only=false and an empty list; adoption and net cost still require separate validation. Exhaustive Rust `ToolPolicy` literals must include the new field or use the default update.
+
+The optional JSON object `input` is parsed as the program input argument, never interpolated into JavaScript source. Put small patches, regex and short script/argv strings there to avoid a second JavaScript quoting layer. Code plus explicitly supplied serialized input share a 64 KiB bound; each leaf retains its own existing 64 KiB, permissions, version and budget checks. `__proto__` remains a JSON key. Full-file source creation stays directly accessible through edit_files.
+
+```javascript
+tool_program({input:{edit:{files:[{path:"src/a.py",patches:[{oldText:"old",newText:"new"}]}]},check:{argv:["python","-m","pytest","tests/test_a.py"]}},code:"const e=await tools.edit_files(input.edit);text(e);if(e.success && e.data.allApplied) await collect(await tools.verify_command(input.check));"});
+```
+
+The model still selects checks from public requirements. Preserve relevant validation and failure controls, rerun them after changes to their conditions, and report uncovered requirements. Programs only compose decided actions; fewer checks are not an efficiency improvement.

@@ -566,3 +566,5 @@ Turn 的 `trace` 增加 `startedAtMs`、`queuedAtMs`、`queueDurationMs` 和 `ac
 `model.summary_quoted_retry`（`AREAL_HARNESS_SUMMARY_QUOTED_RETRY`）默认省略/false，仅显式开启时在既有第二次摘要额度内把格式失败的保留前缀切为引用证据，不增加重试或预算。格式验收不证明语义准确；已观察到的公式失真仍是负面证据，该策略及 `summary_preserve_prefix=false` 都不能直接视为语义恢复通过。普通请求截断、空回复仍按独立失败与 usage 契约处理。
 
 `ToolPolicy.compact_tools`（JSON `compactTools`，默认 false）投影常用原生入口及 `tool_search({query,limit?})`；发现的 schema 在下一次请求生效，每 Turn 重置，仍受现有 registry 和 allowlist 限制。`ResultViewPolicy.repeated_observations`（`repeatedObservations`，默认 false）对重新观察后相同的内容附持久原文引用。`environment_info({cwd?,executables?:[{name,kind}]})` 返回有来源与指纹的事实；`task_state.environmentFacts` 是有界历史观察，不自动证明当前状态。具体范围和失效条件见[工具](../guides/tools.md)。
+
+原生导航的 `read_file` 支持 `column` 与 `expectedSha256`，对超长行提供版本绑定的 `nextRead` 续读，不伪造完整行；详见[工具合同](../guides/tools.md)。程序调用 `tool_program` 增加可选 JSON 对象 `input`，与代码合计受原 64 KiB 限制，作为隔离解释器实参而非源码执行；无 input 的旧调用保持兼容。`verify_command` 对 Blender Python 验证要求显式非零异常退出码，收据包含 `exitContract`；详见[程序化工具](../guides/programmatic-tools.md)。

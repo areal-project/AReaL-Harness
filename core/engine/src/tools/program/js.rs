@@ -31,8 +31,9 @@ fn exception(ctx: &Ctx<'_>, error: rquickjs::Error) -> String {
     error.to_string()
 }
 
-pub(super) fn run(
+pub(super) fn run_with_input(
     code: String,
+    input: Json,
     names: Vec<String>,
     requests: tokio::sync::mpsc::UnboundedSender<Request>,
     cancel: CancellationToken,
@@ -117,7 +118,10 @@ pub(super) fn run(
                 ))
                 .map_err(|e| exception(&ctx, e))?;
             let execute: Function = runner.get("execute").map_err(|e| exception(&ctx, e))?;
-            let promise: Promise = execute.call((code,)).map_err(|e| exception(&ctx, e))?;
+            // 数据通过函数实参解析，不拼接进源码；引号、反斜杠和 ${...} 均保持数据语义。
+            let promise: Promise = execute
+                .call((code, input.to_string()))
+                .map_err(|e| exception(&ctx, e))?;
             let finished = loop {
                 if let Some(result) = promise.result::<Value>() {
                     break result.map(|_| ()).map_err(|e| exception(&ctx, e));
@@ -143,6 +147,52 @@ pub(super) fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn run(
+        code: String,
+        names: Vec<String>,
+        requests: tokio::sync::mpsc::UnboundedSender<Request>,
+        cancel: CancellationToken,
+        deadline: Instant,
+    ) -> Output {
+        run_with_input(
+            code,
+            serde_json::json!({}),
+            names,
+            requests,
+            cancel,
+            deadline,
+        )
+    }
+
+    #[test]
+    fn json_input_preserves_short_source_and_regex_without_executing_data() {
+        let input = serde_json::json!({"argv":["python","-c","print('中😀\\n` ${text(\"injected\")} \\\\')\n"],"pattern":r"def query\(","__proto__":{"injected":true}});
+        let expected = input.clone();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let worker = std::thread::spawn(move || {
+            run_with_input(
+            "text(await tools.run_command({argv:input.argv}));text(await tools.search_files({pattern:input.pattern}));text({polluted:({}).injected??false});".into(),
+            input, vec!["run_command".into(),"search_files".into()], tx, CancellationToken::new(), Instant::now()+std::time::Duration::from_secs(2))
+        });
+        let a = rx.blocking_recv().unwrap();
+        assert_eq!(a.arguments["argv"], expected["argv"]);
+        a.reply
+            .send(Ok(
+                serde_json::json!({"success":true,"data":{"exitCode":0}}),
+            ))
+            .unwrap();
+        let b = rx.blocking_recv().unwrap();
+        assert_eq!(b.arguments["pattern"], expected["pattern"]);
+        b.reply
+            .send(Ok(
+                serde_json::json!({"success":true,"data":{"matches":[]}}),
+            ))
+            .unwrap();
+        let output = worker.join().unwrap();
+        assert_eq!(output.error, None);
+        assert_eq!(output.parts.len(), 3);
+        assert_eq!(output.parts[2]["text"], r#"{"polluted":false}"#);
+    }
     #[test]
     fn javascript_has_no_host_io_and_bounds_cpu() {
         let (tx, _) = tokio::sync::mpsc::unbounded_channel();

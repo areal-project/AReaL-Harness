@@ -113,12 +113,13 @@
     return result;
   }
   return {
-    execute: (code) =>
-      new AsyncFunction("tools", "text", "image", "collect", '"use strict";\n' + code)(
+    execute: (code, inputJson) =>
+      new AsyncFunction("tools", "text", "image", "collect", "input", '"use strict";\n' + code)(
         tools,
         text,
         image,
         collect,
+        parse(inputJson),
       ),
     output: () => stringify(parts),
   };

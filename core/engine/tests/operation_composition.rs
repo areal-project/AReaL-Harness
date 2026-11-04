@@ -63,12 +63,12 @@ impl Model for PlannedModel {
                 call("fs_read", json!({"path":"b"}), 1),
             ]
         } else if self.composed && round == 1 {
-            let code = format!(
-                "const e=await tools.edit_files({});text(e);if(e.success && e.data.allApplied){{await collect(await tools.run_command({}));}}",
-                json!({"files":[patch("a"),patch("b")]}),
-                json!({"argv":["/bin/sh","-c",CHECK],"yieldMs":0})
-            );
-            vec![call("tool_program", json!({"code":code}), 2)]
+            let code = "const e=await tools.edit_files(input.edit);text(e);if(e.success && e.data.allApplied){await collect(await tools.run_command(input.check));}";
+            vec![call(
+                "tool_program",
+                json!({"code":code,"input":{"edit":{"files":[patch("a"),patch("b")]},"check":{"argv":["/bin/sh","-c",CHECK],"yieldMs":0}}}),
+                2,
+            )]
         } else if !self.composed && round <= 4 {
             vec![match round {
                 1 => call("fs_apply_patches", patch("a"), 2),
