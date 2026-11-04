@@ -90,6 +90,11 @@ class NativeSubscription {
   }
   /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend @param {InstanceType<typeof import('./host-vault.cjs').HostVault>} vault */
   static async connect(backend, vault) {
+    if (backend.host.retirement && backend.host.retirement.state !== "completed")
+      throw Object.assign(
+        new Error(backend.host.retirement.error ?? "旧凭据清理尚未确认，ChatGPT 订阅暂不可用。"),
+        { code: "legacyPending", requestId: backend.host.retirement.requestId },
+      );
     backend.host.client.requireCapability("subscriptionOwnerV1");
     const service = new NativeSubscription(backend);
     try {

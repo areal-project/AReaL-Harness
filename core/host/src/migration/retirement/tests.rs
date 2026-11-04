@@ -431,6 +431,45 @@ fn retirement_restart_reconciles_rename_without_confirm_and_never_restores_rotat
 }
 
 #[test]
+fn locked_retirement_preserves_committed_source_and_resumes_original_request() {
+    let f = Fixture::new(&[(
+        "subscription-transport.json",
+        br#"{"token":"original","port":1234}"#,
+    )]);
+    let directory = f.migration.directory(&f.migration_id).unwrap();
+    let committed = std::fs::read(directory.join("committed.json")).unwrap();
+    let source = f.source.core_home.join("subscription-transport.json");
+    let original = std::fs::read(&source).unwrap();
+    f.migration.vault.locked.set(true);
+    assert!(
+        f.prepare()
+            .unwrap_err()
+            .to_string()
+            .contains("storageLocked")
+    );
+    assert!(
+        f.migration
+            .retirement_status(&f.migration_id)
+            .unwrap()
+            .is_null()
+    );
+    assert_eq!(
+        std::fs::read(directory.join("committed.json")).unwrap(),
+        committed
+    );
+    assert_eq!(std::fs::read(&source).unwrap(), original);
+
+    f.migration.vault.locked.set(false);
+    let completed = f.finish(&f.migration);
+    assert_eq!(completed["requestId"], f.request);
+    assert_eq!(completed["state"], "completed");
+    assert_eq!(
+        std::fs::read(directory.join("committed.json")).unwrap(),
+        committed
+    );
+}
+
+#[test]
 fn retirement_missing_or_locked_original_entry_blocks_even_when_new_slot_exists() {
     for missing in [false, true] {
         let f = Fixture::new(&[(

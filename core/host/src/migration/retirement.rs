@@ -356,7 +356,11 @@ impl Migration {
                         "original completed vault receipt is missing",
                     )
                 })?;
-            if self.vault.read(&receipt.entry_id)?.is_none() {
+            if self
+                .vault
+                .read_without_interaction(&receipt.entry_id)?
+                .is_none()
+            {
                 return Err(error("storageMissing", "original vault entry is missing"));
             }
         }

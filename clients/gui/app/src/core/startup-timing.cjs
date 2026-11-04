@@ -8,6 +8,9 @@ const runId = randomUUID();
 let nextAttempt = 0;
 const outcomes = new Set(["ok", "error", "degraded", "skipped"]);
 const errorCodes = new Set([
+  "storageLocked",
+  "storageMissing",
+  "legacyPending",
   "ENOENT",
   "EACCES",
   "EPERM",

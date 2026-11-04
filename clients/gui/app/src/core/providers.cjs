@@ -94,6 +94,8 @@ class AppProviders {
     /** @type {InstanceType<typeof import("./native-subscription.cjs").NativeSubscription>|undefined} */ this.nativeService =
       undefined;
     this.closed = false;
+    /** @type {Error|undefined} */
+    this.subscriptionInitializationError = undefined;
     this.saving = false;
   }
   async init() {
@@ -106,8 +108,11 @@ class AppProviders {
     } catch (error) {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
-    this.nativeService = await NativeSubscription.connect(this.backend, this.hostVault);
-    await this.readSubscription(this.nativeService, true);
+    try {
+      await this.openai();
+    } catch (error) {
+      this.subscriptionUnavailable(error);
+    }
   }
 
   get value() {
@@ -126,11 +131,88 @@ class AppProviders {
   }
   /** @returns {Promise<SubscriptionService>} */
   async openai() {
-    if (!this.nativeService) throw new Error("Host 订阅服务尚未初始化");
-    return this.nativeService;
+    if (this.nativeService) return this.nativeService;
+    if (this.backend.host.retirement && this.backend.host.retirement.state !== "completed")
+      throw Object.assign(
+        new Error(
+          this.backend.host.retirement.error ?? "旧凭据清理尚未确认，ChatGPT 订阅暂不可用。",
+        ),
+        { code: "legacyPending", requestId: this.backend.host.retirement.requestId },
+      );
+    if (!this.openaiPromise)
+      this.openaiPromise = NativeSubscription.connect(this.backend, this.hostVault)
+        .then(async (service) => {
+          await this.readSubscription(service, true);
+          this.nativeService = service;
+          this.subscriptionInitializationError = undefined;
+          return service;
+        })
+        .catch((error) => {
+          this.nativeService = undefined;
+          this.subscriptionUnavailable(error);
+          throw error;
+        })
+        .finally(() => {
+          this.openaiPromise = null;
+        });
+    return this.openaiPromise;
+  }
+  /** @param {unknown} error */
+  subscriptionUnavailable(error) {
+    if (this.subscriptionInitializationError && error === this.subscriptionInitializationError)
+      return;
+    this.subscriptionInitializationError =
+      error instanceof Error ? error : new Error("Host 订阅来源暂不可用");
+    const originalCode =
+      providerContract.record(error) && typeof error.code === "string"
+        ? error.code
+        : "subscriptionUnavailable";
+    const code =
+      originalCode === "legacyPending"
+        ? (this.backend.host.retirement?.code ?? originalCode)
+        : originalCode;
+    const state = ["storageLocked", "storage_locked", "storage_write_failed"].includes(code)
+      ? "storage_locked"
+      : "temporarily_unavailable";
+    this.subscription = {
+      ...this.subscription,
+      authenticated: false,
+      availability: "unavailable",
+      refreshing: false,
+      state,
+      diagnostic: {
+        code,
+        state,
+        phase: originalCode === "legacyPending" ? "retirement" : "initialize",
+        httpStatus: null,
+        requestId:
+          providerContract.record(error) && typeof error.requestId === "string"
+            ? error.requestId
+            : null,
+      },
+      error:
+        this.backend.host.retirement?.state === "pending"
+          ? this.backend.host.retirement.error
+          : this.redact(errorMessage(error)),
+    };
+    diagnostics.record({
+      type: "operation",
+      name: "startup",
+      outcome: "failed",
+      code: providerContract.record(error) ? error.code : undefined,
+      requestId:
+        providerContract.record(error) && typeof error.requestId === "string"
+          ? error.requestId
+          : undefined,
+    });
   }
 
   async prepare() {
+    if (
+      this.subscriptionInitializationError ||
+      (this.backend.host.retirement && this.backend.host.retirement.state !== "completed")
+    )
+      return;
     const trace = startupTrace("providers.prepare");
     trace.advance("subscription_config");
     try {
@@ -457,11 +539,20 @@ class AppProviders {
     const op = request.operation;
     if (op === "status") {
       const snapshot = this.subscription;
-      void this.openai().then((service) =>
-        this.refreshSubscriptionStatus(service, { force: true }),
-      );
+      if (!this.backend.host.retirement || this.backend.host.retirement.state === "completed")
+        void this.openai()
+          .then((service) => this.refreshSubscriptionStatus(service, { force: true }))
+          .catch((error) => {
+            this.subscriptionUnavailable(error);
+            this.backend.onChange();
+          });
       return snapshot;
     }
+    if (
+      this.backend.host.retirement?.state !== "completed" &&
+      typeof this.backend.host.retire === "function"
+    )
+      await this.backend.host.retire();
     const service = await this.openai();
     if (service instanceof NativeSubscription) {
       const result = await service.command(request);
@@ -589,7 +680,7 @@ class AppProviders {
     if (!this.manages(project)) return Promise.resolve();
     const target = this.target(project),
       connectionGeneration = project.connectionGeneration;
-    return Promise.resolve(this.openaiPromise ?? null)
+    return Promise.resolve(this.nativeService ?? this.openaiPromise ?? null)
       .then((service) => {
         const scope = {
           ...this.subscriptionScope(project, service),
@@ -808,8 +899,8 @@ class AppProviders {
     if (configuration.model?.providerId !== "areal_openai") return;
     const unavailable = () =>
       new Error("当前 ChatGPT 模型不可用，请在模型设置中刷新登录状态或选择其他模型");
-    if (!this.openaiPromise) throw unavailable();
-    const service = await this.openaiPromise;
+    const service = await (this.nativeService ?? this.openaiPromise);
+    if (!service) throw unavailable();
     await this.syncSubscription(project, service);
     const current = (
       await client.request("areal/provider/list", {}, { decode: providerContract.providers })
@@ -834,8 +925,8 @@ class AppProviders {
     if (this.reconciliationTimer) clearTimeout(this.reconciliationTimer);
     this.preparedSubscriptionStatus = null;
     try {
-      if (this.nativeService) await this.nativeService.close();
-      if (this.openaiPromise) await (await this.openaiPromise).close();
+      const service = await (this.nativeService ?? this.openaiPromise);
+      if (service) await service.close();
     } finally {
       await Promise.allSettled(this.subscriptionSync.values());
       await this.subscriptionRefresh;

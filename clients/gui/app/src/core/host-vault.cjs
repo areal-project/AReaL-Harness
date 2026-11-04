@@ -40,11 +40,14 @@ class HostVault {
     }
   }
   save() {
-    return this.backend.save("host-vault-operations.json", { version: 1, pending: this.pending });
+    return this.backend.save("host-vault-operations.json", {
+      version: 1,
+      pending: this.pending,
+    });
   }
-  /** @param {VaultSlot} slot */
-  read(slot) {
-    return this.backend.host.client.vaultRead(slot);
+  /** @param {VaultSlot} slot @param {{interactionAllowed?:boolean}} [options] */
+  read(slot, options) {
+    return this.backend.host.client.vaultRead(slot, options);
   }
   /** @param {VaultSlot} slot */
   async ready(slot) {

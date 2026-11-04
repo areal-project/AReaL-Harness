@@ -5,6 +5,7 @@ const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { isDeepStrictEqual } = require("node:util");
+const diagnostics = require("./diagnostics.cjs");
 const {
   record,
   strings,
@@ -76,11 +77,23 @@ class ModelConfiguration {
     const keys = Object.fromEntries(
       await Promise.all(
         names.map(async (reference) => {
-          const current = await vault.read({
-            kind: "providerCredential",
-            sourceId: source.sourceId,
-            reference,
-          });
+          let current;
+          try {
+            current = await vault.read(
+              { kind: "providerCredential", sourceId: source.sourceId, reference },
+              { interactionAllowed: false },
+            );
+          } catch (error) {
+            const code = record(error) ? error.code : undefined;
+            if (code !== "storageLocked" && code !== "storageMissing") throw error;
+            diagnostics.record({
+              type: "operation",
+              name: "model-configuration",
+              outcome: "failed",
+              code,
+            });
+            return [reference, null];
+          }
           if (current.value !== null && typeof current.value !== "string")
             throw new Error("Host 供应商凭据记录无效");
           return [reference, current.value];

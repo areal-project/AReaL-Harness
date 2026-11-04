@@ -525,3 +525,52 @@ test("subscription publication supplies account effort constraints to Core witho
   await f.providers.publishSubscription(f.providers.subscriptionScope(f.first, f.service));
   assert.deepEqual(f.providers.subscription.models[0].reasoningEffortOptions, ["low", "max"]);
 });
+
+test("settled native service remains available to passive subscription refresh", async () => {
+  const f = fixture();
+  f.providers.nativeService = f.service;
+  f.providers.openaiPromise = null;
+  f.providers.openai = () => assert.fail("passive refresh must not create a service");
+  let observed;
+  f.providers.syncSubscription = async (_project, service) => {
+    observed = service;
+  };
+  f.providers.publishSubscription = async () => {};
+  await f.providers.refreshSubscription(f.first);
+  assert.equal(observed, f.service);
+});
+
+test("settled native service remains available to Goal transport refresh", async () => {
+  const f = fixture();
+  f.providers.nativeService = f.service;
+  f.providers.openaiPromise = null;
+  f.providers.openai = () => assert.fail("Goal refresh must not create a service");
+  f.providers.backend.refreshConfiguration = async () => ({
+    configuration: {
+      model: { providerId: "areal_openai", modelId: "model-v1" },
+      provider: { endpoint: f.service.endpoint },
+    },
+  });
+  f.first.client.request = async () => ({
+    data: [{ id: "areal_openai", endpoint: f.service.endpoint, models: ["model-v1"] }],
+  });
+  let observed;
+  f.providers.syncSubscription = async (_project, service) => {
+    observed = service;
+  };
+  await f.providers.refreshGoalTransport(f.first, "thread");
+  assert.equal(observed, f.service);
+});
+
+test("close settles the initialized service exactly once during promise handoff", async () => {
+  const f = fixture();
+  f.providers.nativeService = f.service;
+  f.providers.openaiPromise = Promise.resolve(f.service);
+  f.providers.openai = () => assert.fail("shutdown must not create a service");
+  let closed = 0;
+  f.service.close = async () => {
+    closed++;
+  };
+  await f.providers.close();
+  assert.equal(closed, 1);
+});

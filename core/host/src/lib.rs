@@ -36,6 +36,7 @@ pub const CAPABILITIES: &[&str] = &[
     "guiImport",
     "submissionJournal",
     "credentialVault",
+    "credentialVaultNoninteractiveV1",
     "remoteState",
     "remoteGatewayV1",
     "subscriptionOwnerV1",

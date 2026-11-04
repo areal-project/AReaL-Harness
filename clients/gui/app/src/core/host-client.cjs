@@ -435,10 +435,21 @@ class HostClient {
   operation(requestId) {
     return this.request("host.operation", { requestId });
   }
-  /** @param {VaultSlot} slot */
-  vaultRead(slot) {
+  /** @param {VaultSlot} slot @param {{interactionAllowed?:boolean}} [options] */
+  vaultRead(slot, options = {}) {
     this.requireCapability("credentialVault");
-    return this.request("vault.read", { slot });
+    if (options.interactionAllowed === false) {
+      try {
+        this.requireCapability("credentialVaultNoninteractiveV1");
+      } catch {
+        return Promise.reject(
+          Object.assign(new Error("Host 需要升级后才能在后台读取凭据"), {
+            code: "storageLocked",
+          }),
+        );
+      }
+    }
+    return this.request("vault.read", { slot, ...options });
   }
   /** @param {string} requestId @param {VaultSlot} slot @param {number} expectedRevision @param {unknown} value */
   async vaultReplace(requestId, slot, expectedRevision, value) {

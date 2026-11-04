@@ -269,20 +269,28 @@ impl Vault {
     ) -> Result<Value> {
         if method == "vault.read" {
             #[derive(Deserialize)]
-            #[serde(deny_unknown_fields)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
             struct Read {
                 slot: Slot,
+                interaction_allowed: Option<bool>,
             }
             let input: Read = serde_json::from_value(params)?;
-            let mut state = self.state(&input.slot, migration)?;
-            self.recover(&mut state)?;
-            let value = match state.entry_id {
-                Some(id) => self
-                    .read(&id)?
-                    .ok_or_else(|| error("storageMissing", "current vault entry is missing"))?,
-                None => Value::Null,
+            let read = || {
+                let mut state = self.state(&input.slot, migration)?;
+                self.recover(&mut state)?;
+                let value = match state.entry_id {
+                    Some(id) => self
+                        .read(&id)?
+                        .ok_or_else(|| error("storageMissing", "current vault entry is missing"))?,
+                    None => Value::Null,
+                };
+                Ok(json!({"revision":state.revision,"value":value}))
             };
-            return Ok(json!({"revision":state.revision,"value":value}));
+            return if input.interaction_allowed == Some(false) {
+                self.without_interaction(read)
+            } else {
+                read()
+            };
         }
         if method != "vault.replace" {
             return Err(error("methodNotFound", "unknown vault method"));
@@ -559,6 +567,33 @@ impl Vault {
         );
         Ok(())
     }
+    pub(crate) fn read_without_interaction(&self, entry: &str) -> Result<Option<Value>> {
+        self.without_interaction(|| self.read(entry))
+    }
+    fn without_interaction<T>(&self, read: impl FnOnce() -> Result<T>) -> Result<T> {
+        #[cfg(test)]
+        if self.isolated_files {
+            return read();
+        }
+        // 旧登录钥匙串也受此开关约束；同步检查结束即恢复，避免清理等待阻塞 Host。
+        #[cfg(target_os = "macos")]
+        let _interaction = {
+            use security_framework::os::macos::keychain::SecKeychain;
+            if SecKeychain::user_interaction_allowed()
+                .map_err(|_| error("storageLocked", "Host Keychain interaction status failed"))?
+            {
+                Some(SecKeychain::disable_user_interaction().map_err(|_| {
+                    error(
+                        "storageLocked",
+                        "Host Keychain noninteractive read unavailable",
+                    )
+                })?)
+            } else {
+                None
+            }
+        };
+        read()
+    }
     pub fn read(&self, entry: &str) -> Result<Option<Value>> {
         crate::wire::request_id(entry)?;
         #[cfg(test)]
@@ -611,6 +646,50 @@ mod tests {
         journal::Journal,
         migration::{Import, Source},
     };
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "creates and removes one synthetic login Keychain item"]
+    fn noninteractive_retirement_read_preserves_keychain_interaction_state() {
+        use security_framework::os::macos::keychain::SecKeychain;
+        let root = tempfile::tempdir().unwrap();
+        let vault = Vault::new(root.path());
+        let service = vault.service();
+        let entry = uuid::Uuid::new_v4().to_string();
+        let before = SecKeychain::user_interaction_allowed().unwrap();
+        let created = std::process::Command::new("/usr/bin/security")
+            .args([
+                "add-generic-password",
+                "-s",
+                &service,
+                "-a",
+                &entry,
+                "-w",
+                r#"{"synthetic":true}"#,
+                "-T",
+                "/usr/bin/security",
+            ])
+            .output()
+            .unwrap();
+        assert!(created.status.success(), "synthetic entry creation failed");
+        let started = std::time::Instant::now();
+        let result = vault.read_without_interaction(&entry);
+        let elapsed = started.elapsed();
+        let after = SecKeychain::user_interaction_allowed();
+        let deleted = std::process::Command::new("/usr/bin/security")
+            .args(["delete-generic-password", "-s", &service, "-a", &entry])
+            .output()
+            .unwrap();
+        assert!(deleted.status.success(), "synthetic entry cleanup failed");
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "read waited: {elapsed:?}"
+        );
+        assert!(result.unwrap_err().to_string().contains("storageLocked"));
+        assert_eq!(after.unwrap(), before);
+        assert!(vault.read_without_interaction(&entry).unwrap().is_none());
+        assert_eq!(SecKeychain::user_interaction_allowed().unwrap(), before);
+    }
 
     struct Fixture {
         _root: tempfile::TempDir,
@@ -666,6 +745,40 @@ mod tests {
                 &self.migration,
             )
         }
+    }
+
+    #[test]
+    fn noninteractive_slot_read_preserves_revision_across_lock_and_unlock() {
+        let f = Fixture::new();
+        let request = uuid::Uuid::new_v4().to_string();
+        let completed = f
+            .replace(&request, 0, json!({"token":"synthetic"}))
+            .unwrap();
+        f.migration.vault.locked.set(true);
+        let error = f
+            .migration
+            .vault
+            .dispatch(
+                "vault.read",
+                json!({"slot":f.slot,"interactionAllowed":false}),
+                "generation",
+                &f.migration,
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("storageLocked"));
+        f.migration.vault.locked.set(false);
+        let current = f
+            .migration
+            .vault
+            .dispatch(
+                "vault.read",
+                json!({"slot":f.slot,"interactionAllowed":false}),
+                "generation",
+                &f.migration,
+            )
+            .unwrap();
+        assert_eq!(current["revision"], completed["revision"]);
+        assert_eq!(current["value"], json!({"token":"synthetic"}));
     }
 
     #[test]

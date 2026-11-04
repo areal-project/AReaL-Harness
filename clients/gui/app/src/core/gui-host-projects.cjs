@@ -6,10 +6,13 @@ const { join } = require("node:path");
 const { isDeepStrictEqual } = require("node:util");
 const { HostClient } = require("./host-client.cjs");
 const { canonicalSource, GuiSourceAdapter } = require("./gui-source.cjs");
+const { startupTrace } = require("./startup-timing.cjs");
+const diagnostics = require("./diagnostics.cjs");
 /** @typedef {import('./project-index.cjs').SavedProject} SavedProject */
 /** @typedef {{alias:{profile:string,legacyProjectId:string},projectId:string,workspace:string,dataDir:string,scratchDir:string,sourceId?:string,logicalAlias?:{profile:string,legacyProjectId:string},worktreeRequestId?:string,projectlessRequestId?:string}} Binding */
 /** @typedef {{suppressed:boolean,activationError:string|null}} Scheduling */
 /** @typedef {{registration:{projectId:string},scheduleActivationSuppressed:boolean,scheduleActivationError?:string}} SchedulingStatus */
+/** @typedef {{state:'pending'|'completed',requestId?:string,error:string|null,code?:string}} RetirementState */
 /** @param {string} value */
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 /** @param {string} value */
@@ -27,6 +30,10 @@ class GuiHostProjects {
     this.source = options.source;
     this.sourceId = "";
     this.migrationId = "";
+    /** @type {RetirementState} */
+    this.retirement = { state: "pending", error: "旧凭据清理尚未确认，ChatGPT 订阅暂不可用。" };
+    /** @type {Promise<RetirementState>|undefined} */
+    this.retiring = undefined;
     /** @type {Record<string,any>} */
     this.state = {};
     /** @type {Map<string,Binding>} */
@@ -82,14 +89,6 @@ class GuiHostProjects {
       state = await this.client.sourceState(this.source);
     }
     if (!state) throw new Error("Host source publication is unavailable");
-    if (this.options.singletonHeld) {
-      await new GuiSourceAdapter({
-        source: this.source,
-        hostHome: this.home,
-        encryption: this.options.encryption,
-        singletonHeld: true,
-      }).retire(state.migrationId);
-    }
     this.state = state;
     this.sourceId = state.sourceId;
     this.migrationId = state.migrationId;
@@ -98,6 +97,71 @@ class GuiHostProjects {
       if (!this.bindings.has(project.id))
         await this.register(requestIdFor(`${this.sourceId}:register:${project.id}`), project);
     }
+    await this.retire();
+  }
+  retire() {
+    if (this.retirement.state === "completed") return Promise.resolve(this.retirement);
+    if (this.retiring) return this.retiring;
+    const attempt = this.retireOnce();
+    this.retiring = attempt;
+    void attempt.then(
+      () => {
+        this.retiring = undefined;
+      },
+      () => {
+        this.retiring = undefined;
+      },
+    );
+    return attempt;
+  }
+  async retireOnce() {
+    const trace = startupTrace("gui.source.retirement");
+    try {
+      const progress = this.options.singletonHeld
+        ? await new GuiSourceAdapter({
+            source: this.source,
+            hostHome: this.home,
+            encryption: this.options.encryption,
+            singletonHeld: true,
+          }).retire(this.migrationId, this.retirement.requestId)
+        : await this.client.retirementStatus(this.migrationId);
+      if (progress && progress.migrationId !== this.migrationId)
+        throw new Error("Host retirement source changed");
+      if (!progress || progress.state !== "completed") {
+        this.retirement = {
+          ...this.retirement,
+          state: "pending",
+          requestId: progress?.requestId ?? this.retirement.requestId,
+        };
+        trace.finish("degraded");
+        return this.retirement;
+      }
+      this.retirement = { state: "completed", requestId: progress.requestId, error: null };
+      trace.finish("ok");
+    } catch (error) {
+      const requestId =
+        error instanceof Error && "requestId" in error && typeof error.requestId === "string"
+          ? error.requestId
+          : this.retirement.requestId;
+      this.retirement = {
+        state: "pending",
+        requestId,
+        code:
+          error instanceof Error && "code" in error && typeof error.code === "string"
+            ? error.code
+            : undefined,
+        error: "旧凭据清理尚未确认，ChatGPT 订阅暂不可用。",
+      };
+      diagnostics.record({
+        type: "operation",
+        name: "startup",
+        outcome: "unknown",
+        requestId,
+        code: error instanceof Error && "code" in error ? error.code : undefined,
+      });
+      trace.finish("degraded", error);
+    }
+    return this.retirement;
   }
   async reconnect() {
     if (!this.sourceId) throw new Error("Host GUI source has not been initialized");
@@ -107,6 +171,7 @@ class GuiHostProjects {
     this.client.requireCapability("scheduledPreparation");
     const state = await this.client.sourceState(this.source);
     if (!state || state.sourceId !== this.sourceId) throw new Error("Host GUI source changed");
+    await this.retire();
     return this.list();
   }
   /** @returns {Promise<SavedProject[]>} */

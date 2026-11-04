@@ -172,6 +172,8 @@ Host 在 `retirement.json` 保存独立计划与回执，不改原 manifest、�
 
 prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每项秘密都有 completed 回执和可读的原 vault entry。缺失或锁定 entry 阻止后续替换。退役不使用当前凭据版本补种旧值，因此后续撤销不会复活旧账户。每个文件替换前重新 prepare，替换后 confirm。Host 独立读取并核验目标，只接受原摘要或计划中的派生摘要。完成前还会核验原启动及 journal 哨兵。
 
+macOS 退役预检读取原 vault entry 时禁止弹出 Keychain 交互；需要交互授权时返回 `storageLocked`，保留原计划与来源文件。普通凭据读取的交互策略不变。GUI 将已提交来源的项目加载与旧秘密退役分别结算：退役未确认时仍可进入客户端，使用可用的普通模型与项目；清理问题保留原请求身份并记录为局部诊断。重连或显式订阅操作可恢复原退役请求，同一 GUI 内的并发恢复共用一个执行。此适配不把退役标成完成，也不重发 UNKNOWN 订阅交接。退役未完成时，GUI 在任何 `subscription.read`、订阅槽读取、网络配置或 handoff 前停止订阅初始化，并显示该订阅不可用；协议或网络错误保留独立诊断，不归为 Keychain 锁定。
+
 中断恢复读取原计划与派生文件，不再解析已退役的密文。rename 完成而 confirm 未完成时，Host 根据派生摘要记录进度。连接断开后重新绑定来源，并使用 status 返回的原 requestId。同一计划不能换 requestId 重建。status 和离线操作查询不访问密钥库，不推进退役。原 manifest 的摘要仍描述历史原字节；已退役的备份是由独立计划记录的派生副本。未被当前 committed manifest 引用的旧备份不在本计划内。
 
 没有已导入或新建 Remote 配置时，`remote.read` 返回 `{revision:0,sourceId:null,config:null}`，不访问密钥库。已发布来源可用 `expectedRevision:0` 首次写入；一旦存在 Noise identity，后续替换不能改变它。待完成的首次写入也保留来源选择，不能由另一来源导入覆盖。授权范围包含该来源的原别名、新 GUI 登记和其他 Host 项目的稳定本地别名。GUI 的 Gateway 使用独立租约连接，连接失效关闭入口，迟到的 Direct listener 也会关闭。
@@ -264,10 +266,12 @@ journal 快照为 `{version:1,pending:object[],outcomes:object}`，保留条目�
 
 | 方法            | 请求 params                                                  | result                                                                                                          |
 | --------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `vault.read`    | `{slot}`                                                     | `{revision,value}`。已发布来源中尚无值的槽返回 revision 0 与 null。                                             |
+| `vault.read`    | `{slot,interactionAllowed?}`                                 | `{revision,value}`。已发布来源中尚无值的槽返回 revision 0 与 null。                                             |
 | `vault.replace` | `{requestId,expectedGeneration,slot,expectedRevision,value}` | 原写入回执，包含 `requestId`、`method`、`slot`、`previousRevision`、`entryId`、`state`，完成时包含 `revision`。 |
 
 provider 值是非空字符串或 null；subscription 值是完整记录对象或 null。null 是持久撤销值，并增加 revision。原导入回执只初始化尚不存在的槽，不覆盖后续替换或撤销。过期 expectedRevision 在写入前返回顶层 `revisionConflict` 错误，客户端不得重做远端 OAuth refresh。
+
+`credentialVaultNoninteractiveV1` 支持 `interactionAllowed:false`，在本次槽读取的 state、恢复与值读取整条同步路径中禁止安全存储交互；缺省值保留原交互语义。需要交互时返回 `storageLocked`，不当作 null 或已撤销。GUI 初始读取使用该模式；旧 Host 缺少此能力时，将对应槽标为不可用，不退回交互读取。单槽 `storageLocked` 或 `storageMissing` 仅使引用它的 provider 凭据不可用；后续刷新重新核查可恢复的槽。其他传输或协议错误继续向上返回。
 
 写入先保存非秘密 acceptedPending 回执，再保存稳定 vault entry 并读回验证，最后原子提交槽版本和 completed 回执。恢复根据原 entry 与版本结算；系统存储锁定仍返回 `storageLocked`，不推断为缺失。明确缺失的 entry 可结算为 `blocked/storageWriteNotApplied`。操作回执不含秘密值或秘密的普通哈希。丢失响应只查询原 requestId。
 

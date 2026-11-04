@@ -8,6 +8,30 @@ const { HostVault } = require("../app/src/core/host-vault.cjs");
 const { ModelConfiguration } = require("../app/src/core/model-config.cjs");
 const { SubscriptionStore } = require("../app/src/core/subscription.cjs");
 const { AppProviders } = require("../app/src/core/providers.cjs");
+const { NativeSubscription } = require("../app/src/core/native-subscription.cjs");
+const { HostClient } = require("../app/src/core/host-client.cjs");
+
+test("background vault reads require capability and never fall back to interactive reads", async () => {
+  const client = new HostClient();
+  const slot = {
+    kind: "providerCredential",
+    sourceId: "source",
+    reference: "AREAL_CREDENTIAL_test",
+  };
+  const calls = [];
+  client.capabilities = ["credentialVault"];
+  client.request = async (method, params) => {
+    calls.push({ method, params });
+    return {};
+  };
+  await assert.rejects(client.vaultRead(slot, { interactionAllowed: false }), {
+    code: "storageLocked",
+  });
+  assert.equal(calls.length, 0);
+  client.capabilities.push("credentialVaultNoninteractiveV1");
+  await client.vaultRead(slot, { interactionAllowed: false });
+  assert.deepEqual(calls, [{ method: "vault.read", params: { slot, interactionAllowed: false } }]);
+});
 
 async function fixture(t) {
   const home = await mkdtemp(join(tmpdir(), "areal-host-credentials-"));
@@ -53,14 +77,24 @@ async function fixture(t) {
             current = await this.vaultRead(slot);
           writes.push({ requestId, slot, expectedRevision });
           if (current.revision !== expectedRevision)
-            throw Object.assign(new Error("revision changed"), { code: "revisionConflict" });
-          values.set(key, { revision: current.revision + 1, value: structuredClone(value) });
+            throw Object.assign(new Error("revision changed"), {
+              code: "revisionConflict",
+            });
+          values.set(key, {
+            revision: current.revision + 1,
+            value: structuredClone(value),
+          });
           if (
             slot.kind === "providerCredential" &&
             !state.credentials.references.includes(slot.reference)
           )
             state.credentials.references.push(slot.reference);
-          const receipt = { requestId, slot, revision: current.revision + 1, state: "completed" };
+          const receipt = {
+            requestId,
+            slot,
+            revision: current.revision + 1,
+            state: "completed",
+          };
           operations.set(requestId, receipt);
           return receipt;
         },
@@ -117,6 +151,115 @@ test("retired source credentials and legacy references restore from Host metadat
   await model.refreshCredentials();
   assert.deepEqual(model.environment(), {});
   assert.equal(model.key({ apiKeyEnv: reference }), "");
+});
+
+test("pending retirement blocks only subscription access and preserves ordinary provider credentials", async (t) => {
+  const f = await fixture(t);
+  f.backend.onChange = () => {};
+  f.backend.host.retirement = {
+    state: "pending",
+    code: "storageLocked",
+    error: "旧凭据清理尚未确认，ChatGPT 订阅暂不可用。",
+    requestId: "00000000-0000-4000-a000-000000000003",
+  };
+  f.state.credentials.references.push("AREAL_CREDENTIAL_arena");
+  f.values.set(
+    JSON.stringify({
+      kind: "providerCredential",
+      sourceId: f.state.sourceId,
+      reference: "AREAL_CREDENTIAL_arena",
+    }),
+    { revision: 1, value: "ordinary-provider-fixture-key" },
+  );
+  let subscriptionCalls = 0;
+  f.backend.host.client.requireCapability = () => {};
+  f.backend.host.client.request = async () => {
+    subscriptionCalls++;
+    throw Object.assign(new Error("subscription must stay unavailable"), {
+      code: "legacyPending",
+    });
+  };
+  const pending = JSON.stringify({
+    version: 1,
+    pending: [
+      { requestId: "00000000-0000-4000-a000-000000000004", method: "subscription.handoff" },
+    ],
+  });
+  await writeFile(join(f.home, "subscription-operations.json"), pending);
+  const app = new AppProviders(f.backend);
+  f.backend.providers = app;
+  await assert.doesNotReject(app.init());
+  await assert.doesNotReject(app.prepare());
+  assert.equal(app.key({ apiKeyEnv: "AREAL_CREDENTIAL_arena" }), "ordinary-provider-fixture-key");
+  assert.equal(app.subscription.availability, "unavailable");
+  assert.equal(app.subscription.state, "storage_locked");
+  assert.match(app.subscription.error, /旧凭据/);
+  assert.equal(subscriptionCalls, 0);
+  await assert.rejects(NativeSubscription.connect(f.backend, f.vault), { code: "legacyPending" });
+  assert.equal(await readFile(join(f.home, "subscription-operations.json"), "utf8"), pending);
+  assert.equal(subscriptionCalls, 0);
+  const status = await app.chatgpt({ operation: "status" });
+  assert.equal(status.availability, "unavailable");
+  assert.equal(subscriptionCalls, 0);
+  f.backend.host.retirement = { state: "completed", error: null };
+  const native = {
+    owner: "legacy",
+    generation: "fixture-generation",
+    accountEpoch: 0,
+    transportRevision: 1,
+    endpoint: null,
+    authenticated: false,
+    availability: "unavailable",
+    refreshing: false,
+    state: "storage_locked",
+    email: null,
+    planType: null,
+    modelError: null,
+    models: [],
+    diagnostic: null,
+    login: null,
+    error: null,
+    billing: "subscription",
+    catalog: null,
+  };
+  f.backend.host.client.request = async (method) => {
+    subscriptionCalls++;
+    assert.equal(method, "subscription.read");
+    return structuredClone(native);
+  };
+  const [resumed, shared] = await Promise.all([app.openai(), app.openai()]);
+  assert.equal(resumed, shared);
+  assert.equal(subscriptionCalls, 2);
+  assert.equal(app.nativeService, resumed);
+  assert.equal(resumed.outcomeUnknown, true);
+  assert.equal(await readFile(join(f.home, "subscription-operations.json"), "utf8"), pending);
+  const requestId = JSON.parse(pending).pending[0].requestId;
+  f.operations.set(requestId, { requestId, state: "completed" });
+  native.owner = "nativeV1";
+  await resumed.refresh();
+  assert.equal(resumed.outcomeUnknown, false);
+  assert.deepEqual(
+    JSON.parse(await readFile(join(f.home, "subscription-operations.json"), "utf8")).pending,
+    [],
+  );
+  await app.close();
+});
+
+test("subscription initialization reports network failures separately and keeps base configuration errors fatal", async (t) => {
+  const f = await fixture(t);
+  f.backend.host.retirement = { state: "completed", error: null };
+  f.backend.onChange = () => {};
+  f.backend.host.client.requireCapability = () => {};
+  f.backend.host.client.request = async () => {
+    throw Object.assign(new Error("network fixture unavailable"), { code: "ECONNRESET" });
+  };
+  const app = new AppProviders(f.backend);
+  await assert.doesNotReject(app.init());
+  assert.equal(app.subscription.state, "temporarily_unavailable");
+  assert.equal(app.subscription.diagnostic.code, "ECONNRESET");
+  assert.equal(app.subscription.diagnostic.phase, "initialize");
+  f.state.credentials = { references: "invalid", migratedConfigPaths: [] };
+  await assert.rejects(new AppProviders(f.backend).init(), /凭据来源元数据无效/);
 });
 
 test("new configuration migration preserves exact legacy authentication and nonsecret receipt", async (t) => {
@@ -332,4 +475,67 @@ test("foreign Host projects retain their own model and subscription authorities"
   await app.refreshSubscription(project);
   assert.deepEqual(await app.prepareProjects(), []);
   assert.throws(() => app.target(project), /其他来源/);
+});
+
+const diagnostics = require("../app/src/core/diagnostics.cjs");
+test("credential failures isolate a provider and a later refresh restores it", async (t) => {
+  const names = ["AREAL_CREDENTIAL_locked", "AREAL_CREDENTIAL_missing", "AREAL_CREDENTIAL_ok"];
+  const state = { sourceId: "source", credentials: { references: names } };
+  const backend = {
+    host: { sourceId: "source", source: {}, state, client: { sourceState: async () => state } },
+  };
+  const calls = [];
+  let available = false;
+  const vault = {
+    async read(slot, options) {
+      calls.push({ slot, options });
+      if (!available && slot.reference !== names[2])
+        throw Object.assign(new Error("sensitive detail"), {
+          code: slot.reference === names[0] ? "storageLocked" : "storageMissing",
+        });
+      return { value: `value-${slot.reference}` };
+    },
+  };
+  const events = [];
+  const originalRecord = diagnostics.record;
+  diagnostics.record = (event) => events.push(event);
+  t.after(() => {
+    diagnostics.record = originalRecord;
+  });
+  const previous = process.env[names[0]];
+  process.env[names[0]] = "stale-environment-secret";
+  t.after(() => {
+    if (previous === undefined) delete process.env[names[0]];
+    else process.env[names[0]] = previous;
+  });
+  const model = new ModelConfiguration(backend, vault);
+  model.vault.keys[names[0]] = "stale-cache-secret";
+  await model.refreshCredentials();
+  assert.deepEqual(model.environment(), { [names[2]]: `value-${names[2]}` });
+  assert.equal(model.key({ apiKeyEnv: names[0] }), "");
+  assert.equal(model.key({ apiKeyEnv: names[1] }), "");
+  assert.deepEqual(events.map((event) => event.code).sort(), ["storageLocked", "storageMissing"]);
+  assert(!JSON.stringify(events).includes("sensitive detail"));
+  assert(calls.every(({ options }) => options.interactionAllowed === false));
+  available = true;
+  await model.refreshCredentials();
+  assert.equal(model.key({ apiKeyEnv: names[0] }), `value-${names[0]}`);
+  assert.equal(model.key({ apiKeyEnv: names[1] }), `value-${names[1]}`);
+});
+
+test("transport and invalid credential errors propagate", async () => {
+  const state = { sourceId: "source", credentials: { references: ["one"] } };
+  const backend = {
+    host: { sourceId: "source", source: {}, state, client: { sourceState: async () => state } },
+  };
+  const failure = Object.assign(new Error("transport failure"), { code: "disconnected" });
+  const vault = {
+    read: async () => {
+      throw failure;
+    },
+  };
+  const model = new ModelConfiguration(backend, vault);
+  await assert.rejects(model.refreshCredentials(), (error) => error === failure);
+  vault.read = async () => ({ value: 42 });
+  await assert.rejects(model.refreshCredentials(), /Host 供应商凭据记录无效/);
 });

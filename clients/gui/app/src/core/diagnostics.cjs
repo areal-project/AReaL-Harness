@@ -45,6 +45,9 @@ const RUNS = 8,
 const UUID = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 const VERSION = /^\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[a-z]+(?:\.\d{1,8})?)?$/;
 const CODES = new Set([
+  "storageLocked",
+  "storageMissing",
+  "legacyPending",
   "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH",
   "WS_ERR_INVALID_UTF8",
   "WS_ERR_INVALID_CLOSE_CODE",
