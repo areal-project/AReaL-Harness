@@ -1,4 +1,4 @@
-Combine native operations whose inputs and next steps are already decided. Use direct edit_files for large file bodies; small patches or short helper files can share a program with their selected check. Return to the model for new errors, conflicts, UNKNOWN, permission needs or visual/semantic decisions; no hidden repair, install or retry.
+Combine native operations whose inputs and next steps are already decided. Prefer directly exposed edit_files for large file bodies; otherwise pass bodies in input. Small patches or short helper files can share a program with their selected check. Return to the model for new errors, conflicts, UNKNOWN, permission needs or visual/semantic decisions; no hidden repair, install or retry.
 
 Arguments: input is JSON data (patches, regex, scripts, argv); code is only the JavaScript body, not a tool_program(...) call. JSON escaping still applies; referencing input avoids another JavaScript string-escaping layer. tools.NAME(args) returns {success,outcome,itemId,data,text,availableImages}. text(result) selects evidence; image(result) forwards images. Check success and data.allApplied before dependent execution.
 

@@ -17,13 +17,19 @@ pub(super) struct Output {
     pub source_parse_error: bool,
 }
 
-fn exception_detail(ctx: &Ctx<'_>, error: rquickjs::Error) -> (String, bool) {
+fn exception_detail(
+    ctx: &Ctx<'_>,
+    error: rquickjs::Error,
+    identify_source_parse: bool,
+) -> (String, bool) {
     if error.is_exception() {
         let value = ctx.catch();
         if let Some(error) = value.as_exception() {
-            let syntax = error
-                .get::<_, String>("name")
-                .is_ok_and(|name| name == "SyntaxError");
+            // 只检查构造期异常；运行期对象的 name getter 不应因诊断而额外执行。
+            let syntax = identify_source_parse
+                && error
+                    .get::<_, String>("name")
+                    .is_ok_and(|name| name == "SyntaxError");
             return (
                 error
                     .message()
@@ -39,7 +45,7 @@ fn exception_detail(ctx: &Ctx<'_>, error: rquickjs::Error) -> (String, bool) {
 }
 
 fn exception(ctx: &Ctx<'_>, error: rquickjs::Error) -> String {
-    exception_detail(ctx, error).0
+    exception_detail(ctx, error, false).0
 }
 
 pub(super) fn run_with_input(
@@ -132,7 +138,7 @@ pub(super) fn run_with_input(
             // 数据通过函数实参解析，不拼接进源码；引号、反斜杠和 ${...} 均保持数据语义。
             let promise: Promise = execute.call((code, input.to_string())).map_err(|e| {
                 // AsyncFunction 构造期的 SyntaxError 先于正文；运行期异常不能声称未执行。
-                let (message, syntax) = exception_detail(&ctx, e);
+                let (message, syntax) = exception_detail(&ctx, e, true);
                 output.source_parse_error = syntax;
                 message
             })?;
@@ -279,6 +285,11 @@ mod tests {
         for (code, expected_parse, expected_calls) in [
             ("text('first\nsecond');", true, 0),
             ("throw new SyntaxError('runtime error');", false, 0),
+            (
+                "const e=new Error('runtime failure');Object.defineProperty(e,'name',{get(){tools.edit_files({files:[]});return 'SyntaxError';}});throw e;",
+                false,
+                0,
+            ),
             (
                 "text(await tools.edit_files({files:[]}));throw new SyntaxError('after effect');",
                 false,
