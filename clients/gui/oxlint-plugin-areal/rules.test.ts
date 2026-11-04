@@ -272,6 +272,24 @@ describe("no-renderer-desktop-bridge", () => {
       ).status,
     ).toBe(0);
   });
+  test.each([
+    "window.arealDesktop;",
+    'import type { DesktopBridge } from "@areal/workbench/desktop-contract";',
+    'import { ProjectionReader } from "@areal/workbench/state-projection";',
+    "window.arealDesktop ||= {};",
+  ])("rejects boundary violations in test files: %s", (source) => {
+    const result = lint(
+      "no-renderer-desktop-bridge",
+      source,
+      "clients/gui/renderer/src/Feature.test.tsx",
+    );
+    expect(result.status, result.output).toBe(1);
+  });
+  test("rejects bridge writes in production", () => {
+    expect(
+      lint("no-renderer-desktop-bridge", "window.arealDesktop = {};", rendererFile).status,
+    ).toBe(1);
+  });
   test("a production helper does not inherit the test-file exception", () => {
     const result = lint(
       "no-renderer-desktop-bridge",

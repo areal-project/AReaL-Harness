@@ -1,0 +1,14 @@
+{
+  "jsPlugins": [
+    {
+      "name": "areal",
+      "specifier": "./oxlint-plugin-areal/index.ts"
+    }
+  ],
+  "categories": {
+    "correctness": "off"
+  },
+  "rules": {
+    "areal/no-renderer-desktop-bridge": "error"
+  }
+}

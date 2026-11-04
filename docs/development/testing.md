@@ -425,6 +425,8 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 
 `make host-protocol-check` 检查生成物、生成器回归和桌面 IPC 冻结反例。CI 还以 PR 基线的完整提交 SHA 运行 `node clients/gui/scripts/check-desktop-ipc-freeze.cjs --base <SHA>`，拒绝新增顶层命令或已有命令下的业务 operation，原生 bridge 通道不在冻结范围内。
 
+Main 的业务行数与源码总行数分别由 `gui-health.mjs --check --metric=mainBusinessLines --base=<SHA>` 和 `--metric=mainSourceLines` 检查。业务统计默认包含所有 Main 文件，仅排除基线逐路径注明职责的原生文件；混合文件整计为业务的保守上界。两项同时比较基线值和 PR 基点实测，不允许提高基线或通过重新分类隐藏增长。Renderer 的平台边界通过 `pnpm --dir clients/gui exec vp lint --config oxlint.renderer-boundary.json renderer packages/remote packages/remote-client packages/ui` 检查，规则单测与其他 oxlint 规则放在同一测试文件中。
+
 `cargo test --locked -p areal-host --test host_protocol_conformance` 编译生成类型并调用真实本机 wire。准备匹配的固定路径 Core/Runtime 后，运行 `AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal pnpm --dir clients/gui test:host-protocol-conformance`，通过隔离 Host、Core、Relay 和 Noise 对照实际收发及资源边界。macOS 的钥匙串仅使用夹具合成项；该检查不代表安装包、真实数据或手机真机验收。
 
 `node scripts/runtime-rotation-smoke.mjs` 使用隔离目录、真实 Core/Runtime 和本地模型，分别降低 Scope、operation 与累计输出容量，验证达到预警但未耗尽时的自动轮换、活动轮次推迟、旧 Core/Runtime 退出、部署漂移保护、新 epoch、历史与 Queue 意图保留、跨轮换请求去重及后续续轮。该检查进入 `make local-service-smoke` 和 `make harness-smoke`。宿主测试覆盖维护 RPC 超时与退出取消；Engine 生命周期测试同时验证并发新轮与轮换的原子准入，以及历史 UNKNOWN 保留和未确认资源清理的阻塞；这些是确定性契约回归，不代表整体 Agent 能力提升。

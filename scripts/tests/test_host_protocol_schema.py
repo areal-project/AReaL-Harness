@@ -99,7 +99,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const Ajv = require('ajv/dist/2020.js').default;
 const schema = JSON.parse(fs.readFileSync('schemas/areal-host-protocol-v1.json', 'utf8'));
-const ajv = new Ajv({strict:false, allErrors:true, validateFormats:false});
+const ajv = new Ajv({strict:false, allErrors:true});
+const hyphenatedUuid = '[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}';
+const uuid = new RegExp(`^(?:[0-9a-fA-F]{32}|${hyphenatedUuid}|urn:uuid:${hyphenatedUuid}|\\{${hyphenatedUuid}\\})$`);
+ajv.addFormat('uuid', {type:'string',validate:(value)=>uuid.exec(value)?.[0]===value});
 ajv.addKeyword({keyword:'x-maxUtf8Bytes',type:'string',schemaType:'number',validate:(limit,value)=>Buffer.byteLength(value)<=limit});
 ajv.addSchema(schema);
 const validate = (ref, value, expected = true) => {
@@ -122,6 +125,18 @@ for (const transport of ['local','remote']) {
     validate(entry.request, request, false);
   }
 }
+const canonicalUuid = '01234567-89ab-cdef-0123-456789abcdef';
+for (const commandId of [canonicalUuid, canonicalUuid.toUpperCase(), canonicalUuid.replaceAll('-', ''), `urn:uuid:${canonicalUuid}`, `{${canonicalUuid}}`]) {
+  validate('#/$defs/RemoteCommandReadParams', {commandId});
+}
+for (const commandId of ['', 'not-a-uuid', canonicalUuid + '\n', `URN:UUID:${canonicalUuid}`, `{${canonicalUuid.replaceAll('-', '')}}`, canonicalUuid.replace('f', 'g')]) {
+  validate('#/$defs/RemoteCommandReadParams', {commandId}, false);
+}
+validate('#/$defs/RemoteModel', {providerId:null,modelId:'default'});
+validate('#/$defs/RemoteModel', {providerId:'provider',modelId:'configured'});
+validate('#/$defs/RemoteModel', {modelId:'missing-provider'}, false);
+validate('#/$defs/RemoteModel', {providerId:7,modelId:'invalid-provider'}, false);
+validate('#/$defs/RemoteModelSelection', {providerId:null,modelId:'default'}, false);
 validate('#/$defs/SubscriptionAction', {kind:'begin',target:null});
 validate('#/$defs/SubscriptionAction', {kind:'begin',target:{kind:'future',extra:1}});
 validate('#/$defs/SubscriptionAction', {kind:'refreshCatalog',force:'ignored'});

@@ -19,6 +19,14 @@ const schema = JSON.parse(
   await readFile(new URL("../../../schemas/areal-host-protocol-v1.json", import.meta.url), "utf8"),
 );
 const ajv = new Ajv2020({ strict: false, allErrors: true });
+const hyphenatedUuid = "[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}";
+const uuid = new RegExp(
+  `^(?:[0-9a-fA-F]{32}|${hyphenatedUuid}|urn:uuid:${hyphenatedUuid}|\\{${hyphenatedUuid}\\})$`,
+);
+ajv.addFormat("uuid", {
+  type: "string",
+  validate: (value) => uuid.exec(value)?.[0] === value,
+});
 ajv.addKeyword({
   keyword: "x-maxUtf8Bytes",
   type: "string",
@@ -145,9 +153,9 @@ async function remoteConnection(t, fixture, relay, projectId) {
           conforms(ref, response);
           continue;
         }
-        conforms("#/$defs/RemoteResponse", response);
         if (response.error) conforms("#/$defs/RemoteError", response.error);
         else conforms(methodRef("remote", value.method, "result"), response.result);
+        conforms("#/$defs/RemoteResponse", response);
         return response;
       }
     },

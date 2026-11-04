@@ -5919,7 +5919,14 @@
       "type": "object",
       "properties": {
         "providerId": {
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "modelId": {
           "type": "string"

@@ -44,7 +44,7 @@ jobs:
       - id: plan
         run: python3 scripts/ci-scope.py
   host-protocol:
-    name: Host protocol and desktop IPC freeze
+    name: Host protocol and desktop boundaries
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -74,6 +74,12 @@ jobs:
           if [ -z "$base" ]; then base="$PUSH_BASE"; fi
           if [ -z "$base" ] || [[ "$base" =~ ^0+$ ]]; then base="$(git rev-parse HEAD^)"; fi
           node clients/gui/scripts/check-desktop-ipc-freeze.cjs --base "$base"
+          node clients/gui/scripts/gui-health.mjs --check --metric=mainBusinessLines --base="$base"
+          node clients/gui/scripts/gui-health.mjs --check --metric=mainSourceLines --base="$base"
+      - name: Check renderer platform boundaries
+        run: |
+          pnpm --dir clients/gui exec vp test run oxlint-plugin-areal/rules.test.ts
+          pnpm --dir clients/gui exec vp lint --config oxlint.renderer-boundary.json renderer packages/remote packages/remote-client packages/ui
 
   host:
     name: ${{ matrix.name }}

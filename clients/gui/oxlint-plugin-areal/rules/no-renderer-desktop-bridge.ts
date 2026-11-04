@@ -45,10 +45,11 @@ export default defineRule({
     const guiAt = filename.lastIndexOf(GUI);
     if (guiAt === -1) return {};
     const guiPath = filename.slice(guiAt + GUI.length);
-    if (!UI_SOURCE.test(guiPath) || TEST_FILE.test(guiPath)) return {};
+    if (!UI_SOURCE.test(guiPath)) return {};
     const contractAdapter = CONTRACT_ADAPTERS.has(guiPath);
     const preloadAdapter = guiPath === "renderer/src/desktop-services.ts";
     const aliases = new Set<Variable>();
+    const testWrites = new WeakSet<ESTree.Node>();
 
     function variable(node: ESTree.Node, name: string) {
       let scope = context.sourceCode.getScope(node);
@@ -173,9 +174,15 @@ export default defineRule({
       },
       AssignmentExpression(node) {
         checkBinding(node.left, node.right);
+        if (
+          TEST_FILE.test(guiPath) &&
+          node.operator === "=" &&
+          node.left.type === "MemberExpression"
+        )
+          testWrites.add(node.left);
       },
       MemberExpression(node) {
-        if (preloadAdapter || !globalObject(node.object)) return;
+        if (preloadAdapter || testWrites.has(node) || !globalObject(node.object)) return;
         if (!PRELOAD_OBJECTS.has(propertyName(node) ?? "")) return;
         context.report({
           node,

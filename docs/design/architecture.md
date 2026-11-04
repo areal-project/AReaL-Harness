@@ -16,7 +16,7 @@ AReaL-Harness 采用 **Clients → Core → Runtime** 分层。Core 是会话、
 
 Renderer 界面语言由已有 application preferences 保存，仅允许 zh-CN 与 en。React Intl 从随包词条派生显示文案、数字与日期，不改变 Core 状态、配置或会话身份。持续显示的本地提示保存消息描述与原始参数，在渲染时翻译；原始诊断与第三方正文保持原文。开发合同见[GUI 语言说明](../../clients/gui/README.md#界面语言与文案开发)。
 
-GUI Renderer 只在 `desktop-services.ts` 的 `desktopBridge` 读取 preload 对象；`main.tsx` 调用该适配入口，再由 `createDesktopServices` 将现有 `PlatformServices` 注入应用。MCP Apps、原生资源选择和图标加载通过该接口传递能力；缺少能力时不建立桌面订阅或原生资源入口。React 组件不另行读取全局 bridge。Main 继续校验 IPC 来源并持有窗口、App token 和原生授权，Core/Runtime 保持执行与历史权威。
+GUI Renderer 只在 `desktop-services.ts` 读取 preload 对象，由 `initializeDesktopServices` 完成本机初始化并返回 `PlatformServices`；`main.tsx` 只接收该平台接口。MCP Apps、原生资源选择和图标加载通过该接口传递能力；缺少能力时不建立桌面订阅或原生资源入口。React 组件不另行读取全局 bridge。Main 继续校验 IPC 来源并持有窗口、App token 和原生授权，Core/Runtime 保持执行与历史权威。
 
 `no-renderer-desktop-bridge` 静态规则覆盖 Renderer 以及 `app`、`client`、`remote`、`remote-client`、`ui` 共享包，禁止界面直接使用 preload 全局对象或导入 `desktop-contract`、`state-projection` 桌面传输模块。只有明确的 `renderer/src/desktop-services.ts` 和 `desktop-response.ts` 可导入传输模块，preload 只由前者读取。`.test.*` 与 `.spec.*` 文件可设置 bridge mock，不需要逐行关闭规则；生产辅助文件不享有该例外。
 
