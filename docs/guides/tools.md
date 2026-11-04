@@ -190,7 +190,7 @@ Goal/Task 中 ask_user_question 支持 mode=async；提问持久写入独立频�
 
 ## 环境事实与重复观察候选
 
-`environment_info({cwd?,executables?:[{name,kind}]})` 在工作区根及 cwd 检查固定公开声明（Python/Node 清单、测试配置、Makefile、锁文件），保留缺失、不可读和超大状态，不递归或执行配置。cwd 必须在工作区；每个声明最多 1 MiB，原文预览最多 1024 字符。默认只探测 python/python3，最多四个 Python/Node 指定解释器，每个 3 秒，复用 Runtime 导航 Scope；支持受限 Scope 时收窄为只读且禁网，不支持时保留父授权并记录 navigationInherited，不能把逻辑只读操作描述为 OS 隔离保证。记录实际解析路径、版本、prefix、库目录身份及环境摘要，环境变量值不返回。
+`environment_info({cwd?,executables?:[{name,kind}]})` 在工作区根及 cwd 检查固定公开声明（Python/Node 清单、测试配置、Makefile、锁文件），保留缺失、不可读和超大状态，不递归或执行配置。cwd 必须在工作区；每个声明最多 1 MiB，原文预览最多 1024 字符。默认从 PATH、VIRTUAL_ENV/CONDA_PREFIX、根/cwd 的 `.venv`/`venv` 及 PATH/CONDA_EXE 声明的 conda 清单发现解释器，不激活环境。只读 `conda env list --json` 最多读取 16 个环境，记录遗漏；相同目录的 Python 别名合并，不合并不同 venv。显式 executables 覆盖发现，空数组不探测。最多四个 Python/Node 解释器，每个最多 3 秒/64 KiB，整次发现 13 秒；超时/超量清理探测进程组并保留失败。Python 报告隔离模式下 pytest 的可发现性，不导入或执行测试。测试配置优先预览声明的测试章节并标记其他章节省略。复用 Runtime 导航 Scope；支持受限 Scope 时收窄为只读且禁网，不支持时保留父授权并记录 navigationInherited，不能把逻辑只读操作描述为 OS 隔离保证。记录实际解析路径、版本、prefix、库目录身份及环境摘要，环境变量值不返回。
 
 事实绑定来源哈希、工作区/cwd、解释器身份与环境摘要；配置、声明、解释器、依赖或环境变化后重新确认。库目录身份不是完整依赖内容哈希，原地修改包后必须重新验证。当前 Turn 最多保留四组观察；`task_state` 只返回 cwd、指纹、失效条件和 `sourceItemId` 索引，使用 `read_history` 回取完整事实，避免重新携带声明原文；均为 observedOnly，重启/新 Turn 失效。没有自动安装、切换 shell、全盘扫描或自动选择测试。验证收据额外记录命令摘要、cwd、有效可执行文件及执行前后环境绑定；不会据历史通过省略新的验证。
 

@@ -5,7 +5,9 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -24,6 +26,81 @@ verification = load("verification")
 
 
 class EnvironmentFactsTests(unittest.TestCase):
+    def test_public_manager_and_aliases_do_not_merge_distinct_virtual_environments(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            bindir = root / "bin"
+            bindir.mkdir()
+            for name in ("python", "python3"):
+                (bindir / name).symlink_to(sys.executable)
+            env = root / ".venv/bin"
+            env.mkdir(parents=True)
+            (env / "python").symlink_to(sys.executable)
+            manager = bindir / "conda"
+            manager.write_text(
+                "#!/bin/sh\nprintf '%s' '{\"envs\":[\"" + str(root / ".venv") + "\"]}'\n"
+            )
+            manager.chmod(0o700)
+            with patch.dict(os.environ, {"PATH": str(bindir)}, clear=True):
+                probes, sources = environment.default_probes(root, root, time.monotonic() + 10)
+                self.assertEqual(len(probes), 2)
+                self.assertEqual(probes[0]["aliases"][0]["name"], "python3")
+                self.assertEqual(probes[1]["aliases"][0]["source"], "conda env list")
+                self.assertEqual(sources["managers"][0]["exitCode"], 0)
+                with patch.object(
+                    environment, "bounded_run", side_effect=AssertionError("no probes")
+                ):
+                    self.assertEqual(
+                        environment.discover({"roots": {"repo": path}, "executables": []})[
+                            "executables"
+                        ],
+                        [],
+                    )
+
+    def test_test_configuration_is_visible_beyond_long_package_metadata(self):
+        with tempfile.TemporaryDirectory() as path:
+            config = Path(path) / "setup.cfg"
+            config.write_text(
+                "[metadata]\ndescription = " + "x" * 2000 + "\n[tool:pytest]\ntestpaths = tests\n"
+            )
+            facts = environment.discover({"roots": {"repo": path}, "executables": []})
+            declared = facts["declarations"][0]
+            self.assertIn("testpaths = tests", declared["text"])
+            self.assertNotIn("description", declared["text"])
+            self.assertTrue(declared["otherSectionsOmitted"])
+
+    def test_probe_output_and_wait_are_bounded(self):
+        with tempfile.TemporaryDirectory() as path:
+            with self.assertRaisesRegex(ValueError, "64 KiB"):
+                environment.bounded_run([sys.executable, "-c", "print('x'*70000)"], path, 3)
+            with self.assertRaises(subprocess.TimeoutExpired):
+                environment.bounded_run(
+                    [sys.executable, "-c", "import time; time.sleep(10)"], path, 0.05
+                )
+
+    def test_public_discovery_reports_candidates_omitted_by_probe_limit(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            paths = [str(root / str(n) / "bin/python") for n in range(8)]
+            response = subprocess.CompletedProcess(
+                [],
+                0,
+                json.dumps({"envs": [str(Path(p).parent.parent) for p in paths]}).encode(),
+                b"",
+            )
+
+            def which(name):
+                return str(root / "conda") if name == "conda" else name if name in paths else None
+
+            with (
+                patch.dict(os.environ, {}, clear=True),
+                patch.object(environment.shutil, "which", side_effect=which),
+                patch.object(environment, "bounded_run", return_value=response),
+            ):
+                probes, discovery = environment.default_probes(root, root, time.monotonic() + 10)
+            self.assertEqual(len(probes), 4)
+            self.assertEqual(len(discovery["unprobedExecutables"]), 4)
+
     def test_negative_scope_and_declaration_invalidation(self):
         with tempfile.TemporaryDirectory() as path:
             root = Path(path)
