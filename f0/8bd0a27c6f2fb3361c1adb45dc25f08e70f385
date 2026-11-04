@@ -1,0 +1,22 @@
+core/engine/src/tools/program.rs
+  h_247f0d3940ae9c 126-128,136-152,535,537-539,544-550,556-560
+core/engine/src/tools/program/bootstrap.js
+  h_247f0d3940ae9c 11,20,45
+core/engine/src/tools/program/js.rs
+  h_247f0d3940ae9c 507-508
+docs/guides/programmatic-tools.en.md
+  h_247f0d3940ae9c 15
+docs/guides/programmatic-tools.md
+  h_247f0d3940ae9c 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f08bd0a27c6f2fb3361c1adb45dc25f08e70f385",
+  "prompts": {},
+  "humans": {
+    "h_247f0d3940ae9c": {
+      "author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
