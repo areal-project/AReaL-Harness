@@ -12,6 +12,9 @@ mod native_outcome_recovery_tests;
 #[path = "native_stop_recovery_tests.rs"]
 mod native_stop_recovery_tests;
 
+#[path = "native_detail_revoke_tests.rs"]
+mod native_detail_revoke_tests;
+
 struct OwnedChild(Child);
 impl Drop for OwnedChild {
     fn drop(&mut self) {
