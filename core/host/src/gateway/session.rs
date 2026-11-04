@@ -170,6 +170,26 @@ impl RequestBudget {
 }
 
 // 留出封装与 JSON 转义的余量，整条消息仍在 applicationMessageBytes（256 KiB）以内。
+/// 远程与本机写入口共用的错误码；其余一律归为 CORE_UNAVAILABLE。
+pub(crate) fn error_code(message: &str) -> &str {
+    match message {
+        "INVALID_PARAMS"
+        | "FORBIDDEN"
+        | "GRANT_CHANGED"
+        | "RESYNC_REQUIRED"
+        | "REVIEW_INCOMPLETE"
+        | "TARGET_CHANGED"
+        | "COMMAND_CONFLICT"
+        | "RESOURCE_UNAVAILABLE"
+        | "CORE_INCOMPATIBLE"
+        | "LIMIT_EXCEEDED"
+        | "CAPACITY_EXCEEDED"
+        | "TURN_BUSY"
+        | "TASK_CONTROL_REQUIRED"
+        | "SUBMISSION_UNKNOWN" => message,
+        _ => "CORE_UNAVAILABLE",
+    }
+}
 pub(crate) const LOCAL_PEER: &str = "local-desktop";
 pub(crate) const GUI_WRITE_TEXT_BYTES: usize = 192 * 1024;
 
@@ -556,23 +576,7 @@ impl Session {
                 Ok(result) => json!({"id":request["id"],"result":result}),
                 Err(error) => {
                     let message = error.to_string();
-                    let code = match message.as_str() {
-                        "INVALID_PARAMS"
-                        | "FORBIDDEN"
-                        | "GRANT_CHANGED"
-                        | "RESYNC_REQUIRED"
-                        | "REVIEW_INCOMPLETE"
-                        | "TARGET_CHANGED"
-                        | "COMMAND_CONFLICT"
-                        | "RESOURCE_UNAVAILABLE"
-                        | "CORE_INCOMPATIBLE"
-                        | "LIMIT_EXCEEDED"
-                        | "CAPACITY_EXCEEDED"
-                        | "TURN_BUSY"
-                        | "TASK_CONTROL_REQUIRED"
-                        | "SUBMISSION_UNKNOWN" => message.as_str(),
-                        _ => "CORE_UNAVAILABLE",
-                    };
+                    let code = error_code(&message);
                     let description = match error.downcast_ref::<BudgetExceeded>() {
                         Some(BudgetExceeded::Requests) => "请求过于频繁",
                         Some(BudgetExceeded::Writes) => "命令超过允许的预算",

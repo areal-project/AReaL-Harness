@@ -516,7 +516,11 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                             ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
                             let response=match result {
                                 Ok(value)=>json!({"version":VERSION,"id":id,"result":value}),
-                                Err(error)=>json!({"version":VERSION,"id":id,"error":read_error(&error)}),
+                                Err(error)=>{
+                                    let message=error.to_string();
+                                    let code=error.downcast_ref::<wire::Error>().map(|error|error.code).unwrap_or_else(||super::gateway_owner::error_code(&message));
+                                    json!({"version":VERSION,"id":id,"error":{"code":code,"message":"Host command failed"}})
+                                },
                             };
                             send(&mut socket,&response).await?;
                             continue;

@@ -45,7 +45,14 @@ export type ReadConnectionIdentity = {
   connectionId: string;
   gatewayGeneration: string;
   preferredSourceId?: string;
+  writeMethods?: readonly string[];
+  writeLimits?: { commandTextBytes: number; commandPendingBytes: number };
 };
+/** 写命令的结果。传输中断时只返回 unknown，由调用方用同一 commandId 查 command.read，绝不重发。 */
+export type HostCommandResult =
+  | { admissionState: "unknown"; commandId: string; transportError: string }
+  | (JsonObject & { commandId?: string });
+export type HostCommandContext = { projectId: string; serviceGeneration: string };
 export type ReadConnection = {
   transport: ReadTransport;
   identity: ReadConnectionIdentity;
@@ -53,6 +60,12 @@ export type ReadConnection = {
 };
 export type ReadContext = import("./protocol.js").ReadContext & { serviceGeneration: string };
 export interface ReadTransport {
+  write?(
+    method: string,
+    params: JsonObject,
+    context: HostCommandContext,
+    commandId?: string,
+  ): Promise<unknown>;
   request(
     method: keyof LoopbackMethodMap,
     params: JsonObject,
@@ -63,6 +76,8 @@ export interface ReadTransport {
 export interface HostClientOptions {
   bootstrap(): Promise<unknown>;
   origin: string;
+  /** 只有桌面外壳签发的票据能协商写入；浏览器传 false 或不传。 */
+  writes?: boolean;
   events?: Pick<Window, "addEventListener" | "removeEventListener">;
   transport?(options: {
     signal: AbortSignal;
@@ -285,8 +300,46 @@ export class HostClient {
           reject(new Error("Host send failed"));
         }
       });
+    // 写请求超时不关闭连接、不重发；调用方按 commandId 查回执。
+    const write = (
+      method: string,
+      params: JsonObject,
+      context: HostCommandContext,
+      commandId?: string,
+    ) =>
+      new Promise<unknown>((resolve, reject) => {
+        if (!current() || socket.readyState !== WebSocket.OPEN)
+          return reject(new Error("Connection unavailable"));
+        const id = String(++sequence);
+        const timer = setTimeout(() => {
+          pending.delete(id);
+          reject(new Error("Host command timed out"));
+        }, 30_000);
+        pending.set(id, { resolve, reject, timer });
+        try {
+          socket.send(
+            JSON.stringify({
+              version: 1,
+              id,
+              method,
+              params,
+              context: {
+                projectId: context.projectId,
+                serviceGeneration: context.serviceGeneration,
+                gatewayGeneration: generation,
+                grantRevision: 0,
+              },
+              ...(commandId ? { commandId } : {}),
+            }),
+          );
+        } catch {
+          clearTimeout(timer);
+          pending.delete(id);
+          reject(new Error("Host send failed"));
+        }
+      });
     signal.addEventListener("abort", close, { once: true });
-    const transport = { request, close };
+    const transport = { request, write, close };
     let connected = false;
     let connectionIdentity: ReadConnectionIdentity | undefined;
     await new Promise<void>((resolve, reject) => {
@@ -320,7 +373,7 @@ export class HostClient {
         bootstrap = undefined;
         void request("hello", {
           protocolVersions: [1],
-          capabilities: ["gui-read-v1"],
+          capabilities: this.options.writes ? ["gui-read-v1", "gui-write-v1"] : ["gui-read-v1"],
           ticket,
           expectedGeneration: generation,
         } satisfies LoopbackHelloParams)
@@ -335,12 +388,30 @@ export class HostClient {
               throw new Error("Host read contract unavailable");
             if (typeof value.connectionId !== "string" || value.gatewayGeneration !== generation)
               throw new Error("Invalid Host connection identity");
+            const writable =
+              this.options.writes === true &&
+              value.negotiatedCapabilities.includes("gui-write-v1") &&
+              Array.isArray(value.writeMethods) &&
+              record(value.writeLimits);
             connectionIdentity = {
               hostId,
               hostGeneration: generation,
               connectionId: value.connectionId,
               gatewayGeneration: generation,
               preferredSourceId,
+              ...(writable
+                ? {
+                    writeMethods: (value.writeMethods as unknown[]).filter(
+                      (method): method is string => typeof method === "string",
+                    ),
+                    writeLimits: {
+                      commandTextBytes: Number((value.writeLimits as JsonObject).commandTextBytes),
+                      commandPendingBytes: Number(
+                        (value.writeLimits as JsonObject).commandPendingBytes,
+                      ),
+                    },
+                  }
+                : {}),
             };
             clearTimeout(deadline);
             resolve();
@@ -435,6 +506,55 @@ export class HostClient {
         this.#reads.session.state === "loading" ? this.#reads.session : stale(this.#reads.session),
     });
     void this.#openSession().catch(() => {});
+  }
+  /** 当前连接是否能写，以及 Host 允许的方法。 */
+  writable(method: string) {
+    return (
+      this.#state.connection === "ready" &&
+      this.#transport?.write !== undefined &&
+      this.#state.identity.writeMethods?.includes(method) === true
+    );
+  }
+  #commandContext(projectId: string): HostCommandContext {
+    const project = previous(this.#reads.shell)?.snapshot.projects.find(
+      (value) => value.projectId === projectId,
+    );
+    if (!project?.serviceGeneration || project.state !== "ready")
+      throw new Error("Project Core unavailable");
+    return { projectId, serviceGeneration: project.serviceGeneration };
+  }
+  /** 带回执的写命令：commandId 由调用方保存，回复丢失时用 commandStatus 查原 ID。 */
+  async command(
+    method: string,
+    projectId: string,
+    params: JsonObject,
+    commandId: string = crypto.randomUUID(),
+  ): Promise<HostCommandResult> {
+    const transport = this.#transport;
+    if (!transport?.write || !this.writable(method)) throw new Error("Host writes unavailable");
+    const context = this.#commandContext(projectId);
+    try {
+      const value = await transport.write(method, params, context, commandId);
+      if (!record(value)) throw new Error("Invalid Host command result");
+      return { ...value, commandId };
+    } catch (error) {
+      // Host 回了错误码就是明确的拒绝；只有传输层失败才是"不知道是否受理"。
+      if (record(error) && typeof error.code === "string") throw error;
+      return {
+        admissionState: "unknown",
+        commandId,
+        transportError: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+  /** 只读的写前查询（review.read、task.read、project.models 等），不带 commandId。 */
+  async query(method: string, projectId: string, params: JsonObject) {
+    const transport = this.#transport;
+    if (!transport?.write || !this.writable(method)) throw new Error("Host writes unavailable");
+    return transport.write(method, params, this.#commandContext(projectId));
+  }
+  commandStatus(projectId: string, commandId: string) {
+    return this.query("command.read", projectId, { commandId });
   }
   async selectSession(target: { projectId: string; threadId: string } | null) {
     this.#retainSession();

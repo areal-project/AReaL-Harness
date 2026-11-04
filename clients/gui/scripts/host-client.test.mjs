@@ -899,3 +899,126 @@ test("native media retains generic binary MIME and accepts an empty Core blob", 
   assert.equal(empty.mime, "application/octet-stream");
   assert.equal(empty.bytes.length, 0);
 });
+
+test("desktop writes negotiate gui-write-v1, carry the Gateway context and never resend after a lost reply", async (t) => {
+  const frames = [];
+  const { websocketUrl } = await server(t, (socket, frame) => {
+    frames.push(frame);
+    const reply = (result) => socket.send(JSON.stringify({ version: 1, id: frame.id, result }));
+    if (frame.method === "hello")
+      return reply({
+        version: 1,
+        hostId,
+        generation,
+        capabilities: [],
+        negotiatedCapabilities: frame.params.capabilities,
+        connectionId: "connection",
+        gatewayGeneration: generation,
+        writeMethods: ["session.send", "command.read"],
+        writeLimits: { commandTextBytes: 196608, commandPendingBytes: 204800 },
+      });
+    if (frame.method === "shell.subscribe")
+      return reply({
+        connectionId: "connection",
+        gatewayGeneration: generation,
+        subscriptionId: "shell",
+        sequence: 0,
+        snapshot: { projects: [project], navigation: [] },
+      });
+    if (frame.method === "host.status") return reply(status);
+    if (frame.method === "session.send" && frame.params.text === "rejected")
+      return socket.send(
+        JSON.stringify({ version: 1, id: frame.id, error: { code: "TURN_BUSY", message: "busy" } }),
+      );
+    if (frame.method === "session.send" && frame.params.text === "lost") return socket.close();
+    if (frame.method === "session.send")
+      return reply({ admissionState: "accepted", turnId: "turn" });
+    if (frame.method === "command.read")
+      return reply({ commandId: frame.params.commandId, admissionState: "accepted" });
+  });
+  const client = new HostClient({
+    origin,
+    writes: true,
+    bootstrap: async () => ({
+      version: 1,
+      hostId,
+      generation,
+      origin,
+      websocketUrl,
+      ticket: "private-ticket",
+      expiresAt: Date.now() + 30_000,
+    }),
+  });
+  t.after(() => client.close());
+  client.retry();
+  await waitReads(client, (state) => state.shell.state === "fresh");
+  assert.deepEqual(frames[0].params.capabilities, ["gui-read-v1", "gui-write-v1"]);
+  assert.equal(client.writable("session.send"), true);
+  assert.equal(client.writable("session.create"), false);
+  const accepted = await client.command(
+    "session.send",
+    project.projectId,
+    { threadId: "t", expectedConfigRevision: 1, text: "hi" },
+    "8f0e1c1e-6b0e-4a7c-9a55-2f1f5c0d6c01",
+  );
+  assert.deepEqual(accepted, {
+    admissionState: "accepted",
+    turnId: "turn",
+    commandId: "8f0e1c1e-6b0e-4a7c-9a55-2f1f5c0d6c01",
+  });
+  const sent = frames.find((frame) => frame.method === "session.send");
+  assert.deepEqual(sent.context, {
+    projectId: project.projectId,
+    serviceGeneration: "core-1",
+    gatewayGeneration: generation,
+    grantRevision: 0,
+  });
+  assert.equal(sent.commandId, "8f0e1c1e-6b0e-4a7c-9a55-2f1f5c0d6c01");
+  await assert.rejects(
+    client.command("session.send", project.projectId, {
+      threadId: "t",
+      expectedConfigRevision: 1,
+      text: "rejected",
+    }),
+    { code: "TURN_BUSY" },
+  );
+  const lost = await client.command("session.send", project.projectId, {
+    threadId: "t",
+    expectedConfigRevision: 1,
+    text: "lost",
+  });
+  assert.equal(lost.admissionState, "unknown");
+  assert.equal(frames.filter((frame) => frame.params?.text === "lost").length, 1);
+  await waitState(client, (state) => state.connection === "ready");
+  await waitReads(client, (state) => state.shell.state === "fresh");
+  assert.deepEqual(await client.commandStatus(project.projectId, lost.commandId), {
+    commandId: lost.commandId,
+    admissionState: "accepted",
+  });
+  assert.equal(frames.filter((frame) => frame.params?.text === "lost").length, 1);
+});
+
+test("browser clients never offer gui-write-v1", async (t) => {
+  let hello;
+  const { websocketUrl } = await server(t, (socket, frame) => {
+    if (frame.method === "hello") hello = frame;
+    socket.close();
+  });
+  const client = new HostClient({
+    origin,
+    bootstrap: async () => ({
+      version: 1,
+      hostId,
+      generation,
+      origin,
+      websocketUrl,
+      ticket: "t",
+      expiresAt: Date.now() + 30_000,
+    }),
+  });
+  t.after(() => client.close());
+  client.retry();
+  await waitState(client, (state) => state.connection === "offline");
+  assert.deepEqual(hello.params.capabilities, ["gui-read-v1"]);
+  assert.equal(client.writable("session.send"), false);
+});
