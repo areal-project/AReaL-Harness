@@ -14,6 +14,18 @@ mod legacy;
 mod push;
 #[path = "session.rs"]
 mod session;
+pub(crate) use session::GUI_WRITE_TEXT_BYTES;
+
+/// 本机桌面写入口，包装 Gateway 会话的本机主体。
+pub(crate) struct LocalSession(session::Session);
+impl LocalSession {
+    pub(crate) fn new(host: Rc<Host>, connection: String) -> Result<Self> {
+        Ok(Self(session::Session::local(host, connection)?))
+    }
+    pub(crate) async fn request(&mut self, request: &Value) -> Result<Value> {
+        self.0.local_request(request).await
+    }
+}
 
 #[derive(Default)]
 pub(super) struct Gateway {

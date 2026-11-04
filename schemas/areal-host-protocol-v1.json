@@ -12720,9 +12720,51 @@
           "items": {
             "type": "string",
             "enum": [
-              "gui-read-v1"
+              "gui-read-v1",
+              "gui-write-v1"
             ]
           }
+        },
+        "writeMethods": {
+          "type": "array",
+          "description": "Present only for a desktop-ticket connection that negotiated gui-write-v1. Requests use the Remote envelope fields context (projectId, serviceGeneration, gatewayGeneration, grantRevision 0) and commandId.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "session.create",
+              "session.send",
+              "session.control",
+              "turn.stop",
+              "interaction.respond",
+              "task.pause",
+              "task.question.reply",
+              "task.read",
+              "task.question.read",
+              "review.read",
+              "attention.read",
+              "project.models",
+              "command.read"
+            ]
+          }
+        },
+        "writeLimits": {
+          "type": "object",
+          "description": "Present only after gui-write-v1 hello negotiation; released clients keep limits.commandTextBytes.",
+          "properties": {
+            "commandTextBytes": {
+              "type": "integer",
+              "const": 196608
+            },
+            "commandPendingBytes": {
+              "type": "integer",
+              "const": 204800
+            }
+          },
+          "required": [
+            "commandTextBytes",
+            "commandPendingBytes"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [

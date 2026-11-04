@@ -170,7 +170,8 @@ impl RequestBudget {
 }
 
 // 留出封装与 JSON 转义的余量，整条消息仍在 applicationMessageBytes（256 KiB）以内。
-pub(super) const GUI_WRITE_TEXT_BYTES: usize = 192 * 1024;
+pub(crate) const LOCAL_PEER: &str = "local-desktop";
+pub(crate) const GUI_WRITE_TEXT_BYTES: usize = 192 * 1024;
 
 pub(crate) struct Session {
     pub(crate) host: Rc<Host>,
@@ -186,6 +187,7 @@ pub(crate) struct Session {
     shell: Option<crate::server::shell_subscription::Subscription>,
     gui_read: bool,
     gui_write: bool,
+    local: bool,
     token_key: [u8; 32],
 }
 struct SessionSlot {
@@ -461,6 +463,7 @@ impl Session {
                         .iter()
                         .any(|capability| capability == "gui-write-v1")
                 }),
+            local: false,
             transport: admission.transport,
             kind: admission.kind,
             source_id: config["sourceId"]
@@ -733,6 +736,34 @@ impl Session {
         }
         value
     }
+    /// 本机桌面票据连接：本机用户即主人，拥有全部项目的全部能力；
+    /// 回执用固定的本机设备 ID 记账，项目 ID 不经远程别名。
+    pub(crate) fn local(host: Rc<Host>, connection: String) -> Result<Self> {
+        let mut token_key = [0; 32];
+        std::io::Read::read_exact(&mut std::fs::File::open("/dev/urandom")?, &mut token_key)?;
+        Ok(Self {
+            peer: LOCAL_PEER.into(),
+            grant: json!({"revision":0,"capabilities":["observe","review","submit","interrupt","answer","pauseTask","manage"],"projectIds":[]}),
+            generation: host.identity.generation.clone(),
+            connection,
+            host_peer: host.identity.host_id.clone(),
+            token_key,
+            viewer: None,
+            shell: None,
+            gui_read: true,
+            gui_write: true,
+            local: true,
+            transport: String::new(),
+            kind: gateway_owner::TransportKind::Direct,
+            source_id: String::new(),
+            host,
+        })
+    }
+    /// 本机写请求沿用远程封装；上下文里的网关代次与授权版本由本连接补齐。
+    pub(crate) async fn local_request(&mut self, request: &Value) -> Result<Value> {
+        ensure!(self.local, "FORBIDDEN");
+        self.request(request).await
+    }
     /// 已发布的 iOS 与 PWA 只认 64 KiB；只有声明 gui-write-v1 的客户端放宽。
     pub(super) fn command_text_bytes(&self) -> usize {
         if self.gui_write {
@@ -745,6 +776,12 @@ impl Session {
         self.command_text_bytes() + 8 * 1024
     }
     fn authorize(&self, project: Option<&str>, capability: &str) -> Result<()> {
+        if self.local {
+            if let Some(project) = project {
+                ensure!(self.host.slots.borrow().contains_key(project), "FORBIDDEN");
+            }
+            return Ok(());
+        }
         let snapshot = self.host.remote.snapshot(&self.host.migration)?;
         ensure!(
             gateway_owner::transport_key(&snapshot["config"], self.kind) == self.transport,
@@ -777,6 +814,15 @@ impl Session {
         Ok(())
     }
     fn bindings(&self) -> Result<Vec<(String, String)>> {
+        if self.local {
+            return Ok(self
+                .host
+                .slots
+                .borrow()
+                .keys()
+                .map(|id| (id.clone(), id.clone()))
+                .collect());
+        }
         gateway_owner::push::bindings(&self.host, &self.source_id)
     }
     fn project_id(&self, alias: &str) -> Result<String> {

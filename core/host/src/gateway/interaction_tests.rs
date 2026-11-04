@@ -267,6 +267,7 @@ impl Fixture {
             shell: None,
             gui_read: false,
             gui_write: false,
+            local: false,
             token_key: [7; 32],
         }
     }
@@ -1238,6 +1239,43 @@ async fn gui_write_negotiation_raises_text_limit_only_for_declaring_clients() {
             assert_eq!(turn.request["params"]["input"][0]["text"].as_str().unwrap().len(), 64 * 1024 + 1);
             turn.reply(json!({"turn":{"id":"long-turn"}}));
             assert_eq!(sending.await.unwrap().1.unwrap()["admissionState"], "accepted");
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn local_desktop_principal_sends_through_the_shared_journal_without_device_grants() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
+            let generation = f.host.identity.generation.clone();
+            let command = uuid::Uuid::new_v4().to_string();
+            let mut send = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":1,"text":"from desktop"}), Some(&command));
+            send["context"] = json!({"projectId":"project","gatewayGeneration":generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+            let mut alias = send.clone();
+            alias["context"]["projectId"] = json!(f.alias);
+            let (session, rejected) = Fixture::dispatch(session, alias).await.unwrap();
+            assert_eq!(rejected.unwrap_err().to_string(), "FORBIDDEN");
+            let sending = Fixture::dispatch(session, send);
+            f.call("areal/capabilities").await.reply(Fixture::capabilities());
+            f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+            let turn = f.call("areal/turn/start").await;
+            assert_eq!(turn.request["params"]["input"][0]["text"], "from desktop");
+            turn.reply(json!({"turn":{"id":"desktop-turn"}}));
+            let (session, sent) = sending.await.unwrap();
+            assert_eq!(sent.unwrap()["admissionState"], "accepted");
+            let (_, snapshot) = f.host.journal.native_snapshot("project").unwrap();
+            let record = snapshot["outcomes"].as_object().unwrap().values().chain(snapshot["pending"].as_array().unwrap()).find(|entry| entry["remote"]["commandId"] == command).unwrap().clone();
+            assert_eq!(record["remote"]["devicePeerId"], LOCAL_PEER);
+            assert_eq!(record["remote"]["projectId"], "project");
+            let mut read = f.request("command.read", json!({"commandId":command}), None);
+            read["context"]["projectId"] = json!("project");
+            let remote = f.session("a");
+            let (_, foreign) = Fixture::dispatch(remote, read.clone()).await.unwrap();
+            assert!(foreign.is_err() || foreign.unwrap()["admissionState"] == "notFound");
+            let (_, recovered) = Fixture::dispatch(session, read).await.unwrap();
+            assert_eq!(recovered.unwrap()["turnId"], "desktop-turn");
         })
         .await;
 }
