@@ -65,6 +65,7 @@ const hosts = [];
 const services = new Map();
 const held = new Map();
 const projects = [];
+let pausedServiceHost;
 let activeScenario;
 let descriptor;
 let hostClient;
@@ -176,12 +177,12 @@ async function startTurn(client, workspace, text, threadId) {
     (await client.call("areal/thread/start", { requestId: randomUUID(), cwd: workspace })).thread
       .id;
   const requestId = randomUUID();
-  await client.call("areal/turn/start", {
+  const result = await client.call("areal/turn/start", {
     requestId,
     threadId: thread,
     input: [{ type: "text", text }],
   });
-  return { threadId: thread, requestId };
+  return { threadId: thread, requestId, turnId: result.turn.id };
 }
 function reply(response, delta, finishReason = "stop") {
   response.writeHead(200, { "Content-Type": "text/event-stream" });
@@ -210,6 +211,33 @@ const model = createServer(async (request, response) => {
       toolResults: results.length,
       authorizationDigest: digest(request.headers.authorization ?? ""),
     });
+    if (text === "runtime-crash" && !results.length) {
+      return reply(
+        response,
+        {
+          tool_calls: [
+            {
+              index: 0,
+              id: "call-runtime-crash",
+              type: "function",
+              function: {
+                name: "run_command",
+                arguments: JSON.stringify({
+                  argv: [
+                    "/bin/sh",
+                    "-c",
+                    "printf 'started\\n' > crash-command-started; exec /bin/sleep 300",
+                  ],
+                  cwd: ".",
+                  timeoutMs: 300000,
+                }),
+              },
+            },
+          ],
+        },
+        "tool_calls",
+      );
+    }
     if (text.startsWith("effect-") && !results.length) {
       return reply(
         response,
@@ -817,6 +845,25 @@ try {
   });
   await phase("host-crash", async () => {
     const old = descriptor;
+    const crashClient = await coreClient(migrated);
+    const crashTurn = await startTurn(crashClient, legacy.workspace, "runtime-crash");
+    await until(
+      () =>
+        readFile(join(legacy.workspace, "crash-command-started"), "utf8")
+          .then(() => true)
+          .catch(() => false),
+      "active Runtime command",
+    );
+    const activeThread = await crashClient.call("thread/read", {
+      threadId: crashTurn.threadId,
+      includeTurns: true,
+    });
+    const activeTurn = activeThread.thread.turns.find((turn) => turn.id === crashTurn.turnId);
+    assert.equal(activeTurn?.status, "inProgress");
+    const activeTool = activeTurn.items.find((item) => item.callId === "call-runtime-crash");
+    assert.equal(activeTool?.status, "inProgress");
+    assert.equal(activeTool.execution.outcome, "running");
+    assert(activeTool.execution.operationId, "active Runtime operation must have an identity");
     const active = [...services.values()]
       .filter(({ service }) => service.owner?.generation === old.generation)
       .map(({ service }) => service);
@@ -826,18 +873,96 @@ try {
       topology.some((row) => row.command.endsWith("areal-runtime")),
       "real Runtime must be in Host-owned process chain",
     );
+    const serviceHost = topology.find((row) => row.pid === migrated.hostPid);
+    assert(
+      serviceHost && serviceHost.command === binary,
+      "service host must belong to this Host topology",
+    );
+    const serviceTree = await descendants(serviceHost.pid);
+    assert(
+      serviceTree.some((row) => row.pid === migrated.corePid),
+      "Core must belong to the project",
+    );
+    const runtimes = serviceTree.filter((row) => row.command.endsWith("areal-runtime"));
+    assert.equal(runtimes.length, 1, "project must have one Runtime");
+    const runtimeTree = await descendants(runtimes[0].pid);
+    const command = runtimeTree.find((row) => row.command.endsWith("/sleep"));
+    assert(command, "active command must belong to this project's Runtime");
+    evidence.processes.push({
+      fault: "active Runtime command",
+      threadId: crashTurn.threadId,
+      requestId: crashTurn.requestId,
+      turnId: crashTurn.turnId,
+      turnStatus: activeTurn.status,
+      callId: activeTool.callId,
+      toolStatus: activeTool.status,
+      runtimeOperationId: activeTool.execution.operationId,
+      runtimeOutcome: activeTool.execution.outcome,
+      corePid: migrated.corePid,
+      runtimePid: runtimes[0].pid,
+      commandPid: command.pid,
+    });
+    await serviceLocks(migrated, false);
+    process.kill(serviceHost.pid, "SIGSTOP");
+    pausedServiceHost = serviceHost.pid;
+    await until(
+      async () =>
+        (await processTable()).some(
+          (row) => row.pid === serviceHost.pid && row.state.startsWith("T"),
+        ),
+      "service host paused",
+    );
+    await serviceLocks(migrated, false);
+    evidence.processes.push({
+      fault: "paused old service host",
+      pid: serviceHost.pid,
+      turn: crashTurn,
+    });
     const owner = hosts.find((record) => record.child.pid === old.pid && !record.exit);
     assert(owner, "fault injection requires our still-live Host child");
     owner.child.kill("SIGKILL");
     await owner.done;
-    await exited(topology.map((row) => row.pid));
     assert.equal(await lockAvailable(join(home, "host.lock")), true);
-    for (const service of active) await serviceLocks(service, true);
-    runHost();
+    const successor = runHost();
+    await until(async () => {
+      const candidate = await readFile(join(home, "host/host.json"), "utf8")
+        .then(JSON.parse)
+        .catch((error) => {
+          if (error.code === "ENOENT") return null;
+          throw error;
+        });
+      return candidate?.pid === successor.child.pid && candidate.generation !== old.generation;
+    }, "successor Host descriptor");
     descriptor = await discover();
     assert.equal(descriptor.hostId, old.hostId);
     assert.notEqual(descriptor.generation, old.generation);
     hostClient = await hostConnection();
+    await serviceLocks(migrated, false);
+    const blockedId = randomUUID();
+    await assert.rejects(
+      hostClient.call("project.ensure", {
+        requestId: blockedId,
+        expectedGeneration: descriptor.generation,
+        projectId: legacy.id,
+      }),
+      (error) => error.code === "migrationBlocked",
+    );
+    const blocked = (await hostClient.call("host.operation", { requestId: blockedId })).operation;
+    assert.equal(blocked.state, "blocked");
+    assert.equal(blocked.requestId, blockedId);
+    assert.equal(blocked.hostId, descriptor.hostId);
+    assert.equal(blocked.generation, descriptor.generation);
+    assert.equal(blocked.projectId, legacy.id);
+    evidence.operations.push({ fault: "old service locks held", receipt: blocked });
+    await serviceLocks(migrated, false);
+    const retained = JSON.parse(
+      await readFile(join(home, "services", migrated.serviceId, "service.json"), "utf8"),
+    );
+    assert.equal(retained.generation, migrated.generation);
+    process.kill(serviceHost.pid, "SIGCONT");
+    pausedServiceHost = undefined;
+    await exited(topology.map((row) => row.pid));
+    for (const service of active) await serviceLocks(service, true);
     migrated = (await ensureProject(legacy)).service;
     assertOwner(migrated);
     assert.equal(migrated.serviceId, legacy.service.serviceId);
@@ -996,6 +1121,18 @@ try {
   process.exitCode = 1;
   console.error(sanitized({ error: error.message, phase: activeScenario?.id }));
 } finally {
+  if (pausedServiceHost !== undefined) {
+    try {
+      process.kill(pausedServiceHost, "SIGCONT");
+      evidence.cleanup.push({ resumedServiceHost: pausedServiceHost });
+    } catch (error) {
+      if (error.code !== "ESRCH") {
+        passed = false;
+        process.exitCode = 1;
+        evidence.cleanup.push({ resumeServiceHostError: error.message });
+      }
+    }
+  }
   for (const client of clients)
     await client
       .close()
