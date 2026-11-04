@@ -17,6 +17,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+mod prior_boot;
 pub(crate) mod retirement;
 
 pub(crate) const FENCE: &str = "AREAL_HOST_MIGRATED\n";
@@ -127,6 +128,8 @@ struct Record {
     vault_receipts: Vec<vault::Receipt>,
     fences: Vec<String>,
     blockers: Vec<Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    prior_boot_adoptions: Vec<prior_boot::Adoption>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -339,9 +342,11 @@ impl Migration {
         Ok(commit)
     }
     fn bundle_digest(&self, r: &Record) -> Result<String> {
-        Ok(storage::digest(&serde_json::to_vec(
-            &json!({"source":r.source,"sourceId":r.source_id,"manifestDigest":r.manifest_digest,"bindings":r.bindings,"vaultReceipts":r.vault_receipts,"fences":r.fences}),
-        )?))
+        let mut bundle = json!({"source":r.source,"sourceId":r.source_id,"manifestDigest":r.manifest_digest,"bindings":r.bindings,"vaultReceipts":r.vault_receipts,"fences":r.fences});
+        if !r.prior_boot_adoptions.is_empty() {
+            bundle["priorBootAdoptions"] = serde_json::to_value(&r.prior_boot_adoptions)?;
+        }
+        Ok(storage::digest(&serde_json::to_vec(&bundle)?))
     }
     pub fn published(&self) -> Result<Vec<ProjectRegistration>> {
         let mut output = Vec::new();
@@ -601,6 +606,7 @@ impl Migration {
                 vault_receipts: Vec::new(),
                 fences: Vec::new(),
                 blockers: Vec::new(),
+                prior_boot_adoptions: Vec::new(),
             };
             self.save(&record)?;
             record
@@ -622,6 +628,7 @@ impl Migration {
                 record.secrets.clear();
                 record.vault_receipts.clear();
                 record.manifest_digest.clear();
+                record.prior_boot_adoptions.clear();
             }
             if record.originals.is_empty() {
                 self.snapshot(&mut record, existing)?;
@@ -640,8 +647,8 @@ impl Migration {
                 return self.result(&record);
             }
         }
-        let locks = match self.legacy_locks(&record) {
-            Ok(locks) => locks,
+        let (locks, adoptions) = match self.legacy_locks(&record) {
+            Ok(evidence) => evidence,
             Err(e) => {
                 record.blockers = vec![json!({"code":"legacyPending","message":e.to_string()})];
                 if record.phase != Phase::Fencing {
@@ -651,6 +658,8 @@ impl Migration {
                 return self.result(&record);
             }
         };
+        record.prior_boot_adoptions = adoptions;
+        self.save(&record)?;
         self.validate_bindings(&record, existing)?;
         self.check_remote(&record)?;
         if !self.guarded(&record, connection) {
@@ -729,7 +738,13 @@ impl Migration {
             ));
         }
         self.validate_bindings(&record, existing)?;
-        let receipt = json!({"requestId":record.request_id,"migrationId":record.request_id,"sourceId":record.source_id,"source":record.source,"manifestDigest":record.manifest_digest,"bindings":record.bindings,"vaultReceipts":record.vault_receipts,"fences":record.fences,"state":"completed","retirement":"pending","retainedClientData":["cloud.json"]});
+        for adoption in &record.prior_boot_adoptions {
+            prior_boot::revalidate(&self.home, &record, adoption)?;
+        }
+        let mut receipt = json!({"requestId":record.request_id,"migrationId":record.request_id,"sourceId":record.source_id,"source":record.source,"manifestDigest":record.manifest_digest,"bindings":record.bindings,"vaultReceipts":record.vault_receipts,"fences":record.fences,"state":"completed","retirement":"pending","retainedClientData":["cloud.json"]});
+        if !record.prior_boot_adoptions.is_empty() {
+            receipt["priorBootAdoptions"] = serde_json::to_value(&record.prior_boot_adoptions)?;
+        }
         let commit = Commit {
             bundle_digest: self.bundle_digest(&record)?,
             receipt,
@@ -1241,8 +1256,9 @@ impl Migration {
         self.save(&r)?;
         Ok(serde_json::to_value(receipt)?)
     }
-    fn legacy_locks(&self, r: &Record) -> Result<Vec<File>> {
+    fn legacy_locks(&self, r: &Record) -> Result<(Vec<File>, Vec<prior_boot::Adoption>)> {
         let mut locks = Vec::new();
+        let mut adoptions = Vec::new();
         for binding in &r.bindings {
             let service_id =
                 storage::digest(binding.data_dir.as_os_str().as_encoded_bytes())[..24].to_owned();
@@ -1329,12 +1345,11 @@ impl Migration {
                         && receipt.cleanup_confirmed;
                 }
             }
-            ensure!(
-                confirmed,
-                "original owner has no exact completed Runtime cleanup proof"
-            );
+            if !confirmed {
+                adoptions.push(prior_boot::observe(&self.home,r,binding,&directory,&service).context("original owner has no exact completed Runtime cleanup proof or eligible prior-boot adoption")?);
+            }
         }
-        Ok(locks)
+        Ok((locks, adoptions))
     }
     fn check_remote(&self, r: &Record) -> Result<()> {
         let current = r
@@ -2457,6 +2472,7 @@ mod tests {
             vault_receipts: vec![],
             fences: vec![],
             blockers: vec![],
+            prior_boot_adoptions: vec![],
         };
         let directory = f.migration.directory(&f.request).unwrap();
         storage::private_dir(&directory).unwrap();
@@ -2748,6 +2764,273 @@ mod tests {
         assert!(f.migration.published().is_err());
     }
 
+    #[cfg(target_os = "macos")]
+    fn prior_boot_fixture() -> (Fixture, Service, PathBuf) {
+        let f = Fixture::new();
+        f.attach();
+        let data = f.source.core_home.join(&f.ids[0]).join("state");
+        storage::private_dir(&data).unwrap();
+        let service_id = storage::digest(data.as_os_str().as_encoded_bytes())[..24].to_owned();
+        let directory = storage::registry(&f.source.legacy_service_home, &service_id).unwrap();
+        storage::private_dir(&directory).unwrap();
+        let service:Service = serde_json::from_value(json!({"protocolVersion":1,"serviceId":service_id,"generation":uuid::Uuid::new_v4().to_string(),"workspace":f.source.core_home.parent().unwrap().join("workspace"),"dataDir":data,"configFingerprint":"original","owner":{"kind":"gui","appRunId":uuid::Uuid::new_v4().to_string(),"profile":f.source.profile},"endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1","authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),"hostPid":500000000,"corePid":500000001,"state":"unavailable"})).unwrap();
+        storage::write(&directory.join("service.json"), &service).unwrap();
+        (f, service, directory)
+    }
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn prior_boot_legacy_import_preserves_unknown_and_original_operation() {
+        let (f, _service, directory) = prior_boot_fixture();
+        let original_descriptor = std::fs::read(directory.join("service.json")).unwrap();
+        assert_eq!(f.import().unwrap()["kind"], "legacyPending");
+        prior_boot::with_test_boot(10, || {
+            let result = f.import().unwrap();
+            assert_eq!(result["kind"], "ready");
+            assert_eq!(
+                f.migration
+                    .read(&f.request)
+                    .unwrap()
+                    .prior_boot_adoptions
+                    .len(),
+                1
+            );
+            assert_eq!(
+                std::fs::read(directory.join("service.json")).unwrap(),
+                original_descriptor
+            );
+            assert!(!directory.join("cleanup.json").exists());
+            assert!(!directory.join("crash.json").exists());
+            let restarted = Migration::new(&f.migration.home).unwrap();
+            assert_eq!(restarted.published().unwrap().len(), 2);
+            assert_eq!(restarted.status(&f.request).unwrap(), result);
+            assert_eq!(f.import().unwrap(), result);
+            let read = f
+                .journal
+                .dispatch("journal.read", json!({"projectId":f.ids[0]}), "verify")
+                .unwrap();
+            let snapshot: Value = serde_json::from_slice(
+                &std::fs::read(read["snapshotPath"].as_str().unwrap()).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(read["revision"], 0);
+            assert_eq!(
+                snapshot["pending"],
+                serde_json::from_slice::<Value>(&f.original).unwrap()
+            );
+            assert_eq!(snapshot["outcomes"], json!({}));
+        });
+    }
+    #[test]
+    fn legacy_commit_digest_retains_the_original_formula_without_adoption() {
+        let f = Fixture::new();
+        f.attach();
+        let result = f.import().unwrap();
+        assert_eq!(result["kind"], "ready");
+        let record = f.migration.read(&f.request).unwrap();
+        assert!(record.prior_boot_adoptions.is_empty());
+        assert!(
+            serde_json::to_value(&record)
+                .unwrap()
+                .get("priorBootAdoptions")
+                .is_none()
+        );
+        let expected = storage::digest(&serde_json::to_vec(&json!({"source":record.source,"sourceId":record.source_id,"manifestDigest":record.manifest_digest,"bindings":record.bindings,"vaultReceipts":record.vault_receipts,"fences":record.fences})).unwrap());
+        assert_eq!(f.migration.bundle_digest(&record).unwrap(), expected);
+        assert_eq!(
+            Migration::new(&f.migration.home)
+                .unwrap()
+                .status(&f.request)
+                .unwrap(),
+            result
+        );
+    }
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn prior_boot_adoption_rejects_live_boundary_wrong_owner_and_other_store_mapping() {
+        for case in [
+            "current-boot",
+            "invalid-time",
+            "ready",
+            "owner",
+            "symlink",
+            "service-lock",
+            "owner-lock",
+            "other-mapping",
+        ] {
+            let (f, mut service, directory) = prior_boot_fixture();
+            assert_eq!(f.import().unwrap()["kind"], "legacyPending");
+            let mut held = None;
+            match case {
+                "ready" => {
+                    service.state = areal_protocol::service::State::Ready;
+                    storage::write(&directory.join("service.json"), &service).unwrap();
+                }
+                "owner" => {
+                    service.owner = Some(areal_protocol::service::Owner::Gui {
+                        app_run_id: uuid::Uuid::new_v4().to_string(),
+                        profile: f.source.profile.join("other"),
+                    });
+                    storage::write(&directory.join("service.json"), &service).unwrap();
+                }
+                "symlink" => {
+                    let other = directory.join("other.json");
+                    std::fs::copy(directory.join("service.json"), &other).unwrap();
+                    std::fs::remove_file(directory.join("service.json")).unwrap();
+                    std::os::unix::fs::symlink(other, directory.join("service.json")).unwrap();
+                }
+                "service-lock" | "owner-lock" => {
+                    let path = service.identity.data_dir.join(if case == "service-lock" {
+                        "service.lock"
+                    } else {
+                        "owner.lock"
+                    });
+                    let file = storage::open_private(&path, false).unwrap();
+                    file.try_lock_exclusive().unwrap();
+                    held = Some(file);
+                }
+                "other-mapping" => {
+                    let other =
+                        storage::registry(&f.migration.home, "cccccccccccccccccccccccc").unwrap();
+                    storage::private_dir(&other).unwrap();
+                    service.identity.service_id = "cccccccccccccccccccccccc".into();
+                    service.identity.generation = uuid::Uuid::new_v4().to_string();
+                    storage::write(&other.join("service.json"), &service).unwrap();
+                }
+                _ => {}
+            }
+            prior_boot::with_test_boot(
+                if case == "current-boot" {
+                    -10
+                } else if case == "invalid-time" {
+                    -2_000_000_000
+                } else {
+                    10
+                },
+                || {
+                    assert_eq!(f.import().unwrap()["kind"], "legacyPending", "{case}");
+                    assert!(f.migration.published().unwrap().is_empty(), "{case}");
+                    assert!(
+                        f.migration
+                            .read(&f.request)
+                            .unwrap()
+                            .prior_boot_adoptions
+                            .is_empty(),
+                        "{case}"
+                    );
+                    assert_eq!(
+                        std::fs::read(
+                            f.source
+                                .core_home
+                                .join(format!("{}-pending.json", f.ids[0]))
+                        )
+                        .unwrap(),
+                        f.original,
+                        "{case}"
+                    );
+                },
+            );
+            drop(held);
+        }
+    }
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn prior_boot_revalidation_rejects_replaced_descriptor_and_runtime_tree_writes() {
+        for copy_descriptor in [true, false] {
+            let (f, service, directory) = prior_boot_fixture();
+            let runtime_file = service.identity.data_dir.join("owned-state.json");
+            std::fs::write(&runtime_file, b"original").unwrap();
+            assert_eq!(f.import().unwrap()["kind"], "legacyPending");
+            let record = f.migration.read(&f.request).unwrap();
+            let binding = record
+                .bindings
+                .iter()
+                .find(|binding| binding.alias.legacy_project_id == f.ids[0])
+                .unwrap();
+            prior_boot::with_test_boot(1, || {
+                let adoption =
+                    prior_boot::observe(&f.migration.home, &record, binding, &directory, &service)
+                        .unwrap();
+                std::thread::sleep(std::time::Duration::from_millis(1100));
+                if copy_descriptor {
+                    let descriptor = directory.join("service.json");
+                    let modified = std::fs::metadata(&descriptor).unwrap().modified().unwrap();
+                    let replacement = directory.join("replacement.json");
+                    std::fs::copy(&descriptor, &replacement).unwrap();
+                    File::options()
+                        .write(true)
+                        .open(&replacement)
+                        .unwrap()
+                        .set_times(std::fs::FileTimes::new().set_modified(modified))
+                        .unwrap();
+                    std::fs::rename(replacement, descriptor).unwrap();
+                } else {
+                    std::fs::write(&runtime_file, b"changed").unwrap();
+                }
+                assert!(prior_boot::revalidate(&f.migration.home, &record, &adoption).is_err());
+                assert_eq!(f.import().unwrap()["kind"], "legacyPending");
+                assert!(f.migration.published().unwrap().is_empty());
+            });
+        }
+    }
+    #[test]
+    #[ignore = "只读旧 GUI metadata；必须显式指定 home/migration/IDs，不启动服务或写真实记录"]
+    #[cfg(target_os = "macos")]
+    fn inspect_authorized_prior_boot_legacy_adoption() {
+        let home = PathBuf::from(
+            std::env::var("AREAL_TEST_PRIOR_BOOT_HOME").expect("explicit test home is required"),
+        );
+        assert!(home.is_absolute());
+        assert_eq!(home.canonicalize().unwrap(), home);
+        let migration_id = std::env::var("AREAL_TEST_PRIOR_BOOT_MIGRATION")
+            .expect("explicit migration ID is required");
+        wire::request_id(&migration_id).unwrap();
+        let selected = std::env::var("AREAL_TEST_PRIOR_BOOT_PROJECTS")
+            .expect("explicit legacy IDs are required")
+            .split(',')
+            .map(str::to_owned)
+            .collect::<BTreeSet<_>>();
+        assert!(!selected.is_empty() && selected.iter().all(|id| legacy_id(id)));
+        let migration = Migration {
+            home: home.clone(),
+            guards: RefCell::new(BTreeMap::new()),
+            vault: vault::Vault::new(&home),
+        };
+        let path = home
+            .join("host/imports")
+            .join(migration_id)
+            .join("record.json");
+        let original_record = std::fs::read(&path).unwrap();
+        let mut record: Record = serde_json::from_slice(&original_record).unwrap();
+        record
+            .bindings
+            .retain(|binding| selected.contains(&binding.alias.legacy_project_id));
+        assert_eq!(record.bindings.len(), selected.len());
+        let mut before = Vec::new();
+        for binding in &record.bindings {
+            for name in ["service.lock", "owner.lock"] {
+                assert!(binding.data_dir.join(name).is_file());
+            }
+            before.push(prior_boot::test_tree_digest(&binding.data_dir).unwrap());
+        }
+        let (locks, adoptions) = migration.legacy_locks(&record).unwrap();
+        assert_eq!(adoptions.len(), selected.len());
+        for (binding, original) in record.bindings.iter().zip(before) {
+            assert_eq!(
+                prior_boot::test_tree_digest(&binding.data_dir).unwrap(),
+                original
+            );
+        }
+        for adoption in &adoptions {
+            prior_boot::revalidate(&home, &record, adoption).unwrap();
+            let value = serde_json::to_value(adoption).unwrap();
+            println!(
+                "{}",
+                json!({"legacyProjectId":value["legacyProjectId"],"reason":value["reason"],"descriptorSha256":value["descriptorSha256"],"file":value["file"],"storeTree":value["storeTree"],"boot":value["boot"],"originalGeneration":value["service"]["generation"],"originalState":value["service"]["state"],"owner":value["service"]["owner"]})
+            );
+        }
+        assert_eq!(std::fs::read(path).unwrap(), original_record);
+        drop(locks);
+    }
     #[test]
     fn legacy_stop_cleanup_receipt_uses_public_completion_semantics() {
         for case in [

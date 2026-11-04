@@ -87,13 +87,15 @@ areal web ─┘               ▼
 
 ## 项目与迁移契约
 
+旧 GUI 缺少历史清理回执时，不以永久禁用项目或新建 Store 分叉历史作为升级结果。macOS 的受限跨启动恢复可在可信本机系统时钟下核对当前内核启动身份、原服务描述符身份与文件时间、原 Store 的完整元数据清单、服务与 Store 独占锁及来源单实例保护；只有这些证据一致表明原本机进程生命周期已跨整机启动结束、且 Store 未在本次启动中修改，才允许继续原地迁移。当前启动内的失败、活跃 writer、身份冲突或不可核验的时间仍拒绝接管。新迁移回执独立记录接管依据，不补造旧 Runtime 清理成功，不改写旧停止回执，不重放 UNKNOWN 请求。该策略不证明历史外部副作用的结果，也不以管理员篡改或系统时钟回拨后的文件时间作为可靠来源。
+
 `ProjectRegistration` 独立持久化 `projectId`、`workspace`、`dataDir`、`source` 与 `defaultBinding`，不复用运行中服务列表。CLI 同工作区出现多个候选且无唯一默认绑定时显式返回 `projectAmbiguous`。GUI 旧 `(profile,projectId)` 映射连同 Remote 授权、Worktree 与回执定位一起提交；同工作区不同 Store 保留为独立项目。完整形状见 [Host API](../api/host.md)。
 
 GUI 根目录的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` 不属于 Core Store。迁移必须保留旧请求 ID、语义摘要、UNKNOWN 与已受理结果。旧 writer 停止准入并完成 flush 后，Host 在独占锁下导入，写入包含来源身份和摘要的持久迁移回执，再切换为单一新 writer。中断恢复按迁移阶段核查，不重发旧请求。H2 验收必须覆盖升级前已受理但回复丢失，升级后只发生一次副作用。
 
 Host 监督身份与 Remote Noise peer 身份独立。仅单旧 GUI profile 自动迁移配对、grants、撤销状态和 Noise 密钥；多个不同 Noise 身份明确冲突，保留各自原数据，不能覆盖或合并。Host 凭据包含 API keys、OAuth 与 provider subscription 会话。H3 必须迁移订阅传输 owner，GUI 退出后仍可刷新和流式传输。
 
-停止逐项目保存持久回执，汇总 `partial` 保留每项目的 completed、blocked 与 UNKNOWN。Host 崩溃或响应丢失后用 `host.operation` 查询原请求；null 不证明未受理。跨项目停止没有全局原子性。原 service-host 没有 EOF 管道时只能保持 `legacyPending`，经排空、清理证明和锁释放后启动新 Host-owned generation。
+停止逐项目保存持久回执，汇总 `partial` 保留每项目的 completed、blocked 与 UNKNOWN。Host 崩溃或响应丢失后用 `host.operation` 查询原请求；null 不证明未受理。跨项目停止没有全局原子性。原 service-host 没有 EOF 管道时只能保持 `legacyPending`，经排空、清理证明和锁释放，或满足上述受限跨启动接管条件后，启动新 Host-owned generation。
 
 ## 工作包 H0：ADR 与协议契约
 

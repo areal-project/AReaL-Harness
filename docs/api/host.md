@@ -154,7 +154,9 @@ GUI 根目录中的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` �
 | `remote.acquire`   | `{sourceId}`                                                                  | `{leaseId,sourceId}`。执行租约绑定当前连接，断连释放。                            |
 | `remote.replace`   | `{requestId,expectedGeneration,expectedRevision,sourceId,config}`             | 持久替换回执，以 revision 校验写入冲突。执行租约不限制本机配置写入。              |
 
-导入先保存固定 manifest 和原字节备份，再保存秘密与回执，核验旧服务清理证明和锁。旧版原停止回执在 `cleanupConfirmed:true` 时可能仍保存 `acceptedPending`；只有服务与 Store 两把锁均已独占，且回执版本、服务身份、owner 和代际精确匹配时，才沿原只读查询语义将其作为已完成清理证明，不改写旧回执。清理未确认、停止受理结果 UNKNOWN 或身份不符仍阻塞迁移。Host 随后安装非 JSON 来源启动哨兵及每项目 journal 哨兵，最后发布 committed marker。未发布来源占用的项目不能激活或访问 journal，包括复用的 CLI 登记。导入保留原 Store、scratch 路径和 `(profile,legacyProjectId)` 别名。原 registry 与非秘密备份保留。原导入回执中的 `retirement:"pending"` 记录导入提交时的事实，后续退役结果由独立接口查询。
+导入先保存固定 manifest 和原字节备份，再保存秘密与回执，核验旧服务清理证明和锁。旧版原停止回执在 `cleanupConfirmed:true` 时可能仍保存 `acceptedPending`；只有服务与 Store 两把锁均已独占，且回执版本、服务身份、owner 和代际精确匹配时，才沿原只读查询语义将其作为已完成清理证明，不改写旧回执。清理未确认、停止受理结果 UNKNOWN 或身份不符默认仍阻塞迁移；下述受限跨启动接管仅解除当前所有权交接，不结算旧停止结果。Host 随后安装非 JSON 来源启动哨兵及每项目 journal 哨兵，最后发布 committed marker。未发布来源占用的项目不能激活或访问 journal，包括复用的 CLI 登记。导入保留原 Store、scratch 路径和 `(profile,legacyProjectId)` 别名。原 registry 与非秘密备份保留。原导入回执中的 `retirement:"pending"` 记录导入提交时的事实，后续退役结果由独立接口查询。
+
+macOS 旧 GUI 的原服务若为 `stopped` 或 `unavailable`，且只有历史清理证明缺失，导入可使用受限的跨系统启动接管依据。Host 在原服务与 Store 双锁下核对当前内核 boot session、启动时间、原描述符精确身份及其 birth/mtime/ctime，并扫描原 Store 的完整文件与目录元数据。描述符和 Store 必须均未在本次系统启动内修改；路径、属主、原来源单实例保护与同 Store 服务映射须一致，重试重新核查。该策略限于可信旧 GUI/service-host 来源，依赖可信本机时钟和未被外部回滚的私有状态，不构成任意独立 app-server 或外部进程的清理证明。当前启动内故障、锁占用、来源变化或证据不完整仍阻塞。迁移回执的 `priorBootAdoptions` 独立保留原代际、描述符摘要、元数据清单摘要与 boot 依据，并参与提交摘要。它只允许原 Store 的新 owner 接管，不结算旧请求或外部副作用；旧 stop/cleanup 记录不改写，UNKNOWN 按原身份导入且不重发。没有该字段的旧提交保持原摘要语义。
 
 `gui.source` 按规范化的完整 `GuiSource` 查询，仅返回已提交来源。同一 profile 对应多个已提交来源时返回 `sourceConflict`，不混合新登记的别名。查询不取得来源 guard，不启动导入，不读取凭据，也不创建目录。`bindings` 中保留导入时复用的 CLI 项目别名，并加入该 profile 的新 GUI 登记。新绑定的 scratch 路径为 `<coreHome>/<legacyProjectId>/scratch`。Host 重启后从原导入回执和现有项目登记重建结果。
 
