@@ -102,7 +102,7 @@ function ConversationContent() {
 
   const { terminalOpen, setTerminalOpen } = panelNavigation;
 
-  const { restorationFailed } = startup;
+  const { restorationFailed, viewRefreshing } = startup;
 
   const { t } = useI18n();
   return (
@@ -115,7 +115,8 @@ function ConversationContent() {
         >
           {thread && project ? (
             <ActiveConversation />
-          ) : threadId || (project && restorationFailed) ? (
+          ) : threadId ||
+            (project && (restorationFailed || viewRefreshing || !project.state?.connected)) ? (
             <div className="conversation-loading" role="status" aria-busy={!restorationFailed}>
               <div className="settings-empty conversation-loading-body">
                 <p>

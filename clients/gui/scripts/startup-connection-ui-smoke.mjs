@@ -849,10 +849,10 @@ try {
           !document.querySelector('[data-testid="chat-send-button"]')?.disabled &&
           !!document.querySelector('[data-testid="chat-send-button"]'),
       );
-      await page
-        .getByRole("group", { name: "工作区上下文", exact: true })
-        .getByText("本地", { exact: true })
-        .waitFor();
+      await page.getByRole("group", { name: "工作区上下文", exact: true }).waitFor();
+      await page.waitForFunction(() =>
+        window.calls.some((call) => call.name === "workspace" && call.params.operation === "info"),
+      );
       assert.match(await page.getByTestId("chat-input").innerText(), /STARTUP_DRAFT_PRESERVED/);
       assert.equal(await page.evaluate(() => window.initialGreeting), false);
       assert.equal(
