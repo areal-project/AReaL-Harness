@@ -605,3 +605,168 @@ async fn wait_native_turn(service: &Service, thread: &str, turn: &str) -> Value 
     }
     terminal
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "real Core/Runtime; finite T19 Host owner fixture only, no Remote wire or 100-race gate; requires AREAL_CORE_BIN and AREAL_NATIVE_FAULT_EVIDENCE"]
+async fn native_send_lost_success_recovers_original_turn_without_replay() {
+    tokio::task::LocalSet::new()
+        .run_until(run_native_send_case())
+        .await;
+}
+
+async fn run_native_send_case() {
+    let mut f = Fixture::new().await;
+    (f.close)();
+    f.server.abort();
+    let mut native = start_native_core(&f).await;
+    let run = native.run.clone();
+    let direct = native.direct.clone();
+    let created = areal_local_service::rpc(
+        &direct,
+        "areal/thread/start",
+        json!({
+            "requestId":uuid::Uuid::new_v4().to_string(),"cwd":direct.identity.workspace,
+            "agentProfile":{"id":"ordinary","revision":"v1"}
+        }),
+    )
+    .await
+    .unwrap();
+    let thread = created["thread"]["id"].as_str().unwrap();
+    let proxy = attach_native_proxy(&mut f, &native, "areal/turn/start").await;
+    let command = uuid::Uuid::new_v4().to_string();
+    let params = json!({"threadId":thread,"expectedConfigRevision":1,"text":"Append the original send marker"});
+    let request = f.request("session.send", params, Some(&command));
+    let unknown = f.session("a").request(&request).await.unwrap();
+    storage::write(&run.join("original-unknown.json"), &unknown).unwrap();
+    assert_eq!(unknown["commandId"], command);
+    assert_eq!(unknown["admissionState"], "unknown");
+    assert_eq!(unknown["submissionUnknown"], true);
+    assert!(unknown.get("receipt").is_none());
+    let dropped = proxy
+        .dropped
+        .borrow()
+        .clone()
+        .expect("real upstream Turn success must be dropped");
+    let operation = dropped["request"]["params"]["requestId"].as_str().unwrap();
+    let turn = dropped["successResponse"]["result"]["turn"]["id"]
+        .as_str()
+        .unwrap();
+    assert_eq!(unknown["operationId"], operation);
+    assert_eq!(unknown["nativeRequestId"], operation);
+    assert_eq!(dropped["request"]["params"]["threadId"], thread);
+    assert_eq!(
+        dropped["request"]["params"]["input"][0]["text"],
+        request["params"]["text"]
+    );
+    assert_eq!(proxy.requests.borrow().len(), 1);
+    let (_, pending_journal) = f.host.journal.native_snapshot("project").unwrap();
+    let pending_record = pending_journal["pending"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|record| record["operationId"] == unknown["operationId"])
+        .unwrap()
+        .clone();
+    storage::write(&run.join("original-pending-record.json"), &pending_record).unwrap();
+    assert_eq!(pending_record["remote"]["commandId"], command);
+    assert_eq!(pending_record["params"], dropped["request"]["params"]);
+    f.reconnect().await;
+    let recovered = f
+        .session("a")
+        .request(&f.request("command.read", json!({"commandId":command}), None))
+        .await
+        .unwrap();
+    storage::write(&run.join("recovered.json"), &recovered).unwrap();
+    assert_eq!(recovered["commandId"], command);
+    assert_eq!(recovered["operationId"], operation);
+    assert_eq!(recovered["nativeRequestId"], operation);
+    assert_eq!(recovered["admissionState"], "accepted");
+    assert_eq!(recovered["submissionUnknown"], false);
+    assert_eq!(recovered["threadId"], thread);
+    assert_eq!(recovered["turnId"], turn);
+    let original_receipt: Value = storage::read(&run.join("core-receipt.json")).unwrap();
+    assert_eq!(original_receipt["request"]["params"]["threadId"], thread);
+    assert_eq!(
+        original_receipt["request"]["params"]["requestId"],
+        operation
+    );
+    let receipts = original_receipt["response"]["result"]["data"]
+        .as_array()
+        .unwrap();
+    assert_eq!(receipts.len(), 1);
+    let receipt = &receipts[0];
+    assert_eq!(receipt["requestId"], operation);
+    assert_eq!(receipt["method"], "areal/turn/start");
+    assert_eq!(receipt["threadId"], thread);
+    assert_eq!(receipt["status"], "completed");
+    assert_eq!(receipt["operation"]["requestId"], operation);
+    assert_eq!(receipt["operation"]["method"], "areal/turn/start");
+    assert_eq!(
+        receipt["operation"]["target"],
+        json!({"kind":"thread","threadId":thread})
+    );
+    assert_eq!(receipt["result"]["turn"]["id"], turn);
+    let (_, journal) = f.host.journal.native_snapshot("project").unwrap();
+    let record = &journal["outcomes"][operation];
+    assert_eq!(record["nativeDigest"], receipt["digest"]);
+    assert_eq!(
+        record["coreScope"]["storeBinding"]["identity"],
+        receipt["identity"]
+    );
+    assert_eq!(record["remote"]["commandId"], command);
+    let duplicate = f.session("a").request(&request).await.unwrap();
+    assert_eq!(duplicate["operationId"], operation);
+    assert_eq!(duplicate["turnId"], turn);
+    assert_eq!(duplicate["admissionState"], "accepted");
+    assert_eq!(
+        proxy.requests.borrow().len(),
+        1,
+        "duplicate send must not forward a second Core Turn start"
+    );
+    let terminal = wait_native_turn(&direct, thread, turn).await;
+    storage::write(&run.join("terminal.json"), &terminal).unwrap();
+    assert_eq!(terminal["status"], "completed");
+    let writes: Vec<_> = terminal["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|item| item["tool"] == "run_command")
+        .collect();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0]["callId"], "native-effect");
+    assert_eq!(writes[0]["execution"]["backend"], "runtime");
+    assert_eq!(writes[0]["execution"]["outcome"], "succeeded");
+    assert_eq!(std::fs::read_to_string(&native.effect).unwrap(), "x");
+    let snapshot = areal_local_service::rpc(
+        &direct,
+        "thread/read",
+        json!({"threadId":thread,"includeTurns":true}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(snapshot["thread"]["turns"].as_array().unwrap().len(), 1);
+    assert_eq!(snapshot["thread"]["turns"][0]["id"], turn);
+    let mut changed = request;
+    changed["params"]["text"] = json!("changed");
+    assert_eq!(
+        f.session("a")
+            .request(&changed)
+            .await
+            .unwrap_err()
+            .to_string(),
+        "COMMAND_CONFLICT"
+    );
+    assert_eq!(proxy.requests.borrow().len(), 1);
+    storage::write(&run.join("business.json"),&json!({
+        "originalCase":"T19 lost session.send reply",
+        "commandId":command,"operationId":operation,"threadId":thread,"turnId":turn,
+        "duplicate":duplicate,"originalPendingRecord":pending_record,"journalRecord":record,"forwardedTurnStartRequests":proxy.requests.borrow().clone(),
+        "runtimeEffect":"x","changedSemantics":"COMMAND_CONFLICT"
+    })).unwrap();
+    stop_native(&mut f, &mut native, proxy).await;
+    storage::write(&run.join("result.json"),&json!({
+        "businessPassed":true,"cleanupPassed":true,"binary":native.binary,"corePid":native.core.0.id(),"modelPid":native.model.0.id(),
+        "boundary":"finite T19 Host owner+journal fixture with real Core/Runtime; no Remote Noise wire, independent Host process crash or 100-race gate"
+    })).unwrap();
+    println!("native send fault evidence: {}", run.display());
+}
