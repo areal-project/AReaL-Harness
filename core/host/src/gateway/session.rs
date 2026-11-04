@@ -1388,7 +1388,9 @@ impl Session {
         self.authorize(Some(project), capability)?;
         if let Some(decision) = params.get("decision") {
             ensure!(
-                matches!(decision.as_str(), Some("allowOnce" | "deny"))
+                (matches!(decision.as_str(), Some("allowOnce" | "deny"))
+                    || (self.gui_write
+                        && matches!(decision.as_str(), Some("allowSession" | "allowProject"))))
                     && params.get("answers").is_none()
                     && params["argumentsDigest"].as_str().is_some_and(|digest| {
                         digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
@@ -1464,7 +1466,12 @@ impl Session {
                 "TARGET_CHANGED"
             );
             if item["kind"] == "approval" {
-                ensure!(params["decision"] == "allowOnce", "INVALID_PARAMS");
+                // 记住授权只对声明 gui-write-v1 的客户端开放，且以 Core 给出的 rememberAllowed 为准。
+                ensure!(
+                    params["decision"] == "allowOnce"
+                        || item["effectivePermissions"]["rememberAllowed"] == true,
+                    "INVALID_PARAMS"
+                );
                 ensure!(
                     params["argumentsDigest"] == item["argumentsDigest"],
                     "TARGET_CHANGED"

@@ -10697,8 +10697,11 @@
               "type": "string",
               "enum": [
                 "allowOnce",
-                "deny"
-              ]
+                "deny",
+                "allowSession",
+                "allowProject"
+              ],
+              "description": "allowSession and allowProject are accepted only after gui-write-v1 negotiation and only when the interaction reports rememberAllowed."
             }
           },
           "required": [

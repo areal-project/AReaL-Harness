@@ -764,6 +764,102 @@ export function createHostReadServices(
       windows.clear();
       client.close();
     });
+  // A2：停止与审批/回答在写开关下走 Host 回执；Host 明确不接管的会话退回桌面原路径。
+  const HOST_DECLINED = new Set(["TASK_CONTROL_REQUIRED"]);
+  function hostTarget(params: Record<string, unknown>) {
+    const projectId = params.projectId;
+    const threadId = params.threadId;
+    if (typeof projectId !== "string" || typeof threadId !== "string") return undefined;
+    const project = snapshot.projects.find((value) => value.id === projectId) as
+      ReadProject | undefined;
+    const hostProjectId = threadTargets.get(`${projectId}:${threadId}`) ?? project?.hostProjectId;
+    return project && hostProjectId ? { project, hostProjectId, threadId } : undefined;
+  }
+  function settled(result: import("@areal/client").HostCommandResult) {
+    if (result.admissionState === "accepted" || result.admissionState === "pending") return;
+    const outcome = result.admissionState === "rejected" ? { kind: "rejected" } : undefined;
+    throw Object.assign(
+      new Error(outcome ? "Host 拒绝了该操作" : "操作结果尚未确认。正在核对原请求，不会自动重发。"),
+      { commandId: result.commandId, submissionUnknown: !outcome, outcome },
+    );
+  }
+  async function reviewToken(hostProjectId: string, target: Record<string, string>) {
+    let cursor: string | undefined;
+    for (let page = 0; page < 64; page++) {
+      const value = (await client.query("attention.read", hostProjectId, {
+        ...target,
+        ...(cursor && { cursor }),
+      })) as Record<string, unknown>;
+      if (typeof value.reviewToken === "string") return value;
+      if (typeof value.nextCursor !== "string") break;
+      cursor = value.nextCursor;
+    }
+    throw new Error("审批详情未读完");
+  }
+  const writes: NonNullable<PlatformServices["writes"]> = {
+    async route(name, params) {
+      if (!options.writes || client.snapshot().connection !== "ready") return undefined;
+      const target = hostTarget(params);
+      if (!target) return undefined;
+      try {
+        if (name === "stop" && client.writable("turn.stop") && typeof params.turnId === "string") {
+          settled(
+            await client.command("turn.stop", target.hostProjectId, {
+              threadId: target.threadId,
+              expectedTurnId: params.turnId,
+            }),
+          );
+          return { routed: true };
+        }
+        if (
+          name === "respond" &&
+          client.writable("interaction.respond") &&
+          client.writable("attention.read") &&
+          typeof params.requestId === "string"
+        ) {
+          const interactions = target.project.state.interactions[target.threadId] as
+            { data?: Array<Record<string, unknown>> } | undefined;
+          const item = interactions?.data?.find(
+            (entry) => entry.requestId === params.requestId && entry.status === "pending",
+          );
+          if (typeof item?.turnId !== "string") return undefined;
+          const ids = {
+            threadId: target.threadId,
+            turnId: item.turnId,
+            interactionId: params.requestId,
+          };
+          const answer =
+            params.decision === "deny"
+              ? { decision: "deny", argumentsDigest: item.argumentsDigest }
+              : await reviewToken(target.hostProjectId, ids).then((review) =>
+                  params.answers
+                    ? { answers: params.answers, reviewToken: review.reviewToken }
+                    : {
+                        decision: params.decision,
+                        argumentsDigest: review.argumentsDigest,
+                        reviewToken: review.reviewToken,
+                      },
+                );
+          settled(
+            await client.command("interaction.respond", target.hostProjectId, {
+              ...ids,
+              ...answer,
+            } as Parameters<typeof client.command>[2]),
+          );
+          return { routed: true };
+        }
+      } catch (error) {
+        if (
+          error !== null &&
+          typeof error === "object" &&
+          HOST_DECLINED.has(String((error as { code?: unknown }).code))
+        )
+          return undefined;
+        throw error;
+      }
+      return undefined;
+    },
+  };
   const unavailable = async () => {
     throw new Error("This capability requires the desktop application");
   };
@@ -780,6 +876,7 @@ export function createHostReadServices(
     }),
     capabilities: { mutations: desktop !== undefined, native: desktop !== undefined },
     reads,
+    ...(options.writes && { writes }),
     snapshot: async () => snapshot,
     onState(listener) {
       listeners.add(listener);

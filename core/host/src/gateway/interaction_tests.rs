@@ -1351,3 +1351,48 @@ async fn gui_write_uploads_attachments_in_chunks_and_replays_the_final_receipt()
         })
         .await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn remembered_approvals_need_gui_write_and_core_permission() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let mut legacy = f.answer(json!("token"), &uuid::Uuid::new_v4().to_string());
+            legacy["params"]["decision"] = json!("allowSession");
+            let (_, rejected) = Fixture::dispatch(f.session("a"), legacy).await.unwrap();
+            assert_eq!(rejected.unwrap_err().to_string(), "INVALID_PARAMS");
+            let generation = f.host.identity.generation.clone();
+            let mut session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
+            for remember in [false, true] {
+                let mut item = Fixture::item("pending");
+                item["effectivePermissions"] = json!({"rememberAllowed":remember});
+                let mut read = f.request("attention.read", Fixture::target(), None);
+                read["context"] = json!({"projectId":"project"});
+                let reading = Fixture::dispatch(session, read);
+                f.call("areal/interaction/list").await.reply(json!({"data":[item.clone()]}));
+                let (next, detail) = reading.await.unwrap();
+                let detail = detail.unwrap();
+                let mut answer = f.answer(detail["reviewToken"].clone(), &uuid::Uuid::new_v4().to_string());
+                answer["params"]["decision"] = json!("allowProject");
+                answer["context"] = json!({"projectId":"project","gatewayGeneration":generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+                let answering = Fixture::dispatch(next, answer);
+                f.call("areal/interaction/list").await.reply(json!({"data":[item]}));
+                if remember {
+                    let call = f.call("areal/interaction/respond").await;
+                    assert_eq!(call.request["params"]["decision"], "allowProject");
+                    call.reply(json!({"answered":true,"requestId":"interaction"}));
+                    let mut answered = Fixture::item("answered");
+                    answered["effectivePermissions"] = json!({"rememberAllowed":true});
+                    f.call("areal/interaction/list").await.reply(json!({"data":[answered]}));
+                }
+                let (next, result) = answering.await.unwrap();
+                if remember {
+                    assert_eq!(result.unwrap()["admissionState"], "accepted");
+                } else {
+                    assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
+                }
+                session = next;
+            }
+        })
+        .await;
+}
