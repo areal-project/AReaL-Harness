@@ -41,7 +41,14 @@ class EnvironmentFactsTests(unittest.TestCase):
                 "#!/bin/sh\nprintf '%s' '{\"envs\":[\"" + str(root / ".venv") + "\"]}'\n"
             )
             manager.chmod(0o700)
-            with patch.dict(os.environ, {"PATH": str(bindir)}, clear=True):
+            response = subprocess.CompletedProcess(
+                [], 0, json.dumps({"envs": [str(root / ".venv")]}).encode(), b""
+            )
+            # 此测试验证来源与别名；真实进程的时间/输出边界由下面的独立测试验证。
+            with (
+                patch.dict(os.environ, {"PATH": str(bindir)}, clear=True),
+                patch.object(environment, "bounded_run", return_value=response),
+            ):
                 probes, sources = environment.default_probes(root, root, time.monotonic() + 10)
                 self.assertEqual(len(probes), 2)
                 self.assertEqual(probes[0]["aliases"][0]["name"], "python3")
@@ -77,6 +84,25 @@ class EnvironmentFactsTests(unittest.TestCase):
                 environment.bounded_run(
                     [sys.executable, "-c", "import time; time.sleep(10)"], path, 0.05
                 )
+
+    def test_public_manager_timeout_is_reported_without_a_retry(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            with (
+                patch.dict(os.environ, {}, clear=True),
+                patch.object(
+                    environment.shutil,
+                    "which",
+                    side_effect=lambda name: "/public/conda" if name == "conda" else None,
+                ),
+                patch.object(
+                    environment, "bounded_run", side_effect=subprocess.TimeoutExpired("conda", 3)
+                ) as probe,
+            ):
+                candidates, sources = environment.default_probes(root, root, time.monotonic() + 10)
+            self.assertEqual(candidates, [])
+            self.assertEqual(probe.call_count, 1)
+            self.assertEqual(sources["managers"][0]["error"], "TimeoutExpired")
 
     def test_public_discovery_reports_candidates_omitted_by_probe_limit(self):
         with tempfile.TemporaryDirectory() as path:
