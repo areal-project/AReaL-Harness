@@ -2,7 +2,7 @@
 
 # 共享 Host 协议
 
-本文包含已实现接口与后续目标契约。Host 提供认证后的项目管理、停止回执、订阅、旧服务迁移，以及 H2 的来源导入、旧秘密退役、提交 journal、固定凭据槽与 Remote 状态接口。`hello` 声明 `projects`、`stopOperations`、`subscriptions`、`legacyMigration`、`guiImport`、`submissionJournal`、`credentialVault` 和 `remoteState`，尚不提供 `updates`。普通 GUI 的项目连接、journal、凭据与 Remote 状态消费者使用 Host。完整退出语义、连接资源撤销、Remote 执行迁移和服务管理器交付仍在实施。协议定义不代表运行或安装包验收通过。另见[实施规格](../development/shared-host-spec.md)、[所有权决策](../adr/0016-shared-host.md)与[每项目服务契约](local-service.md)。
+当前实现提供认证后的项目管理、停止回执、状态订阅、旧服务迁移、来源导入、旧秘密退役、提交 journal 和固定凭据槽。Remote Gateway、定时激活与准备、provider subscription transport 和防休眠由 Host 持有；GUI 通过 Host 使用这些服务。`hello` 声明 `projects`、`stopOperations`、`subscriptions`、`legacyMigration`、`guiImport`、`submissionJournal`、`credentialVault`、`remoteState`、`remoteGatewayV1`、`subscriptionOwnerV1`、`activity`、`scheduledActivation`、`scheduledPreparation`、`powerV1` 和 `updates`。客户端按能力协商，开发布局仍可对受控更新返回 `updateUnavailable`。系统服务安装和受控更新接口已实现，完整 H0–H4 验收仍未完成；协议定义不代表真机、真实登录或签名安装包验收通过。另见[实施规格](../development/shared-host-spec.md)、[所有权决策](../adr/0016-shared-host.md)与[每项目服务契约](local-service.md)。
 
 ## 传输与认证
 
