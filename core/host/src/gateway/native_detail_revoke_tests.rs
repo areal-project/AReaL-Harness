@@ -5,6 +5,7 @@ struct DetailProxy {
     task: tokio::task::JoinHandle<()>,
     observed: oneshot::Receiver<Value>,
     release: Option<oneshot::Sender<()>>,
+    requests: Rc<RefCell<Vec<Value>>>,
 }
 impl Drop for DetailProxy {
     fn drop(&mut self) {
@@ -29,6 +30,8 @@ async fn attach_detail_proxy(f: &mut Fixture, native: &NativeCore, target: Value
     let run = native.run.clone();
     let (observed_tx, observed) = oneshot::channel();
     let (release, mut release_rx) = oneshot::channel();
+    let requests = Rc::new(RefCell::new(Vec::new()));
+    let forwarded = requests.clone();
     let task = tokio::task::spawn_local(async move {
         let (stream, _) = listener.accept().await.unwrap();
         let mut request = upstream_url.as_str().into_client_request().unwrap();
@@ -50,6 +53,7 @@ async fn attach_detail_proxy(f: &mut Fixture, native: &NativeCore, target: Value
                     let Some(Ok(message)) = incoming else { break; };
                     if let Message::Text(text) = &message {
                         let value: Value = serde_json::from_str(text).unwrap();
+                        forwarded.borrow_mut().push(value.clone());
                         if value["method"] == "areal/interaction/list" && value["params"]["threadId"] == target["threadId"] {
                             assert!(original_request.is_none(), "only one matching Core request");
                             original_request = Some(value);
@@ -97,6 +101,7 @@ async fn attach_detail_proxy(f: &mut Fixture, native: &NativeCore, target: Value
         task,
         observed,
         release: Some(release),
+        requests,
     }
 }
 
@@ -165,11 +170,38 @@ async fn detail_case(mode: &str) {
     let (target, original) = pending_approval(&native).await;
     let run = native.run.clone();
     storage::write(&run.join("detail-plan.json"), &json!({"target":target,"original":original,"mode":mode,"boundary":"real Core/Runtime startup, in-process Host owner; no Noise or independent Host"})).unwrap();
+    let mut session = f.session("a");
+    let request = if mode == "preflight-revoke" {
+        f.host
+            .slots
+            .borrow_mut()
+            .get_mut("project")
+            .unwrap()
+            .service = Some(native.direct.clone());
+        f.reconnect().await;
+        let detail = session
+            .request(&f.request("attention.read", target.clone(), None))
+            .await
+            .unwrap();
+        assert_eq!(detail["complete"], true);
+        assert!(detail["reviewToken"].is_string());
+        let mut params = target.clone();
+        params["decision"] = json!("allowOnce");
+        params["argumentsDigest"] = original["argumentsDigest"].clone();
+        params["reviewToken"] = detail["reviewToken"].clone();
+        f.request(
+            "interaction.respond",
+            params,
+            Some(&uuid::Uuid::new_v4().to_string()),
+        )
+    } else {
+        f.request("attention.read", target.clone(), None)
+    };
+    (f.close)();
     let mut proxy = attach_detail_proxy(&mut f, &native, target.clone()).await;
     let original_journal = f.host.journal.native_snapshot("project").unwrap();
-    let request = f.request("attention.read", target.clone(), None);
     storage::write(&run.join("detail-request.json"), &request).unwrap();
-    let reading = Fixture::dispatch(f.session("a"), request);
+    let reading = Fixture::dispatch(session, request);
     let frame = tokio::time::timeout(Duration::from_secs(20), &mut proxy.observed)
         .await
         .expect("held response deadline")
@@ -203,11 +235,12 @@ async fn detail_case(mode: &str) {
     } else {
         None
     };
-    if mode == "revoke" {
+    let revoked = matches!(mode, "revoke" | "preflight-revoke");
+    if revoked {
         f.grant("a", |grant| grant["status"] = json!("revoked"));
     }
     let after_grant = observed_grant(&f);
-    if mode == "revoke" {
+    if revoked {
         assert_eq!(before_grant["status"], "active");
         assert_eq!(after_grant["status"], "revoked");
         assert_ne!(before_grant, after_grant);
@@ -230,7 +263,7 @@ async fn detail_case(mode: &str) {
         Err(error) => json!({"error":error.to_string()}),
     };
     storage::write(&run.join("detail-result.json"), &recorded).unwrap();
-    if mode == "revoke" {
+    if revoked {
         assert_eq!(result.unwrap_err().to_string(), "GRANT_CHANGED");
         assert!(recorded.get("result").is_none());
     } else if mode == "replacement" {
@@ -264,6 +297,21 @@ async fn detail_case(mode: &str) {
         f.host.journal.native_snapshot("project").unwrap(),
         original_journal
     );
+    if mode == "preflight-revoke" {
+        assert!(
+            proxy
+                .requests
+                .borrow()
+                .iter()
+                .all(|request| request["method"] != "areal/interaction/respond"),
+            "revoked approval must not reach Core"
+        );
+        storage::write(
+            &run.join("preflight-forwarded.json"),
+            &*proxy.requests.borrow(),
+        )
+        .unwrap();
+    }
     let after = areal_local_service::rpc(
         &native.direct,
         "areal/interaction/list",
@@ -326,5 +374,13 @@ async fn native_detail_publication_fences_revoke_after_real_core_read() {
 async fn native_detail_publication_fences_service_identity_change() {
     tokio::task::LocalSet::new()
         .run_until(detail_case("replacement"))
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "real Core/Runtime; in-process Host preflight barrier, no Noise or independent Host"]
+async fn native_approval_preflight_revocation_preserves_pending_interaction() {
+    tokio::task::LocalSet::new()
+        .run_until(detail_case("preflight-revoke"))
         .await;
 }
