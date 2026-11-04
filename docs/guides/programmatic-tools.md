@@ -17,16 +17,10 @@
 模型已读过文件并确定补丁和测试入口后，可以把关联修改、验证及有界回收放进同一程序。新错误、冲突、权限、UNKNOWN 或视觉判断必须回到模型；不在循环里安装依赖或更换方案。无独立工作时使用正常等待预算，不显式用 1 秒制造回收轮次。
 
 ```javascript
-const end = Date.now() + 540000; // 此局部上限必须小于所选程序超时。
 const e = await tools.edit_files({files:[{path:'src/a.py',patches:[{oldText:'old_a',newText:'new_a'}]},{path:'src/b.py',patches:[{oldText:'old_b',newText:'new_b'}]}]});
 text(e);
 if (e.success && e.data.allApplied) {
-  let r = await tools.run_command({argv:['python','-m','pytest','tests/test_feature.py','-q']});
-  text(r);
-  while (r.success && (r.data.commandStatus==='running' || r.data.outputReadComplete===false) && Date.now()<end) {
-    r = await tools.read_process({processId:r.data.processId,waitMs:Math.max(0,Math.min(120000,end-Date.now()))});
-    text(r);
-  }
+  await collect(await tools.run_command({argv:['python','-m','pytest','tests/test_feature.py','-q']}));
 }
 ```
 
@@ -62,4 +56,4 @@ if (e.success && e.data.allApplied) {
 
 程序结果分别报告 `programCompleted`（解释器结束）、`allChildrenSucceeded`（每个原生子调用均成功）和 `pendingProcesses`（按进程最新收据去重）。外层 success 只有解释器及全部子调用成功才为 true；后续成功不能覆盖先前失败，已知失败对照仍如实保留失败，由模型判断其预期含义。此为结果契约变化，不自动阻断已明确编排的后续步骤，也不添加重试。
 
-组合优先的显式候选见 [compact-programmatic.json](../../examples/tool-profiles/compact-programmatic.json)。它复用同一执行内核，只把常用原生工具移到程序目录；`tool_search` 及已授权高级能力仍可达。用于检验已确定的修改—执行—回收是否真实合并，不按模型名硬编码，默认配置不变。字节数可能因 schema 转成描述文本而增加；入口减少不能证明 token 收益。与普通 compact 配置比较时要分别记录最终请求基础说明、目录和历史大小，以及 provider 实际用量。
+混合组合配置使用 [compact-composition.json](../../examples/tool-profiles/compact-composition.json)：大段文件创建保持 `edit_files` 直达，收到 `allApplied` 后将已选执行和回收放入程序；小补丁可与测试一起编排。`collect` 自动展示观察，不再手写轮询循环或重复 `text()`。默认配置不变。原 [compact-programmatic.json](../../examples/tool-profiles/compact-programmatic.json) 仅保留为全程序化对照：它把 schema 搬入描述，可能增加固定输入和代码转义/恢复成本，不能以较小菜单证明效率。比较最终说明、schema、历史、缓存输入与未缓存输入，不能只比较命中率；减少高缓存的机械轮次也会改变该比例。

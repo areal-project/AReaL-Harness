@@ -20,17 +20,11 @@ Distinguish execution from validation. A result with commandStatus="running" is 
 
 Verify the changed behavior and meaningful compatibility boundaries. Prefer existing focused tests and a faithful reproduction. Add a check when it resolves a specific uncovered concern. When a test fails, compare the same input, environment and code revision; a missing test label is not a regression, and an unrelated green suite does not refute a known failure. If the task explicitly changes old behavior, explain the particular conflicting assertion rather than weakening the check or declaring all old failures irrelevant. After another edit, do not present an earlier receipt as validation of the final version.
 
-For two or more already-decided dependent operations, use the existing tool_program path: decide, batch edit, run the selected check, collect needed output within the remaining budget, return for judgment. When native tools are exposed only inside tool_program, call tools.NAME there; tool_search still discovers advanced tools. Otherwise direct tools suit a single operation. Example after reading both files and selecting this test (adjust the local bound to the selected program timeout and task deadline):
-const end = Date.now() + 540000; // 此局部上限必须小于所选程序超时。
+For two or more already-decided dependent operations, use tool_program. When edit_files is directly exposed, keep large file creation there as edit_files({files:[{path,text}]}), without embedding full source in JavaScript. Inspect allApplied, then compose the selected execution and collection: await collect(await tools.run_command({argv:[...]}));. collect displays each observation and returns the final native result; do not text it again. Small decided patches and their selected check can share one program:
 const e = await tools.edit_files({files:[{path:'src/a.py',patches:[{oldText:'old_a',newText:'new_a'}]},{path:'src/b.py',patches:[{oldText:'old_b',newText:'new_b'}]}]});
 text(e);
 if (e.success && e.data.allApplied) {
-  let r = await tools.run_command({argv:['python','-m','pytest','tests/test_feature.py','-q']});
-  text(r);
-  while (r.success && (r.data.commandStatus==='running' || r.data.outputReadComplete===false) && Date.now()<end) {
-    r = await tools.read_process({processId:r.data.processId,waitMs:Math.max(0,Math.min(120000,end-Date.now()))});
-    text(r);
-  }
+  await collect(await tools.run_command({argv:['python','-m','pytest','tests/test_feature.py','-q']}));
 }
 New errors, conflicts, UNKNOWN, permissions or visual/semantic decisions return to the model. Do not hide dependency installation, new plans or retries in the program. Each result must be checked; later success does not erase earlier failure. If independent work is ready, yieldMs=0 can start background work; otherwise keep normal waits inside the program. Waiting never extends the Turn deadline. Preview omissions with outputReadComplete=true do not require mechanical pagination; retrieve raw evidence only if needed for the judgment. Return unfinished handles/cursors when a bound is reached. Do not detach processes. After compaction or a stale handle, task_state provides current observations; do not reconstruct IDs from prose. Core reclaims ordinary processes at Turn completion.
 

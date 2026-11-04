@@ -402,7 +402,7 @@ impl Model for SurfaceModel {
                 assert!(names.len() <= 15, "{names:?}");
                 assert!(messages.iter().any(|m| {
                     m.text_content()
-                        .contains("Once edits and checks are decided")
+                        .contains("await collect(await tools.run_command")
                 }));
                 call("tool_search", json!({"query":"read_history","limit":1}), 0)
             }

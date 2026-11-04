@@ -17,16 +17,10 @@ Set `programmaticTools:false` to restore native-only tool exposure. Save this JS
 After reading the files and choosing the edits and test entry point, compose edits, verification and bounded collection. Return to the model for unexpected failures, conflicts, permissions, UNKNOWN or visual judgment; do not install dependencies or choose new plans inside a loop. With no independent work, use the normal wait budget instead of explicit one-second status turns.
 
 ```javascript
-const end = Date.now() + 540000; // 此局部上限必须小于所选程序超时。
 const e = await tools.edit_files({files:[{path:'src/a.py',patches:[{oldText:'old_a',newText:'new_a'}]},{path:'src/b.py',patches:[{oldText:'old_b',newText:'new_b'}]}]});
 text(e);
 if (e.success && e.data.allApplied) {
-  let r = await tools.run_command({argv:['python','-m','pytest','tests/test_feature.py','-q']});
-  text(r);
-  while (r.success && (r.data.commandStatus==='running' || r.data.outputReadComplete===false) && Date.now()<end) {
-    r = await tools.read_process({processId:r.data.processId,waitMs:Math.max(0,Math.min(120000,end-Date.now()))});
-    text(r);
-  }
+  await collect(await tools.run_command({argv:['python','-m','pytest','tests/test_feature.py','-q']}));
 }
 ```
 
@@ -62,4 +56,4 @@ Evaluate final request size, actual adoption, provider input/cached/output token
 
 Program results distinguish `programCompleted` (interpreter completion), `allChildrenSucceeded` (every native child succeeded) and `pendingProcesses` (deduplicated using the latest receipt per process). Outer success is true only when both the interpreter and every child succeeded. Later success cannot erase earlier failure; expected failing controls remain recorded as failures for model interpretation. This result-contract change does not automatically block explicitly composed later steps or add retries.
 
-See [compact-programmatic.json](../../examples/tool-profiles/compact-programmatic.json) for an explicit composition-first candidate. It reuses the same executor, moving common native tools into the program catalog while retaining tool_search and authorized advanced capabilities. It tests actual edit/execute/collection composition without model-name routing or default changes. Schema text can increase serialized bytes; fewer entry points do not prove token savings. Compare final instruction, catalog and history sizes separately from provider usage against ordinary compact mode.
+Use [compact-composition.json](../../examples/tool-profiles/compact-composition.json) for mixed interaction: large file creation stays in direct `edit_files`; after allApplied, compose selected execution and collection in a program. Small patches can share a program with their checks. `collect` displays observations automatically, avoiding handwritten polling and duplicate text(). Defaults are unchanged. [compact-programmatic.json](../../examples/tool-profiles/compact-programmatic.json) remains a program-only control: moving schemas into descriptions can increase fixed input and quoting/recovery costs. A smaller menu is not evidence of efficiency. Compare final instructions, schemas, history, cached and uncached input separately; removing highly cached mechanical turns also changes the hit ratio.
