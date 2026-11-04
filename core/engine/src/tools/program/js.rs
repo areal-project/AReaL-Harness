@@ -234,7 +234,7 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let worker = std::thread::spawn(move || {
             run(
-            "const r=await tools.read({}); if(!r.text) throw Error('missing raw access'); text(r);".into(),
+            "const r=await tools.read({}); if(!r.text) throw Error('missing raw access'); text(r);text(r);r.data.answer='changed';text(r);".into(),
             vec!["read".into()], tx, CancellationToken::new(), Instant::now() + std::time::Duration::from_secs(2))
         });
         rx.blocking_recv()
@@ -252,6 +252,13 @@ mod tests {
         assert!(view.get("text").is_none());
         assert_eq!(view["itemId"], "item");
         assert!(view.get("outcome").is_none());
+        assert_eq!(result.parts.len(), 2);
+        assert!(
+            result.parts[1]["text"]
+                .as_str()
+                .unwrap()
+                .contains("changed")
+        );
     }
 
     #[test]

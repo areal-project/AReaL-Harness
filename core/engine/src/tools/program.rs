@@ -405,6 +405,23 @@ impl Engine {
 mod tests {
     use super::*;
     #[test]
+    fn mandatory_receipt_retains_plain_text_errors() {
+        let item: Item = serde_json::from_value(json!({
+            "type":"dynamicToolCall","id":"item","tool":"read_file","callId":"call",
+            "arguments":{"path":"large-line"},"status":"completed","success":false,
+            "contentItems":[{"type":"inputText","text":json!({"error":"single line exceeds output budget"}).to_string()}],
+            "execution":{"outcome":"failed","runtimeEpoch":"fixture","scopeId":"scope","operationId":"op"}
+        })).unwrap();
+        let result = receipt(&item).unwrap();
+        assert_eq!(
+            result["error"]["message"],
+            "single line exceeds output budget"
+        );
+        assert_eq!(result["success"], false);
+        assert_eq!(result["outcome"], "failed");
+    }
+
+    #[test]
     fn later_success_cannot_mask_failure_or_unfinished_processes() {
         let receipts = vec![
             json!({"success":false,"outcome":"failed","exitCode":1}),

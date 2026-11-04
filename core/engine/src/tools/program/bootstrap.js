@@ -7,6 +7,7 @@
   let textBytes = 0;
   let imageCount = 0;
   const nativeResults = new WeakSet();
+  const emittedViews = new WeakMap();
   const tools = Object.create(null);
   for (const name of parse(namesJson)) {
     tools[name] = function (args) {
@@ -17,12 +18,15 @@
   }
   Object.freeze(tools);
   function text(value) {
+    const native = nativeResults.has(value) ? value : null;
     // 强制子收据已包含身份、状态及错误；选定观察只携带关联与正文，程序内对象不变。
     if (nativeResults.has(value) && value.data != null) {
       const data = value.data;
       value = { itemId: value.itemId, data };
     }
     const s = typeof value === "string" ? value : (stringify(value) ?? String(value));
+    // collect 已展示末页；调用方再 text 同一对象时不重复发送。对象改变仍重新展示。
+    if (native && emittedViews.get(native) === s) return;
     // 按真实 UTF-8 字节检查归档上限；模型展示限制由 Core 在完整保存后单独执行。
     for (const ch of s) {
       const cp = ch.codePointAt(0);
@@ -33,6 +37,7 @@
         "program selected text exceeds the 1 MiB archive limit; completed effects are retained",
       );
     parts.push({ type: "inputText", text: s });
+    if (native) emittedViews.set(native, s);
   }
   function image(result) {
     if (!result || typeof result.callId !== "string")
@@ -45,8 +50,14 @@
     if (!nativeResults.has(result) || typeof result.data?.processId !== "string")
       throw new Error("collect expects an original process result");
     const { timeoutMs = 540000, maxReads = 16 } = options;
-    if (!Number.isInteger(timeoutMs) || timeoutMs < 0 || timeoutMs > 1800000 ||
-        !Number.isInteger(maxReads) || maxReads < 0 || maxReads > 64)
+    if (
+      !Number.isInteger(timeoutMs) ||
+      timeoutMs < 0 ||
+      timeoutMs > 1800000 ||
+      !Number.isInteger(maxReads) ||
+      maxReads < 0 ||
+      maxReads > 64
+    )
       throw new Error("collect requires timeoutMs 0..1800000 and maxReads 0..64");
     const processId = result.data.processId;
     const initialRemaining = remainingMs();
@@ -55,12 +66,21 @@
     let reason;
     while (true) {
       text(result);
-      if (!result.success) { reason = "failed"; break; }
+      if (!result.success) {
+        reason = "failed";
+        break;
+      }
       if (result.data.processComplete === true && result.data.outputReadComplete === true)
         return result;
-      if (reads >= maxReads) { reason = "readLimit"; break; }
+      if (reads >= maxReads) {
+        reason = "readLimit";
+        break;
+      }
       const left = Math.min(budget - (initialRemaining - remainingMs()), remainingMs() - 100);
-      if (left <= 0) { reason = "waitBudget"; break; }
+      if (left <= 0) {
+        reason = "waitBudget";
+        break;
+      }
       const before = result.data.nextCursor;
       result = await tools.read_process({ processId, waitMs: Math.min(120000, Math.floor(left)) });
       reads++;
@@ -69,18 +89,37 @@
         throw new Error("collect process identity changed or result is unavailable");
       }
       // 已结束但没有游标进展时，继续机械拉取不能获得新证据。
-      if (result.success && result.data.processComplete === true &&
-          result.data.outputReadComplete === false && result.data.nextCursor === before) {
-        text(result); reason = "noProgress"; break;
+      if (
+        result.success &&
+        result.data.processComplete === true &&
+        result.data.outputReadComplete === false &&
+        result.data.nextCursor === before
+      ) {
+        text(result);
+        reason = "noProgress";
+        break;
       }
     }
-    text({ collection: { reason, reads, processId, nextCursor: result.data.nextCursor,
-      processComplete: result.data.processComplete, outputReadComplete: result.data.outputReadComplete } });
+    text({
+      collection: {
+        reason,
+        reads,
+        processId,
+        nextCursor: result.data.nextCursor,
+        processComplete: result.data.processComplete,
+        outputReadComplete: result.data.outputReadComplete,
+      },
+    });
     return result;
   }
   return {
     execute: (code) =>
-      new AsyncFunction("tools", "text", "image", "collect", '"use strict";\n' + code)(tools, text, image, collect),
+      new AsyncFunction("tools", "text", "image", "collect", '"use strict";\n' + code)(
+        tools,
+        text,
+        image,
+        collect,
+      ),
     output: () => stringify(parts),
   };
 });
