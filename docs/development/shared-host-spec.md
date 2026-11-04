@@ -233,6 +233,18 @@ GUI 不再启动 Desktop Service 管项目生命周期，而是连 Host；⌘Q �
 - 在隔离环境并行对照后切换。生产身份、grant 与 journal 始终只有一个 writer；Rust Gateway 通过对照前保留 JS 实现，不让两个 Gateway 同时承接同一身份。
 - 单旧 profile 的已配对设备、Remote Noise 身份与授权原样保留，无需重新配对。多个 profile 的不同身份报告冲突，不能覆盖或伪装为同一个 peer。
 
+### 本机 Relay 的后台所有权
+
+本机 Relay 服务端由 Host 监督为独立子进程，复用 `services/remote-relay` 的 HTTP/WebSocket 协议、SQLite Store 与静态资源。Rust Gateway 继续拥有 Noise 身份、授权、命令与 journal。GUI 的 `relayServiceStartLocal`、`relayServiceStopLocal` 只表达意图，不在 Main 中恢复旧服务端 owner。
+
+- 运行时和 Relay bundle 随受控发行产物绑定，启动前核验清单、路径与完整性。GUI 安装包可复用经验证支持 `node:sqlite` 的包内 Electron 无头 Node 模式；子进程由 Host 启动，不连接 GUI IPC，也不依赖 GUI 存活。未交付这些组件的 CLI 布局明确返回本机 Relay 不可用，不回退到系统 PATH。
+- 私有启动通道传递配置和固定 room，标准输出仅承载有界的就绪状态，诊断不包含 capability、Noise 私钥或请求内容。Host vault 保留秘密，命令行参数不传秘密。父通道 EOF 触发启动取消或服务排空；独占锁在子进程退出前持续有效，防止 Host 换代后出现两个 Store writer。
+- 启停沿用来源级 Remote revision、持久意图和原 requestId 回执。GUI 退出不停止 Relay；Host 正常停止与受控升级必须等待 Relay 关闭和进程退出，再结算停止。Host 崩溃后，新 owner 在旧生命周期及锁释放前不得启动替代实例。显式停止意图继续生效；不通过重试不确定请求恢复服务。
+- 本机 HTTP origin 仅限明确启用且确由该 Host 监督的内网 Relay。Gateway 连接受控本机端点并校验公开 authority；外部 Relay 仍要求 HTTPS/WSS。不能将任意 HTTP 配置标记成本机服务来放宽校验。
+- 单旧来源沿用原 Noise identity、device grants、room 和 capability。旧 Relay Store 在来源迁移已获准、旧 writer 已退出且锁可独占后使用原路径；不以新建 Store、重新配对或新身份替代迁移证明。缺少原清理证明的项目仍遵守来源迁移阻塞规则。
+
+验收包括原 GUI 启停入口、真实 Relay 健康与 Noise 通道、GUI 完全退出后继续服务、Host stop 后原回执与子进程退出、崩溃换代不越过旧锁、端口冲突、原未决请求查询、撤销 room 不复活，以及隔离旧来源的配对身份连续。源码、解压安装包、正式签名包和真机分别记录；本节是实施契约，不表示已完成这些验收。
+
 ### 对照观察与停止结算
 
 - JS 私有派发参数缓存、保存次数和连接对象，可替换为同一原请求的 Host 回执、持久结果、真实连接状态和实际副作用；替代证据必须保留原身份与授权，不能宣称测量了底层物理调用次数。

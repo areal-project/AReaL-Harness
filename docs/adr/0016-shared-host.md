@@ -11,3 +11,5 @@
 项目登记独立于运行服务发现，Store 原地保留。旧 GUI ID 的授权与回执映射、Store 外 submission journal 和单 writer 切换属于同一迁移事务。Host 监督身份与 Remote Noise 身份分开；不同旧 profile 的 Noise 身份冲突必须显式处理。逐项目停止汇总部分结果，UNKNOWN 只查询，不重放。
 
 外部契约见 [Host API](../api/host.md)，阶段与验收见[实施规格](../development/shared-host-spec.md)。文档接受不代表运行、真机或安装包验收通过。
+
+本机 Relay 服务也归 Host 监督。复用现有 Node 服务端作为独立子进程，保留线协议与 SQLite 数据，不把它重新挂回 Electron Main。受控 GUI 安装包可提供无头 Node 运行时，但 GUI 进程不是生命周期 owner；缺组件的发行布局明确报告能力不可用。私有父通道与继承锁约束旧子进程退出和新实例启动，正常 Host stop 将 Relay 的退出纳入原停止回执结算。
