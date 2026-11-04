@@ -1,0 +1,14 @@
+scripts/tests/test_environment_facts.py
+  h_247f0d3940ae9c 44-51,88-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6671d65272225f1133ca152a1bda20bebc23df9e",
+  "prompts": {},
+  "humans": {
+    "h_247f0d3940ae9c": {
+      "author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
