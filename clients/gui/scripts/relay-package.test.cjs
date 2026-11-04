@@ -1,7 +1,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { createHash } = require("node:crypto");
-const { mkdtemp, readFile, rm } = require("node:fs/promises");
+const { mkdtemp, readFile, realpath, rm } = require("node:fs/promises");
 const { createRequire } = require("node:module");
 const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
@@ -13,7 +13,7 @@ const requireFromBuilder = createRequire(requireFromApp.resolve("electron-builde
 const { getFileMatchers, copyFiles } = requireFromBuilder("app-builder-lib/out/fileMatcher.js");
 
 test("packaged Relay resources retain every manifest file and load their own ws", async (t) => {
-  const home = await mkdtemp(join(tmpdir(), "areal-relay-package-"));
+  const home = await realpath(await mkdtemp(join(tmpdir(), "areal-relay-package-")));
   t.after(() => rm(home, { recursive: true, force: true }));
   const gui = resolve(__dirname, "..");
   const relayBundle = await buildRelayResources({
