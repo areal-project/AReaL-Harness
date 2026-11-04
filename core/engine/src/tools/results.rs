@@ -1214,7 +1214,7 @@ fn observation_key(name: &str, raw: &Value) -> Option<String> {
     }
     let body = match name {
         "read_file" if raw["sha256"].is_string() && raw["lines"].is_array() => {
-            json!({"path":raw["path"],"sha256":raw["sha256"],"offset":raw["offset"],"lines":raw["lines"],"nextLine":raw["nextLine"],"eof":raw["eof"],"truncated":raw["truncated"]})
+            json!({"path":raw["path"],"sha256":raw["sha256"],"offset":raw["offset"],"lines":raw["lines"],"nextLine":raw["nextLine"],"nextColumn":raw["nextColumn"],"nextRead":raw["nextRead"],"eof":raw["eof"],"truncated":raw["truncated"]})
         }
         "environment_info" if raw["fingerprint"].is_string() => {
             json!({"fingerprint":raw["fingerprint"]})

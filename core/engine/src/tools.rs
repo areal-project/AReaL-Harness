@@ -394,8 +394,8 @@ fn definitions_with_policy(policy: &ToolPolicy) -> Vec<Value> {
         ),
         tool(
             "read_file",
-            "Read a UTF-8 file with 1-based line offset/limit and line numbers. Returns fileVersion for conditional edits; follow nextLine when truncated. At most 8 MiB source and bounded output; use fs_read for an oversized single line.",
-            json!({"path":path,"offset":{"type":"integer","minimum":1},"limit":{"type":"integer","minimum":1,"maximum":1000}}),
+            "Read UTF-8 source with 1-based line offset/limit. Returns fileVersion for edits. Oversized lines (including minified JSON) return exact fragments with column/complete and nextRead; pass nextRead unchanged to continue the same source version. Columns count Unicode characters, not bytes. Otherwise follow nextLine. A fragment is not a complete JSON value. At most 8 MiB source and bounded output.",
+            json!({"path":path,"offset":{"type":"integer","minimum":1},"limit":{"type":"integer","minimum":1,"maximum":1000},"column":{"type":"integer","minimum":1},"expectedSha256":{"type":"string","pattern":"^[a-f0-9]{64}$"}}),
             &["path"],
         ),
         tool(
@@ -454,7 +454,7 @@ fn definitions_with_policy(policy: &ToolPolicy) -> Vec<Value> {
         ),
         tool(
             "verify_command",
-            "Run a test/build executable directly (no shell pipelines). Saves the complete output and a receipt in task scratch, with actual exit code and before/after source fingerprint. For example argv=[\"python\",\"-m\",\"pytest\",\"tests/test_feature.py\"]. Read the returned process until it exits; later source edits invalidate the receipt. Exit zero alone does not prove the task correct.",
+            "Run a test/build executable directly (no shell pipelines). Saves the complete output and a receipt in task scratch, with actual exit code and before/after source fingerprint. For example argv=[\"python\",\"-m\",\"pytest\",\"tests/test_feature.py\"]. Read the returned process until it exits; later source edits invalidate the receipt. Blender Python checks require nonzero --python-exit-code before the script/expression; rejected before execution otherwise. Exit zero alone does not prove requirement coverage.",
             json!({"argv":{"type":"array","items":{"type":"string"},"minItems":1},"cwd":path,"timeoutMs":{"type":"integer","minimum":1},"yieldMs":{"type":"integer","minimum":0}}),
             &["argv"],
         ),

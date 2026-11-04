@@ -102,6 +102,53 @@ class EnvironmentFactsTests(unittest.TestCase):
                 receipt["environment"]["environmentDigest"], changed["environmentDigest"]
             )
 
+    def test_blender_verification_requires_failure_exit_before_script(self):
+        for args in [
+            ["blender", "-b", "--python", "check.py"],
+            ["blender", "--python-exit-code", "0", "-P", "check.py"],
+            ["blender", "--python-exit-code", "999", "--python-expr", "assert False"],
+            ["blender", "--python", "check.py", "--python-exit-code", "1"],
+        ]:
+            with self.subTest(args=args), self.assertRaisesRegex(ValueError, "not executed"):
+                verification.check_exit_contract(args)
+        value = verification.check_exit_contract(
+            [
+                "/opt/bin/blender",
+                "-b",
+                "--python-exit-code",
+                "7",
+                "-P",
+                "check.py",
+                "--",
+                "--python-exit-code",
+                "0",
+            ]
+        )
+        self.assertIn("exceptions propagate", value)
+        self.assertIn(
+            "coverage requires judgment",
+            verification.check_exit_contract([sys.executable, "check.py"]),
+        )
+
+    def test_failed_check_retains_nonzero_exit_and_full_evidence(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            (workspace / "check.py").write_text("assert False, 'negative control'\n")
+            request = {
+                "scratch": str(root / "scratch"),
+                "workspace": str(workspace),
+                "cwd": str(workspace),
+                "argv": [sys.executable, "check.py"],
+                "identity": "b" * 32,
+            }
+            self.assertEqual(verification.run(request), 1)
+            receipt = json.loads((root / "scratch/verification" / ("b" * 32 + ".json")).read_text())
+            self.assertEqual(receipt["exitCode"], 1)
+            self.assertIn("negative control", Path(receipt["logPath"]).read_text())
+            self.assertTrue(receipt["sourceUnchanged"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -16,7 +16,7 @@ Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后�
 
 | 工具 | 关键参数与边界 |
 |---|---|
-| `read_file` | `path,offset?=1,limit?=120`；UTF-8 行、行号、nextLine/eof、完整摘要与 fileVersion；最多 1000 行、约 14 KiB |
+| `read_file` | `path,offset?=1,limit?=120,column?=1,expectedSha256?`；UTF-8 行或精确长行片段、nextLine/nextRead、完整摘要与 fileVersion；最多 1000 行、约 14 KiB |
 | `search_files` | `pattern,path?=".",glob?,context?=2,limit?=50`；rg 正则，context ≤10、limit ≤100；遵循 gitignore，不跟随符号链接 |
 | `image_read` | `path,maxDimension?=2048,maxViewBytes?=1048576,crop?,frameIndex?/timeMs?`；PNG/JPEG/WebP/GIF，最多 8 MiB/32 MP；仅缩小，返回真实 Core Blob 图像 |
 | `fs_read/list/stat` | 相对路径或 workspace URI；read offset 默认 0、maxBytes 默认/上限 8192，返回完整摘要与版本；list 默认 limit=100、最多 256 |
@@ -32,7 +32,7 @@ Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后�
 | `read_tool_result` | `resultId,after?=null,maxBytes?=8192`；读取本 Thread 历史调用的原始 JSON，按 nextCursor 续页，不执行原工具 |
 | `task_state` | `{pendingAfter?}`；返回已观察文件/进程/子任务、workspacePath/workspaceUri/commandCwd/scratchPath 与 summaryThroughItemId；超大路径明确省略，不进行实时探测 |
 
-文件最大 8 MiB，单次写/patch 64 KiB，另受每个调用参数 64 KiB 预算限制。显式 fileVersion 和 expectedSha256 互斥；SHA 为 null 表示仅新建。成功编辑返回新版本与规范路径，shell/外部编辑不自动刷新观察，CAS 冲突后需重新读取。行过长或遇到非 UTF-8 二进制内容时使用 fs_read；PNG/JPEG/WebP 图像使用 image_read。read 通过 Python、search 通过内置 Rust 搜索助手执行，最长 15 秒。Runtime 支持受限 Scope 时，原生导航复用当前 Turn 中继承原读取边界、无写权限且禁止网络的子 Scope，不占用后台命令的工作区写队列；取消、输出及进程额度仍归原父 Scope。未提供受限 Scope 能力的部署保留原执行方式，并记录 navigationInherited；创建受限 Scope 后的失败不会回退到更宽权限。文件版本观察与 CAS 不变；Linux 从可信宿主 PATH 查找并解析可执行 Python 3，macOS 使用受支持的系统 Python；没有解释器时仅 read_file 不可用，启动服务不受影响。受限 Scope 仍要求解释器位于 Runtime 允许的系统路径中，不自动扩大沙箱权限。搜索库编译进 Runtime 文件助手，使用 Runtime 提供的助手绝对路径，不读取宿主 rg 配置或工作区外 ignore。
+文件最大 8 MiB，单次写/patch 64 KiB，另受每个调用参数 64 KiB 预算限制。显式 fileVersion 和 expectedSha256 互斥；SHA 为 null 表示仅新建。成功编辑返回新版本与规范路径，shell/外部编辑不自动刷新观察，CAS 冲突后需重新读取。非 UTF-8 二进制内容使用 fs_read；PNG/JPEG/WebP 图像使用 image_read。read 通过 Python、search 通过内置 Rust 搜索助手执行，最长 15 秒。Runtime 支持受限 Scope 时，原生导航复用当前 Turn 中继承原读取边界、无写权限且禁止网络的子 Scope，不占用后台命令的工作区写队列；取消、输出及进程额度仍归原父 Scope。未提供受限 Scope 能力的部署保留原执行方式，并记录 navigationInherited；创建受限 Scope 后的失败不会回退到更宽权限。文件版本观察与 CAS 不变；Linux 从可信宿主 PATH 查找并解析可执行 Python 3，macOS 使用受支持的系统 Python；没有解释器时仅 read_file 不可用，启动服务不受影响。受限 Scope 仍要求解释器位于 Runtime 允许的系统路径中，不自动扩大沙箱权限。搜索库编译进 Runtime 文件助手，使用 Runtime 提供的助手绝对路径，不读取宿主 rg 配置或工作区外 ignore。
 
 完整响应中的调用依次执行；每响应默认 128 次资源保护与显式 Turn 剩余预算取较小值。两种协议均有 4 MiB 工具缓冲；编号非法或超限时，该响应的所有调用都不执行。文本结果页仍最多 16 KiB。`remainingToolCalls` 在无累计预算时为 null，否则为整数，压缩不重置计数；有限剩余额度 ≤32 时提示收尾。`max_output_bytes` 默认无限，显式有限预算不足以执行下一工具时保留已确认结果并要求未完成交接。独立的 `max_response_bytes` 默认限制单响应 4 MiB，包含推理/provider context/媒体。已知参数与工具失败返回模型处理，UNKNOWN 停止执行。
 
@@ -42,7 +42,10 @@ Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后�
 
 原生文件源上限仍为 8 MiB；更大文本应使用命令工具流式筛选并限制输出。按需加载不会消除历史累积，最终请求另受 `model.max_request_bytes` 约束，见[配置](configuration.md)。
 
-`verify_command` 将完整输出（最多 64 MiB）及 receipt 写入 scratch/verification，记录退出状态、日志与执行前后源码指纹。指纹覆盖 Git 跟踪和未忽略文件，非 Git 目录使用排除依赖/构建/缓存的扫描；源码变化使验证过期。receipt 位于任务可写目录，不是对恶意任务的认证。收尾时未结束的验证进程需要续读终态或显式终止；普通后台 run_command 不受此约束，也不会唤醒已结束 Turn。
+
+超长行（包括压缩为一行的 JSON）返回有界原文片段，行项带 `column`（从 1 开始的 Unicode 字符位置）及 `complete`。`nextRead` 包含 path/offset/column/expectedSha256，原样传给 read_file 续读；版本变化拒绝拼接。片段不是完整 JSON 值，不能把截断视为解析失败或文件末尾。普通行的 nextLine 行为保持不变；片段保留原结构，不套用 file-lines 无损行合并。
+
+`verify_command` 将完整输出（最多 64 MiB）及 receipt 写入 scratch/verification，记录退出状态、日志与执行前后源码指纹。指纹覆盖 Git 跟踪和未忽略文件，非 Git 目录使用排除依赖/构建/缓存的扫描；源码变化使验证过期。receipt 位于任务可写目录，不是对恶意任务的认证。Blender Python 验证必须在 `--python/-P/--python-expr` 前显式提供 `--python-exit-code 1..255`，缺失或无效时派发前拒绝，不自动改写 argv；receipt 的 `exitContract` 说明失败传播边界，不证明检查覆盖。其它解释器仍按实际退出状态记录。收尾时未结束的验证进程需要续读终态或显式终止；普通后台 run_command 不受此约束，也不会唤醒已结束 Turn。
 
 macOS 的受限命令直接调用 `bash`/`sh` 时使用随 Runtime 发布的私有 Bash，here-document 使用独立 scratch；系统 Git 在沙箱前解析到可信工具链程序，默认不读取工作区外的系统/用户 Git 配置。源码写入、网络和外部临时文件权限仍由原 Scope 限制。嵌套硬编码 `/bin/bash` 或其 shebang 仍是系统旧 Bash，完整边界见 [Runtime 契约](../api/runtime.md#macos-受限命令的系统工具)。
 
