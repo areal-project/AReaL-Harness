@@ -18,6 +18,7 @@ async fn attach_detail_proxy(
     native: &NativeCore,
     target: Value,
     mut skip_reads: usize,
+    expected_status: &'static str,
 ) -> DetailProxy {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!("ws://{}/", listener.local_addr().unwrap());
@@ -78,7 +79,7 @@ async fn attach_detail_proxy(
                             let request = original_request.take().unwrap();
                             let items = value["result"]["data"].as_array().expect("real Core success result");
                             let original = items.iter().find(|item| item["threadId"] == target["threadId"] && item["turnId"] == target["turnId"] && item["requestId"] == target["interactionId"]).expect("original target in real Core result");
-                            assert_eq!(original["status"], "pending");
+                            assert_eq!(original["status"], expected_status);
                             let frame = json!({"request":request,"response":value});
                             storage::write(&run.join("detail-held-frame.json"), &frame).unwrap();
                             held = Some(message);
@@ -184,6 +185,7 @@ async fn detail_case(mode: &str) {
         &native,
         target.clone(),
         usize::from(mode == "preflight-revoke"),
+        "pending",
     )
     .await;
     let mut session = f.session("a");
@@ -403,7 +405,7 @@ async fn native_delayed_duplicate_preflight_preserves_original_outcome() {
             let mut native = start_native_core(&f).await;
             let (target, original) = pending_approval(&native).await;
             let run = native.run.clone();
-            let mut proxy = attach_detail_proxy(&mut f, &native, target.clone(), 2).await;
+            let mut proxy = attach_detail_proxy(&mut f, &native, target.clone(), 2, "pending").await;
             let command = uuid::Uuid::new_v4().to_string();
             let mut reviewed = Vec::new();
             for _ in 0..2 {
@@ -492,6 +494,109 @@ async fn native_delayed_duplicate_preflight_preserves_original_outcome() {
             )
             .unwrap();
             println!("native duplicate preflight evidence: {}", run.display());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "real Core/Runtime; in-process Host command observation barrier, no Noise or Host restart"]
+async fn native_command_observation_fences_capability_and_service_changes() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for mode in ["capability", "service"] {
+                let mut f = Fixture::new().await;
+                (f.close)();
+                f.server.abort();
+                let mut native = start_native_core(&f).await;
+                let (target, original) = pending_approval(&native).await;
+                f.host
+                    .slots
+                    .borrow_mut()
+                    .get_mut("project")
+                    .unwrap()
+                    .service = Some(native.direct.clone());
+                f.reconnect().await;
+                let mut session = f.session("a");
+                let detail = session
+                    .request(&f.request("attention.read", target.clone(), None))
+                    .await
+                    .unwrap();
+                assert_eq!(detail["complete"], true);
+                let command = uuid::Uuid::new_v4().to_string();
+                let mut params = target.clone();
+                params["decision"] = json!("allowOnce");
+                params["argumentsDigest"] = original["argumentsDigest"].clone();
+                params["reviewToken"] = detail["reviewToken"].clone();
+                let accepted = session
+                    .request(&f.request("interaction.respond", params, Some(&command)))
+                    .await
+                    .unwrap();
+                assert_eq!(accepted["admissionState"], "accepted");
+                let terminal = wait_native_turn(
+                    &native.direct,
+                    target["threadId"].as_str().unwrap(),
+                    target["turnId"].as_str().unwrap(),
+                )
+                .await;
+                assert_eq!(terminal["status"], "completed");
+                assert_eq!(std::fs::read_to_string(&native.effect).unwrap(), "x");
+                let journal = f.host.journal.native_snapshot("project").unwrap();
+                (f.close)();
+                let mut proxy =
+                    attach_detail_proxy(&mut f, &native, target.clone(), 0, "answered").await;
+                let reading = Fixture::dispatch(
+                    session,
+                    f.request("command.read", json!({"commandId":command}), None),
+                );
+                let frame = tokio::time::timeout(Duration::from_secs(20), &mut proxy.observed)
+                    .await
+                    .expect("original command observation barrier")
+                    .unwrap();
+                let before_grant = observed_grant(&f);
+                let before_service = f.host.slots.borrow()["project"].service.clone();
+                if mode == "capability" {
+                    f.grant("a", |grant| grant["capabilities"] = json!(["observe"]));
+                } else {
+                    f.host.slots.borrow_mut().get_mut("project").unwrap()
+                        .service.as_mut().unwrap().identity.generation =
+                        uuid::Uuid::new_v4().to_string();
+                }
+                proxy.release.take().unwrap().send(()).unwrap();
+                let (_, result) = tokio::time::timeout(Duration::from_secs(20), reading)
+                    .await
+                    .expect("original command observation deadline")
+                    .unwrap();
+                let error = result.unwrap_err().to_string();
+                assert_eq!(error, if mode == "capability" { "FORBIDDEN" } else { "RESYNC_REQUIRED" });
+                assert_eq!(f.host.journal.native_snapshot("project").unwrap(), journal);
+                assert!(proxy.requests.borrow().iter().all(|r| r["method"] != "areal/interaction/respond"));
+                assert_eq!(std::fs::read_to_string(&native.effect).unwrap(), "x");
+                storage::write(
+                    &native.run.join("command-observation-result.json"),
+                    &json!({"mode":mode,"error":error,"originalAccepted":accepted,
+                        "heldFrame":frame,"beforeGrant":before_grant,"afterGrant":observed_grant(&f),
+                        "beforeService":before_service,"afterService":f.host.slots.borrow()["project"].service,
+                        "journalUnchanged":true,"effect":"x","forwarded":proxy.requests.borrow().clone()}),
+                ).unwrap();
+                (f.close)();
+                proxy.task.abort();
+                for child in [&mut native.core, &mut native.model] {
+                    if child.0.try_wait().unwrap().is_none() {
+                        unsafe { libc::kill(child.0.id() as i32, libc::SIGINT); }
+                    }
+                    for _ in 0..400 {
+                        if child.0.try_wait().unwrap().is_some() { break; }
+                        tokio::time::sleep(Duration::from_millis(25)).await;
+                    }
+                    assert!(child.0.try_wait().unwrap().is_some(), "owned child must exit");
+                }
+                storage::write(
+                    &native.run.join("command-observation-complete.json"),
+                    &json!({"mode":mode,"passed":true,"corePid":native.core.0.id(),"modelPid":native.model.0.id(),
+                        "scope":"real Core and Runtime; in-process Host capability/descriptor mutation, not real Host restart or Noise"}),
+                ).unwrap();
+                println!("native command observation evidence: {}", native.run.display());
+            }
         })
         .await;
 }

@@ -430,6 +430,8 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 
 `cargo test --locked -p areal-host native_delayed_duplicate_preflight_preserves_original_outcome -- --ignored` 在同一 Core 连接上完成两个客户端会话的审阅，持有同一命令的首次预检回帧，等另一会话持久化原 accepted 后再释放旧帧。要求重复请求返回完整相同结果、journal 不再改变、只转发一次审批且真实 Runtime 只追加一次标记。屏障不更换审阅 token 所绑定的连接；该测试不覆盖独立 Host 崩溃或 Noise 传输。
 
+`cargo test --locked -p areal-host native_command_observation_fences_capability_and_service_changes -- --ignored` 在真实审批完成并产生一次 Runtime 副作用后，持有 `command.read` 读取原已回答交互的 Core 回帧。移除原 answer 能力时返回 `FORBIDDEN`，Host owner 发布不同服务代际时返回 `RESYNC_REQUIRED`；两组均不发布原命令结果、不再次转发审批，原 journal 和单次副作用不变。服务描述符变更由进程内夹具触发，不代表真实 Host 重启。
+
 `cargo test -p areal-host --lib interaction_tests` 还运行 artifact HTTP 测试。真实 Host 使用隔离文件 vault 和认证的本机模拟 Core WebSocket 与 HTTP 服务，验证合法图片、404、短流、错误 Content-Length、超长流取消、HTTP 响应等待期间授权版本变化，以及读取后媒体成员被移除。该测试不启动真实 Core 或 Runtime，也不能证明分块读取期间的授权变化。
 
 同一固定组件环境下，`cargo test --locked -p areal-host native_outcome_write_denied_preserves_original_pending_and_recovers -- --ignored` 运行有限 T22。测试代理收到真实 Core 成功回复后、向 Host 转发前，将隔离 journal 目录设为只读，检查实际 outcome 写入返回 `PermissionDenied` 且原 pending 字节保留。恢复权限后按原 typed 回执结算，重复命令只有一个 Turn 和一次 Runtime 写入。权限 guard 在正常路径和 panic 时恢复目录权限；测试记录原错误及内部 UNKNOWN 投影，不声称观察到 Remote wire 的 `submissionUnknown`。
