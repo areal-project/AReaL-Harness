@@ -418,6 +418,8 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 
 `cargo test --locked -p areal-host gateway_owner::session::interaction_tests::create_` 和 `cargo test --locked -p areal-host stop_lost_response_keeps_original_unknown_without_redispatch` 使用真实 Host journal、隔离 home 和认证 WebSocket 模拟 Core，检查创建的 pending 与 outcome 写入失败、同 home owner 重建后按原 operation 查询 typed 回执，以及停止请求的原 turn 与普通会话保护和丢响应后的 UNKNOWN。此夹具不启动真实 Core/Runtime，也不模拟 Host 进程崩溃或 Core 内的 turn 切换竞态。
 
+`AREAL_CORE_BIN=/absolute/verified/areal AREAL_NATIVE_FAULT_EVIDENCE=/absolute/evidence cargo test --locked -p areal-host native_create_success_reply_lost_recovers_without_redispatch -- --ignored` 显式运行真实 Core/Runtime 单场景。测试专用 WebSocket 代理丢弃真实创建成功回复，核对原 command 与 native request 身份、UNKNOWN、原 Core 回执恢复及重复请求不再转发创建，只产生一个 Thread。后续普通 Turn 的 Runtime 单次写入单独断言。普通单测忽略此入口；使用匹配的固定组件槽并串行运行，保留失败、回执与清理证据。Host owner/journal 使用进程内夹具，此测试不覆盖 Remote 传输、独立 Host 崩溃或原命令整套验收。
+
 `cargo test -p areal-host --lib interaction_tests` 还运行 artifact HTTP 测试。真实 Host 使用隔离文件 vault 和认证的本机模拟 Core WebSocket 与 HTTP 服务，验证合法图片、404、短流、错误 Content-Length、超长流取消、HTTP 响应等待期间授权版本变化，以及读取后媒体成员被移除。该测试不启动真实 Core 或 Runtime，也不能证明分块读取期间的授权变化。
 
 `node scripts/shared-host-smoke.mjs` 验证共享 Host 的本机认证、并发启动、登记回执、旧服务受控重启、多项目隔离、Host 崩溃清理与停止回执。`AREAL_TEST_BIN_DIR` 指向完整新产物，`AREAL_LEGACY_TEST_BIN_DIR` 指向支持 service-v1 的完整旧产物；缺少旧产物会失败。`node scripts/shared-host-client-smoke.mjs` 使用同一新产物验证 exec、`-p`、headless TUI 和真实 PTY 在客户端强退后继续原 Turn，以及 resume 与 Web 复用。两者使用隔离 home/workspace、确定性模型与真实 Core/Runtime，并通过 `AREAL_TEST_EVIDENCE` 保存 JSON 证据。固定产物串行使用。这些检查不替代 GUI、Remote、真实供应商或安装包验收。

@@ -1,3 +1,6 @@
+#[path = "native_creation_recovery_tests.rs"]
+mod native_creation_recovery_tests;
+
 #[path = "creation_recovery_tests.rs"]
 mod creation_recovery_tests;
 
