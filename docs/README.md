@@ -24,7 +24,7 @@
 
 Remote v2 设计与实施边界：[架构](design/remote-control.md) · [API](api/remote-control.md) · [连接与部署](guides/remote-control.md) · [验收计划](development/remote-control-testing.md) · [Host 所有权](adr/0008-remote-host-ownership.md) · [iOS v1 实施规格](development/ios-remote-v1-spec.md)。各专题区分已实现的切片与后续设计，不代表完整 P0 已交付。
 
-共享 Host（待实施）：[实施规格](development/shared-host-spec.md) · [Host API](api/host.md) · [ADR 0016](adr/0016-shared-host.md)。每个 OS 用户一个 Host，CLI、TUI、GUI、Web 与手机都是客户端，取代此前的[独立开发环境服务设计](design/environment-service.md)与[分阶段计划](development/environment-service-plan.md)。
+共享 Host（待实施）：[实施规格](development/shared-host-spec.md) · [Host API](api/host.md) · [ADR 0016](adr/0016-shared-host.md)。一套协议与一份界面（设计中）：[实施规格](development/one-protocol-spec.md) · [ADR 0017](adr/0017-one-protocol-one-ui.md)。每个 OS 用户一个 Host，CLI、TUI、GUI、Web 与手机都是客户端，取代此前的[独立开发环境服务设计](design/environment-service.md)与[分阶段计划](development/environment-service-plan.md)。
 
 客户端 UI 实现与设计约束：[设计规则 v1](../clients/gui/design-system/README.md) · [@areal/ui 组件与 Token](../clients/gui/packages/ui/README.md)。
 

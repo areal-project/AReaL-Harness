@@ -1,0 +1,264 @@
+**中文** | [English](one-protocol-spec.en.md)
+
+# 一套协议与一份界面实施规格
+
+状态为目标设计，尚未实施。决策见 [ADR 0017](../adr/0017-one-protocol-one-ui.md)，所有权沿用 [ADR 0016](../adr/0016-shared-host.md)，现有 Host 契约见 [Host API](../api/host.md) 与 [Remote API](../api/remote-control.md)。本文中的方法名、字段和命令都是提案，实现并通过验收前不能在其他文档写成已支持能力。
+
+## 结论
+
+所有客户端只连 Host，只讲一套协议。GUI、网页和手机运行同一份界面构建，桌面专属能力由 Electron 外壳单独提供。手机不再有按端写死的功能限制。Electron Main 中尚未改写的业务先迁入 Host 监督的 Node 工作台服务，协议统一和界面合一不等待 Rust 改写。
+
+对照基线：AReaL-Harness `codex/shared-host` `7611582f`；T3 Code `8760d063`（`docs/internals/connection-runtime.md`、`docs/internals/remote.md`、`packages/contracts/src/rpc.ts`）。
+
+## 已定决策
+
+| 问题 | 决定 | 理由 |
+| --- | --- | --- |
+| 客户端入口 | 只有 Host；TUI 直连 Core 仅作开发与排障 | 一处认证、一份清单、一套实现 |
+| 本机 GUI 与浏览器怎么连 | Host 直接监听 `127.0.0.1` WebSocket，不经 Electron Main 转发 | Electron 与浏览器连法相同，Main 才能瘦下来 |
+| 协议基础 | 沿用 Host 封装和 Gateway 方法表扩展，不另起协议；schema 生成 Rust 与 TS 类型 | Gateway 已有清单、会话订阅与回执，已发布客户端在用 |
+| 手机默认授权 | 查看、提交、审批默认给；管理在配对时单独勾选 | 手机不做特殊限制，危险操作仍需明确同意 |
+| 未改写的 Main 业务 | 迁入 Host 监督的 Node 工作台服务，之后按领域改写 | 不让 2.7 万行 Rust 改写阻塞协议与界面 |
+| 手机外壳 | 继续 Capacitor，套同一份界面 | 已复用 GUI 代码，不另写原生界面 |
+
+## 交给 Codex 的方式
+
+按 A0 → A4 顺序实施。A0 只写文档和 schema，可与共享 Host 的 H3–H4 验收并行；A1 起须等维护者确认 H4 验收完成。每个工作包一个 PR。提示词引用本文对应小节，以及下文"执行纪律"。
+
+- 推理强度全部用 high。A0 与 A3 先出设计说明，维护者确认后再实现。
+- 仓库通用规则（分层、中英文文档配对、测试分层、PR 模板）以 AGENTS.md 为准，本文不重复。
+- 工作包范围内、可回退的实现选择由 Codex 决定并在 PR 说明理由；只有"需要停下来问的情况"需要先问。
+
+## 执行纪律
+
+上一轮共享 Host 迁移暴露的问题，在本规格中写成硬性要求。
+
+1. **进度按真实旅程汇报。** 每次汇报的第一行回答"维护者的真实旧环境（安装包加真实数据副本）能否完成本包的验收旅程"，再列单测与静态检查。不能用局部通过代替这个结论。
+2. **先打通，再加厚。** 每个工作包开工的第一步，是在打包产物上用真实数据副本跑通一条最短的端到端旅程（哪怕只有一个方法），确认所有接线都到了 Host。之后才写完整实现与单测。不能把安装包验证留到包末尾。
+3. **一次只收一个包。** 当前包的完成条件全部满足之前，不开下一个包。发现属于其他包或共享 Host 的问题，记入 PR 的"已知问题"并告知维护者，不顺手修。
+4. **历史事实与当前切换分开。** 本规格不迁移任何存储，不改任何历史记录。切换数据路径一律放在开关后面，可回退到旧 IPC 路径；旧路径在切换期完整保留。某条历史命令的 UNKNOWN 只影响这条命令的展示与查询，不得阻塞项目可用、开关打开或工作包完成。
+5. **卡住就停，带方案回来。** 同一阻塞连续两轮排查没有新证据，停止搜索。写出"已能证明什么、不能证明什么"的表，并给出两到三个由软件承担复杂度的方案交维护者选。不得以禁用项目、跳过测试、放宽断言或删除数据绕过。
+6. **测试夹具有预算。** 优先复用现有夹具与 smoke 脚本。夹具自身的问题（进程退出等待、端口冲突模拟等）累计超过半天，停下汇报，不为夹具另写框架。
+7. **兼容已发布客户端。** 已发布的 iOS 与 PWA 只认原方法表。改动现有方法的语义或限制，只能通过 `hello` 的能力协商对新客户端生效。
+
+## 目标拓扑
+
+```text
+Electron 外壳 ─┐                    ┌─ 能力：窗口、通知、文件对话框、桌面工具登记
+浏览器 ───────┼─ ws://127.0.0.1 ─┐  │
+Capacitor ────┘(远程走 Noise)    │  └─ 能力：钥匙串、扫码、推送
+TUI / CLI ───── Unix socket ─────┤
+                                  ▼
+             AReaL Host（同一组方法）
+             ├ 入口：认证、授权、能力协商、资源上限
+             ├ 路由：按 projectId 转 Core，按需唤醒
+             ├ 读模型：跨项目清单与待处理
+             ├ journal 与 command.read
+             ├ 工具中转：外壳登记的桌面工具
+             ├ 静态界面发布
+             └ 工作台服务（Node 子进程，过渡期承载 Main 业务）
+                                  ▼
+             每项目：项目服务 → launcher → Core + Runtime
+```
+
+| 组件 | 拥有 | 不拥有 |
+| --- | --- | --- |
+| Host | 唯一协议入口、授权、路由、跨项目清单、journal、凭据、定时、工具中转、界面发布 | 会话历史权威、窗口与原生 UI |
+| 工作台服务 | 过渡期内尚未改写的跨项目业务（Worktree、资料库、插件/MCP 管理、供应商等），只经 Host 对外 | 客户端端口、凭据明文、生命周期 |
+| Core | Thread、Turn、Task、审批、回执、单项目文件与 Git | 设备、授权、面对客户端 |
+| `@areal/client` | 每个 Host 一个连接负责人、清单与会话订阅、命令状态、离线缓存 | 业务判断、自动重发未知命令 |
+| `@areal/app` | 全部页面，按能力显示入口 | 直接访问 Electron、Capacitor 或文件系统 |
+| Electron 外壳 | 原生 UI 能力；以工具提供者身份登记浏览器预览、Computer Use、截图、GUI 终端 | 项目、会话、任务、凭据等业务命令 |
+
+## 全局约束
+
+- 不改 Core Store 格式，不移动数据目录，不改监督链与清理证明，不改共享 Host 的迁移契约。
+- UNKNOWN 不重放、受理回执优先、单写者全部保留。命令由客户端生成 `commandId`，重连不自动重放写操作。
+- 同步为清单订阅加单会话订阅：先快照，再按序号增量；序号缺口即关闭并重读快照；离开会话后缓存与游标保留数分钟。禁止推全量投影。
+- 连接健康与数据新鲜分开表示：连接就绪不等于清单或会话已是最新。
+- 本机 WebSocket 只监听回环地址，以一次性票据换会话，校验 Origin；不把地址或端口写进构建产物。
+- 凭据、token、票据不进命令行参数、URL 历史、日志或诊断。
+- 依赖方向保持 Runtime → Core → Clients。Host 不依赖 GUI 代码；工作台服务不依赖 Electron。
+- 不支持 Windows；不做远端 SSH 部署、多 OS 用户、云账号。
+
+## 工作包 A0：ADR、协议 schema 与冻结
+
+### 目标
+
+固定一份协议定义，所有后续方法都从这里生成；冻结桌面 IPC。
+
+### 现状
+
+- Host 封装见 `core/host/src/wire.rs`（`{version,id,method,params}`，单帧 1 MiB）；本机方法见 [Host API](../api/host.md)。
+- Gateway 方法在 `core/host/src/gateway/`，契约见 [Remote API](../api/remote-control.md)；快照上限 192 KiB（`projection.rs`），正文 64 KiB（`controls.rs`），不支持附件、仅普通 ask 会话。
+- 桌面 IPC 合同在 `clients/gui/packages/workbench/client/desktop-contract.cjs`（48 个命令），Renderer 平台接口在 `clients/gui/renderer/src/services.ts`。
+- 已有 schema：`schemas/areal-core-v1.json`、`schemas/native-host-v2.json`。
+
+### 要做的
+
+1. 新增 `schemas/areal-host-protocol-v1.json`，收录现有 `host.*` 与 Gateway 方法，不改语义；生成 Rust 与 TS 类型，并加一致性测试证明 schema 与现有实现收发的消息一致。Host 与 `@areal/remote-client` 改用生成类型放到 A1 第一步，避免与 H3–H4 验收中的 Host 代码冲突。
+2. 定义 `hello` 扩展：协议版本、方法列表、授权范围（observe/submit/approve/manage）、资源上限（单帧、分页、上传分块）、传输类型。
+3. 为桌面 48 个命令逐一标注去向：已有协议方法、新协议方法（归 Host 或工作台服务或 Core）、留在 Electron 外壳。表格写入本文附录或单独的开发文档。
+4. 加检查：`desktop-contract.cjs` 只能删减命令，新增命令时 CI 失败。
+
+### 约束
+
+- 已发布 iOS 与 PWA 的方法和字段不改名、不改限制。
+- 只写文档、schema、生成脚本与检查，不改运行时行为。
+
+### 需要停下来问的情况
+
+- 现有 Gateway 方法与桌面命令语义冲突，必须改其一。
+- 某个桌面命令无法归类到 Host、工作台服务、Core 或外壳之一。
+
+### 完成条件
+
+- schema 生成的类型通过一致性测试，现有 Remote 测试不变通过。
+- 48 个命令的去向表完整，维护者确认。
+- CI 能拦住新增桌面 IPC 命令。
+
+## 工作包 A1：本机 WebSocket、共享数据层与 GUI 读路径
+
+### 目标
+
+GUI 的项目清单与会话详情改从 Host 读；浏览器打开同一地址看到同样内容。
+
+### 现状
+
+- Renderer 经 `preload.cjs` 的 `requestProjection`/`onProjection` 接收 Main 拼好的全量投影（`packages/workbench/client/state-projection.cjs`），由 `renderer/src/desktop-services.ts` 读取。
+- 远程网页用 `@areal/remote-client`（`RemoteConnection`、`acceptSessionMessage`、`SessionBodyReader`），只走 Noise。
+- Electron 窗口加载 `areal-ui://app/`。
+
+### 要做的
+
+0. Host 与 `@areal/remote-client` 改用 A0 生成的类型，行为不变。
+1. Host 新增回环 WebSocket 监听：随机端口、写入 Host 描述；一次性票据接口（本机 socket 认证后签发，短时有效，只能使用一次）；Origin 白名单为 `areal-ui://app` 与 Host 自身地址。
+2. 新增 `shell.subscribe`：跨项目清单（项目、会话摘要、待处理数），快照加序号增量；打开清单不启动已停止的 Core。会话详情复用 `session.open`，按传输与授权放宽 192 KiB 上限为分页。
+3. 以 `@areal/remote-client` 为底建 `@areal/client`：一个 Host 一个连接负责人（重连带抖动退避，前台与网络变化时探测），清单库与会话库，传输可选 WebSocket 或 Noise。
+4. Renderer 的读路径在开关后切到 `@areal/client`；开关关闭时保持旧投影。Electron preload 只负责向 Main 取票据。
+5. Host 发布与 Electron 同一份 Renderer 构建；`areal web` 打开它（只读即可）。
+
+### 约束
+
+- 不动任何写路径；写操作仍走旧 IPC。
+- 开关默认关闭，维护者验收后再默认打开。
+
+### 需要停下来问的情况
+
+- 票据或 Origin 校验需要在构建中写死地址。
+- 清单需要启动 Core 才能拿到摘要。
+
+### 完成条件
+
+- 真实安装包加真实数据副本：开关打开后 GUI 显示的项目、会话与旧路径一致（逐项对照记录），浏览器打开 Host 地址看到同样内容。
+- 断网、Host 重启、Core 重启后清单与会话自动恢复，无重复条目；序号缺口触发重读。
+- 打开清单不拉起任何已停止的 Core（以进程观察为证）。
+- 开关关闭后行为与改动前一致。
+
+## 工作包 A2：已覆盖的写操作切到 Host，去掉手机限制
+
+### 目标
+
+Gateway 已有的写操作，GUI 也走协议；删掉 Main 的重复实现；手机获得同等能力。
+
+### 现状
+
+Gateway 已有 `session.create`、`session.send`、`session.control`（配置、目标、队列、steer）、`turn.stop`、`interaction.respond`、`task.read`/`task.pause`/`task.question.*`、`command.read`。Main 中对应实现分布在 `backend.cjs`、`submission-recovery.cjs`、`history-observation.cjs` 等。
+
+### 要做的
+
+1. 按授权与资源上限放开：去掉"仅普通 ask""Workflow 拒绝""不支持附件"；附件改为分块上传方法，单块大小由 `hello` 告知。
+2. 设备授权分四级，配对界面默认勾选查看、提交、审批；管理单独勾选。已配对设备保持原授权，不自动扩大。
+3. GUI 的上述写操作切到协议（同一开关或子开关）。切换期的未结算提交按原 journal 与原 ID 核查，不重发。
+4. 开关验收后删除 Main 中的重复实现与对应 IPC 命令。
+
+### 约束
+
+- 已发布客户端对旧限制的理解不变：放宽只对声明新能力的客户端生效。
+- 历史 UNKNOWN 不阻塞本包完成；它们只在对应命令上显示为未知。
+
+### 需要停下来问的情况
+
+- 某个写操作在 Main 与 Gateway 的语义不同，无法合并而不改变用户可见行为。
+- 去掉某项手机限制需要改变 Core 的准入规则。
+
+### 完成条件
+
+- 真实安装包：GUI 与手机分别完成新建、发送（含附件）、排队、停止、审批、回答、任务暂停；强杀 GUI 后在手机完成审批，副作用一次。
+- 回复丢失时只查原 ID，不重发（复用现有恢复测试）。
+- Main 中对应实现与 IPC 命令已删除，CI 拦截恢复。
+
+## 工作包 A3：工作台服务与剩余领域
+
+### 目标
+
+Main 中其余业务迁入 Host 监督的 Node 工作台服务或 Core，经协议对所有客户端开放；桌面工具改为经 Host 中转。
+
+### 现状
+
+- Main 业务约 2.7 万行（`worktrees.cjs`、`task-catalog.cjs`、`schedule-admission.cjs`、`library.cjs`、`providers.cjs`、`management.cjs`、`mcp-apps.cjs` 等）。
+- Host 已用同样方式监督本机 Relay 的 Node 子进程（`core/host/src/local_relay.rs`）。
+- 桌面工具当前由 Main 直接发布给 Core。
+
+### 要做的
+
+1. 先交设计说明：工作台服务的进程监督、与 Host 的私有通道、方法命名空间路由、如何取得 Core 连接、缺 Node 时的能力降级。
+2. 按领域迁移，每个领域一个 PR：会话类（fork、side、编辑、继续、预测）→ 工作区与 Worktree → `manage`（插件、MCP、定时编辑、工作组、配置）→ 供应商与订阅、资料库、导出、反馈与诊断。每个领域判定归 Core（单项目内）还是工作台服务（跨项目）。
+3. 新增 `tool.provide`：Electron 外壳连上 Host 后登记桌面工具，Host 转给需要的 Core；断开即撤销并报告不可用。
+4. 每迁完一个领域，删除 Main 中对应文件与 IPC 命令。
+
+### 约束
+
+- 工作台服务不打开客户端端口，不持有凭据明文（经 Host 凭据库按需取用），不依赖 Electron。
+- 迁移代码以搬运为主，不在同一 PR 内重写逻辑。
+
+### 需要停下来问的情况
+
+- 某领域依赖只有 Electron 才有的 API 且无法移入外壳。
+- 某领域在跨项目与单项目之间无法清楚划分。
+
+### 完成条件
+
+- 每个领域：真实安装包上 GUI 与浏览器（必要时手机）完成该领域的主要旅程；Main 对应文件已删除。
+- 手机发起的会话在 GUI 开着时能用浏览器预览，GUI 关闭后明确报告不可用。
+
+## 工作包 A4：界面合一与退役
+
+### 目标
+
+只剩一份界面；客户端入口只剩 Host。
+
+### 要做的
+
+1. 网页、远程网页、手机都使用 `@areal/app` 同一份构建，靠响应式布局适配窄屏。
+2. 退役 `clients/web`、`renderer/remote-web`、`renderer/src/remote/RemoteWorkbench.tsx` 与 `renderer/src/mobile/` 中的独立页面；Core 不再内嵌网页。
+3. TUI 与 CLI 改连 Host 协议；直连 Core 只保留为显式的开发选项。
+4. 删除旧 IPC 投影与开关；Main 只剩外壳代码。
+
+### 需要停下来问的情况
+
+- 已发布 iOS 版本依赖将被删除的页面或方法。
+
+### 完成条件
+
+- 仓库中只有一份界面构建；Electron Main 中不再有业务命令。
+- 真实安装包、浏览器与手机分别完成验收场景 OP-01 至 OP-08。
+
+## 验收场景汇总
+
+| 编号 | 场景 | 工作包 |
+| --- | --- | --- |
+| OP-01 | GUI 与浏览器打开同一 Host，看到相同项目与会话 | A1 |
+| OP-02 | 打开清单不启动已停止的 Core | A1 |
+| OP-03 | 断网、Host 重启、Core 重启后自动恢复，无重复，缺口重读 | A1 |
+| OP-04 | 手机发送附件、使用 Workflow 配置的会话 | A2 |
+| OP-05 | 强杀 GUI 后手机完成审批，副作用一次 | A2 |
+| OP-06 | 回复丢失只查原 ID，不重发 | A2 |
+| OP-07 | 手机会话在 GUI 开着时用桌面工具，关闭后报告不可用 | A3 |
+| OP-08 | 已发布 iOS/PWA 在新 Host 上按原方法表工作 | A0–A4 |
+
+## 不在本规格内
+
+- 远端 Linux 部署、GUI 连远端 Host、多 OS 用户、云账号。
+- 把工作台服务改写为 Rust 的完成时间；本规格只要求它经协议对外。
+- 手机原生界面重写。
