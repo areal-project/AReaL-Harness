@@ -13,7 +13,12 @@ impl Drop for DetailProxy {
     }
 }
 
-async fn attach_detail_proxy(f: &mut Fixture, native: &NativeCore, target: Value) -> DetailProxy {
+async fn attach_detail_proxy(
+    f: &mut Fixture,
+    native: &NativeCore,
+    target: Value,
+    mut skip_reads: usize,
+) -> DetailProxy {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!("ws://{}/", listener.local_addr().unwrap());
     let auth: Value = storage::read(&native.direct.auth_file).unwrap();
@@ -54,9 +59,13 @@ async fn attach_detail_proxy(f: &mut Fixture, native: &NativeCore, target: Value
                     if let Message::Text(text) = &message {
                         let value: Value = serde_json::from_str(text).unwrap();
                         forwarded.borrow_mut().push(value.clone());
-                        if value["method"] == "areal/interaction/list" && value["params"]["threadId"] == target["threadId"] {
-                            assert!(original_request.is_none(), "only one matching Core request");
-                            original_request = Some(value);
+                        if observed_tx.is_some() && value["method"] == "areal/interaction/list" && value["params"]["threadId"] == target["threadId"] {
+                            if skip_reads > 0 {
+                                skip_reads -= 1;
+                            } else {
+                                assert!(original_request.is_none(), "only one matching Core request");
+                                original_request = Some(value);
+                            }
                         }
                     }
                     if upstream.send(message).await.is_err() { break; }
@@ -170,15 +179,15 @@ async fn detail_case(mode: &str) {
     let (target, original) = pending_approval(&native).await;
     let run = native.run.clone();
     storage::write(&run.join("detail-plan.json"), &json!({"target":target,"original":original,"mode":mode,"boundary":"real Core/Runtime startup, in-process Host owner; no Noise or independent Host"})).unwrap();
+    let mut proxy = attach_detail_proxy(
+        &mut f,
+        &native,
+        target.clone(),
+        usize::from(mode == "preflight-revoke"),
+    )
+    .await;
     let mut session = f.session("a");
     let request = if mode == "preflight-revoke" {
-        f.host
-            .slots
-            .borrow_mut()
-            .get_mut("project")
-            .unwrap()
-            .service = Some(native.direct.clone());
-        f.reconnect().await;
         let detail = session
             .request(&f.request("attention.read", target.clone(), None))
             .await
@@ -197,8 +206,6 @@ async fn detail_case(mode: &str) {
     } else {
         f.request("attention.read", target.clone(), None)
     };
-    (f.close)();
-    let mut proxy = attach_detail_proxy(&mut f, &native, target.clone()).await;
     let original_journal = f.host.journal.native_snapshot("project").unwrap();
     storage::write(&run.join("detail-request.json"), &request).unwrap();
     let reading = Fixture::dispatch(session, request);
@@ -382,5 +389,109 @@ async fn native_detail_publication_fences_service_identity_change() {
 async fn native_approval_preflight_revocation_preserves_pending_interaction() {
     tokio::task::LocalSet::new()
         .run_until(detail_case("preflight-revoke"))
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "real Core/Runtime; in-process Host duplicate preflight barrier, no Noise or independent Host"]
+async fn native_delayed_duplicate_preflight_preserves_original_outcome() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            (f.close)();
+            f.server.abort();
+            let mut native = start_native_core(&f).await;
+            let (target, original) = pending_approval(&native).await;
+            let run = native.run.clone();
+            let mut proxy = attach_detail_proxy(&mut f, &native, target.clone(), 2).await;
+            let command = uuid::Uuid::new_v4().to_string();
+            let mut reviewed = Vec::new();
+            for _ in 0..2 {
+                let mut session = f.session("a");
+                let detail = session
+                    .request(&f.request("attention.read", target.clone(), None))
+                    .await
+                    .unwrap();
+                assert_eq!(detail["complete"], true);
+                assert!(detail["reviewToken"].is_string());
+                let mut params = target.clone();
+                params["decision"] = json!("allowOnce");
+                params["argumentsDigest"] = original["argumentsDigest"].clone();
+                params["reviewToken"] = detail["reviewToken"].clone();
+                reviewed.push((
+                    session,
+                    f.request("interaction.respond", params, Some(&command)),
+                ));
+            }
+            let (delayed_session, delayed_request) = reviewed.pop().unwrap();
+            let delayed = Fixture::dispatch(delayed_session, delayed_request);
+            let frame = tokio::time::timeout(Duration::from_secs(20), &mut proxy.observed)
+                .await
+                .expect("duplicate preflight barrier deadline")
+                .unwrap();
+            let (mut winner, request) = reviewed.pop().unwrap();
+            let accepted = winner.request(&request).await.unwrap();
+            assert_eq!(accepted["admissionState"], "accepted");
+            assert_eq!(accepted["commandId"], command);
+            let journal = f.host.journal.native_snapshot("project").unwrap();
+            let operation = accepted["operationId"].as_str().unwrap();
+            assert_eq!(journal.1["outcomes"][operation]["remote"]["commandId"], command);
+            let mut journal_target = target.clone();
+            journal_target["argumentsDigest"] = original["argumentsDigest"].clone();
+            assert_eq!(journal.1["outcomes"][operation]["remote"]["target"], journal_target);
+            proxy.release.take().unwrap().send(()).unwrap();
+            let (_, duplicate) = tokio::time::timeout(Duration::from_secs(20), delayed)
+                .await
+                .expect("duplicate outcome deadline")
+                .unwrap();
+            assert_eq!(duplicate.unwrap(), accepted);
+            assert_eq!(f.host.journal.native_snapshot("project").unwrap(), journal);
+            let requests = proxy.requests.borrow().clone();
+            let responses: Vec<_> = requests
+                .iter()
+                .filter(|request| request["method"] == "areal/interaction/respond")
+                .collect();
+            assert_eq!(responses.len(), 1, "only one approval may reach Core");
+            assert_eq!(responses[0]["params"]["requestId"], target["interactionId"]);
+            assert_eq!(responses[0]["params"]["threadId"], target["threadId"]);
+            assert_eq!(responses[0]["params"]["turnId"], target["turnId"]);
+            assert_eq!(responses[0]["params"]["argumentsDigest"], original["argumentsDigest"]);
+            let terminal = wait_native_turn(
+                &native.direct,
+                target["threadId"].as_str().unwrap(),
+                target["turnId"].as_str().unwrap(),
+            )
+            .await;
+            assert_eq!(terminal["status"], "completed");
+            assert_eq!(std::fs::read_to_string(&native.effect).unwrap(), "x");
+            storage::write(
+                &run.join("duplicate-preflight-result.json"),
+                &json!({"accepted":accepted,"heldFrame":frame,"forwarded":requests,
+                    "terminal":terminal,"effect":"x","scope":"in-process Host and real Core/Runtime; no Noise or Host crash"}),
+            )
+            .unwrap();
+            (f.close)();
+            proxy.task.abort();
+            for child in [&mut native.core, &mut native.model] {
+                if child.0.try_wait().unwrap().is_none() {
+                    unsafe {
+                        libc::kill(child.0.id() as i32, libc::SIGINT);
+                    }
+                }
+                for _ in 0..400 {
+                    if child.0.try_wait().unwrap().is_some() {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                }
+                assert!(child.0.try_wait().unwrap().is_some(), "owned child must exit");
+            }
+            storage::write(
+                &run.join("duplicate-preflight-complete.json"),
+                &json!({"passed":true,"corePid":native.core.0.id(),"modelPid":native.model.0.id()}),
+            )
+            .unwrap();
+            println!("native duplicate preflight evidence: {}", run.display());
+        })
         .await;
 }
