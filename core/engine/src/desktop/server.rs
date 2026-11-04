@@ -253,18 +253,37 @@ impl Engine {
         timeout_ms: u64,
         idle_timeout_ms: Option<u64>,
     ) -> Result<Value> {
-        if !matches!(strategy.as_str(), "wait" | "cancel" | "ifIdle")
-            || timeout_ms > 60000
+        if !matches!(
+            strategy.as_str(),
+            "wait" | "cancel" | "ifIdle" | "runtimeRotation"
+        ) || timeout_ms > 60000
             || idle_timeout_ms.is_some_and(|v| v == 0 || v > 604_800_000 || strategy != "ifIdle")
         {
             return Err(invalid(
-                "strategy must be wait, cancel or ifIdle and timeoutMs <= 60000; idleTimeoutMs requires ifIdle and 1..604800000",
+                "strategy must be wait, cancel, ifIdle or runtimeRotation and timeoutMs <= 60000; idleTimeoutMs requires ifIdle and 1..604800000",
             ));
         }
         let engine = self.clone();
         // 断线只放弃响应；已开始的结算仍由进程持有。
         tokio::spawn(async move {
             let _guard = engine.desktop.lifecycle.gate.lock().await;
+            if strategy == "runtimeRotation" {
+                // 不接管其它停止/排空意图；成功响应必须证明本次维护取得了准入关闭权。
+                if !engine.accepting_work() {
+                    return Err(Error::Closed);
+                }
+                // 与新工作准入共用锁；忙碌时保持开放，不能为容量维护暂停 Goal 或队列。
+                let status = engine.server_status().await;
+                if status["lifecycle"]["ifIdle"]["allowed"] == true {
+                    engine
+                        .desktop
+                        .lifecycle
+                        .draining
+                        .store(true, Ordering::Release);
+                    return Ok(engine.server_status().await);
+                }
+                return Ok(status);
+            }
             if strategy == "ifIdle" {
                 let status = engine.server_status().await;
                 if idle_timeout_ms

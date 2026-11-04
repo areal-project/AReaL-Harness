@@ -19,6 +19,12 @@ Model-selection smoke uses the efforts explicitly configured by its fixtures. Fo
 
 Browser terminal results, Worktree and scheduled-task contracts use the existing `history.loadItem` operation to read deferred successful-tool records before checking execution results and files written in the owning directory. A conversation summary without the full record does not prove that a tool failed to run; a summary alone also does not prove success. Migration smoke opens results through the current tool summary control and retains child-conversation and main-draft isolation assertions.
 
+The Worktree integration fixture holds automatic naming responses until the real file tools finish, observes the completed names, then reopens each conversation before leasing its history view. This prevents a legitimate naming edit from being misclassified as a tool failure. File, Shell, managed-process, directory-isolation and restart assertions remain intact.
+
+Side Chat parity P4 uses native Shift/arrow keys and Enter, checks selection rectangles against the transcript viewport before quoting, and verifies that a previous reading anchor cannot take back the viewport after native keyboard movement. The original scenario retains its count/length limits, frozen quote contents and no-automatic-submission assertions.
+
+After model-turn assertions, the model-selection fixture observes public serviceStatus.canStop until backend commands, startup, model-configuration updates and resources settle, then requests native-menu quit once. The original 15-second real-exit assertion remains. On failure, the existing cleanup helper reaps only the Electron child launched by this fixture and preserves the failure and evidence, preventing a live process from extending one cleanup failure to the entire CI job timeout.
+
 | Entry point | Coverage |
 |---|---|
 | `make verify` | Cordis pin, formatting, static checks, Rust workspace, both SDKs, Python, documentation, TUI and unified delegation smoke |
@@ -395,6 +401,8 @@ Proxy fixtures use dynamic loopback ports and isolated subprocess environments. 
 `node examples/desktop-api/run.mjs goal-mode` uses real Core/Runtime and an HTTP/SSE fixture with generated schema validation, file creation/verification across two Turns, isolated Workgroup accounting, observation permissions, retries, multi-client recovery and headless waiting across Turns. It runs under `make examples-desktop-api`; fixtures do not measure real-model task success.
 
 ## Shared local services
+
+`node scripts/runtime-rotation-smoke.mjs` uses isolated directories, real Core/Runtime processes and a local model. Lower Scope, operation and cumulative output capacities independently verify automatic rotation after warning but before exhaustion, deferral of active Turns, old Core/Runtime exit, deployment drift protection, a new epoch, preserved history and Queue intent, submission deduplication across rotation and subsequent Turns. It runs through `make local-service-smoke` and `make harness-smoke`. Host tests cover maintenance RPC timeout and shutdown cancellation. Engine lifecycle tests also cover atomic admission between rotation and a new Turn, preserved historical UNKNOWN records and blocking unconfirmed resource cleanup. These are deterministic contract regressions, not evidence of overall Agent capability gains.
 
 `make local-service-smoke` uses temporary directories, real Core/Runtime, two PTYs and an HTTP model fixture. It verifies concurrent ensure, workspace/symlink identity, configuration conflicts, authentication, Web discovery, window exit, busy/cancel stop, persistent history, launcher/host SIGKILL cleanup and reattachment. It is included in `make harness-smoke`. `make desktop-schemas` also exports `schemas/local-service-v1.json`.
 

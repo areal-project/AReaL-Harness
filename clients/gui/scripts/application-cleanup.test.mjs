@@ -5,7 +5,11 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { assertApplicationStopped, closeRecordedSmokeApplication } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  closeRecordedSmokeApplication,
+  closeSmokeApplication,
+} from "./application-cleanup.mjs";
 
 test("recorded cleanup starts native quit before a blocked recorder drain", async () => {
   const child = new EventEmitter();
@@ -71,6 +75,28 @@ test("recorded cleanup preserves its deadline when native quit never completes",
   );
   assert.equal(killed, 1);
   assert.equal(child.signalCode, "SIGKILL");
+});
+
+test("failed native cleanup reaps its owned Electron child and preserves the failure", async () => {
+  const child = new EventEmitter();
+  child.exitCode = child.signalCode = null;
+  const signals = [];
+  child.kill = (signal) => {
+    signals.push(signal);
+    child.signalCode = signal;
+    queueMicrotask(() => child.emit("exit", null, signal));
+  };
+  const original = Error("owned Electron process exits");
+  await assert.rejects(
+    closeSmokeApplication({
+      process: () => child,
+      close: async () => {
+        throw original;
+      },
+    }),
+    (error) => error === original,
+  );
+  assert.deepEqual(signals, ["SIGKILL"]);
 });
 
 test(
