@@ -18,6 +18,8 @@ Renderer 界面语言由已有 application preferences 保存，仅允许 zh-CN 
 
 GUI Renderer 只在 `desktop-services.ts` 的 `desktopBridge` 读取 preload 对象；`main.tsx` 调用该适配入口，再由 `createDesktopServices` 将现有 `PlatformServices` 注入应用。MCP Apps、原生资源选择和图标加载通过该接口传递能力；缺少能力时不建立桌面订阅或原生资源入口。React 组件不另行读取全局 bridge。Main 继续校验 IPC 来源并持有窗口、App token 和原生授权，Core/Runtime 保持执行与历史权威。
 
+`no-renderer-desktop-bridge` 静态规则覆盖 Renderer 以及 `app`、`client`、`remote`、`remote-client`、`ui` 共享包，禁止界面直接使用 preload 全局对象或导入 `desktop-contract`、`state-projection` 桌面传输模块。只有明确的 `renderer/src/desktop-services.ts` 和 `desktop-response.ts` 可导入传输模块，preload 只由前者读取。`.test.*` 与 `.spec.*` 文件可设置 bridge mock，不需要逐行关闭规则；生产辅助文件不享有该例外。
+
 ## 模块职责
 
 | 模块 | 职责 |
