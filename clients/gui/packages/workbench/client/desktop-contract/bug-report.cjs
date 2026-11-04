@@ -2,9 +2,9 @@
 "use strict";
 const { modelRecord } = require("./shared.cjs");
 /** @typedef {{id:string,description:string,screenshots:string[],diagnosticsToken?:string}} Input */
-/** @typedef {{operation:'prepare'|'list'}|{operation:'read'|'delete'|'export',id:string}|({operation:'save'} & Input)} Request */
-/** @typedef {{id:string,createdAt:string,screenshotCount:number,hasDiagnostics:boolean}} Summary */
-/** @typedef {{schemaVersion:1,id:string,createdAt:string,state:'local-only',description:string,screenshots:string[],diagnostics:string|null}} Report */
+/** @typedef {{operation:'prepare'|'list'}|{operation:'read'|'delete'|'export'|'submit',id:string}|({operation:'save'} & Input)} Request */
+/** @typedef {{id:string,createdAt:string,screenshotCount:number,hasDiagnostics:boolean,submittedId?:string}} Summary */
+/** @typedef {{schemaVersion:1,id:string,createdAt:string,state:'local-only'|'submitted',description:string,screenshots:string[],diagnostics:string|null,submittedId?:string,submittedAt?:string}} Report */
 /** @typedef {{token?:string,diagnostics?:string,reports?:Summary[],report?:Report,id?:string,deleted?:boolean,canceled?:boolean,path?:string}} Response */
 const uuid = (/** @type {unknown} */ v) =>
   typeof v === "string" && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(v);
@@ -26,7 +26,7 @@ function isRequest(v) {
   if (!modelRecord(v)) return false;
   const only = (/** @type {string[]} */ keys) => Object.keys(v).every((key) => keys.includes(key));
   if (v.operation === "prepare" || v.operation === "list") return only(["operation"]);
-  if (["read", "delete", "export"].includes(String(v.operation)))
+  if (["read", "delete", "export", "submit"].includes(String(v.operation)))
     return uuid(v.id) && only(["operation", "id"]);
   return (
     v.operation === "save" &&
@@ -45,7 +45,8 @@ function report(v) {
     modelRecord(v) &&
     v.schemaVersion === 1 &&
     uuid(v.id) &&
-    v.state === "local-only" &&
+    (v.state === "local-only" ||
+      (v.state === "submitted" && v.submittedId === v.id && typeof v.submittedAt === "string")) &&
     typeof v.createdAt === "string" &&
     typeof v.description === "string" &&
     v.description.length <= 4000 &&
@@ -74,6 +75,8 @@ function isResponse(request, v) {
       );
     case "save":
       return v.id === request.id;
+    case "submit":
+      return report(v.report) && v.report.id === request.id && v.report.state === "submitted";
     case "read":
       return report(v.report) && v.report.id === request.id;
     case "delete":

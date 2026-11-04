@@ -74,13 +74,17 @@ export function BugReportDialog({
       const code = cause instanceof Error ? cause.message : "";
       setError(
         t(
-          code.includes("CAPACITY")
-            ? "bugReport.capacity"
-            : code.includes("EXPIRED")
-              ? "bugReport.expired"
-              : code === "image" || code.includes("IMAGE_INVALID")
-                ? "bugReport.imageError"
-                : "bugReport.error",
+          code.includes("UPLOAD_TOO_LARGE")
+            ? "bugReport.uploadTooLarge"
+            : code.includes("UPLOAD_UNCONFIRMED")
+              ? "bugReport.uploadUnconfirmed"
+              : code.includes("CAPACITY")
+                ? "bugReport.capacity"
+                : code.includes("EXPIRED")
+                  ? "bugReport.expired"
+                  : code === "image" || code.includes("IMAGE_INVALID")
+                    ? "bugReport.imageError"
+                    : "bugReport.error",
         ),
       );
     } finally {
@@ -103,6 +107,11 @@ export function BugReportDialog({
     });
   const images = saved?.screenshots ?? screenshots;
   const diagnosticText = saved ? saved.diagnostics : diagnostics?.text;
+  const submit = async (reportId: string) => {
+    const result = await command({ operation: "submit", id: reportId });
+    setSaved(result.report);
+    setNotice("");
+  };
   return (
     <Dialog
       open={open}
@@ -146,6 +155,9 @@ export function BugReportDialog({
                         ),
                       })}
                     </p>
+                    {report.submittedId && (
+                      <p>{t("bugReport.submitted", { id: report.submittedId })}</p>
+                    )}
                   </div>
                   <Button
                     variant="outline"
@@ -301,6 +313,7 @@ export function BugReportDialog({
               )}
             </>
           )}
+          {saved?.submittedId && <p>{t("bugReport.submitted", { id: saved.submittedId })}</p>}
           {error && (
             <p role="alert" className="bug-report-error text-destructive">
               {error}
@@ -370,6 +383,7 @@ export function BugReportDialog({
                   </Button>
                 )}
                 <Button
+                  variant="outline"
                   disabled={busy || deleting}
                   onClick={() =>
                     void run(async () => {
@@ -380,6 +394,14 @@ export function BugReportDialog({
                 >
                   {t("bugReport.export")}
                 </Button>
+                {saved.state !== "submitted" && (
+                  <Button
+                    disabled={busy || deleting}
+                    onClick={() => void run(() => submit(saved.id))}
+                  >
+                    {t("bugReport.submit")}
+                  </Button>
+                )}
               </>
             ) : (
               !reports && (
@@ -388,6 +410,7 @@ export function BugReportDialog({
                     {t("bugReport.close")}
                   </Button>
                   <Button
+                    variant="outline"
                     disabled={busy || !description.trim()}
                     onClick={() =>
                       void run(async () => {
@@ -404,6 +427,24 @@ export function BugReportDialog({
                     }
                   >
                     {t("bugReport.save")}
+                  </Button>
+                  <Button
+                    disabled={busy || !description.trim()}
+                    onClick={() =>
+                      void run(async () => {
+                        await command({
+                          operation: "save",
+                          id,
+                          description,
+                          screenshots,
+                          ...(diagnostics ? { diagnosticsToken: diagnostics.token } : {}),
+                        });
+                        setSaved((await command({ operation: "read", id })).report);
+                        await submit(id);
+                      })
+                    }
+                  >
+                    {t("bugReport.submit")}
                   </Button>
                 </>
               )

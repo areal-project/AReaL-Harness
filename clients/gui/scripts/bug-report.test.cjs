@@ -255,3 +255,54 @@ test("expired preview and disk failure preserve retryable content without a fals
   );
   assert.equal(await readFile(file, "utf8"), "sentinel");
 });
+
+test("submission retains immutable report after lost receipt and persists confirmed ID", async () => {
+  const { createServer } = require("node:http");
+  const requests = [];
+  let loseReceipt = true;
+  const server = createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    assert.equal(req.headers.authorization, undefined);
+    assert.equal(req.headers.cookie, undefined);
+    requests.push(JSON.parse(body));
+    if (loseReceipt) {
+      loseReceipt = false;
+      req.socket.destroy();
+      return;
+    }
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ id: requests[0].id }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const root = await mkdtemp(join(tmpdir(), "areal-bug-submit-"));
+  const options = {
+    root,
+    collect: async () => ({}),
+    normalizeImage: (image) => image,
+    endpoint: `http://127.0.0.1:${server.address().port}/api/public/bug-reports`,
+  };
+  const store = new BugReports(options);
+  const id = randomUUID();
+  try {
+    await store.command({
+      operation: "save",
+      id,
+      description: "retry same report",
+      screenshots: [],
+    });
+    await assert.rejects(store.command({ operation: "submit", id }), /UPLOAD_UNCONFIRMED/);
+    assert.equal((await store.read(id)).state, "local-only");
+    const result = await store.command({ operation: "submit", id });
+    assert.equal(result.report.submittedId, id);
+    assert.equal(result.report.state, "submitted");
+    assert.deepEqual(requests[0], requests[1]);
+    contract.validateCommandResponse("bugReport", { operation: "submit", id }, result);
+    const restarted = new BugReports(options);
+    assert.equal((await restarted.command({ operation: "list" })).reports[0].submittedId, id);
+    await restarted.command({ operation: "submit", id });
+    assert.equal(requests.length, 2);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

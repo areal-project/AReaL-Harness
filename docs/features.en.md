@@ -70,4 +70,4 @@ Desktop phone connection supports a local relay, automatic private-network pairi
 
 ## Local bug reports
 
-the upper-right actions menu provides a description, screenshots, optional privacy-filtered diagnostic preview, local history, and JSON export, without contact information or server upload. See the [GUI guide](../clients/gui/README.en.md#local-bug-reports).
+the upper-right actions menu provides a description, screenshots, optional privacy-filtered diagnostic preview, local history, JSON export, and anonymous submission to PlayForge. Confirmed submissions retain the report ID; failed submissions retain the local copy. Developers query and update lifecycle with PlayForge admin tokens. See the [GUI guide](../clients/gui/README.en.md#local-bug-reports).

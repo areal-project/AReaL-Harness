@@ -632,6 +632,7 @@ macOS 原生后端拥有捕获权限、系统全局快捷键、辅助进程和�
 - `prepare {}` 返回 `{token, diagnostics}`，冻结有界隐私投影，最多保留 8 份易失预览、有效期 30 分钟。
 - `save {id, description, screenshots, diagnosticsToken?}` 返回 `{id}`。`id` 为 UUID；截图为有界 PNG data URL，在 Main 再次解码/重编码。保存为 `schemaVersion: 1`、`state: local-only`，诊断正文由 Main 持有的预览取得，renderer 不能注入诊断正文。同一 ID 的相同输入恢复原记录，冲突输入拒绝覆盖。
 - `list {}` 返回 `{reports}`（ID、时间、截图数、有无诊断）；`read {id}` 返回 `{report}`，含描述、截图和诊断 JSON 字符串或 `null`。
+- `submit {id}` 上传已保存的不可变报告并返回 `{report}`。最多 15 MiB；成功持久化 `state: submitted`、`submittedId` 与 `submittedAt`，`list` 也返回可选 `submittedId`。相同 ID 重试由 PlayForge 去重；失败保留本机副本。原有 `local-only` 记录仍可读取。接收 URL 由 Main 环境配置提供，IPC 不接收 URL。
 - `export {id}` 仅经原生保存框选择位置，返回 `{path}` 或 `{canceled:true}`；导出已保存内容，不重新采集。`delete {id}` 返回 `{deleted:true}`，仅移除该本机记录。
 
-该新增命令不改变已有模型回复评价 `feedback` 或数据飞轮契约。问题反馈不包含联系方式或上传接口；可见状态只表示本机事实。目录、限制、隐私与使用流程见 [GUI 指南](../../clients/gui/README.md#本机问题反馈)。
+该新增命令不改变已有模型回复评价 `feedback` 或数据飞轮契约。问题反馈不包含联系方式；提交状态表示服务端接收回执，不表示修复状态。目录、限制、隐私与使用流程见 [GUI 指南](../../clients/gui/README.md#本机问题反馈)。

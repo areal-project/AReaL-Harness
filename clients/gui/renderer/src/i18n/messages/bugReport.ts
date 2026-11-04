@@ -4,8 +4,8 @@ export const bugReportMessages = {
     en: "Report a bug",
   },
   "bugReport.local": {
-    "zh-CN": "反馈仅保存在本机，尚未发送。服务端暂未接入。",
-    en: "Reports stay on this device and have not been sent. Server submission is not available yet.",
+    "zh-CN": "提交后，描述、截图和所选诊断信息将发送至 PlayForge，供开发者处理；本机保留副本。",
+    en: "Submitting sends your description, screenshots, and selected diagnostics to PlayForge for developers to review. A local copy is retained.",
   },
   "bugReport.description": {
     "zh-CN": "问题描述",
@@ -51,8 +51,8 @@ export const bugReportMessages = {
     en: "Save locally",
   },
   "bugReport.saved": {
-    "zh-CN": "已保存到本机，尚未发送。请检查内容后导出。",
-    en: "Saved locally, not sent. Review the contents before exporting.",
+    "zh-CN": "已保存到本机，尚未发送。可检查内容后提交或导出。",
+    en: "Saved locally, not sent. Review the contents before submitting or exporting.",
   },
   "bugReport.history": {
     "zh-CN": "本机反馈",
@@ -75,8 +75,24 @@ export const bugReportMessages = {
     en: "Export report",
   },
   "bugReport.exported": {
-    "zh-CN": "反馈包已导出，尚未发送。",
-    en: "Report exported, not sent.",
+    "zh-CN": "反馈包已导出；导出不会提交反馈。",
+    en: "Report exported. Exporting does not submit a report.",
+  },
+  "bugReport.submit": {
+    "zh-CN": "提交反馈",
+    en: "Submit report",
+  },
+  "bugReport.submitted": {
+    "zh-CN": "已提交，反馈编号：{id}",
+    en: "Submitted. Report ID: {id}",
+  },
+  "bugReport.uploadTooLarge": {
+    "zh-CN": "反馈超过 15 MiB 上报限制，已保留在本机。可导出反馈包，或减少附件后新建反馈。",
+    en: "The report exceeds the 15 MiB upload limit and remains on this device. Export it, or create a new report with fewer attachments.",
+  },
+  "bugReport.uploadUnconfirmed": {
+    "zh-CN": "未确认提交结果，本机反馈已保留。可再次提交同一条反馈，服务端会按反馈编号去重。",
+    en: "Submission was not confirmed. Your local copy is retained. Resubmit the same report; the server deduplicates by report ID.",
   },
   "bugReport.delete": {
     "zh-CN": "删除本机反馈",
