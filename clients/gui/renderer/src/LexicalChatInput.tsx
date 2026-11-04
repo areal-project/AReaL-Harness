@@ -29,6 +29,7 @@ import {
   $getPromptMarkdown,
   $appendPromptTextLines,
   $createPromptParagraph,
+  createPromptMarkdownReader,
 } from "@/mentions/promptSerialization.js";
 import { PromptMentionTooltipPlugin } from "@/mentions/PromptMentionTooltipPlugin.js";
 import { PromptClipboardPlugin } from "@/mentions/PromptClipboardPlugin.js";
@@ -109,11 +110,15 @@ export interface LexicalChatInputHandle {
 }
 
 /** 提取编辑器内容；mention 节点会在这里输出 markdown */
+const markdownStates = new WeakMap<EditorState, string>();
 function getEditorMarkdown(editorState: EditorState): string {
+  const cached = markdownStates.get(editorState);
+  if (cached !== undefined) return cached;
   let text = "";
   editorState.read(() => {
     text = $getPromptMarkdown();
   });
+  markdownStates.set(editorState, text);
   return text;
 }
 
@@ -712,10 +717,12 @@ function TextContentPlugin({ onChange }: { onChange?: (text: string) => void }) 
   useEffect(() => {
     let composing = false;
     let disposed = false;
-    let previousText = getEditorMarkdown(editor.getEditorState());
+    const reader = createPromptMarkdownReader();
+    let previousText = reader.read(editor.getEditorState());
     const publish = (editorState: EditorState) => {
       if (disposed || composing || !onChangeRef.current) return;
-      const nextText = getEditorMarkdown(editorState);
+      const nextText = reader.read(editorState);
+      markdownStates.set(editorState, nextText);
       if (nextText === previousText) return;
       previousText = nextText;
       onChangeRef.current(nextText);
@@ -739,7 +746,9 @@ function TextContentPlugin({ onChange }: { onChange?: (text: string) => void }) 
       rootElement?.addEventListener("compositionend", handleCompositionEnd);
     });
     const unregisterUpdate = editor.registerUpdateListener(
-      ({ dirtyElements, dirtyLeaves, editorState }) => {
+      ({ dirtyElements, dirtyLeaves, editorState, prevEditorState }) => {
+        reader.invalidate(prevEditorState, dirtyElements.keys());
+        reader.invalidate(editorState, dirtyElements.keys());
         // 组词中间态由 Lexical/输入法即时展示，不序列化、保存草稿或刷新外层 Composer。
         if (dirtyElements.size || dirtyLeaves.size) publish(editorState);
       },

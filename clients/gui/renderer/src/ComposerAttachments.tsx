@@ -1,10 +1,10 @@
 import { TitleTooltip } from "@areal/ui";
 import { SnapShotAttachment } from "./snapshots/SnapShotAttachment.js";
 import { snapShotFile } from "./snapshots/source.js";
-import { Button } from "@areal/ui";
+import { Button, Input } from "@areal/ui";
 import { AttachmentCard } from "@areal/ui/experimental";
 import { useI18n } from "./i18n/IntlProvider.js";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatComposerPasteEvent } from "./LexicalChatInput.js";
 import { ScanText } from "lucide-react";
 import { ImagePreview } from "./MessageAttachment.js";
@@ -17,13 +17,23 @@ import { CloseIcon, ReviewCommentGlyph } from "./interfaceIcons.js";
 export type ComposerDraftAttachment =
   | File
   | {
+      readonly kind: "missing-file";
+      readonly name: string;
+      readonly size: number;
+      readonly type: string;
+      readonly lastModified: number;
+    }
+  | {
       readonly kind: "pasted-text";
       readonly text: string;
     };
 
 export function isComposerFile(attachment: ComposerDraftAttachment): attachment is File {
-  return !("kind" in attachment && attachment.kind === "pasted-text");
+  return !("kind" in attachment);
 }
+
+export const hasMissingComposerFiles = (parts: readonly ComposerDraftAttachment[]) =>
+  parts.some((part) => "kind" in part && part.kind === "missing-file");
 
 export function composerInput(
   body: string,
@@ -33,7 +43,7 @@ export function composerInput(
   const files: File[] = [];
   for (const part of parts) {
     if (isComposerFile(part)) files.push(part);
-    else if (part.text.length) text.push(part.text);
+    else if (part.kind === "pasted-text" && part.text.length) text.push(part.text);
   }
   return { text: text.join("\n\n"), files };
 }
@@ -67,10 +77,12 @@ export function ComposerAttachment({
   onAnnotate,
   uploadOwner,
   onRetry,
+  onReplace,
 }: {
   file: ComposerDraftAttachment;
   uploadOwner?: string;
   onRetry?: (file: File) => Promise<unknown>;
+  onReplace?: (file: File) => void;
   disabled?: boolean;
   onRemove: () => void;
   onExpand: (text: string) => void;
@@ -82,14 +94,17 @@ export function ComposerAttachment({
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [reading, setReading] = useState(false);
+  const replacementInput = useRef<HTMLInputElement>(null);
   const actualFile = isComposerFile(file) ? file : null;
   const preparation = useComposerUploadState(uploadOwner, actualFile);
-  const name = isComposerFile(file)
-    ? file.name
-    : file.text
-        .split(/\r?\n/)
-        .find((line) => line.trim())
-        ?.trim() || "粘贴的文本";
+  const missing = "kind" in file && file.kind === "missing-file";
+  const name =
+    isComposerFile(file) || missing
+      ? file.name || t("chat.composer.unrestoredAttachment")
+      : file.text
+          .split(/\r?\n/)
+          .find((line) => line.trim())
+          ?.trim() || "粘贴的文本";
   const image = actualFile?.type.startsWith("image/") === true;
   const count = actualFile ? (imageAnnotation(actualFile)?.points.length ?? 0) : 0;
   useEffect(() => {
@@ -109,7 +124,11 @@ export function ComposerAttachment({
       onRemove={onRemove}
     />
   ) : (
-    <AttachmentCard image={image} data-testid="composer-attachment">
+    <AttachmentCard
+      image={image}
+      data-testid="composer-attachment"
+      data-attachment-state={missing ? "needs-reattach" : undefined}
+    >
       {image ? (
         <>
           <AttachmentCard.Open
@@ -145,7 +164,33 @@ export function ComposerAttachment({
             <TitleTooltip title={name}>
               <span>{name}</span>
             </TitleTooltip>
-            {!actualFile || isText(actualFile) ? (
+            {missing ? (
+              <>
+                <small role="status">{t("chat.composer.attachmentNeedsReattach")}</small>
+                <Button
+                  unstyled
+                  data-slot={undefined}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => replacementInput.current?.click()}
+                >
+                  {t("chat.composer.reattachFile")}
+                </Button>
+                <Input
+                  unstyled
+                  data-slot={undefined}
+                  ref={replacementInput}
+                  type="file"
+                  hidden
+                  aria-label={t("chat.composer.reattachFile")}
+                  disabled={disabled}
+                  onChange={(event) => {
+                    const replacement = event.currentTarget.files?.[0];
+                    if (replacement) onReplace?.(replacement);
+                  }}
+                />
+              </>
+            ) : !actualFile || isText(actualFile) ? (
               <Button
                 unstyled
                 data-slot={undefined}
@@ -155,6 +200,7 @@ export function ComposerAttachment({
                   setReading(true);
                   setError("");
                   try {
+                    if ("kind" in file && file.kind === "missing-file") return;
                     const size = isComposerFile(file)
                       ? file.size
                       : new TextEncoder().encode(file.text).byteLength;

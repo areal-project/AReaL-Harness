@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import { createEditor, $getRoot } from "lexical";
 import { PromptMentionNode, $isPromptMentionNode } from "./nodes/PromptMentionNode.js";
-import { $createPromptParagraph, $getPromptMarkdown } from "./promptSerialization.js";
+import {
+  $createPromptParagraph,
+  $getPromptMarkdown,
+  createPromptMarkdownReader,
+} from "./promptSerialization.js";
 import { buildFileMentionMarkdown, parseMentionMarkdown } from "./mentionMarkdown.js";
 
 function restore(markdown: string) {
@@ -27,6 +31,46 @@ function restore(markdown: string) {
 }
 
 describe("native directory markdown restoration", () => {
+  it("reuses unchanged paragraphs and invalidates ancestors across edits and undo states", () => {
+    const editor = createEditor({
+      nodes: [PromptMentionNode],
+      onError: (error) => {
+        throw error;
+      },
+    });
+    const reader = createPromptMarkdownReader();
+    editor.update(
+      () => {
+        $getRoot().append($createPromptParagraph("stable"), $createPromptParagraph("editable"));
+      },
+      { discrete: true },
+    );
+    const first = editor.getEditorState();
+    expect(reader.read(first)).toBe("stable\n\neditable");
+    const stop = editor.registerUpdateListener(
+      ({ editorState, prevEditorState, dirtyElements }) => {
+        reader.invalidate(prevEditorState, dirtyElements.keys());
+        reader.invalidate(editorState, dirtyElements.keys());
+      },
+    );
+    editor.update(
+      () => {
+        $getRoot().getAllTextNodes().at(-1)!.setTextContent("changed");
+      },
+      { discrete: true },
+    );
+    expect(reader.read(editor.getEditorState())).toBe("stable\n\nchanged");
+    editor.setEditorState(first);
+    expect(reader.read(editor.getEditorState())).toBe("stable\n\neditable");
+    editor.update(
+      () => {
+        $getRoot().getFirstChild()!.remove();
+      },
+      { discrete: true },
+    );
+    expect(reader.read(editor.getEditorState())).toBe("editable");
+    stop();
+  });
   it.each([
     "/external/me/中文 design (v2)#1",
     "/external/me/ folder>name\\tail ",

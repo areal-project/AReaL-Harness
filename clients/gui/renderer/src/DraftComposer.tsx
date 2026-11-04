@@ -23,11 +23,13 @@ import { ComposerPlanMode } from "./ComposerPlanMode.js";
 import { FileTree, AttachmentIcon, GoalIcon, PlanModeIcon as Lightbulb } from "./interfaceIcons.js";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ChatPromptEditor } from "./prompt-editor/ChatPromptEditor.js";
+import { composerDraftStorage, flushComposerDrafts } from "./composerDraftStorage.js";
 import {
   ComposerAttachment,
   composerInput,
   composerPaste,
   isComposerFile,
+  hasMissingComposerFiles,
   type ComposerDraftAttachment,
 } from "./ComposerAttachments.js";
 import {
@@ -126,12 +128,13 @@ export function DraftComposer({
       mounted.current = false;
     };
   }, []);
-  const [text, setText] = useState(() => localStorage.getItem(key) ?? "");
+  useEffect(() => flushComposerDrafts, [key]);
+  const [text, setText] = useState(() => composerDraftStorage.getItem(key) ?? "");
   const [draftError, setDraftError] = useState("");
   useEffect(() => {
     const refreshDraft = (event: Event) => {
       if ((event as CustomEvent<string>).detail !== key || sending.has(key)) return;
-      const draft = localStorage.getItem(key) ?? "";
+      const draft = composerDraftStorage.getItem(key) ?? "";
       setProfileSelection(localStorage.getItem(`${key}:profile`) ?? "");
       api.current?.setText(draft);
       setText(draft);
@@ -246,7 +249,7 @@ export function DraftComposer({
     stageThreadDraft(
       project.id,
       id,
-      localStorage.getItem(key) ?? "",
+      composerDraftStorage.getItem(key) ?? "",
       attachmentDrafts.get(key) ?? [],
     );
     await moveSnapShotDraft(key, `areal-gui:draft:${project.id}:${id}`);
@@ -345,7 +348,7 @@ export function DraftComposer({
   }, [key, files]);
   const clear = () => {
     detachReviewComments(reviewKey);
-    localStorage.removeItem(key);
+    composerDraftStorage.removeItem(key);
     localStorage.removeItem(`${key}:permission`);
     localStorage.removeItem(`${key}:plan`);
     localStorage.removeItem(`${key}:model`);
@@ -396,6 +399,10 @@ export function DraftComposer({
   }, [unknown, project.pending.length, project.outcomes, project.worktreeOperations]);
   const submit = async (value: string, selection = worktree) => {
     if (workspaceReferencePending) return;
+    if (hasMissingComposerFiles(files)) {
+      setDraftError(t("chat.composer.missingAttachmentsBlockSend"));
+      return;
+    }
     const submittedInput = composerInput(value, files);
     if (
       (desktopUnsupported && !goalMode) ||
@@ -565,7 +572,7 @@ export function DraftComposer({
         clearComposerPlugins(targetKey);
         acceptPendingMessage(targetKey);
       }
-      localStorage.removeItem(targetKey);
+      composerDraftStorage.removeItem(targetKey);
       window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: targetKey }));
     } catch (e) {
       if (targetKey) setPendingMessage(targetKey);
@@ -920,7 +927,7 @@ export function DraftComposer({
           onChange={(value) => {
             if (outgoing || (activeCreation?.worktree && busy)) return;
             setText(value);
-            localStorage.setItem(key, value);
+            composerDraftStorage.scheduleItem(key, value);
           }}
           onSubmit={(value) => {
             void submit(value);
@@ -945,6 +952,11 @@ export function DraftComposer({
                             : `pasted-text-${i}`
                         }
                         file={file}
+                        onReplace={(replacement) =>
+                          setFiles((current) =>
+                            current.map((entry) => (entry === file ? replacement : entry)),
+                          )
+                        }
                         onAnnotate={
                           onAnnotate
                             ? (file) => {

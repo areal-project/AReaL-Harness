@@ -219,6 +219,7 @@ const env = {
   AREAL_CORE_HOME: join(scratch, "core"),
   AREAL_CORE_USER_HOME: join(scratch, "user-home"),
   AREAL_HARNESS_HOME: join(scratch, "runtime"),
+  AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
   AREAL_CORE_CONFIG: config,
   AREAL_CORE_DESKTOP_CONFIG: deployment,
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
@@ -391,7 +392,17 @@ async function quit() {
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBox = async () => ({ response: 1 });
   });
-  await app.close();
+  const child = app.process();
+  const closed = await Promise.race([
+    app.close().then(() => true),
+    new Promise((resolve) => setTimeout(() => resolve(false), 10000)),
+  ]);
+  if (!closed && child.exitCode === null && child.signalCode === null) {
+    const exited = new Promise((resolve) => child.once("exit", resolve));
+    child.kill("SIGKILL");
+    await exited;
+    checks.push("bounded cleanup ended the owned Electron process after Host stop");
+  }
   app = null;
 }
 console.log("GUI evidence:", scratch);
@@ -895,6 +906,25 @@ try {
       await input().fill("");
     };
     await checkComposition(`areal-gui:draft:${pid}:new`, "draft");
+    await input().focus();
+    await page.keyboard.type("undo-draft");
+    await page.waitForFunction(
+      (key) => localStorage.getItem(key) === "undo-draft",
+      `areal-gui:draft:${pid}:new`,
+    );
+    await input().press("ControlOrMeta+z");
+    await page.waitForFunction(
+      (key) => (localStorage.getItem(key) ?? "") === "",
+      `areal-gui:draft:${pid}:new`,
+    );
+    assert.equal(await input().textContent(), "", "undo updates visible and persisted draft");
+    await page.keyboard.type("after-undo");
+    await page.waitForFunction(
+      (key) => localStorage.getItem(key) === "after-undo",
+      `areal-gui:draft:${pid}:new`,
+    );
+    await input().fill("");
+    checks.push("undo and subsequent typing update visible and persisted draft");
     // 草稿目录不创建 Thread，+/slash 同视图并保留正文与同名来源。
     await input().fill("正文保留");
     await chooseFirst();
@@ -1009,11 +1039,72 @@ try {
       ctx.fillRect(0, 0, 64, 64);
       return canvas.toDataURL("image/png").split(",")[1];
     });
+    const imageFixture = {
+      name: "image.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(png, "base64"),
+    };
+    const checkAttachmentReload = async (label, text, pastedText, threadId) => {
+      const requestCount = received.length;
+      await page.reload();
+      await page.waitForFunction(
+        ({ projectId, threadId }) => {
+          const workbench = document.querySelector('[data-testid="areal-workbench"]');
+          return (
+            workbench?.dataset.projectId === projectId &&
+            (workbench.dataset.threadId || null) === threadId
+          );
+        },
+        { projectId: pid, threadId },
+      );
+      await input().waitFor();
+      await page.getByTestId("chat-view").getByText("image.png", { exact: true }).waitFor();
+      const missing = page
+        .getByTestId("chat-view")
+        .locator('[data-testid="composer-attachment"][data-attachment-state="needs-reattach"]')
+        .filter({ hasText: "image.png" });
+      await missing.getByRole("status").filter({ hasText: "文件尚未恢复，请重新添加" }).waitFor();
+      assert.equal(await missing.count(), 1, `${label}: missing file remains visible`);
+      await button("发送").click();
+      await page
+        .getByText("请重新添加或移除未恢复的附件后再发送。草稿已保留。", { exact: true })
+        .waitFor();
+      assert.equal(received.length, requestCount, `${label}: reload did not send`);
+      assert.match(await input().textContent(), text);
+      await shot(`${label}-missing-attachment`);
+      await page.getByRole("button", { name: "在文本框中显示 ›" }).click();
+      await page.waitForFunction(
+        (value) =>
+          document.querySelector('[data-testid="chat-input"]')?.textContent.includes(value),
+        pastedText,
+      );
+      assert.ok(
+        (await input().textContent()).includes(pastedText),
+        `${label}: pasted text survives in full`,
+      );
+      if (threadId === null) {
+        await missing.getByLabel("重新添加").setInputFiles(imageFixture);
+      } else {
+        await button("移除附件 image.png").click();
+        await page
+          .getByTestId("chat-view")
+          .locator("input[type=file]")
+          .setInputFiles([imageFixture]);
+      }
+      await page.getByRole("button", { name: "预览图片 image.png" }).waitFor();
+      assert.equal(await missing.count(), 0, `${label}: missing state clears after replacement`);
+      assert.equal(
+        await button("发送").isEnabled(),
+        true,
+        `${label}: restored file permits sending`,
+      );
+      assert.equal(received.length, requestCount, `${label}: replacing the file did not send`);
+    };
     await page
       .getByTestId("chat-view")
       .locator("input[type=file]")
       .setInputFiles([
-        { name: "image.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") },
+        imageFixture,
         { name: "note.txt", mimeType: "text/plain", buffer: Buffer.from("文本附件内容") },
       ]);
     await page.getByRole("button", { name: "在文本框中显示 ›" }).click();
@@ -1035,10 +1126,7 @@ try {
     }, pasted);
     await page.getByRole("button", { name: "在文本框中显示 ›" }).waitFor();
     await shot("02-attachments");
-    await page.getByRole("button", { name: "在文本框中显示 ›" }).click();
-    await page.waitForFunction(() =>
-      document.querySelector('[data-testid="chat-input"]')?.textContent.includes("粘贴正文"),
-    );
+    await checkAttachmentReload("new-draft", /正文保留.*文本附件内容/s, pasted, null);
     assert.match(await input().textContent(), /粘贴正文/);
     const beforeRemove = await input().textContent();
     await button("移除附件 image.png").click();
@@ -1448,6 +1536,13 @@ try {
     );
     await shot("plugin-mention-chip");
     const pluginDraftKey = `areal-gui:draft:${pid}:${tid}`;
+    await page.waitForFunction(
+      (key) =>
+        /before \[@composer-plugin\]\(plugin:\/\/composer-plugin@composer-fixture\)  after/.test(
+          localStorage.getItem(key) ?? "",
+        ),
+      pluginDraftKey,
+    );
     const canonical = await page.evaluate((key) => localStorage.getItem(key), pluginDraftKey);
     assert.match(
       canonical,
@@ -1732,6 +1827,26 @@ try {
       "canonical paste resolves Core metadata; removing chip preserves manual Skill; first-message plugin draft survives navigation/reload; new and existing executable Side send reference intent without modifying parent configuration",
     );
     await checkComposition(`areal-gui:draft:${pid}:${tid}`, "chat");
+    await input().fill("已有会话正文");
+    await page.getByTestId("chat-view").locator("input[type=file]").setInputFiles([imageFixture]);
+    const existingPasted = "已有会话粘贴文本".repeat(40);
+    await input().evaluate((el, text) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", text);
+      el.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+      );
+    }, existingPasted);
+    await page.getByRole("button", { name: "在文本框中显示 ›" }).waitFor();
+    await checkAttachmentReload("existing-thread", /已有会话正文/, existingPasted, tid);
+    await sendAndWait();
+    await until(
+      (s) => current(s).turns.at(-1)?.status === "completed" && !project(s).pending.length,
+      "reattached file send",
+    );
+    checks.push(
+      "new and existing drafts restore missing-file notices and folded text; removal and reattachment unblock sending",
+    );
     // 使用原生打字验证发送后焦点和选区，避免程序化填充修复选区而掩盖问题。
     for (const theme of ["dark", "light"]) {
       await button("设置").click();
@@ -1794,26 +1909,56 @@ try {
     // 已有聊天发送前读取失败不丢标签或正文，不发缺失技能请求。
     await chooseFirst();
     await input().fill("技能失败保留草稿");
-    await rename(join(skill, "SKILL.md"), join(skill, "SKILL.unavailable"));
-    const requestCount = received.length;
-    await button("发送").click();
-    await page.getByRole("alert").filter({ hasText: "无法读取技能" }).waitFor();
-    assert.equal(received.length, requestCount);
-    assert.equal(await tags().count(), 1);
-    assert.equal(
-      await page
-        .getByTestId("chat-view")
-        .locator('[data-testid="feedback-notice"][data-tone="error"]')
-        .count(),
-      0,
+    const launchRoot = join(scratch, "registry", "host", "launch");
+    const matchingDeployments = [];
+    for (const directory of await readdir(launchRoot)) {
+      const launch = JSON.parse(await readFile(join(launchRoot, directory, "inputs.json"), "utf8"));
+      if (launch.workspace === workspace) matchingDeployments.push(launch.deploymentPath);
+    }
+    assert.equal(matchingDeployments.length, 1, "one isolated launch owns the project");
+    const deployed = JSON.parse(await readFile(matchingDeployments[0], "utf8"));
+    const deployedSkill = deployed.skills.find(
+      (entry) => entry.id === "fixture-skill" && entry.revision === "v1",
     );
-    assert.equal(await input().textContent(), "技能失败保留草稿");
-    await rename(join(skill, "SKILL.unavailable"), join(skill, "SKILL.md"));
+    assert.ok(deployedSkill?.root.startsWith(launchRoot + "/"));
+    const resource = join(deployedSkill.root, "SKILL.md");
+    const readSkill = () =>
+      call("manage", {
+        projectId: pid,
+        threadId: tid,
+        operation: "skill",
+        skill: { id: "fixture-skill", revision: "v1" },
+        resource: "SKILL.md",
+        offset: 0,
+        maxBytes: 8192,
+      });
+    assert.ok((await readSkill()).dataBase64, "Core reads the deployed skill before injection");
+    await rename(resource, `${resource}.unavailable`);
+    const requestCount = received.length;
+    try {
+      await assert.rejects(readSkill(), "Core must fail to read the injected resource");
+      await button("发送").click();
+      await page.getByRole("alert").filter({ hasText: "无法读取技能" }).waitFor();
+      assert.equal(received.length, requestCount);
+      assert.equal(await tags().count(), 1);
+      assert.equal(
+        await page
+          .getByTestId("chat-view")
+          .locator('[data-testid="feedback-notice"][data-tone="error"]')
+          .count(),
+        0,
+      );
+      assert.equal(await input().textContent(), "技能失败保留草稿");
+    } finally {
+      await rename(`${resource}.unavailable`, resource);
+    }
+    assert.ok((await readSkill()).dataBase64, "Core reads the same restored resource");
     await sendAndWait();
     await until(
       (s) => current(s).turns.at(-1)?.status === "completed" && !project(s).pending.length,
       "second send",
     );
+    assert.equal(received.length, requestCount + 1, "retry sends exactly once");
     checks.push(
       "existing Composer Skill failure blocks send and retains draft; retry reads real resource",
     );
@@ -1872,6 +2017,7 @@ try {
       .locator("[data-testid=areal-workbench]")
       .getAttribute("data-thread-id");
     assert.equal(project(await state()).state.threads[goalTid].goals.goal.objective, foldedGoal);
+    await button("移除附件 完成").waitFor({ state: "detached" });
     assert.equal(await button("移除附件 完成").count(), 0);
     await until(
       (s) => project(s).state.threads[goalTid]?.goals?.goal?.status !== "active",
@@ -1954,6 +2100,28 @@ try {
       if (error.code === "ENOENT") return null;
       throw error;
     });
+  const hostHome = join(scratch, "registry");
+  const descriptor = await readFile(join(hostHome, "host", "host.json"), "utf8")
+    .then(JSON.parse)
+    .catch((error) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+  if (descriptor) {
+    const { HostClient } = require("./src/core/host-client.cjs");
+    const { randomUUID } = require("node:crypto");
+    const host = new HostClient();
+    try {
+      await host.connect(hostHome);
+      assert.equal(host.hostId, descriptor.hostId);
+      assert.equal(host.generation, descriptor.generation);
+      const receipt = await host.stop(randomUUID(), descriptor.generation, "cancel");
+      await writeFile(join(scratch, "host-stop.json"), JSON.stringify(receipt, null, 2));
+      assert.equal(receipt.state, "completed");
+    } finally {
+      host.close();
+    }
+  }
   await quit();
   const authoritativeHistory = [];
   for (const entry of await readdir(join(scratch, "core"), { withFileTypes: true })) {

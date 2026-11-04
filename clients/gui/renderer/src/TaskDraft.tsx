@@ -7,6 +7,7 @@ import { useApplicationPreferences } from "./settings/applicationPreferences.js"
 import type { Action, Data } from "./services.js";
 import { TaskRunConversations } from "./TaskRunConversations.js";
 import { useI18n } from "./i18n/IntlProvider.js";
+import { composerDraftStorage } from "./composerDraftStorage.js";
 
 export function taskFrequency(seconds?: number) {
   if (!seconds) return "仅一次";
@@ -217,8 +218,8 @@ export function TaskDraft({
       const latest = retainedDraft(storageKey, current.current);
       const text = latest.text ?? "";
       const inputKey = `areal-gui:draft:${projectId}:${result.thread.id}`;
-      const retained = localStorage.getItem(inputKey);
-      if (retained == null) localStorage.setItem(inputKey, text);
+      const retained = composerDraftStorage.getItem(inputKey);
+      if (retained == null) composerDraftStorage.setItem(inputKey, text);
       if (preparingElement.current?.contains(document.activeElement))
         focusAfterHandoff.current = inputKey;
       persist({ text: retained == null || retained === text || !text ? undefined : text });
@@ -453,7 +454,7 @@ export function TaskDraft({
             onClick={() => {
               if (project && thread) {
                 const key = `areal-gui:draft:${project.id}:${thread.id}`;
-                localStorage.setItem(key, text);
+                composerDraftStorage.setItem(key, text);
                 window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: key }));
               } else {
                 persist({ text });
@@ -632,7 +633,10 @@ export function TaskDraft({
             variant="ghost"
             onClick={() => {
               const key = `areal-gui:draft:${project.id}:${thread.id}`;
-              localStorage.setItem(key, retainedDraft(storageKey, current.current).text ?? "");
+              composerDraftStorage.setItem(
+                key,
+                retainedDraft(storageKey, current.current).text ?? "",
+              );
               persist({ text: undefined });
               window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: key }));
             }}

@@ -27,6 +27,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover
 import { RelatedSideChats } from "./RelatedSideChats.js";
 import { SideDraftWorkspace } from "./side-draft-owner.js";
 import { insertSideAnswer, makeBringBackPreview, sideSourceAdvanced } from "./side-bring-back.js";
+import { composerDraftStorage } from "./composerDraftStorage.js";
 import { sideStartConfiguration } from "./side-model-intent.js";
 import { createSideRestore, type SideRestoreState } from "./side-restore.js";
 import type { Action, Data } from "./services.js";
@@ -320,7 +321,7 @@ function SideChatEditor({
     }
     setBringPreview(
       makeBringBackPreview({
-        storage: localStorage,
+        storage: composerDraftStorage,
         owner: {
           instanceId: project.core?.instanceId ?? "unknown",
           projectId: project.id,
@@ -339,7 +340,7 @@ function SideChatEditor({
   const confirmBringBack = () => {
     if (!bringPreview) return;
     const result = insertSideAnswer({
-      storage: localStorage,
+      storage: composerDraftStorage,
       preview: bringPreview,
       current: {
         owner: {

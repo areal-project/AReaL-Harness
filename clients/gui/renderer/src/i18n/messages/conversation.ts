@@ -1,5 +1,15 @@
 // 对话流活动行与分段标题（CONV-ACTIVITY-01）。verb 与 state 的取值由 conversationPresentation.ts 产生。
 export const conversationMessages = {
+  "chat.composer.attachmentNeedsReattach": {
+    "zh-CN": "文件尚未恢复，请重新添加",
+    en: "File needs to be reattached",
+  },
+  "chat.composer.reattachFile": { "zh-CN": "重新添加", en: "Reattach" },
+  "chat.composer.unrestoredAttachment": { "zh-CN": "未恢复的附件", en: "Unrestored attachment" },
+  "chat.composer.missingAttachmentsBlockSend": {
+    "zh-CN": "请重新添加或移除未恢复的附件后再发送。草稿已保留。",
+    en: "Reattach or remove missing files before sending. Your draft has been kept.",
+  },
   "chat.submission.starting": { "zh-CN": "正在启动聊天", en: "Starting your chat" },
   "chat.submission.sending": { "zh-CN": "正在发送消息", en: "Sending your message" },
   "chat.submission.context": { "zh-CN": "附加的上下文", en: "Attached context" },

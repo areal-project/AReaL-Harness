@@ -60,6 +60,7 @@ import { TurnActivity, TurnExecution } from "./TurnExecution.js";
 import { SentUserMessage } from "./SentUserMessage.js";
 import {
   MemoTurn,
+  precedingTurnIssues,
   turnContextStamp,
   turnIdentity,
   useLiveFunctions,
@@ -257,6 +258,7 @@ export function Messages({
   const prefixIssue = (thread.turns ?? []).map((turn: Data) =>
     turn.status === "inProgress" || unresolved(turn) ? turn.id : "",
   );
+  const earlierIssues = precedingTurnIssues(prefixIssue);
   const activeOwner = useRef<string | undefined>(undefined);
   const seenTurn = useRef({ owner, id: latestTurnId });
   const reservation = useRef<ResponseSpace | undefined>(readingViews.get(owner)?.responseSpace);
@@ -1074,7 +1076,7 @@ export function Messages({
           )}
           {(thread.turns ?? []).map((turn: Data, turnIndex: number) => {
             const isInherited = inheritedIds.has(turn.id);
-            const earlierIssue = prefixIssue.slice(0, turnIndex).find(Boolean);
+            const earlierIssue = earlierIssues[turnIndex];
             const currentIssue = prefixIssue[turnIndex];
             const inspectTurn = earlierIssue || (turn.status === "inProgress" ? "" : currentIssue);
             return (

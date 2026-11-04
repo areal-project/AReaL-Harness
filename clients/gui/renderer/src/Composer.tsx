@@ -25,7 +25,7 @@ import {
   consumeConversationSelections,
 } from "./conversationSelectionReference.js";
 import { parseSideSlashCommand } from "./sideSlashCommand.js";
-import { composerDraftStorage } from "./composerDraftStorage.js";
+import { composerDraftStorage, flushComposerDrafts } from "./composerDraftStorage.js";
 import { composerPending } from "./composerPending.js";
 import { useComposerWorkspaceFiles } from "./lib/workspaceFileComposer.js";
 import { stripGenUiModelContext } from "@areal/gen-ui/contract";
@@ -78,6 +78,7 @@ import {
   composerInput,
   composerPaste,
   isComposerFile,
+  hasMissingComposerFiles,
   type ComposerDraftAttachment,
 } from "./ComposerAttachments.js";
 import { useComposerPlugins } from "./ComposerPlugins.js";
@@ -174,6 +175,7 @@ export function Composer({
   );
   const prefs = useApplicationPreferences();
   const key = `areal-gui:draft:${project.id}:${thread.id}`;
+  useEffect(() => flushComposerDrafts, [key]);
   useSnapShotDraft(key);
   const snapshotCapture = useSnapShotCapture();
   const uploadOwner = composerUploadOwner(project, thread.id);
@@ -381,7 +383,7 @@ export function Composer({
   const clearText = () => {
     api.current?.clear();
     setText("");
-    const remaining = files.filter(isComposerFile);
+    const remaining = files.filter((file) => !("kind" in file && file.kind === "pasted-text"));
     setFiles(remaining);
     attachmentDrafts.set(key, remaining);
     composerDraftStorage.removeItem(key);
@@ -477,6 +479,10 @@ export function Composer({
     if (desktopUnsupported && !creatingGoal && !queueEditor.edit) return;
     const submittedInput = composerInput(value, files);
     if (disabled || annotationEditing || invalidAnnotation || sending.has(key)) return;
+    if (hasMissingComposerFiles(files)) {
+      setAdmissionError(t("chat.composer.missingAttachmentsBlockSend"));
+      return;
+    }
     if (queueEditor.edit) {
       await saveQueueEdit();
       return;
@@ -1093,8 +1099,8 @@ export function Composer({
           onChange={(value) => {
             if (outgoing) return;
             setText(value);
-            composerDraftStorage.setItem(key, value);
-            composerDraftStorage.setItem(
+            composerDraftStorage.scheduleItem(key, value);
+            composerDraftStorage.scheduleItem(
               `${key}:version`,
               String(Number(composerDraftStorage.getItem(`${key}:version`) ?? 0) + 1),
             );
@@ -1214,6 +1220,11 @@ export function Composer({
                               : `pasted-text-${i}`
                           }
                           file={file}
+                          onReplace={(replacement) =>
+                            setFiles((current) =>
+                              current.map((entry) => (entry === file ? replacement : entry)),
+                            )
+                          }
                           uploadOwner={uploadOwner}
                           onRetry={async (file) => {
                             setAdmissionError("");

@@ -2,7 +2,11 @@ import { snapShotContext, snapShotAttachmentMeta } from "./snapshots/source.js";
 import { consumeSnapShotFiles } from "./snapshots/drafts.js";
 import { forgetComposerUploads } from "./ComposerUploadState.js";
 import { uploadComposerFiles } from "./ComposerUploads.js";
-import { composerInput, type ComposerDraftAttachment } from "./ComposerAttachments.js";
+import {
+  composerInput,
+  hasMissingComposerFiles,
+  type ComposerDraftAttachment,
+} from "./ComposerAttachments.js";
 import {
   conversationSelectionScope,
   readConversationSelections,
@@ -41,6 +45,8 @@ export async function submitMessage(
   files: ComposerDraftAttachment[],
   options: Data = {},
 ) {
+  if (hasMissingComposerFiles(files))
+    throw new Error("Missing draft attachment; reattach or remove it before sending.");
   const reviewKey = reviewCommentKey(projectId, threadId);
   const comments = options.appMessage ? [] : attachedReviewComments(readReviewComments(reviewKey));
   const key = `areal-gui:draft:${projectId}:${threadId}`;
