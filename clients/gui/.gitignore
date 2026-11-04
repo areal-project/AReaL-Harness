@@ -4,4 +4,4 @@ dist/
 .stage/
 test-results/
 playwright-report/
-app/src/ipc/build/
+app/src/ipc/generated/

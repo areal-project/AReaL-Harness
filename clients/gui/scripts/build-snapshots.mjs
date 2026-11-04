@@ -20,7 +20,7 @@ await build({
 await build({
   absWorkingDir: gui,
   entryPoints: ["app/src/ipc/host-ticket.ts"],
-  outdir: "app/src/ipc/build",
+  outdir: "app/src/ipc/generated",
   outExtension: { ".js": ".cjs" },
   bundle: true,
   platform: "node",

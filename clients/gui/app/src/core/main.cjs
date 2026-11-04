@@ -904,7 +904,7 @@ function startDesktop() {
             ),
           );
           startupTraceMain.finish("ok");
-          const hostConnectSource = require("../ipc/build/host-ticket.cjs").registerHostTicket({
+          const hostConnectSource = require("../ipc/generated/host-ticket.cjs").registerHostTicket({
             home: serviceOptions(app).hostHome,
             binary: serviceOptions(app).binary,
             trusted,
