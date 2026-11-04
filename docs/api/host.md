@@ -68,6 +68,8 @@
 
 自动重连只读取 `host.status` 中经验证的现存服务描述，不调用 `project.ensure`，不清除停止意图。需要重新激活时由用户显式打开项目。`ProjectMutationReceipt` 包含 `version:1`、`requestId`、`method:"projects.register"|"project.ensure"`、`hostId`、`generation`、`projectId`、`state`，以及可选 `result` 与 `error`。状态为 `acceptedPending`、`blocked`、`admissionUnknown` 或 `completed`。查询返回原操作结果；旧 ready 结果不证明该服务当前存活，连接前仍核验实时身份。回执不包含凭据值。
 
+Host 内部共享 Core 连接的监督器在状态探测暂时失败后，仍按原退避重新探测当前 Host 持有生命周期且启动结果已确定的服务，即使项目的定时激活已被抑制。恢复前重新核验服务身份与 owner；探测不调用 `project.ensure`，不启动新 Core，也不解除停止意图。已停止、失去生命周期持有权、owner 不匹配或启动结果未确定的项目不通过这条重试路径恢复。
+
 ## 定时项目激活与准备
 
 `scheduledPreparation` 表示 Host 通过常驻认证连接注册 Core 调度宿主并处理 `areal/task/prepare`。普通 GUI 工具连接和调度连接可以不同，但必须属于同一认证身份；来源会话和执行锚点仍校验原连接与目录归属。Core 保留 Task、Run、准备结果及触发权威。Host 不为缺席的 Main 发布浏览器、计算机或 JavaScript 工具。

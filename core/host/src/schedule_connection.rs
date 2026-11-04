@@ -945,7 +945,14 @@ pub(super) async fn run(host: Rc<Host>) {
             .borrow()
             .iter()
             .filter(|(id, slot)| {
-                (slot.state == "ready" || refresh_path(&host, id).exists())
+                let owned_retry = slot.state == "unavailable"
+                    && !slot.uncertain_start
+                    && slot.writer.is_some()
+                    && slot
+                        .service
+                        .as_ref()
+                        .is_some_and(|service| service.owner.as_ref() == Some(&host.owner()));
+                (slot.state == "ready" || owned_retry || refresh_path(&host, id).exists())
                     && !active.contains(*id)
                     && retry
                         .get(*id)
@@ -1348,3 +1355,7 @@ mod tests {
         }).await;
     }
 }
+
+#[cfg(test)]
+#[path = "schedule_connection_recovery_tests.rs"]
+mod recovery_tests;
