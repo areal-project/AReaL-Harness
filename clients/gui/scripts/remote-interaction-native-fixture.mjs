@@ -36,7 +36,7 @@ const originalChecks = [
 
 export async function nativeInteractionContract(t) {
   const f = await nativeHostFixture(t);
-  const expectedChecks = [0, 1, 2, 4, 5, 6, 15, 16].map((index) => originalChecks[index]);
+  const expectedChecks = [0, 1, 2, 4, 5, 6, 9, 15, 16].map((index) => originalChecks[index]);
   const proof = {
     owner: "Rust Host",
     scope: "original RC07 real-Core subset",
@@ -538,6 +538,91 @@ export async function nativeInteractionContract(t) {
       assert.equal((await respond(value, params, a, commandId)).error?.code, "COMMAND_CONFLICT");
       assert.equal((await a.rpc("command.read", { commandId })).result.admissionState, "accepted");
     });
+    await check(originalChecks[9], async () => {
+      const value = await interaction("approval", "two-device original effect");
+      const pages = await Promise.all([review(value, a), review(value, b)]);
+      const devices = [a, b];
+      const commands = devices.map((phone, index) => ({
+        commandId: randomUUID(),
+        devicePeerId: identityId(phone.identity),
+        params: {
+          decision: "allowOnce",
+          argumentsDigest: value.item.argumentsDigest,
+          reviewToken: pages[index].reviewToken,
+        },
+      }));
+      proof.concurrentAnswer = {
+        target: value.target,
+        commands,
+        observation:
+          "two real Noise devices submit concurrently after their own completed review; public wire does not expose simultaneous preflight or physical dispatch counts",
+      };
+      await persist();
+      const responses = await Promise.all(
+        devices.map((phone, index) =>
+          respond(value, commands[index].params, phone, commands[index].commandId),
+        ),
+      );
+      proof.concurrentAnswer.responses = responses;
+      await persist();
+      const outcomes = responses.map((response) => {
+        assert.ok(response.result, JSON.stringify(response));
+        return response.result;
+      });
+      assert.deepEqual(outcomes.map((result) => result.admissionState).sort(), [
+        "accepted",
+        "rejected",
+      ]);
+      assert.notEqual(outcomes[0].operationId, outcomes[1].operationId);
+      assert.equal(
+        outcomes.find((result) => result.admissionState === "rejected").error.code,
+        "TARGET_CHANGED",
+      );
+      const { snapshot } = await f.client.journal(project.projectId).read();
+      for (const [index, result] of outcomes.entries()) {
+        const command = commands[index];
+        assert.equal(result.commandId, command.commandId);
+        assert.equal(result.target.threadId, value.target.threadId);
+        assert.equal(result.target.turnId, value.target.turnId);
+        assert.equal(result.target.interactionId, value.target.interactionId);
+        assert.equal(result.target.argumentsDigest, value.item.argumentsDigest);
+        const record = snapshot.outcomes[result.operationId];
+        assert.equal(record.remote.commandId, command.commandId);
+        assert.equal(record.remote.devicePeerId, command.devicePeerId);
+        assert.equal(record.remote.hostId, identityId(f.remote.config.identity));
+        assert.equal(record.remote.projectId, project.alias);
+        assert.deepEqual(record.remote.target, result.target);
+        assert.equal(record.admissionState, result.admissionState);
+        const own = await devices[index].rpc("command.read", { commandId: command.commandId });
+        assert.equal(own.result.operationId, result.operationId);
+        assert.equal(own.result.admissionState, result.admissionState);
+        const other = await devices[1 - index].rpc("command.read", {
+          commandId: command.commandId,
+        });
+        assert.equal(other.result.admissionState, "notFound");
+      }
+      await settled(value);
+      const answered = (
+        await project.core.call("areal/interaction/list", { threadId: value.target.threadId })
+      ).data.find((item) => item.requestId === value.target.interactionId);
+      assert.equal(answered.status, "answered");
+      const terminal = (
+        await project.core.call("thread/read", {
+          threadId: value.target.threadId,
+          includeTurns: true,
+        })
+      ).thread.turns.find((turn) => turn.id === value.target.turnId);
+      proof.concurrentAnswer.coreInteraction = answered;
+      proof.concurrentAnswer.terminal = terminal;
+      proof.concurrentAnswer.effect = await readFile(join(project.workspace, value.path), "utf8");
+      await persist();
+      assert.equal(terminal.status, "completed");
+      const writes = terminal.items.filter((item) => item.tool === "fs_create");
+      assert.equal(writes.length, 1, "the original Turn has one Runtime write result");
+      assert.equal(writes[0].execution.backend, "runtime");
+      assert.equal(writes[0].execution.outcome, "succeeded");
+      assert.equal(proof.concurrentAnswer.effect, value.text);
+    });
     await check(originalChecks[15], async () => {
       const opened = await a.rpc("session.open", { threadId: first.target.threadId });
       assert.ok(opened.result, JSON.stringify(opened));
@@ -695,7 +780,53 @@ export async function nativeInteractionContract(t) {
         assert.equal(response.result.serviceGeneration, ensured.service.generation);
         restart.readiness.serviceGeneration = response.result.serviceGeneration;
         return true;
-      }, "the public read reaches the replacement Core through the shared Host connection");
+      }, "the public read reaches the replacement Core through the shared Host connection").catch(
+        async (error) => {
+          const observations = await Promise.allSettled([
+            f.client.status(),
+            project.core.call("areal/model/list", {}),
+            f.client.request("subscription.read", { sourceId: f.source.sourceId }),
+          ]);
+          restart.readiness.diagnostics = observations.map((observation, index) => {
+            const boundary = ["hostStatus", "directCoreModels", "subscriptionSnapshot"][index];
+            if (observation.status === "rejected")
+              return { boundary, errorCode: observation.reason.code ?? null };
+            if (index === 0) return { boundary, value: observation.value };
+            if (index === 1)
+              return {
+                boundary,
+                models: observation.value.data.map(({ providerId, modelId, available }) => ({
+                  providerId,
+                  modelId,
+                  available,
+                })),
+              };
+            const {
+              state,
+              availability,
+              authenticated,
+              owner,
+              accountRevision,
+              transportRevision,
+              applied,
+            } = observation.value;
+            return {
+              boundary,
+              value: {
+                state,
+                availability,
+                authenticated,
+                owner,
+                accountRevision,
+                transportRevision,
+                applied,
+              },
+            };
+          });
+          await persist();
+          throw error;
+        },
+      );
       await persist();
       const stale = await a.rpc("attention.read", { ...value.target, cursor: page.nextCursor });
       assert.equal(stale.error?.code, "TARGET_CHANGED", JSON.stringify(stale));
