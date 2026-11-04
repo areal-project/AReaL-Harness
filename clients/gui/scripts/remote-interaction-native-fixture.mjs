@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { nativeHostFixture, nativeCoreProject } from "./remote-native-host-fixture.mjs";
@@ -9,6 +9,7 @@ import { until } from "./remote-native-push-fixture.mjs";
 import { createIdentity, identityId, secureChannel } from "../packages/remote/src/channel.mjs";
 import { createRemoteWire } from "../packages/remote/src/wire.mjs";
 import { respondToSessionName } from "../../../scripts/model-fixture.mjs";
+import { connect } from "../../../examples/desktop-api/client.mjs";
 
 const require = createRequire(new URL("../app/package.json", import.meta.url));
 const WebSocket = require("ws");
@@ -264,7 +265,7 @@ export async function nativeInteractionContract(t) {
     };
     const respond = (value, params, phone = a, commandId = randomUUID()) =>
       phone.rpc("interaction.respond", { ...value.target, ...params }, commandId);
-    async function review(value, phone = a) {
+    async function review(value, phone = a, expected = value.item) {
       let page = await detail(value, phone);
       const first = page;
       let body = page.review.chunk;
@@ -279,7 +280,7 @@ export async function nativeInteractionContract(t) {
         body += page.review.chunk;
       }
       assert.equal(Buffer.byteLength(body), page.review.totalBytes);
-      assert.deepEqual(JSON.parse(body).effectiveArguments, value.item.effectiveArguments ?? null);
+      assert.deepEqual(JSON.parse(body).effectiveArguments, expected.effectiveArguments ?? null);
       return page;
     }
     async function check(name, run) {
@@ -595,6 +596,129 @@ export async function nativeInteractionContract(t) {
         response.result.operationId,
       );
     });
+    await pause(1050);
+    {
+      const value = await interaction("approval", "x".repeat(40000));
+      const denied = await respond(value, {
+        decision: "deny",
+        argumentsDigest: value.item.argumentsDigest,
+      });
+      assert.equal(denied.result?.admissionState, "accepted", JSON.stringify(denied));
+      await settled(value);
+      const original = (
+        await project.core.call("areal/interaction/list", { threadId: value.target.threadId })
+      ).data.find((item) => item.requestId === value.target.interactionId);
+      assert.equal(original.status, "answered");
+      const page = await detail(value);
+      assert.ok(page.nextCursor);
+      assert.equal(page.serviceGeneration, project.service.generation);
+      assert.equal(a.socket.readyState, WebSocket.OPEN);
+      await assert.rejects(readFile(join(project.workspace, value.path)), { code: "ENOENT" });
+      const originalBinding = (await project.core.call("areal/capabilities")).features
+        .threadCreationJournal.binding;
+      await until(
+        async () => (await project.core.call("areal/server/status")).restartSafe === true,
+        "all original Core work settles before the explicit idle restart",
+      );
+      const journal = await f.client.journal(project.projectId).read();
+      const launchInputsPath = join(
+        f.home,
+        "host/launch",
+        createHash("sha256").update(project.projectId).digest("hex"),
+        "inputs.json",
+      );
+      const launchInputs = await readFile(launchInputsPath);
+      const before = project.service;
+      const stopRequestId = randomUUID();
+      const restart = {
+        projectId: project.projectId,
+        stopRequestId,
+        hostId: f.client.hostId,
+        hostGeneration: f.client.generation,
+        before,
+        originalBinding,
+        launchInputsSha256: createHash("sha256").update(launchInputs).digest("hex"),
+      };
+      proof.coreGenerationFence = restart;
+      await persist();
+      await f.client.stopProject(stopRequestId, project.projectId, before.generation, "ifIdle");
+      await until(async () => {
+        const { operation } = await f.client.operation(stopRequestId);
+        assert.ok(operation, "the original project stop remains queryable without replay");
+        assert.equal(operation.requestId, stopRequestId);
+        assert.equal(f.client.hostId, restart.hostId);
+        assert.equal(f.client.generation, restart.hostGeneration);
+        assert.equal(operation.projectId, project.projectId);
+        assert.equal(operation.serviceId, before.serviceId);
+        assert.equal(operation.serviceGeneration, before.generation);
+        assert.equal(operation.strategy, "ifIdle");
+        restart.stopReceipt = operation;
+        return operation.state === "completed";
+      }, "the original idle project stop completes");
+      await project.core.close();
+      restart.ensureRequestId = randomUUID();
+      await persist();
+      const ensured = await f.client.ensureProject(restart.ensureRequestId, project.projectId);
+      assert.equal(ensured.project.state, "ready");
+      restart.after = ensured.service;
+      assert.equal(ensured.service.serviceId, before.serviceId);
+      assert.equal(ensured.service.workspace, before.workspace);
+      assert.equal(ensured.service.dataDir, before.dataDir);
+      assert.deepEqual(await readFile(launchInputsPath), launchInputs);
+      assert.notEqual(ensured.service.generation, before.generation);
+      project.service = ensured.service;
+      const replacement = await connect(ensured.service.endpoint, ensured.service.authFile);
+      project.core = replacement;
+      t.after(() => replacement.close());
+      const restoredBinding = (await replacement.call("areal/capabilities")).features
+        .threadCreationJournal.binding;
+      assert.equal(restoredBinding.identity, originalBinding.identity);
+      assert.equal(restoredBinding.journalEpoch, originalBinding.journalEpoch);
+      assert.notEqual(restoredBinding.coreInstanceId, originalBinding.coreInstanceId);
+      restart.restoredBinding = restoredBinding;
+      const restored = (
+        await project.core.call("areal/interaction/list", { threadId: value.target.threadId })
+      ).data.find((item) => item.requestId === value.target.interactionId);
+      assert.deepEqual(restored, original);
+      restart.readiness = { attempts: 0, failures: {} };
+      await until(async () => {
+        restart.readiness.attempts++;
+        const response = await a.rpc("project.models");
+        if (response.error) {
+          assert.equal(response.error.code, "CORE_UNAVAILABLE", JSON.stringify(response));
+          const code = response.error.code;
+          restart.readiness.failures[code] = (restart.readiness.failures[code] ?? 0) + 1;
+          await pause(100);
+          return false;
+        }
+        assert.ok(response.result, JSON.stringify(response));
+        assert.equal(response.result.serviceGeneration, ensured.service.generation);
+        restart.readiness.serviceGeneration = response.result.serviceGeneration;
+        return true;
+      }, "the public read reaches the replacement Core through the shared Host connection");
+      await persist();
+      const stale = await a.rpc("attention.read", { ...value.target, cursor: page.nextCursor });
+      assert.equal(stale.error?.code, "TARGET_CHANGED", JSON.stringify(stale));
+      assert.equal(a.socket.readyState, WebSocket.OPEN);
+      const fresh = await review(value, a, original);
+      assert.equal(fresh.serviceGeneration, ensured.service.generation);
+      assert.equal(fresh.argumentsDigest, original.argumentsDigest);
+      assert.equal(fresh.threadId, value.target.threadId);
+      assert.equal(fresh.turnId, value.target.turnId);
+      assert.equal(fresh.interactionId, value.target.interactionId);
+      assert.deepEqual(await f.client.journal(project.projectId).read(), journal);
+      await assert.rejects(readFile(join(project.workspace, value.path)), { code: "ENOENT" });
+      const partial = proof.partialChecks.find((entry) => entry.name === originalChecks[3]);
+      partial.proved.push(
+        "Core generation invalidates the original cursor without changing content",
+      );
+      partial.remaining = ["synthetic same-digest body mutation"];
+      restart.staleCursorCode = stale.error.code;
+      restart.phoneConnectionId = a.active.connectionId;
+      restart.gatewayGeneration = a.active.gatewayGeneration;
+      restart.coreConnectionIdentity = "not exposed; public coreInstanceId changes across restart";
+      await persist();
+    }
     proof.complete = proof.ownerRemaining.length === 0;
     proof.subsetComplete = expectedChecks.every((name) => proof.checks.includes(name));
     await persist();

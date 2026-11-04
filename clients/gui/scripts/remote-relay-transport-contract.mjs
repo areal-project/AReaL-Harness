@@ -1331,6 +1331,7 @@ if (!process.env.RC12_TLS_HOME) {
     assert.deepEqual(await readThreadIds(), threadIds);
     await f.relay.stop();
     await waitFor(() => relay.socket.readyState === 3);
+    await waitFor(async () => !(await f.remote.refresh()).connected);
     assert.equal(direct.socket.readyState, 1);
     const configRequestId = randomUUID();
     const configured = await native.core.call("areal/thread/configure", {
