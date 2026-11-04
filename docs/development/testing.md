@@ -434,6 +434,8 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 
 macOS 可使用同一环境下的 `pnpm --dir clients/gui test:remote-crash-recovery-lldb` 选择确定性屏障。该入口显式依赖 LLDB 与系统调试授权，在发送原创建命令前确认唯一 `settle_command` 函数断点已就绪，命中后核对原 pending、无 outcome 与真实 Core 完成回执，再终止原 Host。缺少符号、授权未完成或未命中断点均按失败保留，不降级为概率重试；系统认证由用户确认。
 
+`pnpm --dir clients/gui test:remote-outcome-recovery-lldb` 使用相同环境和 LLDB 前提，执行单轮真实 Noise outcome 写入失败及原回执恢复验证。当前 wire 错误使用 `CORE_UNAVAILABLE` 和 `submissionUnknown`；原 JS T22 返回形状差异仍待审，此入口不代表原 T22 整套通过。
+
 `node scripts/shared-host-smoke.mjs` 验证共享 Host 的本机认证、并发启动、登记回执、旧服务受控重启、多项目隔离、活动 Runtime 命令期间的 Host 崩溃清理与停止回执。崩溃场景暂停旧 service-host 并确认生命周期锁仍被持有，核对继任 Host 的原启动请求返回 `migrationBlocked`，再恢复旧进程并等待清理后验证新代际和历史保持。`AREAL_TEST_BIN_DIR` 指向完整新产物，`AREAL_LEGACY_TEST_BIN_DIR` 指向支持 service-v1 的完整旧产物；缺少旧产物会失败。`node scripts/shared-host-client-smoke.mjs` 使用同一新产物验证 exec、`-p`、headless TUI 和真实 PTY 在客户端强退后继续原 Turn，以及 resume 与 Web 复用。两者使用隔离 home/workspace、确定性模型与真实 Core/Runtime，并通过 `AREAL_TEST_EVIDENCE` 保存 JSON 证据。固定产物串行使用。这些检查不替代 GUI、Remote、真实供应商或安装包验收。
 
 macOS 实际崩溃预算使用 `AREAL_HOST_SERVICE_ROOT=/absolute/authorized/root AREAL_HOST_SERVICE_INSTALLER=/absolute/install-helper AREAL_CORE_BIN=/absolute/stable/bin/areal node scripts/shared-host-crash-budget-smoke.mjs`。服务 root、其 `home`、`agents` 与 label 须事先获准；安装 helper 通过现有 `ServiceInstallation::at/install` 写入该目录，并提供只读 `--describe`。脚本要求空项目、已卸载服务和保留的已完成停止意图，先核对 descriptor 的 label、稳定入口与 home，再注册并显式启动。它只终止认证身份匹配的隔离 Host，观察 launchd 的五次自动恢复和 1、2、4、8、16 秒退避、下一异常退出后的 `crashLoopStopped`，以及显式启动清除预算。最终仅发送一次已持久记录 ID 的停止，确认原回执后执行 `--stopped-only` 卸载。`result.json` 保留产物、管理器、代际、信号、时间与清理记录；失败时保留注册和原请求供核查。该检查不运行 Core 任务，不读取凭据，不替代真实注销登录或 Linux 验收。

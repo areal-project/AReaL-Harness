@@ -108,6 +108,7 @@
     "test:remote-command-e2e": "node scripts/remote-session-commands-e2e.mjs",
     "test:remote-crash-recovery": "node --test scripts/remote-native-crash-recovery-smoke.mjs",
     "test:remote-crash-recovery-lldb": "AREAL_T18_BARRIER=lldb node --test scripts/remote-native-crash-recovery-smoke.mjs",
+    "test:remote-outcome-recovery-lldb": "node --test scripts/remote-native-outcome-recovery-smoke.mjs",
     "test:remote-session": "node scripts/remote-session-contract.mjs",
     "test:remote-gui-e2e": "node scripts/remote-gui-workbench-e2e.mjs",
     "test:remote-session-body": "node --test scripts/remote-session-body.test.mjs scripts/remote-session-body-browser.test.mjs",

@@ -653,6 +653,14 @@
     "requires": ["core-binary", "native-runtime", "node-24.22.1", "openssl", "lldb"]
   },
   {
+    "script": "test:remote-outcome-recovery-lldb",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "The deterministic barrier uses macOS LLDB attachment.",
+    "areas": ["remote"],
+    "requires": ["core-binary", "native-runtime", "node-24.22.1", "openssl", "lldb"]
+  },
+  {
     "script": "test:remote-session",
     "layer": "contract",
     "platforms": ["darwin", "linux"],
