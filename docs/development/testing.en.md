@@ -2,6 +2,8 @@
 
 # Testing
 
+Dual-product comparisons reuse the contract's [six baseline journeys](conversation-reading-acceptance.en.md#dual-product-baseline) and shared material generator. Reports distinguish fresh runs, reused evidence, source inference, and unverified cases; a listening dev server does not pass a user journey.
+
 Desktop conversation and Composer follow the [experience acceptance contract](conversation-reading-acceptance.en.md). Define input intent, context recovery, submission facts, completeness, readable time, and position standards first, design transition and final-state cases, then compare designs, implement, and validate together. Complete final content in one conversation does not replace loading-transition and interaction checks.
 
 Recorded smoke journeys request normal `app.quit()` before awaiting Playwright `close()`, allowing product shutdown and recording settlement to proceed together while still awaiting completion of `close()`. Playwright otherwise drains recording before requesting quit, consuming the same 20-second deadline serially. A controlled recording gate verifies this ordering; incomplete shutdown still fails at the original deadline. Draft confirmation, failure reporting and recording evidence remain required.

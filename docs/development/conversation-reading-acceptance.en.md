@@ -136,6 +136,31 @@ Fault injection must first establish that the boundary actually used by the targ
 
 The release floor is no confirmed unresolved content loss, cross-conversation contamination, duplicate admission, misleading state, or lost reading control within scoped D1-D6 and C1/C3/C7. Judge performance budgets independently; low latency cannot offset data errors. Explicitly retain untested native IME, real-provider, package, platform, and assistive-technology boundaries rather than substituting static checks.
 
+## Dual-product baseline
+
+Compare the same user journey, not appearance or internal state implementations. Record feature coverage, action/recovery cost, interruptions, and performance separately. Other scores cannot compensate for data errors. Untested subcases do not inherit a journey-wide PASS.
+
+| ID | Fixed journey | Minimum acceptance and observation |
+| --- | --- | --- |
+| B1 | Compose with files, images, and references | Check chips, preview, removal, and actual request context. Count actions from a focused editor. File injection does not pass the native picker. |
+| B2 | New/existing drafts, A/B navigation, reload, separate reopen | Track text, bytes or reattach state, references, and caret separately. Missing context blocks sending or is explicitly removed. Reload is not process restart. |
+| B3 | IME confirmation, another Enter, Slash/Mention, newline, undo | Record text and actual admissions; separate physical and synthetic IME. Adapt menus to supported capabilities. |
+| B4 | Failure before admission, lost receipt after admission, recovery | Prove the fault reaches the real boundary. Preserve drafts/newer intent and prevent duplicate execution. Mark BLOCKED without a controllable protocol; UI timers cannot manufacture success. |
+| B5 | Read history, select, type short/long drafts while streaming, return to latest | Record rate, history size, paragraph identity, anchor, character integrity, and event-to-DOM/rAF/paint separately. Final position alone cannot prove continuous stability. |
+| B6 | Enlarge/zoom/pan Mermaid; read/copy/export tables | Exercise closed fences during streaming and completed output separately. Record entry, focus return, continuity, copied content, and downloaded bytes. Missing actions start as feature differences. |
+
+Generate shared material with the command below, including per-file SHA-256: short and 30,000-character drafts, text file, test image, 80 initial paragraphs, 40 chunks with a suggested 100 ms interval, Mermaid, and an eight-column thirty-row table. Drivers consume the same files. Protocol adapters only translate transport; internal setters cannot replace actions or persistence under test. Default Replay content with a different workload is reported separately.
+
+```sh
+node clients/gui/scripts/support/conversation-baseline.mjs /tmp/conversation-baseline-materials
+```
+
+Pin commits, dirty-diff summaries, build type, OS, runtime, CSS viewport, zoom, font size, theme, language, and background load. Separate cold/warm runs and alternate serially. Keep at least 20 valid raw samples per workload; cross-product rankings additionally require matched material/boundaries and repeated runs. Mark historical one-sided evidence reused, not a fresh controlled comparison. Report React duration, IPC admission, provider first output, and presentation separately.
+
+Each result includes starting state, actual actions, visible outcome, source owner, evidence path, collection method, PASS/FAIL/UNVERIFIED/BLOCKED, and limits. Feature coverage separately uses full/partial/unsupported/product choice/unverified. Source inference cannot receive a runtime PASS. Pair screenshots by state and dimensions; count actions only between equivalent endpoints, excluding preparation or skipped steps.
+
+Prevent recurrence: run B2 for attachment recovery changes, B3 and long-draft B5 for editor/persistence changes, B5 and scaling checks for projection/list changes, and verified injection followed by B4 for fault fixtures. Reuse existing runners; source checks do not replace desktop validation. Retain failing target assertions before fixes or from isolated fault injection, including first failures and later passes. Label exploration scripts not wired into CI rather than claiming automatic gates.
+
 ## How references inform the contract
 
 Open Claude UI provides interaction research material; T3 Code provides a readable product implementation. Neither comments, demos, nor source alone establishes AReaL's behavior or original Claude behavior.
