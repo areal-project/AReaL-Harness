@@ -1824,13 +1824,13 @@ impl Migration {
         if reference == "AREAL_CREDENTIAL_areal_openai" {
             let result = self.vault.dispatch(
                 "vault.read",
-                json!({"slot":vault::Slot::SubscriptionTransport {source_id}}),
+                json!({"slot":vault::Slot::SubscriptionTransport {source_id},"interactionAllowed":false}),
                 "",
                 self,
             )?;
             return Ok(result["value"]["token"].as_str().map(str::to_owned));
         }
-        let result = self.vault.dispatch("vault.read", json!({"slot":vault::Slot::ProviderCredential {source_id, reference:reference.to_owned()}}), "", self)?;
+        let result = self.vault.dispatch("vault.read", json!({"slot":vault::Slot::ProviderCredential {source_id, reference:reference.to_owned()},"interactionAllowed":false}), "", self)?;
         Ok(result["value"].as_str().map(str::to_owned))
     }
 }

@@ -37,7 +37,7 @@ Host 启动初始化兼容旧配置创建的 0755 home：只对当前用户拥�
 
 `LaunchInputs` 必须包含绝对路径 `workspace`、`cwd`、`configHome` 与 `options:LocalArgs`，另有可选绝对路径 `homedir`、`configPath`、`deploymentPath`，非秘密字符串映射 `environment` 和 `credentialNames:string[]`。外层字段使用 camelCase；`options` 保留 `core/local-service/src/spec.rs` 中的 snake_case 字段，可选参数值允许 null。它包含模型选择、权限、沙箱与 Runtime 限额、工作区/数据/配置路径，以及 `read_only_path`、`task_credential_command`、`no_deployment_mcp`。CLI 参数使用连字符。CLI 连接后通过 Core 配置 run-scoped MCP；Host 启动输入携带相应凭据名，不携带 `mcpConfigPath`。Skill 根目录属于部署条目，不另设 `skillsPaths`。
 
-客户端发送前解析路径与启动上下文。Host 启动前校验登记一致性、绝对路径、允许的环境名与配置。秘密通过认证连接中的独立字符串映射 `project.ensure.credentials` 传递；`credentialNames` 标识所需条目，也包括生成的 MCP 秘密引用。凭据值不进入 Debug 输出、日志、状态或持久操作参数。H1 将它们保存在当前 Host generation 的项目私有内存中；缺失必要值返回 `credentialsRequired`。密钥库持久化属于 H2。
+客户端发送前解析路径与启动上下文。Host 启动前校验登记一致性、绝对路径、允许的环境名与配置。秘密通过认证连接中的独立字符串映射 `project.ensure.credentials` 传递；`credentialNames` 标识所需条目，也包括生成的 MCP 秘密引用。凭据值不进入 Debug 输出、日志、状态或持久操作参数。H1 将它们保存在当前 Host generation 的项目私有内存中。模型配置引用的凭据缺失时，Core 管理服务仍可启动并读取本地历史，相关模型在执行边界返回 `MODEL_CREDENTIAL_UNAVAILABLE`；其他必要凭据缺失仍返回 `credentialsRequired`。密钥库持久化属于 H2。
 
 发布 ready 前，Host 将部署 JSON 和引用的 Skill 树快照到 `<home>/host/launch/<project-id-digest>/`，保留嵌套资源和可执行位。重写后的路径保存在 `inputs.json`，部署与 Skill 路径包含内容摘要。Core 对同一 `id/revision` 保留显式部署的 Skill 根目录，自动发现及刷新不会覆盖该快照；不同 revision 继续按现有发现规则处理。CLI 随后可移除自己的临时部署目录。普通 TOML 保留原路径与既有配置监听行为，配置兼容性与安全重启规则继续生效。各子进程使用提交的 cwd 和环境，Host 不修改进程全局 cwd 或环境。`configHome` 保留调用端的配置、插件与 Hook 根目录，与 Host registry home 独立；Host 仅把 `AREAL_HARNESS_SERVICE_HOME` 指向自身 registry。
 
@@ -272,6 +272,8 @@ journal 快照为 `{version:1,pending:object[],outcomes:object}`，保留条目�
 provider 值是非空字符串或 null；subscription 值是完整记录对象或 null。null 是持久撤销值，并增加 revision。原导入回执只初始化尚不存在的槽，不覆盖后续替换或撤销。过期 expectedRevision 在写入前返回顶层 `revisionConflict` 错误，客户端不得重做远端 OAuth refresh。
 
 `credentialVaultNoninteractiveV1` 支持 `interactionAllowed:false`，在本次槽读取的 state、恢复与值读取整条同步路径中禁止安全存储交互；缺省值保留原交互语义。需要交互时返回 `storageLocked`，不当作 null 或已撤销。GUI 初始读取使用该模式；旧 Host 缺少此能力时，将对应槽标为不可用，不退回交互读取。单槽 `storageLocked` 或 `storageMissing` 仅使引用它的 provider 凭据不可用；后续刷新重新核查可恢复的槽。其他传输或协议错误继续向上返回。
+
+Host 项目启动也采用非交互凭据读取。槽不可读时本次启动不注入该凭据，并移除项目内存中的旧值，保留 vault 原状态和恢复回执；模型凭据不可用不会阻止历史读取。
 
 写入先保存非秘密 acceptedPending 回执，再保存稳定 vault entry 并读回验证，最后原子提交槽版本和 completed 回执。恢复根据原 entry 与版本结算；系统存储锁定仍返回 `storageLocked`，不推断为缺失。明确缺失的 entry 可结算为 `blocked/storageWriteNotApplied`。操作回执不含秘密值或秘密的普通哈希。丢失响应只查询原 requestId。
 

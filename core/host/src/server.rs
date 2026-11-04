@@ -1346,10 +1346,19 @@ impl Host {
         let mut imported_credentials = BTreeMap::new();
         for name in &inputs.credential_names {
             if imported_source && name.starts_with("AREAL_CREDENTIAL_") {
-                imported_credentials.insert(
-                    name.clone(),
-                    self.migration.credential(&registration, name)?,
-                );
+                let credential = match self.migration.credential(&registration, name) {
+                    Ok(value) => value,
+                    Err(cause)
+                        if cause.downcast_ref::<wire::Error>().is_some_and(|error| {
+                            matches!(error.code, "storageLocked" | "storageMissing")
+                        }) =>
+                    {
+                        eprintln!("Host project credential unavailable: {cause}");
+                        None
+                    }
+                    Err(cause) => return Err(cause),
+                };
+                imported_credentials.insert(name.clone(), credential);
             }
         }
         let credentials = {
@@ -2598,6 +2607,8 @@ mod tests {
                 environment: BTreeMap::new(),
                 credential_names: vec![reference.into(), "OPENAI_API_KEY".into()],
                 options: areal_local_service::LocalArgs {
+                    model: Some("fixture".into()),
+                    model_endpoint: Some("http://127.0.0.1:1/v1/chat/completions".into()),
                     api_key_env: Some(reference.into()),
                     ..Default::default()
                 },
@@ -2635,7 +2646,7 @@ mod tests {
                 .await
                 .unwrap_err()
                 .to_string()
-                .contains("credentialsRequired")
+                .contains("missing activation receipt")
         );
         assert!(
             !host.slots.borrow()[&gui_registration.project_id]
@@ -2647,7 +2658,7 @@ mod tests {
                 .await
                 .unwrap_err()
                 .to_string()
-                .contains("credentialsRequired")
+                .contains("missing activation receipt")
         );
         assert!(
             !host.slots.borrow()[&project]

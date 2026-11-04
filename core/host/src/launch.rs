@@ -230,14 +230,6 @@ pub(crate) fn prepare(
     credentials: &BTreeMap<String, String>,
 ) -> Result<(LaunchSpec, LaunchInputs)> {
     validate(inputs, registration)?;
-    for name in &inputs.credential_names {
-        if !credentials.contains_key(name) {
-            return Err(error(
-                "credentialsRequired",
-                format!("missing credential environment {name}"),
-            ));
-        }
-    }
     let mut saved = inputs.clone();
     let directory = home
         .join("host/launch")
@@ -311,7 +303,9 @@ pub(crate) fn prepare(
         environment.insert("HOME".into(), homedir.as_os_str().into());
     }
     for name in &saved.credential_names {
-        environment.insert(name.into(), credentials[name].as_str().into());
+        if let Some(value) = credentials.get(name) {
+            environment.insert(name.into(), value.as_str().into());
+        }
     }
     let context = LaunchContext {
         cwd: saved.cwd.clone(),
@@ -333,8 +327,20 @@ pub(crate) fn prepare(
             ..Default::default()
         },
     })?;
-    if let Some(name) = &config.model.api_key_env {
-        if !saved.credential_names.contains(name) || !credentials.contains_key(name) {
+    // Core 管理入口用不可用模型保留历史读取；非模型执行凭据仍须完整提供。
+    let model_credentials: std::collections::BTreeSet<_> = config
+        .model
+        .api_key_env
+        .iter()
+        .chain(
+            config
+                .model_catalog
+                .iter()
+                .filter_map(|provider| provider.api_key_env.as_ref()),
+        )
+        .collect();
+    for name in &saved.credential_names {
+        if !credentials.contains_key(name) && !model_credentials.contains(name) {
             return Err(error(
                 "credentialsRequired",
                 format!("missing credential environment {name}"),
@@ -489,6 +495,43 @@ mod tests {
             registration,
             inputs,
         }
+    }
+
+    #[test]
+    fn missing_model_credentials_allow_history_service_but_not_unrelated_credentials() {
+        let mut fixture = managed_launch_fixture();
+        fixture.inputs.options.model = Some("fixture".into());
+        fixture.inputs.options.model_endpoint =
+            Some("http://127.0.0.1:1/v1/chat/completions".into());
+        fixture.inputs.options.api_key_env = Some("AREAL_CREDENTIAL_missing".into());
+        fixture.inputs.credential_names = vec!["AREAL_CREDENTIAL_missing".into()];
+        let (spec, _) = prepare(
+            &fixture.home,
+            &fixture.bin,
+            &fixture.registration,
+            &fixture.inputs,
+            &BTreeMap::new(),
+        )
+        .unwrap();
+        assert!(
+            !spec
+                .context
+                .unwrap()
+                .environment
+                .contains_key(std::ffi::OsStr::new("AREAL_CREDENTIAL_missing"))
+        );
+        fixture.inputs.credential_names.push("MCP_SECRET".into());
+        let failure = prepare(
+            &fixture.home,
+            &fixture.bin,
+            &fixture.registration,
+            &fixture.inputs,
+            &BTreeMap::new(),
+        )
+        .err()
+        .unwrap();
+        assert!(failure.to_string().contains("credentialsRequired"));
+        assert!(failure.to_string().contains("MCP_SECRET"));
     }
 
     #[test]
