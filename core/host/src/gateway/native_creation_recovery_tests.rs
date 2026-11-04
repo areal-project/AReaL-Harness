@@ -6,6 +6,9 @@ use std::{
 };
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
+#[path = "native_outcome_recovery_tests.rs"]
+mod native_outcome_recovery_tests;
+
 struct OwnedChild(Child);
 impl Drop for OwnedChild {
     fn drop(&mut self) {
@@ -48,6 +51,13 @@ struct NativeProxy {
     task: tokio::task::JoinHandle<()>,
     requests: Rc<RefCell<Vec<Value>>>,
     dropped: Rc<RefCell<Option<Value>>>,
+    failed_outcome: Rc<RefCell<Option<Value>>>,
+}
+
+#[derive(Clone)]
+enum NativeReplyFault {
+    DropSuccess,
+    DenyOutcomeWrite(PathBuf),
 }
 
 async fn start_native_core(f: &Fixture) -> NativeCore {
@@ -160,6 +170,7 @@ async fn attach_native_proxy(
     f: &mut Fixture,
     native: &NativeCore,
     method: &'static str,
+    fault: NativeReplyFault,
 ) -> NativeProxy {
     let run = native.run.clone();
     let upstream = native.direct.endpoint.clone();
@@ -177,8 +188,11 @@ async fn attach_native_proxy(
     let endpoint = format!("ws://{}/", listener.local_addr().unwrap());
     let requests = Rc::new(RefCell::new(Vec::<Value>::new()));
     let dropped = Rc::new(RefCell::new(None::<Value>));
+    let failed_outcome = Rc::new(RefCell::new(None::<Value>));
     let proxy_requests = requests.clone();
     let proxy_dropped = dropped.clone();
+    let proxy_failed_outcome = failed_outcome.clone();
+    let host = f.host.clone();
     let proxy_run = run.clone();
     let proxy_upstream = upstream.clone();
     let proxy_token = token.clone();
@@ -188,6 +202,9 @@ async fn attach_native_proxy(
             let (stream, _) = listener.accept().await.unwrap();
             let requests = proxy_requests.clone();
             let dropped = proxy_dropped.clone();
+            let failed_outcome = proxy_failed_outcome.clone();
+            let fault = fault.clone();
+            let host = host.clone();
             let run = proxy_run.clone();
             let mut request = proxy_upstream.as_str().into_client_request().unwrap();
             request.headers_mut().insert(
@@ -221,13 +238,29 @@ async fn attach_native_proxy(
                                     if receipt_target.as_ref().is_some_and(|r|r["id"]==value["id"]) {
                                         storage::write(&run.join("core-receipt.json"),&json!({"request":receipt_target,"response":value})).unwrap();
                                     }
-                                    if target.as_ref().is_some_and(|r|r["id"]==value["id"]) && value.get("result").is_some() && dropped.borrow().is_none() {
+                                    if target.as_ref().is_some_and(|r|r["id"]==value["id"]) && value.get("result").is_some() && dropped.borrow().is_none() && failed_outcome.borrow().is_none() {
                                         let observation=json!({"request":target,"successResponse":value});
-                                        storage::write(&run.join("dropped-success.json"),&observation).unwrap();
-                                        *dropped.borrow_mut()=Some(observation);
-                                        let _=downstream.close(None).await;
-                                        let _=upstream.close(None).await;
-                                        break;
+                                        match &fault {
+                                            NativeReplyFault::DropSuccess => {
+                                                storage::write(&run.join("dropped-success.json"),&observation).unwrap();
+                                                *dropped.borrow_mut()=Some(observation);
+                                                let _=downstream.close(None).await;
+                                                let _=upstream.close(None).await;
+                                                break;
+                                            }
+                                            NativeReplyFault::DenyOutcomeWrite(directory) => {
+                                                let (_,snapshot)=host.journal.native_snapshot("project").unwrap();
+                                                let operation=&observation["request"]["params"]["requestId"];
+                                                let pending=snapshot["pending"].as_array().unwrap().iter().find(|row|&row["operationId"]==operation).unwrap();
+                                                assert_eq!(pending["params"],observation["request"]["params"]);
+                                                storage::write(&run.join("pending-before-outcome.json"),pending).unwrap();
+                                                let record=directory.join(format!("{}.json",storage::digest(b"project")));
+                                                std::fs::copy(record,run.join("journal-before-outcome.bin")).unwrap();
+                                                storage::write(&run.join("outcome-write-success.json"),&observation).unwrap();
+                                                std::fs::set_permissions(directory,std::fs::Permissions::from_mode(0o500)).unwrap();
+                                                *failed_outcome.borrow_mut()=Some(observation);
+                                            }
+                                        }
                                     }
                                 }
                                 if downstream.send(message).await.is_err() { break; }
@@ -256,6 +289,7 @@ async fn attach_native_proxy(
         task: proxy,
         requests,
         dropped,
+        failed_outcome,
     }
 }
 
@@ -287,7 +321,13 @@ async fn run_native_creation_case() {
     (f.close)();
     f.server.abort();
     let mut native = start_native_core(&f).await;
-    let proxy = attach_native_proxy(&mut f, &native, "areal/thread/start").await;
+    let proxy = attach_native_proxy(
+        &mut f,
+        &native,
+        "areal/thread/start",
+        NativeReplyFault::DropSuccess,
+    )
+    .await;
     let run = native.run.clone();
     let effect = native.effect.clone();
     let requests = proxy.requests.clone();
@@ -434,7 +474,13 @@ async fn run_native_interaction_case() {
     assert_eq!(original["kind"], "approval");
     assert_eq!(original["tool"], "run_command");
     let target = json!({"threadId":thread,"turnId":turn,"interactionId":original["requestId"]});
-    let proxy = attach_native_proxy(&mut f, &native, "areal/interaction/respond").await;
+    let proxy = attach_native_proxy(
+        &mut f,
+        &native,
+        "areal/interaction/respond",
+        NativeReplyFault::DropSuccess,
+    )
+    .await;
     let mut session = f.session("a");
     let mut review = session
         .request(&f.request("attention.read", target.clone(), None))
@@ -632,7 +678,13 @@ async fn run_native_send_case() {
     .await
     .unwrap();
     let thread = created["thread"]["id"].as_str().unwrap();
-    let proxy = attach_native_proxy(&mut f, &native, "areal/turn/start").await;
+    let proxy = attach_native_proxy(
+        &mut f,
+        &native,
+        "areal/turn/start",
+        NativeReplyFault::DropSuccess,
+    )
+    .await;
     let command = uuid::Uuid::new_v4().to_string();
     let params = json!({"threadId":thread,"expectedConfigRevision":1,"text":"Append the original send marker"});
     let request = f.request("session.send", params, Some(&command));
