@@ -49,11 +49,6 @@
       "nameUtf8Bytes": 27,
       "parametersJsonUtf8Bytes": 179
     },
-    "development_service_start": {
-      "descriptionUtf8Bytes": 431,
-      "nameUtf8Bytes": 25,
-      "parametersJsonUtf8Bytes": 468
-    },
     "plan_read": {
       "descriptionUtf8Bytes": 57,
       "nameUtf8Bytes": 9,
@@ -95,5 +90,5 @@
       "parametersJsonUtf8Bytes": 359
     }
   },
-  "toolsJsonUtf8Bytes": 12686
+  "toolsJsonUtf8Bytes": 11719
 }
