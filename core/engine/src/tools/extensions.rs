@@ -248,9 +248,7 @@ impl Invocation<'_> {
                 self.cancel.clone()).await.map_err(invalid)?
                 .ok_or_else(|| invalid("browser prepare capability unavailable"))?;
             if let Some(code) = prepared["error"].as_str() {
-                let mut error = invalid(format!(
-                    "browser prepare {code}; dispatch is not_sent"
-                ));
+                let mut error = invalid(format!("browser prepare {code}; dispatch is not_sent"));
                 // 只透传宿主诊断枚举，不把页面内容或任意异常详情带入模型上下文。
                 let reason = prepared["reason"].as_str().filter(|reason| {
                     matches!(
