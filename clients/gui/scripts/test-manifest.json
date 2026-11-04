@@ -1200,5 +1200,13 @@
     "areas": ["desktop", "protocol"],
     "requires": [],
     "notes": "A0 base-registry subset checks and isolated added-command/operation rejection evidence. Native bridge channels remain outside this freeze."
+  },
+  {
+    "script": "test:host-client",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["remote", "protocol"],
+    "requires": [],
+    "notes": "A1 shared client over an actual WebSocket server: ticket refresh, stale state, identity rejection, close cancellation and URL boundaries."
   }
 ]

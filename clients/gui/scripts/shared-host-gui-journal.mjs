@@ -8,7 +8,9 @@ import WebSocket from "ws";
 import { CoreClient } from "../packages/runtime-client/core.js";
 
 const require = createRequire(import.meta.url);
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = createRequire(new URL("../app/package.json", import.meta.url))(
+  "@areal/client/node",
+);
 const { CoreBackend } = require("../app/src/core/backend.cjs");
 const { isAwaitingResponse } = require("../app/src/core/project-state.cjs");
 const root = await realpath(await mkdtemp("/tmp/ah-gui-journal-"));

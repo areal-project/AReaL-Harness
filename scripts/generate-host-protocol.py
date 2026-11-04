@@ -27,6 +27,7 @@ ANNOTATIONS = {
     "x-opaque",
     "x-nonWhitespace",
     "x-constraints",
+    "x-sensitive",
 }
 CONSTRAINTS = {
     "minimum",
@@ -181,7 +182,7 @@ def validate_schema(document):
         visit(value, name)
     if "anyOf" in document:
         visit({"anyOf": document["anyOf"]}, "root")
-    for transport in ("local", "remote"):
+    for transport in ("local", "remote", "loopback"):
         methods = document["x-current"][transport]["methods"]
         for method, entry in methods.items():
             for kind in ("request", "result"):
@@ -227,7 +228,16 @@ def current_inventory(root):
         server.index("async fn dispatch_connection(") : server.index("async fn dispatch(&self")
     ]
     local.update(re.findall(r'method\s*==\s*"([A-Za-z][A-Za-z0-9_.:/-]*)"', dispatch_connection))
-    return {"local": local, "remote": set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', match[1]))}
+    loopback = (root / "core/host/src/loopback.rs").read_text()
+    loopback_match = re.search(r"const METHODS: &\[&str\] = &\[(.*?)\];", loopback, re.S)
+    if not loopback_match:
+        raise ValueError("Loopback METHODS declaration moved; update inventory extractor")
+    return {
+        "loopback": {"hello"}
+        | set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', loopback_match[1])),
+        "local": local,
+        "remote": set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', match[1])),
+    }
 
 
 def check_inventory(document, root):
@@ -327,7 +337,11 @@ class Emitter:
             return "\n".join(lines + ["}"])
         if value.get("type") != "object" or value.get("x-opaque"):
             return f"pub type {name} = {self.rust_type(value, name)};"
-        lines = [derive]
+        lines = [
+            "#[derive(Clone, serde::Serialize, serde::Deserialize)]"
+            if value.get("x-sensitive")
+            else derive
+        ]
         extra = value.get("additionalProperties", True)
         if extra is False:
             lines.append("#[serde(deny_unknown_fields)]")
@@ -354,7 +368,16 @@ class Emitter:
                 "    #[serde(flatten)]",
                 f"    pub additional_properties: std::collections::BTreeMap<String, {typ}>,",
             ]
-        return "\n".join(lines + ["}"])
+        lines.append("}")
+        if value.get("x-sensitive"):
+            lines += [
+                f"impl std::fmt::Debug for {name} {{",
+                "    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {",
+                f'        formatter.write_str("{name}([REDACTED])")',
+                "    }",
+                "}",
+            ]
+        return "\n".join(lines)
 
     def render(self, document):
         digest = hashlib.sha256(
@@ -398,7 +421,7 @@ class Emitter:
             f"export type {name} = {self.ts_type(value)};"
             for name, value in sorted(document["$defs"].items())
         ]
-        for transport in ("local", "remote"):
+        for transport in ("local", "remote", "loopback"):
             ts += ["", f"export interface {pascal(transport)}MethodMap {{"]
             for method, entry in sorted(document["x-current"][transport]["methods"].items()):
                 ts.append(

@@ -23,7 +23,7 @@ const root = resolve(gui, "../..");
 const binary = join(root, ".local/shared-host-bin/areal");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = require("@areal/client/node");
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const bundleNames = ["areal", "areal-runtime", "areal-runtime-fs"];
 const bundle = async () =>

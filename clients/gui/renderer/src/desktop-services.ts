@@ -248,6 +248,7 @@ export function createDesktopServices(bridge: DesktopBridge): PlatformServices {
       }
     : undefined;
   return {
+    getHostTicket: bridge.getHostTicket,
     snapShots,
     snapshot,
     onState(listener) {

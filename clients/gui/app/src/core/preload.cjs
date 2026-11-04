@@ -95,6 +95,7 @@ const desktopBridge = {
 
   /** @param {File} file */
   droppedFilePath: (file) => webUtils.getPathForFile(file),
+  getHostTicket: () => ipcRenderer.invoke("areal-native:host-ticket"),
   /** @param {unknown} locale */
   setInterfaceLocale: (locale) => sendDesktop("areal-core:interface-locale", locale),
   /** @returns {Promise<unknown>} */

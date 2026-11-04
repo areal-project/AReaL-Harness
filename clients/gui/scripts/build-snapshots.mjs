@@ -17,3 +17,14 @@ await build({
   target: "node22",
   external: ["electron", "@crowecawcaw/xa11y"],
 });
+await build({
+  absWorkingDir: gui,
+  entryPoints: ["app/src/ipc/host-ticket.ts"],
+  outdir: "app/src/ipc/build",
+  outExtension: { ".js": ".cjs" },
+  bundle: true,
+  platform: "node",
+  format: "cjs",
+  target: "node22",
+  external: ["electron", "@areal/client/node"],
+});

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:areal:host-protocol:v1",
   "title": "AReaL Host current local and Remote protocol",
-  "description": "Static A0 contract. Current local and Remote wire variants remain separate. Generated types are not imported by production code. Scalar constraints, authorization and mutable ownership remain runtime responsibilities. Examples are schema fixtures, not execution receipts.",
+  "description": "Host local Unix, authenticated loopback WebSocket and Remote wire variants. Scalar constraints, authorization and mutable ownership remain runtime responsibilities. Examples are schema fixtures, not execution receipts.",
   "$defs": {
     "EmptyParams": {
       "type": "object",
@@ -11863,6 +11863,9 @@
         },
         {
           "$ref": "#/$defs/LocalVaultReplaceRequest"
+        },
+        {
+          "$ref": "#/$defs/LocalWebTicketRequest"
         }
       ]
     },
@@ -11981,6 +11984,9 @@
         },
         {
           "$ref": "#/$defs/LocalVaultReplaceResult"
+        },
+        {
+          "$ref": "#/$defs/LocalWebTicketResult"
         }
       ]
     },
@@ -12590,6 +12596,373 @@
       "x-opaque": true,
       "x-source": "core/host/src/subscription/login.rs",
       "description": "Legacy login target is accepted as JSON. The owner interprets newAccount/saved kinds and treats every other shape as the current account; mutable login state may bypass target processing."
+    },
+    "LocalWebTicketParams": {
+      "type": "object",
+      "properties": {
+        "origin": {
+          "type": "string"
+        },
+        "expectedGeneration": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "origin",
+        "expectedGeneration"
+      ],
+      "additionalProperties": false
+    },
+    "LoopbackEndpoint": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "hostId": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "websocketUrl": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "hostId",
+        "generation",
+        "origin",
+        "websocketUrl"
+      ],
+      "additionalProperties": false
+    },
+    "LocalWebTicketResult": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "hostId": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "websocketUrl": {
+          "type": "string"
+        },
+        "ticket": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "version",
+        "hostId",
+        "generation",
+        "origin",
+        "websocketUrl",
+        "ticket",
+        "expiresAt"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "hostId": "example",
+          "generation": "example",
+          "origin": "http://127.0.0.1:1234",
+          "websocketUrl": "ws://127.0.0.1:1234/host/socket",
+          "ticket": "example",
+          "expiresAt": 0
+        }
+      ],
+      "x-sensitive": true
+    },
+    "LocalWebTicketRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "web.ticket"
+        },
+        "params": {
+          "$ref": "#/$defs/LocalWebTicketParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "example",
+          "method": "web.ticket",
+          "params": {
+            "origin": "areal-ui://app",
+            "expectedGeneration": "example"
+          }
+        }
+      ]
+    },
+    "LoopbackHelloParams": {
+      "type": "object",
+      "properties": {
+        "protocolVersions": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ticket": {
+          "type": "string"
+        },
+        "expectedGeneration": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocolVersions",
+        "capabilities",
+        "ticket",
+        "expectedGeneration"
+      ],
+      "additionalProperties": false,
+      "x-sensitive": true
+    },
+    "LoopbackHelloRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "hello"
+        },
+        "params": {
+          "$ref": "#/$defs/LoopbackHelloParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "example",
+          "method": "hello",
+          "params": {
+            "protocolVersions": [
+              1
+            ],
+            "capabilities": [],
+            "ticket": "example",
+            "expectedGeneration": "example"
+          }
+        }
+      ]
+    },
+    "LoopbackLimits": {
+      "type": "object",
+      "properties": {
+        "maxFrameBytes": {
+          "type": "integer",
+          "const": 1048576
+        }
+      },
+      "required": [
+        "maxFrameBytes"
+      ],
+      "additionalProperties": false
+    },
+    "LoopbackHelloResult": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "hostId": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "string"
+        },
+        "executableVersion": {
+          "type": "string"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "methods": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "host.status"
+            ]
+          }
+        },
+        "transport": {
+          "type": "string",
+          "const": "loopback"
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "observe"
+            ]
+          }
+        },
+        "limits": {
+          "$ref": "#/$defs/LoopbackLimits"
+        }
+      },
+      "required": [
+        "version",
+        "hostId",
+        "generation",
+        "executableVersion",
+        "capabilities",
+        "methods",
+        "transport",
+        "scopes",
+        "limits"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "hostId": "example",
+          "generation": "example",
+          "executableVersion": "example",
+          "capabilities": [],
+          "methods": [
+            "host.status"
+          ],
+          "transport": "loopback",
+          "scopes": [
+            "observe"
+          ],
+          "limits": {
+            "maxFrameBytes": 1048576
+          }
+        }
+      ]
+    },
+    "LoopbackRequest": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/LoopbackHelloRequest"
+        },
+        {
+          "$ref": "#/$defs/LocalHostStatusRequest"
+        }
+      ]
+    },
+    "LoopbackResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LoopbackHelloResult"
+        },
+        {
+          "$ref": "#/$defs/LocalHostStatusResult"
+        }
+      ]
+    },
+    "LoopbackResponse": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "integer",
+              "const": 1
+            },
+            "id": {
+              "type": "string"
+            },
+            "result": {
+              "$ref": "#/$defs/LoopbackResult"
+            }
+          },
+          "required": [
+            "version",
+            "id",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "integer",
+              "const": 1
+            },
+            "id": {
+              "type": "string"
+            },
+            "error": {
+              "$ref": "#/$defs/LocalError"
+            }
+          },
+          "required": [
+            "version",
+            "id",
+            "error"
+          ],
+          "additionalProperties": false
+        }
+      ]
     }
   },
   "x-current": {
@@ -12784,6 +13157,11 @@
           "request": "#/$defs/LocalSubscriptionCommandRequest",
           "result": "#/$defs/LocalSubscriptionCommandResult",
           "source": "core/host/src/subscription/host.rs"
+        },
+        "web.ticket": {
+          "request": "#/$defs/LocalWebTicketRequest",
+          "result": "#/$defs/LocalWebTicketResult",
+          "source": "core/host/src/server.rs"
         }
       },
       "framing": {
@@ -12974,6 +13352,31 @@
         "commandOutcomeBytes": 4096,
         "sessionSnapshotBytes": 196608
       }
+    },
+    "loopback": {
+      "methods": {
+        "hello": {
+          "request": "#/$defs/LoopbackHelloRequest",
+          "result": "#/$defs/LoopbackHelloResult",
+          "source": "core/host/src/loopback.rs"
+        },
+        "host.status": {
+          "request": "#/$defs/LocalHostStatusRequest",
+          "result": "#/$defs/LocalHostStatusResult",
+          "source": "core/host/src/server.rs"
+        }
+      },
+      "framing": {
+        "maxFrameBytes": 1048576,
+        "path": "/host/socket",
+        "authentication": "single-use ticket in first hello; exact Origin and Host; no query"
+      },
+      "limits": {
+        "ticketTtlMs": 30000,
+        "pendingTickets": 64,
+        "connections": 32,
+        "handshakeTimeoutMs": 10000
+      }
     }
   },
   "anyOf": [
@@ -12997,6 +13400,12 @@
     },
     {
       "$ref": "#/$defs/RemoteHello"
+    },
+    {
+      "$ref": "#/$defs/LoopbackHelloRequest"
+    },
+    {
+      "$ref": "#/$defs/LoopbackResponse"
     }
   ],
   "x-proposals": {

@@ -65,7 +65,7 @@ impl Client {
             .env_clear()
             .env("AREAL_HARNESS_HOME", &home)
             .env("AREAL_HARNESS_SERVICE_HOME", &home);
-        for name in ["HOME", "PATH", "TMPDIR", "LANG"] {
+        for name in ["HOME", "PATH", "TMPDIR", "LANG", "AREAL_HOST_WEBSOCKET"] {
             if let Some(value) = std::env::var_os(name) {
                 command.env(name, value);
             }
@@ -138,6 +138,16 @@ impl Client {
             .await?
             .context("Host disconnected; reconcile the original requestId before any retry")?;
         Ok(serde_json::from_value(response_result(response, &id)?)?)
+    }
+    pub async fn web_ticket(
+        &self,
+        origin: &str,
+    ) -> Result<areal_protocol::host::LocalWebTicketResult> {
+        self.call(
+            "web.ticket",
+            json!({"origin":origin,"expectedGeneration":self.identity.generation}),
+        )
+        .await
     }
     pub async fn status(&self) -> Result<HostStatus> {
         self.call("host.status", json!({})).await

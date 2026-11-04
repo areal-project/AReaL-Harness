@@ -108,6 +108,7 @@ const {
  * onSnapShotEvent?:(listener:(event:unknown)=>void)=>()=>void,
  * command:BridgeInvoke<'areal-core:command'>,snapshot:BridgeInvoke<'areal-core:snapshot'>,
  * presentReady:BridgeInvoke<'areal-core:present-ready'>,installCommandLineTools:BridgeInvoke<'areal-core:install-command-line-tools'>,
+ * getHostTicket?:()=>Promise<unknown>,
  * chooseProject:BridgeInvoke<'areal-core:choose-project'>,chooseTaskDirectory:BridgeInvoke<'areal-core:choose-task-directory'>,
  * chooseProjectlessDirectory:BridgeInvoke<'areal-core:choose-projectless-directory'>,fileOpen:BridgeInvoke<'areal-core:file-open'>,
  * theme:BridgeInvoke<'areal-core:theme'>,preview:BridgeInvoke<'areal-core:preview'>,

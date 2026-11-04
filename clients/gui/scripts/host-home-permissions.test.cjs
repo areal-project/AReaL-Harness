@@ -13,7 +13,9 @@ const {
 } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = require("node:module").createRequire(
+  require("node:path").resolve(__dirname, "../app/package.json"),
+)("@areal/client/node");
 
 test("legacy Host home is restricted before opening its private log", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "host-home-"));

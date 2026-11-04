@@ -19,7 +19,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const gui = resolve(process.env.AREAL_SCHEDULE_GUI_ROOT || join(root, "clients/gui"));
 const require = createRequire(join(root, "clients/gui/app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { HostClient } = require(join(gui, "app/src/core/host-client.cjs"));
+const { HostClient } = createRequire(join(gui, "app/package.json"))("@areal/client/node");
 const { readHostReceipt, readOfflineHostReceipt } = require(
   join(gui, "app/src/core/host-lifecycle.cjs"),
 );

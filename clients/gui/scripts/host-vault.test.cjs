@@ -9,7 +9,9 @@ const { ModelConfiguration } = require("../app/src/core/model-config.cjs");
 const { SubscriptionStore } = require("../app/src/core/subscription.cjs");
 const { AppProviders } = require("../app/src/core/providers.cjs");
 const { NativeSubscription } = require("../app/src/core/native-subscription.cjs");
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = require("node:module").createRequire(
+  require("node:path").resolve(__dirname, "../app/package.json"),
+)("@areal/client/node");
 
 test("background vault reads require capability and never fall back to interactive reads", async () => {
   const client = new HostClient();

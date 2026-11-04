@@ -13,7 +13,9 @@ const require = createRequire(import.meta.url);
 const { CoreBackend } = require("../app/src/core/backend.cjs");
 const { DesktopService, PROTOCOL } = require("../app/src/core/service-protocol.cjs");
 const { ServiceConnection } = require("../app/src/core/service-connection.cjs");
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = createRequire(new URL("../app/package.json", import.meta.url))(
+  "@areal/client/node",
+);
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const binary = join(
   process.env.AREAL_TEST_BIN_DIR ?? join(repository, ".local/shared-host-bin"),

@@ -15,6 +15,18 @@ The local transport is a Unix domain socket with newline-delimited UTF-8 JSON, o
 
 Normal stop removes the current generation’s `host/host.json` discovery descriptor and socket before releasing `host.lock`. Stable `host/identity.json` and original operation receipts remain.
 
+## Experimental loopback WebSocket
+
+With `AREAL_HOST_WEBSOCKET=1` in the Host process environment, Host listens on a random `127.0.0.1` port. The default is disabled. Private `host/endpoint.json` contains `version`, `hostId`, `generation`, the HTTP `origin`, and `websocketUrl`. Clients must match its identity against an authenticated Unix connection. It contains no credentials. The existing `host/host.json` format stays unchanged; normal shutdown removes this generation's endpoint.
+
+An authenticated Unix connection can call `web.ticket` with `{origin, expectedGeneration}`. The origin must exactly match `areal-ui://app` or this generation's HTTP origin. The result is `{version, hostId, generation, origin, websocketUrl, ticket, expiresAt}`. Here `origin` is the caller origin bound to the ticket, and `expiresAt` is Unix epoch milliseconds. Tickets contain 32 random bytes; Host retains only a digest. Each ticket expires after 30 seconds and works once. Host retains at most 64 unexpired tickets. Wrong generations, wrong origins, expired tickets, and used tickets cannot authenticate. Each reconnect requires a new ticket.
+
+WS accepts only `/host/socket`, rejects queries, and validates the exact Host authority and Origin. No anonymous ticket or HTML ticket injection endpoint exists. A same-origin browser still requires authorization through an authenticated Unix principal; HTTP origin alone grants no identity. HTTP headers are limited to 8 KiB. HTTP upgrade, first-frame authentication, and each send have separate 10-second deadlines. The listener admits at most 32 connections. Frames and complete messages are limited to 1 MiB.
+
+The first frame must be `{version:1,id,method:"hello",params:{protocolVersions:[1],capabilities:[],ticket,expectedGeneration}}`. Its successful response uses the local response envelope and returns `version`, `hostId`, `generation`, `executableVersion`, empty `capabilities`, `methods:["host.status"]`, `transport:"loopback"`, `scopes:["observe"]`, and `limits:{maxFrameBytes:1048576}`. Failed authentication closes the connection without Host metadata. Once authenticated, only `host.status` reaches the existing Host status dispatcher. Other methods return `methodNotFound`. WS request IDs are limited to 256 bytes. Existing Unix hello still rejects tickets and unknown fields. Remote methods and handshakes retain their existing contract.
+
+Tickets travel only in authenticated Unix responses and the first WS frame, never in URLs, process arguments, logs, or diagnostics. This experimental endpoint provides status observation only. It does not complete project lists, session details, or browser first-time authorization.
+
 ## Envelope and common types
 
 Requests use a dedicated envelope, separate from the existing service control protocol. Struct fields use camelCase; tagged enum values use their literal wire strings. Rust serde can represent requests as an envelope plus a method-tagged payload. Version 1 rejects unknown fields and invalid combinations. Optional fields are omitted rather than serialized as null unless stated below.

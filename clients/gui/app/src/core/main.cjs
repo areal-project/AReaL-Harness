@@ -904,6 +904,11 @@ function startDesktop() {
             ),
           );
           startupTraceMain.finish("ok");
+          const hostConnectSource = require("../ipc/build/host-ticket.cjs").registerHostTicket({
+            home: serviceOptions(app).hostHome,
+            binary: serviceOptions(app).binary,
+            trusted,
+          });
           if (process.platform === "darwin")
             app.dock?.setIcon(join(__dirname, "../../assets/icon-1024.png"));
           protocol.handle("areal-ui", async (request) => {
@@ -915,11 +920,12 @@ function startDesktop() {
             );
             if (!path.startsWith(guiRoot + sep)) return new Response("Not found", { status: 404 });
             try {
+              const connectSource =
+                extname(path) === ".html" ? await hostConnectSource().catch(() => "") : "";
               return new Response(await readFile(path), {
                 headers: {
                   "Content-Type": mime[extname(path)] ?? "application/octet-stream",
-                  "Content-Security-Policy":
-                    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; frame-src areal-mcp:",
+                  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' ${connectSource}; worker-src 'self' blob:; object-src 'none'; frame-src areal-mcp:`,
                 },
               });
             } catch {

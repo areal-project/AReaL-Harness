@@ -7,7 +7,7 @@ const { startupTrace } = require("./startup-timing.cjs");
 const { randomUUID } = require("node:crypto");
 const { mkdir, readFile, realpath, open, writeFile, rename, rm } = require("node:fs/promises");
 const { join } = require("node:path");
-const { HostClient } = require("./host-client.cjs");
+const { HostClient } = require("@areal/client/node");
 const { executeCore } = require("./core-process.cjs");
 const { hostUpdateReceipt } = require("@areal/workbench/desktop-contract/desktop-control");
 const {
@@ -1429,7 +1429,7 @@ class SharedCoreBackend {
         : "原 Host 停止操作尚未结算，请检查原请求；不会自动启动或重发。",
     };
   }
-  /** @returns {Promise<import('./host-client.cjs').HostActivity>} */
+  /** @returns {Promise<import('@areal/client/node').HostActivity>} */
   async readHostActivity() {
     const client = new HostClient();
     try {

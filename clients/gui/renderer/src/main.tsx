@@ -11,6 +11,7 @@ import "./workbench.css";
 import { TooltipProvider } from "./components/ui/tooltip.js";
 import { App } from "./App.js";
 import { initializeDesktopServices } from "./desktop-services.js";
+import { hostReadsEnabled, HostReadStatus } from "./HostReadStatus.js";
 const services = initializeDesktopServices(
   () => getApplicationPreferences().locale,
   subscribeApplicationPreferences,
@@ -21,6 +22,9 @@ else {
   createRoot(document.getElementById("root")!).render(
     <ApplicationIntlProvider>
       <TooltipProvider>
+        {hostReadsEnabled() && services.getHostTicket && (
+          <HostReadStatus bootstrap={services.getHostTicket} />
+        )}
         <App services={services} />
       </TooltipProvider>
     </ApplicationIntlProvider>,

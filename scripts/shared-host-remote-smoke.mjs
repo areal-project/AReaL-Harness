@@ -23,7 +23,7 @@ assert.equal(
 );
 const repository = await realpath(new URL("..", import.meta.url).pathname);
 const require = createRequire(join(repository, "clients/gui/app/package.json"));
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = require("@areal/client/node");
 const { GuiHostProjects } = require("../app/src/core/gui-host-projects.cjs");
 const { HostRemote } = require("../app/src/core/host-remote.cjs");
 const { NativeRemote } = require("../app/src/core/native-remote.cjs");

@@ -1,7 +1,7 @@
 // @ts-check
 "use strict";
 const { nativeText } = require("./native-i18n.cjs");
-/** @typedef {import('./host-client.cjs').HostActivity} Activity */
+/** @typedef {import('@areal/client/node').HostActivity} Activity */
 /** @typedef {Pick<InstanceType<typeof import('./service-client.cjs').SharedCoreBackend>,'readHostActivity'|'requestHostStop'>} Backend */
 /** @typedef {(options:Electron.MessageBoxOptions)=>Promise<{response:number}>} Notify */
 

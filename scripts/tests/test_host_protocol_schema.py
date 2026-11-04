@@ -25,7 +25,7 @@ class HostProtocolSchemaTests(unittest.TestCase):
         GEN.check_inventory(self.schema, ROOT)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for name in ("server.rs", "subscription/host.rs", "gateway/session.rs"):
+            for name in ("server.rs", "subscription/host.rs", "gateway/session.rs", "loopback.rs"):
                 target = root / "core/host/src" / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / "core/host/src" / name, target)
@@ -48,6 +48,16 @@ class HostProtocolSchemaTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "host.added2"):
                 GEN.check_inventory(self.schema, root)
+            shutil.copyfile(ROOT / "core/host/src/server.rs", source)
+            source = root / "core/host/src/loopback.rs"
+            source.write_text(
+                source.read_text().replace(
+                    'const METHODS: &[&str] = &["host.status"];',
+                    'const METHODS: &[&str] = &["host.status", "loopback.added"];',
+                )
+            )
+            with self.assertRaisesRegex(ValueError, "loopback.added"):
+                GEN.check_inventory(self.schema, root)
 
     def test_generator_is_deterministic_and_check_never_repairs_stale_files(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -55,6 +65,7 @@ class HostProtocolSchemaTests(unittest.TestCase):
             for name in (
                 GEN.SCHEMA,
                 Path("core/host/src/server.rs"),
+                Path("core/host/src/loopback.rs"),
                 Path("core/host/src/subscription/host.rs"),
                 Path("core/host/src/gateway/session.rs"),
             ):
@@ -110,7 +121,7 @@ const validate = (ref, value, expected = true) => {
   assert(validator, ref);
   assert.equal(validator(value), expected, ref + ': ' + ajv.errorsText(validator.errors));
 };
-for (const transport of ['local','remote']) {
+for (const transport of ['local','remote','loopback']) {
   for (const [method, entry] of Object.entries(schema['x-current'][transport].methods)) {
     for (const kind of ['request','result']) {
       const def = schema.$defs[entry[kind].slice(8)];

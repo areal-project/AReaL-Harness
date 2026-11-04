@@ -3,7 +3,7 @@
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const { randomUUID } = require("node:crypto");
-const { HostClient } = require("./host-client.cjs");
+const { HostClient } = require("@areal/client/node");
 const { parseRemoteConfig } = require("./remote-config.cjs");
 /** @typedef {{requestId:string,sourceId:string,expectedRevision:number}} PendingWrite */
 

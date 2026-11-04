@@ -43,12 +43,14 @@ export class RemoteConnection {
         maxBufferedBytes: 2 * 1024 * 1024,
       });
       this.check();
-      this.secure.send({
+      /** @type {import('../generated/host-protocol').RemoteHello} */
+      const hello = {
         method: "hello",
         apiVersion: "areal.remote.v2",
         clientVersion: "0.1.0",
         ...this.hello,
-      });
+      };
+      this.secure.send(hello);
       this.hello = null;
       onHandshake("hello");
       const messages = this.secure.messages();
@@ -70,6 +72,7 @@ export class RemoteConnection {
         throw Object.assign(new Error("Host 身份不匹配"), { code: "HOST_MISMATCH" });
       await onReady(first.value);
       this.check();
+      /** @type {import('../generated/host-protocol').RemoteReady} */
       this.ready = first.value;
       void this.receive(messages, onSession).catch(() => this.socket.close());
       return this.ready;
@@ -91,7 +94,9 @@ export class RemoteConnection {
       }, 15000);
       this.pending.set(id, { resolve, reject, timer, onResult });
       try {
-        this.secure.send({ id, ...envelope });
+        /** @type {import('../generated/host-protocol').RemoteRequest} */
+        const request = { id, ...envelope };
+        this.secure.send(request);
       } catch (error) {
         clearTimeout(timer);
         this.pending.delete(id);

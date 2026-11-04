@@ -5,7 +5,7 @@ const { join } = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { isDeepStrictEqual } = require("node:util");
 
-/** @typedef {import('./host-client.cjs').VaultSlot} VaultSlot */
+/** @typedef {import('@areal/client/node').VaultSlot} VaultSlot */
 /** @typedef {{requestId:string,slot:VaultSlot,expectedRevision:number}} PendingWrite */
 
 class HostVault {

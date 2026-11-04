@@ -10,7 +10,7 @@ import { legacySendModel, directLegacyPhone } from "./shared-host-legacy-send-fi
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = require("@areal/client/node");
 const { CoreBackend } = require("../app/src/core/backend.cjs");
 const { GuiSourceAdapter, assertLegacySourceWritable } = require("../app/src/core/gui-source.cjs");
 const { readHostReceipt, readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
@@ -590,7 +590,7 @@ if (target.hook?.kind === "legacy-response-loss") {
   };
 }
 if (target.hook?.kind === "host-response-barrier") {
-  const { HostClient } = require(target.appPath + "/src/core/host-client.cjs");
+  const { HostClient } = require("node:module").createRequire(target.appPath + "/package.json")("@areal/client/node");
   const request = HostClient.prototype.request;
   HostClient.prototype.request = async function (method, params) {
     const result = await request.call(this, method, params);
@@ -1874,7 +1874,7 @@ check("after-load");
       legacySourceManifest: join(legacyApp, "..", "source-manifest.json"),
       executionSources: {
         hostBinary: { path: binary, sha256: sha(await readFile(binary)) },
-        hostClient: sha(await readFile(join(gui, "app/src/core/host-client.cjs"))),
+        hostClient: sha(await readFile(join(gui, "packages/client/node/host-client.cjs"))),
         guiSource: sha(await readFile(join(gui, "app/src/core/gui-source.cjs"))),
         backend: sha(await readFile(join(gui, "app/src/core/backend.cjs"))),
         coreClient: sha(await readFile(join(gui, "packages/runtime-client/core.js"))),

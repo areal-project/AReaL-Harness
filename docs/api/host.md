@@ -15,6 +15,18 @@ Host 启动初始化兼容旧配置创建的 0755 home：只对当前用户拥�
 
 正常停止在释放 `host.lock` 前移除本代运行描述 `host/host.json` 与 socket；稳定 `host/identity.json` 和原操作回执继续保留。
 
+## 实验性回环 WebSocket
+
+Host 进程设置 `AREAL_HOST_WEBSOCKET=1` 时监听 `127.0.0.1` 的随机端口。默认关闭。私有 `host/endpoint.json` 保存 `version`、`hostId`、`generation`、HTTP `origin` 和 `websocketUrl`。客户端必须与已认证 Unix 连接的 Host 身份核对。该文件不含凭据，旧 `host/host.json` 格式不变，正常退出移除本代 endpoint。
+
+已认证 Unix 连接可调用 `web.ticket`，参数为 `{origin, expectedGeneration}`。`origin` 必须精确等于 `areal-ui://app` 或本代 HTTP origin。结果为 `{version, hostId, generation, origin, websocketUrl, ticket, expiresAt}`，其中 `origin` 是票据绑定的调用方 origin，`expiresAt` 是 Unix epoch 毫秒。票据使用 32 随机字节，Host 仅保存摘要，单次有效 30 秒，最多保留 64 张未过期票据。错误 generation、Origin 或已用、过期票据不能认证。每次重连重新取票，不能重复使用旧票据。
+
+WS 只接受 `/host/socket`，禁止 query，校验精确 Host authority 与 Origin。没有匿名取票或 HTML 注入票据入口。同源网页仍需已认证 Unix 主体授权，HTTP origin 本身不授予身份。HTTP header 限制为 8 KiB，HTTP 升级、首帧认证和每次发送各限时 10 秒，最多 32 个连接，单帧与完整消息最大 1 MiB。
+
+第一帧必须是 `{version:1,id,method:"hello",params:{protocolVersions:[1],capabilities:[],ticket,expectedGeneration}}`。成功响应保留本机响应封装，返回 `version`、`hostId`、`generation`、`executableVersion`、空 `capabilities`，并声明 `methods:["host.status"]`、`transport:"loopback"`、`scopes:["observe"]`、`limits:{maxFrameBytes:1048576}`。认证失败关闭连接，不返回 Host 元数据。认证后仅接受 `host.status`，调用现有 Host 状态分发器，其他方法返回 `methodNotFound`。WS request id 最长 256 字节。旧 Unix `hello` 仍拒绝票据及未知字段，Remote 方法和握手不变。
+
+票据只经认证 Unix 响应与 WS 首帧传递，不放 URL、进程参数、日志或诊断。此入口仅提供实验性状态读取，不代表项目清单、会话详情或浏览器首次授权流程已完成。
+
 ## 消息封装与公共类型
 
 请求使用独立 envelope，与现有 service 控制协议分开。结构字段使用 camelCase，tagged enum 值使用本文的 wire 字符串。Rust serde 可用 envelope 加按 method 标记的 payload 表达。版本 1 拒绝未知字段与无效组合。除非特别注明，可选字段省略，不写 null。

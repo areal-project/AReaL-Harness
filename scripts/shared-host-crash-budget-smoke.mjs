@@ -33,7 +33,7 @@ await mkdir(env.HOME, { mode: 0o700 });
 for (const name of ["AREAL_GUI_OWNER", "AREAL_GUI_LIFETIME_FD", "AREAL_GUI_DESKTOP_LIFETIME_FD"])
   delete env[name];
 const require = createRequire(new URL("../clients/gui/app/package.json", import.meta.url));
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = require("@areal/client/node");
 const execute = promisify(execFile);
 const evidence = {
   root,

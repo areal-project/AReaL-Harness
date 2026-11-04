@@ -10,7 +10,7 @@ class SubscriptionStore {
   /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend @param {InstanceType<typeof import('./host-vault.cjs').HostVault>} vault */
   constructor(backend, vault) {
     this.vault = vault;
-    /** @type {import('./host-client.cjs').VaultSlot} */
+    /** @type {import('@areal/client/node').VaultSlot} */
     this.slot = {
       kind: "subscriptionAccount",
       sourceId: backend.host.sourceId,

@@ -421,13 +421,19 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 
 ### A0 协议契约
 
-`python3 scripts/generate-host-protocol.py --check` 比较 schema 生成的 Rust 与 TypeScript 类型，并核对本机和 Gateway 方法清单。生成物暂不接入生产代码。现有两种消息封装与提案分开；结构类型不替代字节预算、授权及可变归属检查。
+`python3 scripts/generate-host-protocol.py --check` 比较 schema 生成的 Rust 与 TypeScript 类型，并核对本机、Gateway 和回环方法清单。A0 不接入生产代码；A1 的握手与票据边界开始使用生成类型。现有消息封装与提案分开；结构类型不替代字节预算、授权及可变归属检查。
 
 `make host-protocol-check` 检查生成物、生成器回归和桌面 IPC 冻结反例。CI 还以 PR 基线的完整提交 SHA 运行 `node clients/gui/scripts/check-desktop-ipc-freeze.cjs --base <SHA>`，拒绝新增顶层命令或已有命令下的业务 operation，原生 bridge 通道不在冻结范围内。
 
 Main 的业务行数与源码总行数分别由 `gui-health.mjs --check --metric=mainBusinessLines --base=<SHA>` 和 `--metric=mainSourceLines` 检查。业务统计默认包含所有 Main 文件，仅排除基线逐路径注明职责的原生文件；混合文件整计为业务的保守上界。两项同时比较基线值和 PR 基点实测，不允许提高基线或通过重新分类隐藏增长。Renderer 的平台边界通过 `pnpm --dir clients/gui exec vp lint --config oxlint.renderer-boundary.json renderer packages/remote packages/remote-client packages/ui` 检查，规则单测与其他 oxlint 规则放在同一测试文件中。
 
 `cargo test --locked -p areal-host --test host_protocol_conformance` 编译生成类型并调用真实本机 wire。准备匹配的固定路径 Core/Runtime 后，运行 `AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal pnpm --dir clients/gui test:host-protocol-conformance`，通过隔离 Host、Core、Relay 和 Noise 对照实际收发及资源边界。macOS 的钥匙串仅使用夹具合成项；该检查不代表安装包、真实数据或手机真机验收。
+
+### A1 回环状态链路
+
+`cargo test -p areal-host --lib server::loopback::tests` 通过真实 Unix 和 WebSocket 连接核对票据、Origin、代际、过期、重放及资源边界。`pnpm --dir clients/gui test:host-client` 检查共享客户端的连接身份、断线新鲜度与取消；它的 WS 服务是确定性测试服务，不代表真实 Host 或安装包通过。
+
+隔离启动 GUI 时设置 `AREAL_HOST_WEBSOCKET=1`，并在该隔离界面的 localStorage 中设置 `areal.oneProtocol.reads=1`，可启用状态探测。Host 必须以该环境开关启动；已有关闭此能力的 Host 不会被自动重启。清除此 localStorage 项关闭探测。当前探测只调用 `host.status`，项目清单、会话历史与写入仍由原桌面路径提供，不能据此判定 A1 或 OP-01 至 OP-03 完成。GUI CSP 从运行时私有描述授权回环主机的动态端口；票据只由原生能力提供并放进 WS 首帧。
 
 `node scripts/runtime-rotation-smoke.mjs` 使用隔离目录、真实 Core/Runtime 和本地模型，分别降低 Scope、operation 与累计输出容量，验证达到预警但未耗尽时的自动轮换、活动轮次推迟、旧 Core/Runtime 退出、部署漂移保护、新 epoch、历史与 Queue 意图保留、跨轮换请求去重及后续续轮。该检查进入 `make local-service-smoke` 和 `make harness-smoke`。宿主测试覆盖维护 RPC 超时与退出取消；Engine 生命周期测试同时验证并发新轮与轮换的原子准入，以及历史 UNKNOWN 保留和未确认资源清理的阻塞；这些是确定性契约回归，不代表整体 Agent 能力提升。
 

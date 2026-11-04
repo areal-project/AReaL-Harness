@@ -11,7 +11,9 @@ import { respondToSessionName } from "../../../scripts/model-fixture.mjs";
 
 const require = createRequire(import.meta.url);
 const { GuiHostProjects, requestIdFor } = require("../app/src/core/gui-host-projects.cjs");
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = createRequire(new URL("../app/package.json", import.meta.url))(
+  "@areal/client/node",
+);
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const binary = join(
   process.env.AREAL_TEST_BIN_DIR || join(repository, ".local/shared-host-bin"),

@@ -30,7 +30,9 @@ fs.open = async (...args) => {
   return file;
 };
 const { GuiSourceAdapter, prepareGuiSource } = require("../app/src/core/gui-source.cjs");
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = createRequire(new URL("../app/package.json", import.meta.url))(
+  "@areal/client/node",
+);
 fs.open = originalOpen;
 
 async function fixture(name, { large = false, provider = false } = {}) {
@@ -458,7 +460,7 @@ try {
         await fs.readFile(join(repository, "clients/gui/app/src/core/gui-source.cjs")),
       ),
       hostClient: sha(
-        await fs.readFile(join(repository, "clients/gui/app/src/core/host-client.cjs")),
+        await fs.readFile(join(repository, "clients/gui/packages/client/node/host-client.cjs")),
       ),
       script: sha(await fs.readFile(fileURLToPath(import.meta.url))),
     },

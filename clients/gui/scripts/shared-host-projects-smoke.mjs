@@ -8,8 +8,9 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const require = createRequire(import.meta.url);
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = createRequire(new URL("../app/package.json", import.meta.url))(
+  "@areal/client/node",
+);
 const exec = promisify(execFile);
 const binary = join(
   process.env.AREAL_TEST_BIN_DIR ?? join(repository, ".local/shared-host-bin"),

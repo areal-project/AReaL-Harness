@@ -1,5 +1,7 @@
 #[path = "gateway/owner.rs"]
 mod gateway_owner;
+#[path = "loopback.rs"]
+mod loopback;
 #[path = "power.rs"]
 mod power;
 #[path = "schedule_connection.rs"]
@@ -92,6 +94,7 @@ struct Host {
     subscriptions: subscriptions::Subscriptions,
     schedules: schedules::Schedules,
     power: power::Power,
+    loopback: loopback::Loopback,
 }
 impl Slot {
     fn imported(registration: ProjectRegistration) -> Self {
@@ -307,6 +310,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
         gateway: gateway_owner::Gateway::default(),
         subscriptions: subscriptions::Subscriptions::default(),
         power: power::Power::default(),
+        loopback: loopback::Loopback::default(),
     });
     host.schedules.import(
         &host.migration,
@@ -332,6 +336,11 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
         }
     }
     host.restore_subscriptions().await?;
+    let mut loopback = loopback::bind(
+        host.clone(),
+        std::env::var_os("AREAL_HOST_WEBSOCKET").is_some_and(|value| value == "1"),
+    )
+    .await?;
     storage::write(&directory.join("host.json"), &host.identity)?;
     host.settle_update_start()?;
     let scheduler = schedules::run(host.clone());
@@ -347,6 +356,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     loop {
         tokio::select! {
             _=host.exit.notified()=>break,
+            result=loopback.run()=>{result?;unreachable!("loopback listener lives with Host")},
             _=&mut scheduler=>unreachable!("scheduler lifetime is the Host lifetime"),
             _=&mut connections=>unreachable!("schedule connections live with the Host"),
             _=&mut gateway=>unreachable!("Gateway lives with the Host"),
@@ -355,6 +365,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
             connection=listener.accept()=> {let (stream,_)=connection?;let host=host.clone();tokio::task::spawn_local(async move {let _=connection_loop(host,stream).await;});}
         }
     }
+    drop(loopback);
     host.close_subscriptions().await;
     host.power.close().await;
     std::fs::remove_file(socket)?;
@@ -383,7 +394,7 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
     let hello: Hello = serde_json::from_value(request.params)?;
     ensure!(hello.auth_token == host.token, "unauthorized");
     let response = if hello.protocol_versions.contains(&VERSION) {
-        json!({"version":VERSION,"id":request.id,"result":{"version":VERSION,"hostId":host.identity.host_id,"generation":host.identity.generation,"capabilities":CAPABILITIES,"executableVersion":host.identity.executable_version}})
+        json!({"version":VERSION,"id":request.id,"result":areal_protocol::host::LocalHelloResult { version: VERSION.into(), host_id: host.identity.host_id.clone(), generation: host.identity.generation.clone(), capabilities: CAPABILITIES.iter().map(|value| (*value).to_owned()).collect(), executable_version: host.identity.executable_version.clone() }})
     } else {
         json!({"version":VERSION,"id":request.id,"error":{"code":"versionMismatch","message":"Host requires protocol version 1"}})
     };
@@ -957,6 +968,11 @@ impl Host {
         params: Value,
         connection: &ConnectionGuard,
     ) -> Result<Value> {
+        if method == "web.ticket" {
+            return Ok(serde_json::to_value(
+                self.loopback.ticket(serde_json::from_value(params)?)?,
+            )?);
+        }
         if method == "remote.gateway.control" {
             return connection.host.gateway_control(params).await;
         }
@@ -2358,6 +2374,7 @@ mod tests {
             gateway: gateway_owner::Gateway::default(),
             subscriptions: subscriptions::Subscriptions::default(),
             power: power::Power::default(),
+            loopback: loopback::Loopback::default(),
             schedules: schedules::Schedules::load(&home).unwrap(),
         });
         let (socket, _peer) = std::os::unix::net::UnixStream::pair().unwrap();
@@ -2965,7 +2982,7 @@ mod tests {
             let workspace=root.path().join("workspace");std::fs::create_dir(&workspace).unwrap();let workspace=workspace.canonicalize().unwrap();
             let mut slots=BTreeMap::new();
             for id in ["a","b","c"] {slots.insert(id.into(),Slot {registration:ProjectRegistration {project_id:id.into(),workspace:workspace.clone(),data_dir:home.join(id),source:ProjectSource::Cli,default_binding:false},gate:Arc::new(Mutex::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new()});}
-            let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),power:power::Power::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
+            let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),power:power::Power::default(),loopback:loopback::Loopback::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
             let registration=host.slots.borrow()["b"].registration.clone();storage::private_dir(&registration.data_dir).unwrap();let instance=Host::service_id(&registration);let directory=storage::registry(&home,&instance).unwrap();storage::private_dir(&directory).unwrap();
             let service:Service=serde_json::from_value(json!({"protocolVersion":1,"serviceId":instance,"generation":uuid::Uuid::new_v4().to_string(),"workspace":workspace,"dataDir":registration.data_dir,"configFingerprint":"fixture","owner":host.owner(),"endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1","authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),"hostPid":1,"corePid":1,"state":"stopped"})).unwrap();storage::write(&directory.join("service.json"),&service).unwrap();storage::write(&directory.join("crash.json"),&storage::CrashReceipt {version:1,unexpected_core_exit:true,identity:service.identity.clone(),owner:service.owner.clone(),components:BTreeMap::new(),cleanup_confirmed:true}).unwrap();
             let activation=uuid::Uuid::new_v4().to_string();let record=Operation {digest:"fixture".into(),receipt:json!({"version":1,"requestId":activation,"method":"project.ensure","projectId":"b","state":"acceptedPending"}),evidence:json!({"serviceId":instance,"fingerprint":"fixture","owner":host.owner(),"registration":registration,"previousService":null})};storage::write(&wire::operation_path(&home,&activation),&record).unwrap();
@@ -3103,6 +3120,7 @@ mod tests {
             subscriptions: subscriptions::Subscriptions::default(),
             schedules: schedules::Schedules::load(&home).unwrap(),
             power: power::Power::default(),
+            loopback: loopback::Loopback::default(),
         };
         let mut original = json!({"requestId":"original-stop","hostId":"same-host","generation":"original-generation","projects":[],"localRelay":{"state":"acceptedPending"}});
         host.settle_local_relay(&mut original).await;

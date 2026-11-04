@@ -152,6 +152,7 @@ export interface UpdateState {
 }
 export type { NotificationTarget, QuitProgress } from "./desktop-services.js";
 export interface PlatformServices {
+  getHostTicket?(): Promise<unknown>;
   snapShots?: SnapShotServices;
   mcpApp?: McpAppCommand;
   onMcpAppEvent?(listener: (event: McpAppEvent) => void): () => void;

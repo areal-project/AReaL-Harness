@@ -13,6 +13,7 @@
     "@areal/browser-automation": "workspace:*",
     "@areal/browser-data": "workspace:*",
     "@areal/chatgpt-provider": "workspace:*",
+    "@areal/client": "workspace:*",
     "@areal/gen-ui": "workspace:*",
     "@areal/provider-config": "workspace:*",
     "@areal/remote": "workspace:*",
