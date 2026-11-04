@@ -2,6 +2,8 @@
 
 # Browser v1 契约
 
+prepare 阶段的目标解析失败保留 `not_sent` 错误码，并在错误 `details` 中附加 `dispatch: not_sent` 和白名单 `reason`。原因包括 `ax_target_invalid`、`content_quads_unavailable`、`target_outside_viewport`、`hit_target_mismatch`，未细分的目标失败与未发送分别为 `target_unavailable`、`action_not_sent`。原因不包含网页内容；`hit_target_mismatch` 只表示命中节点不同，不能单独证明是子节点或遮挡。旧宿主未提供原因时 `reason` 为 null。该补充不改变目标接受规则或已派发操作的 UNKNOWN 语义。
+
 **设计契约，部分实现。** 当前源码支持具备 Browser 能力的 GUI 聊天自然发现固定工具包、经 Core 审批绑定同一原生页、观察/截图/诊断、Ref 动作、受限本地坐标动作、等待、导航、新页面和有界批量，以及人工直接介入和宿主缺失拒绝。实际集合通过 `describe` 发现；未公布的操作仍是提案。自然浏览流程的统一原生与安装包验收尚未完成，不改变现有 [Core UNKNOWN 规则](core.md#dynamic-tools)。
 
 支持 Browser 的 GUI 新聊天登记固定 `browser_v1` 工具包；旧 Thread 在下一次空闲时的明确用户发送中，按 [ADR-0007](../adr/0007-browser-tool-compatibility.md) 受控追加部署固定包，保留原工具和历史。无需 Composer 开关或页面交还按钮。首次经 Core 批准的 `describe` 延迟绑定当前同一原生页；没有页面时才分配空白页。模型回调仍由该 Thread 绑定的 Core 连接承接。工具定义的 `operation:string` 保持可扩展包络；`describe` 返回参数示例，明确 `act` 的单个嵌套 `action` 与来自 `observe.observationId` 的 `snapshotId`。二次校验接受 `describe`（空参数）、`observe`（`pageId`、可选文档范围、Ref 与预算）、`capture`（当前视口）、`act`（pageId、snapshotId 与已公布的 Ref 动作及受限本地截图坐标动作）和 `wait`（pageId、1–30000 毫秒和可选 condition）。观察使用有界原生 AX 读取，按实际 Frame 覆盖状态报告不可读部分，并在可用时提供 role、name、state、value 与父节点关联。Ref 绑定原生节点和代次；预算截断本身不使被省略的存活 Ref 失效。结果 URL 去除查询和片段。截图限制在 800 万像素、单边 4096 像素和 2 MiB PNG，使用现有 Core Blob 和工具媒体通道交给模型与聊天。已知敏感表单或不可读 Frame 存在时拒绝自动截图；这不是截图遮罩，也无法识别所有敏感内容。所有项目共用当前用户数据目录中的持久浏览器 Profile，登录态跨项目和重启保留。人工接管、导航、Core/宿主换代会撤销读取；在途取消或超时不会自动重试。

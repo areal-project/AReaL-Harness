@@ -62,6 +62,20 @@ function browserHostFailure(request, error) {
               : "action_unconfirmed",
         }
       : {}),
+    ...(request.phase === "prepare" && /not_sent|target_unavailable/.test(message)
+      ? {
+          dispatch: "not_sent",
+          reason:
+            reason === "ax_target_invalid" ||
+            reason === "content_quads_unavailable" ||
+            reason === "target_outside_viewport" ||
+            reason === "hit_target_mismatch"
+              ? reason
+              : message === "target_unavailable"
+                ? "target_unavailable"
+                : "action_not_sent",
+        }
+      : {}),
     error:
       message === "outcome_unknown"
         ? "outcome_unknown"

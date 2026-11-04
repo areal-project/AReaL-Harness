@@ -248,9 +248,23 @@ impl Invocation<'_> {
                 self.cancel.clone()).await.map_err(invalid)?
                 .ok_or_else(|| invalid("browser prepare capability unavailable"))?;
             if let Some(code) = prepared["error"].as_str() {
-                return Err(invalid(format!(
+                let mut error = invalid(format!(
                     "browser prepare {code}; dispatch is not_sent"
-                )));
+                ));
+                // 只透传宿主诊断枚举，不把页面内容或任意异常详情带入模型上下文。
+                let reason = prepared["reason"].as_str().filter(|reason| {
+                    matches!(
+                        *reason,
+                        "ax_target_invalid"
+                            | "content_quads_unavailable"
+                            | "target_outside_viewport"
+                            | "hit_target_mismatch"
+                            | "target_unavailable"
+                            | "action_not_sent"
+                    )
+                });
+                error.details = Some(json!({"dispatch":"not_sent", "reason":reason}));
+                return Err(error);
             }
             if prepared["preparedActionId"]
                 .as_str()
