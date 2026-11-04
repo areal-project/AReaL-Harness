@@ -1,5 +1,13 @@
 [
   {
+    "script": "test:conversation-baseline-provider",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["composer", "conversation"],
+    "requires": [],
+    "notes": "Checks identical gated ACP/SSE baseline content and auxiliary-request isolation; does not certify UI or performance."
+  },
+  {
     "script": "test:observability",
     "layer": "contract",
     "platforms": ["darwin", "linux"],

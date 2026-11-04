@@ -155,6 +155,26 @@ Generate shared material with the command below, including per-file SHA-256: sho
 node clients/gui/scripts/support/conversation-baseline.mjs /tmp/conversation-baseline-materials
 ```
 
+### Executable entry points and evidence boundaries
+
+`pnpm --dir clients/gui test:conversation-baseline-provider` checks shared content, gates, and auxiliary-request isolation across real ACP stdio and SSE HTTP transports. It tests the fixture provider, not product UI. Auxiliary paths such as title generation use deterministic local responses; the acceptance environment must not discover Claude CLI. Real-CLI checks use only explicitly configured Codex CLI and report credential/provider boundaries separately.
+
+After building the source desktop, run from the repository root:
+
+```sh
+AREAL_CORE_BIN=/absolute/path/to/areal \
+AREAL_CONTENT_READING_EVIDENCE=/absolute/path/to/new-evidence-directory \
+node clients/gui/scripts/conversation-dual-product-areal.mjs
+
+AREAL_CORE_BIN=/absolute/path/to/areal \
+AREAL_CONTENT_READING_EVIDENCE=/absolute/path/to/another-new-evidence-directory \
+node clients/gui/scripts/conversation-dual-product-rich-areal.mjs
+```
+
+The first entry covers three groups of 25 inputs, actual streaming overlap, reading anchors, and final provider text. The second covers opening shared Mermaid/table material during streaming and copying it. Use a new evidence directory per run; retain `manifest.json`, raw samples, provider records, and cleanup receipts. Combine B1–B3 with `test:composer`; use `test:send-admission` for B4 rejection before admission, unknown outcomes, and lost receipts after admission. Require boundary receipts and authoritative history, not just error UI.
+
+`conversation-dual-product-t3.mjs` and `conversation-dual-product-t3-functional.mjs` manually drive an externally prepared isolated T3 instance. They are not regular CI gates and do not download or modify T3. The pinned reference, Replay adapter, and service prerequisites are recorded in the [dual-product measurements](../../design/archive/research/conversation-dual-product-baseline.md).
+
 Pin commits, dirty-diff summaries, build type, OS, runtime, CSS viewport, zoom, font size, theme, language, and background load. Separate cold/warm runs and alternate serially. Keep at least 20 valid raw samples per workload; cross-product rankings additionally require matched material/boundaries and repeated runs. Mark historical one-sided evidence reused, not a fresh controlled comparison. Report React duration, IPC admission, provider first output, and presentation separately.
 
 Each result includes starting state, actual actions, visible outcome, source owner, evidence path, collection method, PASS/FAIL/UNVERIFIED/BLOCKED, and limits. Feature coverage separately uses full/partial/unsupported/product choice/unverified. Source inference cannot receive a runtime PASS. Pair screenshots by state and dimensions; count actions only between equivalent endpoints, excluding preparation or skipped steps.
