@@ -474,17 +474,12 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
             capabilities
         }),
         write_methods: None,
-        write_limits: writer
-            .is_some()
-            .then(|| protocol::LoopbackHelloResultFieldWriteLimits {
-                command_text_bytes: super::gateway_owner::GUI_WRITE_TEXT_BYTES as i64,
-                command_pending_bytes: (super::gateway_owner::GUI_WRITE_TEXT_BYTES + 8 * 1024)
-                    as i64,
-            }),
+        write_limits: None,
     };
     let mut result = serde_json::to_value(result)?;
     if writer.is_some() {
         result["writeMethods"] = json!(WRITE_METHODS);
+        result["writeLimits"] = super::gateway_owner::write_limits();
     }
     send(
         &mut socket,
@@ -1126,7 +1121,7 @@ mod tests {
             let hello = read(&mut socket).await["result"].clone();
             assert_eq!(hello["negotiatedCapabilities"], json!(["gui-read-v1", "gui-write-v1"]));
             assert_eq!(hello["writeMethods"], json!(WRITE_METHODS));
-            assert_eq!(hello["writeLimits"]["commandTextBytes"], json!(super::super::gateway_owner::GUI_WRITE_TEXT_BYTES));
+            assert_eq!(hello["writeLimits"], super::super::gateway_owner::write_limits());
             write(&mut socket, json!({"version":1,"id":"read","method":"command.read","params":{"commandId":uuid::Uuid::new_v4().to_string()},"context":{"projectId":"missing"}})).await;
             assert_eq!(read(&mut socket).await["error"]["code"], "FORBIDDEN");
             write(&mut socket, json!({"version":1,"id":"x".repeat(65),"method":"command.read","params":{}})).await;

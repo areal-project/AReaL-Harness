@@ -1208,36 +1208,50 @@ async fn conversation_open_discards_reply_after_grant_or_core_generation_changes
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn gui_write_negotiation_raises_text_limit_only_for_declaring_clients() {
+async fn gui_write_negotiation_accepts_desktop_rich_input_only_for_declaring_clients() {
     tokio::task::LocalSet::new()
         .run_until(async {
             let mut f = Fixture::new().await;
-            let long = "x".repeat(64 * 1024 + 1);
+            let rich = json!({"threadId":"thread","expectedConfigRevision":1,"text":"look","conversationQuotes":[{"text":"quoted"}],"attachments":[{"type":"image","url":"areal://blob/img_1"},{"type":"file","url":"areal://blob/doc-2","name":"spec.pdf","mimeType":"application/pdf","_meta":{"source":"snap"}}],"mcpContent":[{"type":"text","text":"tool note"}]});
             let legacy = f.session("a");
             assert!(legacy.describe(false).get("writeLimits").is_none());
-            let rejected = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":1,"text":long}), Some(&uuid::Uuid::new_v4().to_string()));
-            let (legacy, result) = Fixture::dispatch(legacy, rejected).await.unwrap();
+            let (legacy, result) = Fixture::dispatch(legacy, f.request("session.send", rich.clone(), Some(&uuid::Uuid::new_v4().to_string()))).await.unwrap();
+            assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
+            let long = json!({"threadId":"thread","expectedConfigRevision":1,"text":"x".repeat(64 * 1024 + 1)});
+            let (_, result) = Fixture::dispatch(legacy, f.request("session.send", long.clone(), Some(&uuid::Uuid::new_v4().to_string()))).await.unwrap();
             assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
             assert!(f.calls.try_recv().is_err());
-            drop(legacy);
             let mut session = f.session("a");
             session.gui_read = true;
             session.gui_write = true;
             let description = session.describe(false);
             assert_eq!(description["negotiatedCapabilities"], json!(["gui-read-v1", "gui-write-v1"]));
-            assert_eq!(description["writeLimits"]["commandTextBytes"], json!(GUI_WRITE_TEXT_BYTES));
-            assert_eq!(description["limits"]["commandTextBytes"], json!(64 * 1024));
-            let too_long = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":1,"text":"x".repeat(GUI_WRITE_TEXT_BYTES + 1)}), Some(&uuid::Uuid::new_v4().to_string()));
-            let (session, result) = Fixture::dispatch(session, too_long).await.unwrap();
+            assert_eq!(description["writeLimits"], write_limits());
+            let (session, result) = Fixture::dispatch(session, f.request("session.send", long, Some(&uuid::Uuid::new_v4().to_string()))).await.unwrap();
+            assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
+            let mut crowded = rich.clone();
+            crowded["attachments"] = json!(vec![json!({"type":"image","url":"areal://blob/a"}); 17]);
+            let (session, result) = Fixture::dispatch(session, f.request("session.send", crowded, Some(&uuid::Uuid::new_v4().to_string()))).await.unwrap();
+            assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
+            let mut foreign = rich.clone();
+            foreign["attachments"] = json!([{"type":"image","url":"https://example.com/a.png"}]);
+            let (session, result) = Fixture::dispatch(session, f.request("session.send", foreign, Some(&uuid::Uuid::new_v4().to_string()))).await.unwrap();
             assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
             assert!(f.calls.try_recv().is_err());
-            let accepted = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":1,"text":long}), Some(&uuid::Uuid::new_v4().to_string()));
-            let sending = Fixture::dispatch(session, accepted);
+            let sending = Fixture::dispatch(session, f.request("session.send", rich, Some(&uuid::Uuid::new_v4().to_string())));
             f.call("areal/capabilities").await.reply(Fixture::capabilities());
             f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
             let turn = f.call("areal/turn/start").await;
-            assert_eq!(turn.request["params"]["input"][0]["text"].as_str().unwrap().len(), 64 * 1024 + 1);
-            turn.reply(json!({"turn":{"id":"long-turn"}}));
+            let input = turn.request["params"]["input"].as_array().unwrap().clone();
+            assert_eq!(input[0], json!({"type":"text","text":"look","text_elements":[]}));
+            assert_eq!(input[1]["text"], "# userselect:\n```userselect\n[{\"text\":\"quoted\"}]\n```");
+            assert_eq!(input[2], json!({"type":"image","url":"areal://blob/img_1","detail":null}));
+            assert_eq!(input[3], json!({"type":"file","url":"areal://blob/doc-2","name":"spec.pdf","mime_type":"application/pdf"}));
+            assert_eq!(input[4]["mcpContent"], json!({"type":"text","text":"tool note"}));
+            assert_eq!(input[5]["mcpContent"]["type"], "resource_link");
+            assert_eq!(input[5]["mcpContent"]["_meta"], json!({"source":"snap"}));
+            assert_eq!(input.len(), 6);
+            turn.reply(json!({"turn":{"id":"rich-turn"}}));
             assert_eq!(sending.await.unwrap().1.unwrap()["admissionState"], "accepted");
         })
         .await;

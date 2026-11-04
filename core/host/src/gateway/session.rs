@@ -191,7 +191,12 @@ pub(crate) fn error_code(message: &str) -> &str {
     }
 }
 pub(crate) const LOCAL_PEER: &str = "local-desktop";
-pub(crate) const GUI_WRITE_TEXT_BYTES: usize = 192 * 1024;
+/// gui-write-v1 的输入上限与桌面 Main 一致（正文 64 KiB、16 个附件、8 段引用、32 块 MCP），
+/// 另加 MCP 总量上限，保证整条命令放得进 1 MiB 帧。
+pub(crate) const GUI_WRITE_PENDING_BYTES: usize = 704 * 1024;
+pub(crate) fn write_limits() -> Value {
+    json!({"commandTextBytes":64 * 1024,"commandPendingBytes":GUI_WRITE_PENDING_BYTES,"attachments":16,"quotes":8,"quoteUnits":16000,"mcpBlocks":32,"mcpBlockBytes":64 * 1024,"mcpContentBytes":send::MCP_CONTENT_BYTES})
+}
 
 pub(crate) struct Session {
     pub(crate) host: Rc<Host>,
@@ -709,7 +714,7 @@ impl Session {
         );
         let mut value = json!({"apiVersion":"areal.remote.v2","hostId":self.host_peer,"gatewayGeneration":self.generation,"connectionId":self.connection,"grantRevision":self.grant["revision"],"capabilities":self.grant["capabilities"],"methods":METHODS,"limits":limits});
         if self.gui_write {
-            value["writeLimits"] = json!({"commandTextBytes":GUI_WRITE_TEXT_BYTES,"commandPendingBytes":GUI_WRITE_TEXT_BYTES + 8 * 1024});
+            value["writeLimits"] = write_limits();
         }
         if self.gui_read {
             value["negotiatedCapabilities"] = json!(if self.gui_write {
@@ -768,16 +773,16 @@ impl Session {
         ensure!(self.local, "FORBIDDEN");
         self.request(request).await
     }
-    /// 已发布的 iOS 与 PWA 只认 64 KiB；只有声明 gui-write-v1 的客户端放宽。
     pub(super) fn command_text_bytes(&self) -> usize {
-        if self.gui_write {
-            GUI_WRITE_TEXT_BYTES
-        } else {
-            64 * 1024
-        }
+        64 * 1024
     }
+    /// 已发布的 iOS 与 PWA 只发正文，沿用 72 KiB；声明 gui-write-v1 的客户端可带附件、引用与 MCP 内容。
     pub(super) fn command_pending_bytes(&self) -> usize {
-        self.command_text_bytes() + 8 * 1024
+        if self.gui_write {
+            GUI_WRITE_PENDING_BYTES
+        } else {
+            72 * 1024
+        }
     }
     fn authorize(&self, project: Option<&str>, capability: &str) -> Result<()> {
         if self.local {

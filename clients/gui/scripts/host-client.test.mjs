@@ -915,7 +915,7 @@ test("desktop writes negotiate gui-write-v1, carry the Gateway context and never
         connectionId: "connection",
         gatewayGeneration: generation,
         writeMethods: ["session.send", "command.read"],
-        writeLimits: { commandTextBytes: 196608, commandPendingBytes: 204800 },
+        writeLimits: { commandTextBytes: 65536, attachments: 16 },
       });
     if (frame.method === "shell.subscribe")
       return reply({

@@ -46,7 +46,8 @@ export type ReadConnectionIdentity = {
   gatewayGeneration: string;
   preferredSourceId?: string;
   writeMethods?: readonly string[];
-  writeLimits?: { commandTextBytes: number; commandPendingBytes: number };
+  /** 与桌面输入框一致的上限：正文、附件、引用与 MCP 内容。 */
+  writeLimits?: Readonly<Record<string, number>>;
 };
 /** 写命令的结果。传输中断时只返回 unknown，由调用方用同一 commandId 查 command.read，绝不重发。 */
 export type HostCommandResult =
@@ -404,12 +405,11 @@ export class HostClient {
                     writeMethods: (value.writeMethods as unknown[]).filter(
                       (method): method is string => typeof method === "string",
                     ),
-                    writeLimits: {
-                      commandTextBytes: Number((value.writeLimits as JsonObject).commandTextBytes),
-                      commandPendingBytes: Number(
-                        (value.writeLimits as JsonObject).commandPendingBytes,
+                    writeLimits: Object.fromEntries(
+                      Object.entries(value.writeLimits as JsonObject).filter(
+                        (entry): entry is [string, number] => typeof entry[1] === "number",
                       ),
-                    },
+                    ),
                   }
                 : {}),
             };

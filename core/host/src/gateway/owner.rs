@@ -14,7 +14,7 @@ mod legacy;
 mod push;
 #[path = "session.rs"]
 mod session;
-pub(crate) use session::{GUI_WRITE_TEXT_BYTES, error_code};
+pub(crate) use session::{error_code, write_limits};
 
 /// 本机桌面写入口，包装 Gateway 会话的本机主体。
 pub(crate) struct LocalSession(session::Session);
