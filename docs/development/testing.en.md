@@ -23,6 +23,8 @@ The Worktree integration fixture holds automatic naming responses until the real
 
 Side Chat parity P4 uses native Shift/arrow keys and Enter, checks selection rectangles against the transcript viewport before quoting, and verifies that a previous reading anchor cannot take back the viewport after native keyboard movement. The original scenario retains its count/length limits, frozen quote contents and no-automatic-submission assertions.
 
+After model-turn assertions, the model-selection fixture observes public serviceStatus.canStop until backend commands, startup, model-configuration updates and resources settle, then requests native-menu quit once. The original 15-second real-exit assertion remains. On failure, the existing cleanup helper reaps only the Electron child launched by this fixture and preserves the failure and evidence, preventing a live process from extending one cleanup failure to the entire CI job timeout.
+
 | Entry point | Coverage |
 |---|---|
 | `make verify` | Cordis pin, formatting, static checks, Rust workspace, both SDKs, Python, documentation, TUI and unified delegation smoke |
