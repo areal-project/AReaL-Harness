@@ -2,19 +2,19 @@
 
 # Remote Control architecture
 
-The shared Host is a [target design, in progress](../development/shared-host-spec.en.md), with ownership defined by [ADR 0016](../adr/0016-shared-host.en.md). The current Gateway remains in Desktop Service under the GUI lifecycle. Remote after full GUI quit requires H3 migration and acceptance of Gateway, grants, the submission journal outside Store, scheduled activation, and provider subscription transports. Host supervision identity is separate from Remote Noise peer identity; distinct Noise identities from multiple profiles cannot overwrite each other.
+See the [implementation spec](../development/shared-host-spec.en.md) for shared Host delivery and acceptance boundaries, and [ADR 0016](../adr/0016-shared-host.en.md) for ownership. Rust Host owns Gateway, grants, the submission journal outside Store, scheduled activation, and provider subscription transport. Ordinary GUI quit releases its own connections while Host continues Remote service; an explicit backend stop settles through the original receipt. Full H3 differential and physical-device acceptance remain incomplete. Host supervision identity is separate from Remote Noise peer identity; distinct Noise identities from multiple profiles cannot overwrite each other.
 
-This document specifies planned Remote v2 behavior, not shipped capability. See [architecture and layout](architecture.en.md) for module ownership and the [test plan](../development/remote-control-testing.en.md) for verification entry points.
+This document specifies Remote v2 architecture and boundaries; protocol design does not establish acceptance of every scenario. See [architecture and layout](architecture.en.md) for module ownership and the [test plan](../development/remote-control-testing.en.md) for verification entry points.
 
-## RC-01 implementation scope
+## Direct entry and implementation scope
 
-`RemoteControl` manages the read-only Direct entry within the existing desktop background adapter on a separate loopback listener. It does not enter the privileged DesktopService dispatcher. The browser shell uses the existing GUI build and shared `@areal/remote` Noise implementation; it sends only v2 hello and two read methods, with no Core connection or execution loop. v2 applies tighter message and buffer limits before JSON decoding; existing local services retain their owners.
+Rust Host Gateway owns the Direct entry on a separate loopback listener; it does not proxy Main's privileged dispatcher. The browser shell uses the existing GUI build and shared `@areal/remote` Noise implementation. Actual capabilities and device grants determine available methods; the shell owns no Core connection or execution loop. v2 applies tighter message and buffer limits before JSON decoding; existing local services retain their owners. The old JS `RemoteControl` remains a migration reference until the complete differential suite passes.
 
-The loopback switch defaults to off. Test fixtures provide isolated grants; production pairing and public/Relay deployment are not available. See the [test plan](../development/remote-control-testing.en.md) for commands and evidence boundaries. Existing Shared Browser, native preview and browser tools are outside this ticket's change scope.
+The loopback switch defaults to off. Direct and Relay share pairing and device grants; isolated local tests do not establish public deployment or upgrades of previously paired physical devices. See the [test plan](../development/remote-control-testing.en.md) for commands and evidence boundaries. Existing Shared Browser, native preview and browser tools are outside this ticket's change scope.
 
 ## Goal and authority
 
-The desktop computer is the Host. Its existing background adapter owns the Remote Gateway lifecycle. Core remains the sole authority for Threads, Turns, Tasks, TaskRuns, interactions and history; Runtime retains execution boundaries and operation facts. Web/PWA stores reconstructable projections and unsent drafts.
+The desktop computer runs shared Rust Host, which owns the Remote Gateway lifecycle. Core remains the sole authority for Threads, Turns, Tasks, TaskRuns, interactions and history; Runtime retains execution boundaries and operation facts. Web/PWA stores reconstructable projections and unsent drafts.
 
 Direct and Relay share pairing, authorization, commands and observations. Method details have one home: the [Remote API](../api/remote-control.en.md). ADRs 0002–0005 record the durable trade-offs.
 
@@ -23,7 +23,7 @@ Direct and Relay share pairing, authorization, commands and observations. Method
 | Component | Responsibility | Excluded responsibility |
 |---|---|---|
 | Desktop GUI | Local enablement, connectivity settings, pairing approval, revocation, diagnostics | Keeping Remote alive |
-| Existing background adapter | Project connections, credentials, Gateway lifecycle and Core submission correlation | Another agent or task scheduler |
+| Shared Rust Host | Project supervision and connections, credentials, Gateway lifecycle and Core submission correlation | Another agent or task scheduler |
 | Remote Gateway | Current device grants, method allowlist, narrow projections, command mapping, audit metadata | Generic RPC, filesystem or terminal proxy |
 | SecureChannel / Transport | Existing Noise implementation, Direct/Relay bytes and backpressure | Execution authorization |
 | Core | Admission, durable receipts, history, interaction decisions and Task coordination | Trusting client-declared permission |
@@ -50,7 +50,7 @@ Web `BrowserState` supplies IndexedDB, BroadcastChannel and sessionStorage adapt
 
 A Host aggregates saved, explicitly granted projects, each bound to a discovered Core service identity and generation. Host identity, Gateway process generation, Core service generation, Runtime epoch and tool-host generation are distinct.
 
-Closing a page or GUI window releases observations. The current adapter maintains Remote and tool-host duties while the application remains running. Full GUI quit currently ends the GUI-owned supervision chain; the shared Host target retains Gateway after H3 migration. Remote subscription cleanup must not close subscriptions used by other clients. Stopping Gateway does not cancel accepted work. Sleep, logout, power loss, and explicitly stopped services have no availability guarantee.
+Closing a page releases its observations. Ordinary GUI quit does not end Host-owned supervision or Gateway service; Main-owned desktop tool connections are withdrawn when GUI exits. Remote subscription cleanup must not close subscriptions used by other clients. Stopping Gateway does not cancel accepted work. Sleep, logout, power loss, and explicitly stopped services have no availability guarantee.
 
 Passive recovery only discovers compatible running services; it does not start stopped projects, restart services or widen permission. One unavailable project does not make the whole Host unavailable.
 
