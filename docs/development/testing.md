@@ -442,7 +442,9 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 
 macOS 可使用同一环境下的 `pnpm --dir clients/gui test:remote-crash-recovery-lldb` 选择确定性屏障。该入口显式依赖 LLDB 与系统调试授权，在发送原创建命令前确认唯一 `settle_command` 函数断点已就绪，命中后核对原 pending、无 outcome 与真实 Core 完成回执，再终止原 Host。缺少符号、授权未完成或未命中断点均按失败保留，不降级为概率重试；系统认证由用户确认。
 
-`pnpm --dir clients/gui test:remote-outcome-recovery-lldb` 使用相同环境和 LLDB 前提，执行单轮真实 Noise outcome 写入失败及原回执恢复验证。当前 wire 错误使用 `CORE_UNAVAILABLE` 和 `submissionUnknown`；原 JS T22 返回形状差异仍待审，此入口不代表原 T22 整套通过。
+`pnpm --dir clients/gui test:remote-outcome-recovery-lldb` 使用相同环境和 LLDB 前提，执行单轮真实 Noise outcome 写入失败及原回执恢复验证。在原持久 pending 字节可核查且未改变时，wire 返回原 `result.admissionState=unknown` 与 `submissionUnknown=true`，不返回伪造 receipt；恢复后按原 Core 回执结算。此入口不代表原 T22 整套通过。
+
+原 `test:remote-command-e2e` 的 Rust worker 支持 `RC05_OUTCOME_WRITE_ONLY=1`，分别配合 `AREAL_REMOTE_TRANSPORT=direct` 或 `relay` 验证真实 outcome 写入失败。worker 使用同一 LLDB 屏障，持有原成功回执后将本案 journal 目录设为只读；收到原 UNKNOWN 后显式恢复权限，再核对原 command/operation/Thread 恢复与重复创建不新增 Thread。证据包括原 pending 字节、Core receipt、Debugger 清理和 Host 原停止回执。该有限选择保持 `acceptance=false`，未接通的其他故障控制及 100 轮原整套验收仍需继续。
 
 `node scripts/shared-host-smoke.mjs` 验证共享 Host 的本机认证、并发启动、登记回执、旧服务受控重启、多项目隔离、活动 Runtime 命令期间的 Host 崩溃清理与停止回执。崩溃场景暂停旧 service-host 并确认生命周期锁仍被持有，核对继任 Host 的原启动请求返回 `migrationBlocked`，再恢复旧进程并等待清理后验证新代际和历史保持。`AREAL_TEST_BIN_DIR` 指向完整新产物，`AREAL_LEGACY_TEST_BIN_DIR` 指向支持 service-v1 的完整旧产物；缺少旧产物会失败。`node scripts/shared-host-client-smoke.mjs` 使用同一新产物验证 exec、`-p`、headless TUI 和真实 PTY 在客户端强退后继续原 Turn，以及 resume 与 Web 复用。两者使用隔离 home/workspace、确定性模型与真实 Core/Runtime，并通过 `AREAL_TEST_EVIDENCE` 保存 JSON 证据。固定产物串行使用。这些检查不替代 GUI、Remote、真实供应商或安装包验收。
 

@@ -173,6 +173,7 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
   const options = JSON.parse(process.env.RC05_HOST_OPTIONS);
   const cleanup = [];
   let backend;
+  let commandFault;
   const fixture = await nativeHostFixture(
     { after: (action) => cleanup.push(action), diagnostic: console.log },
     {
@@ -206,6 +207,8 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
     const project = await backend.start(projectId);
     fixture.evidence.service = project.service;
     const native = (method, params) => project.client.request(method, params);
+    const { nativeCommandFault } = await import("./remote-native-command-fault.mjs");
+    commandFault = nativeCommandFault(fixture, backend.host.resolve(projectId).projectId, native);
     process.send({ event: "service-started", projectId, service: project.service });
     const remote = await fixture.make();
     let endpoint;
@@ -218,7 +221,9 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
     process.on("message", async (message) => {
       try {
         let result;
-        if (message.method === "control") result = await remote.control(message.params);
+        if (message.method === "fault") result = await commandFault.arm(message.params);
+        else if (message.method === "fault-release") result = await commandFault.release();
+        else if (message.method === "control") result = await remote.control(message.params);
         else if (message.method === "native")
           result = await native(message.params.method, message.params.params);
         else if (message.method === "foreign-project") {
@@ -335,6 +340,7 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
             assert.equal(receipt[key], offlineReference[key]);
           result = fixture.evidence.offline;
         } else if (message.method === "stop") {
+          await commandFault.clear();
           if (offlineReference) {
             const receipt = (await fixture.client.operation(offlineReference.requestId)).operation;
             assert.ok(
@@ -374,6 +380,7 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
       rustHost: fixture.evidence.host,
     });
   } catch (error) {
+    await commandFault?.clear();
     await backend?.disconnect();
     for (const action of cleanup.splice(0).reverse()) await action();
     throw error;
@@ -560,6 +567,8 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
   const binary = process.env.AREAL_CORE_BIN;
   if (!binary) throw new Error("AREAL_CORE_BIN must identify the reviewed immutable native bundle");
   const publicCommandsOnly = process.env.RC05_PUBLIC_COMMANDS_ONLY === "1";
+  const outcomeWriteOnly = process.env.RC05_OUTCOME_WRITE_ONLY === "1";
+  assert.ok(!outcomeWriteOnly || rustOwner, "Native outcome fault requires Rust Host");
   assert.ok(!publicCommandsOnly || rustOwner, "Public command checks require the Rust Host owner");
   const taskPauseOnly = process.env.RC09_TASK_PAUSE_ONLY === "1";
   const reviewOnly = process.env.RC10_REVIEW_ONLY === "1";
@@ -572,6 +581,7 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
   assert.ok(
     [
       publicCommandsOnly,
+      outcomeWriteOnly,
       reviewOnly,
       taskQuestionsOnly,
       taskPauseOnly,
@@ -586,6 +596,7 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
   let completedRaceIterations = 0;
   const repetitions =
     publicCommandsOnly ||
+    outcomeWriteOnly ||
     reviewOnly ||
     taskQuestionsOnly ||
     preflightOnly ||
@@ -603,6 +614,7 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
     Number.isInteger(repetitions) &&
       repetitions >=
         (publicCommandsOnly ||
+        outcomeWriteOnly ||
         reviewOnly ||
         taskQuestionsOnly ||
         preflightOnly ||
@@ -1054,10 +1066,13 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
   const control = (method, params) =>
     new Promise((resolve, reject) => {
       const id = ++workerSequence;
-      const timer = setTimeout(() => {
-        waiting.delete(id);
-        reject(new Error(`Host control timeout: ${method}`));
-      }, 30000);
+      const timer = setTimeout(
+        () => {
+          waiting.delete(id);
+          reject(new Error(`Host control timeout: ${method}`));
+        },
+        method === "fault" && rustOwner ? 130000 : 30000,
+      );
       waiting.set(id, { resolve, reject, timer });
       worker.send({ id, method, params });
     });
@@ -1272,6 +1287,7 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
     phase = "business";
     if (
       !publicCommandsOnly &&
+      !outcomeWriteOnly &&
       !reviewOnly &&
       !taskPauseOnly &&
       !taskQuestionsOnly &&
@@ -1319,6 +1335,7 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
             (await a.rpc("session.create", {}, failedId)).result.admissionState,
             "unknown",
           );
+          if (rustOwner) await control("fault-release");
           assert.equal(
             (await a.rpc("command.read", { commandId: failedId })).result.admissionState,
             "accepted",
@@ -1414,6 +1431,36 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
           "busy, stale config, Task-owned root, Workflow default, offline create and saved-outcome read",
         taskId: taskOwnershipEvidence.createdTask.id,
         workflowDispatchProfile,
+      });
+    }
+    if (outcomeWriteOnly) {
+      const commandId = randomUUID();
+      const before = (await native("thread/list", { limit: 100 })).data.map((row) => row.id).sort();
+      await control("fault", "outcome-write");
+      const response = await a.rpc("session.create", {}, commandId);
+      assert.equal(response.error, undefined);
+      assert.equal(response.result.admissionState, "unknown");
+      assert.equal(response.result.submissionUnknown, true);
+      assert.equal(response.result.commandId, commandId);
+      const fault = await control("fault-release");
+      const recovered = (await a.rpc("command.read", { commandId })).result;
+      assert.equal(recovered.admissionState, "accepted");
+      assert.equal(recovered.operationId, response.result.operationId);
+      const duplicate = (await a.rpc("session.create", {}, commandId)).result;
+      assert.equal(duplicate.admissionState, "accepted");
+      assert.equal(duplicate.operationId, recovered.operationId);
+      assert.equal(duplicate.threadId, recovered.threadId);
+      assert.deepEqual(
+        (await native("thread/list", { limit: 100 })).data.map((row) => row.id).sort(),
+        [...before, recovered.threadId].sort(),
+      );
+      checks.push({
+        case: "T22",
+        detail: "original worker native outcome fault and durable recovery",
+        fault,
+        original: response.result,
+        recovered,
+        duplicate,
       });
     }
     if (publicCommandsOnly) {
@@ -3181,6 +3228,7 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
       passed,
       acceptance:
         !publicCommandsOnly &&
+        !outcomeWriteOnly &&
         passed &&
         requiredUnrun.length === 0 &&
         (repetitions === 0 || completedRaceIterations >= 100),
@@ -3237,28 +3285,31 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
       runtimePidEvidence: [...ownedProcesses.values()].some((value) => value.role === "runtime")
         ? "observed owned descendant"
         : "UNOBSERVED; cleanup is not proven for Runtime",
-      selectedSuite: reviewOnly
-        ? "RC10_T32_T33_T34"
-        : taskPauseOnly
-          ? "RC09_T30_T31"
-          : taskQuestionsOnly
-            ? "RC08_T28_T29"
-            : interactionOnly
-              ? "RC07"
-              : stopOnly
-                ? "RC06"
-                : preflightOnly
-                  ? "RC05_T21"
-                  : settlementOnly
-                    ? "RC06_T24"
-                    : interactionSettlementOnly
-                      ? "RC07_T26_T27"
-                      : publicCommandsOnly
-                        ? "RC05_PUBLIC_COMMANDS"
-                        : "RC05",
+      selectedSuite: outcomeWriteOnly
+        ? "RC05_T22_NATIVE"
+        : reviewOnly
+          ? "RC10_T32_T33_T34"
+          : taskPauseOnly
+            ? "RC09_T30_T31"
+            : taskQuestionsOnly
+              ? "RC08_T28_T29"
+              : interactionOnly
+                ? "RC07"
+                : stopOnly
+                  ? "RC06"
+                  : preflightOnly
+                    ? "RC05_T21"
+                    : settlementOnly
+                      ? "RC06_T24"
+                      : interactionSettlementOnly
+                        ? "RC07_T26_T27"
+                        : publicCommandsOnly
+                          ? "RC05_PUBLIC_COMMANDS"
+                          : "RC05",
       coveredCases: checks.flatMap((check) => check.case.split("/")),
       raceAcceptanceRequired:
         !publicCommandsOnly &&
+        !outcomeWriteOnly &&
         !reviewOnly &&
         !taskQuestionsOnly &&
         !preflightOnly &&
@@ -3274,6 +3325,7 @@ if (process.argv[2] === "--host-worker" && rustOwner) {
         .update(await readFile(binary))
         .digest("hex"),
       notCovered: [
+        ...(outcomeWriteOnly ? ["original full RC05 suite and 100-race acceptance"] : []),
         ...(publicCommandsOnly
           ? [
               "T18 crash after acceptance and T22 outcome-write fault boundaries",
