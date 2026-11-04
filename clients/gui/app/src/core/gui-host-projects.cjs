@@ -56,11 +56,29 @@ class GuiHostProjects {
         singletonHeld: true,
       });
       const result = await adapter.import(requestIdFor(JSON.stringify(this.source)));
-      if (result.kind !== "ready")
-        throw Object.assign(new Error("GUI source migration is not complete"), {
+      if (result.kind !== "ready") {
+        const reasons = new Set();
+        for (const blocker of Array.isArray(result.blockers) ? result.blockers : []) {
+          switch (blocker?.code) {
+            case "sourceGuardRequired":
+              reasons.add("请从持有原桌面单实例的应用恢复迁移。");
+              break;
+            case "credentialsRequired":
+              reasons.add("原凭据尚未完成导入，请检查凭据可用状态后重试。");
+              break;
+            case "legacyPending":
+              reasons.add("无法确认旧后台已完成清理，请先检查原任务和停止回执。");
+              break;
+            default:
+              reasons.add("无法确认迁移阻塞原因，请检查原后台状态。");
+          }
+        }
+        if (!reasons.size) reasons.add("无法确认迁移阻塞原因，请检查原后台状态。");
+        throw Object.assign(new Error(`GUI 数据迁移尚未完成。${[...reasons].join(" ")}`), {
           code: "GUI_SOURCE_PENDING",
           migration: result,
         });
+      }
       state = await this.client.sourceState(this.source);
     }
     if (!state) throw new Error("Host source publication is unavailable");
